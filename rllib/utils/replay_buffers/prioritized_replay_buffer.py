@@ -6,7 +6,6 @@ import numpy as np
 import ray  # noqa F401
 import psutil  # noqa E402
 
-from ray.rllib.execution.buffers.replay_buffer import warn_replay_capacity
 from ray.rllib.execution.segment_tree import SumSegmentTree, MinSegmentTree
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override, ExperimentalAPI
@@ -37,16 +36,18 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             capacity: Max number of timesteps to store in the FIFO
                 buffer. After reaching this number, older samples will be
                 dropped to make space for new ones.
-            storage_unit (str): Either 'timesteps', 'sequences' or
+            storage_unit: Either 'timesteps', 'sequences' or
                 'episodes'. Specifies how experiences are stored.
             alpha: How much prioritization is used
                 (0.0=no prioritization, 1.0=full prioritization).
+            **kwargs: Forward compatibility kwargs.
         """
-        ReplayBuffer.__init__(self, capacity, storage_unit)
+        ReplayBuffer.__init__(self, capacity, storage_unit, **kwargs)
 
         assert alpha > 0
         self._alpha = alpha
 
+        # Segment tree must have capacity that is a power of 2
         it_capacity = 1
         while it_capacity < self.capacity:
             it_capacity *= 2
@@ -58,10 +59,12 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
     @ExperimentalAPI
     @override(ReplayBuffer)
-    def _add_single_batch(self, item: SampleBatchType, **kwargs):
+    def _add_single_batch(self, item: SampleBatchType, **kwargs) -> None:
         """Add a batch of experiences to self._storage with weight.
 
-        An item is either one or more timesteps, a sequence or an episode.
+        An item consists of either one or more timesteps, a sequence or an
+        episode. Differs from add() in that it does not consider the storage
+        unit or type of batch and simply stores it.
 
         Args:
             item: The item to be added.
@@ -91,9 +94,20 @@ class PrioritizedReplayBuffer(ReplayBuffer):
     def sample(self, num_items: int, beta: float, **kwargs) -> Optional[SampleBatchType]:
         """Sample `num_items` items from this buffer, including prio. weights.
 
-        If less than `num_items` records are in this buffer, some samples in
-        the results may be repeated to fulfil the batch size (`num_items`)
-        request.
+        Samples in the results may be repeated.
+
+        Examples for storage of SamplesBatches:
+        - If storage unit `timesteps` has been chosen and batches of
+        size 5 have been added, sample(5) will yield a concatenated batch of
+        15 timesteps.
+        - If storage unit 'sequences' has been chosen and sequences of
+        different lengths have been added, sample(5) will yield a concatenated
+        batch with a number of timesteps equal to the sum of timesteps in
+        the 5 sampled sequences.
+        - If storage unit 'episodes' has been chosen and episodes of
+        different lengths have been added, sample(5) will yield a concatenated
+        batch with a number of timesteps equal to the sum of timesteps in
+        the 5 sampled episodes.
 
         Args:
             num_items: Number of items to sample from this buffer.
@@ -106,10 +120,6 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             "batch_indexes" fields denoting IS of each sampled
             transition and original idxes in buffer of sampled experiences.
         """
-        # If we don't have any samples yet in this buffer, return None.
-        if len(self) == 0:
-            return None
-
         assert beta >= 0.0
 
         idxes = self._sample_proportional(num_items)
@@ -137,7 +147,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             self._num_timesteps_sampled += count
         batch = self._encode_sample(idxes)
 
-        # Note: prioritization is not supported in lockstep replay mode.
+        # Note: prioritization is not supported in multi agent lockstep
         if isinstance(batch, SampleBatch):
             batch["weights"] = np.array(weights)
             batch["batch_indexes"] = np.array(batch_indexes)
@@ -147,7 +157,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
     @ExperimentalAPI
     def update_priorities(self, idxes: List[int],
                           priorities: List[float]) -> None:
-        """Update priorities of items at idxes.
+        """Update priorities of items at given indices.
 
         Sets priority of item at index idxes[i] in buffer
         to priorities[i].

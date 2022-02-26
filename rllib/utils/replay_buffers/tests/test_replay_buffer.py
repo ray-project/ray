@@ -2,15 +2,16 @@ import unittest
 
 import numpy as np
 
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 
 from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
 
 
 class TestReplayBuffer(unittest.TestCase):
-    def test_timesteps_unit(self):
-        """Tests adding, sampling, get-/set state, and eviction with
-            experiences stored by timesteps."""
+    def test_stats(self):
+        """Tests stats by adding and sampling few samples and checking the
+        values of the buffer's stats.
+        """
         self.batch_id = 0
 
         def _add_data_to_buffer(_buffer, batch_size, num_batches=5,
@@ -53,6 +54,9 @@ class TestReplayBuffer(unittest.TestCase):
 
         # Sampling from it now should yield the first batch
         assert buffer.sample(1)["batch_id"][0] == 0
+        # Sampling three times should yield 3 batches of 5 timesteps each
+        buffer.sample(2)
+        assert buffer._num_timesteps_sampled == 15
 
         _add_data_to_buffer(buffer, batch_size=batch_size, num_batches=2)
 
@@ -62,6 +66,111 @@ class TestReplayBuffer(unittest.TestCase):
         assert buffer._num_timesteps_added_wrap == 0
         assert buffer._next_idx == 0
         assert buffer._eviction_started is True
+
+    def test_multi_agent_batches(self):
+        """Tests buffer with storage of MultiAgentBatches.
+        """
+        self.batch_id = 0
+
+        def _add_multi_agent_batch_to_buffer(buffer, num_policies,
+                                             num_batches=5, seq_lens=False,
+                                             **kwargs):
+
+            def _generate_data(policy_id):
+                batch = SampleBatch(
+                    {
+                        SampleBatch.T: [0, 1],
+                        SampleBatch.ACTIONS: 2 * [np.random.choice([0, 1])],
+                        SampleBatch.REWARDS: 2 * [np.random.rand()],
+                        SampleBatch.OBS: 2 * [np.random.random((4,))],
+                        SampleBatch.NEXT_OBS: 2 * [np.random.random((4,))],
+                        SampleBatch.DONES: [False, True],
+                        SampleBatch.EPS_ID: 2 * [self.batch_id],
+                        SampleBatch.AGENT_INDEX: 2 * [0],
+                        SampleBatch.SEQ_LENS: [2],
+                        "batch_id": 2 * [self.batch_id],
+                        "policy_id": 2 * [policy_id]
+                    }
+                )
+                if not seq_lens:
+                    del batch[SampleBatch.SEQ_LENS]
+                self.batch_id += 1
+                return batch
+
+            for i in range(num_batches):
+                # genera a few policy batches
+                policy_batches = {idx: _generate_data(idx) for idx,
+                                                               _ in
+                                  enumerate(range(
+                                      num_policies))}
+                batch = MultiAgentBatch(policy_batches, num_batches * 2)
+                buffer.add(batch, **kwargs)
+
+        buffer = ReplayBuffer(capacity=100, storage_unit="timesteps")
+
+        # Test add/sample
+        _add_multi_agent_batch_to_buffer(buffer, num_policies=2, num_batches=2)
+
+        # After adding a single batch to a buffer, it should not be full
+        assert len(buffer) == 2
+        assert buffer._num_timesteps_added == 8
+        assert buffer._num_timesteps_added_wrap == 8
+        assert buffer._next_idx == 2
+        assert buffer._eviction_started is False
+
+        # Sampling three times should yield 3 batches of 5 timesteps each
+        buffer.sample(3)
+        assert buffer._num_timesteps_sampled == 12
+
+        _add_multi_agent_batch_to_buffer(buffer,
+                                         batch_size=100,
+                                         num_policies=3,
+                                         num_batches=3)
+
+        # After adding two more batches, the buffer should be full
+        assert len(buffer) == 5
+        assert buffer._num_timesteps_added == 26
+        assert buffer._num_timesteps_added_wrap == 26
+        assert buffer._next_idx == 5
+
+    def test_timesteps_unit(self):
+        """Tests adding, sampling, get-/set state, and eviction with
+            experiences stored by timesteps.
+        """
+        self.batch_id = 0
+
+        def _add_data_to_buffer(_buffer, batch_size, num_batches=5,
+                                **kwargs):
+            def _generate_data():
+                return SampleBatch(
+                    {
+                        SampleBatch.T: [np.random.random((4,))],
+                        SampleBatch.ACTIONS: [np.random.choice([0, 1])],
+                        SampleBatch.OBS: [np.random.random((4,))],
+                        SampleBatch.NEXT_OBS: [np.random.random((4,))],
+                        SampleBatch.REWARDS: [np.random.rand()],
+                        SampleBatch.DONES: [np.random.choice([False, True])],
+                        "batch_id": [self.batch_id],
+                    }
+                )
+
+            for i in range(num_batches):
+                data = [_generate_data() for _ in range(batch_size)]
+                self.batch_id += 1
+                batch = SampleBatch.concat_samples(data)
+                _buffer.add(batch, **kwargs)
+
+        batch_size = 5
+        buffer_size = 15
+
+        buffer = ReplayBuffer(capacity=buffer_size)
+
+        # Test add/sample
+        _add_data_to_buffer(buffer,
+                            batch_size=batch_size,
+                            num_batches=1)
+
+        _add_data_to_buffer(buffer, batch_size=batch_size, num_batches=2)
 
         # Sampling from it now should yield our first batch 1/3 of the time
         num_sampled_dict = {_id: 0 for _id in range(self.batch_id)}
@@ -92,7 +201,8 @@ class TestReplayBuffer(unittest.TestCase):
         assert len(other_buffer) == len(other_buffer)
 
     def test_sequences_unit(self):
-        """Tests adding, sampling and eviction of sequences."""
+        """Tests adding, sampling and eviction of sequences.
+        """
         buffer = ReplayBuffer(capacity=10, storage_unit="sequences")
 
         batches = [SampleBatch(
@@ -153,6 +263,8 @@ class TestReplayBuffer(unittest.TestCase):
         assert buffer._next_idx == 1
         assert buffer._eviction_started is True
 
+        # The first batch should now not be sampled anymore, other batches
+        # should be sampled as before
         num_sampled_dict = {_id: 0 for _id in range(2, 6)}
         num_samples = 200
         for i in range(num_samples):
@@ -161,15 +273,14 @@ class TestReplayBuffer(unittest.TestCase):
             assert len(sample[SampleBatch.SEQ_LENS]) == 1
             num_sampled_dict[_id] += 1
 
-        # Out of five sequences, we want to sequences from the last batch to
-        # be sampled twice as often, because they are stored separately
         assert np.allclose(
             np.array(list(num_sampled_dict.values())) / num_samples,
             [1 / 5, 1 / 5, 2 / 5, 1 / 5],
             atol=0.1)
 
     def test_episodes_unit(self):
-        """Tests adding, sampling, and eviction of episodes."""
+        """Tests adding, sampling, and eviction of episodes.
+        """
         buffer = ReplayBuffer(capacity=18, storage_unit="episodes")
 
         batches = [SampleBatch(

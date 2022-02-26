@@ -199,7 +199,7 @@ class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
         policy_id.
 
         Args:
-            prio_dict (Dict): A dictionary containing td_errors for
+            prio_dict: A dictionary containing td_errors for
             batches saved in underlying replay buffers.
         """
         with self.update_priorities_timer:

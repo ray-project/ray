@@ -83,7 +83,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
 
         Args:
             capacity: Number of batches to store in total.
-            storage_unit (str): Either 'timesteps', 'sequences' or
+            storage_unit: Either 'timesteps', 'sequences' or
                 'episodes'. Specifies how experiences are stored. If they
                 are stored in episodes, replay_sequence_length is ignored.
             num_shards: The number of buffer shards that exist in total

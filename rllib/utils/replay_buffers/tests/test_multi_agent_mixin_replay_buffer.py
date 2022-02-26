@@ -3,7 +3,8 @@ import unittest
 
 from ray.rllib.utils.replay_buffers.multi_agent_mixin_replay_buffer import \
     MultiAgentMixInReplayBuffer
-from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, MultiAgentBatch
+from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
+    MultiAgentBatch
 
 
 class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
@@ -40,7 +41,8 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
         )
 
     def test_mixin_sampling_episodes(self):
-        """Test sampling of episodes."""
+        """Test sampling of episodes.
+        """
         # 50% replay ratio.
         buffer = MultiAgentMixInReplayBuffer(capacity=self.capacity,
                                              storage_unit="episodes",
@@ -59,7 +61,8 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
         self.assertAlmostEqual(np.mean(results), 2 * len(batch))
 
     def test_mixin_sampling_sequences(self):
-        """Test sampling of sequences."""
+        """Test sampling of sequences.
+        """
         # 50% replay ratio.
         buffer = MultiAgentMixInReplayBuffer(capacity=self.capacity,
                                              storage_unit="sequences",
@@ -78,7 +81,8 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
         self.assertAlmostEqual(np.mean(results), len(batch))
 
     def test_mixin_sampling_timesteps(self):
-        """Test different mixin ratios with timesteps."""
+        """Test different mixin ratios with timesteps.
+        """
         # 33% replay ratio.
         buffer = MultiAgentMixInReplayBuffer(capacity=self.capacity,
                                              storage_unit="timesteps",

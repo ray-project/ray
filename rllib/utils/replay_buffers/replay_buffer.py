@@ -10,11 +10,14 @@ from ray.util.debug import log_once
 import ray  # noqa F401
 import psutil  # noqa E402
 
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.metrics.window_stat import WindowStat
 from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.execution.buffers.replay_buffer import warn_replay_capacity
+
+# Constant that represents all policies in lockstep replay mode.
+_ALL_POLICIES = "__all__"
 
 logger = logging.getLogger(__name__)
 
@@ -29,11 +32,11 @@ class StorageUnit(Enum):
 @ExperimentalAPI
 class ReplayBuffer:
     def __init__(self, capacity: int = 10000,
-                 storage_unit: str ="timesteps", **kwargs):
-        """Initializes a ReplayBuffer instance.
+                 storage_unit: str = "timesteps", **kwargs):
+        """Initializes a (FIFO) ReplayBuffer instance.
 
         Args:
-            capacity: Max number of timesteps to store in the FIFO
+            capacity: Max number of timesteps to store in this FIFO
                 buffer. After reaching this number, older samples will be
                 dropped to make space for new ones.
             storage_unit: Either 'timesteps', `sequences` or
@@ -53,9 +56,10 @@ class ReplayBuffer:
                 "`episodes`."
             )
 
-        # The actual storage (list of SampleBatches).
+        # The actual storage (list of SampleBatches or MultiAgentBatches).
         self._storage = []
 
+        # Caps the number of timesteps stored in this buffer
         self.capacity = capacity
         # The next index to override in the buffer.
         self._next_idx = 0
@@ -100,8 +104,15 @@ class ReplayBuffer:
         assert batch.count > 0, batch
         warn_replay_capacity(item=batch, num_items=self.capacity / batch.count)
 
+        if type(batch) == MultiAgentBatch and \
+                self._storage_unit != StorageUnit.TIMESTEPS:
+            raise ValueError("Can not add MultiAgentBatch to ReplayBuffer "
+                             "with storage_unit {}"
+                             "".format(str(self._storage_unit)))
+
         if self._storage_unit == StorageUnit.TIMESTEPS:
             self._add_single_batch(batch, **kwargs)
+
         elif self._storage_unit == StorageUnit.SEQUENCES:
             timestep_count = 0
             for seq_len in batch.get(SampleBatch.SEQ_LENS):
@@ -109,6 +120,7 @@ class ReplayBuffer:
                 end_seq = timestep_count + seq_len
                 self._add_single_batch(batch[start_seq:end_seq], **kwargs)
                 timestep_count = end_seq
+
         elif self._storage_unit == StorageUnit.EPISODES:
             for eps in batch.split_by_episode():
                 if eps.get(SampleBatch.T)[0] == 0 and \
@@ -126,7 +138,9 @@ class ReplayBuffer:
     def _add_single_batch(self, item: SampleBatchType, **kwargs) -> None:
         """Add a SampleBatch of experiences to self._storage.
 
-        An item is either one or more timesteps, a sequence or an episode.
+        An item consists of either one or more timesteps, a sequence or an
+        episode. Differs from add() in that it does not consider the storage
+        unit or type of batch and simply stores it.
 
         Args:
             item: The batch to be added.
@@ -154,29 +168,35 @@ class ReplayBuffer:
         else:
             self._next_idx += 1
 
-
     @ExperimentalAPI
     def sample(self, num_items: int, **kwargs) -> Optional[SampleBatchType]:
         """Samples `num_items` items from this buffer.
 
-        If less than `num_items` records are in this buffer, some samples in
-        the results may be repeated to fulfil the request.
+        Samples in the results may be repeated.
+
+        Examples for storage of SamplesBatches:
+        - If storage unit `timesteps` has been chosen and batches of
+        size 5 have been added, sample(5) will yield a concatenated batch of
+        15 timesteps.
+        - If storage unit 'sequences' has been chosen and sequences of
+        different lengths have been added, sample(5) will yield a concatenated
+        batch with a number of timesteps equal to the sum of timesteps in
+        the 5 sampled sequences.
+        - If storage unit 'episodes' has been chosen and episodes of
+        different lengths have been added, sample(5) will yield a concatenated
+        batch with a number of timesteps equal to the sum of timesteps in
+        the 5 sampled episodes.
 
         Args:
             num_items: Number of items to sample from this buffer.
             **kwargs: Forward compatibility kwargs.
 
         Returns:
-            Concatenated batch of items. None if buffer is empty.
+            Concatenated batch of items.
         """
-        # If we don't have any samples yet in this buffer, return None.
-        if len(self) == 0:
-            return None
-
         idxes = [random.randint(0, len(self) - 1) for _ in range(num_items)]
         sample = self._encode_sample(idxes)
-        # Update our timesteps counters.
-        self._num_timesteps_sampled += len(sample)
+        self._num_timesteps_sampled += sample.count
         return sample
 
     @ExperimentalAPI
@@ -232,9 +252,14 @@ class ReplayBuffer:
         self._est_size_bytes = state["est_size_bytes"]
 
     def _encode_sample(self, idxes: List[int]) -> SampleBatchType:
+        """Fetches concatenated samples at given indeces from the storage.
+        """
         samples = [self._storage[i] for i in idxes]
+
         if samples:
-            out = SampleBatch.concat_samples(samples)
+            # Assume all samples are of same type
+            sample_type = type(samples[0])
+            out = sample_type.concat_samples(samples)
         else:
             out = SampleBatch()
         out.decompress_if_needed()

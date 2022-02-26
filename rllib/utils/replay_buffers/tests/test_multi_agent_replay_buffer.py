@@ -23,6 +23,7 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
     def _add_sample_batch_to_buffer(self, buffer, batch_size, num_batches=5,
                                     **kwargs):
         self.eps_id = 0
+
         def _generate_data():
             self.eps_id += 1
             return SampleBatch(
@@ -79,6 +80,24 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
             batch = MultiAgentBatch(policy_batches, 1)
             buffer.add(batch, **kwargs)
 
+    def test_policy_id_of_multi_agent_batches_independent(self):
+        """Test if indepent sampling yields a MultiAgentBatch with the
+        correct policy id."""
+        self.batch_id = 0
+
+        # Test lockstep mode with different policy ids using MultiAgentBatches
+        buffer = MultiAgentReplayBuffer(capacity=10,
+                                        replay_mode="independent",
+                                        learning_starts=0,
+                                        num_shards=1)
+
+        self._add_multi_agent_batch_to_buffer(buffer,
+                                              num_policies=1,
+                                              num_batches=1)
+
+        mabatch = buffer.sample(1)
+        assert list(mabatch.policy_batches.keys())[0] == 0
+
     def test_lockstep_mode(self):
         """Test the lockstep mode by only adding SampleBatches.
 
@@ -118,7 +137,7 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
     def test_independent_mode_sequences_storage_unit(self):
         """Test the independent mode with sequences as a storage unit.
 
-        Such SampleBatches are converted to MultiAgent Batches as if there
+        Such SampleBatches are converted to MultiAgentBatches as if there
         was only one policy."""
         buffer_size = 15
         self.batch_id = 0

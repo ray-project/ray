@@ -28,7 +28,7 @@ class ReservoirBuffer(ReplayBuffer):
             capacity: Max number of timesteps to store in the FIFO
                 buffer. After reaching this number, older samples will be
                 dropped to make space for new ones.
-            storage_unit (str): Either 'timesteps', 'sequences' or
+            storage_unit: Either 'timesteps', 'sequences' or
             'episodes'. Specifies how experiences are stored.
         """
         ReplayBuffer.__init__(self, capacity, storage_unit)
@@ -40,7 +40,9 @@ class ReservoirBuffer(ReplayBuffer):
     def _add_single_batch(self, item: SampleBatchType, **kwargs) -> None:
         """Add a SampleBatch of experiences to self._storage.
 
-        An item is either one or more timesteps, a sequence or an episode.
+        An item consists of either one or more timesteps, a sequence or an
+        episode. Differs from add() in that it does not consider the storage
+        unit or type of batch and simply stores it.
 
         Args:
             item: The batch to be added.

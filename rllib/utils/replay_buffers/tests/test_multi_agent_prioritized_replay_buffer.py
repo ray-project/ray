@@ -8,7 +8,7 @@ from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, \
 from ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer \
     import MultiAgentPrioritizedReplayBuffer
 from ray.rllib.utils.test_utils import check
-from ray.rllib.execution.buffers.replay_buffer import _ALL_POLICIES
+from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
 
 
 class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
@@ -70,7 +70,7 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
             buffer.add(batch, **kwargs)
 
     def test_policy_id_of_multi_agent_batches_independent(self):
-        """Test if indepent sampling yields a multi agent batch with the
+        """Test if indepent sampling yields a MultiAgentBatch with the
         correct policy id."""
         self.batch_id = 0
 

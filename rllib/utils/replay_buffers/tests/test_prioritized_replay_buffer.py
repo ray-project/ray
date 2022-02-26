@@ -4,7 +4,7 @@ import unittest
 
 from ray.rllib.utils.replay_buffers.prioritized_replay_buffer import \
     PrioritizedReplayBuffer
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.test_utils import check
 
 
@@ -27,6 +27,74 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
                 SampleBatch.DONES: [np.random.choice([False, True])],
             }
         )
+
+    def test_multi_agent_batches(self):
+        """Tests buffer with storage of MultiAgentBatches.
+        """
+        self.batch_id = 0
+
+        def _add_multi_agent_batch_to_buffer(buffer, num_policies,
+                                             num_batches=5, seq_lens=False,
+                                             **kwargs):
+
+            def _generate_data(policy_id):
+                batch = SampleBatch(
+                    {
+                        SampleBatch.T: [0, 1],
+                        SampleBatch.ACTIONS: 2 * [np.random.choice([0, 1])],
+                        SampleBatch.REWARDS: 2 * [np.random.rand()],
+                        SampleBatch.OBS: 2 * [np.random.random((4,))],
+                        SampleBatch.NEXT_OBS: 2 * [np.random.random((4,))],
+                        SampleBatch.DONES: [False, True],
+                        SampleBatch.EPS_ID: 2 * [self.batch_id],
+                        SampleBatch.AGENT_INDEX: 2 * [0],
+                        SampleBatch.SEQ_LENS: [2],
+                        "batch_id": 2 * [self.batch_id],
+                        "policy_id": 2 * [policy_id]
+                    }
+                )
+                if not seq_lens:
+                    del batch[SampleBatch.SEQ_LENS]
+                self.batch_id += 1
+                return batch
+
+            for i in range(num_batches):
+                # genera a few policy batches
+                policy_batches = {idx: _generate_data(idx) for idx,
+                                                               _ in
+                                  enumerate(range(
+                                      num_policies))}
+                batch = MultiAgentBatch(policy_batches, num_batches * 2)
+                buffer.add(batch, **kwargs)
+
+        buffer = PrioritizedReplayBuffer(capacity=100,
+                                         storage_unit="timesteps",
+                                         alpha=0.5)
+
+        # Test add/sample
+        _add_multi_agent_batch_to_buffer(buffer, num_policies=2, num_batches=2)
+
+        # After adding a single batch to a buffer, it should not be full
+        assert len(buffer) == 2
+        assert buffer._num_timesteps_added == 8
+        assert buffer._num_timesteps_added_wrap == 8
+        assert buffer._next_idx == 2
+        assert buffer._eviction_started is False
+
+        # Sampling three times should yield 3 batches of 5 timesteps each
+        buffer.sample(3, beta=0.5)
+        assert buffer._num_timesteps_sampled == 12
+
+        _add_multi_agent_batch_to_buffer(buffer,
+                                         batch_size=100,
+                                         num_policies=3,
+                                         num_batches=3)
+
+        # After adding two more batches, the buffer should be full
+        assert len(buffer) == 5
+        assert buffer._num_timesteps_added == 26
+        assert buffer._num_timesteps_added_wrap == 26
+        assert buffer._next_idx == 5
 
     def test_sequence_size(self):
         # Seq-len=1.

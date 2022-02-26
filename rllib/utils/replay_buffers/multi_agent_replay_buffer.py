@@ -4,15 +4,14 @@ from typing import Any, Dict, Optional
 from enum import Enum
 
 import ray
-from ray.rllib.execution.buffers.replay_buffer import _ALL_POLICIES
+from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
 from ray.rllib.policy.rnn_sequencing import \
     timeslice_along_seq_lens_with_overlap
-from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import override, ExperimentalAPI
 from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
 from ray.rllib.utils.from_config import from_config
 from ray.util.debug import log_once
@@ -176,7 +175,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         batches to the storage.
 
         Args:
-            batch (SampleBatchType): The batch to be added.
+            batch : The batch to be added.
             **kwargs: Forward compatibility kwargs.
         """
         # Make a copy so the replay buffer doesn't pin plasma memory.
@@ -288,7 +287,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         """Returns the stats of this buffer and all underlying buffers.
 
         Args:
-            debug (bool): If True, stats of underlying replay buffers will
+            debug: If True, stats of underlying replay buffers will
             be fetched with debug=True.
 
         Returns:
