@@ -24,7 +24,8 @@ fn main() {
         .replace('\r', "")
         .replace(" ", "");
 
-    println!("cargo:rustc-link-lib=core_worker_library_c");
+    println!("cargo:rustc-link-lib=razor");
+    // println!("cargo:rustc-link-lib=core_worker_library_c");
     println!("cargo:rustc-link-search={}", link_dir);
 
     // println!(
