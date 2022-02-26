@@ -1,7 +1,7 @@
+use rustc_version::{version_meta, Channel};
 use std::env;
 use std::path::PathBuf;
 use std::process::Command;
-use rustc_version::{version_meta, Channel};
 
 // It is the job of the downstream user binary to ensure that the linking is to the Ray Rust libraries
 // are included in their rustc flags or via a build script like this one.
@@ -10,16 +10,15 @@ fn main() {
         .arg("rust")
         .arg("--show-library-path")
         .output()
-        .expect("Could not get Ray Rust library path from stdout of `ray rust --show-library-path`");
+        .expect(
+            "Could not get Ray Rust library path from stdout of `ray rust --show-library-path`",
+        );
 
-    let out_str = String::from_utf8(out.stdout)
-        .expect("Could not parse stdout as string");
+    let out_str = String::from_utf8(out.stdout).expect("Could not parse stdout as string");
     if !out_str.contains("/ray/rust/lib") {
         panic!("Could not get Ray Rust library path from stdout of `ray rust --show-library-path`");
     }
-    let link_dir = out_str
-        .split("--")
-        .collect::<Vec<_>>()[1]
+    let link_dir = out_str.split("--").collect::<Vec<_>>()[1]
         // Strip whitespace and newlines
         .replace('\n', "")
         .replace('\r', "")
@@ -30,7 +29,10 @@ fn main() {
 
     println!("cargo:rustc-cdylib-link-args=-Wl,-export-dynamic -nostartfiles");
 
-    println!("cargo:rustc-env=LD_LIBRARY_PATH={}:LD_LIBRARY_PATH", link_dir);
+    println!(
+        "cargo:rustc-env=LD_LIBRARY_PATH={}:LD_LIBRARY_PATH",
+        link_dir
+    );
 
     let mut out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     out_dir.pop();
@@ -38,7 +40,7 @@ fn main() {
     out_dir.pop();
 
     println!(
-        "cargo:rustc-env=RAY_RUST_LIBRARY_PATHS=--ray_code_search_path={}/libsimple.so",
+        "cargo:rustc-env=RAY_RUST_LIBRARY_PATHS=--code_search_path={}/libsimple.so",
         out_dir.to_str().unwrap(),
     );
 

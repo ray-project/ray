@@ -12,9 +12,6 @@ include!(env!("BAZEL_BINDGEN_SOURCE"));
 use c_vec::CVec;
 use std::{ffi::CString, os::raw::*};
 
-// #[cfg(not(feature = "bazel"))]
-// mod proto;
-
 const ID_ARRAY_LEN: usize = 28;
 const NUM_WORKERS: i32 = 1;
 
@@ -287,7 +284,7 @@ pub mod internal {
             }
 
             let id = ObjectID::new(obj_ids[0]);
-            println!("ObjectID: {}", util::pretty_print_id(&id));
+            // println!("ObjectID: {}", util::pretty_print_id(&id));
             id
         }
     }
@@ -352,7 +349,7 @@ pub mod internal {
         }
 
         let id = ActorID::new(actor_ids[0]);
-        println!("ActorID: {}", util::pretty_print_id(&id));
+        // println!("ActorID: {}", util::pretty_print_id(&id));
         id
     }
 }
