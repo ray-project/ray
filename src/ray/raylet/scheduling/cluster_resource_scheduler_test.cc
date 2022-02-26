@@ -185,7 +185,8 @@ class ClusterResourceSchedulerTest : public ::testing::Test {
 
       initNodeResources(node_resources, pred_capacities, cust_ids, cust_capacities);
 
-      resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(i, node_resources);
+      resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(std::to_string(i),
+                                                                     node_resources);
 
       node_resources.custom_resources.clear();
     }
@@ -322,7 +323,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingInitClusterTest) {
 
 TEST_F(ClusterResourceSchedulerTest, SchedulingDeleteClusterNodeTest) {
   int num_nodes = 4;
-  int64_t remove_id = 2;
+  std::string remove_id = "2";
 
   ClusterResourceScheduler resource_scheduler;
 
@@ -334,7 +335,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingDeleteClusterNodeTest) {
 
 TEST_F(ClusterResourceSchedulerTest, SchedulingModifyClusterNodeTest) {
   int num_nodes = 4;
-  int64_t update_id = 2;
+  std::string update_id = "2";
   ClusterResourceScheduler resource_scheduler;
 
   initCluster(resource_scheduler, num_nodes);
@@ -402,7 +403,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {
   vector<int64_t> cust_ids{1, 2};
   vector<FixedPoint> cust_capacities{5, 5};
   initNodeResources(node_resources, pred_capacities, cust_ids, cust_capacities);
-  ClusterResourceScheduler resource_scheduler(1, node_resources, *gcs_client_);
+  ClusterResourceScheduler resource_scheduler("1", node_resources, *gcs_client_);
   AssertPredefinedNodeResources(resource_scheduler);
 
   {
@@ -416,9 +417,9 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {
     bool is_infeasible;
     rpc::SchedulingStrategy scheduling_strategy;
     scheduling_strategy.mutable_default_scheduling_strategy();
-    int64_t node_id = resource_scheduler.GetBestSchedulableNode(
+    auto node_id = resource_scheduler.GetBestSchedulableNode(
         resource_request, scheduling_strategy, false, false, &violations, &is_infeasible);
-    ASSERT_EQ(node_id, 1);
+    ASSERT_EQ(node_id, std::string("1"));
     ASSERT_TRUE(violations == 0);
 
     NodeResources nr1, nr2;
@@ -478,7 +479,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest) {
 TEST_F(ClusterResourceSchedulerTest, SchedulingAddOrUpdateNodeTest) {
   ClusterResourceScheduler resource_scheduler;
   NodeResources nr, nr_out;
-  int64_t node_id = 1;
+  std::string node_id = "1";
 
   // Add node.
   {
@@ -526,7 +527,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
   initNodeResources(node_resources, pred_capacities, cust_ids, cust_capacities);
   ClusterResourceScheduler resource_scheduler(0, node_resources, *gcs_client_);
   auto node_id = NodeID::FromRandom();
-  auto node_internal_id = resource_scheduler.string_to_int_map_.Insert(node_id.Binary());
+  auto node_internal_id = node_id.Binary();
   rpc::SchedulingStrategy scheduling_strategy;
   scheduling_strategy.mutable_default_scheduling_strategy();
   {
@@ -546,9 +547,9 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
                         EmptyFixedPointVector);
     int64_t violations;
     bool is_infeasible;
-    int64_t node_id = resource_scheduler.GetBestSchedulableNode(
+    std::string node_id = resource_scheduler.GetBestSchedulableNode(
         resource_request, scheduling_strategy, false, false, &violations, &is_infeasible);
-    ASSERT_EQ(node_id, -1);
+    ASSERT_EQ(node_id, "-1");
   }
 
   // Predefined resources, no constraint violation.
@@ -559,9 +560,9 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
                         EmptyFixedPointVector);
     int64_t violations;
     bool is_infeasible;
-    int64_t node_id = resource_scheduler.GetBestSchedulableNode(
+    std::string node_id = resource_scheduler.GetBestSchedulableNode(
         resource_request, scheduling_strategy, false, false, &violations, &is_infeasible);
-    ASSERT_TRUE(node_id != -1);
+    ASSERT_TRUE(node_id != "-1");
     ASSERT_TRUE(violations == 0);
   }
   // Custom resources, hard constraint violation.
@@ -573,9 +574,9 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
     initResourceRequest(resource_request, pred_demands, cust_ids, cust_demands);
     int64_t violations;
     bool is_infeasible;
-    int64_t node_id = resource_scheduler.GetBestSchedulableNode(
+    std::string node_id = resource_scheduler.GetBestSchedulableNode(
         resource_request, scheduling_strategy, false, false, &violations, &is_infeasible);
-    ASSERT_TRUE(node_id == -1);
+    ASSERT_TRUE(node_id == "-1");
   }
   // Custom resources, no constraint violation.
   {
@@ -586,9 +587,9 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
     initResourceRequest(resource_request, pred_demands, cust_ids, cust_demands);
     int64_t violations;
     bool is_infeasible;
-    int64_t node_id = resource_scheduler.GetBestSchedulableNode(
+    std::string node_id = resource_scheduler.GetBestSchedulableNode(
         resource_request, scheduling_strategy, false, false, &violations, &is_infeasible);
-    ASSERT_TRUE(node_id != -1);
+    ASSERT_TRUE(node_id != "-1");
     ASSERT_TRUE(violations == 0);
   }
   // Custom resource missing, hard constraint violation.
@@ -600,9 +601,9 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
     initResourceRequest(resource_request, pred_demands, cust_ids, cust_demands);
     int64_t violations;
     bool is_infeasible;
-    int64_t node_id = resource_scheduler.GetBestSchedulableNode(
+    std::string node_id = resource_scheduler.GetBestSchedulableNode(
         resource_request, scheduling_strategy, false, false, &violations, &is_infeasible);
-    ASSERT_TRUE(node_id == -1);
+    ASSERT_TRUE(node_id == "-1");
   }
   // Placement hints, no constraint violation.
   {
@@ -613,9 +614,9 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
     initResourceRequest(resource_request, pred_demands, cust_ids, cust_demands);
     int64_t violations;
     bool is_infeasible;
-    int64_t node_id = resource_scheduler.GetBestSchedulableNode(
+    std::string node_id = resource_scheduler.GetBestSchedulableNode(
         resource_request, scheduling_strategy, false, false, &violations, &is_infeasible);
-    ASSERT_TRUE(node_id != -1);
+    ASSERT_TRUE(node_id != "-1");
     ASSERT_TRUE(violations == 0);
   }
 }
@@ -913,7 +914,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest2) {
 }
 
 TEST_F(ClusterResourceSchedulerTest, DeadNodeTest) {
-  ClusterResourceScheduler resource_scheduler("local", {}, *gcs_client_);
+  ClusterResourceScheduler resource_scheduler("local", NodeResources{}, *gcs_client_);
   absl::flat_hash_map<std::string, double> resource;
   resource["CPU"] = 10000.0;
   auto node_id = NodeID::FromRandom();
@@ -1104,7 +1105,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest) {
 
 TEST_F(ClusterResourceSchedulerTest, TestAlwaysSpillInfeasibleTask) {
   absl::flat_hash_map<std::string, double> resource_spec({{"CPU", 1}});
-  ClusterResourceScheduler resource_scheduler("local", {}, *gcs_client_);
+  ClusterResourceScheduler resource_scheduler("local", NodeResources{}, *gcs_client_);
   for (int i = 0; i < 100; i++) {
     resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
         NodeID::FromRandom().Binary(), {}, {});
@@ -1152,7 +1153,7 @@ TEST_F(ClusterResourceSchedulerTest, ResourceUsageReportTest) {
   vector<FixedPoint> other_cust_capacities{5., 4., 3., 2., 1.};
   initNodeResources(other_node_resources, other_pred_capacities, cust_ids,
                     other_cust_capacities);
-  resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(12345,
+  resource_scheduler.GetClusterResourceManager().AddOrUpdateNode("12345",
                                                                  other_node_resources);
 
   {  // Cluster is idle.
@@ -1236,7 +1237,7 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
   vector<FixedPoint> other_cust_capacities{10.};
   initNodeResources(other_node_resources, other_pred_capacities, cust_ids,
                     other_cust_capacities);
-  resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(12345,
+  resource_scheduler.GetClusterResourceManager().AddOrUpdateNode("12345",
                                                                  other_node_resources);
 
   {

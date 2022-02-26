@@ -195,9 +195,8 @@ std::string ClusterResourceScheduler::GetBestSchedulableNode(
   RAY_LOG(DEBUG) << "Scheduling decision. "
                  << "forcing spillback: " << force_spillback
                  << ". Best node: " << best_node_id << " "
-                 << (best_node_id == "-1"
-                         ? NodeID::Nil()
-                         : NodeID::FromBinary(best_node_id))
+                 << (best_node_id == "-1" ? NodeID::Nil()
+                                          : NodeID::FromBinary(best_node_id))
                  << ", is infeasible: " << *is_infeasible;
   return best_node_id;
 }
