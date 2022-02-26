@@ -1,5 +1,5 @@
 import json
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from ray.train.callbacks import TrainingCallback
 from ray.train.callbacks.results_preprocessors import ResultsPreprocessor
@@ -57,8 +57,13 @@ class PrintCallback(TrainingCallback):
         ]
     """
 
-    def __init__(self, results_preprocessors=List[ResultsPreprocessor]):
-        self.results_preprocessor = SequentialResultsPreprocessor(results_preprocessors)
+    def __init__(
+        self, results_preprocessors: Optional[List[ResultsPreprocessor]] = None
+    ):
+        if results_preprocessors:
+            self.results_preprocessor = SequentialResultsPreprocessor(
+                results_preprocessors
+            )
 
     def handle_result(self, results: List[Dict], **info):
         """Prints results to STDOUT.
