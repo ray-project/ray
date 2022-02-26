@@ -19,7 +19,7 @@ class DeploymentMethodNode(DAGNode):
         method_options: Dict[str, Any],
         other_args_to_resolve: Optional[Dict[str, Any]] = None,
     ):
-        self._body = deployment
+        self._deployment = deployment
         self._method_name: str = method_name
         super().__init__(
             method_args,
@@ -39,7 +39,7 @@ class DeploymentMethodNode(DAGNode):
         new_other_args_to_resolve: Dict[str, Any],
     ):
         return DeploymentMethodNode(
-            self._body,
+            self._deployment,
             self._method_name,
             new_args,
             new_kwargs,
@@ -92,5 +92,5 @@ class DeploymentMethodNode(DAGNode):
 
     def __str__(self) -> str:
         return get_dag_node_str(
-            self, str(self._method_name) + "() @ " + str(self._body)
+            self, str(self._method_name) + "() @ " + str(self._deployment)
         )
