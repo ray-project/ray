@@ -6,12 +6,13 @@ from ray.util.iter_metrics import SharedMetrics
 from ray.rllib.utils.typing import SampleBatchType
 
 
-def Concurrently(ops: List[LocalIterator],
-                 *,
-                 mode: str = "round_robin",
-                 output_indexes: Optional[List[int]] = None,
-                 round_robin_weights: Optional[List[int]] = None
-                 ) -> LocalIterator[SampleBatchType]:
+def Concurrently(
+    ops: List[LocalIterator],
+    *,
+    mode: str = "round_robin",
+    output_indexes: Optional[List[int]] = None,
+    round_robin_weights: Optional[List[int]] = None
+) -> LocalIterator[SampleBatchType]:
     """Operator that runs the given parent iterators concurrently.
 
     Args:
@@ -42,8 +43,7 @@ def Concurrently(ops: List[LocalIterator],
     elif mode == "async":
         deterministic = False
         if round_robin_weights:
-            raise ValueError(
-                "round_robin_weights cannot be specified in async mode")
+            raise ValueError("round_robin_weights cannot be specified in async mode")
     else:
         raise ValueError("Unknown mode {}".format(mode))
     if round_robin_weights and all(r == "*" for r in round_robin_weights):
@@ -59,13 +59,13 @@ def Concurrently(ops: List[LocalIterator],
         ops = [tag(op, i) for i, op in enumerate(ops)]
 
     output = ops[0].union(
-        *ops[1:],
-        deterministic=deterministic,
-        round_robin_weights=round_robin_weights)
+        *ops[1:], deterministic=deterministic, round_robin_weights=round_robin_weights
+    )
 
     if output_indexes:
-        output = (output.filter(lambda tup: tup[0] in output_indexes).for_each(
-            lambda tup: tup[1]))
+        output = output.filter(lambda tup: tup[0] in output_indexes).for_each(
+            lambda tup: tup[1]
+        )
 
     return output
 
@@ -89,8 +89,7 @@ class Enqueue:
 
     def __init__(self, output_queue: queue.Queue):
         if not isinstance(output_queue, queue.Queue):
-            raise ValueError("Expected queue.Queue, got {}".format(
-                type(output_queue)))
+            raise ValueError("Expected queue.Queue, got {}".format(type(output_queue)))
         self.queue = output_queue
 
     def __call__(self, x: Any) -> Any:
@@ -101,8 +100,9 @@ class Enqueue:
         return x
 
 
-def Dequeue(input_queue: queue.Queue,
-            check=lambda: True) -> LocalIterator[SampleBatchType]:
+def Dequeue(
+    input_queue: queue.Queue, check=lambda: True
+) -> LocalIterator[SampleBatchType]:
     """Dequeue data items from a queue.Queue instance.
 
     The dequeue is non-blocking, so Dequeue operations can execute with
@@ -122,8 +122,7 @@ def Dequeue(input_queue: queue.Queue,
         SampleBatch(...)
     """
     if not isinstance(input_queue, queue.Queue):
-        raise ValueError("Expected queue.Queue, got {}".format(
-            type(input_queue)))
+        raise ValueError("Expected queue.Queue, got {}".format(type(input_queue)))
 
     def base_iterator(timeout=None):
         while check():
@@ -132,7 +131,9 @@ def Dequeue(input_queue: queue.Queue,
                 yield item
             except queue.Empty:
                 yield _NextValueNotReady()
-        raise RuntimeError("Dequeue `check()` returned False! "
-                           "Exiting with Exception from Dequeue iterator.")
+        raise RuntimeError(
+            "Dequeue `check()` returned False! "
+            "Exiting with Exception from Dequeue iterator."
+        )
 
     return LocalIterator(base_iterator, SharedMetrics())

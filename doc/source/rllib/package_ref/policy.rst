@@ -12,7 +12,7 @@ are - if more than one - are selected based on a multi-agent ``policy_mapping_fn
 which maps agent IDs to a policy ID.
 
 .. https://docs.google.com/drawings/d/1eFAVV1aU47xliR5XtGqzQcdvuYs2zlVj1Gb8Gg0gvnc/edit
-.. figure:: ../../images/rllib/policy_classes_overview.svg
+.. figure:: ../images/policy_classes_overview.svg
     :align: left
 
     **RLlib's Policy class hierarchy:** Policies are deep-learning framework

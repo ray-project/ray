@@ -85,12 +85,14 @@ def test_execute_single(ray_start_2_cpus):
 
     def f():
         import os
+
         os.environ["TEST"] = "1"
 
     wg.execute_single(1, f)
 
     def check():
         import os
+
         return os.environ.get("TEST", "0")
 
     assert wg.execute(check) == ["0", "1"]

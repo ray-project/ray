@@ -32,44 +32,45 @@ parser.add_argument(
     type=str,
     default="libsumo",
     choices=["libsumo", "traci"],
-    help="The SUMO connector to import. "
-    "Requires the env variable SUMO_HOME set.")
+    help="The SUMO connector to import. " "Requires the env variable SUMO_HOME set.",
+)
 parser.add_argument(
     "--sumo-gui",
     action="store_true",
-    help="Enables the SUMO GUI. Possible only with TraCI connector.")
+    help="Enables the SUMO GUI. Possible only with TraCI connector.",
+)
 parser.add_argument(
     "--sumo-config-file",
     type=str,
     default=None,
-    help="The SUMO configuration file for the scenario.")
+    help="The SUMO configuration file for the scenario.",
+)
 parser.add_argument(
     "--from-checkpoint",
     type=str,
     default=None,
     help="Full path to a checkpoint file for restoring a previously saved "
-    "Trainer state.")
+    "Trainer state.",
+)
 parser.add_argument("--num-workers", type=int, default=0)
 parser.add_argument(
     "--as-test",
     action="store_true",
     help="Whether this script should be run as a test: --stop-reward must "
-    "be achieved within --stop-timesteps AND --stop-iters.")
+    "be achieved within --stop-timesteps AND --stop-iters.",
+)
 parser.add_argument(
-    "--stop-iters",
-    type=int,
-    default=10,
-    help="Number of iterations to train.")
+    "--stop-iters", type=int, default=10, help="Number of iterations to train."
+)
 parser.add_argument(
-    "--stop-timesteps",
-    type=int,
-    default=1000000,
-    help="Number of timesteps to train.")
+    "--stop-timesteps", type=int, default=1000000, help="Number of timesteps to train."
+)
 parser.add_argument(
     "--stop-reward",
     type=float,
     default=30000.0,
-    help="Reward at which we stop training.")
+    help="Reward at which we stop training.",
+)
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -84,7 +85,7 @@ if __name__ == "__main__":
     config["lambda"] = 0.95
     config["log_level"] = "WARN"
     config["lr"] = 0.001
-    config["min_iter_time_s"] = 5
+    config["min_time_s_per_reporting"] = 5
     config["num_gpus"] = int(os.environ.get("RLLIB_NUM_GPUS", "0"))
     config["num_workers"] = args.num_workers
     config["rollout_fragment_length"] = 200
@@ -104,16 +105,16 @@ if __name__ == "__main__":
         scenario_config["sumo_config"]["sumo_cfg"] = args.sumo_config_file
     else:
         filename = "{}/simulators/sumo/scenario/sumo.cfg.xml".format(
-            pathlib.Path(__file__).parent.absolute())
+            pathlib.Path(__file__).parent.absolute()
+        )
         scenario_config["sumo_config"]["sumo_cfg"] = filename
 
-    scenario_config["sumo_config"]["sumo_params"] = [
-        "--collision.action", "warn"
-    ]
+    scenario_config["sumo_config"]["sumo_params"] = ["--collision.action", "warn"]
     scenario_config["sumo_config"]["trace_file"] = True
     scenario_config["sumo_config"]["end_of_sim"] = 3600  # [s]
     scenario_config["sumo_config"][
-        "update_freq"] = 10  # number of traci.simulationStep()
+        "update_freq"
+    ] = 10  # number of traci.simulationStep()
     # for each learning step.
     scenario_config["sumo_config"]["log_level"] = "INFO"
     logger.info("Scenario Configuration: \n %s", pformat(scenario_config))
@@ -136,12 +137,16 @@ if __name__ == "__main__":
     policies = {}
     for agent in marl_env.get_agents():
         agent_policy_params = {}
-        policies[agent] = (policy_class, marl_env.get_obs_space(agent),
-                           marl_env.get_action_space(agent),
-                           agent_policy_params)
+        policies[agent] = (
+            policy_class,
+            marl_env.get_obs_space(agent),
+            marl_env.get_action_space(agent),
+            agent_policy_params,
+        )
     config["multiagent"]["policies"] = policies
     config["multiagent"][
-        "policy_mapping_fn"] = lambda agent_id, episode, **kwargs: agent_id
+        "policy_mapping_fn"
+    ] = lambda agent_id, episode, **kwargs: agent_id
     config["multiagent"]["policies_to_train"] = ["ppo_policy"]
 
     config["env"] = "sumo_test_env"
@@ -162,7 +167,8 @@ if __name__ == "__main__":
         stop=stop,
         verbose=1,
         checkpoint_freq=10,
-        restore=args.from_checkpoint)
+        restore=args.from_checkpoint,
+    )
 
     # And check the results.
     if args.as_test:

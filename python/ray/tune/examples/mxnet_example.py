@@ -1,17 +1,16 @@
 import mxnet as mx
 
 from ray import tune, logger
-from ray.tune.integration.mxnet import TuneCheckpointCallback, \
-    TuneReportCallback
+from ray.tune.integration.mxnet import TuneCheckpointCallback, TuneReportCallback
 from ray.tune.schedulers import ASHAScheduler
 
 
 def train_mnist_mxnet(config, mnist, num_epochs=10):
     batch_size = config["batch_size"]
     train_iter = mx.io.NDArrayIter(
-        mnist["train_data"], mnist["train_label"], batch_size, shuffle=True)
-    val_iter = mx.io.NDArrayIter(mnist["test_data"], mnist["test_label"],
-                                 batch_size)
+        mnist["train_data"], mnist["train_label"], batch_size, shuffle=True
+    )
+    val_iter = mx.io.NDArrayIter(mnist["test_data"], mnist["test_label"], batch_size)
 
     data = mx.sym.var("data")
     data = mx.sym.flatten(data=data)
@@ -36,12 +35,10 @@ def train_mnist_mxnet(config, mnist, num_epochs=10):
         optimizer_params={"learning_rate": config["lr"]},
         eval_metric="acc",
         batch_end_callback=mx.callback.Speedometer(batch_size, 100),
-        eval_end_callback=TuneReportCallback({
-            "mean_accuracy": "accuracy"
-        }),
-        epoch_end_callback=TuneCheckpointCallback(
-            filename="mxnet_cp", frequency=3),
-        num_epoch=num_epochs)
+        eval_end_callback=TuneReportCallback({"mean_accuracy": "accuracy"}),
+        epoch_end_callback=TuneCheckpointCallback(filename="mxnet_cp", frequency=3),
+        num_epoch=num_epochs,
+    )
 
 
 def tune_mnist_mxnet(num_samples=10, num_epochs=10):
@@ -53,15 +50,15 @@ def tune_mnist_mxnet(num_samples=10, num_epochs=10):
         "layer_1_size": tune.choice([32, 64, 128]),
         "layer_2_size": tune.choice([64, 128, 256]),
         "lr": tune.loguniform(1e-3, 1e-1),
-        "batch_size": tune.choice([32, 64, 128])
+        "batch_size": tune.choice([32, 64, 128]),
     }
 
-    scheduler = ASHAScheduler(
-        max_t=num_epochs, grace_period=1, reduction_factor=2)
+    scheduler = ASHAScheduler(max_t=num_epochs, grace_period=1, reduction_factor=2)
 
     analysis = tune.run(
         tune.with_parameters(
-            train_mnist_mxnet, mnist=mnist_data, num_epochs=num_epochs),
+            train_mnist_mxnet, mnist=mnist_data, num_epochs=num_epochs
+        ),
         resources_per_trial={
             "cpu": 1,
         },
@@ -70,7 +67,8 @@ def tune_mnist_mxnet(num_samples=10, num_epochs=10):
         config=config,
         num_samples=num_samples,
         scheduler=scheduler,
-        name="tune_mnist_mxnet")
+        name="tune_mnist_mxnet",
+    )
     return analysis
 
 
@@ -79,18 +77,20 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
+        "--smoke-test", action="store_true", help="Finish quickly for testing"
+    )
     parser.add_argument(
         "--server-address",
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using "
-        "Ray Client.")
+        help="The address of server to connect to if using " "Ray Client.",
+    )
     args, _ = parser.parse_known_args()
 
     if args.server_address and not args.smoke_test:
         import ray
+
         ray.init(f"ray://{args.server_address}")
 
     if args.smoke_test:

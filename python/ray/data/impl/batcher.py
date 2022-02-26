@@ -29,17 +29,16 @@ class Batcher:
         self._buffer.append(block)
 
     def has_batch(self) -> bool:
-        """Whether this Batcher has any full batches.
-        """
-        return self._buffer and (self._batch_size is None or sum(
-            BlockAccessor.for_block(b).num_rows()
-            for b in self._buffer) >= self._batch_size)
+        """Whether this Batcher has any full batches."""
+        return self._buffer and (
+            self._batch_size is None
+            or sum(BlockAccessor.for_block(b).num_rows() for b in self._buffer)
+            >= self._batch_size
+        )
 
     def has_any(self) -> bool:
-        """Whether this Batcher has any data.
-        """
-        return any(
-            BlockAccessor.for_block(b).num_rows() > 0 for b in self._buffer)
+        """Whether this Batcher has any data."""
+        return any(BlockAccessor.for_block(b).num_rows() > 0 for b in self._buffer)
 
     def next_batch(self) -> Block:
         """Get the next batch from the block buffer.
@@ -70,8 +69,7 @@ class Batcher:
                 # We only need part of the block to fill out a batch.
                 output.add_block(accessor.slice(0, needed, copy=False))
                 # Add the rest of the block to the leftovers.
-                leftover.append(
-                    accessor.slice(needed, accessor.num_rows(), copy=False))
+                leftover.append(accessor.slice(needed, accessor.num_rows(), copy=False))
                 needed = 0
 
         # Move the leftovers into the block buffer so they're the first

@@ -28,7 +28,7 @@ class GcsResourceSchedulerTest : public ::testing::Test {
  public:
   void SetUp() override {
     gcs_resource_manager_ =
-        std::make_shared<gcs::GcsResourceManager>(io_service_, nullptr, nullptr, true);
+        std::make_shared<gcs::GcsResourceManager>(io_service_, nullptr, nullptr);
     gcs_resource_scheduler_ =
         std::make_shared<gcs::GcsResourceScheduler>(*gcs_resource_manager_);
   }
@@ -40,9 +40,10 @@ class GcsResourceSchedulerTest : public ::testing::Test {
 
   void AddClusterResources(const NodeID &node_id, const std::string &resource_name,
                            double resource_value) {
-    absl::flat_hash_map<std::string, double> resource_map;
-    resource_map[resource_name] = resource_value;
-    gcs_resource_manager_->UpdateResourceCapacity(node_id, resource_map);
+    auto node = Mocker::GenNodeInfo();
+    node->set_node_id(node_id.Binary());
+    (*node->mutable_resources_total())[resource_name] = resource_value;
+    gcs_resource_manager_->OnNodeAdd(*node);
   }
 
   void CheckClusterAvailableResources(const NodeID &node_id,
@@ -51,7 +52,7 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     const auto &cluster_resource = gcs_resource_manager_->GetClusterResources();
     auto iter = cluster_resource.find(node_id);
     ASSERT_TRUE(iter != cluster_resource.end());
-    ASSERT_EQ(iter->second.GetAvailableResources().GetResource(resource_name).Double(),
+    ASSERT_EQ(iter->second->GetAvailableResources().GetResource(resource_name).Double(),
               resource_value);
   }
 

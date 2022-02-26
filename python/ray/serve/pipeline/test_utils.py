@@ -5,9 +5,7 @@ import pytest
 
 from ray.serve.pipeline import ExecutionMode
 
-LOCAL_EXECUTION_ONLY = os.environ.get("LOCAL_EXECUTION_ONLY") not in [
-    None, "0"
-]
+LOCAL_EXECUTION_ONLY = os.environ.get("LOCAL_EXECUTION_ONLY") not in [None, "0"]
 
 
 def enable_local_execution_mode_only(f):

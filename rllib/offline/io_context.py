@@ -18,11 +18,13 @@ class IOContext:
     """
 
     @PublicAPI
-    def __init__(self,
-                 log_dir: Optional[str] = None,
-                 config: Optional[TrainerConfigDict] = None,
-                 worker_index: int = 0,
-                 worker: Optional["RolloutWorker"] = None):
+    def __init__(
+        self,
+        log_dir: Optional[str] = None,
+        config: Optional[TrainerConfigDict] = None,
+        worker_index: int = 0,
+        worker: Optional["RolloutWorker"] = None,
+    ):
         """Initializes a IOContext object.
 
         Args:
@@ -55,3 +57,8 @@ class IOContext:
     @property
     def input_config(self):
         return self.config.get("input_config", {})
+
+    @PublicAPI
+    @property
+    def output_config(self):
+        return self.config.get("output_config", {})

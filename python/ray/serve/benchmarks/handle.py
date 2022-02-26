@@ -82,7 +82,8 @@ async def run_test(num_replicas, num_forwarders, sync):
 
     print(
         f"Sync: {sync}, {num_forwarders} forwarders and {num_replicas} worker "
-        f"replicas: {int(qps)} requests/s")
+        f"replicas: {int(qps)} requests/s"
+    )
     serve.shutdown()
 
 

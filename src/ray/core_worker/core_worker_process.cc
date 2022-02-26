@@ -281,7 +281,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateWorker() {
 }
 
 void CoreWorkerProcessImpl::RemoveWorker(std::shared_ptr<CoreWorker> worker) {
-  worker->WaitForShutdown();
   absl::WriterMutexLock lock(&mutex_);
   if (global_worker_) {
     RAY_CHECK(global_worker_ == worker);
@@ -307,7 +306,7 @@ void CoreWorkerProcessImpl::RunWorkerTaskExecutionLoop() {
       worker = CreateWorker();
     }
     worker->RunTaskExecutionLoop();
-    RAY_LOG(DEBUG) << "Task execution loop terminated. Removing the global worker.";
+    RAY_LOG(INFO) << "Task execution loop terminated. Removing the global worker.";
     RemoveWorker(worker);
   } else {
     std::vector<std::thread> worker_threads;
@@ -345,9 +344,16 @@ CoreWorker &CoreWorkerProcessImpl::GetCoreWorkerForCurrentThread() {
       // In this case, we should exit without crashing.
       // TODO (scv119): A better solution could be returning error code
       // and handling it at language frontend.
-      RAY_LOG(ERROR) << "The global worker has already been shutdown. This happens when "
-                        "the language frontend accesses the Ray's worker after it is "
-                        "shutdown. The process will exit";
+      if (options_.worker_type == WorkerType::DRIVER) {
+        RAY_LOG(ERROR)
+            << "The global worker has already been shutdown. This happens when "
+               "the language frontend accesses the Ray's worker after it is "
+               "shutdown. The process will exit";
+      } else {
+        RAY_LOG(INFO) << "The global worker has already been shutdown. This happens when "
+                         "the language frontend accesses the Ray's worker after it is "
+                         "shutdown. The process will exit";
+      }
       QuickExit();
     }
     RAY_CHECK(global_worker) << "global_worker_ must not be NULL";

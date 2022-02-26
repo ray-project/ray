@@ -230,6 +230,31 @@ TEST(LogPerfTest, PerfTest) {
   RayLog::ShutDownRayLog();
 }
 
+TEST(PrintLogTest, TestCheckOp) {
+  int i = 1;
+  RAY_CHECK_EQ(i, 1);
+  ASSERT_DEATH(RAY_CHECK_EQ(i, 2), "1 vs 2");
+
+  RAY_CHECK_NE(i, 0);
+  ASSERT_DEATH(RAY_CHECK_NE(i, 1), "1 vs 1");
+
+  RAY_CHECK_LE(i, 1);
+  ASSERT_DEATH(RAY_CHECK_LE(i, 0), "1 vs 0");
+
+  RAY_CHECK_LT(i, 2);
+  ASSERT_DEATH(RAY_CHECK_LT(i, 1), "1 vs 1");
+
+  RAY_CHECK_GE(i, 1);
+  ASSERT_DEATH(RAY_CHECK_GE(i, 2), "1 vs 2");
+
+  RAY_CHECK_GT(i, 0);
+  ASSERT_DEATH(RAY_CHECK_GT(i, 1), "1 vs 1");
+
+  int j = 0;
+  RAY_CHECK_NE(i, j);
+  ASSERT_DEATH(RAY_CHECK_EQ(i, j), "1 vs 0");
+}
+
 std::string TestFunctionLevel0() {
   std::string call_trace = GetCallTrace();
   RAY_LOG(INFO) << "TestFunctionLevel0\n" << call_trace;

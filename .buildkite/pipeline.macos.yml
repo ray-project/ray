@@ -79,15 +79,23 @@ steps:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/travis/ci.sh test_cpp
 
-- label: ":mac: :apple: Small and Large"
+- label: ":mac: :apple: Small & Client"
   <<: *common
   commands:
     - *prelude_commands
     - bazel test $(./scripts/bazel_export_options) --config=ci
       --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX
       --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI
-      --test_tag_filters=-kubernetes,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z
-      python/ray/tests/...
+      --test_tag_filters=client_tests,small_size_python_tests
+      -- python/ray/tests/...
+    - *epilogue_commands
+
+- label: ":mac: :apple: Large"
+  <<: *common
+  parallelism: 3
+  commands:
+    - *prelude_commands
+    - . ./ci/travis/ci.sh test_large
     - *epilogue_commands
 
 - label: ":mac: :apple: Medium A-J"

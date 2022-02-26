@@ -86,7 +86,8 @@ ObjectManager::ObjectManager(
                 },
                 "ObjectManager.ObjectDeleted");
           }),
-      buffer_pool_(config_.store_socket_name, config_.object_chunk_size),
+      buffer_pool_store_client_(std::make_shared<plasma::PlasmaClient>()),
+      buffer_pool_(buffer_pool_store_client_, config_.object_chunk_size),
       rpc_work_(rpc_service_),
       object_manager_server_("ObjectManager", config_.object_manager_port,
                              config_.object_manager_address == "127.0.0.1",
@@ -127,6 +128,10 @@ ObjectManager::ObjectManager(
       self_node_id_, object_is_local, send_pull_request, cancel_pull_request,
       fail_pull_request, restore_spilled_object_, get_time, config.pull_timeout_ms,
       available_memory, pin_object, get_spilled_object_url));
+
+  RAY_CHECK_OK(
+      buffer_pool_store_client_->Connect(config_.store_socket_name.c_str(), "", 0, 300));
+
   // Start object manager rpc server and send & receive request threads
   StartRpcService();
 }
@@ -368,23 +373,16 @@ void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &nod
 
   if (object_reader->GetDataSize() != data_size ||
       object_reader->GetMetadataSize() != metadata_size) {
-    if (object_reader->GetDataSize() == 0) {
-      // TODO(scv119): handle object size changes in a more graceful way.
-      RAY_LOG(WARNING) << object_id
-                       << " is marked as failed but object_manager has stale info "
-                       << " with data size: " << data_size
-                       << ", metadata size: " << metadata_size
-                       << ". This is likely due to race condition."
-                       << " Update the info and proceed sending failed object.";
-      local_objects_[object_id].object_info.data_size = 0;
-      local_objects_[object_id].object_info.metadata_size = 1;
-    } else {
-      RAY_LOG(FATAL) << "Object id:" << object_id
+    // TODO(scv119): handle object size changes in a more graceful way.
+    RAY_LOG(WARNING) << "Object id:" << object_id
                      << "'s size mismatches our record. Expected data size: " << data_size
                      << ", expected metadata size: " << metadata_size
                      << ", actual data size: " << object_reader->GetDataSize()
-                     << ", actual metadata size: " << object_reader->GetMetadataSize();
-    }
+                     << ", actual metadata size: " << object_reader->GetMetadataSize()
+                     << ". This is likely due to a race condition."
+                     << " We will update the object size and proceed sending the object.";
+    local_objects_[object_id].object_info.data_size = 0;
+    local_objects_[object_id].object_info.metadata_size = 1;
   }
 
   PushObjectInternal(object_id, node_id,
@@ -505,197 +503,6 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id, const ObjectID &obj
   rpc_client->Push(push_request, callback);
 }
 
-ray::Status ObjectManager::Wait(
-    const std::vector<ObjectID> &object_ids,
-    const std::unordered_map<ObjectID, rpc::Address> &owner_addresses, int64_t timeout_ms,
-    uint64_t num_required_objects, const WaitCallback &callback) {
-  UniqueID wait_id = UniqueID::FromRandom();
-  RAY_LOG(DEBUG) << "Wait request " << wait_id << " on " << self_node_id_;
-  RAY_RETURN_NOT_OK(AddWaitRequest(wait_id, object_ids, owner_addresses, timeout_ms,
-                                   num_required_objects, callback));
-  RAY_RETURN_NOT_OK(LookupRemainingWaitObjects(wait_id));
-  // LookupRemainingWaitObjects invokes SubscribeRemainingWaitObjects once lookup has
-  // been performed on all remaining objects.
-  return ray::Status::OK();
-}
-
-ray::Status ObjectManager::AddWaitRequest(
-    const UniqueID &wait_id, const std::vector<ObjectID> &object_ids,
-    const std::unordered_map<ObjectID, rpc::Address> &owner_addresses, int64_t timeout_ms,
-    uint64_t num_required_objects, const WaitCallback &callback) {
-  RAY_CHECK(timeout_ms >= 0 || timeout_ms == -1);
-  RAY_CHECK(num_required_objects != 0);
-  RAY_CHECK(num_required_objects <= object_ids.size())
-      << num_required_objects << " " << object_ids.size();
-  if (object_ids.size() == 0) {
-    callback(std::vector<ObjectID>(), std::vector<ObjectID>());
-  }
-
-  // Initialize fields.
-  active_wait_requests_.emplace(wait_id, WaitState(*main_service_, timeout_ms, callback));
-  auto &wait_state = active_wait_requests_.find(wait_id)->second;
-  wait_state.object_id_order = object_ids;
-  wait_state.owner_addresses = owner_addresses;
-  wait_state.timeout_ms = timeout_ms;
-  wait_state.num_required_objects = num_required_objects;
-  for (const auto &object_id : object_ids) {
-    if (local_objects_.count(object_id) > 0) {
-      wait_state.found.insert(object_id);
-    } else {
-      wait_state.remaining.insert(object_id);
-    }
-  }
-
-  return ray::Status::OK();
-}
-
-ray::Status ObjectManager::LookupRemainingWaitObjects(const UniqueID &wait_id) {
-  auto &wait_state = active_wait_requests_.find(wait_id)->second;
-
-  if (wait_state.remaining.empty()) {
-    WaitComplete(wait_id);
-  } else {
-    // We invoke lookup calls immediately after checking which objects are local to
-    // obtain current information about the location of remote objects. Thus,
-    // we obtain information about all given objects, regardless of their location.
-    // This is required to ensure we do not bias returning locally available objects
-    // as ready whenever Wait is invoked with a mixture of local and remote objects.
-    for (const auto &object_id : wait_state.remaining) {
-      // Lookup remaining objects.
-      wait_state.requested_objects.insert(object_id);
-      RAY_RETURN_NOT_OK(object_directory_->LookupLocations(
-          object_id, wait_state.owner_addresses[object_id],
-          [this, wait_id](const ObjectID &lookup_object_id,
-                          const std::unordered_set<NodeID> &node_ids,
-                          const std::string &spilled_url, const NodeID &spilled_node_id,
-                          bool pending_creation, size_t object_size) {
-            auto &wait_state = active_wait_requests_.find(wait_id)->second;
-            // Note that the object is guaranteed to be added to local_objects_ before
-            // the notification is triggered.
-            if (local_objects_.count(lookup_object_id) > 0) {
-              wait_state.remaining.erase(lookup_object_id);
-              wait_state.found.insert(lookup_object_id);
-            }
-            RAY_LOG(DEBUG) << "Wait request " << wait_id << ": " << node_ids.size()
-                           << " locations found for object " << lookup_object_id;
-            wait_state.requested_objects.erase(lookup_object_id);
-            if (wait_state.requested_objects.empty()) {
-              SubscribeRemainingWaitObjects(wait_id);
-            }
-          }));
-    }
-  }
-  return ray::Status::OK();
-}
-
-void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
-  auto &wait_state = active_wait_requests_.find(wait_id)->second;
-  if (wait_state.found.size() >= wait_state.num_required_objects ||
-      wait_state.timeout_ms == 0) {
-    // Requirements already satisfied.
-    WaitComplete(wait_id);
-    return;
-  }
-
-  // There are objects remaining whose locations we don't know. Request their
-  // locations from the object directory.
-  for (const auto &object_id : wait_state.object_id_order) {
-    if (wait_state.remaining.count(object_id) > 0) {
-      RAY_LOG(DEBUG) << "Wait request " << wait_id << ": subscribing to object "
-                     << object_id;
-      wait_state.requested_objects.insert(object_id);
-      // Subscribe to object notifications.
-      RAY_CHECK_OK(object_directory_->SubscribeObjectLocations(
-          wait_id, object_id, wait_state.owner_addresses[object_id],
-          [this, wait_id](const ObjectID &subscribe_object_id,
-                          const std::unordered_set<NodeID> &node_ids,
-                          const std::string &spilled_url, const NodeID &spilled_node_id,
-                          bool pending_creation, size_t object_size) {
-            auto object_id_wait_state = active_wait_requests_.find(wait_id);
-            if (object_id_wait_state == active_wait_requests_.end()) {
-              // Depending on the timing of calls to the object directory, we
-              // may get a subscription notification after the wait call has
-              // already completed. If so, then don't process the
-              // notification.
-              return;
-            }
-            auto &wait_state = object_id_wait_state->second;
-            // Note that the object is guaranteed to be added to local_objects_ before
-            // the notification is triggered.
-            if (local_objects_.count(subscribe_object_id) > 0) {
-              RAY_LOG(DEBUG) << "Wait request " << wait_id
-                             << ": subscription notification received for object "
-                             << subscribe_object_id;
-              wait_state.remaining.erase(subscribe_object_id);
-              wait_state.found.insert(subscribe_object_id);
-              wait_state.requested_objects.erase(subscribe_object_id);
-              RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(
-                  wait_id, subscribe_object_id));
-              if (wait_state.found.size() >= wait_state.num_required_objects) {
-                WaitComplete(wait_id);
-              }
-            }
-          }));
-    }
-
-    // If a timeout was provided, then set a timer. If we don't find locations
-    // for enough objects by the time the timer expires, then we will return
-    // from the Wait.
-    if (wait_state.timeout_ms != -1) {
-      auto timeout = boost::posix_time::milliseconds(wait_state.timeout_ms);
-      wait_state.timeout_timer->expires_from_now(timeout);
-      wait_state.timeout_timer->async_wait(
-          [this, wait_id](const boost::system::error_code &error_code) {
-            if (error_code.value() != 0) {
-              return;
-            }
-            if (active_wait_requests_.find(wait_id) == active_wait_requests_.end()) {
-              // When a subscription callback is triggered first, WaitComplete will be
-              // called. The timer may at the same time goes off and may be an
-              // interruption will post WaitComplete to main_service_ the second time.
-              // This check will avoid the duplicated call of this function.
-              return;
-            }
-            WaitComplete(wait_id);
-          });
-    }
-  }
-}
-
-void ObjectManager::WaitComplete(const UniqueID &wait_id) {
-  auto iter = active_wait_requests_.find(wait_id);
-  RAY_CHECK(iter != active_wait_requests_.end());
-  auto &wait_state = iter->second;
-  // If we complete with outstanding requests, then timeout_ms should be non-zero or -1
-  // (infinite wait time).
-  if (!wait_state.requested_objects.empty()) {
-    RAY_CHECK(wait_state.timeout_ms > 0 || wait_state.timeout_ms == -1);
-  }
-  // Unsubscribe to any objects that weren't found in the time allotted.
-  for (const auto &object_id : wait_state.requested_objects) {
-    RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(wait_id, object_id));
-  }
-  // Cancel the timer. This is okay even if the timer hasn't been started.
-  // The timer handler will be given a non-zero error code. The handler
-  // will do nothing on non-zero error codes.
-  wait_state.timeout_timer->cancel();
-  // Order objects according to input order.
-  std::vector<ObjectID> found;
-  std::vector<ObjectID> remaining;
-  for (const auto &item : wait_state.object_id_order) {
-    if (found.size() < wait_state.num_required_objects &&
-        wait_state.found.count(item) > 0) {
-      found.push_back(item);
-    } else {
-      remaining.push_back(item);
-    }
-  }
-  wait_state.callback(found, remaining);
-  active_wait_requests_.erase(wait_id);
-  RAY_LOG(DEBUG) << "Wait request " << wait_id << " finished: found " << found.size()
-                 << " remaining " << remaining.size();
-}
-
 /// Implementation of ObjectManagerServiceHandler
 void ObjectManager::HandlePush(const rpc::PushRequest &request, rpc::PushReply *reply,
                                rpc::SendReplyCallback send_reply_callback) {
@@ -751,7 +558,7 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id, const ObjectID &ob
 
   if (chunk_status.ok()) {
     // Avoid handling this chunk if it's already being handled by another process.
-    buffer_pool_.WriteChunk(object_id, chunk_index, data);
+    buffer_pool_.WriteChunk(object_id, data_size, metadata_size, chunk_index, data);
     return true;
   } else {
     num_chunks_received_failed_due_to_plasma_++;
@@ -848,7 +655,6 @@ std::string ObjectManager::DebugString() const {
   std::stringstream result;
   result << "ObjectManager:";
   result << "\n- num local objects: " << local_objects_.size();
-  result << "\n- num active wait requests: " << active_wait_requests_.size();
   result << "\n- num unfulfilled push requests: " << unfulfilled_push_requests_.size();
   result << "\n- num pull requests: " << pull_manager_->NumActiveRequests();
   result << "\n- num chunks received total: " << num_chunks_received_total_;
@@ -857,7 +663,7 @@ std::string ObjectManager::DebugString() const {
          << num_chunks_received_cancelled_;
   result << "\n- num chunks received failed / plasma error: "
          << num_chunks_received_failed_due_to_plasma_;
-  result << "\nEvent stats:" << rpc_service_.StatsString();
+  result << "\nEvent stats:" << rpc_service_.stats().StatsString();
   result << "\n" << push_manager_->DebugString();
   result << "\n" << object_directory_->DebugString();
   result << "\n" << buffer_pool_.DebugString();

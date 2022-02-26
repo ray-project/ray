@@ -50,8 +50,7 @@ def get_r2_env_wrapper(env_creator, r2_config):
                 while not done:
                     mask = obs["action_mask"]
                     probs = mask / mask.sum()
-                    action = np.random.choice(
-                        np.arange(mask.shape[0]), p=probs)
+                    action = np.random.choice(np.arange(mask.shape[0]), p=probs)
                     obs, reward, done, _ = self.env.step(action)
                 self.r2_buffer.add_reward(reward)
 
@@ -64,7 +63,7 @@ def get_r2_env_wrapper(env_creator, r2_config):
         def get_state(self):
             state = {
                 "env_state": self.env.get_state(),
-                "buffer_state": self.r2_buffer.get_state()
+                "buffer_state": self.r2_buffer.get_state(),
             }
             return deepcopy(state)
 

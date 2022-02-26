@@ -10,14 +10,19 @@ from ray.tune.suggest.suggestion import Searcher
 from ray.tune.suggest.util import set_search_properties_backwards_compatible
 from ray.tune.suggest.variant_generator import format_vars, resolve_nested_dict
 from ray.tune.trial import Trial
-from ray.tune.utils.util import (flatten_dict, merge_dicts, atomic_save,
-                                 load_newest_checkpoint)
+from ray.tune.utils.util import (
+    flatten_dict,
+    merge_dicts,
+    atomic_save,
+    load_newest_checkpoint,
+)
 
 logger = logging.getLogger(__name__)
 
 
 def _warn_on_repeater(searcher, total_samples):
     from ray.tune.suggest.repeater import _warn_num_samples
+
     _warn_num_samples(searcher, total_samples)
 
 
@@ -32,12 +37,13 @@ class SearchGenerator(SearchAlgorithm):
         searcher: Search object that subclasses the Searcher base class. This
             is then used for generating new hyperparameter samples.
     """
+
     CKPT_FILE_TMPL = "search_gen_state-{}.json"
 
     def __init__(self, searcher: Searcher):
         assert issubclass(
-            type(searcher),
-            Searcher), ("Searcher should be subclassing Searcher.")
+            type(searcher), Searcher
+        ), "Searcher should be subclassing Searcher."
         self.searcher = searcher
         self._parser = make_parser()
         self._experiment = None
@@ -49,18 +55,20 @@ class SearchGenerator(SearchAlgorithm):
     def metric(self):
         return self.searcher.metric
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict, **spec) -> bool:
+    def set_search_properties(
+        self, metric: Optional[str], mode: Optional[str], config: Dict, **spec
+    ) -> bool:
         return set_search_properties_backwards_compatible(
-            self.searcher.set_search_properties, metric, mode, config, **spec)
+            self.searcher.set_search_properties, metric, mode, config, **spec
+        )
 
     @property
     def total_samples(self):
         return self._total_samples
 
     def add_configurations(
-            self,
-            experiments: Union[Experiment, List[Experiment], Dict[str, Dict]]):
+        self, experiments: Union[Experiment, List[Experiment], Dict[str, Dict]]
+    ):
         """Registers experiment specifications.
 
         Arguments:
@@ -69,8 +77,9 @@ class SearchGenerator(SearchAlgorithm):
         assert not self._experiment
         logger.debug("added configurations")
         experiment_list = convert_to_experiment_list(experiments)
-        assert len(experiment_list) == 1, (
-            "SearchAlgorithms can only support 1 experiment at a time.")
+        assert (
+            len(experiment_list) == 1
+        ), "SearchAlgorithms can only support 1 experiment at a time."
         self._experiment = experiment_list[0]
         experiment_spec = self._experiment.spec
         self._total_samples = self._experiment.spec.get("num_samples", 1)
@@ -86,12 +95,14 @@ class SearchGenerator(SearchAlgorithm):
             Trial: Returns a single trial.
         """
         if not self.is_finished():
-            return self.create_trial_if_possible(self._experiment.spec,
-                                                 self._experiment.dir_name)
+            return self.create_trial_if_possible(
+                self._experiment.spec, self._experiment.dir_name
+            )
         return None
 
-    def create_trial_if_possible(self, experiment_spec: Dict,
-                                 output_path: str) -> Optional[Trial]:
+    def create_trial_if_possible(
+        self, experiment_spec: Dict, output_path: str
+    ) -> Optional[Trial]:
         logger.debug("creating trial")
         trial_id = Trial.generate_id()
         suggested_config = self.searcher.suggest(trial_id)
@@ -103,33 +114,30 @@ class SearchGenerator(SearchAlgorithm):
         if suggested_config is None:
             return
         spec = copy.deepcopy(experiment_spec)
-        spec["config"] = merge_dicts(spec["config"],
-                                     copy.deepcopy(suggested_config))
+        spec["config"] = merge_dicts(spec["config"], copy.deepcopy(suggested_config))
 
         # Create a new trial_id if duplicate trial is created
         flattened_config = resolve_nested_dict(spec["config"])
         self._counter += 1
-        tag = "{0}_{1}".format(
-            str(self._counter), format_vars(flattened_config))
+        tag = "{0}_{1}".format(str(self._counter), format_vars(flattened_config))
         trial = create_trial_from_spec(
             spec,
             output_path,
             self._parser,
             evaluated_params=flatten_dict(suggested_config),
             experiment_tag=tag,
-            trial_id=trial_id)
+            trial_id=trial_id,
+        )
         return trial
 
     def on_trial_result(self, trial_id: str, result: Dict):
         """Notifies the underlying searcher."""
         self.searcher.on_trial_result(trial_id, result)
 
-    def on_trial_complete(self,
-                          trial_id: str,
-                          result: Optional[Dict] = None,
-                          error: bool = False):
-        self.searcher.on_trial_complete(
-            trial_id=trial_id, result=result, error=error)
+    def on_trial_complete(
+        self, trial_id: str, result: Optional[Dict] = None, error: bool = False
+    ):
+        self.searcher.on_trial_complete(trial_id=trial_id, result=result, error=error)
 
     def is_finished(self) -> bool:
         return self._counter >= self._total_samples or self._finished
@@ -139,7 +147,7 @@ class SearchGenerator(SearchAlgorithm):
             "counter": self._counter,
             "total_samples": self._total_samples,
             "finished": self._finished,
-            "experiment": self._experiment
+            "experiment": self._experiment,
         }
 
     def set_state(self, state: Dict):
@@ -149,8 +157,7 @@ class SearchGenerator(SearchAlgorithm):
         self._experiment = state["experiment"]
 
     def has_checkpoint(self, dirpath: str):
-        return bool(
-            load_newest_checkpoint(dirpath, self.CKPT_FILE_TMPL.format("*")))
+        return bool(load_newest_checkpoint(dirpath, self.CKPT_FILE_TMPL.format("*")))
 
     def save_to_dir(self, dirpath: str, session_str: str):
         """Saves self + searcher to dir.
@@ -172,10 +179,10 @@ class SearchGenerator(SearchAlgorithm):
             if searcher_name in search_alg_state:
                 logger.warning(
                     "There was a duplicate when saving {}. "
-                    "Restore may not work properly.".format(searcher_name))
+                    "Restore may not work properly.".format(searcher_name)
+                )
             else:
-                search_alg_state["name:" +
-                                 searcher_name] = searcher.get_state()
+                search_alg_state["name:" + searcher_name] = searcher.get_state()
             searcher = searcher.searcher
         base_searcher = searcher
         # We save the base searcher separately for users to easily
@@ -185,27 +192,30 @@ class SearchGenerator(SearchAlgorithm):
             state=search_alg_state,
             checkpoint_dir=dirpath,
             file_name=self.CKPT_FILE_TMPL.format(session_str),
-            tmp_file_name=".tmp_search_generator_ckpt")
+            tmp_file_name=".tmp_search_generator_ckpt",
+        )
 
     def restore_from_dir(self, dirpath: str):
         """Restores self + searcher + search wrappers from dirpath."""
 
         searcher = self.searcher
         search_alg_state = load_newest_checkpoint(
-            dirpath, self.CKPT_FILE_TMPL.format("*"))
+            dirpath, self.CKPT_FILE_TMPL.format("*")
+        )
         if not search_alg_state:
-            raise RuntimeError(
-                "Unable to find checkpoint in {}.".format(dirpath))
+            raise RuntimeError("Unable to find checkpoint in {}.".format(dirpath))
         while hasattr(searcher, "searcher"):
             searcher_name = "name:" + type(searcher).__name__
             if searcher_name not in search_alg_state:
                 names = [
-                    key.split("name:")[1] for key in search_alg_state
+                    key.split("name:")[1]
+                    for key in search_alg_state
                     if key.startswith("name:")
                 ]
-                logger.warning("{} was not found in the experiment checkpoint "
-                               "state when restoring. Found {}.".format(
-                                   searcher_name, names))
+                logger.warning(
+                    "{} was not found in the experiment checkpoint "
+                    "state when restoring. Found {}.".format(searcher_name, names)
+                )
             else:
                 searcher.set_state(search_alg_state.pop(searcher_name))
             searcher = searcher.searcher

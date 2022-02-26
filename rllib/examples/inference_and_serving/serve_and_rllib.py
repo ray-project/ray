@@ -20,7 +20,8 @@ parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "tfe", "torch"],
     default="tf",
-    help="The DL framework specifier.")
+    help="The DL framework specifier.",
+)
 parser.add_argument("--train-iters", type=int, default=1)
 parser.add_argument("--no-render", action="store_true")
 
@@ -89,7 +90,8 @@ if __name__ == "__main__":
     client = serve.start()
     client.create_backend("backend", ServeRLlibPolicy, config, checkpoint_path)
     client.create_endpoint(
-        "endpoint", backend="backend", route="/mspacman-rllib-policy")
+        "endpoint", backend="backend", route="/mspacman-rllib-policy"
+    )
 
     # Create the environment that we would like to receive
     # served actions for.
@@ -101,7 +103,8 @@ if __name__ == "__main__":
         # Send a request to serve.
         resp = requests.get(
             "http://localhost:8000/mspacman-rllib-policy",
-            json={"observation": obs.tolist()})
+            json={"observation": obs.tolist()},
+        )
         response = resp.json()
         print("<- Received response {}".format(response))
 

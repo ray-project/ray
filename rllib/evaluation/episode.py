@@ -9,14 +9,20 @@ from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.utils.annotations import Deprecated, DeveloperAPI
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
-from ray.rllib.utils.typing import SampleBatchType, AgentID, PolicyID, \
-    EnvActionType, EnvID, EnvInfoDict, EnvObsType
+from ray.rllib.utils.typing import (
+    SampleBatchType,
+    AgentID,
+    PolicyID,
+    EnvActionType,
+    EnvID,
+    EnvInfoDict,
+    EnvObsType,
+)
 from ray.util import log_once
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
-    from ray.rllib.evaluation.sample_batch_builder import \
-        MultiAgentSampleBatchBuilder
+    from ray.rllib.evaluation.sample_batch_builder import MultiAgentSampleBatchBuilder
 
 
 @DeveloperAPI
@@ -52,16 +58,14 @@ class Episode:
     """
 
     def __init__(
-            self,
-            policies: PolicyMap,
-            policy_mapping_fn: Callable[[AgentID, "Episode", "RolloutWorker"],
-                                        PolicyID],
-            batch_builder_factory: Callable[[],
-                                            "MultiAgentSampleBatchBuilder"],
-            extra_batch_callback: Callable[[SampleBatchType], None],
-            env_id: EnvID,
-            *,
-            worker: Optional["RolloutWorker"] = None,
+        self,
+        policies: PolicyMap,
+        policy_mapping_fn: Callable[[AgentID, "Episode", "RolloutWorker"], PolicyID],
+        batch_builder_factory: Callable[[], "MultiAgentSampleBatchBuilder"],
+        extra_batch_callback: Callable[[SampleBatchType], None],
+        env_id: EnvID,
+        *,
+        worker: Optional["RolloutWorker"] = None,
     ):
         """Initializes an Episode instance.
 
@@ -77,11 +81,10 @@ class Episode:
             worker: The RolloutWorker instance, in which this episode runs.
         """
         self.new_batch_builder: Callable[
-            [], "MultiAgentSampleBatchBuilder"] = batch_builder_factory
-        self.add_extra_batch: Callable[[SampleBatchType],
-                                       None] = extra_batch_callback
-        self.batch_builder: "MultiAgentSampleBatchBuilder" = \
-            batch_builder_factory()
+            [], "MultiAgentSampleBatchBuilder"
+        ] = batch_builder_factory
+        self.add_extra_batch: Callable[[SampleBatchType], None] = extra_batch_callback
+        self.batch_builder: "MultiAgentSampleBatchBuilder" = batch_builder_factory()
         self.total_reward: float = 0.0
         self.length: int = 0
         self.episode_id: int = random.randrange(2e9)
@@ -94,8 +97,9 @@ class Episode:
         self.media: Dict[str, Any] = {}
         self.policy_map: PolicyMap = policies
         self._policies = self.policy_map  # backward compatibility
-        self.policy_mapping_fn: Callable[[AgentID, "Episode", "RolloutWorker"],
-                                         PolicyID] = policy_mapping_fn
+        self.policy_mapping_fn: Callable[
+            [AgentID, "Episode", "RolloutWorker"], PolicyID
+        ] = policy_mapping_fn
         self._next_agent_index: int = 0
         self._agent_to_index: Dict[AgentID, int] = {}
         self._agent_to_policy: Dict[AgentID, PolicyID] = {}
@@ -107,8 +111,7 @@ class Episode:
         self._agent_to_last_action: Dict[AgentID, EnvActionType] = {}
         self._agent_to_last_extra_action_outs: Dict[AgentID, dict] = {}
         self._agent_to_prev_action: Dict[AgentID, EnvActionType] = {}
-        self._agent_reward_history: Dict[AgentID, List[int]] = defaultdict(
-            list)
+        self._agent_reward_history: Dict[AgentID, List[int]] = defaultdict(list)
 
     @DeveloperAPI
     def soft_reset(self) -> None:
@@ -144,18 +147,23 @@ class Episode:
             # Try new API: pass in agent_id and episode as named args.
             # New signature should be: (agent_id, episode, worker, **kwargs)
             try:
-                policy_id = self._agent_to_policy[agent_id] = \
-                    self.policy_mapping_fn(agent_id, self, worker=self.worker)
+                policy_id = self._agent_to_policy[agent_id] = self.policy_mapping_fn(
+                    agent_id, self, worker=self.worker
+                )
             except TypeError as e:
-                if "positional argument" in e.args[0] or \
-                        "unexpected keyword argument" in e.args[0]:
+                if (
+                    "positional argument" in e.args[0]
+                    or "unexpected keyword argument" in e.args[0]
+                ):
                     if log_once("policy_mapping_new_signature"):
                         deprecation_warning(
                             old="policy_mapping_fn(agent_id)",
                             new="policy_mapping_fn(agent_id, episode, "
-                            "worker, **kwargs)")
-                    policy_id = self._agent_to_policy[agent_id] = \
-                        self.policy_mapping_fn(agent_id)
+                            "worker, **kwargs)",
+                        )
+                    policy_id = self._agent_to_policy[
+                        agent_id
+                    ] = self.policy_mapping_fn(agent_id)
                 else:
                     raise e
         # Use already determined PolicyID.
@@ -164,13 +172,15 @@ class Episode:
 
         # PolicyID not found in policy map -> Error.
         if policy_id not in self.policy_map:
-            raise KeyError("policy_mapping_fn returned invalid policy id "
-                           f"'{policy_id}'!")
+            raise KeyError(
+                "policy_mapping_fn returned invalid policy id " f"'{policy_id}'!"
+            )
         return policy_id
 
     @DeveloperAPI
     def last_observation_for(
-            self, agent_id: AgentID = _DUMMY_AGENT_ID) -> Optional[EnvObsType]:
+        self, agent_id: AgentID = _DUMMY_AGENT_ID
+    ) -> Optional[EnvObsType]:
         """Returns the last observation for the specified AgentID.
 
         Args:
@@ -185,7 +195,8 @@ class Episode:
 
     @DeveloperAPI
     def last_raw_obs_for(
-            self, agent_id: AgentID = _DUMMY_AGENT_ID) -> Optional[EnvObsType]:
+        self, agent_id: AgentID = _DUMMY_AGENT_ID
+    ) -> Optional[EnvObsType]:
         """Returns the last un-preprocessed obs for the specified AgentID.
 
         Args:
@@ -200,8 +211,9 @@ class Episode:
         return self._agent_to_last_raw_obs.get(agent_id)
 
     @DeveloperAPI
-    def last_info_for(self, agent_id: AgentID = _DUMMY_AGENT_ID
-                      ) -> Optional[EnvInfoDict]:
+    def last_info_for(
+        self, agent_id: AgentID = _DUMMY_AGENT_ID
+    ) -> Optional[EnvInfoDict]:
         """Returns the last info for the specified AgentID.
 
         Args:
@@ -215,8 +227,7 @@ class Episode:
         return self._agent_to_last_info.get(agent_id)
 
     @DeveloperAPI
-    def last_action_for(self,
-                        agent_id: AgentID = _DUMMY_AGENT_ID) -> EnvActionType:
+    def last_action_for(self, agent_id: AgentID = _DUMMY_AGENT_ID) -> EnvActionType:
         """Returns the last action for the specified AgentID, or zeros.
 
         The "last" action is the most recent one taken by the agent.
@@ -237,14 +248,14 @@ class Episode:
             if policy.config.get("_disable_action_flattening"):
                 return self._agent_to_last_action[agent_id]
             else:
-                return flatten_to_single_ndarray(
-                    self._agent_to_last_action[agent_id])
+                return flatten_to_single_ndarray(self._agent_to_last_action[agent_id])
         # Agent has not acted yet, return all zeros.
         else:
             if policy.config.get("_disable_action_flattening"):
                 return tree.map_structure(
-                    lambda s: np.zeros_like(s.sample(), s.dtype) if
-                    hasattr(s, "dtype") else np.zeros_like(s.sample()),
+                    lambda s: np.zeros_like(s.sample(), s.dtype)
+                    if hasattr(s, "dtype")
+                    else np.zeros_like(s.sample()),
                     policy.action_space_struct,
                 )
             else:
@@ -254,8 +265,7 @@ class Episode:
                 return np.zeros_like(flat)
 
     @DeveloperAPI
-    def prev_action_for(self,
-                        agent_id: AgentID = _DUMMY_AGENT_ID) -> EnvActionType:
+    def prev_action_for(self, agent_id: AgentID = _DUMMY_AGENT_ID) -> EnvActionType:
         """Returns the previous action for the specified agent, or zeros.
 
         The "previous" action is the one taken one timestep before the
@@ -277,14 +287,14 @@ class Episode:
             if policy.config.get("_disable_action_flattening"):
                 return self._agent_to_prev_action[agent_id]
             else:
-                return flatten_to_single_ndarray(
-                    self._agent_to_prev_action[agent_id])
+                return flatten_to_single_ndarray(self._agent_to_prev_action[agent_id])
         # We're at t <= 1, so return all zeros.
         else:
             if policy.config.get("_disable_action_flattening"):
                 return tree.map_structure(
-                    lambda a: np.zeros_like(a, a.dtype) if  # noqa
-                    hasattr(a, "dtype") else np.zeros_like(a),  # noqa
+                    lambda a: np.zeros_like(a, a.dtype)
+                    if hasattr(a, "dtype")  # noqa
+                    else np.zeros_like(a),  # noqa
                     self.last_action_for(agent_id),
                 )
             else:
@@ -370,8 +380,8 @@ class Episode:
 
     @DeveloperAPI
     def last_extra_action_outs_for(
-            self,
-            agent_id: AgentID = _DUMMY_AGENT_ID,
+        self,
+        agent_id: AgentID = _DUMMY_AGENT_ID,
     ) -> dict:
         """Returns the last extra-action outputs for the specified agent.
 
@@ -400,8 +410,7 @@ class Episode:
     def _add_agent_rewards(self, reward_dict: Dict[AgentID, float]) -> None:
         for agent_id, reward in reward_dict.items():
             if reward is not None:
-                self.agent_rewards[agent_id,
-                                   self.policy_for(agent_id)] += reward
+                self.agent_rewards[agent_id, self.policy_for(agent_id)] += reward
                 self.total_reward += reward
                 self._agent_reward_history[agent_id].append(reward)
 
@@ -422,8 +431,7 @@ class Episode:
 
     def _set_last_action(self, agent_id, action):
         if agent_id in self._agent_to_last_action:
-            self._agent_to_prev_action[agent_id] = \
-                self._agent_to_last_action[agent_id]
+            self._agent_to_prev_action[agent_id] = self._agent_to_last_action[agent_id]
         self._agent_to_last_action[agent_id] = action
 
     def _set_last_extra_action_outs(self, agent_id, pi_info):

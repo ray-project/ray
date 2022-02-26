@@ -10,6 +10,7 @@ import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
 import io.ray.api.function.RayFunc;
+import io.ray.api.function.RayFuncR;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.PlacementGroupId;
 import io.ray.api.options.ActorCreationOptions;
@@ -277,4 +278,6 @@ public interface RayRuntime {
 
   /** Create concurrency group instance at runtime. */
   ConcurrencyGroup createConcurrencyGroup(String name, int maxConcurrency, List<RayFunc> funcs);
+
+  List<ConcurrencyGroup> extractConcurrencyGroups(RayFuncR<?> actorConstructorLambda);
 }

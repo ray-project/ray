@@ -1,4 +1,5 @@
 import pytest
+
 try:
     import pytest_timeout
 except ImportError:
@@ -17,7 +18,8 @@ def test_actor_in_container():
             "container": {
                 "image": "rayproject/ray-worker-container:nightly-py36-cpu",
             }
-        })
+        }
+    )
     ray.init(job_config=job_config)
 
     @ray.remote
@@ -44,10 +46,10 @@ def test_actor_in_heterogeneous_image():
     job_config = ray.job_config.JobConfig(
         runtime_env={
             "container": {
-                "image": "rayproject/ray-worker-container:"
-                "nightly-py36-cpu-pandas",
+                "image": "rayproject/ray-worker-container:" "nightly-py36-cpu-pandas",
             }
-        })
+        }
+    )
     ray.init(job_config=job_config)
 
     @ray.remote
@@ -58,6 +60,7 @@ def test_actor_in_heterogeneous_image():
         def run_pandas(self):
             import numpy as np
             import pandas as pd
+
             return len(pd.Series([1, 3, 5, np.nan, 6]))
 
     h1 = HeterogeneousActor.options().remote()
@@ -68,4 +71,5 @@ def test_actor_in_heterogeneous_image():
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__, "-s"]))

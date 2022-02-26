@@ -138,6 +138,9 @@ class LocalObjectManager {
   /// In that case, the URL is supposed to be obtained by the object directory.
   std::string GetLocalSpilledObjectURL(const ObjectID &object_id);
 
+  /// Get the current pinned object store memory usage.
+  int64_t GetPinnedBytes() const { return pinned_objects_size_; }
+
   std::string DebugString() const;
 
  private:
@@ -196,8 +199,14 @@ class LocalObjectManager {
   /// A callback to call when an object has been freed.
   std::function<void(const std::vector<ObjectID> &)> on_objects_freed_;
 
-  /// Hashmap from objects that we are waiting to free to their owner address.
-  absl::flat_hash_map<ObjectID, rpc::Address> objects_waiting_for_free_;
+  /// Hashmap from local objects that we are waiting to free to a tuple of
+  /// (their owner address, whether the object has been freed).
+  /// All objects in this hashmap should also be in exactly one of the
+  /// following maps:
+  /// - pinned_objects_: objects pinned in shared memory
+  /// - objects_pending_spill_: objects pinned and waiting for spill to complete
+  /// - spilled_objects_url_: objects already spilled
+  absl::flat_hash_map<ObjectID, std::pair<rpc::Address, bool>> local_objects_;
 
   // Objects that are pinned on this node.
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
@@ -307,7 +316,9 @@ class LocalObjectManager {
   /// The last time a restore log finished.
   int64_t last_restore_log_ns_ = 0;
 
+  friend class LocalObjectManagerTestWithMinSpillingSize;
   friend class LocalObjectManagerTest;
+  friend class LocalObjectManagerFusedTest;
 };
 
 };  // namespace raylet

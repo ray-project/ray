@@ -9,7 +9,7 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
-class LinearFeatureBaseline():
+class LinearFeatureBaseline:
     def __init__(self, reg_coeff=1e-5):
         self._coeffs = None
         self._reg_coeff = reg_coeff
@@ -25,8 +25,8 @@ class LinearFeatureBaseline():
         ll = len(path["rewards"])
         al = np.arange(ll).reshape(-1, 1) / 100.0
         return np.concatenate(
-            [o, o**2, al, al**2, al**3,
-             np.ones((ll, 1))], axis=1)
+            [o, o ** 2, al, al ** 2, al ** 3, np.ones((ll, 1))], axis=1
+        )
 
     def fit(self, paths):
         featmat = np.concatenate([self._features(path) for path in paths])
@@ -34,9 +34,9 @@ class LinearFeatureBaseline():
         reg_coeff = self._reg_coeff
         for _ in range(5):
             self._coeffs = np.linalg.lstsq(
-                featmat.T.dot(featmat) +
-                reg_coeff * np.identity(featmat.shape[1]),
-                featmat.T.dot(returns))[0]
+                featmat.T.dot(featmat) + reg_coeff * np.identity(featmat.shape[1]),
+                featmat.T.dot(returns),
+            )[0]
             if not np.any(np.isnan(self._coeffs)):
                 break
             reg_coeff *= 10
@@ -58,24 +58,23 @@ def calculate_gae_advantages(paths, discount, gae_lambda):
 
     for idx, path in enumerate(paths):
         path_baselines = np.append(all_path_baselines[idx], 0)
-        deltas = path["rewards"] + \
-            discount * path_baselines[1:] - \
-            path_baselines[:-1]
+        deltas = path["rewards"] + discount * path_baselines[1:] - path_baselines[:-1]
         path["advantages"] = discount_cumsum(deltas, discount * gae_lambda)
     return paths
 
 
 class MBMPOExploration(StochasticSampling):
-    """Like StochasticSampling, but only worker=0 uses Random for n timesteps.
-    """
+    """Like StochasticSampling, but only worker=0 uses Random for n timesteps."""
 
-    def __init__(self,
-                 action_space,
-                 *,
-                 framework: str,
-                 model: ModelV2,
-                 random_timesteps: int = 8000,
-                 **kwargs):
+    def __init__(
+        self,
+        action_space,
+        *,
+        framework: str,
+        model: ModelV2,
+        random_timesteps: int = 8000,
+        **kwargs
+    ):
         """Initializes a MBMPOExploration instance.
 
         Args:
@@ -93,10 +92,12 @@ class MBMPOExploration(StochasticSampling):
             model=model,
             framework=framework,
             random_timesteps=random_timesteps,
-            **kwargs)
+            **kwargs
+        )
 
-        assert self.framework == "torch", \
-            "MBMPOExploration currently only supports torch!"
+        assert (
+            self.framework == "torch"
+        ), "MBMPOExploration currently only supports torch!"
 
         # Switch off Random sampling for all non-driver workers.
         if self.worker_index > 0:

@@ -60,21 +60,22 @@ class KubernetesSyncer(NodeSyncer):
 
     _namespace = "ray"
 
-    def __init__(self,
-                 local_dir: str,
-                 remote_dir: str,
-                 sync_client: Optional[SyncClient] = None):
+    def __init__(
+        self, local_dir: str, remote_dir: str, sync_client: Optional[SyncClient] = None
+    ):
         if not kubernetes:
             raise ImportError(
                 "kubernetes is not installed on this machine/container. "
-                "Try: pip install kubernetes")
+                "Try: pip install kubernetes"
+            )
         self.local_ip = get_node_ip_address()
         self.local_node = self._get_kubernetes_node_by_ip(self.local_ip)
         self.worker_ip = None
         self.worker_node = None
 
         sync_client = sync_client or KubernetesSyncClient(
-            namespace=self.__class__._namespace)
+            namespace=self.__class__._namespace
+        )
 
         super(NodeSyncer, self).__init__(local_dir, remote_dir, sync_client)
 
@@ -88,12 +89,10 @@ class KubernetesSyncer(NodeSyncer):
         api = kubernetes.client.CoreV1Api()
         pods = api.list_namespaced_pod(self._namespace)
         for pod in pods.items:
-            if pod.status.host_ip == node_ip or \
-               pod.status.pod_ip == node_ip:
+            if pod.status.host_ip == node_ip or pod.status.pod_ip == node_ip:
                 return pod.metadata.name
 
-        logger.error(
-            "Could not find Kubernetes pod name for IP {}".format(node_ip))
+        logger.error("Could not find Kubernetes pod name for IP {}".format(node_ip))
         return None
 
     @property
@@ -129,7 +128,8 @@ class KubernetesSyncClient(SyncClient):
             namespace=self.namespace,
             node_id=node_id,
             auth_config=None,
-            process_runner=self._process_runner)
+            process_runner=self._process_runner,
+        )
 
     def _get_command_runner(self, node_id: str) -> KubernetesCommandRunner:
         """Create command runner if it doesn't exist"""
@@ -142,10 +142,9 @@ class KubernetesSyncClient(SyncClient):
             self._command_runners[node_id] = command_runner
         return self._command_runners[node_id]
 
-    def sync_up(self,
-                source: str,
-                target: Tuple[str, str],
-                exclude: Optional[List] = None) -> bool:
+    def sync_up(
+        self, source: str, target: Tuple[str, str], exclude: Optional[List] = None
+    ) -> bool:
         """Here target is a tuple (target_node, target_dir)"""
         target_node, target_dir = target
 
@@ -157,10 +156,9 @@ class KubernetesSyncClient(SyncClient):
         command_runner.run_rsync_up(source, target_dir)
         return True
 
-    def sync_down(self,
-                  source: Tuple[str, str],
-                  target: str,
-                  exclude: Optional[List] = None) -> bool:
+    def sync_down(
+        self, source: Tuple[str, str], target: str, exclude: Optional[List] = None
+    ) -> bool:
         """Here source is a tuple (source_node, source_dir)"""
         source_node, source_dir = source
 
