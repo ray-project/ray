@@ -19,9 +19,9 @@ from ray.dashboard.modules.serve.schema import ServeApplicationSchema
 from ray.autoscaler._private.cli_logger import cli_logger
 
 
-def log_failed_request(response: requests.models.Response):
+def log_failed_request(response: requests.models.Response, address: str):
     error_message = (
-        "\nRequest failed. Got response status code "
+        f"\nRequest to address {address} failed. Got response status code "
         f"{response.status_code} with the following message:"
         f"\n\n{response.text}"
     )
@@ -173,7 +173,7 @@ def deploy(config_file_name: str, address: str):
         )
         cli_logger.newline()
     else:
-        log_failed_request(response)
+        log_failed_request(response, address)
 
 
 @cli.command(
@@ -194,4 +194,4 @@ def info(address: str):
     if response.status_code == 200:
         print(json.dumps(response.json(), indent=4))
     else:
-        log_failed_request(response)
+        log_failed_request(response, address)
