@@ -1,4 +1,5 @@
 import logging
+import queue
 from typing import Optional, Type
 
 import ray
@@ -6,9 +7,9 @@ from ray.rllib.agents.impala.vtrace_tf_policy import VTraceTFPolicy
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
+from ray.rllib.execution.parallel_requests import asynchronous_parallel_requests
 from ray.rllib.execution.tree_agg import gather_experiences_tree_aggregation
 from ray.rllib.execution.common import (
-    STEPS_TRAINED_COUNTER,
     STEPS_TRAINED_THIS_ITER_COUNTER,
     _get_global_vars,
     _get_shared_metrics,
@@ -20,7 +21,9 @@ from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
-from ray.rllib.utils.typing import PartialTrainerConfigDict, TrainerConfigDict
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED, NUM_AGENT_STEPS_TRAINED
+from ray.rllib.utils.typing import PartialTrainerConfigDict, ResultDict, \
+    TrainerConfigDict
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 logger = logging.getLogger(__name__)
@@ -90,7 +93,8 @@ DEFAULT_CONFIG = with_common_config({
     # Maximum number of still un-returned `sample()` requests per RolloutWorker.
     # B/c we are calling `sample()` in an async manner via ray.wait()
     "max_sample_requests_in_flight_per_worker": 2,
-    # Max number of workers to broadcast one set of weights to.
+    # Max number of training iterations to wait before broadcast weights are updated
+    # from the local_worker.
     "broadcast_interval": 1,
     # Use n (`num_aggregation_workers`) extra Actors for multi-level
     # aggregation of the data produced by the m RolloutWorkers
@@ -319,13 +323,77 @@ class ImpalaTrainer(Trainer):
 
     @override(Trainer)
     def training_iteration(self) -> ResultDict:
-        pass
+        #TODO: Tree aggregation.
+        sample_batches = asynchronous_parallel_requests(
+            remote_requests_in_flight=self.remote_requests_in_flight,
+            actors=self.workers.remote_workers(),
+            ray_wait_timeout_s=0.0,
+            max_remote_requests_in_flight_per_actor=self.config["max_sample_requests_in_flight_per_worker"],
+        )
+
+        try:
+            #TODO: mixin buffer and batch size control.
+            for batch in sample_batches.values():
+                self._learner_thread.inqueue.put(batch, timeout=0.001)
+        except queue.Full:
+            self._counters["num_times_learner_queue_full"] += 1
+
+        global_vars = {"timestep": self._counters[NUM_ENV_STEPS_SAMPLED]}
+
+        # Only need to update workers if there are remote workers.
+        self._counters["steps_since_broadcast"] += 1
+        if self.workers.remote_workers() and \
+                self._counters["steps_since_broadcast"] >= self.config["broadcast_interval"] and \
+                self._learner_thread.weights_updated:
+
+            weights = ray.put(self.workers.local_worker().get_weights())
+            self._counters["steps_since_broadcast"] = 0
+            self._learner_thread.weights_updated = False
+            self._counters["num_weight_broadcasts"] += 1
+
+            for worker in sample_batches.keys():
+                worker.set_weights.remote(weights, global_vars)
+
+        # Get learner outputs/stats from output queue.
+        if self._learner_thread.is_alive():
+            try:
+                # Output queue holds tuples of:
+                # - count of batches added to buffer.
+                # - learner stats
+                _, learner_results = self._learner_thread.outqueue.get(timeout=0.001)
+            except queue.Empty:
+                learner_results = {}
+        else:
+            raise RuntimeError("Learner thread is dead!")
+
+        # Update the steps trained counters.
+        num_agent_steps_trained = learner_results.get(NUM_AGENT_STEPS_TRAINED, 0)
+        self._counters[STEPS_TRAINED_THIS_ITER_COUNTER] = num_agent_steps_trained
+        self._counters[NUM_AGENT_STEPS_TRAINED] += num_agent_steps_trained
+
+        # Callback for APPO to use to update KL, target network periodically.
+        # The input to the callback is the learner fetches dict.
+        if self.config["after_train_step"]:
+            self.config["after_train_step"](self.workers, self.config)
+
+        # Update global vars of the local worker.
+        self.workers.local_worker().set_global_vars(global_vars)
+
+        return {}  # self._learner_thread.add_learner_metrics
+
+    @override(Trainer)
+    def _kwargs_for_execution_plan(self):
+        kwargs = super()._kwargs_for_execution_plan()
+        kwargs["trainer"] = self
+        return kwargs
 
     @staticmethod
     @override(Trainer)
     def execution_plan(workers, config, **kwargs):
+        self = kwargs["trainer"]
+
         assert (
-            len(kwargs) == 0
+            len(kwargs) == 1
         ), "IMPALA execution_plan does NOT take any additional parameters"
 
         if config["num_aggregation_workers"] > 0:
@@ -360,6 +428,8 @@ class ImpalaTrainer(Trainer):
             self._learner_thread.outqueue, check=self._learner_thread.is_alive
         ).for_each(record_steps_trained)
 
+        # output_indices=[1] -> Use output only from `dequeue_op`, not from
+        # `enqueue_op`.
         merged_op = Concurrently(
             [enqueue_op, dequeue_op], mode="async", output_indexes=[1]
         )
@@ -367,6 +437,9 @@ class ImpalaTrainer(Trainer):
         # Callback for APPO to use to update KL, target network periodically.
         # The input to the callback is the learner fetches dict.
         if config["after_train_step"]:
+            # t[1] -> Use the [1] element of the output op of the above op
+            # (dequeue_op as indicated by output_indices=[1] above), which is
+            # the metrics dict placed into the output queue of the learner thread.
             merged_op = merged_op.for_each(lambda t: t[1]).for_each(
                 config["after_train_step"](workers, config)
             )

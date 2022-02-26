@@ -30,8 +30,9 @@ class TestIMPALA(unittest.TestCase):
         config["num_gpus"] = 0
         config["model"]["lstm_use_prev_action"] = True
         config["model"]["lstm_use_prev_reward"] = True
-        num_iterations = 1
         env = "CartPole-v0"
+
+        num_iterations = 2
 
         for _ in framework_iterator(config, with_eager_tracing=True):
             local_cfg = config.copy()
