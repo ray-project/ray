@@ -14,24 +14,27 @@
 
 #include "ray/raylet/scheduling/scheduler_resource_reporter.h"
 
+#include <boost/range/join.hpp>
+
 namespace ray {
 namespace raylet {
+namespace {
+// The max number of pending actors to report in node stats.
+const int kMaxPendingActorsToReport = 20;
+};  // namespace
 
 SchedulerResourceReporter::SchedulerResourceReporter(
     const absl::flat_hash_map<
         SchedulingClass, std::deque<std::shared_ptr<internal::Work>>> &tasks_to_schedule,
     const absl::flat_hash_map<
-        SchedulingClass, std::deque<std::shared_ptr<internal::Work>>> &tasks_to_dispatch,
-    const absl::flat_hash_map<
         SchedulingClass, std::deque<std::shared_ptr<internal::Work>>> &infeasible_tasks,
-    const absl::flat_hash_map<SchedulingClass, absl::flat_hash_map<WorkerID, int64_t>>
-        &backlog_tracker)
+    const LocalTaskManager &local_task_manager)
     : max_resource_shapes_per_load_report_(
           RayConfig::instance().max_resource_shapes_per_load_report()),
       tasks_to_schedule_(tasks_to_schedule),
-      tasks_to_dispatch_(tasks_to_dispatch),
+      tasks_to_dispatch_(local_task_manager.tasks_to_dispatch_),
       infeasible_tasks_(infeasible_tasks),
-      backlog_tracker_(backlog_tracker) {}
+      backlog_tracker_(local_task_manager.backlog_tracker_) {}
 
 int64_t SchedulerResourceReporter::TotalBacklogSize(
     SchedulingClass scheduling_class) const {
@@ -53,6 +56,7 @@ void SchedulerResourceReporter::FillResourceUsage(
   if (max_resource_shapes_per_load_report_ == 0) {
     return;
   }
+
   auto resource_loads = data.mutable_resource_load();
   auto resource_load_by_shape =
       data.mutable_resource_load_by_shape()->mutable_resource_demands();
@@ -94,7 +98,6 @@ void SchedulerResourceReporter::FillResourceUsage(
     by_shape_entry->set_num_ready_requests_queued(num_ready + count);
     by_shape_entry->set_backlog_size(TotalBacklogSize(scheduling_class));
   }
-
   for (const auto &pair : tasks_to_dispatch_) {
     const auto &scheduling_class = pair.first;
     if (num_reported++ >= max_resource_shapes_per_load_report_ &&
@@ -125,7 +128,6 @@ void SchedulerResourceReporter::FillResourceUsage(
     by_shape_entry->set_num_ready_requests_queued(num_ready + count);
     by_shape_entry->set_backlog_size(TotalBacklogSize(scheduling_class));
   }
-
   for (const auto &pair : infeasible_tasks_) {
     const auto &scheduling_class = pair.first;
     if (num_reported++ >= max_resource_shapes_per_load_report_ &&
@@ -177,6 +179,41 @@ void SchedulerResourceReporter::FillResourceUsage(
     }
   } else {
     data.set_resource_load_changed(true);
+  }
+}
+
+void SchedulerResourceReporter::FillPendingActorInfo(
+    rpc::GetNodeStatsReply *reply) const {
+  // Report infeasible actors.
+  int num_reported = 0;
+  for (const auto &shapes_it : infeasible_tasks_) {
+    auto &work_queue = shapes_it.second;
+    for (const auto &work_it : work_queue) {
+      const RayTask &task = work_it->task;
+      if (task.GetTaskSpecification().IsActorCreationTask()) {
+        if (num_reported++ > kMaxPendingActorsToReport) {
+          break;  // Protect the raylet from reporting too much data.
+        }
+        auto infeasible_task = reply->add_infeasible_tasks();
+        infeasible_task->CopyFrom(task.GetTaskSpecification().GetMessage());
+      }
+    }
+  }
+  // Report actors blocked on resources.
+  num_reported = 0;
+  for (const auto &shapes_it : boost::join(tasks_to_dispatch_, tasks_to_schedule_)) {
+    auto &work_queue = shapes_it.second;
+    for (const auto &work_it : work_queue) {
+      const RayTask &task = work_it->task;
+      if (task.GetTaskSpecification().IsActorCreationTask()) {
+        if (num_reported++ > kMaxPendingActorsToReport) {
+          break;  // Protect the raylet from reporting too much data.
+        }
+        // TODO(scv119): we should report pending tasks instead.
+        auto ready_task = reply->add_infeasible_tasks();
+        ready_task->CopyFrom(task.GetTaskSpecification().GetMessage());
+      }
+    }
   }
 }
 

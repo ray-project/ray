@@ -18,6 +18,16 @@ DEFAULT_BLOCK_SPLITTING_ENABLED = False
 # TODO (kfstorm): Remove this once stable.
 DEFAULT_ENABLE_PANDAS_BLOCK = True
 
+# Whether to enable stage-fusion optimizations for dataset pipelines.
+DEFAULT_OPTIMIZE_FUSE_STAGES = True
+
+# Whether to furthermore fuse read stages. When this is enabled, data will also be
+# re-read from the base dataset in each repetition of a DatasetPipeline.
+DEFAULT_OPTIMIZE_FUSE_READ_STAGES = True
+
+# Whether to furthermore fuse prior map tasks with shuffle stages.
+DEFAULT_OPTIMIZE_FUSE_SHUFFLE_STAGES = True
+
 
 @DeveloperAPI
 class DatasetContext:
@@ -33,12 +43,18 @@ class DatasetContext:
         block_splitting_enabled: bool,
         target_max_block_size: int,
         enable_pandas_block: bool,
+        optimize_fuse_stages: bool,
+        optimize_fuse_read_stages: bool,
+        optimize_fuse_shuffle_stages: bool,
     ):
         """Private constructor (use get_current() instead)."""
         self.block_owner = block_owner
         self.block_splitting_enabled = block_splitting_enabled
         self.target_max_block_size = target_max_block_size
         self.enable_pandas_block = enable_pandas_block
+        self.optimize_fuse_stages = optimize_fuse_stages
+        self.optimize_fuse_read_stages = optimize_fuse_read_stages
+        self.optimize_fuse_shuffle_stages = optimize_fuse_shuffle_stages
 
     @staticmethod
     def get_current() -> "DatasetContext":
@@ -57,6 +73,9 @@ class DatasetContext:
                     block_splitting_enabled=DEFAULT_BLOCK_SPLITTING_ENABLED,
                     target_max_block_size=DEFAULT_TARGET_MAX_BLOCK_SIZE,
                     enable_pandas_block=DEFAULT_ENABLE_PANDAS_BLOCK,
+                    optimize_fuse_stages=DEFAULT_OPTIMIZE_FUSE_STAGES,
+                    optimize_fuse_read_stages=DEFAULT_OPTIMIZE_FUSE_READ_STAGES,
+                    optimize_fuse_shuffle_stages=DEFAULT_OPTIMIZE_FUSE_SHUFFLE_STAGES,
                 )
 
             if (

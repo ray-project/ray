@@ -299,7 +299,7 @@ class CondaManager:
 
         return local_dir_size
 
-    def create(
+    async def create(
         self,
         uri: Optional[str],
         runtime_env: RuntimeEnv,

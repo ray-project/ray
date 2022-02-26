@@ -51,7 +51,10 @@ class CoreWorkerMemoryStore {
       std::shared_ptr<ReferenceCounter> counter = nullptr,
       std::shared_ptr<raylet::RayletClient> raylet_client = nullptr,
       std::function<Status()> check_signals = nullptr,
-      std::function<void(const RayObject &)> unhandled_exception_handler = nullptr);
+      std::function<void(const RayObject &)> unhandled_exception_handler = nullptr,
+      std::function<std::shared_ptr<RayObject>(const RayObject &object,
+                                               const ObjectID &object_id)>
+          object_allocator = nullptr);
   ~CoreWorkerMemoryStore(){};
 
   /// Put an object with specified ID into object store.
@@ -217,6 +220,12 @@ class CoreWorkerMemoryStore {
   /// Number of object store memory used by this memory store. (It doesn't include plasma
   /// store memory usage).
   int64_t used_object_store_memory_ GUARDED_BY(mu_) = 0;
+
+  /// This lambda is used to allow language frontend to allocate the objects
+  /// in the memory store.
+  std::function<std::shared_ptr<RayObject>(const RayObject &object,
+                                           const ObjectID &object_id)>
+      object_allocator_;
 };
 
 }  // namespace core

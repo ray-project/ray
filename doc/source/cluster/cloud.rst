@@ -46,6 +46,8 @@ Ray with cloud providers
         $ ray down ray/python/ray/autoscaler/aws/example-full.yaml
 
 
+    AWS Node Provider Maintainers (GitHub handles): pdames, Zyiqin-Miranda, DmitriGekhtman, wuisawesome
+
     See :ref:`aws-cluster` for recipes on customizing AWS clusters.
 .. tabbed:: Azure
 
@@ -95,6 +97,9 @@ Ray with cloud providers
     2. Installs Ray and any other user-specified dependencies
     3. Sets up a systemd task (``/lib/systemd/system/ray.service``) to start Ray in head or worker mode
 
+
+    Azure Node Provider Maintainers (GitHub handles): gramhagen, eisber, ijrsvt
+
 .. tabbed:: GCP
 
     First, install the Google API client (``pip install google-api-python-client``), set up your GCP credentials, and create a new GCP project.
@@ -115,6 +120,8 @@ Ray with cloud providers
 
         # Tear down the cluster.
         $ ray down ray/python/ray/autoscaler/gcp/example-full.yaml
+
+    GCP Node Provider Maintainers (GitHub handles): wuisawesome, DmitriGekhtman, ijrsvt
 
 .. tabbed:: Aliyun
 
@@ -139,7 +146,7 @@ Ray with cloud providers
         # Tear down the cluster.
         $ ray down ray/python/ray/autoscaler/aliyun/example-full.yaml
 
-    Aliyun Node Provider Maintainer: zhuangzhuang131419, chenk008
+    Aliyun Node Provider Maintainers (GitHub handles): zhuangzhuang131419, chenk008
 
 .. tabbed:: Custom
 
@@ -257,16 +264,18 @@ random port.
   ...
   Next steps
     To connect to this Ray runtime from another node, run
-      ray start --address='<ip address>:6379' --redis-password='<password>'
+      ray start --address='<ip address>:6379'
 
   If connection fails, check your firewall settings and network configuration.
 
-The command will print out the address of the Redis server that was started
+The command will print out the address of the Ray GCS server that was started
 (the local node IP address plus the port number you specified).
 
 .. note::
 
-    If you already has remote redis instances, you can specify `--address=ip1:port1,ip2:port2...` to use them. The first one is primary and rest are shards. Ray will create a redis instance if the default is unreachable.
+    If you already has remote Redis instances, you can specify environment variable
+    `RAY_REDIS_ADDRESS=ip1:port1,ip2:port2...` to use them. The first one is
+    primary and rest are shards.
 
 **Then on each of the other nodes**, run the following. Make sure to replace
 ``<address>`` with the value printed by the command on the head node (it
@@ -281,7 +290,7 @@ place of an IP address and rely on the DNS.
 
 .. code-block:: bash
 
-  $ ray start --address=<address> --redis-password='<password>'
+  $ ray start --address=<address>
   --------------------
   Ray runtime started.
   --------------------
@@ -292,19 +301,15 @@ place of an IP address and rely on the DNS.
 If you wish to specify that a machine has 10 CPUs and 1 GPU, you can do this
 with the flags ``--num-cpus=10`` and ``--num-gpus=1``. See the :ref:`Configuration <configuring-ray>` page for more information.
 
-If you see ``Unable to connect to Redis. If the Redis instance is on a
-different machine, check that your firewall is configured properly.``,
-this means the ``--port`` is inaccessible at the given IP address (because, for
-example, the head node is not actually running Ray, or you have the wrong IP
-address).
+If you see ``Unable to connect to GCS at ...``,
+this means the head node is inaccessible at the given ``--address`` (because, for
+example, the head node is not actually running, a different version of Ray is
+running at the specified address, the specified address is wrong, or there are
+firewall settings preventing access).
 
 If you see ``Ray runtime started.``, then the node successfully connected to
-the IP address at the ``--port``. You should now be able to connect to the
+the head node at the ``--address``. You should now be able to connect to the
 cluster with ``ray.init(address='auto')``.
-
-If ``ray.init(address='auto')`` keeps repeating
-``redis_context.cc:303: Failed to connect to Redis, retrying.``, then the node
-is failing to connect to some other port(s) besides the main port.
 
 .. code-block:: bash
 
@@ -320,7 +325,7 @@ you can use a tool such as ``nmap`` or ``nc``.
   Host is up, received echo-reply ttl 60 (0.00087s latency).
   rDNS record for 123.456.78.910: compute04.berkeley.edu
   PORT     STATE SERVICE REASON         VERSION
-  6379/tcp open  redis   syn-ack ttl 60 Redis key-value store
+  6379/tcp open  redis?  syn-ack
   Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
   $ nc -vv -z $HEAD_ADDRESS $PORT
   Connection to compute04.berkeley.edu 6379 port [tcp/*] succeeded!

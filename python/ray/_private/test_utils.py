@@ -207,7 +207,7 @@ def kill_process_by_name(name, SIGKILL=False):
                 p.terminate()
 
 
-def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ascii"):
+def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "utf-8"):
     """Run a driver as a separate process.
 
     Args:
@@ -1177,8 +1177,10 @@ def get_and_run_node_killer(
 def chdir(d: str):
     old_dir = os.getcwd()
     os.chdir(d)
-    yield
-    os.chdir(old_dir)
+    try:
+        yield
+    finally:
+        os.chdir(old_dir)
 
 
 def test_get_directory_size_bytes():

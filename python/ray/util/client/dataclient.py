@@ -1,10 +1,11 @@
 """This file implements a threaded stream controller to abstract a data stream
 back to the ray clientserver.
 """
+import math
 import logging
 import queue
 import threading
-import traceback
+import warnings
 
 import grpc
 
@@ -13,7 +14,12 @@ from typing import Any, Callable, Dict, TYPE_CHECKING, Optional, Union
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
-from ray.util.client.common import INT32_MAX
+from ray.util.client.common import (
+    INT32_MAX,
+    OBJECT_TRANSFER_CHUNK_SIZE,
+    OBJECT_TRANSFER_WARNING_SIZE,
+)
+from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from ray.util.client.worker import Worker
@@ -24,6 +30,43 @@ ResponseCallable = Callable[[Union[ray_client_pb2.DataResponse, Exception]], Non
 
 # Send an acknowledge on every 32nd response received
 ACKNOWLEDGE_BATCH_SIZE = 32
+
+
+def chunk_put(req: ray_client_pb2.DataRequest):
+    """
+    Chunks a put request. Doing this lazily is important for large objects,
+    since taking slices of bytes objects does a copy. This means if we
+    immediately materialized every chunk of a large object and inserted them
+    into the result_queue, we would effectively double the memory needed
+    on the client to handle the put.
+    """
+    total_size = len(req.put.data)
+    assert total_size > 0, "Cannot chunk object with missing data"
+    if total_size >= OBJECT_TRANSFER_WARNING_SIZE and log_once(
+        "client_object_put_size_warning"
+    ):
+        size_gb = total_size / 2 ** 30
+        warnings.warn(
+            "Ray Client is attempting to send a "
+            f"{size_gb:.2f} GiB object over the network, which may "
+            "be slow. Consider serializing the object and using a remote "
+            "URI to transfer via S3 or Google Cloud Storage instead. "
+            "Documentation for doing this can be found here: "
+            "https://docs.ray.io/en/latest/handling-dependencies.html#remote-uris",
+            UserWarning,
+        )
+    total_chunks = math.ceil(total_size / OBJECT_TRANSFER_CHUNK_SIZE)
+    for chunk_id in range(0, total_chunks):
+        start = chunk_id * OBJECT_TRANSFER_CHUNK_SIZE
+        end = min(total_size, (chunk_id + 1) * OBJECT_TRANSFER_CHUNK_SIZE)
+        chunk = ray_client_pb2.PutRequest(
+            client_ref_id=req.put.client_ref_id,
+            data=req.put.data[start:end],
+            chunk_id=chunk_id,
+            total_chunks=total_chunks,
+            total_size=total_size,
+        )
+        yield ray_client_pb2.DataRequest(req_id=req.req_id, put=chunk)
 
 
 class DataClient:
@@ -40,20 +83,19 @@ class DataClient:
         self._metadata = metadata
         self.data_thread = self._start_datathread()
 
-        # Track outstanding requests to resend in case of disconnection.
-        # Maps request serial number to request.
+        # Track outstanding requests to resend in case of disconnection
         self.outstanding_requests: Dict[int, Any] = OrderedDict()
 
         # Serialize access to all mutable internal states: self.request_queue,
-        # self.ready_data, self.asyncio_waiting_data, self._in_shutdown and
-        # self.outstanding_requests.
+        # self.ready_data, self.asyncio_waiting_data,
+        # self._in_shutdown, self._req_id, self.outstanding_requests and
+        # calling self._next_id()
         self.lock = threading.Lock()
 
         # Waiting for response or shutdown.
         self.cv = threading.Condition(lock=self.lock)
 
         self.request_queue = queue.Queue()
-        # Maps request ID (Python object address) to response.
         self.ready_data: Dict[int, Any] = {}
         # NOTE: Dictionary insertion is guaranteed to complete before lookup
         # and/or removal because of synchronization via the request_queue.
@@ -84,28 +126,18 @@ class DataClient:
             daemon=True,
         )
 
-    # A helper that takes in (request, callback) from queue, sets up tracking
-    # of the requests and yields the requests as a stream.
+    # A helper that takes requests from queue. If the request wraps a PutRequest,
+    # lazily chunks and yields the request. Otherwise, yields the request directly.
     def _requests(self):
         while True:
-            request = self.request_queue.get()
-            if request is None:
+            req = self.request_queue.get()
+            if req is None:
                 # Stop when client signals shutdown.
                 return
-            req, callback = request
-            assert req is not None
-            # req.req_id >= 1 when reconnecting, and is 0 for special types.
-            if req.req_id < 1 and req.WhichOneof("type") not in [
-                "acknowledge",
-                "connection_cleanup",
-            ]:
-                with self.lock:
-                    req_id = self._next_id()
-                    req.req_id = req_id
-                    self.outstanding_requests[req_id] = (req, callback)
-                    if callback is not None:
-                        self.asyncio_waiting_data[req_id] = callback
-            yield req
+            if req.WhichOneof("type") == "put":
+                yield from chunk_put(req)
+            else:
+                yield req
 
     def _data_main(self) -> None:
         reconnecting = False
@@ -115,9 +147,8 @@ class DataClient:
                     self.client_worker.channel
                 )
                 metadata = self._metadata + [("reconnecting", str(reconnecting))]
-
                 resp_stream = stub.Datapath(
-                    request_iterator=self._requests(),
+                    self._requests(),
                     metadata=metadata,
                     wait_for_ready=True,
                 )
@@ -128,11 +159,11 @@ class DataClient:
                 except grpc.RpcError as e:
                     reconnecting = self._can_reconnect(e)
                     if not reconnecting:
-                        self._last_exception = traceback.format_exc()
+                        self._last_exception = e
                         return
                     self._reconnect_channel()
-        except Exception:
-            self._last_exception = traceback.format_exc()
+        except Exception as e:
+            self._last_exception = e
         finally:
             logger.debug("Shutting down data channel.")
             self._shutdown()
@@ -145,17 +176,6 @@ class DataClient:
             # This is not being waited for.
             logger.debug(f"Got unawaited response {response}")
             return
-        with self.lock:
-            # Update outstanding requests
-            if response.req_id in self.outstanding_requests:
-                req, callback = self.outstanding_requests.pop(response.req_id)
-                # Acknowledge response
-                self._acknowledge(response.req_id)
-            else:
-                logger.warning(
-                    f"Receiving response without outstanding request: {response}"
-                )
-                return
         if response.req_id in self.asyncio_waiting_data:
             try:
                 # NOTE: calling self.asyncio_waiting_data.pop() results
@@ -168,9 +188,15 @@ class DataClient:
                     callback(response)
             except Exception:
                 logger.exception("Callback error:")
+            with self.lock:
+                # Update outstanding requests
+                if response.req_id in self.outstanding_requests:
+                    del self.outstanding_requests[response.req_id]
+                    # Acknowledge response
+                    self._acknowledge(response.req_id)
         else:
             with self.lock:
-                self.ready_data[id(req)] = response
+                self.ready_data[response.req_id] = response
                 self.cv.notify_all()
 
     def _can_reconnect(self, e: grpc.RpcError) -> bool:
@@ -179,7 +205,8 @@ class DataClient:
         Returns True if the error can be recovered from, False otherwise.
         """
         if not self.client_worker._can_reconnect(e):
-            logger.exception("Unrecoverable error in data channel.")
+            logger.error("Unrecoverable error in data channel.")
+            logger.debug(e)
             return False
         logger.debug("Recoverable error in data channel.")
         logger.debug(e)
@@ -210,16 +237,6 @@ class DataClient:
         for callback in callbacks:
             if callback:
                 callback(err)
-        while True:
-            try:
-                _, callback = self.request_queue.get_nowait()
-            except queue.Empty:
-                break
-            except Exception:
-                logger.exception("Bad input data")
-                continue
-            if callback:
-                callback(err)
         # Since self._in_shutdown is set to True, no new item
         # will be added to self.asyncio_waiting_data
 
@@ -236,11 +253,8 @@ class DataClient:
         self._acknowledge_counter += 1
         if self._acknowledge_counter % ACKNOWLEDGE_BATCH_SIZE == 0:
             self.request_queue.put(
-                (
-                    ray_client_pb2.DataRequest(
-                        acknowledge=ray_client_pb2.AcknowledgeRequest(req_id=req_id)
-                    ),
-                    None,
+                ray_client_pb2.DataRequest(
+                    acknowledge=ray_client_pb2.AcknowledgeRequest(req_id=req_id)
                 )
             )
 
@@ -277,22 +291,10 @@ class DataClient:
 
         # Recreate the request queue, and resend outstanding requests
         with self.lock:
-            new_queue = queue.Queue()
-            # Fill the new request queue first with outstanding requests, which
-            # have lower req_id. Must use the order of req_id.
-            for req_id, request in sorted(self.outstanding_requests.items()):
-                # Re-queue outstanding requests (and callbacks).
-                new_queue.put(request)
-            self.request_queue, prev_queue = new_queue, self.request_queue
-            # Transfer remaining requests from the previous request queue.
-            # NOTE: prev_queue has concurrent consumers.
-            while True:
-                try:
-                    req, callback = prev_queue.get_nowait()
-                except queue.Empty:
-                    return
-                if req.req_id not in self.outstanding_requests:
-                    self.request_queue.put((req, callback))
+            self.request_queue = queue.Queue()
+            for request in self.outstanding_requests.values():
+                # Resend outstanding requests
+                self.request_queue.put(request)
 
     def close(self) -> None:
         thread = None
@@ -304,14 +306,10 @@ class DataClient:
             if self.request_queue is not None:
                 # Intentional shutdown, tell server it can clean up the
                 # connection immediately and ignore the reconnect grace period.
-                self.request_queue.put(
-                    (
-                        ray_client_pb2.DataRequest(
-                            connection_cleanup=ray_client_pb2.ConnectionCleanupRequest()
-                        ),
-                        None,
-                    )
+                cleanup_request = ray_client_pb2.DataRequest(
+                    connection_cleanup=ray_client_pb2.ConnectionCleanupRequest()
                 )
+                self.request_queue.put(cleanup_request)
                 self.request_queue.put(None)
             if self.data_thread is not None:
                 thread = self.data_thread
@@ -322,40 +320,37 @@ class DataClient:
     def _blocking_send(
         self, req: ray_client_pb2.DataRequest
     ) -> ray_client_pb2.DataResponse:
-        self.request_queue.put((req, None))
         with self.lock:
             self._check_shutdown()
+            req_id = self._next_id()
+            req.req_id = req_id
+            self.request_queue.put(req)
+            self.outstanding_requests[req_id] = req
 
-            self.cv.wait_for(lambda: id(req) in self.ready_data or self._in_shutdown)
+            self.cv.wait_for(lambda: req_id in self.ready_data or self._in_shutdown)
             self._check_shutdown()
 
-            resp = self.ready_data[id(req)]
-            del self.ready_data[id(req)]
+            data = self.ready_data[req_id]
+            del self.ready_data[req_id]
+            del self.outstanding_requests[req_id]
+            self._acknowledge(req_id)
 
-        return resp
+        return data
 
     def _async_send(
         self,
         req: ray_client_pb2.DataRequest,
         callback: Optional[ResponseCallable] = None,
-        check_shutdown: bool = True,
     ) -> None:
-        def nop(ignored):
-            return
+        with self.lock:
+            self._check_shutdown()
+            req_id = self._next_id()
+            req.req_id = req_id
+            self.asyncio_waiting_data[req_id] = callback
+            self.outstanding_requests[req_id] = req
+            self.request_queue.put(req)
 
-        if callback is None:
-            callback = nop
-        self.request_queue.put((req, callback))
-
-        # TODO: pass exception to the callback as well?
-        if check_shutdown:
-            with self.lock:
-                self._check_shutdown()
-
-    # The purpose of this function is to disconnect the Ray client when a
-    # connection issue is encountered. It avoids running in the data streaming
-    # thread (self.data_thread) which may result in deadlock, but it
-    # opportunistically runs when a blocking request is attempted.
+    # Must hold self.lock when calling this function.
     def _check_shutdown(self):
         assert self.lock.locked()
         if not self._in_shutdown:
@@ -445,14 +440,13 @@ class DataClient:
         resp = self._blocking_send(datareq)
         return resp.put
 
-    def ReleaseObject(self, request: ray_client_pb2.ReleaseRequest) -> None:
+    def ReleaseObject(
+        self, request: ray_client_pb2.ReleaseRequest, context=None
+    ) -> None:
         datareq = ray_client_pb2.DataRequest(
             release=request,
         )
-        # ReleaseObject() is called inside ClientObjectRef destructor, so it
-        # cannot acquire a lock. Avoiding checking shutdown which acquires a
-        # lock.
-        self._async_send(datareq, check_shutdown=False)
+        self._async_send(datareq)
 
     def Schedule(self, request: ray_client_pb2.ClientTask, callback: ResponseCallable):
         datareq = ray_client_pb2.DataRequest(task=request)

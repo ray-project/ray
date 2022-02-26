@@ -1,4 +1,5 @@
 import asyncio
+import traceback
 from collections import defaultdict
 from dataclasses import dataclass
 import json
@@ -121,100 +122,91 @@ class RuntimeEnvAgent(
         async def _setup_runtime_env(
             serialized_runtime_env, serialized_allocated_resource_instances
         ):
-            # This function will be ran inside a thread
-            def run_setup_with_logger():
-                runtime_env = RuntimeEnv(serialized_runtime_env=serialized_runtime_env)
-                allocated_resource: dict = json.loads(
-                    serialized_allocated_resource_instances or "{}"
+            runtime_env = RuntimeEnv(serialized_runtime_env=serialized_runtime_env)
+            allocated_resource: dict = json.loads(
+                serialized_allocated_resource_instances or "{}"
+            )
+
+            # Use a separate logger for each job.
+            per_job_logger = self.get_or_create_logger(request.job_id)
+            # TODO(chenk008): Add log about allocated_resource to
+            # avoid lint error. That will be moved to cgroup plugin.
+            per_job_logger.debug(f"Worker has resource :" f"{allocated_resource}")
+            context = RuntimeEnvContext(env_vars=runtime_env.env_vars())
+            await self._container_manager.setup(
+                runtime_env, context, logger=per_job_logger
+            )
+
+            for (manager, uri_cache) in [
+                (self._working_dir_manager, self._working_dir_uri_cache),
+                (self._conda_manager, self._conda_uri_cache),
+                (self._pip_manager, self._pip_uri_cache),
+            ]:
+                uri = manager.get_uri(runtime_env)
+                if uri is not None:
+                    if uri not in uri_cache:
+                        per_job_logger.debug(f"Cache miss for URI {uri}.")
+                        size_bytes = await manager.create(
+                            uri, runtime_env, context, logger=per_job_logger
+                        )
+                        uri_cache.add(uri, size_bytes, logger=per_job_logger)
+                    else:
+                        per_job_logger.debug(f"Cache hit for URI {uri}.")
+                        uri_cache.mark_used(uri, logger=per_job_logger)
+                manager.modify_context(uri, runtime_env, context)
+
+            # Set up py_modules. For now, py_modules uses multiple URIs so
+            # the logic is slightly different from working_dir, conda, and
+            # pip above.
+            py_modules_uris = self._py_modules_manager.get_uris(runtime_env)
+            if py_modules_uris is not None:
+                for uri in py_modules_uris:
+                    if uri not in self._py_modules_uri_cache:
+                        per_job_logger.debug(f"Cache miss for URI {uri}.")
+                        size_bytes = await self._py_modules_manager.create(
+                            uri, runtime_env, context, logger=per_job_logger
+                        )
+                        self._py_modules_uri_cache.add(
+                            uri, size_bytes, logger=per_job_logger
+                        )
+                    else:
+                        per_job_logger.debug(f"Cache hit for URI {uri}.")
+                        self._py_modules_uri_cache.mark_used(uri, logger=per_job_logger)
+            self._py_modules_manager.modify_context(
+                py_modules_uris, runtime_env, context
+            )
+
+            # Add the mapping of URIs -> the serialized environment to be
+            # used for cache invalidation.
+            if runtime_env.working_dir_uri():
+                uri = runtime_env.working_dir_uri()
+                self._uris_to_envs[uri].add(serialized_runtime_env)
+            if runtime_env.py_modules_uris():
+                for uri in runtime_env.py_modules_uris():
+                    self._uris_to_envs[uri].add(serialized_runtime_env)
+            if runtime_env.conda_uri():
+                uri = runtime_env.conda_uri()
+                self._uris_to_envs[uri].add(serialized_runtime_env)
+            if runtime_env.pip_uri():
+                uri = runtime_env.pip_uri()
+                self._uris_to_envs[uri].add(serialized_runtime_env)
+            if runtime_env.plugin_uris():
+                for uri in runtime_env.plugin_uris():
+                    self._uris_to_envs[uri].add(serialized_runtime_env)
+
+            # Run setup function from all the plugins
+            for plugin_class_path, config in runtime_env.plugins():
+                per_job_logger.debug(
+                    f"Setting up runtime env plugin {plugin_class_path}"
+                )
+                plugin_class = import_attr(plugin_class_path)
+                # TODO(simon): implement uri support
+                plugin_class.create("uri not implemented", json.loads(config), context)
+                plugin_class.modify_context(
+                    "uri not implemented", json.loads(config), context
                 )
 
-                # Use a separate logger for each job.
-                per_job_logger = self.get_or_create_logger(request.job_id)
-                # TODO(chenk008): Add log about allocated_resource to
-                # avoid lint error. That will be moved to cgroup plugin.
-                per_job_logger.debug(f"Worker has resource :" f"{allocated_resource}")
-                context = RuntimeEnvContext(env_vars=runtime_env.env_vars())
-                self._container_manager.setup(
-                    runtime_env, context, logger=per_job_logger
-                )
-
-                for (manager, uri_cache) in [
-                    (self._working_dir_manager, self._working_dir_uri_cache),
-                    (self._conda_manager, self._conda_uri_cache),
-                    (self._pip_manager, self._pip_uri_cache),
-                ]:
-                    uri = manager.get_uri(runtime_env)
-                    if uri is not None:
-                        if uri not in uri_cache:
-                            per_job_logger.debug(f"Cache miss for URI {uri}.")
-                            size_bytes = manager.create(
-                                uri, runtime_env, context, logger=per_job_logger
-                            )
-                            uri_cache.add(uri, size_bytes, logger=per_job_logger)
-                        else:
-                            per_job_logger.debug(f"Cache hit for URI {uri}.")
-                            uri_cache.mark_used(uri, logger=per_job_logger)
-                    manager.modify_context(uri, runtime_env, context)
-
-                # Set up py_modules. For now, py_modules uses multiple URIs so
-                # the logic is slightly different from working_dir, conda, and
-                # pip above.
-                py_modules_uris = self._py_modules_manager.get_uris(runtime_env)
-                if py_modules_uris is not None:
-                    for uri in py_modules_uris:
-                        if uri not in self._py_modules_uri_cache:
-                            per_job_logger.debug(f"Cache miss for URI {uri}.")
-                            size_bytes = self._py_modules_manager.create(
-                                uri, runtime_env, context, logger=per_job_logger
-                            )
-                            self._py_modules_uri_cache.add(
-                                uri, size_bytes, logger=per_job_logger
-                            )
-                        else:
-                            per_job_logger.debug(f"Cache hit for URI {uri}.")
-                            self._py_modules_uri_cache.mark_used(
-                                uri, logger=per_job_logger
-                            )
-                self._py_modules_manager.modify_context(
-                    py_modules_uris, runtime_env, context
-                )
-
-                # Add the mapping of URIs -> the serialized environment to be
-                # used for cache invalidation.
-                if runtime_env.working_dir_uri():
-                    uri = runtime_env.working_dir_uri()
-                    self._uris_to_envs[uri].add(serialized_runtime_env)
-                if runtime_env.py_modules_uris():
-                    for uri in runtime_env.py_modules_uris():
-                        self._uris_to_envs[uri].add(serialized_runtime_env)
-                if runtime_env.conda_uri():
-                    uri = runtime_env.conda_uri()
-                    self._uris_to_envs[uri].add(serialized_runtime_env)
-                if runtime_env.pip_uri():
-                    uri = runtime_env.pip_uri()
-                    self._uris_to_envs[uri].add(serialized_runtime_env)
-                if runtime_env.plugin_uris():
-                    for uri in runtime_env.plugin_uris():
-                        self._uris_to_envs[uri].add(serialized_runtime_env)
-
-                # Run setup function from all the plugins
-                for plugin_class_path, config in runtime_env.plugins():
-                    per_job_logger.debug(
-                        f"Setting up runtime env plugin {plugin_class_path}"
-                    )
-                    plugin_class = import_attr(plugin_class_path)
-                    # TODO(simon): implement uri support
-                    plugin_class.create(
-                        "uri not implemented", json.loads(config), context
-                    )
-                    plugin_class.modify_context(
-                        "uri not implemented", json.loads(config), context
-                    )
-
-                return context
-
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(None, run_setup_with_logger)
+            return context
 
         serialized_env = request.serialized_runtime_env
 
@@ -260,11 +252,14 @@ class RuntimeEnvAgent(
                     runtime_env_context = await _setup_runtime_env(
                         serialized_env, request.serialized_allocated_resource_instances
                     )
+                    error_message = None
                     break
                 except Exception as e:
                     err_msg = f"Failed to create runtime env {serialized_env}."
                     self._logger.exception(err_msg)
-                    error_message = f"{err_msg}\n{str(e)}"
+                    error_message = "".join(
+                        traceback.format_exception(type(e), e, e.__traceback__)
+                    )
                     await asyncio.sleep(
                         runtime_env_consts.RUNTIME_ENV_RETRY_INTERVAL_MS / 1000
                     )

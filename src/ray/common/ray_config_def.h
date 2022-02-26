@@ -288,15 +288,12 @@ RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
 RAY_CONFIG(int, gcs_resource_report_poll_period_ms, 100)
 // The number of concurrent polls to polls to GCS.
 RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
-// Feature flag to use grpc instead of redis for resource broadcast.
-// TODO(ekl) broken as of https://github.com/ray-project/ray/issues/16858
-RAY_CONFIG(bool, grpc_based_resource_broadcast, true)
 // Feature flag to enable grpc based pubsub in GCS.
 RAY_CONFIG(bool, gcs_grpc_based_pubsub, true)
 // The storage backend to use for the GCS. It can be either 'redis' or 'memory'.
-RAY_CONFIG(std::string, gcs_storage, "redis")
+RAY_CONFIG(std::string, gcs_storage, "memory")
 // Feature flag to enable GCS based bootstrapping.
-RAY_CONFIG(bool, bootstrap_with_gcs, false)
+RAY_CONFIG(bool, bootstrap_with_gcs, true)
 
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
@@ -351,6 +348,9 @@ RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
 
 /// Max restart count for the dashboard agent.
 RAY_CONFIG(uint32_t, agent_max_restart_count, 5)
+
+/// Whether to fail raylet when agent fails.
+RAY_CONFIG(bool, raylet_shares_fate_with_agent, false)
 
 /// If the agent manager fails to communicate with the dashboard agent, we will retry
 /// after this interval.
@@ -454,9 +454,10 @@ RAY_CONFIG(int64_t, max_command_batch_size, 2000)
 /// The maximum batch size for OBOD report.
 RAY_CONFIG(int64_t, max_object_report_batch_size, 2000)
 
-/// The time where the subscriber connection is timed out in milliseconds.
-/// This is for the pubsub module.
-RAY_CONFIG(uint64_t, subscriber_timeout_ms, 30000)
+/// For Ray publishers, the minimum time to drop an inactive subscriber connection in ms.
+/// In the current implementation, a subscriber might be dead for up to 3x the configured
+/// time before it is deleted from the publisher, i.e. deleted in 300s ~ 900s.
+RAY_CONFIG(uint64_t, subscriber_timeout_ms, 300 * 1000)
 
 // This is the minimum time an actor will remain in the actor table before
 // being garbage collected when a job finishes

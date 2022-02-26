@@ -6,6 +6,11 @@ import sys
 
 import yaml
 
+# If you update or reorganize the periodic tests, please ensure the
+# relevant portions of the Ray release instructions (go/release-ray)
+# (in particular, running periodic tests and collecting release logs)
+# are up to date.  If you need access, please contact @zhe-thoughts.
+
 # Env variables:
 
 # RAY_REPO          Repo to use for finding the wheel
@@ -88,7 +93,7 @@ CORE_NIGHTLY_TESTS = {
         "inference",
         "shuffle_data_loader",
         "pipelined_training_50_gb",
-        "pipelined_ingestion_1500_gb_15_windows",
+        "pipelined_ingestion_1500_gb",
         "datasets_preprocess_ingest",
         "datasets_ingest_400G",
         SmokeTest("datasets_ingest_train_infer"),
@@ -114,7 +119,8 @@ SERVE_NIGHTLY_TESTS = {
         "autoscaling_single_deployment",
         "autoscaling_multi_deployment",
         "serve_micro_benchmark",
-        "serve_micro_benchmark_k8s",
+        # TODO(architkulkarni) Reenable after K8s migration.  Currently failing
+        # "serve_micro_benchmark_k8s",
         "serve_cluster_fault_tolerance",
     ],
 }
@@ -142,15 +148,6 @@ CORE_SCALABILITY_TESTS_DAILY = {
         "many_tasks",
         "many_pgs",
         "many_nodes",
-    ],
-}
-
-CORE_REDIS_HA_TESTS_DAILY = {
-    "~/ray/benchmarks/benchmark_tests.yaml": [
-        "many_actors_redis_ha",
-        "many_tasks_redis_ha",
-        "many_pgs_redis_ha",
-        "many_nodes_redis_ha",
     ],
 }
 
@@ -299,7 +296,6 @@ SUITES = {
     "serve-nightly": SERVE_NIGHTLY_TESTS,
     "core-daily": CORE_DAILY_TESTS,
     "core-scalability": CORE_SCALABILITY_TESTS_DAILY,
-    "core-redis-ha": CORE_REDIS_HA_TESTS_DAILY,
     "nightly": {**NIGHTLY_TESTS, **USER_TESTS},
     "core-scheduling-daily": CORE_SCHEDULING_DAILY,
     "weekly": WEEKLY_TESTS,

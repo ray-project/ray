@@ -818,9 +818,10 @@ cc_test(
     deps = [
         ":core_worker_lib",
         ":gcs",
+        "//src/ray/protobuf:runtime_env_common_cc_proto",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -1069,6 +1070,20 @@ cc_test(
     size = "small",
     srcs = [
         "src/ray/object_manager/test/pull_manager_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":object_manager",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "object_buffer_pool_test",
+    size = "small",
+    srcs = [
+        "src/ray/object_manager/test/object_buffer_pool_test.cc",
     ],
     copts = COPTS,
     tags = ["team:core"],

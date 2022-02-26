@@ -276,21 +276,13 @@ class Worker:
             # Unrecoverable error -- These errors are specifically raised
             # by the server's application logic
             return False
-        if (
-            e.code() == grpc.StatusCode.INTERNAL
-            and e.details() == "Exception serializing request!"
-        ):
-            # The client failed tried to send a bad request. Don't
-            # try to reconnect/retry.
-            return False
-        if (
-            e.code() == grpc.StatusCode.UNKNOWN
-            and e.details() == "Exception iterating requests!"
-        ):
-            # The client failed tried to send a bad request (for example,
-            # passing "None" instead of a valid grpc message). Don't try to
-            # reconnect/retry.
-            return False
+        if e.code() == grpc.StatusCode.INTERNAL:
+            details = e.details()
+            if details == "Exception serializing request!":
+                # The client failed tried to send a bad request (for example,
+                # passing "None" instead of a valid grpc message). Don't
+                # try to reconnect/retry.
+                return False
         # All other errors can be treated as recoverable
         return True
 
