@@ -266,7 +266,6 @@ class Trainer:
         self,
         train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
         config: Optional[Dict[str, Any]] = None,
-        results_preprocessors: Optional[List[ResultsPreprocessor]] = None,
         callbacks: Optional[List[TrainingCallback]] = None,
         dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]] = None,
         checkpoint: Optional[Union[Dict, str, Path]] = None,
