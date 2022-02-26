@@ -322,7 +322,7 @@ Under the hood, both the Job Client and the CLI make HTTP calls to the job serve
         "http://127.0.0.1:8265/api/jobs/"
     )
     rst = json.loads(resp.text)
-    # {"job_id": {"entrypoint": ..., "metadata": ..., "status": ..., "message": ...}, ...}
+    # {"job_id": {"metadata": ..., "status": ..., "message": ...}, ...}
 
 
 Job Submission Architecture
