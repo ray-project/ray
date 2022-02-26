@@ -181,8 +181,11 @@ class ResourceSpec(
                 num_gpus = min(num_gpus, len(gpu_ids))
 
         try:
-            info_string = _get_gpu_info_string()
-            gpu_types = _constraints_from_gpu_info(info_string)
+            if sys.platform.startswith("linux") and importlib.util.find_spec("GPUtil") is not None:
+                gpu_types = _get_gpu_types_gputil()
+            else:
+                info_string = _get_gpu_info_string()
+                gpu_types = _constraints_from_gpu_info(info_string)
             resources.update(gpu_types)
         except Exception:
             logger.exception("Could not parse gpu information.")
@@ -289,6 +292,18 @@ def _autodetect_num_gpus():
     return result
 
 
+def _get_gpu_types_gputil():
+    gpu_list = GPUtil.getGPUs()
+    if len(gpu_list) > 0:
+        gpu_list_names = [gpu.name for gpu in gpu_list]
+        info_str = gpu_list_names.pop()
+        pretty_name = _pretty_gpu_name(info_str)
+        if pretty_name:
+            constraint_name = f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}" f"{pretty_name}"
+            return {constraint_name: 1}
+    return {}
+
+
 def _constraints_from_gpu_info(info_str):
     """Parse the contents of a /proc/driver/nvidia/gpus/*/information to get the
     gpu model type.
@@ -299,9 +314,18 @@ def _constraints_from_gpu_info(info_str):
         Returns:
             (str) The full model name.
     """
-    if len(info_str) <= 0:
+    if info_str is None:
         return {}
-    full_model_name = info_str
+    lines = info_str.split("\n")
+    full_model_name = None
+    for line in lines:
+        split = line.split(":")
+        if len(split) != 2:
+            continue
+        k, v = split
+        if k.strip() == "Model":
+            full_model_name = v.strip()
+            break
     pretty_name = _pretty_gpu_name(full_model_name)
     if pretty_name:
         constraint_name = f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}" f"{pretty_name}"
@@ -310,29 +334,22 @@ def _constraints_from_gpu_info(info_str):
 
 
 def _get_gpu_info_string():
-    """Get the gpu type for this machine using GPUtil
+    """Get the gpu type for this machine.
 
     TODO(Alex): All the caveats of _autodetect_num_gpus and we assume only one
     gpu type.
 
     Returns:
-        [list] The gpu's model's names.
+        (str) The gpu's model name.
     """
     if sys.platform.startswith("linux"):
-        if importlib.util.find_spec("GPUtil"):
-            gpu_list = GPUtil.getGPUs()
-            if len(gpu_list) > 0:
-                gpu_list_names = [gpu.name for gpu in gpu_list]
-                info_str = gpu_list_names.pop()
+        proc_gpus_path = "/proc/driver/nvidia/gpus"
+        if os.path.isdir(proc_gpus_path):
+            gpu_dirs = os.listdir(proc_gpus_path)
+            if len(gpu_dirs) > 0:
+                gpu_info_path = f"{proc_gpus_path}/{gpu_dirs[0]}/information"
+                info_str = open(gpu_info_path).read()
                 return info_str
-        else:
-            proc_gpus_path = "/proc/driver/nvidia/gpus"
-            if os.path.isdir(proc_gpus_path):
-                gpu_dirs = os.listdir(proc_gpus_path)
-                if len(gpu_dirs) > 0:
-                    gpu_info_path = f"{proc_gpus_path}/{gpu_dirs[0]}/information"
-                    info_str = open(gpu_info_path).read()
-                    return info_str
     return None
 
 
