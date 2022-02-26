@@ -39,9 +39,14 @@ from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.autoscaler._private.kuberay.run_autoscaler import run_autoscaler_with_retries
 
-from ray.internal.internal_api import memory_summary, ray_log, ray_nodes, ray_actors, ray_actor_log
-from ray.autoscaler._private.cli_logger import (add_click_logging_options,
-                                                cli_logger, cf)
+from ray.internal.internal_api import (
+    memory_summary,
+    ray_log,
+    ray_nodes,
+    ray_actors,
+    ray_actor_log,
+)
+from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.dashboard.modules.job.cli import job_cli_group
@@ -1855,31 +1860,54 @@ def local_dump(
     required=False,
     type=str,
     default=None,
-    help="The ip address of the log")
+    help="The ip address of the log",
+)
 @click.option(
     "--node-id",
     required=False,
     type=str,
     default=None,
-    help="The unique id of the node.")
+    help="The unique id of the node.",
+)
 @click.option(
     "--actor-id",
     required=False,
     type=str,
     default=None,
-    help="The unique id of the node.")
+    help="The unique id of the node.",
+)
 @click.option(
     "--log-file",
     "-f",
     required=False,
     type=str,
     default=None,
-    help="The name of the log file.")
-def log(ip_address: str, node_id: str, actor_id: str, log_file: str):
+    help="The name of the log file.",
+)
+@click.option(
+    "--by-id",
+    required=False,
+    type=int,
+    default=4294967296,  # 2^32
+    help="The name of the log file.",
+)
+def logs(ip_address: str, node_id: str, actor_id: str, log_file: str, by_id: int):
+    def format_print(l):
+        def print_section(name, key):
+            print("-----------")
+            print(name)
+            print("-----------")
+            [print(log) for log in l[key]]
+
+        print_section("Worker Logs (Core)", "core_worker_logs")
+        print_section("Worker Errors (Core)", "worker_errors")
+        print_section("Python Worker Logs", "python_worker_logs")
+        print_section("Raylet Logs", "raylet_logs")
+
     if actor_id:
         print(ray_actor_log(actor_id))
     else:
-        print(ray_log(ip_address, node_id, log_file))
+        format_print(ray_log(ip_address, node_id, log_file))
 
 
 @cli.command(hidden=True)
@@ -1888,13 +1916,15 @@ def log(ip_address: str, node_id: str, actor_id: str, log_file: str):
     required=False,
     type=str,
     default=None,
-    help="The ip address of the log")
+    help="The ip address of the log",
+)
 @click.option(
     "--node-id",
     required=False,
     type=str,
     default=None,
-    help="The unique id of the node.")
+    help="The unique id of the node.",
+)
 def nodes(ip_address, node_id):
     nodes = ray_nodes(node_id, ip_address)
     for node in nodes:
@@ -1911,9 +1941,11 @@ def nodes(ip_address, node_id):
     required=False,
     type=str,
     default=None,
-    help="The ip address of the log")
+    help="The ip address of the log",
+)
 def actors(actor_id):
     from pprint import pprint
+
     pprint(ray_actors(actor_id))
 
 
@@ -2324,7 +2356,7 @@ cli.add_command(global_gc)
 cli.add_command(timeline)
 cli.add_command(install_nightly)
 cli.add_command(cpp)
-cli.add_command(log)
+cli.add_command(logs)
 cli.add_command(nodes)
 cli.add_command(actors)
 add_command_alias(job_cli_group, name="job", hidden=True)

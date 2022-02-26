@@ -221,7 +221,7 @@ def free(object_refs, local_only=False):
 
 
 def _get_dashboard_url():
-    gcs_addr = services.get_ray_address_to_use_or_die()
+    gcs_addr = services.get_ray_address_from_environment()
     dashboard_addr = services.get_dashboard_url(gcs_addr)
     if not dashboard_addr:
         return f"Cannot find the dashboard of the cluster of address {gcs_addr}."
@@ -239,25 +239,31 @@ def _get_dashboard_url():
 
 def ray_nodes(node_id: str, node_ip: str, debug=False):
     import requests
+
     if node_id and node_ip:
         raise ValueError(
             f"Node id {node_id} and node ip {node_ip} are given at the same time. Please provide only one of them."
         )
-    gcs_addr = services.get_ray_address_to_use_or_die()
+    gcs_addr = services.get_ray_address_from_environment()
     url = _get_dashboard_url()
     nodes = []
     if node_id:
         nodes.append(
-            json.loads(
-                requests.get(f"{url}/nodes/{node_id}").text)["data"]["detail"])
+            json.loads(requests.get(f"{url}/nodes/{node_id}").text)["data"]["detail"]
+        )
     else:
-        nodes = json.loads(
-            requests.get(f"{url}/nodes?view=details").text)["data"]["clients"]
+        nodes = json.loads(requests.get(f"{url}/nodes?view=details").text)["data"][
+            "clients"
+        ]
     parsed_node_info = []
     state = GlobalState()
-    state._initialize_global_state(
-        GcsClientOptions.from_redis_address(
-            gcs_addr, ray_constants.REDIS_DEFAULT_PASSWORD))
+    if use_gcs_for_bootstrap():
+        options = GcsClientOptions.from_gcs_address(gcs_addr)
+    else:
+        options = GcsClientOptions.from_redis_address(
+            gcs_addr, ray_constants.REDIS_DEFAULT_PASSWORD
+        )
+    state._initialize_global_state(options)
     resources = state._available_resources_per_node()
     for node in nodes:
         info = {
@@ -265,7 +271,7 @@ def ray_nodes(node_id: str, node_ip: str, debug=False):
             "ip": node["ip"],
             "state": node["raylet"]["state"],
             "available_resources": resources[node["raylet"]["nodeId"]],
-            "top_10_process_mem_usage": node["top10ProcMemUsage"]
+            "top_10_process_mem_usage": node["top10ProcMemUsage"],
         }
         if debug:
             info["logUrl"] = node["logUrl"]
@@ -283,58 +289,68 @@ def ray_nodes(node_id: str, node_ip: str, debug=False):
 
 def ray_actors(actor_id: str):
     import requests
+
     url = _get_dashboard_url()
-    result = json.loads(
-        requests.get(f"{url}/logical/actors").text)["data"]["actors"]
+    result = json.loads(requests.get(f"{url}/logical/actors").text)["data"]["actors"]
     if actor_id:
         result = {actor_id: result[actor_id]}
     # Parsing.
     output = {}
     for actor_id, data in result.items():
+        func_desc = data["taskSpec"]["functionDescriptor"]
         actor_info = {}
-        actor_info["class_name"] = data["className"]
+        actor_info["class_name"] = func_desc[next(iter(func_desc))]["className"]
         actor_info["actor_id"] = data["actorId"]
         actor_info["node_id"] = data["address"]["rayletId"]
         actor_info["job_id"] = data["jobId"]
         actor_info["name"] = data["name"]
-        actor_info["namespace"] = data["rayNamespace"]
+        # actor_info["namespace"] = data["rayNamespace"]
         actor_info["pid"] = data["pid"]
         actor_info["ip"] = data["address"]["ipAddress"]
-        actor_info["resource_req"] = data["resourceMapping"]
+        # actor_info["resource_req"] = data["resourceMapping"]
         actor_info["state"] = data["state"]
         output[actor_id] = actor_info
     return output
 
 
-def ray_log(ip_address: str, node_id: str, component: str, limit: int = 100):
+def ray_log(
+    ip_address: str,
+    node_id: str,
+    component: str,
+    limit: int = 100,
+    log_id: int = 4294967296,  # 2^32
+):
     """Return the `limit` number of lines of logs."""
     import requests
+
     log_url = ray_nodes(node_id, ip_address, debug=True)[0]["logUrl"]
     dashboard_url = _get_dashboard_url()
     if not ip_address:
         ip_address = dashboard_url
     if not component:
         component = ""
-    log_html = requests.get(
-        f"{dashboard_url}/log_proxy?url={log_url}/{component}").text
+    log_html = requests.get(f"{dashboard_url}/log_proxy?url={log_url}/{component}").text
 
-    # Parse HTML.
-    from html.parser import HTMLParser
+    def get_link(s):
+        s = s[len('<li><a href="/logs/') :]
+        path = s[: s.find('"')]
+        s = f"{log_url}/{path}"
+        return s
 
-    class MyHTMLParser(HTMLParser):
-        def __init__(self):
-            super().__init__()
-            self.data = []
-
-        def handle_data(self, data):
-            self.data.append(data)
-
-        def emit(self):
-            return "".join(self.data)
-
-    parser = MyHTMLParser()
-    parser.feed(log_html)
-    logs = parser.emit()
+    logs = {}
+    filtered = list(filter(lambda s: '<li><a href="/logs/' in s, log_html.splitlines()))
+    links = list(map(get_link, filtered))
+    logs["worker_errors"] = list(
+        filter(lambda s: "worker" in s and s.endswith(".err"), links)
+    )
+    logs["core_worker_logs"] = list(
+        filter(lambda s: "worker" in s and s.endswith(".out"), links)
+    )
+    logs["python_worker_logs"] = list(
+        filter(lambda s: "python" in s and s.endswith(".log"), links)
+    )
+    logs["raylet_logs"] = list(filter(lambda s: "raylet" in s, links))
+    # print(logs)
     return logs
 
 
@@ -353,5 +369,11 @@ def ray_actor_log(actor_id):
                 system_log = file_name
     out_log = ray_log(None, node_id, output_log)
     err_log = ray_log(None, node_id, error_log)
+    system_log = ray_log(None, node_id, system_log)
+    return f"stdout\n {out_log}\n\nstderr\n{err_log}"
+    system_log = ray_log(None, node_id, system_log)
+    return f"stdout\n {out_log}\n\nstderr\n{err_log}"
+    system_log = ray_log(None, node_id, system_log)
+    return f"stdout\n {out_log}\n\nstderr\n{err_log}"
     system_log = ray_log(None, node_id, system_log)
     return f"stdout\n {out_log}\n\nstderr\n{err_log}"
