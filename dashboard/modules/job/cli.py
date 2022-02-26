@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import pprint
 from subprocess import list2cmdline
 import time
 from typing import Optional, Tuple
@@ -310,3 +311,26 @@ def job_logs(address: Optional[str], job_id: str, follow: bool):
             )
     else:
         print(client.get_job_logs(job_id), end="")
+
+
+@job_cli_group.command("list", help="List all jobs together with their info.")
+@click.option(
+    "--address",
+    type=str,
+    default=None,
+    required=False,
+    help=(
+        "Address of the Ray cluster to connect to. Can also be specified "
+        "using the RAY_ADDRESS environment variable."
+    ),
+)
+@add_click_logging_options
+def list_jobs(address: Optional[str]):
+    """Lists all running jobs and their information.
+
+    Example:
+        >>> ray job list
+    """
+    client = _get_sdk_client(address)
+    # cli_logger.
+    print(pprint.pformat(client.list_jobs()))
