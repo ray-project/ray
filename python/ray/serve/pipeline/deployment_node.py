@@ -20,6 +20,20 @@ class DeploymentNode(DAGNode):
         ray_actor_options: Dict[str, Any],
         other_args_to_resolve: Optional[Dict[str, Any]] = None,
     ):
+        # Assign instance variables in base class constructor.
+        super().__init__(
+            deployment_init_args,
+            deployment_init_kwargs,
+            ray_actor_options,
+            other_args_to_resolve=other_args_to_resolve,
+        )
+        if self._contains_input_node():
+            raise ValueError(
+                "InputNode handles user dynamic input the the DAG, and "
+                "cannot be used as args, kwargs, or other_args_to_resolve "
+                "in the DeploymentNode constructor because it is not available "
+                "at class construction or binding time."
+            )
         # Deployment can be passed into other DAGNodes as init args. This is
         # supported pattern in ray DAG that user can instantiate and pass class
         # instances as init args to others.
@@ -52,23 +66,9 @@ class DeploymentNode(DAGNode):
             ray_actor_options=ray_actor_options,
             _internal=True,
         )
-        super().__init__(
-            deployment_init_args,
-            deployment_init_kwargs,
-            ray_actor_options,
-            other_args_to_resolve=other_args_to_resolve,
-        )
         self._deployment_handle: Union[
             RayServeHandle, RayServeSyncHandle
         ] = self._get_serve_deployment_handle(self._deployment, other_args_to_resolve)
-
-        if self._contains_input_node():
-            raise ValueError(
-                "InputNode handles user dynamic input the the DAG, and "
-                "cannot be used as args, kwargs, or other_args_to_resolve "
-                "in the DeploymentNode constructor because it is not available "
-                "at class construction or binding time."
-            )
 
     def _copy_impl(
         self,
