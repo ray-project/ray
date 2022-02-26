@@ -861,7 +861,7 @@ def check_same_batch(batch1, batch2) -> None:
     """Check if both batches are (almost) identical.
 
     For MultiAgentBatches, the step count and individual policy's
-    SampleBatches  are checked for identity. For SampleBatches, identity is
+    SampleBatches are checked for identity. For SampleBatches, identity is
     checked as the almost numerical key-value-pair identity between batches
     with ray.rllib.utils.test_utils.check().
 

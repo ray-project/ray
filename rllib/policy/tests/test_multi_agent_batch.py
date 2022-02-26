@@ -154,9 +154,6 @@ class TestMultiAgentBatch(unittest.TestCase):
             }, 1),
         ])]
 
-    def test_concat_samples(self):
-        pass
-
 
 if __name__ == "__main__":
     import pytest
