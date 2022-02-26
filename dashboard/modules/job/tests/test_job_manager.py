@@ -135,6 +135,38 @@ async def test_pass_job_id(job_manager):
 
 
 @pytest.mark.asyncio
+async def test_list_jobs_empty(job_manager: JobManager):
+    assert job_manager.list_jobs() == dict()
+
+
+@pytest.mark.asyncio
+async def test_list_jobs(job_manager: JobManager):
+    job_manager.submit_job(entrypoint="echo hi", job_id="1")
+
+    runtime_env = {"env_vars": {"TEST": "123"}}
+    metadata = {"foo": "bar"}
+    job_manager.submit_job(
+        entrypoint="echo hello", job_id="2", runtime_env=runtime_env, metadata=metadata
+    )
+    await async_wait_for_condition(
+        check_job_succeeded, job_manager=job_manager, job_id="1"
+    )
+    await async_wait_for_condition(
+        check_job_succeeded, job_manager=job_manager, job_id="2"
+    )
+    jobs_info = job_manager.list_jobs()
+    assert "1" in jobs_info
+    assert jobs_info["1"].status == JobStatus.SUCCEEDED
+
+    assert "2" in jobs_info
+    assert jobs_info["2"].status == JobStatus.SUCCEEDED
+    assert jobs_info["2"].message is not None
+    assert jobs_info["2"].end_time >= jobs_info["2"].start_time
+    assert jobs_info["2"].runtime_env == runtime_env
+    assert jobs_info["2"].metadata == metadata
+
+
+@pytest.mark.asyncio
 class TestShellScriptExecution:
     async def test_submit_basic_echo(self, job_manager):
         job_id = job_manager.submit_job(entrypoint="echo hello")
