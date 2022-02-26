@@ -13,6 +13,8 @@ serde = "1.0.132"
 tokio = { version = "1.16.1", features = ["sync", "time", "macros"] }
 #path = "../../../../tokio/tokio",version = "1.16.1",
 tokio-time-sleep = { path = "./tokio-time-sleep" }
+futures = "0.3.21"
+async-std = "1.10.0"
 
 [build-dependencies]
 rustc_version = "0.4.0"

@@ -1,7 +1,12 @@
 #[cfg(test)]
 mod test {
     use actor::*;
-    use ray_rs::{get, get_async, load_libraries_from_paths, rust_worker_execute, *};
+    use ray_rs::{
+        get, get_async,
+        load_libraries_from_paths,
+        rust_worker_execute,
+        *,
+    };
     use std::sync::Mutex;
 
     // Move this into test utils?
@@ -18,12 +23,12 @@ mod test {
             let env_var = std::env::var("RAY_RUST_LIBRARY_PATHS").unwrap();
             let mut args = vec![
                 CString::new("").unwrap(),
-                CString::new("--code_search_path=").unwrap(),
+                CString::new("--ray_code_search_path=").unwrap(),
             ];
 
-            if env_var.starts_with("--code_search_path=") {
+            if env_var.starts_with("--ray_code_search_path=") {
                 args[1] = CString::new(env_var.clone()).unwrap();
-                let (_, path_str) = env_var.split_at("--code_search_path=".len());
+                let (_, path_str) = env_var.split_at("--ray_code_search_path=".len());
                 let paths = path_str.split(":").collect::<Vec<&str>>();
                 println!("{:?}", paths);
                 load_libraries_from_paths(&paths);
@@ -140,93 +145,93 @@ mod test {
     //     try_shutdown();
     // }
 
-    #[tokio::test]
-    async fn test_append_string_tokio_get_async() {
-        try_init();
-        {
-            // Remote async with more than one thread requires
-            let handle = new_string_tokio.remote_async(String::from("Hello"));
-
-            let now = std::time::Instant::now();
-            // Next step: define tasks with closures etc...
-            let mut obj_refs: Vec<_> = (0..1)//100_000)
-                .map(|i| append_tokio.remote(&handle, format!(" World X {}", i)))
-                .collect();
-
-            let futs = obj_refs.iter().map(|obj_ref| {
-                get_async(&obj_ref)
-            });
-
-            let id = append_tokio.remote(&handle, format!(" World X {}", "MAX"));
-            let fut = get_async(&id);
-            println!(
-                "trying to get: {:?}. [{} ms elapsed so far]",
-                id,
-                now.elapsed().as_millis()
-            );
-
-            let results = futures::future::join_all(futs).await;
-
-            println!("{:?}", results);
-            println!("{:?} {:?}", fut.await, now.elapsed().as_millis());
-        }
-        try_shutdown();
-    }
-
     // #[tokio::test]
-    // async fn test_multi_append_string_tokio_get_async() {
+    // async fn test_append_string_tokio_get_async() {
     //     try_init();
     //     {
-    //         const NUM_HANDLES: usize = 175;
-    //         const NUM_JOBS_PER_HANDLE: usize = 10;
+    //         // Remote async with more than one thread requires
+    //         let handle = new_string_tokio.remote_async(String::from("Hello"));
     //
-    //         let local = tokio::task::LocalSet::new();
-    //         local.run_until(async move {
-    //             // Remote async with more than one thread requires
-    //             let now = std::time::Instant::now();
-    //             let handles = (0..NUM_HANDLES)
-    //                 .map(|_| new_string_tokio.remote_async(String::from("Hello")))
-    //                 .collect::<Vec<_>>();
-    //             // this is safe as we join all the task handles at the end
-    //             let handles_static: &'static Vec<ActorID> = unsafe { std::mem::transmute(&handles) };
+    //         let now = std::time::Instant::now();
+    //         // Next step: define tasks with closures etc...
+    //         let mut obj_refs: Vec<_> = (0..10_000)//100_000)
+    //             .map(|i| append_tokio.remote(&handle, format!(" World X {}", i)))
+    //             .collect();
     //
-    //             // on a single thread: schedule a bunch of sequentially dependent tasks concurrently
-    //             let spawn_handles = handles_static.iter().enumerate().map(|(i, h)| {
-    //                 tokio::task::spawn_local(async move {
-    //                     print!("[running job id {} : 0th iter] ", i);
-    //                     let obj_fut = append_tokio.remote(&h, format!(":{}:", i));
-    //                     let mut prev_result = get_async(&obj_fut).await;
+    //         let futs = obj_refs.iter().map(|obj_ref| {
+    //             get_async(&obj_ref)
+    //         });
     //
-    //                     for j in 1..NUM_JOBS_PER_HANDLE {
-    //                         print!("[running job id {} : {}th iter] ", i, j);
-    //                         let mut obj_fut = append_tokio.remote(&h, String::from("=>"));
-    //                         for k in 0..100 {
-    //                             let obj_fut = append_tokio.remote(
-    //                                 &h,
-    //                                 format!(":{}:",
-    //                                     prev_result.len() - std::cmp::min(prev_result.len(), k)
-    //                                 )
-    //                             );
-    //                         }
-    //                         prev_result = get_async(&obj_fut).await;
-    //                     }
+    //         let id = append_tokio.remote(&handle, format!(" World X {}", "MAX"));
+    //         let fut = get_async(&id);
+    //         println!(
+    //             "trying to get: {:?}. [{} ms elapsed so far]",
+    //             id,
+    //             now.elapsed().as_millis()
+    //         );
     //
-    //                     println!("Final String for {}: {}", i, prev_result);
-    //                 })
-    //             });
+    //         let results = futures::future::join_all(futs).await;
     //
-    //             println!(
-    //                 "[{} ms elapsed so far]",
-    //                 now.elapsed().as_millis()
-    //             );
-    //
-    //             futures::future::join_all(spawn_handles).await;
-    //             println!(
-    //                 "[total time elapsed: {} ms]",
-    //                 now.elapsed().as_millis()
-    //             );
-    //         }).await;
+    //         println!("{:?}", results);
+    //         println!("{:?} {:?}", fut.await, now.elapsed().as_millis());
     //     }
     //     try_shutdown();
     // }
+
+    #[tokio::test]
+    async fn test_multi_append_string_tokio_get_async() {
+        try_init();
+        {
+            const NUM_HANDLES: usize = 175;
+            const NUM_JOBS_PER_HANDLE: usize = 10;
+
+            let local = tokio::task::LocalSet::new();
+            local.run_until(async move {
+                // Remote async with more than one thread requires
+                let now = std::time::Instant::now();
+                let handles = (0..NUM_HANDLES)
+                    .map(|_| new_string_tokio.remote_async(String::from("Hello")))
+                    .collect::<Vec<_>>();
+                // this is safe as we join all the task handles at the end
+                let handles_static: &'static Vec<ActorID> = unsafe { std::mem::transmute(&handles) };
+
+                // on a single thread: schedule a bunch of sequentially dependent tasks concurrently
+                let spawn_handles = handles_static.iter().enumerate().map(|(i, h)| {
+                    tokio::task::spawn_local(async move {
+                        print!("[running job id {} : 0th iter] ", i);
+                        let obj_fut = append_tokio.remote(&h, format!(":{}:", i));
+                        let mut prev_result = get_async(&obj_fut).await;
+
+                        for j in 1..NUM_JOBS_PER_HANDLE {
+                            print!("[running job id {} : {}th iter] ", i, j);
+                            let mut obj_fut = append_tokio.remote(&h, String::from("=>"));
+                            for k in 0..100 {
+                                let obj_fut = append_tokio.remote(
+                                    &h,
+                                    format!(":{}:",
+                                        prev_result.len() - std::cmp::min(prev_result.len(), k)
+                                    )
+                                );
+                            }
+                            prev_result = get_async(&obj_fut).await;
+                        }
+
+                        println!("Final String for {}: {}", i, prev_result);
+                    })
+                });
+
+                println!(
+                    "[{} ms elapsed so far]",
+                    now.elapsed().as_millis()
+                );
+
+                futures::future::join_all(spawn_handles).await;
+                println!(
+                    "[total time elapsed: {} ms]",
+                    now.elapsed().as_millis()
+                );
+            }).await;
+        }
+        try_shutdown();
+    }
 }

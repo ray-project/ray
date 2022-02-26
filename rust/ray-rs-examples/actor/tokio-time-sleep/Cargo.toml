@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 tokio = { version = "1.16.1", features = ["rt", "time"] }
 #path = "../../../../../tokio/tokio",version = "1.16.1"
+async-std = "1.10.0"

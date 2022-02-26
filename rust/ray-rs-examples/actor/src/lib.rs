@@ -75,7 +75,8 @@ remote_actor! {
 pub async fn append_tokio(s: &mut AsyncMutex<String>, tail: String) -> String {
     let nested_sleep = tokio_time_sleep::sleep(500);
 
-    let local_sleep = tokio::time::sleep(std::time::Duration::from_millis(500));
+    let local_sleep = async_std::task::sleep(std::time::Duration::from_millis(500));
+    // let local_sleep = tokio::time::sleep(std::time::Duration::from_millis(500));
 
     tokio::join!(nested_sleep, local_sleep);
 
