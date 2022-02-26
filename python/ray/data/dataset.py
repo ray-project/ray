@@ -2659,6 +2659,7 @@ Dict[str, List[str]]]): The names of the columns
                     self._splits = blocks.split(split_size=blocks_per_window)
                 try:
                     sizes = [s.size_bytes() for s in self._splits]
+                    assert [s > 0 for s in sizes], sizes
 
                     def fmt(size_bytes):
                         if size_bytes > 10 * 1024:
