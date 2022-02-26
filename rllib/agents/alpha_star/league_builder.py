@@ -170,7 +170,8 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
         else:
             hist_stats = result["hist_stats"]
 
-        TODO: add example on how to use callable here, instead of updating policies_to_train via this simple set.
+        # TODO: Add example on how to use callable here, instead of updating
+        #  policies_to_train via this simple set.
         trainable_policies = local_worker.get_policies_to_train()
         non_trainable_policies = (
             set(local_worker.policy_map.keys()) - trainable_policies
