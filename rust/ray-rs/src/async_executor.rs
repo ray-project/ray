@@ -22,7 +22,6 @@ lazy_static! {
 
 static UUID: AtomicU64 = AtomicU64::new(0);
 
-#[cfg(feature = "async")]
 thread_local! {
     static LOCAL_TOKIO_GUARD: RefCell<Option<TokioHandleGuard<'static>>> = RefCell::new(None)
 }
@@ -78,6 +77,7 @@ thread_local! {
     eprintln!("TOKIO_HANDLES: {:?}", &TOKIO_HANDLES.read().unwrap());
     LOCAL_TOKIO_GUARD.with(|g| eprintln!("LOCAL_TOKIO_GUARD: {:?}", g));
 }
+
 
 #[derive(Clone)]
 pub struct TokioDylibContext<'a> {
@@ -191,7 +191,6 @@ impl<'a> TokioDylibContext<'a> {
 }
 
 
-#[cfg(feature = "async")]
 lazy_static! {
     pub(crate) static ref ASYNC_RUNTIME_SENDER:
         Mutex<Option<UnboundedSender<(TaskData, Arc<FiberEvent>)>>> = Mutex::new(None);
@@ -199,7 +198,6 @@ lazy_static! {
 
 // Refactor this to perform rt.spawn (to multi-threaded)
 // in the boost.asio fiber/thread
-#[cfg(feature = "async")]
 pub(crate) fn handle_async_startup() {
     let mut guard = ASYNC_RUNTIME_SENDER.lock().unwrap();
 
