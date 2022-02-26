@@ -40,7 +40,7 @@ def train_epoch(dataloader, model, loss_fn, optimizer):
         optimizer.step()
 
 
-def validate_epoch(dataloader, model, loss_fn):
+def validate_epoch(epoch, dataloader, model, loss_fn):
     num_batches = len(dataloader)
     model.eval()
     loss = 0
@@ -51,6 +51,8 @@ def validate_epoch(dataloader, model, loss_fn):
     loss /= num_batches
 
     result = {
+        "worker_idx": train.world_rank(),
+        "epoch": epoch,
         "loss": loss,
         "batch_size": num_batches,
     }
@@ -82,9 +84,9 @@ def train_func(config):
 
     results = []
 
-    for _ in range(epochs):
+    for i in range(epochs):
         train_epoch(train_loader, model, loss_fn, optimizer)
-        result = validate_epoch(validation_loader, model, loss_fn)
+        result = validate_epoch(i, validation_loader, model, loss_fn)
         train.report(**result)
         results.append(result)
 
@@ -98,12 +100,17 @@ def train_linear(num_workers=2, use_gpu=False, epochs=3):
     results = trainer.run(
         train_func,
         config,
-        results_preprocessors=[
-            AverageResultsPreprocessor(),
-            MaxResultsPreprocessor(["time", "loss"]),
-            WeightedAverageResultsPreprocessor(["loss"], "batch_size"),
+        callbacks=[
+            PrintCallback(
+                results_preprocessors=[
+                    AverageResultsPreprocessor(["loss", "batch_size"]),
+                    MaxResultsPreprocessor(["time", "loss"]),
+                    WeightedAverageResultsPreprocessor(["loss"], "batch_size"),
+                ]
+            ),
+            JsonLoggerCallback(),
+            TBXLoggerCallback(),
         ],
-        callbacks=[JsonLoggerCallback(), TBXLoggerCallback(), PrintCallback()],
     )
     trainer.shutdown()
 

@@ -12,6 +12,7 @@ from ray.train.callbacks.results_preprocessors.aggregate_fn import (
     VALID_AGGREGATE_TYPES,
     _get_values_from_results,
 )
+from ray.train.utils import ResultsList
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,8 @@ class AggregateResultsPreprocessor(ResultsPreprocessor):
                 specified in `keys` will be averaged according by `aggregation_fn`.
                 Non-numerical values will be ignored.
         Returns:
-            A updated list of results.
+            A ResultsList (a subclass of Python list) instance. The aggregated
+            results is stored as the property `aggregated_results`.
         """
         results = [] if results is None else results
         if len(results) == 0:
@@ -68,8 +70,10 @@ class AggregateResultsPreprocessor(ResultsPreprocessor):
                 values
             )
 
-        for result in results:
-            result.update(aggregated_results)
+        if not isinstance(results, ResultsList):
+            results = ResultsList(results)
+
+        results.update_aggregated_results(aggregated_results)
 
         return results
 

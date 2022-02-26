@@ -279,9 +279,6 @@ class Trainer:
                 This can either take in no arguments or a ``config`` dict.
             config (Optional[Dict]): Configurations to pass into
                 ``train_func``. If None then an empty Dict will be created.
-            results_preprocessors (Optional[List[ResultsPreprocessor]]): A list of
-                Preprocessors which will be called before results passed to
-                callbacks. Currently there are NO default ResultsPreprocessors.
             callbacks (Optional[List[TrainingCallback]]): A list of Callbacks
                 which will be executed during training. If this is not set,
                 currently there are NO default Callbacks.
@@ -315,9 +312,6 @@ class Trainer:
 
         # TODO(matt): Set default callbacks.
         callbacks = [] if callbacks is None else callbacks
-        results_preprocessors = (
-            [] if results_preprocessors is None else results_preprocessors
-        )
         finished_with_errors = False
 
         for callback in callbacks:
@@ -339,10 +333,6 @@ class Trainer:
                 run_dir=self.latest_run_dir,
             )
             for intermediate_result in iterator:
-                for results_preprocessor in results_preprocessors:
-                    intermediate_result = results_preprocessor.preprocess(
-                        intermediate_result
-                    )
                 for callback in callbacks:
                     callback.process_results(intermediate_result)
 

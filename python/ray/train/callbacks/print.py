@@ -2,6 +2,11 @@ import json
 from typing import Dict, List
 
 from ray.train.callbacks import TrainingCallback
+from ray.train.callbacks.results_preprocessors import ResultsPreprocessor
+from ray.train.callbacks.results_preprocessors.preprocessor import (
+    SequentialResultsPreprocessor,
+)
+from ray.train.utils import ResultsList
 
 
 class PrintCallback(TrainingCallback):
@@ -52,6 +57,9 @@ class PrintCallback(TrainingCallback):
         ]
     """
 
+    def __init__(self, results_preprocessors=List[ResultsPreprocessor]):
+        self.results_preprocessor = SequentialResultsPreprocessor(results_preprocessors)
+
     def handle_result(self, results: List[Dict], **info):
         """Prints results to STDOUT.
 
@@ -61,4 +69,10 @@ class PrintCallback(TrainingCallback):
                 the training function from each worker.
             **info: kwargs dict for forward compatibility.
         """
-        print(json.dumps(results, indent=4))
+
+        output = list(results)
+
+        if isinstance(results, ResultsList):
+            output.append(results.aggregated_results)
+
+        print(json.dumps(output, indent=4))
