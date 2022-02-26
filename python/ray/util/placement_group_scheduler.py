@@ -5,10 +5,23 @@ import ray
 import time
 import random
 
+import sqlite3
+import os
+import pathlib
+import pickle
+
+'''
+PG_TABLE (which will just be a subset of columns in jobs table):
+    PG_ID INT (could use job id instead with slight modification)
+    PENDING_PG [PICKLE_TYPE]
+    PG_RANK INT [ADD BTREE]
+'''
+
 class PendingPlacementGroup:
 
     '''
-    Stores a placement group that 
+    Stores a pending placement group that can be turned into actual placement group with the
+    start function
     '''
 
     def __init__(self, 
@@ -16,79 +29,89 @@ class PendingPlacementGroup:
         strategy: str = "PACK",
         name: str = "",
         lifetime=None):
+        self.id = random.getrandbits(32)
         self.bundles = bundles
         self.strategy = strategy
         self.name = name
         self.lifetime = lifetime
     
     def start(self):
+        '''
+        If someone desires to manually schedule their pg, they can just run start by themselves instead of using the wait function
+        '''
         pg = ray_util.placement_group(bundles=self.bundles, strategy=self.strategy, name = self.name, lifetime = self.lifetime)
         return pg
 
-@ray.remote
-class PlacementGroupQueue:
-
-    '''
-    A remote object to store a shared queue of pending placement groups.
-
-    Right now rank is implemented so that it is FIFO queue, but it can be modified
-    for any use.
-    '''
-    
-    def __init__(self):
-        self.pending_list = {}
-
-    def add(self, pendingPlacementGroup, rank = None):
-        if rank == None:
-            rank = int(time.time() * 10000)
-        pg_id = random.getrandbits(64)
-        self.pending_list[pg_id] = (rank, pendingPlacementGroup)
-        return pg_id
-
-    def min_rank_id(self):
-        criteria = lambda t: self.pending_list[t][0]
-        return min(self.pending_list, key = criteria)
-    
-    def get(self, pg_id):
-        return self.pending_list[pg_id][1]
-
-    def remove(self, pg_id):
-        self.pending_list.pop(pg_id)
-
-    
 class PlacementGroupScheduler:
-
-    '''
-    A client library to handle staging and acquiring resources from a placement group.
-    '''
-
     def __init__(self):
-        self.queue = PlacementGroupQueue.remote()
+        _DB_PATH = os.path.expanduser('~/.sky/jobs.db')
+        os.makedirs(pathlib.Path(_DB_PATH).parents[0], exist_ok=True)
 
-    def stage_placement_group(self, 
-        bundles: List[Dict[str, float]],
+        self._CONN = sqlite3.connect(_DB_PATH)
+        self._CURSOR = self._CONN.cursor()
+
+        # CREATE TABLE
+        try:
+            self._CURSOR.execute('SELECT * FROM pg_table LIMIT 0')
+        except sqlite3.OperationalError:
+            # Tables do not exist, create them.
+            self._CURSOR.execute(""" CREATE TABLE pg_table( \
+                pg_id INTEGER,
+                pending_placement_group TEXT,
+                pg_rank INTEGER
+            )""")
+
+    def resource_requirement(self, bundles: List[Dict[str, float]],
         strategy: str = "PACK",
         name: str = "",
         lifetime=None):
 
-        pending_placment_group = PendingPlacementGroup(bundles, strategy, name, lifetime)
-        return ray.get(self.queue.add.remote(pending_placment_group))
+        pending_pg = PendingPlacementGroup(bundles, strategy, name, lifetime)
+        return pending_pg
+    
+    def wait(self, pending_pg, timeout = 1):
+        # NOTE: Currently this scheduler runs FIFO order based on when wait is called on the pg instead of
+        # when the pg is created
+        rank = int(time.time() * 10000)
+        self._add_placement_group(pending_pg, rank)
 
-    def get(self, pg_id):
-
-        min_id = ray.get(self.queue.min_rank_id.remote())
-        while pg_id != min_id:
-            min_id = ray.get(self.queue.min_rank_id.remote())
-            time.sleep(1)
+        while self._query_min_rank_ID() != pending_pg.id:
+            time.sleep(timeout)
         
-        pendingPlacementGroup = ray.get(self.queue.get.remote(pg_id))
-
-        pg = pendingPlacementGroup.start()
+        pg = pending_pg.start()
         ray.get(pg.ready())
-
+        self._remove_placement_group(pending_pg)
         return pg
 
-    def remove(self, pg, pg_id):
+    def remove(self, pending_pg, pg):
         ray_util.remove_placement_group(pg)
-        self.queue.remove.remote(pg_id)
-        pass
+
+    def _add_placement_group(self, pg, rank):
+        # SQL query to add placement group to queue
+        self._CURSOR.execute('INSERT INTO pg_table VALUES (?,?,?)', (pg.id, pickle.dumps(pg),rank))
+        self._CONN.commit()
+
+    def _query_min_rank_ID(self, ):
+        # SQL query for placement group with min pg_rank
+        query = self._CURSOR.execute("SELECT pg_id FROM pg_table WHERE pg_rank = (SELECT min(pg_rank) FROM pg_table)")
+        for row in query: return row[0]
+
+    def clear_queue(self, ):
+        # SQL query to clear all pending placement_groups
+        query = self._CURSOR.execute("DELETE FROM pg_table WHERE true")
+        self._CONN.commit()
+
+    def _remove_placement_group(self, pg):
+        # SQL query to remove placement_group when completed 
+        # NOTE: Alternative could be to set the rank very high i.e if we want to maintain the job in the table
+        query = self._CURSOR.execute(f"DELETE FROM pg_table WHERE pg_id = {pg.id}")
+        self._CONN.commit()
+
+
+'''
+Edge cases:
+    1.  if a placement group is scheduled (added to the database) but the program is exited before ray.get is called
+        on pg.ready(), since there is no premption, the rest of the placement groups scheduled later will stall
+        -> Solution: 
+    2. 
+'''
