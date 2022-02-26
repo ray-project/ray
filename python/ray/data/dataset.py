@@ -2560,7 +2560,7 @@ Dict[str, List[str]]]): The names of the columns
     def window(
         self,
         *,
-        blocks_per_window: Optional[int] = 10,
+        blocks_per_window: Optional[int] = None,
         bytes_per_window: Optional[int] = None,
     ) -> "DatasetPipeline[T]":
         """Convert this into a DatasetPipeline by windowing over data blocks.
@@ -2610,9 +2610,16 @@ Dict[str, List[str]]]): The names of the columns
                 disables pipelining.
             bytes_per_window: Specify the window size in bytes instead of blocks.
                 This will be treated as an upper bound for the window size, but each
-                window will still include at least one block.
+                window will still include at least one block. This is mutually
+                exclusive with ``blocks_per_window``.
         """
         from ray.data.dataset_pipeline import DatasetPipeline
+
+        if blocks_per_window is not None and bytes_per_window is not None:
+            raise ValueError("Only one windowing scheme can be specified.")
+
+        if blocks_per_window is None:
+            blocks_per_window = 10
 
         # If optimizations are enabled, rewrite the read stage into a OneToOneStage
         # to enable fusion with downstream map stages.
