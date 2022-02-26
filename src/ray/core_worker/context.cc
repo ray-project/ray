@@ -16,6 +16,8 @@
 
 #include <google/protobuf/util/json_util.h>
 
+#include "ray/common/runtime_env_common.h"
+
 namespace ray {
 namespace core {
 
@@ -211,7 +213,7 @@ const std::string &WorkerContext::GetCurrentSerializedRuntimeEnv() const {
   return runtime_env_info_.serialized_runtime_env();
 }
 
-std::shared_ptr<rpc::RuntimeEnv> WorkerContext::GetCurrentRuntimeEnv() const {
+std::shared_ptr<const rpc::RuntimeEnv> WorkerContext::GetCurrentRuntimeEnv() const {
   absl::ReaderMutexLock lock(&mutex_);
   return runtime_env_;
 }
@@ -256,7 +258,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     // only set runtime_env_ once and then RAY_CHECK that we
     // never see a new one.
     runtime_env_info_ = task_spec.RuntimeEnvInfo();
-    if (!runtime_env_info_.serialized_runtime_env().empty()) {
+    if (!IsRuntimeEnvEmpty(runtime_env_info_.serialized_runtime_env())) {
       runtime_env_.reset(new rpc::RuntimeEnv());
       RAY_CHECK(google::protobuf::util::JsonStringToMessage(
                     runtime_env_info_.serialized_runtime_env(), runtime_env_.get())

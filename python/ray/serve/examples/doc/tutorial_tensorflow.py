@@ -1,4 +1,4 @@
-# yapf: disable
+# fmt: off
 import ray
 # __doc_import_begin__
 from ray import serve
@@ -8,7 +8,7 @@ import tempfile
 import numpy as np
 import requests
 # __doc_import_end__
-# yapf: enable
+# fmt: on
 
 # __doc_train_model_begin__
 TRAINED_MODEL_PATH = os.path.join(tempfile.gettempdir(), "mnist_model.h5")

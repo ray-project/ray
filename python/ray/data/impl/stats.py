@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from typing import List, Optional, Dict, Set, Tuple, Union
+from typing import List, Optional, Set, Dict, Tuple, Union
 import time
 import collections
 import numpy as np
@@ -54,8 +54,14 @@ class _DatasetStatsBuilder:
     def build_multistage(
         self, stages: Dict[str, List[BlockMetadata]]
     ) -> "DatasetStats":
+        stage_infos = {}
+        for i, (k, v) in enumerate(stages.items()):
+            if i == 0:
+                stage_infos[self.stage_name + "_" + k] = v
+            else:
+                stage_infos[self.stage_name.split("->")[-1] + "_" + k] = v
         stats = DatasetStats(
-            stages={self.stage_name + "_" + k: v for k, v in stages.items()},
+            stages=stage_infos,
             parent=self.parent,
         )
         stats.time_total_s = time.perf_counter() - self.start_time
@@ -63,7 +69,8 @@ class _DatasetStatsBuilder:
 
     def build(self, final_blocks: BlockList) -> "DatasetStats":
         stats = DatasetStats(
-            stages={self.stage_name: final_blocks.get_metadata()}, parent=self.parent
+            stages={self.stage_name: final_blocks.get_metadata()},
+            parent=self.parent,
         )
         stats.time_total_s = time.perf_counter() - self.start_time
         return stats
@@ -202,10 +209,12 @@ class DatasetStats:
         out = ""
         if self.parents:
             for p in self.parents:
-                out += p.summary_string(already_printed)
-                out += "\n"
+                parent_sum = p.summary_string(already_printed)
+                if parent_sum:
+                    out += parent_sum
+                    out += "\n"
         first = True
-        for stage_name, metadata in sorted(self.stages.items()):
+        for stage_name, metadata in self.stages.items():
             stage_uuid = self.dataset_uuid + stage_name
             if first:
                 first = False

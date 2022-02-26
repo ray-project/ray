@@ -193,5 +193,7 @@ build:ubsan --linkopt -fno-sanitize-recover=all
 # ci/travis/install-llvm-dependencies.sh
 try-import %workspace%/.llvm-local.bazelrc
 
+test:ci --test_env=RAY_lineage_pinning_enabled=1
+
 # Rust
 # build --@rules_rust//:extra_rustc_flags=-Clink-arg=-fuse-ld=lld

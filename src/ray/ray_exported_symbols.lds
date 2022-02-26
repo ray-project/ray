@@ -24,6 +24,7 @@
 *ray*ObjectReference*
 # Others
 *ray*metrics*
+*opencensus*;
 *ray*stats*
 *ray*rpc*
 *ray*gcs*
@@ -32,5 +33,5 @@
 *PyInit__raylet*
 *Java_io_ray*
 _JNI_On*
-*ray*streaming*
+*ray*internal*
 *c_worker*

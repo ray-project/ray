@@ -1,5 +1,5 @@
 # flake8: noqa
-# yapf: disable
+# fmt: off
 
 # __import_begin__
 from functools import partial

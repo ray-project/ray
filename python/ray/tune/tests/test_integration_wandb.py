@@ -437,6 +437,29 @@ class WandbIntegrationTest(unittest.TestCase):
         self.assertEqual(wrapped.wandb.kwargs["id"], trial.trial_id)
         self.assertEqual(wrapped.wandb.kwargs["name"], trial.trial_name)
 
+    def testWandbMixinRllib(self):
+        """Test compatibility with RLLib configuration dicts"""
+        # Local import to avoid tune dependency on rllib
+        try:
+            from ray.rllib.agents.ppo import PPOTrainer
+        except ImportError:
+            self.skipTest("ray[rllib] not available")
+            return
+
+        class WandbPPOTrainer(_MockWandbTrainableMixin, PPOTrainer):
+            pass
+
+        config = {
+            "env": "CartPole-v0",
+            "wandb": {
+                "project": "test_project",
+                "api_key": "1234",
+            },
+        }
+
+        # Test that trainer object can be initialized
+        WandbPPOTrainer(config)
+
 
 if __name__ == "__main__":
     import pytest

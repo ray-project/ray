@@ -10,7 +10,6 @@ import ray.worker
 from ray.util.annotations import PublicAPI
 from ray.util.placement_group import configure_placement_group_based_on_context
 from ray.util.scheduling_strategies import (
-    DEFAULT_SCHEDULING_STRATEGY,
     PlacementGroupSchedulingStrategy,
     SchedulingStrategyT,
 )
@@ -594,31 +593,49 @@ class ActorClass:
             # runtime_env specified in the @ray.remote decorator.
             new_runtime_env = None
 
+        cls_options = dict(
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            object_store_memory=object_store_memory,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            max_concurrency=max_concurrency,
+            max_restarts=max_restarts,
+            max_task_retries=max_task_retries,
+            name=name,
+            namespace=namespace,
+            lifetime=lifetime,
+            placement_group=placement_group,
+            placement_group_bundle_index=placement_group_bundle_index,
+            placement_group_capture_child_tasks=(placement_group_capture_child_tasks),
+            runtime_env=new_runtime_env,
+            max_pending_calls=max_pending_calls,
+            scheduling_strategy=scheduling_strategy,
+        )
+
         class ActorOptionWrapper:
             def remote(self, *args, **kwargs):
                 return actor_cls._remote(
                     args=args,
                     kwargs=kwargs,
-                    num_cpus=num_cpus,
-                    num_gpus=num_gpus,
-                    memory=memory,
-                    object_store_memory=object_store_memory,
-                    resources=resources,
-                    accelerator_type=accelerator_type,
-                    max_concurrency=max_concurrency,
-                    max_restarts=max_restarts,
-                    max_task_retries=max_task_retries,
-                    name=name,
-                    namespace=namespace,
-                    lifetime=lifetime,
-                    placement_group=placement_group,
-                    placement_group_bundle_index=placement_group_bundle_index,
-                    placement_group_capture_child_tasks=(
-                        placement_group_capture_child_tasks
-                    ),
-                    runtime_env=new_runtime_env,
-                    max_pending_calls=max_pending_calls,
-                    scheduling_strategy=scheduling_strategy,
+                    **cls_options,
+                )
+
+            def _bind(self, *args, **kwargs):
+                """
+                **Experimental**
+
+                For ray DAG building. Implementation and interface subject
+                to changes.
+                """
+                from ray.experimental.dag.class_node import ClassNode
+
+                return ClassNode(
+                    actor_cls.__ray_metadata__.modified_class,
+                    args,
+                    kwargs,
+                    cls_options,
                 )
 
         return ActorOptionWrapper()
@@ -697,8 +714,7 @@ class ActorClass:
                 as its parent. It is False by default.
             runtime_env (Dict[str, Any]): Specifies the runtime environment for
                 this actor or task and its children (see
-                :ref:`runtime-environments` for details).  This API is in beta
-                and may change before becoming stable.
+                :ref:`runtime-environments` for details).
             max_pending_calls (int): Set the max number of pending calls
                 allowed on the actor handle. When this value is exceeded,
                 PendingCallsLimitExceeded will be raised for further tasks.
@@ -926,7 +942,7 @@ class ActorClass:
                     placement_group_capture_child_tasks,
                 )
             else:
-                scheduling_strategy = DEFAULT_SCHEDULING_STRATEGY
+                scheduling_strategy = "DEFAULT"
 
         if runtime_env:
             if isinstance(runtime_env, str):
@@ -992,6 +1008,17 @@ class ActorClass:
         )
 
         return actor_handle
+
+    def _bind(self, *args, **kwargs):
+        """
+        **Experimental**
+
+        For ray DAG building. Implementation and interface subject
+        to changes.
+        """
+        from ray.experimental.dag.class_node import ClassNode
+
+        return ClassNode(self.__ray_metadata__.modified_class, args, kwargs, {})
 
 
 class ActorHandle:

@@ -36,7 +36,7 @@ VERSION_1.0 {
         *init_raylet*;
         *Java*;
         *JNI_*;
-        *ray*streaming*;
+        *ray*internal*;
         *aligned_free*;
         *aligned_malloc*;
         *c_worker*;

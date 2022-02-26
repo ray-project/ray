@@ -22,7 +22,7 @@ CallableClass = type
 
 
 class ComputeStrategy:
-    def apply(self, fn: Any, blocks: BlockList) -> BlockList:
+    def apply(self, fn: Any, blocks: BlockList, clear_input_blocks: bool) -> BlockList:
         raise NotImplementedError
 
 
@@ -59,14 +59,20 @@ def _map_block_nosplit(
 
 
 class TaskPool(ComputeStrategy):
-    def apply(self, fn: Any, remote_args: dict, blocks: BlockList) -> BlockList:
+    def apply(
+        self,
+        fn: Any,
+        remote_args: dict,
+        block_list: BlockList,
+        clear_input_blocks: bool,
+    ) -> BlockList:
         context = DatasetContext.get_current()
 
         # Handle empty datasets.
-        if blocks.initial_num_blocks() == 0:
-            return blocks
+        if block_list.initial_num_blocks() == 0:
+            return block_list
 
-        blocks = blocks.get_blocks_with_metadata()
+        blocks = block_list.get_blocks_with_metadata()
         map_bar = ProgressBar("Map Progress", total=len(blocks))
 
         if context.block_splitting_enabled:
@@ -79,6 +85,11 @@ class TaskPool(ComputeStrategy):
             all_refs = [map_block.remote(b, fn, m.input_files) for b, m in blocks]
             data_refs = [r[0] for r in all_refs]
             refs = [r[1] for r in all_refs]
+
+        # Release input block references.
+        if clear_input_blocks:
+            del blocks
+            block_list.clear()
 
         # Common wait for non-data refs.
         try:
@@ -118,10 +129,21 @@ class ActorPool(ComputeStrategy):
         for w in self.workers:
             w.__ray_terminate__.remote()
 
-    def apply(self, fn: Any, remote_args: dict, blocks: BlockList) -> BlockList:
+    def apply(
+        self,
+        fn: Any,
+        remote_args: dict,
+        block_list: BlockList,
+        clear_input_blocks: bool,
+    ) -> BlockList:
         context = DatasetContext.get_current()
 
-        blocks_in = blocks.get_blocks_with_metadata()
+        blocks_in = block_list.get_blocks_with_metadata()
+
+        # Early release block references.
+        if clear_input_blocks:
+            block_list.clear()
+
         orig_num_blocks = len(blocks_in)
         results = []
         map_bar = ProgressBar("Map Progress", total=orig_num_blocks)
@@ -201,6 +223,7 @@ class ActorPool(ComputeStrategy):
             for block in results:
                 new_blocks.append(block)
                 new_metadata.append(metadata_mapping[block])
+            new_metadata = ray.get(new_metadata)
         return BlockList(new_blocks, new_metadata)
 
 

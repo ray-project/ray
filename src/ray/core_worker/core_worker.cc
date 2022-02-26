@@ -19,6 +19,7 @@
 #include "boost/fiber/all.hpp"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/ray_config.h"
+#include "ray/common/runtime_env_common.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
@@ -131,7 +132,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   job_config_->ParseFromString(serialized_job_config);
   auto job_serialized_runtime_env =
       job_config_->runtime_env_info().serialized_runtime_env();
-  if (!job_serialized_runtime_env.empty()) {
+  if (!IsRuntimeEnvEmpty(job_serialized_runtime_env)) {
     job_runtime_env_.reset(new rpc::RuntimeEnv());
     RAY_CHECK(google::protobuf::util::JsonStringToMessage(
                   job_config_->runtime_env_info().serialized_runtime_env(),
@@ -217,10 +218,14 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       },
       /*callback_service*/ &io_service_);
 
+  auto check_node_alive_fn = [this](const NodeID &node_id) {
+    auto node = gcs_client_->Nodes().Get(node_id);
+    return node != nullptr;
+  };
   reference_counter_ = std::make_shared<ReferenceCounter>(
       rpc_address_,
       /*object_info_publisher=*/object_info_publisher_.get(),
-      /*object_info_subscriber=*/object_info_subscriber_.get(),
+      /*object_info_subscriber=*/object_info_subscriber_.get(), check_node_alive_fn,
       RayConfig::instance().lineage_pinning_enabled(), [this](const rpc::Address &addr) {
         return std::shared_ptr<rpc::CoreWorkerClient>(
             new rpc::CoreWorkerClient(addr, *client_call_manager_));
@@ -256,17 +261,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   periodical_runner_.RunFnPeriodically([this] { InternalHeartbeat(); },
                                        kInternalHeartbeatMillis);
 
-  auto check_node_alive_fn = [this](const NodeID &node_id) {
-    auto node = gcs_client_->Nodes().Get(node_id);
-    return node != nullptr;
-  };
-  auto reconstruct_object_callback = [this](const ObjectID &object_id) {
-    io_service_.post(
-        [this, object_id]() {
-          RAY_CHECK(object_recovery_manager_->RecoverObject(object_id));
-        },
-        "CoreWorker.ReconstructObject");
-  };
   auto push_error_callback = [this](const JobID &job_id, const std::string &type,
                                     const std::string &error_message, double timestamp) {
     return PushError(job_id, type, error_message, timestamp);
@@ -300,8 +294,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           }
         }
       },
-      check_node_alive_fn, reconstruct_object_callback, push_error_callback,
-      RayConfig::instance().max_lineage_bytes()));
+      push_error_callback, RayConfig::instance().max_lineage_bytes()));
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -457,6 +450,24 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   RayEventContext::Instance().SetEventContext(
       ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
       {{"worker_id", worker_id.Hex()}});
+
+  periodical_runner_.RunFnPeriodically(
+      [this] {
+        const auto lost_objects = reference_counter_->FlushObjectsToRecover();
+        // Delete the objects from the in-memory store to indicate that they are not
+        // available. The object recovery manager will guarantee that a new value
+        // will eventually be stored for the objects (either an
+        // UnreconstructableError or a value reconstructed from lineage).
+        memory_store_->Delete(lost_objects);
+        for (const auto &object_id : lost_objects) {
+          // NOTE(swang): There is a race condition where this can return false if
+          // the reference went out of scope since the call to the ref counter to get
+          // the lost objects. It's okay to not mark the object as failed or recover
+          // the object since there are no reference holders.
+          RAY_UNUSED(object_recovery_manager_->RecoverObject(object_id));
+        }
+      },
+      100);
 }
 
 CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }
@@ -620,22 +631,7 @@ void CoreWorker::OnNodeRemoved(const NodeID &node_id) {
   RAY_LOG(INFO) << "Node failure from " << node_id
                 << ". All objects pinned on that node will be lost if object "
                    "reconstruction is not enabled.";
-  const auto lost_objects = reference_counter_->ResetObjectsOnRemovedNode(node_id);
-  // Delete the objects from the in-memory store to indicate that they are not
-  // available. The object recovery manager will guarantee that a new value
-  // will eventually be stored for the objects (either an
-  // UnreconstructableError or a value reconstructed from lineage).
-  memory_store_->Delete(lost_objects);
-  for (const auto &object_id : lost_objects) {
-    // NOTE(swang): There is a race condition where this can return false if
-    // the reference went out of scope since the call to the ref counter to get
-    // the lost objects. It's okay to not mark the object as failed or recover
-    // the object since there are no reference holders.
-    auto recovered = object_recovery_manager_->RecoverObject(object_id);
-    if (!recovered) {
-      RAY_LOG(DEBUG) << "Object " << object_id << " lost due to node failure " << node_id;
-    }
-  }
+  reference_counter_->ResetObjectsOnRemovedNode(node_id);
 }
 
 const WorkerID &CoreWorker::GetWorkerID() const { return worker_context_.GetWorkerID(); }
@@ -826,13 +822,13 @@ Status CoreWorker::Put(const RayObject &object,
                        ObjectID *object_id) {
   *object_id = ObjectID::FromIndex(worker_context_.GetCurrentInternalTaskId(),
                                    worker_context_.GetNextPutIndex());
-  reference_counter_->AddOwnedObject(
-      *object_id, contained_object_ids, rpc_address_, CurrentCallSite(), object.GetSize(),
-      /*is_reconstructable=*/false, NodeID::FromBinary(rpc_address_.raylet_id()));
-
+  reference_counter_->AddOwnedObject(*object_id, contained_object_ids, rpc_address_,
+                                     CurrentCallSite(), object.GetSize(),
+                                     /*is_reconstructable=*/false, /*add_local_ref=*/true,
+                                     NodeID::FromBinary(rpc_address_.raylet_id()));
   auto status = Put(object, contained_object_ids, *object_id, /*pin_object=*/true);
   if (!status.ok()) {
-    reference_counter_->RemoveOwnedObject(*object_id);
+    RemoveLocalReference(*object_id);
   }
   return status;
 }
@@ -876,13 +872,11 @@ Status CoreWorker::Put(const RayObject &object,
   return PutInLocalPlasmaStore(object, object_id, pin_object);
 }
 
-Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
-                               const size_t data_size,
-                               const std::vector<ObjectID> &contained_object_ids,
-                               ObjectID *object_id, std::shared_ptr<Buffer> *data,
-                               bool created_by_worker,
-                               const std::unique_ptr<rpc::Address> &owner_address,
-                               bool inline_small_object) {
+Status CoreWorker::CreateOwnedAndIncrementLocalRef(
+    const std::shared_ptr<Buffer> &metadata, const size_t data_size,
+    const std::vector<ObjectID> &contained_object_ids, ObjectID *object_id,
+    std::shared_ptr<Buffer> *data, bool created_by_worker,
+    const std::unique_ptr<rpc::Address> &owner_address, bool inline_small_object) {
   auto status = WaitForActorRegistered(contained_object_ids);
   if (!status.ok()) {
     return status;
@@ -896,6 +890,7 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
     reference_counter_->AddOwnedObject(*object_id, contained_object_ids, rpc_address_,
                                        CurrentCallSite(), data_size + metadata->Size(),
                                        /*is_reconstructable=*/false,
+                                       /*add_local_ref=*/true,
                                        NodeID::FromBinary(rpc_address_.raylet_id()));
   } else {
     // Because in the remote worker's `HandleAssignObjectOwner`,
@@ -938,11 +933,7 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
                                               created_by_worker);
     }
     if (!status.ok()) {
-      if (owned_by_us) {
-        reference_counter_->RemoveOwnedObject(*object_id);
-      } else {
-        RemoveLocalReference(*object_id);
-      }
+      RemoveLocalReference(*object_id);
       return status;
     } else if (*data == nullptr) {
       // Object already exists in plasma. Store the in-memory value so that the
@@ -970,16 +961,13 @@ Status CoreWorker::CreateExisting(const std::shared_ptr<Buffer> &metadata,
 
 Status CoreWorker::SealOwned(const ObjectID &object_id, bool pin_object,
                              const std::unique_ptr<rpc::Address> &owner_address) {
-  bool owned_by_us = owner_address != nullptr
-                         ? WorkerID::FromBinary(owner_address->worker_id()) ==
-                               WorkerID::FromBinary(rpc_address_.worker_id())
-                         : true;
   auto status = SealExisting(object_id, pin_object, std::move(owner_address));
   if (status.ok()) return status;
-  if (owned_by_us) {
-    reference_counter_->RemoveOwnedObject(object_id);
-  } else {
-    RemoveLocalReference(object_id);
+  RemoveLocalReference(object_id);
+  if (reference_counter_->HasReference(object_id)) {
+    RAY_LOG(WARNING)
+        << "Object " << object_id
+        << " failed to be put but has a nonzero ref count. This object may leak.";
   }
   return status;
 }
@@ -1378,43 +1366,6 @@ std::unordered_map<std::string, double> AddPlacementGroupConstraint(
   return resources;
 }
 
-rpc::RuntimeEnv CoreWorker::OverrideRuntimeEnv(
-    const rpc::RuntimeEnv &child, const std::shared_ptr<rpc::RuntimeEnv> parent) {
-  // By default, the child runtime env inherits non-specified options from the
-  // parent. There is one exception to this:
-  //     - The env_vars dictionaries are merged, so environment variables
-  //       not specified by the child are still inherited from the parent.
-
-  // Override environment variables.
-  google::protobuf::Map<std::string, std::string> result_env_vars(parent->env_vars());
-  result_env_vars.insert(child.env_vars().begin(), child.env_vars().end());
-  // Inherit all other non-specified options from the parent.
-  rpc::RuntimeEnv result_runtime_env(*parent);
-  // TODO(SongGuyang): avoid dupliacated fields.
-  result_runtime_env.MergeFrom(child);
-  if (child.python_runtime_env().py_modules().size() > 0 &&
-      parent->python_runtime_env().py_modules().size() > 0) {
-    result_runtime_env.mutable_python_runtime_env()->clear_py_modules();
-    for (auto &module : child.python_runtime_env().py_modules()) {
-      result_runtime_env.mutable_python_runtime_env()->add_py_modules(module);
-    }
-    result_runtime_env.mutable_uris()->clear_py_modules_uris();
-    result_runtime_env.mutable_uris()->mutable_py_modules_uris()->CopyFrom(
-        child.uris().py_modules_uris());
-  }
-  if (child.python_runtime_env().has_pip_runtime_env() &&
-      parent->python_runtime_env().has_pip_runtime_env()) {
-    result_runtime_env.mutable_python_runtime_env()->clear_pip_runtime_env();
-    result_runtime_env.mutable_python_runtime_env()->mutable_pip_runtime_env()->CopyFrom(
-        child.python_runtime_env().pip_runtime_env());
-  }
-  if (!result_env_vars.empty()) {
-    result_runtime_env.mutable_env_vars()->insert(result_env_vars.begin(),
-                                                  result_env_vars.end());
-  }
-  return result_runtime_env;
-}
-
 // TODO(SongGuyang): This function exists in both C++ and Python. We should make this
 // logic clearly.
 static std::string encode_plugin_uri(std::string plugin, std::string uri) {
@@ -1448,57 +1399,45 @@ static std::vector<std::string> GetUrisFromRuntimeEnv(
   return result;
 }
 
-static std::vector<std::string> GetUrisFromSerializedRuntimeEnv(
-    const std::string &serialized_runtime_env) {
+std::string CoreWorker::OverrideTaskOrActorRuntimeEnv(
+    const std::string &serialized_runtime_env,
+    std::vector<std::string> *runtime_env_uris) {
+  std::shared_ptr<const rpc::RuntimeEnv> parent_runtime_env;
+  std::string parent_serialized_runtime_env;
+  if (options_.worker_type == WorkerType::DRIVER) {
+    parent_runtime_env = job_runtime_env_;
+    parent_serialized_runtime_env =
+        job_config_->runtime_env_info().serialized_runtime_env();
+  } else {
+    parent_runtime_env = worker_context_.GetCurrentRuntimeEnv();
+    parent_serialized_runtime_env = worker_context_.GetCurrentSerializedRuntimeEnv();
+  }
+  if (IsRuntimeEnvEmpty(serialized_runtime_env)) {
+    // Try to inherit runtime env from job or worker.
+    *runtime_env_uris = GetUrisFromRuntimeEnv(parent_runtime_env.get());
+    return parent_serialized_runtime_env;
+  }
+
+  if (!IsRuntimeEnvEmpty(parent_serialized_runtime_env)) {
+    // TODO(SongGuyang): We add this warning log because of the change of API behavior.
+    // Refer to https://github.com/ray-project/ray/issues/21818.
+    // Modify this log level to `INFO` or `DEBUG` after a few release versions.
+    RAY_LOG(WARNING) << "Runtime env already exists and the parent runtime env is "
+                     << parent_serialized_runtime_env << ". It will be overridden by "
+                     << serialized_runtime_env << ".";
+  }
+
   rpc::RuntimeEnv runtime_env;
   if (!google::protobuf::util::JsonStringToMessage(serialized_runtime_env, &runtime_env)
            .ok()) {
     RAY_LOG(WARNING) << "Parse runtime env failed for " << serialized_runtime_env;
     // TODO(SongGuyang): We pass the raw string here and the task will fail after an
     // exception raised in runtime env agent. Actually, we can fail the task here.
-    return {};
-  }
-  return GetUrisFromRuntimeEnv(&runtime_env);
-}
-
-std::string CoreWorker::OverrideTaskOrActorRuntimeEnv(
-    const std::string &serialized_runtime_env,
-    std::vector<std::string> *runtime_env_uris) {
-  std::shared_ptr<rpc::RuntimeEnv> parent = nullptr;
-  if (options_.worker_type == WorkerType::DRIVER) {
-    if (serialized_runtime_env == "" || serialized_runtime_env == "{}") {
-      *runtime_env_uris = GetUrisFromRuntimeEnv(job_runtime_env_.get());
-      return job_config_->runtime_env_info().serialized_runtime_env();
-    }
-    parent = job_runtime_env_;
-  } else {
-    if (serialized_runtime_env == "" || serialized_runtime_env == "{}") {
-      *runtime_env_uris =
-          GetUrisFromRuntimeEnv(worker_context_.GetCurrentRuntimeEnv().get());
-      return worker_context_.GetCurrentSerializedRuntimeEnv();
-    }
-    parent = worker_context_.GetCurrentRuntimeEnv();
-  }
-  if (parent) {
-    rpc::RuntimeEnv child_runtime_env;
-    if (!google::protobuf::util::JsonStringToMessage(serialized_runtime_env,
-                                                     &child_runtime_env)
-             .ok()) {
-      RAY_LOG(WARNING) << "Parse runtime env failed for " << serialized_runtime_env;
-      // TODO(SongGuyang): We pass the raw string here and the task will fail after an
-      // exception raised in runtime env agent. Actually, we can fail the task here.
-      return serialized_runtime_env;
-    }
-    auto override_runtime_env = OverrideRuntimeEnv(child_runtime_env, parent);
-    std::string result;
-    RAY_CHECK(
-        google::protobuf::util::MessageToJsonString(override_runtime_env, &result).ok());
-    *runtime_env_uris = GetUrisFromRuntimeEnv(&override_runtime_env);
-    return result;
-  } else {
-    *runtime_env_uris = GetUrisFromSerializedRuntimeEnv(serialized_runtime_env);
     return serialized_runtime_env;
   }
+
+  *runtime_env_uris = GetUrisFromRuntimeEnv(&runtime_env);
+  return serialized_runtime_env;
 }
 
 void CoreWorker::BuildCommonTaskSpec(
@@ -2295,7 +2234,8 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
       reference_counter_->AddOwnedObject(task_spec.ReturnId(i),
                                          /*inner_ids=*/{}, rpc_address_,
                                          CurrentCallSite(), -1,
-                                         /*is_reconstructable=*/false);
+                                         /*is_reconstructable=*/false,
+                                         /*add_local_ref=*/true);
     }
     rpc::ObjectReference ref;
     ref.set_object_id(task_spec.ReturnId(i).Binary());
@@ -2915,6 +2855,7 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   if (request.include_memory_info()) {
     reference_counter_->AddObjectRefStats(plasma_store_provider_->UsedObjectsList(),
                                           stats);
+    task_manager_->AddTaskStatusInfo(stats);
   }
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -2959,7 +2900,7 @@ void CoreWorker::HandleAddSpilledUrl(const rpc::AddSpilledUrlRequest &request,
                  << ", which has been spilled to " << spilled_url << " on node "
                  << node_id;
   auto reference_exists = reference_counter_->HandleObjectSpilled(
-      object_id, spilled_url, node_id, request.size(), /*release*/ false);
+      object_id, spilled_url, node_id, request.size());
   Status status =
       reference_exists
           ? Status::OK()
@@ -3049,6 +2990,7 @@ void CoreWorker::HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &re
   reference_counter_->AddOwnedObject(
       object_id, contained_object_ids, rpc_address_, call_site, request.object_size(),
       /*is_reconstructable=*/false,
+      /*add_local_ref=*/false,
       /*pinned_at_raylet_id=*/NodeID::FromBinary(borrower_address.raylet_id()));
   reference_counter_->AddBorrowerAddress(object_id, borrower_address);
   RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
@@ -3152,8 +3094,6 @@ void CoreWorker::SetActorTitle(const std::string &title) {
 }
 
 const rpc::JobConfig &CoreWorker::GetJobConfig() const { return *job_config_; }
-
-std::shared_ptr<gcs::GcsClient> CoreWorker::GetGcsClient() const { return gcs_client_; }
 
 bool CoreWorker::IsExiting() const { return exiting_; }
 

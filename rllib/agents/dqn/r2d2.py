@@ -11,7 +11,7 @@ from ray.rllib.utils.typing import TrainerConfigDict
 
 logger = logging.getLogger(__name__)
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
     DQN_DEFAULT_CONFIG,  # See keys in impala.py, which are also supported.
@@ -70,7 +70,7 @@ R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
     _allow_unknown_configs=True,
 )
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 # Build an R2D2 trainer, which uses the framework specific Policy
