@@ -181,7 +181,10 @@ class ResourceSpec(
                 num_gpus = min(num_gpus, len(gpu_ids))
 
         try:
-            if sys.platform.startswith("linux") and importlib.util.find_spec("GPUtil") is not None:
+            if (
+                sys.platform.startswith("linux")
+                and importlib.util.find_spec("GPUtil") is not None
+            ):
                 gpu_types = _get_gpu_types_gputil()
             else:
                 info_string = _get_gpu_info_string()
@@ -299,7 +302,9 @@ def _get_gpu_types_gputil():
         info_str = gpu_list_names.pop()
         pretty_name = _pretty_gpu_name(info_str)
         if pretty_name:
-            constraint_name = f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}" f"{pretty_name}"
+            constraint_name = (
+                f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}" f"{pretty_name}"
+            )
             return {constraint_name: 1}
     return {}
 
