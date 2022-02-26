@@ -2657,23 +2657,32 @@ Dict[str, List[str]]]): The names of the columns
                     self._splits = blocks.split_by_bytes(bytes_per_window)
                 else:
                     self._splits = blocks.split(split_size=blocks_per_window)
-                sizes = [s.size_bytes() for s in self._splits]
+                try:
+                    sizes = [s.size_bytes() for s in self._splits]
 
-                def fmt(size_bytes):
-                    if size_bytes > 10 * 1024:
-                        return "{}MiB".format(round(size_bytes / (1024 * 1024), 2))
-                    else:
-                        return "{}b".format(size_bytes)
+                    def fmt(size_bytes):
+                        if size_bytes > 10 * 1024:
+                            return "{}MiB".format(round(size_bytes / (1024 * 1024), 2))
+                        else:
+                            return "{}b".format(size_bytes)
 
-                logger.info(
-                    "Created DatasetPipeline with {} windows: "
-                    "{} min, {} max, {} mean".format(
-                        len(self._splits),
-                        fmt(min(sizes)),
-                        fmt(max(sizes)),
-                        fmt(int(np.mean(sizes))),
+                    logger.info(
+                        "Created DatasetPipeline with {} windows: "
+                        "{} min, {} max, {} mean".format(
+                            len(self._splits),
+                            fmt(min(sizes)),
+                            fmt(max(sizes)),
+                            fmt(int(np.mean(sizes))),
+                        )
                     )
-                )
+                except Exception as e:
+                    logger.info(
+                        "Created DatasetPipeline with {} windows; "
+                        "error getting sizes: {}".format(
+                            len(self._splits),
+                            e,
+                        )
+                    )
                 self._epoch = epoch
 
             def __iter__(self):
