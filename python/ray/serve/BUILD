@@ -2,7 +2,7 @@
 # re-run if any of these files changes.
 py_library(
     name = "serve_lib",
-    srcs = glob(["**/*.py"], exclude=["tests/**/*.py"]) + ["tests/conftest.py"],
+    srcs = glob(["**/*.py"], exclude=["tests/**/*.py"]),
     visibility = [
         "//python/ray/serve:__pkg__",
         "//python/ray/serve:__subpackages__",
