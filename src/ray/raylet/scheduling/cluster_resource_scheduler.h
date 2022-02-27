@@ -28,6 +28,7 @@
 #include "ray/raylet/scheduling/cluster_resource_data.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/raylet/scheduling/fixed_point.h"
+#include "ray/raylet/scheduling/internal.h"
 #include "ray/raylet/scheduling/local_resource_manager.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet/scheduling/scheduling_policy.h"
@@ -64,36 +65,21 @@ class ClusterResourceScheduler {
   ///  Find a node in the cluster on which we can schedule a given resource request.
   ///  In hybrid mode, see `scheduling_policy.h` for a description of the policy.
   ///
-  ///  \param resource_request: Task to be scheduled.
-  ///  \param scheduling_strategy: Strategy about how to schedule this task.
-  ///  \param actor_creation: True if this is an actor creation task.
-  ///  \param force_spillback: For non-actor creation requests, pick a remote
-  ///  feasible node. If this is false, then the task may be scheduled to the
-  ///  local node.
-  ///  \param violations: The number of soft constraint violations associated
-  ///                     with the node returned by this function (assuming
-  ///                     a node that can schedule resource_request is found).
-  ///  \param is_infeasible[in]: It is set true if the task is not schedulable because it
+  ///  \param task_spec: Task/Actor to be scheduled.
+  ///  \param prioritize_local_node: true if we want to try out local node first.
+  ///  \param exclude_local_node: true if we want to avoid local node. This will cancel
+  ///  prioritize_local_node if set to true.
+  ///  \param requires_object_store_memory: take object store memory usage as part of
+  ///  scheduling decision.
+  ///  \param is_infeasible[out]: It is set true if the task is not schedulable because it
   ///  is infeasible.
   ///
-  ///  \return -1, if no node can schedule the current request; otherwise,
-  ///          return the ID of a node that can schedule the resource request.
-  int64_t GetBestSchedulableNode(const ResourceRequest &resource_request,
-                                 const rpc::SchedulingStrategy &scheduling_strategy,
-                                 bool actor_creation, bool force_spillback,
-                                 int64_t *violations, bool *is_infeasible);
-
-  /// Similar to
-  ///    int64_t GetBestSchedulableNode(...)
-  /// but the return value is different:
-  /// \return "", if no node can schedule the current request; otherwise,
-  ///          return the ID in string format of a node that can schedule the
-  //           resource request.
-  std::string GetBestSchedulableNode(
-      const absl::flat_hash_map<std::string, double> &resource_request,
-      const rpc::SchedulingStrategy &scheduling_strategy,
-      bool requires_object_store_memory, bool actor_creation, bool force_spillback,
-      int64_t *violations, bool *is_infeasible);
+  ///  \return emptry string, if no node can schedule the current request; otherwise,
+  ///          return the string name of a node that can schedule the resource request.
+  std::string GetBestSchedulableNode(const TaskSpecification &task_spec,
+                                     bool prioritize_local_node, bool exclude_local_node,
+                                     bool requires_object_store_memory,
+                                     bool *is_infeasible);
 
   /// Subtract the resources required by a given resource request (resource_request) from
   /// a given remote node.
@@ -150,6 +136,38 @@ class ClusterResourceScheduler {
   bool IsSchedulable(const ResourceRequest &resource_request, int64_t node_id,
                      const NodeResources &resources) const;
 
+  ///  Find a node in the cluster on which we can schedule a given resource request.
+  ///  In hybrid mode, see `scheduling_policy.h` for a description of the policy.
+  ///
+  ///  \param resource_request: Task to be scheduled.
+  ///  \param scheduling_strategy: Strategy about how to schedule this task.
+  ///  \param actor_creation: True if this is an actor creation task.
+  ///  \param force_spillback: True if we want to avoid local node.
+  ///  \param violations: The number of soft constraint violations associated
+  ///                     with the node returned by this function (assuming
+  ///                     a node that can schedule resource_request is found).
+  ///  \param is_infeasible[in]: It is set true if the task is not schedulable because it
+  ///  is infeasible.
+  ///
+  ///  \return -1, if no node can schedule the current request; otherwise,
+  ///          return the ID of a node that can schedule the resource request.
+  int64_t GetBestSchedulableNode(const ResourceRequest &resource_request,
+                                 const rpc::SchedulingStrategy &scheduling_strategy,
+                                 bool actor_creation, bool force_spillback,
+                                 int64_t *violations, bool *is_infeasible);
+
+  /// Similar to
+  ///    int64_t GetBestSchedulableNode(...)
+  /// but the return value is different:
+  /// \return "", if no node can schedule the current request; otherwise,
+  ///          return the ID in string format of a node that can schedule the
+  //           resource request.
+  std::string GetBestSchedulableNode(
+      const absl::flat_hash_map<std::string, double> &resource_request,
+      const rpc::SchedulingStrategy &scheduling_strategy,
+      bool requires_object_store_memory, bool actor_creation, bool force_spillback,
+      int64_t *violations, bool *is_infeasible);
+
   /// Keep the mapping between node and resource IDs in string representation
   /// to integer representation. Used for improving map performance.
   StringIdMap string_to_int_map_;
@@ -167,6 +185,7 @@ class ClusterResourceScheduler {
   std::unique_ptr<raylet_scheduling_policy::SchedulingPolicy> scheduling_policy_;
 
   friend class ClusterResourceSchedulerTest;
+  FRIEND_TEST(ClusterResourceSchedulerTest, PopulatePredefinedResources);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingDeleteClusterNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingModifyClusterNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest);

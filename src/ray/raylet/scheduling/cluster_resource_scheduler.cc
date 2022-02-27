@@ -21,7 +21,19 @@
 
 namespace ray {
 
+namespace {
+// Add predefined resource in string_to_int_map to
+// avoid conflict.
+void PopulatePredefinedResources(StringIdMap &string_to_int_map) {
+  string_to_int_map.InsertOrDie(ray::kCPU_ResourceLabel, CPU)
+      .InsertOrDie(ray::kGPU_ResourceLabel, GPU)
+      .InsertOrDie(ray::kObjectStoreMemory_ResourceLabel, OBJECT_STORE_MEM)
+      .InsertOrDie(ray::kMemory_ResourceLabel, MEM);
+}
+}  // namespace
+
 ClusterResourceScheduler::ClusterResourceScheduler() {
+  PopulatePredefinedResources(string_to_int_map_);
   cluster_resource_manager_ =
       std::make_unique<ClusterResourceManager>(string_to_int_map_);
   NodeResources node_resources;
@@ -43,6 +55,7 @@ ClusterResourceScheduler::ClusterResourceScheduler(
       local_node_id_(local_node_id),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
       gcs_client_(&gcs_client) {
+  PopulatePredefinedResources(string_to_int_map_);
   cluster_resource_manager_ =
       std::make_unique<ClusterResourceManager>(string_to_int_map_);
   local_resource_manager_ = std::make_unique<LocalResourceManager>(
@@ -65,6 +78,7 @@ ClusterResourceScheduler::ClusterResourceScheduler(
       local_node_id_(),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
       gcs_client_(&gcs_client) {
+  PopulatePredefinedResources(string_to_int_map_);
   local_node_id_ = string_to_int_map_.Insert(local_node_id);
   NodeResources node_resources = ResourceMapToNodeResources(
       string_to_int_map_, local_node_resources, local_node_resources);
@@ -165,16 +179,21 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
     return best_node;
   }
 
-  // TODO (Alex): Setting require_available == force_spillback is a hack in order to
-  // remain bug compatible with the legacy scheduling algorithms.
-  int64_t best_node_id = scheduling_policy_->HybridPolicy(
-      resource_request,
-      scheduling_strategy.scheduling_strategy_case() ==
-              rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy
-          ? 0.0
-          : RayConfig::instance().scheduler_spread_threshold(),
-      force_spillback, force_spillback,
-      [this](auto node_id) { return this->NodeAlive(node_id); });
+  int64_t best_node_id = -1;
+  if (scheduling_strategy.scheduling_strategy_case() ==
+      rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy) {
+    best_node_id = scheduling_policy_->SpreadPolicy(
+        resource_request, force_spillback, force_spillback,
+        [this](auto node_id) { return this->NodeAlive(node_id); });
+  } else {
+    // TODO (Alex): Setting require_available == force_spillback is a hack in order to
+    // remain bug compatible with the legacy scheduling algorithms.
+    best_node_id = scheduling_policy_->HybridPolicy(
+        resource_request, RayConfig::instance().scheduler_spread_threshold(),
+        force_spillback, force_spillback,
+        [this](auto node_id) { return this->NodeAlive(node_id); });
+  }
+
   *is_infeasible = best_node_id == -1 ? true : false;
   if (!*is_infeasible) {
     // TODO (Alex): Support soft constraints if needed later.
@@ -260,6 +279,26 @@ bool ClusterResourceScheduler::IsSchedulableOnNode(
       string_to_int_map_, shape, /*requires_object_store_memory=*/false);
   return IsSchedulable(resource_request, node_id,
                        cluster_resource_manager_->GetNodeResources(node_name));
+}
+
+std::string ClusterResourceScheduler::GetBestSchedulableNode(
+    const TaskSpecification &task_spec, bool prioritize_local_node,
+    bool exclude_local_node, bool requires_object_store_memory, bool *is_infeasible) {
+  // If the local node is available, we should directly return it instead of
+  // going through the full hybrid policy since we don't want spillback.
+  if (prioritize_local_node && !exclude_local_node &&
+      IsSchedulableOnNode(string_to_int_map_.Get(local_node_id_),
+                          task_spec.GetRequiredResources().GetResourceMap())) {
+    *is_infeasible = false;
+    return string_to_int_map_.Get(local_node_id_);
+  }
+
+  // This argument is used to set violation, which is an unsupported feature now.
+  int64_t _unused;
+  return GetBestSchedulableNode(
+      task_spec.GetRequiredPlacementResources().GetResourceMap(),
+      task_spec.GetMessage().scheduling_strategy(), requires_object_store_memory,
+      task_spec.IsActorCreationTask(), exclude_local_node, &_unused, is_infeasible);
 }
 
 }  // namespace ray

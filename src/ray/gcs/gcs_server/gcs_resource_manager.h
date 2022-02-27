@@ -43,8 +43,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// \param gcs_table_storage GCS table external storage accessor.
   explicit GcsResourceManager(instrumented_io_context &main_io_service,
                               std::shared_ptr<GcsPublisher> gcs_publisher,
-                              std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                              bool redis_broadcast_enabled);
+                              std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
 
   virtual ~GcsResourceManager() {}
 
@@ -82,7 +81,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// Get the resources of all nodes in the cluster.
   ///
   /// \return The resources of all nodes in the cluster.
-  const absl::flat_hash_map<NodeID, SchedulingResources> &GetClusterResources() const;
+  const absl::flat_hash_map<NodeID, std::shared_ptr<SchedulingResources>>
+      &GetClusterResources() const;
 
   /// Handle a node registration.
   ///
@@ -126,14 +126,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
 
   std::string DebugString() const;
 
-  /// Update the total resources and available resources of the specified node.
-  ///
-  /// \param node_id Id of a node.
-  /// \param changed_resources Changed resources of a node.
-  void UpdateResourceCapacity(
-      const NodeID &node_id,
-      const absl::flat_hash_map<std::string, double> &changed_resources);
-
   /// Add resources changed listener.
   void AddResourcesChangedListener(std::function<void()> listener);
 
@@ -174,14 +166,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   void DeleteResources(const NodeID &node_id,
                        const std::vector<std::string> &deleted_resources);
 
-  /// Send any buffered resource usage as a single publish.
-  void SendBatchedResourceUsage();
-
-  /// Prelocked version of GetResourceUsageBatchForBroadcast. This is necessary for need
-  /// the functionality as part of a larger transaction.
-  void GetResourceUsageBatchForBroadcast_Locked(rpc::ResourceUsageBatchData &buffer)
-      EXCLUSIVE_LOCKS_REQUIRED(resource_buffer_mutex_);
-
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;
   /// Newest resource usage of all nodes.
@@ -201,10 +185,9 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   std::shared_ptr<GcsPublisher> gcs_publisher_;
   /// Storage for GCS tables.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  /// Whether or not to broadcast resource usage via redis.
-  const bool redis_broadcast_enabled_;
   /// Map from node id to the scheduling resources of the node.
-  absl::flat_hash_map<NodeID, SchedulingResources> cluster_scheduling_resources_;
+  absl::flat_hash_map<NodeID, std::shared_ptr<SchedulingResources>>
+      cluster_scheduling_resources_;
   /// Placement group load information that is used for autoscaler.
   absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
   /// Normal task resources could be uploaded by 1) Raylets' periodical reporters; 2)

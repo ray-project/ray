@@ -144,28 +144,19 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
 
         # Compute a value function loss.
         if self.config["use_critic"]:
-            prev_value_fn_out = train_batch[SampleBatch.VF_PREDS]
             value_fn_out = model.value_function()
-            vf_loss1 = torch.pow(
+            vf_loss = torch.pow(
                 value_fn_out - train_batch[Postprocessing.VALUE_TARGETS], 2.0
             )
-            vf_clipped = prev_value_fn_out + torch.clamp(
-                value_fn_out - prev_value_fn_out,
-                -self.config["vf_clip_param"],
-                self.config["vf_clip_param"],
-            )
-            vf_loss2 = torch.pow(
-                vf_clipped - train_batch[Postprocessing.VALUE_TARGETS], 2.0
-            )
-            vf_loss = torch.max(vf_loss1, vf_loss2)
-            mean_vf_loss = reduce_mean_valid(vf_loss)
+            vf_loss_clipped = torch.clamp(vf_loss, 0, self.config["vf_clip_param"])
+            mean_vf_loss = reduce_mean_valid(vf_loss_clipped)
         # Ignore the value function.
         else:
-            vf_loss = mean_vf_loss = 0.0
+            vf_loss_clipped = mean_vf_loss = 0.0
 
         total_loss = reduce_mean_valid(
             -surrogate_loss
-            + self.config["vf_loss_coeff"] * vf_loss
+            + self.config["vf_loss_coeff"] * vf_loss_clipped
             - self.entropy_coeff * curr_entropy
         )
 
@@ -270,3 +261,17 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
             self.entropy_coeff = self._entropy_coeff_schedule.value(
                 global_vars["timestep"]
             )
+
+    @override(TorchPolicy)
+    def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
+        state = super().get_state()
+        # Add current kl-coeff value.
+        state["current_kl_coeff"] = self.kl_coeff
+        return state
+
+    @override(TorchPolicy)
+    def set_state(self, state: dict) -> None:
+        # Set current kl-coeff value first.
+        self.kl_coeff = state.pop("current_kl_coeff", self.config["kl_coeff"])
+        # Call super's set_state with rest of the state dict.
+        super().set_state(state)

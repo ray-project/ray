@@ -26,7 +26,7 @@ OPTIMIZER_SHARED_CONFIGS = [
     "learning_starts",
 ]
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 
 # Adds the following updates to the (base) `Trainer` config in
@@ -173,7 +173,7 @@ DEFAULT_CONFIG = with_common_config({
     "_use_beta_distribution": False,
 })
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 class SACTrainer(DQNTrainer):

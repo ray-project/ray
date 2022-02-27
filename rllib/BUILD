@@ -100,6 +100,17 @@ py_test(
     args = ["--yaml-dir=tuned_examples/a3c"]
 )
 
+# AlphaStar
+py_test(
+    name = "learning_tests_cartpole_alpha_star",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/alpha_star/multi-agent-cartpole-alpha-star.yaml"],
+    args = ["--yaml-dir=tuned_examples/alpha_star", "--num-cpus=20"]
+)
+
 # APEX-DQN
 py_test(
     name = "learning_tests_cartpole_apex",
@@ -542,7 +553,6 @@ py_test(
     args = ["--yaml-dir=tuned_examples/sac" ,"--override-mean-reward=-850.0"]
 )
 
-
 py_test(
     name = "learning_tests_pendulum_sac_fake_gpus",
     main = "tests/run_regression_tests.py",
@@ -551,6 +561,17 @@ py_test(
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum-sac-fake-gpus.yaml"],
     args = ["--yaml-dir=tuned_examples/sac"]
+)
+
+# SlateQ
+py_test(
+    name = "learning_tests_interest_evolution_10_candidates_recsim_env_slateq",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/slateq/interest-evolution-10-candidates-recsim-env-slateq.yaml"],
+    args = ["--yaml-dir=tuned_examples/slateq"]
 )
 
 # TD3
@@ -598,8 +619,16 @@ py_test(
 py_test(
     name = "test_a3c",
     tags = ["team:ml", "trainers_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["agents/a3c/tests/test_a3c.py"]
+)
+
+# AlphaStar
+py_test(
+    name = "test_alpha_star",
+    tags = ["team:ml", "trainers_dir"],
+    size = "large",
+    srcs = ["agents/alpha_star/tests/test_alpha_star.py"]
 )
 
 # APEXTrainer (DQN)
@@ -630,7 +659,7 @@ py_test(
 py_test(
     name = "test_bandits",
     tags = ["team:ml", "trainers_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/bandit/tests/test_bandits.py"],
 )
 
@@ -800,7 +829,7 @@ py_test(
 py_test(
     name = "test_slateq",
     tags = ["team:ml", "trainers_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/slateq/tests/test_slateq.py"]
 )
 
@@ -1136,6 +1165,24 @@ sh_test(
     size = "medium",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["remote", "cartpole"],
+    data = glob(["examples/serving/*.py"]),
+)
+
+sh_test(
+    name = "env/tests/test_local_inference_cartpole_w_2_concurrent_episodes",
+    tags = ["team:ml", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+    args = ["local", "cartpole-dummy-2-episodes"],
+    data = glob(["examples/serving/*.py"]),
+)
+
+sh_test(
+    name = "env/tests/test_remote_inference_cartpole_w_2_concurrent_episodes",
+    tags = ["team:ml", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+    args = ["remote", "cartpole-dummy-2-episodes"],
     data = glob(["examples/serving/*.py"]),
 )
 
@@ -2603,12 +2650,12 @@ py_test(
 )
 
 py_test(
-    name = "examples/recommender_system_with_recsim_and_slateq",
+    name = "examples/recommender_system_with_recsim_and_slateq_tf2",
     main = "examples/recommender_system_with_recsim_and_slateq.py",
     tags = ["team:ml", "examples", "examples_R"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/recommender_system_with_recsim_and_slateq.py"],
-    args = ["--stop-iters=3", "--use-tune", "--num-cpus=5", "--random-test-episodes=10", "--env-num-candidates=100", "--env-slate-size=2"],
+    args = ["--stop-iters=2", "--learning-starts=100", "--framework=tf2", "--use-tune", "--random-test-episodes=10", "--env-num-candidates=50", "--env-slate-size=2"],
 )
 
 py_test(

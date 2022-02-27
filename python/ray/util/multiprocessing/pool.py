@@ -435,7 +435,7 @@ class UnorderedIMapIterator(IMapIterator):
         return self._ready_objects.popleft()
 
 
-@ray.remote(num_cpus=1)
+@ray.remote(num_cpus=0)
 class PoolActor:
     """Actor used to process tasks submitted to a Pool."""
 

@@ -8,10 +8,10 @@ import pytest
 from unittest.mock import patch
 
 import ray
-from ray.dashboard.modules.job.common import CURRENT_VERSION, JobStatus
+from ray.job_submission import JobSubmissionClient, JobStatus
+from ray.dashboard.modules.job.common import CURRENT_VERSION
 from ray.dashboard.modules.job.sdk import (
     ClusterInfo,
-    JobSubmissionClient,
     parse_cluster_info,
 )
 from ray.dashboard.tests.conftest import *  # noqa
@@ -41,20 +41,20 @@ def job_sdk_client(headers):
 
 def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:
     status = client.get_job_status(job_id)
-    if status.status == JobStatus.FAILED:
+    if status == JobStatus.FAILED:
         logs = client.get_job_logs(job_id)
         raise RuntimeError(f"Job failed\nlogs:\n{logs}")
-    return status.status == JobStatus.SUCCEEDED
+    return status == JobStatus.SUCCEEDED
 
 
 def _check_job_failed(client: JobSubmissionClient, job_id: str) -> bool:
     status = client.get_job_status(job_id)
-    return status.status == JobStatus.FAILED
+    return status == JobStatus.FAILED
 
 
 def _check_job_stopped(client: JobSubmissionClient, job_id: str) -> bool:
     status = client.get_job_status(job_id)
-    return status.status == JobStatus.STOPPED
+    return status == JobStatus.STOPPED
 
 
 @pytest.fixture(
@@ -144,8 +144,8 @@ def test_invalid_runtime_env(job_sdk_client):
     )
 
     wait_for_condition(_check_job_failed, client=client, job_id=job_id)
-    status = client.get_job_status(job_id)
-    assert "Only .zip files supported for remote URIs" in status.message
+    data = client.get_job_info(job_id)
+    assert "Only .zip files supported for remote URIs" in data.message
 
 
 def test_runtime_env_setup_failure(job_sdk_client):
@@ -155,8 +155,8 @@ def test_runtime_env_setup_failure(job_sdk_client):
     )
 
     wait_for_condition(_check_job_failed, client=client, job_id=job_id)
-    status = client.get_job_status(job_id)
-    assert "Failed to setup runtime environment" in status.message
+    data = client.get_job_info(job_id)
+    assert "Failed to setup runtime environment" in data.message
 
 
 def test_submit_job_with_exception_in_driver(job_sdk_client):

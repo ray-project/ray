@@ -70,19 +70,8 @@ enum MessageType:int {
   SubscribePlasmaReady,
 }
 
-table TaskExecutionSpecification {
-  // A list of object IDs representing the dependencies of this task that may
-  // change at execution time.
-  dependencies: [string];
-  // The last time this task was received for scheduling.
-  last_timestamp: double;
-  // The number of times this task was spilled back by raylets.
-  num_forwards: int;
-}
-
 table Task {
   task_specification: string;
-  task_execution_spec: TaskExecutionSpecification;
 }
 
 table SubmitTaskRequest {

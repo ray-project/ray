@@ -37,7 +37,7 @@ Kubernetes (tune.integration.kubernetes)
 MLflow (tune.integration.mlflow)
 --------------------------------
 
-:ref:`See also here <tune-mlflow>`.
+:ref:`See also here <tune-mlflow-ref>`.
 
 .. autoclass:: ray.tune.integration.mlflow.MLflowLoggerCallback
 
@@ -87,7 +87,7 @@ Horovod (tune.integration.horovod)
 Weights and Biases (tune.integration.wandb)
 -------------------------------------------
 
-:ref:`See also here <tune-wandb>`.
+:ref:`See also here <tune-wandb-ref>`.
 
 .. autoclass:: ray.tune.integration.wandb.WandbLoggerCallback
 

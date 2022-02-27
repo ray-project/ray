@@ -9,8 +9,7 @@ import yaml
 import click
 
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
-from ray.dashboard.modules.job.common import JobStatus
-from ray.dashboard.modules.job.sdk import JobSubmissionClient
+from ray.job_submission import JobStatus, JobSubmissionClient
 
 
 def _get_sdk_client(
@@ -46,20 +45,20 @@ def _log_big_error_msg(success_msg):
 
 
 def _log_job_status(client: JobSubmissionClient, job_id: str):
-    status = client.get_job_status(job_id)
-    if status.status == JobStatus.SUCCEEDED:
+    info = client.get_job_info(job_id)
+    if info.status == JobStatus.SUCCEEDED:
         _log_big_success_msg(f"Job '{job_id}' succeeded")
-    elif status.status == JobStatus.STOPPED:
+    elif info.status == JobStatus.STOPPED:
         cli_logger.warning(f"Job '{job_id}' was stopped")
-    elif status.status == JobStatus.FAILED:
+    elif info.status == JobStatus.FAILED:
         _log_big_error_msg(f"Job '{job_id}' failed")
-        if status.message is not None:
-            cli_logger.print(f"Status message: {status.message}")
+        if info.message is not None:
+            cli_logger.print(f"Status message: {info.message}")
     else:
         # Catch-all.
-        cli_logger.print(f"Status for job '{job_id}': {status.status}")
-        if status.message is not None:
-            cli_logger.print(f"Status message: {status.message}")
+        cli_logger.print(f"Status for job '{job_id}': {info.status}")
+        if info.message is not None:
+            cli_logger.print(f"Status message: {info.message}")
 
 
 async def _tail_logs(client: JobSubmissionClient, job_id: str):
@@ -262,7 +261,7 @@ def job_stop(address: Optional[str], no_wait: bool, job_id: str):
 
     while True:
         status = client.get_job_status(job_id)
-        if status.status in {JobStatus.STOPPED, JobStatus.SUCCEEDED, JobStatus.FAILED}:
+        if status in {JobStatus.STOPPED, JobStatus.SUCCEEDED, JobStatus.FAILED}:
             _log_job_status(client, job_id)
             break
         else:

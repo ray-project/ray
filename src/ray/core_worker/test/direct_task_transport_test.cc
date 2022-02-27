@@ -125,6 +125,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
     return task;
   }
 
+  void MarkDependenciesResolved(const TaskID &task_id) override {}
+
   int num_tasks_complete = 0;
   int num_tasks_failed = 0;
   int num_inlined_dependencies = 0;
@@ -135,12 +137,15 @@ class MockTaskFinisher : public TaskFinisherInterface {
 
 class MockRayletClient : public WorkerLeaseInterface {
  public:
-  Status ReturnWorker(int worker_port, const WorkerID &worker_id,
-                      bool disconnect_worker) override {
+  Status ReturnWorker(int worker_port, const WorkerID &worker_id, bool disconnect_worker,
+                      bool worker_exiting) override {
     if (disconnect_worker) {
       num_workers_disconnected++;
     } else {
       num_workers_returned++;
+      if (worker_exiting) {
+        num_workers_returned_exiting++;
+      }
     }
     return Status::OK();
   }
@@ -156,14 +161,6 @@ class MockRayletClient : public WorkerLeaseInterface {
       const SchedulingClass scheduling_class = resource_spec.GetSchedulingClass();
       reported_backlogs[scheduling_class] = backlog_report.backlog_size();
     }
-  }
-
-  void RequestWorkerLease(
-      const TaskSpecification &resource_spec, bool grant_or_reject,
-      const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size, const bool is_selected_based_on_locality) override {
-    RequestWorkerLease(resource_spec.GetMessage(), grant_or_reject, callback,
-                       backlog_size, is_selected_based_on_locality);
   }
 
   void RequestWorkerLease(
@@ -258,6 +255,7 @@ class MockRayletClient : public WorkerLeaseInterface {
   int num_is_selected_based_on_locality_leases_requested = 0;
   int num_workers_requested = 0;
   int num_workers_returned = 0;
+  int num_workers_returned_exiting = 0;
   int num_workers_disconnected = 0;
   int num_leases_canceled = 0;
   int reported_backlog_size = 0;
@@ -1180,7 +1178,8 @@ TEST(DirectTaskTransportTest, TestWorkerNotReturnedOnExit) {
 
   // Task 1 finishes with exit status; the worker is not returned.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::OK(), /*exit=*/true));
-  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  ASSERT_EQ(raylet_client->num_workers_returned_exiting, 1);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 1);
   ASSERT_EQ(task_finisher->num_tasks_failed, 0);
@@ -1617,7 +1616,8 @@ TEST(DirectTaskTransportTest, TestKillExecutingTask) {
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("workerdying"), true));
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
-  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(raylet_client->num_workers_returned_exiting, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
   ASSERT_EQ(task_finisher->num_tasks_complete, 0);
   ASSERT_EQ(task_finisher->num_tasks_failed, 1);
 
@@ -1633,7 +1633,8 @@ TEST(DirectTaskTransportTest, TestKillExecutingTask) {
             task.TaskId().Binary());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
-  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(raylet_client->num_workers_returned_exiting, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
   ASSERT_EQ(task_finisher->num_tasks_complete, 1);
   ASSERT_EQ(task_finisher->num_tasks_failed, 1);
 
