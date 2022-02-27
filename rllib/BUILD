@@ -553,7 +553,6 @@ py_test(
     args = ["--yaml-dir=tuned_examples/sac" ,"--override-mean-reward=-850.0"]
 )
 
-
 py_test(
     name = "learning_tests_pendulum_sac_fake_gpus",
     main = "tests/run_regression_tests.py",
@@ -562,6 +561,17 @@ py_test(
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum-sac-fake-gpus.yaml"],
     args = ["--yaml-dir=tuned_examples/sac"]
+)
+
+# SlateQ
+py_test(
+    name = "learning_tests_interest_evolution_10_candidates_recsim_env_slateq",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/slateq/interest-evolution-10-candidates-recsim-env-slateq.yaml"],
+    args = ["--yaml-dir=tuned_examples/slateq"]
 )
 
 # TD3
@@ -649,7 +659,7 @@ py_test(
 py_test(
     name = "test_bandits",
     tags = ["team:ml", "trainers_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/bandit/tests/test_bandits.py"],
 )
 
@@ -819,7 +829,7 @@ py_test(
 py_test(
     name = "test_slateq",
     tags = ["team:ml", "trainers_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/slateq/tests/test_slateq.py"]
 )
 
@@ -2640,12 +2650,12 @@ py_test(
 )
 
 py_test(
-    name = "examples/recommender_system_with_recsim_and_slateq",
+    name = "examples/recommender_system_with_recsim_and_slateq_tf2",
     main = "examples/recommender_system_with_recsim_and_slateq.py",
     tags = ["team:ml", "examples", "examples_R"],
     size = "large",
     srcs = ["examples/recommender_system_with_recsim_and_slateq.py"],
-    args = ["--stop-iters=2", "--use-tune", "--num-cpus=5", "--random-test-episodes=10", "--env-num-candidates=100", "--env-slate-size=2"],
+    args = ["--stop-iters=2", "--learning-starts=100", "--framework=tf2", "--use-tune", "--random-test-episodes=10", "--env-num-candidates=50", "--env-slate-size=2"],
 )
 
 py_test(

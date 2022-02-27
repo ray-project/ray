@@ -5,6 +5,7 @@ Handling Dependencies
 
 This page might be useful for you if you're trying to:
 
+
 * Run a distributed Ray library or application.
 * Run a distributed Ray script which imports some local files.
 * Quickly iterate on a project with changing dependencies and files while running on a Ray cluster.
@@ -93,7 +94,7 @@ Runtime environments also allow you to set dependencies per-task, per-actor, and
 
 Here's another example of a runtime environment:
 
-.. literalinclude:: /ray-core/_examples/doc_code/runtime_env_example.py
+.. literalinclude:: /ray-core/doc_code/runtime_env_example.py
    :language: python
    :start-after: __runtime_env_conda_def_start__
    :end-before: __runtime_env_conda_def_end__
@@ -113,7 +114,7 @@ Specifying a Runtime Environment Per-Job
 
 You can specify a runtime environment for your whole job, whether running a script directly on the cluster, using :ref:`Ray Job submission <jobs-overview>`, or using :ref:`Ray Client<ray-client>`:
 
-.. literalinclude:: /ray-core/_examples/doc_code/runtime_env_example.py
+.. literalinclude:: /ray-core/doc_code/runtime_env_example.py
    :language: python
    :start-after: __ray_init_start__
    :end-before: __ray_init_end__
@@ -144,7 +145,7 @@ Specifying a Runtime Environment Per-Task or Per-Actor
 
 You can specify different runtime environments per-actor or per-task using ``.options()`` or the ``@ray.remote()`` decorator:
 
-.. literalinclude:: /ray-core/_examples/doc_code/runtime_env_example.py
+.. literalinclude:: /ray-core/doc_code/runtime_env_example.py
    :language: python
    :start-after: __per_task_per_actor_start__
    :end-before: __per_task_per_actor_end__

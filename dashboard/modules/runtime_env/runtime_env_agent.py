@@ -252,6 +252,7 @@ class RuntimeEnvAgent(
                     runtime_env_context = await _setup_runtime_env(
                         serialized_env, request.serialized_allocated_resource_instances
                     )
+                    error_message = None
                     break
                 except Exception as e:
                     err_msg = f"Failed to create runtime env {serialized_env}."

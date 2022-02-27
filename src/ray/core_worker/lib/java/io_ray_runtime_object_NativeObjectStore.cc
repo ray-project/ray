@@ -76,31 +76,13 @@ extern "C" {
 
 JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_object_NativeObjectStore_nativePut__Lio_ray_runtime_object_NativeRayObject_2_3B(
-    JNIEnv *env, jclass, jobject obj, jbyteArray owner_actor_id_bytes) {
+    JNIEnv *env, jclass, jobject obj, jbyteArray serialized_owner_actor_address_bytes) {
   ObjectID object_id;
   std::unique_ptr<rpc::Address> owner_address = nullptr;
-  if (owner_actor_id_bytes) {
-    rpc::ActorTableData actor_table_data;
-    {
-      /// Get actor info from GCS synchronously.
-      std::unique_ptr<std::string> serialized_actor_table_data;
-      std::promise<bool> promise;
-      auto gcs_client = CoreWorkerProcess::GetCoreWorker().GetGcsClient();
-      RAY_CHECK_OK(gcs_client->Actors().AsyncGet(
-          ActorID::FromBinary(JavaByteArrayToNativeString(env, owner_actor_id_bytes)),
-          [&serialized_actor_table_data, &promise](
-              const Status &status, const boost::optional<rpc::ActorTableData> &result) {
-            RAY_CHECK_OK(status);
-            if (result) {
-              serialized_actor_table_data.reset(
-                  new std::string(result->SerializeAsString()));
-            }
-            promise.set_value(true);
-          }));
-      promise.get_future().get();
-      actor_table_data.ParseFromString(*serialized_actor_table_data);
-    }
-    owner_address = std::make_unique<rpc::Address>(actor_table_data.address());
+  if (serialized_owner_actor_address_bytes != nullptr) {
+    owner_address = std::make_unique<rpc::Address>();
+    owner_address->ParseFromString(
+        JavaByteArrayToNativeString(env, serialized_owner_actor_address_bytes));
   }
   auto status = PutSerializedObject(env, obj, /*object_id=*/ObjectID::Nil(),
                                     /*out_object_id=*/&object_id, /*pin_object=*/true,
