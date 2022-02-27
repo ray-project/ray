@@ -28,11 +28,14 @@ def wait_multiple_steps():
 
 @pytest.mark.parametrize(
     "workflow_start_regular_shared",
-    [{
-        "num_cpus": 8
-        # We need more CPUs, otherwise task execution could be blocked.
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 8
+            # We need more CPUs, otherwise task execution could be blocked.
+        }
+    ],
+    indirect=True,
+)
 def test_wait_basics(workflow_start_regular_shared):
     # This tests basic usage of 'workflow.wait':
     # 1. It returns ready tasks precisely and preserves the original order.
@@ -78,11 +81,14 @@ def test_wait_basics(workflow_start_regular_shared):
 
 @pytest.mark.parametrize(
     "workflow_start_regular_shared",
-    [{
-        "num_cpus": 8
-        # We need more CPUs, otherwise task execution could be blocked.
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 8
+            # We need more CPUs, otherwise task execution could be blocked.
+        }
+    ],
+    indirect=True,
+)
 def test_wait_basics_2(workflow_start_regular_shared):
     # Test "workflow.wait" running in the top level DAG,
     # or running "workflow.wait" directly.
@@ -116,11 +122,14 @@ def test_wait_basics_2(workflow_start_regular_shared):
 
 @pytest.mark.parametrize(
     "workflow_start_regular_shared",
-    [{
-        "num_cpus": 8
-        # We need more CPUs, otherwise task execution could be blocked.
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 8
+            # We need more CPUs, otherwise task execution could be blocked.
+        }
+    ],
+    indirect=True,
+)
 def test_wait_recursive(workflow_start_regular_shared):
     # This tests that we can 'workflow.wait' the remaining pending workflow
     # returned by another 'workflow.wait' recursively.
@@ -144,11 +153,14 @@ def test_wait_recursive(workflow_start_regular_shared):
 
 @pytest.mark.parametrize(
     "workflow_start_regular_shared",
-    [{
-        "num_cpus": 8
-        # We need more CPUs, otherwise task execution could be blocked.
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 8
+            # We need more CPUs, otherwise task execution could be blocked.
+        }
+    ],
+    indirect=True,
+)
 def test_wait_failure_recovery_1(workflow_start_regular_shared):
     # This tests that if a step using the output of "workflow.wait" as its
     # input, it can be recovered after failure.
@@ -183,11 +195,14 @@ def test_wait_failure_recovery_1(workflow_start_regular_shared):
 
 @pytest.mark.parametrize(
     "workflow_start_regular_shared",
-    [{
-        "num_cpus": 8
-        # We need more CPUs, otherwise task execution could be blocked.
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 8
+            # We need more CPUs, otherwise task execution could be blocked.
+        }
+    ],
+    indirect=True,
+)
 def test_wait_failure_recovery_2(workflow_start_regular_shared):
     # Test failing "workflow.wait" and its input steps.
 

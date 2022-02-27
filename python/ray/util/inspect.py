@@ -12,8 +12,9 @@ def is_cython(obj):
         return type(x).__name__ == "cython_function_or_method"
 
     # Check if function or method, respectively
-    return check_cython(obj) or \
-        (hasattr(obj, "__func__") and check_cython(obj.__func__))
+    return check_cython(obj) or (
+        hasattr(obj, "__func__") and check_cython(obj.__func__)
+    )
 
 
 def is_function_or_method(obj):

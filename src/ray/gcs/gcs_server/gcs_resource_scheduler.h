@@ -115,7 +115,8 @@ class GcsResourceScheduler {
   /// can be used for scheduling.
   /// \return The candidate nodes which can be used for scheduling.
   absl::flat_hash_set<NodeID> FilterCandidateNodes(
-      const absl::flat_hash_map<NodeID, SchedulingResources> &cluster_resources,
+      const absl::flat_hash_map<NodeID, std::shared_ptr<SchedulingResources>>
+          &cluster_resources,
       const std::function<bool(const NodeID &)> &node_filter_func);
 
   /// Sort required resources according to the scarcity and capacity of resources.

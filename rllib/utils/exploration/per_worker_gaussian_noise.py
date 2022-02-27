@@ -13,9 +13,15 @@ class PerWorkerGaussianNoise(GaussianNoise):
     See Ape-X paper.
     """
 
-    def __init__(self, action_space: Space, *, framework: Optional[str],
-                 num_workers: Optional[int], worker_index: Optional[int],
-                 **kwargs):
+    def __init__(
+        self,
+        action_space: Space,
+        *,
+        framework: Optional[str],
+        num_workers: Optional[int],
+        worker_index: Optional[int],
+        **kwargs
+    ):
         """
         Args:
             action_space: The gym action space used by the environment.
@@ -28,18 +34,14 @@ class PerWorkerGaussianNoise(GaussianNoise):
         # Use a fixed, different epsilon per worker. See: Ape-X paper.
         if num_workers > 0:
             if worker_index > 0:
-                num_workers_minus_1 = float(num_workers - 1) \
-                    if num_workers > 1 else 1.0
-                exponent = (1 + (worker_index / num_workers_minus_1) * 7)
-                scale_schedule = ConstantSchedule(
-                    0.4**exponent, framework=framework)
+                num_workers_minus_1 = float(num_workers - 1) if num_workers > 1 else 1.0
+                exponent = 1 + (worker_index / num_workers_minus_1) * 7
+                scale_schedule = ConstantSchedule(0.4 ** exponent, framework=framework)
             # Local worker should have zero exploration so that eval
             # rollouts run properly.
             else:
                 scale_schedule = ConstantSchedule(0.0, framework=framework)
 
         super().__init__(
-            action_space,
-            scale_schedule=scale_schedule,
-            framework=framework,
-            **kwargs)
+            action_space, scale_schedule=scale_schedule, framework=framework, **kwargs
+        )

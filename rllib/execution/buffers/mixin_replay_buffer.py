@@ -64,8 +64,7 @@ class MixInMultiAgentReplayBuffer:
         self.replay_ratio = replay_ratio
         self.replay_proportion = None
         if self.replay_ratio != 1.0:
-            self.replay_proportion = self.replay_ratio / (
-                1.0 - self.replay_ratio)
+            self.replay_proportion = self.replay_ratio / (1.0 - self.replay_ratio)
 
         def new_buffer():
             return SimpleReplayBuffer(num_slots=capacity)
@@ -103,15 +102,17 @@ class MixInMultiAgentReplayBuffer:
                 self.last_added_batches[policy_id].append(sample_batch)
         self.num_added += batch.count
 
-    def replay(self, policy_id: PolicyID = DEFAULT_POLICY_ID) -> \
-            Optional[SampleBatchType]:
+    def replay(
+        self, policy_id: PolicyID = DEFAULT_POLICY_ID
+    ) -> Optional[SampleBatchType]:
         buffer = self.replay_buffers[policy_id]
         # Return None, if:
         # - Buffer empty or
         # - `replay_ratio` < 1.0 (new samples required in returned batch)
         #   and no new samples to mix with replayed ones.
-        if len(buffer) == 0 or (len(self.last_added_batches[policy_id]) == 0
-                                and self.replay_ratio < 1.0):
+        if len(buffer) == 0 or (
+            len(self.last_added_batches[policy_id]) == 0 and self.replay_ratio < 1.0
+        ):
             return None
 
         # Mix buffer's last added batches with older replayed batches.

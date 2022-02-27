@@ -42,7 +42,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
         std::make_unique<GcsServerMocker::MockGcsPubSub>(redis_client_));
     gcs_resource_manager_ =
-        std::make_shared<gcs::GcsResourceManager>(io_service_, nullptr, nullptr, true);
+        std::make_shared<gcs::GcsResourceManager>(io_service_, nullptr, nullptr);
     gcs_resource_scheduler_ =
         std::make_shared<gcs::GcsResourceScheduler>(*gcs_resource_manager_);
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
@@ -102,13 +102,9 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   }
 
   void AddNode(const std::shared_ptr<rpc::GcsNodeInfo> &node, int cpu_num = 10) {
+    (*node->mutable_resources_total())["CPU"] = cpu_num;
     gcs_node_manager_->AddNode(node);
     gcs_resource_manager_->OnNodeAdd(*node);
-
-    const auto &node_id = NodeID::FromBinary(node->node_id());
-    absl::flat_hash_map<std::string, double> resource_map;
-    resource_map["CPU"] = cpu_num;
-    gcs_resource_manager_->UpdateResourceCapacity(node_id, resource_map);
   }
 
   void ScheduleFailedWithZeroNodeTest(rpc::PlacementStrategy strategy) {

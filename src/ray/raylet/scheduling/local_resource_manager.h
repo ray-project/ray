@@ -26,18 +26,17 @@
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
-#include "ray/raylet/scheduling/cluster_resource_scheduler_interface.h"
 #include "ray/raylet/scheduling/fixed_point.h"
-#include "ray/raylet/scheduling/scheduling_ids.h"
-#include "ray/raylet/scheduling/scheduling_policy.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
-using rpc::HeartbeatTableData;
-
 /// Class manages the resources of the local node.
+/// It is responsible for allocating/deallocating resources for (task) resource request;
+/// it also supports creating a new resource or delete an existing resource.
+/// Whenever the resouce changes, it notifies the subscriber of the change.
+/// This class is not thread safe.
 class LocalResourceManager {
  public:
   LocalResourceManager(
@@ -68,24 +67,6 @@ class LocalResourceManager {
 
   /// Return local resources.
   NodeResourceInstances GetLocalResources() const { return local_resources_; }
-
-  /// Allocate local resources to satisfy a given request (resource_request).
-  ///
-  /// \param resource_request: Resources requested by a task.
-  /// \param task_allocation: Local resources allocated to satsify resource_request
-  /// demand.
-  ///
-  /// \return true, if allocation successful. If false, the caller needs to free the
-  /// allocated resources, i.e., task_allocation.
-  bool AllocateTaskResourceInstances(
-      const ResourceRequest &resource_request,
-      std::shared_ptr<TaskResourceInstances> task_allocation);
-
-  /// Free resources which were allocated with a task. The freed resources are
-  /// added back to the node's local available resources.
-  ///
-  /// \param task_allocation: Task's resources to be freed.
-  void FreeTaskResourceInstances(std::shared_ptr<TaskResourceInstances> task_allocation);
 
   /// Increase the available CPU instances of this node.
   ///
@@ -173,11 +154,10 @@ class LocalResourceManager {
   std::string SerializedTaskResourceInstances(
       std::shared_ptr<TaskResourceInstances> task_allocation) const;
 
-  /// Update last report resources local cache from gcs cache,
-  /// this is needed when gcs fo.
+  /// Replace the local resources by the provided value.
   ///
-  /// \param gcs_resources: The remote cache from gcs.
-  void UpdateLastResourceUsage(const std::shared_ptr<SchedulingResources> gcs_resources);
+  /// \param replacement: the new value.
+  void ResetLastReportResourceUsage(const SchedulingResources &replacement);
 
   /// Check whether the specific resource exists or not in local node.
   ///
@@ -208,6 +188,7 @@ class LocalResourceManager {
   /// Init the information about which resources are unit_instance.
   void InitResourceUnitInstanceInfo();
 
+  /// Notify the subscriber that the local resouces has changed.
   void OnResourceChanged();
 
   /// Increase the available capacities of the instances of a given resource.
@@ -268,6 +249,26 @@ class LocalResourceManager {
   bool AllocateResourceInstances(FixedPoint demand, std::vector<FixedPoint> &available,
                                  std::vector<FixedPoint> *allocation) const;
 
+  /// Allocate local resources to satisfy a given request (resource_request).
+  ///
+  /// \param resource_request: Resources requested by a task.
+  /// \param task_allocation: Local resources allocated to satsify resource_request
+  /// demand.
+  ///
+  /// \return true, if allocation successful. If false, the caller needs to free the
+  /// allocated resources, i.e., task_allocation.
+  bool AllocateTaskResourceInstances(
+      const ResourceRequest &resource_request,
+      std::shared_ptr<TaskResourceInstances> task_allocation);
+
+  /// Free resources which were allocated with a task. The freed resources are
+  /// added back to the node's local available resources.
+  ///
+  /// \param task_allocation: Task's resources to be freed.
+  void FreeTaskResourceInstances(std::shared_ptr<TaskResourceInstances> task_allocation);
+
+  void UpdateAvailableObjectStoreMemResource();
+
   /// Identifier of local node.
   int64_t local_node_id_;
   /// Keep the mapping between node and resource IDs in string representation
@@ -292,6 +293,14 @@ class LocalResourceManager {
 
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, TaskResourceInstancesTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, TaskResourceInstancesAllocationFailureTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, TaskResourceInstancesTest2);
+  FRIEND_TEST(ClusterResourceSchedulerTest, TaskResourceInstanceWithHardRequestTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, CustomResourceInstanceTest);
 };
+
+int GetPredefinedResourceIndex(const std::string &resource_name);
 
 }  // end namespace ray

@@ -2,8 +2,11 @@ import unittest
 
 import ray
 import ray.rllib.agents.a3c as a3c
-from ray.rllib.utils.test_utils import check_compute_single_action, \
-    check_train_results, framework_iterator
+from ray.rllib.utils.test_utils import (
+    check_compute_single_action,
+    check_train_results,
+    framework_iterator,
+)
 
 
 class TestA2C(unittest.TestCase):
@@ -34,7 +37,7 @@ class TestA2C(unittest.TestCase):
                 check_compute_single_action(trainer)
                 trainer.stop()
 
-    def test_a2c_exec_impl(ray_start_regular):
+    def test_a2c_exec_impl(self):
         config = {"min_time_s_per_reporting": 0}
         for _ in framework_iterator(config):
             trainer = a3c.A2CTrainer(env="CartPole-v0", config=config)
@@ -44,7 +47,7 @@ class TestA2C(unittest.TestCase):
             check_compute_single_action(trainer)
             trainer.stop()
 
-    def test_a2c_exec_impl_microbatch(ray_start_regular):
+    def test_a2c_exec_impl_microbatch(self):
         config = {
             "min_time_s_per_reporting": 0,
             "microbatch_size": 10,
@@ -61,4 +64,5 @@ class TestA2C(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

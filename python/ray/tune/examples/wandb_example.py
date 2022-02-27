@@ -7,9 +7,11 @@ import wandb
 
 from ray import tune
 from ray.tune import Trainable
-from ray.tune.integration.wandb import WandbLoggerCallback, \
-    WandbTrainableMixin, \
-    wandb_mixin
+from ray.tune.integration.wandb import (
+    WandbLoggerCallback,
+    WandbTrainableMixin,
+    wandb_mixin,
+)
 
 
 def train_function(config, checkpoint_dir=None):
@@ -26,12 +28,12 @@ def tune_function(api_key_file):
         mode="min",
         config={
             "mean": tune.grid_search([1, 2, 3, 4, 5]),
-            "sd": tune.uniform(0.2, 0.8)
+            "sd": tune.uniform(0.2, 0.8),
         },
         callbacks=[
-            WandbLoggerCallback(
-                api_key_file=api_key_file, project="Wandb_example")
-        ])
+            WandbLoggerCallback(api_key_file=api_key_file, project="Wandb_example")
+        ],
+    )
     return analysis.best_config
 
 
@@ -52,11 +54,9 @@ def tune_decorated(api_key_file):
         config={
             "mean": tune.grid_search([1, 2, 3, 4, 5]),
             "sd": tune.uniform(0.2, 0.8),
-            "wandb": {
-                "api_key_file": api_key_file,
-                "project": "Wandb_example"
-            }
-        })
+            "wandb": {"api_key_file": api_key_file, "project": "Wandb_example"},
+        },
+    )
     return analysis.best_config
 
 
@@ -77,18 +77,15 @@ def tune_trainable(api_key_file):
         config={
             "mean": tune.grid_search([1, 2, 3, 4, 5]),
             "sd": tune.uniform(0.2, 0.8),
-            "wandb": {
-                "api_key_file": api_key_file,
-                "project": "Wandb_example"
-            }
-        })
+            "wandb": {"api_key_file": api_key_file, "project": "Wandb_example"},
+        },
+    )
     return analysis.best_config
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--mock-api", action="store_true", help="Mock Wandb API access")
+    parser.add_argument("--mock-api", action="store_true", help="Mock Wandb API access")
     args, _ = parser.parse_known_args()
 
     api_key_file = "~/.wandb_api_key"

@@ -12,7 +12,7 @@ from ray import tune
 
 def evaluation_fn(step, width, height):
     time.sleep(0.1)
-    return (0.1 + width * step / 100)**(-1) + height * 0.1
+    return (0.1 + width * step / 100) ** (-1) + height * 0.1
 
 
 def train_func(config, checkpoint_dir=None):
@@ -43,18 +43,20 @@ def train_func(config, checkpoint_dir=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
+        "--smoke-test", action="store_true", help="Finish quickly for testing"
+    )
     parser.add_argument(
         "--server-address",
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using "
-        "Ray Client.")
+        help="The address of server to connect to if using " "Ray Client.",
+    )
     args, _ = parser.parse_known_args()
 
     if args.server_address:
         import ray
+
         ray.init(f"ray://{args.server_address}")
 
     analysis = tune.run(
@@ -67,8 +69,9 @@ if __name__ == "__main__":
         config={
             "steps": 10,
             "width": tune.randint(10, 100),
-            "height": tune.loguniform(10, 100)
-        })
+            "height": tune.loguniform(10, 100),
+        },
+    )
     print("Best hyperparameters: ", analysis.best_config)
     print("Best checkpoint directory: ", analysis.best_checkpoint)
     with open(os.path.join(analysis.best_checkpoint, "checkpoint"), "r") as f:

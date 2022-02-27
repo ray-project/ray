@@ -4,6 +4,7 @@ import os
 import threading
 import sys
 import grpc
+import numpy as np
 
 import time
 import random
@@ -33,7 +34,9 @@ class MiddlemanDataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
     errors between a client and server pair.
     """
 
-    def __init__(self, on_response: Optional[Hook] = None):
+    def __init__(
+        self, on_response: Optional[Hook] = None, on_request: Optional[Hook] = None
+    ):
         """
         Args:
             on_response: Optional hook to inject errors before sending back a
@@ -41,14 +44,22 @@ class MiddlemanDataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         """
         self.stub = None
         self.on_response = on_response
+        self.on_request = on_request
 
     def set_channel(self, channel: grpc.Channel) -> None:
         self.stub = ray_client_pb2_grpc.RayletDataStreamerStub(channel)
 
+    def _requests(self, request_iterator):
+        for req in request_iterator:
+            if self.on_request:
+                self.on_request(req)
+            yield req
+
     def Datapath(self, request_iterator, context):
         try:
             for response in self.stub.Datapath(
-                    request_iterator, metadata=context.invocation_metadata()):
+                self._requests(request_iterator), metadata=context.invocation_metadata()
+            ):
                 if self.on_response:
                     self.on_response(response)
                 yield response
@@ -78,7 +89,8 @@ class MiddlemanLogServicer(ray_client_pb2_grpc.RayletLogStreamerServicer):
     def Logstream(self, request_iterator, context):
         try:
             for response in self.stub.Logstream(
-                    request_iterator, metadata=context.invocation_metadata()):
+                request_iterator, metadata=context.invocation_metadata()
+            ):
                 if self.on_response:
                     self.on_response(response)
                 yield response
@@ -93,9 +105,9 @@ class MiddlemanRayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     errors between a client and server pair.
     """
 
-    def __init__(self,
-                 on_request: Optional[Hook] = None,
-                 on_response: Optional[Hook] = None):
+    def __init__(
+        self, on_request: Optional[Hook] = None, on_response: Optional[Hook] = None
+    ):
         """
         Args:
             on_request: Optional hook to inject errors before forwarding a
@@ -111,13 +123,14 @@ class MiddlemanRayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.stub = ray_client_pb2_grpc.RayletDriverStub(channel)
 
     def _call_inner_function(
-            self, request: Any, context,
-            method: str) -> Optional[ray_client_pb2_grpc.RayletDriverStub]:
+        self, request: Any, context, method: str
+    ) -> Optional[ray_client_pb2_grpc.RayletDriverStub]:
         if self.on_request:
             self.on_request(request)
         try:
             response = getattr(self.stub, method)(
-                request, metadata=context.invocation_metadata())
+                request, metadata=context.invocation_metadata()
+            )
         except grpc.RpcError as e:
             context.set_code(e.code())
             context.set_details(e.details())
@@ -141,16 +154,15 @@ class MiddlemanRayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     def KVList(self, request, context=None) -> ray_client_pb2.KVListResponse:
         return self._call_inner_function(request, context, "KVList")
 
-    def KVExists(self, request,
-                 context=None) -> ray_client_pb2.KVExistsResponse:
+    def KVExists(self, request, context=None) -> ray_client_pb2.KVExistsResponse:
         return self._call_inner_function(request, context, "KVExists")
 
-    def ListNamedActors(self, request, context=None
-                        ) -> ray_client_pb2.ClientListNamedActorsResponse:
+    def ListNamedActors(
+        self, request, context=None
+    ) -> ray_client_pb2.ClientListNamedActorsResponse:
         return self._call_inner_function(request, context, "ListNamedActors")
 
-    def ClusterInfo(self, request,
-                    context=None) -> ray_client_pb2.ClusterInfoResponse:
+    def ClusterInfo(self, request, context=None) -> ray_client_pb2.ClusterInfoResponse:
         return self._call_inner_function(request, context, "ClusterInfo")
 
     def Terminate(self, req, context=None):
@@ -159,16 +171,19 @@ class MiddlemanRayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     def GetObject(self, request, context=None):
         return self._call_inner_function(request, context, "GetObject")
 
-    def PutObject(self, request: ray_client_pb2.PutRequest,
-                  context=None) -> ray_client_pb2.PutResponse:
+    def PutObject(
+        self, request: ray_client_pb2.PutRequest, context=None
+    ) -> ray_client_pb2.PutResponse:
         return self._call_inner_function(request, context, "PutObject")
 
-    def WaitObject(self, request: ray_client_pb2.WaitRequest,
-                   context=None) -> ray_client_pb2.WaitResponse:
+    def WaitObject(
+        self, request: ray_client_pb2.WaitRequest, context=None
+    ) -> ray_client_pb2.WaitResponse:
         return self._call_inner_function(request, context, "WaitObject")
 
-    def Schedule(self, task: ray_client_pb2.ClientTask,
-                 context=None) -> ray_client_pb2.ClientTaskTicket:
+    def Schedule(
+        self, task: ray_client_pb2.ClientTask, context=None
+    ) -> ray_client_pb2.ClientTaskTicket:
         return self._call_inner_function(task, context, "Schedule")
 
 
@@ -179,13 +194,16 @@ class MiddlemanServer:
     errors between a client and server pair.
     """
 
-    def __init__(self,
-                 listen_addr: str,
-                 real_addr,
-                 on_log_response: Optional[Hook] = None,
-                 on_data_response: Optional[Hook] = None,
-                 on_task_request: Optional[Hook] = None,
-                 on_task_response: Optional[Hook] = None):
+    def __init__(
+        self,
+        listen_addr: str,
+        real_addr,
+        on_log_response: Optional[Hook] = None,
+        on_data_request: Optional[Hook] = None,
+        on_data_response: Optional[Hook] = None,
+        on_task_request: Optional[Hook] = None,
+        on_task_response: Optional[Hook] = None,
+    ):
         """
         Args:
             listen_addr: The address the middleman server will listen on
@@ -203,18 +221,24 @@ class MiddlemanServer:
         self.real_addr = real_addr
         self.server = grpc.server(
             futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),
-            options=GRPC_OPTIONS)
+            options=GRPC_OPTIONS,
+        )
         self.task_servicer = MiddlemanRayletServicer(
-            on_response=on_task_response, on_request=on_task_request)
+            on_response=on_task_response, on_request=on_task_request
+        )
         self.data_servicer = MiddlemanDataServicer(
-            on_response=on_data_response)
+            on_response=on_data_response, on_request=on_data_request
+        )
         self.logs_servicer = MiddlemanLogServicer(on_response=on_log_response)
         ray_client_pb2_grpc.add_RayletDriverServicer_to_server(
-            self.task_servicer, self.server)
+            self.task_servicer, self.server
+        )
         ray_client_pb2_grpc.add_RayletDataStreamerServicer_to_server(
-            self.data_servicer, self.server)
+            self.data_servicer, self.server
+        )
         ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(
-            self.logs_servicer, self.server)
+            self.logs_servicer, self.server
+        )
         self.server.add_insecure_port(self.listen_addr)
         self.channel = None
         self.reset_channel()
@@ -226,8 +250,7 @@ class MiddlemanServer:
         """
         if self.channel:
             self.channel.close()
-        self.channel = grpc.insecure_channel(
-            self.real_addr, options=GRPC_OPTIONS)
+        self.channel = grpc.insecure_channel(self.real_addr, options=GRPC_OPTIONS)
         grpc.channel_ready_future(self.channel)
         self.task_servicer.set_channel(self.channel)
         self.data_servicer.set_channel(self.channel)
@@ -241,10 +264,13 @@ class MiddlemanServer:
 
 
 @contextlib.contextmanager
-def start_middleman_server(on_log_response=None,
-                           on_data_response=None,
-                           on_task_request=None,
-                           on_task_response=None):
+def start_middleman_server(
+    on_log_response=None,
+    on_data_request=None,
+    on_data_response=None,
+    on_task_request=None,
+    on_task_response=None,
+):
     """
     Helper context that starts a middleman server listening on port 10011,
     and a ray client server on port 50051.
@@ -257,9 +283,11 @@ def start_middleman_server(on_log_response=None,
             listen_addr="localhost:10011",
             real_addr="localhost:50051",
             on_log_response=on_log_response,
+            on_data_request=on_data_request,
             on_data_response=on_data_response,
-            on_task_request=on_task_response,
-            on_task_response=on_task_request)
+            on_task_request=on_task_request,
+            on_task_response=on_task_response,
+        )
         middleman.start()
         ray.init("ray://localhost:10011")
         yield middleman, server
@@ -299,12 +327,35 @@ def test_disconnect_during_get():
         middleman.reset_channel()
 
     with start_middleman_server() as (middleman, _):
-        disconnect_thread = threading.Thread(
-            target=disconnect, args=(middleman, ))
+        disconnect_thread = threading.Thread(target=disconnect, args=(middleman,))
         disconnect_thread.start()
         result = ray.get(slow_result.remote())
         assert result == 12345
         disconnect_thread.join()
+
+
+def test_disconnect_during_large_put():
+    """
+    Disconnect during a large (multi-chunk) put.
+    """
+    i = 0
+    started = False
+
+    def fail_halfway(_):
+        # Inject an error halfway through the object transfer
+        nonlocal i, started
+        if not started:
+            return
+        i += 1
+        if i == 8:
+            raise RuntimeError
+
+    with start_middleman_server(on_data_request=fail_halfway):
+        started = True
+        objref = ray.put(np.random.random((1024, 1024, 128)))
+        assert i > 8  # Check that the failure was injected
+        result = ray.get(objref)
+        assert result.shape == (1024, 1024, 128)
 
 
 def test_valid_actor_state():
@@ -335,9 +386,10 @@ def test_valid_actor_state():
             raise RuntimeError
 
     with start_middleman_server(
-            on_data_response=fail_every_seven,
-            on_task_request=fail_every_seven,
-            on_task_response=fail_every_seven):
+        on_data_response=fail_every_seven,
+        on_task_request=fail_every_seven,
+        on_task_response=fail_every_seven,
+    ):
         started = True
         actor = IncrActor.remote()
         for _ in range(100):
@@ -410,8 +462,9 @@ def test_client_reconnect_grace_period():
     after the grace period expires.
     """
     # Lower grace period to 5 seconds to save time
-    with patch.dict(os.environ, {"RAY_CLIENT_RECONNECT_GRACE_PERIOD": "5"}), \
-            start_middleman_server() as (middleman, _):
+    with patch.dict(
+        os.environ, {"RAY_CLIENT_RECONNECT_GRACE_PERIOD": "5"}
+    ), start_middleman_server() as (middleman, _):
         assert ray.get(ray.put(42)) == 42
         # Close channel
         middleman.channel.close()

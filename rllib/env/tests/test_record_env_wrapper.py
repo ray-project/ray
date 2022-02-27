@@ -26,7 +26,8 @@ class TestRecordEnvWrapper(unittest.TestCase):
             log_dir="",
             policy_config={
                 "in_evaluation": False,
-            })
+            },
+        )
         # Non MultiAgentEnv: Wrapper's type is wrappers.Monitor.
         self.assertTrue(isinstance(wrapped, gym.wrappers.Monitor))
         self.assertFalse(isinstance(wrapped, VideoMonitor))
@@ -51,7 +52,8 @@ class TestRecordEnvWrapper(unittest.TestCase):
         # So total reward is 1000.0 per episode (10 steps).
         check(
             np.array([100.0, 100.0]) * num_steps_per_episode,
-            wrapped.get_episode_rewards())
+            wrapped.get_episode_rewards(),
+        )
         # Erase all generated files and the temp path just in case,
         # as to not disturb further CI-tests.
         shutil.rmtree(record_env_dir)
@@ -69,7 +71,8 @@ class TestRecordEnvWrapper(unittest.TestCase):
             log_dir="",
             policy_config={
                 "in_evaluation": False,
-            })
+            },
+        )
         # Type is VideoMonitor.
         self.assertTrue(isinstance(wrapped, gym.wrappers.Monitor))
         self.assertTrue(isinstance(wrapped, VideoMonitor))
@@ -93,4 +96,5 @@ class TestRecordEnvWrapper(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

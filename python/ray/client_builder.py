@@ -9,12 +9,14 @@ import sys
 
 from typing import Any, Dict, Optional, Tuple
 
-from ray.ray_constants import (RAY_ADDRESS_ENVIRONMENT_VARIABLE,
-                               RAY_NAMESPACE_ENVIRONMENT_VARIABLE,
-                               RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE)
+from ray.ray_constants import (
+    RAY_ADDRESS_ENVIRONMENT_VARIABLE,
+    RAY_NAMESPACE_ENVIRONMENT_VARIABLE,
+    RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE,
+)
 from ray.job_config import JobConfig
 import ray.util.client_connect
-from ray.worker import init as ray_driver_init
+from ray.worker import init as ray_driver_init, BaseContext
 from ray.util.annotations import Deprecated
 
 logger = logging.getLogger(__name__)
@@ -23,10 +25,11 @@ CLIENT_DOCS_URL = "https://docs.ray.io/en/latest/cluster/ray-client.html"
 
 
 @dataclass
-class ClientContext:
+class ClientContext(BaseContext):
     """
     Basic context manager for a ClientBuilder connection.
     """
+
     dashboard_url: Optional[str]
     python_version: str
     ray_version: str
@@ -51,7 +54,8 @@ class ClientContext:
     def _swap_context(self):
         if self._context_to_restore is not None:
             self._context_to_restore = ray.util.client.ray.set_context(
-                self._context_to_restore)
+                self._context_to_restore
+            )
 
     def _disconnect_with_context(self, force_disconnect: bool) -> None:
         """
@@ -70,7 +74,8 @@ class ClientContext:
             logger.debug(
                 "The current Ray Cluster is scoped to this process. "
                 "Disconnecting is not possible as it will shutdown the "
-                "cluster.")
+                "cluster."
+            )
         else:
             # This is only a driver connected to an existing cluster.
             ray.shutdown()
@@ -137,12 +142,16 @@ class ClientBuilder:
         # with allow_multiple=True is allowed
         default_cli_connected = ray.util.client.ray.is_connected()
         has_cli_connected = ray.util.client.num_connected_contexts() > 0
-        if not self._allow_multiple_connections and \
-           not default_cli_connected and has_cli_connected:
+        if (
+            not self._allow_multiple_connections
+            and not default_cli_connected
+            and has_cli_connected
+        ):
             raise ValueError(
                 "The client has already connected to the cluster "
                 "with allow_multiple=True. Please set allow_multiple=True"
-                " to proceed")
+                " to proceed"
+            )
 
         old_ray_cxt = None
         if self._allow_multiple_connections:
@@ -152,7 +161,8 @@ class ClientBuilder:
             self.address,
             job_config=self._job_config,
             _credentials=self._credentials,
-            ray_init_kwargs=self._remote_init_kwargs)
+            ray_init_kwargs=self._remote_init_kwargs,
+        )
         get_dashboard_url = ray.remote(ray.worker.get_dashboard_url)
         dashboard_url = ray.get(get_dashboard_url.options(num_cpus=0).remote())
         cxt = ClientContext(
@@ -162,7 +172,8 @@ class ClientBuilder:
             ray_commit=client_info_dict["ray_commit"],
             protocol_version=client_info_dict["protocol_version"],
             _num_clients=client_info_dict["num_clients"],
-            _context_to_restore=ray.util.client.ray.get_context())
+            _context_to_restore=ray.util.client.ray.get_context(),
+        )
         if self._allow_multiple_connections:
             ray.util.client.ray.set_context(old_ray_cxt)
         return cxt
@@ -203,15 +214,17 @@ class ClientBuilder:
 
         if kwargs:
             expected_sig = inspect.signature(ray_driver_init)
-            extra_args = set(kwargs.keys()).difference(
-                expected_sig.parameters.keys())
+            extra_args = set(kwargs.keys()).difference(expected_sig.parameters.keys())
             if len(extra_args) > 0:
-                raise RuntimeError("Got unexpected kwargs: {}".format(
-                    ", ".join(extra_args)))
+                raise RuntimeError(
+                    "Got unexpected kwargs: {}".format(", ".join(extra_args))
+                )
             self._remote_init_kwargs = kwargs
             unknown = ", ".join(kwargs)
-            logger.info("Passing the following kwargs to ray.init() "
-                        f"on the server: {unknown}")
+            logger.info(
+                "Passing the following kwargs to ray.init() "
+                f"on the server: {unknown}"
+            )
         return self
 
     def _client_deprecation_warn(self) -> None:
@@ -252,7 +265,8 @@ class ClientBuilder:
             "`ray.client().connect()` with the following:\n"
             f"      {replacement_call}\n",
             DeprecationWarning,
-            stacklevel=3)
+            stacklevel=3,
+        )
 
 
 class _LocalClientBuilder(ClientBuilder):
@@ -267,17 +281,18 @@ class _LocalClientBuilder(ClientBuilder):
         # check if those values are already set.
         self._fill_defaults_from_env()
 
-        connection_dict = ray.init(
-            address=self.address, job_config=self._job_config)
+        connection_dict = ray.init(address=self.address, job_config=self._job_config)
         return ClientContext(
             dashboard_url=connection_dict["webui_url"],
             python_version="{}.{}.{}".format(
-                sys.version_info[0], sys.version_info[1], sys.version_info[2]),
+                sys.version_info[0], sys.version_info[1], sys.version_info[2]
+            ),
             ray_version=ray.__version__,
             ray_commit=ray.__commit__,
             protocol_version=None,
             _num_clients=1,
-            _context_to_restore=None)
+            _context_to_restore=None,
+        )
 
 
 def _split_address(address: str) -> Tuple[str, str]:
@@ -300,8 +315,9 @@ def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
         try:
             # NOTE: This is not placed in `Node::get_temp_dir_path`, because
             # this file is accessed before the `Node` object is created.
-            cluster_file = os.path.join(ray._private.utils.get_user_temp_dir(),
-                                        "ray_current_cluster")
+            cluster_file = os.path.join(
+                ray._private.utils.get_user_temp_dir(), "ray_current_cluster"
+            )
             with open(cluster_file, "r") as f:
                 address = f.read().strip()
         except FileNotFoundError:
@@ -314,15 +330,18 @@ def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
     except Exception:
         raise RuntimeError(
             f"Module: {module_string} does not exist.\n"
-            f"This module was parsed from Address: {address}") from None
-    assert "ClientBuilder" in dir(module), (f"Module: {module_string} does "
-                                            "not have ClientBuilder.")
+            f"This module was parsed from Address: {address}"
+        ) from None
+    assert "ClientBuilder" in dir(module), (
+        f"Module: {module_string} does " "not have ClientBuilder."
+    )
     return module.ClientBuilder(inner_address)
 
 
 @Deprecated
-def client(address: Optional[str] = None,
-           _deprecation_warn_enabled: bool = True) -> ClientBuilder:
+def client(
+    address: Optional[str] = None, _deprecation_warn_enabled: bool = True
+) -> ClientBuilder:
     """
     Creates a ClientBuilder based on the provided address. The address can be
     of the following forms:
@@ -341,7 +360,8 @@ def client(address: Optional[str] = None,
     if env_address and address is None:
         logger.debug(
             f"Using address ({env_address}) instead of auto-detection "
-            f"because {RAY_ADDRESS_ENVIRONMENT_VARIABLE} is set.")
+            f"because {RAY_ADDRESS_ENVIRONMENT_VARIABLE} is set."
+        )
         address = env_address
 
     builder = _get_builder_from_address(address)

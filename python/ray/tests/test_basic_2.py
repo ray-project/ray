@@ -18,6 +18,7 @@ from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.exceptions import GetTimeoutError
 from ray.exceptions import RayTaskError
 from ray.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
+
 if client_test_enabled():
     from ray.util.client import ray
 else:
@@ -51,14 +52,14 @@ def test_variable_number_of_args(shutdown_only):
         return x, y, args
 
     assert ray.get(f1.remote()) == ()
-    assert ray.get(f1.remote(1)) == (1, )
+    assert ray.get(f1.remote(1)) == (1,)
     assert ray.get(f1.remote(1, 2, 3)) == (1, 2, 3)
     with pytest.raises(TypeError):
         f2.remote()
     with pytest.raises(TypeError):
         f2.remote(1)
     assert ray.get(f2.remote(1, 2)) == (1, 2, ())
-    assert ray.get(f2.remote(1, 2, 3)) == (1, 2, (3, ))
+    assert ray.get(f2.remote(1, 2, 3)) == (1, 2, (3,))
     assert ray.get(f2.remote(1, 2, 3, 4)) == (1, 2, (3, 4))
 
     def testNoArgs(self):
@@ -76,9 +77,11 @@ def test_defining_remote_functions(shutdown_only):
 
     # Test that we can close over plain old data.
     data = [
-        np.zeros([3, 5]), (1, 2, "a"), [0.0, 1.0, 1 << 62], 1 << 60, {
-            "a": np.zeros(3)
-        }
+        np.zeros([3, 5]),
+        (1, 2, "a"),
+        [0.0, 1.0, 1 << 62],
+        1 << 60,
+        {"a": np.zeros(3)},
     ]
 
     @ray.remote
@@ -206,10 +209,14 @@ def test_call_matrix(shutdown_only):
         return x
 
     def check(source_actor, dest_actor, is_large, out_of_band):
-        print("CHECKING", "actor" if source_actor else "task", "to", "actor"
-              if dest_actor else "task", "large_object"
-              if is_large else "small_object", "out_of_band"
-              if out_of_band else "in_band")
+        print(
+            "CHECKING",
+            "actor" if source_actor else "task",
+            "to",
+            "actor" if dest_actor else "task",
+            "large_object" if is_large else "small_object",
+            "out_of_band" if out_of_band else "in_band",
+        )
         if source_actor:
             a = Actor.remote()
             if is_large:
@@ -259,8 +266,9 @@ def test_actor_call_order(shutdown_only):
             return count
 
     a = Actor.remote()
-    assert ray.get([a.inc.remote(i, small_value.remote())
-                    for i in range(100)]) == list(range(100))
+    assert ray.get([a.inc.remote(i, small_value.remote()) for i in range(100)]) == list(
+        range(100)
+    )
 
 
 def test_actor_pass_by_ref_order_optimization(shutdown_only):
@@ -301,14 +309,19 @@ def test_actor_pass_by_ref_order_optimization(shutdown_only):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster", [{
-        "num_cpus": 1,
-        "num_nodes": 1,
-    }, {
-        "num_cpus": 1,
-        "num_nodes": 2,
-    }],
-    indirect=True)
+    "ray_start_cluster",
+    [
+        {
+            "num_cpus": 1,
+            "num_nodes": 1,
+        },
+        {
+            "num_cpus": 1,
+            "num_nodes": 2,
+        },
+    ],
+    indirect=True,
+)
 def test_call_chain(ray_start_cluster):
     @ray.remote
     def g(x):
@@ -325,8 +338,7 @@ def test_call_chain(ray_start_cluster):
 def test_system_config_when_connecting(ray_start_cluster):
     config = {"object_timeout_milliseconds": 200}
     cluster = Cluster()
-    cluster.add_node(
-        _system_config=config, object_store_memory=100 * 1024 * 1024)
+    cluster.add_node(_system_config=config, object_store_memory=100 * 1024 * 1024)
     cluster.wait_for_nodes()
 
     # Specifying _system_config when connecting to a cluster is disallowed.
@@ -589,8 +601,7 @@ def test_wait(ray_start_regular_shared):
     assert remaining_ids == []
 
     object_refs = [f.remote(0), f.remote(5)]
-    ready_ids, remaining_ids = ray.wait(
-        object_refs, timeout=0.5, num_returns=2)
+    ready_ids, remaining_ids = ray.wait(object_refs, timeout=0.5, num_returns=2)
     assert len(ready_ids) == 1
     assert len(remaining_ids) == 1
 
@@ -623,12 +634,7 @@ def test_wait(ray_start_regular_shared):
 
 def test_duplicate_args(ray_start_regular_shared):
     @ray.remote
-    def f(arg1,
-          arg2,
-          arg1_duplicate,
-          kwarg1=None,
-          kwarg2=None,
-          kwarg1_duplicate=None):
+    def f(arg1, arg2, arg1_duplicate, kwarg1=None, kwarg2=None, kwarg1_duplicate=None):
         assert arg1 == kwarg1
         assert arg1 != arg2
         assert arg1 == arg1_duplicate
@@ -638,16 +644,12 @@ def test_duplicate_args(ray_start_regular_shared):
     # Test by-value arguments.
     arg1 = [1]
     arg2 = [2]
-    ray.get(
-        f.remote(
-            arg1, arg2, arg1, kwarg1=arg1, kwarg2=arg2, kwarg1_duplicate=arg1))
+    ray.get(f.remote(arg1, arg2, arg1, kwarg1=arg1, kwarg2=arg2, kwarg1_duplicate=arg1))
 
     # Test by-reference arguments.
     arg1 = ray.put([1])
     arg2 = ray.put([2])
-    ray.get(
-        f.remote(
-            arg1, arg2, arg1, kwarg1=arg1, kwarg2=arg2, kwarg1_duplicate=arg1))
+    ray.get(f.remote(arg1, arg2, arg1, kwarg1=arg1, kwarg2=arg2, kwarg1_duplicate=arg1))
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="internal api")
@@ -693,14 +695,14 @@ if __name__ == "__main__":
     with tempfile.TemporaryDirectory(suffix="a b") as tmpdir:
         test_driver = os.path.join(tmpdir, "test_load_code_from_local.py")
         with open(test_driver, "w") as f:
-            f.write(
-                code_test.format(repr(ray_start_regular_shared["address"])))
+            f.write(code_test.format(repr(ray_start_regular_shared["address"])))
         output = subprocess.check_output([sys.executable, test_driver])
         assert b"OK" in output
 
 
 @pytest.mark.skipif(
-    client_test_enabled(), reason="JobConfig doesn't work in client mode")
+    client_test_enabled(), reason="JobConfig doesn't work in client mode"
+)
 def test_use_dynamic_function_and_class():
     # Test use dynamically defined functions
     # and classes for remote tasks and actors.
@@ -728,11 +730,15 @@ def test_use_dynamic_function_and_class():
     # Check whether the dynamic function is exported to GCS.
     # Note, the key format should be kept
     # the same as in `FunctionActorManager.export`.
-    key_func = (b"RemoteFunction:" +
-                ray.worker.global_worker.current_job_id.hex().encode() + b":" +
-                f._function_descriptor.function_id.binary())
+    key_func = (
+        b"RemoteFunction:"
+        + ray.worker.global_worker.current_job_id.hex().encode()
+        + b":"
+        + f._function_descriptor.function_id.binary()
+    )
     assert ray.worker.global_worker.gcs_client.internal_kv_exists(
-        key_func, KV_NAMESPACE_FUNCTION_TABLE)
+        key_func, KV_NAMESPACE_FUNCTION_TABLE
+    )
     foo_actor = Foo.remote()
 
     assert ray.get(foo_actor.foo.remote()) == "OK"
@@ -740,14 +746,18 @@ def test_use_dynamic_function_and_class():
     # Note, the key format should be kept
     # the same as in `FunctionActorManager.export_actor_class`.
     key_cls = (
-        b"ActorClass:" +
-        ray.worker.global_worker.current_job_id.hex().encode() + b":" +
-        foo_actor._ray_actor_creation_function_descriptor.function_id.binary())
+        b"ActorClass:"
+        + ray.worker.global_worker.current_job_id.hex().encode()
+        + b":"
+        + foo_actor._ray_actor_creation_function_descriptor.function_id.binary()
+    )
     assert ray.worker.global_worker.gcs_client.internal_kv_exists(
-        key_cls, namespace=KV_NAMESPACE_FUNCTION_TABLE)
+        key_cls, namespace=KV_NAMESPACE_FUNCTION_TABLE
+    )
 
 
 if __name__ == "__main__":
     import pytest
+
     # Skip test_basic_2_client_mode for now- the test suite is breaking.
     sys.exit(pytest.main(["-v", __file__]))

@@ -7,15 +7,15 @@ from ray.cluster_utils import Cluster
 from ray.serve.utils import logger
 from ray.serve.config import DeploymentMode
 from ray.serve.constants import DEFAULT_CHECKPOINT_PATH
+
 # Cluster setup configs
 NUM_CPU_PER_NODE = 10
 NUM_CONNECTIONS = 10
 
 
 def setup_local_single_node_cluster(
-        num_nodes: int,
-        checkpoint_path: str = DEFAULT_CHECKPOINT_PATH,
-        namespace="serve"):
+    num_nodes: int, checkpoint_path: str = DEFAULT_CHECKPOINT_PATH, namespace="serve"
+):
     """Setup ray cluster locally via ray.init() and Cluster()
 
     Each actor is simulated in local process on single node,
@@ -29,8 +29,7 @@ def setup_local_single_node_cluster(
             num_gpus=0,
             resources={str(i): 2},
         )
-    ray.init(
-        address=cluster.address, dashboard_host="0.0.0.0", namespace=namespace)
+    ray.init(address=cluster.address, dashboard_host="0.0.0.0", namespace=namespace)
     serve_client = serve.start(
         detached=True,
         http_options={"location": DeploymentMode.EveryNode},
@@ -50,10 +49,8 @@ def setup_anyscale_cluster(checkpoint_path: str = DEFAULT_CHECKPOINT_PATH):
     # we cannot connect to anyscale cluster from its headnode
     # ray.client().env({}).connect()
     ray.init(
-        address="auto",
-        runtime_env={"env_vars": {
-            "SERVE_ENABLE_SCALING_LOG": "1"
-        }})
+        address="auto", runtime_env={"env_vars": {"SERVE_ENABLE_SCALING_LOG": "1"}}
+    )
     serve_client = serve.start(
         http_options={"location": DeploymentMode.EveryNode},
         _checkpoint_path=checkpoint_path,
@@ -63,19 +60,21 @@ def setup_anyscale_cluster(checkpoint_path: str = DEFAULT_CHECKPOINT_PATH):
 
 
 @ray.remote
-def warm_up_one_cluster(num_warmup_iterations: int,
-                        http_host: str,
-                        http_port: str,
-                        endpoint: str,
-                        nonblocking: bool = False) -> None:
+def warm_up_one_cluster(
+    num_warmup_iterations: int,
+    http_host: str,
+    http_port: str,
+    endpoint: str,
+    nonblocking: bool = False,
+) -> None:
     # Specifying a low timeout effectively makes requests.get() nonblocking
     timeout = 0.0001 if nonblocking else None
     logger.info(f"Warming up {endpoint} ..")
     for _ in range(num_warmup_iterations):
         try:
             resp = requests.get(
-                f"http://{http_host}:{http_port}/{endpoint}",
-                timeout=timeout).text
+                f"http://{http_host}:{http_port}/{endpoint}", timeout=timeout
+            ).text
             logger.info(resp)
         except requests.exceptions.ReadTimeout:
             # This exception only gets raised if a timeout is specified in the

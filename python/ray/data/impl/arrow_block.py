@@ -1,7 +1,7 @@
 import collections
 import random
 import heapq
-from typing import Dict, List, Tuple, Any, TypeVar, Optional, TYPE_CHECKING
+from typing import Dict, List, Tuple, Iterator, Any, TypeVar, Optional, TYPE_CHECKING
 
 import numpy as np
 
@@ -10,10 +10,9 @@ try:
 except ImportError:
     pyarrow = None
 
-from ray.data.block import Block, BlockAccessor, BlockMetadata, \
-    BlockExecStats, KeyFn
-from ray.data.impl.table_block import TableBlockAccessor, TableRow, \
-    TableBlockBuilder
+from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats, KeyFn
+from ray.data.row import TableRow
+from ray.data.impl.table_block import TableBlockAccessor, TableBlockBuilder
 from ray.data.aggregate import AggregateFn
 
 if TYPE_CHECKING:
@@ -24,8 +23,9 @@ T = TypeVar("T")
 
 
 class ArrowRow(TableRow):
-    def as_pydict(self) -> dict:
-        return {k: v[0] for k, v in self._row.to_pydict().items()}
+    """
+    Row of a tabular Dataset backed by a Arrow Table block.
+    """
 
     def __getitem__(self, key: str) -> Any:
         col = self._row[key]
@@ -40,6 +40,10 @@ class ArrowRow(TableRow):
             # that it is bypassing pyarrow's scalar model.
             return item
 
+    def __iter__(self) -> Iterator:
+        for k in self._row.column_names:
+            yield k
+
     def __len__(self):
         return self._row.num_columns
 
@@ -48,7 +52,7 @@ class ArrowBlockBuilder(TableBlockBuilder[T]):
     def __init__(self):
         if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
-        TableBlockBuilder.__init__(self, pyarrow.Table)
+        super().__init__(pyarrow.Table)
 
     def _table_from_pydict(self, columns: Dict[str, List[Any]]) -> Block:
         return pyarrow.Table.from_pydict(columns)
@@ -65,7 +69,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def __init__(self, table: "pyarrow.Table"):
         if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
-        TableBlockAccessor.__init__(self, table)
+        super().__init__(table)
 
     def _create_table_row(self, row: "pyarrow.Table") -> ArrowRow:
         return ArrowRow(row)
@@ -81,7 +85,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
             view = _copy_table(view)
         return view
 
-    def random_shuffle(self, random_seed: Optional[int]) -> List[T]:
+    def random_shuffle(self, random_seed: Optional[int]) -> "pyarrow.Table":
         random = np.random.RandomState(random_seed)
         return self._table.take(random.permutation(self.num_rows()))
 
@@ -95,11 +99,13 @@ class ArrowBlockAccessor(TableBlockAccessor):
         if column is None:
             raise ValueError(
                 "`column` must be specified when calling .to_numpy() "
-                "on Arrow blocks.")
+                "on Arrow blocks."
+            )
         if column not in self._table.column_names:
             raise ValueError(
                 f"Cannot find column {column}, available columns: "
-                f"{self._table.column_names}")
+                f"{self._table.column_names}"
+            )
         array = self._table[column]
         if array.num_chunks > 1:
             # TODO(ekl) combine fails since we can't concat
@@ -147,11 +153,13 @@ class ArrowBlockAccessor(TableBlockAccessor):
         indices = random.sample(range(self._table.num_rows), n_samples)
         return self._table.select([k[0] for k in key]).take(indices)
 
-    def sort_and_partition(self, boundaries: List[T], key: "SortKeyT",
-                           descending: bool) -> List["Block[T]"]:
+    def sort_and_partition(
+        self, boundaries: List[T], key: "SortKeyT", descending: bool
+    ) -> List["Block[T]"]:
         if len(key) > 1:
             raise NotImplementedError(
-                "sorting by multiple columns is not supported yet")
+                "sorting by multiple columns is not supported yet"
+            )
 
         if self._table.num_rows == 0:
             # If the pyarrow table is empty we may not have schema
@@ -176,9 +184,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
         # TODO(ekl) this is O(n^2) but in practice it's much faster than the
         # O(n) algorithm, could be optimized.
-        boundary_indices = [
-            pac.sum(comp_fn(table[col], b)).as_py() for b in boundaries
-        ]
+        boundary_indices = [pac.sum(comp_fn(table[col], b)).as_py() for b in boundaries]
         ### Compute the boundary indices in O(n) time via scan.  # noqa
         # boundary_indices = []
         # remaining = boundaries.copy()
@@ -241,8 +247,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 accumulators = [agg.init(next_key) for agg in aggs]
                 for r in gen():
                     for i in range(len(aggs)):
-                        accumulators[i] = aggs[i].accumulate(
-                            accumulators[i], r)
+                        accumulators[i] = aggs[i].accumulate(accumulators[i], r)
 
                 # Build the row.
                 row = {}
@@ -269,8 +274,8 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def merge_sorted_blocks(
-            blocks: List[Block[T]], key: "SortKeyT",
-            _descending: bool) -> Tuple[Block[T], BlockMetadata]:
+        blocks: List[Block[T]], key: "SortKeyT", _descending: bool
+    ) -> Tuple[Block[T], BlockMetadata]:
         stats = BlockExecStats.builder()
         blocks = [b for b in blocks if b.num_rows > 0]
         if len(blocks) == 0:
@@ -279,13 +284,12 @@ class ArrowBlockAccessor(TableBlockAccessor):
             ret = pyarrow.concat_tables(blocks, promote=True)
             indices = pyarrow.compute.sort_indices(ret, sort_keys=key)
             ret = ret.take(indices)
-        return ret, ArrowBlockAccessor(ret).get_metadata(
-            None, exec_stats=stats.build())
+        return ret, ArrowBlockAccessor(ret).get_metadata(None, exec_stats=stats.build())
 
     @staticmethod
     def aggregate_combined_blocks(
-            blocks: List[Block[ArrowRow]], key: KeyFn,
-            aggs: Tuple[AggregateFn]) -> Tuple[Block[ArrowRow], BlockMetadata]:
+        blocks: List[Block[ArrowRow]], key: KeyFn, aggs: Tuple[AggregateFn]
+    ) -> Tuple[Block[ArrowRow], BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.
 
         This assumes blocks are already sorted by key in ascending order,
@@ -304,12 +308,13 @@ class ArrowBlockAccessor(TableBlockAccessor):
         """
 
         stats = BlockExecStats.builder()
-        key_fn = (lambda r: r[r._row.schema.names[0]]
-                  ) if key is not None else (lambda r: 0)
+        key_fn = (
+            (lambda r: r[r._row.schema.names[0]]) if key is not None else (lambda r: 0)
+        )
 
         iter = heapq.merge(
-            *[ArrowBlockAccessor(block).iter_rows() for block in blocks],
-            key=key_fn)
+            *[ArrowBlockAccessor(block).iter_rows() for block in blocks], key=key_fn
+        )
         next_row = None
         builder = ArrowBlockBuilder()
         while True:
@@ -317,8 +322,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 if next_row is None:
                     next_row = next(iter)
                 next_key = key_fn(next_row)
-                next_key_name = next_row._row.schema.names[
-                    0] if key is not None else None
+                next_key_name = (
+                    next_row._row.schema.names[0] if key is not None else None
+                )
 
                 def gen():
                     nonlocal iter
@@ -344,7 +350,8 @@ class ArrowBlockAccessor(TableBlockAccessor):
                             # name.
                             if count[name] > 0:
                                 name = ArrowBlockAccessor._munge_conflict(
-                                    name, count[name])
+                                    name, count[name]
+                                )
                             count[name] += 1
                             resolved_agg_names[i] = name
                             accumulators[i] = r[name]
@@ -352,14 +359,16 @@ class ArrowBlockAccessor(TableBlockAccessor):
                     else:
                         for i in range(len(aggs)):
                             accumulators[i] = aggs[i].merge(
-                                accumulators[i], r[resolved_agg_names[i]])
+                                accumulators[i], r[resolved_agg_names[i]]
+                            )
                 # Build the row.
                 row = {}
                 if key is not None:
                     row[next_key_name] = next_key
 
-                for agg, agg_name, accumulator in zip(aggs, resolved_agg_names,
-                                                      accumulators):
+                for agg, agg_name, accumulator in zip(
+                    aggs, resolved_agg_names, accumulators
+                ):
                     row[agg_name] = agg.finalize(accumulator)
 
                 builder.add(row)
@@ -367,8 +376,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 break
 
         ret = builder.build()
-        return ret, ArrowBlockAccessor(ret).get_metadata(
-            None, exec_stats=stats.build())
+        return ret, ArrowBlockAccessor(ret).get_metadata(None, exec_stats=stats.build())
 
 
 def _copy_table(table: "pyarrow.Table") -> "pyarrow.Table":
@@ -384,7 +392,8 @@ def _copy_table(table: "pyarrow.Table") -> "pyarrow.Table":
             # If an extension array, we copy the underlying storage arrays.
             chunk = col.chunk(0)
             arr = type(chunk).from_storage(
-                chunk.type, pa.concat_arrays([c.storage for c in col.chunks]))
+                chunk.type, pa.concat_arrays([c.storage for c in col.chunks])
+            )
         else:
             # Otherwise, we copy the top-level chunk arrays.
             arr = col.combine_chunks()

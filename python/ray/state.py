@@ -136,6 +136,7 @@ class GlobalState:
             "StartTime": actor_table_data.start_time,
             "EndTime": actor_table_data.end_time,
             "DeathCause": actor_table_data.death_cause,
+            "Pid": actor_table_data.pid,
         }
         return actor_info
 
@@ -368,7 +369,7 @@ class GlobalState:
                 "scheduling_latency_ms": (stats.scheduling_latency_us / 1000.0),
                 "scheduling_attempt": stats.scheduling_attempt,
                 "highest_retry_delay_ms": stats.highest_retry_delay_ms,
-                "scheduling_state": gcs_pb2.PlacementGroupStats.SchedulingState.DESCRIPTOR.values_by_number[
+                "scheduling_state": gcs_pb2.PlacementGroupStats.SchedulingState.DESCRIPTOR.values_by_number[  # noqa: E501
                     stats.scheduling_state
                 ].name,
             },

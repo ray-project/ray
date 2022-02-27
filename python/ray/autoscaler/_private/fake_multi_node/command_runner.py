@@ -28,47 +28,47 @@ class FakeDockerCommandRunner(CommandRunnerInterface):
 
     def _run_shell(self, cmd: str, timeout: int = 120) -> str:
         return subprocess.check_output(
-            cmd, shell=True, timeout=timeout, encoding="utf-8")
+            cmd, shell=True, timeout=timeout, encoding="utf-8"
+        )
 
     def run(
-            self,
-            cmd: str = None,
-            timeout: int = 120,
-            exit_on_fail: bool = False,
-            port_forward: List[Tuple[int, int]] = None,
-            with_output: bool = False,
-            environment_variables: Dict[str, object] = None,
-            run_env: str = "auto",
-            ssh_options_override_ssh_key: str = "",
-            shutdown_after_run: bool = False,
+        self,
+        cmd: str = None,
+        timeout: int = 120,
+        exit_on_fail: bool = False,
+        port_forward: List[Tuple[int, int]] = None,
+        with_output: bool = False,
+        environment_variables: Dict[str, object] = None,
+        run_env: str = "auto",
+        ssh_options_override_ssh_key: str = "",
+        shutdown_after_run: bool = False,
     ) -> str:
         prefix = with_docker_exec(
             [cmd],
             container_name=self.container_name,
             with_interactive=False,
-            docker_cmd=self.docker_cmd)[0]
+            docker_cmd=self.docker_cmd,
+        )[0]
         return self._run_shell(prefix)
 
-    def run_init(self, *, as_head: bool, file_mounts: Dict[str, str],
-                 sync_run_yet: bool):
+    def run_init(
+        self, *, as_head: bool, file_mounts: Dict[str, str], sync_run_yet: bool
+    ):
         pass
 
     def remote_shell_command_str(self):
-        return "{} exec -it {} bash".format(self.docker_cmd,
-                                            self.container_name)
+        return "{} exec -it {} bash".format(self.docker_cmd, self.container_name)
 
     def run_rsync_down(self, source, target, options=None):
         docker_dir = os.path.dirname(self._docker_expand_user(source))
 
-        self._run_shell(
-            f"docker cp {self.container_name}:{docker_dir} {target}")
+        self._run_shell(f"docker cp {self.container_name}:{docker_dir} {target}")
 
     def run_rsync_up(self, source, target, options=None):
         docker_dir = os.path.dirname(self._docker_expand_user(target))
         self.run(cmd=f"mkdir -p {docker_dir}")
 
-        self._run_shell(
-            f"docker cp {source} {self.container_name}:{docker_dir}")
+        self._run_shell(f"docker cp {source} {self.container_name}:{docker_dir}")
 
     def _docker_expand_user(self, string, any_char=False):
         user_pos = string.find("~")
@@ -78,7 +78,9 @@ class FakeDockerCommandRunner(CommandRunnerInterface):
                     with_docker_exec(
                         ["printenv HOME"],
                         container_name=self.container_name,
-                        docker_cmd=self.docker_cmd)).strip()
+                        docker_cmd=self.docker_cmd,
+                    )
+                ).strip()
 
             if any_char:
                 return string.replace("~/", self.home_dir + "/")

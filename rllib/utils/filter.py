@@ -90,7 +90,9 @@ class RunningStat:
         if x.shape != self._M.shape:
             raise ValueError(
                 "Unexpected input shape {}, expected {}, value = {}".format(
-                    x.shape, self._M.shape, x))
+                    x.shape, self._M.shape, x
+                )
+            )
         n1 = self._n
         self._n += 1
         if self._n == 1:
@@ -117,7 +119,8 @@ class RunningStat:
 
     def __repr__(self):
         return "(n={}, mean_mean={}, mean_std={})".format(
-            self.n, np.mean(self.mean), np.mean(self.std))
+            self.n, np.mean(self.mean), np.mean(self.std)
+        )
 
     @property
     def n(self):
@@ -142,6 +145,7 @@ class RunningStat:
 
 class MeanStdFilter(Filter):
     """Keeps track of a running mean for seen states"""
+
     is_concurrent = False
 
     def __init__(self, shape, demean=True, destd=True, clip=10.0):
@@ -151,8 +155,10 @@ class MeanStdFilter(Filter):
         # (complex inputs).
         flat_shape = tree.flatten(self.shape)
         self.no_preprocessor = shape is None or (
-            isinstance(self.shape, (dict, tuple)) and len(flat_shape) > 0
-            and isinstance(flat_shape[0], np.ndarray))
+            isinstance(self.shape, (dict, tuple))
+            and len(flat_shape) > 0
+            and isinstance(flat_shape[0], np.ndarray)
+        )
         # If preprocessing (flattning dicts/tuples), make sure shape
         # is an np.ndarray so we don't confuse it with a complex Tuple
         # space's shape structure (which is a Tuple[np.ndarray]).
@@ -173,11 +179,9 @@ class MeanStdFilter(Filter):
     def reset_buffer(self) -> None:
         self.buffer = tree.map_structure(lambda s: RunningStat(s), self.shape)
 
-    def apply_changes(self,
-                      other: "MeanStdFilter",
-                      with_buffer: bool = False,
-                      *args,
-                      **kwargs) -> None:
+    def apply_changes(
+        self, other: "MeanStdFilter", with_buffer: bool = False, *args, **kwargs
+    ) -> None:
         """Applies updates from the buffer of another filter.
 
         Args:
@@ -200,8 +204,9 @@ class MeanStdFilter(Filter):
             >>> print([a.rs.n, a.rs.mean, a.buffer.n])
             [4, 5.75, 1]
         """
-        tree.map_structure(lambda rs, other_rs: rs.update(other_rs), self.rs,
-                           other.buffer)
+        tree.map_structure(
+            lambda rs, other_rs: rs.update(other_rs), self.rs, other.buffer
+        )
         if with_buffer:
             self.buffer = tree.map_structure(lambda b: b.copy(), other.buffer)
 
@@ -237,8 +242,7 @@ class MeanStdFilter(Filter):
         self.rs = tree.map_structure(lambda rs: rs.copy(), other.rs)
         self.buffer = tree.map_structure(lambda b: b.copy(), other.buffer)
 
-    def __call__(self, x: TensorStructType, update: bool = True) -> \
-            TensorStructType:
+    def __call__(self, x: TensorStructType, update: bool = True) -> TensorStructType:
         if self.no_preprocessor:
             x = tree.map_structure(lambda x_: np.asarray(x_), x)
         else:
@@ -271,15 +275,16 @@ class MeanStdFilter(Filter):
             return x.astype(orig_dtype)
 
         if self.no_preprocessor:
-            return tree.map_structure_up_to(x, _helper, x, self.rs,
-                                            self.buffer, self.shape)
+            return tree.map_structure_up_to(
+                x, _helper, x, self.rs, self.buffer, self.shape
+            )
         else:
             return _helper(x, self.rs, self.buffer, self.shape)
 
     def __repr__(self) -> str:
         return "MeanStdFilter({}, {}, {}, {}, {}, {})".format(
-            self.shape, self.demean, self.destd, self.clip, self.rs,
-            self.buffer)
+            self.shape, self.demean, self.destd, self.clip, self.rs, self.buffer
+        )
 
 
 class ConcurrentMeanStdFilter(MeanStdFilter):
@@ -312,8 +317,8 @@ class ConcurrentMeanStdFilter(MeanStdFilter):
 
     def __repr__(self) -> str:
         return "ConcurrentMeanStdFilter({}, {}, {}, {}, {}, {})".format(
-            self.shape, self.demean, self.destd, self.clip, self.rs,
-            self.buffer)
+            self.shape, self.demean, self.destd, self.clip, self.rs, self.buffer
+        )
 
 
 def get_filter(filter_config, shape):

@@ -13,6 +13,7 @@ from ray.data.datasource.file_based_datasource import BlockWritePathProvider
 @pytest.fixture(scope="function")
 def aws_credentials():
     import os
+
     old_env = os.environ
     os.environ["AWS_ACCESS_KEY_ID"] = "testing"
     os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
@@ -57,7 +58,7 @@ def _s3_fs(aws_credentials, s3_server, s3_path):
 
     fs = pa.fs.S3FileSystem(region="us-west-2", endpoint_override=s3_server)
     if s3_path.startswith("s3://"):
-        s3_path = s3_path[len("s3://"):]
+        s3_path = s3_path[len("s3://") :]
     s3_path = urllib.parse.quote(s3_path)
     fs.create_dir(s3_path)
     yield fs
@@ -78,17 +79,20 @@ def local_fs():
 @pytest.fixture(scope="function")
 def test_block_write_path_provider():
     class TestBlockWritePathProvider(BlockWritePathProvider):
-        def _get_write_path_for_block(self,
-                                      base_path,
-                                      *,
-                                      filesystem=None,
-                                      dataset_uuid=None,
-                                      block=None,
-                                      block_index=None,
-                                      file_format=None):
+        def _get_write_path_for_block(
+            self,
+            base_path,
+            *,
+            filesystem=None,
+            dataset_uuid=None,
+            block=None,
+            block_index=None,
+            file_format=None,
+        ):
             num_rows = BlockAccessor.for_block(ray.get(block)).num_rows()
-            suffix = f"{block_index:06}_{num_rows:02}_{dataset_uuid}" \
-                     f".test.{file_format}"
+            suffix = (
+                f"{block_index:06}_{num_rows:02}_{dataset_uuid}" f".test.{file_format}"
+            )
             print(f"Writing to: {base_path}/{suffix}")
             return f"{base_path}/{suffix}"
 

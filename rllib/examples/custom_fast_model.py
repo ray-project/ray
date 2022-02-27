@@ -20,7 +20,8 @@ parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "tfe", "torch"],
     default="tf",
-    help="The DL framework specifier.")
+    help="The DL framework specifier.",
+)
 parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
 
@@ -29,15 +30,13 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None)
 
     ModelCatalog.register_custom_model(
-        "fast_model", TorchFastModel
-        if args.framework == "torch" else FastModel)
+        "fast_model", TorchFastModel if args.framework == "torch" else FastModel
+    )
 
     config = {
         "env": FastImageEnv,
         "compress_observations": True,
-        "model": {
-            "custom_model": "fast_model"
-        },
+        "model": {"custom_model": "fast_model"},
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_workers": 2,
@@ -47,7 +46,8 @@ if __name__ == "__main__":
         "broadcast_interval": 50,
         "rollout_fragment_length": 100,
         "train_batch_size": sample_from(
-            lambda spec: 1000 * max(1, spec.config.num_gpus or 1)),
+            lambda spec: 1000 * max(1, spec.config.num_gpus or 1)
+        ),
         "fake_sampler": True,
         "framework": args.framework,
     }

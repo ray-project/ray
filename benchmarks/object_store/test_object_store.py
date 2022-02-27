@@ -9,7 +9,7 @@ from time import perf_counter
 from tqdm import tqdm
 
 NUM_NODES = 50
-OBJECT_SIZE = 2**30
+OBJECT_SIZE = 2 ** 30
 
 
 def num_alive_nodes():
@@ -60,6 +60,6 @@ if "TEST_OUTPUT_JSON" in os.environ:
         "broadcast_time": end - start,
         "object_size": OBJECT_SIZE,
         "num_nodes": NUM_NODES,
-        "success": "1"
+        "success": "1",
     }
     json.dump(results, out_file)

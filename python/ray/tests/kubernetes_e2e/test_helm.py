@@ -13,11 +13,9 @@ from test_k8s_operator_basic import wait_for_pods
 
 
 def helm(namespace, command, release, **options):
-    options.update({
-        "image": IMAGE,
-        "operatorImage": IMAGE,
-        "operatorNamespace": f"{NAMESPACE}2"
-    })
+    options.update(
+        {"image": IMAGE, "operatorImage": IMAGE, "operatorNamespace": f"{NAMESPACE}2"}
+    )
     cmd = ["helm"]
     if namespace:
         cmd.append(f"-n {namespace}")
@@ -34,20 +32,18 @@ def helm(namespace, command, release, **options):
     final_cmd = " ".join(cmd)
     try:
         subprocess.check_output(
-            final_cmd, shell=True, stderr=subprocess.STDOUT).decode()
+            final_cmd, shell=True, stderr=subprocess.STDOUT
+        ).decode()
     except subprocess.CalledProcessError as e:
-        assert False, "returncode: {}, stdout: {}".format(
-            e.returncode, e.stdout)
+        assert False, "returncode: {}, stdout: {}".format(e.returncode, e.stdout)
 
 
 def delete_rayclusters(namespace):
     cmd = f"kubectl -n {namespace} delete rayclusters --all"
     try:
-        subprocess.check_output(
-            cmd, shell=True, stderr=subprocess.STDOUT).decode()
+        subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT).decode()
     except subprocess.CalledProcessError as e:
-        assert False, "returncode: {}, stdout: {}".format(
-            e.returncode, e.stdout)
+        assert False, "returncode: {}, stdout: {}".format(e.returncode, e.stdout)
 
 
 class HelmTest(unittest.TestCase):
@@ -75,10 +71,11 @@ class HelmTest(unittest.TestCase):
         helm(NAMESPACE, "install", "example-cluster", clusterOnly="true")
         wait_for_pods(3, namespace=f"{NAMESPACE}")
         helm(
-            NAMESPACE, "install", "example-cluster2", **{
-                "clusterOnly": "true",
-                "podTypes.rayWorkerType.minWorkers": "0"
-            })
+            NAMESPACE,
+            "install",
+            "example-cluster2",
+            **{"clusterOnly": "true", "podTypes.rayWorkerType.minWorkers": "0"},
+        )
         wait_for_pods(4, namespace=f"{NAMESPACE}")
         print(">>>Uninstalling...")
         helm(NAMESPACE, "uninstall", "example-cluster")
@@ -90,8 +87,7 @@ class HelmTest(unittest.TestCase):
         # namespacedOperator
         print(">>>Testing installation of namespaced Ray operator.")
         print(">>>Installing...")
-        helm(
-            NAMESPACE, "install", "example-cluster", namespacedOperator="true")
+        helm(NAMESPACE, "install", "example-cluster", namespacedOperator="true")
         wait_for_pods(4, namespace=f"{NAMESPACE}")
         print(">>>Uninstalling...")
         delete_rayclusters(namespace=NAMESPACE)

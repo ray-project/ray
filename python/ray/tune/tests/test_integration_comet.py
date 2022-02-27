@@ -5,8 +5,8 @@ from collections import namedtuple
 
 
 class MockTrial(
-        namedtuple("MockTrial",
-                   ["config", "trial_name", "trial_id", "logdir"])):
+    namedtuple("MockTrial", ["config", "trial_name", "trial_id", "logdir"])
+):
     def __hash__(self):
         return hash(self.trial_id)
 
@@ -72,7 +72,7 @@ class OnlineVsOfflineTests(unittest.TestCase):
     def setUp(self):
         self.loggers = {
             "online": CometLoggerCallback(),
-            "offline": CometLoggerCallback(online=False)
+            "offline": CometLoggerCallback(online=False),
         }
 
         self.trial = MockTrial({"p1": 1}, "trial_1", 1, "artifact")
@@ -112,16 +112,12 @@ class LogTrialStartTest(unittest.TestCase):
     def setUp(self):
         self.loggers = {
             "online": CometLoggerCallback(),
-            "offline": CometLoggerCallback(online=False)
+            "offline": CometLoggerCallback(online=False),
         }
 
         self.trials = [
-            MockTrial({
-                "p1": 1
-            }, "trial_1", 1, "artifact"),
-            MockTrial({
-                "p1": 2
-            }, "trial_2", 1, "artifact")
+            MockTrial({"p1": 1}, "trial_1", 1, "artifact"),
+            MockTrial({"p1": 2}, "trial_2", 1, "artifact"),
         ]
 
     def test_existing_trialexperiment(self, experiment, offline_experiment):
@@ -206,17 +202,11 @@ class LogTrialResultTests(unittest.TestCase):
     def setUp(self):
         self.logger = CometLoggerCallback()
         self.trials = [
-            MockTrial({
-                "p1": 1
-            }, "trial_1", 1, "artifact"),
-            MockTrial({
-                "p1": 2
-            }, "trial_2", 1, "artifact")
+            MockTrial({"p1": 1}, "trial_1", 1, "artifact"),
+            MockTrial({"p1": 2}, "trial_2", 1, "artifact"),
         ]
         self.result = {
-            "config": {
-                "p1": 1
-            },
+            "config": {"p1": 1},
             "node_ip": "0.0.0.0",
             "hostname": "hostname_val",
             "pid": "1234",
@@ -229,7 +219,7 @@ class LogTrialResultTests(unittest.TestCase):
             "metric1": 0.8,
             "metric2": 1,
             "metric3": None,
-            "training_iteration": 0
+            "training_iteration": 0,
         }
 
     def test_log_parameters(self, experiment):
@@ -256,7 +246,7 @@ class LogTrialResultTests(unittest.TestCase):
             "metric1": 0.8,
             "metric2": 1,
             "metric3": None,
-            "training_iteration": 0
+            "training_iteration": 0,
         }
 
         method = experiment.return_value.log_metrics
@@ -271,7 +261,7 @@ class LogTrialResultTests(unittest.TestCase):
         result_other = {
             "experiment_id": "1234",
             "trial_id": 1,
-            "experiment_tag": "tag1"
+            "experiment_tag": "tag1",
         }
         method = experiment.return_value.log_others
 
@@ -288,7 +278,7 @@ class LogTrialResultTests(unittest.TestCase):
             "node_ip": "0.0.0.0",
             "hostname": "hostname_val",
             "pid": "1234",
-            "date": "2000-01-01"
+            "date": "2000-01-01",
         }
         method = experiment.return_value.log_system_info
         for k, v in result_system.items():
@@ -305,7 +295,7 @@ class LogTrialResultTests(unittest.TestCase):
 
         results_curve = {
             "hist_stats/episode_reward": [1, 0, 1, -1, 0, 1],
-            "hist_stats/episode_lengths": [1, 2, 3, 4, 5, 6]
+            "hist_stats/episode_lengths": [1, 2, 3, 4, 5, 6],
         }
 
         method = experiment.return_value.log_curve
@@ -320,15 +310,9 @@ class LogTrialEndTests(unittest.TestCase):
     def setUp(self):
         self.logger = CometLoggerCallback()
         self.trials = [
-            MockTrial({
-                "p1": 1
-            }, "trial_1", 1, "artifact"),
-            MockTrial({
-                "p1": 2
-            }, "trial_2", 2, "artifact"),
-            MockTrial({
-                "p1": 2
-            }, "trial_3", 3, "artifact"),
+            MockTrial({"p1": 1}, "trial_1", 1, "artifact"),
+            MockTrial({"p1": 2}, "trial_2", 2, "artifact"),
+            MockTrial({"p1": 2}, "trial_3", 3, "artifact"),
         ]
 
     def test_not_started_exception(self, experiment):

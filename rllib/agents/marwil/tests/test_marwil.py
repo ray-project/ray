@@ -8,8 +8,12 @@ import ray.rllib.agents.marwil as marwil
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.offline import JsonReader
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.test_utils import check, check_compute_single_action, \
-    check_train_results, framework_iterator
+from ray.rllib.utils.test_utils import (
+    check,
+    check_compute_single_action,
+    check_train_results,
+    framework_iterator,
+)
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -36,8 +40,7 @@ class TestMARWIL(unittest.TestCase):
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
         data_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
-        print("data_file={} exists={}".format(data_file,
-                                              os.path.isfile(data_file)))
+        print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
 
         config = marwil.DEFAULT_CONFIG.copy()
         config["num_workers"] = 2
@@ -63,8 +66,9 @@ class TestMARWIL(unittest.TestCase):
 
                 eval_results = results.get("evaluation")
                 if eval_results:
-                    print("iter={} R={} ".format(
-                        i, eval_results["episode_reward_mean"]))
+                    print(
+                        "iter={} R={} ".format(i, eval_results["episode_reward_mean"])
+                    )
                     # Learn until some reward is reached on an actual live env.
                     if eval_results["episode_reward_mean"] > min_reward:
                         print("learnt!")
@@ -74,10 +78,10 @@ class TestMARWIL(unittest.TestCase):
             if not learnt:
                 raise ValueError(
                     "MARWILTrainer did not reach {} reward from expert "
-                    "offline data!".format(min_reward))
+                    "offline data!".format(min_reward)
+                )
 
-            check_compute_single_action(
-                trainer, include_prev_action_reward=True)
+            check_compute_single_action(trainer, include_prev_action_reward=True)
 
             trainer.stop()
 
@@ -93,8 +97,7 @@ class TestMARWIL(unittest.TestCase):
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
         data_file = os.path.join(rllib_dir, "tests/data/pendulum/large.json")
-        print("data_file={} exists={}".format(data_file,
-                                              os.path.isfile(data_file)))
+        print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
 
         config = marwil.DEFAULT_CONFIG.copy()
         config["num_workers"] = 1
@@ -126,8 +129,7 @@ class TestMARWIL(unittest.TestCase):
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
         data_file = os.path.join(rllib_dir, "tests/data/cartpole/small.json")
-        print("data_file={} exists={}".format(data_file,
-                                              os.path.isfile(data_file)))
+        print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
         config = marwil.DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
         # Learn from offline data.
@@ -144,7 +146,8 @@ class TestMARWIL(unittest.TestCase):
             # Calculate our own expected values (to then compare against the
             # agent's loss output).
             cummulative_rewards = compute_advantages(
-                batch, 0.0, config["gamma"], 1.0, False, False)["advantages"]
+                batch, 0.0, config["gamma"], 1.0, False, False
+            )["advantages"]
             if fw == "torch":
                 cummulative_rewards = torch.tensor(cummulative_rewards)
             if fw != "tf":
@@ -152,8 +155,9 @@ class TestMARWIL(unittest.TestCase):
             model_out, _ = model(batch)
             vf_estimates = model.value_function()
             if fw == "tf":
-                model_out, vf_estimates = \
-                    policy.get_session().run([model_out, vf_estimates])
+                model_out, vf_estimates = policy.get_session().run(
+                    [model_out, vf_estimates]
+                )
             adv = cummulative_rewards - vf_estimates
             if fw == "torch":
                 adv = adv.detach().cpu().numpy()
@@ -170,24 +174,29 @@ class TestMARWIL(unittest.TestCase):
             # Calculate all expected loss components.
             expected_vf_loss = 0.5 * adv_squared
             expected_pol_loss = -1.0 * np.mean(exp_advs * logp)
-            expected_loss = \
-                expected_pol_loss + config["vf_coeff"] * expected_vf_loss
+            expected_loss = expected_pol_loss + config["vf_coeff"] * expected_vf_loss
 
             # Calculate the algorithm's loss (to check against our own
             # calculation above).
             batch.set_get_interceptor(None)
             postprocessed_batch = policy.postprocess_trajectory(batch)
-            loss_func = marwil.marwil_tf_policy.marwil_loss if fw != "torch" \
+            loss_func = (
+                marwil.marwil_tf_policy.marwil_loss
+                if fw != "torch"
                 else marwil.marwil_torch_policy.marwil_loss
+            )
             if fw != "tf":
                 policy._lazy_tensor_dict(postprocessed_batch)
-                loss_out = loss_func(policy, model, policy.dist_class,
-                                     postprocessed_batch)
+                loss_out = loss_func(
+                    policy, model, policy.dist_class, postprocessed_batch
+                )
             else:
                 loss_out, v_loss, p_loss = policy.get_session().run(
                     [policy._loss, policy.loss.v_loss, policy.loss.p_loss],
                     feed_dict=policy._get_loss_inputs_dict(
-                        postprocessed_batch, shuffle=False))
+                        postprocessed_batch, shuffle=False
+                    ),
+                )
 
             # Check all components.
             if fw == "torch":
@@ -205,4 +214,5 @@ class TestMARWIL(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

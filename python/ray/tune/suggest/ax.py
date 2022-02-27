@@ -3,10 +3,12 @@ import pickle
 from typing import Dict, List, Optional, Union
 
 from ray.tune.result import DEFAULT_METRIC
-from ray.tune.sample import Categorical, Float, Integer, LogUniform, \
-    Quantized, Uniform
-from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
-    UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
+from ray.tune.sample import Categorical, Float, Integer, LogUniform, Quantized, Uniform
+from ray.tune.suggest.suggestion import (
+    UNRESOLVED_SEARCH_SPACE,
+    UNDEFINED_METRIC_MODE,
+    UNDEFINED_SEARCH_SPACE,
+)
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils.util import flatten_dict, unflatten_dict
 
@@ -19,8 +21,7 @@ except ImportError:
 # This exception only exists in newer Ax releases for python 3.7
 try:
     from ax.exceptions.core import DataRequiredError
-    from ax.exceptions.generation_strategy import \
-        MaxParallelismReachedException
+    from ax.exceptions.generation_strategy import MaxParallelismReachedException
 except ImportError:
     MaxParallelismReachedException = DataRequiredError = Exception
 
@@ -123,18 +124,22 @@ class AxSearch(Searcher):
 
     """
 
-    def __init__(self,
-                 space: Optional[Union[Dict, List[Dict]]] = None,
-                 metric: Optional[str] = None,
-                 mode: Optional[str] = None,
-                 points_to_evaluate: Optional[List[Dict]] = None,
-                 parameter_constraints: Optional[List] = None,
-                 outcome_constraints: Optional[List] = None,
-                 ax_client: Optional[AxClient] = None,
-                 use_early_stopped_trials: Optional[bool] = None,
-                 max_concurrent: Optional[int] = None,
-                 **ax_kwargs):
-        assert ax is not None, """Ax must be installed!
+    def __init__(
+        self,
+        space: Optional[Union[Dict, List[Dict]]] = None,
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+        points_to_evaluate: Optional[List[Dict]] = None,
+        parameter_constraints: Optional[List] = None,
+        outcome_constraints: Optional[List] = None,
+        ax_client: Optional[AxClient] = None,
+        use_early_stopped_trials: Optional[bool] = None,
+        max_concurrent: Optional[int] = None,
+        **ax_kwargs
+    ):
+        assert (
+            ax is not None
+        ), """Ax must be installed!
             You can install AxSearch with the command:
             `pip install ax-platform sqlalchemy`."""
 
@@ -145,7 +150,8 @@ class AxSearch(Searcher):
             metric=metric,
             mode=mode,
             max_concurrent=max_concurrent,
-            use_early_stopped_trials=use_early_stopped_trials)
+            use_early_stopped_trials=use_early_stopped_trials,
+        )
 
         self._ax = ax_client
         self._ax_kwargs = ax_kwargs or {}
@@ -154,8 +160,8 @@ class AxSearch(Searcher):
             resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
             if domain_vars or grid_vars:
                 logger.warning(
-                    UNRESOLVED_SEARCH_SPACE.format(
-                        par="space", cls=type(self)))
+                    UNRESOLVED_SEARCH_SPACE.format(par="space", cls=type(self))
+                )
                 space = self.convert_search_space(space)
 
         self._space = space
@@ -192,47 +198,60 @@ class AxSearch(Searcher):
                     "You have to create an Ax experiment by calling "
                     "`AxClient.create_experiment()`, or you should pass an "
                     "Ax search space as the `space` parameter to `AxSearch`, "
-                    "or pass a `config` dict to `tune.run()`.")
+                    "or pass a `config` dict to `tune.run()`."
+                )
             if self._mode not in ["min", "max"]:
                 raise ValueError(
                     "Please specify the `mode` argument when initializing "
-                    "the `AxSearch` object or pass it to `tune.run()`.")
+                    "the `AxSearch` object or pass it to `tune.run()`."
+                )
             self._ax.create_experiment(
                 parameters=self._space,
                 objective_name=self._metric,
                 parameter_constraints=self._parameter_constraints,
                 outcome_constraints=self._outcome_constraints,
-                minimize=self._mode != "max")
+                minimize=self._mode != "max",
+            )
         else:
-            if any([
-                    self._space, self._parameter_constraints,
-                    self._outcome_constraints, self._mode, self._metric
-            ]):
+            if any(
+                [
+                    self._space,
+                    self._parameter_constraints,
+                    self._outcome_constraints,
+                    self._mode,
+                    self._metric,
+                ]
+            ):
                 raise ValueError(
                     "If you create the Ax experiment yourself, do not pass "
-                    "values for these parameters to `AxSearch`: {}.".format([
-                        "space",
-                        "parameter_constraints",
-                        "outcome_constraints",
-                        "mode",
-                        "metric",
-                    ]))
+                    "values for these parameters to `AxSearch`: {}.".format(
+                        [
+                            "space",
+                            "parameter_constraints",
+                            "outcome_constraints",
+                            "mode",
+                            "metric",
+                        ]
+                    )
+                )
 
         exp = self._ax.experiment
 
         # Update mode and metric from experiment if it has been passed
-        self._mode = "min" \
-            if exp.optimization_config.objective.minimize else "max"
+        self._mode = "min" if exp.optimization_config.objective.minimize else "max"
         self._metric = exp.optimization_config.objective.metric.name
 
         self._parameters = list(exp.parameters)
 
         if self._ax._enforce_sequential_optimization:
-            logger.warning("Detected sequential enforcement. Be sure to use "
-                           "a ConcurrencyLimiter.")
+            logger.warning(
+                "Detected sequential enforcement. Be sure to use "
+                "a ConcurrencyLimiter."
+            )
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict, **spec):
+    def set_search_properties(
+        self, metric: Optional[str], mode: Optional[str], config: Dict, **spec
+    ):
         if self._ax:
             return False
         space = self.convert_search_space(config)
@@ -249,14 +268,16 @@ class AxSearch(Searcher):
         if not self._ax:
             raise RuntimeError(
                 UNDEFINED_SEARCH_SPACE.format(
-                    cls=self.__class__.__name__, space="space"))
+                    cls=self.__class__.__name__, space="space"
+                )
+            )
 
         if not self._metric or not self._mode:
             raise RuntimeError(
                 UNDEFINED_METRIC_MODE.format(
-                    cls=self.__class__.__name__,
-                    metric=self._metric,
-                    mode=self._mode))
+                    cls=self.__class__.__name__, metric=self._metric, mode=self._mode
+                )
+            )
 
         if self._points_to_evaluate:
             config = self._points_to_evaluate.pop(0)
@@ -283,12 +304,11 @@ class AxSearch(Searcher):
         ax_trial_index = self._live_trial_mapping[trial_id]
         metric_dict = {self._metric: (result[self._metric], None)}
         outcome_names = [
-            oc.metric.name for oc in
-            self._ax.experiment.optimization_config.outcome_constraints
+            oc.metric.name
+            for oc in self._ax.experiment.optimization_config.outcome_constraints
         ]
         metric_dict.update({on: (result[on], None) for on in outcome_names})
-        self._ax.complete_trial(
-            trial_index=ax_trial_index, raw_data=metric_dict)
+        self._ax.complete_trial(trial_index=ax_trial_index, raw_data=metric_dict)
 
     @staticmethod
     def convert_search_space(spec: Dict):
@@ -297,7 +317,8 @@ class AxSearch(Searcher):
         if grid_vars:
             raise ValueError(
                 "Grid search parameters cannot be automatically converted "
-                "to an Ax search space.")
+                "to an Ax search space."
+            )
 
         # Flatten and resolve again after checking for grid search.
         spec = flatten_dict(spec, prevent_delimiter=True)
@@ -306,8 +327,9 @@ class AxSearch(Searcher):
         def resolve_value(par, domain):
             sampler = domain.get_sampler()
             if isinstance(sampler, Quantized):
-                logger.warning("AxSearch does not support quantization. "
-                               "Dropped quantization.")
+                logger.warning(
+                    "AxSearch does not support quantization. " "Dropped quantization."
+                )
                 sampler = sampler.sampler
 
             if isinstance(domain, Float):
@@ -317,7 +339,7 @@ class AxSearch(Searcher):
                         "type": "range",
                         "bounds": [domain.lower, domain.upper],
                         "value_type": "float",
-                        "log_scale": True
+                        "log_scale": True,
                     }
                 elif isinstance(sampler, Uniform):
                     return {
@@ -325,7 +347,7 @@ class AxSearch(Searcher):
                         "type": "range",
                         "bounds": [domain.lower, domain.upper],
                         "value_type": "float",
-                        "log_scale": False
+                        "log_scale": False,
                     }
             elif isinstance(domain, Integer):
                 if isinstance(sampler, LogUniform):
@@ -334,7 +356,7 @@ class AxSearch(Searcher):
                         "type": "range",
                         "bounds": [domain.lower, domain.upper - 1],
                         "value_type": "int",
-                        "log_scale": True
+                        "log_scale": True,
                     }
                 elif isinstance(sampler, Uniform):
                     return {
@@ -342,32 +364,28 @@ class AxSearch(Searcher):
                         "type": "range",
                         "bounds": [domain.lower, domain.upper - 1],
                         "value_type": "int",
-                        "log_scale": False
+                        "log_scale": False,
                     }
             elif isinstance(domain, Categorical):
                 if isinstance(sampler, Uniform):
-                    return {
-                        "name": par,
-                        "type": "choice",
-                        "values": domain.categories
-                    }
+                    return {"name": par, "type": "choice", "values": domain.categories}
 
-            raise ValueError("AxSearch does not support parameters of type "
-                             "`{}` with samplers of type `{}`".format(
-                                 type(domain).__name__,
-                                 type(domain.sampler).__name__))
+            raise ValueError(
+                "AxSearch does not support parameters of type "
+                "`{}` with samplers of type `{}`".format(
+                    type(domain).__name__, type(domain.sampler).__name__
+                )
+            )
 
         # Fixed vars
-        fixed_values = [{
-            "name": "/".join(path),
-            "type": "fixed",
-            "value": val
-        } for path, val in resolved_vars]
+        fixed_values = [
+            {"name": "/".join(path), "type": "fixed", "value": val}
+            for path, val in resolved_vars
+        ]
 
         # Parameter name is e.g. "a/b/c" for nested dicts
         resolved_values = [
-            resolve_value("/".join(path), domain)
-            for path, domain in domain_vars
+            resolve_value("/".join(path), domain) for path, domain in domain_vars
         ]
 
         return fixed_values + resolved_values

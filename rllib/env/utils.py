@@ -37,11 +37,13 @@ def gym_env_creator(env_context: EnvContext, env_descriptor: str) -> gym.Env:
     # `env=VizdoomBasic-v0`.
     try:
         import pybullet_envs
+
         pybullet_envs.getList()
     except (ModuleNotFoundError, ImportError):
         pass
     try:
         import vizdoomgym
+
         vizdoomgym.__name__  # trick LINTer.
     except (ModuleNotFoundError, ImportError):
         pass
@@ -83,17 +85,17 @@ def record_env_wrapper(env, record_env, log_dir, policy_config):
         if not os.path.isabs(path_):
             path_ = os.path.join(log_dir, path_)
         print(f"Setting the path for recording to {path_}")
-        wrapper_cls = VideoMonitor if isinstance(env, MultiAgentEnv) \
-            else wrappers.Monitor
+        wrapper_cls = (
+            VideoMonitor if isinstance(env, MultiAgentEnv) else wrappers.Monitor
+        )
         if isinstance(env, MultiAgentEnv):
-            wrapper_cls = add_mixins(
-                wrapper_cls, [MultiAgentEnv], reversed=True)
+            wrapper_cls = add_mixins(wrapper_cls, [MultiAgentEnv], reversed=True)
         env = wrapper_cls(
             env,
             path_,
             resume=True,
             force=True,
             video_callable=lambda _: True,
-            mode="evaluation"
-            if policy_config["in_evaluation"] else "training")
+            mode="evaluation" if policy_config["in_evaluation"] else "training",
+        )
     return env

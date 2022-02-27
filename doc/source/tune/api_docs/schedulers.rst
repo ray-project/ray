@@ -237,7 +237,7 @@ ResourceChangingScheduler
 
 This class is a utility scheduler, allowing for trial resource requirements to be changed during tuning. It wraps around another scheduler and uses its decisions.
 
-* If you are using the Trainable (class) API for tuning, your Trainable must implement ``Trainable.update_resources``, which will let your model know about the new resources assigned. You can also obtain the current trial resources by calling ``Trainable.trial_resources``.
+* If you are using the Trainable (class) API for tuning, you can obtain the current trial resources through the ``Trainable.trial_resources`` property.
 
 * If you are using the functional API for tuning, the current trial resources can be obtained by calling `tune.get_trial_resources()` inside the training function. The function should be able to :ref:`load and save checkpoints <tune-checkpoint-syncing>` (the latter preferably every iteration).
 
@@ -245,15 +245,15 @@ An example of this in use can be found here: :doc:`/tune/examples/xgboost_dynami
 
 .. autoclass:: ray.tune.schedulers.ResourceChangingScheduler
 
-evenly_distribute_cpus_gpus
+DistributeResources
+~~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: ray.tune.schedulers.resource_changing_scheduler.DistributeResources
+
+DistributeResourcesToTopJob
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. autofunction:: ray.tune.schedulers.resource_changing_scheduler.evenly_distribute_cpus_gpus
-
-evenly_distribute_cpus_gpus_distributed
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.tune.schedulers.resource_changing_scheduler.evenly_distribute_cpus_gpus_distributed
+.. autoclass:: ray.tune.schedulers.resource_changing_scheduler.DistributeResourcesToTopJob
 
 FIFOScheduler
 -------------
