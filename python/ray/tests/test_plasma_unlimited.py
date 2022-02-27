@@ -7,7 +7,7 @@ import platform
 import pytest
 
 import ray
-from ray.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition
 from ray.internal.internal_api import memory_summary
 
 MB = 1024 * 1024
@@ -19,7 +19,7 @@ def _init_ray():
 
 def _check_spilled_mb(address, spilled=None, restored=None, fallback=None):
     def ok():
-        s = memory_summary(address=address["redis_address"], stats_only=True)
+        s = memory_summary(address=address["address"], stats_only=True)
         print(s)
         if restored:
             if "Restored {} MiB".format(restored) not in s:
@@ -34,8 +34,7 @@ def _check_spilled_mb(address, spilled=None, restored=None, fallback=None):
             if "Spilled" in s:
                 return False
         if fallback:
-            if "Plasma filesystem mmap usage: {} MiB".format(
-                    fallback) not in s:
+            if "Plasma filesystem mmap usage: {} MiB".format(fallback) not in s:
                 return False
         else:
             if "Plasma filesystem mmap usage:" in s:
@@ -46,7 +45,8 @@ def _check_spilled_mb(address, spilled=None, restored=None, fallback=None):
 
 
 @pytest.mark.skipif(
-    platform.system() == "Windows", reason="Need to fix up for Windows.")
+    platform.system() == "Windows", reason="Need to fix up for Windows."
+)
 def test_fallback_when_spilling_impossible_on_put():
     try:
         address = _init_ray()
@@ -63,7 +63,8 @@ def test_fallback_when_spilling_impossible_on_put():
 
 
 @pytest.mark.skipif(
-    platform.system() == "Windows", reason="Need to fix up for Windows.")
+    platform.system() == "Windows", reason="Need to fix up for Windows."
+)
 def test_spilling_when_possible_on_put():
     try:
         address = _init_ray()
@@ -76,7 +77,8 @@ def test_spilling_when_possible_on_put():
 
 
 @pytest.mark.skipif(
-    platform.system() == "Windows", reason="Need to fix up for Windows.")
+    platform.system() == "Windows", reason="Need to fix up for Windows."
+)
 def test_fallback_when_spilling_impossible_on_get():
     try:
         address = _init_ray()
@@ -97,7 +99,8 @@ def test_fallback_when_spilling_impossible_on_get():
 
 
 @pytest.mark.skipif(
-    platform.system() == "Windows", reason="Need to fix up for Windows.")
+    platform.system() == "Windows", reason="Need to fix up for Windows."
+)
 def test_spilling_when_possible_on_get():
     try:
         address = _init_ray()
@@ -116,7 +119,8 @@ def test_spilling_when_possible_on_get():
 
 
 @pytest.mark.skipif(
-    platform.system() == "Windows", reason="Need to fix up for Windows.")
+    platform.system() == "Windows", reason="Need to fix up for Windows."
+)
 def test_task_unlimited():
     try:
         address = _init_ray()
@@ -146,7 +150,8 @@ def test_task_unlimited():
 
 
 @pytest.mark.skipif(
-    platform.system() == "Windows", reason="Need to fix up for Windows.")
+    platform.system() == "Windows", reason="Need to fix up for Windows."
+)
 def test_task_unlimited_multiget_args():
     try:
         address = _init_ray()
@@ -172,12 +177,13 @@ def test_task_unlimited_multiget_args():
 
 
 @pytest.mark.skipif(
-    platform.system() == "Windows", reason="Need to fix up for Windows.")
+    platform.system() == "Windows", reason="Need to fix up for Windows."
+)
 def test_fd_reuse_no_memory_corruption(shutdown_only):
     @ray.remote
     class Actor:
         def produce(self, i):
-            s = int(random.random() * 200)
+            s = random.randrange(1, 200)
             z = np.ones(s * 1024 * 1024)
             z[0] = i
             return z
@@ -196,20 +202,22 @@ def test_fd_reuse_no_memory_corruption(shutdown_only):
 
 @pytest.mark.skipif(
     platform.system() != "Linux",
-    reason="Only Linux handles fallback allocation disk full error.")
+    reason="Only Linux handles fallback allocation disk full error.",
+)
 def test_fallback_allocation_failure(shutdown_only):
     file_system_config = {
         "type": "filesystem",
         "params": {
             "directory_path": "/tmp",
-        }
+        },
     }
     ray.init(
         object_store_memory=100e6,
         _temp_dir="/dev/shm",
         _system_config={
             "object_spilling_config": json.dumps(file_system_config),
-        })
+        },
+    )
     shm_size = shutil.disk_usage("/dev/shm").total
     object_size = max(100e6, shm_size // 5)
     num_exceptions = 0
@@ -217,8 +225,7 @@ def test_fallback_allocation_failure(shutdown_only):
     for i in range(8):
         print("Start put", i)
         try:
-            refs.append(
-                ray.get(ray.put(np.zeros(object_size, dtype=np.uint8))))
+            refs.append(ray.get(ray.put(np.zeros(object_size, dtype=np.uint8))))
         except ray.exceptions.ObjectStoreFullError:
             num_exceptions = num_exceptions + 1
     assert num_exceptions > 0
@@ -247,6 +254,33 @@ def test_fallback_allocation_failure(shutdown_only):
 #     finally:
 #         ray.shutdown()
 
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Need to fix up for Windows."
+)
+def test_plasma_allocate(shutdown_only):
+    address = ray.init(
+        object_store_memory=300 * 1024 ** 2,
+        _system_config={
+            "max_io_workers": 4,
+            "automatic_object_spilling_enabled": True,
+        },
+        _temp_dir="/tmp/for_test_plasma_allocate",
+    )
+    res = []
+    data = np.random.randint(low=0, high=256, size=(90 * 1024 ** 2,), dtype=np.uint8)
+    for _ in range(3):
+        res.append(ray.put(data))
+    # keep reference for second and third object, force evict first object
+    _ = ray.get(res[1:])  # noqa
+    # keep reference for fourth object, avoid released by plasma GC.
+    __ = ray.put(data)  # noqa
+
+    # Check fourth object allocate in memory.
+    _check_spilled_mb(address, spilled=180)
+
+
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

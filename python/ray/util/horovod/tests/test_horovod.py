@@ -16,17 +16,8 @@ except ImportError:
 @pytest.fixture(params=[False, True])
 def ray_start_4_cpus(request):
     if request.param:
-
-        def ray_connect_handler(job_config=None):
-            # Ray client will disconnect from ray when
-            # num_clients == 0.
-            if ray.is_initialized():
-                return
-            else:
-                return ray.init(job_config=job_config, num_cpus=4)
-
         assert not ray.util.client.ray.is_connected()
-        with ray_start_client_server(ray_connect_handler=ray_connect_handler):
+        with ray_start_client_server(ray_init_kwargs={"num_cpus": 3}):
             assert ray.util.client.ray.is_connected()
             yield
     else:
@@ -53,7 +44,8 @@ def _train(batch_size=32, batch_per_iter=10):
 
     # Horovod: wrap optimizer with DistributedOptimizer.
     optimizer = hvd.DistributedOptimizer(
-        optimizer, named_parameters=model.named_parameters())
+        optimizer, named_parameters=model.named_parameters()
+    )
 
     # Horovod: broadcast parameters & optimizer state.
     hvd.broadcast_parameters(model.state_dict(), root_rank=0)
@@ -70,16 +62,14 @@ def _train(batch_size=32, batch_per_iter=10):
     return hvd.local_rank()
 
 
-@pytest.mark.skipif(
-    not gloo_built(), reason="Gloo is required for Ray integration")
+@pytest.mark.skipif(not gloo_built(), reason="Gloo is required for Ray integration")
 def test_train(ray_start_4_cpus):
     def simple_fn(worker):
         local_rank = _train()
         return local_rank
 
     setting = RayExecutor.create_settings(timeout_s=30)
-    hjob = RayExecutor(
-        setting, num_workers=3, use_gpu=torch.cuda.is_available())
+    hjob = RayExecutor(setting, num_workers=3, use_gpu=torch.cuda.is_available())
     hjob.start()
     result = hjob.execute(simple_fn)
     assert set(result) == {0, 1, 2}
@@ -88,10 +78,10 @@ def test_train(ray_start_4_cpus):
     hjob.shutdown()
 
 
-@pytest.mark.skipif(
-    not gloo_built(), reason="Gloo is required for Ray integration")
+@pytest.mark.skipif(not gloo_built(), reason="Gloo is required for Ray integration")
 def test_horovod_example(ray_start_4_cpus):
     from ray.util.horovod.horovod_example import main
+
     kwargs = {
         "data_dir": "./data",
         "num_epochs": 1,

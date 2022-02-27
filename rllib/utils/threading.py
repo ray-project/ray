@@ -1,7 +1,7 @@
 from typing import Callable
 
 
-def with_lock(func: Callable):
+def with_lock(func: Callable) -> Callable:
     """Use as decorator (@withlock) around object methods that need locking.
 
     Note: The object must have a self._lock = threading.Lock() property.
@@ -9,10 +9,10 @@ def with_lock(func: Callable):
     object can be called asynchronously).
 
     Args:
-        func (Callable): The function to decorate/wrap.
+        func: The function to decorate/wrap.
 
     Returns:
-        Callable: The wrapped (object-level locked) function.
+        The wrapped (object-level locked) function.
     """
 
     def wrapper(self, *a, **k):
@@ -24,7 +24,8 @@ def with_lock(func: Callable):
                 raise AttributeError(
                     "Object {} must have a `self._lock` property (assigned "
                     "to a threading.RLock() object in its "
-                    "constructor)!".format(self))
+                    "constructor)!".format(self)
+                )
             raise e
 
     return wrapper

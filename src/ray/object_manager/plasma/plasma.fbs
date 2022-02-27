@@ -82,6 +82,8 @@ enum PlasmaError:int {
   // the result of the same request twice. This is most likely due to a system
   // bug in the plasma store or caller.
   UnexpectedError,
+  // Trying to abort an object but it's not sealed.
+  ObjectSealed,
 }
 
 // Plasma store messages

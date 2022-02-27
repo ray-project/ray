@@ -8,7 +8,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_horovod.py"],
     deps = [":horovod_lib"],
-    tags = ["exclusive"]
+    tags = ["team:ml", "exclusive"]
 )
 
 # This is a dummy test dependency that causes the above tests to be

@@ -20,8 +20,9 @@ class TuneCallback(TrainingCallback):
 
     def __call__(self, env):
         """Compatibility with xgboost<1.3"""
-        return self.after_iteration(env.model, env.iteration,
-                                    env.evaluation_result_list)
+        return self.after_iteration(
+            env.model, env.iteration, env.evaluation_result_list
+        )
 
     def after_iteration(self, model: Booster, epoch: int, evals_log: Dict):
         raise NotImplementedError
@@ -63,8 +64,7 @@ class TuneReportCallback(TuneCallback):
 
     """
 
-    def __init__(self,
-                 metrics: Union[None, str, List[str], Dict[str, str]] = None):
+    def __init__(self, metrics: Union[None, str, List[str], Dict[str, str]] = None):
         if isinstance(metrics, str):
             metrics = [metrics]
         self._metrics = metrics
@@ -118,8 +118,7 @@ class _TuneCheckpointCallback(TuneCallback):
         self._frequency = frequency
 
     @staticmethod
-    def _create_checkpoint(model: Booster, epoch: int, filename: str,
-                           frequency: int):
+    def _create_checkpoint(model: Booster, epoch: int, filename: str, frequency: int):
         if epoch % frequency > 0:
             return
         with tune.checkpoint_dir(step=epoch) as checkpoint_dir:
@@ -171,13 +170,16 @@ class TuneReportCheckpointCallback(TuneCallback):
                 {"loss": "eval-logloss"}, "xgboost.mdl)])
 
     """
+
     _checkpoint_callback_cls = _TuneCheckpointCallback
     _report_callbacks_cls = TuneReportCallback
 
-    def __init__(self,
-                 metrics: Union[None, str, List[str], Dict[str, str]] = None,
-                 filename: str = "checkpoint",
-                 frequency: int = 5):
+    def __init__(
+        self,
+        metrics: Union[None, str, List[str], Dict[str, str]] = None,
+        filename: str = "checkpoint",
+        frequency: int = 5,
+    ):
         self._checkpoint = self._checkpoint_callback_cls(filename, frequency)
         self._report = self._report_callbacks_cls(metrics)
 

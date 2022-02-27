@@ -37,6 +37,17 @@ class TaskSubmitter {
 
   virtual ObjectID SubmitActorTask(InvocationSpec &invocation,
                                    const CallOptions &call_options) = 0;
+
+  virtual ActorID GetActor(const std::string &actor_name) const = 0;
+
+  virtual ray::PlacementGroup CreatePlacementGroup(
+      const ray::PlacementGroupCreationOptions &create_options) = 0;
+
+  virtual void RemovePlacementGroup(const std::string &group_id) = 0;
+
+  virtual bool WaitPlacementGroupReady(const std::string &group_id, int timeout_seconds) {
+    return true;
+  }
 };
 }  // namespace internal
 }  // namespace ray

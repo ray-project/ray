@@ -1,5 +1,5 @@
-ARG GPU
-FROM rayproject/ray-deps:nightly"$GPU"
+ARG BASE_IMAGE
+FROM rayproject/ray-deps:nightly"$BASE_IMAGE"
 ARG WHEEL_PATH
 ARG FIND_LINKS_PATH=".whl"
 # For Click

@@ -16,8 +16,9 @@ class TestMultiAgentPendulum(unittest.TestCase):
         ray.shutdown()
 
     def test_multi_agent_pendulum(self):
-        register_env("multi_agent_pendulum",
-                     lambda _: MultiAgentPendulum({"num_agents": 1}))
+        register_env(
+            "multi_agent_pendulum", lambda _: MultiAgentPendulum({"num_agents": 1})
+        )
 
         stop = {
             "timesteps_total": 500000,
@@ -50,15 +51,20 @@ class TestMultiAgentPendulum(unittest.TestCase):
                         },
                     }
                 },
-                verbose=1)
-            if trials[0].last_result["episode_reward_mean"] <= \
-                    stop["episode_reward_mean"]:
+                verbose=1,
+            )
+            if (
+                trials[0].last_result["episode_reward_mean"]
+                <= stop["episode_reward_mean"]
+            ):
                 raise ValueError(
-                    "Did not get to {} reward".format(
-                        stop["episode_reward_mean"]), trials[0].last_result)
+                    "Did not get to {} reward".format(stop["episode_reward_mean"]),
+                    trials[0].last_result,
+                )
 
 
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

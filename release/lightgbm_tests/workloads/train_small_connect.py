@@ -19,7 +19,7 @@ if __name__ == "__main__":
     addr = os.environ.get("RAY_ADDRESS")
     job_name = os.environ.get("RAY_JOB_NAME", "train_small")
     if addr.startswith("anyscale://"):
-        ray.client(address=addr).job_name(job_name).connect()
+        ray.init(address=addr, job_name=job_name)
     else:
         ray.init(address="auto")
 
@@ -28,7 +28,8 @@ if __name__ == "__main__":
         max_actor_restarts=2,
         num_actors=4,
         cpus_per_actor=4,
-        gpus_per_actor=0)
+        gpus_per_actor=0,
+    )
 
     @ray.remote
     def train():
@@ -50,8 +51,7 @@ if __name__ == "__main__":
     result = {
         "time_taken": taken,
     }
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
-                                      "/tmp/train_small.json")
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/train_small.json")
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
 

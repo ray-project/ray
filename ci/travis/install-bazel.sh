@@ -66,6 +66,7 @@ else
     "$(command -v sudo || echo command)" "${target}" > /dev/null  # system-wide install for CI
   else
     "${target}" --user > /dev/null
+    export PATH=$PATH:"$HOME/bin"
   fi
   which bazel
   rm -f "${target}"
@@ -92,6 +93,13 @@ if [ "${GITHUB_ACTIONS-}" = true ]; then
 fi
 if [ "${CI-}" = true ]; then
   echo "build --config=ci" >> ~/.bazelrc
+
+  # In Windows CI we want to use this to avoid long path issue
+  # https://docs.bazel.build/versions/main/windows.html#avoid-long-path-issues
+  if [ "${OSTYPE}" = msys ]; then
+    echo "startup --output_user_root=c:/tmp" >> ~/.bazelrc
+  fi
+
   # If we are in master build, we can write to the cache as well.
   upload=0
   if [ "${TRAVIS_PULL_REQUEST-false}" = false ]; then
@@ -136,6 +144,9 @@ EOF
       cat <<EOF >> ~/.bazelrc
 build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}
 EOF
+      if [ "${BUILDKITE_PULL_REQUEST}" != "false" ]; then
+        echo "build --remote_upload_local_results=false" >> ~/.bazelrc
+      fi
     fi
 
   else

@@ -68,8 +68,8 @@ def diag(v, k=0):
 
 
 @ray.remote
-def transpose(a, axes=[]):
-    axes = None if axes == [] else axes
+def transpose(a, axes=None):
+    axes = None if (axes == [] or axes is None) else axes
     return np.transpose(a, axes=axes)
 
 

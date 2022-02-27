@@ -27,6 +27,7 @@ public class ActorPerformanceTestBase {
       int numJavaWorkerPerProcess) {
     System.setProperty(
         "ray.job.num-java-workers-per-process", String.valueOf(numJavaWorkerPerProcess));
+    System.setProperty("ray.raylet.startup-token", "0");
     Ray.init();
     try {
       // TODO: Support more layers.

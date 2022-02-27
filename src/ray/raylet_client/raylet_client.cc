@@ -64,7 +64,9 @@ Status raylet::RayletConnection::WriteMessage(MessageType type,
   std::unique_lock<std::mutex> guard(write_mutex_);
   int64_t length = fbb ? fbb->GetSize() : 0;
   uint8_t *bytes = fbb ? fbb->GetBufferPointer() : nullptr;
-  return conn_->WriteMessage(static_cast<int64_t>(type), length, bytes);
+  auto status = conn_->WriteMessage(static_cast<int64_t>(type), length, bytes);
+  ShutdownIfLocalRayletDisconnected(status);
+  return status;
 }
 
 Status raylet::RayletConnection::AtomicRequestReply(MessageType request_type,
@@ -73,7 +75,19 @@ Status raylet::RayletConnection::AtomicRequestReply(MessageType request_type,
                                                     flatbuffers::FlatBufferBuilder *fbb) {
   std::unique_lock<std::mutex> guard(mutex_);
   RAY_RETURN_NOT_OK(WriteMessage(request_type, fbb));
-  return conn_->ReadMessage(static_cast<int64_t>(reply_type), reply_message);
+  auto status = conn_->ReadMessage(static_cast<int64_t>(reply_type), reply_message);
+  ShutdownIfLocalRayletDisconnected(status);
+  return status;
+}
+
+void raylet::RayletConnection::ShutdownIfLocalRayletDisconnected(const Status &status) {
+  if (!status.ok() && IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
+    RAY_LOG(WARNING) << "The connection is failed because the local raylet has been "
+                        "dead. Terminate the process. Status: "
+                     << status;
+    QuickExit();
+    RAY_LOG(FATAL) << "Unreachable.";
+  }
 }
 
 raylet::RayletClient::RayletClient(
@@ -87,20 +101,15 @@ raylet::RayletClient::RayletClient(
     rpc::WorkerType worker_type, const JobID &job_id, const int &runtime_env_hash,
     const Language &language, const std::string &ip_address, Status *status,
     NodeID *raylet_id, int *port, std::string *serialized_job_config,
-    pid_t worker_shim_pid)
+    StartupToken startup_token)
     : grpc_client_(std::move(grpc_client)), worker_id_(worker_id), job_id_(job_id) {
   conn_ = std::make_unique<raylet::RayletConnection>(io_service, raylet_socket, -1, -1);
 
-  // When the "shim process" which is used for setuping runtime_env is not needed,
-  // the worker_shim_pid will be 0.
-  if (worker_shim_pid == 0) {
-    worker_shim_pid = getpid();
-  }
   flatbuffers::FlatBufferBuilder fbb;
   // TODO(suquark): Use `WorkerType` in `common.proto` without converting to int.
   auto message = protocol::CreateRegisterClientRequest(
       fbb, static_cast<int>(worker_type), to_flatbuf(fbb, worker_id), getpid(),
-      worker_shim_pid, to_flatbuf(fbb, job_id), runtime_env_hash, language,
+      startup_token, to_flatbuf(fbb, job_id), runtime_env_hash, language,
       fbb.CreateString(ip_address),
       /*port=*/0, fbb.CreateString(*serialized_job_config));
   fbb.Finish(message);
@@ -156,8 +165,10 @@ Status raylet::RayletClient::Disconnect(
   // Don't be too strict for disconnection errors.
   // Just create logs and prevent it from crash.
   if (!status.ok()) {
-    RAY_LOG(ERROR) << status.ToString()
-                   << " [RayletClient] Failed to disconnect from raylet.";
+    RAY_LOG(WARNING)
+        << status.ToString()
+        << " [RayletClient] Failed to disconnect from raylet. This means the "
+           "raylet the worker is connected is probably already dead.";
   }
   return Status::OK();
 }
@@ -167,14 +178,6 @@ Status raylet::RayletClient::AnnounceWorkerPort(int port) {
   auto message = protocol::CreateAnnounceWorkerPort(fbb, port);
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::AnnounceWorkerPort, &fbb);
-}
-
-Status raylet::RayletClient::SubmitTask(const TaskSpecification &task_spec) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message =
-      protocol::CreateSubmitTaskRequest(fbb, fbb.CreateString(task_spec.Serialize()));
-  fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
 }
 
 Status raylet::RayletClient::TaskDone() {
@@ -272,20 +275,6 @@ Status raylet::RayletClient::PushError(const JobID &job_id, const std::string &t
   return conn_->WriteMessage(MessageType::PushErrorRequest, &fbb);
 }
 
-Status raylet::RayletClient::PushProfileEvents(const ProfileTableData &profile_events) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = fbb.CreateString(profile_events.SerializeAsString());
-  fbb.Finish(message);
-
-  auto status = conn_->WriteMessage(MessageType::PushProfileEventsRequest, &fbb);
-  // Don't be too strict for profile errors. Just create logs and prevent it from crash.
-  if (!status.ok()) {
-    RAY_LOG(ERROR) << status.ToString()
-                   << " [RayletClient] Failed to push profile events.";
-  }
-  return Status::OK();
-}
-
 Status raylet::RayletClient::FreeObjects(const std::vector<ObjectID> &object_ids,
                                          bool local_only) {
   flatbuffers::FlatBufferBuilder fbb;
@@ -295,23 +284,23 @@ Status raylet::RayletClient::FreeObjects(const std::vector<ObjectID> &object_ids
   return conn_->WriteMessage(MessageType::FreeObjectsInObjectStoreRequest, &fbb);
 }
 
-Status raylet::RayletClient::SetResource(const std::string &resource_name,
-                                         const double capacity, const NodeID &node_id) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateSetResourceRequest(fbb, fbb.CreateString(resource_name),
-                                                    capacity, to_flatbuf(fbb, node_id));
-  fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::SetResourceRequest, &fbb);
-}
-
 void raylet::RayletClient::RequestWorkerLease(
-    const TaskSpecification &resource_spec,
+    const rpc::TaskSpec &task_spec, bool grant_or_reject,
     const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
-    const int64_t backlog_size) {
-  rpc::RequestWorkerLeaseRequest request;
-  request.mutable_resource_spec()->CopyFrom(resource_spec.GetMessage());
-  request.set_backlog_size(backlog_size);
-  grpc_client_->RequestWorkerLease(request, callback);
+    const int64_t backlog_size, const bool is_selected_based_on_locality) {
+  google::protobuf::Arena arena;
+  auto request =
+      google::protobuf::Arena::CreateMessage<rpc::RequestWorkerLeaseRequest>(&arena);
+  // The unsafe allocating here is actually safe because the life-cycle of
+  // task_spec is longer than request.
+  // Request will be sent before the end of this call, and after that, it won't be
+  // used any more.
+  request->unsafe_arena_set_allocated_resource_spec(
+      const_cast<rpc::TaskSpec *>(&task_spec));
+  request->set_grant_or_reject(grant_or_reject);
+  request->set_backlog_size(backlog_size);
+  request->set_is_selected_based_on_locality(is_selected_based_on_locality);
+  grpc_client_->RequestWorkerLease(*request, callback);
 }
 
 /// Spill objects to external storage.
@@ -323,12 +312,27 @@ void raylet::RayletClient::RequestObjectSpillage(
   grpc_client_->RequestObjectSpillage(request, callback);
 }
 
+void raylet::RayletClient::ReportWorkerBacklog(
+    const WorkerID &worker_id,
+    const std::vector<rpc::WorkerBacklogReport> &backlog_reports) {
+  rpc::ReportWorkerBacklogRequest request;
+  request.set_worker_id(worker_id.Binary());
+  request.mutable_backlog_reports()->Add(backlog_reports.begin(), backlog_reports.end());
+  grpc_client_->ReportWorkerBacklog(
+      request, [](const Status &status, const rpc::ReportWorkerBacklogReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(INFO) << "Error reporting task backlog information: " << status;
+        }
+      });
+}
+
 Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worker_id,
-                                          bool disconnect_worker) {
+                                          bool disconnect_worker, bool worker_exiting) {
   rpc::ReturnWorkerRequest request;
   request.set_worker_port(worker_port);
   request.set_worker_id(worker_id.Binary());
   request.set_disconnect_worker(disconnect_worker);
+  request.set_worker_exiting(worker_exiting);
   grpc_client_->ReturnWorker(
       request, [](const Status &status, const rpc::ReturnWorkerReply &reply) {
         if (!status.ok()) {
@@ -366,23 +370,35 @@ void raylet::RayletClient::CancelWorkerLease(
 }
 
 void raylet::RayletClient::PrepareBundleResources(
-    const BundleSpecification &bundle_spec,
+    const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
     const ray::rpc::ClientCallback<ray::rpc::PrepareBundleResourcesReply> &callback) {
   rpc::PrepareBundleResourcesRequest request;
-  request.mutable_bundle_spec()->CopyFrom(bundle_spec.GetMessage());
+  std::set<std::string> nodes;
+  for (const auto &bundle_spec : bundle_specs) {
+    nodes.insert(bundle_spec->NodeId().Hex());
+    auto message_bundle = request.add_bundle_specs();
+    message_bundle->CopyFrom(bundle_spec->GetMessage());
+  }
+  RAY_CHECK(nodes.size() == 1);
   grpc_client_->PrepareBundleResources(request, callback);
 }
 
 void raylet::RayletClient::CommitBundleResources(
-    const BundleSpecification &bundle_spec,
+    const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
     const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback) {
   rpc::CommitBundleResourcesRequest request;
-  request.mutable_bundle_spec()->CopyFrom(bundle_spec.GetMessage());
+  std::set<std::string> nodes;
+  for (const auto &bundle_spec : bundle_specs) {
+    nodes.insert(bundle_spec->NodeId().Hex());
+    auto message_bundle = request.add_bundle_specs();
+    message_bundle->CopyFrom(bundle_spec->GetMessage());
+  }
+  RAY_CHECK(nodes.size() == 1);
   grpc_client_->CommitBundleResources(request, callback);
 }
 
 void raylet::RayletClient::CancelResourceReserve(
-    BundleSpecification &bundle_spec,
+    const BundleSpecification &bundle_spec,
     const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback) {
   rpc::CancelResourceReserveRequest request;
   request.mutable_bundle_spec()->CopyFrom(bundle_spec.GetMessage());
@@ -423,6 +439,14 @@ void raylet::RayletClient::PinObjectIDs(
     callback(status, reply);
   };
   grpc_client_->PinObjectIDs(request, rpc_callback);
+}
+
+void raylet::RayletClient::ShutdownRaylet(
+    const NodeID &node_id, bool graceful,
+    const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) {
+  rpc::ShutdownRayletRequest request;
+  request.set_graceful(graceful);
+  grpc_client_->ShutdownRaylet(request, callback);
 }
 
 void raylet::RayletClient::GlobalGC(

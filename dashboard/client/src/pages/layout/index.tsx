@@ -119,6 +119,16 @@ const BasicLayout = (
           </ListItem>
           <ListItem
             button
+            className={classnames(
+              classes.menuItem,
+              location.pathname.includes("events") && classes.selected,
+            )}
+            onClick={() => history.push("/events")}
+          >
+            <ListItemText>EVENTS</ListItemText>
+          </ListItem>
+          <ListItem
+            button
             className={classnames(classes.menuItem)}
             onClick={() => history.push("/")}
           >

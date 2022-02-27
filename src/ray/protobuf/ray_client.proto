@@ -13,6 +13,7 @@
 // limitations under the License.
 
 syntax = "proto3";
+option cc_enable_arenas = true;
 
 package ray.rpc;
 
@@ -40,11 +41,11 @@ message Arg {
 // TODO(barakmich): In the longer term, if everything were a client,
 // this message could be the actual standard for which options are
 // allowed in the API. Today, however, it's a bit flexible and defined in the
-// Python code. So for now, it's a stand-in message with a json field, but
+// Python code. So for now, it's a stand-in message with a pickle field, but
 // this is forwards-compatible with deprecating that field and instituting
 // strongly defined and typed fields, without migrating the original ClientTask.
 message TaskOptions {
-  string json_options = 1;
+  bytes pickled_options = 1;
 }
 
 // Represents one unit of work to be executed by the server.
@@ -74,6 +75,8 @@ message ClientTask {
   TaskOptions options = 7;
   // Options passed to create the default remote task excution environment.
   TaskOptions baseline_options = 8;
+  // A namespace parameter.
+  string namespace = 9;
 }
 
 message ClientTaskTicket {
@@ -98,6 +101,12 @@ message PutRequest {
   //
   // Empty if no late binding is possible, as in a normal put().
   bytes client_ref_id = 2;
+  // Identifies which chunk the data belongs to
+  int32 chunk_id = 3;
+  // Total number of chunks
+  int32 total_chunks = 4;
+  // Total size in bytes of the data being put
+  int64 total_size = 5;
 }
 
 message PutResponse {
@@ -114,17 +123,21 @@ message PutResponse {
 // Requests data from the server.
 message GetRequest {
   // The reference ID for the requested object data
-  bytes id = 1;
+  repeated bytes ids = 4;
   // Length of time to wait for data to be available, in seconds. Zero is no timeout.
   float timeout = 2;
   // Whether to schedule this as a callback on the server side.
   bool asynchronous = 3;
+
+  // Deprecated fields.
+  bytes id = 1 [deprecated = true];
 }
 
 message GetResponse {
   // Whether or not the data was successfully retrieved
   bool valid = 1;
-  // The data blob, on success
+  // The data blob containing a list of serialized objects, on success.
+  // Total size and the order of objects match those in `GetRequest.ids`.
   bytes data = 2;
   // An error blob (for example, an exception) on failure.
   bytes error = 3;
@@ -252,6 +265,8 @@ message KVListResponse {
 message InitRequest {
   // job_config of ray.init
   bytes job_config = 1;
+  string ray_init_kwargs = 2;
+  int32 reconnect_grace_period = 3;
 }
 
 message InitResponse {
@@ -332,6 +347,20 @@ message ConnectionInfoResponse {
   string protocol_version = 5;
 }
 
+message ConnectionCleanupRequest {
+  // Explicitly request that connection is cleaned up for graceful shutdown
+}
+
+message ConnectionCleanupResponse {
+  // Acknowledge cleanup request
+}
+
+message AcknowledgeRequest {
+  // Used to acknowledge that all requests up to the given req_id have been
+  // received
+  int32 req_id = 1;
+}
+
 message DataRequest {
   // An incrementing counter of request IDs on the Datapath,
   // to match requests with responses asynchronously.
@@ -343,6 +372,11 @@ message DataRequest {
     ConnectionInfoRequest connection_info = 5;
     InitRequest init = 6;
     PrepRuntimeEnvRequest prep_runtime_env = 7;
+    ConnectionCleanupRequest connection_cleanup = 8;
+    AcknowledgeRequest acknowledge = 9;
+    ClientTask task = 10;
+    TerminateRequest terminate = 11;
+    ClientListNamedActorsRequest list_named_actors = 12;
   }
 }
 
@@ -356,7 +390,14 @@ message DataResponse {
     ConnectionInfoResponse connection_info = 5;
     InitResponse init = 6;
     PrepRuntimeEnvResponse prep_runtime_env = 7;
+    ConnectionCleanupResponse connection_cleanup = 8;
+    ClientTaskTicket task_ticket = 10;
+    TerminateResponse terminate = 11;
+    ClientListNamedActorsResponse list_named_actors = 12;
   }
+  // tag 9 is skipped, since there is no AcknowledgeResponse
+  reserved 9;
+  reserved "acknowledge";
 }
 
 service RayletDataStreamer {

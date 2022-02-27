@@ -28,9 +28,11 @@ import click
 import json
 import math
 import os
+import time
 
 from ray import serve
 from ray.serve.utils import logger
+from ray.serve.api import _get_global_client
 from serve_test_utils import (
     aggregate_all_metrics,
     run_wrk_on_all_nodes,
@@ -46,7 +48,7 @@ from serve_test_cluster_utils import (
 from typing import Optional
 
 # Experiment configs
-DEFAULT_SMOKE_TEST_NUM_REPLICA = 8
+DEFAULT_SMOKE_TEST_NUM_REPLICA = 4
 DEFAULT_FULL_TEST_NUM_REPLICA = 1000
 
 # Deployment configs
@@ -58,7 +60,9 @@ DEFAULT_FULL_TEST_TRIAL_LENGTH = "10m"
 
 
 def deploy_replicas(num_replicas, max_batch_size):
-    @serve.deployment(name="echo", num_replicas=num_replicas)
+    name = "echo"
+
+    @serve.deployment(name=name, num_replicas=num_replicas)
     class Echo:
         @serve.batch(max_batch_size=max_batch_size)
         async def handle_batch(self, requests):
@@ -67,12 +71,31 @@ def deploy_replicas(num_replicas, max_batch_size):
         async def __call__(self, request):
             return await self.handle_batch(request)
 
-    Echo.deploy()
+    # Set _blocking=False to allow for a custom extended grace period for the
+    # health check, which is necessary to prevent this test from being flaky.
+    Echo.deploy(_blocking=False)
+
+    start = time.time()
+    client = _get_global_client()
+    # Wait for up to 10 minutes for the deployment to be healthy, allowing
+    # time for any actors that crashed to restart.
+    while time.time() - start < 10 * 60:
+        try:
+            # Raises RuntimeError if deployment enters the "UNHEALTHY" state.
+            client._wait_for_deployment_healthy(name)
+        except RuntimeError:
+            time.sleep(1)
+            pass
+
+    # If the deployment is still unhealthy at this point, allow RuntimeError
+    # to be raised and let this test fail.
+    client._wait_for_deployment_healthy(name)
 
 
 def save_results(final_result, default_name):
     test_output_json = os.environ.get(
-        "TEST_OUTPUT_JSON", "/tmp/single_deployment_1k_noop_replica.json")
+        "TEST_OUTPUT_JSON", "/tmp/single_deployment_1k_noop_replica.json"
+    )
     with open(test_output_json, "wt") as f:
         json.dump(final_result, f)
 
@@ -81,8 +104,11 @@ def save_results(final_result, default_name):
 @click.option("--num-replicas", type=int)
 @click.option("--trial-length", type=str)
 @click.option("--max-batch-size", type=int, default=DEFAULT_MAX_BATCH_SIZE)
-def main(num_replicas: Optional[int], trial_length: Optional[str],
-         max_batch_size: Optional[int]):
+def main(
+    num_replicas: Optional[int],
+    trial_length: Optional[str],
+    max_batch_size: Optional[int],
+):
     # Give default cluster parameter values based on smoke_test config
     # if user provided values explicitly, use them instead.
     # IS_SMOKE_TEST is set by args of releaser's e2e.py
@@ -90,16 +116,14 @@ def main(num_replicas: Optional[int], trial_length: Optional[str],
     if smoke_test == "1":
         num_replicas = num_replicas or DEFAULT_SMOKE_TEST_NUM_REPLICA
         trial_length = trial_length or DEFAULT_SMOKE_TEST_TRIAL_LENGTH
-        logger.info(
-            f"Running local / smoke test with {num_replicas} replicas ..\n")
+        logger.info(f"Running local / smoke test with {num_replicas} replicas ..\n")
 
         # Choose cluster setup based on user config. Local test uses Cluster()
         # to mock actors that requires # of nodes to be specified, but ray
         # client doesn't need to
         num_nodes = int(math.ceil(num_replicas / NUM_CPU_PER_NODE))
-        logger.info(
-            f"Setting up local ray cluster with {num_nodes} nodes ..\n")
-        serve_client = setup_local_single_node_cluster(num_nodes)
+        logger.info(f"Setting up local ray cluster with {num_nodes} nodes ..\n")
+        serve_client = setup_local_single_node_cluster(num_nodes)[0]
     else:
         num_replicas = num_replicas or DEFAULT_FULL_TEST_NUM_REPLICA
         trial_length = trial_length or DEFAULT_FULL_TEST_TRIAL_LENGTH
@@ -120,13 +144,10 @@ def main(num_replicas: Optional[int], trial_length: Optional[str],
     logger.info(f"Starting wrk trial on all nodes for {trial_length} ....\n")
     # For detailed discussion, see https://github.com/wg/wrk/issues/205
     # TODO:(jiaodong) What's the best number to use here ?
-    all_endpoints = list(serve.list_endpoints().keys())
+    all_endpoints = list(serve.list_deployments().keys())
     all_metrics, all_wrk_stdout = run_wrk_on_all_nodes(
-        trial_length,
-        NUM_CONNECTIONS,
-        http_host,
-        http_port,
-        all_endpoints=all_endpoints)
+        trial_length, NUM_CONNECTIONS, http_host, http_port, all_endpoints=all_endpoints
+    )
 
     aggregated_metrics = aggregate_all_metrics(all_metrics)
     logger.info("Wrk stdout on each node: ")
@@ -137,8 +158,13 @@ def main(num_replicas: Optional[int], trial_length: Optional[str],
         logger.info(f"{key}: {val}")
     save_test_results(
         aggregated_metrics,
-        default_output_file="/tmp/single_deployment_1k_noop_replica.json")
+        default_output_file="/tmp/single_deployment_1k_noop_replica.json",
+    )
 
 
 if __name__ == "__main__":
     main()
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", "-s", __file__]))

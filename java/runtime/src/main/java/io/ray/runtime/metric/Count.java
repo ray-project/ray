@@ -10,6 +10,7 @@ public class Count extends Metric {
 
   private DoubleAdder count;
 
+  @Deprecated
   public Count(String name, String description, String unit, Map<TagKey, String> tags) {
     super(name, tags);
     count = new DoubleAdder();
@@ -20,6 +21,10 @@ public class Count extends Metric {
             unit,
             tags.keySet().stream().map(TagKey::getTagKey).collect(Collectors.toList()));
     Preconditions.checkState(metricNativePointer != 0, "Count native pointer must not be 0.");
+  }
+
+  public Count(String name, String description, Map<String, String> tags) {
+    this(name, description, "", TagKey.tagsFromMap(tags));
   }
 
   @Override

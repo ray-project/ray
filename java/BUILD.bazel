@@ -2,6 +2,10 @@ load("//bazel:ray.bzl", "define_java_module")
 load("//bazel:ray.bzl", "native_java_binary")
 load("//bazel:ray.bzl", "native_java_library")
 load("@rules_proto_grpc//java:defs.bzl", "java_proto_compile")
+load(
+    "@com_github_johnynek_bazel_jar_jar//:jar_jar.bzl",
+    "jar_jar",
+)
 
 exports_files([
     "testng.xml",
@@ -44,6 +48,7 @@ define_java_module(
         "@maven//:com_lmax_disruptor",
         "@maven//:com_sun_xml_bind_jaxb_core",
         "@maven//:com_sun_xml_bind_jaxb_impl",
+        "@maven//:javax_activation_activation",
         "@maven//:javax_xml_bind_jaxb_api",
         "@maven//:org_apache_logging_log4j_log4j_api",
         "@maven//:org_apache_logging_log4j_log4j_core",
@@ -78,6 +83,7 @@ define_java_module(
         "@maven//:com_google_code_gson_gson",
         "@maven//:com_google_guava_guava",
         "@maven//:com_google_protobuf_protobuf_java",
+        "@maven//:com_google_protobuf_protobuf_java_util",
         "@maven//:com_lmax_disruptor",
         "@maven//:com_typesafe_config",
         "@maven//:commons_io_commons_io",
@@ -147,9 +153,12 @@ define_java_module(
         ":io_ray_ray_api",
         ":io_ray_ray_runtime",
         ":io_ray_ray_serve",
+        "@maven//:com_google_code_gson_gson",
         "@maven//:com_google_guava_guava",
         "@maven//:com_google_protobuf_protobuf_java",
         "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:org_apache_httpcomponents_client5_httpclient5",
+        "@maven//:org_apache_httpcomponents_core5_httpcore5",
         "@maven//:org_slf4j_slf4j_api",
         "@maven//:org_testng_testng",
     ],
@@ -157,9 +166,11 @@ define_java_module(
     deps = [
         ":io_ray_ray_api",
         ":io_ray_ray_runtime",
+        "@maven//:com_google_code_gson_gson",
         "@maven//:com_google_guava_guava",
         "@maven//:com_google_protobuf_protobuf_java",
         "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:org_apache_httpcomponents_core5_httpcore5",
         "@maven//:org_slf4j_slf4j_api",
     ],
 )
@@ -177,19 +188,26 @@ java_binary(
     ],
 )
 
+# We'd better make resource files can be accessed from 3rd party library.
+# More detail please see https://github.com/ray-project/ray/pull/21641.
 java_proto_compile(
     name = "common_java_proto",
-    deps = ["@//src/ray/protobuf:common_proto"],
+    deps = ["@com_github_ray_project_ray//src/ray/protobuf:common_proto"],
+)
+
+java_proto_compile(
+    name = "runtime_env_common_java_proto",
+    deps = ["@com_github_ray_project_ray//src/ray/protobuf:runtime_env_common_proto"],
 )
 
 java_proto_compile(
     name = "gcs_java_proto",
-    deps = ["@//src/ray/protobuf:gcs_proto"],
+    deps = ["@com_github_ray_project_ray//src/ray/protobuf:gcs_proto"],
 )
 
 java_proto_compile(
     name = "serve_java_proto",
-    deps = ["@//src/ray/protobuf:serve_proto"],
+    deps = ["@com_github_ray_project_ray//src/ray/protobuf:serve_proto"],
 )
 
 filegroup(
@@ -197,6 +215,7 @@ filegroup(
     srcs = [
         ":common_java_proto",
         ":gcs_java_proto",
+        ":runtime_env_common_java_proto",
     ],
 )
 
@@ -294,23 +313,33 @@ java_binary(
         "//java:io_ray_ray_api",
         "//java:io_ray_ray_runtime",
         "//java:io_ray_ray_serve",
-        "//streaming/java:io_ray_ray_streaming-api",
-        "//streaming/java:io_ray_ray_streaming-runtime",
     ],
+)
+
+jar_jar(
+    name = "ray_dist_shaded",
+    input_jar = "//java:ray_dist_deploy.jar",
+    rules = "//java:shade_rule",
+)
+
+# Shade dependencies in tests fat jar.
+jar_jar(
+    name = "all_tests_shaded",
+    input_jar = "//java:all_tests_deploy.jar",
+    rules = "//java:shade_rule",
 )
 
 genrule(
     name = "ray_java_pkg",
     srcs = [
-        "//java:ray_dist_deploy.jar",
+        "//java:ray_dist_shaded.jar",
         "//java:gen_maven_deps",
-        "//streaming/java:gen_maven_deps",
     ],
     outs = ["ray_java_pkg.out"],
     cmd = """
         WORK_DIR="$$(pwd)"
         rm -rf "$$WORK_DIR/python/ray/jars" && mkdir -p "$$WORK_DIR/python/ray/jars"
-        cp -f $(location //java:ray_dist_deploy.jar) "$$WORK_DIR/python/ray/jars/ray_dist.jar"
+        cp -f $(location //java:ray_dist_shaded.jar) "$$WORK_DIR/python/ray/jars/ray_dist.jar"
         date > $@
     """,
     local = 1,

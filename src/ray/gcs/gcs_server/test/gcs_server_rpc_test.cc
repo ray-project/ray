@@ -33,16 +33,17 @@ class GcsServerTest : public ::testing::Test {
     config.grpc_server_name = "MockedGcsServer";
     config.grpc_server_thread_num = 1;
     config.redis_address = "127.0.0.1";
+    config.node_ip_address = "127.0.0.1";
     config.enable_sharding_conn = false;
     config.redis_port = TEST_REDIS_SERVER_PORTS.front();
-    gcs_server_.reset(new gcs::GcsServer(config, io_service_));
+    gcs_server_ = std::make_unique<gcs::GcsServer>(config, io_service_);
     gcs_server_->Start();
 
-    thread_io_service_.reset(new std::thread([this] {
+    thread_io_service_ = std::make_unique<std::thread>([this] {
       std::unique_ptr<boost::asio::io_service::work> work(
           new boost::asio::io_service::work(io_service_));
       io_service_.run();
-    }));
+    });
 
     // Wait until server starts listening.
     while (gcs_server_->GetPort() == 0) {
@@ -113,10 +114,10 @@ class GcsServerTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool UnregisterNode(const rpc::UnregisterNodeRequest &request) {
+  bool DrainNode(const rpc::DrainNodeRequest &request) {
     std::promise<bool> promise;
-    client_->UnregisterNode(
-        request, [&promise](const Status &status, const rpc::UnregisterNodeReply &reply) {
+    client_->DrainNode(
+        request, [&promise](const Status &status, const rpc::DrainNodeReply &reply) {
           RAY_CHECK_OK(status);
           promise.set_value(true);
         });
@@ -186,99 +187,6 @@ class GcsServerTest : public ::testing::Test {
                           });
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return resources;
-  }
-
-  bool AddObjectLocation(const rpc::AddObjectLocationRequest &request) {
-    std::promise<bool> promise;
-    client_->AddObjectLocation(
-        request,
-        [&promise](const Status &status, const rpc::AddObjectLocationReply &reply) {
-          RAY_CHECK_OK(status);
-          promise.set_value(true);
-        });
-
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  bool RemoveObjectLocation(const rpc::RemoveObjectLocationRequest &request) {
-    std::promise<bool> promise;
-    client_->RemoveObjectLocation(
-        request,
-        [&promise](const Status &status, const rpc::RemoveObjectLocationReply &reply) {
-          RAY_CHECK_OK(status);
-          promise.set_value(true);
-        });
-
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  std::vector<rpc::ObjectTableData> GetObjectLocations(const std::string &object_id) {
-    std::vector<rpc::ObjectTableData> object_locations;
-    rpc::GetObjectLocationsRequest request;
-    request.set_object_id(object_id);
-    std::promise<bool> promise;
-    client_->GetObjectLocations(
-        request, [&object_locations, &promise](
-                     const Status &status, const rpc::GetObjectLocationsReply &reply) {
-          RAY_CHECK_OK(status);
-          for (const auto &loc : reply.location_info().locations()) {
-            object_locations.push_back(loc);
-          }
-          promise.set_value(true);
-        });
-
-    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
-    return object_locations;
-  }
-
-  bool AddTask(const rpc::AddTaskRequest &request) {
-    std::promise<bool> promise;
-    client_->AddTask(request,
-                     [&promise](const Status &status, const rpc::AddTaskReply &reply) {
-                       RAY_CHECK_OK(status);
-                       promise.set_value(true);
-                     });
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  rpc::TaskTableData GetTask(const std::string &task_id) {
-    rpc::TaskTableData task_data;
-    rpc::GetTaskRequest request;
-    request.set_task_id(task_id);
-    std::promise<bool> promise;
-    client_->GetTask(request, [&task_data, &promise](const Status &status,
-                                                     const rpc::GetTaskReply &reply) {
-      if (status.ok()) {
-        if (reply.has_task_data()) {
-          task_data.CopyFrom(reply.task_data());
-        }
-      }
-      promise.set_value(true);
-    });
-
-    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
-    return task_data;
-  }
-
-  bool AddTaskLease(const rpc::AddTaskLeaseRequest &request) {
-    std::promise<bool> promise;
-    client_->AddTaskLease(
-        request, [&promise](const Status &status, const rpc::AddTaskLeaseReply &reply) {
-          RAY_CHECK_OK(status);
-          promise.set_value(true);
-        });
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  bool AttemptTaskReconstruction(const rpc::AttemptTaskReconstructionRequest &request) {
-    std::promise<bool> promise;
-    client_->AttemptTaskReconstruction(
-        request, [&promise](const Status &status,
-                            const rpc::AttemptTaskReconstructionReply &reply) {
-          RAY_CHECK_OK(status);
-          promise.set_value(true);
-        });
-    return WaitReady(promise.get_future(), timeout_ms_);
   }
 
   bool AddProfileData(const rpc::AddProfileDataRequest &request) {
@@ -451,9 +359,10 @@ TEST_F(GcsServerTest, TestNodeInfo) {
   ASSERT_TRUE(resources.empty());
 
   // Unregister node info
-  rpc::UnregisterNodeRequest unregister_node_info_request;
-  unregister_node_info_request.set_node_id(gcs_node_info->node_id());
-  ASSERT_TRUE(UnregisterNode(unregister_node_info_request));
+  rpc::DrainNodeRequest unregister_node_info_request;
+  auto draining_request = unregister_node_info_request.add_drain_node_data();
+  draining_request->set_node_id(gcs_node_info->node_id());
+  ASSERT_TRUE(DrainNode(unregister_node_info_request));
   node_info_list = GetAllNodeInfo();
   ASSERT_TRUE(node_info_list.size() == 1);
   ASSERT_TRUE(node_info_list[0].state() ==
@@ -491,75 +400,14 @@ TEST_F(GcsServerTest, TestHeartbeatWithNoRegistering) {
   ASSERT_TRUE(ReportHeartbeat(report_heartbeat_request));
 
   // Unregister node info
-  rpc::UnregisterNodeRequest unregister_node_info_request;
-  unregister_node_info_request.set_node_id(gcs_node_info->node_id());
-  ASSERT_TRUE(UnregisterNode(unregister_node_info_request));
+  rpc::DrainNodeRequest unregister_node_info_request;
+  auto draining_request = unregister_node_info_request.add_drain_node_data();
+  draining_request->set_node_id(gcs_node_info->node_id());
+  ASSERT_TRUE(DrainNode(unregister_node_info_request));
   node_info_list = GetAllNodeInfo();
   ASSERT_TRUE(node_info_list.size() == 1);
   ASSERT_TRUE(node_info_list[0].state() ==
               rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
-}
-
-TEST_F(GcsServerTest, TestObjectInfo) {
-  // Create object table data
-  ObjectID object_id = ObjectID::FromRandom();
-  NodeID node1_id = NodeID::FromRandom();
-  NodeID node2_id = NodeID::FromRandom();
-
-  // Add object location
-  rpc::AddObjectLocationRequest add_object_location_request;
-  add_object_location_request.set_object_id(object_id.Binary());
-  add_object_location_request.set_node_id(node1_id.Binary());
-  ASSERT_TRUE(AddObjectLocation(add_object_location_request));
-  std::vector<rpc::ObjectTableData> object_locations =
-      GetObjectLocations(object_id.Binary());
-  ASSERT_TRUE(object_locations.size() == 1);
-  ASSERT_TRUE(object_locations[0].manager() == node1_id.Binary());
-
-  add_object_location_request.set_node_id(node2_id.Binary());
-  ASSERT_TRUE(AddObjectLocation(add_object_location_request));
-  object_locations = GetObjectLocations(object_id.Binary());
-  ASSERT_TRUE(object_locations.size() == 2);
-
-  // Remove object location
-  rpc::RemoveObjectLocationRequest remove_object_location_request;
-  remove_object_location_request.set_object_id(object_id.Binary());
-  remove_object_location_request.set_node_id(node1_id.Binary());
-  ASSERT_TRUE(RemoveObjectLocation(remove_object_location_request));
-  object_locations = GetObjectLocations(object_id.Binary());
-  ASSERT_TRUE(object_locations.size() == 1);
-  ASSERT_TRUE(object_locations[0].manager() == node2_id.Binary());
-}
-
-TEST_F(GcsServerTest, TestTaskInfo) {
-  // Create task_table_data
-  JobID job_id = JobID::FromInt(1);
-  TaskID task_id = TaskID::ForDriverTask(job_id);
-  auto job_table_data = Mocker::GenTaskTableData(job_id.Binary(), task_id.Binary());
-
-  // Add task
-  rpc::AddTaskRequest add_task_request;
-  add_task_request.mutable_task_data()->CopyFrom(*job_table_data);
-  ASSERT_TRUE(AddTask(add_task_request));
-  rpc::TaskTableData result = GetTask(task_id.Binary());
-  ASSERT_TRUE(result.task().task_spec().job_id() == job_id.Binary());
-
-  // Add task lease
-  NodeID node_id = NodeID::FromRandom();
-  auto task_lease_data = Mocker::GenTaskLeaseData(task_id.Binary(), node_id.Binary());
-  rpc::AddTaskLeaseRequest add_task_lease_request;
-  add_task_lease_request.mutable_task_lease_data()->CopyFrom(*task_lease_data);
-  ASSERT_TRUE(AddTaskLease(add_task_lease_request));
-
-  // Attempt task reconstruction
-  rpc::AttemptTaskReconstructionRequest attempt_task_reconstruction_request;
-  rpc::TaskReconstructionData task_reconstruction_data;
-  task_reconstruction_data.set_task_id(task_id.Binary());
-  task_reconstruction_data.set_node_manager_id(node_id.Binary());
-  task_reconstruction_data.set_num_reconstructions(0);
-  attempt_task_reconstruction_request.mutable_task_reconstruction()->CopyFrom(
-      task_reconstruction_data);
-  ASSERT_TRUE(AttemptTaskReconstruction(attempt_task_reconstruction_request));
 }
 
 TEST_F(GcsServerTest, TestStats) {
@@ -595,7 +443,6 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
   ASSERT_TRUE(result->worker_address().worker_id() ==
               worker_data->worker_address().worker_id());
 }
-
 // TODO(sang): Add tests after adding asyncAdd
 
 }  // namespace ray

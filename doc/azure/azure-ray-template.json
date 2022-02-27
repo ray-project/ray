@@ -80,14 +80,14 @@
         },
         "condaEnv": {
             "type": "string",
-            "defaultValue": "py37_tensorflow",
+            "defaultValue": "py38_tensorflow",
             "allowedValues": [
                 "azureml_py36_automl",
                 "azureml_py36_pytorch",
                 "azureml_py36_tensorflow",
-                "py37_default",
-                "py37_pytorch",
-                "py37_tensorflow"
+                "py38_default",
+                "py38_pytorch",
+                "py38_tensorflow"
             ],
             "metadata": {
                 "description": "Conda environment to select (installed on DSVM)"
@@ -131,7 +131,7 @@
         "imagePublisher": "microsoft-dsvm",
         "imageOffer": "ubuntu-1804",
         "imageSku": "1804",
-        "imageVersion": "20.07.06"
+        "imageVersion": "latest"
     },
     "resources": [
         {

@@ -15,7 +15,8 @@
 #pragma once
 #include <memory>
 #include <msgpack.hpp>
-#include <string>
+#include <string_view>
+
 #include "boost/optional.hpp"
 
 namespace ray {
@@ -26,6 +27,7 @@ struct TaskArg {
   TaskArg(TaskArg &&rhs) {
     buf = std::move(rhs.buf);
     id = rhs.id;
+    meta_str = std::move(rhs.meta_str);
   }
 
   TaskArg(const TaskArg &) = delete;
@@ -36,6 +38,8 @@ struct TaskArg {
   boost::optional<msgpack::sbuffer> buf;
   /// If the id is initialized shows it is a reference argument.
   boost::optional<std::string> id;
+
+  std::string_view meta_str;
 };
 
 }  // namespace internal

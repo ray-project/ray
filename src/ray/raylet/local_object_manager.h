@@ -20,7 +20,7 @@
 
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
-#include "ray/gcs/accessor.h"
+#include "ray/gcs/gcs_client/accessor.h"
 #include "ray/object_manager/common.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet/worker_pool.h"
@@ -39,10 +39,8 @@ class LocalObjectManager {
   LocalObjectManager(
       const NodeID &node_id, std::string self_node_address, int self_node_port,
       size_t free_objects_batch_size, int64_t free_objects_period_ms,
-      IOWorkerPoolInterface &io_worker_pool,
-      gcs::ObjectInfoAccessor &object_info_accessor,
-      rpc::CoreWorkerClientPool &owner_client_pool, int max_io_workers,
-      int64_t min_spilling_size, bool is_external_storage_type_fs,
+      IOWorkerPoolInterface &io_worker_pool, rpc::CoreWorkerClientPool &owner_client_pool,
+      int max_io_workers, int64_t min_spilling_size, bool is_external_storage_type_fs,
       int64_t max_fused_object_count,
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
       std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable,
@@ -53,7 +51,6 @@ class LocalObjectManager {
         free_objects_period_ms_(free_objects_period_ms),
         free_objects_batch_size_(free_objects_batch_size),
         io_worker_pool_(io_worker_pool),
-        object_info_accessor_(object_info_accessor),
         owner_client_pool_(owner_client_pool),
         on_objects_freed_(on_objects_freed),
         last_free_objects_at_ms_(current_time_ms()),
@@ -67,22 +64,17 @@ class LocalObjectManager {
 
   /// Pin objects.
   ///
+  /// Also wait for the objects' owner to free the object.  The objects will be
+  /// released when the owner at the given address fails or replies that the
+  /// object can be evicted.
+  ///
   /// \param object_ids The objects to be pinned.
   /// \param objects Pointers to the objects to be pinned. The pointer should
   /// be kept in scope until the object can be released.
   /// \param owner_address The owner of the objects to be pinned.
-  void PinObjects(const std::vector<ObjectID> &object_ids,
-                  std::vector<std::unique_ptr<RayObject>> &&objects,
-                  const rpc::Address &owner_address);
-
-  /// Wait for the objects' owner to free the object.  The objects will be
-  /// released when the owner at the given address fails or replies that the
-  /// object can be evicted.
-  ///
-  /// \param owner_address The address of the owner of the objects.
-  /// \param object_ids The objects to be freed.
-  void WaitForObjectFree(const rpc::Address &owner_address,
-                         const std::vector<ObjectID> &object_ids);
+  void PinObjectsAndWaitForFree(const std::vector<ObjectID> &object_ids,
+                                std::vector<std::unique_ptr<RayObject>> &&objects,
+                                const rpc::Address &owner_address);
 
   /// Spill objects as much as possible as fast as possible up to the max throughput.
   ///
@@ -138,10 +130,16 @@ class LocalObjectManager {
   void FillObjectSpillingStats(rpc::GetNodeStatsReply *reply) const;
 
   /// Record object spilling stats to metrics.
-  void RecordObjectSpillingStats() const;
+  void RecordMetrics() const;
 
-  /// Return the spilled object URL or the empty string.
-  std::string GetSpilledObjectURL(const ObjectID &object_id);
+  /// Return the spilled object URL if the object is spilled locally,
+  /// or the empty string otherwise.
+  /// If the external storage is cloud, this will always return an empty string.
+  /// In that case, the URL is supposed to be obtained by the object directory.
+  std::string GetLocalSpilledObjectURL(const ObjectID &object_id);
+
+  /// Get the current pinned object store memory usage.
+  int64_t GetPinnedBytes() const { return pinned_objects_size_; }
 
   std::string DebugString() const;
 
@@ -168,19 +166,13 @@ class LocalObjectManager {
   /// Release an object that has been freed by its owner.
   void ReleaseFreedObject(const ObjectID &object_id);
 
-  // A callback for unpinning spilled objects. This should be invoked after the object
-  // has been spilled and after the object directory has been sent the spilled URL.
-  void UnpinSpilledObjectCallback(const ObjectID &object_id,
-                                  const std::string &object_url,
-                                  std::shared_ptr<size_t> num_remaining,
-                                  std::function<void(const ray::Status &)> callback,
-                                  ray::Status status);
-
-  /// Add objects' spilled URLs to the global object directory. Call the
-  /// callback once all URLs have been added.
-  void AddSpilledUrls(const std::vector<ObjectID> &object_ids,
-                      const rpc::SpillObjectsReply &worker_reply,
-                      std::function<void(const ray::Status &)> callback);
+  /// Do operations that are needed after spilling objects such as
+  /// 1. Unpin the pending spilling object.
+  /// 2. Update the spilled URL to the owner.
+  /// 3. Update the spilled URL to the local directory if it doesn't
+  ///    use the external storages like S3.
+  void OnObjectSpilled(const std::vector<ObjectID> &object_ids,
+                       const rpc::SpillObjectsReply &worker_reply);
 
   /// Delete spilled objects stored in given urls.
   ///
@@ -200,9 +192,6 @@ class LocalObjectManager {
   /// A worker pool, used for spilling and restoring objects.
   IOWorkerPoolInterface &io_worker_pool_;
 
-  /// A GCS client, used to update locations for spilled objects.
-  gcs::ObjectInfoAccessor &object_info_accessor_;
-
   /// Cache of gRPC clients to owners of objects pinned on
   /// this node.
   rpc::CoreWorkerClientPool &owner_client_pool_;
@@ -210,9 +199,17 @@ class LocalObjectManager {
   /// A callback to call when an object has been freed.
   std::function<void(const std::vector<ObjectID> &)> on_objects_freed_;
 
+  /// Hashmap from local objects that we are waiting to free to a tuple of
+  /// (their owner address, whether the object has been freed).
+  /// All objects in this hashmap should also be in exactly one of the
+  /// following maps:
+  /// - pinned_objects_: objects pinned in shared memory
+  /// - objects_pending_spill_: objects pinned and waiting for spill to complete
+  /// - spilled_objects_url_: objects already spilled
+  absl::flat_hash_map<ObjectID, std::pair<rpc::Address, bool>> local_objects_;
+
   // Objects that are pinned on this node.
-  absl::flat_hash_map<ObjectID, std::pair<std::unique_ptr<RayObject>, rpc::Address>>
-      pinned_objects_;
+  absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
 
   // Total size of objects pinned on this node.
   size_t pinned_objects_size_ = 0;
@@ -220,8 +217,7 @@ class LocalObjectManager {
   // Objects that were pinned on this node but that are being spilled.
   // These objects will be released once spilling is complete and the URL is
   // written to the object directory.
-  absl::flat_hash_map<ObjectID, std::pair<std::unique_ptr<RayObject>, rpc::Address>>
-      objects_pending_spill_;
+  absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> objects_pending_spill_;
 
   /// Objects that were spilled on this node but that are being restored.
   /// The field is used to dedup the same restore request while restoration is in
@@ -319,6 +315,10 @@ class LocalObjectManager {
 
   /// The last time a restore log finished.
   int64_t last_restore_log_ns_ = 0;
+
+  friend class LocalObjectManagerTestWithMinSpillingSize;
+  friend class LocalObjectManagerTest;
+  friend class LocalObjectManagerFusedTest;
 };
 
 };  // namespace raylet

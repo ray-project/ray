@@ -6,7 +6,7 @@ import ray
 # Import psutil after ray so the packaged version is used.
 import psutil
 
-from ray.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition
 
 
 def get_pid(name):

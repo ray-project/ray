@@ -11,7 +11,7 @@ import unittest
 
 def loss(config, reporter):
     x = config.get("x")
-    reporter(loss=x**2)  # A simple function to optimize
+    reporter(loss=x ** 2)  # A simple function to optimize
 
 
 class ConvergenceTest(unittest.TestCase):
@@ -35,18 +35,20 @@ class ConvergenceTest(unittest.TestCase):
             loss,
             metric="loss",
             mode="min",
-            stop=ExperimentPlateauStopper(
-                metric="loss", top=top, patience=patience),
+            stop=ExperimentPlateauStopper(metric="loss", top=top, patience=patience),
             search_alg=searcher,
             config=space,
-            num_samples=100,  # Number of iterations
+            num_samples=max(100, patience),  # Number of iterations
             resources_per_trial=resources_per_trial,
             raise_on_failed_trial=False,
             fail_fast=True,
             reuse_actors=True,
-            verbose=1)
-        print(f"Num trials: {len(analysis.trials)}. "
-              f"Best result: {analysis.best_config['x']}")
+            verbose=1,
+        )
+        print(
+            f"Num trials: {len(analysis.trials)}. "
+            f"Best result: {analysis.best_config['x']}"
+        )
 
         return analysis
 
@@ -80,18 +82,18 @@ class ConvergenceTest(unittest.TestCase):
 
         np.random.seed(0)
         searcher = BlendSearch()
-        analysis = self._testConvergence(searcher, patience=10)
+        analysis = self._testConvergence(searcher, patience=200)
 
-        assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-5)
+        assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-2)
 
     def testConvergenceCFO(self):
         from ray.tune.suggest.flaml import CFO
 
         np.random.seed(0)
         searcher = CFO()
-        analysis = self._testConvergence(searcher, patience=10)
+        analysis = self._testConvergence(searcher, patience=200)
 
-        assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-5)
+        assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-2)
 
     def testConvergenceDragonfly(self):
         from ray.tune.suggest.dragonfly import DragonflySearch
@@ -171,4 +173,5 @@ class ConvergenceTest(unittest.TestCase):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

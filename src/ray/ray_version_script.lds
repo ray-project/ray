@@ -25,12 +25,18 @@ VERSION_1.0 {
         *ray*ObjectID*;
         *ray*ObjectReference*;
         # Others
+        *ray*metrics*;
+        *opencensus*;
+        *ray*rpc*;
+        *ray*gcs*;
+        *ray*stats*;
         *ray*CoreWorker*;
+        *ray*PeriodicalRunner*;
         *PyInit*;
         *init_raylet*;
         *Java*;
         *JNI_*;
-        *ray*streaming*;
+        *ray*internal*;
         *aligned_free*;
         *aligned_malloc*;
     local: *;

@@ -24,16 +24,17 @@ def format_args(worker, args, kwargs):
         List of args and kwargs (if supported).
     """
     if not worker.load_code_from_local:
-        raise ValueError("Cross language feature needs "
-                         "--load-code-from-local to be set.")
+        raise ValueError(
+            "Cross language feature needs " "--load-code-from-local to be set."
+        )
     if kwargs:
-        raise TypeError("Cross language remote functions "
-                        "does not support kwargs.")
+        raise TypeError("Cross language remote functions " "does not support kwargs.")
     return args
 
 
 def get_function_descriptor_for_actor_method(
-        language, actor_creation_function_descriptor, method_name):
+    language, actor_creation_function_descriptor, method_name, signature: str
+):
     """Get function descriptor for cross language actor method call.
 
     Args:
@@ -41,6 +42,8 @@ def get_function_descriptor_for_actor_method(
         actor_creation_function_descriptor:
             The function signature for actor creation.
         method_name: The name of actor method.
+        signature: The signature for the actor method. When calling Java from Python,
+            it should be string in the form of "{length_of_args}".
 
     Returns:
         Function descriptor for cross language actor method call.
@@ -49,11 +52,12 @@ def get_function_descriptor_for_actor_method(
         return JavaFunctionDescriptor(
             actor_creation_function_descriptor.class_name,
             method_name,
-            # Currently not support call actor method with signature.
-            "")
+            signature,
+        )
     else:
-        raise NotImplementedError("Cross language remote actor method "
-                                  f"not support language {language}")
+        raise NotImplementedError(
+            "Cross language remote actor method " f"not support language {language}"
+        )
 
 
 @PublicAPI(stability="beta")
@@ -65,6 +69,7 @@ def java_function(class_name, function_name):
         function_name (str): Java function name.
     """
     from ray.remote_function import RemoteFunction
+
     return RemoteFunction(
         Language.JAVA,
         lambda *args, **kwargs: None,
@@ -77,8 +82,12 @@ def java_function(class_name, function_name):
         None,  # accelerator_type,
         None,  # num_returns,
         None,  # max_calls,
-        None,  # max_retries
-        None)  # runtime_env
+        None,  # max_retries,
+        None,  # retry_exceptions,
+        None,  # runtime_env,
+        None,  # placement_group,
+        None,
+    )  # scheduling_strategy,
 
 
 @PublicAPI(stability="beta")
@@ -89,6 +98,7 @@ def java_actor_class(class_name):
         class_name (str): Java class name.
     """
     from ray.actor import ActorClass
+
     return ActorClass._ray_from_function_descriptor(
         Language.JAVA,
         JavaFunctionDescriptor(class_name, "<init>", ""),
@@ -100,4 +110,5 @@ def java_actor_class(class_name):
         object_store_memory=None,
         resources=None,
         accelerator_type=None,
-        runtime_env=None)
+        runtime_env=None,
+    )

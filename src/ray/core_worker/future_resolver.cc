@@ -30,13 +30,14 @@ void FutureResolver::ResolveFutureAsync(const ObjectID &object_id,
   request.set_object_id(object_id.Binary());
   request.set_owner_worker_id(owner_address.worker_id());
   conn->GetObjectStatus(
-      request,
-      [this, object_id](const Status &status, const rpc::GetObjectStatusReply &reply) {
-        ProcessResolvedObject(object_id, status, reply);
+      request, [this, object_id, owner_address](const Status &status,
+                                                const rpc::GetObjectStatusReply &reply) {
+        ProcessResolvedObject(object_id, owner_address, status, reply);
       });
 }
 
 void FutureResolver::ProcessResolvedObject(const ObjectID &object_id,
+                                           const rpc::Address &owner_address,
                                            const Status &status,
                                            const rpc::GetObjectStatusReply &reply) {
   if (!status.ok()) {
@@ -44,14 +45,18 @@ void FutureResolver::ProcessResolvedObject(const ObjectID &object_id,
                      << " that was deserialized: " << status.ToString();
   }
 
-  if (!status.ok() || reply.status() == rpc::GetObjectStatusReply::OUT_OF_SCOPE) {
-    // The owner is gone or the owner replied that the object has gone
-    // out of scope (this is an edge case in the distributed ref counting
-    // protocol where a borrower dies before it can notify the owner of
-    // another borrower). Store an error so that an exception will be
+  if (!status.ok()) {
+    // The owner is unreachable. Store an error so that an exception will be
     // thrown immediately when the worker tries to get the value.
-    RAY_UNUSED(in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE),
-                                     object_id));
+    RAY_UNUSED(in_memory_store_->Put(RayObject(rpc::ErrorType::OWNER_DIED), object_id));
+  } else if (reply.status() == rpc::GetObjectStatusReply::OUT_OF_SCOPE) {
+    // The owner replied that the object has gone out of scope (this is an edge
+    // case in the distributed ref counting protocol where a borrower dies
+    // before it can notify the owner of another borrower). Store an error so
+    // that an exception will be thrown immediately when the worker tries to
+    // get the value.
+    RAY_UNUSED(
+        in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_DELETED), object_id));
   } else if (reply.status() == rpc::GetObjectStatusReply::CREATED) {
     // The object is either an indicator that the object is in Plasma, or
     // the object has been returned directly in the reply. In either
@@ -88,10 +93,14 @@ void FutureResolver::ProcessResolvedObject(const ObjectID &object_id,
           const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(metadata.data())),
           metadata.size());
     }
-    auto inlined_ids =
-        IdVectorFromProtobuf<ObjectID>(reply.object().nested_inlined_ids());
-    RAY_UNUSED(in_memory_store_->Put(RayObject(data_buffer, metadata_buffer, inlined_ids),
-                                     object_id));
+    auto inlined_refs =
+        VectorFromProtobuf<rpc::ObjectReference>(reply.object().nested_inlined_refs());
+    for (const auto &inlined_ref : inlined_refs) {
+      reference_counter_->AddBorrowedObject(ObjectID::FromBinary(inlined_ref.object_id()),
+                                            object_id, inlined_ref.owner_address());
+    }
+    RAY_UNUSED(in_memory_store_->Put(
+        RayObject(data_buffer, metadata_buffer, inlined_refs), object_id));
   }
 }
 

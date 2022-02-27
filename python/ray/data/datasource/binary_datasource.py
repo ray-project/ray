@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import pyarrow
 
-from ray.data.datasource.file_based_datasource import (FileBasedDatasource)
+from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
 
 class BinaryDatasource(FileBasedDatasource):
@@ -19,9 +19,9 @@ class BinaryDatasource(FileBasedDatasource):
         include_paths = reader_args.pop("include_paths", False)
         data = f.readall()
         if include_paths:
-            return path, data
+            return [(path, data)]
         else:
-            return data
+            return [data]
 
     def _rows_per_file(self):
         return 1

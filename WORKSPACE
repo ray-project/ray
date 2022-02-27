@@ -14,3 +14,9 @@ ray_deps_build_all()
 load("@com_github_grpc_grpc//bazel:grpc_extra_deps.bzl", "grpc_extra_deps")
 
 grpc_extra_deps()
+
+load("@bazel_skylib//lib:versions.bzl", "versions")
+
+# When the bazel version is updated, make sure to update it
+# in setup.py as well.
+versions.check(minimum_bazel_version = "4.2.1")
