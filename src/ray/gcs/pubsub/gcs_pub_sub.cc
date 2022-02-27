@@ -313,17 +313,6 @@ Status GcsPublisher::PublishError(const std::string &id,
 Status GcsPublisher::PublishPlacementGroupBundlsChanged(
     const std::string &id, const rpc::PlacementGroupBundlesChangedNotification &message,
     const StatusCallback &done) {
-   if (publisher_ != nullptr) {
-    rpc::PubMessage msg;
-    msg.set_channel_type(rpc::ChannelType::RAY_PLACEMENT_GROUP_BUNDELS_CHANGED_CHANNEL);
-    msg.set_key_id(id);
-    *msg.mutable_placement_group_bundles_changed() = message;
-    publisher_->Publish(msg);
-    if (done != nullptr) {
-      done(Status::OK());
-    }
-    return Status::OK();
-  }
   return pubsub_->Publish(PLACEMENT_GROUP_BUNDELS_CHANGED_CHANNEL, id,
                           message.SerializeAsString(), done);
 }
@@ -531,53 +520,18 @@ Status GcsSubscriber::SubscribeResourcesBatch(
 }
 
 Status GcsSubscriber::SubscribePlacementGroupBundlsChanged(
-    const PlacementGroupID &id, const SubscribeCallback<PlacementGroupID, rpc::PlacementGroupBundlesChangedNotification> &subscribe,
+    const PlacementGroupID &placement_group_id, const SubscribeCallback<PlacementGroupID, rpc::PlacementGroupBundlesChangedNotification> &subscribe,
     const StatusCallback &done) {
-  RAY_CHECK(subscribe != nullptr);
-  if (subscriber_ != nullptr) {
-    // GCS subscriber.
-    auto subscription_callback = [id, subscribe](const rpc::PubMessage &msg) {
-      RAY_CHECK(msg.channel_type() == rpc::ChannelType::RAY_PLACEMENT_GROUP_BUNDELS_CHANGED_CHANNEL);
-      RAY_CHECK(msg.key_id() == id.Binary());
-      subscribe(id, msg.placement_group_bundles_changed());
-    };
-    auto subscription_failure_callback = [id](const std::string &failed_id,
-                                              const Status &status) {
-      RAY_CHECK(failed_id == id.Binary());
-      RAY_LOG(WARNING) << "Subscription to resizing bundles event of Placement Group " << id.Hex()
-                       << " failed: " << status.ToString();
-    };
-    if (!subscriber_->Subscribe(
-            std::make_unique<rpc::SubMessage>(), rpc::ChannelType::RAY_PLACEMENT_GROUP_BUNDELS_CHANGED_CHANNEL,
-            gcs_address_, id.Binary(),
-            [done](Status status) {
-              if (done != nullptr) {
-                done(status);
-              }
-            },
-            std::move(subscription_callback), std::move(subscription_failure_callback))) {
-      return Status::ObjectExists(
-          "Resizing bundles event of Placement Group already subscribed. Please unsubscribe first if it needs to be "
-          "resubscribed.");
-    }
-    return Status::OK();
-  }
-
   // Redis subscriber.
   auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
     rpc::PlacementGroupBundlesChangedNotification bundles_change_notification;
     bundles_change_notification.ParseFromString(data);
     subscribe(PlacementGroupID::FromHex(id), bundles_change_notification);
   };
-  return pubsub_->Subscribe(PLACEMENT_GROUP_BUNDELS_CHANGED_CHANNEL, id.Hex(), on_subscribe, done);
+  return pubsub_->Subscribe(PLACEMENT_GROUP_BUNDELS_CHANGED_CHANNEL, placement_group_id.Hex(), on_subscribe, done);
 }
 
 Status GcsSubscriber::UnsubscribePlacementGroupBundlsChanged(const PlacementGroupID &placement_group_id) {
-  if (subscriber_ != nullptr) {
-    subscriber_->Unsubscribe(rpc::ChannelType::RAY_PLACEMENT_GROUP_BUNDELS_CHANGED_CHANNEL, gcs_address_,
-                             placement_group_id.Binary());
-    return Status::OK();
-  }
   return pubsub_->Unsubscribe(PLACEMENT_GROUP_BUNDELS_CHANGED_CHANNEL, placement_group_id.Hex());
 }
 
