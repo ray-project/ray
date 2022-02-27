@@ -163,7 +163,8 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
                                       rpc::ChannelType::GCS_JOB_CHANNEL,
                                       rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
                                       rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL,
-                                      rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL},
+                                      rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
+                                      rpc::ChannelType::RAY_PLACEMENT_GROUP_BUNDELS_CHANGED_CHANNEL},
         /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
         /*get_client=*/
         [this](const rpc::Address &) {
