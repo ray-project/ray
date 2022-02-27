@@ -10,6 +10,7 @@ import click
 
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
 from ray.job_submission import JobStatus, JobSubmissionClient
+from ray.util.annotations import PublicAPI
 
 
 def _get_sdk_client(
@@ -73,6 +74,7 @@ def job_cli_group():
     pass
 
 
+@PublicAPI(stability="beta")
 @job_cli_group.command("submit", help="Submit a job to be executed on the cluster.")
 @click.option(
     "--address",
@@ -199,6 +201,7 @@ def job_submit(
             )
 
 
+@PublicAPI(stability="beta")
 @job_cli_group.command("status", help="Get the status of a running job.")
 @click.option(
     "--address",
@@ -222,6 +225,7 @@ def job_status(address: Optional[str], job_id: str):
     _log_job_status(client, job_id)
 
 
+@PublicAPI(stability="beta")
 @job_cli_group.command("stop", help="Attempt to stop a running job.")
 @click.option(
     "--address",
@@ -269,6 +273,7 @@ def job_stop(address: Optional[str], no_wait: bool, job_id: str):
             time.sleep(1)
 
 
+@PublicAPI(stability="beta")
 @job_cli_group.command("logs", help="Get the logs of a running job.")
 @click.option(
     "--address",
