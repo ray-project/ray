@@ -60,8 +60,6 @@ class ClusterResourceScheduler {
       std::function<int64_t(void)> get_used_object_store_memory = nullptr,
       std::function<bool(void)> get_pull_manager_at_capacity = nullptr);
 
-  const StringIdMap &GetStringIdMap() const;
-
   ///  Find a node in the cluster on which we can schedule a given resource request.
   ///  In hybrid mode, see `scheduling_policy.h` for a description of the policy.
   ///
@@ -168,9 +166,6 @@ class ClusterResourceScheduler {
       bool requires_object_store_memory, bool actor_creation, bool force_spillback,
       int64_t *violations, bool *is_infeasible);
 
-  /// Keep the mapping between resource IDs in string representation
-  /// to integer representation. Used for improving map performance.
-  StringIdMap string_to_int_map_;
   /// Identifier of local node.
   const std::string local_node_id_;
   /// Internally maintained random number generator.

@@ -40,8 +40,7 @@ namespace ray {
 class LocalResourceManager {
  public:
   LocalResourceManager(
-      std::string local_node_id, StringIdMap &resource_name_to_id,
-      const NodeResources &node_resources,
+      std::string local_node_id, const NodeResources &node_resources,
       std::function<int64_t(void)> get_used_object_store_memory,
       std::function<bool(void)> get_pull_manager_at_capacity,
       std::function<void(const NodeResources &)> resource_change_subscriber);
@@ -271,9 +270,6 @@ class LocalResourceManager {
 
   /// Identifier of local node.
   const std::string local_node_id_;
-  /// Keep the mapping between node and resource IDs in string representation
-  /// to integer representation. Used for improving map performance.
-  StringIdMap &resource_name_to_id_;
   /// Resources of local node.
   NodeResourceInstances local_resources_;
   /// Cached resources, used to compare with newest one in light heartbeat mode.

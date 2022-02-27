@@ -37,13 +37,10 @@ class ClusterTaskManagerTest;
 /// This class is not thread safe.
 class ClusterResourceManager {
  public:
-  explicit ClusterResourceManager(StringIdMap &string_to_int_map);
+  explicit ClusterResourceManager();
 
   /// Get the resource view of the cluster.
   const absl::flat_hash_map<std::string, Node> &GetResourceView() const;
-
-  // Mapping from predefined resource indexes to resource strings
-  std::string GetResourceNameFromIndex(int64_t res_idx);
 
   /// Update node resources. This hanppens when a node resource usage udpated.
   ///
@@ -106,9 +103,6 @@ class ClusterResourceManager {
   /// List of nodes in the clusters and their resources organized as a map.
   /// The key of the map is the node ID.
   absl::flat_hash_map<std::string, Node> nodes_;
-  /// Keep the mapping between node and resource IDs in string representation
-  /// to integer representation. Used for improving map performance.
-  StringIdMap &string_to_int_map_;
 
   friend class ClusterResourceSchedulerTest;
   friend class raylet::ClusterTaskManagerTest;

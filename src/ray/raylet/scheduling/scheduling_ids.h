@@ -14,35 +14,44 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include <string>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
 #include "ray/util/logging.h"
 
 /// Limit the ID range to test for collisions.
 #define MAX_ID_TEST 8
 
-/// Class to map string IDs to unique integer IDs and back.
-class StringIdMap {
-  absl::flat_hash_map<std::string, int64_t> string_to_int_;
-  absl::flat_hash_map<int64_t, std::string> int_to_string_;
-  std::hash<std::string> hasher_;
+namespace ray {
+const std::string kCPU_ResourceLabel = "CPU";
+const std::string kGPU_ResourceLabel = "GPU";
+const std::string kObjectStoreMemory_ResourceLabel = "object_store_memory";
+const std::string kMemory_ResourceLabel = "memory";
+const std::string kBundle_ResourceLabel = "bundle";
 
+/// List of predefined resources.
+enum PredefinedResources { CPU, MEM, GPU, OBJECT_STORE_MEM, PredefinedResources_MAX };
+
+/// Class to map string IDs to unique integer IDs and back.
+class ResourceIdMap {
  public:
-  StringIdMap(){};
-  ~StringIdMap(){};
+  static ResourceIdMap &GetResourceIdMap();
 
   /// Get integer ID associated with an existing string ID.
   ///
   /// \param String ID.
   /// \return The integer ID associated with the given string ID.
-  int64_t Get(const std::string &string_id) const;
+  int64_t Get(const std::string &string_id) const LOCKS_EXCLUDED(mutex_);
 
   /// Get string ID associated with an existing integer ID.
   ///
   /// \param Integre ID.
   /// \return The string ID associated with the given integer ID.
-  std::string Get(uint64_t id) const;
+  std::string Get(uint64_t id) const LOCKS_EXCLUDED(mutex_);
 
   /// Insert a string ID and get the associated integer ID.
   ///
@@ -50,15 +59,31 @@ class StringIdMap {
   /// \param max_id The number of unique possible ids. This is used
   ///               to force collisions for testing. If -1, it is not used.
   /// \return The integer ID associated with string ID string_id.
-  int64_t Insert(const std::string &string_id, uint8_t num_ids = 0);
+  int64_t Insert(const std::string &string_id, uint8_t num_ids = 0)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Insert string ID and its integer ID in the map.
   /// It will crash the process if either string_id or id exists.
-  StringIdMap &InsertOrDie(const std::string &string_id, int64_t id);
+  ResourceIdMap &InsertOrDie(const std::string &string_id, int64_t id)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Removing an ID is unsupported, because it is prone to erroneously
   /// deleting an ID still in use.
 
   /// Get number of identifiers.
-  int64_t Count();
+  int64_t Count() const LOCKS_EXCLUDED(mutex_);
+
+ private:
+  ResourceIdMap(){};
+
+  absl::flat_hash_map<std::string, int64_t> string_to_int_ GUARDED_BY(mutex_);
+  absl::flat_hash_map<int64_t, std::string> int_to_string_ GUARDED_BY(mutex_);
+  std::hash<std::string> hasher_;
+  mutable absl::Mutex mutex_;
+
+  FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingIdTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingIdInsertOrDieTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, CustomResourceInstanceTest);
 };
+
+}  // namespace ray

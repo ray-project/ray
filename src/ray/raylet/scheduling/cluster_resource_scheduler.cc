@@ -21,25 +21,12 @@
 
 namespace ray {
 
-namespace {
-// Add predefined resource in string_to_int_map to
-// avoid conflict.
-void PopulatePredefinedResources(StringIdMap &string_to_int_map) {
-  string_to_int_map.InsertOrDie(ray::kCPU_ResourceLabel, CPU)
-      .InsertOrDie(ray::kGPU_ResourceLabel, GPU)
-      .InsertOrDie(ray::kObjectStoreMemory_ResourceLabel, OBJECT_STORE_MEM)
-      .InsertOrDie(ray::kMemory_ResourceLabel, MEM);
-}
-}  // namespace
-
 ClusterResourceScheduler::ClusterResourceScheduler() {
-  PopulatePredefinedResources(string_to_int_map_);
-  cluster_resource_manager_ =
-      std::make_unique<ClusterResourceManager>(string_to_int_map_);
+  cluster_resource_manager_ = std::make_unique<ClusterResourceManager>();
   NodeResources node_resources;
   node_resources.predefined_resources.resize(PredefinedResources_MAX);
   local_resource_manager_ = std::make_unique<LocalResourceManager>(
-      local_node_id_, string_to_int_map_, node_resources,
+      local_node_id_, node_resources,
       /*get_used_object_store_memory*/ nullptr, /*get_pull_manager_at_capacity*/ nullptr,
       [&](const NodeResources &local_resource_update) {
         cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_resource_update);
@@ -51,15 +38,12 @@ ClusterResourceScheduler::ClusterResourceScheduler() {
 ClusterResourceScheduler::ClusterResourceScheduler(
     const std::string &local_node_id, const NodeResources &local_node_resources,
     gcs::GcsClient &gcs_client)
-    : string_to_int_map_(),
-      local_node_id_(local_node_id),
+    : local_node_id_(local_node_id),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
       gcs_client_(&gcs_client) {
-  PopulatePredefinedResources(string_to_int_map_);
-  cluster_resource_manager_ =
-      std::make_unique<ClusterResourceManager>(string_to_int_map_);
+  cluster_resource_manager_ = std::make_unique<ClusterResourceManager>();
   local_resource_manager_ = std::make_unique<LocalResourceManager>(
-      local_node_id, string_to_int_map_, local_node_resources,
+      local_node_id, local_node_resources,
       /*get_used_object_store_memory*/ nullptr, /*get_pull_manager_at_capacity*/ nullptr,
       [&](const NodeResources &local_resource_update) {
         cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_resource_update);
@@ -74,17 +58,14 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     const absl::flat_hash_map<std::string, double> &local_node_resources,
     gcs::GcsClient &gcs_client, std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity)
-    : string_to_int_map_(),
-      local_node_id_(local_node_id),
+    : local_node_id_(local_node_id),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
       gcs_client_(&gcs_client) {
-  PopulatePredefinedResources(string_to_int_map_);
-  NodeResources node_resources = ResourceMapToNodeResources(
-      string_to_int_map_, local_node_resources, local_node_resources);
-  cluster_resource_manager_ =
-      std::make_unique<ClusterResourceManager>(string_to_int_map_);
+  NodeResources node_resources =
+      ResourceMapToNodeResources(local_node_resources, local_node_resources);
+  cluster_resource_manager_ = std::make_unique<ClusterResourceManager>();
   local_resource_manager_ = std::make_unique<LocalResourceManager>(
-      local_node_id_, string_to_int_map_, node_resources, get_used_object_store_memory,
+      local_node_id_, node_resources, get_used_object_store_memory,
       get_pull_manager_at_capacity, [&](const NodeResources &local_resource_update) {
         cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_resource_update);
       });
@@ -207,8 +188,8 @@ std::string ClusterResourceScheduler::GetBestSchedulableNode(
     const rpc::SchedulingStrategy &scheduling_strategy, bool requires_object_store_memory,
     bool actor_creation, bool force_spillback, int64_t *total_violations,
     bool *is_infeasible) {
-  ResourceRequest resource_request = ResourceMapToResourceRequest(
-      string_to_int_map_, task_resources, requires_object_store_memory);
+  ResourceRequest resource_request =
+      ResourceMapToResourceRequest(task_resources, requires_object_store_memory);
   auto node_id =
       GetBestSchedulableNode(resource_request, scheduling_strategy, actor_creation,
                              force_spillback, total_violations, is_infeasible);
@@ -238,17 +219,13 @@ bool ClusterResourceScheduler::SubtractRemoteNodeAvailableResources(
                                                                    resource_request);
 }
 
-const StringIdMap &ClusterResourceScheduler::GetStringIdMap() const {
-  return string_to_int_map_;
-}
-
 std::string ClusterResourceScheduler::DebugString(void) const {
   std::stringstream buffer;
   buffer << "\nLocal id: " << absl::Base64Escape(local_node_id_);
   buffer << " Local resources: " << local_resource_manager_->DebugString();
   for (auto &node : cluster_resource_manager_->GetResourceView()) {
     buffer << "node id: " << absl::Base64Escape(node.first);
-    buffer << node.second.GetLocalView().DebugString(string_to_int_map_);
+    buffer << node.second.GetLocalView().DebugString();
   }
   return buffer.str();
 }
@@ -257,15 +234,15 @@ bool ClusterResourceScheduler::AllocateRemoteTaskResources(
     const std::string &node_id,
     const absl::flat_hash_map<std::string, double> &task_resources) {
   ResourceRequest resource_request = ResourceMapToResourceRequest(
-      string_to_int_map_, task_resources, /*requires_object_store_memory=*/false);
+      task_resources, /*requires_object_store_memory=*/false);
   RAY_CHECK(node_id != local_node_id_);
   return SubtractRemoteNodeAvailableResources(node_id, resource_request);
 }
 
 bool ClusterResourceScheduler::IsSchedulableOnNode(
     const std::string &node_id, const absl::flat_hash_map<std::string, double> &shape) {
-  auto resource_request = ResourceMapToResourceRequest(
-      string_to_int_map_, shape, /*requires_object_store_memory=*/false);
+  auto resource_request =
+      ResourceMapToResourceRequest(shape, /*requires_object_store_memory=*/false);
   return IsSchedulable(resource_request, node_id,
                        cluster_resource_manager_->GetNodeResources(node_id));
 }

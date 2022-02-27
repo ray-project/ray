@@ -192,14 +192,6 @@ class ClusterResourceSchedulerTest : public ::testing::Test {
     }
   }
 
-  void AssertPredefinedNodeResources(const ClusterResourceScheduler &resource_scheduler) {
-    ASSERT_EQ(resource_scheduler.string_to_int_map_.Get(ray::kCPU_ResourceLabel), CPU);
-    ASSERT_EQ(resource_scheduler.string_to_int_map_.Get(ray::kGPU_ResourceLabel), GPU);
-    ASSERT_EQ(
-        resource_scheduler.string_to_int_map_.Get(ray::kObjectStoreMemory_ResourceLabel),
-        OBJECT_STORE_MEM);
-    ASSERT_EQ(resource_scheduler.string_to_int_map_.Get(ray::kMemory_ResourceLabel), MEM);
-  }
   std::unique_ptr<gcs::MockGcsClient> gcs_client_;
   std::string node_name;
   rpc::GcsNodeInfo node_info;
@@ -274,8 +266,16 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingFixedPointTest) {
   }
 }
 
+TEST_F(ClusterResourceSchedulerTest, PredefinedNodeResources) {
+  ASSERT_EQ(ResourceIdMap::GetResourceIdMap().Get(ray::kCPU_ResourceLabel), CPU);
+  ASSERT_EQ(ResourceIdMap::GetResourceIdMap().Get(ray::kGPU_ResourceLabel), GPU);
+  ASSERT_EQ(ResourceIdMap::GetResourceIdMap().Get(ray::kObjectStoreMemory_ResourceLabel),
+            OBJECT_STORE_MEM);
+  ASSERT_EQ(ResourceIdMap::GetResourceIdMap().Get(ray::kMemory_ResourceLabel), MEM);
+}
+
 TEST_F(ClusterResourceSchedulerTest, SchedulingIdTest) {
-  StringIdMap ids;
+  ResourceIdMap ids;
   hash<string> hasher;
   const size_t num = 10;  // should be greater than 10.
 
@@ -289,7 +289,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingIdTest) {
   ASSERT_TRUE(ids.Get(to_string(100)) == -1);
 
   // Test for handling collision.
-  StringIdMap short_ids;
+  ResourceIdMap short_ids;
   uint8_t max_id = 8;
   for (size_t i = 0; i < max_id; i++) {
     int64_t id = short_ids.Insert(to_string(i), max_id);
@@ -299,7 +299,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingIdTest) {
 }
 
 TEST_F(ClusterResourceSchedulerTest, SchedulingIdInsertOrDieTest) {
-  StringIdMap ids;
+  ResourceIdMap ids;
   ids.InsertOrDie("123", 2);
   ids.InsertOrDie("1234", 3);
 
@@ -314,7 +314,6 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingIdInsertOrDieTest) {
 TEST_F(ClusterResourceSchedulerTest, SchedulingInitClusterTest) {
   int num_nodes = 10;
   ClusterResourceScheduler resource_scheduler;
-  AssertPredefinedNodeResources(resource_scheduler);
 
   initCluster(resource_scheduler, num_nodes);
 
@@ -373,7 +372,6 @@ TEST_F(ClusterResourceSchedulerTest, SpreadSchedulingStrategyTest) {
   auto local_node_id = NodeID::FromRandom().Binary();
   ClusterResourceScheduler resource_scheduler(local_node_id, resource_total,
                                               *gcs_client_);
-  AssertPredefinedNodeResources(resource_scheduler);
   auto remote_node_id = NodeID::FromRandom().Binary();
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
       remote_node_id, resource_total, resource_total);
@@ -405,7 +403,6 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {
   initNodeResources(node_resources, pred_capacities, cust_ids, cust_capacities);
   std::string my_node_id = NodeID::FromRandom().Binary();
   ClusterResourceScheduler resource_scheduler(my_node_id, node_resources, *gcs_client_);
-  AssertPredefinedNodeResources(resource_scheduler);
 
   {
     ResourceRequest resource_request;
@@ -473,7 +470,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest) {
   const auto &custom_resources = resource_scheduler.GetClusterResourceManager()
                                      .GetNodeResources(name)
                                      .custom_resources;
-  auto resource_id = resource_scheduler.string_to_int_map_.Get("custom");
+  auto resource_id = ResourceIdMap::GetResourceIdMap().Get("custom");
   ASSERT_EQ(custom_resources.find(resource_id)->second.total.Double(), 3);
 }
 
@@ -1493,7 +1490,7 @@ TEST_F(ClusterResourceSchedulerTest, CustomResourceInstanceTest) {
   ClusterResourceScheduler resource_scheduler(NodeID::FromRandom().Binary(),
                                               {{"CPU", 4}, {"FPGA", 2}}, *gcs_client_);
 
-  StringIdMap mock_string_to_int_map;
+  ResourceIdMap mock_string_to_int_map;
   int64_t fpga_resource_id = mock_string_to_int_map.Insert("FPGA");
 
   ResourceRequest resource_request;

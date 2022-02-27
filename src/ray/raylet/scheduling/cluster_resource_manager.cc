@@ -22,22 +22,21 @@
 
 namespace ray {
 
-ClusterResourceManager::ClusterResourceManager(StringIdMap &string_to_int_map)
-    : nodes_{}, string_to_int_map_{string_to_int_map} {}
+ClusterResourceManager::ClusterResourceManager() : nodes_{} {}
 
 void ClusterResourceManager::AddOrUpdateNode(
     const std::string &node_id,
     const absl::flat_hash_map<std::string, double> &resources_total,
     const absl::flat_hash_map<std::string, double> &resources_available) {
-  NodeResources node_resources = ResourceMapToNodeResources(
-      string_to_int_map_, resources_total, resources_available);
+  NodeResources node_resources =
+      ResourceMapToNodeResources(resources_total, resources_available);
   AddOrUpdateNode(node_id, node_resources);
 }
 
 void ClusterResourceManager::AddOrUpdateNode(const std::string &node_id,
                                              const NodeResources &node_resources) {
-  RAY_LOG(DEBUG) << "Update node info, node_id: " << node_id << ", node_resources: "
-                 << node_resources.DebugString(string_to_int_map_);
+  RAY_LOG(DEBUG) << "Update node info, node_id: " << node_id
+                 << ", node_resources: " << node_resources.DebugString();
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     // This node is new, so add it to the map.
@@ -56,8 +55,8 @@ bool ClusterResourceManager::UpdateNode(const std::string &node_id,
 
   auto resources_total = MapFromProtobuf(resource_data.resources_total());
   auto resources_available = MapFromProtobuf(resource_data.resources_available());
-  NodeResources node_resources = ResourceMapToNodeResources(
-      string_to_int_map_, resources_total, resources_available);
+  NodeResources node_resources =
+      ResourceMapToNodeResources(resources_total, resources_available);
   NodeResources local_view;
   RAY_CHECK(GetNodeResources(node_id, &local_view));
 
@@ -142,8 +141,8 @@ void ClusterResourceManager::UpdateResourceCapacity(const std::string &node_id,
       local_view->predefined_resources[idx].total = 0;
     }
   } else {
-    string_to_int_map_.Insert(resource_name);
-    int64_t resource_id = string_to_int_map_.Get(resource_name);
+    ResourceIdMap::GetResourceIdMap().Insert(resource_name);
+    int64_t resource_id = ResourceIdMap::GetResourceIdMap().Get(resource_name);
     auto itr = local_view->custom_resources.find(resource_id);
     if (itr != local_view->custom_resources.end()) {
       auto diff_capacity = resource_total_fp - itr->second.total;
@@ -177,7 +176,7 @@ void ClusterResourceManager::DeleteResource(const std::string &node_id,
     local_view->predefined_resources[idx].total = 0;
 
   } else {
-    int64_t resource_id = string_to_int_map_.Get(resource_name);
+    int64_t resource_id = ResourceIdMap::GetResourceIdMap().Get(resource_name);
     auto itr = local_view->custom_resources.find(resource_id);
     if (itr != local_view->custom_resources.end()) {
       local_view->custom_resources.erase(itr);
@@ -188,21 +187,7 @@ void ClusterResourceManager::DeleteResource(const std::string &node_id,
 std::string ClusterResourceManager::GetNodeResourceViewString(
     const std::string &node_id) const {
   const auto &node = map_find_or_die(nodes_, node_id);
-  return node.GetLocalView().DictString(string_to_int_map_);
-}
-
-std::string ClusterResourceManager::GetResourceNameFromIndex(int64_t res_idx) {
-  if (res_idx == CPU) {
-    return ray::kCPU_ResourceLabel;
-  } else if (res_idx == GPU) {
-    return ray::kGPU_ResourceLabel;
-  } else if (res_idx == OBJECT_STORE_MEM) {
-    return ray::kObjectStoreMemory_ResourceLabel;
-  } else if (res_idx == MEM) {
-    return ray::kMemory_ResourceLabel;
-  } else {
-    return string_to_int_map_.Get(res_idx);
-  }
+  return node.GetLocalView().DictString();
 }
 
 const absl::flat_hash_map<std::string, Node> &ClusterResourceManager::GetResourceView()

@@ -14,7 +14,22 @@
 
 #include "ray/raylet/scheduling/scheduling_ids.h"
 
-int64_t StringIdMap::Get(const std::string &string_id) const {
+namespace ray {
+
+ResourceIdMap &ResourceIdMap::GetResourceIdMap() {
+  static std::unique_ptr<ResourceIdMap> map = []() {
+    auto map = std::unique_ptr<ResourceIdMap>(new ResourceIdMap());
+    map->InsertOrDie(ray::kCPU_ResourceLabel, ray::CPU)
+        .InsertOrDie(ray::kGPU_ResourceLabel, ray::GPU)
+        .InsertOrDie(ray::kObjectStoreMemory_ResourceLabel, ray::OBJECT_STORE_MEM)
+        .InsertOrDie(ray::kMemory_ResourceLabel, ray::MEM);
+    return map;
+  }();
+  return *map;
+}
+
+int64_t ResourceIdMap::Get(const std::string &string_id) const {
+  absl::ReaderMutexLock lock(&mutex_);
   auto it = string_to_int_.find(string_id);
   if (it == string_to_int_.end()) {
     return -1;
@@ -23,8 +38,9 @@ int64_t StringIdMap::Get(const std::string &string_id) const {
   }
 };
 
-std::string StringIdMap::Get(uint64_t id) const {
+std::string ResourceIdMap::Get(uint64_t id) const {
   std::string id_string;
+  absl::ReaderMutexLock lock(&mutex_);
   auto it = int_to_string_.find(id);
   if (it == int_to_string_.end()) {
     id_string = "-1";
@@ -34,7 +50,8 @@ std::string StringIdMap::Get(uint64_t id) const {
   return id_string;
 };
 
-int64_t StringIdMap::Insert(const std::string &string_id, uint8_t max_id) {
+int64_t ResourceIdMap::Insert(const std::string &string_id, uint8_t max_id) {
+  absl::WriterMutexLock lock(&mutex_);
   auto sit = string_to_int_.find(string_id);
   if (sit == string_to_int_.end()) {
     int64_t id = hasher_(string_id);
@@ -60,11 +77,17 @@ int64_t StringIdMap::Insert(const std::string &string_id, uint8_t max_id) {
   }
 };
 
-StringIdMap &StringIdMap::InsertOrDie(const std::string &string_id, int64_t value) {
+ResourceIdMap &ResourceIdMap::InsertOrDie(const std::string &string_id, int64_t value) {
   RAY_CHECK(Get(string_id) == -1) << string_id << " or " << value << " already exist!";
+  absl::WriterMutexLock lock(&mutex_);
   string_to_int_.emplace(string_id, value);
   int_to_string_.emplace(value, string_id);
   return *this;
 }
 
-int64_t StringIdMap::Count() { return string_to_int_.size(); }
+int64_t ResourceIdMap::Count() const {
+  absl::ReaderMutexLock lock(&mutex_);
+  return string_to_int_.size();
+}
+
+}  // namespace ray

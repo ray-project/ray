@@ -89,9 +89,9 @@ std::vector<double> VectorFixedPointToVectorDouble(
 
 /// Convert a map of resources to a ResourceRequest data structure.
 ResourceRequest ResourceMapToResourceRequest(
-    StringIdMap &string_to_int_map,
     const absl::flat_hash_map<std::string, double> &resource_map,
     bool requires_object_store_memory) {
+  auto &string_to_int_map = ResourceIdMap::GetResourceIdMap();
   ResourceRequest resource_request;
 
   resource_request.requires_object_store_memory = requires_object_store_memory;
@@ -116,7 +116,7 @@ ResourceRequest ResourceMapToResourceRequest(
 }
 
 const std::vector<FixedPoint> &TaskResourceInstances::Get(
-    const std::string &resource_name, const StringIdMap &string_id_map) const {
+    const std::string &resource_name) const {
   if (ray::kCPU_ResourceLabel == resource_name) {
     return predefined_resources[CPU];
   } else if (ray::kGPU_ResourceLabel == resource_name) {
@@ -126,7 +126,7 @@ const std::vector<FixedPoint> &TaskResourceInstances::Get(
   } else if (ray::kMemory_ResourceLabel == resource_name) {
     return predefined_resources[MEM];
   } else {
-    int64_t resource_id = string_id_map.Get(resource_name);
+    int64_t resource_id = ResourceIdMap::GetResourceIdMap().Get(resource_name);
     auto it = custom_resources.find(resource_id);
     RAY_CHECK(it != custom_resources.end());
     return it->second;
@@ -162,9 +162,9 @@ ResourceRequest TaskResourceInstances::ToResourceRequest() const {
 ///
 /// \request Conversion result to a ResourceRequest data structure.
 NodeResources ResourceMapToNodeResources(
-    StringIdMap &string_to_int_map,
     const absl::flat_hash_map<std::string, double> &resource_map_total,
     const absl::flat_hash_map<std::string, double> &resource_map_available) {
+  auto &string_to_int_map = ResourceIdMap::GetResourceIdMap();
   NodeResources node_resources;
   node_resources.predefined_resources.resize(PredefinedResources_MAX);
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
@@ -317,7 +317,8 @@ bool NodeResources::operator==(const NodeResources &other) {
 
 bool NodeResources::operator!=(const NodeResources &other) { return !(*this == other); }
 
-std::string NodeResources::DebugString(StringIdMap string_to_in_map) const {
+std::string NodeResources::DebugString() const {
+  auto &string_to_in_map = ResourceIdMap::GetResourceIdMap();
   std::stringstream buffer;
   buffer << " {\n";
   for (size_t i = 0; i < this->predefined_resources.size(); i++) {
@@ -351,7 +352,8 @@ std::string NodeResources::DebugString(StringIdMap string_to_in_map) const {
   return buffer.str();
 }
 
-std::string NodeResources::DictString(StringIdMap string_to_in_map) const {
+std::string NodeResources::DictString() const {
+  const auto &string_to_in_map = ResourceIdMap::GetResourceIdMap();
   std::stringstream buffer;
   bool first = true;
   buffer << "{";
@@ -437,7 +439,8 @@ void TaskResourceInstances::ClearCPUInstances() {
   }
 }
 
-std::string NodeResourceInstances::DebugString(StringIdMap string_to_int_map) const {
+std::string NodeResourceInstances::DebugString() const {
+  const auto &string_to_int_map = ResourceIdMap::GetResourceIdMap();
   std::stringstream buffer;
   buffer << "{\n";
   for (size_t i = 0; i < this->predefined_resources.size(); i++) {
@@ -537,7 +540,8 @@ bool TaskResourceInstances::IsEmpty() const {
   return true;
 }
 
-std::string TaskResourceInstances::DebugString(const StringIdMap &string_id_map) const {
+std::string TaskResourceInstances::DebugString() const {
+  const auto &string_to_int_map = ResourceIdMap::GetResourceIdMap();
   std::stringstream buffer;
   buffer << std::endl << "  Allocation: {";
   for (size_t i = 0; i < this->predefined_resources.size(); i++) {
@@ -548,7 +552,8 @@ std::string TaskResourceInstances::DebugString(const StringIdMap &string_id_map)
   buffer << "  [";
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    buffer << string_id_map.Get(it->first) << ":" << VectorToString(it->second) << ", ";
+    buffer << string_to_int_map.Get(it->first) << ":" << VectorToString(it->second)
+           << ", ";
   }
 
   buffer << "]" << std::endl;

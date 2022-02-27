@@ -842,8 +842,7 @@ void LocalTaskManager::Dispatch(
       if (predefined_resources[res_idx][inst_idx] > 0.) {
         if (first) {
           resource = reply->add_resource_mapping();
-          resource->set_name(cluster_resource_scheduler_->GetClusterResourceManager()
-                                 .GetResourceNameFromIndex(res_idx));
+          resource->set_name(ResourceIdMap::GetResourceIdMap().Get(res_idx));
           first = false;
         }
         auto rid = resource->add_resource_ids();
@@ -860,8 +859,7 @@ void LocalTaskManager::Dispatch(
       if (it->second[inst_idx] > 0.) {
         if (first) {
           resource = reply->add_resource_mapping();
-          resource->set_name(cluster_resource_scheduler_->GetClusterResourceManager()
-                                 .GetResourceNameFromIndex(it->first));
+          resource->set_name(ResourceIdMap::GetResourceIdMap().Get(it->first));
           first = false;
         }
         auto rid = resource->add_resource_ids();
@@ -984,7 +982,6 @@ bool LocalTaskManager::ReturnCpuResourcesToBlockedWorker(
 
 ResourceSet LocalTaskManager::CalcNormalTaskResources() const {
   absl::flat_hash_map<std::string, FixedPoint> total_normal_task_resources;
-  const auto &string_id_map = cluster_resource_scheduler_->GetStringIdMap();
   for (auto &entry : leased_workers_) {
     std::shared_ptr<WorkerInterface> worker = entry.second;
     auto &task_spec = worker->GetAssignedTask().GetTaskSpecification();
@@ -1009,7 +1006,8 @@ ResourceSet LocalTaskManager::CalcNormalTaskResources() const {
       }
       for (auto &entry : resource_request.custom_resources) {
         if (entry.second > 0) {
-          total_normal_task_resources[string_id_map.Get(entry.first)] += entry.second;
+          total_normal_task_resources[ResourceIdMap::GetResourceIdMap().Get(
+              entry.first)] += entry.second;
         }
       }
     }

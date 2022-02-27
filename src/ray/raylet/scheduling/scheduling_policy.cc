@@ -148,7 +148,7 @@ std::string SchedulingPolicy::HybridPolicyWithFilter(
                    << resource_request.DebugString()
                    << " with critical resource utilization "
                    << critical_resource_utilization << " based on local view "
-                   << node.GetLocalView().DebugString(StringIdMap());
+                   << node.GetLocalView().DebugString();
     if (critical_resource_utilization < spread_threshold) {
       critical_resource_utilization = 0;
     }
