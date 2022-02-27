@@ -10,7 +10,6 @@ import ray.worker
 from ray.util.annotations import PublicAPI
 from ray.util.placement_group import configure_placement_group_based_on_context
 from ray.util.scheduling_strategies import (
-    DEFAULT_SCHEDULING_STRATEGY,
     PlacementGroupSchedulingStrategy,
     SchedulingStrategyT,
 )
@@ -943,7 +942,7 @@ class ActorClass:
                     placement_group_capture_child_tasks,
                 )
             else:
-                scheduling_strategy = DEFAULT_SCHEDULING_STRATEGY
+                scheduling_strategy = "DEFAULT"
 
         if runtime_env:
             if isinstance(runtime_env, str):
@@ -973,6 +972,17 @@ class ActorClass:
             class_name = meta.actor_creation_function_descriptor.class_name
             concurrency_groups_dict[cg_name]["function_descriptors"].append(
                 PythonFunctionDescriptor(module_name, method_name, class_name)
+            )
+
+        # Update the creation descriptor based on number of arguments
+        if meta.is_cross_language:
+            meta.actor_creation_function_descriptor = (
+                cross_language.get_function_descriptor_for_actor_method(
+                    meta.language,
+                    meta.actor_creation_function_descriptor,
+                    "<init>",
+                    str(len(args) + len(kwargs)),
+                )
             )
 
         actor_id = worker.core_worker.create_actor(
@@ -1138,12 +1148,13 @@ class ActorHandle:
         kwargs = kwargs or {}
         if self._ray_is_cross_language:
             list_args = cross_language.format_args(worker, args, kwargs)
-            function_descriptor = (
-                cross_language.get_function_descriptor_for_actor_method(
-                    self._ray_actor_language,
-                    self._ray_actor_creation_function_descriptor,
-                    method_name,
-                )
+            function_descriptor = cross_language.get_function_descriptor_for_actor_method(  # noqa: E501
+                self._ray_actor_language,
+                self._ray_actor_creation_function_descriptor,
+                method_name,
+                # The signature for xlang should be "{length_of_arguments}" to handle
+                # overloaded methods.
+                signature=str(len(args) + len(kwargs)),
             )
         else:
             function_signature = self._ray_method_signatures[method_name]

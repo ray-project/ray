@@ -1,9 +1,11 @@
 import os
 import pytest
 import sys
+import subprocess
 import time
 import requests
 from pathlib import Path
+from unittest import mock
 
 import ray
 from ray.exceptions import RuntimeEnvSetupError
@@ -17,8 +19,13 @@ from ray._private.utils import (
     get_master_wheel_url,
     get_release_wheel_url,
 )
-
+from ray._private.runtime_env.utils import (
+    SubprocessCalledProcessError,
+    check_output_cmd,
+)
 from ray._private.runtime_env.uri_cache import URICache
+from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 
 
 def test_get_wheel_filename():
@@ -449,6 +456,141 @@ def test_runtime_env_log_msg(
         assert "runtime_env" in sources
     else:
         assert "runtime_env" not in sources
+
+
+def test_subprocess_error():
+    ex = SubprocessCalledProcessError
+    with pytest.raises(subprocess.SubprocessError) as e:
+        raise ex(123, "abc")
+    assert "test_out" not in str(e.value)
+    assert "test_err" not in str(e.value)
+    with pytest.raises(subprocess.SubprocessError) as e:
+        raise ex(123, "abc", stderr="test_err")
+    assert "test_out" not in str(e.value)
+    assert "test_err" in str(e.value)
+    with pytest.raises(subprocess.SubprocessError) as e:
+        raise ex(123, "abc", output="test_out")
+    assert "test_out" in str(e.value)
+    assert "test_err" not in str(e.value)
+    with pytest.raises(subprocess.SubprocessError) as e:
+        raise ex(123, "abc", output="test_out", stderr="test_err")
+    assert "test_out" in str(e.value)
+    assert "test_err" in str(e.value)
+
+
+def test_subprocess_error_with_last_n_lines():
+    stdout = "1\n2\n3\n4\n5\n"
+    stderr = "5\n4\n3\n2\n1\n"
+    exception = SubprocessCalledProcessError(888, "abc", output=stdout, stderr=stderr)
+    exception.LAST_N_LINES = 3
+    exception_str = str(exception)
+    assert "cmd" not in exception_str
+    assert "Last 3 lines" in exception_str
+    s = "".join([s.strip() for s in exception_str.splitlines()])
+    assert "345" in s
+    assert "321" in s
+
+
+@pytest.mark.asyncio
+async def test_check_output_cmd():
+    cmd = "dir" if sys.platform.startswith("win") else "pwd"
+    logs = []
+
+    class _FakeLogger:
+        def __getattr__(self, item):
+            def _log(formatter, *args):
+                logs.append(formatter % args)
+
+            return _log
+
+    for _ in range(2):
+        output = await check_output_cmd([cmd], logger=_FakeLogger())
+        assert len(output) > 0
+
+    all_log_string = "\n".join(logs)
+
+    # Check the cmd index generator works.
+    assert "cmd[1]" in all_log_string
+    assert "cmd[2]" in all_log_string
+
+    # Test communicate fails.
+    with mock.patch(
+        "asyncio.subprocess.Process.communicate",
+        side_effect=Exception("fake exception"),
+    ):
+        with pytest.raises(RuntimeError) as e:
+            await check_output_cmd([cmd], logger=_FakeLogger())
+        # Make sure the exception has cmd trace info.
+        assert "cmd[3]" in str(e.value)
+
+    # Test asyncio.create_subprocess_exec fails.
+    with pytest.raises(RuntimeError) as e:
+        await check_output_cmd(["not_exist_cmd"], logger=_FakeLogger())
+    # Make sure the exception has cmd trace info.
+    assert "cmd[4]" in str(e.value)
+
+    # Test returncode != 0.
+    with pytest.raises(SubprocessCalledProcessError) as e:
+        await check_output_cmd([cmd, "--abc"], logger=_FakeLogger())
+    # Make sure the exception has cmd trace info.
+    assert "cmd[5]" in str(e.value)
+
+
+MY_PLUGIN_CLASS_PATH = "ray.tests.test_runtime_env.MyPlugin"
+success_retry_number = 3
+runtime_env_retry_times = 0
+
+
+# This plugin can make runtime env creation failed before the retry times
+# increased to `success_retry_number`.
+class MyPlugin(RuntimeEnvPlugin):
+    @staticmethod
+    def validate(runtime_env_dict: dict) -> str:
+        return runtime_env_dict["plugins"][MY_PLUGIN_CLASS_PATH]
+
+    @staticmethod
+    def modify_context(
+        uri: str, plugin_config_dict: dict, ctx: RuntimeEnvContext
+    ) -> None:
+        global runtime_env_retry_times
+        runtime_env_retry_times += 1
+        if runtime_env_retry_times != success_retry_number:
+            raise ValueError(f"Fault injection {runtime_env_retry_times}")
+        pass
+
+
+@pytest.mark.parametrize(
+    "set_runtime_env_retry_times",
+    [
+        str(success_retry_number - 1),
+        str(success_retry_number),
+    ],
+    indirect=True,
+)
+def test_runtime_env_retry(set_runtime_env_retry_times, ray_start_regular):
+    @ray.remote
+    def f():
+        return "ok"
+
+    runtime_env_retry_times = int(set_runtime_env_retry_times)
+    if runtime_env_retry_times >= success_retry_number:
+        # Enough retry times
+        output = ray.get(
+            f.options(
+                runtime_env={"plugins": {MY_PLUGIN_CLASS_PATH: {"key": "value"}}}
+            ).remote()
+        )
+        assert output == "ok"
+    else:
+        # No enough retry times
+        with pytest.raises(
+            RuntimeEnvSetupError, match=f"Fault injection {runtime_env_retry_times}"
+        ):
+            ray.get(
+                f.options(
+                    runtime_env={"plugins": {MY_PLUGIN_CLASS_PATH: {"key": "value"}}}
+                ).remote()
+            )
 
 
 if __name__ == "__main__":

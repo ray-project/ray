@@ -81,6 +81,7 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_usage_stats.py",
     "test_autoscaler_fake_scaledown.py",  # Temporarily owned by core.
     "test_memory_scheduling.py",
     "test_metrics.py",
@@ -114,6 +115,7 @@ py_test_module_list(
     "test_worker_capping.py",
     "test_object_spilling_2.py",
     "test_object_spilling_3.py",
+    "test_object_spilling_no_asan.py",
     "test_object_manager.py",
     "test_multi_tenancy.py",
     "test_scheduling.py",
@@ -144,7 +146,9 @@ py_test_module_list(
     "test_unhandled_error.py",
     "test_top_level_api.py",
     "test_list_actors.py",
-    "test_usage_stats.py",
+    "test_list_actors_2.py",
+    "test_list_actors_3.py",
+    "test_list_actors_4.py",
   ],
   size = "small",
   extra_srcs = SRCS,
@@ -342,6 +346,9 @@ py_test_module_list(
     "test_asyncio.py",
     "test_multiprocessing.py",
     "test_list_actors.py",
+    "test_list_actors_2.py",
+    "test_list_actors_3.py",
+    "test_list_actors_4.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
