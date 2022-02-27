@@ -101,12 +101,10 @@ class Dataset(Generic[T]):
     TensorFlow / PyTorch.
 
     Dataset supports parallel transformations such as .map(), .map_batches(),
-    and simple repartition, but currently not joins.
+    and simple repartition, but currently not aggregations and joins.
     """
 
-    def __init__(
-        self, blocks: BlockList, epoch: int, stats: DatasetStats, name: str = ""
-    ):
+    def __init__(self, blocks: BlockList, epoch: int, stats: DatasetStats):
         """Construct a Dataset (internal API).
 
         The constructor is not part of the Dataset API. Use the ``ray.data.*``
@@ -116,7 +114,6 @@ class Dataset(Generic[T]):
         self._uuid = uuid4().hex
         self._epoch = epoch
         self._stats = stats
-        self._name = name
         self._stats.dataset_uuid = self._uuid
         assert isinstance(self._blocks, BlockList), self._blocks
 
@@ -181,12 +178,7 @@ class Dataset(Generic[T]):
 
         compute = get_compute(compute)
         blocks = compute.apply(transform, ray_remote_args, self._blocks)
-        return Dataset(
-            blocks,
-            self._epoch,
-            stats_builder.build(blocks),
-            name=f"{self._get_name()}|map",
-        )
+        return Dataset(blocks, self._epoch, stats_builder.build(blocks))
 
     def map_batches(
         self,
@@ -296,12 +288,7 @@ class Dataset(Generic[T]):
 
         compute = get_compute(compute)
         blocks = compute.apply(transform, ray_remote_args, self._blocks)
-        return Dataset(
-            blocks,
-            self._epoch,
-            stats_builder.build(blocks),
-            name=f"{self._get_name()}|map_batches",
-        )
+        return Dataset(blocks, self._epoch, stats_builder.build(blocks))
 
     def add_column(
         self,
@@ -378,7 +365,7 @@ class Dataset(Generic[T]):
 
         fn = cache_wrapper(fn)
         context = DatasetContext.get_current()
-        stats_builder = self._stats.child_builder("flat_map")
+        stats_builder = self._stats.child_builder("map")
 
         def transform(block: Block) -> Iterable[Block]:
             DatasetContext._set_current(context)
@@ -395,12 +382,7 @@ class Dataset(Generic[T]):
 
         compute = get_compute(compute)
         blocks = compute.apply(transform, ray_remote_args, self._blocks)
-        return Dataset(
-            blocks,
-            self._epoch,
-            stats_builder.build(blocks),
-            name=f"{self._get_name()}|flat_map",
-        )
+        return Dataset(blocks, self._epoch, stats_builder.build(blocks))
 
     def filter(
         self,
@@ -443,12 +425,7 @@ class Dataset(Generic[T]):
 
         compute = get_compute(compute)
         blocks = compute.apply(transform, ray_remote_args, self._blocks)
-        return Dataset(
-            blocks,
-            self._epoch,
-            stats_builder.build(blocks),
-            name=f"{self._get_name()}|filter",
-        )
+        return Dataset(blocks, self._epoch, stats_builder.build(blocks))
 
     def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Dataset[T]":
         """Repartition the dataset into exactly this number of blocks.
@@ -477,15 +454,8 @@ class Dataset(Generic[T]):
 
         stats = self._stats.child_builder("repartition")
         if shuffle:
-            new_blocks, stage_info = simple_shuffle(
-                self._blocks, num_blocks, dataset_name=self._get_name()
-            )
-            return Dataset(
-                new_blocks,
-                self._epoch,
-                stats.build_multistage(stage_info),
-                name=f"{self._get_name()}|repartition",
-            )
+            new_blocks, stage_info = simple_shuffle(self._blocks, num_blocks)
+            return Dataset(new_blocks, self._epoch, stats.build_multistage(stage_info))
 
         # Compute the (n-1) indices needed for an equal split of the data.
         stage_info = {}
@@ -543,12 +513,7 @@ class Dataset(Generic[T]):
             new_metadata += empty_metadata
 
         blocks = BlockList(new_blocks, new_metadata)
-        return Dataset(
-            blocks,
-            self._epoch,
-            stats.build(blocks),
-            name=f"{self._get_name()}|repartition",
-        )
+        return Dataset(blocks, self._epoch, stats.build(blocks))
 
     def random_shuffle(
         self,
@@ -592,15 +557,9 @@ class Dataset(Generic[T]):
             num_blocks,
             random_shuffle=True,
             random_seed=seed,
-            dataset_name=self._get_name(),
             _spread_resource_prefix=_spread_resource_prefix,
         )
-        return Dataset(
-            new_blocks,
-            self._epoch,
-            stats.build_multistage(stage_info),
-            name=f"{self._get_name()}|random_shuffle",
-        )
+        return Dataset(new_blocks, self._epoch, stats.build_multistage(stage_info))
 
     def split(
         self, n: int, *, equal: bool = False, locality_hints: Optional[List[Any]] = None
@@ -1420,12 +1379,7 @@ class Dataset(Generic[T]):
             _validate_key_fn(self, key)
         stats_builder = self._stats.child_builder("sort")
         blocks, stage_info = sort_impl(self._blocks, key, descending)
-        return Dataset(
-            blocks,
-            self._epoch,
-            stats_builder.build_multistage(stage_info),
-            name=f"{self._get_name()}|sort",
-        )
+        return Dataset(blocks, self._epoch, stats_builder.build_multistage(stage_info))
 
     def zip(self, other: "Dataset[U]") -> "Dataset[(T, U)]":
         """Zip this dataset with the elements of another.
@@ -2519,14 +2473,9 @@ Dict[str, List[str]]]): The names of the columns
             def __next__(self) -> "Dataset[T]":
                 if times and self._i >= times:
                     raise StopIteration
-                res = Dataset(
-                    self._ds._blocks,
-                    self._i,
-                    self._ds._stats.child_repeat(),
-                    name=f"{self._ds._get_name()}|repeat_{self._i}",
-                )
+                self._ds._set_epoch(self._i)
                 self._i += 1
-                return lambda: res.force_reads()
+                return lambda: self._ds.force_reads()
 
         class Iterable:
             def __init__(self, ds: "Dataset[T]"):
@@ -2848,8 +2797,8 @@ Dict[str, List[str]]]): The names of the columns
     def _get_epoch(self) -> int:
         return self._epoch
 
-    def _get_name(self) -> str:
-        return self._name
+    def _set_epoch(self, epoch: int) -> None:
+        self._epoch = epoch
 
 
 def _get_num_rows(block: Block) -> int:

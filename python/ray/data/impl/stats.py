@@ -178,9 +178,6 @@ class DatasetStats:
         """Start recording stats for an op of the given name (e.g., map)."""
         return _DatasetStatsBuilder(name, self)
 
-    def child_repeat(self) -> "DatasetStats":
-        return DatasetStats(stages={"repeat": []}, parent=self)
-
     def child_TODO(self, name: str) -> "DatasetStats":
         """Placeholder for child ops not yet instrumented."""
         return DatasetStats(stages={name + "_TODO": []}, parent=self)
@@ -216,7 +213,7 @@ class DatasetStats:
                 out += "\n"
             out += "Stage {} {}: ".format(self.number, stage_name)
             if stage_uuid in already_printed:
-                out += "[execution cached]\n"
+                out += "[execution cached]"
             else:
                 already_printed.add(stage_uuid)
                 out += self._summarize_blocks(metadata)

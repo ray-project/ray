@@ -106,7 +106,7 @@ def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
 
 
 @PublicAPI(stability="beta")
-def range(n: int, *, parallelism: int = 200, _dataset_name: str = "") -> Dataset[int]:
+def range(n: int, *, parallelism: int = 200) -> Dataset[int]:
     """Create a dataset from a range of integers [0..n).
 
     Examples:
@@ -121,18 +121,12 @@ def range(n: int, *, parallelism: int = 200, _dataset_name: str = "") -> Dataset
         Dataset holding the integers.
     """
     return read_datasource(
-        RangeDatasource(),
-        parallelism=parallelism,
-        n=n,
-        block_format="list",
-        _dataset_name=_dataset_name,
+        RangeDatasource(), parallelism=parallelism, n=n, block_format="list"
     )
 
 
 @PublicAPI(stability="beta")
-def range_arrow(
-    n: int, *, parallelism: int = 200, _dataset_name: str = ""
-) -> Dataset[ArrowRow]:
+def range_arrow(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from a range of integers [0..n).
 
     Examples:
@@ -151,11 +145,7 @@ def range_arrow(
         Dataset holding the integers as Arrow records.
     """
     return read_datasource(
-        RangeDatasource(),
-        parallelism=parallelism,
-        n=n,
-        block_format="arrow",
-        _dataset_name=_dataset_name,
+        RangeDatasource(), parallelism=parallelism, n=n, block_format="arrow"
     )
 
 
@@ -196,7 +186,6 @@ def read_datasource(
     *,
     parallelism: int = 200,
     ray_remote_args: Dict[str, Any] = None,
-    _dataset_name: str = "",
     _spread_resource_prefix: Optional[str] = None,
     **read_args,
 ) -> Dataset[T]:
@@ -208,7 +197,6 @@ def read_datasource(
             limited by the available partitioning of the datasource.
         read_args: Additional kwargs to pass to the datasource impl.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
-        _dataset_name: The name of the generated dataset (this is used for debugging).
 
     Returns:
         Dataset holding the data read from the datasource.
@@ -279,8 +267,7 @@ def read_datasource(
     for i, task in enumerate(read_tasks):
         calls.append(
             lambda i=i, task=task, resources=next(resource_iter): remote_read.options(
-                **{"name": f"[{_dataset_name}]:remote_read_{i}", **ray_remote_args},
-                resources=resources,
+                **ray_remote_args, resources=resources
             ).remote(i, task, stats_actor)
         )
         metadata.append(task.get_metadata())
@@ -300,7 +287,6 @@ def read_datasource(
             stats_actor=stats_actor,
             stats_uuid=stats_uuid,
         ),
-        name=_dataset_name,
     )
 
 
@@ -312,7 +298,6 @@ def read_parquet(
     columns: Optional[List[str]] = None,
     parallelism: int = 200,
     ray_remote_args: Dict[str, Any] = None,
-    _dataset_name: str = "",
     _tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
     **arrow_parquet_args,
 ) -> Dataset[ArrowRow]:
@@ -379,7 +364,6 @@ def read_parquet(
         filesystem=filesystem,
         columns=columns,
         ray_remote_args=ray_remote_args,
-        _dataset_name=_dataset_name,
         **arrow_parquet_args,
     )
 

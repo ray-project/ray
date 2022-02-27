@@ -239,9 +239,7 @@ def create_dataset(files, num_workers=4, epochs=50, num_windows=1):
                 split = file_splits[self.i % num_windows]
                 self.i += 1
                 return lambda: ray.data.read_parquet(
-                    list(split),
-                    dataset_name=f"TrainDataset_window_{self.i - 1}",
-                    _spread_resource_prefix="node:",
+                    list(split), _spread_resource_prefix="node:"
                 )
 
         pipe = DatasetPipeline.from_iterable(Windower())

@@ -3260,30 +3260,6 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
         ).take()
 
 
-def test_dataset_name(ray_start_regular_shared, tmp_path):
-    ds = ray.data.range(10, _dataset_name="MyDataset")
-    assert ds._get_name() == "MyDataset"
-    ds = ds.random_shuffle()
-    assert ds._get_name() == "MyDataset|random_shuffle"
-    ds = ds.map(lambda x: x + 2)
-    assert ds._get_name() == "MyDataset|random_shuffle|map"
-
-    base = ray.data.range_arrow(10, _dataset_name="YourDataset")
-    assert base._get_name() == "YourDataset"
-    pipe = base.repeat(2)
-    for i, ds in enumerate(pipe.iter_datasets()):
-        assert ds._get_name() == f"YourDataset|repeat_{i}"
-    pipe = base.repeat(2).repeat(2)
-    for i, ds in enumerate(pipe.iter_datasets()):
-        assert ds._get_name() == f"YourDataset|repeat_{i%2}|repeat_{i//2}"
-
-    df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
-    table = pa.Table.from_pandas(df)
-    pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
-    ds = ray.data.read_parquet(str(tmp_path), _dataset_name="HerDataset")
-    assert ds._get_name() == "HerDataset"
-
-
 if __name__ == "__main__":
     import sys
 

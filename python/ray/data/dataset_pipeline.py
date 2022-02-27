@@ -365,8 +365,8 @@ class DatasetPipeline(Generic[T]):
         class RepeatIterator:
             def __init__(self, original_iter):
                 self._original_iter = original_iter
-                # Holds base datasets to repeat.
-                self._bases = []
+                # Holds results to repeat.
+                self._results = []
                 # Incrementing cursor over results.
                 self._i = 0
                 # This is calculated later.
@@ -376,32 +376,21 @@ class DatasetPipeline(Generic[T]):
                 # Still going through the original pipeline.
                 if self._original_iter:
                     try:
-                        base = next(self._original_iter)
-                        res = Dataset(
-                            base._blocks,
-                            0,
-                            base._stats.child_repeat(),
-                            name=f"{base._get_name()}|repeat_0",
-                        )
-                        self._bases.append(base)
+                        res = next(self._original_iter)
+                        res._set_epoch(0)
+                        self._results.append(res)
                         return lambda: res
                     except StopIteration:
                         self._original_iter = None
                         # Calculate the cursor limit.
                         if times:
-                            self._max_i = len(self._bases) * (times - 1)
+                            self._max_i = len(self._results) * (times - 1)
                         else:
                             self._max_i = float("inf")
                 # Going through a repeat of the pipeline.
                 if self._i < self._max_i:
-                    base = self._bases[self._i % len(self._bases)]
-                    epoch = 1 + self._i // len(self._bases)
-                    res = Dataset(
-                        base._blocks,
-                        epoch,
-                        base._stats.child_repeat(),
-                        name=f"{base._get_name()}|repeat_{epoch}",
-                    )
+                    res = self._results[self._i % len(self._results)]
+                    res._set_epoch(1 + self._i // len(self._results))
                     self._i += 1
                     return lambda: res
                 else:
