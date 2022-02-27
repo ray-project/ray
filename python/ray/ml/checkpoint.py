@@ -1,4 +1,5 @@
 import abc
+from typing import Dict, Optional
 
 import ray
 
@@ -6,12 +7,15 @@ import ray
 class Checkpoint(abc.ABC):
     """Checkpoint interface"""
 
+    def __init__(self, metadata: Optional[Dict] = None):
+        self.metadata = metadata or {}
+
     @classmethod
     def from_bytes(cls, data: bytes) -> "Checkpoint":
-        """Create checkpoint object from bytes stream.
+        """Create checkpoint object from bytes object.
 
         Args:
-            data (bytes): Data stream containing pickled checkpoint data.
+            data (bytes): Data object containing pickled checkpoint data.
 
         Returns:
             Checkpoint: checkpoint object.
@@ -19,11 +23,12 @@ class Checkpoint(abc.ABC):
         raise NotImplementedError
 
     def to_bytes(self) -> bytes:
-        """Return Checkpoint serialized as bytes stream.
+        """Return Checkpoint serialized as bytes object.
 
         Returns:
-            bytes: Bytes stream containing checkpoint data.
+            bytes: Bytes object containing checkpoint data.
         """
+        # Todo: Add support for stream in the future (to_bytes(file_like))
         raise NotImplementedError
 
     @classmethod
@@ -77,7 +82,7 @@ class Checkpoint(abc.ABC):
         """
         raise NotImplementedError
 
-    def to_directory(self, path: str) -> str:
+    def to_directory(self, path: Optional[str] = None) -> str:
         """Write checkpoint data to directory.
 
         Args:
@@ -89,22 +94,22 @@ class Checkpoint(abc.ABC):
         raise NotImplementedError
 
     @classmethod
-    def from_cloud_storage(cls, location: str) -> "Checkpoint":
-        """Create checkpoint object from cloud storage location.
+    def from_uri(cls, location: str) -> "Checkpoint":
+        """Create checkpoint object from location URI (e.g. cloud storage).
 
         Args:
-            location (str): Cloud storage location (URI).
+            location (str): Source location URI to read data from.
 
         Returns:
             Checkpoint: checkpoint object.
         """
         raise NotImplementedError
 
-    def to_cloud_storage(self, location: str) -> str:
-        """Write checkpoint data to cloud location.
+    def to_uri(self, location: str) -> str:
+        """Write checkpoint data to location URI (e.g. cloud storage).
 
         ARgs:
-            location (str): Target cloud location to write data to.
+            location (str): Target location URI to write data to.
 
         Returns:
             str: Cloud location containing checkpoint data.

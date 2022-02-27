@@ -1,11 +1,15 @@
 import abc
-from typing import Union
+from typing import Any, Union, TYPE_CHECKING
 
-import numpy as np
-import pandas as pd
 from ray.ml.checkpoint import Checkpoint
 
-DataBatchType = Union[pd.DataFrame, np.ndarray]
+if TYPE_CHECKING:
+    import numpy as np
+    import pandas as pd
+
+    DataBatchType = Union[pd.DataFrame, np.ndarray]
+else:
+    DataBatchType = Any
 
 
 class Predictor(abc.ABC):
