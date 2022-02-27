@@ -20,7 +20,7 @@ from ray._private.test_utils import SignalActor, async_wait_for_condition
 TEST_NAMESPACE = "jobs_test_namespace"
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def shared_ray_instance():
     # Remove ray address for test ray cluster in case we have
     # lingering RAY_ADDRESS="http://127.0.0.1:8265" from previous local job
@@ -118,24 +118,9 @@ def test_generate_job_id():
     assert len(ids) == 10000
 
 
-@pytest.mark.asyncio
-async def test_pass_job_id(job_manager):
-    job_id = "my_custom_id"
-
-    returned_id = job_manager.submit_job(entrypoint="echo hello", job_id=job_id)
-    assert returned_id == job_id
-
-    await async_wait_for_condition(
-        check_job_succeeded, job_manager=job_manager, job_id=job_id
-    )
-
-    # Check that the same job_id is rejected.
-    with pytest.raises(RuntimeError):
-        job_manager.submit_job(entrypoint="echo hello", job_id=job_id)
-
-
-@pytest.mark.asyncio
-async def test_list_jobs_empty(job_manager: JobManager):
+# NOTE(architkulkarni): This test must be run first in order for the job
+# submission history of the shared Ray runtime to be empty.
+def test_list_jobs_empty(job_manager: JobManager):
     assert job_manager.list_jobs() == dict()
 
 
@@ -164,6 +149,22 @@ async def test_list_jobs(job_manager: JobManager):
     assert jobs_info["2"].end_time >= jobs_info["2"].start_time
     assert jobs_info["2"].runtime_env == runtime_env
     assert jobs_info["2"].metadata == metadata
+
+
+@pytest.mark.asyncio
+async def test_pass_job_id(job_manager):
+    job_id = "my_custom_id"
+
+    returned_id = job_manager.submit_job(entrypoint="echo hello", job_id=job_id)
+    assert returned_id == job_id
+
+    await async_wait_for_condition(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id
+    )
+
+    # Check that the same job_id is rejected.
+    with pytest.raises(RuntimeError):
+        job_manager.submit_job(entrypoint="echo hello", job_id=job_id)
 
 
 @pytest.mark.asyncio
