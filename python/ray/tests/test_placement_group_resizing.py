@@ -8,9 +8,7 @@ except ImportError:
 
 import ray
 import ray.cluster_utils
-from ray._private.test_utils import wait_for_condition, placement_group_assert_no_leak
-
-from ray.util.placement_group import placement_group
+from ray._private.test_utils import placement_group_assert_no_leak
 
 
 def test_placement_group_add_bundles_for_created_pg(ray_start_cluster):
@@ -30,7 +28,8 @@ def test_placement_group_add_bundles_for_created_pg(ray_start_cluster):
     pg = ray.util.placement_group(name="name", strategy="PACK", bundles=[{"CPU": 2}])
     ray.get(pg.ready(), timeout=10)
 
-    # Now, Add a new bundle to this placement group and wait it to be created successfully.
+    # Now, Add a new bundle to this placement group and
+    # wait it to be created successfully.
     pg.add_bundles([{"CPU": 2}])
     ray.get(pg.ready(), timeout=10)
 
