@@ -522,11 +522,6 @@ Status GcsSubscriber::SubscribeResourcesBatch(
 Status GcsSubscriber::SubscribePlacementGroupBundlsChanged(
     const PlacementGroupID &placement_group_id, const SubscribeCallback<PlacementGroupID, rpc::PlacementGroupBundlesChangedNotification> &subscribe,
     const StatusCallback &done) {
-  if (subscriber_ != nullptr) {
-    // TODO: Implement it later.
-    return Status::OK();
-  }
-
   // Redis subscriber.
   auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
     rpc::PlacementGroupBundlesChangedNotification bundles_change_notification;
@@ -537,10 +532,6 @@ Status GcsSubscriber::SubscribePlacementGroupBundlsChanged(
 }
 
 Status GcsSubscriber::UnsubscribePlacementGroupBundlsChanged(const PlacementGroupID &placement_group_id) {
-  if (subscriber_ != nullptr) {
-    // TODO: Implements later.
-    return Status::OK();
-  }
   return pubsub_->Unsubscribe(PLACEMENT_GROUP_BUNDELS_CHANGED_CHANNEL, placement_group_id.Hex());
 }
 

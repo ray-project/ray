@@ -64,6 +64,7 @@ void GcsPlacementGroup::AddBundles(
     auto mutable_bundle_id = message_bundle->mutable_bundle_id();
     mutable_bundle_id->set_bundle_index(i);
     mutable_bundle_id->set_placement_group_id(GetPlacementGroupID().Binary());
+    message_bundle->set_is_valid(true);
     auto mutable_unit_resources = message_bundle->mutable_unit_resources();
 
     auto resources = MapFromProtobuf(request.bundles(j).unit_resources());
@@ -495,11 +496,11 @@ void GcsPlacementGroupManager::AddBundlesForPlacementGroup(
   }
   auto placement_group = placement_group_it->second;
 
+  placement_group->AddBundles(request);
   if (placement_group->GetState() == rpc::PlacementGroupTableData::CREATED) {
     AddToPendingQueue(placement_group, 0);
   }
-
-  placement_group->AddBundles(request);
+  
   placement_group->UpdateState(rpc::PlacementGroupTableData::UPDATING);
 
   if (IsSchedulingInProgress(placement_group_id)) {

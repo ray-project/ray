@@ -1786,6 +1786,7 @@ Status CoreWorker::AddPlacementGroupBundles(
 Status CoreWorker::ValidatePlacementGroupBundleIndex(
     const PlacementGroupID &placement_group_id, const int64_t &bundle_index) {
   if (bundle_index != -1) {
+    absl::MutexLock lock(&placement_group_valid_bundles_map_mutex_);
     const auto &all_bundle_indexes =
         GetAllAndSubscribePlacementGroupBundleEvent(placement_group_id);
     if (RAY_LOG_ENABLED(DEBUG)) {
@@ -1818,6 +1819,7 @@ Status CoreWorker::ValidatePlacementGroupBundleIndex(
                 << valid_bundle_indexes_str.str()
                 << "] when adding resource constraint through placement group: "
                 << placement_group_id;
+      RAY_LOG(WARNING) << error_msg.str();
       return Status::Invalid(error_msg.str());
     }
   }
@@ -3245,7 +3247,6 @@ void CoreWorker::OnPlacementGroupBundlesChanged(
 const absl::flat_hash_map<int32_t, bool>
     &CoreWorker::GetAllAndSubscribePlacementGroupBundleEvent(
         const PlacementGroupID &placement_group_id) {
-  absl::MutexLock lock(&placement_group_valid_bundles_map_mutex_);
   const auto bundle_index_it =
       placement_group_valid_bundle_index_.find(placement_group_id);
   if (bundle_index_it == placement_group_valid_bundle_index_.end()) {
@@ -3285,15 +3286,20 @@ const absl::flat_hash_map<int32_t, bool>
     const auto valid_bundle_index_it =
         placement_group_valid_bundle_index_.find(placement_group_id);
 
+    std::ostringstream debug_info;
+    debug_info << "Got the valid bundle index: [ ";
     for (int i = 0; i < result->bundles_size(); i++) {
       const auto &bundle = result->bundles(i);
       int32_t bundle_index = bundle.bundle_id().bundle_index();
       if (bundle.is_valid()) {
         valid_bundle_index_it->second.insert({bundle_index, true});
+        debug_info << bundle_index << ", ";
       } else {
         valid_bundle_index_it->second.insert({bundle_index, false});
       }
     }
+    debug_info << "] for placement group: " << placement_group_id << " at the first time.";
+    RAY_LOG(DEBUG) << debug_info.str();
   }
   const auto valid_bundle_index_it =
       placement_group_valid_bundle_index_.find(placement_group_id);
