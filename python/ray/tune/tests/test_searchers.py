@@ -61,9 +61,8 @@ class InvalidValuesTest(unittest.TestCase):
         # At least one nan, inf, -inf and float
         client = AxClient(random_seed=4321)
         client.create_experiment(
-            parameters=converted_config,
-            objective_name="_metric",
-            minimize=False)
+            parameters=converted_config, objective_name="_metric", minimize=False
+        )
         searcher = AxSearch(ax_client=client)
 
         out = tune.run(
@@ -72,7 +71,8 @@ class InvalidValuesTest(unittest.TestCase):
             metric="_metric",
             mode="max",
             num_samples=4,
-            reuse_actors=False)
+            reuse_actors=False,
+        )
 
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["report"], 2.0)
@@ -88,7 +88,8 @@ class InvalidValuesTest(unittest.TestCase):
             metric="_metric",
             mode="max",
             num_samples=8,
-            reuse_actors=False)
+            reuse_actors=False,
+        )
 
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["report"], 2.0)
@@ -98,20 +99,20 @@ class InvalidValuesTest(unittest.TestCase):
 
         out = tune.run(
             _invalid_objective,
-            search_alg=BlendSearch(points_to_evaluate=[{
-                "report": 1.0
-            }, {
-                "report": 2.1
-            }, {
-                "report": 3.1
-            }, {
-                "report": 4.1
-            }]),
+            search_alg=BlendSearch(
+                points_to_evaluate=[
+                    {"report": 1.0},
+                    {"report": 2.1},
+                    {"report": 3.1},
+                    {"report": 4.1},
+                ]
+            ),
             config=self.config,
             metric="_metric",
             mode="max",
             num_samples=16,
-            reuse_actors=False)
+            reuse_actors=False,
+        )
 
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["report"], 2.0)
@@ -126,32 +127,35 @@ class InvalidValuesTest(unittest.TestCase):
             metric="_metric",
             mode="max",
             num_samples=8,
-            reuse_actors=False)
+            reuse_actors=False,
+        )
 
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["report"], 2.0)
 
     def testCFO(self):
-        self.skipTest("Broken in FLAML, reenable once "
-                      "https://github.com/microsoft/FLAML/pull/263 is merged")
+        self.skipTest(
+            "Broken in FLAML, reenable once "
+            "https://github.com/microsoft/FLAML/pull/263 is merged"
+        )
         from ray.tune.suggest.flaml import CFO
 
         out = tune.run(
             _invalid_objective,
-            search_alg=CFO(points_to_evaluate=[{
-                "report": 1.0
-            }, {
-                "report": 2.1
-            }, {
-                "report": 3.1
-            }, {
-                "report": 4.1
-            }]),
+            search_alg=CFO(
+                points_to_evaluate=[
+                    {"report": 1.0},
+                    {"report": 2.1},
+                    {"report": 3.1},
+                    {"report": 4.1},
+                ]
+            ),
             config=self.config,
             metric="_metric",
             mode="max",
             num_samples=16,
-            reuse_actors=False)
+            reuse_actors=False,
+        )
 
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["report"], 2.0)
@@ -168,7 +172,8 @@ class InvalidValuesTest(unittest.TestCase):
             metric="_metric",
             mode="max",
             num_samples=8,
-            reuse_actors=False)
+            reuse_actors=False,
+        )
 
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["point"], 2.0)
@@ -184,7 +189,8 @@ class InvalidValuesTest(unittest.TestCase):
             metric="_metric",
             mode="max",
             num_samples=8,
-            reuse_actors=False)
+            reuse_actors=False,
+        )
 
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["report"], 2.0)
@@ -200,7 +206,8 @@ class InvalidValuesTest(unittest.TestCase):
             metric="_metric",
             mode="max",
             num_samples=8,
-            reuse_actors=False)
+            reuse_actors=False,
+        )
 
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["report"], 2.0)
@@ -217,7 +224,8 @@ class InvalidValuesTest(unittest.TestCase):
             config=self.config,
             mode="max",
             num_samples=16,
-            reuse_actors=False)
+            reuse_actors=False,
+        )
 
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["report"], 2.0)
@@ -235,7 +243,8 @@ class InvalidValuesTest(unittest.TestCase):
             metric="_metric",
             mode="max",
             num_samples=8,
-            reuse_actors=False)
+            reuse_actors=False,
+        )
 
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["report"], 2.0)
@@ -252,7 +261,8 @@ class InvalidValuesTest(unittest.TestCase):
             metric="_metric",
             mode="max",
             num_samples=8,
-            reuse_actors=False)
+            reuse_actors=False,
+        )
 
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["report"], 2.0)
@@ -260,7 +270,8 @@ class InvalidValuesTest(unittest.TestCase):
     def testZOOpt(self):
         self.skipTest(
             "Recent ZOOpt versions fail handling invalid values gracefully. "
-            "Skipping until we or they found a workaround. ")
+            "Skipping until we or they found a workaround. "
+        )
         from ray.tune.suggest.zoopt import ZOOptSearch
 
         np.random.seed(1000)  # At least one nan, inf, -inf and float
@@ -272,7 +283,8 @@ class InvalidValuesTest(unittest.TestCase):
             metric="_metric",
             mode="max",
             num_samples=8,
-            reuse_actors=False)
+            reuse_actors=False,
+        )
 
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["report"], 2.0)
@@ -293,7 +305,8 @@ class AddEvaluatedPointTest(unittest.TestCase):
             config=self.space,
             metric="metric",
             num_samples=4,
-            verbose=0)
+            verbose=0,
+        )
 
     def tearDown(self):
         pass
@@ -349,7 +362,8 @@ class AddEvaluatedPointTest(unittest.TestCase):
             metric="metric",
             mode="max",
             domain="euclidean",
-            optimizer="bandit")
+            optimizer="bandit",
+        )
 
         point = {
             self.param_name: self.valid_value,
@@ -369,10 +383,9 @@ class AddEvaluatedPointTest(unittest.TestCase):
             space=self.space,
             metric="metric",
             mode="max",
-            points_to_evaluate=[{
-                self.param_name: self.valid_value
-            }],
-            evaluated_rewards=[1.0])
+            points_to_evaluate=[{self.param_name: self.valid_value}],
+            evaluated_rewards=[1.0],
+        )
 
         get_len = lambda s: len(s._ot_study.trials)  # noqa E731
 
@@ -390,22 +403,21 @@ class AddEvaluatedPointTest(unittest.TestCase):
 
         self.assertEqual(get_len(searcher), 0)
 
-        searcher.add_evaluated_point(
-            point, 1.0, intermediate_values=[0.8, 0.9])
+        searcher.add_evaluated_point(point, 1.0, intermediate_values=[0.8, 0.9])
         self.assertEqual(get_len(searcher), 1)
-        self.assertTrue(
-            searcher._ot_study.trials[-1].state == TrialState.COMPLETE)
+        self.assertTrue(searcher._ot_study.trials[-1].state == TrialState.COMPLETE)
 
         searcher.add_evaluated_point(
-            point, 1.0, intermediate_values=[0.8, 0.9], error=True)
+            point, 1.0, intermediate_values=[0.8, 0.9], error=True
+        )
         self.assertEqual(get_len(searcher), 2)
         self.assertTrue(searcher._ot_study.trials[-1].state == TrialState.FAIL)
 
         searcher.add_evaluated_point(
-            point, 1.0, intermediate_values=[0.8, 0.9], pruned=True)
+            point, 1.0, intermediate_values=[0.8, 0.9], pruned=True
+        )
         self.assertEqual(get_len(searcher), 3)
-        self.assertTrue(
-            searcher._ot_study.trials[-1].state == TrialState.PRUNED)
+        self.assertTrue(searcher._ot_study.trials[-1].state == TrialState.PRUNED)
 
         searcher.suggest("1")
 
@@ -418,9 +430,7 @@ class AddEvaluatedPointTest(unittest.TestCase):
         self.run_add_evaluated_trials(searcher, get_len, get_len)
 
         def dbr_space(trial):
-            return {
-                self.param_name: trial.suggest_float(self.param_name, 0.0, 5.0)
-            }
+            return {self.param_name: trial.suggest_float(self.param_name, 0.0, 5.0)}
 
         dbr_searcher = OptunaSearch(
             space=dbr_space,
@@ -493,34 +503,30 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
 
     def _save(self, searcher):
         searcher.set_search_properties(
-            metric=self.metric_name, mode="max", config=self.config)
+            metric=self.metric_name, mode="max", config=self.config
+        )
 
         searcher.suggest("1")
         searcher.suggest("2")
-        searcher.on_trial_complete("1", {
-            self.metric_name: 1,
-            "config/a": 1.0,
-            "time_total_s": 1
-        })
+        searcher.on_trial_complete(
+            "1", {self.metric_name: 1, "config/a": 1.0, "time_total_s": 1}
+        )
 
         searcher.save(self.checkpoint_path)
 
     def _restore(self, searcher):
         searcher.set_search_properties(
-            metric=self.metric_name, mode="max", config=self.config)
+            metric=self.metric_name, mode="max", config=self.config
+        )
         searcher.restore(self.checkpoint_path)
 
-        searcher.on_trial_complete("2", {
-            self.metric_name: 1,
-            "config/a": 1.0,
-            "time_total_s": 1
-        })
+        searcher.on_trial_complete(
+            "2", {self.metric_name: 1, "config/a": 1.0, "time_total_s": 1}
+        )
         searcher.suggest("3")
-        searcher.on_trial_complete("3", {
-            self.metric_name: 1,
-            "config/a": 1.0,
-            "time_total_s": 1
-        })
+        searcher.on_trial_complete(
+            "3", {self.metric_name: 1, "config/a": 1.0, "time_total_s": 1}
+        )
 
     def testAx(self):
         from ray.tune.suggest.ax import AxSearch
@@ -529,18 +535,16 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         converted_config = AxSearch.convert_search_space(self.config)
         client = AxClient()
         client.create_experiment(
-            parameters=converted_config,
-            objective_name=self.metric_name,
-            minimize=False)
+            parameters=converted_config, objective_name=self.metric_name, minimize=False
+        )
         searcher = AxSearch(ax_client=client)
 
         self._save(searcher)
 
         client = AxClient()
         client.create_experiment(
-            parameters=converted_config,
-            objective_name=self.metric_name,
-            minimize=False)
+            parameters=converted_config, objective_name=self.metric_name, minimize=False
+        )
         searcher = AxSearch(ax_client=client)
         self._restore(searcher)
 
@@ -548,35 +552,33 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         from ray.tune.suggest.bayesopt import BayesOptSearch
 
         searcher = BayesOptSearch(
-            space=self.config, metric=self.metric_name, mode="max")
+            space=self.config, metric=self.metric_name, mode="max"
+        )
         self._save(searcher)
 
         searcher = BayesOptSearch(
-            space=self.config, metric=self.metric_name, mode="max")
+            space=self.config, metric=self.metric_name, mode="max"
+        )
         self._restore(searcher)
 
     def testBlendSearch(self):
         from ray.tune.suggest.flaml import BlendSearch
 
-        searcher = BlendSearch(
-            space=self.config, metric=self.metric_name, mode="max")
+        searcher = BlendSearch(space=self.config, metric=self.metric_name, mode="max")
 
         self._save(searcher)
 
-        searcher = BlendSearch(
-            space=self.config, metric=self.metric_name, mode="max")
+        searcher = BlendSearch(space=self.config, metric=self.metric_name, mode="max")
         self._restore(searcher)
 
     def testBOHB(self):
         from ray.tune.suggest.bohb import TuneBOHB
 
-        searcher = TuneBOHB(
-            space=self.config, metric=self.metric_name, mode="max")
+        searcher = TuneBOHB(space=self.config, metric=self.metric_name, mode="max")
 
         self._save(searcher)
 
-        searcher = TuneBOHB(
-            space=self.config, metric=self.metric_name, mode="max")
+        searcher = TuneBOHB(space=self.config, metric=self.metric_name, mode="max")
         self._restore(searcher)
 
     def testCFO(self):
@@ -597,7 +599,8 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
             metric=self.metric_name,
             mode="max",
             domain="euclidean",
-            optimizer="random")
+            optimizer="random",
+        )
 
         self._save(searcher)
 
@@ -606,31 +609,32 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
             metric=self.metric_name,
             mode="max",
             domain="euclidean",
-            optimizer="random")
+            optimizer="random",
+        )
         self._restore(searcher)
 
     def testHEBO(self):
         from ray.tune.suggest.hebo import HEBOSearch
 
-        searcher = HEBOSearch(
-            space=self.config, metric=self.metric_name, mode="max")
+        searcher = HEBOSearch(space=self.config, metric=self.metric_name, mode="max")
 
         self._save(searcher)
 
-        searcher = HEBOSearch(
-            space=self.config, metric=self.metric_name, mode="max")
+        searcher = HEBOSearch(space=self.config, metric=self.metric_name, mode="max")
         self._restore(searcher)
 
     def testHyperopt(self):
         from ray.tune.suggest.hyperopt import HyperOptSearch
 
         searcher = HyperOptSearch(
-            space=self.config, metric=self.metric_name, mode="max")
+            space=self.config, metric=self.metric_name, mode="max"
+        )
 
         self._save(searcher)
 
         searcher = HyperOptSearch(
-            space=self.config, metric=self.metric_name, mode="max")
+            space=self.config, metric=self.metric_name, mode="max"
+        )
 
         self._restore(searcher)
 
@@ -642,7 +646,8 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
             space=self.config,
             metric=self.metric_name,
             mode="max",
-            optimizer=ng.optimizers.RandomSearch)
+            optimizer=ng.optimizers.RandomSearch,
+        )
 
         self._save(searcher)
 
@@ -650,31 +655,28 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
             space=self.config,
             metric=self.metric_name,
             mode="max",
-            optimizer=ng.optimizers.RandomSearch)
+            optimizer=ng.optimizers.RandomSearch,
+        )
         self._restore(searcher)
 
     def testOptuna(self):
         from ray.tune.suggest.optuna import OptunaSearch
 
-        searcher = OptunaSearch(
-            space=self.config, metric=self.metric_name, mode="max")
+        searcher = OptunaSearch(space=self.config, metric=self.metric_name, mode="max")
 
         self._save(searcher)
 
-        searcher = OptunaSearch(
-            space=self.config, metric=self.metric_name, mode="max")
+        searcher = OptunaSearch(space=self.config, metric=self.metric_name, mode="max")
         self._restore(searcher)
 
     def testSkopt(self):
         from ray.tune.suggest.skopt import SkOptSearch
 
-        searcher = SkOptSearch(
-            space=self.config, metric=self.metric_name, mode="max")
+        searcher = SkOptSearch(space=self.config, metric=self.metric_name, mode="max")
 
         self._save(searcher)
 
-        searcher = SkOptSearch(
-            space=self.config, metric=self.metric_name, mode="max")
+        searcher = SkOptSearch(space=self.config, metric=self.metric_name, mode="max")
         self._restore(searcher)
 
     def testZOOpt(self):
@@ -685,7 +687,8 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
             metric=self.metric_name,
             mode="max",
             budget=100,
-            parallel_num=4)
+            parallel_num=4,
+        )
 
         self._save(searcher)
 
@@ -694,7 +697,8 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
             metric=self.metric_name,
             mode="max",
             budget=100,
-            parallel_num=4)
+            parallel_num=4,
+        )
         self._restore(searcher)
 
 
@@ -707,7 +711,7 @@ class MultiObjectiveTest(unittest.TestCase):
         self.config = {
             "a": tune.uniform(0, 1),
             "b": tune.uniform(0, 1),
-            "c": tune.uniform(0, 1)
+            "c": tune.uniform(0, 1),
         }
 
     def tearDown(self):
@@ -736,7 +740,8 @@ class MultiObjectiveTest(unittest.TestCase):
             ),
             config=self.config,
             num_samples=16,
-            reuse_actors=False)
+            reuse_actors=False,
+        )
 
         best_trial_a = out.get_best_trial("a", "max")
         self.assertGreaterEqual(best_trial_a.config["a"], 0.8)
@@ -749,4 +754,5 @@ class MultiObjectiveTest(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

@@ -188,6 +188,16 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
     counts += 1;
   }
   if (!objects_to_spill.empty()) {
+    if (it == pinned_objects_.end() && bytes_to_spill <= num_bytes_to_spill &&
+        !objects_pending_spill_.empty()) {
+      // We have gone through all spillable objects but we have not yet reached
+      // the minimum bytes to spill and we are already spilling other objects.
+      // Let those spill requests finish before we try to spill the current
+      // objects. This gives us some time to decide whether we really need to
+      // spill the current objects or if we can afford to wait for additional
+      // objects to fuse with.
+      return false;
+    }
     RAY_LOG(DEBUG) << "Spilling objects of total size " << bytes_to_spill
                    << " num objects " << objects_to_spill.size();
     auto start_time = absl::GetCurrentTimeNanos();

@@ -10,14 +10,13 @@ logger = logging.getLogger(__name__)
 
 @ExperimentalAPI
 def asynchronous_parallel_requests(
-        remote_requests_in_flight: DefaultDict[ActorHandle, Set[
-            ray.ObjectRef]],
-        actors: List[ActorHandle],
-        ray_wait_timeout_s: Optional[float] = None,
-        max_remote_requests_in_flight_per_actor: int = 2,
-        remote_fn: Optional[Callable[[ActorHandle, Any, Any], Any]] = None,
-        remote_args: Optional[List[List[Any]]] = None,
-        remote_kwargs: Optional[List[Dict[str, Any]]] = None,
+    remote_requests_in_flight: DefaultDict[ActorHandle, Set[ray.ObjectRef]],
+    actors: List[ActorHandle],
+    ray_wait_timeout_s: Optional[float] = None,
+    max_remote_requests_in_flight_per_actor: int = 2,
+    remote_fn: Optional[Callable[[Any, Optional[Any], Optional[Any]], Any]] = None,
+    remote_args: Optional[List[List[Any]]] = None,
+    remote_kwargs: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[ActorHandle, Any]:
     """Runs parallel and asynchronous rollouts on all remote workers.
 
@@ -98,8 +97,10 @@ def asynchronous_parallel_requests(
     # `max_remote_requests_in_flight_per_actor` setting allows it).
     for actor_idx, actor in enumerate(actors):
         # Still room for another request to this actor.
-        if len(remote_requests_in_flight[actor]) < \
-                max_remote_requests_in_flight_per_actor:
+        if (
+            len(remote_requests_in_flight[actor])
+            < max_remote_requests_in_flight_per_actor
+        ):
             if remote_fn is None:
                 req = actor.sample.remote()
             else:
@@ -120,7 +121,8 @@ def asynchronous_parallel_requests(
     if ray_wait_timeout_s is None:
         # First try to do a `ray.wait` w/o timeout for efficiency.
         ready, _ = ray.wait(
-            pending_remote_list, num_returns=len(pending_remotes), timeout=0)
+            pending_remote_list, num_returns=len(pending_remotes), timeout=0
+        )
         # Nothing returned and `timeout` is None -> Fall back to a
         # blocking wait to make sure we can return something.
         if not ready:
@@ -130,7 +132,8 @@ def asynchronous_parallel_requests(
         ready, _ = ray.wait(
             pending_remote_list,
             num_returns=len(pending_remotes),
-            timeout=ray_wait_timeout_s)
+            timeout=ray_wait_timeout_s,
+        )
 
         # Return empty results if nothing ready after the timeout.
         if not ready:

@@ -283,9 +283,9 @@ class MockObjectBuffer : public Buffer {
   std::shared_ptr<absl::flat_hash_map<ObjectID, int>> unpins_;
 };
 
-class LocalObjectManagerTest : public ::testing::Test {
+class LocalObjectManagerTestWithMinSpillingSize {
  public:
-  LocalObjectManagerTest()
+  LocalObjectManagerTestWithMinSpillingSize(int64_t min_spilling_size)
       : subscriber_(std::make_shared<MockSubscriber>()),
         owner_client(std::make_shared<MockWorkerClient>()),
         client_pool([&](const rpc::Address &addr) { return owner_client; }),
@@ -295,7 +295,7 @@ class LocalObjectManagerTest : public ::testing::Test {
             manager_node_id_, "address", 1234, free_objects_batch_size,
             /*free_objects_period_ms=*/1000, worker_pool, client_pool,
             /*max_io_workers=*/2,
-            /*min_spilling_size=*/0,
+            /*min_spilling_size=*/min_spilling_size,
             /*is_external_storage_type_fs=*/true,
             /*max_fused_object_count*/ max_fused_object_count_,
             /*on_objects_freed=*/
@@ -347,6 +347,18 @@ class LocalObjectManagerTest : public ::testing::Test {
   std::shared_ptr<absl::flat_hash_map<ObjectID, int>> unpins;
   // Object ids in this field won't be evictable.
   std::unordered_set<ObjectID> unevictable_objects_;
+};
+
+class LocalObjectManagerTest : public LocalObjectManagerTestWithMinSpillingSize,
+                               public ::testing::Test {
+ public:
+  LocalObjectManagerTest() : LocalObjectManagerTestWithMinSpillingSize(0) {}
+};
+
+class LocalObjectManagerFusedTest : public LocalObjectManagerTestWithMinSpillingSize,
+                                    public ::testing::Test {
+ public:
+  LocalObjectManagerFusedTest() : LocalObjectManagerTestWithMinSpillingSize(100) {}
 };
 
 TEST_F(LocalObjectManagerTest, TestPin) {
@@ -1286,6 +1298,111 @@ TEST_F(LocalObjectManagerTest, TestDuplicatePinAndSpill) {
 
   manager.FlushFreeObjects();
   AssertNoLeaks();
+}
+
+TEST_F(LocalObjectManagerFusedTest, TestMinSpillingSize) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+
+  std::vector<ObjectID> object_ids;
+  std::vector<std::unique_ptr<RayObject>> objects;
+  int64_t total_size = 0;
+  int64_t object_size = 52;
+
+  for (size_t i = 0; i < 3; i++) {
+    ObjectID object_id = ObjectID::FromRandom();
+    object_ids.push_back(object_id);
+    auto data_buffer = std::make_shared<MockObjectBuffer>(object_size, object_id, unpins);
+    total_size += object_size;
+    auto object = std::make_unique<RayObject>(data_buffer, nullptr,
+                                              std::vector<rpc::ObjectReference>());
+    objects.push_back(std::move(object));
+  }
+  manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
+  manager.SpillObjectUptoMaxThroughput();
+  // Only 2 of the objects should be spilled.
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
+  ASSERT_FALSE(worker_pool.FlushPopSpillWorkerCallbacks());
+  for (const auto &id : object_ids) {
+    ASSERT_EQ((*unpins)[id], 0);
+  }
+  manager.SpillObjectUptoMaxThroughput();
+  ASSERT_FALSE(worker_pool.FlushPopSpillWorkerCallbacks());
+
+  // Check that half the objects get spilled and the URLs get added to the
+  // global object directory.
+  std::vector<std::string> urls;
+  urls.push_back(BuildURL("url1"));
+  urls.push_back(BuildURL("url2"));
+  EXPECT_CALL(worker_pool, PushSpillWorker(_));
+  // Objects should get freed even though we didn't wait for the owner's notice
+  // to evict.
+  ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
+  for (size_t i = 0; i < urls.size(); i++) {
+    ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+  }
+  ASSERT_EQ(owner_client->object_urls.size(), 2);
+  int num_unpinned = 0;
+  for (const auto &id : object_ids) {
+    if ((*unpins)[id] == 1) {
+      num_unpinned++;
+    }
+  }
+  ASSERT_EQ(num_unpinned, 2);
+
+  // We will spill the last object, even though we're under the min spilling
+  // size, because they are the only spillable objects.
+  manager.SpillObjectUptoMaxThroughput();
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
+  ASSERT_FALSE(worker_pool.FlushPopSpillWorkerCallbacks());
+}
+
+TEST_F(LocalObjectManagerFusedTest, TestMinSpillingSizeMaxFusionCount) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+
+  std::vector<ObjectID> object_ids;
+  std::vector<std::unique_ptr<RayObject>> objects;
+  int64_t total_size = 0;
+  // 20 of these objects are needed to hit the min spilling size, but
+  // max_fused_object_count=15.
+  int64_t object_size = 5;
+
+  for (size_t i = 0; i < 40; i++) {
+    ObjectID object_id = ObjectID::FromRandom();
+    object_ids.push_back(object_id);
+    auto data_buffer = std::make_shared<MockObjectBuffer>(object_size, object_id, unpins);
+    total_size += object_size;
+    auto object = std::make_unique<RayObject>(data_buffer, nullptr,
+                                              std::vector<rpc::ObjectReference>());
+    objects.push_back(std::move(object));
+  }
+  manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
+  manager.SpillObjectUptoMaxThroughput();
+  // First two spill batches succeed because they have at least 15 objects.
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
+  // Last spill batch fails because we have 10 objects and their total size is
+  // less than 100.
+  ASSERT_FALSE(worker_pool.FlushPopSpillWorkerCallbacks());
+
+  std::vector<std::string> urls;
+  for (int i = 0; i < 15; i++) {
+    urls.push_back(BuildURL("url", i));
+  }
+  EXPECT_CALL(worker_pool, PushSpillWorker(_)).Times(2);
+  ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
+  ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
+  for (size_t i = 0; i < urls.size(); i++) {
+    ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+    ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+  }
+
+  // We will spill the last objects even though we're under the min spilling
+  // size because they are the only spillable objects.
+  manager.SpillObjectUptoMaxThroughput();
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
+  ASSERT_FALSE(worker_pool.FlushPopSpillWorkerCallbacks());
 }
 
 }  // namespace raylet

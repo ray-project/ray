@@ -25,11 +25,9 @@ class TestPolicy(unittest.TestCase):
             check(
                 state1["_exploration_state"]["last_timestep"],
                 state2["_exploration_state"]["last_timestep"],
-                false=True)
-            check(
-                state1["global_timestep"],
-                state2["global_timestep"],
-                false=True)
+                false=True,
+            )
+            check(state1["global_timestep"], state2["global_timestep"], false=True)
             # Reset policy to its original state and compare.
             policy.set_state(state1)
             state3 = policy.get_state()
@@ -40,4 +38,5 @@ class TestPolicy(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

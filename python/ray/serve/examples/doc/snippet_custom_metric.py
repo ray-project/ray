@@ -15,10 +15,9 @@ class MyDeployment:
         self.my_counter = metrics.Counter(
             "my_counter",
             description=("The number of excellent reqs to this deployment."),
-            tag_keys=("deployment", ))
-        self.my_counter.set_default_tags({
-            "deployment": serve.get_current_deployment()
-        })
+            tag_keys=("deployment",),
+        )
+        self.my_counter.set_default_tags({"deployment": serve.get_current_deployment()})
 
     def call(self, excellent=False):
         if excellent:

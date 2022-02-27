@@ -91,7 +91,7 @@ search space, collectively defined for each *hyperparameter* in a ``config`` dic
 tune.run and Trials
 -------------------
 
-Use :ref:`tune.run <tune-run-ref>` to execute hyperparameter tuning. This function manages your experiment and provides many features such as :ref:`logging <tune-logging>`, :ref:`checkpointing <tune-checkpoint-syncing>`, and :ref:`early stopping <tune-stopping>`.
+Use :ref:`tune.run <tune-run-ref>` to execute hyperparameter tuning. This function manages your experiment and provides many features such as :ref:`logging <tune-logging>`, :ref:`checkpointing <tune-checkpoint-syncing>`, and :ref:`early stopping <tune-stopping-ref>`.
 
 .. code-block:: python
 
@@ -279,7 +279,6 @@ What's Next?
 
 Now that you have a working understanding of Tune, check out:
 
-* :doc:`/tune/user-guide`: A comprehensive overview of Tune's features.
 * :ref:`tune-guides`: Tutorials for using Tune with your preferred machine learning library.
 * :doc:`/tune/examples/index`: End-to-end examples and templates for using Tune with your preferred machine learning library.
 * :ref:`tune-tutorial`: A simple tutorial that walks you through the process of setting up a Tune experiment.

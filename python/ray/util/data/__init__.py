@@ -15,8 +15,9 @@ else:
     from dataclasses import is_dataclass
 
 
-def to_pandas(it: ParallelIterator[T],
-              batch_size: int = 32) -> "ParallelIterator[pd.DataFrame]":
+def to_pandas(
+    it: ParallelIterator[T], batch_size: int = 32
+) -> "ParallelIterator[pd.DataFrame]":
     """Convert the a ParallelIterator to ParallelIterator of pd.DataFrame.
 
     The record type should be list like object or dataclass instance. If
@@ -51,20 +52,24 @@ def to_pandas(it: ParallelIterator[T],
                         values[col].append(getattr(item, col))
                 batch = pd.DataFrame(values, columns=names)
             else:
-                raise ValueError("MLDataset only support list like item or "
-                                 "dataclass instance")
+                raise ValueError(
+                    "MLDataset only support list like item or " "dataclass instance"
+                )
 
             yield batch
 
-    it = it._with_transform(lambda local_it: local_it.transform(convert_fn),
-                            ".to_pandas()")
+    it = it._with_transform(
+        lambda local_it: local_it.transform(convert_fn), ".to_pandas()"
+    )
     return it
 
 
-def from_parallel_iter(para_it: ParallelIterator[T],
-                       need_convert: bool = True,
-                       batch_size: int = 32,
-                       repeated: bool = False) -> MLDataset:
+def from_parallel_iter(
+    para_it: ParallelIterator[T],
+    need_convert: bool = True,
+    batch_size: int = 32,
+    repeated: bool = False,
+) -> MLDataset:
     """Create a MLDataset from an existing ParallelIterator.
 
     The object of the ParallelIterator should be list like object or dataclass

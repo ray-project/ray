@@ -1,7 +1,6 @@
 from typing import List, Dict, Iterable, Union, Optional
 
-from ray.train.callbacks.results_preprocessors.preprocessor import \
-    ResultsPreprocessor
+from ray.train.callbacks.results_preprocessors.preprocessor import ResultsPreprocessor
 from ray.util.annotations import DeveloperAPI
 
 
@@ -31,13 +30,11 @@ class IndexedResultsPreprocessor(ResultsPreprocessor):
             return [indices]
 
         if not isinstance(indices, Iterable):
-            raise TypeError("indices must be an Iterable, got "
-                            f"{type(indices)}.")
+            raise TypeError("indices must be an Iterable, got " f"{type(indices)}.")
         indices = list(indices)
 
         if len(indices) < 1:
-            raise ValueError(
-                "At least one index must be specified in indices.")
+            raise ValueError("At least one index must be specified in indices.")
 
         if not all(isinstance(index, int) for index in indices):
             raise TypeError("All elements of indices must be integers.")

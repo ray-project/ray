@@ -4,6 +4,7 @@ import aiohttp.web
 import ray._private.utils
 from ray.dashboard.modules.actor import actor_utils
 from aioredis.pubsub import Receiver
+
 try:
     from grpc import aio as aiogrpc
 except ImportError:
@@ -15,8 +16,7 @@ import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.optional_utils import rest_response
 from ray.dashboard.modules.actor import actor_consts
-from ray.dashboard.modules.actor.actor_utils import \
-    actor_classname_from_task_spec
+from ray.dashboard.modules.actor.actor_utils import actor_classname_from_task_spec
 from ray.core.generated import node_manager_pb2_grpc
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
@@ -30,12 +30,22 @@ routes = dashboard_optional_utils.ClassMethodRouteTable
 
 def actor_table_data_to_dict(message):
     orig_message = dashboard_utils.message_to_dict(
-        message, {
-            "actorId", "parentId", "jobId", "workerId", "rayletId",
-            "actorCreationDummyObjectId", "callerId", "taskId", "parentTaskId",
-            "sourceActorId", "placementGroupId"
+        message,
+        {
+            "actorId",
+            "parentId",
+            "jobId",
+            "workerId",
+            "rayletId",
+            "actorCreationDummyObjectId",
+            "callerId",
+            "taskId",
+            "parentTaskId",
+            "sourceActorId",
+            "placementGroupId",
         },
-        including_default_value_fields=True)
+        including_default_value_fields=True,
+    )
     # The complete schema for actor table is here:
     #     src/ray/protobuf/gcs.proto
     # It is super big and for dashboard, we don't need that much information.
@@ -58,8 +68,7 @@ def actor_table_data_to_dict(message):
         light_message["actorClass"] = actor_class
         if "functionDescriptor" in light_message["taskSpec"]:
             light_message["taskSpec"] = {
-                "functionDescriptor": light_message["taskSpec"][
-                    "functionDescriptor"]
+                "functionDescriptor": light_message["taskSpec"]["functionDescriptor"]
             }
         else:
             light_message.pop("taskSpec")
@@ -81,11 +90,13 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         if change.new:
             # TODO(fyrestone): Handle exceptions.
             node_id, node_info = change.new
-            address = "{}:{}".format(node_info["nodeManagerAddress"],
-                                     int(node_info["nodeManagerPort"]))
-            options = (("grpc.enable_http_proxy", 0), )
+            address = "{}:{}".format(
+                node_info["nodeManagerAddress"], int(node_info["nodeManagerPort"])
+            )
+            options = (("grpc.enable_http_proxy", 0),)
             channel = ray._private.utils.init_grpc_channel(
-                address, options, asynchronous=True)
+                address, options, asynchronous=True
+            )
             stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
             self._stubs[node_id] = stub
 
@@ -96,7 +107,8 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
                 logger.info("Getting all actor info from GCS.")
                 request = gcs_service_pb2.GetAllActorInfoRequest()
                 reply = await self._gcs_actor_info_stub.GetAllActorInfo(
-                    request, timeout=5)
+                    request, timeout=5
+                )
                 if reply.status.code == 0:
                     actors = {}
                     for message in reply.actor_table_data:
@@ -110,24 +122,25 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
                     for actor_id, actor_table_data in actors.items():
                         job_id = actor_table_data["jobId"]
                         node_id = actor_table_data["address"]["rayletId"]
-                        job_actors.setdefault(job_id,
-                                              {})[actor_id] = actor_table_data
+                        job_actors.setdefault(job_id, {})[actor_id] = actor_table_data
                         # Update only when node_id is not Nil.
                         if node_id != actor_consts.NIL_NODE_ID:
-                            node_actors.setdefault(
-                                node_id, {})[actor_id] = actor_table_data
+                            node_actors.setdefault(node_id, {})[
+                                actor_id
+                            ] = actor_table_data
                     DataSource.job_actors.reset(job_actors)
                     DataSource.node_actors.reset(node_actors)
-                    logger.info("Received %d actor info from GCS.",
-                                len(actors))
+                    logger.info("Received %d actor info from GCS.", len(actors))
                     break
                 else:
                     raise Exception(
-                        f"Failed to GetAllActorInfo: {reply.status.message}")
+                        f"Failed to GetAllActorInfo: {reply.status.message}"
+                    )
             except Exception:
                 logger.exception("Error Getting all actor info from GCS.")
                 await asyncio.sleep(
-                    actor_consts.RETRY_GET_ALL_ACTOR_INFO_INTERVAL_SECONDS)
+                    actor_consts.RETRY_GET_ALL_ACTOR_INFO_INTERVAL_SECONDS
+                )
 
         state_keys = ("state", "address", "numRestarts", "timestamp", "pid")
 
@@ -167,8 +180,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
                     if actor_id is not None:
                         # Convert to lower case hex ID.
                         actor_id = actor_id.hex()
-                        process_actor_data_from_pubsub(actor_id,
-                                                       actor_table_data)
+                        process_actor_data_from_pubsub(actor_id, actor_table_data)
                 except Exception:
                     logger.exception("Error processing actor info from GCS.")
 
@@ -183,12 +195,15 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             async for sender, msg in receiver.iter():
                 try:
                     actor_id, actor_table_data = msg
-                    actor_id = actor_id.decode("UTF-8")[len(
-                        gcs_utils.TablePrefix_ACTOR_string + ":"):]
+                    actor_id = actor_id.decode("UTF-8")[
+                        len(gcs_utils.TablePrefix_ACTOR_string + ":") :
+                    ]
                     pubsub_message = gcs_utils.PubSubMessage.FromString(
-                        actor_table_data)
+                        actor_table_data
+                    )
                     actor_table_data = gcs_utils.ActorTableData.FromString(
-                        pubsub_message.data)
+                        pubsub_message.data
+                    )
                     process_actor_data_from_pubsub(actor_id, actor_table_data)
                 except Exception:
                     logger.exception("Error processing actor info from Redis.")
@@ -203,17 +218,15 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         actors.update(actor_creation_tasks)
         actor_groups = actor_utils.construct_actor_groups(actors)
         return rest_response(
-            success=True,
-            message="Fetched actor groups.",
-            actor_groups=actor_groups)
+            success=True, message="Fetched actor groups.", actor_groups=actor_groups
+        )
 
     @routes.get("/logical/actors")
     @dashboard_optional_utils.aiohttp_cache
     async def get_all_actors(self, req) -> aiohttp.web.Response:
         return rest_response(
-            success=True,
-            message="All actors fetched.",
-            actors=DataSource.actors)
+            success=True, message="All actors fetched.", actors=DataSource.actors
+        )
 
     @routes.get("/logical/kill_actor")
     async def kill_actor(self, req) -> aiohttp.web.Response:
@@ -224,15 +237,17 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         except KeyError:
             return rest_response(success=False, message="Bad Request")
         try:
-            options = (("grpc.enable_http_proxy", 0), )
+            options = (("grpc.enable_http_proxy", 0),)
             channel = ray._private.utils.init_grpc_channel(
-                f"{ip_address}:{port}", options=options, asynchronous=True)
+                f"{ip_address}:{port}", options=options, asynchronous=True
+            )
             stub = core_worker_pb2_grpc.CoreWorkerServiceStub(channel)
 
             await stub.KillActor(
                 core_worker_pb2.KillActorRequest(
-                    intended_actor_id=ray._private.utils.hex_to_binary(
-                        actor_id)))
+                    intended_actor_id=ray._private.utils.hex_to_binary(actor_id)
+                )
+            )
 
         except aiogrpc.AioRpcError:
             # This always throws an exception because the worker
@@ -240,13 +255,13 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             # before this handler, however it deletes the actor correctly.
             pass
 
-        return rest_response(
-            success=True, message=f"Killed actor with id {actor_id}")
+        return rest_response(success=True, message=f"Killed actor with id {actor_id}")
 
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
-        self._gcs_actor_info_stub = \
-            gcs_service_pb2_grpc.ActorInfoGcsServiceStub(gcs_channel)
+        self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
+            gcs_channel
+        )
 
         await asyncio.gather(self._update_actors())
 

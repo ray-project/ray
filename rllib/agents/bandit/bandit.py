@@ -9,7 +9,7 @@ from ray.rllib.utils.typing import TrainerConfigDict
 
 logger = logging.getLogger(__name__)
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # No remote workers by default.
@@ -26,7 +26,7 @@ DEFAULT_CONFIG = with_common_config({
     "timesteps_per_iteration": 100,
 })
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 class BanditLinTSTrainer(Trainer):
@@ -39,15 +39,13 @@ class BanditLinTSTrainer(Trainer):
             DEFAULT_CONFIG,
             {
                 # Use ThompsonSampling exploration.
-                "exploration_config": {
-                    "type": "ThompsonSampling"
-                }
-            })
+                "exploration_config": {"type": "ThompsonSampling"}
+            },
+        )
         return config
 
     @override(Trainer)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> \
-            Type[Policy]:
+    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         return BanditTorchPolicy
 
 
@@ -59,12 +57,10 @@ class BanditLinUCBTrainer(Trainer):
             DEFAULT_CONFIG,
             {
                 # Use UpperConfidenceBound exploration.
-                "exploration_config": {
-                    "type": "UpperConfidenceBound"
-                }
-            })
+                "exploration_config": {"type": "UpperConfidenceBound"}
+            },
+        )
 
     @override(Trainer)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> \
-            Type[Policy]:
+    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         return BanditTorchPolicy

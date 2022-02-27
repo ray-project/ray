@@ -4,10 +4,13 @@ import pytest
 import ray
 import ray.rllib.agents.ppo as ppo
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, \
-    LEARNER_STATS_KEY
-from ray.rllib.utils.test_utils import check, check_compute_single_action, \
-    check_train_results, framework_iterator
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
+from ray.rllib.utils.test_utils import (
+    check,
+    check_compute_single_action,
+    check_train_results,
+    framework_iterator,
+)
 
 
 class TestDDPPO(unittest.TestCase):
@@ -33,8 +36,7 @@ class TestDDPPO(unittest.TestCase):
                 print(results)
                 # Make sure, weights on all workers are the same (including
                 # local one).
-                weights = trainer.workers.foreach_worker(
-                    lambda w: w.get_weights())
+                weights = trainer.workers.foreach_worker(lambda w: w.get_weights())
                 for w in weights[1:]:
                     check(w, weights[0])
 
@@ -52,24 +54,26 @@ class TestDDPPO(unittest.TestCase):
             trainer = ppo.ddppo.DDPPOTrainer(config=config, env="CartPole-v0")
             for _ in range(num_iterations):
                 result = trainer.train()
-                lr = result["info"][LEARNER_INFO][DEFAULT_POLICY_ID][
-                    LEARNER_STATS_KEY]["cur_lr"]
+                lr = result["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
+                    "cur_lr"
+                ]
             trainer.stop()
             assert lr == 0.0, "lr should anneal to 0.0"
 
     def test_validate_config(self):
         """Test if DDPPO will raise errors after invalid configs are passed."""
         config = ppo.ddppo.DEFAULT_CONFIG.copy()
-        config["kl_coeff"] = 1.
+        config["kl_coeff"] = 1.0
         msg = "DDPPO doesn't support KL penalties like PPO-1"
         with pytest.raises(ValueError, match=msg):
             ppo.ddppo.DDPPOTrainer(config=config, env="CartPole-v0")
-        config["kl_coeff"] = 0.
-        config["kl_target"] = 1.
+        config["kl_coeff"] = 0.0
+        config["kl_target"] = 1.0
         with pytest.raises(ValueError, match=msg):
             ppo.ddppo.DDPPOTrainer(config=config, env="CartPole-v0")
 
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

@@ -52,5 +52,4 @@ def profile(event_type, extra_data=None):
     worker = ray.worker.global_worker
     if worker.mode == ray.worker.LOCAL_MODE:
         return NULL_LOG_SPAN
-    return worker.core_worker.profile_event(
-        event_type.encode("ascii"), extra_data)
+    return worker.core_worker.profile_event(event_type.encode("ascii"), extra_data)

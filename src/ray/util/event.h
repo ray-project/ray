@@ -137,9 +137,16 @@ class RayEventContext final {
                        const std::unordered_map<std::string, std::string> &custom_fields =
                            std::unordered_map<std::string, std::string>());
 
-  void SetCustomField(const std::string &key, const std::string &value);
+  // Only for test, isn't thread-safe with SetEventContext.
+  void ResetEventContext();
 
-  void SetCustomFields(const std::unordered_map<std::string, std::string> &custom_fields);
+  // If the key already exists, replace the value. Otherwise, insert a new item.
+  void UpdateCustomField(const std::string &key, const std::string &value);
+
+  // Update the `custom_fields` into the existing items.
+  // If the key already exists, replace the value. Otherwise, insert a new item.
+  void UpdateCustomFields(
+      const std::unordered_map<std::string, std::string> &custom_fields);
 
   inline void SetSourceType(rpc::Event_SourceType source_type) {
     source_type_ = source_type;
@@ -165,11 +172,6 @@ class RayEventContext final {
   RayEventContext(const RayEventContext &event_context) = delete;
 
   const RayEventContext &operator=(const RayEventContext &event_context) = delete;
-
-  // Only for test, isn't thread-safe with SetEventContext.
-  void ResetEventContext();
-
-  FRIEND_TEST(EVENT_TEST, MULTI_THREAD_CONTEXT_COPY);
 
   rpc::Event_SourceType source_type_ = rpc::Event_SourceType::Event_SourceType_COMMON;
   std::string source_hostname_ = boost::asio::ip::host_name();
@@ -243,9 +245,9 @@ class RayEvent {
   // Only for test
   static void SetLevel(const std::string &event_level);
 
-  FRIEND_TEST(EVENT_TEST, TEST_LOG_LEVEL);
+  FRIEND_TEST(EventTest, TestLogLevel);
 
-  FRIEND_TEST(EVENT_TEST, TEST_LOG_EVENT);
+  FRIEND_TEST(EventTest, TestLogEvent);
 
  private:
   rpc::Event_Severity severity_;

@@ -22,8 +22,9 @@ if __name__ == "__main__":
         try:
             # We are forwarding all the command line arguments of
             # run_autoscaler_with_retries.py to run_autoscaler.py.
-            subprocess.run(["python", f"{run_autoscaler_script}"] +
-                           sys.argv[1:])  # noqa: B1
+            subprocess.run(
+                ["python", f"{run_autoscaler_script}"] + sys.argv[1:]
+            )  # noqa: B1
         except subprocess.SubprocessError:
             print(f"Restarting autoscaler in {BACKOFF_S} seconds.")
             time.sleep(BACKOFF_S)

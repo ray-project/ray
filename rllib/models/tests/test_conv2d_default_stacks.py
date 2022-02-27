@@ -15,8 +15,7 @@ class TestConv2DDefaultStacks(unittest.TestCase):
     """Tests our ConvTranspose2D Stack modules/layers."""
 
     def test_conv2d_default_stacks(self):
-        """Tests, whether conv2d defaults are available for img obs spaces.
-        """
+        """Tests, whether conv2d defaults are available for img obs spaces."""
         action_space = gym.spaces.Discrete(2)
 
         shapes = [
@@ -32,17 +31,13 @@ class TestConv2DDefaultStacks(unittest.TestCase):
             obs_space = gym.spaces.Box(-1.0, 1.0, shape=shape)
             for fw in framework_iterator():
                 model = ModelCatalog.get_model_v2(
-                    obs_space,
-                    action_space,
-                    2,
-                    MODEL_DEFAULTS.copy(),
-                    framework=fw)
-                self.assertTrue(
-                    isinstance(model, (VisionNetwork, TorchVision)))
+                    obs_space, action_space, 2, MODEL_DEFAULTS.copy(), framework=fw
+                )
+                self.assertTrue(isinstance(model, (VisionNetwork, TorchVision)))
                 if fw == "torch":
-                    output, _ = model({
-                        "obs": torch.from_numpy(obs_space.sample()[None])
-                    })
+                    output, _ = model(
+                        {"obs": torch.from_numpy(obs_space.sample()[None])}
+                    )
                 else:
                     output, _ = model({"obs": obs_space.sample()[None]})
                 # B x [action logits]
@@ -53,4 +48,5 @@ class TestConv2DDefaultStacks(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

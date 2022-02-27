@@ -9,15 +9,18 @@ import tempfile
 from ray.autoscaler._private import commands
 from ray.autoscaler._private.event_system import (  # noqa: F401
     CreateClusterEvent,  # noqa: F401
-    global_event_system)
+    global_event_system,
+)
 from ray.autoscaler._private.cli_logger import cli_logger
 
 
-def create_or_update_cluster(cluster_config: Union[dict, str],
-                             *,
-                             no_restart: bool = False,
-                             restart_only: bool = False,
-                             no_config_cache: bool = False) -> Dict[str, Any]:
+def create_or_update_cluster(
+    cluster_config: Union[dict, str],
+    *,
+    no_restart: bool = False,
+    restart_only: bool = False,
+    no_config_cache: bool = False
+) -> Dict[str, Any]:
     """Create or updates an autoscaling Ray cluster from a config json.
 
     Args:
@@ -42,12 +45,15 @@ def create_or_update_cluster(cluster_config: Union[dict, str],
             override_cluster_name=None,
             no_config_cache=no_config_cache,
             redirect_command_output=None,
-            use_login_shells=True)
+            use_login_shells=True,
+        )
 
 
-def teardown_cluster(cluster_config: Union[dict, str],
-                     workers_only: bool = False,
-                     keep_min_workers: bool = False) -> None:
+def teardown_cluster(
+    cluster_config: Union[dict, str],
+    workers_only: bool = False,
+    keep_min_workers: bool = False,
+) -> None:
     """Destroys all nodes of a Ray cluster described by a config json.
 
     Args:
@@ -64,18 +70,21 @@ def teardown_cluster(cluster_config: Union[dict, str],
             yes=True,
             workers_only=workers_only,
             override_cluster_name=None,
-            keep_min_workers=keep_min_workers)
+            keep_min_workers=keep_min_workers,
+        )
 
 
-def run_on_cluster(cluster_config: Union[dict, str],
-                   *,
-                   cmd: Optional[str] = None,
-                   run_env: str = "auto",
-                   tmux: bool = False,
-                   stop: bool = False,
-                   no_config_cache: bool = False,
-                   port_forward: Optional[commands.Port_forward] = None,
-                   with_output: bool = False) -> Optional[str]:
+def run_on_cluster(
+    cluster_config: Union[dict, str],
+    *,
+    cmd: Optional[str] = None,
+    run_env: str = "auto",
+    tmux: bool = False,
+    stop: bool = False,
+    no_config_cache: bool = False,
+    port_forward: Optional[commands.Port_forward] = None,
+    with_output: bool = False
+) -> Optional[str]:
     """Runs a command on the specified cluster.
 
     Args:
@@ -106,18 +115,21 @@ def run_on_cluster(cluster_config: Union[dict, str],
             override_cluster_name=None,
             no_config_cache=no_config_cache,
             port_forward=port_forward,
-            with_output=with_output)
+            with_output=with_output,
+        )
 
 
-def rsync(cluster_config: Union[dict, str],
-          *,
-          source: Optional[str],
-          target: Optional[str],
-          down: bool,
-          ip_address: str = None,
-          use_internal_ip: bool = False,
-          no_config_cache: bool = False,
-          should_bootstrap: bool = True):
+def rsync(
+    cluster_config: Union[dict, str],
+    *,
+    source: Optional[str],
+    target: Optional[str],
+    down: bool,
+    ip_address: str = None,
+    use_internal_ip: bool = False,
+    no_config_cache: bool = False,
+    should_bootstrap: bool = True
+):
     """Rsyncs files to or from the cluster.
 
     Args:
@@ -147,7 +159,8 @@ def rsync(cluster_config: Union[dict, str],
             use_internal_ip=use_internal_ip,
             no_config_cache=no_config_cache,
             all_nodes=False,
-            should_bootstrap=should_bootstrap)
+            should_bootstrap=should_bootstrap,
+        )
 
 
 def get_head_node_ip(cluster_config: Union[dict, str]) -> str:
@@ -184,8 +197,9 @@ def get_worker_node_ips(cluster_config: Union[dict, str]) -> List[str]:
         return commands.get_worker_node_ips(config_file)
 
 
-def request_resources(num_cpus: Optional[int] = None,
-                      bundles: Optional[List[dict]] = None) -> None:
+def request_resources(
+    num_cpus: Optional[int] = None, bundles: Optional[List[dict]] = None
+) -> None:
     """Command the autoscaler to scale to accommodate the specified requests.
 
     The cluster will immediately attempt to scale to accommodate the requested
@@ -220,9 +234,11 @@ def request_resources(num_cpus: Optional[int] = None,
     return commands.request_resources(num_cpus, bundles)
 
 
-def configure_logging(log_style: Optional[str] = None,
-                      color_mode: Optional[str] = None,
-                      verbosity: Optional[int] = None):
+def configure_logging(
+    log_style: Optional[str] = None,
+    color_mode: Optional[str] = None,
+    verbosity: Optional[int] = None,
+):
     """Configures logging for cluster command calls.
 
     Args:
@@ -243,7 +259,8 @@ def configure_logging(log_style: Optional[str] = None,
 
     """
     cli_logger.configure(
-        log_style=log_style, color_mode=color_mode, verbosity=verbosity)
+        log_style=log_style, color_mode=color_mode, verbosity=verbosity
+    )
 
 
 @contextmanager
@@ -258,22 +275,24 @@ def _as_config_file(cluster_config: Union[dict, str]) -> Iterator[str]:
     yield cluster_config
 
 
-def bootstrap_config(cluster_config: Dict[str, Any],
-                     no_config_cache: bool = False) -> Dict[str, Any]:
+def bootstrap_config(
+    cluster_config: Dict[str, Any], no_config_cache: bool = False
+) -> Dict[str, Any]:
     """Validate and add provider-specific fields to the config. For example,
-       IAM/authentication may be added here."""
+    IAM/authentication may be added here."""
     return commands._bootstrap_config(cluster_config, no_config_cache)
 
 
 def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     """Fillout default values for a cluster_config based on the provider."""
     from ray.autoscaler._private.util import fillout_defaults
+
     return fillout_defaults(config)
 
 
 def register_callback_handler(
-        event_name: str,
-        callback: Union[Callable[[Dict], None], List[Callable[[Dict], None]]],
+    event_name: str,
+    callback: Union[Callable[[Dict], None], List[Callable[[Dict], None]]],
 ) -> None:
     """Registers a callback handler for autoscaler events.
 

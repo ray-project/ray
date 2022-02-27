@@ -16,12 +16,14 @@ class PolynomialSchedule(Schedule):
     `final_p`.
     """
 
-    def __init__(self,
-                 schedule_timesteps: int,
-                 final_p: float,
-                 framework: Optional[str],
-                 initial_p: float = 1.0,
-                 power: float = 2.0):
+    def __init__(
+        self,
+        schedule_timesteps: int,
+        final_p: float,
+        framework: Optional[str],
+        initial_p: float = 1.0,
+        power: float = 2.0,
+    ):
         """Initializes a PolynomialSchedule instance.
 
         Args:
@@ -48,11 +50,17 @@ class PolynomialSchedule(Schedule):
         if self.framework == "torch" and torch and isinstance(t, torch.Tensor):
             t = t.float()
         t = min(t, self.schedule_timesteps)
-        return self.final_p + (self.initial_p - self.final_p) * (
-            1.0 - (t / self.schedule_timesteps))**self.power
+        return (
+            self.final_p
+            + (self.initial_p - self.final_p)
+            * (1.0 - (t / self.schedule_timesteps)) ** self.power
+        )
 
     @override(Schedule)
     def _tf_value_op(self, t: TensorType) -> TensorType:
         t = tf.math.minimum(t, self.schedule_timesteps)
-        return self.final_p + (self.initial_p - self.final_p) * (
-            1.0 - (t / self.schedule_timesteps))**self.power
+        return (
+            self.final_p
+            + (self.initial_p - self.final_p)
+            * (1.0 - (t / self.schedule_timesteps)) ** self.power
+        )

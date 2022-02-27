@@ -39,6 +39,7 @@ class WorkerMetadata:
         hostname (str): Hostname that this worker is on.
         gpu_ids (List[int]): List of CUDA IDs available to this worker.
     """
+
     node_id: str
     node_ip: str
     hostname: str
@@ -48,6 +49,7 @@ class WorkerMetadata:
 @dataclass
 class Worker:
     """Class representing a Worker."""
+
     actor: ActorHandle
     metadata: WorkerMetadata
 
@@ -78,7 +80,8 @@ def construct_metadata() -> WorkerMetadata:
     gpu_ids = ray.get_gpu_ids()
 
     return WorkerMetadata(
-        node_id=node_id, node_ip=node_ip, hostname=hostname, gpu_ids=gpu_ids)
+        node_id=node_id, node_ip=node_ip, hostname=hostname, gpu_ids=gpu_ids
+    )
 
 
 class WorkerGroup:
@@ -122,29 +125,36 @@ class WorkerGroup:
     """
 
     def __init__(
-            self,
-            num_workers: int = 1,
-            num_cpus_per_worker: float = 1,
-            num_gpus_per_worker: float = 0,
-            additional_resources_per_worker: Optional[Dict[str, float]] = None,
-            actor_cls: Type = None,
-            actor_cls_args: Optional[Tuple] = None,
-            actor_cls_kwargs: Optional[Dict] = None,
-            placement_group: Union[PlacementGroup, str] = "default"):
+        self,
+        num_workers: int = 1,
+        num_cpus_per_worker: float = 1,
+        num_gpus_per_worker: float = 0,
+        additional_resources_per_worker: Optional[Dict[str, float]] = None,
+        actor_cls: Type = None,
+        actor_cls_args: Optional[Tuple] = None,
+        actor_cls_kwargs: Optional[Dict] = None,
+        placement_group: Union[PlacementGroup, str] = "default",
+    ):
 
         if num_workers <= 0:
-            raise ValueError("The provided `num_workers` must be greater "
-                             f"than 0. Received num_workers={num_workers} "
-                             f"instead.")
+            raise ValueError(
+                "The provided `num_workers` must be greater "
+                f"than 0. Received num_workers={num_workers} "
+                f"instead."
+            )
         if num_cpus_per_worker < 0 or num_gpus_per_worker < 0:
-            raise ValueError("The number of CPUs and GPUs per worker must "
-                             "not be negative. Received "
-                             f"num_cpus_per_worker={num_cpus_per_worker} and "
-                             f"num_gpus_per_worker={num_gpus_per_worker}.")
+            raise ValueError(
+                "The number of CPUs and GPUs per worker must "
+                "not be negative. Received "
+                f"num_cpus_per_worker={num_cpus_per_worker} and "
+                f"num_gpus_per_worker={num_gpus_per_worker}."
+            )
 
         if (actor_cls_args or actor_cls_kwargs) and not actor_cls:
-            raise ValueError("`actor_cls_args` or `actor_class_kwargs` are "
-                             "passed in but no `actor_cls` is passed in.")
+            raise ValueError(
+                "`actor_cls_args` or `actor_class_kwargs` are "
+                "passed in but no `actor_cls` is passed in."
+            )
 
         self.num_workers = num_workers
         self.num_cpus_per_worker = num_cpus_per_worker
@@ -164,15 +174,18 @@ class WorkerGroup:
         self._remote_cls = ray.remote(
             num_cpus=self.num_cpus_per_worker,
             num_gpus=self.num_gpus_per_worker,
-            resources=self.additional_resources_per_worker)(self._base_cls)
+            resources=self.additional_resources_per_worker,
+        )(self._base_cls)
         self.start()
 
     def start(self):
         """Starts all the workers in this worker group."""
         if self.workers and len(self.workers) > 0:
-            raise RuntimeError("The workers have already been started. "
-                               "Please call `shutdown` first if you want to "
-                               "restart them.")
+            raise RuntimeError(
+                "The workers have already been started. "
+                "Please call `shutdown` first if you want to "
+                "restart them."
+            )
 
         logger.debug(f"Starting {self.num_workers} workers.")
         self.add_workers(self.num_workers)
@@ -193,14 +206,13 @@ class WorkerGroup:
             for worker in self.workers:
                 ray.kill(worker.actor)
         else:
-            done_refs = [
-                w.actor.__ray_terminate__.remote() for w in self.workers
-            ]
+            done_refs = [w.actor.__ray_terminate__.remote() for w in self.workers]
             # Wait for actors to die gracefully.
             done, not_done = ray.wait(done_refs, timeout=patience_s)
             if not_done:
-                logger.debug("Graceful termination failed. Falling back to "
-                             "force kill.")
+                logger.debug(
+                    "Graceful termination failed. Falling back to " "force kill."
+                )
                 # If all actors are not able to die gracefully, then kill them.
                 for worker in self.workers:
                     ray.kill(worker.actor)
@@ -208,8 +220,7 @@ class WorkerGroup:
         logger.debug("Shutdown successful.")
         self.workers = []
 
-    def execute_async(self, func: Callable[..., T], *args,
-                      **kwargs) -> List[ObjectRef]:
+    def execute_async(self, func: Callable[..., T], *args, **kwargs) -> List[ObjectRef]:
         """Execute ``func`` on each worker and return the futures.
 
         Args:
@@ -223,9 +234,11 @@ class WorkerGroup:
 
         """
         if len(self.workers) <= 0:
-            raise RuntimeError("There are no active workers. This worker "
-                               "group has most likely been shut down. Please"
-                               "create a new WorkerGroup or restart this one.")
+            raise RuntimeError(
+                "There are no active workers. This worker "
+                "group has most likely been shut down. Please"
+                "create a new WorkerGroup or restart this one."
+            )
 
         return [
             w.actor._BaseWorkerMixin__execute.remote(func, *args, **kwargs)
@@ -246,8 +259,9 @@ class WorkerGroup:
         """
         return ray.get(self.execute_async(func, *args, **kwargs))
 
-    def execute_single_async(self, worker_index: int, func: Callable[..., T],
-                             *args, **kwargs) -> ObjectRef:
+    def execute_single_async(
+        self, worker_index: int, func: Callable[..., T], *args, **kwargs
+    ) -> ObjectRef:
         """Execute ``func`` on worker ``worker_index`` and return futures.
 
         Args:
@@ -260,14 +274,17 @@ class WorkerGroup:
 
         """
         if worker_index >= len(self.workers):
-            raise ValueError(f"The provided worker_index {worker_index} is "
-                             f"not valid for {self.num_workers} workers.")
-        return self.workers[worker_index].actor._BaseWorkerMixin__execute\
-            .remote(
-            func, *args, **kwargs)
+            raise ValueError(
+                f"The provided worker_index {worker_index} is "
+                f"not valid for {self.num_workers} workers."
+            )
+        return self.workers[worker_index].actor._BaseWorkerMixin__execute.remote(
+            func, *args, **kwargs
+        )
 
-    def execute_single(self, worker_index: int, func: Callable[..., T], *args,
-                       **kwargs) -> T:
+    def execute_single(
+        self, worker_index: int, func: Callable[..., T], *args, **kwargs
+    ) -> T:
         """Execute ``func`` on worker with index ``worker_index``.
 
         Args:
@@ -280,8 +297,7 @@ class WorkerGroup:
 
         """
 
-        return ray.get(
-            self.execute_single_async(worker_index, func, *args, **kwargs))
+        return ray.get(self.execute_single_async(worker_index, func, *args, **kwargs))
 
     def remove_workers(self, worker_indexes: List[int]):
         """Removes the workers with the specified indexes.
@@ -313,18 +329,18 @@ class WorkerGroup:
         new_actor_metadata = []
         for _ in range(num_workers):
             actor = self._remote_cls.options(
-                placement_group=self._placement_group).remote(
-                    *self._actor_cls_args, **self._actor_cls_kwargs)
+                placement_group=self._placement_group
+            ).remote(*self._actor_cls_args, **self._actor_cls_kwargs)
             new_actors.append(actor)
             new_actor_metadata.append(
-                actor._BaseWorkerMixin__execute.remote(construct_metadata))
+                actor._BaseWorkerMixin__execute.remote(construct_metadata)
+            )
 
         # Get metadata from all actors.
         metadata = ray.get(new_actor_metadata)
 
         for i in range(len(new_actors)):
-            self.workers.append(
-                Worker(actor=new_actors[i], metadata=metadata[i]))
+            self.workers.append(Worker(actor=new_actors[i], metadata=metadata[i]))
 
     def __len__(self):
         return len(self.workers)

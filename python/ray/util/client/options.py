@@ -2,29 +2,38 @@ from typing import Any
 from typing import Dict
 from typing import Optional
 
-from ray.util.placement_group import (PlacementGroup,
-                                      check_placement_group_index)
+from ray.util.placement_group import PlacementGroup, check_placement_group_index
 
 options = {
-    "num_returns": (int, lambda x: x >= 0,
-                    "The keyword 'num_returns' only accepts 0 "
-                    "or a positive integer"),
+    "num_returns": (
+        int,
+        lambda x: x >= 0,
+        "The keyword 'num_returns' only accepts 0 " "or a positive integer",
+    ),
     "num_cpus": (),
     "num_gpus": (),
     "resources": (),
     "accelerator_type": (),
-    "max_calls": (int, lambda x: x >= 0,
-                  "The keyword 'max_calls' only accepts 0 "
-                  "or a positive integer"),
-    "max_restarts": (int, lambda x: x >= -1,
-                     "The keyword 'max_restarts' only accepts -1, 0 "
-                     "or a positive integer"),
-    "max_task_retries": (int, lambda x: x >= -1,
-                         "The keyword 'max_task_retries' only accepts -1, 0 "
-                         "or a positive integer"),
-    "max_retries": (int, lambda x: x >= -1,
-                    "The keyword 'max_retries' only accepts 0, -1 "
-                    "or a positive integer"),
+    "max_calls": (
+        int,
+        lambda x: x >= 0,
+        "The keyword 'max_calls' only accepts 0 " "or a positive integer",
+    ),
+    "max_restarts": (
+        int,
+        lambda x: x >= -1,
+        "The keyword 'max_restarts' only accepts -1, 0 " "or a positive integer",
+    ),
+    "max_task_retries": (
+        int,
+        lambda x: x >= -1,
+        "The keyword 'max_task_retries' only accepts -1, 0 " "or a positive integer",
+    ),
+    "max_retries": (
+        int,
+        lambda x: x >= -1,
+        "The keyword 'max_retries' only accepts 0, -1 " "or a positive integer",
+    ),
     "retry_exceptions": (),
     "max_concurrency": (),
     "name": (),
@@ -41,8 +50,7 @@ options = {
 }
 
 
-def validate_options(
-        kwargs_dict: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+def validate_options(kwargs_dict: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     if kwargs_dict is None:
         return None
     if len(kwargs_dict) == 0:
@@ -71,8 +79,9 @@ def validate_options(
         pg = out.get("placement_group", None)
         if pg is None:
             pg = PlacementGroup.empty()
-        if pg == "default" and (out.get("placement_group_capture_child_tasks",
-                                        None) is None):
+        if pg == "default" and (
+            out.get("placement_group_capture_child_tasks", None) is None
+        ):
             pg = PlacementGroup.empty()
         if isinstance(pg, PlacementGroup):
             check_placement_group_index(pg, bundle_index)

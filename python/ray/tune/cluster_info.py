@@ -25,8 +25,9 @@ def get_ssh_key():
     If the env var TUNE_CLUSTER_SSH_KEY is provided, then this key
     will be used for syncing across different nodes.
     """
-    path = os.environ.get("TUNE_CLUSTER_SSH_KEY",
-                          os.path.expanduser("~/ray_bootstrap_key.pem"))
+    path = os.environ.get(
+        "TUNE_CLUSTER_SSH_KEY", os.path.expanduser("~/ray_bootstrap_key.pem")
+    )
     if os.path.exists(path):
         return path
     return None

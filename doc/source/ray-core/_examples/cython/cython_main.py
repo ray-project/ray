@@ -94,11 +94,11 @@ def example8():
 
     # See cython_blas.pyx for argument documentation
     mat = np.array(
-        [[[2.0, 2.0], [2.0, 2.0]], [[2.0, 2.0], [2.0, 2.0]]], dtype=np.float32)
+        [[[2.0, 2.0], [2.0, 2.0]], [[2.0, 2.0], [2.0, 2.0]]], dtype=np.float32
+    )
     result = np.zeros((2, 2), np.float32, order="C")
 
-    run_func(cyth.compute_kernel_matrix, "L", "T", 2, 2, 1.0, mat, 0, 2, 1.0,
-             result, 2)
+    run_func(cyth.compute_kernel_matrix, "L", "T", 2, 2, 1.0, mat, 0, 2, 1.0, result, 2)
 
 
 if __name__ == "__main__":

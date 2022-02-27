@@ -20,8 +20,7 @@ class BlockList:
     change after execution due to block splitting.
     """
 
-    def __init__(self, blocks: List[ObjectRef[Block]],
-                 metadata: List[BlockMetadata]):
+    def __init__(self, blocks: List[ObjectRef[Block]], metadata: List[BlockMetadata]):
         assert len(blocks) == len(metadata), (blocks, metadata)
         self._blocks: List[ObjectRef[Block]] = blocks
         self._num_blocks = len(self._blocks)
@@ -48,7 +47,8 @@ class BlockList:
         if self._blocks is None:
             raise ValueError(
                 "This Dataset's blocks have been moved, which means that you "
-                "can no longer use this Dataset.")
+                "can no longer use this Dataset."
+            )
 
     def split(self, split_size: int) -> List["BlockList"]:
         """Split this BlockList into multiple lists.
@@ -65,6 +65,48 @@ class BlockList:
             output.append(BlockList(b.tolist(), m.tolist()))
         return output
 
+    def split_by_bytes(self, bytes_per_split: int) -> List["BlockList"]:
+        """Split this BlockList into multiple lists.
+
+        Args:
+            bytes_per_split: The max number of bytes per split.
+        """
+        self._check_if_cleared()
+        output = []
+        cur_blocks = []
+        cur_meta = []
+        cur_size = 0
+        for b, m in zip(self._blocks, self._metadata):
+            if m.size_bytes is None:
+                raise RuntimeError(
+                    "Block has unknown size, cannot use split_by_bytes()"
+                )
+            size = m.size_bytes
+            if cur_blocks and cur_size + size > bytes_per_split:
+                output.append(BlockList(cur_blocks, cur_meta))
+                cur_blocks = []
+                cur_meta = []
+                cur_size = 0
+            cur_blocks.append(b)
+            cur_meta.append(m)
+            cur_size += size
+        if cur_blocks:
+            output.append(BlockList(cur_blocks, cur_meta))
+        return output
+
+    def size_bytes(self) -> int:
+        """Returns the total size in bytes of the blocks, or -1 if not known."""
+        size = 0
+        has_size = False
+        for m in self.get_metadata():
+            if m.size_bytes is not None:
+                has_size = True
+                size += m.size_bytes
+        if not has_size:
+            return -1
+        else:
+            return size
+
     def divide(self, block_idx: int) -> ("BlockList", "BlockList"):
         """Divide into two BlockLists by the given block index.
 
@@ -72,10 +114,10 @@ class BlockList:
             block_idx: The block index to divide at.
         """
         self._check_if_cleared()
-        return (BlockList(self._blocks[:block_idx],
-                          self._metadata[:block_idx]),
-                BlockList(self._blocks[block_idx:],
-                          self._metadata[block_idx:]))
+        return (
+            BlockList(self._blocks[:block_idx], self._metadata[:block_idx]),
+            BlockList(self._blocks[block_idx:], self._metadata[block_idx:]),
+        )
 
     def get_blocks(self) -> List[ObjectRef[Block]]:
         """Bulk version of iter_blocks().
@@ -109,8 +151,7 @@ class BlockList:
 
         return Iter()
 
-    def get_blocks_with_metadata(
-            self) -> List[Tuple[ObjectRef[Block], BlockMetadata]]:
+    def get_blocks_with_metadata(self) -> List[Tuple[ObjectRef[Block], BlockMetadata]]:
         """Bulk version of iter_blocks_with_metadata().
 
         Prefer calling this instead of the iter form for performance if you
@@ -120,7 +161,8 @@ class BlockList:
         return list(self.iter_blocks_with_metadata())
 
     def iter_blocks_with_metadata(
-            self) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
+        self,
+    ) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
         """Iterate over the blocks along with their runtime metadata.
 
         This blocks on the execution of the tasks generating block outputs.
@@ -141,8 +183,7 @@ class BlockList:
         """
         return len(self.get_blocks())
 
-    def ensure_schema_for_first_block(
-            self) -> Optional[Union["pyarrow.Schema", type]]:
+    def ensure_schema_for_first_block(self) -> Optional[Union["pyarrow.Schema", type]]:
         """Ensure that the schema is set for the first block.
 
         Returns None if the block list is empty.

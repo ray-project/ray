@@ -3,9 +3,17 @@ import datetime
 from typing import Dict, Optional
 
 
-def handle_result(created_on: datetime.datetime, category: str,
-                  test_suite: str, test_name: str, status: str, results: Dict,
-                  artifacts: Dict, last_logs: str, team: str) -> Optional[str]:
+def handle_result(
+    created_on: datetime.datetime,
+    category: str,
+    test_suite: str,
+    test_name: str,
+    status: str,
+    results: Dict,
+    artifacts: Dict,
+    last_logs: str,
+    team: str,
+) -> Optional[str]:
     assert test_suite == "tune_tests"
 
     msg = ""
@@ -25,8 +33,10 @@ def handle_result(created_on: datetime.datetime, category: str,
         target_update_diff = 360
 
         if last_update_diff > target_update_diff:
-            return f"Last update to results json was too long ago " \
-                   f"({last_update_diff:.2f} > {target_update_diff})"
+            return (
+                f"Last update to results json was too long ago "
+                f"({last_update_diff:.2f} > {target_update_diff})"
+            )
         return None
 
     elif test_name == "bookkeeping_overhead":
@@ -51,10 +61,14 @@ def handle_result(created_on: datetime.datetime, category: str,
         return None
 
     if num_terminated < target_terminated:
-        msg += f"Some trials failed " \
-               f"(num_terminated={num_terminated} < {target_terminated}). "
+        msg += (
+            f"Some trials failed "
+            f"(num_terminated={num_terminated} < {target_terminated}). "
+        )
     if time_taken > target_time:
-        msg += f"Took too long to complete " \
-               f"(time_taken={time_taken:.2f} > {target_time}). "
+        msg += (
+            f"Took too long to complete "
+            f"(time_taken={time_taken:.2f} > {target_time}). "
+        )
 
     return msg or None
