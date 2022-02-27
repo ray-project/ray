@@ -5,6 +5,7 @@ import multiprocessing
 import os
 import shutil
 import tempfile
+import threading
 import time
 from typing import List
 import unittest
@@ -150,6 +151,30 @@ class TuneInterruptionTest(unittest.TestCase):
         self.assertNotEqual(last_mtime, new_mtime)
 
         shutil.rmtree(local_dir)
+
+    def testInterruptDisabledInWorkerThread(self):
+        # https://github.com/ray-project/ray/issues/22295
+        # This test will hang without the proper patch because tune.run will fail.
+
+        event = threading.Event()
+
+        def run_in_thread():
+            def _train(config):
+                for i in range(7):
+                    tune.report(val=i)
+
+            tune.run(
+                _train,
+            )
+            event.set()
+
+        thread = threading.Thread(target=run_in_thread)
+        thread.start()
+        event.wait()
+        thread.join()
+
+        ray.shutdown()
+        del os.environ["TUNE_DISABLE_SIGINT_HANDLER"]
 
 
 class TuneFailResumeGridTest(unittest.TestCase):

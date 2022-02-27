@@ -83,3 +83,9 @@ class ProgressBar:
 
     def __del__(self):
         self.close()
+
+    def __getstate__(self):
+        return {}
+
+    def __setstate__(self, state):
+        self._bar = None  # Progress bar is disabled on remote nodes.

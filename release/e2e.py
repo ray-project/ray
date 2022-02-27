@@ -1485,12 +1485,16 @@ def run_test_config(
     if state_json is None:
         state_json = "/tmp/release_test_state.json"
 
+    custom_env_vars = {
+        "RAY_lineage_pinning_enabled": "1",
+    }
     env_vars = {
         "RAY_ADDRESS": os.environ.get("RAY_ADDRESS", "auto"),
         "TEST_OUTPUT_JSON": results_json,
         "TEST_STATE_JSON": state_json,
         "IS_SMOKE_TEST": "1" if smoke_test else "0",
     }
+    env_vars.update(custom_env_vars)
 
     with open(os.path.join(local_dir, ".anyscale.yaml"), "wt") as f:
         f.write(f"project_id: {project_id}")
@@ -1552,6 +1556,8 @@ def run_test_config(
     app_config["env_vars"]["MATCH_AUTOSCALER_AND_RAY_IMAGES"] = "1"
     app_config["env_vars"]["RAY_bootstrap_with_gcs"] = "1"
     app_config["env_vars"]["RAY_gcs_storage"] = "memory"
+    app_config["env_vars"]["RAY_USAGE_STATS_ENABLED"] = "1"
+    app_config["env_vars"]["RAY_USAGE_STATS_SOURCE"] = "nightly-tests"
 
     compute_tpl_rel_path = test_config["cluster"].get("compute_template", None)
     compute_tpl = _load_config(local_dir, compute_tpl_rel_path)

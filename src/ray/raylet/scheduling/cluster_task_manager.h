@@ -139,15 +139,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// The helper to dump the debug state of the cluster task manater.
   std::string DebugStr() const override;
 
-  /// Check if there are enough available resources for the given input.
-  bool IsLocallySchedulable(const RayTask &task) const override;
-
  private:
-  /// Helper method to get the best node for running the task.
-  std::string GetBestSchedulableNode(const internal::Work &work,
-                                     bool requires_object_store_memory,
-                                     bool force_spillback, bool *is_infeasible);
-
   void TryScheduleInfeasibleTask();
 
   // Schedule the task onto a node (which could be either remote or local).

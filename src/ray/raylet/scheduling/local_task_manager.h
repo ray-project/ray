@@ -156,9 +156,6 @@ class LocalTaskManager {
   /// false.
   bool ReturnCpuResourcesToBlockedWorker(std::shared_ptr<WorkerInterface> worker);
 
-  /// Check if there are enough available resources for the given input.
-  bool IsLocallySchedulable(const RayTask &task) const;
-
   /// Calculate normal task resources.
   ResourceSet CalcNormalTaskResources() const;
 
@@ -208,11 +205,6 @@ class LocalTaskManager {
   /// \returns The maximum number instances of that scheduling class that
   ///          should be running (or blocked) at once.
   uint64_t MaxRunningTasksPerSchedulingClass(SchedulingClass sched_cls_id) const;
-
-  /// Helper method to get the best node for running the task.
-  std::string GetBestSchedulableNode(const internal::Work &work,
-                                     bool requires_object_store_memory,
-                                     bool force_spillback, bool *is_infeasible);
 
   /// Recompute the debug stats.
   /// It is needed because updating the debug state is expensive for cluster_task_manager.

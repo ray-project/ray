@@ -35,6 +35,37 @@ NodeResources CreateNodeResources(double available_cpu, double total_cpu,
 
 class SchedulingPolicyTest : public ::testing::Test {};
 
+TEST_F(SchedulingPolicyTest, SpreadPolicyTest) {
+  StringIdMap map;
+  ResourceRequest req = ResourceMapToResourceRequest(map, {{"CPU", 1}}, false);
+  int64_t local_node = 0;
+  int64_t remote_node_1 = 1;
+  int64_t remote_node_2 = 2;
+  int64_t remote_node_3 = 3;
+
+  absl::flat_hash_map<int64_t, Node> nodes;
+  nodes.emplace(local_node, CreateNodeResources(20, 20, 0, 0, 0, 0));
+  // Unavailable node
+  nodes.emplace(remote_node_1, CreateNodeResources(0, 20, 0, 0, 0, 0));
+  // Infeasible node
+  nodes.emplace(remote_node_2, CreateNodeResources(0, 0, 0, 0, 0, 0));
+  nodes.emplace(remote_node_3, CreateNodeResources(20, 20, 0, 0, 0, 0));
+
+  raylet_scheduling_policy::SchedulingPolicy scheduling_policy(local_node, nodes);
+
+  int64_t to_schedule =
+      scheduling_policy.SpreadPolicy(req, false, false, [](auto) { return true; });
+  ASSERT_EQ(to_schedule, local_node);
+
+  to_schedule =
+      scheduling_policy.SpreadPolicy(req, false, false, [](auto) { return true; });
+  ASSERT_EQ(to_schedule, remote_node_3);
+
+  to_schedule = scheduling_policy.SpreadPolicy(req, /*force_spillback=*/true, false,
+                                               [](auto) { return true; });
+  ASSERT_EQ(to_schedule, remote_node_3);
+}
+
 TEST_F(SchedulingPolicyTest, FeasibleDefinitionTest) {
   StringIdMap map;
   auto task_req1 =
