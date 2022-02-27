@@ -141,7 +141,7 @@ class MyCallbacks(DefaultCallbacks):
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    ray.init(local_mode=True)
+    ray.init()
     trials = tune.run(
         "PG",
         stop={
