@@ -144,7 +144,7 @@ std::string ClusterResourceScheduler::GetBestSchedulableNode(
   // The zero cpu actor is a special case that must be handled the same way by all
   // scheduling policies.
   if (actor_creation && resource_request.IsEmpty()) {
-    std::string best_node = "-1";
+    std::string best_node{raylet_scheduling_policy::kNullNodeID};
     // This is an actor which requires no resources.
     // Pick a random node to to avoid scheduling all actors on the local node.
     const auto &resource_view = cluster_resource_manager_->GetResourceView();
@@ -171,7 +171,7 @@ std::string ClusterResourceScheduler::GetBestSchedulableNode(
     return best_node;
   }
 
-  std::string best_node_id = "-1";
+  std::string best_node_id{raylet_scheduling_policy::kNullNodeID};
   if (scheduling_strategy.scheduling_strategy_case() ==
       rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy) {
     best_node_id = scheduling_policy_->SpreadPolicy(
@@ -186,7 +186,7 @@ std::string ClusterResourceScheduler::GetBestSchedulableNode(
         [this](auto node_id) { return this->NodeAlive(node_id); });
   }
 
-  *is_infeasible = best_node_id == "-1" ? true : false;
+  *is_infeasible = best_node_id == raylet_scheduling_policy::kNullNodeID ? true : false;
   if (!*is_infeasible) {
     // TODO (Alex): Support soft constraints if needed later.
     *total_violations = 0;
@@ -195,8 +195,9 @@ std::string ClusterResourceScheduler::GetBestSchedulableNode(
   RAY_LOG(DEBUG) << "Scheduling decision. "
                  << "forcing spillback: " << force_spillback
                  << ". Best node: " << best_node_id << " "
-                 << (best_node_id == "-1" ? NodeID::Nil()
-                                          : NodeID::FromBinary(best_node_id))
+                 << (best_node_id == raylet_scheduling_policy::kNullNodeID
+                         ? NodeID::Nil()
+                         : NodeID::FromBinary(best_node_id))
                  << ", is infeasible: " << *is_infeasible;
   return best_node_id;
 }
@@ -212,7 +213,7 @@ std::string ClusterResourceScheduler::GetBestSchedulableNode(
       GetBestSchedulableNode(resource_request, scheduling_strategy, actor_creation,
                              force_spillback, total_violations, is_infeasible);
 
-  if (node_id == "-1") {
+  if (node_id == raylet_scheduling_policy::kNullNodeID) {
     // This is not a schedulable node, so return empty string.
     return "";
   }

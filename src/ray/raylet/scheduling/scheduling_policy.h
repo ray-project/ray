@@ -23,6 +23,8 @@
 namespace ray {
 namespace raylet_scheduling_policy {
 
+constexpr std::string_view kNullNodeID = "";
+
 class SchedulingPolicy {
  public:
   SchedulingPolicy(std::string local_node_id,

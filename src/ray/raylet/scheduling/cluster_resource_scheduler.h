@@ -168,7 +168,7 @@ class ClusterResourceScheduler {
       bool requires_object_store_memory, bool actor_creation, bool force_spillback,
       int64_t *violations, bool *is_infeasible);
 
-  /// Keep the mapping between node and resource IDs in string representation
+  /// Keep the mapping between resource IDs in string representation
   /// to integer representation. Used for improving map performance.
   StringIdMap string_to_int_map_;
   /// Identifier of local node.

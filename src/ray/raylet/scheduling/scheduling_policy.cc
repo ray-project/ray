@@ -116,7 +116,7 @@ std::string SchedulingPolicy::HybridPolicyWithFilter(
   // place.
   std::sort(round.begin() + start_index, round.end());
 
-  std::string best_node_id = "-1";
+  std::string best_node_id{kNullNodeID};
   float best_utilization_score = INFINITY;
   bool best_is_available = false;
 
@@ -193,7 +193,7 @@ std::string SchedulingPolicy::HybridPolicy(
   auto best_node_id = HybridPolicyWithFilter(
       resource_request, spread_threshold, force_spillback,
       /*require_available*/ true, is_node_available, NodeFilter::kNonGpu);
-  if (best_node_id != "-1") {
+  if (best_node_id != kNullNodeID) {
     return best_node_id;
   }
 
