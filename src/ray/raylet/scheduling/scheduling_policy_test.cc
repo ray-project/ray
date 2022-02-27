@@ -223,7 +223,7 @@ TEST_F(SchedulingPolicyTest, InfeasibleTest) {
   std::string to_schedule =
       raylet_scheduling_policy::SchedulingPolicy(local_node, nodes)
           .HybridPolicy(req, 0.50, false, false, [](auto) { return true; });
-  ASSERT_EQ(to_schedule, "-1");
+  ASSERT_EQ(to_schedule, "");
 }
 
 TEST_F(SchedulingPolicyTest, BarelyFeasibleTest) {
@@ -385,7 +385,7 @@ TEST_F(SchedulingPolicyTest, ForceSpillbackOnlyFeasibleLocallyTest) {
   std::string to_schedule =
       raylet_scheduling_policy::SchedulingPolicy(local_node, nodes)
           .HybridPolicy(req, 0.51, true, false, [](auto) { return true; });
-  ASSERT_EQ(to_schedule, "-1");
+  ASSERT_EQ(to_schedule, "");
 }
 
 TEST_F(SchedulingPolicyTest, NonGpuNodePreferredSchedulingTest) {

@@ -244,10 +244,10 @@ const StringIdMap &ClusterResourceScheduler::GetStringIdMap() const {
 
 std::string ClusterResourceScheduler::DebugString(void) const {
   std::stringstream buffer;
-  buffer << "\nLocal id: " << local_node_id_;
+  buffer << "\nLocal id: " << absl::Base64Escape(local_node_id_);
   buffer << " Local resources: " << local_resource_manager_->DebugString();
   for (auto &node : cluster_resource_manager_->GetResourceView()) {
-    buffer << "node id: " << node.first;
+    buffer << "node id: " << absl::Base64Escape(node.first);
     buffer << node.second.GetLocalView().DebugString(string_to_int_map_);
   }
   return buffer.str();
