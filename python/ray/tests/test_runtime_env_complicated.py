@@ -6,7 +6,7 @@ import sys
 import tempfile
 import time
 from typing import List
-from unittest import mock, skipIf
+from unittest import mock
 import yaml
 
 import ray
