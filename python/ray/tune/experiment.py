@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Dict, Sequence, Any
+from typing import Dict, Sequence, Any, Optional
 import copy
 import inspect
 import logging
@@ -242,7 +242,7 @@ class Experiment:
         return exp
 
     @classmethod
-    def register_if_needed(cls, run_object):
+    def register_if_needed(cls, run_object, dry_run: Optional[bool] = False):
         """Registers Trainable or Function at runtime.
 
         Assumes already registered if run_object is a string.
@@ -282,17 +282,18 @@ class Experiment:
                 name = run_object.func.__name__
             else:
                 logger.warning("No name detected on trainable. Using {}.".format(name))
-            try:
-                register_trainable(name, run_object)
-            except (TypeError, PicklingError) as e:
-                extra_msg = (
-                    "Other options: "
-                    "\n-Try reproducing the issue by calling "
-                    "`pickle.dumps(trainable)`. "
-                    "\n-If the error is typing-related, try removing "
-                    "the type annotations and try again."
-                )
-                raise type(e)(str(e) + " " + extra_msg) from None
+            if not dry_run:
+                try:
+                    register_trainable(name, run_object)
+                except (TypeError, PicklingError) as e:
+                    extra_msg = (
+                        "Other options: "
+                        "\n-Try reproducing the issue by calling "
+                        "`pickle.dumps(trainable)`. "
+                        "\n-If the error is typing-related, try removing "
+                        "the type annotations and try again."
+                    )
+                    raise type(e)(str(e) + " " + extra_msg) from None
             return name
         else:
             raise TuneError("Improper 'run' - not string nor trainable.")

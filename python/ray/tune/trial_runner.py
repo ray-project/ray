@@ -35,6 +35,7 @@ from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
 from ray.tune.web_server import TuneServer
 from ray.util.debug import log_once
+from ray.tune.api_v2.dataset_wrapper import dataset_registry
 
 MAX_DEBUG_TRIALS = 20
 
@@ -147,6 +148,7 @@ class _ExperimentCheckpointManager:
             runner_state = {
                 "checkpoints": list(trial_executor.get_checkpoints().values()),
                 "runner_data": trial_runner.__getstate__(),
+                "dataset_registry_state": dataset_registry.__getstate__(),
                 "stats": {
                     "start_time": self._start_time,
                     "timestamp": self._last_checkpoint_time,
@@ -647,6 +649,7 @@ class TrialRunner:
         )
 
         self.__setstate__(runner_state["runner_data"])
+        dataset_registry.__setstate__(runner_state["dataset_registry_state"])
         if self._search_alg.has_checkpoint(self._local_checkpoint_dir):
             self._search_alg.restore_from_dir(self._local_checkpoint_dir)
 
