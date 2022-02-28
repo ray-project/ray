@@ -82,11 +82,7 @@ def test_torch_amp(ray_start_4_cpus_2_gpus):
         model = torchvision.models.resnet101()
         model = train.torch.prepare_model(model)
 
-        dataset = torchvision.datasets.CIFAR10(
-            root="~/data",
-            download=True,
-            transform=torchvision.transforms.ToTensor(),
-        )
+        dataset = torch.utils.data.TensorDataset(torch.zeros(1000, 3, 224, 224))
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=64)
         dataloader = train.torch.prepare_data_loader(dataloader)
 
@@ -104,22 +100,17 @@ def test_torch_amp(ray_start_4_cpus_2_gpus):
                 train.torch.backward(loss)
                 optimizer.step()
 
-    trainer = Trainer("torch", num_workers=2, use_gpu=True)
+    def latency(amp: bool) -> float:
+        trainer = Trainer("torch", num_workers=2, use_gpu=True)
+        trainer.start()
+        start_time = timer()
+        trainer.run(train_func, {"amp": amp})
+        end_time = timer()
+        trainer.shutdown()
+        return end_time - start_time
 
-    trainer.start()
-    start_time = timer()
-    trainer.run(train_func, config={"amp": True})
-    latency_with_amp = timer() - start_time
-    trainer.shutdown()
-
-    trainer.start()
-    start_time = timer()
-    trainer.run(train_func, config={"amp": False})
-    latency_without_amp = timer() - start_time
-    trainer.shutdown()
-
-    # Training should be at least 5% faster with AMP.
-    assert 1.05 * latency_with_amp < latency_without_amp
+    # Training should be at least 25% faster with AMP.
+    assert 1.25 * latency(amp=True) < latency(amp=False)
 
 
 def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
