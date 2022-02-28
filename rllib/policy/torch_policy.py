@@ -842,6 +842,16 @@ class TorchPolicy(Policy):
             optimizers = [
                 torch.optim.Adam(self.model.parameters(), lr=self.config["lr"])
             ]
+            if self.config["swa"]:
+                import torchcontrib
+
+                optimizers = [
+                    torchcontrib.optim.swa.SWA(
+                        optimizer=optimizers[0],
+                        swa_start=self.config["swa_config"]["start"],
+                        swa_freq=self.config["swa_config"]["freq"],
+                    )
+                ]
         else:
             optimizers = [torch.optim.Adam(self.model.parameters())]
         if getattr(self, "exploration", None):
