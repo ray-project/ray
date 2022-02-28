@@ -843,7 +843,13 @@ class TorchPolicy(Policy):
                 torch.optim.Adam(self.model.parameters(), lr=self.config["lr"])
             ]
             if self.config["swa"]:
-                import torchcontrib
+                try:
+                    import torchcontrib
+                except ImportError:
+                    print(
+                        "torchcontrib is not installed -- `pip install torchcontrib' to use swa"
+                    )
+                    raise
 
                 optimizers = [
                     torchcontrib.optim.swa.SWA(
