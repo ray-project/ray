@@ -2061,16 +2061,12 @@ def test_resume_deployment_state_from_replica_tags(mock_deployment_state_manager
 
 def test_stopping_replicas_ranking():
     @dataclass
-    class MockActorWrapper:
-        _node_id: str
-
-    @dataclass
     class MockReplica:
-        _actor: MockActorWrapper
+        actor_node_id: str
 
     def compare(before, after):
-        before_replicas = [MockReplica(MockActorWrapper(item)) for item in before]
-        after_replicas = [MockReplica(MockActorWrapper(item)) for item in after]
+        before_replicas = [MockReplica(item) for item in before]
+        after_replicas = [MockReplica(item) for item in after]
         result_replicas = rank_replicas_for_stopping(before_replicas)
         assert result_replicas == after_replicas
 

@@ -90,7 +90,7 @@ def print_verbose_scaling_log():
 
 
 def rank_replicas_for_stopping(
-    all_avaiable_replicas: List["DeploymentReplica"],
+    all_available_replicas: List["DeploymentReplica"],
 ) -> List["DeploymentReplica"]:
     """Prioritize replicas that have fewest copies on a node.
 
@@ -101,8 +101,8 @@ def rank_replicas_for_stopping(
     """
     # Categorize replicas to node they belong to.
     node_to_replicas = defaultdict(list)
-    for replica in all_avaiable_replicas:
-        node_to_replicas[replica._actor._node_id].append(replica)
+    for replica in all_available_replicas:
+        node_to_replicas[replica.actor_node_id].append(replica)
 
     # Replicas not in running state might have _node_id = None.
     # We will prioritize those first.
@@ -190,6 +190,11 @@ class ActorReplicaWrapper:
     @property
     def max_concurrent_queries(self) -> int:
         return self._max_concurrent_queries
+
+    @property
+    def node_id(self) -> Optional[str]:
+        """Returns the node id of the actor, None if not placed."""
+        return self._node_id
 
     def _check_obj_ref_ready(self, obj_ref: ObjectRef) -> bool:
         ready, _ = ray.wait([obj_ref], timeout=0)
@@ -596,6 +601,11 @@ class DeploymentReplica(VersionedReplica):
     @property
     def actor_handle(self) -> ActorHandle:
         return self._actor.actor_handle
+
+    @property
+    def actor_node_id(self) -> Optional[str]:
+        """Returns the node id of the actor, None if not placed."""
+        return self._actor.node_id
 
     def start(self, deployment_info: DeploymentInfo, version: DeploymentVersion):
         """
