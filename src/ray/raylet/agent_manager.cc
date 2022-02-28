@@ -40,6 +40,19 @@ void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
   // Reset the restart count after registration is done.
   agent_restart_count_ = 0;
   send_reply_callback(ray::Status::OK(), nullptr, nullptr);
+  for (const auto &callback : callbacks_) {
+    callback(agent_ip_address_, agent_port_);
+  }
+  callbacks_.clear();
+}
+
+void AgentManager::WaitForAgentStarted(
+    const std::function<void(std::string, int)> &callback) {
+  if (agent_port_ == 0) {
+    callbacks_.push_back(callback);
+  } else {
+    callback(agent_ip_address_, agent_port_);
+  }
 }
 
 void AgentManager::StartAgent() {

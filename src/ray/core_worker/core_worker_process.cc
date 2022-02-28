@@ -140,6 +140,8 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
   // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize
   // for java worker or in constructor of CoreWorker for python worker.
   stats::Init(global_tags, options_.metrics_agent_port);
+  stats::SetupDefaultExporterIfNotConfigured(options_.node_ip_address,
+                                             options_.node_manager_port);
 
   // Initialize event framework.
   if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {

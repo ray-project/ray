@@ -645,6 +645,7 @@ cc_library(
     deps = [
         ":reporter_rpc",
         ":stats_metric",
+        ":raylet_client_lib",
     ],
 )
 

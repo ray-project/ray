@@ -32,6 +32,7 @@
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
+#include "ray/stats/stats.h"
 
 namespace ray {
 namespace gcs {

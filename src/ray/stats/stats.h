@@ -50,6 +50,7 @@ static absl::Mutex stats_mutex;
 /// We recommend you to use this only once inside a main script and add Shutdown() method
 /// to any signal handler.
 /// \param global_tags[in] Tags that will be appended to all metrics in this process.
+/// SANG-TODO Remove it.
 /// \param metrics_agent_port[in] The port to export metrics at each node.
 /// \param exporter_to_use[in] The exporter client you will use for this process' metrics.
 static inline void Init(const TagsType &global_tags, const int metrics_agent_port,
@@ -58,12 +59,10 @@ static inline void Init(const TagsType &global_tags, const int metrics_agent_por
                             RayConfig::instance().metrics_report_batch_size()) {
   absl::MutexLock lock(&stats_mutex);
   if (StatsConfig::instance().IsInitialized()) {
-    RAY_CHECK(metrics_io_service_pool != nullptr);
     RAY_CHECK(exporter != nullptr);
     return;
   }
 
-  RAY_CHECK(metrics_io_service_pool == nullptr);
   RAY_CHECK(exporter == nullptr);
   bool disable_stats = !RayConfig::instance().enable_metrics_collection();
   StatsConfig::instance().SetIsDisableStats(disable_stats);
@@ -73,17 +72,9 @@ static inline void Init(const TagsType &global_tags, const int metrics_agent_por
   }
   RAY_LOG(DEBUG) << "Initialized stats";
 
-  metrics_io_service_pool = std::make_shared<IOServicePool>(1);
-  metrics_io_service_pool->Run();
-  instrumented_io_context *metrics_io_service = metrics_io_service_pool->Get();
-  RAY_CHECK(metrics_io_service != nullptr);
-
-  // Default exporter is a metrics agent exporter.
-  if (exporter_to_use == nullptr) {
-    std::shared_ptr<MetricExporterClient> stdout_exporter(new StdoutExporterClient());
-    exporter.reset(new MetricsAgentExporter(stdout_exporter));
-  } else {
+  if (exporter_to_use) {
     exporter = exporter_to_use;
+    MetricPointExporter::Register(exporter, metrics_report_batch_size);
   }
 
   // Set interval.
@@ -92,10 +83,6 @@ static inline void Init(const TagsType &global_tags, const int metrics_agent_por
   StatsConfig::instance().SetHarvestInterval(
       absl::Milliseconds(std::max(RayConfig::instance().metrics_report_interval_ms() / 2,
                                   static_cast<uint64_t>(500))));
-
-  MetricPointExporter::Register(exporter, metrics_report_batch_size);
-  OpenCensusProtoExporter::Register(metrics_agent_port, (*metrics_io_service),
-                                    "127.0.0.1");
   opencensus::stats::StatsExporter::SetInterval(
       StatsConfig::instance().GetReportInterval());
   opencensus::stats::DeltaProducer::Get()->SetHarvestInterval(
@@ -105,6 +92,25 @@ static inline void Init(const TagsType &global_tags, const int metrics_agent_por
     f();
   }
   StatsConfig::instance().SetIsInitialized(true);
+}
+
+static inline void SetupDefaultExporterIfNotConfigured(std::string raylet_addr,
+                                                       int raylet_port) {
+  absl::MutexLock lock(&stats_mutex);
+  RAY_CHECK(StatsConfig::instance().IsInitialized());
+  if (metrics_io_service_pool) {
+    return;
+  }
+
+  metrics_io_service_pool = std::make_shared<IOServicePool>(1);
+  metrics_io_service_pool->Run();
+  instrumented_io_context *metrics_io_service = metrics_io_service_pool->Get();
+  RAY_CHECK(metrics_io_service != nullptr);
+  if (exporter || StatsConfig::instance().IsStatsDisabled()) {
+    return;
+  }
+
+  OpenCensusProtoExporter::Register((*metrics_io_service), raylet_addr, raylet_port);
 }
 
 /// Shutdown the initialized stats library.

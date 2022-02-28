@@ -113,7 +113,7 @@ def _setup_cluster_for_test(ray_start_cluster):
     cluster.add_node(
         _system_config={
             "metrics_report_interval_ms": 1000,
-            "event_stats_print_interval_ms": 500,
+            "event_stats_print_interval_ms": 5000,
             "event_stats": True,
         }
     )

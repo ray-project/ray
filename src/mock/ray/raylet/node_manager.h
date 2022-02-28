@@ -123,6 +123,11 @@ class MockNodeManager : public NodeManager {
                rpc::GetGcsServerAddressReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
+  MOCK_METHOD(void, HandleGetLocalAgentAddress,
+              (const rpc::GetLocalAgentAddressRequest &request,
+               rpc::GetLocalAgentAddressReply *reply,
+               rpc::SendReplyCallback send_reply_callback),
+              (override));
 };
 
 }  // namespace raylet

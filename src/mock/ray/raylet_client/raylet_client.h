@@ -175,6 +175,9 @@ class MockRayletClientInterface : public RayletClientInterface {
               (const NodeID &node_id, bool graceful,
                const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback),
               (override));
+  MOCK_METHOD(void, GetLocalAgentAddress,
+              (const rpc::ClientCallback<rpc::GetLocalAgentAddressReply> &callback),
+              (override));
 };
 
 }  // namespace ray

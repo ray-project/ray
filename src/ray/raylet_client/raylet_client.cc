@@ -492,4 +492,10 @@ void raylet::RayletClient::GetGcsServerAddress(
   grpc_client_->GetGcsServerAddress(request, callback);
 }
 
+void raylet::RayletClient::GetLocalAgentAddress(
+    const rpc::ClientCallback<rpc::GetLocalAgentAddressReply> &callback) {
+  rpc::GetLocalAgentAddressRequest request;
+  grpc_client_->GetLocalAgentAddress(request, callback);
+}
+
 }  // namespace ray

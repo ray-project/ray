@@ -105,12 +105,39 @@ void MetricPointExporter::ExportViewData(
   metric_exporter_client_->ReportMetrics(points);
 }
 
-OpenCensusProtoExporter::OpenCensusProtoExporter(const int port,
-                                                 instrumented_io_context &io_service,
-                                                 const std::string address)
-    : client_call_manager_(io_service) {
-  client_.reset(new rpc::MetricsAgentClient(address, port, client_call_manager_));
+OpenCensusProtoExporter::OpenCensusProtoExporter(instrumented_io_context &io_service,
+                                                 std::string address, int raylet_port)
+    : io_service_(io_service), client_call_manager_(io_service_) {
+  ConfigureMetricsAgentClient(address, raylet_port);
 };
+
+void OpenCensusProtoExporter::ConfigureMetricsAgentClient(std::string address,
+                                                          int raylet_port) {
+  auto grpc_client =
+      rpc::NodeManagerWorkerClient::make(address, raylet_port, client_call_manager_);
+  raylet::RayletClient raylet_client(grpc_client);
+  RAY_LOG(ERROR) << "Request sent";
+  raylet_client.GetLocalAgentAddress(
+      [this, address, raylet_port](const Status &status,
+                                   const rpc::GetLocalAgentAddressReply &reply) {
+        if (status.ok()) {
+          absl::MutexLock lock(&mutex_);
+          RAY_LOG(ERROR) << "Status " << status << " Client configured";
+          client_.reset(
+              new rpc::MetricsAgentClient(address, reply.port(), client_call_manager_));
+        } else {
+          // If we couldn't obtain the address, we try again in 1 second.
+          // Eventually the address should be resolved.
+          RAY_LOG(ERROR) << "Status " << status << " Client failed to be configured";
+          execute_after(
+              io_service_,
+              [this, address, raylet_port]() {
+                ConfigureMetricsAgentClient(address, raylet_port);
+              },
+              /*ms*/ 1000);
+        }
+      });
+}
 
 void OpenCensusProtoExporter::ExportViewData(
     const std::vector<std::pair<opencensus::stats::ViewDescriptor,
@@ -199,15 +226,21 @@ void OpenCensusProtoExporter::ExportViewData(
     }
   }
 
-  client_->ReportOCMetrics(
-      request_proto, [](const Status &status, const rpc::ReportOCMetricsReply &reply) {
-        RAY_UNUSED(reply);
-        if (!status.ok()) {
-          RAY_LOG_EVERY_N(WARNING, 10000)
-              << "Export metrics to agent failed: " << status
-              << ". This won't affect Ray, but you can lose metrics from the cluster.";
-        }
-      });
+  {
+    absl::MutexLock lock(&mutex_);
+    if (!client_) {
+      return;
+    }
+    client_->ReportOCMetrics(
+        request_proto, [](const Status &status, const rpc::ReportOCMetricsReply &reply) {
+          RAY_UNUSED(reply);
+          if (!status.ok()) {
+            RAY_LOG_EVERY_N(WARNING, 10000)
+                << "Export metrics to agent failed: " << status
+                << ". This won't affect Ray, but you can lose metrics from the cluster.";
+          }
+        });
+  }
 }
 
 }  // namespace stats

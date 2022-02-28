@@ -80,6 +80,8 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   virtual void DeleteURIs(const std::vector<std::string> &uris,
                           DeleteURIsCallback callback);
 
+  void WaitForAgentStarted(const std::function<void(std::string, int)> &callback);
+
  private:
   void StartAgent();
 
@@ -96,6 +98,7 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   DelayExecutorFn delay_executor_;
   RuntimeEnvAgentClientFactoryFn runtime_env_agent_client_factory_;
   std::shared_ptr<rpc::RuntimeEnvAgentClientInterface> runtime_env_agent_client_;
+  std::vector<std::function<void(std::string, int)>> callbacks_;
 };
 
 class DefaultAgentManagerServiceHandler : public rpc::AgentManagerServiceHandler {

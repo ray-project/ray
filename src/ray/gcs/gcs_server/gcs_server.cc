@@ -509,6 +509,10 @@ void GcsServer::InstallEventListeners() {
     gcs_heartbeat_manager_->AddNode(NodeID::FromBinary(node->node_id()));
     gcs_resource_report_poller_->HandleNodeAdded(*node);
     grpc_based_resource_broadcaster_->HandleNodeAdded(*node);
+    if (node->node_manager_address() == config_.node_ip_address) {
+      stats::SetupDefaultExporterIfNotConfigured(node->node_manager_address(),
+                                                 node->node_manager_port());
+    }
   });
   gcs_node_manager_->AddNodeRemovedListener(
       [this](std::shared_ptr<rpc::GcsNodeInfo> node) {

@@ -139,6 +139,10 @@ class NodeManagerWorkerClient
   VOID_RPC_CLIENT_METHOD(NodeManagerService, GetGcsServerAddress, grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
+  /// Get the local ray agent address.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, GetLocalAgentAddress, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
  private:
   /// Constructor.
   ///

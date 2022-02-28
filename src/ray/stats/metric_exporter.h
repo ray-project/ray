@@ -14,11 +14,15 @@
 
 #pragma once
 #include <boost/asio.hpp>
+
 #include "absl/memory/memory.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/tags/tag_key.h"
+#include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/client_call.h"
+#include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/stats/metric.h"
 #include "ray/stats/metric_exporter_client.h"
 #include "ray/util/logging.h"
@@ -89,26 +93,30 @@ class MetricPointExporter final : public opencensus::stats::StatsExporter::Handl
 
 class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::Handler {
  public:
-  OpenCensusProtoExporter(const int port, instrumented_io_context &io_service,
-                          const std::string address);
+  OpenCensusProtoExporter(instrumented_io_context &io_service, std::string address,
+                          int raylet_port);
 
   ~OpenCensusProtoExporter() = default;
 
-  static void Register(const int port, instrumented_io_context &io_service,
-                       const std::string address) {
+  static void Register(instrumented_io_context &io_service, const std::string address,
+                       const int raylet_port) {
     opencensus::stats::StatsExporter::RegisterPushHandler(
-        absl::make_unique<OpenCensusProtoExporter>(port, io_service, address));
+        absl::make_unique<OpenCensusProtoExporter>(io_service, address, raylet_port));
   }
 
   void ExportViewData(
       const std::vector<std::pair<opencensus::stats::ViewDescriptor,
                                   opencensus::stats::ViewData>> &data) override;
 
+  void ConfigureMetricsAgentClient(std::string address, int raylet_port);
+
  private:
+  mutable absl::Mutex mutex_;
+  instrumented_io_context &io_service_;
   /// Call Manager for gRPC client.
   rpc::ClientCallManager client_call_manager_;
   /// Client to call a metrics agent gRPC server.
-  std::unique_ptr<rpc::MetricsAgentClient> client_;
+  std::unique_ptr<rpc::MetricsAgentClient> client_ GUARDED_BY(mutex_);
 };
 
 }  // namespace stats

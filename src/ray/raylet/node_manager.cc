@@ -385,6 +385,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
   node_manager_server_.RegisterService(agent_manager_service_);
   node_manager_server_.Run();
 
+  stats::SetupDefaultExporterIfNotConfigured(config.node_manager_address,
+                                             config.node_manager_port);
+
   worker_pool_.SetNodeManagerPort(GetServerPort());
 
   auto agent_command_line = ParseCommandLine(config.agent_command);
@@ -2193,6 +2196,18 @@ void NodeManager::HandleGetGcsServerAddress(
   reply->set_ip(address.first);
   reply->set_port(address.second);
   send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void NodeManager::HandleGetLocalAgentAddress(
+    const rpc::GetLocalAgentAddressRequest &request,
+    rpc::GetLocalAgentAddressReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  agent_manager_->WaitForAgentStarted(
+      [reply, send_reply_callback = std::move(send_reply_callback)](std::string address,
+                                                                    int port) {
+        RAY_LOG(ERROR) << "Agent started! Reply!";
+        reply->set_port(port);
+        send_reply_callback(Status::OK(), nullptr, nullptr);
+      });
 }
 
 void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_request,

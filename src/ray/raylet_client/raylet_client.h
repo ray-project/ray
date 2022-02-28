@@ -184,6 +184,9 @@ class RayletClientInterface : public PinObjectsInterface,
   virtual void ShutdownRaylet(
       const NodeID &node_id, bool graceful,
       const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) = 0;
+
+  virtual void GetLocalAgentAddress(
+      const rpc::ClientCallback<rpc::GetLocalAgentAddressReply> &callback) = 0;
 };
 
 namespace raylet {
@@ -421,6 +424,9 @@ class RayletClient : public RayletClientInterface {
 
   void GetGcsServerAddress(
       const rpc::ClientCallback<rpc::GetGcsServerAddressReply> &callback) override;
+
+  void GetLocalAgentAddress(
+      const rpc::ClientCallback<rpc::GetLocalAgentAddressReply> &callback) override;
 
   void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
 
