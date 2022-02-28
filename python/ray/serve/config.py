@@ -158,7 +158,10 @@ class DeploymentConfig(BaseModel):
     def from_proto_bytes(cls, proto_bytes: bytes):
         proto = DeploymentConfigProto.FromString(proto_bytes)
         data = MessageToDict(
-            proto, including_default_value_fields=True, preserving_proto_field_name=True
+            proto,
+            including_default_value_fields=True,
+            preserving_proto_field_name=True,
+            use_integers_for_enums=True,
         )
         if "user_config" in data:
             if data["user_config"] != "":
