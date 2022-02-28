@@ -36,10 +36,17 @@ namespace stats {
 
 #include <boost/asio.hpp>
 
-// TODO(sang) Put all states and logic into a singleton class Stats.
-static std::shared_ptr<IOServicePool> metrics_io_service_pool;
-static std::shared_ptr<MetricExporterClient> exporter;
-static absl::Mutex stats_mutex;
+class StatsSharedState final {
+ public:
+  static StatsSharedState &instance() {
+    static StatsSharedState instance;
+    return instance;
+  }
+
+  std::shared_ptr<IOServicePool> metrics_io_service_pool;
+  std::shared_ptr<MetricExporterClient> exporter;
+  mutable absl::Mutex stats_mutex;
+};
 
 /// Initialize stats for a process.
 /// NOTE:
@@ -57,13 +64,13 @@ static inline void Init(const TagsType &global_tags, const int metrics_agent_por
                         std::shared_ptr<MetricExporterClient> exporter_to_use = nullptr,
                         int64_t metrics_report_batch_size =
                             RayConfig::instance().metrics_report_batch_size()) {
-  absl::MutexLock lock(&stats_mutex);
+  absl::MutexLock lock(&StatsSharedState::instance().stats_mutex);
   if (StatsConfig::instance().IsInitialized()) {
-    RAY_CHECK(exporter != nullptr);
+    RAY_CHECK(StatsSharedState::instance().exporter != nullptr);
     return;
   }
 
-  RAY_CHECK(exporter == nullptr);
+  RAY_CHECK(StatsSharedState::instance().exporter == nullptr);
   bool disable_stats = !RayConfig::instance().enable_metrics_collection();
   StatsConfig::instance().SetIsDisableStats(disable_stats);
   if (disable_stats) {
@@ -73,8 +80,9 @@ static inline void Init(const TagsType &global_tags, const int metrics_agent_por
   RAY_LOG(DEBUG) << "Initialized stats";
 
   if (exporter_to_use) {
-    exporter = exporter_to_use;
-    MetricPointExporter::Register(exporter, metrics_report_batch_size);
+    StatsSharedState::instance().exporter = exporter_to_use;
+    MetricPointExporter::Register(StatsSharedState::instance().exporter,
+                                  metrics_report_batch_size);
   }
 
   // Set interval.
@@ -96,17 +104,20 @@ static inline void Init(const TagsType &global_tags, const int metrics_agent_por
 
 static inline void SetupDefaultExporterIfNotConfigured(std::string raylet_addr,
                                                        int raylet_port) {
-  absl::MutexLock lock(&stats_mutex);
+  absl::MutexLock lock(&StatsSharedState::instance().stats_mutex);
   RAY_CHECK(StatsConfig::instance().IsInitialized());
-  if (metrics_io_service_pool) {
+  if (StatsSharedState::instance().metrics_io_service_pool) {
     return;
   }
 
-  metrics_io_service_pool = std::make_shared<IOServicePool>(1);
-  metrics_io_service_pool->Run();
-  instrumented_io_context *metrics_io_service = metrics_io_service_pool->Get();
+  StatsSharedState::instance().metrics_io_service_pool =
+      std::make_shared<IOServicePool>(1);
+  StatsSharedState::instance().metrics_io_service_pool->Run();
+  instrumented_io_context *metrics_io_service =
+      StatsSharedState::instance().metrics_io_service_pool->Get();
   RAY_CHECK(metrics_io_service != nullptr);
-  if (exporter || StatsConfig::instance().IsStatsDisabled()) {
+  if (StatsSharedState::instance().exporter ||
+      StatsConfig::instance().IsStatsDisabled()) {
     return;
   }
 
@@ -116,16 +127,17 @@ static inline void SetupDefaultExporterIfNotConfigured(std::string raylet_addr,
 /// Shutdown the initialized stats library.
 /// This cleans up various threads and metadata for stats library.
 static inline void Shutdown() {
-  absl::MutexLock lock(&stats_mutex);
+  absl::MutexLock lock(&StatsSharedState::instance().stats_mutex);
   if (!StatsConfig::instance().IsInitialized()) {
     // Return if stats had never been initialized.
     return;
   }
-  metrics_io_service_pool->Stop();
   opencensus::stats::DeltaProducer::Get()->Shutdown();
   opencensus::stats::StatsExporter::Shutdown();
-  metrics_io_service_pool = nullptr;
-  exporter = nullptr;
+  RAY_LOG(ERROR) << "ABC";
+  StatsSharedState::instance().metrics_io_service_pool->Stop();
+  StatsSharedState::instance().metrics_io_service_pool = nullptr;
+  StatsSharedState::instance().exporter = nullptr;
   StatsConfig::instance().SetIsInitialized(false);
 }
 

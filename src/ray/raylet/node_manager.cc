@@ -385,9 +385,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
   node_manager_server_.RegisterService(agent_manager_service_);
   node_manager_server_.Run();
 
-  stats::SetupDefaultExporterIfNotConfigured(config.node_manager_address,
-                                             config.node_manager_port);
-
   worker_pool_.SetNodeManagerPort(GetServerPort());
 
   auto agent_command_line = ParseCommandLine(config.agent_command);
@@ -414,6 +411,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
             new rpc::RuntimeEnvAgentClient(ip_address, port, client_call_manager_));
       });
   worker_pool_.SetAgentManager(agent_manager_);
+  // stats::SetupDefaultExporterIfNotConfigured(config.node_manager_address,
+  //                                            config.node_manager_port);
 }
 
 ray::Status NodeManager::RegisterGcs() {
@@ -2204,7 +2203,6 @@ void NodeManager::HandleGetLocalAgentAddress(
   agent_manager_->WaitForAgentStarted(
       [reply, send_reply_callback = std::move(send_reply_callback)](std::string address,
                                                                     int port) {
-        RAY_LOG(ERROR) << "Agent started! Reply!";
         reply->set_port(port);
         send_reply_callback(Status::OK(), nullptr, nullptr);
       });
