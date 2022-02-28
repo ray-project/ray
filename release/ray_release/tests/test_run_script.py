@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import subprocess
@@ -7,7 +8,7 @@ import unittest
 from ray_release.result import ExitCode
 
 
-class WheelsFinderTest(unittest.TestCase):
+class RunScriptTest(unittest.TestCase):
     def setUp(self) -> None:
         self.tempdir = tempfile.mkdtemp()
         self.state_file = os.path.join(self.tempdir, "state.txt")
@@ -18,9 +19,7 @@ class WheelsFinderTest(unittest.TestCase):
         os.environ["NO_INSTALL"] = "1"
         os.environ["NO_CLONE"] = "1"
         os.environ["NO_ARTIFACTS"] = "1"
-        os.environ["RAY_TEST_SCRIPT"] = (
-            "ray_release/tests/" "_test_run_release_test_sh.py"
-        )
+        os.environ["RAY_TEST_SCRIPT"] = "ray_release/tests/_test_run_release_test_sh.py"
         os.environ["OVERRIDE_SLEEP_TIME"] = "0"
 
     def tearDown(self) -> None:
@@ -86,3 +85,19 @@ class WheelsFinderTest(unittest.TestCase):
             ExitCode.COMMAND_ALERT.value,
         )
         self.assertEquals(self._read_state(), 2)
+
+    def testParameters(self):
+        os.environ["RAY_TEST_SCRIPT"] = "ray_release/tests/_test_catch_args.py"
+        argv_file = tempfile.mktemp()
+
+        subprocess.check_call(
+            f"{self.test_script} " f"{argv_file} " f"--smoke-test",
+            shell=True,
+        )
+
+        with open(argv_file, "rt") as fp:
+            data = json.load(fp)
+
+        os.unlink(argv_file)
+
+        self.assertIn("--smoke-test", data)
