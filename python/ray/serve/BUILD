@@ -284,8 +284,8 @@ py_test(
 )
 
 py_test(
-    name = "test_cross_language",
-    size = "small",
+    name = "test_cross_langauge",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
