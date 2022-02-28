@@ -643,7 +643,7 @@ Example log output:
     (pid=runtime_env) 2022-02-28 14:12:38,001       INFO utils.py:76 -- Run cmd[4] ['/tmp/ray/session_2022-02-28_14-12-29_909064_87908/runtime_resources/pip/0cc818a054853c3841171109300436cad4dcf594/virtualenv/bin/python', '-c', 'import ray; print(ray.__version__, ray.__path__[0])']
     (pid=runtime_env) 2022-02-28 14:12:38,804       INFO utils.py:97 -- Output of cmd[4]: 2.0.0.dev0 /Users/user/ray/python/ray
 
-Regardless of the value of this environment variable, the same information can be found in the log file ``runtime_env_setup-[job_id].log`` for per-actor, per-task and per-job environments, or in
+Regardless of the value of ``RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED``, these logs can always be found in the file ``runtime_env_setup-[job_id].log`` for per-actor, per-task and per-job environments, or in
 ``runtime_env_setup-ray_client_server_[port].log`` for per-job environments when using Ray Client.
 
 See :ref:`Logging Directory Structure <logging-directory-structure>` for more details.
