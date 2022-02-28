@@ -10,9 +10,9 @@ from typing import Any, Type, Optional, Dict
 import ray
 from ray.ml.checkpoint import Checkpoint
 from ray.util.ml_utils.cloud import (
-    _upload_to_bucket,
+    upload_to_bucket,
     is_cloud_target,
-    _download_from_bucket,
+    download_from_bucket,
 )
 from ray.util.ml_utils.artifact import (
     Artifact,
@@ -110,7 +110,7 @@ class TuneCheckpoint(Checkpoint, Artifact, abc.ABC):
     def to_uri(self, location: str) -> str:
         path = self.to_directory(path=None)
         assert is_cloud_target(location)
-        _upload_to_bucket(bucket=location, local_path=path)
+        upload_to_bucket(bucket=location, local_path=path)
         if not isinstance(self, FSStorageCheckpoint):
             # Only delete directory if it was a temporary directory
             shutil.rmtree(path)
@@ -359,7 +359,7 @@ class CloudStorageCheckpoint(TuneCheckpoint, CloudStorageArtifact):
 
     def to_directory(self, path: Optional[str] = None) -> str:
         path = path if path is not None else temporary_checkpoint_dir()
-        _download_from_bucket(bucket=self.location, local_path=path)
+        download_from_bucket(bucket=self.location, local_path=path)
         return path
 
     def to_data_checkpoint(self) -> "DataCheckpoint":
