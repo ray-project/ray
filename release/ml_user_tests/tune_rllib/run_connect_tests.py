@@ -24,14 +24,10 @@ if __name__ == "__main__":
 
     result = {
         "time_taken": end_time - start_time,
-        "trial_states": {
-            t.config["framework"]: t.status
-            for t in exp_analysis.trials
-        },
+        "trial_states": {t.config["framework"]: t.status for t in exp_analysis.trials},
     }
 
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
-                                      "/tmp/release_test_out.json")
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/release_test_out.json")
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
 

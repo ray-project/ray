@@ -1,0 +1,51 @@
+recomm-sys001-slateq:
+    env: ray.rllib.examples.env.recommender_system_envs.RecommSys001
+    run: SlateQ
+    stop:
+        #evaluation/episode_reward_mean: 48.0
+        timesteps_total: 200000
+    config:
+        # SlateQ only supported for torch so far.
+        framework: torch
+
+        metrics_num_episodes_for_smoothing: 1000
+
+        # Env c'tor kwargs:
+        env_config:
+              # Number of different categories a doc can have and a user can
+              # have a preference for.
+              num_categories: 5
+              # Number of docs to choose (a slate) from each timestep.
+              num_docs_to_select_from: 50
+              # Slate size.
+              slate_size: 2
+              # Re-sample docs each timesteps.
+              num_docs_in_db: 1000
+              # Re-sample user each episode.
+              num_users_in_db: 1000
+              # User time budget (determines lengths of episodes).
+              user_time_budget: 60.0
+
+        grad_clip: 2.0
+
+        # Larger networks seem to help (large obs/action spaces).
+        hiddens: [512, 512]
+
+        # Larger batch sizes seem to help (more stability, even with higher lr).
+        train_batch_size: 32
+
+        num_workers: 0
+        num_gpus: 0
+
+        lr_choice_model: 0.002
+        lr_q_model: 0.002
+
+        target_network_update_freq: 500
+        tau: 1.0
+
+        # Evaluation settings.
+        evaluation_interval: 1
+        evaluation_num_workers: 4
+        evaluation_duration: 200
+        evaluation_duration_unit: episodes
+        evaluation_parallel_to_training: true

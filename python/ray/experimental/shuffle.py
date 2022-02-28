@@ -75,8 +75,9 @@ class ObjectStoreWriterNonStreaming(ObjectStoreWriter):
         return self.results
 
 
-def round_robin_partitioner(input_stream: Iterable[InType], num_partitions: int
-                            ) -> Iterable[Tuple[PartitionID, InType]]:
+def round_robin_partitioner(
+    input_stream: Iterable[InType], num_partitions: int
+) -> Iterable[Tuple[PartitionID, InType]]:
     """Round robin partitions items from the input reader.
 
     You can write custom partitioning functions for your use case.
@@ -100,19 +101,36 @@ class _StatusTracker:
     def __init__(self):
         self.num_map = 0
         self.num_reduce = 0
+        self.map_refs = []
+        self.reduce_refs = []
 
-    def inc(self):
-        self.num_map += 1
-
-    def inc2(self):
-        self.num_reduce += 1
+    def register_objectrefs(self, map_refs, reduce_refs):
+        self.map_refs = map_refs
+        self.reduce_refs = reduce_refs
 
     def get_progress(self):
+        if self.map_refs:
+            ready, self.map_refs = ray.wait(
+                self.map_refs,
+                timeout=1,
+                num_returns=len(self.map_refs),
+                fetch_local=False,
+            )
+            self.num_map += len(ready)
+        elif self.reduce_refs:
+            ready, self.reduce_refs = ray.wait(
+                self.reduce_refs,
+                timeout=1,
+                num_returns=len(self.reduce_refs),
+                fetch_local=False,
+            )
+            self.num_reduce += len(ready)
         return self.num_map, self.num_reduce
 
 
 def render_progress_bar(tracker, input_num_partitions, output_num_partitions):
     from tqdm import tqdm
+
     num_map = 0
     num_reduce = 0
     map_bar = tqdm(total=input_num_partitions, position=0)
@@ -120,8 +138,7 @@ def render_progress_bar(tracker, input_num_partitions, output_num_partitions):
     reduce_bar = tqdm(total=output_num_partitions, position=1)
     reduce_bar.set_description("Reduce Progress.")
 
-    while (num_map < input_num_partitions
-           or num_reduce < output_num_partitions):
+    while num_map < input_num_partitions or num_reduce < output_num_partitions:
         new_num_map, new_num_reduce = ray.get(tracker.get_progress.remote())
         map_bar.update(new_num_map - num_map)
         reduce_bar.update(new_num_reduce - num_reduce)
@@ -132,17 +149,19 @@ def render_progress_bar(tracker, input_num_partitions, output_num_partitions):
     reduce_bar.close()
 
 
-def simple_shuffle(*,
-                   input_reader: Callable[[PartitionID], Iterable[InType]],
-                   input_num_partitions: int,
-                   output_num_partitions: int,
-                   output_writer: Callable[
-                       [PartitionID, List[Union[ObjectRef, Any]]], OutType],
-                   partitioner: Callable[[Iterable[InType], int], Iterable[
-                       PartitionID]] = round_robin_partitioner,
-                   object_store_writer: ObjectStoreWriter = ObjectStoreWriter,
-                   tracker: _StatusTracker = None,
-                   streaming: bool = True) -> List[OutType]:
+def simple_shuffle(
+    *,
+    input_reader: Callable[[PartitionID], Iterable[InType]],
+    input_num_partitions: int,
+    output_num_partitions: int,
+    output_writer: Callable[[PartitionID, List[Union[ObjectRef, Any]]], OutType],
+    partitioner: Callable[
+        [Iterable[InType], int], Iterable[PartitionID]
+    ] = round_robin_partitioner,
+    object_store_writer: ObjectStoreWriter = ObjectStoreWriter,
+    tracker: _StatusTracker = None,
+    streaming: bool = True,
+) -> List[OutType]:
     """Simple distributed shuffle in Ray.
 
     Args:
@@ -174,8 +193,8 @@ def simple_shuffle(*,
 
     @ray.remote
     def shuffle_reduce(
-            i: PartitionID,
-            *mapper_outputs: List[List[Union[Any, ObjectRef]]]) -> OutType:
+        i: PartitionID, *mapper_outputs: List[List[Union[Any, ObjectRef]]]
+    ) -> OutType:
         input_objects = []
         assert len(mapper_outputs) == input_num_partitions
         for obj_refs in mapper_outputs:
@@ -183,19 +202,20 @@ def simple_shuffle(*,
                 input_objects.append(obj_ref)
         return output_writer(i, input_objects)
 
-    shuffle_map_out = [
-        shuffle_map.remote(i) for i in range(input_num_partitions)
-    ]
+    shuffle_map_out = [shuffle_map.remote(i) for i in range(input_num_partitions)]
 
     shuffle_reduce_out = [
         shuffle_reduce.remote(
-            j, *[shuffle_map_out[i][j] for i in range(input_num_partitions)])
+            j, *[shuffle_map_out[i][j] for i in range(input_num_partitions)]
+        )
         for j in range(output_num_partitions)
     ]
 
     if tracker:
-        render_progress_bar(tracker, input_num_partitions,
-                            output_num_partitions)
+        tracker.register_objectrefs.remote(
+            [map_out[0] for map_out in shuffle_map_out], shuffle_reduce_out
+        )
+        render_progress_bar(tracker, input_num_partitions, output_num_partitions)
 
     return ray.get(shuffle_reduce_out)
 
@@ -203,27 +223,29 @@ def simple_shuffle(*,
 def build_cluster(num_nodes, num_cpus, object_store_memory):
     cluster = Cluster()
     for _ in range(num_nodes):
-        cluster.add_node(
-            num_cpus=num_cpus, object_store_memory=object_store_memory)
+        cluster.add_node(num_cpus=num_cpus, object_store_memory=object_store_memory)
     cluster.wait_for_nodes()
     return cluster
 
 
-def run(ray_address=None,
-        object_store_memory=1e9,
-        num_partitions=5,
-        partition_size=200e6,
-        num_nodes=None,
-        num_cpus=8,
-        no_streaming=False,
-        use_wait=False):
+def run(
+    ray_address=None,
+    object_store_memory=1e9,
+    num_partitions=5,
+    partition_size=200e6,
+    num_nodes=None,
+    num_cpus=8,
+    no_streaming=False,
+    use_wait=False,
+    tracker=None,
+):
     import numpy as np
     import time
 
     is_multi_node = num_nodes
     if ray_address:
         print("Connecting to a existing cluster...")
-        ray.init(address=ray_address)
+        ray.init(address=ray_address, ignore_reinit_error=True)
     elif is_multi_node:
         print("Emulating a cluster...")
         print(f"Num nodes: {num_nodes}")
@@ -238,17 +260,15 @@ def run(ray_address=None,
     partition_size = int(partition_size)
     num_partitions = num_partitions
     rows_per_partition = partition_size // (8 * 2)
-    tracker = _StatusTracker.remote()
+    if tracker is None:
+        tracker = _StatusTracker.remote()
     use_wait = use_wait
 
     def input_reader(i: PartitionID) -> Iterable[InType]:
         for _ in range(num_partitions):
-            yield np.ones(
-                (rows_per_partition // num_partitions, 2), dtype=np.int64)
-        tracker.inc.remote()
+            yield np.ones((rows_per_partition // num_partitions, 2), dtype=np.int64)
 
-    def output_writer(i: PartitionID,
-                      shuffle_inputs: List[ObjectRef]) -> OutType:
+    def output_writer(i: PartitionID, shuffle_inputs: List[ObjectRef]) -> OutType:
         total = 0
         if not use_wait:
             for obj_ref in shuffle_inputs:
@@ -256,20 +276,18 @@ def run(ray_address=None,
                 total += arr.size * arr.itemsize
         else:
             while shuffle_inputs:
-                [ready], shuffle_inputs = ray.wait(
-                    shuffle_inputs, num_returns=1)
+                [ready], shuffle_inputs = ray.wait(shuffle_inputs, num_returns=1)
                 arr = ray.get(ready)
                 total += arr.size * arr.itemsize
 
-        tracker.inc2.remote()
         return total
 
-    def output_writer_non_streaming(i: PartitionID,
-                                    shuffle_inputs: List[Any]) -> OutType:
+    def output_writer_non_streaming(
+        i: PartitionID, shuffle_inputs: List[Any]
+    ) -> OutType:
         total = 0
         for arr in shuffle_inputs:
             total += arr.size * arr.itemsize
-        tracker.inc2.remote()
         return total
 
     if no_streaming:
@@ -286,15 +304,17 @@ def run(ray_address=None,
         output_num_partitions=num_partitions,
         output_writer=output_writer_callable,
         object_store_writer=object_store_writer,
-        tracker=tracker)
+        tracker=tracker,
+    )
     delta = time.time() - start
 
-    time.sleep(.5)
+    time.sleep(0.5)
     print()
     print(ray.internal.internal_api.memory_summary(stats_only=True))
     print()
-    print("Shuffled", int(sum(output_sizes) / (1024 * 1024)), "MiB in", delta,
-          "seconds")
+    print(
+        "Shuffled", int(sum(output_sizes) / (1024 * 1024)), "MiB in", delta, "seconds"
+    )
 
 
 def main():
@@ -311,14 +331,16 @@ def main():
     parser.add_argument("--use-wait", action="store_true", default=False)
     args = parser.parse_args()
 
-    run(ray_address=args.ray_address,
+    run(
+        ray_address=args.ray_address,
         object_store_memory=args.object_store_memory,
         num_partitions=args.num_partitions,
         partition_size=args.partition_size,
         num_nodes=args.num_nodes,
         num_cpus=args.num_cpus,
         no_streaming=args.no_streaming,
-        use_wait=args.use_wait)
+        use_wait=args.use_wait,
+    )
 
 
 if __name__ == "__main__":

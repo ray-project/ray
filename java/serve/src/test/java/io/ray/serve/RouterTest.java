@@ -7,6 +7,7 @@ import io.ray.serve.api.Serve;
 import io.ray.serve.generated.ActorSet;
 import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.RequestMetadata;
+import io.ray.serve.util.CommonUtil;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -20,7 +21,9 @@ public class RouterTest {
 
     try {
       String deploymentName = "RouterTest";
-      String controllerName = deploymentName + "_controller";
+      String controllerName =
+          CommonUtil.formatActorName(
+              Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
       String replicaTag = deploymentName + "_replica";
       String actorName = replicaTag;
       String version = "v1";
@@ -49,10 +52,16 @@ public class RouterTest {
                   deploymentInfo,
                   replicaTag,
                   controllerName,
-                  (RayServeConfig) null)
+                  new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"))
               .setName(actorName)
               .remote();
       Assert.assertTrue(replicaHandle.task(RayServeWrappedReplica::checkHealth).remote().get());
+
+      // Set ReplicaContext
+      Serve.setInternalReplicaContext(null, null, controllerName, null);
+      Serve.getReplicaContext()
+          .setRayServeConfig(
+              new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"));
 
       // Router
       Router router = new Router(controllerHandle, deploymentName);

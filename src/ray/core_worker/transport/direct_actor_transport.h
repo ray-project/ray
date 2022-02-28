@@ -29,6 +29,7 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/actor_creator.h"
+#include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/fiber.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
@@ -83,15 +84,6 @@ class CoreWorkerDirectTaskReceiver {
 
   /// Pop tasks from the queue and execute them sequentially
   void RunNormalTasksFromQueue();
-
-  /// Handle a `StealTask` request.
-  ///
-  /// \param[in] request The request message.
-  /// \param[out] reply The reply message.
-  /// \param[in] send_reply_callback The callback to be called when the request is done.
-  void HandleStealTasks(const rpc::StealTasksRequest &request,
-                        rpc::StealTasksReply *reply,
-                        rpc::SendReplyCallback send_reply_callback);
 
   bool CancelQueuedNormalTask(TaskID task_id);
 

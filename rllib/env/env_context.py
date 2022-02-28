@@ -16,12 +16,14 @@ class EnvContext(dict):
     RLlib auto-sets these attributes when constructing registered envs.
     """
 
-    def __init__(self,
-                 env_config: EnvConfigDict,
-                 worker_index: int,
-                 vector_index: int = 0,
-                 remote: bool = False,
-                 num_workers: Optional[int] = None):
+    def __init__(
+        self,
+        env_config: EnvConfigDict,
+        worker_index: int,
+        vector_index: int = 0,
+        remote: bool = False,
+        num_workers: Optional[int] = None,
+    ):
         """Initializes an EnvContext instance.
 
         Args:
@@ -47,12 +49,14 @@ class EnvContext(dict):
         self.remote = remote
         self.num_workers = num_workers
 
-    def copy_with_overrides(self,
-                            env_config: Optional[EnvConfigDict] = None,
-                            worker_index: Optional[int] = None,
-                            vector_index: Optional[int] = None,
-                            remote: Optional[bool] = None,
-                            num_workers: Optional[int] = None) -> "EnvContext":
+    def copy_with_overrides(
+        self,
+        env_config: Optional[EnvConfigDict] = None,
+        worker_index: Optional[int] = None,
+        vector_index: Optional[int] = None,
+        remote: Optional[bool] = None,
+        num_workers: Optional[int] = None,
+    ) -> "EnvContext":
         """Returns a copy of this EnvContext with some attributes overridden.
 
         Args:
@@ -77,4 +81,31 @@ class EnvContext(dict):
             vector_index if vector_index is not None else self.vector_index,
             remote if remote is not None else self.remote,
             num_workers if num_workers is not None else self.num_workers,
+        )
+
+    def set_defaults(self, defaults: dict) -> None:
+        """Sets missing keys of self to the values given in `defaults`.
+
+        If `defaults` contains keys that already exist in self, don't override
+        the values with these defaults.
+
+        Args:
+            defaults: The key/value pairs to add to self, but only for those
+                keys in `defaults` that don't exist yet in self.
+
+        Examples:
+             >>> env_ctx = EnvContext({"a": 1, "b": 2}, worker_index=0)
+             >>> env_ctx.set_defaults({"a": -42, "c": 3})
+             >>> print(env_ctx)
+             ... {"a": 1, "b": 2, "c": 3}
+        """
+        for key, value in defaults.items():
+            if key not in self:
+                self[key] = value
+
+    def __str__(self):
+        return (
+            super().__str__()[:-1]
+            + f", worker={self.worker_index}/{self.num_workers}, "
+            f"vector_idx={self.vector_index}, remote={self.remote}" + "}"
         )

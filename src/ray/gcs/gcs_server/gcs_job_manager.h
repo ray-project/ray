@@ -15,6 +15,7 @@
 #pragma once
 
 #include "ray/common/runtime_env_manager.h"
+#include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
@@ -28,10 +29,12 @@ class GcsJobManager : public rpc::JobInfoHandler {
  public:
   explicit GcsJobManager(std::shared_ptr<GcsTableStorage> gcs_table_storage,
                          std::shared_ptr<GcsPublisher> gcs_publisher,
-                         RuntimeEnvManager &runtime_env_manager)
+                         RuntimeEnvManager &runtime_env_manager,
+                         GcsFunctionManager &function_manager)
       : gcs_table_storage_(std::move(gcs_table_storage)),
         gcs_publisher_(std::move(gcs_publisher)),
-        runtime_env_manager_(runtime_env_manager) {}
+        runtime_env_manager_(runtime_env_manager),
+        function_manager_(function_manager) {}
 
   void Initialize(const GcsInitData &gcs_init_data);
 
@@ -57,7 +60,7 @@ class GcsJobManager : public rpc::JobInfoHandler {
   void AddJobFinishedListener(
       std::function<void(std::shared_ptr<JobID>)> listener) override;
 
-  std::string GetRayNamespace(const JobID &job_id) const;
+  std::shared_ptr<rpc::JobConfig> GetJobConfig(const JobID &job_id) const;
 
  private:
   std::shared_ptr<GcsTableStorage> gcs_table_storage_;
@@ -66,10 +69,11 @@ class GcsJobManager : public rpc::JobInfoHandler {
   /// Listeners which monitors the finish of jobs.
   std::vector<std::function<void(std::shared_ptr<JobID>)>> job_finished_listeners_;
 
-  /// A cached mapping from job id to namespace.
-  std::unordered_map<JobID, std::string> ray_namespaces_;
+  /// A cached mapping from job id to job config.
+  absl::flat_hash_map<JobID, std::shared_ptr<rpc::JobConfig>> cached_job_configs_;
 
   ray::RuntimeEnvManager &runtime_env_manager_;
+  GcsFunctionManager &function_manager_;
   void ClearJobInfos(const JobID &job_id);
 
   void MarkJobAsFinished(rpc::JobTableData job_table_data,

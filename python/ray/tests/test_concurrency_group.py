@@ -72,7 +72,8 @@ def test_basic():
 
     # It also has the ability to specify it at runtime.
     # This task will be invoked in the `compute` thread pool.
-    a.f2.options(concurrency_group="compute").remote()
+    result = ray.get(a.f2.options(concurrency_group="compute").remote())
+    assert result == f3_thread_id
 
 
 # The case tests that the asyncio count down works well in one concurrency

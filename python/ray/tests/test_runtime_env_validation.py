@@ -7,12 +7,15 @@ from ray import job_config
 import yaml
 
 from ray._private.runtime_env.validation import (
-    parse_and_validate_excludes, parse_and_validate_working_dir,
-    parse_and_validate_conda, parse_and_validate_pip,
-    parse_and_validate_env_vars, parse_and_validate_py_modules,
-    ParsedRuntimeEnv)
-from ray._private.runtime_env.plugin import (decode_plugin_uri,
-                                             encode_plugin_uri)
+    parse_and_validate_excludes,
+    parse_and_validate_working_dir,
+    parse_and_validate_conda,
+    parse_and_validate_pip,
+    parse_and_validate_env_vars,
+    parse_and_validate_py_modules,
+)
+from ray._private.runtime_env.plugin import decode_plugin_uri, encode_plugin_uri
+from ray.runtime_env import RuntimeEnv
 
 CONDA_DICT = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
 
@@ -44,8 +47,7 @@ def test_directory():
 
 
 def test_key_with_value_none():
-    runtime_env_dict = {"pip": None}
-    parsed_runtime_env = ParsedRuntimeEnv(runtime_env_dict)
+    parsed_runtime_env = RuntimeEnv(pip=None)
     assert parsed_runtime_env == {}
 
 
@@ -70,18 +72,20 @@ class TestValidateWorkingDir:
 
     def test_validate_remote_invalid_extensions(self):
         for uri in [
-                "https://some_domain.com/path/file", "s3://bucket/file",
-                "gs://bucket/file"
+            "https://some_domain.com/path/file",
+            "s3://bucket/file",
+            "gs://bucket/file",
         ]:
             with pytest.raises(
-                    ValueError,
-                    match="Only .zip files supported for remote URIs."):
+                ValueError, match="Only .zip files supported for remote URIs."
+            ):
                 parse_and_validate_working_dir(uri)
 
     def test_validate_remote_valid_input(self):
         for uri in [
-                "https://some_domain.com/path/file.zip",
-                "s3://bucket/file.zip", "gs://bucket/file.zip"
+            "https://some_domain.com/path/file.zip",
+            "s3://bucket/file.zip",
+            "gs://bucket/file.zip",
         ]:
             working_dir = parse_and_validate_working_dir(uri)
             assert working_dir == uri
@@ -102,18 +106,20 @@ class TestValidatePyModules:
 
     def test_validate_remote_invalid_extension(self):
         uris = [
-            "https://some_domain.com/path/file", "s3://bucket/file",
-            "gs://bucket/file"
+            "https://some_domain.com/path/file",
+            "s3://bucket/file",
+            "gs://bucket/file",
         ]
         with pytest.raises(
-                ValueError,
-                match="Only .zip files supported for remote URIs."):
+            ValueError, match="Only .zip files supported for remote URIs."
+        ):
             parse_and_validate_py_modules(uris)
 
     def test_validate_remote_valid_input(self):
         uris = [
-            "https://some_domain.com/path/file.zip", "s3://bucket/file.zip",
-            "gs://bucket/file.zip"
+            "https://some_domain.com/path/file.zip",
+            "s3://bucket/file.zip",
+            "gs://bucket/file.zip",
         ]
         py_modules = parse_and_validate_py_modules(uris)
         assert py_modules == uris
@@ -134,11 +140,12 @@ class TestValidateExcludes:
             parse_and_validate_excludes(["string", 1])
 
     def test_validate_excludes_empty_list(self):
-        assert ParsedRuntimeEnv({"excludes": []}) == {}
+        assert RuntimeEnv(excludes=[]) == {}
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="Conda option not supported on Windows.")
+    sys.platform == "win32", reason="Conda option not supported on Windows."
+)
 class TestValidateConda:
     def test_validate_conda_invalid_types(self):
         with pytest.raises(TypeError):
@@ -178,7 +185,8 @@ class TestValidateConda:
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="Pip option not supported on Windows.")
+    sys.platform == "win32", reason="Pip option not supported on Windows."
+)
 class TestValidatePip:
     def test_validate_pip_invalid_types(self):
         with pytest.raises(TypeError):
@@ -205,6 +213,18 @@ class TestValidatePip:
         result = parse_and_validate_pip(PIP_LIST)
         assert result == PIP_LIST
 
+    def test_validate_ray(self):
+        result = parse_and_validate_pip(["pkg1", "ray", "pkg2"])
+        assert result == ["pkg1", "ray", "pkg2"]
+
+    def test_replace_ray_libraries_with_dependencies(self):
+        result = parse_and_validate_pip(["pkg1", "ray[serve, tune]", "pkg2"])
+        assert "pkg1" in result
+        assert "pkg2" in result
+        assert "fastapi" in result  # from ray[serve]
+        assert "pandas" in result  # from ray[tune]
+        assert not any("ray" in specifier for specifier in result)
+
 
 class TestValidateEnvVars:
     def test_type_validation(self):
@@ -218,26 +238,15 @@ class TestValidateEnvVars:
 
 class TestParsedRuntimeEnv:
     def test_empty(self):
-        assert ParsedRuntimeEnv({}) == {}
+        assert RuntimeEnv() == {}
 
     @pytest.mark.skipif(
-        sys.platform == "win32", reason="Pip option not supported on Windows.")
+        sys.platform == "win32", reason="Pip option not supported on Windows."
+    )
     def test_serialization(self):
-        env1 = ParsedRuntimeEnv({
-            "pip": ["requests"],
-            "env_vars": {
-                "hi1": "hi1",
-                "hi2": "hi2"
-            }
-        })
+        env1 = RuntimeEnv(pip=["requests"], env_vars={"hi1": "hi1", "hi2": "hi2"})
 
-        env2 = ParsedRuntimeEnv({
-            "env_vars": {
-                "hi2": "hi2",
-                "hi1": "hi1"
-            },
-            "pip": ["requests"]
-        })
+        env2 = RuntimeEnv(env_vars={"hi2": "hi2", "hi1": "hi1"}, pip=["requests"])
 
         assert env1 == env2
 
@@ -247,49 +256,48 @@ class TestParsedRuntimeEnv:
         # Key ordering shouldn't matter.
         assert serialized_env1 == serialized_env2
 
-        deserialized_env1 = ParsedRuntimeEnv.deserialize(serialized_env1)
-        deserialized_env2 = ParsedRuntimeEnv.deserialize(serialized_env2)
+        deserialized_env1 = RuntimeEnv.deserialize(serialized_env1)
+        deserialized_env2 = RuntimeEnv.deserialize(serialized_env2)
 
         assert env1 == deserialized_env1 == env2 == deserialized_env2
 
     def test_reject_pip_and_conda(self):
         with pytest.raises(ValueError):
-            ParsedRuntimeEnv({"pip": ["requests"], "conda": "env_name"})
+            RuntimeEnv(pip=["requests"], conda="env_name")
 
     @pytest.mark.skipif(
         sys.platform == "win32",
-        reason="Conda and pip options not supported on Windows.")
+        reason="Conda and pip options not supported on Windows.",
+    )
     def test_ray_commit_injection(self):
         # Should not be injected if no pip and conda.
-        result = ParsedRuntimeEnv({"env_vars": {"hi": "hi"}})
+        result = RuntimeEnv(env_vars={"hi": "hi"})
         assert "_ray_commit" not in result
 
         # Should be injected if pip or conda present.
-        result = ParsedRuntimeEnv({
-            "pip": ["requests"],
-        })
+        result = RuntimeEnv(pip=["requests"])
         assert "_ray_commit" in result
 
-        result = ParsedRuntimeEnv({"conda": "env_name"})
+        result = RuntimeEnv(conda="env_name")
         assert "_ray_commit" in result
 
         # Should not override if passed.
-        result = ParsedRuntimeEnv({"conda": "env_name", "_ray_commit": "Blah"})
+        result = RuntimeEnv(conda="env_name", _ray_commit="Blah")
         assert result["_ray_commit"] == "Blah"
 
     def test_inject_current_ray(self):
         # Should not be injected if not provided by env var.
-        result = ParsedRuntimeEnv({"env_vars": {"hi": "hi"}})
+        result = RuntimeEnv(env_vars={"hi": "hi"})
         assert "_inject_current_ray" not in result
 
         os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
 
         # Should be injected if provided by env var.
-        result = ParsedRuntimeEnv({})
+        result = RuntimeEnv()
         assert result["_inject_current_ray"]
 
         # Should be preserved if passed.
-        result = ParsedRuntimeEnv({"_inject_current_ray": False})
+        result = RuntimeEnv(_inject_current_ray=False)
         assert not result["_inject_current_ray"]
 
         del os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"]

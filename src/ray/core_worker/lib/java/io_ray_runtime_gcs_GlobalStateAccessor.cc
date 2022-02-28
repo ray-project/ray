@@ -16,7 +16,9 @@
 
 #include <jni.h>
 
+#include "boost/algorithm/string.hpp"
 #include "jni_utils.h"
+#include "ray/common/ray_config.h"
 #include "ray/core_worker/common.h"
 #include "ray/gcs/gcs_client/global_state_accessor.h"
 
@@ -25,11 +27,21 @@ extern "C" {
 #endif
 JNIEXPORT jlong JNICALL
 Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeCreateGlobalStateAccessor(
-    JNIEnv *env, jobject o, jstring j_redis_address, jstring j_redis_passowrd) {
-  std::string redis_address = JavaStringToNativeString(env, j_redis_address);
+    JNIEnv *env, jobject o, jstring j_bootstrap_address, jstring j_redis_passowrd) {
+  std::string bootstrap_address = JavaStringToNativeString(env, j_bootstrap_address);
   std::string redis_password = JavaStringToNativeString(env, j_redis_passowrd);
-  gcs::GlobalStateAccessor *gcs_accessor =
-      new gcs::GlobalStateAccessor(redis_address, redis_password);
+  gcs::GlobalStateAccessor *gcs_accessor = nullptr;
+  if (RayConfig::instance().bootstrap_with_gcs()) {
+    ray::gcs::GcsClientOptions client_options(bootstrap_address);
+    gcs_accessor = new gcs::GlobalStateAccessor(client_options);
+  } else {
+    std::vector<std::string> results;
+    boost::split(results, bootstrap_address, boost::is_any_of(":"));
+    RAY_CHECK(results.size() == 2);
+    ray::gcs::GcsClientOptions client_options(results[0], std::stoi(results[1]),
+                                              redis_password);
+    gcs_accessor = new gcs::GlobalStateAccessor(client_options);
+  }
   return reinterpret_cast<jlong>(gcs_accessor);
 }
 
@@ -148,10 +160,11 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllPlacementGroupInfo(
 JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetInternalKV(JNIEnv *env, jobject o,
                                                                 jlong gcs_accessor_ptr,
-                                                                jstring k) {
+                                                                jstring n, jstring k) {
   std::string key = JavaStringToNativeString(env, k);
+  std::string ns = JavaStringToNativeString(env, n);
   auto *gcs_accessor = reinterpret_cast<gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
-  auto value = gcs_accessor->GetInternalKV(key);
+  auto value = gcs_accessor->GetInternalKV(ns, key);
   if (value) {
     return NativeStringToJavaByteArray(env, *value);
   }

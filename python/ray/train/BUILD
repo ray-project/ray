@@ -13,6 +13,15 @@ py_test(
 )
 
 py_test(
+    name = "mlflow_simple_example",
+    size = "medium",
+    main = "examples/mlflow_simple_example.py",
+    srcs = ["examples/mlflow_simple_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"],
+)
+
+py_test(
     name = "tensorflow_quick_start",
     size = "medium",
     main = "examples/tensorflow_quick_start.py",
@@ -31,11 +40,20 @@ py_test(
 )
 
 py_test(
+    name = "torch_tensorboard_profiler_example",
+    size = "small",
+    main = "examples/torch_tensorboard_profiler_example.py",
+    srcs = ["examples/torch_tensorboard_profiler_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "transformers_example",
     size = "large",
     main = "examples/transformers/transformers_example.py",
     srcs = ["examples/transformers/transformers_example.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tune"],
     deps = [":train_lib"],
     args = ["--model_name_or_path=bert-base-cased", "--task_name=mrpc",
     "--max_length=32", "--per_device_train_batch_size=64",
@@ -47,7 +65,7 @@ py_test(
     size = "medium",
     main = "examples/tune_cifar_pytorch_pbt_example.py",
     srcs = ["examples/tune_cifar_pytorch_pbt_example.py"],
-    tags = ["team:ml", "exclusive", "pytorch"],
+    tags = ["team:ml", "exclusive", "pytorch", "tune"],
     deps = [":train_lib"],
     args = ["--smoke-test"]
 )
@@ -57,7 +75,7 @@ py_test(
     size = "medium",
     main = "examples/tune_linear_dataset_example.py",
     srcs = ["examples/tune_linear_dataset_example.py"],
-    tags = ["team:ml", "exclusive", "gpu_only"],
+    tags = ["team:ml", "exclusive", "gpu_only", "tune"],
     deps = [":train_lib"],
     args = ["--smoke-test", "--use-gpu"]
 )
@@ -67,7 +85,7 @@ py_test(
     size = "medium",
     main = "examples/tune_linear_example.py",
     srcs = ["examples/tune_linear_example.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tune"],
     deps = [":train_lib"],
     args = ["--smoke-test"]
 )
@@ -110,9 +128,25 @@ py_test(
 )
 
 py_test(
+    name = "test_minimal",
+    size = "small",
+    srcs = ["tests/test_minimal.py"],
+    tags = ["team:ml", "exclusive", "minimal"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_session",
     size = "small",
     srcs = ["tests/test_session.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_results_preprocessors",
+    size = "small",
+    srcs = ["tests/test_results_preprocessors.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":train_lib"]
 )
@@ -129,7 +163,7 @@ py_test(
     name = "test_tune",
     size = "medium",
     srcs = ["tests/test_tune.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tune"],
     deps = [":train_lib"]
 )
 

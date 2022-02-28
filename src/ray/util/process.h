@@ -88,6 +88,8 @@ class Process {
   bool IsValid() const;
   /// Forcefully kills the process. Unsafe for unowned processes.
   void Kill();
+  /// Check whether the process is alive.
+  bool IsAlive() const;
   /// Convenience function to start a process in the background.
   /// \param pid_file A file to write the PID of the spawned process in.
   static std::pair<Process, std::error_code> Spawn(
@@ -101,6 +103,8 @@ class Process {
 // Get the Process ID of the parent process. If the parent process exits, the PID
 // will be 1 (this simulates POSIX getppid()).
 pid_t GetParentPID();
+
+pid_t GetPID();
 
 bool IsParentProcessAlive();
 

@@ -1,4 +1,5 @@
 - name: bookkeeping_overhead
+  team: ml
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_1x16.yaml
@@ -9,6 +10,7 @@
 
 
 - name: durable_trainable
+  team: ml
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_16x2.yaml
@@ -19,6 +21,7 @@
     script: python workloads/test_durable_trainable.py --bucket data-test-ilr
 
 - name: long_running_large_checkpoints
+  team: ml
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_1x32_hd.yaml
@@ -34,6 +37,7 @@
 
 
 - name: network_overhead
+  team: ml
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_100x2.yaml
@@ -54,6 +58,7 @@
       prepare: python wait_cluster.py 20 600
 
 - name: result_throughput_cluster
+  team: ml
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_16x64.yaml
@@ -64,6 +69,7 @@
     script: python workloads/test_result_throughput_cluster.py
 
 - name: result_throughput_single_node
+  team: ml
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_1x96.yaml
@@ -73,6 +79,7 @@
     script: python workloads/test_result_throughput_single_node.py
 
 - name: xgboost_sweep
+  team: ml
   cluster:
     app_config: app_config_data.yaml
     compute_template: tpl_16x64.yaml

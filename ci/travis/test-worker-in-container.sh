@@ -23,7 +23,7 @@ bash ./ci/travis/install-bazel.sh --system
 
 # shellcheck disable=SC2046
 bazel test --test_timeout 60 --config=ci $(./scripts/bazel_export_options) \
---test_tag_filters=-kubernetes,worker-container,-flaky \
+--test_tag_filters=-kubernetes,worker-container \
 python/ray/tests/...  --test_output=all
 
 #pytest python/ray/tests/test_actor_in_container.py  -s

@@ -1,4 +1,6 @@
 from collections import defaultdict
+from concurrent.futures.thread import ThreadPoolExecutor
+import functools
 import os
 import sys
 import time
@@ -12,6 +14,8 @@ from ray._private.test_utils import SignalActor, wait_for_condition
 from ray import serve
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import get_random_letters
+
+from ray.serve.api import deploy_group
 
 
 @pytest.mark.parametrize("use_handle", [True, False])
@@ -251,7 +255,6 @@ def test_config_change(serve_instance, use_handle):
     assert val5 == "4"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_reconfigure_with_exception(serve_instance):
     @serve.deployment
     class A:
@@ -274,18 +277,7 @@ def test_reconfigure_with_exception(serve_instance):
     with pytest.raises(RuntimeError):
         A.options(user_config="hi").deploy()
 
-    def rolled_back():
-        try:
-            config = ray.get(A.get_handle().remote())
-            return config == "not_hi"
-        except Exception:
-            return False
 
-    # Ensure we should be able to rollback to "hi" config
-    wait_for_condition(rolled_back)
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("use_handle", [True, False])
 def test_redeploy_single_replica(serve_instance, use_handle):
     # Tests that redeploying a deployment with a single replica waits for the
@@ -301,9 +293,8 @@ def test_redeploy_single_replica(serve_instance, use_handle):
             ret = ray.get(handle.handler.remote(block))
         else:
             ret = requests.get(
-                f"http://localhost:8000/{name}", params={
-                    "block": block
-                }).text
+                f"http://localhost:8000/{name}", params={"block": block}
+            ).text
 
         return ret.split("|")[0], ret.split("|")[1]
 
@@ -336,13 +327,14 @@ def test_redeploy_single_replica(serve_instance, use_handle):
 
     # ref2 will block until the signal is sent.
     ref2 = call.remote(block=True)
-    assert len(ray.wait([ref2], timeout=0.1)[0]) == 0
+    assert len(ray.wait([ref2], timeout=2.1)[0]) == 0
 
     # Redeploy new version. This should not go through until the old version
     # replica completely stops.
     V2 = V1.options(func_or_class=V2, version="2")
-    goal_ref = V2.deploy(_blocking=False)
-    assert not client._wait_for_goal(goal_ref, timeout=0.1)
+    V2.deploy(_blocking=False)
+    with pytest.raises(TimeoutError):
+        client._wait_for_deployment_healthy(V2.name, timeout_s=0.1)
 
     # It may take some time for the handle change to propagate and requests
     # to get sent to the new version. Repeatedly send requests until they
@@ -370,7 +362,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
     assert pid2 == pid1
 
     # Now the goal and request to the new version should complete.
-    assert client._wait_for_goal(goal_ref)
+    client._wait_for_deployment_healthy(V2.name)
     new_version_val, new_version_pid = ray.get(new_version_ref)
     assert new_version_val == "2"
     assert new_version_pid != pid2
@@ -392,9 +384,8 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
             ret = ray.get(handle.handler.remote(block))
         else:
             ret = requests.get(
-                f"http://localhost:8000/{name}", params={
-                    "block": block
-                }).text
+                f"http://localhost:8000/{name}", params={"block": block}
+            ).text
 
         return ret.split("|")[0], ret.split("|")[1]
 
@@ -434,10 +425,9 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
             for ref in not_ready:
                 blocking.extend(not_ready)
 
-            if (all(
-                    len(responses[val]) == num
-                    for val, num in expected.items())
-                    and (expect_blocking is False or len(blocking) > 0)):
+            if all(len(responses[val]) == num for val, num in expected.items()) and (
+                expect_blocking is False or len(blocking) > 0
+            ):
                 break
         else:
             assert False, f"Timed out, responses: {responses}."
@@ -451,21 +441,16 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
     # ref2 will block a single replica until the signal is sent. Check that
     # some requests are now blocking.
     ref2 = call.remote(block=True)
-    responses2, blocking2 = make_nonblocking_calls(
-        {
-            "1": 1
-        }, expect_blocking=True)
+    responses2, blocking2 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
     assert list(responses2["1"])[0] in pids1
 
     # Redeploy new version. Since there is one replica blocking, only one new
     # replica should be started up.
     V2 = V1.options(func_or_class=V2, version="2")
-    goal_ref = V2.deploy(_blocking=False)
-    assert not client._wait_for_goal(goal_ref, timeout=0.1)
-    responses3, blocking3 = make_nonblocking_calls(
-        {
-            "1": 1
-        }, expect_blocking=True)
+    V2.deploy(_blocking=False)
+    with pytest.raises(TimeoutError):
+        client._wait_for_deployment_healthy(V2.name, timeout_s=0.1)
+    responses3, blocking3 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
 
     # Signal the original call to exit.
     ray.get(signal.send.remote())
@@ -475,7 +460,7 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
 
     # Now the goal and requests to the new version should complete.
     # We should have two running replicas of the new version.
-    assert client._wait_for_goal(goal_ref)
+    client._wait_for_deployment_healthy(V2.name)
     make_nonblocking_calls({"2": 2})
 
 
@@ -533,10 +518,9 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
             for ref in not_ready:
                 blocking.extend(not_ready)
 
-            if (all(
-                    len(responses[val]) == num
-                    for val, num in expected.items())
-                    and (expect_blocking is False or len(blocking) > 0)):
+            if all(len(responses[val]) == num for val, num in expected.items()) and (
+                expect_blocking is False or len(blocking) > 0
+            ):
                 break
         else:
             assert False, f"Timed out, responses: {responses}."
@@ -549,18 +533,48 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
 
     # Reconfigure should block one replica until the signal is sent. Check that
     # some requests are now blocking.
-    goal_ref = V1.options(user_config="2").deploy(_blocking=False)
-    responses2, blocking2 = make_nonblocking_calls(
-        {
-            "1": 1
-        }, expect_blocking=True)
+    V1.options(user_config="2").deploy(_blocking=False)
+    responses2, blocking2 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
     assert list(responses2["1"])[0] in pids1
 
     # Signal reconfigure to finish. Now the goal should complete and both
     # replicas should have the updated config.
     ray.get(signal.send.remote())
-    assert client._wait_for_goal(goal_ref)
+    client._wait_for_deployment_healthy(V1.name)
     make_nonblocking_calls({"2": 2})
+
+
+def test_reconfigure_with_queries(serve_instance):
+    signal = SignalActor.remote()
+
+    @serve.deployment(max_concurrent_queries=10, num_replicas=3)
+    class A:
+        def __init__(self):
+            self.state = None
+
+        def reconfigure(self, config):
+            self.state = config
+
+        async def __call__(self):
+            await signal.wait.remote()
+            return self.state["a"]
+
+    A.options(version="1", user_config={"a": 1}).deploy()
+    handle = A.get_handle()
+    refs = []
+    for _ in range(30):
+        refs.append(handle.remote())
+
+    @ray.remote(num_cpus=0)
+    def reconfigure():
+        A.options(version="1", user_config={"a": 2}).deploy()
+
+    reconfigure_ref = reconfigure.remote()
+    signal.send.remote()
+    ray.get(reconfigure_ref)
+    for ref in refs:
+        assert ray.get(ref) == 1
+    assert ray.get(handle.remote()) == 2
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -594,9 +608,7 @@ def test_redeploy_scale_down(serve_instance, use_handle):
                 val, pid = ray.get(ref)
                 responses[val].add(pid)
 
-            if all(
-                    len(responses[val]) == num
-                    for val, num in expected.items()):
+            if all(len(responses[val]) == num for val, num in expected.items()):
                 break
         else:
             assert False, f"Timed out, responses: {responses}."
@@ -647,9 +659,7 @@ def test_redeploy_scale_up(serve_instance, use_handle):
                 val, pid = ray.get(ref)
                 responses[val].add(pid)
 
-            if all(
-                    len(responses[val]) == num
-                    for val, num in expected.items()):
+            if all(len(responses[val]) == num for val, num in expected.items()):
                 break
         else:
             assert False, f"Timed out, responses: {responses}."
@@ -669,7 +679,6 @@ def test_redeploy_scale_up(serve_instance, use_handle):
     assert all(pid not in pids1 for pid in responses2["2"])
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_deploy_handle_validation(serve_instance):
     @serve.deployment
     class A:
@@ -879,7 +888,7 @@ def test_input_validation():
 
 
 def test_deployment_properties():
-    class DClass():
+    class DClass:
         pass
 
     D = serve.deployment(
@@ -890,7 +899,8 @@ def test_deployment_properties():
         user_config="hi",
         max_concurrent_queries=100,
         route_prefix="/hello",
-        ray_actor_options={"num_cpus": 2})(DClass)
+        ray_actor_options={"num_cpus": 2},
+    )(DClass)
 
     assert D.name == "name"
     assert D.init_args == ("hello", 123)
@@ -1036,8 +1046,7 @@ class TestGetDeployment:
 
         def check_num_replicas(num):
             handle = self.get_deployment(name, use_list_api).get_handle()
-            assert len(set(ray.get(
-                [handle.remote() for _ in range(50)]))) == num
+            assert len(set(ray.get([handle.remote() for _ in range(50)]))) == num
 
         d.deploy()
         check_num_replicas(1)
@@ -1109,6 +1118,263 @@ def test_deploy_empty_bundle(serve_instance):
     D.deploy()
 
 
+def test_deployment_error_handling(serve_instance):
+    @serve.deployment
+    def f():
+        pass
+
+    with pytest.raises(RuntimeError, match=". is not a valid URI"):
+        # This is an invalid configuration since dynamic upload of working
+        # directories is not supported. The error this causes in the controller
+        # code should be caught and reported back to the `deploy` caller.
+
+        f.options(ray_actor_options={"runtime_env": {"working_dir": "."}}).deploy()
+
+
+def test_http_proxy_request_cancellation(serve_instance):
+    # https://github.com/ray-project/ray/issues/21425
+    s = SignalActor.remote()
+
+    @serve.deployment(max_concurrent_queries=1)
+    class A:
+        def __init__(self) -> None:
+            self.counter = 0
+
+        async def __call__(self):
+            self.counter += 1
+            ret_val = self.counter
+            await s.wait.remote()
+            return ret_val
+
+    A.deploy()
+
+    url = "http://127.0.0.1:8000/A"
+    with ThreadPoolExecutor() as pool:
+        # Send the first request, it should block for the result
+        first_blocking_fut = pool.submit(
+            functools.partial(requests.get, url, timeout=100)
+        )
+        time.sleep(1)
+        assert not first_blocking_fut.done()
+
+        # Send more requests, these should be queued in handle.
+        # But because first request is hanging and these have low timeout.
+        # They should all disconnect from http connection.
+        # These requests should never reach the replica.
+        rest_blocking_futs = [
+            pool.submit(functools.partial(requests.get, url, timeout=0.5))
+            for _ in range(3)
+        ]
+        time.sleep(1)
+        assert all(f.done() for f in rest_blocking_futs)
+
+        # Now unblock the first request.
+        ray.get(s.send.remote())
+        assert first_blocking_fut.result().text == "1"
+
+    # Sending another request to verify that only one request has been
+    # processed so far.
+    assert requests.get(url).text == "2"
+
+
+class TestDeployGroup:
+    @serve.deployment
+    def f():
+        return "f reached"
+
+    @serve.deployment
+    def g():
+        return "g reached"
+
+    @serve.deployment
+    class C:
+        async def __call__(self):
+            return "C reached"
+
+    @serve.deployment
+    class D:
+        async def __call__(self):
+            return "D reached"
+
+    def deploy_and_check_responses(
+        self, deployments, responses, blocking=True, client=None
+    ):
+        """
+        Helper function that deploys the list of deployments, calls them with
+        their handles, and checks whether they return the objects in responses.
+        If blocking is False, this function uses a non-blocking deploy and uses
+        the client to wait until the deployments finish deploying.
+        """
+
+        deploy_group(deployments, _blocking=blocking)
+
+        def check_all_deployed():
+            try:
+                for deployment, response in zip(deployments, responses):
+                    if ray.get(deployment.get_handle().remote()) != response:
+                        return False
+            except Exception:
+                return False
+
+            return True
+
+        if blocking:
+            # If blocking, this should be guaranteed to pass immediately.
+            assert check_all_deployed()
+        else:
+            # If non-blocking, this should pass eventually.
+            wait_for_condition(check_all_deployed)
+
+    def test_basic_deploy_group(self, serve_instance):
+        """
+        Atomically deploys a group of deployments, including both functions and
+        classes. Checks whether they deploy correctly.
+        """
+
+        deployments = [self.f, self.g, self.C, self.D]
+        responses = ["f reached", "g reached", "C reached", "D reached"]
+
+        self.deploy_and_check_responses(deployments, responses)
+
+    def test_non_blocking_deploy_group(self, serve_instance):
+        """Checks deploy_group's behavior when _blocking=False."""
+
+        deployments = [self.f, self.g, self.C, self.D]
+        responses = ["f reached", "g reached", "C reached", "D reached"]
+        self.deploy_and_check_responses(
+            deployments, responses, blocking=False, client=serve_instance
+        )
+
+    def test_mutual_handles(self, serve_instance):
+        """
+        Atomically deploys a group of deployments that get handles to other
+        deployments in the group inside their __init__ functions. The handle
+        references should fail in a non-atomic deployment. Checks whether the
+        deployments deploy correctly.
+        """
+
+        @serve.deployment
+        class MutualHandles:
+            async def __init__(self, handle_name):
+                self.handle = serve.get_deployment(handle_name).get_handle()
+
+            async def __call__(self, echo: str):
+                return await self.handle.request_echo.remote(echo)
+
+            async def request_echo(self, echo: str):
+                return echo
+
+        names = []
+        for i in range(10):
+            names.append("a" * i)
+
+        deployments = []
+        for idx in range(len(names)):
+            # Each deployment will hold a ServeHandle with the next name in
+            # the list
+            deployment_name = names[idx]
+            handle_name = names[(idx + 1) % len(names)]
+
+            deployments.append(
+                MutualHandles.options(name=deployment_name, init_args=(handle_name,))
+            )
+
+        deploy_group(deployments)
+
+        for deployment in deployments:
+            assert (ray.get(deployment.get_handle().remote("hello"))) == "hello"
+
+    def test_decorated_deployments(self, serve_instance):
+        """
+        Checks deploy_group's behavior when deployments have options set in
+        their @serve.deployment decorator.
+        """
+
+        @serve.deployment(num_replicas=2, max_concurrent_queries=5)
+        class DecoratedClass1:
+            async def __call__(self):
+                return "DecoratedClass1 reached"
+
+        @serve.deployment(num_replicas=4, max_concurrent_queries=2)
+        class DecoratedClass2:
+            async def __call__(self):
+                return "DecoratedClass2 reached"
+
+        deployments = [DecoratedClass1, DecoratedClass2]
+        responses = ["DecoratedClass1 reached", "DecoratedClass2 reached"]
+        self.deploy_and_check_responses(deployments, responses)
+
+    def test_empty_list(self, serve_instance):
+        """Checks deploy_group's behavior when deployment group is empty."""
+
+        self.deploy_and_check_responses([], [])
+
+    def test_invalid_input(self, serve_instance):
+        """
+        Checks deploy_group's behavior when deployment group contains
+        non-Deployment objects.
+        """
+
+        with pytest.raises(TypeError):
+            deploy_group([self.f, self.C, "not a Deployment object"])
+
+    def test_import_path_deployment(self, serve_instance):
+        test_env_uri = (
+            "https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip"
+        )
+        test_module_uri = (
+            "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
+        )
+
+        ray_actor_options = {
+            "runtime_env": {"py_modules": [test_env_uri, test_module_uri]}
+        }
+
+        shallow = serve.deployment(
+            name="shallow",
+            ray_actor_options=ray_actor_options,
+        )("test_env.shallow_import.ShallowClass")
+
+        deep = serve.deployment(
+            name="deep",
+            ray_actor_options=ray_actor_options,
+        )("test_env.subdir1.subdir2.deep_import.DeepClass")
+
+        one = serve.deployment(
+            name="one",
+            ray_actor_options=ray_actor_options,
+        )("test_module.test.one")
+
+        deployments = [shallow, deep, one]
+        responses = ["Hello shallow world!", "Hello deep world!", 2]
+
+        self.deploy_and_check_responses(deployments, responses)
+
+    def test_different_pymodules(self, serve_instance):
+        test_env_uri = (
+            "https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip"
+        )
+        test_module_uri = (
+            "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
+        )
+
+        shallow = serve.deployment(
+            name="shallow",
+            ray_actor_options={"runtime_env": {"py_modules": [test_env_uri]}},
+        )("test_env.shallow_import.ShallowClass")
+
+        one = serve.deployment(
+            name="one",
+            ray_actor_options={"runtime_env": {"py_modules": [test_module_uri]}},
+        )("test_module.test.one")
+
+        deployments = [shallow, one]
+        responses = ["Hello shallow world!", 2]
+
+        self.deploy_and_check_responses(deployments, responses)
+
+
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

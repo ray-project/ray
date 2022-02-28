@@ -1,34 +1,53 @@
 import inspect
+import logging
 import time
-from typing import Any, Callable, List, Iterator, Iterable, Generic, Union, \
-    Optional, TYPE_CHECKING
+from typing import (
+    Any,
+    Callable,
+    List,
+    Iterator,
+    Iterable,
+    Generic,
+    Union,
+    Optional,
+    TYPE_CHECKING,
+)
 
 import ray
 from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset, T, U, BatchType
-from ray.data.impl.pipeline_executor import PipelineExecutor, \
-    PipelineSplitExecutorCoordinator
+from ray.data.impl.pipeline_executor import (
+    PipelineExecutor,
+    PipelineSplitExecutorCoordinator,
+)
+from ray.data.row import TableRow
 from ray.data.impl import progress_bar
+from ray.data.impl.block_list import BlockList
+from ray.data.impl.plan import ExecutionPlan
+from ray.data.impl.stats import DatasetPipelineStats, DatasetStats
 from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow
 
+logger = logging.getLogger(__name__)
+
 # Operations that can be naively applied per dataset row in the pipeline.
-PER_DATASET_OPS = ["map", "map_batches", "flat_map", "filter"]
+PER_DATASET_OPS = ["map", "map_batches", "add_column", "flat_map", "filter"]
 
 # Operations that apply to each dataset holistically in the pipeline.
 HOLISTIC_PER_DATASET_OPS = ["repartition", "random_shuffle", "sort"]
 
 # Similar to above but we should force evaluation immediately.
 PER_DATASET_OUTPUT_OPS = [
-    "write_json", "write_csv", "write_parquet", "write_datasource"
+    "write_json",
+    "write_csv",
+    "write_parquet",
+    "write_datasource",
 ]
 
 # Operations that operate over the stream of output batches from the pipeline.
-OUTPUT_ITER_OPS = [
-    "take", "take_all", "show", "iter_rows", "to_tf", "to_torch"
-]
+OUTPUT_ITER_OPS = ["take", "take_all", "show", "to_tf", "to_torch"]
 
 
 @PublicAPI(stability="beta")
@@ -50,12 +69,14 @@ class DatasetPipeline(Generic[T]):
     and output methods (e.g., iter_rows, to_tf, to_torch, write_datasource).
     """
 
-    def __init__(self,
-                 base_iterable: Iterable[Callable[[], Dataset[T]]],
-                 stages: List[Callable[[Dataset[Any]], Dataset[Any]]] = None,
-                 length: int = None,
-                 progress_bars: bool = progress_bar._enabled,
-                 _executed: List[bool] = None):
+    def __init__(
+        self,
+        base_iterable: Iterable[Callable[[], Dataset[T]]],
+        stages: List[Callable[[Dataset[Any]], Dataset[Any]]] = None,
+        length: int = None,
+        progress_bars: bool = progress_bar._enabled,
+        _executed: List[bool] = None,
+    ):
         """Construct a DatasetPipeline (internal API).
 
         The constructor is not part of the DatasetPipeline API. Use the
@@ -64,23 +85,63 @@ class DatasetPipeline(Generic[T]):
         """
         self._base_iterable = base_iterable
         self._stages = stages or []
+        self._optimized_stages = None
         self._length = length
         self._progress_bars = progress_bars
         self._uuid = None  # For testing only.
         # Whether the pipeline execution has started.
         # This variable is shared across all pipelines descending from this.
         self._executed = _executed or [False]
+        self._stats = DatasetPipelineStats()
 
-    def iter_batches(self,
-                     *,
-                     prefetch_blocks: int = 0,
-                     batch_size: int = None,
-                     batch_format: str = "pandas",
-                     drop_last: bool = False) -> Iterator[BatchType]:
+    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
+        """Return a local row iterator over the data in the pipeline.
+
+        If the dataset is a tabular dataset (Arrow/Pandas blocks), dict-like mappings
+        :py:class:`~ray.data.row.TableRow` are yielded for each row by the iterator.
+        If the dataset is not tabular, the raw row is yielded.
+
+        Examples:
+            >>> for i in ray.data.range(1000000).repeat(5).iter_rows():
+            ...     print(i)
+
+        Time complexity: O(1)
+
+        Args:
+            prefetch_blocks: The number of blocks to prefetch ahead of the
+                current block during the scan.
+
+        Returns:
+            A local iterator over the records in the pipeline.
+        """
+
+        def gen_rows() -> Iterator[Union[T, TableRow]]:
+            time_start = time.perf_counter()
+
+            for ds in self.iter_datasets():
+                wait_start = time.perf_counter()
+                for row in ds.iter_rows(prefetch_blocks=prefetch_blocks):
+                    self._stats.iter_wait_s.add(time.perf_counter() - wait_start)
+                    with self._stats.iter_user_s.timer():
+                        yield row
+                    wait_start = time.perf_counter()
+
+            self._stats.iter_total_s.add(time.perf_counter() - time_start)
+
+        return gen_rows()
+
+    def iter_batches(
+        self,
+        *,
+        prefetch_blocks: int = 0,
+        batch_size: int = None,
+        batch_format: str = "native",
+        drop_last: bool = False,
+    ) -> Iterator[BatchType]:
         """Return a local batched iterator over the data in the pipeline.
 
         Examples:
-            >>> for pandas_df in ray.data.range(1000000).iter_batches():
+            >>> for pandas_df in ray.data.range(1000000).repeat(5).iter_batches():
             ...     print(pandas_df)
 
         Time complexity: O(1)
@@ -90,8 +151,10 @@ class DatasetPipeline(Generic[T]):
                 current block during the scan.
             batch_size: Record batch size, or None to let the system pick.
             batch_format: The format in which to return each batch.
-                Specify "pandas" to select ``pandas.DataFrame`` or "pyarrow" to
-                select ``pyarrow.Table``. Default is "pandas".
+                Specify "native" to use the current block format (promoting
+                Arrow to pandas automatically), "pandas" to
+                select ``pandas.DataFrame`` or "pyarrow" to select
+                ``pyarrow.Table``. Default is "native".
             drop_last: Whether to drop the last batch if it's incomplete.
 
         Returns:
@@ -99,21 +162,28 @@ class DatasetPipeline(Generic[T]):
         """
 
         def gen_batches() -> Iterator[BatchType]:
+            time_start = time.perf_counter()
+
             for ds in self.iter_datasets():
+                wait_start = time.perf_counter()
                 for batch in ds.iter_batches(
-                        prefetch_blocks=prefetch_blocks,
-                        batch_size=batch_size,
-                        batch_format=batch_format,
-                        drop_last=drop_last):
-                    yield batch
+                    prefetch_blocks=prefetch_blocks,
+                    batch_size=batch_size,
+                    batch_format=batch_format,
+                    drop_last=drop_last,
+                ):
+                    self._stats.iter_wait_s.add(time.perf_counter() - wait_start)
+                    with self._stats.iter_user_s.timer():
+                        yield batch
+                    wait_start = time.perf_counter()
+
+            self._stats.iter_total_s.add(time.perf_counter() - time_start)
 
         return gen_batches()
 
-    def split(self,
-              n: int,
-              *,
-              equal: bool = False,
-              locality_hints: List[Any] = None) -> List["DatasetPipeline[T]"]:
+    def split(
+        self, n: int, *, equal: bool = False, locality_hints: List[Any] = None
+    ) -> List["DatasetPipeline[T]"]:
         """Split the pipeline into ``n`` disjoint pipeline shards.
 
         This returns a list of sub-pipelines that can be passed to Ray tasks
@@ -147,10 +217,12 @@ class DatasetPipeline(Generic[T]):
         """
         return self._split(
             n,
-            lambda ds: ds.split(n, equal=equal, locality_hints=locality_hints))
+            lambda ds, equal=equal: ds.split(
+                n, equal=equal, locality_hints=locality_hints
+            ),
+        )
 
-    def split_at_indices(self,
-                         indices: List[int]) -> List["DatasetPipeline[T]"]:
+    def split_at_indices(self, indices: List[int]) -> List["DatasetPipeline[T]"]:
         """Split the datasets within the pipeline at the given indices
         (like np.split).
 
@@ -191,14 +263,13 @@ class DatasetPipeline(Generic[T]):
         if indices[0] < 0:
             raise ValueError("indices must be positive")
 
-        return self._split(
-            len(indices) + 1, lambda ds: ds.split_at_indices(indices))
+        return self._split(len(indices) + 1, lambda ds: ds.split_at_indices(indices))
 
-    def _split(self, n: int,
-               splitter: Callable[[Dataset], "DatasetPipeline[T]"]):
+    def _split(self, n: int, splitter: Callable[[Dataset], "DatasetPipeline[T]"]):
 
         coordinator = PipelineSplitExecutorCoordinator.remote(
-            self, n, splitter, DatasetContext.get_current())
+            self, n, splitter, DatasetContext.get_current()
+        )
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
         self._executed[0] = True
@@ -218,19 +289,22 @@ class DatasetPipeline(Generic[T]):
                 tries = 0
                 while ds is None:
                     ds = ray.get(
-                        self.coordinator.next_dataset_if_ready.remote(
-                            self.split_index))
+                        self.coordinator.next_dataset_if_ready.remote(self.split_index)
+                    )
                     # Wait for other shards to catch up reading.
                     if not ds:
                         time.sleep(self.wait_delay_s)
                         tries += 1
                     if tries > self.warn_threshold:
-                        print("Warning: reader on shard {} of the pipeline "
-                              "has been blocked more than {}s waiting for "
-                              "other readers to catch up. All pipeline shards "
-                              "must be read from concurrently.".format(
-                                  self.split_index,
-                                  self.wait_delay_s * self.warn_threshold))
+                        print(
+                            "Warning: reader on shard {} of the pipeline "
+                            "has been blocked more than {}s waiting for "
+                            "other readers to catch up. All pipeline shards "
+                            "must be read from concurrently.".format(
+                                self.split_index,
+                                self.wait_delay_s * self.warn_threshold,
+                            )
+                        )
                         self.warn_threshold *= 2
                 return lambda: ds
 
@@ -240,11 +314,14 @@ class DatasetPipeline(Generic[T]):
             DatasetPipeline(
                 SplitIterator(idx, coordinator),
                 length=self._length,
-                progress_bars=False) for idx in range(n)
+                progress_bars=False,
+            )
+            for idx in range(n)
         ]
 
-    def rewindow(self, *, blocks_per_window: int,
-                 preserve_epoch: bool = True) -> "DatasetPipeline[T]":
+    def rewindow(
+        self, *, blocks_per_window: int, preserve_epoch: bool = True
+    ) -> "DatasetPipeline[T]":
         """Change the windowing (blocks per dataset) of this pipeline.
 
         Changes the windowing of this pipeline to the specified size. For
@@ -272,8 +349,10 @@ class DatasetPipeline(Generic[T]):
                         self._buffer = next(self._original_iter)
                     while self._buffer.num_blocks() < blocks_per_window:
                         next_ds = next(self._original_iter)
-                        if (preserve_epoch and self._buffer._get_epoch() !=
-                                next_ds._get_epoch()):
+                        if (
+                            preserve_epoch
+                            and self._buffer._get_epoch() != next_ds._get_epoch()
+                        ):
                             partial_window = self._buffer
                             self._buffer = next_ds
                             return lambda: partial_window
@@ -307,18 +386,13 @@ class DatasetPipeline(Generic[T]):
         else:
             length = None
 
-        return DatasetPipeline(
-            WindowIterable(self.iter_datasets()), length=length)
+        return DatasetPipeline(WindowIterable(self.iter_datasets()), length=length)
 
     def repeat(self, times: int = None) -> "DatasetPipeline[T]":
         """Repeat this pipeline a given number or times, or indefinitely.
 
         This operation is only allowed for pipelines of a finite length. An
         error will be raised for pipelines of infinite length.
-
-        Transformations prior to the call to ``repeat()`` are evaluated once.
-        Transformations done on the repeated pipeline are evaluated on each
-        loop of the pipeline over the base pipeline.
 
         Note that every repeat of the pipeline is considered an "epoch" for
         the purposes of ``iter_epochs()``. If there are multiple repeat calls,
@@ -346,10 +420,15 @@ class DatasetPipeline(Generic[T]):
                 # Still going through the original pipeline.
                 if self._original_iter:
                     try:
-                        res = next(self._original_iter)
-                        res._set_epoch(0)
-                        self._results.append(res)
-                        return lambda: res
+                        make_ds = next(self._original_iter)
+                        self._results.append(make_ds)
+
+                        def gen():
+                            res = make_ds()
+                            res._set_epoch(0)
+                            return res
+
+                        return gen
                     except StopIteration:
                         self._original_iter = None
                         # Calculate the cursor limit.
@@ -359,10 +438,16 @@ class DatasetPipeline(Generic[T]):
                             self._max_i = float("inf")
                 # Going through a repeat of the pipeline.
                 if self._i < self._max_i:
-                    res = self._results[self._i % len(self._results)]
-                    res._set_epoch(1 + self._i // len(self._results))
+                    make_ds = self._results[self._i % len(self._results)]
+                    epoch = 1 + self._i // len(self._results)
+
+                    def gen():
+                        res = make_ds()
+                        res._set_epoch(epoch)
+                        return res
+
                     self._i += 1
-                    return lambda: res
+                    return gen
                 else:
                     raise StopIteration
 
@@ -381,7 +466,10 @@ class DatasetPipeline(Generic[T]):
             length = None
 
         return DatasetPipeline(
-            RepeatIterable(self.iter_datasets()), length=length)
+            RepeatIterable(iter(self._base_iterable)),
+            stages=self._stages.copy(),
+            length=length,
+        )
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         """Return the schema of the dataset pipeline.
@@ -429,8 +517,7 @@ class DatasetPipeline(Generic[T]):
         if self._length == float("inf"):
             raise ValueError("Cannot sum a pipeline of infinite length.")
 
-        pipe = self.map_batches(
-            lambda batch: [batch.sum()[0]], batch_format="pandas")
+        pipe = self.map_batches(lambda batch: [batch.sum()[0]], batch_format="pandas")
         total = 0
         for elem in pipe.iter_rows():
             total += elem
@@ -502,16 +589,14 @@ class DatasetPipeline(Generic[T]):
                 return item
 
         class SingleEpochIterator:
-            def __init__(self, peekable_iter: Iterator[Dataset[T]]):
+            def __init__(self, peekable_iter: Iterator[Dataset[T]], epoch: int):
                 self._iter = peekable_iter
-                self._epoch = None
+                self._epoch = epoch
 
             def __next__(self) -> Dataset[T]:
-                if (self._epoch is not None
-                        and self._iter.peek()._get_epoch() != self._epoch):
+                if self._iter.peek()._get_epoch() > self._epoch:
                     raise StopIteration
                 ds = next(self._iter)
-                self._epoch = ds._get_epoch()
                 return lambda: ds
 
             def __iter__(self):
@@ -520,11 +605,25 @@ class DatasetPipeline(Generic[T]):
         class EpochDelimitedIterator:
             def __init__(self, pipe):
                 self._iter = Peekable(pipe.iter_datasets())
+                self._cur_epoch = None
 
             def __next__(self) -> "DatasetPipeline[T]":
-                self._iter.peek()  # Raises StopIteration on end of data.
+                if self._cur_epoch is None:
+                    self._cur_epoch = self._iter.peek()._get_epoch()
+                else:
+                    self._cur_epoch += 1
+                warned = False
+                while self._iter.peek()._get_epoch() < self._cur_epoch:
+                    if not warned:
+                        warned = True
+                        logger.warn(
+                            "Data from epoch {} was not fully read, "
+                            "skipping to next epoch.".format(self._cur_epoch - 1)
+                        )
+                    next(self._iter)
                 epoch_pipe = DatasetPipeline.from_iterable(
-                    SingleEpochIterator(self._iter))
+                    SingleEpochIterator(self._iter, epoch=self._cur_epoch)
+                )
                 return epoch_pipe
 
             def __iter__(self):
@@ -542,11 +641,13 @@ class DatasetPipeline(Generic[T]):
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
         self._executed[0] = True
+        self._optimize_stages()
         return PipelineExecutor(self)
 
     @DeveloperAPI
-    def foreach_window(self, fn: Callable[[Dataset[T]], Dataset[U]]
-                       ) -> "DatasetPipeline[U]":
+    def foreach_window(
+        self, fn: Callable[[Dataset[T]], Dataset[U]]
+    ) -> "DatasetPipeline[U]":
         """Apply a transform to each dataset/window in this pipeline.
 
         Args:
@@ -562,15 +663,30 @@ class DatasetPipeline(Generic[T]):
             self._stages + [fn],
             self._length,
             self._progress_bars,
-            _executed=self._executed)
+            _executed=self._executed,
+        )
 
     def foreach_dataset(self, *a, **kw) -> None:
         raise DeprecationWarning(
-            "`foreach_dataset` has been renamed to `foreach_window`.")
+            "`foreach_dataset` has been renamed to `foreach_window`."
+        )
+
+    @DeveloperAPI
+    def stats(self, exclude_first_window: bool = True) -> str:
+        """Returns a string containing execution timing information.
+
+        Args:
+            exclude_first_window: Whether to exclude the first window from
+                the pipeline time breakdown. This is generally a good idea
+                since there is always a stall waiting for the first window to
+                be initially computed, which can be misleading in the stats.
+        """
+        return self._stats.summary_string(exclude_first_window)
 
     @staticmethod
-    def from_iterable(iterable: Iterable[Callable[[], Dataset[T]]],
-                      ) -> "DatasetPipeline[T]":
+    def from_iterable(
+        iterable: Iterable[Callable[[], Dataset[T]]],
+    ) -> "DatasetPipeline[T]":
         """Create a pipeline from an sequence of Dataset producing functions.
 
         Args:
@@ -585,7 +701,8 @@ class DatasetPipeline(Generic[T]):
 
     def __repr__(self) -> str:
         return "DatasetPipeline(num_windows={}, num_stages={})".format(
-            self._length, 1 + len(self._stages))
+            self._length, 1 + len(self._stages)
+        )
 
     def __str__(self) -> str:
         return repr(self)
@@ -596,6 +713,31 @@ class DatasetPipeline(Generic[T]):
     def _set_uuid(self, uuid: str) -> None:
         self._uuid = uuid
 
+    def _optimize_stages(self):
+        """Optimize this pipeline, fusing stages together as possible."""
+        context = DatasetContext.get_current()
+
+        if not context.optimize_fuse_stages:
+            self._optimized_stages = self._stages
+            return
+
+        dummy_ds = Dataset(
+            ExecutionPlan(BlockList([], []), DatasetStats(stages={}, parent=None)),
+            0,
+            True,
+        )
+        for stage in self._stages:
+            dummy_ds = stage(dummy_ds)
+        dummy_ds._plan._optimize()
+        optimized_stages = []
+        for stage in dummy_ds._plan._stages:
+            optimized_stages.append(
+                lambda ds, stage=stage: Dataset(
+                    ds._plan.with_stage(stage), ds._epoch, True
+                )
+            )
+        self._optimized_stages = optimized_stages
+
 
 for method in PER_DATASET_OPS:
 
@@ -603,18 +745,19 @@ for method in PER_DATASET_OPS:
         delegate = getattr(Dataset, method)
 
         def impl(self, *args, **kwargs) -> "DatasetPipeline[U]":
-            return self.foreach_window(
-                lambda ds: getattr(ds, method)(*args, **kwargs))
+            return self.foreach_window(lambda ds: getattr(ds, method)(*args, **kwargs))
 
         impl.__name__ = delegate.__name__
         impl.__doc__ = """
 Apply ``Dataset.{method}`` to each dataset/window in this pipeline.
-""".format(method=method)
+""".format(
+            method=method
+        )
         setattr(
             impl,
             "__signature__",
-            inspect.signature(delegate).replace(
-                return_annotation="DatasetPipeline[U]"))
+            inspect.signature(delegate).replace(return_annotation="DatasetPipeline[U]"),
+        )
         return impl
 
     setattr(DatasetPipeline, method, make_impl(method))
@@ -625,25 +768,26 @@ for method in HOLISTIC_PER_DATASET_OPS:
         delegate = getattr(Dataset, method)
 
         def impl(self, *args, **kwargs) -> "DatasetPipeline[U]":
-            return self.foreach_window(
-                lambda ds: getattr(ds, method)(*args, **kwargs))
+            return self.foreach_window(lambda ds: getattr(ds, method)(*args, **kwargs))
 
         impl.__name__ = delegate.__name__
         impl.__doc__ = """
 Apply ``Dataset.{method}`` to each dataset/window in this pipeline.
-""".format(method=method)
+""".format(
+            method=method
+        )
         setattr(
             impl,
             "__signature__",
-            inspect.signature(delegate).replace(
-                return_annotation="DatasetPipeline[U]"))
+            inspect.signature(delegate).replace(return_annotation="DatasetPipeline[U]"),
+        )
         return impl
 
     def deprecation_warning(method: str):
         def impl(*a, **kw):
             raise DeprecationWarning(
-                "`{}` has been renamed to `{}_each_window`.".format(
-                    method, method))
+                "`{}` has been renamed to `{}_each_window`.".format(method, method)
+            )
 
         return impl
 
@@ -666,7 +810,9 @@ for method in PER_DATASET_OUTPUT_OPS:
         impl.__name__ = delegate.__name__
         impl.__doc__ = """
 Call ``Dataset.{method}`` on each output dataset of this pipeline.
-""".format(method=method)
+""".format(
+            method=method
+        )
         setattr(impl, "__signature__", inspect.signature(delegate))
         return impl
 
@@ -683,7 +829,9 @@ for method in OUTPUT_ITER_OPS:
         impl.__name__ = delegate.__name__
         impl.__doc__ = """
 Call ``Dataset.{method}`` over the stream of output batches from the pipeline.
-""".format(method=method)
+""".format(
+            method=method
+        )
         setattr(impl, "__signature__", inspect.signature(delegate))
         return impl
 

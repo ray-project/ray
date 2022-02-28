@@ -101,20 +101,15 @@ raylet::RayletClient::RayletClient(
     rpc::WorkerType worker_type, const JobID &job_id, const int &runtime_env_hash,
     const Language &language, const std::string &ip_address, Status *status,
     NodeID *raylet_id, int *port, std::string *serialized_job_config,
-    pid_t worker_shim_pid, StartupToken startup_token)
+    StartupToken startup_token)
     : grpc_client_(std::move(grpc_client)), worker_id_(worker_id), job_id_(job_id) {
   conn_ = std::make_unique<raylet::RayletConnection>(io_service, raylet_socket, -1, -1);
 
-  // When the "shim process" which is used for setuping runtime_env is not needed,
-  // the worker_shim_pid will be 0.
-  if (worker_shim_pid == 0) {
-    worker_shim_pid = getpid();
-  }
   flatbuffers::FlatBufferBuilder fbb;
   // TODO(suquark): Use `WorkerType` in `common.proto` without converting to int.
   auto message = protocol::CreateRegisterClientRequest(
       fbb, static_cast<int>(worker_type), to_flatbuf(fbb, worker_id), getpid(),
-      worker_shim_pid, startup_token, to_flatbuf(fbb, job_id), runtime_env_hash, language,
+      startup_token, to_flatbuf(fbb, job_id), runtime_env_hash, language,
       fbb.CreateString(ip_address),
       /*port=*/0, fbb.CreateString(*serialized_job_config));
   fbb.Finish(message);
@@ -183,14 +178,6 @@ Status raylet::RayletClient::AnnounceWorkerPort(int port) {
   auto message = protocol::CreateAnnounceWorkerPort(fbb, port);
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::AnnounceWorkerPort, &fbb);
-}
-
-Status raylet::RayletClient::SubmitTask(const TaskSpecification &task_spec) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message =
-      protocol::CreateSubmitTaskRequest(fbb, fbb.CreateString(task_spec.Serialize()));
-  fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
 }
 
 Status raylet::RayletClient::TaskDone() {
@@ -300,7 +287,7 @@ Status raylet::RayletClient::FreeObjects(const std::vector<ObjectID> &object_ids
 void raylet::RayletClient::RequestWorkerLease(
     const rpc::TaskSpec &task_spec, bool grant_or_reject,
     const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
-    const int64_t backlog_size) {
+    const int64_t backlog_size, const bool is_selected_based_on_locality) {
   google::protobuf::Arena arena;
   auto request =
       google::protobuf::Arena::CreateMessage<rpc::RequestWorkerLeaseRequest>(&arena);
@@ -312,6 +299,7 @@ void raylet::RayletClient::RequestWorkerLease(
       const_cast<rpc::TaskSpec *>(&task_spec));
   request->set_grant_or_reject(grant_or_reject);
   request->set_backlog_size(backlog_size);
+  request->set_is_selected_based_on_locality(is_selected_based_on_locality);
   grpc_client_->RequestWorkerLease(*request, callback);
 }
 
@@ -339,11 +327,12 @@ void raylet::RayletClient::ReportWorkerBacklog(
 }
 
 Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worker_id,
-                                          bool disconnect_worker) {
+                                          bool disconnect_worker, bool worker_exiting) {
   rpc::ReturnWorkerRequest request;
   request.set_worker_port(worker_port);
   request.set_worker_id(worker_id.Binary());
   request.set_disconnect_worker(disconnect_worker);
+  request.set_worker_exiting(worker_exiting);
   grpc_client_->ReturnWorker(
       request, [](const Status &status, const rpc::ReturnWorkerReply &reply) {
         if (!status.ok()) {
@@ -381,18 +370,30 @@ void raylet::RayletClient::CancelWorkerLease(
 }
 
 void raylet::RayletClient::PrepareBundleResources(
-    const BundleSpecification &bundle_spec,
+    const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
     const ray::rpc::ClientCallback<ray::rpc::PrepareBundleResourcesReply> &callback) {
   rpc::PrepareBundleResourcesRequest request;
-  request.mutable_bundle_spec()->CopyFrom(bundle_spec.GetMessage());
+  std::set<std::string> nodes;
+  for (const auto &bundle_spec : bundle_specs) {
+    nodes.insert(bundle_spec->NodeId().Hex());
+    auto message_bundle = request.add_bundle_specs();
+    message_bundle->CopyFrom(bundle_spec->GetMessage());
+  }
+  RAY_CHECK(nodes.size() == 1);
   grpc_client_->PrepareBundleResources(request, callback);
 }
 
 void raylet::RayletClient::CommitBundleResources(
-    const BundleSpecification &bundle_spec,
+    const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
     const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback) {
   rpc::CommitBundleResourcesRequest request;
-  request.mutable_bundle_spec()->CopyFrom(bundle_spec.GetMessage());
+  std::set<std::string> nodes;
+  for (const auto &bundle_spec : bundle_specs) {
+    nodes.insert(bundle_spec->NodeId().Hex());
+    auto message_bundle = request.add_bundle_specs();
+    message_bundle->CopyFrom(bundle_spec->GetMessage());
+  }
+  RAY_CHECK(nodes.size() == 1);
   grpc_client_->CommitBundleResources(request, callback);
 }
 

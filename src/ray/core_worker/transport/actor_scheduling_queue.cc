@@ -68,7 +68,6 @@ void ActorSchedulingQueue::Add(int64_t seq_no, int64_t client_processed_up_to,
                                rpc::SendReplyCallback send_reply_callback,
                                const std::string &concurrency_group_name,
                                const ray::FunctionDescriptor &function_descriptor,
-                               std::function<void(rpc::SendReplyCallback)> steal_request,
                                TaskID task_id,
                                const std::vector<rpc::ObjectReference> &dependencies) {
   // A seq_no of -1 means no ordering constraint. Actor tasks must be executed in order.
@@ -82,10 +81,10 @@ void ActorSchedulingQueue::Add(int64_t seq_no, int64_t client_processed_up_to,
   }
   RAY_LOG(DEBUG) << "Enqueue " << seq_no << " cur seqno " << next_seq_no_;
 
-  pending_actor_tasks_[seq_no] = InboundRequest(
-      std::move(accept_request), std::move(reject_request), std::move(steal_request),
-      std::move(send_reply_callback), task_id, dependencies.size() > 0,
-      concurrency_group_name, function_descriptor);
+  pending_actor_tasks_[seq_no] =
+      InboundRequest(std::move(accept_request), std::move(reject_request),
+                     std::move(send_reply_callback), task_id, dependencies.size() > 0,
+                     concurrency_group_name, function_descriptor);
 
   if (dependencies.size() > 0) {
     waiter_.Wait(dependencies, [seq_no, this]() {
@@ -98,13 +97,6 @@ void ActorSchedulingQueue::Add(int64_t seq_no, int64_t client_processed_up_to,
     });
   }
   ScheduleRequests();
-}
-
-size_t ActorSchedulingQueue::Steal(rpc::StealTasksReply *reply) {
-  RAY_CHECK(false) << "Cannot steal actor tasks";
-  // The return instruction will never be executed, but we need to include it
-  // nonetheless because this is a non-void function.
-  return 0;
 }
 
 // We don't allow the cancellation of actor tasks, so invoking CancelTaskIfFound

@@ -26,6 +26,8 @@ namespace core {
 using namespace ::testing;
 class DirectTaskTransportTest : public ::testing::Test {
  public:
+  DirectTaskTransportTest() : io_work(io_context) {}
+
   void SetUp() override {
     gcs_client = std::make_shared<ray::gcs::MockGcsClient>();
     actor_creator = std::make_unique<DefaultActorCreator>(gcs_client);
@@ -35,7 +37,7 @@ class DirectTaskTransportTest : public ::testing::Test {
         [&](const rpc::Address &) { return nullptr; });
     memory_store = std::make_unique<CoreWorkerMemoryStore>();
     actor_task_submitter = std::make_unique<CoreWorkerDirectActorTaskSubmitter>(
-        *client_pool, *memory_store, *task_finisher, *actor_creator, nullptr);
+        *client_pool, *memory_store, *task_finisher, *actor_creator, nullptr, io_context);
   }
 
   TaskSpecification GetActorTaskSpec(const ActorID &actor_id) {
@@ -57,6 +59,15 @@ class DirectTaskTransportTest : public ::testing::Test {
     return TaskSpecification(task_spec);
   }
 
+ protected:
+  bool CheckSubmitTask(TaskSpecification task) {
+    EXPECT_TRUE(actor_task_submitter->SubmitTask(task).ok());
+    return 1 == io_context.poll_one();
+  }
+
+ protected:
+  instrumented_io_context io_context;
+  boost::asio::io_service::work io_work;
   std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> actor_task_submitter;
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool;
   std::unique_ptr<CoreWorkerMemoryStore> memory_store;
@@ -76,13 +87,13 @@ TEST_F(DirectTaskTransportTest, ActorRegisterFailure) {
   inline_obj_ref->set_object_id(ObjectID::ForActorHandle(actor_id).Binary());
   std::function<void(Status)> register_cb;
   EXPECT_CALL(*gcs_client->mock_actor_accessor,
-              AsyncRegisterActor(creation_task_spec, ::testing::_))
+              AsyncRegisterActor(creation_task_spec, ::testing::_, ::testing::_))
       .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&register_cb),
                                  ::testing::Return(Status::OK())));
   ASSERT_TRUE(actor_creator->AsyncRegisterActor(creation_task_spec, nullptr).ok());
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
-  actor_task_submitter->AddActorQueueIfNotExists(actor_id);
-  ASSERT_TRUE(actor_task_submitter->SubmitTask(task_spec).ok());
+  actor_task_submitter->AddActorQueueIfNotExists(actor_id, -1);
+  ASSERT_TRUE(CheckSubmitTask(task_spec));
   EXPECT_CALL(*task_finisher, FailOrRetryPendingTask(
                                   task_spec.TaskId(),
                                   rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, _, _, _));
@@ -100,13 +111,13 @@ TEST_F(DirectTaskTransportTest, ActorRegisterOk) {
   inline_obj_ref->set_object_id(ObjectID::ForActorHandle(actor_id).Binary());
   std::function<void(Status)> register_cb;
   EXPECT_CALL(*gcs_client->mock_actor_accessor,
-              AsyncRegisterActor(creation_task_spec, ::testing::_))
+              AsyncRegisterActor(creation_task_spec, ::testing::_, ::testing::_))
       .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&register_cb),
                                  ::testing::Return(Status::OK())));
   ASSERT_TRUE(actor_creator->AsyncRegisterActor(creation_task_spec, nullptr).ok());
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
-  actor_task_submitter->AddActorQueueIfNotExists(actor_id);
-  ASSERT_TRUE(actor_task_submitter->SubmitTask(task_spec).ok());
+  actor_task_submitter->AddActorQueueIfNotExists(actor_id, -1);
+  ASSERT_TRUE(CheckSubmitTask(task_spec));
   EXPECT_CALL(*task_finisher, FailOrRetryPendingTask(_, _, _, _, _)).Times(0);
   register_cb(Status::OK());
 }

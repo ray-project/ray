@@ -22,19 +22,20 @@ class DDPGTFModel(TFModelV2):
     implement forward() in a subclass."""
 
     def __init__(
-            self,
-            obs_space: gym.spaces.Space,
-            action_space: gym.spaces.Space,
-            num_outputs: int,
-            model_config: ModelConfigDict,
-            name: str,
-            # Extra DDPGActionModel args:
-            actor_hiddens: Optional[List[int]] = None,
-            actor_hidden_activation: str = "relu",
-            critic_hiddens: Optional[List[int]] = None,
-            critic_hidden_activation: str = "relu",
-            twin_q: bool = False,
-            add_layer_norm: bool = False):
+        self,
+        obs_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        num_outputs: int,
+        model_config: ModelConfigDict,
+        name: str,
+        # Extra DDPGActionModel args:
+        actor_hiddens: Optional[List[int]] = None,
+        actor_hidden_activation: str = "relu",
+        critic_hiddens: Optional[List[int]] = None,
+        critic_hidden_activation: str = "relu",
+        twin_q: bool = False,
+        add_layer_norm: bool = False,
+    ):
         """Initialize variables of this model.
 
         Extra model kwargs:
@@ -54,18 +55,17 @@ class DDPGTFModel(TFModelV2):
         if critic_hiddens is None:
             critic_hiddens = [256, 256]
 
-        super(DDPGTFModel, self).__init__(obs_space, action_space, num_outputs,
-                                          model_config, name)
+        super(DDPGTFModel, self).__init__(
+            obs_space, action_space, num_outputs, model_config, name
+        )
 
-        actor_hidden_activation = getattr(tf.nn, actor_hidden_activation,
-                                          tf.nn.relu)
-        critic_hidden_activation = getattr(tf.nn, critic_hidden_activation,
-                                           tf.nn.relu)
+        actor_hidden_activation = getattr(tf.nn, actor_hidden_activation, tf.nn.relu)
+        critic_hidden_activation = getattr(tf.nn, critic_hidden_activation, tf.nn.relu)
 
-        self.model_out = tf.keras.layers.Input(
-            shape=(num_outputs, ), name="model_out")
-        self.bounded = np.logical_and(action_space.bounded_above,
-                                      action_space.bounded_below).any()
+        self.model_out = tf.keras.layers.Input(shape=(num_outputs,), name="model_out")
+        self.bounded = np.logical_and(
+            action_space.bounded_above, action_space.bounded_below
+        ).any()
         self.action_dim = action_space.shape[0]
 
         if actor_hiddens:
@@ -74,12 +74,15 @@ class DDPGTFModel(TFModelV2):
                 last_layer = tf.keras.layers.Dense(
                     n,
                     name="actor_hidden_{}".format(i),
-                    activation=actor_hidden_activation)(last_layer)
+                    activation=actor_hidden_activation,
+                )(last_layer)
                 if add_layer_norm:
                     last_layer = tf.keras.layers.LayerNormalization(
-                        name="LayerNorm_{}".format(i))(last_layer)
+                        name="LayerNorm_{}".format(i)
+                    )(last_layer)
             actor_out = tf.keras.layers.Dense(
-                self.action_dim, activation=None, name="actor_out")(last_layer)
+                self.action_dim, activation=None, name="actor_out"
+            )(last_layer)
         else:
             actor_out = self.model_out
 
@@ -101,38 +104,46 @@ class DDPGTFModel(TFModelV2):
 
         # Build the Q-model(s).
         self.actions_input = tf.keras.layers.Input(
-            shape=(self.action_dim, ), name="actions")
+            shape=(self.action_dim,), name="actions"
+        )
 
         def build_q_net(name, observations, actions):
             # For continuous actions: Feed obs and actions (concatenated)
             # through the NN.
-            q_net = tf.keras.Sequential([
-                tf.keras.layers.Concatenate(axis=1),
-            ] + [
-                tf.keras.layers.Dense(
-                    units=units,
-                    activation=critic_hidden_activation,
-                    name="{}_hidden_{}".format(name, i))
-                for i, units in enumerate(critic_hiddens)
-            ] + [
-                tf.keras.layers.Dense(
-                    units=1, activation=None, name="{}_out".format(name))
-            ])
+            q_net = tf.keras.Sequential(
+                [
+                    tf.keras.layers.Concatenate(axis=1),
+                ]
+                + [
+                    tf.keras.layers.Dense(
+                        units=units,
+                        activation=critic_hidden_activation,
+                        name="{}_hidden_{}".format(name, i),
+                    )
+                    for i, units in enumerate(critic_hiddens)
+                ]
+                + [
+                    tf.keras.layers.Dense(
+                        units=1, activation=None, name="{}_out".format(name)
+                    )
+                ]
+            )
 
-            q_net = tf.keras.Model([observations, actions],
-                                   q_net([observations, actions]))
+            q_net = tf.keras.Model(
+                [observations, actions], q_net([observations, actions])
+            )
             return q_net
 
         self.q_model = build_q_net("q", self.model_out, self.actions_input)
 
         if twin_q:
-            self.twin_q_model = build_q_net("twin_q", self.model_out,
-                                            self.actions_input)
+            self.twin_q_model = build_q_net(
+                "twin_q", self.model_out, self.actions_input
+            )
         else:
             self.twin_q_model = None
 
-    def get_q_values(self, model_out: TensorType,
-                     actions: TensorType) -> TensorType:
+    def get_q_values(self, model_out: TensorType, actions: TensorType) -> TensorType:
         """Return the Q estimates for the most recent forward pass.
 
         This implements Q(s, a).
@@ -151,8 +162,9 @@ class DDPGTFModel(TFModelV2):
         else:
             return self.q_model(model_out)
 
-    def get_twin_q_values(self, model_out: TensorType,
-                          actions: TensorType) -> TensorType:
+    def get_twin_q_values(
+        self, model_out: TensorType, actions: TensorType
+    ) -> TensorType:
         """Same as get_q_values but using the twin Q net.
 
         This implements the twin Q(s, a).
@@ -193,5 +205,6 @@ class DDPGTFModel(TFModelV2):
     def q_variables(self) -> List[TensorType]:
         """Return the list of variables for Q / twin Q nets."""
 
-        return self.q_model.variables + (self.twin_q_model.variables
-                                         if self.twin_q_model else [])
+        return self.q_model.variables + (
+            self.twin_q_model.variables if self.twin_q_model else []
+        )

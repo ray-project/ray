@@ -50,6 +50,7 @@ class _TorchTrainable(DistributedTrainable):
     A wrapper class is needed to actually create a working
     version of this trainable.
     """
+
     _function = None
     _num_workers = None
     _num_gpus_per_worker = None
@@ -77,42 +78,49 @@ class _TorchTrainable(DistributedTrainable):
         func_trainable = wrap_function(self.__class__._function)
 
         remote_trainable = ray.remote(func_trainable)
-        remote_option, self._placement_group = \
-            PlacementGroupUtil.get_remote_worker_options(
-                self._num_workers, self._num_cpus_per_worker,
-                self._num_gpus_per_worker,
-                self._num_workers_per_host, self._timeout_s)
-        remote_trainable = \
-            remote_trainable.options(**remote_option)
+        (
+            remote_option,
+            self._placement_group,
+        ) = PlacementGroupUtil.get_remote_worker_options(
+            self._num_workers,
+            self._num_cpus_per_worker,
+            self._num_gpus_per_worker,
+            self._num_workers_per_host,
+            self._timeout_s,
+        )
+        remote_trainable = remote_trainable.options(**remote_option)
         new_config = DistributedTrainable.build_config(self, config)
 
         self.workers = [
             remote_trainable.remote(
                 config=new_config,
-                logger_creator=lambda cfg: logger_creator(cfg, logdir, rank))
+                logger_creator=lambda cfg: logger_creator(cfg, logdir, rank),
+            )
             for rank in range(num_workers)
         ]
 
         # Address has to be IP of rank 0 worker's node.
-        address = ray.get(
-            self.workers[0].execute.remote(lambda _: setup_address()))
+        address = ray.get(self.workers[0].execute.remote(lambda _: setup_address()))
 
         pgroup_params = self.default_process_group_parameters()
         from functools import partial
-        setup_on_worker = partial(
-            setup_process_group,
-            url=address,
-            world_size=num_workers,
-            **pgroup_params)
-        ray.get([
-            w.execute.remote(lambda _: setup_on_worker(world_rank=rank))
-            for rank, w in enumerate(self.workers)
-        ])
 
-        ray.get([
-            w.execute.remote(lambda _: enable_distributed_trainable())
-            for rank, w in enumerate(self.workers)
-        ])
+        setup_on_worker = partial(
+            setup_process_group, url=address, world_size=num_workers, **pgroup_params
+        )
+        ray.get(
+            [
+                w.execute.remote(lambda _: setup_on_worker(world_rank=rank))
+                for rank, w in enumerate(self.workers)
+            ]
+        )
+
+        ray.get(
+            [
+                w.execute.remote(lambda _: enable_distributed_trainable())
+                for rank, w in enumerate(self.workers)
+            ]
+        )
 
     def step(self) -> Dict:
         if self._finished:
@@ -125,15 +133,14 @@ class _TorchTrainable(DistributedTrainable):
     def save_checkpoint(self, checkpoint_dir: str) -> str:
         # TODO: optimize if colocated
         save_obj = ray.get(self.workers[0].save_to_object.remote())
-        checkpoint_path = TrainableUtil.create_from_pickle(
-            save_obj, checkpoint_dir)
+        checkpoint_path = TrainableUtil.create_from_pickle(save_obj, checkpoint_dir)
         return checkpoint_path
 
     def load_checkpoint(self, checkpoint_dir: str):
         checkpoint_obj = TrainableUtil.checkpoint_to_object(checkpoint_dir)
-        return ray.get([
-            w.restore_from_object.remote(checkpoint_obj) for w in self.workers
-        ])
+        return ray.get(
+            [w.restore_from_object.remote(checkpoint_obj) for w in self.workers]
+        )
 
     def stop(self):
         ray.get([worker.stop.remote() for worker in self.workers])
@@ -141,14 +148,16 @@ class _TorchTrainable(DistributedTrainable):
             remove_placement_group(self._placement_group)
 
 
-def DistributedTrainableCreator(func: Callable,
-                                num_workers: int = 1,
-                                num_cpus_per_worker: int = 1,
-                                num_gpus_per_worker: int = 0,
-                                num_workers_per_host: Optional[int] = None,
-                                backend: str = "gloo",
-                                timeout_s: int = NCCL_TIMEOUT_S,
-                                use_gpu=None) -> Type[_TorchTrainable]:
+def DistributedTrainableCreator(
+    func: Callable,
+    num_workers: int = 1,
+    num_cpus_per_worker: int = 1,
+    num_gpus_per_worker: int = 0,
+    num_workers_per_host: Optional[int] = None,
+    backend: str = "gloo",
+    timeout_s: int = NCCL_TIMEOUT_S,
+    use_gpu=None,
+) -> Type[_TorchTrainable]:
     """Creates a class that executes distributed training.
 
     Similar to running `torch.distributed.launch`.
@@ -190,12 +199,14 @@ def DistributedTrainableCreator(func: Callable,
     """
     if use_gpu:
         raise DeprecationWarning(
-            "use_gpu is deprecated. Use 'num_gpus_per_worker' instead.")
+            "use_gpu is deprecated. Use 'num_gpus_per_worker' instead."
+        )
     detect_checkpoint_function(func, abort=True)
     if num_workers_per_host:
         if num_workers % num_workers_per_host:
-            raise ValueError("`num_workers` must be an integer multiple "
-                             "of workers_per_node.")
+            raise ValueError(
+                "`num_workers` must be an integer multiple " "of workers_per_node."
+            )
 
     class WrappedDistributedTorchTrainable(_TorchTrainable):
         _function = func
@@ -210,19 +221,20 @@ def DistributedTrainableCreator(func: Callable,
             return dict(timeout=timedelta(seconds=timeout_s), backend=backend)
 
         @classmethod
-        def default_resource_request(cls,
-                                     config: Dict) -> PlacementGroupFactory:
-            return PlacementGroupFactory([{}] + [{
-                "CPU": cls._num_cpus_per_worker,
-                "GPU": cls._num_gpus_per_worker
-            }] * num_workers)
+        def default_resource_request(cls, config: Dict) -> PlacementGroupFactory:
+            return PlacementGroupFactory(
+                [{}]
+                + [{"CPU": cls._num_cpus_per_worker, "GPU": cls._num_gpus_per_worker}]
+                * num_workers
+            )
 
     return WrappedDistributedTorchTrainable
 
 
 @contextmanager
 def distributed_checkpoint_dir(
-        step: int, disable: bool = False) -> Generator[str, None, None]:
+    step: int, disable: bool = False
+) -> Generator[str, None, None]:
     """ContextManager for creating a distributed checkpoint.
 
     Only checkpoints a file on the "main" training actor, avoiding
@@ -265,6 +277,7 @@ def _train_check_global(config: Dict, checkpoint_dir: Optional[str] = None):
     serializing within the test file."""
     assert is_distributed_trainable()
     import time
+
     time.sleep(0.1)
     tune.report(is_distributed=True)
 
@@ -275,6 +288,7 @@ def _train_simple(config: Dict, checkpoint_dir: Optional[str] = None):
     import torch.nn as nn
     from torch.nn.parallel import DistributedDataParallel
     import torch.optim as optim
+
     # N is batch size; D_in is input dimension;
     # H is hidden dimension; D_out is output dimension.
     N, D_in, H, D_out = 8, 5, 5, 5
@@ -312,13 +326,11 @@ def _train_simple(config: Dict, checkpoint_dir: Optional[str] = None):
             if config.get("enable_checkpoint", True):
                 with distributed_checkpoint_dir(step=epoch) as checkpoint_dir:
                     path = os.path.join(checkpoint_dir, "checkpoint")
-                    torch.save((model.state_dict(), optimizer.state_dict()),
-                               path)
+                    torch.save((model.state_dict(), optimizer.state_dict()), path)
         tune.report(mean_loss=loss.item())
 
 
-def _train_validate_session(config: Dict,
-                            checkpoint_dir: Optional[str] = None):
+def _train_validate_session(config: Dict, checkpoint_dir: Optional[str] = None):
     """For testing only. Putting this here because Ray has problems
     serializing within the test file."""
     current_session = tune.session.get_session()

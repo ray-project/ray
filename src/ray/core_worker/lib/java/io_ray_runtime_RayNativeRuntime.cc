@@ -20,6 +20,7 @@
 
 #include "jni_utils.h"
 #include "ray/common/id.h"
+#include "ray/common/ray_config.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/core_worker.h"
 
@@ -39,7 +40,12 @@ inline gcs::GcsClientOptions ToGcsClientOptions(JNIEnv *env, jobject gcs_client_
   std::string password = JavaStringToNativeString(
       env,
       (jstring)env->GetObjectField(gcs_client_options, java_gcs_client_options_password));
-  return gcs::GcsClientOptions(ip, port, password);
+
+  if (RayConfig::instance().bootstrap_with_gcs()) {
+    return gcs::GcsClientOptions(ip + ":" + std::to_string(port));
+  } else {
+    return gcs::GcsClientOptions(ip, port, password);
+  }
 }
 
 jobject ToJavaArgs(JNIEnv *env, jbooleanArray java_check_results,
@@ -92,7 +98,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
     JNIEnv *env, jclass, jint workerMode, jstring nodeIpAddress, jint nodeManagerPort,
     jstring driverName, jstring storeSocket, jstring rayletSocket, jbyteArray jobId,
     jobject gcsClientOptions, jint numWorkersPerProcess, jstring logDir,
-    jbyteArray jobConfig, jint startupToken) {
+    jbyteArray jobConfig, jint startupToken, jint runtimeEnvHash) {
   auto task_execution_callback =
       [](TaskType task_type, const std::string task_name, const RayFunction &ray_function,
          const std::unordered_map<std::string, double> &required_resources,
@@ -185,7 +191,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
 
             RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
                 result_id, data_size, metadata, contained_object_ids,
-                task_output_inlined_bytes, result_ptr));
+                &task_output_inlined_bytes, result_ptr));
 
             // A nullptr is returned if the object already exists.
             auto result = *result_ptr;
@@ -261,6 +267,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
   options.serialized_job_config = serialized_job_config;
   options.metrics_agent_port = -1;
   options.startup_token = startupToken;
+  options.runtime_env_hash = runtimeEnvHash;
 
   CoreWorkerProcess::Initialize(options);
 }

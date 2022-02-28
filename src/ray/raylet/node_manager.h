@@ -28,13 +28,13 @@
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/agent_manager.h"
 #include "ray/raylet_client/raylet_client.h"
-#include "ray/common/runtime_env_manager.h"
 #include "ray/raylet/local_object_manager.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/raylet/scheduling/cluster_task_manager_interface.h"
 #include "ray/raylet/dependency_manager.h"
+#include "ray/raylet/wait_manager.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/ordered_set.h"
@@ -656,6 +656,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// called `ray.get` or `ray.wait`.
   DependencyManager dependency_manager_;
 
+  /// A manager for wait requests.
+  WaitManager wait_manager_;
+
   std::shared_ptr<AgentManager> agent_manager_;
 
   /// The RPC server.
@@ -710,7 +713,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// responsible for maintaining a view of the cluster state w.r.t resource
   /// usage. ClusterTaskManager is responsible for queuing, spilling back, and
   /// dispatching tasks.
-  std::shared_ptr<ClusterResourceSchedulerInterface> cluster_resource_scheduler_;
+  std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
+  std::shared_ptr<LocalTaskManager> local_task_manager_;
   std::shared_ptr<ClusterTaskManagerInterface> cluster_task_manager_;
 
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
@@ -747,9 +751,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Managers all bundle-related operations.
   std::shared_ptr<PlacementGroupResourceManager> placement_group_resource_manager_;
 
-  /// Manage all runtime env locally
-  RuntimeEnvManager runtime_env_manager_;
-
   /// Next resource broadcast seq no. Non-incrementing sequence numbers
   /// indicate network issues (dropped/duplicated/ooo packets, etc).
   int64_t next_resource_seq_no_;
@@ -760,4 +761,4 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
 }  // namespace raylet
 
-}  // end namespace ray
+}  // namespace ray

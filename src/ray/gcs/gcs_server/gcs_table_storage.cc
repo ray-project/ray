@@ -46,16 +46,14 @@ Status GcsTable<Key, Data>::Get(const Key &key,
 
 template <typename Key, typename Data>
 Status GcsTable<Key, Data>::GetAll(const MapCallback<Key, Data> &callback) {
-  auto on_done = [callback](const std::unordered_map<std::string, std::string> &result) {
+  auto on_done = [callback](std::unordered_map<std::string, std::string> &&result) {
     std::unordered_map<Key, Data> values;
     for (auto &item : result) {
       if (!item.second.empty()) {
-        Data data;
-        data.ParseFromString(item.second);
-        values[Key::FromBinary(item.first)] = data;
+        values[Key::FromBinary(item.first)].ParseFromString(item.second);
       }
     }
-    callback(values);
+    callback(std::move(values));
   };
   return store_client_->AsyncGetAll(table_name_, on_done);
 }
@@ -88,16 +86,14 @@ Status GcsTableWithJobId<Key, Data>::Put(const Key &key, const Data &value,
 template <typename Key, typename Data>
 Status GcsTableWithJobId<Key, Data>::GetByJobId(const JobID &job_id,
                                                 const MapCallback<Key, Data> &callback) {
-  auto on_done = [callback](const std::unordered_map<std::string, std::string> &result) {
+  auto on_done = [callback](std::unordered_map<std::string, std::string> &&result) {
     std::unordered_map<Key, Data> values;
     for (auto &item : result) {
       if (!item.second.empty()) {
-        Data data;
-        data.ParseFromString(item.second);
-        values[Key::FromBinary(item.first)] = std::move(data);
+        values[Key::FromBinary(item.first)].ParseFromString(item.second);
       }
     }
-    callback(values);
+    callback(std::move(values));
   };
   return this->store_client_->AsyncGetByIndex(this->table_name_, job_id.Binary(),
                                               on_done);
@@ -138,16 +134,8 @@ template class GcsTable<JobID, ErrorTableData>;
 template class GcsTable<UniqueID, ProfileTableData>;
 template class GcsTable<WorkerID, WorkerTableData>;
 template class GcsTable<ActorID, ActorTableData>;
-template class GcsTable<TaskID, TaskTableData>;
-template class GcsTable<TaskID, TaskLeaseData>;
-template class GcsTable<TaskID, TaskReconstructionData>;
-template class GcsTable<ObjectID, ObjectLocationInfo>;
 template class GcsTable<UniqueID, StoredConfig>;
 template class GcsTableWithJobId<ActorID, ActorTableData>;
-template class GcsTableWithJobId<TaskID, TaskTableData>;
-template class GcsTableWithJobId<TaskID, TaskLeaseData>;
-template class GcsTableWithJobId<TaskID, TaskReconstructionData>;
-template class GcsTableWithJobId<ObjectID, ObjectLocationInfo>;
 template class GcsTable<PlacementGroupID, PlacementGroupTableData>;
 template class GcsTable<PlacementGroupID, ScheduleData>;
 

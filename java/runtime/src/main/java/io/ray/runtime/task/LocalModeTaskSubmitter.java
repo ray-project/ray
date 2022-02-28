@@ -285,9 +285,15 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     if (options != null) {
       if (options.group != null) {
         PlacementGroupImpl group = (PlacementGroupImpl) options.group;
+        // bundleIndex == -1 indicates using any available bundle.
         Preconditions.checkArgument(
-            options.bundleIndex >= 0 && options.bundleIndex < group.getBundles().size(),
-            String.format("Bundle index %s is invalid", options.bundleIndex));
+            options.bundleIndex == -1
+                || options.bundleIndex >= 0 && options.bundleIndex < group.getBundles().size(),
+            String.format(
+                "Bundle index %s is invalid, the correct bundle index should be "
+                    + "either in the range of 0 to the number of bundles "
+                    + "or -1 which means put the task to any available bundles.",
+                options.bundleIndex));
       }
     }
 
@@ -295,7 +301,8 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     ActorCreationTaskSpec.Builder actorCreationTaskSpecBuilder =
         ActorCreationTaskSpec.newBuilder()
             .setActorId(ByteString.copyFrom(actorId.toByteBuffer()))
-            .setMaxConcurrency(options.maxConcurrency);
+            .setMaxConcurrency(options.maxConcurrency)
+            .setMaxPendingCalls(options.maxPendingCalls);
     appendConcurrencyGroupsBuilder(actorCreationTaskSpecBuilder, options);
     TaskSpec taskSpec =
         getTaskSpecBuilder(TaskType.ACTOR_CREATION_TASK, functionDescriptor, args)
