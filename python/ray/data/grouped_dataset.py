@@ -1,13 +1,15 @@
-from typing import Union, Generic, Tuple, List
+from typing import Any, Union, Generic, Tuple, List, Callable, Optional
 import numpy as np
 import ray
 from ray.util.annotations import PublicAPI
 from ray.data.dataset import Dataset
+from ray.data.dataset import BatchType
 from ray.data.impl import sort
 from ray.data.aggregate import AggregateFn, Count, Sum, Max, Min, Mean, Std
 from ray.data.block import BlockExecStats, KeyFn
 from ray.data.impl.plan import AllToAllStage
 from ray.data.impl.block_list import BlockList
+from ray.data.impl.compute import CallableClass
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U, KeyType
@@ -143,6 +145,72 @@ class GroupedDataset(Generic[T]):
             agg_cls, on, ignore_nulls, *args, skip_cols=self._key, **kwargs
         )
         return self.aggregate(*aggs)
+
+    def map_groups(
+        self,
+        fn: Union[CallableClass, Callable[[BatchType], BatchType]],
+        *,
+        compute: Optional[str] = None,
+        batch_format: str = "native",
+        **ray_remote_args
+    ) -> "Dataset[Any]":
+        """Apply a function to each group of records.
+
+        The user given function should take as argument a batch, which contains
+        exactly the records for a group, and return a block of the same batch type.
+        The results of different groups will be collected to form the result dataset.
+        """
+
+        # Globally sort records by key.
+        # Note that sort() will ensure that records of the same key partitioned
+        # into the same block.
+        sorted_ds = self._dataset.sort(self._key)
+
+        def get_key(row):
+            if isinstance(self._key, Callable):
+                return self._key(row)
+            elif isinstance(self._key, str):
+                return row[self._key]
+            else:
+                return None
+
+        # Returns the group boundries.
+        def get_boundaries(block):
+            boundaries = []
+            pre = None
+            for i, item in enumerate(block.iter_rows()):
+                if pre is not None and get_key(pre) != get_key(item):
+                    boundaries.append(i)
+                pre = item
+            if block.num_rows() > 0:
+                boundaries.append(block.num_rows())
+            return boundaries
+
+        # The batch is the entire block, because we have batch_size=None for
+        # map_batches() below.
+        def group_fn(batch):
+            block_accessor = BlockAccessor.for_block(batch)
+            boundaries = get_boundaries(block_accessor)
+            builder = block_accessor.builder()
+            start = 0
+            for end in boundaries:
+                group = block_accessor.slice(start, end, False)
+                applied = fn(group)
+                builder.add_block(applied)
+                start = end
+
+            rs = builder.build()
+            return rs
+
+        # Note we set batch_size=None here, so it will use the entire block as a batch,
+        # which ensures that each group will be contained within a batch in entirety.
+        return sorted_ds.map_batches(
+            group_fn,
+            batch_size=None,
+            compute=compute,
+            batch_format=batch_format,
+            **ray_remote_args
+        )
 
     def count(self) -> Dataset[U]:
         """Compute count aggregation.

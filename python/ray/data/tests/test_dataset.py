@@ -2746,6 +2746,71 @@ def test_groupby_simple_sum(ray_start_regular_shared, num_parts):
     assert nan_ds.sum() is None
 
 
+# TODO(jian): after fix issue #22673, add more num_parts values.
+@pytest.mark.parametrize("num_parts", [1])
+def test_groupby_map_groups_for_list(ray_start_regular_shared, num_parts):
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_simple_count with: {seed}")
+    random.seed(seed)
+    xs = list(range(100))
+    random.shuffle(xs)
+    mapped = (
+        ray.data.from_items(xs)
+        .repartition(num_parts)
+        .groupby(lambda x: x % 3)
+        .map_groups(lambda x: [min(x) * min(x)])
+    )
+    assert mapped.count() == 3
+    assert mapped.take_all() == [0, 1, 4]
+
+
+@pytest.mark.parametrize("num_parts", [1, 2, 3, 30])
+def test_groupby_map_groups_for_pandas(ray_start_regular_shared, num_parts):
+    df = pd.DataFrame({"A": "a a b".split(), "B": [1, 1, 3], "C": [4, 6, 5]})
+    grouped = ray.data.from_pandas(df).repartition(num_parts).groupby("A")
+
+    # Normalize the numeric columns (i.e. B and C) for each group.
+    mapped = grouped.map_groups(
+        lambda g: g.apply(
+            lambda col: col / g[col.name].sum() if col.name in ["B", "C"] else col
+        )
+    )
+
+    # The function (i.e. the normalization) performed on each group doesn't
+    # aggregate rows, so we still have 3 rows.
+    assert mapped.count() == 3
+    expected = pd.DataFrame(
+        {"A": ["a", "a", "b"], "B": [0.5, 0.5, 1.000000], "C": [0.4, 0.6, 1.0]}
+    )
+    assert mapped.to_pandas().equals(expected)
+
+
+@pytest.mark.parametrize("num_parts", [1, 2, 3, 30])
+def test_groupby_map_groups_for_arrow(ray_start_regular_shared, num_parts):
+    at = pa.Table.from_pydict({"A": "a a b".split(), "B": [1, 1, 3], "C": [4, 6, 5]})
+    grouped = ray.data.from_arrow(at).repartition(num_parts).groupby("A")
+
+    # Normalize the numeric columns (i.e. B and C) for each group.
+    def normalize(at: pa.Table):
+        r = at.select("A")
+        sb = pa.compute.sum(at.column("B")).cast(pa.float64())
+        r = r.append_column("B", pa.compute.divide(at.column("B"), sb))
+        sc = pa.compute.sum(at.column("C")).cast(pa.float64())
+        r = r.append_column("C", pa.compute.divide(at.column("C"), sc))
+        return r
+
+    mapped = grouped.map_groups(normalize, batch_format="pyarrow")
+
+    # The function (i.e. the normalization) performed on each group doesn't
+    # aggregate rows, so we still have 3 rows.
+    assert mapped.count() == 3
+    expected = pa.Table.from_pydict(
+        {"A": ["a", "a", "b"], "B": [0.5, 0.5, 1], "C": [0.4, 0.6, 1]}
+    )
+    result = pa.Table.from_pandas(mapped.to_pandas())
+    assert result.equals(expected)
+
+
 @pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_simple_min(ray_start_regular_shared, num_parts):
     # Test built-in min aggregation
