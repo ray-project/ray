@@ -13,3 +13,4 @@ API References
     ../workflows/package-ref.rst
     ../ray-core/package-ref.rst
     ../cluster/reference.rst
+    ../cluster/jobs-package-ref.rst
