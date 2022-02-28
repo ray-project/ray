@@ -142,7 +142,7 @@ class DataCheckpoint(TuneCheckpoint, DataArtifact):
         DataArtifact.__init__(self, data=data)
 
     @property
-    def is_fs_checkpoint(self):
+    def is_fs_checkpoint(self) -> bool:
         return self.metadata.get("is_fs_checkpoint", False)
 
     def to_dict(self) -> dict:
