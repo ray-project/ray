@@ -78,6 +78,7 @@ training.
         import torch
         from torch.nn.parallel import DistributedDataParallel
         +from ray import train
+        +import ray.train.torch
 
 
         def train_func():
@@ -105,6 +106,7 @@ training.
         import torch
         from torch.utils.data import DataLoader, DistributedSampler
         +from ray import train
+        +import ray.train.torch
 
 
         def train_func():

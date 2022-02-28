@@ -73,7 +73,9 @@ class MedianStoppingRule(FIFOScheduler):
         self._last_pause = collections.defaultdict(lambda: float("-inf"))
         self._results = collections.defaultdict(list)
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str]) -> bool:
+    def set_search_properties(
+        self, metric: Optional[str], mode: Optional[str], **spec
+    ) -> bool:
         if self._metric and metric:
             return False
         if self._mode and mode:
