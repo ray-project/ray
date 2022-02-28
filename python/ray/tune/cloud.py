@@ -7,9 +7,9 @@ from ray import logger
 
 from ray.util import PublicAPI
 from ray.util.ml_utils.cloud import (
-    _download_from_bucket,
-    _clear_bucket,
-    _upload_to_bucket,
+    download_from_bucket,
+    clear_bucket,
+    upload_to_bucket,
     is_cloud_target,
 )
 
@@ -123,7 +123,7 @@ class TrialCheckpoint(os.PathLike):
         os.makedirs(local_path, 0o755, exist_ok=True)
 
         # Here we trigger the actual download
-        _download_from_bucket(cloud_path, local_path)
+        download_from_bucket(cloud_path, local_path)
 
         # Local dir exists and is not empty
         return local_path
@@ -176,10 +176,10 @@ class TrialCheckpoint(os.PathLike):
 
         if clean_before:
             logger.info(f"Clearing bucket contents before upload: {cloud_path}")
-            _clear_bucket(cloud_path)
+            clear_bucket(cloud_path)
 
         # Actually upload
-        _upload_to_bucket(cloud_path, local_path)
+        upload_to_bucket(cloud_path, local_path)
 
         return cloud_path
 

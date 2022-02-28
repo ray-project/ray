@@ -12,7 +12,7 @@ def is_cloud_target(target: str):
     return any(target.startswith(prefix) for prefix in ALLOWED_REMOTE_PREFIXES)
 
 
-def _clear_bucket(bucket: str):
+def clear_bucket(bucket: str):
     if not is_cloud_target(bucket):
         raise ValueError(
             f"Could not clear bucket contents: "
@@ -31,7 +31,7 @@ def _clear_bucket(bucket: str):
         logger.warning(f"Caught exception when clearing bucket `{bucket}`: {e}")
 
 
-def _download_from_bucket(bucket: str, local_path: str):
+def download_from_bucket(bucket: str, local_path: str):
     if not is_cloud_target(bucket):
         raise ValueError(
             f"Could not download from bucket: "
@@ -48,7 +48,7 @@ def _download_from_bucket(bucket: str, local_path: str):
         subprocess.check_call(["hdfs", "dfs", "-get", bucket, local_path])
 
 
-def _upload_to_bucket(bucket: str, local_path: str):
+def upload_to_bucket(bucket: str, local_path: str):
     if not is_cloud_target(bucket):
         raise ValueError(
             f"Could not download from bucket: "
