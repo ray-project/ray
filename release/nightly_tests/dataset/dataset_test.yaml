@@ -52,8 +52,6 @@
     prepare: python wait_cluster.py 66 2400
     script: python ray_sgd_training.py --address auto --use-s3 --num-workers 16 --use-gpu --large-dataset
 
-  stable: false
-
   smoke_test:
     cluster:
       app_config: ray_sgd_training_app.yaml
@@ -84,6 +82,3 @@
   run:
     timeout: 7200
     script: python ray_sgd_runner.py --address auto --use-gpu --num-epochs 1
-
-  stable: false
-
