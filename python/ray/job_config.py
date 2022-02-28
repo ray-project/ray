@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 import uuid
 
 import ray._private.gcs_utils as gcs_utils
@@ -53,7 +53,9 @@ class JobConfig:
         return self.get_proto_job_config().SerializeToString()
 
     def set_runtime_env(
-        self, runtime_env: Optional[Dict[str, Any]], validate: bool = False
+        self,
+        runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]],  # noqa: F821
+        validate: bool = False,
     ) -> None:
         """Modify the runtime_env of the JobConfig.
 
@@ -87,12 +89,14 @@ class JobConfig:
         # TODO(edoakes): this is really unfortunate, but JobConfig is imported
         # all over the place so this causes circular imports. We should remove
         # this dependency and pass in a validated runtime_env instead.
-        from ray._private.runtime_env.validation import ParsedRuntimeEnv
+        from ray.runtime_env import RuntimeEnv
 
         eager_install = self.runtime_env.get("eager_install", True)
         if not isinstance(eager_install, bool):
             raise TypeError("eager_install must be a boolean.")
-        return ParsedRuntimeEnv(self.runtime_env), eager_install
+        if isinstance(self.runtime_env, RuntimeEnv):
+            return self.runtime_env, eager_install
+        return RuntimeEnv(**self.runtime_env), eager_install
 
     def get_proto_job_config(self):
         """Return the protobuf structure of JobConfig."""
@@ -121,7 +125,7 @@ class JobConfig:
 
     def runtime_env_has_uris(self):
         """Whether there are uris in runtime env or not"""
-        return self._validate_runtime_env()[0].get_proto_runtime_env().has_uris()
+        return self._validate_runtime_env()[0].has_uris()
 
     def get_serialized_runtime_env(self) -> str:
         """Return the JSON-serialized parsed runtime env dict"""

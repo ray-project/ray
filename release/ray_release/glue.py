@@ -214,6 +214,8 @@ def run_release_test(
             command = f"{command} --smoke-test"
             command_env["IS_SMOKE_TEST"] = "1"
 
+        is_long_running = test["run"].get("long_running", False)
+
         try:
             command_runner.run_command(
                 command, env=command_env, timeout=command_timeout
@@ -221,7 +223,9 @@ def run_release_test(
         except CommandError as e:
             raise TestCommandError(e)
         except CommandTimeout as e:
-            raise TestCommandTimeout(e)
+            if not is_long_running:
+                # Only raise error if command is not long running
+                raise TestCommandTimeout(e)
 
         try:
             command_results = command_runner.fetch_results()

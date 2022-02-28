@@ -52,5 +52,8 @@ std::vector<rpc::ObjectReference> SendInternal(const ActorID &peer_actor_id,
   }
   return result.value();
 }
+const ray::stats::TagKeyType TagRegister(const std::string tag_name) {
+  return ray::stats::TagKeyType::Register(tag_name);
+}
 }  // namespace internal
 }  // namespace ray

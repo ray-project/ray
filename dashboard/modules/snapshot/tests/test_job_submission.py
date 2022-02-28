@@ -149,7 +149,7 @@ def test_failed_job_status(
                     assert entry["endTime"] >= entry["startTime"] + job_sleep_time_s
         return legacy_job_failed and job_failed
 
-    wait_for_condition(wait_for_job_to_fail, timeout=10)
+    wait_for_condition(wait_for_job_to_fail, timeout=25)
 
 
 if __name__ == "__main__":

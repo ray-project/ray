@@ -247,6 +247,30 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingFixedPointTest) {
 
     ASSERT_TRUE(fp1.Double() == 1.);
   }
+
+  {
+    FixedPoint fp1(1.);
+    auto fp2 = fp1 - 1.0;
+    ASSERT_TRUE(fp2 == 0);
+
+    auto fp3 = fp1 + 1.0;
+    ASSERT_TRUE(fp3 == 2);
+
+    auto fp4 = -fp1;
+    ASSERT_TRUE(fp4 == -1.0);
+
+    fp1 = 2.0;
+    ASSERT_TRUE(fp1 == 2.0);
+
+    FixedPoint fp5(-1.0);
+    ASSERT_TRUE(fp5 == -1);
+
+    FixedPoint f6(-1);
+    FixedPoint f7(int64_t(-1));
+    ASSERT_TRUE(f6 == f7);
+
+    ASSERT_TRUE(f6 == -1.0);
+  }
 }
 
 TEST_F(ClusterResourceSchedulerTest, SchedulingIdTest) {

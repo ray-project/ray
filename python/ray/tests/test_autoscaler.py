@@ -2117,6 +2117,7 @@ class AutoscalingTest(unittest.TestCase):
             prom_metrics=mock_metrics,
         )
         autoscaler.update()
+        assert autoscaler.summary() is None
         assert mock_metrics.update_loop_exceptions.inc.call_count == 1
         autoscaler.update()
         assert mock_metrics.update_loop_exceptions.inc.call_count == 2
@@ -2322,6 +2323,12 @@ class AutoscalingTest(unittest.TestCase):
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
                 node_type_counts[node_type] += 1
         assert node_type_counts == {"m4.large": 2, "p2.xlarge": 6}
+
+    def testFalseyLoadMetrics(self):
+        lm = LoadMetrics()
+        assert not lm
+        lm.update("172.0.0.0", mock_raylet_id(), {"CPU": 1}, {"CPU": 0}, {})
+        assert lm
 
     def testScaleUpBasedOnLoad(self):
         config = SMALL_CLUSTER.copy()

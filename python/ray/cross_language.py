@@ -33,7 +33,7 @@ def format_args(worker, args, kwargs):
 
 
 def get_function_descriptor_for_actor_method(
-    language, actor_creation_function_descriptor, method_name
+    language, actor_creation_function_descriptor, method_name, signature: str
 ):
     """Get function descriptor for cross language actor method call.
 
@@ -42,6 +42,8 @@ def get_function_descriptor_for_actor_method(
         actor_creation_function_descriptor:
             The function signature for actor creation.
         method_name: The name of actor method.
+        signature: The signature for the actor method. When calling Java from Python,
+            it should be string in the form of "{length_of_args}".
 
     Returns:
         Function descriptor for cross language actor method call.
@@ -50,8 +52,7 @@ def get_function_descriptor_for_actor_method(
         return JavaFunctionDescriptor(
             actor_creation_function_descriptor.class_name,
             method_name,
-            # Currently not support call actor method with signature.
-            "",
+            signature,
         )
     else:
         raise NotImplementedError(
