@@ -612,9 +612,9 @@
   alert: tune_tests
 
 
-#######################
-# Tune scalbility tests
-#######################
+########################
+# Tune scalability tests
+########################
 
 - name: tune_scalability_bookkeeping_overhead
   group: Tune scalability tests
