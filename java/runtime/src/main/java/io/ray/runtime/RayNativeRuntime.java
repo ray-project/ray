@@ -146,7 +146,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
           numWorkersPerProcess,
           rayConfig.logDir,
           serializedJobConfig,
-          rayConfig.getStartupToken());
+          rayConfig.getStartupToken(),
+          rayConfig.runtimeEnvHash);
 
       taskExecutor = new NativeTaskExecutor(this);
       workerContext = new NativeWorkerContext();
@@ -278,7 +279,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       int numWorkersPerProcess,
       String logDir,
       byte[] serializedJobConfig,
-      int startupToken);
+      int startupToken,
+      int runtimeEnvHash);
 
   private static native void nativeRunTaskExecutor(TaskExecutor taskExecutor);
 
