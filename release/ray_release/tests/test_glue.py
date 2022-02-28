@@ -1,6 +1,7 @@
 import os
 import shutil
 import tempfile
+import time
 import unittest
 from typing import Type, Callable
 from unittest.mock import patch
@@ -213,7 +214,10 @@ class GlueTest(unittest.TestCase):
         if until == "test_command":
             return
 
-        self.command_runner_return["fetch_results"] = {"time_taken": 50}
+        self.command_runner_return["fetch_results"] = {
+            "time_taken": 50,
+            "last_update": time.time() - 60,
+        }
 
         if until == "fetch_results":
             return
@@ -491,6 +495,26 @@ class GlueTest(unittest.TestCase):
         with self.assertRaises(TestCommandTimeout):
             self._run(result)
         self.assertEqual(result.return_code, ExitCode.COMMAND_TIMEOUT.value)
+
+        # Ensure cluster was terminated
+        self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
+
+    def testTestCommandTimeoutLongRunning(self):
+        result = Result()
+
+        self._succeed_until("fetch_results")
+
+        # Test command times out
+        self.command_runner_return["run_command"] = _fail_on_call(CommandTimeout)
+        with self.assertRaises(TestCommandTimeout):
+            self._run(result)
+        self.assertEqual(result.return_code, ExitCode.COMMAND_TIMEOUT.value)
+
+        # But now set test to long running
+        self.test["run"]["long_running"] = True
+        self._run(result)  # Will not fail this time
+
+        self.assertGreaterEqual(result.results["last_update_diff"], 60.0)
 
         # Ensure cluster was terminated
         self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
