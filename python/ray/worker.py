@@ -729,7 +729,7 @@ def init(
     logging_format: str = ray_constants.LOGGER_FORMAT,
     log_to_driver: bool = True,
     namespace: Optional[str] = None,
-    runtime_env: Dict[str, Any] = None,
+    runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
     # The following are unstable parameters and their use is discouraged.
     _enable_object_reconstruction: bool = False,
     _redis_max_memory: Optional[int] = None,
@@ -830,8 +830,8 @@ def init(
         log_to_driver (bool): If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
         namespace (str): Namespace to use
-        runtime_env (dict): The runtime environment to use for this job (see
-                :ref:`runtime-environments` for details).
+        runtime_env (dict, RuntimeEnv, None): The runtime environment to use
+            for this job (see :ref:`runtime-environments` for details).
         _enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that

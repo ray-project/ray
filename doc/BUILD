@@ -1,3 +1,6 @@
+load("//bazel:python.bzl", "py_test_run_all_subdirectory")
+load("//bazel:python.bzl", "py_test_run_all_notebooks")
+
 # --------------------------------------------------------------------
 # Tests from the doc directory.
 # Please keep these sorted alphabetically, but start with the
@@ -132,36 +135,25 @@ py_test(
 )
 
 # --------------------------------------------------------------------
-# Tests from the doc/source/tune/tutorials directory.
-# Please keep these sorted alphabetically.
+# Test all doc/source/tune/examples notebooks.
 # --------------------------------------------------------------------
 
-py_test(
-    name = "tune_sklearn",
+py_test_run_all_notebooks(
     size = "medium",
-    main = "test_myst_doc.py",
-    srcs = ["test_myst_doc.py"],
-    args = ["--path", "doc/source/tune/tutorials/tune-sklearn.ipynb"],
-    data = ["//doc/source/tune/tutorials:tune_tutorials"],
-    tags = ["exclusive", "team:ml"],
-)
-
-py_test(
-    name = "tune_serve_integration_mnist",
-    size = "medium",
-    main = "test_myst_doc.py",
-    srcs = ["test_myst_doc.py"],
-    args = ["--path", "doc/source/tune/tutorials/tune-serve-integration-mnist.ipynb", "--smoke-test", "--from_scratch", "--day 0"],
-    data = ["//doc/source/tune/tutorials:tune_tutorials"],
-    tags = ["exclusive", "team:ml"],
-)
-
-py_test(
-    name = "hyperopt_example",
-    size = "small",
-    main = "test_myst_doc.py",
-    srcs = ["test_myst_doc.py"],
-    args = ["--path", "doc/source/tune/examples/hyperopt_example.ipynb"],
+    include = ["doc/source/tune/examples/*.ipynb"],
+    exclude = [],
     data = ["//doc/source/tune/examples:tune_examples"],
+    tags = ["exclusive", "team:ml"],
+)
+
+# --------------------------------------------------------------------
+# Test all doc/source/tune/doc_code code included in rst/md files.
+# --------------------------------------------------------------------
+
+py_test_run_all_subdirectory(
+    size = "medium",
+    include = ["source/tune/doc_code/*.py"],
+    exclude = [],
+    extra_srcs = [],
     tags = ["exclusive", "team:ml"],
 )

@@ -314,6 +314,8 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
   if (language == Language::JAVA) {
     options.push_back("-Dray.raylet.startup-token=" +
                       std::to_string(worker_startup_token_counter_));
+    options.push_back("-Dray.internal.runtime-env-hash=" +
+                      std::to_string(runtime_env_hash));
   }
 
   // Append user-defined per-process options here
