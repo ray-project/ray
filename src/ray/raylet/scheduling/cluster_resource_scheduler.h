@@ -173,8 +173,6 @@ class ClusterResourceScheduler {
   StringIdMap string_to_int_map_;
   /// Identifier of local node.
   int64_t local_node_id_;
-  /// Internally maintained random number generator.
-  std::mt19937_64 gen_;
   /// Gcs client. It's not owned by this class.
   gcs::GcsClient *gcs_client_;
   /// Resources of local node.

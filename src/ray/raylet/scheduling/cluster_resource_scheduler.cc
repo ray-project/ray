@@ -51,10 +51,7 @@ ClusterResourceScheduler::ClusterResourceScheduler() {
 ClusterResourceScheduler::ClusterResourceScheduler(
     int64_t local_node_id, const NodeResources &local_node_resources,
     gcs::GcsClient &gcs_client)
-    : string_to_int_map_(),
-      local_node_id_(local_node_id),
-      gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
-      gcs_client_(&gcs_client) {
+    : string_to_int_map_(), local_node_id_(local_node_id), gcs_client_(&gcs_client) {
   PopulatePredefinedResources(string_to_int_map_);
   cluster_resource_manager_ =
       std::make_unique<ClusterResourceManager>(string_to_int_map_);
@@ -74,10 +71,7 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     const absl::flat_hash_map<std::string, double> &local_node_resources,
     gcs::GcsClient &gcs_client, std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity)
-    : string_to_int_map_(),
-      local_node_id_(),
-      gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
-      gcs_client_(&gcs_client) {
+    : string_to_int_map_(), local_node_id_(), gcs_client_(&gcs_client) {
   PopulatePredefinedResources(string_to_int_map_);
   local_node_id_ = string_to_int_map_.Insert(local_node_id);
   NodeResources node_resources = ResourceMapToNodeResources(
@@ -152,31 +146,8 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
   // The zero cpu actor is a special case that must be handled the same way by all
   // scheduling policies.
   if (actor_creation && resource_request.IsEmpty()) {
-    int64_t best_node = -1;
-    // This is an actor which requires no resources.
-    // Pick a random node to to avoid scheduling all actors on the local node.
-    const auto &resource_view = cluster_resource_manager_->GetResourceView();
-    if (resource_view.size() > 0) {
-      std::uniform_int_distribution<int> distribution(0, resource_view.size() - 1);
-      int idx = distribution(gen_);
-      auto iter = std::next(resource_view.begin(), idx);
-      for (size_t i = 0; i < resource_view.size(); ++i) {
-        // TODO(iycheng): Here is there are a lot of nodes died, the
-        // distribution might not be even.
-        if (NodeAlive(iter->first)) {
-          best_node = iter->first;
-          break;
-        }
-        ++iter;
-        if (iter == resource_view.end()) {
-          iter = resource_view.begin();
-        }
-      }
-    }
-    RAY_LOG(DEBUG) << "GetBestSchedulableNode, best_node = " << best_node
-                   << ", # nodes = " << resource_view.size()
-                   << ", resource_request = " << resource_request.DebugString();
-    return best_node;
+    return scheduling_policy_->RandomPolicy(
+        resource_request, [this](auto node_id) { return this->NodeAlive(node_id); });
   }
 
   int64_t best_node_id = -1;
