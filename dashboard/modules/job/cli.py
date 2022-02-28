@@ -332,5 +332,4 @@ def list_jobs(address: Optional[str]):
         >>> ray job list
     """
     client = _get_sdk_client(address)
-    print(pprint.pformat(client.list_jobs()))
     cli_logger.print(pprint.pformat(client.list_jobs()))
