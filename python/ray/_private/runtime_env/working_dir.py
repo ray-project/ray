@@ -4,7 +4,6 @@ from typing import Any, Dict, Optional
 from pathlib import Path
 
 from ray.experimental.internal_kv import _internal_kv_initialized
-from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     download_and_unpack_package,
@@ -103,7 +102,7 @@ class WorkingDirManager:
 
         return local_dir_size
 
-    def get_uri(self, runtime_env: RuntimeEnv) -> Optional[str]:
+    def get_uri(self, runtime_env: "RuntimeEnv") -> Optional[str]:  # noqa: F821
         working_dir_uri = runtime_env.working_dir()
         if working_dir_uri != "":
             return working_dir_uri
