@@ -183,9 +183,9 @@ COMMON_CONFIG: TrainerConfigDict = {
     "swa_config": {
         # Start SWA after this many model updates
         # Note this counts each minibatch as an update
-        "start": 10,
+        "start": 0,
         # Run a SWA update after this many model updates
-        "freq": 10
+        "freq": 3,
     },
 
     # === Environment Settings ===
