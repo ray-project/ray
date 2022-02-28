@@ -74,8 +74,7 @@ def job_cli_group():
     pass
 
 
-@PublicAPI(stability="beta")
-@job_cli_group.command("submit", help="Submit a job to be executed on the cluster.")
+@job_cli_group.command()
 @click.option(
     "--address",
     type=str,
@@ -127,7 +126,8 @@ def job_cli_group():
 )
 @add_click_logging_options
 @click.argument("entrypoint", nargs=-1, required=True, type=click.UNPROCESSED)
-def job_submit(
+@PublicAPI
+def submit(
     address: Optional[str],
     job_id: Optional[str],
     runtime_env: Optional[str],
@@ -136,7 +136,7 @@ def job_submit(
     entrypoint: Tuple[str],
     no_wait: bool,
 ):
-    """Submits a job to be run on the cluster.
+    """Submits a job to be run on the cluster docstring
 
     Example:
         >>> ray job submit -- python my_script.py --arg=val
@@ -201,8 +201,7 @@ def job_submit(
             )
 
 
-@PublicAPI(stability="beta")
-@job_cli_group.command("status", help="Get the status of a running job.")
+@job_cli_group.command()
 @click.option(
     "--address",
     type=str,
@@ -215,7 +214,8 @@ def job_submit(
 )
 @click.argument("job-id", type=str)
 @add_click_logging_options
-def job_status(address: Optional[str], job_id: str):
+@PublicAPI(stability="beta")
+def status(address: Optional[str], job_id: str):
     """Queries for the current status of a job.
 
     Example:
@@ -225,8 +225,7 @@ def job_status(address: Optional[str], job_id: str):
     _log_job_status(client, job_id)
 
 
-@PublicAPI(stability="beta")
-@job_cli_group.command("stop", help="Attempt to stop a running job.")
+@job_cli_group.command()
 @click.option(
     "--address",
     type=str,
@@ -246,7 +245,8 @@ def job_status(address: Optional[str], job_id: str):
 )
 @click.argument("job-id", type=str)
 @add_click_logging_options
-def job_stop(address: Optional[str], no_wait: bool, job_id: str):
+@PublicAPI(stability="beta")
+def stop(address: Optional[str], no_wait: bool, job_id: str):
     """Attempts to stop a job.
 
     Example:
@@ -273,8 +273,7 @@ def job_stop(address: Optional[str], no_wait: bool, job_id: str):
             time.sleep(1)
 
 
-@PublicAPI(stability="beta")
-@job_cli_group.command("logs", help="Get the logs of a running job.")
+@job_cli_group.command()
 @click.option(
     "--address",
     type=str,
@@ -295,7 +294,8 @@ def job_stop(address: Optional[str], no_wait: bool, job_id: str):
     help="If set, follow the logs (like `tail -f`).",
 )
 @add_click_logging_options
-def job_logs(address: Optional[str], job_id: str, follow: bool):
+@PublicAPI(stability="beta")
+def logs(address: Optional[str], job_id: str, follow: bool):
     """Gets the logs of a job.
 
     Example:

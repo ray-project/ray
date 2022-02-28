@@ -10,25 +10,24 @@ Job Submission CLI
 
 .. _ray-job-submit-doc:
 
-.. click:: ray.dashboard.modules.job.cli:job_submit
+.. click:: ray.dashboard.modules.job.cli:submit
    :prog: ray job submit
-   :show-nested:
 
 .. _ray-job-status-doc:
 
-.. click:: ray.dashboard.modules.job.cli:job_status
+.. click:: ray.dashboard.modules.job.cli:status
    :prog: ray job status
    :show-nested:
 
 .. _ray-job-stop-doc:
 
-.. click:: ray.dashboard.modules.job.cli:job_stop
+.. click:: ray.dashboard.modules.job.cli:stop
    :prog: ray job stop
    :show-nested:
 
 .. _ray-job-logs-doc:
 
-.. click:: ray.dashboard.modules.job.cli:job_logs
+.. click:: ray.dashboard.modules.job.cli:logs
    :prog: ray job logs
    :show-nested:
 
