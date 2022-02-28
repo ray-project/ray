@@ -1,6 +1,8 @@
 import copy
 import gym
 import numpy as np
+import os
+from pathlib import Path
 from random import choice
 import time
 import unittest
@@ -8,6 +10,7 @@ import unittest
 import ray
 import ray.rllib.agents.a3c as a3c
 import ray.rllib.agents.dqn as dqn
+from ray.rllib.agents.marwil import BCTrainer
 import ray.rllib.agents.pg as pg
 from ray.rllib.agents.trainer import COMMON_CONFIG
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
@@ -273,6 +276,36 @@ class TestTrainer(unittest.TestCase):
         print(f"Spaces given manually in config: {wo_lookup}sec")
         self.assertLess(wo_lookup, w_lookup)
         trainer.stop()
+
+    def test_no_env_but_eval_workers_do_have_env(self):
+        """Tests whether no env on workers, but env on eval workers works ok."""
+        script_path = Path(__file__)
+        input_file = os.path.join(
+            script_path.parent.parent.parent, "tests/data/cartpole/small.json"
+        )
+
+        env = gym.make("CartPole-v0")
+
+        offline_rl_config = {
+            # Offline RL -> No env on regular workers.
+            "input": input_file,
+            # No env -> Must specify spaces here.
+            "observation_space": env.observation_space,
+            "action_space": env.action_space,
+            # Configure env to be created on evaluation workers.
+            "evaluation_interval": 1,
+            "evaluation_num_workers": 1,
+            "evaluation_config": {
+                "env": "CartPole-v0",
+                "input": "sampler",
+                "observation_space": None,  # Test, whether this is inferred.
+                "action_space": None,  # Test, whether this is inferred.
+            },
+        }
+
+        bc_trainer = BCTrainer(config=offline_rl_config)
+        bc_trainer.train()
+        bc_trainer.stop()
 
 
 if __name__ == "__main__":

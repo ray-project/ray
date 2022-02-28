@@ -11,7 +11,7 @@ from typing import Optional, Dict, Type
 import warnings
 
 import ray
-from ray.train.accelerators.base import Accelerator
+from ray.train.accelerators import Accelerator
 from ray.train.constants import (
     DETAILED_AUTOFILLED_KEYS,
     TIME_THIS_ITER_S,
@@ -23,9 +23,10 @@ from ray.train.constants import (
     HOSTNAME,
     DATE,
     RESULT_FETCH_TIMEOUT,
+    SESSION_MISUSE_LOG_ONCE_KEY,
 )
 from ray.train.utils import PropagatingThread, RayDataset
-from ray.util import PublicAPI
+from ray.util import PublicAPI, log_once
 
 
 class TrainingResultType(Enum):
@@ -266,6 +267,22 @@ class Session:
 _session = None
 
 
+def _warn_session_misuse(fn_name: str):
+    """Logs warning message on provided fn being used outside of session.
+
+    Args:
+        fn_name (str): The name of the function to warn about.
+    """
+
+    if log_once(f"{SESSION_MISUSE_LOG_ONCE_KEY}-{fn_name}"):
+        warnings.warn(
+            f"`train.{fn_name}()` is meant to only be "
+            f"called "
+            "inside a training function that is executed by "
+            "`Trainer.run`. Returning None."
+        )
+
+
 def init_session(*args, **kwargs) -> None:
     global _session
     if _session:
@@ -276,15 +293,8 @@ def init_session(*args, **kwargs) -> None:
     _session = Session(*args, **kwargs)
 
 
-def get_session() -> Session:
+def get_session() -> Optional[Session]:
     global _session
-    if _session is None or not isinstance(_session, Session):
-        raise ValueError(
-            "Trying to access a Train session that has not been "
-            "initialized yet. Train functions like "
-            "`train.report()` should only be called from inside "
-            "the training function."
-        )
     return _session
 
 
@@ -332,6 +342,9 @@ def get_dataset_shard(dataset_name: Optional[str] = None) -> Optional[RayDataset
         If no dataset is passed into Trainer, then return None.
     """
     session = get_session()
+    if session is None:
+        _warn_session_misuse(get_dataset_shard.__name__)
+        return
     shard = session.dataset_shard
     if shard is None:
         warnings.warn(
@@ -376,6 +389,9 @@ def report(**kwargs) -> None:
             intermediate results.
     """
     session = get_session()
+    if session is None:
+        _warn_session_misuse(report.__name__)
+        return
     session.report(**kwargs)
 
 
@@ -401,6 +417,8 @@ def world_rank() -> int:
 
     """
     session = get_session()
+    if session is None:
+        return 0
     return session.world_rank
 
 
@@ -425,6 +443,8 @@ def local_rank() -> int:
 
     """
     session = get_session()
+    if session is None:
+        return 0
     return session.local_rank
 
 
@@ -456,6 +476,9 @@ def load_checkpoint() -> Optional[Dict]:
         originally initialized with. ``None`` if neither exist.
     """
     session = get_session()
+    if session is None:
+        _warn_session_misuse(load_checkpoint.__name__)
+        return
     return session.loaded_checkpoint
 
 
@@ -482,6 +505,9 @@ def save_checkpoint(**kwargs) -> None:
         **kwargs: Any key value pair to be checkpointed by Train.
     """
     session = get_session()
+    if session is None:
+        _warn_session_misuse(save_checkpoint.__name__)
+        return
     session.checkpoint(**kwargs)
 
 
@@ -503,4 +529,6 @@ def world_size() -> int:
         trainer.shutdown()
     """
     session = get_session()
+    if session is None:
+        return 1
     return session.world_size

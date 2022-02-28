@@ -75,6 +75,7 @@ from ray.rllib.utils.error import EnvError, ERR_MSG_INVALID_ENV_DESCRIPTOR
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import (
+    TRAINING_ITERATION_TIMER,
     NUM_ENV_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
@@ -904,19 +905,22 @@ class Trainer(Trainable):
             #   in each training iteration.
             # This matches the behavior of using `build_trainer()`, which
             # should no longer be used.
-            self.workers = self._make_workers(
+            self.workers = WorkerSet(
                 env_creator=self.env_creator,
                 validate_env=self.validate_env,
                 policy_class=self.get_default_policy_class(self.config),
-                config=self.config,
+                trainer_config=self.config,
                 num_workers=self.config["num_workers"],
+                local_worker=True,
+                logdir=self.logdir,
             )
 
             # Function defining one single training iteration's behavior.
             if self.config["_disable_execution_plan_api"]:
-                # Ensure remote workers are initially in sync with the
+                # TODO: Ensure remote workers are initially in sync with the
                 # local worker.
-                self.workers.sync_weights()
+                # self.workers.sync_weights()
+                pass  # TODO: Uncommenting line above breaks tf2+eager_tracing for A3C.
             # LocalIterator-creating "execution plan".
             # Only call this once here to create `self.train_exec_impl`,
             # which is a ray.util.iter.LocalIterator that will be `next`'d
@@ -998,18 +1002,22 @@ class Trainer(Trainable):
 
             self.config["evaluation_config"] = eval_config
 
+            env_id = self._register_if_needed(eval_config.get("env"), eval_config)
+            env_creator = self._get_env_creator_from_env_id(env_id)
+
             # Create a separate evaluation worker set for evaluation.
             # If evaluation_num_workers=0, use the evaluation set's local
             # worker for evaluation, otherwise, use its remote workers
             # (parallelized evaluation).
-            self.evaluation_workers: WorkerSet = self._make_workers(
-                env_creator=self.env_creator,
+            self.evaluation_workers: WorkerSet = WorkerSet(
+                env_creator=env_creator,
                 validate_env=None,
                 policy_class=self.get_default_policy_class(self.config),
-                config=eval_config,
+                trainer_config=eval_config,
                 num_workers=self.config["evaluation_num_workers"],
                 # Don't even create a local worker if num_workers > 0.
                 local_worker=False,
+                logdir=self.logdir,
             )
 
     # TODO: Deprecated: In your sub-classes of Trainer, override `setup()`
@@ -2127,52 +2135,6 @@ class Trainer(Trainable):
         else:
             return lambda env_config: None
 
-    @DeveloperAPI
-    def _make_workers(
-        self,
-        *,
-        env_creator: EnvCreator,
-        validate_env: Optional[Callable[[EnvType, EnvContext], None]],
-        policy_class: Type[Policy],
-        config: TrainerConfigDict,
-        num_workers: int,
-        local_worker: bool = True,
-    ) -> WorkerSet:
-        """Default factory method for a WorkerSet running under this Trainer.
-
-        Override this method by passing a custom `make_workers` into
-        `build_trainer`.
-
-        Args:
-            env_creator: A function that return and Env given an env
-                config.
-            validate_env: Optional callable to validate the generated
-                environment. The env to be checked is the one returned from
-                the env creator, which may be a (single, not-yet-vectorized)
-                gym.Env or your custom RLlib env type (e.g. MultiAgentEnv,
-                VectorEnv, BaseEnv, etc..).
-            policy_class: The Policy class to use for creating the policies
-                of the workers.
-            config: The Trainer's config.
-            num_workers: Number of remote rollout workers to create.
-                0 for local only.
-            local_worker: Whether to create a local (non @ray.remote) worker
-                in the returned set as well (default: True). If `num_workers`
-                is 0, always create a local worker.
-
-        Returns:
-            The created WorkerSet.
-        """
-        return WorkerSet(
-            env_creator=env_creator,
-            validate_env=validate_env,
-            policy_class=policy_class,
-            trainer_config=config,
-            num_workers=num_workers,
-            local_worker=local_worker,
-            logdir=self.logdir,
-        )
-
     def _sync_filters_if_needed(self, workers: WorkerSet):
         if self.config.get("observation_filter", "NoFilter") != "NoFilter":
             FilterManager.synchronize(
@@ -2199,10 +2161,11 @@ class Trainer(Trainable):
         worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
 
     def _exec_plan_or_training_iteration_fn(self):
-        if self.config["_disable_execution_plan_api"]:
-            results = self.training_iteration()
-        else:
-            results = next(self.train_exec_impl)
+        with self._timers[TRAINING_ITERATION_TIMER]:
+            if self.config["_disable_execution_plan_api"]:
+                results = self.training_iteration()
+            else:
+                results = next(self.train_exec_impl)
         return results
 
     @classmethod
@@ -3011,13 +2974,34 @@ class Trainer(Trainable):
     def __repr__(self):
         return type(self).__name__
 
+    @Deprecated(new="Trainer.compute_single_action()", error=False)
+    def compute_action(self, *args, **kwargs):
+        return self.compute_single_action(*args, **kwargs)
+
     @Deprecated(new="Trainer.evaluate()", error=True)
     def _evaluate(self) -> dict:
         return self.evaluate()
 
-    @Deprecated(new="Trainer.compute_single_action()", error=False)
-    def compute_action(self, *args, **kwargs):
-        return self.compute_single_action(*args, **kwargs)
+    @Deprecated(new="construct WorkerSet(...) instance directly", error=False)
+    def _make_workers(
+        self,
+        *,
+        env_creator: EnvCreator,
+        validate_env: Optional[Callable[[EnvType, EnvContext], None]],
+        policy_class: Type[Policy],
+        config: TrainerConfigDict,
+        num_workers: int,
+        local_worker: bool = True,
+    ) -> WorkerSet:
+        return WorkerSet(
+            env_creator=env_creator,
+            validate_env=validate_env,
+            policy_class=policy_class,
+            trainer_config=config,
+            num_workers=num_workers,
+            local_worker=local_worker,
+            logdir=self.logdir,
+        )
 
     @Deprecated(new="Trainer.try_recover_from_step_attempt()", error=False)
     def _try_recover(self):

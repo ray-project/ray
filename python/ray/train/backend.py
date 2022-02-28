@@ -6,7 +6,7 @@ from typing import Callable, TypeVar, List, Optional, Dict, Union, Type, Tuple
 import ray
 from ray.exceptions import RayActorError
 from ray.ray_constants import env_integer
-from ray.train.accelerators.base import Accelerator
+from ray.train.accelerators import Accelerator
 from ray.train.constants import (
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
@@ -646,10 +646,9 @@ class InactiveWorkerGroup:
 
 
 def _get_session(method_name: str):
-    try:
-        # Get the session for this worker.
-        return get_session()
-    except ValueError:
+    # Get the session for this worker.
+    session = get_session()
+    if not session:
         # Session is not initialized yet.
         raise TrainBackendError(
             f"`{method_name}` has been called "
@@ -657,3 +656,4 @@ def _get_session(method_name: str):
             "`start_training` before "
             f"`{method_name}`."
         )
+    return session
