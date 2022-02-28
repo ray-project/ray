@@ -177,6 +177,19 @@ COMMON_CONFIG: TrainerConfigDict = {
     "model": MODEL_DEFAULTS,
     # Arguments to pass to the policy optimizer. These vary by optimizer.
     "optimizer": {},
+    # Stochastic weight averaging, which supposedly helps learning
+    # stability and reduces catastrophic forgetting
+    "swa": False,
+    "swa_config": {
+        # Either mean or exp mean
+        "method": "mean",
+        # Start SWA after this many model updates
+        # Note that each call to the optimizer counts
+        # as an update
+        "start": 0,
+        # Swap averaged weights with SGD weights after this many model updates
+        "freq": 1,
+    },
 
     # === Environment Settings ===
     # Number of steps after which the episode is forced to terminate. Defaults

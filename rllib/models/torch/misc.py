@@ -9,6 +9,43 @@ from ray.rllib.utils.typing import TensorType
 torch, nn = try_import_torch()
 
 
+class ExpMovingAvg(torch.nn.Module):
+    def __init__(self, start, freq):
+        super().__init__()
+        self.start = start
+        self.freq = freq
+
+    def forward(self, averaged_param, model_param, num_averaged):
+        if not (num_averaged > self.start or num_averaged % self.freq == 0):
+            return model_param
+
+        return 2 / (num_averaged + 1) * (model_param - averaged_param) + averaged_param
+
+
+class MovingAvg(torch.nn.Module):
+    def __init__(self, start, freq):
+        super().__init__()
+        self.start = start
+        self.freq = freq
+
+    def forward(self, averaged_param, model_param, num_averaged):
+        if not (num_averaged > self.start or num_averaged % self.freq == 0):
+            return model_param
+        return averaged_param + (model_param - averaged_param) / (num_averaged + 1)
+
+
+def swa_wrap_module(module: torch.nn.Module, **swa_kwargs) -> None:
+    """Given a torch.nn.Module, apply SWA to all submodules in-place"""
+    for name, submod in list(module.named_children()):
+        # Inheritance means this might be called twice
+        # so do not double wrap
+        if isinstance(submod, torch.optim.swa_utils.AveragedModel):
+            continue
+        # SWA will deepcopy the module, so delete the unwrapped one
+        # to save memory
+        setattr(module, name, torch.optim.swa_utils.AveragedModel(submod, **swa_kwargs))
+
+
 def normc_initializer(std: float = 1.0) -> Any:
     def initializer(tensor):
         tensor.data.normal_(0, 1)

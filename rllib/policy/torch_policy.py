@@ -39,6 +39,7 @@ from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.models.torch.misc import swa_wrap_module, ExpMovingAvg, MovingAvg
 from ray.rllib.utils.typing import (
     GradInfoDict,
     ModelGradients,
@@ -162,6 +163,7 @@ class TorchPolicy(Policy):
                 model_config=self.config["model"],
                 framework=self.framework,
             )
+
             if action_distribution_class is None:
                 action_distribution_class = dist_class
 
@@ -175,6 +177,26 @@ class TorchPolicy(Policy):
             num_gpus = config["num_gpus_per_worker"]
         gpu_ids = list(range(torch.cuda.device_count()))
 
+        # Apply stochastic weight averaging to the model
+        if self.config["swa"]:
+            if self.config["swa_config"]["method"] == "mean":
+                swa_wrap_module(
+                    model,
+                    avg_fn=MovingAvg(
+                        self.config["swa_config"]["start"],
+                        self.config["swa_config"]["freq"],
+                    ),
+                )
+            elif self.config["swa_config"]["method"] == "exp_mean":
+                swa_wrap_module(
+                    model,
+                    avg_fn=ExpMovingAvg(
+                        self.config["swa_config"]["start"],
+                        self.config["swa_config"]["freq"],
+                    ),
+                )
+            else:
+                raise NotImplementedError("swa_method must be either mean or exp_mean")
         # Place on one or more CPU(s) when either:
         # - Fake GPU mode.
         # - num_gpus=0 (either set by user or we are in local_mode=True).
@@ -667,6 +689,10 @@ class TorchPolicy(Policy):
         if gradients == _directStepOptimizerSingleton:
             for i, opt in enumerate(self._optimizers):
                 opt.step()
+                if self.config["swa"]:
+                    for module in self.model.children():
+                        if isinstance(module, torch.optim.swa_utils.AveragedModel):
+                            module.update_parameters(module.module)
         else:
             # TODO(sven): Not supported for multiple optimizers yet.
             assert len(self._optimizers) == 1
