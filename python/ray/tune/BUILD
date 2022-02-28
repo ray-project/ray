@@ -880,15 +880,6 @@ py_test(
 # )
 
 py_test(
-    name = "tune_comet_example",
-    size = "medium",
-    srcs = ["examples/tune_comet_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--mock-api"]
-)
-
-py_test(
     name = "tune_mnist_keras",
     size = "medium",
     srcs = ["examples/tune_mnist_keras.py"],
