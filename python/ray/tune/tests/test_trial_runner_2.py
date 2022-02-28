@@ -1,4 +1,5 @@
 import os
+import shutil
 import sys
 import unittest
 
@@ -219,7 +220,7 @@ class TrialRunnerTest2(unittest.TestCase):
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[1].runner.get_info.remote()), 1)
-        self.addCleanup(os.remove, trials[0].checkpoint)
+        self.addCleanup(shutil.rmtree, trials[0].checkpoint.path)
 
     def testRestoreMetricsAfterCheckpointing(self):
         ray.init(num_cpus=1, num_gpus=1)

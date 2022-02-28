@@ -16,15 +16,11 @@ logger = logging.getLogger(__name__)
 # A warning is printed to inform users of TrialExecutor deprecation.
 class _WarnOnDirectInheritanceMeta(type):
     def __new__(mcls, name, bases, module, **kwargs):
-        if (
-            name
-            not in (
-                "RayTrialExecutor",
-                "_MockTrialExecutor",
-                "TrialExecutor",
-            )
-            and "TrialExecutor" in tuple(base.__name__ for base in bases)
-        ):
+        if name not in (
+            "RayTrialExecutor",
+            "_MockTrialExecutor",
+            "TrialExecutor",
+        ) and "TrialExecutor" in tuple(base.__name__ for base in bases):
             deprecation_msg = (
                 f"{name} inherits from TrialExecutor, which is being "
                 "deprecated. "
