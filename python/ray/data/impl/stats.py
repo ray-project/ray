@@ -63,7 +63,8 @@ class _DatasetStatsBuilder:
 
     def build(self, final_blocks: BlockList) -> "DatasetStats":
         stats = DatasetStats(
-            stages={self.stage_name: final_blocks.get_metadata()}, parent=self.parent
+            stages={self.stage_name: final_blocks.get_metadata()},
+            parent=self.parent,
         )
         stats.time_total_s = time.perf_counter() - self.start_time
         return stats
@@ -205,7 +206,7 @@ class DatasetStats:
                 out += p.summary_string(already_printed)
                 out += "\n"
         first = True
-        for stage_name, metadata in sorted(self.stages.items()):
+        for stage_name, metadata in self.stages.items():
             stage_uuid = self.dataset_uuid + stage_name
             if first:
                 first = False

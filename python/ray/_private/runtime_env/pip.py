@@ -128,52 +128,67 @@ class PipProcessor:
     @classmethod
     def _create_or_get_virtualenv(cls, path: str, cwd: str, logger: logging.Logger):
         """Create or get a virtualenv from path."""
-        if cls._is_in_virtualenv():
-            # TODO(fyrestone): Handle create virtualenv from virtualenv.
-            #
-            # Currently, create a virtualenv from virtualenv will get an
-            # unexpected result. The new created virtualenv only inherits
-            # the site packages from the real Python, not current
-            # virtualenv.
-            #
-            # It's possible to copy the virtualenv to create a new
-            # virtualenv, but copying the entire Python is very slow.
-            #
-            # So, we decide to raise an exception until creating virtualenv
-            # from virtualenv is fully supported.
-            raise RuntimeError("Can't create virtualenv from virtualenv.")
+
         python = sys.executable
         virtualenv_path = os.path.join(path, "virtualenv")
         virtualenv_app_data_path = os.path.join(path, "virtualenv_app_data")
-        # virtualenv options:
-        # https://virtualenv.pypa.io/en/latest/cli_interface.html
-        #
-        # --app-data
-        # --reset-app-data
-        #   Set an empty seperated app data folder for current virtualenv.
-        #
-        # --no-periodic-update
-        #   Disable the periodic (once every 14 days) update of the embedded
-        #   wheels.
-        #
-        # --system-site-packages
-        #   Inherit site packages.
-        #
-        # --no-download
-        #   Never download the latest pip/setuptools/wheel from PyPI.
-        create_venv_cmd = [
-            python,
-            "-m",
-            "virtualenv",
-            "--app-data",
-            virtualenv_app_data_path,
-            "--reset-app-data",
-            "--no-periodic-update",
-            "--system-site-packages",
-            "--no-download",
-            virtualenv_path,
-        ]
-        logger.info("Creating virtualenv at %s", virtualenv_path)
+        current_python_dir = os.path.abspath(
+            os.path.join(os.path.dirname(python), "..")
+        )
+
+        if cls._is_in_virtualenv():
+            # virtualenv-clone homepage:
+            # https://github.com/edwardgeorge/virtualenv-clone
+            # virtualenv-clone Usage:
+            # virtualenv-clone /path/to/existing/venv /path/to/cloned/ven
+            # or
+            # python -m clonevirtualenv /path/to/existing/venv /path/to/cloned/ven
+            clonevirtualenv = os.path.join(
+                os.path.dirname(__file__), "_clonevirtualenv.py"
+            )
+            create_venv_cmd = [
+                python,
+                clonevirtualenv,
+                current_python_dir,
+                virtualenv_path,
+            ]
+            logger.info(
+                "Cloning virtualenv %s to %s", current_python_dir, virtualenv_path
+            )
+        else:
+            # virtualenv options:
+            # https://virtualenv.pypa.io/en/latest/cli_interface.html
+            #
+            # --app-data
+            # --reset-app-data
+            #   Set an empty seperated app data folder for current virtualenv.
+            #
+            # --no-periodic-update
+            #   Disable the periodic (once every 14 days) update of the embedded
+            #   wheels.
+            #
+            # --system-site-packages
+            #   Inherit site packages.
+            #
+            # --no-download
+            #   Never download the latest pip/setuptools/wheel from PyPI.
+            create_venv_cmd = [
+                python,
+                "-m",
+                "virtualenv",
+                "--app-data",
+                virtualenv_app_data_path,
+                "--reset-app-data",
+                "--no-periodic-update",
+                "--system-site-packages",
+                "--no-download",
+                virtualenv_path,
+            ]
+            logger.info(
+                "Creating virtualenv at %s, current python dir %s",
+                virtualenv_path,
+                current_python_dir,
+            )
         exit_code, output = exec_cmd_stream_to_logger(
             create_venv_cmd, logger, cwd=cwd, env={}
         )
@@ -286,7 +301,7 @@ class PipManager:
 
         return local_dir_size
 
-    def create(
+    async def create(
         self,
         uri: str,
         runtime_env: RuntimeEnv,
