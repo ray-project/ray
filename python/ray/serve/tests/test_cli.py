@@ -98,6 +98,7 @@ def test_create_deployment(ray_start_stop, tmp_working_dir, class_name):  # noqa
     assert resp.text == "94", resp.text
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_deploy(ray_start_stop):
     # Deploys two valid config files and checks that the deployments work
 
@@ -164,6 +165,7 @@ def test_deploy(ray_start_stop):
             )
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_info(ray_start_stop):
     # Deploys valid config file and checks that serve info returns correct
     # response
