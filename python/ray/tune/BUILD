@@ -208,7 +208,7 @@ py_test(
 
 py_test(
     name = "test_ray_trial_executor",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_ray_trial_executor.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_R"],
@@ -878,15 +878,6 @@ py_test(
 #     tags = ["team:ml", "exclusive", "example"],
 #     args = ["--model SqueezeNet1.0", "--smoke-test"]
 # )
-
-py_test(
-    name = "tune_comet_example",
-    size = "medium",
-    srcs = ["examples/tune_comet_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--mock-api"]
-)
 
 py_test(
     name = "tune_mnist_keras",

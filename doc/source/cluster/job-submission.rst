@@ -58,7 +58,7 @@ We can put this file in a local directory of your choice, with filename "script.
     print(requests.__version__)
 
 
-| Ensure we have a local Ray cluster with a running head node and the dashboard installed with :code:`pip install "ray[default]"`. The address and port shown in terminal should be where we submit Job requests to.
+Ensure we have a local Ray cluster with a running head node and the dashboard installed with :code:`pip install "ray[default]"`. The address and port shown in terminal should be where we submit Job requests to.
 
 .. code-block:: bash
 
@@ -103,6 +103,9 @@ Next, set the :code:`RAY_ADDRESS` environment variable:
 .. code-block:: bash
 
     export RAY_ADDRESS="http://127.0.0.1:8265"
+
+This tells Job Submission how to find our Ray cluster.  Here we are specifying port ``8265`` on the head node, the port that the Ray Dashboard listens on.  
+(Note that this is different from port ``10001``, which you would use to connect to the cluster via :ref:`Ray Client <ray-client>`.)
 
 Now you may run the following CLI commands:
 
