@@ -11,11 +11,6 @@ import ray
 from ray import serve
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray.dashboard.optional_utils import RAY_INTERNAL_DASHBOARD_NAMESPACE
-from ray.serve.constants import (
-    DEFAULT_HTTP_HOST,
-    DEFAULT_HTTP_PORT,
-)
-from ray.serve.config import DeploymentMode
 
 
 @pytest.fixture
@@ -105,18 +100,10 @@ def test_create_deployment(ray_start_stop, tmp_working_dir, class_name):  # noqa
 
 def test_deploy(ray_start_stop):
     # Deploys two valid config files and checks that the deployments work
-    subprocess.check_output(["serve", "start"])
 
     # Initialize serve in test to enable calling serve.list_deployments()
     ray.init(address="auto", namespace=RAY_INTERNAL_DASHBOARD_NAMESPACE)
-    serve.start(
-        detached=True,
-        http_options=dict(
-            host=DEFAULT_HTTP_HOST,
-            port=DEFAULT_HTTP_PORT,
-            location=DeploymentMode.HeadOnly,
-        ),
-    )
+    serve.start(detached=True)
 
     # Create absolute file names to YAML config files
     three_deployments = os.path.join(
@@ -180,7 +167,6 @@ def test_deploy(ray_start_stop):
 def test_info(ray_start_stop):
     # Deploys valid config file and checks that serve info returns correct
     # response
-    subprocess.check_output(["serve", "start"])
 
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
