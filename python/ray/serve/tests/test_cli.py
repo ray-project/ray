@@ -106,15 +106,11 @@ def test_deploy(ray_start_stop):
     serve.start(detached=True)
 
     # Create absolute file names to YAML config files
-    three_deployments = os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__), "test_config_files", "three_deployments.yaml"
-        )
+    three_deployments = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "three_deployments.yaml"
     )
-    two_deployments = os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
-        )
+    two_deployments = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
     )
 
     # Dictionary mapping test config file names to expected deployment names
@@ -172,10 +168,8 @@ def test_info(ray_start_stop):
     # Deploys valid config file and checks that serve info returns correct
     # response
 
-    config_file_name = os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
-        )
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
     )
     success_message_fragment = b"Sent deploy request successfully!"
     deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
