@@ -26,7 +26,6 @@ namespace ray {
 namespace gcs {
 
 using rpc::ActorTableData;
-using rpc::TaskSpec;
 using rpc::ErrorTableData;
 using rpc::GcsNodeInfo;
 using rpc::JobTableData;
@@ -38,6 +37,7 @@ using rpc::ResourceTableData;
 using rpc::ResourceUsageBatchData;
 using rpc::ScheduleData;
 using rpc::StoredConfig;
+using rpc::TaskSpec;
 using rpc::WorkerTableData;
 
 /// \class GcsTable
