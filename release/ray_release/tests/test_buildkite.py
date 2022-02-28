@@ -11,6 +11,7 @@ from ray_release.buildkite.settings import (
     Frequency,
     update_settings_from_buildkite,
 )
+from ray_release.buildkite.step import get_step
 from ray_release.config import Test
 from ray_release.exception import ReleaseTestConfigError
 from ray_release.wheels import (
@@ -221,3 +222,19 @@ class BuildkiteSettingsTest(unittest.TestCase):
             [t["name"] for t, _ in grouped["x"]], ["x1", "x2", "x3"]
         )
         self.assertEqual(len(grouped["y"]), 1)
+
+    def testGetStep(self):
+        test = Test(
+            {
+                "name": "test",
+                "frequency": "nightly",
+                "run": {"script": "test_script.py"},
+                "smoke_test": {"frequency": "multi"},
+            }
+        )
+
+        step = get_step(test, smoke_test=False)
+        self.assertNotIn("--smoke-test", step["command"])
+
+        step = get_step(test, smoke_test=True)
+        self.assertIn("--smoke-test", step["command"])
