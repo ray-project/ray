@@ -94,7 +94,7 @@ class RemoteNodeStorageArtifact(FSStorageArtifact):
             other, RemoteNodeStorageArtifact
         ) and FSStorageArtifact.__eq__(self, other)
 
-    def to_local_storage(self, path: str):
+    def to_local_storage_artifact(self, path: str):
         remote_pack = ray.remote(_pack).options(resources=f"node:{self.node_ip}")
         packed = ray.get(remote_pack.remote(self.path))
         _unpack(packed, path)

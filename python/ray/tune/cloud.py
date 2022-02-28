@@ -1,74 +1,17 @@
 import os
 import shutil
-import subprocess
 import tempfile
 from typing import Optional
 
 from ray import logger
-from ray.tune.sync_client import (
-    S3_PREFIX,
-    GS_PREFIX,
-    HDFS_PREFIX,
-    ALLOWED_REMOTE_PREFIXES,
-)
+
 from ray.util import PublicAPI
-
-
-def is_cloud_target(target: str):
-    return any(target.startswith(prefix) for prefix in ALLOWED_REMOTE_PREFIXES)
-
-
-def _clear_bucket(bucket: str):
-    if not is_cloud_target(bucket):
-        raise ValueError(
-            f"Could not clear bucket contents: "
-            f"Bucket `{bucket}` is not a valid or supported cloud target."
-        )
-
-    try:
-        if bucket.startswith(S3_PREFIX):
-            subprocess.check_call(["aws", "s3", "rm", "--recursive", "--quiet", bucket])
-        elif bucket.startswith(GS_PREFIX):
-            subprocess.check_call(["gsutil", "-m", "rm", "-f", "-r", bucket])
-        elif bucket.startswith(HDFS_PREFIX):
-            subprocess.check_call(["hdfs", "dfs", "-rm", "-r", bucket])
-
-    except Exception as e:
-        logger.warning(f"Caught exception when clearing bucket `{bucket}`: {e}")
-
-
-def _download_from_bucket(bucket: str, local_path: str):
-    if not is_cloud_target(bucket):
-        raise ValueError(
-            f"Could not download from bucket: "
-            f"Bucket `{bucket}` is not a valid or supported cloud target."
-        )
-
-    if bucket.startswith(S3_PREFIX):
-        subprocess.check_call(
-            ["aws", "s3", "cp", "--recursive", "--quiet", bucket, local_path]
-        )
-    elif bucket.startswith(GS_PREFIX):
-        subprocess.check_call(["gsutil", "-m", "cp", "-r", bucket, local_path])
-    elif bucket.startswith(HDFS_PREFIX):
-        subprocess.check_call(["hdfs", "dfs", "-get", bucket, local_path])
-
-
-def _upload_to_bucket(bucket: str, local_path: str):
-    if not is_cloud_target(bucket):
-        raise ValueError(
-            f"Could not download from bucket: "
-            f"Bucket `{bucket}` is not a valid or supported cloud target."
-        )
-
-    if bucket.startswith(S3_PREFIX):
-        subprocess.check_call(
-            ["aws", "s3", "cp", "--recursive", "--quiet", local_path, bucket]
-        )
-    elif bucket.startswith(GS_PREFIX):
-        subprocess.check_call(["gsutil", "-m", "cp", "-r", local_path, bucket])
-    elif bucket.startswith(HDFS_PREFIX):
-        subprocess.check_call(["hdfs", "dfs", "-put", local_path, bucket])
+from ray.util.ml_utils.cloud import (
+    _download_from_bucket,
+    _clear_bucket,
+    _upload_to_bucket,
+    is_cloud_target,
+)
 
 
 @PublicAPI(stability="beta")

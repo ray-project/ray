@@ -13,7 +13,7 @@ from numbers import Number
 from typing import Any, Callable, Optional
 
 from ray.util.ml_utils.checkpoint import (
-    Checkpoint,
+    TuneCheckpoint,
     MultiLocationCheckpoint,
     LocalStorageCheckpoint,
     DataCheckpoint,
@@ -445,7 +445,7 @@ class FunctionRunner(Trainable):
     def execute(self, fn):
         return fn(self)
 
-    def save(self, checkpoint_path=None) -> Checkpoint:
+    def save(self, checkpoint_path=None) -> TuneCheckpoint:
         if checkpoint_path:
             raise ValueError("Checkpoint path should not be used with function API.")
 
@@ -499,7 +499,7 @@ class FunctionRunner(Trainable):
         checkpoint = self.save()
         if isinstance(checkpoint, MultiLocationCheckpoint):
             checkpoint = checkpoint.search_checkpoint(LocalStorageCheckpoint)
-        return checkpoint.to_data()
+        return checkpoint.to_data_checkpoint()
 
     def load_checkpoint(self, checkpoint):
         # This should be removed once Trainables are refactored.
@@ -518,7 +518,9 @@ class FunctionRunner(Trainable):
         self.temp_checkpoint_dir = FuncCheckpointUtil.mk_temp_checkpoint_dir(
             self.logdir
         )
-        local_checkpoint = checkpoint.to_local_storage(self.temp_checkpoint_dir)
+        local_checkpoint = checkpoint.to_local_storage_checkpoint(
+            self.temp_checkpoint_dir
+        )
         self.restore(local_checkpoint)
 
     def cleanup(self):

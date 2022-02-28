@@ -462,7 +462,7 @@ def _move_checkpoint_to_model_dir(model_dir, checkpoint, config, metrics):
     move the checkpoint to a shared storage, like Amazon S3, instead."""
     os.makedirs(model_dir, 0o755, exist_ok=True)
 
-    checkpoint.to_local_storage(model_dir)
+    checkpoint.to_local_storage_checkpoint(model_dir)
 
     checkpoint_path = os.path.join(model_dir, "checkpoint")
     meta_path = os.path.join(model_dir, "meta.json")

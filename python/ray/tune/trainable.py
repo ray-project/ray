@@ -50,7 +50,7 @@ from ray.util.ml_utils.checkpoint import (
     DataCheckpoint,
     FSStorageCheckpoint,
     RemoteNodeStorageCheckpoint,
-    Checkpoint,
+    TuneCheckpoint,
 )
 
 logger = logging.getLogger(__name__)
@@ -430,7 +430,7 @@ class Trainable:
             checkpoint_dir (str): Optional dir to place the checkpoint.
 
         Returns:
-            Checkpoint: A FSStorageCheckpoint, or
+            TuneCheckpoint: A FSStorageCheckpoint, or
                 MultiLocationCheckpoint (including a CloudCheckpoint).
 
         """
@@ -560,7 +560,7 @@ class Trainable:
         self.storage_client.sync_down(cloud_checkpoint.location, checkpoint_path)
         self.storage_client.wait_or_retry()
         # Todo: In the future, this may become
-        # local_checkpoint = cloud_checkpoint.to_local_storage()
+        # local_checkpoint = cloud_checkpoint.to_local_storage_checkpoint()
 
         local_checkpoint = LocalStorageCheckpoint(
             path=checkpoint_path, metadata=cloud_checkpoint.metadata
@@ -573,14 +573,16 @@ class Trainable:
         assert isinstance(remote_checkpoint, RemoteNodeStorageCheckpoint)
 
         # Otherwise, fetch data from remote node
-        local_checkpoint = remote_checkpoint.to_local_storage(remote_checkpoint.path)
+        local_checkpoint = remote_checkpoint.to_local_storage_checkpoint(
+            remote_checkpoint.path
+        )
         return self._restore_from_local_checkpoint(local_checkpoint)
 
     def _restore_from_local_checkpoint(self, local_checkpoint: LocalStorageCheckpoint):
         assert isinstance(local_checkpoint, LocalStorageCheckpoint)
 
         if local_checkpoint.is_data_checkpoint:
-            data_checkpoint = local_checkpoint.to_data()
+            data_checkpoint = local_checkpoint.to_data_checkpoint()
             return self.restore_from_object(data_checkpoint)
 
         checkpoint_path = local_checkpoint.path
@@ -664,7 +666,7 @@ class Trainable:
             self.load_checkpoint(checkpoint.data)
         else:
             tmpdir = tempfile.mkdtemp("restore_from_object", dir=self.logdir)
-            local_checkpoint = checkpoint.to_local_storage(tmpdir)
+            local_checkpoint = checkpoint.to_local_storage_checkpoint(tmpdir)
             restore_path = os.path.join(
                 local_checkpoint.path, local_checkpoint.metadata.get("suffix", "")
             )
@@ -677,7 +679,7 @@ class Trainable:
         )
         self._restore_metadata(checkpoint.metadata)
 
-    def delete_checkpoint(self, checkpoint: Checkpoint):
+    def delete_checkpoint(self, checkpoint: TuneCheckpoint):
         """Deletes local copy of checkpoint.
 
         Args:

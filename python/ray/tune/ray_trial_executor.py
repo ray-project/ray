@@ -36,7 +36,7 @@ from ray.tune.utils import warn_if_slow
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 from ray.util.ml_utils.checkpoint import (
-    Checkpoint,
+    TuneCheckpoint,
     DataCheckpoint,
 )
 from ray.util.placement_group import remove_placement_group, PlacementGroup
@@ -746,7 +746,7 @@ class RayTrialExecutor(TrialExecutor):
 
     def save(
         self, trial, storage=PERSISTENT, result: Optional[Dict] = None
-    ) -> Union[Checkpoint, ray.ObjectRef]:
+    ) -> Union[TuneCheckpoint, ray.ObjectRef]:
         """Saves the trial's state to a checkpoint asynchronously.
 
         Args:

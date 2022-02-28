@@ -25,7 +25,7 @@ from ray.tune.sync_client import (
     NOOP,
 )
 from ray.util.annotations import PublicAPI
-from ray.util.ml_utils.checkpoint import Checkpoint, LocalStorageCheckpoint
+from ray.util.ml_utils.checkpoint import TuneCheckpoint, LocalStorageCheckpoint
 
 if TYPE_CHECKING:
     from ray.tune.trial import Trial
@@ -470,7 +470,7 @@ class SyncerCallback(Callback):
             trial.logdir, remote_dir=trial.logdir, sync_function=self._sync_function
         )
 
-    def _sync_trial_checkpoint(self, trial: "Trial", checkpoint: Checkpoint):
+    def _sync_trial_checkpoint(self, trial: "Trial", checkpoint: TuneCheckpoint):
         if not isinstance(checkpoint, LocalStorageCheckpoint):
             return
 
@@ -560,7 +560,7 @@ class SyncerCallback(Callback):
         iteration: int,
         trials: List["Trial"],
         trial: "Trial",
-        checkpoint: Checkpoint,
+        checkpoint: TuneCheckpoint,
         **info,
     ):
         self._sync_trial_checkpoint(trial, checkpoint)

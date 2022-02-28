@@ -43,7 +43,7 @@ from ray.tune.utils import date_str, flatten_dict
 from ray.util.annotations import DeveloperAPI
 from ray._private.utils import binary_to_hex, hex_to_binary
 from ray.util.ml_utils.checkpoint import (
-    Checkpoint,
+    TuneCheckpoint,
     LocalStorageCheckpoint,
     DataCheckpoint,
 )
@@ -106,11 +106,11 @@ class CheckpointDeleter:
         self.trial_id = trial_id
         self.runner = runner
 
-    def __call__(self, checkpoint: Checkpoint):
+    def __call__(self, checkpoint: TuneCheckpoint):
         """Requests checkpoint deletion asynchronously.
 
         Args:
-            checkpoint (Checkpoint): Checkpoint to delete.
+            checkpoint (TuneCheckpoint): Checkpoint to delete.
         """
         if not self.runner:
             return
@@ -451,7 +451,7 @@ class Trial:
     def node_ip(self):
         return self.location.hostname
 
-    def _checkpoint_result(self) -> Tuple[Optional[Checkpoint], Dict]:
+    def _checkpoint_result(self) -> Tuple[Optional[TuneCheckpoint], Dict]:
         if self.status == Trial.ERROR:
             wrapped = self.checkpoint_manager.newest_persistent_wrapped_checkpoint
             checkpoint = wrapped.value
@@ -459,7 +459,7 @@ class Trial:
         else:
             checkpoint, result = self.checkpoint_manager.newest_checkpoint
         if checkpoint is None and self.restore:
-            if isinstance(self.restore, Checkpoint):
+            if isinstance(self.restore, TuneCheckpoint):
                 checkpoint = self.restore
                 result = {}
             else:
@@ -470,7 +470,7 @@ class Trial:
         return checkpoint, result
 
     @property
-    def checkpoint(self) -> Optional[Checkpoint]:
+    def checkpoint(self) -> Optional[TuneCheckpoint]:
         """Returns the most recent checkpoint.
 
         If the trial is in ERROR state, the most recent PERSISTENT checkpoint
@@ -668,11 +668,11 @@ class Trial:
         self.checkpoint_manager.delete_newest_checkpoint()
         self.invalidate_json_state()
 
-    def on_checkpoint(self, checkpoint: Checkpoint, result: Dict):
+    def on_checkpoint(self, checkpoint: TuneCheckpoint, result: Dict):
         """Hook for handling checkpoints taken by the Trainable.
 
         Args:
-            checkpoint (Checkpoint): Checkpoint taken.
+            checkpoint (TuneCheckpoint): Checkpoint taken.
         """
         self.checkpoint_manager.on_checkpoint(checkpoint, result)
         self.invalidate_json_state()

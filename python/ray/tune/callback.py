@@ -3,7 +3,7 @@ from abc import ABC
 import warnings
 
 from ray.util.annotations import PublicAPI
-from ray.util.ml_utils.checkpoint import Checkpoint
+from ray.util.ml_utils.checkpoint import TuneCheckpoint
 
 if TYPE_CHECKING:
     from ray.tune.trial import Trial
@@ -196,7 +196,7 @@ class Callback(ABC):
         iteration: int,
         trials: List["Trial"],
         trial: "Trial",
-        checkpoint: Checkpoint,
+        checkpoint: TuneCheckpoint,
         **info,
     ):
         """Called after a trial saved a checkpoint with Tune.
@@ -205,7 +205,7 @@ class Callback(ABC):
             iteration (int): Number of iterations of the tuning loop.
             trials (List[Trial]): List of trials.
             trial (Trial): Trial that just has errored.
-            checkpoint (Checkpoint): Checkpoint object that has been saved
+            checkpoint (TuneCheckpoint): Checkpoint object that has been saved
                 by the trial.
             **info: Kwargs dict for forward compatibility.
         """

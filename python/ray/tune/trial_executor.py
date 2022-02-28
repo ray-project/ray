@@ -7,7 +7,7 @@ import warnings
 from ray.tune.checkpoint_manager import MEMORY, PERSISTENT
 from ray.util.annotations import DeveloperAPI
 from ray.tune.trial import Trial
-from ray.util.ml_utils.checkpoint import Checkpoint
+from ray.util.ml_utils.checkpoint import TuneCheckpoint
 
 logger = logging.getLogger(__name__)
 
@@ -186,7 +186,7 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
     @abstractmethod
     def save(
         self, trial, storage: str = PERSISTENT, result: Optional[Dict] = None
-    ) -> Checkpoint:
+    ) -> TuneCheckpoint:
         """Saves training state of this trial to a checkpoint.
 
         If result is None, this trial's last result will be used.

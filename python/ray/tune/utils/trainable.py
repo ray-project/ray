@@ -52,7 +52,7 @@ class TrainableUtil:
                 path=parent_dir, metadata=metadata
             )
             if return_data_checkpoint:
-                return local_checkpoint.to_data()
+                return local_checkpoint.to_data_checkpoint()
 
         elif isinstance(checkpoint_path_or_obj, dict):
             data_checkpoint = DataCheckpoint(
@@ -60,7 +60,7 @@ class TrainableUtil:
             )
             if return_data_checkpoint:
                 return data_checkpoint
-            local_checkpoint = data_checkpoint.to_local_storage(parent_dir)
+            local_checkpoint = data_checkpoint.to_local_storage_checkpoint(parent_dir)
         else:
             raise ValueError(
                 f"Returned unexpected type {type(checkpoint_path_or_obj)}. "

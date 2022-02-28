@@ -5,7 +5,7 @@ import logging
 from typing import Dict, List, Tuple, Union
 
 from ray.tune.utils.util import flatten_dict
-from ray.util.ml_utils.checkpoint import DataCheckpoint, Checkpoint
+from ray.util.ml_utils.checkpoint import DataCheckpoint, TuneCheckpoint
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +101,7 @@ class CheckpointManager:
         self._cur_order = 0
 
     @property
-    def newest_checkpoint(self) -> Tuple[Checkpoint, Dict]:
+    def newest_checkpoint(self) -> Tuple[TuneCheckpoint, Dict]:
         """Returns the newest checkpoint and result."""
         newest_checkpoint = max(
             [
@@ -113,7 +113,7 @@ class CheckpointManager:
         return newest_checkpoint.value, newest_checkpoint.result
 
     @property
-    def newest_memory_checkpoint(self) -> Tuple[Checkpoint, Dict]:
+    def newest_memory_checkpoint(self) -> Tuple[TuneCheckpoint, Dict]:
         checkpoint = self._newest_wrapped_memory_checkpoint
         return checkpoint.value, checkpoint.result
 
@@ -143,7 +143,7 @@ class CheckpointManager:
         gc.collect()
         self._newest_wrapped_memory_checkpoint = new_checkpoint
 
-    def on_checkpoint(self, checkpoint: Checkpoint, result: Dict):
+    def on_checkpoint(self, checkpoint: TuneCheckpoint, result: Dict):
         """Starts tracking checkpoint metadata on checkpoint.
 
         Checkpoints get assigned with an `order` as they come in.
@@ -154,7 +154,7 @@ class CheckpointManager:
         deletes the worst checkpoint if at capacity.
 
         Args:
-            checkpoint (Checkpoint): Trial state checkpoint.
+            checkpoint (TuneCheckpoint): Trial state checkpoint.
         """
         wrapped_checkpoint = _ManagedCheckpoint(PERSISTENT, checkpoint, result)
 
@@ -206,7 +206,7 @@ class CheckpointManager:
 
     def best_checkpoints(
         self, return_results: bool = False
-    ) -> Union[List[Checkpoint], List[Tuple[Checkpoint, Dict]]]:
+    ) -> Union[List[TuneCheckpoint], List[Tuple[TuneCheckpoint, Dict]]]:
         """Returns best PERSISTENT checkpoints, sorted by score."""
         checkpoints = sorted(self._best_checkpoints, key=lambda c: c.priority)
         if return_results:
