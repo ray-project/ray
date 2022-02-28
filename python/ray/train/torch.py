@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, Type
 
 import ray
+from ray import train
 from ray.train.backend import BackendConfig, Backend, EncodedData
 from ray.train.constants import PYTORCH_PROFILER_KEY
 from ray.train.worker_group import WorkerGroup
