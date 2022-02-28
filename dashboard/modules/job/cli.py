@@ -332,6 +332,5 @@ def list_jobs(address: Optional[str]):
         >>> ray job list
     """
     client = _get_sdk_client(address)
-    # Set _no_format=True because the input string contains "{" and "}" characters,
-    # which causes an issue because the CLI logger calls str.format().
-    cli_logger.print(pprint.pformat(client.list_jobs()), _no_format=True)
+    print(pprint.pformat(client.list_jobs()))
+    cli_logger.print(pprint.pformat(client.list_jobs()))
