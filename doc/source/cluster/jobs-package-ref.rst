@@ -32,12 +32,6 @@ Job Submission CLI
    :prog: ray job logs
    :show-nested:
 
-.. _ray-job-list-doc:
-
-.. click:: ray.dashboard.modules.job.cli:job_list
-   :prog: ray job list
-   :show-nested:
-
 .. _ray-job-submission-sdk-ref:
 
 Job Submission SDK
