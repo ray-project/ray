@@ -20,6 +20,7 @@ In this guide, we cover examples for the following use cases:
 * How do I :ref:`monitor <train-monitoring>` my training?
 * How do I run my training on pre-emptible instances
   (:ref:`fault tolerance <train-fault-tolerance>`)?
+* How do I :ref:`profile <train-profiling>` my training?
 * How do I use Ray Train to :ref:`train with a large dataset <train-datasets>`?
 * How do I :ref:`tune <train-tune>` my Ray Train model?
 
@@ -77,6 +78,7 @@ training.
         import torch
         from torch.nn.parallel import DistributedDataParallel
         +from ray import train
+        +import ray.train.torch
 
 
         def train_func():
@@ -104,6 +106,7 @@ training.
         import torch
         from torch.utils.data import DataLoader, DistributedSampler
         +from ray import train
+        +import ray.train.torch
 
 
         def train_func():
@@ -429,6 +432,7 @@ The following ``TrainingCallback``\s are available and will log the intermediate
 2. :ref:`train-api-json-logger-callback`
 3. :ref:`train-api-tbx-logger-callback`
 4. :ref:`train-api-mlflow-logger-callback`
+5. :ref:`train-api-torch-tensorboard-profiler-callback`
 
 Example: Logging to MLflow and TensorBoard
 ++++++++++++++++++++++++++++++++++++++++++
@@ -519,7 +523,7 @@ Here is an example:
 .. code-block:: python
 
     from ray import train
-    from train.train import Trainer, TrainingCallback
+    from ray.train import Trainer, TrainingCallback
     from typing import List, Dict
 
     import torch
@@ -821,7 +825,7 @@ Checkpoints can be loaded into the training function in 2 steps:
         print(trainer.latest_checkpoint)
         # {'epoch': 3, 'model_weights': OrderedDict([('bias', tensor([-0.3304])), ('weight', tensor([[-0.0197, -0.3704,  0.2944,  0.3117]]))]), '_timestamp': 1639117865}
 
-  .. tabbed:: TensorFlow
+.. tabbed:: TensorFlow
 
     .. code-block:: python
         :emphasize-lines: 16, 22, 23, 26, 27, 30
@@ -918,6 +922,60 @@ number of retries is configurable through the ``max_retries`` argument of the
 .. You may want to
 
 .. TODO.
+
+.. _train-profiling:
+
+Profiling
+---------
+
+Ray Train comes with an integration with `PyTorch Profiler <https://pytorch.org/blog/introducing-pytorch-profiler-the-new-and-improved-performance-tool/>`_.
+Specifically, it comes with a :ref:`TorchWorkerProfiler <train-api-torch-worker-profiler>` utility class and :ref:`train-api-torch-tensorboard-profiler-callback`  callback
+that allow you to use the PyTorch Profiler as you would in a non-distributed PyTorch script, and synchronize the generated Tensorboard traces onto
+the disk that from which your script was executed from.
+
+**Step 1: Update training function with** ``TorchWorkerProfiler``
+
+.. code-block:: bash
+
+    from ray.train.torch import TorchWorkerProfiler
+
+    def train_func():
+        twp = TorchWorkerProfiler()
+        with profile(..., on_trace_ready=twp.trace_handler) as p:
+            ...
+            profile_results = twp.get_and_clear_profile_traces()
+            train.report(..., **profile_results)
+        ...
+
+**Step 2: Run training function with** ``TorchTensorboardProfilerCallback``
+
+.. code-block:: python
+
+    from ray.train import Trainer
+    from ray.train.callbacks import TorchTensorboardProfilerCallback
+
+    trainer = Trainer(backend="torch", num_workers=2)
+    trainer.start()
+    trainer.run(train_func, callbacks=[TorchTensorboardProfilerCallback()])
+    trainer.shutdown()
+
+
+**Step 3: Visualize the logs**
+
+.. code-block:: bash
+
+    # Navigate to the run directory of the trainer.
+    # For example `cd /home/ray_results/train_2021-09-01_12-00-00/run_001/pytorch_profiler`
+    $ cd <TRAINER_RUN_DIR>/pytorch_profiler
+
+    # Install the PyTorch Profiler TensorBoard Plugin.
+    $ pip install torch_tb_profiler
+
+    # Star the TensorBoard UI.
+    $ tensorboard --logdir .
+
+    # View the PyTorch Profiler traces.
+    $ open http://localhost:6006/#pytorch_profiler
 
 .. _train-datasets:
 
@@ -1113,7 +1171,7 @@ A couple caveats:
 * You should **not** call ``tune.report`` or ``tune.checkpoint_dir`` in your
   training function. Functional parity is achieved through ``train.report``,
   ``train.save_checkpoint``, and ``train.load_checkpoint``. This allows you to go
-  from Ray Train to Ray Train+RayTune without changing any code in the training
+  from Ray Train to Ray Train + Ray Tune without changing any code in the training
   function.
 
 

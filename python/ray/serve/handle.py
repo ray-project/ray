@@ -169,6 +169,11 @@ class RayServeHandle:
     def __repr__(self):
         return f"{self.__class__.__name__}" f"(deployment='{self.deployment_name}')"
 
+    @classmethod
+    def _deserialize(cls, kwargs):
+        """Required for this class's __reduce__ method to be picklable."""
+        return cls(**kwargs)
+
     def __reduce__(self):
         serialized_data = {
             "controller_handle": self.controller_handle,
@@ -176,7 +181,7 @@ class RayServeHandle:
             "handle_options": self.handle_options,
             "_internal_pickled_http_request": self._pickled_http_request,
         }
-        return lambda kwargs: RayServeHandle(**kwargs), (serialized_data,)
+        return RayServeHandle._deserialize, (serialized_data,)
 
     def __getattr__(self, name):
         return self.options(method_name=name)
@@ -228,4 +233,4 @@ class RayServeSyncHandle(RayServeHandle):
             "handle_options": self.handle_options,
             "_internal_pickled_http_request": self._pickled_http_request,
         }
-        return lambda kwargs: RayServeSyncHandle(**kwargs), (serialized_data,)
+        return RayServeSyncHandle._deserialize, (serialized_data,)

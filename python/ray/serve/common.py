@@ -7,7 +7,6 @@ from ray.actor import ActorHandle
 from ray.serve.config import DeploymentConfig, ReplicaConfig
 from ray.serve.autoscaling_policy import AutoscalingPolicy
 
-str = str
 EndpointTag = str
 ReplicaTag = str
 NodeId = str
@@ -19,10 +18,10 @@ class EndpointInfo:
     route: str
 
 
-class DeploymentStatus(Enum):
-    UPDATING = 1
-    HEALTHY = 2
-    UNHEALTHY = 3
+class DeploymentStatus(str, Enum):
+    UPDATING = "UPDATING"
+    HEALTHY = "HEALTHY"
+    UNHEALTHY = "UNHEALTHY"
 
 
 @dataclass

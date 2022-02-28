@@ -6,6 +6,7 @@ from ray.data.dataset import Dataset
 from ray.data.impl import sort
 from ray.data.aggregate import AggregateFn, Count, Sum, Max, Min, Mean, Std
 from ray.data.block import BlockExecStats, KeyFn
+from ray.data.impl.plan import AllToAllStage
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.progress_bar import ProgressBar
@@ -55,67 +56,72 @@ class GroupedDataset(Generic[T]):
             If groupby key is ``None`` then the key part of return is omitted.
         """
 
-        stats = self._dataset._stats.child_builder("aggregate")
-        stage_info = {}
-        if len(aggs) == 0:
-            raise ValueError("Aggregate requires at least one aggregation")
-        for agg in aggs:
-            agg._validate(self._dataset)
-        # Handle empty dataset.
-        if self._dataset.num_blocks() == 0:
-            return self._dataset
+        def do_agg(blocks, clear_input_blocks: bool, *_):
+            # TODO: implement clear_input_blocks
+            stage_info = {}
+            if len(aggs) == 0:
+                raise ValueError("Aggregate requires at least one aggregation")
+            for agg in aggs:
+                agg._validate(self._dataset)
+            # Handle empty dataset.
+            if blocks.initial_num_blocks() == 0:
+                return blocks, stage_info
 
-        blocks = self._dataset._blocks.get_blocks()
-        num_mappers = len(blocks)
-        num_reducers = num_mappers
-        if self._key is None:
-            num_reducers = 1
-            boundaries = []
-        else:
-            boundaries = sort.sample_boundaries(
-                blocks,
-                [(self._key, "ascending")] if isinstance(self._key, str) else self._key,
-                num_reducers,
+            num_mappers = blocks.initial_num_blocks()
+            num_reducers = num_mappers
+            if self._key is None:
+                num_reducers = 1
+                boundaries = []
+            else:
+                boundaries = sort.sample_boundaries(
+                    blocks.get_blocks(),
+                    [(self._key, "ascending")]
+                    if isinstance(self._key, str)
+                    else self._key,
+                    num_reducers,
+                )
+
+            partition_and_combine_block = cached_remote_fn(
+                _partition_and_combine_block
+            ).options(num_returns=num_reducers + 1)
+            aggregate_combined_blocks = cached_remote_fn(
+                _aggregate_combined_blocks, num_returns=2
             )
 
-        partition_and_combine_block = cached_remote_fn(
-            _partition_and_combine_block
-        ).options(num_returns=num_reducers + 1)
-        aggregate_combined_blocks = cached_remote_fn(
-            _aggregate_combined_blocks, num_returns=2
-        )
+            map_results = np.empty((num_mappers, num_reducers), dtype=object)
+            map_meta = []
+            for i, block in enumerate(blocks.get_blocks()):
+                results = partition_and_combine_block.remote(
+                    block, boundaries, self._key, aggs
+                )
+                map_results[i, :] = results[:-1]
+                map_meta.append(results[-1])
+            map_bar = ProgressBar("GroupBy Map", len(map_results))
+            map_bar.block_until_complete(map_meta)
+            stage_info["map"] = ray.get(map_meta)
+            map_bar.close()
 
-        map_results = np.empty((num_mappers, num_reducers), dtype=object)
-        map_meta = []
-        for i, block in enumerate(blocks):
-            results = partition_and_combine_block.remote(
-                block, boundaries, self._key, aggs
-            )
-            map_results[i, :] = results[:-1]
-            map_meta.append(results[-1])
-        map_bar = ProgressBar("GroupBy Map", len(map_results))
-        map_bar.block_until_complete(map_meta)
-        stage_info["map"] = ray.get(map_meta)
-        map_bar.close()
+            blocks = []
+            metadata = []
+            for j in range(num_reducers):
+                block, meta = aggregate_combined_blocks.remote(
+                    num_reducers, self._key, aggs, *map_results[:, j].tolist()
+                )
+                blocks.append(block)
+                metadata.append(meta)
+            reduce_bar = ProgressBar("GroupBy Reduce", len(blocks))
+            reduce_bar.block_until_complete(blocks)
+            reduce_bar.close()
 
-        blocks = []
-        metadata = []
-        for j in range(num_reducers):
-            block, meta = aggregate_combined_blocks.remote(
-                num_reducers, self._key, aggs, *map_results[:, j].tolist()
-            )
-            blocks.append(block)
-            metadata.append(meta)
-        reduce_bar = ProgressBar("GroupBy Reduce", len(blocks))
-        reduce_bar.block_until_complete(blocks)
-        reduce_bar.close()
+            metadata = ray.get(metadata)
+            stage_info["reduce"] = metadata
+            return BlockList(blocks, metadata), stage_info
 
-        metadata = ray.get(metadata)
-        stage_info["reduce"] = metadata
+        plan = self._dataset._plan.with_stage(AllToAllStage("aggregate", None, do_agg))
         return Dataset(
-            BlockList(blocks, metadata),
+            plan,
             self._dataset._epoch,
-            stats.build_multistage(stage_info),
+            self._dataset._lazy,
         )
 
     def _aggregate_on(

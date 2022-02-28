@@ -27,15 +27,11 @@ class FixedPoint {
 
  public:
   FixedPoint() : FixedPoint(0.0) {}
-  FixedPoint(double d) { i_ = (uint64_t)(d * RESOURCE_UNIT_SCALING); }  // NOLINT
+  FixedPoint(double d) { i_ = (int64_t)(d * RESOURCE_UNIT_SCALING); }  // NOLINT
 
   FixedPoint(int i) { i_ = (i * RESOURCE_UNIT_SCALING); }  // NOLINT
 
-  FixedPoint(uint32_t i) { i_ = (i * RESOURCE_UNIT_SCALING); }  // NOLINT
-
   FixedPoint(int64_t i) : FixedPoint((double)i) {}  // NOLINT
-
-  FixedPoint(uint64_t i) : FixedPoint((double)i) {}  // NOLINT
 
   static FixedPoint Sum(const std::vector<FixedPoint> &list) {
     FixedPoint sum;
@@ -81,7 +77,7 @@ class FixedPoint {
 
   FixedPoint operator-(double const d) const {
     FixedPoint res;
-    res.i_ = i_ + static_cast<int64_t>(d * RESOURCE_UNIT_SCALING);
+    res.i_ = i_ - static_cast<int64_t>(d * RESOURCE_UNIT_SCALING);
     return res;
   }
 
