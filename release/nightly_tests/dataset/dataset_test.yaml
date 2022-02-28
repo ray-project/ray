@@ -8,7 +8,7 @@
     timeout: 600
     prepare: python wait_cluster.py 2 600
     script: python inference.py
-  
+
 - name: shuffle_data_loader
   team: core
   cluster:
@@ -39,7 +39,7 @@
   run:
     timeout: 9600
     prepare: python wait_cluster.py 21 2400
-    script: python pipelined_training.py --epochs 2 --num-windows 2 --num-files 915 --debug
+    script: python pipelined_training.py --epochs 2 --num-windows 1 --num-files 915 --debug
 
 - name: datasets_ingest_train_infer
   team: core
