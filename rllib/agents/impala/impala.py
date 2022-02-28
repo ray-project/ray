@@ -1,15 +1,18 @@
 import logging
+import numpy as np
 import queue
 from typing import Optional, Type
 
 import ray
 from ray.rllib.agents.impala.vtrace_tf_policy import VTraceTFPolicy
 from ray.rllib.agents.trainer import Trainer, with_common_config
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
 from ray.rllib.execution.parallel_requests import asynchronous_parallel_requests
 from ray.rllib.execution.tree_agg import gather_experiences_tree_aggregation
 from ray.rllib.execution.common import (
+    STEPS_TRAINED_COUNTER,
     STEPS_TRAINED_THIS_ITER_COUNTER,
     _get_global_vars,
     _get_shared_metrics,
@@ -21,7 +24,8 @@ from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
-from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED, NUM_AGENT_STEPS_TRAINED
+from ray.rllib.utils.metrics import NUM_AGENT_STEPS_SAMPLED, NUM_AGENT_STEPS_TRAINED, \
+    NUM_ENV_STEPS_SAMPLED
 from ray.rllib.utils.typing import PartialTrainerConfigDict, ResultDict, \
     TrainerConfigDict
 from ray.tune.utils.placement_groups import PlacementGroupFactory
@@ -316,25 +320,63 @@ class ImpalaTrainer(Trainer):
     def setup(self, config: PartialTrainerConfigDict):
         super().setup(config)
 
-        # Create and start the learner thread.
-        self._learner_thread = make_learner_thread(
-            self.workers.local_worker(), self.config)
-        self._learner_thread.start()
+        if self.config["_disable_execution_plan_api"]:
+            # Create extra aggregation workers and assign each rollout worker to
+            # one of them.
+            if self.config["num_aggregation_workers"] > 0:
+                # Assign all remote (or single local) worker(s) to one
+                # aggregation worker.
+                worker_assignments = [[] for _ in range(config["num_aggregation_workers"])]
+                for i, worker_idx in enumerate(range(len(self.workers.remote_workers()) or 1)):
+                    worker_assignments[i % len(worker_assignments)].append(worker_idx)
+                logger.info("Worker assignments: {}".format(worker_assignments))
+
+                # Create parallel iterators that represent each aggregation group.
+                rollout_groups: List["ParallelIterator[SampleBatchType]"] = [
+                    rollouts.select_shards(assigned) for assigned in worker_assignments
+                ]
+
+                # This spawns `num_aggregation_workers` actors that aggregate
+                # experiences coming from RolloutWorkers in parallel. We force
+                # colocation on the same node (localhost) to maximize data bandwidth
+                # between them and the learner.
+                localhost = platform.node()
+                assert localhost != "", (
+                    "ERROR: Cannot determine local node name! "
+                    "`platform.node()` returned empty string."
+                )
+                all_co_located = create_colocated_actors(
+                    actor_specs=[
+                        # (class, args, kwargs={}, count=1)
+                        (Aggregator, [config, g], {}, 1)
+                        for g in rollout_groups
+                    ],
+                    node=localhost,
+                )
+
+            self._learner_thread = make_learner_thread(
+                self.workers.local_worker(), self.config)
+            self._learner_thread.start()
 
     @override(Trainer)
     def training_iteration(self) -> ResultDict:
-        #TODO: Tree aggregation.
+
+        # Perform asynchronous sampling on all (remote) rollout workers.
         sample_batches = asynchronous_parallel_requests(
             remote_requests_in_flight=self.remote_requests_in_flight,
-            actors=self.workers.remote_workers(),
+            actors=self.workers.remote_workers() or [self.workers.local_worker()],
+            remote_fn=self._sample_and_send_to_buffer,
             ray_wait_timeout_s=0.0,
             max_remote_requests_in_flight_per_actor=self.config["max_sample_requests_in_flight_per_worker"],
         )
 
+        # Place all batches that are ready on the learner thread's inqueue.
+        # TODO: mixin buffer and batch size control.
         try:
-            #TODO: mixin buffer and batch size control.
             for batch in sample_batches.values():
-                self._learner_thread.inqueue.put(batch, timeout=0.001)
+                self._learner_thread.inqueue.put(batch, block=False)#timeout=0.001)
+                self._counters[NUM_ENV_STEPS_SAMPLED] += len(batch)
+                self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
         except queue.Full:
             self._counters["num_times_learner_queue_full"] += 1
 
@@ -360,7 +402,7 @@ class ImpalaTrainer(Trainer):
                 # Output queue holds tuples of:
                 # - count of batches added to buffer.
                 # - learner stats
-                _, learner_results = self._learner_thread.outqueue.get(timeout=0.001)
+                _, learner_results = self._learner_thread.outqueue.get(timeout=0.0)
             except queue.Empty:
                 learner_results = {}
         else:
@@ -374,26 +416,18 @@ class ImpalaTrainer(Trainer):
         # Callback for APPO to use to update KL, target network periodically.
         # The input to the callback is the learner fetches dict.
         if self.config["after_train_step"]:
-            self.config["after_train_step"](self.workers, self.config)
+            self.config["after_train_step"](trainer=self, results=learner_results)
 
         # Update global vars of the local worker.
         self.workers.local_worker().set_global_vars(global_vars)
 
-        return {}  # self._learner_thread.add_learner_metrics
-
-    @override(Trainer)
-    def _kwargs_for_execution_plan(self):
-        kwargs = super()._kwargs_for_execution_plan()
-        kwargs["trainer"] = self
-        return kwargs
+        return learner_results  # self._learner_thread.add_learner_metrics
 
     @staticmethod
     @override(Trainer)
     def execution_plan(workers, config, **kwargs):
-        self = kwargs["trainer"]
-
         assert (
-            len(kwargs) == 1
+            len(kwargs) == 0
         ), "IMPALA execution_plan does NOT take any additional parameters"
 
         if config["num_aggregation_workers"] > 0:
@@ -401,13 +435,17 @@ class ImpalaTrainer(Trainer):
         else:
             train_batches = gather_experiences_directly(workers, config)
 
+        # Start the learner thread.
+        learner_thread = make_learner_thread(workers.local_worker(), config)
+        learner_thread.start()
+
         # This sub-flow sends experiences to the learner.
-        enqueue_op = train_batches.for_each(Enqueue(self._learner_thread.inqueue))
+        enqueue_op = train_batches.for_each(Enqueue(learner_thread.inqueue))
         # Only need to update workers if there are remote workers.
         if workers.remote_workers():
             enqueue_op = enqueue_op.zip_with_source_actor().for_each(
                 BroadcastUpdateLearnerWeights(
-                    self._learner_thread,
+                    learner_thread,
                     workers,
                     broadcast_interval=config["broadcast_interval"],
                 )
@@ -425,7 +463,7 @@ class ImpalaTrainer(Trainer):
         # This sub-flow updates the steps trained counter based on learner
         # output.
         dequeue_op = Dequeue(
-            self._learner_thread.outqueue, check=self._learner_thread.is_alive
+            learner_thread.outqueue, check=learner_thread.is_alive
         ).for_each(record_steps_trained)
 
         # output_indices=[1] -> Use output only from `dequeue_op`, not from
@@ -439,13 +477,14 @@ class ImpalaTrainer(Trainer):
         if config["after_train_step"]:
             # t[1] -> Use the [1] element of the output op of the above op
             # (dequeue_op as indicated by output_indices=[1] above), which is
-            # the metrics dict placed into the output queue of the learner thread.
+            # the metrics dict placed into the output queue of the learner thread,
+            # to be fed to the `after_train_step()` function.
             merged_op = merged_op.for_each(lambda t: t[1]).for_each(
                 config["after_train_step"](workers, config)
             )
 
         return StandardMetricsReporting(merged_op, workers, config).for_each(
-            self._learner_thread.add_learner_metrics
+            learner_thread.add_learner_metrics
         )
 
     @classmethod
@@ -499,3 +538,13 @@ class ImpalaTrainer(Trainer):
             ),
             strategy=config.get("placement_strategy", "PACK"),
         )
+
+    @staticmethod
+    def _sample_and_send_to_buffer(worker: RolloutWorker):
+        # Generate a sample.
+        sample = worker.sample()
+        # Send the SampleBatches to an assigned buffer shard.
+        replay_actor, _ = np.random.choice(worker.)
+        replay_actor.add.remote(sample)
+        # Return counts (env-steps, agent-steps).
+        return sample.count, sample.agent_steps()

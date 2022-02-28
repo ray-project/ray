@@ -19,7 +19,7 @@ from ray.rllib.execution.buffers.replay_buffer import _ALL_POLICIES
 class MixInMultiAgentReplayBuffer(MultiAgentReplayBuffer):
     """This buffer adds replayed samples to a stream of new experiences.
 
-    - Any newly added batch (`add_batch()`) is immediately returned upon
+    - Any newly added batch (`add()`) is immediately returned upon
     the next `sample` call (close to on-policy) as well as being moved
     into the buffer.
     - Additionally, a certain number of old samples is mixed into the
