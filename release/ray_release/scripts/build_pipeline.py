@@ -121,16 +121,18 @@ def main(test_collection_file: Optional[str] = None):
         group_step = {"group": group, "steps": group_steps}
         steps.append(group_step)
 
-    if os.path.exists(PIPELINE_ARTIFACT_PATH):
-        shutil.rmtree(PIPELINE_ARTIFACT_PATH)
+    if "BUILDKITE" in os.environ:
+        if os.path.exists(PIPELINE_ARTIFACT_PATH):
+            shutil.rmtree(PIPELINE_ARTIFACT_PATH)
 
-    os.makedirs(PIPELINE_ARTIFACT_PATH, exist_ok=True, mode=0o755)
+        os.makedirs(PIPELINE_ARTIFACT_PATH, exist_ok=True, mode=0o755)
 
-    with open(os.path.join(PIPELINE_ARTIFACT_PATH, "pipeline.json"), "wt") as fp:
-        json.dump(steps, fp)
+        with open(os.path.join(PIPELINE_ARTIFACT_PATH, "pipeline.json"), "wt") as fp:
+            json.dump(steps, fp)
 
-    with open(os.path.join(PIPELINE_ARTIFACT_PATH, "settings.json"), "wt") as fp:
-        json.dump(settings, fp)
+        settings["frequency"] = settings["frequency"].value
+        with open(os.path.join(PIPELINE_ARTIFACT_PATH, "settings.json"), "wt") as fp:
+            json.dump(settings, fp)
 
     steps_str = json.dumps(steps)
     print(steps_str)

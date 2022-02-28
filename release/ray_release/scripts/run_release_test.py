@@ -124,6 +124,7 @@ def main(
             result=result,
             ray_wheels_url=ray_wheels_url,
             reporters=reporters,
+            smoke_test=smoke_test,
             cluster_id=cluster_id,
             cluster_env_id=cluster_env_id,
             no_terminate=no_terminate,
