@@ -73,7 +73,9 @@ def test_put_get_success(serve_start_stop):
     for _ in range(2):
         deployments = [shallow, deep, one]
 
-        put_response = requests.put(GET_OR_PUT_URL, json={"deployments": deployments})
+        put_response = requests.put(
+            GET_OR_PUT_URL, json={"deployments": deployments}, timeout=60
+        )
         assert put_response.status_code == 200
         assert (
             requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
@@ -81,7 +83,7 @@ def test_put_get_success(serve_start_stop):
         assert requests.get("http://localhost:8000/deep").text == "Hello deep world!"
         assert requests.get("http://localhost:8000/one").text == "2"
 
-        get_response = requests.get(GET_OR_PUT_URL)
+        get_response = requests.get(GET_OR_PUT_URL, timeout=60)
         assert get_response.status_code == 200
 
         with open("three_deployments_response.json", "r") as f:
@@ -90,7 +92,9 @@ def test_put_get_success(serve_start_stop):
             assert deployments_match(response_deployments, expected_deployments)
 
         deployments = [shallow, one]
-        put_response = requests.put(GET_OR_PUT_URL, json={"deployments": deployments})
+        put_response = requests.put(
+            GET_OR_PUT_URL, json={"deployments": deployments}, timeout=60
+        )
         assert put_response.status_code == 200
         assert (
             requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
@@ -98,7 +102,7 @@ def test_put_get_success(serve_start_stop):
         assert requests.get("http://localhost:8000/deep").status_code == 404
         assert requests.get("http://localhost:8000/one").text == "2"
 
-        get_response = requests.get(GET_OR_PUT_URL)
+        get_response = requests.get(GET_OR_PUT_URL, timeout=60)
         assert get_response.status_code == 200
 
         with open("two_deployments_response.json", "r") as f:
@@ -127,17 +131,19 @@ def test_delete_success(serve_start_stop):
 
     # Ensure the REST API is idempotent
     for _ in range(2):
-        put_response = requests.put(GET_OR_PUT_URL, json={"deployments": [shallow]})
+        put_response = requests.put(
+            GET_OR_PUT_URL, json={"deployments": [shallow]}, timeout=60
+        )
         assert put_response.status_code == 200
         assert (
             requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
         )
 
-        delete_response = requests.delete(GET_OR_PUT_URL)
+        delete_response = requests.delete(GET_OR_PUT_URL, timeout=60)
         assert delete_response.status_code == 200
 
         # Make sure no deployments exist
-        get_response = requests.get(GET_OR_PUT_URL)
+        get_response = requests.get(GET_OR_PUT_URL, timeout=60)
         assert len(json.loads(get_response.json())["deployments"]) == 0
 
 
@@ -169,10 +175,12 @@ def test_get_status_info(serve_start_stop):
 
     deployments = [shallow, deep, one]
 
-    put_response = requests.put(GET_OR_PUT_URL, json={"deployments": deployments})
+    put_response = requests.put(
+        GET_OR_PUT_URL, json={"deployments": deployments}, timeout=60
+    )
     assert put_response.status_code == 200
 
-    status_response = requests.get(STATUS_URL)
+    status_response = requests.get(STATUS_URL, timeout=60)
     assert status_response.status_code == 200
 
     statuses = json.loads(status_response.json())["statuses"]
