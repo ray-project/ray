@@ -70,7 +70,7 @@ def test_put_get_success(serve_start_stop):
     )
 
     # Ensure the REST API is idempotent
-    for _ in range(3):
+    for _ in range(2):
         deployments = [shallow, deep, one]
 
         put_response = requests.put(GET_OR_PUT_URL, json={"deployments": deployments})
@@ -126,7 +126,7 @@ def test_delete_success(serve_start_stop):
     )
 
     # Ensure the REST API is idempotent
-    for _ in range(5):
+    for _ in range(2):
         put_response = requests.put(GET_OR_PUT_URL, json={"deployments": [shallow]})
         assert put_response.status_code == 200
         assert (
