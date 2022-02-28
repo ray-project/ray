@@ -82,7 +82,11 @@ def test_torch_amp(ray_start_4_cpus_2_gpus):
         model = torchvision.models.resnet101()
         model = train.torch.prepare_model(model)
 
-        dataset = torch.utils.data.TensorDataset(torch.zeros(1000, 3, 224, 224))
+        dataset_length = 1000
+        dataset = torch.utils.data.TensorDataset(
+            torch.randn(dataset_length, 3, 224, 224),
+            torch.randint(low=0, high=1000, size=(dataset_length,)),
+        )
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=64)
         dataloader = train.torch.prepare_data_loader(dataloader)
 
@@ -109,8 +113,8 @@ def test_torch_amp(ray_start_4_cpus_2_gpus):
         trainer.shutdown()
         return end_time - start_time
 
-    # Training should be at least 25% faster with AMP.
-    assert 1.25 * latency(amp=True) < latency(amp=False)
+    # Training should be at least 5% faster with AMP.
+    assert 1.05 * latency(amp=True) < latency(amp=False)
 
 
 def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
