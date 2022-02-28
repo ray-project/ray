@@ -82,6 +82,12 @@ class MockReplicaActorWrapper:
     def max_concurrent_queries(self) -> int:
         return 100
 
+    @property
+    def node_id(self) -> Optional[str]:
+        if self.ready == ReplicaStartupStatus.SUCCEEDED or self.started:
+            return "node-id"
+        return None
+
     def set_ready(self):
         self.ready = ReplicaStartupStatus.SUCCEEDED
 
