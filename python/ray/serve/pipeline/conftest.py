@@ -2,6 +2,7 @@ import pytest
 
 import ray
 from ray.serve.pipeline.test_utils import LOCAL_EXECUTION_ONLY
+from ray.serve.tests.conftest import _shared_serve_instance, serve_instance  # noqa
 
 
 @pytest.fixture(scope="session")

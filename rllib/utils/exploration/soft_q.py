@@ -1,4 +1,4 @@
-from gym.spaces import Discrete, Space
+from gym.spaces import Discrete, MultiDiscrete, Space
 from typing import Union, Optional
 
 from ray.rllib.models.action_dist import ActionDistribution
@@ -32,7 +32,7 @@ class SoftQ(StochasticSampling):
                 before creating the Categorical distribution to sample from.
             framework: One of None, "tf", "torch".
         """
-        assert isinstance(action_space, Discrete)
+        assert isinstance(action_space, (Discrete, MultiDiscrete))
         super().__init__(action_space, framework=framework, **kwargs)
         self.temperature = temperature
 

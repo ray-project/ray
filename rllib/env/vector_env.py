@@ -60,7 +60,7 @@ class VectorEnv:
             action_space: The action space. If None, use existing_envs[0]'s
                 action space.
             observation_space: The observation space. If None, use
-                existing_envs[0]'s action space.
+                existing_envs[0]'s observation space.
 
         Returns:
             The resulting _VectorizedGymEnv object (subclass of VectorEnv).
@@ -207,7 +207,7 @@ class _VectorizedGymEnv(VectorEnv):
             action_space: The action space. If None, use existing_envs[0]'s
                 action space.
             observation_space: The observation space. If None, use
-                existing_envs[0]'s action space.
+                existing_envs[0]'s observation space.
         """
         self.envs = existing_envs
 
