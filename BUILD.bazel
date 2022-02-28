@@ -596,6 +596,7 @@ cc_library(
     srcs = [
         "src/ray/stats/metric.cc",
         "src/ray/stats/metric_defs.cc",
+        "src/ray/stats/tag_defs.cc",
     ],
     hdrs = [
         "src/ray/stats/metric.h",
