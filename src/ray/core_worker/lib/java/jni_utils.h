@@ -189,6 +189,8 @@ extern jfieldID java_actor_creation_options_group;
 extern jfieldID java_actor_creation_options_bundle_index;
 /// concurrencyGroups field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_concurrency_groups;
+/// serializedRuntimeEnv field of ActorCreatrionOptions class
+extern jfieldID java_actor_creation_options_serialized_runtime_env;
 /// maxPendingCalls field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_max_pending_calls;
 /// ActorLifetime enum class

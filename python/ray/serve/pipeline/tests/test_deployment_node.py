@@ -60,23 +60,16 @@ async def test_simple_deployment_async(serve_instance):
 
     User should NOT directly create instances of Deployment or DeploymentNode.
     """
-    deployment = Deployment(
+    node = DeploymentNode(
         Actor,
         "test",
-        DeploymentConfig(),
-        init_args=(10,),
-        route_prefix="/test",
-        _internal=True,
-    )
-    node = DeploymentNode(
-        deployment,
-        [],
+        (10,),
         {},
         {},
         other_args_to_resolve={USE_SYNC_HANDLE_KEY: False},
     )
-    deployment.deploy()
-    handle = deployment.get_handle(sync=False)
+    node._deployment.deploy()
+    handle = node._deployment_handle
 
     assert ray.get(await node.get.execute()) == 10
     ray.get(await node.inc.execute())
@@ -89,23 +82,16 @@ def test_simple_deployment_sync(serve_instance):
 
     User should NOT directly create instances of Deployment or DeploymentNode.
     """
-    deployment = Deployment(
+    node = DeploymentNode(
         Actor,
         "test",
-        DeploymentConfig(),
-        init_args=(10,),
-        route_prefix="/test",
-        _internal=True,
-    )
-    node = DeploymentNode(
-        deployment,
-        [],
+        (10,),
         {},
         {},
         other_args_to_resolve={USE_SYNC_HANDLE_KEY: True},
     )
-    deployment.deploy()
-    handle = deployment.get_handle(sync=True)
+    node._deployment.deploy()
+    handle = node._deployment_handle
 
     assert ray.get(node.get.execute()) == 10
     ray.get(node.inc.execute())
@@ -117,19 +103,14 @@ def test_no_input_node_as_init_args():
     """
     User should NOT directly create instances of Deployment or DeploymentNode.
     """
-    deployment = Deployment(
-        Actor,
-        "test",
-        DeploymentConfig(),
-        _internal=True,
-    )
     with pytest.raises(
         ValueError,
         match="cannot be used as args, kwargs, or other_args_to_resolve",
     ):
         _ = DeploymentNode(
-            deployment,
-            [InputNode()],
+            Actor,
+            "test",
+            (InputNode()),
             {},
             {},
             other_args_to_resolve={USE_SYNC_HANDLE_KEY: True},
@@ -139,8 +120,9 @@ def test_no_input_node_as_init_args():
         match="cannot be used as args, kwargs, or other_args_to_resolve",
     ):
         _ = DeploymentNode(
-            deployment,
-            [],
+            Actor,
+            "test",
+            (),
             {"a": InputNode()},
             {},
             other_args_to_resolve={USE_SYNC_HANDLE_KEY: True},
@@ -151,8 +133,9 @@ def test_no_input_node_as_init_args():
         match="cannot be used as args, kwargs, or other_args_to_resolve",
     ):
         _ = DeploymentNode(
-            deployment,
-            [],
+            Actor,
+            "test",
+            (),
             {},
             {},
             other_args_to_resolve={"arg": {"options_a": InputNode()}},
@@ -171,11 +154,12 @@ def test_invalid_use_sync_handle():
         match="use_sync_handle should only be set with a boolean value",
     ):
         _ = DeploymentNode(
-            deployment,
+            Actor,
+            "test",
             [],
             {},
             {},
-            other_args_to_resolve={USE_SYNC_HANDLE_KEY: {"options_a": InputNode()}},
+            other_args_to_resolve={USE_SYNC_HANDLE_KEY: {"options_a": "hii"}},
         )
     with pytest.raises(
         ValueError,

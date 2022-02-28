@@ -232,7 +232,6 @@ def action_distribution_fn(
     # user.shape: [B, E]
     user_obs = observation["user"]
     doc_obs = list(observation["doc"].values())
-    slate_size = len(policy.action_space.nvec)
 
     # Compute scores per candidate.
     scores, score_no_click = score_documents(user_obs, doc_obs)
@@ -241,7 +240,7 @@ def action_distribution_fn(
 
     with tf.name_scope("select_slate"):
         per_slate_q_values = get_per_slate_q_values(
-            policy.slates, slate_size, score_no_click, scores, q_values
+            policy.slates, score_no_click, scores, q_values
         )
     return (
         per_slate_q_values,
@@ -254,7 +253,7 @@ def action_distribution_fn(
     )
 
 
-def get_per_slate_q_values(slates, slate_size, s_no_click, s, q):
+def get_per_slate_q_values(slates, s_no_click, s, q):
     slate_q_values = tf.gather(s * q, slates, axis=1)
     slate_scores = tf.gather(s, slates, axis=1)
     slate_normalizer = tf.reduce_sum(
@@ -351,7 +350,7 @@ def rmsprop_optimizer(
     if policy.config["framework"] in ["tf2", "tfe"]:
         return tf.keras.optimizers.RMSprop(
             learning_rate=policy.cur_lr,
-            epsilon=0.00001,
+            epsilon=config["rmsprop_epsilon"],
             decay=0.95,
             momentum=0.0,
             centered=True,
@@ -359,7 +358,7 @@ def rmsprop_optimizer(
     else:
         return tf1.train.RMSPropOptimizer(
             learning_rate=policy.cur_lr,
-            epsilon=0.00001,
+            epsilon=config["rmsprop_epsilon"],
             decay=0.95,
             momentum=0.0,
             centered=True,

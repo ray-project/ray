@@ -5,6 +5,7 @@ import pytest
 import ray
 from ray import serve
 from ray import job_config
+from ray.serve.pipeline.generate import DeploymentNameGenerator
 
 if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False) == 1:
     serve.controller._CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.5
@@ -46,3 +47,5 @@ def serve_instance(_shared_serve_instance):
         deployment.delete()
     # Clear the ServeHandle cache between tests to avoid them piling up.
     _shared_serve_instance.handle_cache.clear()
+    # Clear deployment generation shared state between tests
+    DeploymentNameGenerator.reset()
