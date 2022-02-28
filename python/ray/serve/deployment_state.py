@@ -27,6 +27,7 @@ from ray.serve.constants import (
     MAX_NUM_DELETED_DEPLOYMENTS,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
 )
+from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.utils import (
@@ -249,7 +250,10 @@ class ActorReplicaWrapper:
             self._detached,
         )
         # TODO(simon): unify the constructor arguments across language
-        if deployment_info.deployment_config.deployment_language == "JAVA":
+        if (
+            deployment_info.deployment_config.deployment_language
+            == DeploymentLanguage.JAVA
+        ):
             self._is_cross_language = True
             actor_def = ray.java_actor_class("io.ray.serve.RayServeWrappedReplica")
             init_args = (

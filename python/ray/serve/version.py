@@ -20,9 +20,9 @@ class DeploymentVersion:
 
         self.user_config = user_config
         # TODO(simon): make this xlang compatible
-        self.pickled_user_config = pickle.dumps(user_config)
-        self.user_config_hash = crc32(self.pickled_user_config)
-        self._hash = crc32(self.pickled_user_config + self.code_version.encode("utf-8"))
+        pickled_user_config = pickle.dumps(user_config)
+        self.user_config_hash = crc32(pickled_user_config)
+        self._hash = crc32(pickled_user_config + self.code_version.encode("utf-8"))
 
     def __hash__(self) -> int:
         return self._hash

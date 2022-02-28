@@ -1,12 +1,21 @@
 import ray
-from ray.serve.api import _get_global_client
+from ray.job_config import JobConfig
+from ray import serve
 from ray.serve.config import ReplicaConfig, DeploymentConfig
 from ray.serve.utils import msgpack_serialize
 from ray.serve.generated.serve_pb2 import JAVA, RequestMetadata, RequestWrapper
+from ray.tests.conftest import shutdown_only  # noqa: F401
 
 
-def test_controller_starts_java_replica(serve_instance):
-    client = _get_global_client()
+def test_controller_starts_java_replica(shutdown_only):  # noqa: F811
+    ray.init(
+        num_cpus=8,
+        namespace="default_test_namespace",
+        # A dummy code search path to enable cross language.
+        job_config=JobConfig(code_search_path=["."]),
+    )
+    client = serve.start(detached=True)
+
     controller = client._controller
 
     config = DeploymentConfig()
@@ -49,3 +58,10 @@ def test_controller_starts_java_replica(serve_instance):
 
     ray.get(controller.delete_deployment.remote(deployment_name))
     client._wait_for_deployment_deleted(deployment_name)
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", "-s", __file__]))

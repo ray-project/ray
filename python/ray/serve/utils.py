@@ -9,7 +9,6 @@ from typing import Iterable, Tuple
 import os
 import traceback
 from ray.actor import ActorHandle
-from ray.serialization import SerializationContext
 
 import requests
 import numpy as np
