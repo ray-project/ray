@@ -129,6 +129,7 @@ Here's a Ray log directory structure. Note that ``.out`` is logs from stdout/std
 - ``io-worker-[worker_id]-[pid].[out|err]``: Ray creates IO workers to spill/restore objects to external storage by default from Ray 1.3+. This is a log file of IO workers.
 - ``runtime_env_setup-[job_id].log``: Logs from installing :ref:`runtime environments<runtime-environments>` for a task, actor or job.  This file will only be present if a runtime environment is installed.
 - ``runtime_env_setup-ray_client_server_[port].log``: Logs from installing :ref:`runtime environments<runtime-environments>` for a job when connecting via :ref:`Ray Client<ray-client>`.
+
 Log rotation
 ------------
 Ray supports log rotation of log files. Note that not all components are currently supporting log rotation. (Raylet and Python/Java worker logs are not rotating).
