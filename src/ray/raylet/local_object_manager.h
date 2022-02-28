@@ -316,9 +316,7 @@ class LocalObjectManager {
   /// The last time a restore log finished.
   int64_t last_restore_log_ns_ = 0;
 
-  friend class LocalObjectManagerTestWithMinSpillingSize;
   friend class LocalObjectManagerTest;
-  friend class LocalObjectManagerFusedTest;
 };
 
 };  // namespace raylet
