@@ -1,4 +1,5 @@
 import abc
+import os
 import tarfile
 import tempfile
 import time
@@ -15,6 +16,7 @@ def _pack(path: str) -> bytes:
     with open(tmpfile, "rb") as f:
         stream = f.read()
 
+    os.remove(tmpfile)
     return stream
 
 
@@ -27,6 +29,7 @@ def _unpack(stream: bytes, path: str) -> str:
     with tarfile.open(tmpfile) as tar:
         tar.extractall(path)
 
+    os.remove(tmpfile)
     return path
 
 
@@ -37,7 +40,7 @@ class Artifact(abc.ABC):
 
 class DataArtifact(Artifact):
     def __init__(self, data: Any):
-        super().__init__()
+        Artifact.__init__(self)
         self.data = data
 
     def __eq__(self, other):
@@ -46,7 +49,7 @@ class DataArtifact(Artifact):
 
 class ObjectStoreArtifact(Artifact):
     def __init__(self, obj_ref: ray.ObjectRef):
-        super().__init__()
+        Artifact.__init__(self)
         self.obj_ref = obj_ref
 
     def __eq__(self, other):
@@ -55,7 +58,7 @@ class ObjectStoreArtifact(Artifact):
 
 class FSStorageArtifact(Artifact, abc.ABC):
     def __init__(self, path: str, node_ip: str):
-        super().__init__()
+        Artifact.__init__(self)
         self.path = path
         self.node_ip = node_ip
 
@@ -75,7 +78,9 @@ class FSStorageArtifact(Artifact, abc.ABC):
 
 class LocalStorageArtifact(FSStorageArtifact):
     def __init__(self, path: str):
-        super().__init__(path=path, node_ip=ray.util.get_node_ip_address())
+        FSStorageArtifact.__init__(
+            self, path=path, node_ip=ray.util.get_node_ip_address()
+        )
 
     def __eq__(self, other):
         return isinstance(other, LocalStorageArtifact) and FSStorageArtifact.__eq__(
@@ -85,7 +90,7 @@ class LocalStorageArtifact(FSStorageArtifact):
 
 class RemoteNodeStorageArtifact(FSStorageArtifact):
     def __init__(self, path: str, node_ip: str):
-        super().__init__(path=path, node_ip=node_ip)
+        FSStorageArtifact.__init__(self, path=path, node_ip=node_ip)
         self.path = path
         self.node_ip = node_ip
 
@@ -103,7 +108,7 @@ class RemoteNodeStorageArtifact(FSStorageArtifact):
 
 class CloudStorageArtifact(Artifact):
     def __init__(self, location: str):
-        super().__init__()
+        Artifact.__init__(self)
         self.location = location
 
     def __eq__(self, other):
@@ -114,7 +119,7 @@ class CloudStorageArtifact(Artifact):
 
 class MultiLocationArtifact(Artifact):
     def __init__(self, *locations: Artifact):
-        super().__init__()
+        Artifact.__init__(self)
         self.locations = locations
 
     @property
