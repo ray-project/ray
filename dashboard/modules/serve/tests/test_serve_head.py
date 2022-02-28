@@ -7,8 +7,6 @@ import pytest
 
 import requests
 
-from ray.dashboard.optional_utils import RAY_INTERNAL_DASHBOARD_NAMESPACE
-
 
 GET_OR_PUT_URL = "http://localhost:8265/api/serve/deployments/"
 STATUS_URL = "http://localhost:8265/api/serve/deployments/status"
@@ -17,9 +15,8 @@ test_module_uri = "https://github.com/shrekris-anyscale/test_module/archive/HEAD
 
 
 @pytest.fixture
-def serve_start_stop():
+def ray_start_stop():
     subprocess.check_output(["ray", "start", "--head"])
-    subprocess.check_output(["serve", "-n", RAY_INTERNAL_DASHBOARD_NAMESPACE, "start"])
     yield
     subprocess.check_output(["ray", "stop", "--force"])
 
@@ -43,7 +40,7 @@ def deployments_match(list1: List[Dict], list2: List[Dict]) -> bool:
     return len(list2) == 0
 
 
-def test_put_get_success(serve_start_stop):
+def test_put_get_success(ray_start_stop):
     ray_actor_options = {"runtime_env": {"py_modules": [test_env_uri, test_module_uri]}}
 
     shallow = dict(
@@ -111,7 +108,7 @@ def test_put_get_success(serve_start_stop):
             assert deployments_match(response_deployments, expected_deployments)
 
 
-def test_delete_success(serve_start_stop):
+def test_delete_success(ray_start_stop):
     ray_actor_options = {
         "runtime_env": {
             "working_dir": (
@@ -147,7 +144,7 @@ def test_delete_success(serve_start_stop):
         assert len(json.loads(get_response.json())["deployments"]) == 0
 
 
-def test_get_status_info(serve_start_stop):
+def test_get_status_info(ray_start_stop):
     ray_actor_options = {"runtime_env": {"py_modules": [test_env_uri, test_module_uri]}}
 
     shallow = dict(
