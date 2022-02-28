@@ -332,4 +332,6 @@ def list_jobs(address: Optional[str]):
         >>> ray job list
     """
     client = _get_sdk_client(address)
-    cli_logger.print(pprint.pformat(client.list_jobs()))
+    # Set no_format because our string has unescaped "{" and "}" and the
+    # CLILogger calls str.format(), which leads to errors.
+    cli_logger.print(pprint.pformat(client.list_jobs()), no_format=True)
