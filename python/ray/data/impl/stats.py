@@ -209,8 +209,10 @@ class DatasetStats:
         out = ""
         if self.parents:
             for p in self.parents:
-                out += p.summary_string(already_printed)
-                out += "\n"
+                parent_sum = p.summary_string(already_printed)
+                if parent_sum:
+                    out += parent_sum
+                    out += "\n"
         first = True
         for stage_name, metadata in self.stages.items():
             stage_uuid = self.dataset_uuid + stage_name
@@ -349,3 +351,16 @@ class DatasetPipelineStats:
         out += "* Time in user code: {}\n".format(fmt(self.iter_user_s.get()))
         out += "* Total time: {}\n".format(fmt(self.iter_total_s.get()))
         return out
+
+
+class _StatsActorWrapper:
+    """
+    Actor handle wrapper whose type is used to register a custom serializer when doing
+    out-of-band serialization.
+    """
+
+    def __init__(self, handle: ray.actor.ActorHandle):
+        self.handle = handle
+
+    def __getattr__(self, attr):
+        return getattr(self.handle, attr)

@@ -5,7 +5,7 @@ import pandas as pd
 import time
 
 from ray import tune
-import ray.rllib.examples.env.recsim_recommender_system_envs  # noqa
+import ray.rllib.examples.env.recommender_system_envs_with_recsim  # noqa
 
 
 if __name__ == "__main__":
@@ -14,7 +14,7 @@ if __name__ == "__main__":
     config = {
         # "RecSim-v1" is a pre-registered RecSim env.
         # Alternatively, you can do:
-        # `from ray.rllib.examples.env.recsim_recommender_system_envs import ...`
+        # `from ray.rllib.examples.env.recommender_system_envs_with_recsim import ...`
         # - LongTermSatisfactionRecSimEnv
         # - InterestExplorationRecSimEnv
         # - InterestEvolutionRecSimEnv

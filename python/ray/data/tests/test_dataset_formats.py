@@ -383,6 +383,55 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     assert sorted(values) == [[1, "a"], [1, "a"]]
 
 
+def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
+    df = pd.DataFrame(
+        {"one": [1, 1, 1, 3, 3, 3], "two": ["a", "b", "c", "e", "f", "g"]}
+    )
+    table = pa.Table.from_pandas(df)
+    pq.write_to_dataset(
+        table,
+        root_path=str(tmp_path),
+        partition_cols=["one"],
+        use_legacy_dataset=False,
+    )
+
+    schema = pa.schema([("one", pa.int32()), ("two", pa.string())])
+    partitioning = pa.dataset.partitioning(schema, flavor="hive")
+
+    ds = ray.data.read_parquet(
+        str(tmp_path), dataset_kwargs=dict(partitioning=partitioning)
+    )
+
+    # Test metadata-only parquet ops.
+    assert ds._plan.execute()._num_computed() == 1
+    assert ds.count() == 6
+    assert ds.size_bytes() > 0
+    assert ds.schema() is not None
+    input_files = ds.input_files()
+    assert len(input_files) == 2, input_files
+    assert (
+        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        "schema={two: string, one: int32})"
+    ), ds
+    assert (
+        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        "schema={two: string, one: int32})"
+    ), ds
+    assert ds._plan.execute()._num_computed() == 1
+
+    # Forces a data read.
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    assert ds._plan.execute()._num_computed() == 2
+    assert sorted(values) == [
+        [1, "a"],
+        [1, "b"],
+        [1, "c"],
+        [3, "e"],
+        [3, "f"],
+        [3, "g"],
+    ]
+
+
 def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
     one_data = list(range(6))
     df = pd.DataFrame({"one": one_data, "two": 2 * ["a"] + 2 * ["b"] + 2 * ["c"]})

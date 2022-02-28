@@ -34,6 +34,7 @@ import itertools
 import numpy as np
 
 import ray
+import ray.cloudpickle as pickle
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.data.block import (
@@ -60,15 +61,19 @@ from ray.data.datasource import (
     WriteResult,
 )
 from ray.data.datasource.file_based_datasource import (
-    _wrap_s3_filesystem_workaround,
-    _unwrap_s3_filesystem_workaround,
+    _wrap_arrow_serialization_workaround,
+    _unwrap_arrow_serialization_workaround,
 )
 from ray.data.row import TableRow
 from ray.data.aggregate import AggregateFn, Sum, Max, Min, Mean, Std
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
 from ray.data.impl.plan import ExecutionPlan, OneToOneStage, AllToAllStage
-from ray.data.impl.stats import DatasetStats
+from ray.data.impl.stats import (
+    DatasetStats,
+    get_or_create_stats_actor,
+    _StatsActorWrapper,
+)
 from ray.data.impl.compute import cache_wrapper, CallableClass
 from ray.data.impl.output_buffer import BlockOutputBuffer
 from ray.data.impl.progress_bar import ProgressBar
@@ -463,13 +468,21 @@ class Dataset(Generic[T]):
 
         if shuffle:
 
-            def do_shuffle(block_list, clear_input_blocks: bool, block_udf):
+            def do_shuffle(
+                block_list, clear_input_blocks: bool, block_udf, remote_args
+            ):
                 if clear_input_blocks:
                     blocks = block_list.copy()
                     block_list.clear()
                 else:
                     blocks = block_list
-                return simple_shuffle(blocks, block_udf, num_blocks)
+                return simple_shuffle(
+                    blocks,
+                    block_udf,
+                    num_blocks,
+                    map_ray_remote_args=remote_args,
+                    reduce_ray_remote_args=remote_args,
+                )
 
             plan = self._plan.with_stage(
                 AllToAllStage(
@@ -479,7 +492,7 @@ class Dataset(Generic[T]):
 
         else:
 
-            def do_fast_repartition(block_list, clear_input_blocks: bool, _):
+            def do_fast_repartition(block_list, clear_input_blocks: bool, *_):
                 if clear_input_blocks:
                     blocks = block_list.copy()
                     block_list.clear()
@@ -524,7 +537,7 @@ class Dataset(Generic[T]):
             The shuffled dataset.
         """
 
-        def do_shuffle(block_list, clear_input_blocks: bool, block_udf):
+        def do_shuffle(block_list, clear_input_blocks: bool, block_udf, remote_args):
             num_blocks = block_list.executed_num_blocks()  # Blocking.
             if num_blocks == 0:
                 return block_list, {}
@@ -540,6 +553,8 @@ class Dataset(Generic[T]):
                 random_shuffle=True,
                 random_seed=seed,
                 _spread_resource_prefix=_spread_resource_prefix,
+                map_ray_remote_args=remote_args,
+                reduce_ray_remote_args=remote_args,
             )
             return new_blocks, stage_info
 
@@ -588,6 +603,10 @@ class Dataset(Generic[T]):
                 f"The length of locality_hints {len(locality_hints)} "
                 "doesn't equal the number of splits {n}."
             )
+            if len(set(locality_hints)) != len(locality_hints):
+                raise ValueError(
+                    "locality_hints must not contain duplicate actor handles"
+                )
 
         blocks = self._plan.execute()
         stats = self._plan.stats()
@@ -618,6 +637,8 @@ class Dataset(Generic[T]):
 
             This assume that the given splits are sorted in ascending order.
             """
+            if target_size == 0:
+                return splits
             new_splits = []
             leftovers = []
             for split in splits:
@@ -746,7 +767,7 @@ class Dataset(Generic[T]):
         metadata_mapping = {b: m for b, m in zip(block_refs, metadata)}
 
         if locality_hints is None:
-            return equalize(
+            ds = equalize(
                 [
                     Dataset(
                         ExecutionPlan(
@@ -759,10 +780,11 @@ class Dataset(Generic[T]):
                         self._lazy,
                     )
                     for blocks in np.array_split(block_refs, n)
-                    if not equal or len(blocks) > 0
                 ],
                 n,
             )
+            assert len(ds) == n, (ds, n)
+            return ds
 
         # If the locality_hints is set, we use a two-round greedy algorithm
         # to co-locate the blocks with the actors based on block
@@ -1373,7 +1395,7 @@ class Dataset(Generic[T]):
             A new, sorted dataset.
         """
 
-        def do_sort(block_list, clear_input_blocks: bool, block_udf):
+        def do_sort(block_list, clear_input_blocks: bool, *_):
             # Handle empty dataset.
             if block_list.initial_num_blocks() == 0:
                 return block_list, {}
@@ -1417,7 +1439,7 @@ class Dataset(Generic[T]):
             comes from the first dataset and v comes from the second.
         """
 
-        def do_zip_all(block_list, clear_input_blocks: bool, block_udf):
+        def do_zip_all(block_list, clear_input_blocks: bool, *_):
             blocks1 = block_list.get_blocks()
             blocks2 = other.get_internal_block_refs()
 
@@ -1868,7 +1890,7 @@ class Dataset(Generic[T]):
                     ctx,
                     blocks,
                     metadata,
-                    _wrap_s3_filesystem_workaround(write_args),
+                    _wrap_arrow_serialization_workaround(write_args),
                 )
             )
 
@@ -2674,11 +2696,24 @@ Dict[str, List[str]]]): The names of the columns
 
         This can be used to read all blocks into memory. By default, Datasets
         doesn't read blocks from the datasource until the first transform.
+
+        Returns:
+            A Dataset with all blocks fully materialized in memory.
         """
         blocks = self.get_internal_block_refs()
         bar = ProgressBar("Force reads", len(blocks))
         bar.block_until_complete(blocks)
-        return self
+        ds = Dataset(
+            ExecutionPlan(
+                BlockList(blocks, self._plan.execute().get_metadata()),
+                self._plan.stats(),
+                dataset_uuid=self._get_uuid(),
+            ),
+            self._epoch,
+            lazy=False,
+        )
+        ds._set_uuid(self._get_uuid())
+        return ds
 
     @DeveloperAPI
     def stats(self) -> str:
@@ -2689,6 +2724,73 @@ Dict[str, List[str]]]): The names of the columns
         """Enable lazy evaluation (experimental)."""
         self._lazy = True
         return self
+
+    @DeveloperAPI
+    def serialize_out_of_band(self) -> bytes:
+        """
+        Serialize the Dataset for out-of-band use, i.e. for use across different Ray
+        clusters. This method serializes the lineage of the Dataset operations. Note
+        that this will drop all computed data, and that everything will be recomputed
+        from scratch after deserialization.
+
+        Use ``Dataset.deserialize_out_of_band`` to deserialize the serialized bytes
+        into a Dataset.
+
+        Returns:
+            Serialized bytes.
+        """
+        if not self._plan.has_lazy_input():
+            raise ValueError(
+                "Out-of-band serialization is only supported for Datasets created from "
+                "lazy datasources. Explicitly, out-of-band serialization is not "
+                "supported for any ray.data.from_* APIs."
+            )
+        # Copy Dataset and clear the execution plan so the Dataset is out-of-band
+        # serializable.
+        plan_copy = self._plan.deep_copy(preserve_uuid=True)
+        plan_copy.clear()
+        ds = Dataset(plan_copy, self._get_epoch(), self._lazy)
+        ds._set_uuid(self._get_uuid())
+        try:
+            # Register a custom serializer for the stats actor handle to ensure that we
+            # create a new stats actor upon deserializing in the new cluster.
+            ray.util.register_serializer(
+                _StatsActorWrapper,
+                serializer=lambda _: None,
+                deserializer=lambda _: _StatsActorWrapper(get_or_create_stats_actor()),
+            )
+            serialized = pickle.dumps(ds)
+        finally:
+            ray.util.deregister_serializer(_StatsActorWrapper)
+        return serialized
+
+    @DeveloperAPI
+    @staticmethod
+    def deserialize_out_of_band(serialized_ds: bytes) -> "Dataset":
+        """
+        Deserialize the provided out-of-band serialized Dataset.
+
+        This assumes that the provided serialized bytes were serialized using
+        ``Dataset.serialize_out_of_band``.
+
+        Args:
+            serialized_ds: The serialized Dataset that we wish to deserialize.
+
+        Returns:
+            A deserialized ``Dataset`` instance.
+        """
+        try:
+            # Register a custom serializer for the stats actor handle to ensure that we
+            # create a new stats actor upon deserializing in the new cluster.
+            ray.util.register_serializer(
+                _StatsActorWrapper,
+                serializer=lambda _: None,
+                deserializer=lambda _: _StatsActorWrapper(get_or_create_stats_actor()),
+            )
+            deserialized = pickle.loads(serialized_ds)
+        finally:
+            ray.util.deregister_serializer(_StatsActorWrapper)
+        return deserialized
 
     def _split(
         self, index: int, return_right_half: bool
@@ -2982,6 +3084,6 @@ def _do_write(
     meta: List[BlockMetadata],
     write_args: dict,
 ) -> List[ObjectRef[WriteResult]]:
-    write_args = _unwrap_s3_filesystem_workaround(write_args)
+    write_args = _unwrap_arrow_serialization_workaround(write_args)
     DatasetContext._set_current(ctx)
     return ds.do_write(blocks, meta, **write_args)

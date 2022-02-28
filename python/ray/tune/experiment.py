@@ -76,7 +76,7 @@ class Experiment:
     """
 
     # Keys that will be present in `public_spec` dict.
-    PUBLIC_KEYS = {"stop", "num_samples"}
+    PUBLIC_KEYS = {"stop", "num_samples", "time_budget_s"}
 
     def __init__(
         self,
@@ -188,6 +188,7 @@ class Experiment:
         spec = {
             "run": self._run_identifier,
             "stop": stopping_criteria,
+            "time_budget_s": time_budget_s,
             "config": config,
             "resources_per_trial": resources_per_trial,
             "num_samples": num_samples,
