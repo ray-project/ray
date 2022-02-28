@@ -1,8 +1,11 @@
-import pytest
-import subprocess
-import requests
 import json
+import subprocess
+import sys
 from typing import List, Dict
+
+import pytest
+
+import requests
 
 
 GET_OR_PUT_URL = "http://localhost:8265/api/serve/deployments/"
@@ -181,3 +184,7 @@ def test_get_status_info(serve_start_stop):
     assert len(expected_deployment_names) == 0
 
     print(statuses)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
