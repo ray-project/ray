@@ -783,11 +783,11 @@ class ReplicaStateContainer:
             popped = []
             remaining = []
 
-            replicas = self._replicas[state]
+            replicas_to_process = self._replicas[state]
             if ranking_function:
-                replicas = ranking_function(replicas)
+                replicas_to_process = ranking_function(replicas_to_process)
 
-            for replica in replicas:
+            for replica in replicas_to_process:
                 if len(replicas) + len(popped) == max_replicas:
                     remaining.append(replica)
                 elif exclude_version is not None and replica.version == exclude_version:
