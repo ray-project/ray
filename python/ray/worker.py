@@ -1305,9 +1305,18 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                 res = data["task_name"] + " " + res
             return res
 
+    def message_for(data: Dict[str, str], line: str) -> str:
+        """The printed message of this log line."""
+        if ray_constants.LOG_PREFIX_INFO_MESSAGE in line:
+            return line.split(ray_constants.LOG_PREFIX_INFO_MESSAGE)[1]
+        return line
+
     def color_for(data: Dict[str, str], line: str) -> str:
         """The color for this log line."""
-        if data.get("pid") == "raylet":
+        if (
+            data.get("pid") == "raylet"
+            and ray_constants.LOG_PREFIX_INFO_MESSAGE not in line
+        ):
             return colorama.Fore.YELLOW
         elif data.get("pid") == "autoscaler":
             if "Error:" in line or "Warning:" in line:
@@ -1333,7 +1342,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                     prefix_for(data),
                     pid,
                     colorama.Style.RESET_ALL,
-                    line,
+                    message_for(data, line),
                 ),
                 file=print_file,
             )
@@ -1347,7 +1356,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                     pid,
                     data.get("ip"),
                     colorama.Style.RESET_ALL,
-                    line,
+                    message_for(data, line),
                 ),
                 file=print_file,
             )
