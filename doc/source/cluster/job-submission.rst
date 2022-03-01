@@ -323,7 +323,7 @@ Under the hood, both the Job Client and the CLI make HTTP calls to the job serve
     resp = requests.get(
         "http://127.0.0.1:8265/api/jobs/"
     )
-    rst = json.loads(resp.text)
+    print(resp.json())
     # {"job_id": {"metadata": ..., "status": ..., "message": ...}, ...}
 
 
