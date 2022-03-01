@@ -5,7 +5,7 @@ Key Concepts
 ============
 
 To work with Ray Datasets, you need to understand how Datasets and Dataset Pipelines work.
-You might also be interested to learn about the execution model of Ray Datasets operations
+You might also be interested to learn about the execution model of Ray Datasets operations.
 
 
 .. _dataset_concept:
@@ -137,3 +137,26 @@ Datasets uses the Ray object store to store data blocks, which means it inherits
 **Reference Counting**: Dataset blocks are kept alive by object store reference counting as long as there is any Dataset that references them. To free memory, delete any Python references to the Dataset object.
 
 **Load Balancing**: Datasets uses Ray scheduling hints to spread read tasks out across the cluster to balance memory usage.
+
+Stage Fusion Optimization
+=========================
+
+To avoid unnecessary data movement in the distributed setting, Dataset pipelines will *fuse* compatible stages (i.e., stages with the same compute strategy and resource specifications). Read and map-like stages are always fused if possible. All-to-all dataset transformations such as ``random_shuffle`` can be fused with earlier map-like stages, but not later stages.
+
+All of the following optimizations are enabled by default for Dataset pipelines. For Datasets, only read stages are fused. This is since non-pipelined Datasets are eagerly executed.
+
+.. code-block:: python
+
+    context = DatasetContext.get_current()
+    context.optimize_fuse_stages = True  # Set to False to disable.
+    context.optimize_fuse_read_stages = True
+    context.optimize_fuse_shuffle_stages = True
+
+You can tell if stage fusion is enabled by checking the :ref:`Dataset stats <data_performance_tips>`.
+
+.. code-block::
+
+    Stage N read->map_batches->shuffle_map: N/N blocks executed in T
+    * Remote wall time: T min, T max, T mean, T total
+    * Remote cpu time: T min, T max, T mean, T total
+    * Output num rows: N min, N max, N mean, N total
