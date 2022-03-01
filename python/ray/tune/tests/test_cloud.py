@@ -639,6 +639,13 @@ class TrialCheckpointEndToEndTest(unittest.TestCase):
             self.assertEqual(cp_content["train_id"], 3)
             self.assertEqual(cp_content["score"], 9)
 
+            temp_dir = cp3.to_directory()
+            cp_content = _load_cp(temp_dir)
+            self.assertEqual(cp_content["train_id"], 3)
+            self.assertEqual(cp_content["score"], 9)
+
+            shutil.rmtree(temp_dir)
+
 
 if __name__ == "__main__":
     import pytest

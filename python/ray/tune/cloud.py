@@ -1,11 +1,17 @@
 import os
 import shutil
 import tempfile
-from typing import Optional
+from typing import Optional, Dict
 
 from ray import logger
+from ray.ml.checkpoint import (
+    Checkpoint,
+    LocalStorageCheckpoint,
+    ExternalStorageCheckpoint,
+    MultiLocationCheckpoint,
+)
 
-from ray.util import PublicAPI
+from ray.util.annotations import Deprecated
 from ray.util.ml_utils.cloud import (
     download_from_bucket,
     clear_bucket,
@@ -14,13 +20,37 @@ from ray.util.ml_utils.cloud import (
 )
 
 
-@PublicAPI(stability="beta")
-class TrialCheckpoint(os.PathLike):
+@Deprecated
+def as_trial_checkpoint(checkpoint: Checkpoint) -> Checkpoint:
+    wrapped = TrialCheckpoint()
+    wrapped.__dict__.update(checkpoint.__dict__)
+    wrapped.metadata = checkpoint.metadata
+    return wrapped
+
+
+@Deprecated
+class _TrialCheckpoint(os.PathLike):
     def __init__(
         self, local_path: Optional[str] = None, cloud_path: Optional[str] = None
     ):
-        self.local_path = local_path
-        self.cloud_path = cloud_path
+        self._local_path = local_path
+        self._cloud_path = cloud_path
+
+    @property
+    def local_path(self):
+        return self._local_path
+
+    @local_path.setter
+    def local_path(self, path: str):
+        self._local_path = path
+
+    @property
+    def cloud_path(self):
+        return self._cloud_path
+
+    @cloud_path.setter
+    def cloud_path(self, path: str):
+        self._cloud_path = path
 
     # The following magic methods are implemented to keep backwards
     # compatibility with the old path-based return values.
@@ -295,3 +325,66 @@ class TrialCheckpoint(os.PathLike):
                 "Cannot save trial checkpoint to local target as downloading "
                 "from cloud failed. Did you pass the correct `SyncConfig`?"
             ) from e
+
+
+class TrialCheckpoint(MultiLocationCheckpoint, _TrialCheckpoint):
+    def __init__(
+        self,
+        metadata: Optional[Dict] = None,
+        local_path: Optional[str] = None,
+        cloud_path: Optional[str] = None,
+    ):
+        MultiLocationCheckpoint.__init__(self)
+        _TrialCheckpoint.__init__(self)
+        if local_path:
+            self.local_path = local_path
+        if cloud_path:
+            self.cloud_path = cloud_path
+
+    @property
+    def local_path(self):
+        return self.path
+
+    @local_path.setter
+    def local_path(self, path: str):
+        local_checkpoint = self.search_checkpoint(LocalStorageCheckpoint)
+        if local_checkpoint:
+            local_checkpoint.path = path
+        else:
+            local_checkpoint = Checkpoint.from_directory(path)
+            self.locations += (local_checkpoint,)
+
+    @property
+    def cloud_path(self):
+        cloud_checkpoint = self.search_checkpoint(ExternalStorageCheckpoint)
+        if cloud_checkpoint:
+            return cloud_checkpoint.location
+        return None
+
+    @cloud_path.setter
+    def cloud_path(self, path: str):
+        cloud_checkpoint = self.search_checkpoint(ExternalStorageCheckpoint)
+        if cloud_checkpoint:
+            cloud_checkpoint.location = path
+        else:
+            cloud_checkpoint = Checkpoint.from_uri(path)
+            self.locations += (cloud_checkpoint,)
+
+    def download(
+        self,
+        cloud_path: Optional[str] = None,
+        local_path: Optional[str] = None,
+        overwrite: bool = False,
+    ) -> str:
+        return _TrialCheckpoint.download(self, cloud_path, local_path, overwrite)
+
+    def upload(
+        self,
+        cloud_path: Optional[str] = None,
+        local_path: Optional[str] = None,
+        clean_before: bool = False,
+    ):
+        return _TrialCheckpoint.upload(self, cloud_path, local_path, clean_before)
+
+    def save(self, path: Optional[str] = None, force_download: bool = False):
+        return _TrialCheckpoint.save(self, path, force_download)

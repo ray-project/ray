@@ -6,7 +6,8 @@ import traceback
 from numbers import Number
 from typing import Any, Dict, List, Optional, Tuple
 
-from ray.tune.cloud import TrialCheckpoint
+from ray.ml.checkpoint import Checkpoint, MultiLocationCheckpoint
+from ray.tune.cloud import TrialCheckpoint, as_trial_checkpoint
 from ray.util.debug import log_once
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import flatten_dict
@@ -449,9 +450,16 @@ class ExperimentAnalysis:
         best_path_metrics = sorted(checkpoint_paths, key=lambda x: a * x[1])
 
         best_path, best_metric = best_path_metrics[0]
-        return TrialCheckpoint(
-            local_path=best_path, cloud_path=self._parse_cloud_path(best_path)
-        )
+
+        local_checkpoint = Checkpoint.from_directory(best_path)
+        cloud_path = self._parse_cloud_path(best_path)
+        if cloud_path:
+            cloud_checkpoint = Checkpoint.from_uri(cloud_path)
+            checkpoint = MultiLocationCheckpoint(local_checkpoint, cloud_checkpoint)
+        else:
+            checkpoint = local_checkpoint
+
+        return as_trial_checkpoint(checkpoint)
 
     def get_all_configs(self, prefix: bool = False) -> Dict[str, Dict]:
         """Returns a list of all configurations.
