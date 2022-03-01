@@ -154,17 +154,56 @@ class GroupedDataset(Generic[T]):
         batch_format: str = "native",
         **ray_remote_args
     ) -> "Dataset[Any]":
-        """Apply a function to each group of records.
+        """Apply the given function to each group of records of this dataset.
 
-        The user given function should take as argument a batch, which contains
-        exactly the records for a group, and return a block of the same batch type.
-        The results of different groups will be collected to form the result dataset.
+        While the map_groups() is very flexibile, note that it comes with downsides:
+            - It may be slower than using more specific methods such as min(), max().
+            - It requires the size of each group fit on a single node.
+        So when specific methods are applicable, try to use them before reaching
+        map_groups().
+
+        This is a blocking operation.
+
+        Examples:
+            >>> # Compute an arbitrary function on each group.
+            >>> ray.data.range(100).groupby(lambda x: x % 3).map_groups(
+                    lambda x: [min(x) / max(x)])
+
+            >>> # Define a callable class that persists state across
+            >>> # function invocations for efficiency.
+            >>> class CachedModel:
+            ...    def __init__(self):
+            ...        self.model = init_model()
+            ...    def __call__(self, group):
+            ...        return self.model(group)
+
+            >>> # Apply the transform in parallel on GPUs. Since
+            >>> # compute="actors", the transform will be applied on an
+            >>> # autoscaling pool of Ray actors, each allocated 1 GPU by Ray.
+            >>> ds.map_groups(CachedModel, compute="actors", num_gpus=1)
+
+        Args:
+            fn: The function to apply to each group of records , or a class type
+                that can be instantiated to create such a callable.
+            compute: The compute strategy, either "tasks" (default) to use Ray
+                tasks, or "actors" to use an autoscaling Ray actor pool.
+            batch_format: Specify "native" to use the native block format
+                (promotes Arrow to pandas), "pandas" to select
+                ``pandas.DataFrame`` as the batch format,
+                or "pyarrow" to select ``pyarrow.Table``.
+            ray_remote_args: Additional resource requirements to request from
+                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+
+        Returns:
+            The return type is determined by the return type of ``fn``, and the return
+            value is combined from results of all groups.
         """
-
         # Globally sort records by key.
         # Note that sort() will ensure that records of the same key partitioned
         # into the same block.
-        sorted_ds = self._dataset.sort(self._key)
+        sorted_ds = self._dataset
+        if self._key is not None:
+            sorted_ds = self._dataset.sort(self._key)
 
         def get_key(row):
             if isinstance(self._key, Callable):

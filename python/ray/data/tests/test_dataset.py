@@ -2746,6 +2746,25 @@ def test_groupby_simple_sum(ray_start_regular_shared, num_parts):
     assert nan_ds.sum() is None
 
 
+def test_groupby_map_groups_for_empty_dataset(ray_start_regular_shared):
+    ds = ray.data.from_items([])
+    mapped = ds.groupby(lambda x: x % 3).map_groups(lambda x: [min(x) * min(x)])
+    assert mapped.count() == 0
+    assert mapped.take_all() == []
+
+
+# When grouping by None, the entire dataset is in one group. To make sure each group
+# is contained within on block, we have to make it a single shard.
+@pytest.mark.parametrize("num_parts", [1])
+def test_groupby_map_groups_for_none_groupkey(ray_start_regular_shared, num_parts):
+    ds = ray.data.from_items(list(range(100)))
+    mapped = (
+        ds.repartition(num_parts).groupby(None).map_groups(lambda x: [min(x) + max(x)])
+    )
+    assert mapped.count() == 1
+    assert mapped.take_all() == [99]
+
+
 # TODO(jian): after fix issue #22673, add more num_parts values.
 @pytest.mark.parametrize("num_parts", [1])
 def test_groupby_map_groups_for_list(ray_start_regular_shared, num_parts):
