@@ -194,11 +194,11 @@ def test_object_ref_properties():
 
 
 def test_wait_reconstruction(shutdown_only):
-    ray.init(num_cpus=1, object_store_memory=int(10 ** 8))
+    ray.init(num_cpus=1, object_store_memory=int(10**8))
 
     @ray.remote
     def f():
-        return np.zeros(6 * 10 ** 7, dtype=np.uint8)
+        return np.zeros(6 * 10**7, dtype=np.uint8)
 
     x_id = f.remote()
     ray.wait([x_id])
@@ -715,26 +715,22 @@ def test_k8s_cpu():
 
     CPUACCTUSAGE2 = "2270120061999"
 
-    CPUSHARES = "2048"
-
-    shares_file, cpu_file, proc_stat_file = [
-        tempfile.NamedTemporaryFile("w+") for _ in range(3)
-    ]
-    shares_file.write(CPUSHARES)
+    cpu_file, proc_stat_file = [tempfile.NamedTemporaryFile("w+") for _ in range(2)]
     cpu_file.write(CPUACCTUSAGE1)
     proc_stat_file.write(PROCSTAT1)
-    for file in shares_file, cpu_file, proc_stat_file:
+    for file in cpu_file, proc_stat_file:
         file.flush()
     with mock.patch(
-        "ray._private.utils.os.environ", {"KUBERNETES_SERVICE_HOST"}
+        "ray._private.utils.os.environ", {"KUBERNETES_SERVICE_HOST": "host"}
     ), mock.patch("ray.dashboard.k8s_utils.CPU_USAGE_PATH", cpu_file.name), mock.patch(
-        "ray.dashboard.k8s_utils.PROC_STAT_PATH", proc_stat_file.name
+        "ray.dashboard.k8s_utils.PROC_STAT_PATH",
+        proc_stat_file.name
+        # get_num_cpus is tested elsewhere
     ), mock.patch(
-        "ray._private.utils.get_k8s_cpus.__defaults__", (shares_file.name,)
+        "ray.dashboard.k8s_utils.get_num_cpus", mock.Mock(return_value=2)
     ):
 
         # Test helpers
-        assert ray._private.utils.get_num_cpus() == 2
         assert k8s_utils._cpu_usage() == 2268980984108
         assert k8s_utils._system_usage() == 1551775030000000
         assert k8s_utils._host_num_cpus() == 8

@@ -457,10 +457,11 @@ def get_system_memory():
 
 
 def _get_docker_cpus(
-        cpu_quota_file_name="/sys/fs/cgroup/cpu/cpu.cfs_quota_us",
-        cpu_period_file_name="/sys/fs/cgroup/cpu/cpu.cfs_period_us",
-        cpuset_file_name="/sys/fs/cgroup/cpuset/cpuset.cpus",
-        cpu_max_file_name="/sys/fs/cgroup/cpu.max") -> Optional[float]:
+    cpu_quota_file_name="/sys/fs/cgroup/cpu/cpu.cfs_quota_us",
+    cpu_period_file_name="/sys/fs/cgroup/cpu/cpu.cfs_period_us",
+    cpuset_file_name="/sys/fs/cgroup/cpuset/cpuset.cpus",
+    cpu_max_file_name="/sys/fs/cgroup/cpu.max",
+) -> Optional[float]:
     # TODO (Alex): Don't implement this logic oursleves.
     # Docker has 2 underyling ways of implementing CPU limits:
     # https://docs.docker.com/config/containers/resource_constraints/#configure-the-default-cfs-scheduler
@@ -471,16 +472,14 @@ def _get_docker_cpus(
 
     cpu_quota = None
     # See: https://bugs.openjdk.java.net/browse/JDK-8146115
-    if os.path.exists(cpu_quota_file_name) and os.path.exists(
-            cpu_period_file_name):
+    if os.path.exists(cpu_quota_file_name) and os.path.exists(cpu_period_file_name):
         try:
             with open(cpu_quota_file_name, "r") as quota_file, open(
                 cpu_period_file_name, "r"
             ) as period_file:
                 cpu_quota = float(quota_file.read()) / float(period_file.read())
         except Exception as e:
-            logger.exception("Unexpected error calculating docker cpu quota.",
-                             e)
+            logger.exception("Unexpected error calculating docker cpu quota.", e)
     # Look at cpu.max for cgroups v2
     elif os.path.exists(cpu_max_file_name):
         try:
@@ -514,8 +513,7 @@ def _get_docker_cpus(
                         cpu_ids.append(int(num_or_range))
                 cpuset_num = len(cpu_ids)
         except Exception as e:
-            logger.exception("Unexpected error calculating docker cpuset ids.",
-                             e)
+            logger.exception("Unexpected error calculating docker cpuset ids.", e)
     # Possible to-do: Parse cgroups v2's cpuset.cpus.effective for the number
     # of accessible CPUs.
 
@@ -542,8 +540,10 @@ def get_num_cpus() -> int:
         if docker_count is not None and docker_count != cpu_count:
             # Don't log this warning if we're on K8s or if the warning is
             # explicitly disabled.
-            if ("RAY_DISABLE_DOCKER_CPU_WARNING" not in os.environ
-                    and "KUBERNETES_SERVICE_HOST" not in os.environ):
+            if (
+                "RAY_DISABLE_DOCKER_CPU_WARNING" not in os.environ
+                and "KUBERNETES_SERVICE_HOST" not in os.environ
+            ):
                 logger.warning(
                     "Detecting docker specified CPUs. In "
                     "previous versions of Ray, CPU detection in containers "
