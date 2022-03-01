@@ -1,0 +1,3 @@
+-r doc/requirements-doc.txt
+-r python/requirements.txt
+-r "ray[rllib, serve, tune]"
