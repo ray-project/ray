@@ -74,3 +74,8 @@ DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30
 #: Number of times in a row that a replica must fail the health check before
 #: being marked unhealthy.
 REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
+
+# Key used to idenfity given json represents a serialized RayServeHandle
+SERVE_ASYNC_HANDLE_JSON_KEY = "SerializedServeHandle"
+# Key used to idenfity given json represents a serialized RayServeSyncHandle
+SERVE_SYNC_HANDLE_JSON_KEY = "SerializedServeSyncHandle"

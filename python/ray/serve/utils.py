@@ -5,9 +5,10 @@ import pickle
 import random
 import string
 import time
-from typing import Iterable, Tuple
+from typing import Iterable, Tuple, Dict, Any
 import os
 import traceback
+from enum import Enum
 
 import requests
 import numpy as np
@@ -17,9 +18,13 @@ import ray
 import ray.serialization_addons
 from ray.exceptions import RayTaskError
 from ray.util.serialization import StandaloneSerializationContext
-from ray.serve.constants import HTTP_PROXY_TIMEOUT
 from ray.serve.http_util import build_starlette_request, HTTPRequestWrapper
-from enum import Enum
+from ray.serve.constants import (
+    HTTP_PROXY_TIMEOUT,
+    SERVE_ASYNC_HANDLE_JSON_KEY,
+    SERVE_SYNC_HANDLE_JSON_KEY,
+)
+from ray import serve
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
@@ -102,9 +107,69 @@ class ServeEncoder(json.JSONEncoder):
         return super().default(o)
 
 
+class ServeHandleEncoder(json.JSONEncoder):
+    """JSON encoder for RayServeHandle and RayServeSyncHandle. Use to enforce
+    JSON serialization of deployment init args & kwargs to faciliate serve
+    pipeline deployment as well as operationaling serve.
+    """
+
+    def default(self, obj):
+        # Import RayServeHandle in utils file lead to import errors
+        if type(obj).__name__ == 'RayServeSyncHandle':
+            return {
+                f"{SERVE_SYNC_HANDLE_JSON_KEY}": obj.deployment_name,
+                "_internal_pickled_http_request": obj._pickled_http_request,
+            }
+        elif type(obj).__name__ == 'RayServeHandle':
+            return {
+                f"{SERVE_ASYNC_HANDLE_JSON_KEY}": obj.deployment_name,
+                "_internal_pickled_http_request": obj._pickled_http_request,
+            }
+        else:
+            return super().default(obj)
+
+
+def serve_handle_object_hook(ray_serve_handle_json: Dict[str, Any]):
+    """ Return RayServeHandle given a JSON serialized dict. Re-constructs the
+    object by fullfilling the following fieds that matches our signature of
+    `get_handle()`:
+        - controller handle
+        - deployment name
+        - _internal_pickled_http_request
+    """
+
+    if SERVE_SYNC_HANDLE_JSON_KEY in ray_serve_handle_json:
+        return serve.api._get_global_client().get_handle(
+            ray_serve_handle_json[SERVE_SYNC_HANDLE_JSON_KEY],
+            sync=True,
+            missing_ok=True,
+            _internal_pickled_http_request=ray_serve_handle_json[
+                "_internal_pickled_http_request"
+            ],
+        )
+    elif SERVE_ASYNC_HANDLE_JSON_KEY in ray_serve_handle_json:
+        return serve.api._get_global_client().get_handle(
+            ray_serve_handle_json[SERVE_ASYNC_HANDLE_JSON_KEY],
+            sync=False,
+            missing_ok=True,
+            _internal_pickled_http_request=ray_serve_handle_json[
+                "_internal_pickled_http_request"
+            ],
+        )
+    else:
+        # Not RayServeHandle type.
+        try:
+            return json.loads(ray_serve_handle_json)
+        except Exception:
+            return ray_serve_handle_json
+
+
 @ray.remote(num_cpus=0)
 def block_until_http_ready(
-    http_endpoint, backoff_time_s=1, check_ready=None, timeout=HTTP_PROXY_TIMEOUT
+    http_endpoint,
+    backoff_time_s=1,
+    check_ready=None,
+    timeout=HTTP_PROXY_TIMEOUT,
 ):
     http_is_ready = False
     start_time = time.time()
@@ -121,7 +186,9 @@ def block_until_http_ready(
             pass
 
         if 0 < timeout < time.time() - start_time:
-            raise TimeoutError("HTTP proxy not ready after {} seconds.".format(timeout))
+            raise TimeoutError(
+                "HTTP proxy not ready after {} seconds.".format(timeout)
+            )
 
         time.sleep(backoff_time_s)
 
@@ -168,7 +235,9 @@ def get_node_id_for_actor(actor_handle):
     return ray.state.actors()[actor_handle._actor_id.hex()]["Address"]["NodeID"]
 
 
-def compute_iterable_delta(old: Iterable, new: Iterable) -> Tuple[set, set, set]:
+def compute_iterable_delta(
+    old: Iterable, new: Iterable
+) -> Tuple[set, set, set]:
     """Given two iterables, return the entries that's (added, removed, updated).
 
     Usage:
@@ -233,7 +302,9 @@ def wrap_to_ray_error(function_name: str, exception: Exception) -> RayTaskError:
         # Raise and catch so we can access traceback.format_exc()
         raise exception
     except Exception as e:
-        traceback_str = ray._private.utils.format_error_message(traceback.format_exc())
+        traceback_str = ray._private.utils.format_error_message(
+            traceback.format_exc()
+        )
         return ray.exceptions.RayTaskError(function_name, traceback_str, e)
 
 

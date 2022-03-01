@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Union
 from importlib import import_module
 
 import json
@@ -14,6 +14,12 @@ from ray.serve.api import Deployment, DeploymentConfig
 from ray.serve.pipeline.deployment_node import DeploymentNode
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.utils import parse_import_path
+from ray.serve.handle import RayServeHandle
+from ray.serve.utils import ServeHandleEncoder, serve_handle_object_hook
+from ray.serve.constants import (
+    SERVE_ASYNC_HANDLE_JSON_PREFIX_KEY,
+    SERVE_SYNC_HANDLE_JSON_PREFIX_KEY,
+)
 
 # Reserved key to distinguish DAGNode type and avoid collision with user dict.
 DAGNODE_TYPE_KEY = "__serve_pipeline_dag_node_type__"
@@ -21,6 +27,8 @@ DAGNODE_TYPE_KEY = "__serve_pipeline_dag_node_type__"
 
 class DAGNodeEncoder(json.JSONEncoder):
     def default(self, obj):
+        if isinstance(obj, RayServeHandle):
+            return json.dumps(obj, cls=ServeHandleEncoder)
         if isinstance(obj, DAGNode):
             dag_node = obj
             args = dag_node.get_args()
@@ -51,13 +59,17 @@ class DAGNodeEncoder(json.JSONEncoder):
                 body = dag_node._body
                 import_path = f"{body.__module__}.{body.__qualname__}"
             elif isinstance(dag_node, (DeploymentNode, DeploymentMethodNode)):
-                result_dict.update({"deployment_name": dag_node._deployment.name})
+                result_dict.update(
+                    {"deployment_name": dag_node._deployment.name}
+                )
                 if isinstance(dag_node._deployment._func_or_class, str):
                     # We're processing a deserilized JSON node where import_path
                     # is dag_node body.
                     import_path = dag_node._deployment._func_or_class
                 else:
-                    body = dag_node._deployment._func_or_class.__ray_actor_class__
+                    body = (
+                        dag_node._deployment._func_or_class.__ray_actor_class__
+                    )
                     import_path = f"{body.__module__}.{body.__qualname__}"
                 if isinstance(dag_node, DeploymentMethodNode):
                     result_dict.update({"method_name": dag_node._method_name})
@@ -74,13 +86,20 @@ class DAGNodeEncoder(json.JSONEncoder):
             return json.JSONEncoder.default(self, obj)
 
 
-def dagnode_from_json(input_json: Any) -> DAGNode:
+def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
     """JSON serialization is only used and enforced in ray serve from ray core
     API authored DAGNode(s).
     """
-    # Base case
-    if DAGNODE_TYPE_KEY not in input_json:
+    # Deserialize a RayServeHandle.
+    if (
+        SERVE_SYNC_HANDLE_JSON_PREFIX_KEY in input_json
+        or SERVE_ASYNC_HANDLE_JSON_PREFIX_KEY in input_json
+    ):
+        return json.loads(input_json, object_hook=serve_handle_object_hook)
+    # Base case for plain objects.
+    elif DAGNODE_TYPE_KEY not in input_json:
         return input_json
+
     try:
         # Check if input is JSON deserializable
         return json.loads(input_json)
