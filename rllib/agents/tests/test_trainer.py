@@ -61,6 +61,7 @@ class TestTrainer(unittest.TestCase):
                     },
                 },
                 "num_workers": 2,  # Test on remote workers as well.
+                "num_cpus_per_worker": 0.1,
                 "model": {
                     "fcnet_hiddens": [5],
                     "fcnet_activation": "linear",
@@ -76,6 +77,9 @@ class TestTrainer(unittest.TestCase):
                     "policy_map_capacity": 2,
                 },
                 "evaluation_num_workers": 1,
+                "evaluation_config": {
+                    "num_cpus_per_worker": 0.1,
+                },
             }
         )
 
