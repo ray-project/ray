@@ -372,11 +372,21 @@ class Monitor:
                     "monitor_pid": os.getpid(),
                 }
 
-                # Process autoscaling actions
-                if self.autoscaler:
-                    # Only used to update the load metrics for the autoscaler.
+                if self.autoscaler and not self.load_metrics:
+                    # load_metrics is Falsey iff we haven't collected any
+                    # resource messages from the GCS, which can happen at startup if
+                    # the GCS hasn't yet received data from the Raylets.
+                    # In this case, do not do an autoscaler update.
+                    # Wait to get load metrics.
+                    logger.info(
+                        "Autoscaler has not yet received load metrics. Waiting."
+                    )
+                elif self.autoscaler:
+                    # Process autoscaling actions
                     self.autoscaler.update()
-                    status["autoscaler_report"] = asdict(self.autoscaler.summary())
+                    autoscaler_summary = self.autoscaler.summary()
+                    if autoscaler_summary:
+                        status["autoscaler_report"] = asdict(autoscaler_summary)
 
                     for msg in self.event_summarizer.summary():
                         # Need to prefix each line of the message for the lines to

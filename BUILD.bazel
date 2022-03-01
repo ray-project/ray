@@ -596,6 +596,7 @@ cc_library(
     srcs = [
         "src/ray/stats/metric.cc",
         "src/ray/stats/metric_defs.cc",
+        "src/ray/stats/tag_defs.cc",
     ],
     hdrs = [
         "src/ray/stats/metric.h",
@@ -1070,6 +1071,20 @@ cc_test(
     size = "small",
     srcs = [
         "src/ray/object_manager/test/pull_manager_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":object_manager",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "object_buffer_pool_test",
+    size = "small",
+    srcs = [
+        "src/ray/object_manager/test/object_buffer_pool_test.cc",
     ],
     copts = COPTS,
     tags = ["team:core"],

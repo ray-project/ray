@@ -7,6 +7,7 @@ import numpy as np
 if TYPE_CHECKING:
     import pyarrow
 
+import ray
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DatasetContext
@@ -30,6 +31,27 @@ PARALLELIZE_META_FETCH_THRESHOLD = 24
 # The number of rows to read per batch. This is sized to generate 10MiB batches
 # for rows about 1KiB in size.
 PARQUET_READER_ROW_BATCH_SIZE = 100000
+
+
+def _register_parquet_file_fragment_serialization():
+    from pyarrow.dataset import ParquetFileFragment
+
+    def serialize(frag):
+        return (frag.format, frag.path, frag.filesystem, frag.partition_expression)
+
+    def deserialize(obj):
+        file_format, path, filesystem, partition_expression = obj
+        return file_format.make_fragment(path, filesystem, partition_expression)
+
+    ray.util.register_serializer(
+        ParquetFileFragment, serializer=serialize, deserializer=deserialize
+    )
+
+
+def _deregister_parquet_file_fragment_serialization():
+    from pyarrow.dataset import ParquetFileFragment
+
+    ray.util.deregister_serializer(ParquetFileFragment)
 
 
 class ParquetDatasource(FileBasedDatasource):
@@ -83,9 +105,13 @@ class ParquetDatasource(FileBasedDatasource):
             import pyarrow.fs  # noqa: F401
 
             # Deserialize after loading the filesystem class.
-            pieces: List["pyarrow._dataset.ParquetFileFragment"] = cloudpickle.loads(
-                serialized_pieces
-            )
+            try:
+                _register_parquet_file_fragment_serialization()
+                pieces: List[
+                    "pyarrow._dataset.ParquetFileFragment"
+                ] = cloudpickle.loads(serialized_pieces)
+            finally:
+                _deregister_parquet_file_fragment_serialization()
 
             # Ensure that we're reading at least one dataset fragment.
             assert len(pieces) > 0
@@ -146,17 +172,22 @@ class ParquetDatasource(FileBasedDatasource):
             metadata = _fetch_metadata_remotely(pq_ds.pieces)
         else:
             metadata = _fetch_metadata(pq_ds.pieces)
-        for piece_data in np.array_split(
-            list(zip(pq_ds.pieces, metadata)), parallelism
-        ):
-            if len(piece_data) == 0:
-                continue
-            pieces, metadata = zip(*piece_data)
-            serialized_pieces = cloudpickle.dumps(pieces)
-            meta = _build_block_metadata(pieces, metadata, inferred_schema)
-            read_tasks.append(
-                ReadTask(lambda p=serialized_pieces: read_pieces(p), meta)
-            )
+
+        try:
+            _register_parquet_file_fragment_serialization()
+            for piece_data in np.array_split(
+                list(zip(pq_ds.pieces, metadata)), parallelism
+            ):
+                if len(piece_data) == 0:
+                    continue
+                pieces, metadata = zip(*piece_data)
+                serialized_pieces = cloudpickle.dumps(pieces)
+                meta = _build_block_metadata(pieces, metadata, inferred_schema)
+                read_tasks.append(
+                    ReadTask(lambda p=serialized_pieces: read_pieces(p), meta)
+                )
+        finally:
+            _deregister_parquet_file_fragment_serialization()
 
         return read_tasks
 
@@ -185,10 +216,14 @@ def _fetch_metadata_remotely(
     metas = []
     parallelism = min(len(pieces) // PIECES_PER_META_FETCH, 100)
     meta_fetch_bar = ProgressBar("Metadata Fetch Progress", total=parallelism)
-    for pcs in np.array_split(pieces, parallelism):
-        if len(pcs) == 0:
-            continue
-        metas.append(remote_fetch_metadata.remote(cloudpickle.dumps(pcs)))
+    try:
+        _register_parquet_file_fragment_serialization()
+        for pcs in np.array_split(pieces, parallelism):
+            if len(pcs) == 0:
+                continue
+            metas.append(remote_fetch_metadata.remote(cloudpickle.dumps(pcs)))
+    finally:
+        _deregister_parquet_file_fragment_serialization()
     metas = meta_fetch_bar.fetch_until_complete(metas)
     return list(itertools.chain.from_iterable(metas))
 
@@ -202,7 +237,11 @@ def _fetch_metadata_serialization_wrapper(
     from ray import cloudpickle
 
     # Deserialize after loading the filesystem class.
-    pieces: List["pyarrow._dataset.ParquetFileFragment"] = cloudpickle.loads(pieces)
+    try:
+        _register_parquet_file_fragment_serialization()
+        pieces: List["pyarrow._dataset.ParquetFileFragment"] = cloudpickle.loads(pieces)
+    finally:
+        _deregister_parquet_file_fragment_serialization()
 
     return _fetch_metadata(pieces)
 

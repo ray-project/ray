@@ -708,6 +708,7 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   // Ray-defined per-process options
   expected_command.push_back(GetNumJavaWorkersPerProcessSystemProperty(1));
   expected_command.push_back("-Dray.raylet.startup-token=0");
+  expected_command.push_back("-Dray.internal.runtime-env-hash=0");
   // User-defined per-process options
   expected_command.insert(expected_command.end(), actor_jvm_options.begin(),
                           actor_jvm_options.end());
