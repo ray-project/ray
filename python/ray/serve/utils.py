@@ -8,6 +8,7 @@ import time
 from typing import Iterable, Tuple
 import os
 import traceback
+from ray.actor import ActorHandle
 
 import requests
 import numpy as np
@@ -237,6 +238,13 @@ def wrap_to_ray_error(function_name: str, exception: Exception) -> RayTaskError:
         return ray.exceptions.RayTaskError(function_name, traceback_str, e)
 
 
+def msgpack_serialize(obj):
+    ctx = ray.worker.global_worker.get_serialization_context()
+    buffer = ctx.serialize(obj)
+    serialized = buffer.to_bytes()
+    return serialized
+
+
 def parse_import_path(import_path: str):
     """
     Takes in an import_path of form:
@@ -257,3 +265,19 @@ def parse_import_path(import_path: str):
         )
 
     return ".".join(nodes[:-1]), nodes[-1]
+
+
+class JavaActorHandleProxy:
+    """Wraps actor handle and translate snake_case to camelCase."""
+
+    def __init__(self, handle: ActorHandle):
+        self.handle = handle
+        self._available_attrs = set(dir(self.handle))
+
+    def __getattr__(self, key: str):
+        if key in self._available_attrs:
+            camel_case_key = key
+        else:
+            components = key.split("_")
+            camel_case_key = components[0] + "".join(x.title() for x in components[1:])
+        return getattr(self.handle, camel_case_key)
