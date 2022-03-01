@@ -151,9 +151,25 @@ void CreateRequestQueue::SetShouldSpill(bool should_spill) {
   should_spill_ = should_spill;
 }
 
+static inline int set_BlockEvictSpill_flag(){
+  int BlockEvictSpill_flag = 0;
+  if(RayConfig::instance().enable_BlockTasks()){
+    BlockEvictSpill_flag += (1<<0);
+  }
+  if(RayConfig::instance().enable_BlockTasksSpill()){
+    BlockEvictSpill_flag += (1<<1);
+  }
+  if(RayConfig::instance().enable_EvictTasks()){
+    BlockEvictSpill_flag += (1<<2);
+  }
+  return BlockEvictSpill_flag;
+}
+
 Status CreateRequestQueue::ProcessRequests() {
   // Suppress OOM dump to once per grace period.
   bool logged_oom = false;
+  int BlockEvictSpill_flag = set_BlockEvictSpill_flag();
+
   while (!queue_.empty()) {
     auto queue_it = queue_.begin();
     bool spilling_required = false;
@@ -163,20 +179,25 @@ Status CreateRequestQueue::ProcessRequests() {
     ray::Priority lowest_pri;
     ray::TaskKey task_id = queue_it->first;
     auto status =
-        ProcessRequest(/*fallback_allocator=*/true, request, &spilling_required,
+        ProcessRequest(/*fallback_allocator=*/false, request, &spilling_required,
                        &block_tasks_required, &evict_tasks_required, &lowest_pri);
     if (spilling_required) {
       spill_objects_callback_();
     }
-	//Block and evict tasks are called if the object store reaches over a threshold
-	if(RayConfig::instance().enable_BlockTasks() && block_tasks_required){
-        on_object_creation_blocked_callback_(lowest_pri, true, false);
+
+	int blockevictspill_flag = BlockEvictSpill_flag;
+	if ((blockevictspill_flag&(1<<0)) && !block_tasks_required) {
+	  blockevictspill_flag -= (1<<0);
 	}
-	if(RayConfig::instance().enable_EvictTasks() && evict_tasks_required){
-        on_object_creation_blocked_callback_(lowest_pri, false, true);
+	if ((blockevictspill_flag&(1<<2)) && !evict_tasks_required) {
+	  blockevictspill_flag -= (1<<2);
+	}
+	if (blockevictspill_flag) {
+	  on_object_creation_blocked_callback_(lowest_pri, blockevictspill_flag);
 	}
 
     auto now = get_time_();
+
     if (status.ok()) {
       FinishRequest(queue_it);
       // Reset the oom start time since the creation succeeds.
@@ -190,45 +211,17 @@ Status CreateRequestQueue::ProcessRequests() {
         oom_start_time_ns_ = now;
       }
 
-      if (RayConfig::instance().enable_BlockTasks()) {
-        RAY_LOG(DEBUG) << "[JAE_DEBUG] calling object_creation_blocked_callback priority "
-                       << lowest_pri;
-		if(RayConfig::instance().enable_EvictTasks()){
-		  on_object_creation_blocked_callback_(lowest_pri, true, true);
-		}else{
-		  on_object_creation_blocked_callback_(lowest_pri, true, false);
-		}
-		if(!RayConfig::instance().enable_BlockTasksSpill()){
-		  spill_objects_callback_();
-		}
-        if (!should_spill_) {
-          // should_spill_ is set false in default.
-          // should_spill_ is for EvictTasks. If there's no task to evict then the system
-          RAY_LOG(INFO) << "Object creation of priority " << queue_it->first.first
-                        << " blocked";
-          if (now - oom_start_time_ns_ >= oom_grace_period_ns_) {
-            // This is to handle when memory is fragmented
-            // Trigger the fallback allocator.
-            status =
-                ProcessRequest(/*fallback_allocator=*/true, request,
-                               /*spilling_required=*/nullptr, nullptr, nullptr, nullptr);
-            if (!status.ok()) {
-              std::string dump = "";
-              if (dump_debug_info_callback_ && !logged_oom) {
-                dump = dump_debug_info_callback_();
-                logged_oom = true;
-              }
-              RAY_LOG(INFO) << "Out-of-memory: Failed to create object "
-                            << (request)->object_id << " of size "
-                            << (request)->object_size / 1024 / 1024 << "MB\n"
-                            << dump;
-            }
-            FinishRequest(queue_it);
-          }
+	  if (BlockEvictSpill_flag) {
+        RAY_LOG(DEBUG) << "[JAE_DEBUG] calling object_creation_blocked_callback " 
+			<< BlockEvictSpill_flag << " on priority "
+			<< lowest_pri;
+	    on_object_creation_blocked_callback_(lowest_pri, BlockEvictSpill_flag);
+	    if (BlockEvictSpill_flag&(1<<1) || (BlockEvictSpill_flag&(1<<2)&&!should_spill_)
+		  /*if evictTasks is enabled, do not trigger spill unless should_spill_ is set*/) { 
           return Status::TransientObjectStoreFull(
               "Waiting for higher priority tasks to finish");
-        }
-      }
+		}
+	  }
 
       auto grace_period_ns = oom_grace_period_ns_;
       auto spill_pending = spill_objects_callback_();
@@ -244,7 +237,7 @@ Status CreateRequestQueue::ProcessRequests() {
         return Status::ObjectStoreFull("Waiting for grace period.");
       } else {
         // Trigger the fallback allocator.
-        status = ProcessRequest(/*fallback_allocator=*/true, request,
+        auto status = ProcessRequest(/*fallback_allocator=*/true, request,
                                 /*spilling_required=*/nullptr, nullptr, nullptr, nullptr);
         if (!status.ok()) {
           std::string dump = "";
@@ -252,10 +245,10 @@ Status CreateRequestQueue::ProcessRequests() {
             dump = dump_debug_info_callback_();
             logged_oom = true;
           }
-          RAY_LOG(INFO) << "Out-of-memory: Failed to create object "
-                        << (request)->object_id << " of size "
-                        << (request)->object_size / 1024 / 1024 << "MB\n"
-                        << dump;
+        RAY_LOG(INFO) << "Out-of-memory: Failed to create object "
+          << (request)->object_id << " of size "
+          << (request)->object_size / 1024 / 1024 << "MB\n"
+          << dump;
         }
         FinishRequest(queue_it);
       }
@@ -266,7 +259,7 @@ Status CreateRequestQueue::ProcessRequests() {
   // run new tasks again.
   if (RayConfig::instance().enable_BlockTasks()) {
     RAY_LOG(DEBUG) << "[JAE_DEBUG] resetting object_creation_blocked_callback priority";
-    RAY_UNUSED(on_object_creation_blocked_callback_(ray::Priority(), true, false));
+    RAY_UNUSED(on_object_creation_blocked_callback_(ray::Priority(), (1<<0)));
   }
 
   return Status::OK();
