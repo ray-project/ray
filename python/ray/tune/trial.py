@@ -75,8 +75,9 @@ def _deserialize_dataset(dataset_input) -> Union[Dataset, Dict]:
     def _helper(dataset_dict: dict):
         for k, v in dataset_dict.items():
             if isinstance(v, bytes):
-                dataset_dict[k] = Dataset.deserialize_out_of_band(dataset_input)
-                dataset_registry.execute_if_needed(dataset_dict[k])
+                dataset_dict[k] = dataset_registry.execute_if_needed(
+                    Dataset.deserialize_out_of_band(dataset_input)
+                )
             elif isinstance(v, int):
                 pass
             elif isinstance(v, dict):
@@ -85,9 +86,9 @@ def _deserialize_dataset(dataset_input) -> Union[Dataset, Dict]:
                 raise TuneError("Unexpected dataset config upon restoring!!")
 
     if isinstance(dataset_input, bytes):
-        des_dataset_input = Dataset.deserialize_out_of_band(dataset_input)
-        dataset_registry.execute_if_needed(des_dataset_input)
-        return des_dataset_input
+        return dataset_registry.execute_if_needed(
+            Dataset.deserialize_out_of_band(dataset_input)
+        )
     elif isinstance(dataset_input, dict):
         _helper(dataset_input)
         return dataset_input

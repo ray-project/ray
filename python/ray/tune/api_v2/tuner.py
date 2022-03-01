@@ -83,7 +83,7 @@ class TunerInternal:
                 if isinstance(v, dict):
                     _helper(v)
                 elif isinstance(v, Dataset):
-                    dataset_dict[k].fully_executed()
+                    dataset_dict[k] = v.fully_executed()
                 elif isinstance(v, int):
                     # CV settings
                     pass
@@ -91,9 +91,11 @@ class TunerInternal:
                     if not all([isinstance(v_item, int) for v_item in v]) and not all(
                         [isinstance(v_item, Dataset) for v_item in v]
                     ):
-                        raise TuneError("Wrongly formed dataset param passed in Tune!")
+                        raise TuneError(
+                            "Wrongly formatted dataset param passed in Tune!"
+                        )
                     if len(v) > 0 and isinstance(v[0], Dataset):
-                        [v_item.fully_executed() for v_item in v]
+                        dataset_dict[k] = [v_item.fully_executed() for v_item in v]
                 else:
                     # We shouldn't be expecting anything here.
                     raise TuneError("Unexpected dataset param passed in.")
@@ -101,11 +103,9 @@ class TunerInternal:
         if DATASETS in self.param_space:
             ds = self.param_space[DATASETS]
             if isinstance(ds, Dataset):
-                ds.fully_executed()
+                self.param_space[DATASETS] = ds.fully_executed()
             elif isinstance(ds, dict):
                 _helper(ds)
-            elif isinstance(ds, int):
-                pass
             else:
                 # We shouldn't be expecting anything here.
                 raise TuneError("Unexpected dataset param passed in.")

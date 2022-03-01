@@ -355,6 +355,7 @@ class FunctionTrainer(Trainer, abc.ABC):
         return analysis
 
     def as_trainable(self) -> Type["Trainable"]:
+
         self_run_config = copy.deepcopy(self.run_config) or {}
         self_scaling_config = copy.deepcopy(self.scaling_config) or {}
         self_resume_from_checkpoint = copy.deepcopy(self.resume_from_checkpoint)
@@ -570,6 +571,29 @@ class XGBoostPredictor:
 #     this_model = XGBoostPredictor.from_checkpoint(this_checkpoint)
 #     predicted = this_model.predict(dataset_df)
 #     print(predicted)
+
+
+# from ray.data.datasource.datasource import Datasource, ReadTask
+# from ray.data.impl.block_list import BlockMetadata
+#
+#
+# class TestDatasource(Datasource):
+#     def prepare_read(self, parallelism: int, **read_args):
+#         import pyarrow as pa
+#
+#         def load_data():
+#             data_raw = load_breast_cancer(as_frame=True)
+#             dataset_df = data_raw["data"]
+#             dataset_df["target"] = data_raw["target"]
+#             return pa.Table.from_pandas(dataset_df)
+#
+#         meta = BlockMetadata(num_rows=None, size_bytes=None, schema=None, input_files=None, exec_stats=None)
+#         return [ReadTask(load_data, meta)]
+#
+#
+# def gen_dataset_func() -> Dataset:
+#     test_datasource = TestDatasource()
+#     ray.data.read_datasource(test_datasource)
 
 
 def gen_dataset_func() -> ray.data.Dataset:
