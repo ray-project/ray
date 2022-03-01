@@ -283,3 +283,50 @@ def info(address: str):
         print(json.dumps(response.json(), indent=4))
     else:
         log_failed_request(response, address)
+
+
+@cli.command(
+    help="[Experimental] Get your Serve application's status.",
+    hidden=True,
+)
+@click.option(
+    "--address",
+    "-a",
+    default=os.environ.get("RAY_ADDRESS", "http://localhost:8265"),
+    required=False,
+    type=str,
+    help='Address of the Ray dashboard to query. For example, "http://localhost:8265".',
+)
+def status(address: str):
+    full_address_path = f"{address}/api/serve/deployments/status"
+    response = requests.get(full_address_path)
+    if response.status_code == 200:
+        print(json.dumps(response.json(), indent=4))
+    else:
+        log_failed_request(response, address)
+
+@cli.command(
+    help="[Experimental] Get info about your Serve application's config.",
+    hidden=True,
+)
+@click.option(
+    "--address",
+    "-a",
+    default=os.environ.get("RAY_ADDRESS", "http://localhost:8265"),
+    required=False,
+    type=str,
+    help='Address of the Ray dashboard to query. For example, "http://localhost:8265".',
+)
+def delete(address: str):
+    click.confirm(f"\nThis will shutdown the Serve application at address "
+                  f"\"{address}\" and delete all deployments there. Do you "
+                  "want to continue?", abort=True)
+
+    full_address_path = f"{address}/api/serve/deployments/"
+    response = requests.delete(full_address_path)
+    if response.status_code == 200:
+        cli_logger.newline()
+        cli_logger.success("\nSent delete request successfully!\n")
+        cli_logger.newline()
+    else:
+        log_failed_request(response, address)
