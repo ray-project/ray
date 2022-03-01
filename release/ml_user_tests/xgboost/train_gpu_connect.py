@@ -33,7 +33,8 @@ if __name__ == "__main__":
         max_actor_restarts=2,
         num_actors=4,
         cpus_per_actor=4,
-        gpus_per_actor=1)
+        gpus_per_actor=1,
+    )
 
     @ray.remote
     def ray_get_parquet_files():
@@ -57,8 +58,7 @@ if __name__ == "__main__":
     result = {
         "time_taken": taken,
     }
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
-                                      "/tmp/train_gpu_connect.json")
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/train_gpu_connect.json")
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
 

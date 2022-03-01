@@ -47,7 +47,8 @@ class RayCluster:
         os.makedirs(namespace_dir, exist_ok=True)
 
         self.config_path = operator_utils.config_path(
-            cluster_namespace=self.namespace, cluster_name=self.name)
+            cluster_namespace=self.namespace, cluster_name=self.name
+        )
 
         # Monitor subprocess
         # self.subprocess is non-null iff there's an active monitor subprocess
@@ -60,7 +61,7 @@ class RayCluster:
         self.setup_logging()
 
     def create_or_update(self, restart_ray: bool = False) -> None:
-        """ Create/update the Ray Cluster and run the monitoring loop, all in a
+        """Create/update the Ray Cluster and run the monitoring loop, all in a
         subprocess.
 
         The main function of the Operator is managing the
@@ -69,7 +70,7 @@ class RayCluster:
         Args:
             restart_ray: If True, restarts Ray to recover from failure.
         """
-        self.do_in_subprocess(self._create_or_update, args=(restart_ray, ))
+        self.do_in_subprocess(self._create_or_update, args=(restart_ray,))
 
     def _create_or_update(self, restart_ray: bool = False) -> None:
         try:
@@ -77,8 +78,9 @@ class RayCluster:
             self.start_monitor()
         except Exception:
             # Report failed autoscaler status to trigger cluster restart.
-            cluster_status_q.put((self.name, self.namespace,
-                                  STATUS_AUTOSCALING_EXCEPTION))
+            cluster_status_q.put(
+                (self.name, self.namespace, STATUS_AUTOSCALING_EXCEPTION)
+            )
             # `status_handling_loop` will increment the
             # `status.AutoscalerRetries` of the CR. A restart will trigger
             # at the subsequent "MODIFIED" event.
@@ -127,17 +129,18 @@ class RayCluster:
             yes=True,
             workers_only=False,
             override_cluster_name=None,
-            keep_min_workers=False)
+            keep_min_workers=False,
+        )
 
-    def do_in_subprocess(self,
-                         f: Callable[[], None],
-                         args: Tuple = (),
-                         block: bool = False) -> None:
+    def do_in_subprocess(
+        self, f: Callable[[], None], args: Tuple = (), block: bool = False
+    ) -> None:
         # First stop the subprocess if it's alive
         self.clean_up_subprocess()
         # Reinstantiate process with f as target and start.
         self.subprocess = mp.Process(
-            name=self.subprocess_name, target=f, args=args, daemon=True)
+            name=self.subprocess_name, target=f, args=args, daemon=True
+        )
         self.subprocess.start()
         if block:
             self.subprocess.join()
@@ -178,11 +181,9 @@ class RayCluster:
         """
         self.handler = logging.StreamHandler()
         # Filter by subprocess name to get this cluster's monitor logs.
-        self.handler.addFilter(
-            lambda rec: rec.processName == self.subprocess_name)
+        self.handler.addFilter(lambda rec: rec.processName == self.subprocess_name)
         # Lines start with "<cluster name>,<cluster namespace>:"
-        logging_format = ":".join(
-            [self.subprocess_name, ray_constants.LOGGER_FORMAT])
+        logging_format = ":".join([self.subprocess_name, ray_constants.LOGGER_FORMAT])
         self.handler.setFormatter(logging.Formatter(logging_format))
         operator_utils.root_logger.addHandler(self.handler)
 
@@ -203,13 +204,15 @@ class RayCluster:
         except OSError:
             log_prefix = ",".join([self.name, self.namespace])
             logger.warning(
-                f"{log_prefix}: config path does not exist {self.config_path}")
+                f"{log_prefix}: config path does not exist {self.config_path}"
+            )
 
 
 @kopf.on.startup()
 def start_background_worker(memo: kopf.Memo, **_):
     memo.status_handler = threading.Thread(
-        target=status_handling_loop, args=(cluster_status_q, ))
+        target=status_handling_loop, args=(cluster_status_q,)
+    )
     memo.status_handler.start()
 
 
@@ -238,8 +241,7 @@ def status_handling_loop(queue: mp.Queue):
 @kopf.on.create("rayclusters")
 @kopf.on.update("rayclusters")
 @kopf.on.resume("rayclusters")
-def create_or_update_cluster(body, name, namespace, logger, memo: kopf.Memo,
-                             **kwargs):
+def create_or_update_cluster(body, name, namespace, logger, memo: kopf.Memo, **kwargs):
     """
     1. On creation of a RayCluster resource, create the Ray cluster.
     2. On update of a RayCluster resource, update the cluster
@@ -261,15 +263,12 @@ def restart_cluster(body, status, name, namespace, memo: kopf.Memo, **kwargs):
     # Don't act on initialization of status.autoscalerRetries from nil to 0.
     if status.get("autoscalerRetries"):
         # Restart the Ray cluster:
-        _create_or_update_cluster(
-            body, name, namespace, memo, restart_ray=True)
+        _create_or_update_cluster(body, name, namespace, memo, restart_ray=True)
 
 
-def _create_or_update_cluster(cluster_cr_body,
-                              name,
-                              namespace,
-                              memo,
-                              restart_ray=False):
+def _create_or_update_cluster(
+    cluster_cr_body, name, namespace, memo, restart_ray=False
+):
     """Create, update, or restart the Ray cluster described by a RayCluster
     resource.
 
@@ -285,8 +284,7 @@ def _create_or_update_cluster(cluster_cr_body,
     cluster_config = operator_utils.cr_to_config(cluster_cr_body)
     # Verify the user didn't set a custom Redis password in Ray start commands.
     # (custom Redis password is not supported by K8s operator.)
-    operator_utils.check_redis_password_not_specified(cluster_config, name,
-                                                      namespace)
+    operator_utils.check_redis_password_not_specified(cluster_config, name, namespace)
 
     # Fetch or create the RayCluster python object encapsulating cluster state.
     ray_cluster = memo.get("ray_cluster")

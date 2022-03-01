@@ -188,7 +188,7 @@ class GlobalStateAccessor {
   template <class DATA>
   MultiItemCallback<DATA> TransformForMultiItemCallback(
       std::vector<std::string> &data_vec, std::promise<bool> &promise) {
-    return [&data_vec, &promise](const Status &status, const std::vector<DATA> &result) {
+    return [&data_vec, &promise](const Status &status, std::vector<DATA> &&result) {
       RAY_CHECK_OK(status);
       std::transform(result.begin(), result.end(), std::back_inserter(data_vec),
                      [](const DATA &data) { return data.SerializeAsString(); });
@@ -231,10 +231,10 @@ class GlobalStateAccessor {
 
   /// Whether this client is connected to gcs server.
   bool is_connected_ GUARDED_BY(mutex_) = false;
-  std::unique_ptr<GcsClient> gcs_client_ GUARDED_BY(mutex_);
 
   std::unique_ptr<std::thread> thread_io_service_;
   std::unique_ptr<instrumented_io_context> io_service_;
+  std::unique_ptr<GcsClient> gcs_client_ GUARDED_BY(mutex_);
 };
 
 }  // namespace gcs

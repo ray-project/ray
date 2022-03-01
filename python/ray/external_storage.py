@@ -95,15 +95,17 @@ class ExternalStorage(metaclass=abc.ABCMeta):
         ray_object_pairs = worker.core_worker.get_if_local(object_refs)
         return ray_object_pairs
 
-    def _put_object_to_store(self, metadata, data_size, file_like, object_ref,
-                             owner_address):
+    def _put_object_to_store(
+        self, metadata, data_size, file_like, object_ref, owner_address
+    ):
         worker = ray.worker.global_worker
-        worker.core_worker.put_file_like_object(metadata, data_size, file_like,
-                                                object_ref, owner_address)
+        worker.core_worker.put_file_like_object(
+            metadata, data_size, file_like, object_ref, owner_address
+        )
 
-    def _write_multiple_objects(self, f: IO, object_refs: List[ObjectRef],
-                                owner_addresses: List[str],
-                                url: str) -> List[str]:
+    def _write_multiple_objects(
+        self, f: IO, object_refs: List[ObjectRef], owner_addresses: List[str], url: str
+    ) -> List[str]:
         """Fuse all given objects into a given file handle.
 
         Args:
@@ -122,7 +124,8 @@ class ExternalStorage(metaclass=abc.ABCMeta):
         offset = 0
         ray_object_pairs = self._get_objects_from_store(object_refs)
         for ref, (buf, metadata), owner_address in zip(
-                object_refs, ray_object_pairs, owner_addresses):
+            object_refs, ray_object_pairs, owner_addresses
+        ):
             address_len = len(owner_address)
             metadata_len = len(metadata)
             if buf is None:
@@ -133,22 +136,27 @@ class ExternalStorage(metaclass=abc.ABCMeta):
                     error += " This is probably since its owner has failed."
                 raise ValueError(error)
             buf_len = len(buf)
-            payload = address_len.to_bytes(8, byteorder="little") + \
-                metadata_len.to_bytes(8, byteorder="little") + \
-                buf_len.to_bytes(8, byteorder="little") + \
-                owner_address + metadata + memoryview(buf)
+            payload = (
+                address_len.to_bytes(8, byteorder="little")
+                + metadata_len.to_bytes(8, byteorder="little")
+                + buf_len.to_bytes(8, byteorder="little")
+                + owner_address
+                + metadata
+                + memoryview(buf)
+            )
             # 24 bytes to store owner address, metadata, and buffer lengths.
-            assert self.HEADER_LENGTH + address_len + metadata_len + buf_len \
-                == len(payload)
+            assert self.HEADER_LENGTH + address_len + metadata_len + buf_len == len(
+                payload
+            )
             written_bytes = f.write(payload)
             url_with_offset = create_url_with_offset(
-                url=url, offset=offset, size=written_bytes)
+                url=url, offset=offset, size=written_bytes
+            )
             keys.append(url_with_offset.encode())
             offset = f.tell()
         return keys
 
-    def _size_check(self, address_len, metadata_len, buffer_len,
-                    obtained_data_size):
+    def _size_check(self, address_len, metadata_len, buffer_len, obtained_data_size):
         """Check whether or not the obtained_data_size is as expected.
 
         Args:
@@ -163,12 +171,14 @@ class ExternalStorage(metaclass=abc.ABCMeta):
             24 (first 8 bytes to store length).
         """
         data_size_in_bytes = (
-            address_len + metadata_len + buffer_len + self.HEADER_LENGTH)
+            address_len + metadata_len + buffer_len + self.HEADER_LENGTH
+        )
         if data_size_in_bytes != obtained_data_size:
             raise ValueError(
                 f"Obtained data has a size of {data_size_in_bytes}, "
                 "although it is supposed to have the "
-                f"size of {obtained_data_size}.")
+                f"size of {obtained_data_size}."
+            )
 
     @abc.abstractmethod
     def spill_objects(self, object_refs, owner_addresses) -> List[str]:
@@ -183,8 +193,9 @@ class ExternalStorage(metaclass=abc.ABCMeta):
         """
 
     @abc.abstractmethod
-    def restore_spilled_objects(self, object_refs: List[ObjectRef],
-                                url_with_offset_list: List[str]) -> int:
+    def restore_spilled_objects(
+        self, object_refs: List[ObjectRef], url_with_offset_list: List[str]
+    ) -> int:
         """Restore objects from the external storage.
 
         Args:
@@ -245,35 +256,38 @@ class FileSystemStorage(ExternalStorage):
         self._current_directory_index = 0
 
         # Validation.
-        assert directory_path is not None, (
-            "directory_path should be provided to use object spilling.")
+        assert (
+            directory_path is not None
+        ), "directory_path should be provided to use object spilling."
         if isinstance(directory_path, str):
             directory_path = [directory_path]
-        assert isinstance(directory_path,
-                          list), ("Directory_path must be either a single "
-                                  "string or a list of strings")
+        assert isinstance(directory_path, list), (
+            "Directory_path must be either a single " "string or a list of strings"
+        )
 
         # Create directories.
         for path in directory_path:
             full_dir_path = os.path.join(path, self._spill_dir_name)
             os.makedirs(full_dir_path, exist_ok=True)
             if not os.path.exists(full_dir_path):
-                raise ValueError("The given directory path to store objects, "
-                                 f"{full_dir_path}, could not be created.")
+                raise ValueError(
+                    "The given directory path to store objects, "
+                    f"{full_dir_path}, could not be created."
+                )
             self._directory_paths.append(full_dir_path)
         assert len(self._directory_paths) == len(directory_path)
         # Choose the current directory.
         # It chooses a random index to maximize multiple directories that are
         # mounted at different point.
-        self._current_directory_index = random.randrange(
-            0, len(self._directory_paths))
+        self._current_directory_index = random.randrange(0, len(self._directory_paths))
 
     def spill_objects(self, object_refs, owner_addresses) -> List[str]:
         if len(object_refs) == 0:
             return []
         # Choose the current directory path by round robin order.
-        self._current_directory_index = (
-            (self._current_directory_index + 1) % len(self._directory_paths))
+        self._current_directory_index = (self._current_directory_index + 1) % len(
+            self._directory_paths
+        )
         directory_path = self._directory_paths[self._current_directory_index]
 
         # Always use the first object ref as a key when fusing objects.
@@ -281,11 +295,11 @@ class FileSystemStorage(ExternalStorage):
         filename = f"{first_ref.hex()}-multi-{len(object_refs)}"
         url = f"{os.path.join(directory_path, filename)}"
         with open(url, "wb") as f:
-            return self._write_multiple_objects(f, object_refs,
-                                                owner_addresses, url)
+            return self._write_multiple_objects(f, object_refs, owner_addresses, url)
 
-    def restore_spilled_objects(self, object_refs: List[ObjectRef],
-                                url_with_offset_list: List[str]):
+    def restore_spilled_objects(
+        self, object_refs: List[ObjectRef], url_with_offset_list: List[str]
+    ):
         total = 0
         for i in range(len(object_refs)):
             object_ref = object_refs[i]
@@ -300,14 +314,14 @@ class FileSystemStorage(ExternalStorage):
                 address_len = int.from_bytes(f.read(8), byteorder="little")
                 metadata_len = int.from_bytes(f.read(8), byteorder="little")
                 buf_len = int.from_bytes(f.read(8), byteorder="little")
-                self._size_check(address_len, metadata_len, buf_len,
-                                 parsed_result.size)
+                self._size_check(address_len, metadata_len, buf_len, parsed_result.size)
                 total += buf_len
                 owner_address = f.read(address_len)
                 metadata = f.read(metadata_len)
                 # read remaining data to our buffer
-                self._put_object_to_store(metadata, buf_len, f, object_ref,
-                                          owner_address)
+                self._put_object_to_store(
+                    metadata, buf_len, f, object_ref, owner_address
+                )
         return total
 
     def delete_spilled_objects(self, urls: List[str]):
@@ -335,7 +349,8 @@ class FileSystemStorage(ExternalStorage):
                 logger.exception(
                     "Error cleaning up spill files. "
                     "You might still have remaining spilled "
-                    "objects inside `ray_spilled_objects` directory.")
+                    "objects inside `ray_spilled_objects` directory."
+                )
                 break
 
 
@@ -361,17 +376,20 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
             is not downloaded, this will fail.
     """
 
-    def __init__(self,
-                 uri: str,
-                 prefix: str = DEFAULT_OBJECT_PREFIX,
-                 override_transport_params: dict = None):
+    def __init__(
+        self,
+        uri: str,
+        prefix: str = DEFAULT_OBJECT_PREFIX,
+        override_transport_params: dict = None,
+    ):
         try:
             from smart_open import open  # noqa
         except ModuleNotFoundError as e:
             raise ModuleNotFoundError(
                 "Smart open is chosen to be a object spilling "
                 "external storage, but smart_open and boto3 "
-                f"is not downloaded. Original error: {e}")
+                f"is not downloaded. Original error: {e}"
+            )
 
         self.uri = uri.strip("/")
         self.prefix = prefix
@@ -380,6 +398,7 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
 
         if self.is_for_s3:
             import boto3  # noqa
+
             # Setup boto3. It is essential because if we don't create boto
             # session, smart_open will create a new session for every
             # open call.
@@ -398,19 +417,21 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
         if len(object_refs) == 0:
             return []
         from smart_open import open
+
         # Always use the first object ref as a key when fusioning objects.
         first_ref = object_refs[0]
         key = f"{self.prefix}-{first_ref.hex()}-multi-{len(object_refs)}"
         url = f"{self.uri}/{key}"
-        with open(
-                url, "wb",
-                transport_params=self.transport_params) as file_like:
-            return self._write_multiple_objects(file_like, object_refs,
-                                                owner_addresses, url)
+        with open(url, "wb", transport_params=self.transport_params) as file_like:
+            return self._write_multiple_objects(
+                file_like, object_refs, owner_addresses, url
+            )
 
-    def restore_spilled_objects(self, object_refs: List[ObjectRef],
-                                url_with_offset_list: List[str]):
+    def restore_spilled_objects(
+        self, object_refs: List[ObjectRef], url_with_offset_list: List[str]
+    ):
         from smart_open import open
+
         total = 0
         for i in range(len(object_refs)):
             object_ref = object_refs[i]
@@ -421,23 +442,21 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
             base_url = parsed_result.base_url
             offset = parsed_result.offset
 
-            with open(
-                    base_url, "rb",
-                    transport_params=self.transport_params) as f:
+            with open(base_url, "rb", transport_params=self.transport_params) as f:
                 # smart open seek reads the file from offset-end_of_the_file
                 # when the seek is called.
                 f.seek(offset)
                 address_len = int.from_bytes(f.read(8), byteorder="little")
                 metadata_len = int.from_bytes(f.read(8), byteorder="little")
                 buf_len = int.from_bytes(f.read(8), byteorder="little")
-                self._size_check(address_len, metadata_len, buf_len,
-                                 parsed_result.size)
+                self._size_check(address_len, metadata_len, buf_len, parsed_result.size)
                 owner_address = f.read(address_len)
                 total += buf_len
                 metadata = f.read(metadata_len)
                 # read remaining data to our buffer
-                self._put_object_to_store(metadata, buf_len, f, object_ref,
-                                          owner_address)
+                self._put_object_to_store(
+                    metadata, buf_len, f, object_ref, owner_address
+                )
         return total
 
     def delete_spilled_objects(self, urls: List[str]):
@@ -480,8 +499,7 @@ class SlowFileStorage(FileSystemStorage):
         self._max_delay = 2
 
     def spill_objects(self, object_refs, owner_addresses) -> List[str]:
-        delay = random.random() * (
-            self._max_delay - self._min_delay) + self._min_delay
+        delay = random.random() * (self._max_delay - self._min_delay) + self._min_delay
         time.sleep(delay)
         return super().spill_objects(object_refs, owner_addresses)
 
@@ -494,8 +512,7 @@ def setup_external_storage(config):
         if storage_type == "filesystem":
             _external_storage = FileSystemStorage(**config["params"])
         elif storage_type == "smart_open":
-            _external_storage = ExternalStorageSmartOpenImpl(
-                **config["params"])
+            _external_storage = ExternalStorageSmartOpenImpl(**config["params"])
         elif storage_type == "mock_distributed_fs":
             # This storage is used to unit test distributed external storages.
             # TODO(sang): Delete it after introducing the mock S3 test.
@@ -532,16 +549,16 @@ def spill_objects(object_refs, owner_addresses):
     return _external_storage.spill_objects(object_refs, owner_addresses)
 
 
-def restore_spilled_objects(object_refs: List[ObjectRef],
-                            url_with_offset_list: List[str]):
+def restore_spilled_objects(
+    object_refs: List[ObjectRef], url_with_offset_list: List[str]
+):
     """Restore objects from the external storage.
 
     Args:
         object_refs: List of object IDs (note that it is not ref).
         url_with_offset_list: List of url_with_offset.
     """
-    return _external_storage.restore_spilled_objects(object_refs,
-                                                     url_with_offset_list)
+    return _external_storage.restore_spilled_objects(object_refs, url_with_offset_list)
 
 
 def delete_spilled_objects(urls: List[str]):

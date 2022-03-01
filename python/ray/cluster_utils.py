@@ -16,7 +16,7 @@ from ray._raylet import GcsClientOptions
 
 logger = logging.getLogger(__name__)
 
-cluster_not_supported = (os.name == "nt")
+cluster_not_supported = os.name == "nt"
 
 
 class AutoscalingCluster:
@@ -25,8 +25,7 @@ class AutoscalingCluster:
     See test_autoscaler_fake_multinode.py for an end-to-end example.
     """
 
-    def __init__(self, head_resources: dict, worker_node_types: dict,
-                 **config_kwargs):
+    def __init__(self, head_resources: dict, worker_node_types: dict, **config_kwargs):
         """Create the cluster.
 
         Args:
@@ -34,17 +33,20 @@ class AutoscalingCluster:
             worker_node_types: autoscaler node types config for worker nodes.
         """
         self._head_resources = head_resources
-        self._config = self._generate_config(head_resources, worker_node_types,
-                                             **config_kwargs)
+        self._config = self._generate_config(
+            head_resources, worker_node_types, **config_kwargs
+        )
         self._process = None
 
-    def _generate_config(self, head_resources, worker_node_types,
-                         **config_kwargs):
+    def _generate_config(self, head_resources, worker_node_types, **config_kwargs):
         base_config = yaml.safe_load(
             open(
                 os.path.join(
                     os.path.dirname(ray.__file__),
-                    "autoscaler/_private/fake_multi_node/example.yaml")))
+                    "autoscaler/_private/fake_multi_node/example.yaml",
+                )
+            )
+        )
         custom_config = copy.deepcopy(base_config)
         custom_config["available_node_types"] = worker_node_types
         custom_config["available_node_types"]["ray.head.default"] = {
@@ -62,28 +64,30 @@ class AutoscalingCluster:
         ray.init("auto").
         """
         subprocess.check_call(["ray", "stop", "--force"])
-        fake_config = tempfile.mktemp()
+        _, fake_config = tempfile.mkstemp()
         with open(fake_config, "w") as f:
             f.write(json.dumps(self._config))
         cmd = [
-            "ray", "start", "--autoscaling-config={}".format(fake_config),
-            "--head", "--block"
+            "ray",
+            "start",
+            "--autoscaling-config={}".format(fake_config),
+            "--head",
+            "--block",
         ]
         if "CPU" in self._head_resources:
             cmd.append("--num-cpus={}".format(self._head_resources.pop("CPU")))
         if "GPU" in self._head_resources:
             cmd.append("--num-gpus={}".format(self._head_resources.pop("GPU")))
         if self._head_resources:
-            cmd.append("--resources='{}'".format(
-                json.dumps(self._head_resources)))
+            cmd.append("--resources='{}'".format(json.dumps(self._head_resources)))
         if _system_config is not None:
-            cmd.append("--system-config={}".format(
-                json.dumps(_system_config, separators=(",", ":"))))
+            cmd.append(
+                "--system-config={}".format(
+                    json.dumps(_system_config, separators=(",", ":"))
+                )
+            )
         env = os.environ.copy()
-        env.update({
-            "AUTOSCALER_UPDATE_INTERVAL_S": "1",
-            "RAY_FAKE_CLUSTER": "1"
-        })
+        env.update({"AUTOSCALER_UPDATE_INTERVAL_S": "1", "RAY_FAKE_CLUSTER": "1"})
         self._process = subprocess.Popen(cmd, env=env)
         time.sleep(5)  # TODO(ekl) wait for it properly
 
@@ -95,11 +99,13 @@ class AutoscalingCluster:
 
 
 class Cluster:
-    def __init__(self,
-                 initialize_head=False,
-                 connect=False,
-                 head_node_args=None,
-                 shutdown_at_exit=True):
+    def __init__(
+        self,
+        initialize_head=False,
+        connect=False,
+        head_node_args=None,
+        shutdown_at_exit=True,
+    ):
         """Initializes all services of a Ray cluster.
 
         Args:
@@ -117,7 +123,8 @@ class Cluster:
             logger.warning(
                 "Ray cluster mode is currently experimental and untested on "
                 "Windows. If you are using it and running into issues please "
-                "file a report at https://github.com/ray-project/ray/issues.")
+                "file a report at https://github.com/ray-project/ray/issues."
+            )
         self.head_node = None
         self.worker_nodes = set()
         self.redis_address = None
@@ -155,7 +162,8 @@ class Cluster:
             namespace=namespace,
             ignore_reinit_error=True,
             address=self.address,
-            _redis_password=self.redis_password)
+            _redis_password=self.redis_password,
+        )
         logger.info(output_info)
         self.connected = True
 
@@ -191,19 +199,21 @@ class Cluster:
                     ray_params,
                     head=True,
                     shutdown_at_exit=self._shutdown_at_exit,
-                    spawn_reaper=self._shutdown_at_exit)
+                    spawn_reaper=self._shutdown_at_exit,
+                )
                 self.head_node = node
                 self.redis_address = self.head_node.redis_address
                 self.redis_password = node_args.get(
-                    "redis_password", ray_constants.REDIS_DEFAULT_PASSWORD)
+                    "redis_password", ray_constants.REDIS_DEFAULT_PASSWORD
+                )
                 self.webui_url = self.head_node.webui_url
                 # Init global state accessor when creating head node.
                 if use_gcs_for_bootstrap():
-                    gcs_options = GcsClientOptions.from_gcs_address(
-                        node.gcs_address)
+                    gcs_options = GcsClientOptions.from_gcs_address(node.gcs_address)
                 else:
                     gcs_options = GcsClientOptions.from_redis_address(
-                        self.redis_address, self.redis_password)
+                        self.redis_address, self.redis_password
+                    )
                 self.global_state._initialize_global_state(gcs_options)
             else:
                 ray_params.update_if_absent(redis_address=self.redis_address)
@@ -217,7 +227,8 @@ class Cluster:
                     ray_params,
                     head=False,
                     shutdown_at_exit=self._shutdown_at_exit,
-                    spawn_reaper=self._shutdown_at_exit)
+                    spawn_reaper=self._shutdown_at_exit,
+                )
                 self.worker_nodes.add(node)
 
             if wait:
@@ -245,20 +256,22 @@ class Cluster:
                     "Removing a node that is connected to this Ray client "
                     "is not allowed because it will break the driver."
                     "You can use the get_other_node utility to avoid removing"
-                    "a node that the Ray client is connected.")
+                    "a node that the Ray client is connected."
+                )
 
         if self.head_node == node:
             self.head_node.kill_all_processes(
-                check_alive=False, allow_graceful=allow_graceful)
+                check_alive=False, allow_graceful=allow_graceful
+            )
             self.head_node = None
             # TODO(rliaw): Do we need to kill all worker processes?
         else:
-            node.kill_all_processes(
-                check_alive=False, allow_graceful=allow_graceful)
+            node.kill_all_processes(check_alive=False, allow_graceful=allow_graceful)
             self.worker_nodes.remove(node)
 
-        assert not node.any_processes_alive(), (
-            "There are zombie processes left over after killing.")
+        assert (
+            not node.any_processes_alive()
+        ), "There are zombie processes left over after killing."
 
     def _wait_for_node(self, node, timeout=30):
         """Wait until this node has appeared in the client table.
@@ -273,8 +286,12 @@ class Cluster:
                 the node appears in the client table.
         """
         ray._private.services.wait_for_node(
-            self.redis_address, node.gcs_address,
-            node.plasma_store_socket_name, self.redis_password, timeout)
+            self.redis_address,
+            node.gcs_address,
+            node.plasma_store_socket_name,
+            self.redis_password,
+            timeout,
+        )
 
     def wait_for_nodes(self, timeout=30):
         """Waits for correct number of nodes to be registered.
@@ -305,7 +322,8 @@ class Cluster:
             else:
                 logger.debug(
                     f"{len(live_clients)} nodes are currently registered, "
-                    f"but we are expecting {expected}")
+                    f"but we are expecting {expected}"
+                )
                 time.sleep(0.1)
         raise TimeoutError("Timed out while waiting for nodes to join.")
 
@@ -332,8 +350,7 @@ class Cluster:
         Returns:
             True if all processes are alive and false otherwise.
         """
-        return all(
-            node.remaining_processes_alive() for node in self.list_all_nodes())
+        return all(node.remaining_processes_alive() for node in self.list_all_nodes())
 
     def shutdown(self):
         """Removes all nodes."""

@@ -28,20 +28,20 @@ def make_train_operator(ds: TorchMLDataset):
     class IdentityTrainOperator(TrainingOperator):
         def setup(self, config):
             model = Net()
-            optimizer = torch.optim.SGD(
-                model.parameters(), lr=config.get("lr", 1e-4))
+            optimizer = torch.optim.SGD(model.parameters(), lr=config.get("lr", 1e-4))
             loss = torch.nn.MSELoss()
 
             batch_size = config["batch_size"]
             train_data = ds.get_shard(
-                self.world_rank, shuffle=True, shuffle_buffer_size=4)
+                self.world_rank, shuffle=True, shuffle_buffer_size=4
+            )
             train_loader = DataLoader(train_data, batch_size=batch_size)
 
             self.model, self.optimizer, self.criterion = self.register(
-                models=model, optimizers=optimizer, criterion=loss)
+                models=model, optimizers=optimizer, criterion=loss
+            )
 
-            self.register_data(
-                train_loader=train_loader, validation_loader=None)
+            self.register_data(train_loader=train_loader, validation_loader=None)
 
     return IdentityTrainOperator
 
@@ -58,7 +58,8 @@ def main():
         num_workers=2,
         training_operator_cls=make_train_operator(torch_ds),
         add_dist_sampler=False,
-        config={"batch_size": 32})
+        config={"batch_size": 32},
+    )
     for i in range(10):
         trainer.train(num_steps=100)
         model = trainer.get_model()

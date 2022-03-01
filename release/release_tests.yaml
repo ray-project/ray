@@ -1,0 +1,763 @@
+# Global release test configuration file.
+# All your release test configuration should go here. Adding release tests here
+# will automatically enable them in the Buildkite release testing schedules
+# (except they have frequency: disabled).
+# Here is an example configuration for reference:
+#- name: example_test
+#  # Tests with the same group will be grouped in the Buildkite UI
+#  group: Example group
+#  # Provide the working directory which will be uploaded to the cluster
+#  working_dir: example_dir
+#
+#  # For release test infra migration, we provide these fields that are populated
+#  # in the database
+#  legacy:
+#    test_name: example_test
+#    test_suite: examples
+#
+#  # How often to run the tests.
+#  # One of [disabled, any, multi, nightly, weekly].
+#  frequency: disabled  # weekly
+#  # Owning team. This field will be persisted to the database
+#  team: ml
+#
+#  # Optional location of a bash setup script to run on the driver
+#  # when setting up the local environment. Relative to working_dir
+#  driver_setup: setup_driver.sh
+#
+#  # Cluster information
+#  cluster:
+#    # Location of cluster env, relative to working_dir
+#    cluster_env: cluster_env.yaml
+#    # Location of cluster compute, relative to working_dir
+#    cluster_compute: cluster_compute.yaml
+#    # Autosuspend parameter passed to the cluster.
+#    # The cluster will automatically terminate if inactive for this
+#    # many minutes. Defaults to 10 if not set.
+#    autosuspend_mins: 10
+#    # Optional cloud_id to use instead of the default cloud
+#    cloud_id: cld_12345678
+#    # Alternatively, you can specify a cloud name
+#    cloud_name: anyscale_default_cloud
+#
+#  # Run configuration for the test
+#  run:
+#    # Type of test. Can be sdk_command or client (job to be implemented soon).
+#    # Uses either Anyscale SDK commands or the Ray client to run the actual
+#    # release test.
+#    type: sdk_command
+#
+#    # File manager to use to transfer files to and from the cluster.
+#    # Can be any of [sdk, client, job].
+#    file_manager: sdk
+#
+#    # If you want to wait for nodes to be ready, you can specify this here:
+#    wait_for_nodes:
+#      # Number of nodes
+#      num_nodes: 16
+#      # Timeout for waiting for nodes. If nodes are not up by then, the
+#      # test will fail.
+#      timeout: 600
+#
+#    # Optional prepare script to be run on the cluster before the test script
+#    prepare: python prepare.py
+#    # The prepare command can have a separate timeout
+#    prepare_timeout: 300
+#
+#    # Main script to run as the test script
+#    script: python workloads/train_small.py
+#    # Timeout in seconds. After this time the test is considered as failed.
+#    timeout: 600
+#
+#  # You can specify smoke test definitions here. If a smoke test is triggered,
+#  # it will deep update the main test configuration with the values provided
+#  # here. Smoke tests will automatically run with IS_SMOKE_TEST=1 as en
+#  # environment variable and receive the --smoke-test flag as a parameter in the
+#  # run script.
+#  smoke_test:
+#    # Smoke tests can have different frequencies. A smoke test is only triggered
+#    # when the regular test is not matched.
+#    frequency: disabled  # nightly
+#    # Here we adjust the run timeout down and run on less nodes. The test script
+#    # remains the same.
+#    run:
+#      timeout: 300
+#      wait_for_nodes:
+#        num_nodes: 4
+#        timeout: 600
+#
+#  # After the test finished, this handler (in alerts/) will process the results.
+#  # It can then let the test fail, e.g. if a metric regression is observed.
+#  alert: default
+
+
+#######################
+# XGBoost release tests
+#######################
+- name: xgboost_train_small
+  group: XGBoost
+  working_dir: xgboost_tests
+
+  legacy:
+    test_name: train_small
+    test_suite: xgboost_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_small.yaml
+    autosuspend_mins: 10
+
+  run:
+    timeout: 600
+    script: python workloads/train_small.py
+
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
+
+    type: client
+
+  alert: xgboost_tests
+
+- name: xgboost_train_moderate
+  group: XGBoost
+  working_dir: xgboost_tests
+
+  legacy:
+    test_name: train_moderate
+    test_suite: xgboost_tests
+
+  frequency: disabled  # nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_moderate.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/train_moderate.py
+
+    wait_for_nodes:
+      num_nodes: 32
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+  alert: xgboost_tests
+
+- name: xgboost_train_gpu
+  group: XGBoost
+  working_dir: xgboost_tests
+
+  legacy:
+    test_name: train_gpu
+    test_suite: xgboost_tests
+
+  frequency: disabled  # nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config_gpu.yaml
+    cluster_compute: tpl_gpu_small.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/train_gpu.py
+
+    wait_for_nodes:
+      num_nodes: 5
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+  alert: xgboost_tests
+
+- name: xgboost_distributed_api_test
+  group: XGBoost
+  working_dir: xgboost_tests
+
+  legacy:
+    test_name: distributed_api_test
+    test_suite: xgboost_tests
+
+  frequency: disabled  # nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_small.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/distributed_api_test.py
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+  alert: xgboost_tests
+
+- name: xgboost_ft_small_elastic
+  group: XGBoost
+  working_dir: xgboost_tests
+
+  legacy:
+    test_name: ft_small_elastic
+    test_suite: xgboost_tests
+
+  frequency: disabled  # nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_small.yaml
+
+  run:
+    timeout: 900
+    script: python workloads/ft_small_elastic.py
+
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+  alert: xgboost_tests
+
+- name: xgboost_ft_small_non_elastic
+  group: XGBoost
+  working_dir: xgboost_tests
+
+  legacy:
+    test_name: ft_small_non_elastic
+    test_suite: xgboost_tests
+
+  frequency: disabled  # nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_small.yaml
+
+  run:
+    timeout: 900
+    script: python workloads/ft_small_non_elastic.py
+
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+  alert: xgboost_tests
+
+- name: xgboost_tune_small
+  group: XGBoost
+  working_dir: xgboost_tests
+
+  legacy:
+    test_name: tune_small
+    test_suite: xgboost_tests
+
+  frequency: disabled  # nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_small.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/tune_small.py
+
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+  alert: xgboost_tests
+
+- name: xgboost_tune_32x4
+  group: XGBoost
+  working_dir: xgboost_tests
+
+  legacy:
+    test_name: tune_32x4
+    test_suite: xgboost_tests
+
+  frequency: disabled  # nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_moderate.yaml
+
+  run:
+    timeout: 900
+    script: python workloads/tune_32x4.py
+
+    wait_for_nodes:
+      num_nodes: 32
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+  alert: xgboost_tests
+
+- name: xgboost_tune_4x32
+  group: XGBoost
+  working_dir: xgboost_tests
+
+  legacy:
+    test_name: tune_4x32
+    test_suite: xgboost_tests
+
+  frequency: disabled  # nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_moderate.yaml
+
+  run:
+    timeout: 900
+    script: python workloads/tune_4x32.py
+
+    wait_for_nodes:
+      num_nodes: 32
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+  alert: xgboost_tests
+
+#######################
+# Tune cloud  tests
+#######################
+- name: tune_cloud_aws_no_sync_down
+  group: Tune cloud tests
+  working_dir: tune_tests/cloud_tests
+
+  legacy:
+    test_name: aws_no_sync_down
+    test_suite: tune_cloud_tests
+
+  frequency: disabled  # nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_aws_4x2.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/run_cloud_test.py no_sync_down
+
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+  alert: tune_tests
+
+- name: tune_cloud_aws_ssh_sync
+  group: Tune cloud tests
+  working_dir: tune_tests/cloud_tests
+
+  legacy:
+    test_name: aws_ssh_sync
+    test_suite: tune_cloud_tests
+
+  frequency: disabled  # nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_aws_4x2.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/run_cloud_test.py ssh_sync
+
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+  alert: tune_tests
+
+- name: tune_cloud_aws_durable_upload
+  group: Tune cloud tests
+  working_dir: tune_tests/cloud_tests
+
+  legacy:
+    test_name: aws_durable_upload
+    test_suite: tune_cloud_tests
+
+  frequency: disabled  # nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_aws_4x2.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/run_cloud_test.py durable_upload --bucket s3://data-test-ilr/durable_upload
+
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+  alert: tune_tests
+
+- name: tune_cloud_aws_durable_upload_rllib_str
+  group: Tune cloud tests
+  working_dir: tune_tests/cloud_tests
+
+  legacy:
+    test_name: aws_durable_upload_rllib_str
+    test_suite: tune_cloud_tests
+
+  frequency: disabled  # nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config_ml.yaml
+    cluster_compute: tpl_aws_4x2.yaml
+
+  run:
+    timeout: 600
+
+    script: python workloads/run_cloud_test.py durable_upload --trainable rllib_str
+      --bucket s3://data-test-ilr/durable_upload_rllib_str
+
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+  alert: tune_tests
+
+- name: tune_cloud_aws_durable_upload_rllib_trainer
+  group: Tune cloud tests
+  working_dir: tune_tests/cloud_tests
+
+  legacy:
+    test_name: aws_durable_upload_rllib_trainer
+    test_suite: tune_cloud_tests
+
+  frequency: disabled  # nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config_ml.yaml
+    cluster_compute: tpl_aws_4x2.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/run_cloud_test.py durable_upload --trainable rllib_trainer
+      --bucket s3://data-test-ilr/durable_upload_rllib_trainer
+
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+  alert: tune_tests
+
+- name: tune_cloud_gcp_k8s_no_sync_down
+  group: Tune cloud tests
+  working_dir: tune_tests/cloud_tests
+
+  legacy:
+    test_name: gcp_k8s_no_sync_down
+    test_suite: tune_cloud_tests
+
+  frequency: disabled  # nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_gcp_k8s_4x8.yaml
+    cloud_id: cld_k8WcxPgjUtSE8RVmfZpTLuKM  # anyscale_k8s_gcp_cloud
+
+  run:
+    timeout: 600
+    script: python workloads/run_cloud_test.py no_sync_down --cpus-per-trial 8
+    type: client
+
+  alert: tune_tests
+
+- name: tune_cloud_gcp_k8s_ssh_sync
+  group: Tune cloud tests
+  working_dir: tune_tests/cloud_tests
+
+  legacy:
+    test_name: gcp_k8s_ssh_sync
+    test_suite: tune_cloud_tests
+
+  frequency: disabled  # nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_gcp_k8s_4x8.yaml
+    cloud_id: cld_k8WcxPgjUtSE8RVmfZpTLuKM  # anyscale_k8s_gcp_cloud
+
+  run:
+    timeout: 600
+    script: python workloads/run_cloud_test.py ssh_sync --cpus-per-trial 8
+    type: client
+
+  alert: tune_tests
+
+- name: tune_cloud_gcp_k8s_durable_upload
+  group: Tune cloud tests
+  working_dir: tune_tests/cloud_tests
+
+  legacy:
+    test_name: gcp_k8s_durable_upload
+    test_suite: tune_cloud_tests
+
+  frequency: disabled  # nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_gcp_k8s_4x8.yaml
+    cloud_id: cld_k8WcxPgjUtSE8RVmfZpTLuKM  # anyscale_k8s_gcp_cloud
+
+  run:
+    timeout: 600
+    script: python workloads/run_cloud_test.py durable_upload --cpus-per-trial 8 --bucket gs://jun-riot-test/durable_upload
+    type: client
+
+  alert: tune_tests
+
+
+########################
+# Tune scalability tests
+########################
+
+- name: tune_scalability_bookkeeping_overhead
+  group: Tune scalability tests
+  working_dir: tune_tests/scalability_tests
+
+  legacy:
+    test_name: bookkeeping_overhead
+    test_suite: tune_tests
+
+  frequency: disabled  # nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_1x16.yaml
+
+  run:
+    timeout: 1200
+    script: python workloads/test_bookkeeping_overhead.py
+    type: sdk_command
+    file_manager: sdk
+
+  alert: tune_tests
+
+- name: tune_scalability_durable_trainable
+  group: Tune scalability tests
+  working_dir: tune_tests/scalability_tests
+
+  legacy:
+    test_name: durable_trainable
+    test_suite: tune_tests
+
+  frequency: disabled  # nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_16x2.yaml
+
+  run:
+    timeout: 900
+    script: python workloads/test_durable_trainable.py --bucket data-test-ilr
+    wait_for_nodes:
+      num_nodes: 16
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+  alert: tune_tests
+
+- name: tune_scalability_long_running_large_checkpoints
+  group: Tune scalability tests
+  working_dir: tune_tests/scalability_tests
+
+  legacy:
+    test_name: long_running_large_checkpoints
+    test_suite: tune_tests
+
+  frequency: disabled  # weekly
+  team: ml
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_1x32_hd.yaml
+
+  run:
+    timeout: 86400
+    script: python workloads/test_long_running_large_checkpoints.py
+    long_running: true
+    type: sdk_command
+    file_manager: sdk
+
+  smoke_test:
+    frequency: disabled  # nightly
+
+    run:
+      timeout: 3600
+
+  alert: tune_tests
+
+- name: tune_scalability_network_overhead
+  group: Tune scalability tests
+  working_dir: tune_tests/scalability_tests
+  legacy:
+    test_name: network_overhead
+    test_suite: tune_tests
+
+  frequency: disabled  # weekly
+  team: ml
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_100x2.yaml
+
+  run:
+    timeout: 900
+    prepare_timeout: 1200
+    script: python workloads/test_network_overhead.py
+    wait_for_nodes:
+      num_nodes: 100
+      timeout: 1200
+
+    type: sdk_command
+    file_manager: sdk
+
+  smoke_test:
+    frequency: disabled  # nightly
+
+    cluster:
+      compute_template: tpl_20x2.yaml
+
+    run:
+      timeout: 400
+      prepare_timeout: 600
+      wait_for_nodes:
+        num_nodes: 20
+        timeout: 600
+
+  alert: tune_tests
+
+- name: tune_scalability_result_throughput_cluster
+  group: Tune scalability tests
+  working_dir: tune_tests/scalability_tests
+
+  legacy:
+    test_name: result_throughput_cluster
+    test_suite: tune_tests
+
+  frequency: disabled  # nightly
+  team: ml
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_16x64.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/test_result_throughput_cluster.py
+
+    wait_for_nodes:
+      num_nodes: 16
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+  alert: tune_tests
+
+- name: tune_scalability_result_throughput_single_node
+  group: Tune scalability tests
+  working_dir: tune_tests/scalability_tests
+
+  legacy:
+    test_name: result_throughput_single_node
+    test_suite: tune_tests
+
+  frequency: disabled  # nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_1x96.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/test_result_throughput_single_node.py
+    type: sdk_command
+    file_manager: sdk
+
+  alert: tune_tests
+
+- name: tune_scalability_xgboost_sweep
+  group: Tune scalability tests
+  working_dir: tune_tests/scalability_tests
+
+  legacy:
+    test_name: xgboost_sweep
+    test_suite: tune_tests
+
+  frequency: disabled  # weekly
+  team: ml
+
+  cluster:
+    cluster_env: app_config_data.yaml
+    cluster_compute: tpl_16x64.yaml
+
+  run:
+    timeout: 3600
+    script: python workloads/test_xgboost_sweep.py
+
+    wait_for_nodes:
+      num_nodes: 16
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+  alert: tune_tests
+

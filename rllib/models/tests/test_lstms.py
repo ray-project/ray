@@ -21,15 +21,19 @@ class TestLSTMs(unittest.TestCase):
         config = {
             "env": RandomEnv,
             "env_config": {
-                "action_space": Dict({
-                    "a": Box(-1.0, 1.0, ()),
-                    "b": Box(-1.0, 1.0, (2, )),
-                    "c": Tuple([
-                        Discrete(2),
-                        MultiDiscrete([2, 3]),
-                        Box(-1.0, 1.0, (3, )),
-                    ]),
-                }),
+                "action_space": Dict(
+                    {
+                        "a": Box(-1.0, 1.0, ()),
+                        "b": Box(-1.0, 1.0, (2,)),
+                        "c": Tuple(
+                            [
+                                Discrete(2),
+                                MultiDiscrete([2, 3]),
+                                Box(-1.0, 1.0, (3,)),
+                            ]
+                        ),
+                    }
+                ),
             },
             # Need to set this to True to enable complex (prev.) actions
             # as inputs to the LSTM.
@@ -48,14 +52,11 @@ class TestLSTMs(unittest.TestCase):
             "num_workers": 1,
         }
         for _ in framework_iterator(config):
-            tune.run(
-                "PPO",
-                config=config,
-                stop={"training_iteration": 1},
-                verbose=1)
+            tune.run("PPO", config=config, stop={"training_iteration": 1}, verbose=1)
 
 
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

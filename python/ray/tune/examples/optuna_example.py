@@ -15,7 +15,7 @@ from ray.tune.suggest.optuna import OptunaSearch
 
 
 def evaluation_fn(step, width, height):
-    return (0.1 + width * step / 100)**(-1) + height * 0.1
+    return (0.1 + width * step / 100) ** (-1) + height * 0.1
 
 
 def easy_objective(config):
@@ -46,8 +46,9 @@ def run_optuna_tune(smoke_test=False):
             "width": tune.uniform(0, 20),
             "height": tune.uniform(-100, 100),
             # This is an ignored parameter.
-            "activation": tune.choice(["relu", "tanh"])
-        })
+            "activation": tune.choice(["relu", "tanh"]),
+        },
+    )
 
     print("Best hyperparameters found were: ", analysis.best_config)
 
@@ -57,14 +58,15 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
+        "--smoke-test", action="store_true", help="Finish quickly for testing"
+    )
     parser.add_argument(
         "--server-address",
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using "
-        "Ray Client.")
+        help="The address of server to connect to if using " "Ray Client.",
+    )
     args, _ = parser.parse_known_args()
     if args.server_address is not None:
         ray.init(f"ray://{args.server_address}")

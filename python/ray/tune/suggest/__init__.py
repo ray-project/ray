@@ -13,66 +13,79 @@ def _import_variant_generator():
 
 def _import_ax_search():
     from ray.tune.suggest.ax import AxSearch
+
     return AxSearch
 
 
 def _import_blendsearch_search():
     from ray.tune.suggest.flaml import BlendSearch
+
     return BlendSearch
 
 
 def _import_cfo_search():
     from ray.tune.suggest.flaml import CFO
+
     return CFO
 
 
 def _import_dragonfly_search():
     from ray.tune.suggest.dragonfly import DragonflySearch
+
     return DragonflySearch
 
 
 def _import_skopt_search():
     from ray.tune.suggest.skopt import SkOptSearch
+
     return SkOptSearch
 
 
 def _import_hyperopt_search():
     from ray.tune.suggest.hyperopt import HyperOptSearch
+
     return HyperOptSearch
 
 
 def _import_bayesopt_search():
     from ray.tune.suggest.bayesopt import BayesOptSearch
+
     return BayesOptSearch
 
 
 def _import_bohb_search():
     from ray.tune.suggest.bohb import TuneBOHB
+
     return TuneBOHB
 
 
 def _import_nevergrad_search():
     from ray.tune.suggest.nevergrad import NevergradSearch
+
     return NevergradSearch
 
 
 def _import_optuna_search():
     from ray.tune.suggest.optuna import OptunaSearch
+
     return OptunaSearch
 
 
 def _import_zoopt_search():
     from ray.tune.suggest.zoopt import ZOOptSearch
+
     return ZOOptSearch
 
 
 def _import_sigopt_search():
     from ray.tune.suggest.sigopt import SigOptSearch
+
     return SigOptSearch
 
 
 def _import_hebo_search():
     from ray.tune.suggest.hebo import HEBOSearch
+
     return HEBOSearch
 
 
@@ -96,8 +109,8 @@ SEARCH_ALG_IMPORT = {
 
 
 def create_searcher(
-        search_alg,
-        **kwargs,
+    search_alg,
+    **kwargs,
 ):
     """Instantiate a search algorithm based on the given string.
 
@@ -120,9 +133,11 @@ def create_searcher(
 
     search_alg = search_alg.lower()
     if search_alg not in SEARCH_ALG_IMPORT:
-        raise ValueError(f"The `search_alg` argument must be one of "
-                         f"{list(SEARCH_ALG_IMPORT)}. "
-                         f"Got: {search_alg}")
+        raise ValueError(
+            f"The `search_alg` argument must be one of "
+            f"{list(SEARCH_ALG_IMPORT)}. "
+            f"Got: {search_alg}"
+        )
 
     SearcherClass = SEARCH_ALG_IMPORT[search_alg]()
 
@@ -133,31 +148,46 @@ def create_searcher(
 
 
 __all__ = [
-    "SearchAlgorithm", "Searcher", "BasicVariantGenerator", "SearchGenerator",
-    "grid_search", "Repeater", "ConcurrencyLimiter"
+    "SearchAlgorithm",
+    "Searcher",
+    "BasicVariantGenerator",
+    "SearchGenerator",
+    "grid_search",
+    "Repeater",
+    "ConcurrencyLimiter",
 ]
 
 
 def BayesOptSearch(*args, **kwargs):
-    raise DeprecationWarning("""This class has been moved. Please import via
-        `from ray.tune.suggest.bayesopt import BayesOptSearch`""")
+    raise DeprecationWarning(
+        """This class has been moved. Please import via
+        `from ray.tune.suggest.bayesopt import BayesOptSearch`"""
+    )
 
 
 def HyperOptSearch(*args, **kwargs):
-    raise DeprecationWarning("""This class has been moved. Please import via
-        `from ray.tune.suggest.hyperopt import HyperOptSearch`""")
+    raise DeprecationWarning(
+        """This class has been moved. Please import via
+        `from ray.tune.suggest.hyperopt import HyperOptSearch`"""
+    )
 
 
 def NevergradSearch(*args, **kwargs):
-    raise DeprecationWarning("""This class has been moved. Please import via
-        `from ray.tune.suggest.nevergrad import NevergradSearch`""")
+    raise DeprecationWarning(
+        """This class has been moved. Please import via
+        `from ray.tune.suggest.nevergrad import NevergradSearch`"""
+    )
 
 
 def SkOptSearch(*args, **kwargs):
-    raise DeprecationWarning("""This class has been moved. Please import via
-        `from ray.tune.suggest.skopt import SkOptSearch`""")
+    raise DeprecationWarning(
+        """This class has been moved. Please import via
+        `from ray.tune.suggest.skopt import SkOptSearch`"""
+    )
 
 
 def SigOptSearch(*args, **kwargs):
-    raise DeprecationWarning("""This class has been moved. Please import via
-        `from ray.tune.suggest.sigopt import SigOptSearch`""")
+    raise DeprecationWarning(
+        """This class has been moved. Please import via
+        `from ray.tune.suggest.sigopt import SigOptSearch`"""
+    )

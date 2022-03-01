@@ -20,6 +20,11 @@ namespace ray {
 namespace core {
 
 bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
+  if (object_id.TaskId().IsForActorCreationTask()) {
+    // The GCS manages all actor restarts, so we should never try to
+    // reconstruct an actor here.
+    return true;
+  }
   // Check the ReferenceCounter to see if there is a location for the object.
   bool owned_by_us = false;
   NodeID pinned_at;
@@ -38,7 +43,8 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   }
 
   bool already_pending_recovery = true;
-  if (pinned_at.IsNil() && !spilled) {
+  bool requires_recovery = pinned_at.IsNil() && !spilled;
+  if (requires_recovery) {
     {
       absl::MutexLock lock(&mu_);
       // Mark that we are attempting recovery for this object to prevent
@@ -61,8 +67,11 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
         [this](const ObjectID &object_id, const std::vector<rpc::Address> &locations) {
           PinOrReconstructObject(object_id, locations);
         }));
-  } else {
+  } else if (requires_recovery) {
     RAY_LOG(DEBUG) << "Recovery already started for object " << object_id;
+  } else {
+    RAY_LOG(DEBUG) << "Object " << object_id
+                   << " has a pinned or spilled location, skipping recovery";
   }
   return true;
 }

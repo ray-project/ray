@@ -43,10 +43,6 @@ class MockCoreWorker : public CoreWorker {
               (const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
-  MOCK_METHOD(void, HandleStealTasks,
-              (const rpc::StealTasksRequest &request, rpc::StealTasksReply *reply,
-               rpc::SendReplyCallback send_reply_callback),
-              (override));
   MOCK_METHOD(void, HandleDirectActorCallArgWaitComplete,
               (const rpc::DirectActorCallArgWaitCompleteRequest &request,
                rpc::DirectActorCallArgWaitCompleteReply *reply,

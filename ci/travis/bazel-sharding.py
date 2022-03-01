@@ -54,7 +54,8 @@ def get_target_expansion_query(targets, tests_only, exclude_manual):
 
     if exclude_manual:
         query = '{} except tests(attr("tags", "manual", set({})))'.format(
-            query, included_targets)
+            query, included_targets
+        )
 
     return query
 
@@ -82,17 +83,16 @@ def get_targets_for_shard(targets, index, count):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Expand and shard Bazel targets.")
+    parser = argparse.ArgumentParser(description="Expand and shard Bazel targets.")
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--tests_only", action="store_true")
     parser.add_argument("--exclude_manual", action="store_true")
     parser.add_argument(
-        "--index", type=int, default=os.getenv("BUILDKITE_PARALLEL_JOB", 1))
+        "--index", type=int, default=os.getenv("BUILDKITE_PARALLEL_JOB", 1)
+    )
     parser.add_argument(
-        "--count",
-        type=int,
-        default=os.getenv("BUILDKITE_PARALLEL_JOB_COUNT", 1))
+        "--count", type=int, default=os.getenv("BUILDKITE_PARALLEL_JOB_COUNT", 1)
+    )
     parser.add_argument("targets", nargs="+")
     args, extra_args = parser.parse_known_args()
     args.targets = list(args.targets) + list(extra_args)
@@ -100,11 +100,11 @@ def main():
     if args.index >= args.count:
         parser.error("--index must be between 0 and {}".format(args.count - 1))
 
-    query = get_target_expansion_query(args.targets, args.tests_only,
-                                       args.exclude_manual)
+    query = get_target_expansion_query(
+        args.targets, args.tests_only, args.exclude_manual
+    )
     expanded_targets = run_bazel_query(query, args.debug)
-    my_targets = get_targets_for_shard(expanded_targets, args.index,
-                                       args.count)
+    my_targets = get_targets_for_shard(expanded_targets, args.index, args.count)
     print(" ".join(my_targets))
 
     return 0

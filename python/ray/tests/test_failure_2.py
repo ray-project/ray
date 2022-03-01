@@ -10,84 +10,19 @@ import pytest
 
 import ray
 from ray.experimental.internal_kv import _internal_kv_get
-from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR
+from ray.ray_constants import DEBUG_AUTOSCALING_ERROR
 import ray._private.utils
-from ray.util.placement_group import placement_group
 import ray.ray_constants as ray_constants
 from ray.cluster_utils import cluster_not_supported
 import ray._private.gcs_pubsub as gcs_pubsub
 from ray._private.test_utils import (
-    init_error_pubsub, get_error_message, get_log_batch, Semaphore,
-    wait_for_condition, run_string_as_driver_nonblocking)
-
-
-def test_warning_for_infeasible_tasks(ray_start_regular, error_pubsub):
-    p = error_pubsub
-    # Check that we get warning messages for infeasible tasks.
-
-    @ray.remote(num_gpus=1)
-    def f():
-        pass
-
-    @ray.remote(resources={"Custom": 1})
-    class Foo:
-        pass
-
-    # This task is infeasible.
-    f.remote()
-    errors = get_error_message(p, 1, ray_constants.INFEASIBLE_TASK_ERROR)
-    assert len(errors) == 1
-    assert errors[0].type == ray_constants.INFEASIBLE_TASK_ERROR
-
-    # This actor placement task is infeasible.
-    foo = Foo.remote()
-    print(foo)
-    errors = get_error_message(p, 1, ray_constants.INFEASIBLE_TASK_ERROR)
-    assert len(errors) == 1
-    assert errors[0].type == ray_constants.INFEASIBLE_TASK_ERROR
-
-    # Placement group cannot be made, but no warnings should occur.
-    total_cpus = ray.cluster_resources()["CPU"]
-
-    # Occupy one cpu by an actor
-    @ray.remote(num_cpus=1)
-    class A:
-        pass
-
-    a = A.remote()
-    print(a)
-
-    @ray.remote(num_cpus=total_cpus)
-    def g():
-        pass
-
-    pg = placement_group([{"CPU": total_cpus}], strategy="STRICT_PACK")
-    g.options(placement_group=pg).remote()
-
-    errors = get_error_message(
-        p, 1, ray_constants.INFEASIBLE_TASK_ERROR, timeout=5)
-    assert len(errors) == 0, errors
-
-
-def test_warning_for_infeasible_zero_cpu_actor(shutdown_only):
-    # Check that we cannot place an actor on a 0 CPU machine and that we get an
-    # infeasibility warning (even though the actor creation task itself
-    # requires no CPUs).
-
-    ray.init(num_cpus=0)
-    p = init_error_pubsub()
-
-    @ray.remote
-    class Foo:
-        pass
-
-    # The actor creation should be infeasible.
-    a = Foo.remote()
-    errors = get_error_message(p, 1, ray_constants.INFEASIBLE_TASK_ERROR)
-    assert len(errors) == 1
-    assert errors[0].type == ray_constants.INFEASIBLE_TASK_ERROR
-    p.close()
-    del a
+    init_error_pubsub,
+    get_error_message,
+    get_log_batch,
+    Semaphore,
+    wait_for_condition,
+    run_string_as_driver_nonblocking,
+)
 
 
 def test_warning_for_too_many_actors(shutdown_only):
@@ -128,10 +63,12 @@ def test_warning_for_too_many_nested_tasks(shutdown_only):
     remote_wait = Semaphore.remote(value=0)
     nested_wait = Semaphore.remote(value=0)
 
-    ray.get([
-        remote_wait.locked.remote(),
-        nested_wait.locked.remote(),
-    ])
+    ray.get(
+        [
+            remote_wait.locked.remote(),
+            nested_wait.locked.remote(),
+        ]
+    )
 
     @ray.remote(num_cpus=0.25)
     def f():
@@ -184,6 +121,7 @@ def test_warning_for_many_duplicate_remote_functions_and_actors(shutdown_only):
         ray.get(create_remote_function.remote())
 
     import io
+
     log_capture_string = io.StringIO()
     ch = logging.StreamHandler(log_capture_string)
 
@@ -204,8 +142,12 @@ def test_warning_for_many_duplicate_remote_functions_and_actors(shutdown_only):
     ray._private.import_thread.logger.removeHandler(ch)
 
     assert "remote function" in log_contents
-    assert "has been exported {} times.".format(
-        ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD) in log_contents
+    assert (
+        "has been exported {} times.".format(
+            ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD
+        )
+        in log_contents
+    )
 
     # Now test the same thing but for actors.
 
@@ -240,8 +182,12 @@ def test_warning_for_many_duplicate_remote_functions_and_actors(shutdown_only):
     ray._private.import_thread.logger.removeHandler(ch)
 
     assert "actor" in log_contents
-    assert "has been exported {} times.".format(
-        ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD) in log_contents
+    assert (
+        "has been exported {} times.".format(
+            ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD
+        )
+        in log_contents
+    )
 
 
 # Note that this test will take at least 10 seconds because it must wait for
@@ -272,18 +218,21 @@ def test_warning_for_dead_node(ray_start_cluster_2_nodes, error_pubsub):
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Killing process on Windows does not raise a signal")
+    sys.platform == "win32", reason="Killing process on Windows does not raise a signal"
+)
 def test_warning_for_dead_autoscaler(ray_start_regular, error_pubsub):
     # Terminate the autoscaler process.
     from ray.worker import _global_node
-    autoscaler_process = _global_node.all_processes[
-        ray_constants.PROCESS_TYPE_MONITOR][0].process
+
+    autoscaler_process = _global_node.all_processes[ray_constants.PROCESS_TYPE_MONITOR][
+        0
+    ].process
     autoscaler_process.terminate()
 
     # Confirm that we receive an autoscaler failure error.
     errors = get_error_message(
-        error_pubsub, 1, ray_constants.MONITOR_DIED_ERROR, timeout=5)
+        error_pubsub, 1, ray_constants.MONITOR_DIED_ERROR, timeout=5
+    )
     assert len(errors) == 1
 
     # Confirm that the autoscaler failure error is stored.
@@ -308,21 +257,26 @@ def test_raylet_crash_when_get(ray_start_regular):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster", [{
-        "num_nodes": 1,
-        "num_cpus": 2,
-    }, {
-        "num_nodes": 2,
-        "num_cpus": 1,
-    }],
-    indirect=True)
+    "ray_start_cluster",
+    [
+        {
+            "num_nodes": 1,
+            "num_cpus": 2,
+        },
+        {
+            "num_nodes": 2,
+            "num_cpus": 1,
+        },
+    ],
+    indirect=True,
+)
 def test_eviction(ray_start_cluster):
     @ray.remote
     def large_object():
         return np.zeros(10 * 1024 * 1024)
 
     obj = large_object.remote()
-    assert (isinstance(ray.get(obj), np.ndarray))
+    assert isinstance(ray.get(obj), np.ndarray)
     # Evict the object.
     ray.internal.free([obj])
     # ray.get throws an exception.
@@ -340,14 +294,19 @@ def test_eviction(ray_start_cluster):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster", [{
-        "num_nodes": 2,
-        "num_cpus": 1,
-    }, {
-        "num_nodes": 1,
-        "num_cpus": 2,
-    }],
-    indirect=True)
+    "ray_start_cluster",
+    [
+        {
+            "num_nodes": 2,
+            "num_cpus": 1,
+        },
+        {
+            "num_nodes": 1,
+            "num_cpus": 2,
+        },
+    ],
+    indirect=True,
+)
 def test_serialized_id(ray_start_cluster):
     @ray.remote
     def small_object():
@@ -383,9 +342,10 @@ def test_serialized_id(ray_start_cluster):
 
 
 @pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
-@pytest.mark.parametrize("use_actors,node_failure",
-                         [(False, False), (False, True), (True, False),
-                          (True, True)])
+@pytest.mark.parametrize(
+    "use_actors,node_failure",
+    [(False, False), (False, True), (True, False), (True, True)],
+)
 def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
     config = {
         "num_heartbeats_timeout": 10,
@@ -466,16 +426,15 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "_system_config": {
-            "gcs_rpc_server_reconnect_timeout_s": 100
-        }
-    }],
-    indirect=True)
+    "ray_start_regular",
+    [{"_system_config": {"gcs_rpc_server_reconnect_timeout_s": 100}}],
+    indirect=True,
+)
 @pytest.mark.skipif(
     gcs_pubsub.gcs_pubsub_enabled(),
     reason="Logs are streamed via GCS pubsub when it is enabled, so logs "
-    "cannot be delivered after GCS is killed.")
+    "cannot be delivered after GCS is killed.",
+)
 def test_gcs_server_failiure_report(ray_start_regular, log_pubsub):
     # Get gcs server pid to send a signal.
     all_processes = ray.worker._global_node.all_processes
@@ -502,8 +461,8 @@ def test_list_named_actors_timeout(monkeypatch, shutdown_only):
         # defer for 3s
         m.setenv(
             "RAY_testing_asio_delay_us",
-            "ActorInfoGcsService.grpc_server.ListNamedActors"
-            "=3000000:3000000")
+            "ActorInfoGcsService.grpc_server.ListNamedActors" "=3000000:3000000",
+        )
         ray.init(_system_config={"gcs_server_request_timeout_seconds": 1})
 
         @ray.remote
@@ -516,8 +475,7 @@ def test_list_named_actors_timeout(monkeypatch, shutdown_only):
             ray.util.list_named_actors()
 
 
-def test_raylet_node_manager_server_failure(ray_start_cluster_head,
-                                            log_pubsub):
+def test_raylet_node_manager_server_failure(ray_start_cluster_head, log_pubsub):
     cluster = ray_start_cluster_head
     redis_port = int(cluster.address.split(":")[1])
     # Reuse redis port to make node manager grpc server fail to start.
@@ -527,8 +485,8 @@ def test_raylet_node_manager_server_failure(ray_start_cluster_head,
     # wait for max 10 seconds.
     def matcher(log_batch):
         return log_batch["pid"] == "raylet" and any(
-            "Failed to start the grpc server." in line
-            for line in log_batch["lines"])
+            "Failed to start the grpc server." in line for line in log_batch["lines"]
+        )
 
     match = get_log_batch(log_pubsub, 1, timeout=10, matcher=matcher)
     assert len(match) > 0
@@ -540,9 +498,8 @@ def test_gcs_server_crash_cluster(ray_start_cluster):
     GCS_RECONNECTION_TIMEOUT = 5
     node = cluster.add_node(
         num_cpus=0,
-        _system_config={
-            "gcs_rpc_server_reconnect_timeout_s": GCS_RECONNECTION_TIMEOUT
-        })
+        _system_config={"gcs_rpc_server_reconnect_timeout_s": GCS_RECONNECTION_TIMEOUT},
+    )
 
     script = """
 import ray
@@ -577,4 +534,5 @@ time.sleep(60)
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

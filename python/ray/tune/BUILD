@@ -135,6 +135,14 @@ py_test(
 )
 
 py_test(
+    name = "test_integration_comet",
+    size = "small",
+    srcs = ["tests/test_integration_comet.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_I"],
+)
+
+py_test(
     name = "test_integration_docker",
     size = "small",
     srcs = ["tests/test_integration_docker.py"],
@@ -200,7 +208,7 @@ py_test(
 
 py_test(
     name = "test_ray_trial_executor",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_ray_trial_executor.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_R"],
@@ -322,6 +330,14 @@ py_test(
     name = "test_trial_scheduler_pbt",
     size = "large",
     srcs = ["tests/test_trial_scheduler_pbt.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
+)
+
+py_test(
+    name = "test_trial_scheduler_resource_changing",
+    size = "small",
+    srcs = ["tests/test_trial_scheduler_resource_changing.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_T"],
 )
@@ -570,15 +586,6 @@ py_test(
 )
 
 py_test(
-    name = "hyperopt_example",
-    size = "medium",
-    srcs = ["examples/hyperopt_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
-py_test(
     name = "hyperopt_conditional_search_space_example",
     size = "medium",
     srcs = ["examples/hyperopt_conditional_search_space_example.py"],
@@ -586,7 +593,6 @@ py_test(
     tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
 )
-
 
 py_test(
     name = "lightgbm_example",

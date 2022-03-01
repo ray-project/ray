@@ -16,22 +16,24 @@ PATH = [
 
 def create_parser():
     parser = argparse.ArgumentParser(description="Dataset shuffle")
-    parser.add_argument(
-        "--address", type=str, default=os.environ["RAY_ADDRESS"])
+    parser.add_argument("--address", type=str, default=os.environ["RAY_ADDRESS"])
     parser.add_argument(
         "--batch-size",
         type=int,
         default=250000,
         metavar="N",
-        help="input batch size for training (default: 250000)")
+        help="input batch size for training (default: 250000)",
+    )
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--repeat-times", type=int, default=16)
     return parser
 
 
 def create_torch_iterator(split, batch_size, rank=None):
-    print(f"Creating Torch shuffling dataset for worker {rank} with "
-          f"{batch_size} batch size.")
+    print(
+        f"Creating Torch shuffling dataset for worker {rank} with "
+        f"{batch_size} batch size."
+    )
     numpy_to_torch_dtype = {
         np.bool: torch.bool,
         np.uint8: torch.uint8,
@@ -43,7 +45,7 @@ def create_torch_iterator(split, batch_size, rank=None):
         np.float32: torch.float32,
         np.float64: torch.float64,
         np.complex64: torch.complex64,
-        np.complex128: torch.complex128
+        np.complex128: torch.complex128,
     }
     DATA_SPEC = {
         "embeddings_name0": (0, 2385, np.int64),
@@ -68,9 +70,7 @@ def create_torch_iterator(split, batch_size, rank=None):
         "labels": (0, 1, np.float64),
     }
     feature_columns = list(DATA_SPEC.keys())
-    feature_types = [
-        numpy_to_torch_dtype[dtype] for _, _, dtype in DATA_SPEC.values()
-    ]
+    feature_types = [numpy_to_torch_dtype[dtype] for _, _, dtype in DATA_SPEC.values()]
     label_column = feature_columns.pop()
     label_type = feature_types.pop()
     torch_iterator = split.to_torch(
@@ -84,8 +84,11 @@ def create_torch_iterator(split, batch_size, rank=None):
 
 
 def create_dataset(filenames, repeat_times):
-    pipeline = ray.data.read_parquet(list(filenames))\
-        .repeat(times=repeat_times).random_shuffle_each_window()
+    pipeline = (
+        ray.data.read_parquet(list(filenames))
+        .repeat(times=repeat_times)
+        .random_shuffle_each_window()
+    )
     return pipeline
 
 
@@ -102,8 +105,7 @@ if __name__ == "__main__":
 
     @ray.remote(num_gpus=1)
     def consume(split, rank=None, batch_size=None):
-        torch_iterator = create_torch_iterator(
-            split, batch_size=batch_size, rank=rank)
+        torch_iterator = create_torch_iterator(split, batch_size=batch_size, rank=rank)
         for i, (x, y) in enumerate(torch_iterator):
             time.sleep(1)
             if i % 10 == 0:

@@ -38,10 +38,11 @@ class StandaloneSerializationContext:
     def _unregister_cloudpickle_reducer(self, cls):
         pickle.CloudPickler.dispatch.pop(cls, None)
 
-    def _register_cloudpickle_serializer(self, cls, custom_serializer,
-                                         custom_deserializer):
+    def _register_cloudpickle_serializer(
+        self, cls, custom_serializer, custom_deserializer
+    ):
         def _CloudPicklerReducer(obj):
-            return custom_deserializer, (custom_serializer(obj), )
+            return custom_deserializer, (custom_serializer(obj),)
 
         # construct a reducer
         pickle.CloudPickler.dispatch[cls] = _CloudPicklerReducer
