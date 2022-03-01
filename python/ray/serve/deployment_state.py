@@ -1,5 +1,6 @@
 from collections import defaultdict, OrderedDict
 from enum import Enum
+import itertools
 import json
 import math
 import os
@@ -88,6 +89,34 @@ def print_verbose_scaling_log():
     logger.error(f"Scaling information\n{json.dumps(debug_info, indent=2)}")
 
 
+def rank_replicas_for_stopping(
+    all_available_replicas: List["DeploymentReplica"],
+) -> List["DeploymentReplica"]:
+    """Prioritize replicas that have fewest copies on a node.
+
+    This algorithm helps to scale down more intelligently because it can
+    relinquish node faster. Note that this algorithm doesn't consider other
+    deployments or other actors on the same node. See more at
+    https://github.com/ray-project/ray/issues/20599.
+    """
+    # Categorize replicas to node they belong to.
+    node_to_replicas = defaultdict(list)
+    for replica in all_available_replicas:
+        node_to_replicas[replica.actor_node_id].append(replica)
+
+    # Replicas not in running state might have _node_id = None.
+    # We will prioritize those first.
+    node_to_replicas.setdefault(None, [])
+    return list(
+        itertools.chain.from_iterable(
+            [
+                node_to_replicas.pop(None),
+            ]
+            + sorted(node_to_replicas.values(), key=lambda lst: len(lst))
+        )
+    )
+
+
 class ActorReplicaWrapper:
     """Wraps a Ray actor for a deployment replica.
 
@@ -132,6 +161,9 @@ class ActorReplicaWrapper:
         self._actor_handle: ActorHandle = None
         self._placement_group: PlacementGroup = None
 
+        # Populated after replica is allocated.
+        self._node_id: str = None
+
         # Populated in self.stop().
         self._graceful_shutdown_ref: ObjectRef = None
 
@@ -158,6 +190,11 @@ class ActorReplicaWrapper:
     @property
     def max_concurrent_queries(self) -> int:
         return self._max_concurrent_queries
+
+    @property
+    def node_id(self) -> Optional[str]:
+        """Returns the node id of the actor, None if not placed."""
+        return self._node_id
 
     def _check_obj_ref_ready(self, obj_ref: ObjectRef) -> bool:
         ready, _ = ray.wait([obj_ref], timeout=0)
@@ -330,6 +367,7 @@ class ActorReplicaWrapper:
                 )
                 self._health_check_period_s = deployment_config.health_check_period_s
                 self._health_check_timeout_s = deployment_config.health_check_timeout_s
+                self._node_id = ray.get(self._allocated_obj_ref)
             except Exception:
                 logger.exception(f"Exception in deployment '{self._deployment_name}'")
                 return ReplicaStartupStatus.FAILED, None
@@ -564,6 +602,11 @@ class DeploymentReplica(VersionedReplica):
     def actor_handle(self) -> ActorHandle:
         return self._actor.actor_handle
 
+    @property
+    def actor_node_id(self) -> Optional[str]:
+        """Returns the node id of the actor, None if not placed."""
+        return self._actor.node_id
+
     def start(self, deployment_info: DeploymentInfo, version: DeploymentVersion):
         """
         Start a new actor for current DeploymentReplica instance.
@@ -709,6 +752,9 @@ class ReplicaStateContainer:
         exclude_version: Optional[DeploymentVersion] = None,
         states: Optional[List[ReplicaState]] = None,
         max_replicas: Optional[int] = math.inf,
+        ranking_function: Optional[
+            Callable[[List["DeploymentReplica"]], List["DeploymentReplica"]]
+        ] = None,
     ) -> List[VersionedReplica]:
         """Get and remove all replicas of the given states.
 
@@ -722,6 +768,9 @@ class ReplicaStateContainer:
                 are considered.
             max_replicas (int): max number of replicas to return. If not
                 specified, will pop all replicas matching the criteria.
+            ranking_function (callable): optional function to sort the replicas
+                within each state before they are truncated to max_replicas and
+                returned.
         """
         if states is None:
             states = ALL_REPLICA_STATES
@@ -733,7 +782,12 @@ class ReplicaStateContainer:
         for state in states:
             popped = []
             remaining = []
-            for replica in self._replicas[state]:
+
+            replicas_to_process = self._replicas[state]
+            if ranking_function:
+                replicas_to_process = ranking_function(replicas_to_process)
+
+            for replica in replicas_to_process:
                 if len(replicas) + len(popped) == max_replicas:
                     remaining.append(replica)
                 elif exclude_version is not None and replica.version == exclude_version:
@@ -1022,6 +1076,7 @@ class DeploymentState:
             exclude_version=self._target_version,
             states=[ReplicaState.STARTING, ReplicaState.RUNNING],
             max_replicas=max_to_stop,
+            ranking_function=rank_replicas_for_stopping,
         )
 
         replicas_stopped = False
@@ -1134,6 +1189,7 @@ class DeploymentState:
                     ReplicaState.RUNNING,
                 ],
                 max_replicas=to_remove,
+                ranking_function=rank_replicas_for_stopping,
             )
 
             for replica in replicas_to_stop:

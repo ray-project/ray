@@ -204,5 +204,37 @@ int64_t SchedulingPolicy::HybridPolicy(const ResourceRequest &resource_request,
                                 require_available, is_node_available);
 }
 
+int64_t SchedulingPolicy::RandomPolicy(const ResourceRequest &resource_request,
+                                       std::function<bool(int64_t)> is_node_available) {
+  int64_t best_node = -1;
+  if (nodes_.empty()) {
+    return best_node;
+  }
+
+  std::uniform_int_distribution<int> distribution(0, nodes_.size() - 1);
+  int idx = distribution(gen_);
+  auto iter = std::next(nodes_.begin(), idx);
+  for (size_t i = 0; i < nodes_.size(); ++i) {
+    // TODO(scv119): if there are a lot of nodes died or can't fulfill the resource
+    // requirement, the distribution might not be even.
+    const auto &node_id = iter->first;
+    const auto &node = iter->second;
+    if (is_node_available(node_id) && node.GetLocalView().IsFeasible(resource_request) &&
+        node.GetLocalView().IsAvailable(resource_request,
+                                        /*ignore_pull_manager_at_capacity*/ true)) {
+      best_node = iter->first;
+      break;
+    }
+    ++iter;
+    if (iter == nodes_.end()) {
+      iter = nodes_.begin();
+    }
+  }
+  RAY_LOG(DEBUG) << "RandomPolicy, best_node = " << best_node
+                 << ", # nodes = " << nodes_.size()
+                 << ", resource_request = " << resource_request.DebugString();
+  return best_node;
+}
+
 }  // namespace raylet_scheduling_policy
 }  // namespace ray
