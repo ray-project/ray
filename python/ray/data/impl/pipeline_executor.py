@@ -37,7 +37,9 @@ class PipelineExecutor:
         # the PipelineExecutor during a node failure.
         local_node_resource = "node:{}".format(ray.util.get_node_ip_address())
         self._stage_runners = [
-            _StageRunner.options(resources={local_node_resource: 0.0001}).remote()
+            _StageRunner.options(
+                resources={local_node_resource: 0.0001}, placement_group=None
+            ).remote()
             for _ in self._stages
         ]
         self._iter = iter(self._pipeline._base_iterable)
