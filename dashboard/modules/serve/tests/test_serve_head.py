@@ -71,16 +71,20 @@ def test_put_get_success(ray_start_stop):
         deployments = [shallow, deep, one]
 
         put_response = requests.put(
-            GET_OR_PUT_URL, json={"deployments": deployments}, timeout=60
+            GET_OR_PUT_URL, json={"deployments": deployments}, timeout=30
         )
         assert put_response.status_code == 200
         assert (
-            requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
+            requests.get("http://localhost:8000/shallow", timeout=30).text
+            == "Hello shallow world!"
         )
-        assert requests.get("http://localhost:8000/deep").text == "Hello deep world!"
-        assert requests.get("http://localhost:8000/one").text == "2"
+        assert (
+            requests.get("http://localhost:8000/deep", timeout=30).text
+            == "Hello deep world!"
+        )
+        assert requests.get("http://localhost:8000/one", timeout=30).text == "2"
 
-        get_response = requests.get(GET_OR_PUT_URL, timeout=60)
+        get_response = requests.get(GET_OR_PUT_URL, timeout=30)
         assert get_response.status_code == 200
 
         with open("three_deployments_response.json", "r") as f:
@@ -90,16 +94,17 @@ def test_put_get_success(ray_start_stop):
 
         deployments = [shallow, one]
         put_response = requests.put(
-            GET_OR_PUT_URL, json={"deployments": deployments}, timeout=60
+            GET_OR_PUT_URL, json={"deployments": deployments}, timeout=30
         )
         assert put_response.status_code == 200
         assert (
-            requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
+            requests.get("http://localhost:8000/shallow", timeout=30).text
+            == "Hello shallow world!"
         )
-        assert requests.get("http://localhost:8000/deep").status_code == 404
-        assert requests.get("http://localhost:8000/one").text == "2"
+        assert requests.get("http://localhost:8000/deep", timeout=30).status_code == 404
+        assert requests.get("http://localhost:8000/one", timeout=30).text == "2"
 
-        get_response = requests.get(GET_OR_PUT_URL, timeout=60)
+        get_response = requests.get(GET_OR_PUT_URL, timeout=30)
         assert get_response.status_code == 200
 
         with open("two_deployments_response.json", "r") as f:
@@ -129,18 +134,19 @@ def test_delete_success(ray_start_stop):
     # Ensure the REST API is idempotent
     for _ in range(2):
         put_response = requests.put(
-            GET_OR_PUT_URL, json={"deployments": [shallow]}, timeout=60
+            GET_OR_PUT_URL, json={"deployments": [shallow]}, timeout=30
         )
         assert put_response.status_code == 200
         assert (
-            requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
+            requests.get("http://localhost:8000/shallow", timeout=30).text
+            == "Hello shallow world!"
         )
 
-        delete_response = requests.delete(GET_OR_PUT_URL, timeout=60)
+        delete_response = requests.delete(GET_OR_PUT_URL, timeout=30)
         assert delete_response.status_code == 200
 
         # Make sure no deployments exist
-        get_response = requests.get(GET_OR_PUT_URL, timeout=60)
+        get_response = requests.get(GET_OR_PUT_URL, timeout=30)
         assert len(json.loads(get_response.json())["deployments"]) == 0
 
 
@@ -173,11 +179,11 @@ def test_get_status_info(ray_start_stop):
     deployments = [shallow, deep, one]
 
     put_response = requests.put(
-        GET_OR_PUT_URL, json={"deployments": deployments}, timeout=60
+        GET_OR_PUT_URL, json={"deployments": deployments}, timeout=30
     )
     assert put_response.status_code == 200
 
-    status_response = requests.get(STATUS_URL, timeout=60)
+    status_response = requests.get(STATUS_URL, timeout=30)
     assert status_response.status_code == 200
 
     statuses = json.loads(status_response.json())["statuses"]
