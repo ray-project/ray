@@ -124,36 +124,13 @@ class WorkerSet:
             if (
                 local_worker
                 and self._remote_workers
-                and not trainer_config.get("create_env_on_driver")
+                and not trainer_config.get("")
                 and (
                     not trainer_config.get("observation_space")
                     or not trainer_config.get("action_space")
                 )
             ):
-                remote_spaces = ray.get(
-                    self.remote_workers()[0].foreach_policy.remote(
-                        lambda p, pid: (pid, p.observation_space, p.action_space)
-                    )
-                )
-                spaces = {
-                    e[0]: (getattr(e[1], "original_space", e[1]), e[2])
-                    for e in remote_spaces
-                }
-                # Try to add the actual env's obs/action spaces.
-                try:
-                    env_spaces = ray.get(
-                        self.remote_workers()[0].foreach_env.remote(
-                            lambda env: (env.observation_space, env.action_space)
-                        )
-                    )[0]
-                    spaces["__env__"] = env_spaces
-                except Exception:
-                    pass
-
-                logger.info(
-                    "Inferred observation/action spaces from remote "
-                    f"worker (local worker has no env): {spaces}"
-                )
+                spaces = self.get_spaces_from_workers()
             else:
                 spaces = None
 
@@ -168,6 +145,48 @@ class WorkerSet:
                     config=self._local_config,
                     spaces=spaces,
                 )
+            # Its a little confusing why we do this over here
+            self.spaces = self.get_spaces_from_workers()
+
+    def get_spaces_from_workers(self):
+        """If remote workers have been created, then get spaces from the first remote
+        worker. Otherwise, get spaces from the local worker.
+        """
+        if self.remote_workers():
+            spaces_from_worker = ray.get(
+                self.remote_workers()[0].foreach_policy.remote(
+                    lambda p, pid: (pid, p.observation_space, p.action_space)
+                )
+            )
+        else:  # there are no remote workers and the spaces have to be grabbed from
+            spaces_from_worker = self._local_worker.foreach_policy(
+                lambda p, pid: (pid, p.observation_space, p.action_space)
+            )
+        spaces = {
+            e[0]: (getattr(e[1], "original_space", e[1]), e[2])
+            for e in spaces_from_worker
+        }
+        # Try to add the actual env's obs/action spaces.
+        if self.remote_workers():
+            try:
+                env_spaces = ray.get(
+                    self.remote_workers()[0].foreach_env.remote(
+                        lambda env: (env.observation_space, env.action_space)
+                    )
+                )[0]
+                spaces["__env__"] = env_spaces
+            except Exception:
+                pass
+        else:
+            try:
+                env_spaces = self._local_worker.foreach_env(
+                    lambda env: (env.observation_space, env.action_space)
+                )[0]
+                spaces["__env__"] = env_spaces
+            except Exception:
+                pass
+
+        return spaces
 
     def local_worker(self) -> RolloutWorker:
         """Returns the local rollout worker."""

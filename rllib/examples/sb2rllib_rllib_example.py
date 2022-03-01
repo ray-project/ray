@@ -17,7 +17,7 @@ save_dir = "saved_models"
 
 # training and saving
 analysis = ray.tune.run(
-    "PPO",
+    "PG",
     stop={"timesteps_total": train_steps},
     config={"env": env_name, "lr": learning_rate},
     checkpoint_at_end=True,

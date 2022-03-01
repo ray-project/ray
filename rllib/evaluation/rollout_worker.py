@@ -470,7 +470,11 @@ class RolloutWorker(ParallelIteratorWorker):
         # the local worker, otherwise, this was already done in the Trainer
         # object itself.
         if self.worker_index > 0:
-            update_global_seed_if_necessary(policy_config.get("framework"), seed)
+            if seed is not None:
+                seed = seed + self.worker_index
+            update_global_seed_if_necessary(
+                policy_config.get("framework"), seed + self.worker_index
+            )
 
         # A single environment provided by the user (via config.env). This may
         # also remain None.

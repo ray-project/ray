@@ -1,3 +1,4 @@
+import importlib
 from collections import defaultdict
 import concurrent
 import copy
@@ -56,7 +57,7 @@ from ray.rllib.execution.train_ops import (
 )
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.offline import get_offline_io_resource_bundles
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils import deep_update, FilterManager, merge_dicts
 from ray.rllib.utils.annotations import (
@@ -470,6 +471,9 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Number of CPUs to allocate for the trainer. Note: this only takes effect
     # when running in Tune. Otherwise, the trainer runs in the main program.
     "num_cpus_for_driver": 1,
+    "num_training_workers": 1,
+    "num_cpus_per_training_worker": 1,
+    "num_gpus_per_training_worker": 0,
     # The strategy for the placement group factory returned by
     # `Trainer.default_resource_request()`. A PlacementGroup defines, which
     # devices (resources) should always be co-located on the same node.
@@ -2104,9 +2108,10 @@ class Trainer(Trainable):
             # For our train integration POC
             [
                 {
-                    "CPU": cf.get("num_cpus_for_driver", 1)
-                    * max(cf.get("num_gpus", 1), 1),
-                    "GPU": cf.get("num_gpus", 0) if not cf["_fake_gpus"] else 0,
+                    "CPU": cf["num_training_workers"]
+                    * cf["num_cpus_per_training_worker"],
+                    "GPU": cf["num_training_workers"]
+                    * cf["num_gpus_per_training_worker"],
                 }
             ],
             strategy=config.get("placement_strategy", "PACK"),
@@ -2310,6 +2315,107 @@ class Trainer(Trainable):
 
         check_if_correct_nn_framework_installed()
         resolve_tf_settings()
+
+    @staticmethod
+    def make_worker(
+        *,
+        cls: Callable,
+        env_creator: EnvCreator,
+        validate_env: Optional[Callable[[EnvType], None]],
+        policy_cls: Type[Policy],
+        worker_index: int,
+        num_workers: int,
+        config: TrainerConfigDict,
+        spaces: Optional[
+            Dict[PolicyID, Tuple[gym.spaces.Space, gym.spaces.Space]]
+        ] = None,
+    ) -> Union[RolloutWorker, ActorHandle]:
+        def session_creator():
+            logger.debug("Creating TF session {}".format(config["tf_session_args"]))
+            return tf1.Session(config=tf1.ConfigProto(**config["tf_session_args"]))
+
+        def valid_module(class_path):
+            if isinstance(class_path, str) and "." in class_path:
+                module_path, class_name = class_path.rsplit(".", 1)
+                try:
+                    spec = importlib.util.find_spec(module_path)
+                    if spec is not None:
+                        return True
+                except (ModuleNotFoundError, ValueError):
+                    print(
+                        f"module {module_path} not found while trying to get "
+                        f"input {class_path}"
+                    )
+            return False
+
+        # Assert everything is correct in "multiagent" config dict (if given).
+        ma_policies = config["multiagent"]["policies"]
+        if ma_policies:
+            for pid, policy_spec in ma_policies.copy().items():
+                assert isinstance(policy_spec, PolicySpec)
+                # Class is None -> Use `policy_cls`.
+                if policy_spec.policy_class is None:
+                    ma_policies[pid] = ma_policies[pid]._replace(
+                        policy_class=policy_cls
+                    )
+            policies = ma_policies
+
+        # Create a policy_spec (MultiAgentPolicyConfigDict),
+        # even if no "multiagent" setup given by user.
+        else:
+            policies = policy_cls
+
+        extra_python_environs = config.get(
+            "extra_python_environs_for_training_workers", None
+        )
+
+        worker = cls(
+            env_creator=env_creator,
+            validate_env=validate_env,
+            policy_spec=policies,
+            policy_mapping_fn=config["multiagent"]["policy_mapping_fn"],
+            policies_to_train=config["multiagent"]["policies_to_train"],
+            tf_session_creator=(session_creator if config["tf_session_args"] else None),
+            rollout_fragment_length=config["rollout_fragment_length"],
+            count_steps_by=config["multiagent"]["count_steps_by"],
+            batch_mode=config["batch_mode"],
+            episode_horizon=config["horizon"],
+            preprocessor_pref=config["preprocessor_pref"],
+            sample_async=config["sample_async"],
+            compress_observations=config["compress_observations"],
+            num_envs=config["num_envs_per_worker"],
+            observation_fn=config["multiagent"]["observation_fn"],
+            observation_filter=config["observation_filter"],
+            clip_rewards=config["clip_rewards"],
+            normalize_actions=config["normalize_actions"],
+            clip_actions=config["clip_actions"],
+            env_config=config["env_config"],
+            policy_config=config,
+            worker_index=worker_index,
+            num_workers=num_workers,
+            record_env=config["record_env"],
+            log_dir=None,
+            log_level=config["log_level"],
+            callbacks=config["callbacks"],
+            # input_creator=input_creator,        # these rely on some self methods
+            # input_evaluation=input_evaluation,  # ill come back and implement
+            # these later after the PG
+            # prototype is done
+            # output_creator=output_creator,
+            remote_worker_envs=config["remote_worker_envs"],
+            remote_env_batch_wait_ms=config["remote_env_batch_wait_ms"],
+            soft_horizon=config["soft_horizon"],
+            no_done_at_end=config["no_done_at_end"],
+            seed=(config["seed"] + worker_index)
+            if config["seed"] is not None
+            else None,
+            fake_sampler=config["fake_sampler"],
+            extra_python_environs=extra_python_environs,
+            spaces=spaces,
+            disable_env_checking=config["disable_env_checking"],
+        )
+
+        return worker
 
     @ExperimentalAPI
     def validate_config(self, config: TrainerConfigDict) -> None:

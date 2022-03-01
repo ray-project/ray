@@ -1,4 +1,5 @@
 cartpole-pg:
+#    num_samples: 3
     env: CartPole-v0
     run: PG
     stop:
@@ -6,5 +7,6 @@ cartpole-pg:
         timesteps_total: 100000
     config:
         # Works for both torch and tf.
-        framework: tf
-        num_workers: 0
+        seed: 42
+        framework: torch
+        num_workers: 2
