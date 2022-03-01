@@ -258,5 +258,26 @@ def test_run(ray_start_stop):
         requests.get("http://localhost:8000/parrot?sound=squawk")
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_delete(ray_start_stop):
+    # Deploys a config file and deletes it
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
+    )
+
+    # Check idempotence
+    for _ in range(2):
+        subprocess.check_output(["serve", "deploy", config_file_name])
+        info_response = subprocess.check_output(["serve", "info"])
+        info = json.loads(info_response)
+        len(info["deployments"]) == 2
+
+        subprocess.check_output(["echo", "yes", "|" "serve", "delete"])
+        info_response = subprocess.check_output(["serve", "info"])
+        info = json.loads(info_response)
+        len(info["deployments"]) == 2
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
