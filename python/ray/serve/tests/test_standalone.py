@@ -175,8 +175,24 @@ def test_dedicated_cpu(controller_cpu, num_proxy_cpus, ray_cluster):
     ray.shutdown()
 
 
+def _reuse_port_is_availabity():
+    # If the attribute exists, Python binary is built against a linux kernel
+    # supporting this flag. If not, we will default to 15 which is the defined
+    # value in linux kernel.
+    val = 15
+    if hasattr(socket, "SO_REUSEPORT"):
+        val = socket.SO_REUSEPORT
+
+    try:
+        sock = socket.socket()
+        sock.setsockopt(socket.SOL_SOCKET, val, 1)
+        return True
+    except Exception:
+        return False
+
+
 @pytest.mark.skipif(
-    not hasattr(socket, "SO_REUSEPORT"),
+    not _reuse_port_is_availabity(),
     reason=(
         "Port sharing only works on newer verion of Linux. "
         "This test can only be ran when port sharing is supported."

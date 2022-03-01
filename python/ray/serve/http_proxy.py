@@ -365,6 +365,19 @@ class HTTPProxyActor:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         if hasattr(socket, "SO_REUSEPORT"):
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        # In some Python binary distribution (e.g., conda py3.6), this flag
+        # was not present at build time but available in runtime. But
+        # Python relies on compiler flag to include this in binary.
+        # Therefore, in the absence of socket.SO_REUSEPORT, we try
+        # to use `15` which is value in linux kernel.
+        # https://github.com/torvalds/linux/blob/master/tools/include/uapi/asm-generic/socket.h#L27
+        else:
+            try:
+                sock.setsockopt(socket.SOL_SOCKET, 15, 1)
+            except Exception:
+                logger.debug(
+                    "Force setting SO_REUSEPORT failed. SO_REUSEPORT disabled."
+                )
 
         try:
             sock.bind((self.host, self.port))
