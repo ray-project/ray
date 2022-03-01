@@ -1,14 +1,16 @@
 .. _jobs-overview:
 
-===========================================================
-Ray Job Submission: Going from your laptop to production
-===========================================================
+==================
+Ray Job Submission
+==================
 
 .. note::
 
     This component is in **beta**.
 
-Ray Job submission is a mechanism to submit locally developed and tested applications to a running remote Ray cluster. It simplifies the user experience of packaging, deploying, and manage their Ray application as a "job". Jobs can be submitted by a "job manager", like Airflow or Kubernetes Jobs.
+Ray Job submission is a mechanism to submit locally developed and tested applications to a running remote Ray cluster. It simplifies the experience of packaging, deploying, and managing a Ray application.  Jobs can be submitted by a "job manager", like Airflow or Kubernetes Jobs.
+
+Jump to the :ref:`API Reference<ray-job-submission-api-ref>`, or continue reading for an overview with examples.
 
 Concepts
 --------
