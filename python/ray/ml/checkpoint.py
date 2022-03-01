@@ -30,7 +30,21 @@ def load_metadata(path: str) -> Dict[str, Any]:
 
 
 def temporary_checkpoint_dir() -> str:
-    return tempfile.mkdtemp(prefix="checkpoint_tmp_", dir=os.getcwd())
+    # Use relative import to
+    containing_dir = None
+    try:
+        # Use relative import to avoid dependency on Ray Tune
+        from ray.tune.session import is_session_enabled
+
+        if is_session_enabled():
+            # Only use current working dir as container for temporary
+            # directory if in a Tune run.
+            containing_dir = os.getcwd()
+    except Exception:
+        # Ignore e.g. import errors, assume we're not in Ray Tune.
+        pass
+
+    return tempfile.mkdtemp(prefix="checkpoint_tmp_", dir=containing_dir)
 
 
 def _pack(path: str) -> bytes:
@@ -401,6 +415,11 @@ class FSStorageCheckpoint(Checkpoint, abc.ABC):
 
 class LocalStorageCheckpoint(FSStorageCheckpoint):
     def __init__(self, path: str, metadata: Optional[Dict] = None):
+        if not os.path.exists(path):
+            raise RuntimeError(
+                f"Cannot create LocalStorageCheckpoint from path, as it does "
+                f"not exist on local node: {path}"
+            )
         FSStorageCheckpoint.__init__(
             self, path=path, node_ip=ray.util.get_node_ip_address(), metadata=metadata
         )
@@ -541,7 +560,7 @@ class MultiLocationCheckpoint(Checkpoint):
                 RemoteNodeStorageCheckpoint,
             ]
         )
-        return checkpoint.to_directory()
+        return checkpoint.to_directory(path)
 
     def to_local_storage_checkpoint(
         self, path: Optional[str] = None

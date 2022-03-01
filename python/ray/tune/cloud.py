@@ -1,7 +1,7 @@
 import os
 import shutil
 import tempfile
-from typing import Optional, Dict
+from typing import Optional
 
 from ray import logger
 from ray.ml.checkpoint import (
@@ -18,14 +18,6 @@ from ray.util.ml_utils.cloud import (
     upload_to_bucket,
     is_cloud_target,
 )
-
-
-@Deprecated
-def as_trial_checkpoint(checkpoint: Checkpoint) -> Checkpoint:
-    wrapped = TrialCheckpoint()
-    wrapped.__dict__.update(checkpoint.__dict__)
-    wrapped.metadata = checkpoint.metadata
-    return wrapped
 
 
 @Deprecated
@@ -327,10 +319,10 @@ class _TrialCheckpoint(os.PathLike):
             ) from e
 
 
+@Deprecated
 class TrialCheckpoint(MultiLocationCheckpoint, _TrialCheckpoint):
     def __init__(
         self,
-        metadata: Optional[Dict] = None,
         local_path: Optional[str] = None,
         cloud_path: Optional[str] = None,
     ):
@@ -343,10 +335,13 @@ class TrialCheckpoint(MultiLocationCheckpoint, _TrialCheckpoint):
 
     @property
     def local_path(self):
-        return self.path
+        return self.path or self._local_path
 
     @local_path.setter
     def local_path(self, path: str):
+        self._local_path = path
+        if not os.path.exists(path):
+            return
         local_checkpoint = self.search_checkpoint(LocalStorageCheckpoint)
         if local_checkpoint:
             local_checkpoint.path = path
@@ -359,10 +354,11 @@ class TrialCheckpoint(MultiLocationCheckpoint, _TrialCheckpoint):
         cloud_checkpoint = self.search_checkpoint(ExternalStorageCheckpoint)
         if cloud_checkpoint:
             return cloud_checkpoint.location
-        return None
+        return self._cloud_path
 
     @cloud_path.setter
     def cloud_path(self, path: str):
+        self._cloud_path = path
         cloud_checkpoint = self.search_checkpoint(ExternalStorageCheckpoint)
         if cloud_checkpoint:
             cloud_checkpoint.location = path
