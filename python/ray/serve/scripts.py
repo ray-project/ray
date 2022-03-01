@@ -2,6 +2,7 @@
 import json
 import yaml
 import os
+import sys
 import pathlib
 import requests
 import click
@@ -210,53 +211,58 @@ def run(config_or_import_path: str, address: str):
     "module.submodule_1...submodule_n.MyClassOrFunction".
     """
 
-    # Check if path provided is for config or import
-    is_config = pathlib.Path(config_or_import_path).is_file()
+    try:
+        # Check if path provided is for config or import
+        is_config = pathlib.Path(config_or_import_path).is_file()
 
-    if address is not None:
-        ray.init(address=address, namespace="serve")
-    serve.start()
+        if address is not None:
+            ray.init(address=address, namespace="serve")
+        serve.start()
 
-    if is_config:
-        cli_logger.print(
-            "Deploying application in config file at " f"{config_or_import_path}."
-        )
-        with open(config_or_import_path, "r") as config_file:
-            config = yaml.safe_load(config_file)
+        if is_config:
+            cli_logger.print(
+                "Deploying application in config file at " f"{config_or_import_path}."
+            )
+            with open(config_or_import_path, "r") as config_file:
+                config = yaml.safe_load(config_file)
 
-        schematized_config = ServeApplicationSchema.parse_obj(config)
-        deployments = schema_to_serve_application(schematized_config)
-        deploy_group(deployments)
+            schematized_config = ServeApplicationSchema.parse_obj(config)
+            deployments = schema_to_serve_application(schematized_config)
+            deploy_group(deployments)
 
-        cli_logger.newline()
-        cli_logger.success(
-            f'\nDeployments from config file at "{config_or_import_path}" '
-            "deployed successfully!\n"
-        )
-        cli_logger.newline()
+            cli_logger.newline()
+            cli_logger.success(
+                f'\nDeployments from config file at "{config_or_import_path}" '
+                "deployed successfully!\n"
+            )
+            cli_logger.newline()
 
-    if not is_config:
-        cli_logger.print(
-            "Deploying function or class imported from " f"{config_or_import_path}."
-        )
-        func_or_class = import_attr(config_or_import_path)
-        if not isinstance(func_or_class, Deployment):
-            func_or_class = serve.deployment(func_or_class)
-        func_or_class.deploy()
+        if not is_config:
+            cli_logger.print(
+                "Deploying function or class imported from " f"{config_or_import_path}."
+            )
+            func_or_class = import_attr(config_or_import_path)
+            if not isinstance(func_or_class, Deployment):
+                func_or_class = serve.deployment(func_or_class)
+            func_or_class.deploy()
 
-        cli_logger.newline()
-        cli_logger.print(
-            f"\nDeployed import at {config_or_import_path} successfully!\n"
-        )
-        cli_logger.newline()
+            cli_logger.newline()
+            cli_logger.print(
+                f"\nDeployed import at {config_or_import_path} successfully!\n"
+            )
+            cli_logger.newline()
 
-    while True:
-        status_json = serve_application_status_to_schema(
-            get_deployment_statuses()
-        ).json()
-        status_string = f"{json.dumps(json.loads(status_json), indent=4)}\n"
-        cli_logger.print(status_string.replace("{", "{{").replace("}", "}}"))
-        time.sleep(10)
+        while True:
+            status_json = serve_application_status_to_schema(
+                get_deployment_statuses()
+            ).json()
+            status_string = f"{json.dumps(json.loads(status_json), indent=4)}\n"
+            cli_logger.print(status_string.replace("{", "{{").replace("}", "}}"))
+            time.sleep(10)
+
+    except KeyboardInterrupt:
+        cli_logger.print("Got SIGINT (KeyboardInterrupt). Shutting down Serve.")
+        sys.exit()
 
 
 @cli.command(
