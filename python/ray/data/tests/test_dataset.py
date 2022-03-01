@@ -18,6 +18,7 @@ from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
 from ray.data.row import TableRow
 from ray.data.impl.arrow_block import ArrowRow
+from ray.data.impl.block_builder import BlockBuilder
 from ray.data.impl.pandas_block import PandasRow
 from ray.data.aggregate import AggregateFn, Count, Sum, Min, Max, Mean, Std
 from ray.data.extensions.tensor_extension import (
@@ -1711,6 +1712,39 @@ def test_to_torch_feature_columns(
     if not label_type:
         df.drop("label", axis=1, inplace=True)
     assert np.array_equal(df.values, combined_iterations)
+
+
+def test_block_builder_for_block(ray_start_regular_shared):
+    # list
+    builder = BlockBuilder.for_block(list())
+    builder.add_block([1, 2])
+    assert builder.build() == [1, 2]
+    builder.add_block([3, 4])
+    assert builder.build() == [1, 2, 3, 4]
+
+    # pandas dataframe
+    builder = BlockBuilder.for_block(pd.DataFrame())
+    b1 = pd.DataFrame({"A": [1], "B": ["a"]})
+    builder.add_block(b1)
+    assert builder.build().equals(b1)
+    b2 = pd.DataFrame({"A": [2, 3], "B": ["c", "d"]})
+    builder.add_block(b2)
+    expected = pd.DataFrame({"A": [1, 2, 3], "B": ["a", "c", "d"]})
+    assert builder.build().equals(expected)
+
+    # pyarrow table
+    builder = BlockBuilder.for_block(pa.Table.from_arrays(list()))
+    b1 = pa.Table.from_pydict({"A": [1], "B": ["a"]})
+    builder.add_block(b1)
+    builder.build().equals(b1)
+    b2 = pa.Table.from_pydict({"A": [2, 3], "B": ["c", "d"]})
+    builder.add_block(b2)
+    expected = pa.Table.from_pydict({"A": [1, 2, 3], "B": ["a", "c", "d"]})
+    builder.build().equals(expected)
+
+    # wrong type
+    with pytest.raises(TypeError):
+        BlockBuilder.for_block(str())
 
 
 def test_groupby_arrow(ray_start_regular_shared):
