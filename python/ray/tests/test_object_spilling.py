@@ -97,6 +97,7 @@ def test_invalid_config_raises_exception(shutdown_only):
             }
         )
 
+
 def test_url_generation_and_parse():
     url = "s3://abc/def/ray_good"
     offset = 10
@@ -148,14 +149,15 @@ def test_default_config_buffering(shutdown_only):
     ray.init(
         num_cpus=0,
         _system_config={
-            "object_spilling_config": (
-                json.dumps(buffer_object_spilling_config)
-            )
+            "object_spilling_config": (json.dumps(buffer_object_spilling_config))
         },
     )
     config = json.loads(ray.worker._global_node._config["object_spilling_config"])
     assert config["type"] == buffer_object_spilling_config["type"]
-    assert config["params"]["buffer_size"] == buffer_object_spilling_config["params"]["buffer_size"]
+    assert (
+        config["params"]["buffer_size"]
+        == buffer_object_spilling_config["params"]["buffer_size"]
+    )
 
 
 def test_default_config_cluster(ray_start_cluster_enabled):

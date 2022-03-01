@@ -286,7 +286,6 @@ class FileSystemStorage(ExternalStorage):
         # mounted at different point.
         self._current_directory_index = random.randrange(0, len(self._directory_paths))
 
-
     def spill_objects(self, object_refs, owner_addresses) -> List[str]:
         if len(object_refs) == 0:
             return []

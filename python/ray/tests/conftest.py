@@ -447,10 +447,7 @@ file_system_object_spilling_config = {
 
 buffer_object_spilling_config = {
     "type": "filesystem",
-    "params": {
-        "directory_path": spill_local_path,
-        "buffer_size": 1_000_000
-    },
+    "params": {"directory_path": spill_local_path, "buffer_size": 1_000_000},
 }
 
 # Since we have differet protocol for a local external storage (e.g., fs)
