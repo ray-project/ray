@@ -2,8 +2,8 @@ import unittest
 
 import ray
 import ray.rllib.agents.slateq as slateq
-from ray.rllib.examples.env.recsim_recommender_system_envs import (
-    LongTermSatisfactionRecSimEnv,
+from ray.rllib.examples.env.recommender_system_envs_with_recsim import (
+    InterestEvolutionRecSimEnv,
 )
 from ray.rllib.utils.test_utils import (
     check_compute_single_action,
@@ -22,15 +22,15 @@ class TestSlateQ(unittest.TestCase):
         ray.shutdown()
 
     def test_slateq_compilation(self):
-        """Test whether an A2CTrainer can be built with both frameworks."""
+        """Test whether a SlateQTrainer can be built with both frameworks."""
         config = {
-            "env": LongTermSatisfactionRecSimEnv,
+            "env": InterestEvolutionRecSimEnv,
+            "learning_starts": 1000,
         }
 
         num_iterations = 1
 
-        # Test only against torch (no other frameworks supported so far).
-        for _ in framework_iterator(config, frameworks="torch"):
+        for _ in framework_iterator(config, with_eager_tracing=True):
             trainer = slateq.SlateQTrainer(config=config)
             for i in range(num_iterations):
                 results = trainer.train()

@@ -1,4 +1,4 @@
-import ray.experimental.dag as ray_dag
+from ray.experimental.dag import DAGNode
 
 
 def get_indentation(num_spaces=4):
@@ -12,7 +12,7 @@ def get_args_lines(bound_args):
     indent = get_indentation()
     lines = []
     for arg in bound_args:
-        if isinstance(arg, ray_dag.DAGNode):
+        if isinstance(arg, DAGNode):
             node_repr_lines = str(arg).split("\n")
             for node_repr_line in node_repr_lines:
                 lines.append(f"{indent}" + node_repr_line)
@@ -45,12 +45,13 @@ def get_kwargs_lines(bound_kwargs):
     """Pretty prints bounded kwargs of a DAGNode, and recursively handle
     DAGNode in list / dict containers.
     """
+    # TODO: (jiaodong) Nits, we're missing keys and indentation was a bit off.
     if not bound_kwargs:
         return "{}"
     indent = get_indentation()
     kwargs_lines = []
     for key, val in bound_kwargs.items():
-        if isinstance(val, ray_dag.DAGNode):
+        if isinstance(val, DAGNode):
             node_repr_lines = str(val).split("\n")
             for index, node_repr_line in enumerate(node_repr_lines):
                 if index == 0:
@@ -108,7 +109,7 @@ def get_other_args_to_resolve_lines(other_args_to_resolve):
     indent = get_indentation()
     other_args_to_resolve_lines = []
     for key, val in other_args_to_resolve.items():
-        if isinstance(val, ray_dag.DAGNode):
+        if isinstance(val, DAGNode):
             node_repr_lines = str(val).split("\n")
             for index, node_repr_line in enumerate(node_repr_lines):
                 if index == 0:
@@ -131,3 +132,22 @@ def get_other_args_to_resolve_lines(other_args_to_resolve):
         other_args_to_resolve_line += f"\n{indent}{line}"
     other_args_to_resolve_line += f"\n{indent}}}"
     return other_args_to_resolve_line
+
+
+def get_dag_node_str(
+    dag_node: DAGNode,
+    body_line,
+):
+    indent = get_indentation()
+    other_args_to_resolve_lines = get_other_args_to_resolve_lines(
+        dag_node._bound_other_args_to_resolve
+    )
+    return (
+        f"({dag_node.__class__.__name__})(\n"
+        f"{indent}body={body_line}\n"
+        f"{indent}args={get_args_lines(dag_node._bound_args)}\n"
+        f"{indent}kwargs={get_kwargs_lines(dag_node._bound_kwargs)}\n"
+        f"{indent}options={get_options_lines(dag_node._bound_options)}\n"
+        f"{indent}other_args_to_resolve={other_args_to_resolve_lines}\n"
+        f")"
+    )

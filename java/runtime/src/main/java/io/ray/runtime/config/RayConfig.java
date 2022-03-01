@@ -52,6 +52,8 @@ public class RayConfig {
 
   public int startupToken;
 
+  public int runtimeEnvHash;
+
   public final ActorLifetime defaultActorLifetime;
 
   public static class LoggerConf {
@@ -200,6 +202,11 @@ public class RayConfig {
     numWorkersPerProcess = config.getInt("ray.job.num-java-workers-per-process");
 
     startupToken = config.getInt("ray.raylet.startup-token");
+
+    /// Driver needn't this config item.
+    if (workerMode == WorkerType.WORKER && config.hasPath("ray.internal.runtime-env-hash")) {
+      runtimeEnvHash = config.getInt("ray.internal.runtime-env-hash");
+    }
 
     {
       loggers = new ArrayList<>();

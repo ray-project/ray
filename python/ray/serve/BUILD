@@ -3,7 +3,11 @@
 py_library(
     name = "serve_lib",
     srcs = glob(["**/*.py"], exclude=["tests/**/*.py"]),
-    visibility = ["//python/ray/serve:__subpackages__", "//release:__pkg__"],
+    visibility = [
+        "//python/ray/serve:__pkg__",
+        "//python/ray/serve:__subpackages__",
+        "//release:__pkg__"
+    ],
 )
 
 serve_tests_srcs = glob(["tests/**/*.py"])
@@ -257,7 +261,7 @@ py_test(
 
 py_test(
     name = "test_runtime_env",
-    size = "medium",
+    size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "post_wheel_build", "team:serve"],
     deps = [":serve_lib"],
@@ -395,6 +399,22 @@ py_test(
 py_test(
     name = "test_actor_executor",
     size = "small",
+    srcs = pipeline_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_deployment_node",
+    size = "medium",
+    srcs = pipeline_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_generate",
+    size = "medium",
     srcs = pipeline_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
