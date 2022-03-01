@@ -121,6 +121,14 @@ class DeploymentConfig(BaseModel):
 
     autoscaling_config: Optional[AutoscalingConfig] = None
 
+    # This flag is used to let replica know they are deplyed from
+    # a different language.
+    is_cross_language: bool = False
+
+    # This flag is used to let controller know which language does
+    # the deploymnent use.
+    deployment_language: Any = DeploymentLanguage.PYTHON
+
     class Config:
         validate_assignment = True
         extra = "forbid"
@@ -144,17 +152,16 @@ class DeploymentConfig(BaseModel):
             data["autoscaling_config"] = AutoscalingConfigProto(
                 **data["autoscaling_config"]
             )
-        return DeploymentConfigProto(
-            is_cross_language=False,
-            deployment_language=DeploymentLanguage.PYTHON,
-            **data,
-        ).SerializeToString()
+        return DeploymentConfigProto(**data).SerializeToString()
 
     @classmethod
     def from_proto_bytes(cls, proto_bytes: bytes):
         proto = DeploymentConfigProto.FromString(proto_bytes)
         data = MessageToDict(
-            proto, including_default_value_fields=True, preserving_proto_field_name=True
+            proto,
+            including_default_value_fields=True,
+            preserving_proto_field_name=True,
+            use_integers_for_enums=True,
         )
         if "user_config" in data:
             if data["user_config"] != "":
@@ -163,10 +170,6 @@ class DeploymentConfig(BaseModel):
                 data["user_config"] = None
         if "autoscaling_config" in data:
             data["autoscaling_config"] = AutoscalingConfig(**data["autoscaling_config"])
-
-        # Delete fields which are only used in protobuf, not in Python.
-        del data["is_cross_language"]
-        del data["deployment_language"]
 
         return cls(**data)
 
