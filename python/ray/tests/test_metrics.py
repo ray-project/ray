@@ -158,6 +158,33 @@ def test_multi_node_metrics_export_port_discovery(ray_start_cluster):
         )
 
 
+def test_metrics_export_port_fail_on_nonexclusive_port(ray_start_cluster):
+    cluster = ray_start_cluster
+    port = 63339
+
+    from multiprocessing import Process
+    import socket
+    import time
+
+    def listen_on_socket(port):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind(("localhost", port))
+        s.listen(1024)
+        while True:
+            (clientsocket, address) = s.accept()
+            clientsocket.recv(1024)
+
+    p = Process(target=listen_on_socket, args=(port,))
+    p.start()
+    time.sleep(1)
+    try:
+        cluster.add_node(True, metrics_export_port=port)
+    except OSError:
+        p.terminate()
+        return
+    raise Exception("Unreachable: meant to except as OSError")
+
+
 if __name__ == "__main__":
     import pytest
     import sys
