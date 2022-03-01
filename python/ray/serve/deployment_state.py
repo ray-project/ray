@@ -28,12 +28,15 @@ from ray.serve.constants import (
     MAX_NUM_DELETED_DEPLOYMENTS,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
 )
+from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.utils import (
+    JavaActorHandleProxy,
     format_actor_name,
     get_random_letters,
     logger,
+    msgpack_serialize,
 )
 from ray.serve.version import DeploymentVersion, VersionedReplica
 from ray.util.placement_group import PlacementGroup
@@ -167,6 +170,8 @@ class ActorReplicaWrapper:
         # Populated in self.stop().
         self._graceful_shutdown_ref: ObjectRef = None
 
+        self._is_cross_language = False
+
     @property
     def replica_tag(self) -> str:
         return self._replica_tag
@@ -184,6 +189,10 @@ class ActorReplicaWrapper:
                 )
             except ValueError:
                 self._actor_handle = None
+
+        if self._is_cross_language:
+            assert isinstance(self._actor_handle, JavaActorHandleProxy)
+            return self._actor_handle.handle
 
         return self._actor_handle
 
@@ -265,14 +274,8 @@ class ActorReplicaWrapper:
             f"{self.deployment_name} replica={self.replica_tag}"
         )
 
-        self._actor_handle = deployment_info.actor_def.options(
-            name=self._actor_name,
-            namespace=self._controller_namespace,
-            lifetime="detached" if self._detached else None,
-            placement_group=self._placement_group,
-            placement_group_capture_child_tasks=False,
-            **deployment_info.replica_config.ray_actor_options,
-        ).remote(
+        actor_def = deployment_info.actor_def
+        init_args = (
             self.deployment_name,
             self.replica_tag,
             deployment_info.replica_config.init_args,
@@ -283,6 +286,43 @@ class ActorReplicaWrapper:
             self._controller_namespace,
             self._detached,
         )
+        # TODO(simon): unify the constructor arguments across language
+        if (
+            deployment_info.deployment_config.deployment_language
+            == DeploymentLanguage.JAVA
+        ):
+            self._is_cross_language = True
+            actor_def = ray.java_actor_class("io.ray.serve.RayServeWrappedReplica")
+            init_args = (
+                # String deploymentName,
+                self.deployment_name,
+                # String replicaTag,
+                self.replica_tag,
+                # String deploymentDef
+                deployment_info.replica_config.func_or_class_name,
+                # byte[] initArgsbytes
+                msgpack_serialize(deployment_info.replica_config.init_args),
+                # byte[] deploymentConfigBytes,
+                deployment_info.deployment_config.to_proto_bytes(),
+                # byte[] deploymentVersionBytes,
+                version.to_proto().SerializeToString(),
+                # String controllerName
+                self._controller_name,
+            )
+
+        self._actor_handle = actor_def.options(
+            name=self._actor_name,
+            namespace=self._controller_namespace,
+            lifetime="detached" if self._detached else None,
+            placement_group=self._placement_group,
+            placement_group_capture_child_tasks=False,
+            **deployment_info.replica_config.ray_actor_options,
+        ).remote(*init_args)
+
+        # Perform auto method name translation for java handles.
+        # See https://github.com/ray-project/ray/issues/21474
+        if self._is_cross_language:
+            self._actor_handle = JavaActorHandleProxy(self._actor_handle)
 
         self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(
@@ -360,6 +400,10 @@ class ActorReplicaWrapper:
             return ReplicaStartupStatus.PENDING_INITIALIZATION, None
         else:
             try:
+                # TODO(simon): fully implement reconfigure for Java replicas.
+                if self._is_cross_language:
+                    return ReplicaStartupStatus.SUCCEEDED, None
+
                 deployment_config, version = ray.get(self._ready_obj_ref)
                 self._max_concurrent_queries = deployment_config.max_concurrent_queries
                 self._graceful_shutdown_timeout_s = (
