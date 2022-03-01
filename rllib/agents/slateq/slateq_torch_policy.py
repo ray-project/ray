@@ -323,7 +323,8 @@ def score_documents(
     # Compile a constant no-click score tensor.
     # Make sure it lives on the same device as scores_per_candidate.
     score_no_click = torch.full(
-        size=[user_obs.shape[0], 1], fill_value=no_click_score).to(scores_per_candidate.device)
+        size=[user_obs.shape[0], 1], fill_value=no_click_score
+    ).to(scores_per_candidate.device)
     # Concatenate click and no-click scores.
     all_scores = torch.cat([scores_per_candidate, score_no_click], dim=1)
 
