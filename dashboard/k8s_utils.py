@@ -67,8 +67,11 @@ def _cpu_usage():
         cpu_stat_text = open(CPU_USAGE_PATH_V2).read()
         # e.g. "usage_usec 16089294616"
         cpu_stat_first_line = cpu_stat_text.split("\n")[0]
-        # return the second word of the first line, cast as an integer
-        return int(cpu_stat_first_line.split()[1])
+        # get the second word of the first line, cast as an integer
+        # this is the CPU usage is microseconds
+        cpu_usec = int(cpu_stat_first_line.split()[1])
+        # Convert to nanoseconds and return.
+        return cpu_usec * 1000
 
 
 def _system_usage():

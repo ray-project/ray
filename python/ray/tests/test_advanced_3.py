@@ -740,11 +740,11 @@ def test_k8s_cpu(use_cgroups_v2: bool):
     softirq 524317451 0 230145523 27143 63542930 0 0 171 74043232 0 156558452
     """  # noqa
 
-    CPUACCTUSAGE1 = "2268980984108"
+    CPUACCTUSAGE1 = "2268980984000"
 
     CPUACCTUSAGE2 = "2270120061999"
 
-    CPU_STAT_1 = """usage_usec 2268980984108
+    CPU_STAT_1 = """usage_usec 2268980984
     user_usec 5673216
     system_usec 794353
     nr_periods 168
@@ -752,7 +752,7 @@ def test_k8s_cpu(use_cgroups_v2: bool):
     throttled_usec 638117
     """
 
-    CPU_STAT_2 = """usage_usec 2270120061999
+    CPU_STAT_2 = """usage_usec 2270120061
     user_usec 5673216
     system_usec 794353
     nr_periods 168
@@ -801,7 +801,7 @@ def test_k8s_cpu(use_cgroups_v2: bool):
             print(open(CPU_USAGE_PATH).read())
 
         # Test helpers
-        assert k8s_utils._cpu_usage() == 2268980984108
+        assert k8s_utils._cpu_usage() == 2268980984000
         assert k8s_utils._system_usage() == 1551775030000000
         assert k8s_utils._host_num_cpus() == 8
 
