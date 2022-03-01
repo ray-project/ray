@@ -247,13 +247,15 @@ class FileSystemStorage(ExternalStorage):
             spill objects doesn't exist.
     """
 
-    def __init__(self, directory_path):
+    def __init__(self, directory_path, buffer_size):
         # -- sub directory name --
         self._spill_dir_name = DEFAULT_OBJECT_PREFIX
         # -- A list of directory paths to spill objects --
         self._directory_paths = []
         # -- Current directory to spill objects --
         self._current_directory_index = 0
+        # -- File buffer size to spill objects --
+        self._buffer_size = -1
 
         # Validation.
         assert (
@@ -264,6 +266,10 @@ class FileSystemStorage(ExternalStorage):
         assert isinstance(directory_path, list), (
             "Directory_path must be either a single " "string or a list of strings"
         )
+        if buffer_size is not None:
+            assert isinstance(buffer_size, int), "buffer_size must be an integer."
+        else:
+            self._buffer_size = buffer_size
 
         # Create directories.
         for path in directory_path:
@@ -280,6 +286,7 @@ class FileSystemStorage(ExternalStorage):
         # It chooses a random index to maximize multiple directories that are
         # mounted at different point.
         self._current_directory_index = random.randrange(0, len(self._directory_paths))
+
 
     def spill_objects(self, object_refs, owner_addresses) -> List[str]:
         if len(object_refs) == 0:
@@ -526,6 +533,8 @@ def setup_external_storage(config):
             _external_storage = SlowFileStorage(**config["params"])
         else:
             raise ValueError(f"Unknown external storage type: {storage_type}")
+
+        if "buffer_size" in
     else:
         _external_storage = NullStorage()
     return _external_storage
