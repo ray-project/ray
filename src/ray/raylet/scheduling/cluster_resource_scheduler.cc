@@ -106,43 +106,13 @@ bool ClusterResourceScheduler::NodeAlive(int64_t node_id) const {
 }
 
 bool ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_request,
-                                             int64_t node_id,
-                                             const NodeResources &resources) const {
-  if (resource_request.requires_object_store_memory && resources.object_pulls_queued &&
-      node_id != local_node_id_) {
-    // It's okay if the local node's pull manager is at capacity because we
-    // will eventually spill the task back from the waiting queue if its args
-    // cannot be pulled.
-    return false;
-  }
-
-  // First, check predefined resources.
-  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
-    if (resource_request.predefined_resources[i] >
-        resources.predefined_resources[i].available) {
-      // A hard constraint has been violated, so we cannot schedule
-      // this resource request.
-      return false;
-    }
-  }
-
-  // Now check custom resources.
-  for (const auto &task_req_custom_resource : resource_request.custom_resources) {
-    auto it = resources.custom_resources.find(task_req_custom_resource.first);
-
-    if (it == resources.custom_resources.end()) {
-      // Requested resource doesn't exist at this node.
-      // This is a hard constraint so cannot schedule this resource request.
-      return false;
-    } else {
-      if (task_req_custom_resource.second > it->second.available) {
-        // Resource constraint is violated.
-        return false;
-      }
-    }
-  }
-
-  return true;
+                                             int64_t node_id) const {
+  // It's okay if the local node's pull manager is at capacity because we
+  // will eventually spill the task back from the waiting queue if its args
+  // cannot be pulled.
+  return cluster_resource_manager_->HasSufficientResource(
+      node_id, resource_request,
+      /*ignore_object_store_memory_requirement*/ node_id == local_node_id_);
 }
 
 int64_t ClusterResourceScheduler::GetBestSchedulableNode(
@@ -232,17 +202,11 @@ std::string ClusterResourceScheduler::GetBestSchedulableNode(
 bool ClusterResourceScheduler::SubtractRemoteNodeAvailableResources(
     int64_t node_id, const ResourceRequest &resource_request) {
   RAY_CHECK(node_id != local_node_id_);
-  const auto &resource_view = cluster_resource_manager_->GetResourceView();
-  auto it = resource_view.find(node_id);
-  if (it == resource_view.end()) {
-    return false;
-  }
 
   // Just double check this node can still schedule the resource request.
-  if (!IsSchedulable(resource_request, node_id, it->second.GetLocalView())) {
+  if (!IsSchedulable(resource_request, node_id)) {
     return false;
   }
-
   return cluster_resource_manager_->SubtractNodeAvailableResources(node_id,
                                                                    resource_request);
 }
@@ -255,10 +219,7 @@ std::string ClusterResourceScheduler::DebugString(void) const {
   std::stringstream buffer;
   buffer << "\nLocal id: " << local_node_id_;
   buffer << " Local resources: " << local_resource_manager_->DebugString();
-  for (auto &node : cluster_resource_manager_->GetResourceView()) {
-    buffer << "node id: " << node.first;
-    buffer << node.second.GetLocalView().DebugString(string_to_int_map_);
-  }
+  cluster_resource_manager_->DebugString(buffer);
   return buffer.str();
 }
 
@@ -277,8 +238,7 @@ bool ClusterResourceScheduler::IsSchedulableOnNode(
   int64_t node_id = string_to_int_map_.Get(node_name);
   auto resource_request = ResourceMapToResourceRequest(
       string_to_int_map_, shape, /*requires_object_store_memory=*/false);
-  return IsSchedulable(resource_request, node_id,
-                       cluster_resource_manager_->GetNodeResources(node_name));
+  return IsSchedulable(resource_request, node_id);
 }
 
 std::string ClusterResourceScheduler::GetBestSchedulableNode(
