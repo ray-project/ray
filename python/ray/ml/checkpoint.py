@@ -6,7 +6,7 @@ import tempfile
 
 import cloudpickle as pickle
 import os
-from typing import Any, Type, Optional, Dict
+from typing import Any, Type, Optional, Dict, List
 
 import ray
 from ray.util.ml_utils.cloud import (
@@ -511,6 +511,78 @@ class MultiLocationCheckpoint(Checkpoint):
             if isinstance(location, checkpoint_cls):
                 return location
         return None
+
+    def search_checkpoint_classes(
+        self, classes: List[Type[Checkpoint]]
+    ) -> Optional[Checkpoint]:
+        for cls in classes:
+            checkpoint = self.search_checkpoint(cls)
+            if checkpoint:
+                return checkpoint
+        return None
+
+    def to_dict(self) -> dict:
+        checkpoint = self.search_checkpoint_classes(
+            [
+                DataCheckpoint,
+                LocalStorageCheckpoint,
+                ExternalStorageCheckpoint,
+                RemoteNodeStorageCheckpoint,
+            ]
+        )
+        return checkpoint.to_dict()
+
+    def to_directory(self, path: Optional[str] = None) -> str:
+        checkpoint = self.search_checkpoint_classes(
+            [
+                LocalStorageCheckpoint,
+                DataCheckpoint,
+                ExternalStorageCheckpoint,
+                RemoteNodeStorageCheckpoint,
+            ]
+        )
+        return checkpoint.to_directory()
+
+    def to_local_storage_checkpoint(
+        self, path: Optional[str] = None
+    ) -> "LocalStorageCheckpoint":
+        checkpoint = self.search_checkpoint_classes(
+            [
+                LocalStorageCheckpoint,
+                ExternalStorageCheckpoint,
+                RemoteNodeStorageCheckpoint,
+                DataCheckpoint,
+            ]
+        )
+        return checkpoint.to_local_storage_checkpoint(path)
+
+    def to_data_checkpoint(self) -> "DataCheckpoint":
+        checkpoint = self.search_checkpoint_classes(
+            [
+                DataCheckpoint,
+                LocalStorageCheckpoint,
+                ExternalStorageCheckpoint,
+                RemoteNodeStorageCheckpoint,
+            ]
+        )
+        return checkpoint.to_data_checkpoint()
+
+    def to_object_store_checkpoint(self) -> "ObjectStoreCheckpoint":
+        data_checkpoint = self.to_data_checkpoint()
+        return data_checkpoint.to_object_store_checkpoint()
+
+    def to_external_storage_checkpoint(
+        self, location: str
+    ) -> "ExternalStorageCheckpoint":
+        checkpoint = self.search_checkpoint_classes(
+            [
+                ExternalStorageCheckpoint,
+                DataCheckpoint,
+                LocalStorageCheckpoint,
+                RemoteNodeStorageCheckpoint,
+            ]
+        )
+        return checkpoint.to_external_storage_checkpoint(location)
 
     def __eq__(self, other):
         return (
