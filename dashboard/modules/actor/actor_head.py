@@ -65,7 +65,9 @@ def actor_table_data_to_dict(message):
     light_message = {k: v for (k, v) in orig_message.items() if k in fields}
     logger.info(light_message)
     if "functionDescriptor" in light_message:
-        actor_class = actor_classname_from_func_descriptor(light_message["functionDescriptor"])
+        actor_class = actor_classname_from_func_descriptor(
+            light_message["functionDescriptor"]
+        )
         light_message["actorClass"] = actor_class
     return light_message
 
