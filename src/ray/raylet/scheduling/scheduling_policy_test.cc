@@ -84,9 +84,9 @@ TEST_F(SchedulingPolicyTest, RandomPolicyTest) {
   size_t num_node_1_picks = 0;
   for (int i = 0; i < 1000; i++) {
     auto to_schedule = scheduling_policy.RandomPolicy(req, [](auto) { return true; });
-    ASSERT_TRUE(to_schedule.ToInt64() >= 0);
-    ASSERT_TRUE(to_schedule.ToInt64() <= 1);
-    if (to_schedule.ToInt64() == 0) {
+    ASSERT_TRUE(to_schedule.ToInt() >= 0);
+    ASSERT_TRUE(to_schedule.ToInt() <= 1);
+    if (to_schedule.ToInt() == 0) {
       num_node_0_picks++;
     } else {
       num_node_1_picks++;
@@ -232,7 +232,7 @@ TEST_F(SchedulingPolicyTest, InfeasibleTest) {
   auto to_schedule =
       raylet_scheduling_policy::SchedulingPolicy(local_node, nodes)
           .HybridPolicy(req, 0.50, false, false, [](auto) { return true; });
-  ASSERT_TRUE(to_schedule.IsNull());
+  ASSERT_TRUE(to_schedule.IsNil());
 }
 
 TEST_F(SchedulingPolicyTest, BarelyFeasibleTest) {
@@ -354,7 +354,7 @@ TEST_F(SchedulingPolicyTest, ForceSpillbackOnlyFeasibleLocallyTest) {
 
   auto to_schedule = raylet_scheduling_policy::SchedulingPolicy(local_node, nodes)
                          .HybridPolicy(req, 0.51, true, false, [](auto) { return true; });
-  ASSERT_TRUE(to_schedule.IsNull());
+  ASSERT_TRUE(to_schedule.IsNil());
 }
 
 TEST_F(SchedulingPolicyTest, NonGpuNodePreferredSchedulingTest) {

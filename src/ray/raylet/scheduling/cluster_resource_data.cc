@@ -107,7 +107,7 @@ ResourceRequest ResourceMapToResourceRequest(
     } else if (resource.first == ray::kMemory_ResourceLabel) {
       resource_request.predefined_resources[MEM] = resource.second;
     } else {
-      resource_request.custom_resources[ResourceID(resource.first).ToInt64()] =
+      resource_request.custom_resources[ResourceID(resource.first).ToInt()] =
           resource.second;
     }
   }
@@ -126,7 +126,7 @@ const std::vector<FixedPoint> &TaskResourceInstances::Get(
   } else if (ray::kMemory_ResourceLabel == resource_name) {
     return predefined_resources[MEM];
   } else {
-    auto it = custom_resources.find(ResourceID(resource_name).ToInt64());
+    auto it = custom_resources.find(ResourceID(resource_name).ToInt());
     RAY_CHECK(it != custom_resources.end());
     return it->second;
   }
@@ -189,7 +189,7 @@ NodeResources ResourceMapToNodeResources(
       node_resources.predefined_resources[MEM] = resource_capacity;
     } else {
       // This is a custom resource.
-      node_resources.custom_resources.emplace(ResourceID(resource.first).ToInt64(),
+      node_resources.custom_resources.emplace(ResourceID(resource.first).ToInt(),
                                               resource_capacity);
     }
   }
@@ -350,7 +350,7 @@ std::string NodeResources::DebugString() const {
   }
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    buffer << "\t" << ResourceID(it->first).ToBinary() << ":(" << it->second.total << ":"
+    buffer << "\t" << ResourceID(it->first).Binary() << ":(" << it->second.total << ":"
            << it->second.available << ")\n";
   }
   buffer << "}" << std::endl;
@@ -395,7 +395,7 @@ std::string NodeResources::DictString() const {
   }
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    auto name = ResourceID(it->first).ToBinary();
+    auto name = ResourceID(it->first).Binary();
     buffer << ", " << format_resource(name, it->second.available.Double()) << "/"
            << format_resource(name, it->second.total.Double());
     buffer << " " << name;
@@ -470,7 +470,7 @@ std::string NodeResourceInstances::DebugString() const {
   }
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    buffer << "\t" << ResourceID(it->first).ToBinary() << ":("
+    buffer << "\t" << ResourceID(it->first).Binary() << ":("
            << VectorToString(it->second.total) << ":"
            << VectorToString(it->second.available) << ")\n";
   }
@@ -554,8 +554,7 @@ std::string TaskResourceInstances::DebugString() const {
   buffer << "  [";
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    buffer << ResourceID(it->first).ToBinary() << ":" << VectorToString(it->second)
-           << ", ";
+    buffer << ResourceID(it->first).Binary() << ":" << VectorToString(it->second) << ", ";
   }
 
   buffer << "]" << std::endl;

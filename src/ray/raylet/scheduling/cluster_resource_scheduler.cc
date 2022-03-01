@@ -22,7 +22,7 @@
 namespace ray {
 
 ClusterResourceScheduler::ClusterResourceScheduler()
-    : local_node_id_(scheduling::NodeID::NullID()) {
+    : local_node_id_(scheduling::NodeID::Nil()) {
   cluster_resource_manager_ = std::make_unique<ClusterResourceManager>();
   NodeResources node_resources;
   node_resources.predefined_resources.resize(PredefinedResources_MAX);
@@ -75,10 +75,10 @@ bool ClusterResourceScheduler::NodeAlive(scheduling::NodeID node_id) const {
   if (node_id == local_node_id_) {
     return true;
   }
-  if (node_id.IsNull()) {
+  if (node_id.IsNil()) {
     return false;
   }
-  return gcs_client_->Nodes().Get(NodeID::FromBinary(node_id.ToBinary())) != nullptr;
+  return gcs_client_->Nodes().Get(NodeID::FromBinary(node_id.Binary())) != nullptr;
 }
 
 bool ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_request,
@@ -102,7 +102,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
         resource_request, [this](auto node_id) { return this->NodeAlive(node_id); });
   }
 
-  auto best_node_id = scheduling::NodeID::NullID();
+  auto best_node_id = scheduling::NodeID::Nil();
   if (scheduling_strategy.scheduling_strategy_case() ==
       rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy) {
     best_node_id = scheduling_policy_->SpreadPolicy(
@@ -117,7 +117,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
         [this](auto node_id) { return this->NodeAlive(node_id); });
   }
 
-  *is_infeasible = best_node_id.IsNull();
+  *is_infeasible = best_node_id.IsNil();
   if (!*is_infeasible) {
     // TODO (Alex): Support soft constraints if needed later.
     *total_violations = 0;
@@ -125,9 +125,9 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
 
   RAY_LOG(DEBUG) << "Scheduling decision. "
                  << "forcing spillback: " << force_spillback
-                 << ". Best node: " << best_node_id.ToInt64() << " "
-                 << (best_node_id.IsNull() ? NodeID::Nil()
-                                           : NodeID::FromBinary(best_node_id.ToBinary()))
+                 << ". Best node: " << best_node_id.ToInt() << " "
+                 << (best_node_id.IsNil() ? NodeID::Nil()
+                                          : NodeID::FromBinary(best_node_id.Binary()))
                  << ", is infeasible: " << *is_infeasible;
   return best_node_id;
 }
@@ -157,7 +157,7 @@ bool ClusterResourceScheduler::SubtractRemoteNodeAvailableResources(
 
 std::string ClusterResourceScheduler::DebugString(void) const {
   std::stringstream buffer;
-  buffer << "\nLocal id: " << local_node_id_.ToInt64();
+  buffer << "\nLocal id: " << local_node_id_.ToInt();
   buffer << " Local resources: " << local_resource_manager_->DebugString();
   cluster_resource_manager_->DebugString(buffer);
   return buffer.str();

@@ -89,9 +89,9 @@ class BaseSchedulingID {
 
   explicit BaseSchedulingID(int64_t id) : id_{id} {}
 
-  int64_t ToInt64() const { return id_; }
+  int64_t ToInt() const { return id_; }
 
-  std::string ToBinary() const { return GetMap().Get(id_); }
+  std::string Binary() const { return GetMap().Get(id_); }
 
   bool operator==(const BaseSchedulingID &rhs) const { return id_ == rhs.id_; }
 
@@ -99,9 +99,9 @@ class BaseSchedulingID {
 
   bool operator<(const BaseSchedulingID &rhs) const { return id_ < rhs.id_; }
 
-  bool IsNull() const { return id_ == -1; }
+  bool IsNil() const { return id_ == -1; }
 
-  static BaseSchedulingID NullID() { return BaseSchedulingID(-1); }
+  static BaseSchedulingID Nil() { return BaseSchedulingID(-1); }
 
  private:
   /// Meyer's singleton to store the StringIdMap.
@@ -109,12 +109,19 @@ class BaseSchedulingID {
     static StringIdMap map;
     return map;
   }
-  int64_t id_;
+  int64_t id_ = -1;
 };
 
 template <ray::SchedulingIDTag T>
 std::ostream &operator<<(std::ostream &os, const ray::BaseSchedulingID<T> &id) {
-  os << id.ToInt64();
+  os << id.ToInt();
+  return os;
+}
+
+template <>
+inline std::ostream &operator<<(
+    std::ostream &os, const ray::BaseSchedulingID<SchedulingIDTag::Resource> &id) {
+  os << id.Binary();
   return os;
 }
 
@@ -145,7 +152,7 @@ namespace std {
 template <ray::SchedulingIDTag T>
 struct hash<ray::BaseSchedulingID<T>> {
   std::size_t operator()(const ray::BaseSchedulingID<T> &id) const {
-    return std::hash<int64_t>()(id.ToInt64());
+    return std::hash<int64_t>()(id.ToInt());
   }
 };
 }  // namespace std

@@ -35,7 +35,7 @@ void ClusterResourceManager::AddOrUpdateNode(
 
 void ClusterResourceManager::AddOrUpdateNode(scheduling::NodeID node_id,
                                              const NodeResources &node_resources) {
-  RAY_LOG(DEBUG) << "Update node info, node_id: " << node_id.ToInt64()
+  RAY_LOG(DEBUG) << "Update node info, node_id: " << node_id.ToInt()
                  << ", node_resources: " << node_resources.DebugString();
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
@@ -141,7 +141,7 @@ void ClusterResourceManager::UpdateResourceCapacity(scheduling::NodeID node_id,
       local_view->predefined_resources[idx].total = 0;
     }
   } else {
-    auto itr = local_view->custom_resources.find(resource_id.ToInt64());
+    auto itr = local_view->custom_resources.find(resource_id.ToInt());
     if (itr != local_view->custom_resources.end()) {
       auto diff_capacity = resource_total_fp - itr->second.total;
       itr->second.total += diff_capacity;
@@ -155,7 +155,7 @@ void ClusterResourceManager::UpdateResourceCapacity(scheduling::NodeID node_id,
     } else {
       ResourceCapacity resource_capacity;
       resource_capacity.total = resource_capacity.available = resource_total_fp;
-      local_view->custom_resources.emplace(resource_id.ToInt64(), resource_capacity);
+      local_view->custom_resources.emplace(resource_id.ToInt(), resource_capacity);
     }
   }
 }
@@ -174,7 +174,7 @@ void ClusterResourceManager::DeleteResource(scheduling::NodeID node_id,
     local_view->predefined_resources[idx].total = 0;
 
   } else {
-    auto itr = local_view->custom_resources.find(resource_id.ToInt64());
+    auto itr = local_view->custom_resources.find(resource_id.ToInt());
     if (itr != local_view->custom_resources.end()) {
       local_view->custom_resources.erase(itr);
     }
@@ -188,7 +188,7 @@ std::string ClusterResourceManager::GetNodeResourceViewString(
 }
 
 std::string ClusterResourceManager::GetResourceNameFromIndex(int64_t res_idx) {
-  return scheduling::ResourceID(res_idx).ToBinary();
+  return scheduling::ResourceID(res_idx).Binary();
 }
 
 const absl::flat_hash_map<scheduling::NodeID, Node>
@@ -274,7 +274,7 @@ bool ClusterResourceManager::HasSufficientResource(
 
 void ClusterResourceManager::DebugString(std::stringstream &buffer) const {
   for (auto &node : GetResourceView()) {
-    buffer << "node id: " << node.first.ToInt64();
+    buffer << "node id: " << node.first.ToInt();
     buffer << node.second.GetLocalView().DebugString();
   }
 }

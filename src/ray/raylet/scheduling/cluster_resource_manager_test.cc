@@ -24,7 +24,7 @@ NodeResources CreateNodeResources(double available_cpu, double total_cpu,
                                   bool object_pulls_queued = false) {
   NodeResources resources;
   resources.predefined_resources = {{available_cpu, total_cpu}, {0, 0}, {0, 0}, {0, 0}};
-  resources.custom_resources[scheduling::ResourceID("CUSTOM").ToInt64()] = {
+  resources.custom_resources[scheduling::ResourceID("CUSTOM").ToInt()] = {
       available_custom_resource, total_custom_resource};
   resources.object_pulls_queued = object_pulls_queued;
   return resources;

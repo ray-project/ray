@@ -193,11 +193,11 @@ class ClusterResourceSchedulerTest : public ::testing::Test {
   }
 
   void AssertPredefinedNodeResources() {
-    ASSERT_EQ(ray::kCPU_ResourceLabel, scheduling::ResourceID(CPU).ToBinary());
-    ASSERT_EQ(ray::kGPU_ResourceLabel, scheduling::ResourceID(GPU).ToBinary());
+    ASSERT_EQ(ray::kCPU_ResourceLabel, scheduling::ResourceID(CPU).Binary());
+    ASSERT_EQ(ray::kGPU_ResourceLabel, scheduling::ResourceID(GPU).Binary());
     ASSERT_EQ(ray::kObjectStoreMemory_ResourceLabel,
-              scheduling::ResourceID(OBJECT_STORE_MEM).ToBinary());
-    ASSERT_EQ(ray::kMemory_ResourceLabel, scheduling::ResourceID(MEM).ToBinary());
+              scheduling::ResourceID(OBJECT_STORE_MEM).Binary());
+    ASSERT_EQ(ray::kMemory_ResourceLabel, scheduling::ResourceID(MEM).Binary());
   }
   std::unique_ptr<gcs::MockGcsClient> gcs_client_;
   std::string node_name;
@@ -420,7 +420,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {
     scheduling_strategy.mutable_default_scheduling_strategy();
     auto node_id = resource_scheduler.GetBestSchedulableNode(
         resource_request, scheduling_strategy, false, false, &violations, &is_infeasible);
-    ASSERT_EQ(node_id.ToInt64(), 1);
+    ASSERT_EQ(node_id.ToInt(), 1);
     ASSERT_TRUE(violations == 0);
 
     NodeResources nr1, nr2;
@@ -473,7 +473,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest) {
   const auto &custom_resources = resource_scheduler.GetClusterResourceManager()
                                      .GetNodeResources(scheduling::NodeID(name))
                                      .custom_resources;
-  auto resource_id = scheduling::ResourceID("custom").ToInt64();
+  auto resource_id = scheduling::ResourceID("custom").ToInt();
   ASSERT_EQ(custom_resources.find(resource_id)->second.total.Double(), 3);
 }
 
@@ -552,7 +552,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
     bool is_infeasible;
     auto node_id = resource_scheduler.GetBestSchedulableNode(
         resource_request, scheduling_strategy, false, false, &violations, &is_infeasible);
-    ASSERT_TRUE(node_id.IsNull());
+    ASSERT_TRUE(node_id.IsNil());
   }
 
   // Predefined resources, no constraint violation.
@@ -565,7 +565,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
     bool is_infeasible;
     auto node_id = resource_scheduler.GetBestSchedulableNode(
         resource_request, scheduling_strategy, false, false, &violations, &is_infeasible);
-    ASSERT_TRUE(!node_id.IsNull());
+    ASSERT_TRUE(!node_id.IsNil());
     ASSERT_TRUE(violations == 0);
   }
   // Custom resources, hard constraint violation.
@@ -579,7 +579,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
     bool is_infeasible;
     auto node_id = resource_scheduler.GetBestSchedulableNode(
         resource_request, scheduling_strategy, false, false, &violations, &is_infeasible);
-    ASSERT_TRUE(node_id.IsNull());
+    ASSERT_TRUE(node_id.IsNil());
   }
   // Custom resources, no constraint violation.
   {
@@ -592,7 +592,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
     bool is_infeasible;
     auto node_id = resource_scheduler.GetBestSchedulableNode(
         resource_request, scheduling_strategy, false, false, &violations, &is_infeasible);
-    ASSERT_TRUE(!node_id.IsNull());
+    ASSERT_TRUE(!node_id.IsNil());
     ASSERT_TRUE(violations == 0);
   }
   // Custom resource missing, hard constraint violation.
@@ -606,7 +606,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
     bool is_infeasible;
     auto node_id = resource_scheduler.GetBestSchedulableNode(
         resource_request, scheduling_strategy, false, false, &violations, &is_infeasible);
-    ASSERT_TRUE(node_id.IsNull());
+    ASSERT_TRUE(node_id.IsNil());
   }
   // Placement hints, no constraint violation.
   {
@@ -619,7 +619,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
     bool is_infeasible;
     auto node_id = resource_scheduler.GetBestSchedulableNode(
         resource_request, scheduling_strategy, false, false, &violations, &is_infeasible);
-    ASSERT_TRUE(!node_id.IsNull());
+    ASSERT_TRUE(!node_id.IsNil());
     ASSERT_TRUE(violations == 0);
   }
 }
@@ -947,7 +947,7 @@ TEST_F(ClusterResourceSchedulerTest, DeadNodeTest) {
   ASSERT_TRUE(resource_scheduler
                   .GetBestSchedulableNode(resource, scheduling_strategy, false, false,
                                           false, &violations, &is_infeasible)
-                  .IsNull());
+                  .IsNil());
 }
 
 TEST_F(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest) {
@@ -1142,7 +1142,7 @@ TEST_F(ClusterResourceSchedulerTest, TestAlwaysSpillInfeasibleTask) {
   ASSERT_TRUE(resource_scheduler
                   .GetBestSchedulableNode(resource_spec, scheduling_strategy, false,
                                           false, false, &total_violations, &is_infeasible)
-                  .IsNull());
+                  .IsNil());
 
   // Feasible remote node, but doesn't currently have resources available. We
   // should spill there.
@@ -1395,7 +1395,7 @@ TEST_F(ClusterResourceSchedulerTest, DirtyLocalViewTest) {
       ASSERT_EQ(
           resource_scheduler.GetBestSchedulableNode(task_spec, scheduling_strategy, false,
                                                     false, true, &t, &is_infeasible),
-          scheduling::NodeID::NullID());
+          scheduling::NodeID::Nil());
       ASSERT_FALSE(
           resource_scheduler.GetLocalResourceManager().AllocateLocalTaskResources(
               task_spec, task_allocation));
@@ -1417,31 +1417,31 @@ TEST_F(ClusterResourceSchedulerTest, DynamicResourceTest) {
 
   auto result = resource_scheduler.GetBestSchedulableNode(
       resource_request, scheduling_strategy, false, false, false, &t, &is_infeasible);
-  ASSERT_TRUE(result.IsNull());
+  ASSERT_TRUE(result.IsNil());
 
   resource_scheduler.GetLocalResourceManager().AddLocalResourceInstances(
       scheduling::ResourceID("custom123"), {0., 1.0, 1.0});
 
   result = resource_scheduler.GetBestSchedulableNode(
       resource_request, scheduling_strategy, false, false, false, &t, &is_infeasible);
-  ASSERT_FALSE(result.IsNull()) << resource_scheduler.DebugString();
+  ASSERT_FALSE(result.IsNil()) << resource_scheduler.DebugString();
 
   resource_request["custom123"] = 3;
   result = resource_scheduler.GetBestSchedulableNode(
       resource_request, scheduling_strategy, false, false, false, &t, &is_infeasible);
-  ASSERT_TRUE(result.IsNull());
+  ASSERT_TRUE(result.IsNil());
 
   resource_scheduler.GetLocalResourceManager().AddLocalResourceInstances(
       scheduling::ResourceID("custom123"), {1.0});
   result = resource_scheduler.GetBestSchedulableNode(
       resource_request, scheduling_strategy, false, false, false, &t, &is_infeasible);
-  ASSERT_FALSE(result.IsNull());
+  ASSERT_FALSE(result.IsNil());
 
   resource_scheduler.GetLocalResourceManager().DeleteLocalResource(
       scheduling::ResourceID("custom123"));
   result = resource_scheduler.GetBestSchedulableNode(
       resource_request, scheduling_strategy, false, false, false, &t, &is_infeasible);
-  ASSERT_TRUE(result.IsNull());
+  ASSERT_TRUE(result.IsNil());
 }
 
 TEST_F(ClusterResourceSchedulerTest, AvailableResourceEmptyTest) {
@@ -1484,14 +1484,14 @@ TEST_F(ClusterResourceSchedulerTest, TestForceSpillback) {
   ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(
                 resource_spec, scheduling_strategy, false, false,
                 /*force_spillback=*/true, &total_violations, &is_infeasible),
-            scheduling::NodeID::NullID());
+            scheduling::NodeID::Nil());
   // Choose a remote node that has the resources available.
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(node_ids[50],
                                                                  resource_spec, {});
   ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(
                 resource_spec, scheduling_strategy, false, false,
                 /*force_spillback=*/true, &total_violations, &is_infeasible),
-            scheduling::NodeID::NullID());
+            scheduling::NodeID::Nil());
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
       node_ids[51], resource_spec, resource_spec);
   ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(

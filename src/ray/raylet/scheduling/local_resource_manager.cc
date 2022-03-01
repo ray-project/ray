@@ -54,7 +54,7 @@ void LocalResourceManager::InitResourceUnitInstanceInfo() {
     std::vector<std::string> results;
     boost::split(results, custom_unit_instance_resources, boost::is_any_of(","));
     for (std::string &result : results) {
-      int64_t resource_id = scheduling::ResourceID(result).ToInt64();
+      int64_t resource_id = scheduling::ResourceID(result).ToInt();
       custom_unit_instance_resources_.emplace(resource_id);
     }
   }
@@ -62,7 +62,7 @@ void LocalResourceManager::InitResourceUnitInstanceInfo() {
 
 void LocalResourceManager::AddLocalResourceInstances(
     scheduling::ResourceID resource_id, const std::vector<FixedPoint> &instances) {
-  auto resource_name = resource_id.ToBinary();
+  auto resource_name = resource_id.Binary();
   ResourceInstanceCapacities *node_instances;
   local_resources_.predefined_resources.resize(PredefinedResources_MAX);
   if (kCPU_ResourceLabel == resource_name) {
@@ -74,7 +74,7 @@ void LocalResourceManager::AddLocalResourceInstances(
   } else if (kMemory_ResourceLabel == resource_name) {
     node_instances = &local_resources_.predefined_resources[MEM];
   } else {
-    node_instances = &local_resources_.custom_resources[resource_id.ToInt64()];
+    node_instances = &local_resources_.custom_resources[resource_id.ToInt()];
   }
 
   if (node_instances->total.size() < instances.size()) {
@@ -99,10 +99,10 @@ void LocalResourceManager::DeleteLocalResource(scheduling::ResourceID resource_i
       available = 0;
     }
   } else {
-    auto c_itr = local_resources_.custom_resources.find(resource_id.ToInt64());
+    auto c_itr = local_resources_.custom_resources.find(resource_id.ToInt());
     if (c_itr != local_resources_.custom_resources.end()) {
-      local_resources_.custom_resources[resource_id.ToInt64()].total.clear();
-      local_resources_.custom_resources[resource_id.ToInt64()].available.clear();
+      local_resources_.custom_resources[resource_id.ToInt()].total.clear();
+      local_resources_.custom_resources[resource_id.ToInt()].available.clear();
       local_resources_.custom_resources.erase(c_itr);
     }
   }
@@ -115,7 +115,7 @@ bool LocalResourceManager::IsAvailableResourceEmpty(scheduling::ResourceID resou
   if (idx != -1) {
     return FixedPoint::Sum(local_resources_.predefined_resources[idx].available) <= 0;
   }
-  auto itr = local_resources_.custom_resources.find(resource_id.ToInt64());
+  auto itr = local_resources_.custom_resources.find(resource_id.ToInt());
   if (itr != local_resources_.custom_resources.end()) {
     return FixedPoint::Sum(itr->second.available) <= 0;
   } else {
@@ -525,7 +525,7 @@ void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data)
     uint64_t custom_id = it.first;
     const auto &capacity = it.second;
     const auto &last_capacity = last_report_resources_->custom_resources[custom_id];
-    auto label = scheduling::ResourceID(custom_id).ToBinary();
+    auto label = scheduling::ResourceID(custom_id).Binary();
     // Note: available may be negative, but only report positive to GCS.
     if (capacity.available != last_capacity.available && capacity.available > 0) {
       resources_data.set_resources_available_changed(true);
@@ -579,7 +579,7 @@ ray::gcs::NodeResourceInfoAccessor::ResourceMap LocalResourceManager::GetResourc
   }
 
   for (auto entry : local_resources_.custom_resources) {
-    std::string resource_name = scheduling::ResourceID(entry.first).ToBinary();
+    std::string resource_name = scheduling::ResourceID(entry.first).Binary();
     double resource_total = FixedPoint::Sum(entry.second.total).Double();
     if (!resource_map_filter.contains(resource_name)) {
       continue;
@@ -651,14 +651,14 @@ bool LocalResourceManager::ResourcesExist(scheduling::ResourceID resource_id) {
     // resources at the beginning.
     return true;
   } else {
-    const auto &it = local_resources_.custom_resources.find(resource_id.ToInt64());
+    const auto &it = local_resources_.custom_resources.find(resource_id.ToInt());
     return it != local_resources_.custom_resources.end();
   }
 }
 
 int GetPredefinedResourceIndex(scheduling::ResourceID resource_id) {
-  if (resource_id.ToInt64() >= 0 && resource_id.ToInt64() < PredefinedResources_MAX) {
-    return resource_id.ToInt64();
+  if (resource_id.ToInt() >= 0 && resource_id.ToInt() < PredefinedResources_MAX) {
+    return resource_id.ToInt();
   }
   return -1;
 }

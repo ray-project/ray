@@ -84,14 +84,14 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
 
       // There is no node that has available resources to run the request.
       // Move on to the next shape.
-      if (scheduling_node_id.IsNull()) {
+      if (scheduling_node_id.IsNil()) {
         RAY_LOG(DEBUG) << "No node found to schedule a task "
                        << task.GetTaskSpecification().TaskId() << " is infeasible?"
                        << is_infeasible;
         break;
       }
 
-      NodeID node_id = NodeID::FromBinary(scheduling_node_id.ToBinary());
+      NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
       ScheduleOnNode(node_id, work);
       work_it = work_queue.erase(work_it);
     }

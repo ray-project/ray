@@ -26,23 +26,27 @@ TEST_F(SchedulingIDsTest, BasicTest) {
   std::vector<NodeID> node_ids;
   for (auto &string_id : string_ids) {
     node_ids.emplace_back(NodeID(string_id));
-    ASSERT_EQ(node_ids.back().ToBinary(), string_id);
+    ASSERT_EQ(node_ids.back().Binary(), string_id);
   }
   ASSERT_EQ(node_ids[0], NodeID(string_ids[0]));
-  ASSERT_EQ(node_ids[0], NodeID(node_ids[0].ToInt64()));
+  ASSERT_EQ(node_ids[0], NodeID(node_ids[0].ToInt()));
 
-  ASSERT_TRUE(NodeID::NullID().IsNull());
-  ASSERT_EQ(NodeID::NullID().ToInt64(), -1);
-  ASSERT_EQ(NodeID::NullID().ToBinary(), "-1");
+  ASSERT_TRUE(NodeID::Nil().IsNil());
+  ASSERT_EQ(NodeID::Nil().ToInt(), -1);
+  ASSERT_EQ(NodeID::Nil().Binary(), "-1");
+
+  ASSERT_EQ(NodeID(13), NodeID(13));
+  ASSERT_NE(NodeID(1), NodeID(2));
+  ASSERT_TRUE(NodeID(1) < NodeID(2));
 }
 
 TEST_F(SchedulingIDsTest, PrepopulateResourceIDTest) {
-  ASSERT_EQ(kCPU_ResourceLabel, ResourceID(CPU).ToBinary());
-  ASSERT_EQ(kGPU_ResourceLabel, ResourceID(GPU).ToBinary());
-  ASSERT_EQ(kObjectStoreMemory_ResourceLabel, ResourceID(OBJECT_STORE_MEM).ToBinary());
-  ASSERT_EQ(kMemory_ResourceLabel, ResourceID(MEM).ToBinary());
+  ASSERT_EQ(kCPU_ResourceLabel, ResourceID(CPU).Binary());
+  ASSERT_EQ(kGPU_ResourceLabel, ResourceID(GPU).Binary());
+  ASSERT_EQ(kObjectStoreMemory_ResourceLabel, ResourceID(OBJECT_STORE_MEM).Binary());
+  ASSERT_EQ(kMemory_ResourceLabel, ResourceID(MEM).Binary());
 
   // mean while NodeID is not populated.
-  ASSERT_NE(kCPU_ResourceLabel, NodeID(CPU).ToBinary());
+  ASSERT_NE(kCPU_ResourceLabel, NodeID(CPU).Binary());
 }
 }  // namespace ray

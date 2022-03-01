@@ -320,9 +320,9 @@ void LocalTaskManager::SpillWaitingTasks() {
         /*prioritize_local_node*/ true,
         /*exclude_local_node*/ force_spillback,
         /*requires_object_store_memory*/ true, &is_infeasible);
-    if (!scheduling_node_id.IsNull() &&
-        scheduling_node_id.ToBinary() != self_node_id_.Binary()) {
-      NodeID node_id = NodeID::FromBinary(scheduling_node_id.ToBinary());
+    if (!scheduling_node_id.IsNil() &&
+        scheduling_node_id.Binary() != self_node_id_.Binary()) {
+      NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
       Spillback(node_id, *it);
       if (!task.GetTaskSpecification().GetDependencies().empty()) {
         task_dependency_manager_.RemoveTaskDependencies(
@@ -331,7 +331,7 @@ void LocalTaskManager::SpillWaitingTasks() {
       waiting_tasks_index_.erase(task_id);
       it = waiting_task_queue_.erase(it);
     } else {
-      if (scheduling_node_id.IsNull()) {
+      if (scheduling_node_id.IsNil()) {
         RAY_LOG(DEBUG) << "RayTask " << task_id
                        << " has blocked dependencies, but no other node has resources, "
                           "keeping the task local";
@@ -353,12 +353,12 @@ bool LocalTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
       /*exclude_local_node*/ false,
       /*requires_object_store_memory*/ false, &is_infeasible);
 
-  if (is_infeasible || scheduling_node_id.IsNull() ||
-      scheduling_node_id.ToBinary() == self_node_id_.Binary()) {
+  if (is_infeasible || scheduling_node_id.IsNil() ||
+      scheduling_node_id.Binary() == self_node_id_.Binary()) {
     return false;
   }
 
-  NodeID node_id = NodeID::FromBinary(scheduling_node_id.ToBinary());
+  NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
   Spillback(node_id, work);
   return true;
 }
@@ -1010,7 +1010,7 @@ ResourceSet LocalTaskManager::CalcNormalTaskResources() const {
       }
       for (auto &entry : resource_request.custom_resources) {
         if (entry.second > 0) {
-          total_normal_task_resources[scheduling::ResourceID(entry.first).ToBinary()] +=
+          total_normal_task_resources[scheduling::ResourceID(entry.first).Binary()] +=
               entry.second;
         }
       }

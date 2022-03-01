@@ -116,7 +116,7 @@ scheduling::NodeID SchedulingPolicy::HybridPolicyWithFilter(
   // place.
   std::sort(round.begin() + start_index, round.end());
 
-  scheduling::NodeID best_node_id = scheduling::NodeID::NullID();
+  scheduling::NodeID best_node_id = scheduling::NodeID::Nil();
   float best_utilization_score = INFINITY;
   bool best_is_available = false;
 
@@ -143,7 +143,7 @@ scheduling::NodeID SchedulingPolicy::HybridPolicyWithFilter(
                                                         ignore_pull_manager_at_capacity);
     float critical_resource_utilization =
         node.GetLocalView().CalculateCriticalResourceUtilization();
-    RAY_LOG(DEBUG) << "Node " << node_id.ToInt64() << " is "
+    RAY_LOG(DEBUG) << "Node " << node_id.ToInt() << " is "
                    << (is_available ? "available" : "not available") << " for request "
                    << resource_request.DebugString()
                    << " with critical resource utilization "
@@ -193,7 +193,7 @@ scheduling::NodeID SchedulingPolicy::HybridPolicy(
   auto best_node_id = HybridPolicyWithFilter(
       resource_request, spread_threshold, force_spillback,
       /*require_available*/ true, is_node_available, NodeFilter::kNonGpu);
-  if (!best_node_id.IsNull()) {
+  if (!best_node_id.IsNil()) {
     return best_node_id;
   }
 
@@ -206,7 +206,7 @@ scheduling::NodeID SchedulingPolicy::HybridPolicy(
 scheduling::NodeID SchedulingPolicy::RandomPolicy(
     const ResourceRequest &resource_request,
     std::function<bool(scheduling::NodeID)> is_node_available) {
-  scheduling::NodeID best_node = scheduling::NodeID::NullID();
+  scheduling::NodeID best_node = scheduling::NodeID::Nil();
   if (nodes_.empty()) {
     return best_node;
   }
@@ -230,7 +230,7 @@ scheduling::NodeID SchedulingPolicy::RandomPolicy(
       iter = nodes_.begin();
     }
   }
-  RAY_LOG(DEBUG) << "RandomPolicy, best_node = " << best_node.ToInt64()
+  RAY_LOG(DEBUG) << "RandomPolicy, best_node = " << best_node.ToInt()
                  << ", # nodes = " << nodes_.size()
                  << ", resource_request = " << resource_request.DebugString();
   return best_node;
