@@ -3214,6 +3214,22 @@ def test_sort_simple(ray_start_regular_shared):
     assert ds.count() == 0
 
 
+def test_sort_partition_same_key_to_same_block(ray_start_regular_shared):
+    num_items = 100
+    xs = [1] * num_items
+    ds = ray.data.from_items(xs)
+    sorted_ds = ds.repartition(num_items).sort()
+
+    # We still have 100 blocks
+    assert len(sorted_ds._block_num_rows()) == num_items
+    # Only one of them is non-empty
+    count = sum(1 for x in sorted_ds._block_num_rows() if x > 0)
+    assert count == 1
+    # That non-empty block contains all rows
+    total = sum(x for x in sorted_ds._block_num_rows() if x > 0)
+    assert total == num_items
+
+
 def test_column_name_type_check(ray_start_regular_shared):
     df = pd.DataFrame({"1": np.random.rand(10), "a": np.random.rand(10)})
     ds = ray.data.from_pandas(df)
