@@ -186,10 +186,10 @@ Status CreateRequestQueue::ProcessRequests() {
     }
 
 	int blockevictspill_flag = BlockEvictSpill_flag;
-	if ((blockevictspill_flag&(1<<0)) && !block_tasks_required) {
+	if (RayConfig::instance().enable_BlockTasks() && !block_tasks_required) {
 	  blockevictspill_flag -= (1<<0);
 	}
-	if ((blockevictspill_flag&(1<<2)) && !evict_tasks_required) {
+	if (RayConfig::instance().enable_EvictTasks() && !evict_tasks_required) {
 	  blockevictspill_flag -= (1<<2);
 	}
 	if (blockevictspill_flag) {
@@ -215,8 +215,11 @@ Status CreateRequestQueue::ProcessRequests() {
         RAY_LOG(DEBUG) << "[JAE_DEBUG] calling object_creation_blocked_callback " 
 			<< BlockEvictSpill_flag << " on priority "
 			<< lowest_pri;
-	    on_object_creation_blocked_callback_(lowest_pri, BlockEvictSpill_flag);
-	    if (BlockEvictSpill_flag&(1<<1) || (BlockEvictSpill_flag&(1<<2)&&!should_spill_)
+		if(!block_tasks_required && !evict_tasks_required){
+	      on_object_creation_blocked_callback_(lowest_pri, BlockEvictSpill_flag);
+		}
+	    if (RayConfig::instance().enable_BlockTasksSpill() || 
+				(RayConfig::instance().enable_EvictTasks() && (!should_spill_))
 		  /*if evictTasks is enabled, do not trigger spill unless should_spill_ is set*/) { 
           return Status::TransientObjectStoreFull(
               "Waiting for higher priority tasks to finish");

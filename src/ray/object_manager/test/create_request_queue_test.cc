@@ -76,38 +76,39 @@ class CreateRequestQueueTest : public ::testing::Test {
   int num_global_gc_ = 0;
 };
 
-std::string TEST_RAYLET_EXEC_PATH;
 TEST_F(CreateRequestQueueTest, TestBlockTasks) {
-  /*
-  std::vector<std::string> cmdargs(
-		  {TEST_RAYLET_EXEC_PATH, "--object_store_memory=10000000"});
-  */
-  auto request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
-    result->data_size = 9000000;
+  auto oom_request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
+    return PlasmaError::OutOfMemory;
+  };
+  auto blocked_request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
+    result->data_size = 1234;
     return PlasmaError::OK;
   };
-  ray::TaskKey key(ray::Priority({0}), ObjectID::FromRandom().TaskId());
-  ray::TaskKey key1(ray::Priority({1}), ObjectID::FromRandom().TaskId());
+  ray::TaskKey key(ray::Priority({1,2}), ObjectID::FromRandom().TaskId());
+  ray::TaskKey key1(ray::Priority({3,4}), ObjectID::FromRandom().TaskId());
 
-  // Advance the clock without processing objects. This shouldn't have an impact.
-  current_time_ns_ += 10e9;
   auto client = std::make_shared<MockClient>();
-  auto req_id = queue_.AddRequest(key, ObjectID::Nil(), client, request, 9000000);
-  auto req_id1 = queue_.AddRequest(key1, ObjectID::Nil(), client, request, 9000000);
-  ASSERT_REQUEST_UNFINISHED(queue_, req_id);
-  ASSERT_REQUEST_UNFINISHED(queue_, req_id1);
+  auto req_id1 = queue_.AddRequest(key, ObjectID::Nil(), client, oom_request, 1234);
+  auto req_id2 = queue_.AddRequest(key1, ObjectID::Nil(), client, blocked_request, 1234);
 
-  
-  ASSERT_TRUE(queue_.ProcessFirstRequest().ok());
-  ASSERT_REQUEST_FINISHED(queue_, req_id, PlasmaError::OK);
-  ASSERT_EQ(num_global_gc_, 0);
-  // Request gets cleaned up after we get it.
-  ASSERT_REQUEST_FINISHED(queue_, req_id, PlasmaError::UnexpectedError);
+  // Neither request was fulfilled.
+  ASSERT_TRUE(queue_.ProcessRequests().IsObjectStoreFull());
+  ASSERT_TRUE(queue_.ProcessRequests().IsObjectStoreFull());
+  ASSERT_REQUEST_UNFINISHED(queue_, req_id1);
+  ASSERT_REQUEST_UNFINISHED(queue_, req_id2);
+  ASSERT_EQ(num_global_gc_, 2);
 
-  ASSERT_TRUE(queue_.ProcessFirstRequest().ok());
-  ASSERT_REQUEST_UNFINISHED(queue_, req_id1);
-  sleep(1000);
-  ASSERT_REQUEST_UNFINISHED(queue_, req_id1);
+  // Grace period is done. 
+  // Blocked request should be still blocked
+  current_time_ns_ += oom_grace_period_s_ * 2e9;
+  ASSERT_TRUE(queue_.ProcessRequests().ok());
+  ASSERT_EQ(num_global_gc_, 3);
+
+  // Both requests fulfilled.
+  ASSERT_REQUEST_FINISHED(queue_, req_id1, PlasmaError::OutOfMemory);
+  ASSERT_REQUEST_UNFINISHED(queue_, req_id2, PlasmaError::OK);
+
+  AssertNoLeaks();
 }
 
 TEST_F(CreateRequestQueueTest, TestBtree) {
