@@ -125,18 +125,28 @@ def try_reload_log_state(provider_config: Dict[str, Any], log_state: dict) -> No
 
 def debug_status(status, error) -> str:
     """Return a debug string for the autoscaler."""
-    if not status:
-        status = "No cluster status."
-    else:
+    if status:
         status = status.decode("utf-8")
-        as_dict = json.loads(status)
-        time = datetime.datetime.fromtimestamp(as_dict["time"])
-        lm_summary = LoadMetricsSummary(**as_dict["load_metrics_report"])
-        autoscaler_summary = AutoscalerSummary(**as_dict["autoscaler_report"])
-        status = format_info_string(lm_summary, autoscaler_summary, time=time)
+        status_dict = json.loads(status)
+        lm_summary_dict = status_dict.get("load_metrics_report")
+        autoscaler_summary_dict = status_dict.get("autoscaler_report")
+        timestamp = status_dict.get("time")
+        if lm_summary_dict and autoscaler_summary_dict and timestamp:
+            lm_summary = LoadMetricsSummary(**lm_summary_dict)
+            autoscaler_summary = AutoscalerSummary(**autoscaler_summary_dict)
+            report_time = datetime.datetime.fromtimestamp(timestamp)
+            status = format_info_string(
+                lm_summary, autoscaler_summary, time=report_time
+            )
+        else:
+            status = "No cluster status."
+    else:
+        status = "No cluster status."
+
     if error:
         status += "\n"
         status += error.decode("utf-8")
+
     return status
 
 

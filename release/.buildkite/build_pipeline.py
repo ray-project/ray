@@ -119,7 +119,8 @@ SERVE_NIGHTLY_TESTS = {
         "autoscaling_single_deployment",
         "autoscaling_multi_deployment",
         "serve_micro_benchmark",
-        "serve_micro_benchmark_k8s",
+        # TODO(architkulkarni) Reenable after K8s migration.  Currently failing
+        # "serve_micro_benchmark_k8s",
         "serve_cluster_fault_tolerance",
     ],
 }
@@ -147,15 +148,6 @@ CORE_SCALABILITY_TESTS_DAILY = {
         "many_tasks",
         "many_pgs",
         "many_nodes",
-    ],
-}
-
-CORE_REDIS_HA_TESTS_DAILY = {
-    "~/ray/benchmarks/benchmark_tests.yaml": [
-        "many_actors_redis_ha",
-        "many_tasks_redis_ha",
-        "many_pgs_redis_ha",
-        "many_nodes_redis_ha",
     ],
 }
 
@@ -304,7 +296,6 @@ SUITES = {
     "serve-nightly": SERVE_NIGHTLY_TESTS,
     "core-daily": CORE_DAILY_TESTS,
     "core-scalability": CORE_SCALABILITY_TESTS_DAILY,
-    "core-redis-ha": CORE_REDIS_HA_TESTS_DAILY,
     "nightly": {**NIGHTLY_TESTS, **USER_TESTS},
     "core-scheduling-daily": CORE_SCHEDULING_DAILY,
     "weekly": WEEKLY_TESTS,

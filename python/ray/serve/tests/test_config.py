@@ -111,7 +111,7 @@ def test_replica_config_validation():
     with pytest.raises(ValueError):
         ReplicaConfig(Class, ray_actor_options={"object_store_memory": -1})
     with pytest.raises(TypeError):
-        ReplicaConfig(Class, ray_actor_options={"resources": None})
+        ReplicaConfig(Class, ray_actor_options={"resources": []})
 
     disallowed_ray_actor_options = {
         "args",
