@@ -242,7 +242,7 @@ def test_run(ray_start_stop):
         os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
     )
 
-    p = subprocess.Popen(["serve", "run", "-c", config_file_name])
+    p = subprocess.Popen(["serve", "run", config_file_name])
     wait_for_condition(lambda: ping_endpoint("one") == "2", timeout=10)
     wait_for_condition(
         lambda: ping_endpoint("shallow") == "Hello shallow world!", timeout=10
@@ -255,7 +255,7 @@ def test_run(ray_start_stop):
     )
 
     # Deploy via import path
-    p = subprocess.Popen(["serve", "run", "-i", "ray.serve.tests.test_cli.parrot"])
+    p = subprocess.Popen(["serve", "run", "ray.serve.tests.test_cli.parrot"])
     wait_for_condition(
         lambda: ping_endpoint("parrot", params="?sound=squawk") == "squawk", timeout=10
     )
