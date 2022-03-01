@@ -1,6 +1,7 @@
 import json
 import subprocess
 import sys
+import os
 from typing import List, Dict, Set
 
 import pytest
@@ -46,6 +47,9 @@ def deployments_match(list1: List[Dict], list2: List[Dict], properties: Set) -> 
     return len(list2) == 0
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="File paths incompatible with Windows."
+)
 def test_put_get_success(ray_start_stop):
     ray_actor_options = {
         "runtime_env": {"py_modules": [test_env_uri, test_module_uri]},
@@ -75,6 +79,14 @@ def test_put_get_success(ray_start_stop):
         import_path="test_module.test.one",
     )
 
+    three_deployments = os.path.join(
+        os.path.dirname(__file__), "three_deployments_response.json"
+    )
+
+    two_deployments = os.path.join(
+        os.path.dirname(__file__), "two_deployments_response.json"
+    )
+
     # Ensure the REST API is idempotent
     for _ in range(2):
         deployments = [shallow, deep, one]
@@ -96,7 +108,7 @@ def test_put_get_success(ray_start_stop):
         get_response = requests.get(GET_OR_PUT_URL, timeout=30)
         assert get_response.status_code == 200
 
-        with open("three_deployments_response.json", "r") as f:
+        with open(three_deployments, "r") as f:
             response_deployments = json.loads(get_response.json())["deployments"]
             expected_deployments = json.load(f)["deployments"]
             assert deployments_match(
@@ -120,7 +132,7 @@ def test_put_get_success(ray_start_stop):
         get_response = requests.get(GET_OR_PUT_URL, timeout=30)
         assert get_response.status_code == 200
 
-        with open("two_deployments_response.json", "r") as f:
+        with open(two_deployments, "r") as f:
             response_deployments = json.loads(get_response.json())["deployments"]
             expected_deployments = json.load(f)["deployments"]
             assert deployments_match(
