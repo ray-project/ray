@@ -320,7 +320,7 @@ def logs(address: Optional[str], job_id: str, follow: bool):
         cli_logger.print(client.get_job_logs(job_id), end="", _no_format=True)
 
 
-@job_cli_group.command("list", help="List all jobs together with their info.")
+@job_cli_group.command()
 @click.option(
     "--address",
     type=str,
@@ -332,7 +332,8 @@ def logs(address: Optional[str], job_id: str, follow: bool):
     ),
 )
 @add_click_logging_options
-def list_jobs(address: Optional[str]):
+@PublicAPI(stability="beta")
+def list(address: Optional[str]):
     """Lists all running jobs and their information.
 
     Example:
