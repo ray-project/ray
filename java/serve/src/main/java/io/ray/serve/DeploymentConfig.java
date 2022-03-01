@@ -1,6 +1,9 @@
 package io.ray.serve;
 
 import com.google.common.base.Preconditions;
+import com.google.protobuf.ByteString;
+import io.ray.runtime.serializer.MessagePackSerializer;
+import io.ray.serve.generated.DeploymentLanguage;
 import java.io.Serializable;
 
 public class DeploymentConfig implements Serializable {
@@ -16,6 +19,12 @@ public class DeploymentConfig implements Serializable {
   private double gracefulShutdownWaitLoopS = 2;
 
   private double gracefulShutdownTimeoutS = 20;
+
+  private double healthCheckPeriodS = Constants.DEFAULT_HEALTH_CHECK_PERIOD_S;
+
+  private double healthCheckTimeoutS = Constants.DEFAULT_HEALTH_CHECK_TIMEOUT_S;
+
+  private AutoscalingConfig autoscalingConfig;
 
   private boolean isCrossLanguage;
 
@@ -67,6 +76,31 @@ public class DeploymentConfig implements Serializable {
     return this;
   }
 
+  public double getHealthCheckPeriodS() {
+    return healthCheckPeriodS;
+  }
+
+  public void setHealthCheckPeriodS(double healthCheckPeriodS) {
+    this.healthCheckPeriodS = healthCheckPeriodS;
+  }
+
+  public double getHealthCheckTimeoutS() {
+    return healthCheckTimeoutS;
+  }
+
+  public void setHealthCheckTimeoutS(double healthCheckTimeoutS) {
+    this.healthCheckTimeoutS = healthCheckTimeoutS;
+  }
+
+  public AutoscalingConfig getAutoscalingConfig() {
+    return autoscalingConfig;
+  }
+
+  public DeploymentConfig setAutoscalingConfig(AutoscalingConfig autoscalingConfig) {
+    this.autoscalingConfig = autoscalingConfig;
+    return this;
+  }
+
   public boolean isCrossLanguage() {
     return isCrossLanguage;
   }
@@ -83,5 +117,17 @@ public class DeploymentConfig implements Serializable {
   public DeploymentConfig setDeploymentLanguage(int deploymentLanguage) {
     this.deploymentLanguage = deploymentLanguage;
     return this;
+  }
+
+  public io.ray.serve.generated.DeploymentConfig toProtobuf() {
+    return io.ray.serve.generated.DeploymentConfig.newBuilder()
+        .setNumReplicas(numReplicas)
+        .setMaxConcurrentQueries(maxConcurrentQueries)
+        .setGracefulShutdownWaitLoopS(gracefulShutdownWaitLoopS)
+        .setGracefulShutdownTimeoutS(gracefulShutdownTimeoutS)
+        .setIsCrossLanguage(true)
+        .setDeploymentLanguage(DeploymentLanguage.JAVA)
+        .setUserConfig(ByteString.copyFrom(MessagePackSerializer.encode(userConfig).getKey()))
+        .build();
   }
 }

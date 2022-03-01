@@ -24,4 +24,17 @@ public class Constants {
   public static final String UTF8 = "UTF-8";
 
   public static final String CHECK_HEALTH_METHOD = "checkHealth";
+
+  /**
+   * Because ServeController will accept one long poll request per handle, its concurrency needs to
+   * scale as O(num_handles)
+   */
+  public static final int CONTROLLER_MAX_CONCURRENCY = 15000;
+
+  /** Max time to wait for proxy in `serve.start()`. Unit: second */
+  public static final int PROXY_TIMEOUT = 60;
+
+  public static final double DEFAULT_HEALTH_CHECK_PERIOD_S = 10;
+
+  public static final double DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30;
 }

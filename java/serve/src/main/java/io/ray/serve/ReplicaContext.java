@@ -9,15 +9,22 @@ public class ReplicaContext {
 
   private String internalControllerName;
 
+  private String internalControllerNamespace;
+
   private Object servableObject;
 
   private RayServeConfig rayServeConfig;
 
   public ReplicaContext(
-      String deploymentName, String replicaTag, String controllerName, Object servableObject) {
+      String deploymentName,
+      String replicaTag,
+      String controllerName,
+      String controllerNamespace,
+      Object servableObject) {
     this.deploymentName = deploymentName;
     this.replicaTag = replicaTag;
     this.internalControllerName = controllerName;
+    this.internalControllerNamespace = controllerNamespace;
     this.servableObject = servableObject;
   }
 
@@ -43,6 +50,14 @@ public class ReplicaContext {
 
   public void setInternalControllerName(String internalControllerName) {
     this.internalControllerName = internalControllerName;
+  }
+
+  public String getInternalControllerNamespace() {
+    return internalControllerNamespace;
+  }
+
+  public void setInternalControllerNamespace(String internalControllerNamespace) {
+    this.internalControllerNamespace = internalControllerNamespace;
   }
 
   public Object getServableObject() {

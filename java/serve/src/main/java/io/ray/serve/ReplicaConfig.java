@@ -2,6 +2,7 @@ package io.ray.serve;
 
 import com.google.common.base.Preconditions;
 import java.io.Serializable;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -12,72 +13,80 @@ public class ReplicaConfig implements Serializable {
 
   private String deploymentDef;
 
-  private byte[] initArgs;
+  private Object[] initArgs;
 
   private Map<String, Object> rayActorOptions;
 
   private Map<String, Double> resource;
 
-  public ReplicaConfig(String deploymentDef, byte[] initArgs, Map<String, Object> rayActorOptions) {
+  private static final String[] disallowedRayActorOptions = {
+    "args",
+    "kwargs",
+    "max_concurrency",
+    "max_restarts",
+    "max_task_retries",
+    "name",
+    "namespace",
+    "lifetime",
+    "placement_group",
+    "placement_group_bundle_index",
+    "placement_group_capture_child_tasks",
+    "max_pending_calls",
+    "scheduling_strategy"
+  };
+
+  @SuppressWarnings("unchecked")
+  public ReplicaConfig(
+      String deploymentDef, Object[] initArgs, Map<String, Object> rayActorOptions) {
     this.deploymentDef = deploymentDef;
-    this.initArgs = initArgs;
-    this.rayActorOptions = rayActorOptions;
+    this.initArgs = initArgs != null ? initArgs : new Object[0];
+    this.rayActorOptions = rayActorOptions != null ? rayActorOptions : new HashMap<>();
     this.resource = new HashMap<>();
     this.validate();
   }
 
   @SuppressWarnings({"unchecked", "rawtypes"})
   private void validate() {
-    Preconditions.checkArgument(
-        !rayActorOptions.containsKey("placement_group"),
-        "Providing placement_group for deployment actors is not currently supported.");
 
-    Preconditions.checkArgument(
-        !rayActorOptions.containsKey("lifetime"),
-        "Specifying lifetime in init_args is not allowed.");
+    for (String option : disallowedRayActorOptions) {
+      Preconditions.checkArgument(
+          !rayActorOptions.containsKey(option),
+          String.format("Specifying %s in ray_actor_options is not allowed.", option));
+    }
 
-    Preconditions.checkArgument(
-        !rayActorOptions.containsKey("name"), "Specifying name in init_args is not allowed.");
-
-    Preconditions.checkArgument(
-        !rayActorOptions.containsKey("max_restarts"),
-        "Specifying max_restarts in init_args is not allowed.");
-
-    // TODO Confirm num_cpus, num_gpus, memory is double in protobuf.
     // Ray defaults to zero CPUs for placement, we default to one here.
-    Object numCpus = rayActorOptions.getOrDefault("num_cpus", 1.0);
+    Object numCpus = rayActorOptions.computeIfAbsent("num_cpus", key -> 1.0);
     Preconditions.checkArgument(
-        numCpus instanceof Double, "num_cpus in ray_actor_options must be a double.");
+        numCpus instanceof Double, "num_cpus in rayActorOptions must be a double.");
     Preconditions.checkArgument(
-        ((Double) numCpus) >= 0, "num_cpus in ray_actor_options must be >= 0.");
+        ((Double) numCpus) >= 0, "num_cpus in rayActorOptions must be >= 0.");
     resource.put("CPU", (Double) numCpus);
 
-    Object numGpus = rayActorOptions.getOrDefault("num_gpus", 0.0);
+    Object numGpus = rayActorOptions.computeIfAbsent("num_gpus", key -> 0.0);
     Preconditions.checkArgument(
-        numGpus instanceof Double, "num_gpus in ray_actor_options must be a double.");
+        numGpus instanceof Double, "num_gpus in rayActorOptions must be a double.");
     Preconditions.checkArgument(
-        ((Double) numGpus) >= 0, "num_gpus in ray_actor_options must be >= 0.");
+        ((Double) numGpus) >= 0, "num_gpus in rayActorOptions must be >= 0.");
     resource.put("GPU", (Double) numGpus);
 
-    Object memory = rayActorOptions.getOrDefault("memory", 0.0);
+    Object memory = rayActorOptions.computeIfAbsent("memory", key -> 0.0);
     Preconditions.checkArgument(
-        memory instanceof Double, "memory in ray_actor_options must be a double.");
-    Preconditions.checkArgument(
-        ((Double) memory) >= 0, "memory in ray_actor_options must be >= 0.");
+        memory instanceof Double, "memory in rayActorOptions must be a double.");
+    Preconditions.checkArgument(((Double) memory) >= 0, "memory in rayActorOptions must be >= 0.");
     resource.put("memory", (Double) memory);
 
-    Object objectStoreMemory = rayActorOptions.getOrDefault("object_store_memory", 0.0);
+    Object objectStoreMemory = rayActorOptions.computeIfAbsent("object_store_memory", key -> 0.0);
     Preconditions.checkArgument(
         objectStoreMemory instanceof Double,
-        "object_store_memory in ray_actor_options must be a double.");
+        "object_store_memory in rayActorOptions must be a double.");
     Preconditions.checkArgument(
-        ((Double) objectStoreMemory) >= 0,
-        "object_store_memory in ray_actor_options must be >= 0.");
+        ((Double) objectStoreMemory) >= 0, "object_store_memory in rayActorOptions must be >= 0.");
     resource.put("object_store_memory", (Double) objectStoreMemory);
 
-    Object customResources = rayActorOptions.getOrDefault("resources", new HashMap<>());
+    Object customResources =
+        rayActorOptions.computeIfAbsent("resources", key -> Collections.emptyMap());
     Preconditions.checkArgument(
-        customResources instanceof Map, "resources in ray_actor_options must be a map.");
+        customResources instanceof Map, "resources in rayActorOptions must be a map.");
     resource.putAll((Map) customResources);
   }
 
@@ -89,11 +98,11 @@ public class ReplicaConfig implements Serializable {
     this.deploymentDef = deploymentDef;
   }
 
-  public byte[] getInitArgs() {
+  public Object[] getInitArgs() {
     return initArgs;
   }
 
-  public void setInitArgs(byte[] initArgs) {
+  public void setInitArgs(Object[] initArgs) {
     this.initArgs = initArgs;
   }
 

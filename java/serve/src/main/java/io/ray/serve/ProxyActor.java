@@ -47,7 +47,7 @@ public class ProxyActor {
 
     // Set the controller name so that serve will connect to the controller instance this proxy is
     // running in.
-    Serve.setInternalReplicaContext(null, null, controllerName, null);
+    Serve.setInternalReplicaContext(null, null, controllerName, null, null); // TODO set namespace
     Serve.getReplicaContext().setRayServeConfig(new RayServeConfig().setConfig(config));
 
     Optional<BaseActorHandle> optional = Ray.getActor(controllerName);
@@ -142,7 +142,7 @@ public class ProxyActor {
     return true;
   }
 
-  public void blockUntilEndpointExists(String endpoint, double timeoutS) {
+  public boolean blockUntilEndpointExists(String endpoint, double timeoutS) {
     long timeoutMs = (long) (timeoutS * 1000);
     long startTime = System.currentTimeMillis();
     while (true) {
@@ -152,7 +152,7 @@ public class ProxyActor {
       }
       for (EndpointInfo endpointInfo : routeInfo.values()) {
         if (StringUtils.equals(endpointInfo.getEndpointName(), endpoint)) {
-          return;
+          return true;
         }
       }
       try {

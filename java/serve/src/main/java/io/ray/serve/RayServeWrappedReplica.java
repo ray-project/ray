@@ -81,7 +81,8 @@ public class RayServeWrappedReplica implements RayServeReplica {
     try {
       // Set the controller name so that Serve.connect() in the user's code will connect to the
       // instance that this deployment is running in.
-      Serve.setInternalReplicaContext(deploymentInfo.getName(), replicaTag, controllerName, null);
+      Serve.setInternalReplicaContext(
+          deploymentInfo.getName(), replicaTag, controllerName, null, null); // TODO set namespace
       Serve.getReplicaContext().setRayServeConfig(rayServeConfig);
 
       // Instantiate the object defined by deploymentDef.
