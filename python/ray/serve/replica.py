@@ -11,7 +11,8 @@ import starlette.responses
 
 import ray
 from ray import cloudpickle
-from ray.actor import ActorHandle
+from ray.remote_function import RemoteFunction
+from ray.actor import ActorClass, ActorHandle
 from ray._private.async_compat import sync_to_async
 
 from ray.serve.autoscaling_metrics import start_metrics_pusher
@@ -72,6 +73,12 @@ def create_replica_wrapper(
             if import_path is not None:
                 module_name, attr_name = parse_import_path(import_path)
                 deployment_def = getattr(import_module(module_name), attr_name)
+                # For ray decorated class or function, strip to return original
+                # body
+                if isinstance(deployment_def, RemoteFunction):
+                    deployment_def = deployment_def._function
+                elif isinstance(deployment_def, ActorClass):
+                    deployment_def = deployment_def.__ray_metadata__.modified_class
             else:
                 deployment_def = cloudpickle.loads(serialized_deployment_def)
 

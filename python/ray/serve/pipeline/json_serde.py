@@ -17,8 +17,8 @@ from ray.serve.utils import parse_import_path
 from ray.serve.handle import RayServeHandle
 from ray.serve.utils import ServeHandleEncoder, serve_handle_object_hook
 from ray.serve.constants import (
-    SERVE_ASYNC_HANDLE_JSON_PREFIX_KEY,
-    SERVE_SYNC_HANDLE_JSON_PREFIX_KEY,
+    SERVE_ASYNC_HANDLE_JSON_KEY,
+    SERVE_SYNC_HANDLE_JSON_KEY,
 )
 
 # Reserved key to distinguish DAGNode type and avoid collision with user dict.
@@ -27,8 +27,10 @@ DAGNODE_TYPE_KEY = "__serve_pipeline_dag_node_type__"
 
 class DAGNodeEncoder(json.JSONEncoder):
     def default(self, obj):
+        # For replaced deployment handles used as init args or kwargs.
         if isinstance(obj, RayServeHandle):
             return json.dumps(obj, cls=ServeHandleEncoder)
+        # For all other DAGNode types.
         if isinstance(obj, DAGNode):
             dag_node = obj
             args = dag_node.get_args()
@@ -38,6 +40,8 @@ class DAGNodeEncoder(json.JSONEncoder):
             # stable_uuid will be re-generated upon new constructor execution
             result_dict = {
                 DAGNODE_TYPE_KEY: dag_node.__class__.__name__,
+                # Placeholder for better ordering
+                "import_path": "",
                 "args": json.dumps(args, cls=DAGNodeEncoder),
                 "kwargs": json.dumps(kwargs, cls=DAGNodeEncoder),
                 # .options() should not contain any DAGNode type
@@ -55,30 +59,27 @@ class DAGNodeEncoder(json.JSONEncoder):
             if isinstance(dag_node, ClassNode):
                 body = dag_node._body.__ray_actor_class__
                 import_path = f"{body.__module__}.{body.__qualname__}"
+            elif isinstance(dag_node, ClassMethodNode):
+                body = getattr(dag_node._parent_class_node, dag_node._method_name)
+                import_path = f"{body.__module__}.{body.__qualname__}"
             elif isinstance(dag_node, FunctionNode):
                 body = dag_node._body
                 import_path = f"{body.__module__}.{body.__qualname__}"
             elif isinstance(dag_node, (DeploymentNode, DeploymentMethodNode)):
-                result_dict.update(
-                    {"deployment_name": dag_node._deployment.name}
-                )
+                result_dict.update({"deployment_name": dag_node._deployment.name})
                 if isinstance(dag_node._deployment._func_or_class, str):
                     # We're processing a deserilized JSON node where import_path
                     # is dag_node body.
                     import_path = dag_node._deployment._func_or_class
                 else:
-                    body = (
-                        dag_node._deployment._func_or_class.__ray_actor_class__
-                    )
+                    body = dag_node._deployment._func_or_class.__ray_actor_class__
                     import_path = f"{body.__module__}.{body.__qualname__}"
                 if isinstance(dag_node, DeploymentMethodNode):
                     result_dict.update({"method_name": dag_node._method_name})
 
-            # TODO:(jiaodong) Maybe use cache for idential objects
-            result_dict.update(
-                # TODO: (jiaodong) Support runtime_env with remote working_dir
-                {"import_path": import_path}
-            )
+            # TODO: (jiaodong) Maybe use cache for idential objects
+            # TODO: (jiaodong) Support runtime_env with remote working_dir
+            result_dict["import_path"] = import_path
 
             return result_dict
         else:
@@ -92,8 +93,8 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
     """
     # Deserialize a RayServeHandle.
     if (
-        SERVE_SYNC_HANDLE_JSON_PREFIX_KEY in input_json
-        or SERVE_ASYNC_HANDLE_JSON_PREFIX_KEY in input_json
+        SERVE_SYNC_HANDLE_JSON_KEY in input_json
+        or SERVE_ASYNC_HANDLE_JSON_KEY in input_json
     ):
         return json.loads(input_json, object_hook=serve_handle_object_hook)
     # Base case for plain objects.
@@ -157,7 +158,6 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
                     ray_actor_options=options,
                     _internal=True,
                 ),
-                input_json["deployment_name"],
                 input_json["method_name"],
                 args,
                 kwargs,

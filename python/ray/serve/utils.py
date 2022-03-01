@@ -115,12 +115,12 @@ class ServeHandleEncoder(json.JSONEncoder):
 
     def default(self, obj):
         # Import RayServeHandle in utils file lead to import errors
-        if type(obj).__name__ == 'RayServeSyncHandle':
+        if type(obj).__name__ == "RayServeSyncHandle":
             return {
                 f"{SERVE_SYNC_HANDLE_JSON_KEY}": obj.deployment_name,
                 "_internal_pickled_http_request": obj._pickled_http_request,
             }
-        elif type(obj).__name__ == 'RayServeHandle':
+        elif type(obj).__name__ == "RayServeHandle":
             return {
                 f"{SERVE_ASYNC_HANDLE_JSON_KEY}": obj.deployment_name,
                 "_internal_pickled_http_request": obj._pickled_http_request,
@@ -130,7 +130,7 @@ class ServeHandleEncoder(json.JSONEncoder):
 
 
 def serve_handle_object_hook(ray_serve_handle_json: Dict[str, Any]):
-    """ Return RayServeHandle given a JSON serialized dict. Re-constructs the
+    """Return RayServeHandle given a JSON serialized dict. Re-constructs the
     object by fullfilling the following fieds that matches our signature of
     `get_handle()`:
         - controller handle
@@ -186,9 +186,7 @@ def block_until_http_ready(
             pass
 
         if 0 < timeout < time.time() - start_time:
-            raise TimeoutError(
-                "HTTP proxy not ready after {} seconds.".format(timeout)
-            )
+            raise TimeoutError("HTTP proxy not ready after {} seconds.".format(timeout))
 
         time.sleep(backoff_time_s)
 
@@ -235,9 +233,7 @@ def get_node_id_for_actor(actor_handle):
     return ray.state.actors()[actor_handle._actor_id.hex()]["Address"]["NodeID"]
 
 
-def compute_iterable_delta(
-    old: Iterable, new: Iterable
-) -> Tuple[set, set, set]:
+def compute_iterable_delta(old: Iterable, new: Iterable) -> Tuple[set, set, set]:
     """Given two iterables, return the entries that's (added, removed, updated).
 
     Usage:
@@ -302,9 +298,7 @@ def wrap_to_ray_error(function_name: str, exception: Exception) -> RayTaskError:
         # Raise and catch so we can access traceback.format_exc()
         raise exception
     except Exception as e:
-        traceback_str = ray._private.utils.format_error_message(
-            traceback.format_exc()
-        )
+        traceback_str = ray._private.utils.format_error_message(traceback.format_exc())
         return ray.exceptions.RayTaskError(function_name, traceback_str, e)
 
 
