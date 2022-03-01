@@ -84,7 +84,6 @@ def test_worker_stats(shutdown_only):
     for stats in reply.core_workers_stats:
         if stats.webui_display[""] == '{"message": "test", "dtype": "text"}':
             target_worker_present = True
-        #            assert stats.pid == worker_pid
         else:
             assert stats.webui_display[""] == ""  # Empty proto
     assert target_worker_present
