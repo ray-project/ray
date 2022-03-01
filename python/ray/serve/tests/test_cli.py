@@ -243,13 +243,13 @@ def test_run(ray_start_stop):
     )
 
     p = subprocess.Popen(["serve", "run", "-c", config_file_name])
-    wait_for_condition(lambda: ping_endpoint("one") == "2", timeout=5)
+    wait_for_condition(lambda: ping_endpoint("one") == "2", timeout=10)
     wait_for_condition(
-        lambda: ping_endpoint("shallow") == "Hello shallow world!", timeout=5
+        lambda: ping_endpoint("shallow") == "Hello shallow world!", timeout=10
     )
 
     p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
-    wait_for_condition(lambda: ping_endpoint("one") == "connection error", timeout=5)
+    wait_for_condition(lambda: ping_endpoint("one") == "connection error", timeout=10)
     wait_for_condition(
         lambda: ping_endpoint("shallow") == "connection error", timeout=10
     )
@@ -257,13 +257,13 @@ def test_run(ray_start_stop):
     # Deploy via import path
     p = subprocess.Popen(["serve", "run", "-i", "ray.serve.tests.test_cli.parrot"])
     wait_for_condition(
-        lambda: ping_endpoint("parrot", params="?sound=squawk") == "squawk", timeout=5
+        lambda: ping_endpoint("parrot", params="?sound=squawk") == "squawk", timeout=10
     )
 
     p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
     wait_for_condition(
         lambda: ping_endpoint("parrot", params="?sound=squawk") == "connection error",
-        timeout=5,
+        timeout=10,
     )
 
 
