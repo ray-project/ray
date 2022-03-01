@@ -72,7 +72,7 @@ In the common case, each read task produces a single output block. Read tasks ma
 
 .. note::
 
-  Block splitting is currently off by default. See the block size tuning section below on how to enable block splitting (beta).
+  Block splitting is off by default. See the :ref:`performance section <data_performance_tips>` on how to enable block splitting (beta).
 
 Deferred Read Task Execution
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -116,7 +116,11 @@ Execution Memory
 
 During execution, certain types of intermediate data must fit in memory. This includes the input block of a task, as well as at least one of the output blocks of the task (when a task has multiple output blocks, only one needs to fit in memory at any given time). The input block consumes object stored shared memory (Python heap memory for non-Arrow data). The output blocks consume Python heap memory (prior to putting in the object store) as well as object store memory (after being put in the object store).
 
-This means that large block sizes can lead to potential out-of-memory situations. To avoid OOM errors, Datasets tries to split blocks during map and read tasks into pieces smaller than the target max block size. In some cases, this splitting is not possible (e.g., if a single item in a block is extremely large, or the function given to ``.map_batches`` returns a very large batch). To avoid these issues, make sure no single item in your Datasets is too large, and always call ``.map_batches`` with batch size small enough such that the output batch can comfortably fit into memory.
+This means that large block sizes can lead to potential out-of-memory situations. To avoid OOM errors, Datasets can split blocks during map and read tasks into pieces smaller than the target max block size. In some cases, this splitting is not possible (e.g., if a single item in a block is extremely large, or the function given to ``.map_batches`` returns a very large batch). To avoid these issues, make sure no single item in your Datasets is too large, and always call ``.map_batches`` with batch size small enough such that the output batch can comfortably fit into memory.
+
+.. note::
+
+  Block splitting is off by default. See the :ref:`performance section <data_performance_tips>` on how to enable block splitting (beta).
 
 Object Store Memory
 ~~~~~~~~~~~~~~~~~~~
