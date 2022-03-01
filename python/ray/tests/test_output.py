@@ -121,6 +121,8 @@ class Foo:
         self.x = module.temporary_python_file()
 
 a = Foo.remote()
+import time
+time.sleep(3)  # Wait for actor start.
 """
     proc = run_string_as_driver_nonblocking(script)
     out_str = proc.stdout.read().decode("ascii")
@@ -506,7 +508,7 @@ if __name__ == "__main__":
         # about low shm memory in Linux environment.
         # The test failures currently complain it only has 2 GB memory,
         # so let's set it much lower than that.
-        MB = 1000 ** 2
+        MB = 1000**2
         ray.init(num_cpus=1, object_store_memory=(100 * MB))
         ray.shutdown()
     else:
