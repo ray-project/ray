@@ -76,6 +76,6 @@ DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30
 REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
 
 # Key used to idenfity given json represents a serialized RayServeHandle
-SERVE_ASYNC_HANDLE_JSON_KEY = "SerializedServeHandle"
+SERVE_ASYNC_HANDLE_JSON_KEY = "__SerializedServeHandle__"
 # Key used to idenfity given json represents a serialized RayServeSyncHandle
-SERVE_SYNC_HANDLE_JSON_KEY = "SerializedServeSyncHandle"
+SERVE_SYNC_HANDLE_JSON_KEY = "__SerializedServeSyncHandle__"

@@ -11,6 +11,7 @@ from ray.serve.pipeline.json_serde import (
 from ray.serve.pipeline.tests.test_modules import (
     Model,
     combine,
+    Counter,
     ClassHello,
     fn_hello,
     Combine,
@@ -51,6 +52,12 @@ def _test_execution_function_node(original_dag_node, deserialized_dag_node):
     )
 
 
+def _test_execution_class_method_node_Counter(original_dag_node, deserialized_dag_node):
+    assert ray.get(deserialized_dag_node.execute()) == ray.get(
+        original_dag_node.execute()
+    )
+
+
 def _test_json_serde_helper(
     original_dag_node, executor_fn=None, expected_json_dict=None
 ):
@@ -61,7 +68,8 @@ def _test_json_serde_helper(
         provides the same value as if it's only JSON serialized once
     """
     json_serialized = json.dumps(original_dag_node, cls=DAGNodeEncoder)
-    assert json_serialized == json.dumps(expected_json_dict)
+    if expected_json_dict != "SKIP":
+        assert json_serialized == json.dumps(expected_json_dict)
     deserialized_dag_node = json.loads(json_serialized, object_hook=dagnode_from_json)
 
     executor_fn(original_dag_node, deserialized_dag_node)
@@ -139,10 +147,13 @@ def test_simple_class_node_json_serde(serve_instance):
         1) Ray DAG node can go through full JSON serde cycle
         2) Ray DAG node and deserialized DAG node produces same actor instances
             with same method call output
+        3) Ray DAG node can go through multiple rounds of JSON serde and still
+            provides the same value as if it's only JSON serde once
     Against following test cases
         - Simple class with no args
-        - Simple class with only args, all primitive typess
+        - Simple class with only args, all primitive types
         - Simple class with args + kwargs, all primitive types
+        - Simple chain of class method calls, all primitive types
     """
     original_dag_node = ClassHello._bind()
     _test_json_serde_helper(
@@ -186,9 +197,19 @@ def test_simple_class_node_json_serde(serve_instance):
         },
     )
 
-
-def test_class_method_node_with_call_chain():
-    pass
+    counter = Counter._bind(0)
+    counter.inc._bind(1)
+    counter.inc._bind(2)
+    original_dag_node = counter.get._bind()
+    print(original_dag_node)
+    assert ray.get(original_dag_node.execute()) == 3
+    _test_json_serde_helper(
+        original_dag_node,
+        executor_fn=_test_execution_class_method_node_Counter,
+        # TODO: (jiaodong) Make nested ClassMethodNode JSON more human readable
+        # thus feasible to manually write a test
+        expected_json_dict="SKIP",
+    )
 
 
 def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
@@ -196,19 +217,16 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
     m2 = Model._bind(3)
     combine = Combine._bind(m1, m2={NESTED_HANDLE_KEY: m2}, m2_nested=True)
     ray_dag = combine.__call__._bind(InputNode())
-    print(f"Ray DAG: \n{ray_dag}")
 
     serve_root_dag = ray_dag._apply_recursive(transform_ray_dag_to_serve_dag)
-    print(f"Serve DAG: \n{serve_root_dag}")
 
-    json_serialized = json.dumps(serve_root_dag, indent=4, cls=DAGNodeEncoder)
+    json_serialized = json.dumps(serve_root_dag, cls=DAGNodeEncoder)
     deserialized_serve_root_dag_node = json.loads(
         json_serialized, object_hook=dagnode_from_json
     )
     deserialized_deployments = extract_deployments_from_serve_dag(
         deserialized_serve_root_dag_node
     )
-    print(f"JSON deserialized Serve DAG: \n{serve_root_dag}")
     assert len(deserialized_deployments) == 3
     # Deploy deserilized version to ensure JSON serde correctness
     for model in deserialized_deployments:
@@ -230,7 +248,7 @@ def test_nested_deployment_node_json_serde(serve_instance):
     original_serve_root_dag = ray_dag._apply_recursive(
         lambda node: transform_ray_dag_to_serve_dag(node)
     )
-    json_serialized = json.dumps(original_serve_root_dag, indent=4, cls=DAGNodeEncoder)
+    json_serialized = json.dumps(original_serve_root_dag, cls=DAGNodeEncoder)
     deserialized_serve_root_dag_node = json.loads(
         json_serialized, object_hook=dagnode_from_json
     )
