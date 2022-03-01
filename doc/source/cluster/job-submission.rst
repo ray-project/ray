@@ -258,16 +258,6 @@ A submitted Job can be stopped by the user before it finishes executing.
 
 To get information about all jobs, call ``client.list_jobs()``.  This returns a `Dict[str, JobInfo]` object mapping Job IDs to their information.
 
-.. autoclass:: ray.job_submission.JobSubmissionClient
-    :members:
-
-.. autoclass:: ray.job_submission.JobInfo
-    :members:
-    :undoc-members:
-
-.. autoclass:: ray.job_submission.JobStatus
-    :members:
-    :undoc-members:
 
 REST API
 ------------
