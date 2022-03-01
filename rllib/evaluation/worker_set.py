@@ -458,8 +458,11 @@ class WorkerSet:
             return tf1.Session(config=tf1.ConfigProto(**config["tf_session_args"]))
 
         def valid_module(class_path):
-            if isinstance(class_path, str) and not os.path.isfile(class_path) and \
-                    "." in class_path:
+            if (
+                isinstance(class_path, str)
+                and not os.path.isfile(class_path)
+                and "." in class_path
+            ):
                 module_path, class_name = class_path.rsplit(".", 1)
                 try:
                     spec = importlib.util.find_spec(module_path)
