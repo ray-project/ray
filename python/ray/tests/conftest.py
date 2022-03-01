@@ -445,6 +445,11 @@ file_system_object_spilling_config = {
     "params": {"directory_path": spill_local_path},
 }
 
+buffer_object_spilling_config = {
+    "type": "filesystem",
+    "params": {"directory_path": spill_local_path, "buffer_size": 1_000_000},
+}
+
 # Since we have differet protocol for a local external storage (e.g., fs)
 # and distributed external storage (e.g., S3), we need to test both cases.
 # This mocks the distributed fs with cluster utils.
