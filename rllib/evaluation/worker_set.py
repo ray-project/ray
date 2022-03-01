@@ -45,9 +45,9 @@ T = TypeVar("T")
 
 @DeveloperAPI
 class WorkerSet:
-    """Set of RolloutWorkers with n @ray.remote workers and one local worker.
+    """Set of RolloutWorkers with n @ray.remote workers and zero or one local worker.
 
-    Where n may be 0.
+    Where: n >= 0.
     """
 
     def __init__(
@@ -591,6 +591,7 @@ class WorkerSet:
             fake_sampler=config["fake_sampler"],
             extra_python_environs=extra_python_environs,
             spaces=spaces,
+            disable_env_checking=config["disable_env_checking"],
         )
 
         return worker

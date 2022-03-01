@@ -51,7 +51,7 @@ spec:
             - name: RAY_gcs_server_rpc_server_thread_num
               value: "1"
             ports:
-            - containerPort: 6379  # Redis port
+            - containerPort: 6379  # Redis port for Ray <= 1.10.0. GCS server port for Ray >= 1.11.0.
             - containerPort: 10001  # Used by Ray Client
             - containerPort: 8265  # Used by Ray Dashboard
             - containerPort: 8000 # Used by Ray Serve
@@ -92,7 +92,7 @@ spec:
   # Note dashboard-host is set to 0.0.0.0 so that Kubernetes can port forward.
   headStartRayCommands:
     - ray stop
-    - ulimit -n 65536; ray start --head --no-monitor --dashboard-host 0.0.0.0
+    - ulimit -n 65536; ray start --head --port=6379 --no-monitor --dashboard-host 0.0.0.0
   # Commands to start Ray on worker nodes. You don't need to change this.
   workerStartRayCommands:
     - ray stop

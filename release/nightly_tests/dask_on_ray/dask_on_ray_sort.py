@@ -53,7 +53,20 @@ def load_dataset(client, data_dir, s3_bucket, nbytes, npartitions):
         f"s3://{s3_bucket}/df-{num_bytes_per_partition}-{i}.parquet.gzip"
         for i in range(npartitions)
     ]
-    df = dd.read_parquet(filenames)
+
+    df = None
+    max_retry = 3
+    retry = 0
+    while retry < max_retry:
+        try:
+            df = dd.read_parquet(filenames)
+            break
+        except FileNotFoundError as e:
+            print(f"Failed to load a file. {e}")
+            # Wait a little bit before retrying.
+            time.sleep(30)
+            retry += 1
+
     return df
 
 

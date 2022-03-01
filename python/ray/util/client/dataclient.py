@@ -1,9 +1,12 @@
 """This file implements a threaded stream controller to abstract a data stream
 back to the ray clientserver.
 """
+import math
 import logging
 import queue
 import threading
+import warnings
+
 import grpc
 
 from collections import OrderedDict
@@ -11,7 +14,12 @@ from typing import Any, Callable, Dict, TYPE_CHECKING, Optional, Union
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
-from ray.util.client.common import INT32_MAX
+from ray.util.client.common import (
+    INT32_MAX,
+    OBJECT_TRANSFER_CHUNK_SIZE,
+    OBJECT_TRANSFER_WARNING_SIZE,
+)
+from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from ray.util.client.worker import Worker
@@ -22,6 +30,43 @@ ResponseCallable = Callable[[Union[ray_client_pb2.DataResponse, Exception]], Non
 
 # Send an acknowledge on every 32nd response received
 ACKNOWLEDGE_BATCH_SIZE = 32
+
+
+def chunk_put(req: ray_client_pb2.DataRequest):
+    """
+    Chunks a put request. Doing this lazily is important for large objects,
+    since taking slices of bytes objects does a copy. This means if we
+    immediately materialized every chunk of a large object and inserted them
+    into the result_queue, we would effectively double the memory needed
+    on the client to handle the put.
+    """
+    total_size = len(req.put.data)
+    assert total_size > 0, "Cannot chunk object with missing data"
+    if total_size >= OBJECT_TRANSFER_WARNING_SIZE and log_once(
+        "client_object_put_size_warning"
+    ):
+        size_gb = total_size / 2 ** 30
+        warnings.warn(
+            "Ray Client is attempting to send a "
+            f"{size_gb:.2f} GiB object over the network, which may "
+            "be slow. Consider serializing the object and using a remote "
+            "URI to transfer via S3 or Google Cloud Storage instead. "
+            "Documentation for doing this can be found here: "
+            "https://docs.ray.io/en/latest/handling-dependencies.html#remote-uris",
+            UserWarning,
+        )
+    total_chunks = math.ceil(total_size / OBJECT_TRANSFER_CHUNK_SIZE)
+    for chunk_id in range(0, total_chunks):
+        start = chunk_id * OBJECT_TRANSFER_CHUNK_SIZE
+        end = min(total_size, (chunk_id + 1) * OBJECT_TRANSFER_CHUNK_SIZE)
+        chunk = ray_client_pb2.PutRequest(
+            client_ref_id=req.put.client_ref_id,
+            data=req.put.data[start:end],
+            chunk_id=chunk_id,
+            total_chunks=total_chunks,
+            total_size=total_size,
+        )
+        yield ray_client_pb2.DataRequest(req_id=req.req_id, put=chunk)
 
 
 class DataClient:
@@ -81,6 +126,19 @@ class DataClient:
             daemon=True,
         )
 
+    # A helper that takes requests from queue. If the request wraps a PutRequest,
+    # lazily chunks and yields the request. Otherwise, yields the request directly.
+    def _requests(self):
+        while True:
+            req = self.request_queue.get()
+            if req is None:
+                # Stop when client signals shutdown.
+                return
+            if req.WhichOneof("type") == "put":
+                yield from chunk_put(req)
+            else:
+                yield req
+
     def _data_main(self) -> None:
         reconnecting = False
         try:
@@ -90,7 +148,7 @@ class DataClient:
                 )
                 metadata = self._metadata + [("reconnecting", str(reconnecting))]
                 resp_stream = stub.Datapath(
-                    iter(self.request_queue.get, None),
+                    self._requests(),
                     metadata=metadata,
                     wait_for_ready=True,
                 )

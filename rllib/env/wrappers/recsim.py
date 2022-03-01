@@ -1,7 +1,7 @@
 """Tools and utils to create RLlib-ready recommender system envs using RecSim.
 
 For examples on how to generate a RecSim env class (usable in RLlib):
-See ray.rllib.examples.env.recsim_recommender_system_envs.py
+See ray.rllib.examples.env.recommender_system_envs_with_recsim.py
 
 For more information on google's RecSim itself:
 https://github.com/google-research/recsim
@@ -17,7 +17,6 @@ from recsim.user import AbstractUserModel, AbstractResponse
 from typing import Callable, List, Optional, Type
 
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.spaces.space_utils import convert_element_to_space_type
 
@@ -85,15 +84,12 @@ class RecSimObservationBanditWrapper(gym.ObservationWrapper):
         self.observation_space = Dict(
             OrderedDict(
                 [
-                    ("user", obs_space["user"]),
                     (
                         "item",
                         gym.spaces.Box(
-                            low=-np.ones((num_items, embedding_dim)),
-                            high=np.ones((num_items, embedding_dim)),
+                            low=-1.0, high=1.0, shape=(num_items, embedding_dim)
                         ),
                     ),
-                    ("response", obs_space["response"]),
                 ]
             )
         )
@@ -101,9 +97,7 @@ class RecSimObservationBanditWrapper(gym.ObservationWrapper):
 
     def observation(self, obs):
         new_obs = OrderedDict()
-        new_obs["user"] = obs["user"]
         new_obs["item"] = np.vstack(list(obs["doc"].values()))
-        new_obs["response"] = obs["response"]
         new_obs = convert_element_to_space_type(new_obs, self._sampled_obs)
         return new_obs
 
@@ -226,8 +220,9 @@ def make_recsim_env(
         An RLlib-ready gym.Env class to use inside a Trainer.
     """
 
-    class _RecSimEnv(gym.Env):
-        def __init__(self, env_ctx: Optional[EnvContext] = None):
+    class _RecSimEnv(gym.Wrapper):
+        def __init__(self, config: Optional[EnvContext] = None):
+
             # Override with default values, in case they are not set by the user.
             default_config = {
                 "num_candidates": 10,
@@ -237,50 +232,34 @@ def make_recsim_env(
                 "convert_to_discrete_action_space": False,
                 "wrap_for_bandits": False,
             }
-            if env_ctx is None or isinstance(env_ctx, dict):
-                env_ctx = EnvContext(env_ctx or default_config, worker_index=0)
-            env_ctx.set_defaults(default_config)
+            if config is None or isinstance(config, dict):
+                config = EnvContext(config or default_config, worker_index=0)
+            config.set_defaults(default_config)
 
             # Create the RecSim user model instance.
-            recsim_user_model = recsim_user_model_creator(env_ctx)
+            recsim_user_model = recsim_user_model_creator(config)
             # Create the RecSim document sampler instance.
-            recsim_document_sampler = recsim_document_sampler_creator(env_ctx)
+            recsim_document_sampler = recsim_document_sampler_creator(config)
 
             # Create a raw RecSim environment (not yet a gym.Env!).
             raw_recsim_env = environment.SingleUserEnvironment(
                 recsim_user_model,
                 recsim_document_sampler,
-                env_ctx["num_candidates"],
-                env_ctx["slate_size"],
-                resample_documents=env_ctx["resample_documents"],
+                config["num_candidates"],
+                config["slate_size"],
+                resample_documents=config["resample_documents"],
             )
             # Convert raw RecSim env to a gym.Env.
             gym_env = recsim_gym.RecSimGymEnv(raw_recsim_env, reward_aggregator)
 
             # Fix observation space and - if necessary - convert to discrete
             # action space (from multi-discrete).
-            self.env = recsim_gym_wrapper(
+            env = recsim_gym_wrapper(
                 gym_env,
-                env_ctx["convert_to_discrete_action_space"],
-                env_ctx["wrap_for_bandits"],
+                config["convert_to_discrete_action_space"],
+                config["wrap_for_bandits"],
             )
-            self.observation_space = self.env.observation_space
-            self.action_space = self.env.action_space
-
-        @override(gym.Env)
-        def reset(self):
-            return self.env.reset()
-
-        @override(gym.Env)
-        def step(self, actions):
-            return self.env.step(actions)
-
-        @override(gym.Env)
-        def seed(self, seed=None):
-            return self.env.seed(seed)
-
-        @override(gym.Env)
-        def render(self, mode="human"):
-            return self.env.render(mode)
+            # Call the super (Wrapper constructor) passing it the created env.
+            super().__init__(env=env)
 
     return _RecSimEnv

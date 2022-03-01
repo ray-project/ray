@@ -110,8 +110,11 @@ def create_conda_env_if_needed(
     logger.info(f"Creating conda environment {prefix}")
     exit_code, output = exec_cmd_stream_to_logger(create_cmd, logger)
     if exit_code != 0:
-        shutil.rmtree(prefix)
-        raise RuntimeError(f"Failed to install conda environment {prefix}:\n{output}")
+        if os.path.exists(prefix):
+            shutil.rmtree(prefix)
+        raise RuntimeError(
+            f"Failed to install conda environment {prefix}:\nOutput:\n{output}"
+        )
 
 
 def delete_conda_env(prefix: str, logger: Optional[logging.Logger] = None) -> bool:
@@ -183,22 +186,28 @@ def exec_cmd(
 
 
 def exec_cmd_stream_to_logger(
-    cmd: List[str], logger: logging.Logger, n_lines: int = 10
+    cmd: List[str], logger: logging.Logger, n_lines: int = 50, **kwargs
 ) -> Tuple[int, str]:
     """Runs a command as a child process, streaming output to the logger.
 
     The last n_lines lines of output are also returned (stdout and stderr).
     """
     child = subprocess.Popen(
-        cmd, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+        cmd,
+        universal_newlines=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        **kwargs,
     )
-    exit_code = None
     last_n_lines = []
     with child.stdout:
         for line in iter(child.stdout.readline, b""):
             exit_code = child.poll()
             if exit_code is not None:
                 break
+            line = line.strip()
+            if not line:
+                continue
             last_n_lines.append(line.strip())
             last_n_lines = last_n_lines[-n_lines:]
             logger.info(line.strip())

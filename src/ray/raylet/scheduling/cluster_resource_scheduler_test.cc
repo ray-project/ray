@@ -190,6 +190,15 @@ class ClusterResourceSchedulerTest : public ::testing::Test {
       node_resources.custom_resources.clear();
     }
   }
+
+  void AssertPredefinedNodeResources(const ClusterResourceScheduler &resource_scheduler) {
+    ASSERT_EQ(resource_scheduler.string_to_int_map_.Get(ray::kCPU_ResourceLabel), CPU);
+    ASSERT_EQ(resource_scheduler.string_to_int_map_.Get(ray::kGPU_ResourceLabel), GPU);
+    ASSERT_EQ(
+        resource_scheduler.string_to_int_map_.Get(ray::kObjectStoreMemory_ResourceLabel),
+        OBJECT_STORE_MEM);
+    ASSERT_EQ(resource_scheduler.string_to_int_map_.Get(ray::kMemory_ResourceLabel), MEM);
+  }
   std::unique_ptr<gcs::MockGcsClient> gcs_client_;
   std::string node_name;
   rpc::GcsNodeInfo node_info;
@@ -238,6 +247,30 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingFixedPointTest) {
 
     ASSERT_TRUE(fp1.Double() == 1.);
   }
+
+  {
+    FixedPoint fp1(1.);
+    auto fp2 = fp1 - 1.0;
+    ASSERT_TRUE(fp2 == 0);
+
+    auto fp3 = fp1 + 1.0;
+    ASSERT_TRUE(fp3 == 2);
+
+    auto fp4 = -fp1;
+    ASSERT_TRUE(fp4 == -1.0);
+
+    fp1 = 2.0;
+    ASSERT_TRUE(fp1 == 2.0);
+
+    FixedPoint fp5(-1.0);
+    ASSERT_TRUE(fp5 == -1);
+
+    FixedPoint f6(-1);
+    FixedPoint f7(int64_t(-1));
+    ASSERT_TRUE(f6 == f7);
+
+    ASSERT_TRUE(f6 == -1.0);
+  }
 }
 
 TEST_F(ClusterResourceSchedulerTest, SchedulingIdTest) {
@@ -264,9 +297,23 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingIdTest) {
   ASSERT_EQ(short_ids.Count(), max_id);
 }
 
+TEST_F(ClusterResourceSchedulerTest, SchedulingIdInsertOrDieTest) {
+  StringIdMap ids;
+  ids.InsertOrDie("123", 2);
+  ids.InsertOrDie("1234", 3);
+
+  ASSERT_EQ(ids.Count(), 2);
+  ASSERT_TRUE(ids.Get(to_string(100)) == -1);
+  ASSERT_EQ(ids.Get("123"), 2);
+  ASSERT_EQ(ids.Get(2), std::string("123"));
+  ASSERT_EQ(ids.Get("1234"), 3);
+  ASSERT_EQ(ids.Get(3), std::string("1234"));
+}
+
 TEST_F(ClusterResourceSchedulerTest, SchedulingInitClusterTest) {
   int num_nodes = 10;
   ClusterResourceScheduler resource_scheduler;
+  AssertPredefinedNodeResources(resource_scheduler);
 
   initCluster(resource_scheduler, num_nodes);
 
@@ -325,6 +372,7 @@ TEST_F(ClusterResourceSchedulerTest, SpreadSchedulingStrategyTest) {
   auto local_node_id = NodeID::FromRandom().Binary();
   ClusterResourceScheduler resource_scheduler(local_node_id, resource_total,
                                               *gcs_client_);
+  AssertPredefinedNodeResources(resource_scheduler);
   auto remote_node_id = NodeID::FromRandom().Binary();
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
       remote_node_id, resource_total, resource_total);
@@ -334,17 +382,17 @@ TEST_F(ClusterResourceSchedulerTest, SpreadSchedulingStrategyTest) {
   bool is_infeasible;
   rpc::SchedulingStrategy scheduling_strategy;
   scheduling_strategy.mutable_spread_scheduling_strategy();
-  std::string node_id = resource_scheduler.GetBestSchedulableNode(
+  std::string node_id_1 = resource_scheduler.GetBestSchedulableNode(
       resource_request, scheduling_strategy, false, false, false, &violations,
       &is_infeasible);
-  ASSERT_EQ(node_id, local_node_id);
   absl::flat_hash_map<std::string, double> resource_available({{"CPU", 9}});
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
-      local_node_id, resource_total, resource_available);
-  node_id = resource_scheduler.GetBestSchedulableNode(resource_request,
-                                                      scheduling_strategy, false, false,
-                                                      false, &violations, &is_infeasible);
-  ASSERT_EQ(node_id, remote_node_id);
+      node_id_1, resource_total, resource_available);
+  std::string node_id_2 = resource_scheduler.GetBestSchedulableNode(
+      resource_request, scheduling_strategy, false, false, false, &violations,
+      &is_infeasible);
+  ASSERT_EQ((std::set<std::string>{node_id_1, node_id_2}),
+            (std::set<std::string>{local_node_id, remote_node_id}));
 }
 
 TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {
@@ -355,6 +403,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {
   vector<FixedPoint> cust_capacities{5, 5};
   initNodeResources(node_resources, pred_capacities, cust_ids, cust_capacities);
   ClusterResourceScheduler resource_scheduler(1, node_resources, *gcs_client_);
+  AssertPredefinedNodeResources(resource_scheduler);
 
   {
     ResourceRequest resource_request;
@@ -1197,6 +1246,18 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
     auto total = data.resources_total();
     ASSERT_EQ(available["object_store_memory"], 750 * 1024 * 1024);
     ASSERT_EQ(total["object_store_memory"], 1000 * 1024 * 1024);
+    ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
+                  .GetLocalResources()
+                  .predefined_resources[OBJECT_STORE_MEM]
+                  .available[0]
+                  .Double(),
+              750 * 1024 * 1024);
+    ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
+                  .GetLocalResources()
+                  .predefined_resources[OBJECT_STORE_MEM]
+                  .total[0]
+                  .Double(),
+              1000 * 1024 * 1024);
   }
 
   used_object_store_memory = 450 * 1024 * 1024;
@@ -1206,6 +1267,18 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
     auto available = data.resources_available();
     auto total = data.resources_total();
     ASSERT_EQ(available["object_store_memory"], 550 * 1024 * 1024);
+    ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
+                  .GetLocalResources()
+                  .predefined_resources[OBJECT_STORE_MEM]
+                  .available[0]
+                  .Double(),
+              550 * 1024 * 1024);
+    ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
+                  .GetLocalResources()
+                  .predefined_resources[OBJECT_STORE_MEM]
+                  .total[0]
+                  .Double(),
+              1000 * 1024 * 1024);
   }
 
   used_object_store_memory = 0;
@@ -1215,6 +1288,18 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
     auto available = data.resources_available();
     auto total = data.resources_total();
     ASSERT_EQ(available["object_store_memory"], 1000 * 1024 * 1024);
+    ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
+                  .GetLocalResources()
+                  .predefined_resources[OBJECT_STORE_MEM]
+                  .available[0]
+                  .Double(),
+              1000 * 1024 * 1024);
+    ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
+                  .GetLocalResources()
+                  .predefined_resources[OBJECT_STORE_MEM]
+                  .total[0]
+                  .Double(),
+              1000 * 1024 * 1024);
   }
 
   used_object_store_memory = 9999999999;
@@ -1224,6 +1309,18 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
     auto available = data.resources_available();
     auto total = data.resources_total();
     ASSERT_EQ(available["object_store_memory"], 0);
+    ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
+                  .GetLocalResources()
+                  .predefined_resources[OBJECT_STORE_MEM]
+                  .available[0]
+                  .Double(),
+              0);
+    ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
+                  .GetLocalResources()
+                  .predefined_resources[OBJECT_STORE_MEM]
+                  .total[0]
+                  .Double(),
+              1000 * 1024 * 1024);
   }
 }
 

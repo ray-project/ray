@@ -3,6 +3,7 @@ import os
 from types import ModuleType
 from typing import Any, Dict, List, Optional
 from pathlib import Path
+import asyncio
 
 from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -16,7 +17,6 @@ from ray._private.runtime_env.packaging import (
     upload_package_if_needed,
 )
 from ray._private.utils import get_directory_size_bytes
-from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.utils import try_to_create_directory
 
 default_logger = logging.getLogger(__name__)
@@ -123,17 +123,25 @@ class PyModulesManager:
     def get_uris(self, runtime_env: dict) -> Optional[List[str]]:
         return runtime_env.py_modules()
 
-    def create(
+    async def create(
         self,
         uri: str,
-        runtime_env: RuntimeEnv,
+        runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
-        module_dir = download_and_unpack_package(
-            uri, self._resources_dir, logger=logger
-        )
-        return get_directory_size_bytes(module_dir)
+        # Currently create method is still a sync process, to avoid blocking
+        # the loop, need to run this function in another thread.
+        # TODO(Catch-Bull): Refactor method create into an async process, and
+        # make this method running in current loop.
+        def _create():
+            module_dir = download_and_unpack_package(
+                uri, self._resources_dir, logger=logger
+            )
+            return get_directory_size_bytes(module_dir)
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _create)
 
     def modify_context(
         self,

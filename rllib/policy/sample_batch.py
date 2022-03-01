@@ -174,6 +174,14 @@ class SampleBatch(dict):
         """
         return len(self)
 
+    @PublicAPI
+    def env_steps(self) -> int:
+        """Returns the same as len(self) (number of steps in this batch).
+
+        To make this compatible with `MultiAgentBatch.env_steps()`.
+        """
+        return len(self)
+
     @staticmethod
     @PublicAPI
     def concat_samples(

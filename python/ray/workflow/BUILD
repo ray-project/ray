@@ -13,7 +13,7 @@ SRCS = [] + select({
     "//conditions:default": [],
 })
 
-LARGE_TESTS = ["tests/test_recovery.py"]
+LARGE_TESTS = ["tests/test_recovery.py", "tests/test_basic_workflows_2.py"]
 
 py_test_module_list(
   files = glob(["tests/test_*.py", "examples/**/*.py"], exclude=LARGE_TESTS),

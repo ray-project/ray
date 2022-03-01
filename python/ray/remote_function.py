@@ -5,7 +5,6 @@ import uuid
 
 from ray import cloudpickle as pickle
 from ray.util.scheduling_strategies import (
-    DEFAULT_SCHEDULING_STRATEGY,
     PlacementGroupSchedulingStrategy,
     SchedulingStrategyT,
 )
@@ -15,11 +14,12 @@ from ray._private.client_mode_hook import client_mode_convert_function
 from ray._private.client_mode_hook import client_mode_should_convert
 from ray.util.placement_group import configure_placement_group_based_on_context
 import ray._private.signature
-from ray._private.runtime_env.validation import ParsedRuntimeEnv
+from ray.runtime_env import RuntimeEnv
 from ray.util.tracing.tracing_helper import (
     _tracing_task_invocation,
     _inject_tracing_into_function,
 )
+
 
 # Default parameters for remote functions.
 DEFAULT_REMOTE_FUNCTION_CPUS = 1
@@ -146,7 +146,7 @@ class RemoteFunction:
             if isinstance(runtime_env, str):
                 self._runtime_env = runtime_env
             else:
-                self._runtime_env = ParsedRuntimeEnv(runtime_env or {}).serialize()
+                self._runtime_env = RuntimeEnv(**(runtime_env or {})).serialize()
         else:
             self._runtime_env = None
         self._placement_group = placement_group
@@ -219,35 +219,49 @@ class RemoteFunction:
                 # Serialzed protobuf runtime env from Ray client.
                 new_runtime_env = runtime_env
             else:
-                new_runtime_env = ParsedRuntimeEnv(runtime_env).serialize()
+                new_runtime_env = RuntimeEnv(**runtime_env).serialize()
         else:
             # Keep the runtime_env as None.  In .remote(), we need to know if
             # runtime_env is None to know whether or not to fall back to the
             # runtime_env specified in the @ray.remote decorator.
             new_runtime_env = None
 
+        options = dict(
+            num_returns=num_returns,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            object_store_memory=object_store_memory,
+            accelerator_type=accelerator_type,
+            resources=resources,
+            max_retries=max_retries,
+            retry_exceptions=retry_exceptions,
+            placement_group=placement_group,
+            placement_group_bundle_index=placement_group_bundle_index,
+            placement_group_capture_child_tasks=(placement_group_capture_child_tasks),
+            runtime_env=new_runtime_env,
+            name=name,
+            scheduling_strategy=scheduling_strategy,
+        )
+
         class FuncWrapper:
             def remote(self, *args, **kwargs):
-                return func_cls._remote(
-                    args=args,
-                    kwargs=kwargs,
-                    num_returns=num_returns,
-                    num_cpus=num_cpus,
-                    num_gpus=num_gpus,
-                    memory=memory,
-                    object_store_memory=object_store_memory,
-                    accelerator_type=accelerator_type,
-                    resources=resources,
-                    max_retries=max_retries,
-                    retry_exceptions=retry_exceptions,
-                    placement_group=placement_group,
-                    placement_group_bundle_index=placement_group_bundle_index,
-                    placement_group_capture_child_tasks=(
-                        placement_group_capture_child_tasks
-                    ),
-                    runtime_env=new_runtime_env,
-                    name=name,
-                    scheduling_strategy=scheduling_strategy,
+                return func_cls._remote(args=args, kwargs=kwargs, **options)
+
+            def _bind(self, *args, **kwargs):
+                """
+                **Experimental**
+
+                For ray DAG building. Implementation and interface subject
+                to changes.
+                """
+                from ray.experimental.dag.function_node import FunctionNode
+
+                return FunctionNode(
+                    func_cls._function,
+                    args,
+                    kwargs,
+                    options,
                 )
 
         return FuncWrapper()
@@ -401,7 +415,7 @@ class RemoteFunction:
                     placement_group_capture_child_tasks,
                 )
             else:
-                scheduling_strategy = DEFAULT_SCHEDULING_STRATEGY
+                scheduling_strategy = "DEFAULT"
 
         if not runtime_env or runtime_env == "{}":
             runtime_env = self._runtime_env
@@ -445,3 +459,15 @@ class RemoteFunction:
             invocation = self._decorator(invocation)
 
         return invocation(args, kwargs)
+
+    def _bind(self, *args, **kwargs):
+        """
+        **Experimental**
+
+        For ray DAG building. Implementation and interface subject to
+        changes.
+        """
+
+        from ray.experimental.dag.function_node import FunctionNode
+
+        return FunctionNode(self._function, args, kwargs, {})

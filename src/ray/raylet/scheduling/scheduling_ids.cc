@@ -60,4 +60,11 @@ int64_t StringIdMap::Insert(const std::string &string_id, uint8_t max_id) {
   }
 };
 
+StringIdMap &StringIdMap::InsertOrDie(const std::string &string_id, int64_t value) {
+  RAY_CHECK(Get(string_id) == -1) << string_id << " or " << value << " already exist!";
+  string_to_int_.emplace(string_id, value);
+  int_to_string_.emplace(value, string_id);
+  return *this;
+}
+
 int64_t StringIdMap::Count() { return string_to_int_.size(); }

@@ -51,19 +51,13 @@ class LazyBlockList(BlockList):
         )
 
     def clear(self) -> None:
-        self._block_partitions = None
-        self._calls = None
+        self._block_partitions = [None for _ in self._block_partitions]
 
     def _check_if_cleared(self) -> None:
-        if self._block_partitions is None:
-            raise ValueError(
-                "This Dataset's blocks have been moved, which means that you "
-                "can no longer use this Dataset."
-            )
+        pass  # LazyBlockList can always be re-computed.
 
     # Note: does not force execution prior to splitting.
     def split(self, split_size: int) -> List["LazyBlockList"]:
-        self._check_if_cleared()
         num_splits = math.ceil(len(self._calls) / split_size)
         calls = np.array_split(self._calls, num_splits)
         meta = np.array_split(self._metadata, num_splits)
@@ -75,7 +69,6 @@ class LazyBlockList(BlockList):
 
     # Note: does not force execution prior to division.
     def divide(self, part_idx: int) -> ("LazyBlockList", "LazyBlockList"):
-        self._check_if_cleared()
         left = LazyBlockList(
             self._calls[:part_idx],
             self._metadata[:part_idx],
@@ -97,7 +90,6 @@ class LazyBlockList(BlockList):
         self,
     ) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
         context = DatasetContext.get_current()
-        self._check_if_cleared()
         outer = self
 
         class Iter:
@@ -125,7 +117,6 @@ class LazyBlockList(BlockList):
     def _iter_block_partitions(
         self,
     ) -> Iterator[Tuple[ObjectRef[MaybeBlockPartition], BlockPartitionMetadata]]:
-        self._check_if_cleared()
         outer = self
 
         class Iter:
@@ -147,7 +138,6 @@ class LazyBlockList(BlockList):
         return Iter()
 
     def _get_or_compute(self, i: int) -> ObjectRef[MaybeBlockPartition]:
-        self._check_if_cleared()
         assert i < len(self._calls), i
         # Check if we need to compute more block_partitions.
         if not self._block_partitions[i]:
