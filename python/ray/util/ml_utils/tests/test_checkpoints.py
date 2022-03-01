@@ -5,12 +5,12 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from ray.util.ml_utils.checkpoint import (
-    TuneCheckpoint,
+from ray.ml.checkpoint import (
+    Checkpoint,
     DataCheckpoint,
     LocalStorageCheckpoint,
     ObjectStoreCheckpoint,
-    CloudStorageCheckpoint,
+    ExternalStorageCheckpoint,
 )
 
 
@@ -33,7 +33,7 @@ def mock_s3_sync(local_path):
     return mocked
 
 
-class TuneCheckpointsTest(unittest.TestCase):
+class CheckpointsTest(unittest.TestCase):
     def setUp(self):
         self.tmpdir = os.path.realpath(tempfile.mkdtemp())
 
@@ -57,7 +57,7 @@ class TuneCheckpointsTest(unittest.TestCase):
 
     def _prepare_dict_checkpoint(self) -> DataCheckpoint:
         # Create checkpoint from dict
-        checkpoint = TuneCheckpoint.from_dict(self.checkpoint_dict_data)
+        checkpoint = Checkpoint.from_dict(self.checkpoint_dict_data)
         self.assertIsInstance(checkpoint, DataCheckpoint)
         self.assertEqual(checkpoint.data["metric"], self.checkpoint_dict_data["metric"])
         return checkpoint
@@ -80,7 +80,7 @@ class TuneCheckpointsTest(unittest.TestCase):
         self.assertIsInstance(blob, bytes)
 
         # Create from bytes
-        checkpoint = TuneCheckpoint.from_bytes(blob)
+        checkpoint = Checkpoint.from_bytes(blob)
         self.assertIsInstance(checkpoint, DataCheckpoint)
 
         self._assert_dict_checkpoint(checkpoint)
@@ -94,7 +94,7 @@ class TuneCheckpointsTest(unittest.TestCase):
         self.assertIsInstance(data_dict, dict)
 
         # Create from bytes
-        checkpoint = TuneCheckpoint.from_dict(data_dict)
+        checkpoint = Checkpoint.from_dict(data_dict)
         self.assertIsInstance(checkpoint, DataCheckpoint)
 
         self._assert_dict_checkpoint(checkpoint)
@@ -102,7 +102,7 @@ class TuneCheckpointsTest(unittest.TestCase):
     def test_dict_checkpoint_fs(self):
         """Test conversion from dict to FS checkpoint and back."""
         # Create checkpoint from dict
-        checkpoint = TuneCheckpoint.from_dict(self.checkpoint_dict_data)
+        checkpoint = Checkpoint.from_dict(self.checkpoint_dict_data)
         self.assertIsInstance(checkpoint, DataCheckpoint)
         self.assertEqual(checkpoint.data["metric"], self.checkpoint_dict_data["metric"])
 
@@ -111,7 +111,7 @@ class TuneCheckpointsTest(unittest.TestCase):
         self.assertIsInstance(path, str)
 
         # Create from path
-        checkpoint = TuneCheckpoint.from_directory(path)
+        checkpoint = Checkpoint.from_directory(path)
         self.assertIsInstance(checkpoint, LocalStorageCheckpoint)
 
         self._assert_dict_checkpoint(checkpoint)
@@ -130,7 +130,7 @@ class TuneCheckpointsTest(unittest.TestCase):
         self.assertIsInstance(obj_ref, ray.ObjectRef)
 
         # Create from dict
-        checkpoint = TuneCheckpoint.from_object_ref(obj_ref)
+        checkpoint = Checkpoint.from_object_ref(obj_ref)
         self.assertIsInstance(checkpoint, ObjectStoreCheckpoint)
 
         self._assert_dict_checkpoint(checkpoint)
@@ -146,14 +146,14 @@ class TuneCheckpointsTest(unittest.TestCase):
             self.assertIn("s3://", location)
 
             # Create from dict
-            checkpoint = TuneCheckpoint.from_uri(location)
-            self.assertIsInstance(checkpoint, CloudStorageCheckpoint)
+            checkpoint = Checkpoint.from_uri(location)
+            self.assertIsInstance(checkpoint, ExternalStorageCheckpoint)
 
             self._assert_dict_checkpoint(checkpoint)
 
     def _prepare_fs_checkpoint(self) -> LocalStorageCheckpoint:
         # Create checkpoint from fs
-        checkpoint = TuneCheckpoint.from_directory(self.checkpoint_dir)
+        checkpoint = Checkpoint.from_directory(self.checkpoint_dir)
         self.assertIsInstance(checkpoint, LocalStorageCheckpoint)
         self.assertEqual(checkpoint.path, self.checkpoint_dir)
 
@@ -199,7 +199,7 @@ class TuneCheckpointsTest(unittest.TestCase):
         self.assertIsInstance(blob, bytes)
 
         # Create from dict
-        checkpoint = TuneCheckpoint.from_bytes(blob)
+        checkpoint = Checkpoint.from_bytes(blob)
         self.assertIsInstance(checkpoint, DataCheckpoint)
 
         self._assert_fs_checkpoint(checkpoint)
@@ -213,7 +213,7 @@ class TuneCheckpointsTest(unittest.TestCase):
         self.assertIsInstance(data_dict, dict)
 
         # Create from dict
-        checkpoint = TuneCheckpoint.from_dict(data_dict)
+        checkpoint = Checkpoint.from_dict(data_dict)
         self.assertIsInstance(checkpoint, DataCheckpoint)
 
         self._assert_fs_checkpoint(checkpoint)
@@ -227,7 +227,7 @@ class TuneCheckpointsTest(unittest.TestCase):
         self.assertIsInstance(path, str)
 
         # Create from dict
-        checkpoint = TuneCheckpoint.from_directory(path)
+        checkpoint = Checkpoint.from_directory(path)
         self.assertIsInstance(checkpoint, LocalStorageCheckpoint)
 
         self._assert_fs_checkpoint(checkpoint)
@@ -246,7 +246,7 @@ class TuneCheckpointsTest(unittest.TestCase):
         self.assertIsInstance(obj_ref, ray.ObjectRef)
 
         # Create from dict
-        checkpoint = TuneCheckpoint.from_object_ref(obj_ref)
+        checkpoint = Checkpoint.from_object_ref(obj_ref)
         self.assertIsInstance(checkpoint, ObjectStoreCheckpoint)
 
         self._assert_fs_checkpoint(checkpoint)
@@ -262,8 +262,8 @@ class TuneCheckpointsTest(unittest.TestCase):
             self.assertIn("s3://", location)
 
             # Create from dict
-            checkpoint = TuneCheckpoint.from_uri(location)
-            self.assertIsInstance(checkpoint, CloudStorageCheckpoint)
+            checkpoint = Checkpoint.from_uri(location)
+            self.assertIsInstance(checkpoint, ExternalStorageCheckpoint)
 
             self._assert_fs_checkpoint(checkpoint)
 
