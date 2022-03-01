@@ -252,14 +252,12 @@ def run(config_file_path: str, import_path: str, address: str):
         cli_logger.newline()
 
     while True:
-        time.sleep(10)
         status_json = serve_application_status_to_schema(
             get_deployment_statuses()
         ).json()
-        print(
-            f"\nStatus at time {time.ctime()}: \n"
-            f"{json.dumps(json.loads(status_json), indent=4)}\n"
-        )
+        status_string = f"{json.dumps(json.loads(status_json), indent=4)}\n"
+        cli_logger.print(status_string.replace("{", "{{").replace("}", "}}"))
+        time.sleep(10)
 
 
 @cli.command(
