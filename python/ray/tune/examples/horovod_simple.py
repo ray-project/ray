@@ -61,7 +61,7 @@ def train(config):
     print(hvd.size())
     np.random.seed(1 + hvd.rank())
     torch.manual_seed(1234)
-    # To ensure consistent initialization across slots,
+    # To ensure consistent initialization across workers,
     hvd.broadcast_parameters(net.state_dict(), root_rank=0)
     hvd.broadcast_optimizer_state(optimizer, root_rank=0)
 
@@ -86,13 +86,13 @@ def train(config):
 
 
 def tune_horovod(
-    hosts_per_trial, slots_per_host, num_samples, use_gpu, mode="square", x_max=1.0
+    hosts_per_trial, workers_per_host, num_samples, use_gpu, mode="square", x_max=1.0
 ):
     horovod_trainable = DistributedTrainableCreator(
         train,
         use_gpu=use_gpu,
         num_hosts=hosts_per_trial,
-        num_slots=slots_per_host,
+        num_workers=workers_per_host,
         replicate_pem=False,
     )
     analysis = tune.run(
@@ -122,7 +122,7 @@ if __name__ == "__main__":
         "--smoke-test", action="store_true", help=("Finish quickly for testing.")
     )
     parser.add_argument("--hosts-per-trial", type=int, default=1)
-    parser.add_argument("--slots-per-host", type=int, default=2)
+    parser.add_argument("--workers-per-host", type=int, default=2)
     parser.add_argument(
         "--server-address",
         type=str,
@@ -142,7 +142,7 @@ if __name__ == "__main__":
 
     tune_horovod(
         hosts_per_trial=args.hosts_per_trial,
-        slots_per_host=args.slots_per_host,
+        workers_per_host=args.workers_per_host,
         num_samples=2 if args.smoke_test else 10,
         use_gpu=args.gpu,
         mode=args.mode,
