@@ -1,7 +1,7 @@
 import json
 import subprocess
 import sys
-from typing import List, Dict
+from typing import List, Dict, Set
 
 import pytest
 
@@ -21,8 +21,11 @@ def ray_start_stop():
     subprocess.check_output(["ray", "stop", "--force"])
 
 
-def deployments_match(list1: List[Dict], list2: List[Dict]) -> bool:
-    # Helper that takes in 2 lists of deployment dictionaries and compares them
+def deployments_match(list1: List[Dict], list2: List[Dict], properties: Set) -> bool:
+    """
+    Helper that takes in 2 lists of deployment dictionaries and compares their
+    properties and ray_actor_options.
+    """
 
     if len(list1) != len(list2):
         return False
@@ -31,7 +34,10 @@ def deployments_match(list1: List[Dict], list2: List[Dict]) -> bool:
         matching_deployment = None
         for i in range(len(list2)):
             deployment2 = list2[i]
-            if deployment1 == deployment2:
+            for property in properties:
+                if deployment1[property] != deployment2[property]:
+                    break
+            else:
                 matching_deployment = i
         if matching_deployment is None:
             return False
@@ -41,7 +47,10 @@ def deployments_match(list1: List[Dict], list2: List[Dict]) -> bool:
 
 
 def test_put_get_success(ray_start_stop):
-    ray_actor_options = {"runtime_env": {"py_modules": [test_env_uri, test_module_uri]}}
+    ray_actor_options = {
+        "runtime_env": {"py_modules": [test_env_uri, test_module_uri]},
+        "num_cpus": 0.1,
+    }
 
     shallow = dict(
         name="shallow",
@@ -90,7 +99,11 @@ def test_put_get_success(ray_start_stop):
         with open("three_deployments_response.json", "r") as f:
             response_deployments = json.loads(get_response.json())["deployments"]
             expected_deployments = json.load(f)["deployments"]
-            assert deployments_match(response_deployments, expected_deployments)
+            assert deployments_match(
+                response_deployments,
+                expected_deployments,
+                {"name", "import_path", "num_replicas", "route_prefix"},
+            )
 
         deployments = [shallow, one]
         put_response = requests.put(
@@ -110,7 +123,11 @@ def test_put_get_success(ray_start_stop):
         with open("two_deployments_response.json", "r") as f:
             response_deployments = json.loads(get_response.json())["deployments"]
             expected_deployments = json.load(f)["deployments"]
-            assert deployments_match(response_deployments, expected_deployments)
+            assert deployments_match(
+                response_deployments,
+                expected_deployments,
+                {"name", "import_path", "num_replicas", "route_prefix"},
+            )
 
 
 def test_delete_success(ray_start_stop):
