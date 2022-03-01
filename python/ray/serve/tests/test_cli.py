@@ -279,5 +279,25 @@ def test_delete(ray_start_stop):
         len(info["deployments"]) == 2
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_status(ray_start_stop):
+    # Deploys a config file and checks its status
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "three_deployments.yaml"
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file_name])
+    status_response = subprocess.check_output(["serve", "status"])
+    statuses = json.loads(status_response)["statuses"]
+
+    expected_deployments = {"shallow", "deep", "one"}
+    for status in statuses:
+        expected_deployments.remove(status["name"])
+        assert status["status"] in {"HEALTHY", "UPDATING"}
+        assert "message" in status
+    assert len(expected_deployments) == 0
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
