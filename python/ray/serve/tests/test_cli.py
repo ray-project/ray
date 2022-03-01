@@ -3,9 +3,10 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-
+import signal
 import pytest
 import requests
+import time
 
 import ray
 from ray import serve
@@ -220,6 +221,41 @@ def test_info(ray_start_stop):
         "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
         in one_info["ray_actor_options"]["runtime_env"]["py_modules"]
     )
+
+
+def parrot(request):
+    return request.query_params["sound"]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run(ray_start_stop):
+    # Deploys valid config file and import path via serve run
+
+    # Deploy via config file
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
+    )
+    p = subprocess.Popen(["serve", "run", "-c", config_file_name])
+    time.sleep(4)
+
+    assert requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
+    assert requests.get("http://localhost:8000/one").text == "2"
+
+    p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
+    with pytest.raises(requests.exceptions.ConnectionError):
+        requests.get("http://localhost:8000/shallow")
+    with pytest.raises(requests.exceptions.ConnectionError):
+        requests.get("http://localhost:8000/one")
+
+    # Deploy via import path
+    p = subprocess.Popen(["serve", "run", "-i", "ray.serve.tests.test_cli.parrot"])
+    time.sleep(4)
+
+    assert requests.get("http://localhost:8000/parrot?sound=squawk").text == "squawk"
+
+    p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
+    with pytest.raises(requests.exceptions.ConnectionError):
+        requests.get("http://localhost:8000/parrot?sound=squawk")
 
 
 if __name__ == "__main__":

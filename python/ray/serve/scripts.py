@@ -58,7 +58,7 @@ def log_failed_request(response: requests.models.Response, address: str):
     required=False,
     type=str,
     help=(
-        "Runtime environment dictionary to pass into ray.init. " "Defaults to empty."
+        "Runtime environment dictionary to pass into ray.init. Defaults to empty."
     ),
 )
 def cli(address, namespace, runtime_env_json):
@@ -239,7 +239,7 @@ def run(config_file_path: str, import_path: str, address: str):
 
         cli_logger.newline()
         cli_logger.success(
-            f"\nDeployments from {config_file_path} deployed " "successfully!\n"
+            f"\nDeployments from {config_file_path} deployed successfully!\n"
         )
         cli_logger.newline()
 
@@ -305,6 +305,7 @@ def status(address: str):
     else:
         log_failed_request(response, address)
 
+
 @cli.command(
     help="[Experimental] Get info about your Serve application's config.",
     hidden=True,
@@ -318,9 +319,12 @@ def status(address: str):
     help='Address of the Ray dashboard to query. For example, "http://localhost:8265".',
 )
 def delete(address: str):
-    click.confirm(f"\nThis will shutdown the Serve application at address "
-                  f"\"{address}\" and delete all deployments there. Do you "
-                  "want to continue?", abort=True)
+    click.confirm(
+        f"\nThis will shutdown the Serve application at address "
+        f'"{address}" and delete all deployments there. Do you '
+        "want to continue?",
+        abort=True,
+    )
 
     full_address_path = f"{address}/api/serve/deployments/"
     response = requests.delete(full_address_path)
