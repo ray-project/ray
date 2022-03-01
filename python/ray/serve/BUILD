@@ -3,7 +3,11 @@
 py_library(
     name = "serve_lib",
     srcs = glob(["**/*.py"], exclude=["tests/**/*.py"]),
-    visibility = ["//python/ray/serve:__subpackages__", "//release:__pkg__"],
+    visibility = [
+        "//python/ray/serve:__pkg__",
+        "//python/ray/serve:__subpackages__",
+        "//release:__pkg__"
+    ],
 )
 
 serve_tests_srcs = glob(["tests/**/*.py"])
@@ -19,6 +23,14 @@ py_test(
 py_test(
     name = "test_deploy",
     size = "large",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_healthcheck",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -98,7 +110,7 @@ py_test(
 
 py_test(
     name = "test_constructor_failure",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -109,14 +121,6 @@ py_test(
     size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serverless"],
-    deps = [":serve_lib"],
-)
-
-py_test(
-    name = "test_async_goal_manager",
-    size = "small",
-    srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
@@ -148,7 +152,7 @@ py_test(
 
 py_test(
     name = "test_failure",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -257,7 +261,7 @@ py_test(
 
 py_test(
     name = "test_runtime_env",
-    size = "medium",
+    size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "post_wheel_build", "team:serve"],
     deps = [":serve_lib"],
@@ -282,7 +286,7 @@ py_test(
 # Runs test_api and test_failure with injected failures in the controller.
 py_test(
    name = "test_controller_crashes",
-   size = "medium",
+   size = "large",
    srcs = glob(["tests/test_controller_crashes.py",
                "tests/test_api.py",
                "tests/test_failure.py",
@@ -293,7 +297,7 @@ py_test(
 
 py_test(
     name = "test_controller_recovery",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -340,6 +344,13 @@ py_test(
     deps = [":serve_lib"]
 )
 
+py_test(
+    name = "tutorial_sklearn_ray_overview",
+    size = "small",
+    main = "quick_start.py",
+    srcs = ["//doc/source/serve/_examples/doc_code:serve_doc_code"],
+    tags = ["exclusive", "team:serve"],
+)
 
 py_test(
     name = "tutorial_rllib",
@@ -388,6 +399,22 @@ py_test(
 py_test(
     name = "test_actor_executor",
     size = "small",
+    srcs = pipeline_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_deployment_node",
+    size = "medium",
+    srcs = pipeline_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_generate",
+    size = "medium",
     srcs = pipeline_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],

@@ -11,9 +11,16 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_for_pid_to_exit,
     SignalActor,
+    Semaphore,
 )
+from ray.internal.internal_api import memory_summary
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
+
+# Task status.
+WAITING_FOR_DEPENDENCIES = "WAITING_FOR_DEPENDENCIES"
+SCHEDULED = "SCHEDULED"
+FINISHED = "FINISHED"
 
 
 def test_cached_object(ray_start_cluster):
@@ -641,6 +648,61 @@ def test_reconstruction_stress(ray_start_cluster):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_reconstruction_stress_spill(ray_start_cluster):
+    config = {
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_period_milliseconds": 100,
+        "max_direct_call_object_size": 100,
+        "task_retry_delay_ms": 100,
+        "object_timeout_milliseconds": 200,
+    }
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(
+        num_cpus=0, _system_config=config, enable_object_reconstruction=True
+    )
+    ray.init(address=cluster.address)
+    # Node to place the initial object.
+    node_to_kill = cluster.add_node(
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10 ** 8
+    )
+    cluster.add_node(num_cpus=1, resources={"node2": 1}, object_store_memory=10 ** 8)
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def large_object():
+        return np.zeros(10 ** 6, dtype=np.uint8)
+
+    @ray.remote
+    def dependent_task(x):
+        return
+
+    for _ in range(3):
+        obj = large_object.options(resources={"node1": 1}).remote()
+        ray.get(dependent_task.options(resources={"node2": 1}).remote(obj))
+
+        outputs = [
+            large_object.options(resources={"node1": 1}).remote() for _ in range(1000)
+        ]
+        outputs = [
+            dependent_task.options(resources={"node2": 1}).remote(obj)
+            for obj in outputs
+        ]
+
+        cluster.remove_node(node_to_kill, allow_graceful=False)
+        node_to_kill = cluster.add_node(
+            num_cpus=1, resources={"node1": 1}, object_store_memory=10 ** 8
+        )
+
+        i = 0
+        while outputs:
+            ref = outputs.pop(0)
+            print(i, ref)
+            ray.get(ref)
+            i += 1
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_nondeterministic_output(ray_start_cluster, reconstruction_enabled):
     config = {
@@ -903,6 +965,139 @@ def test_nested(ray_start_cluster, reconstruction_enabled):
     else:
         with pytest.raises(ray.exceptions.ObjectLostError):
             ray.get(ref, timeout=60)
+
+
+@pytest.mark.parametrize("reconstruction_enabled", [False, True])
+def test_spilled(ray_start_cluster, reconstruction_enabled):
+    config = {
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_period_milliseconds": 100,
+        "object_timeout_milliseconds": 200,
+    }
+    # Workaround to reset the config to the default value.
+    if not reconstruction_enabled:
+        config["lineage_pinning_enabled"] = False
+
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(
+        num_cpus=0,
+        _system_config=config,
+        enable_object_reconstruction=reconstruction_enabled,
+    )
+    ray.init(address=cluster.address)
+    # Node to place the initial object.
+    node_to_kill = cluster.add_node(
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10 ** 8
+    )
+    cluster.wait_for_nodes()
+
+    @ray.remote(max_retries=1 if reconstruction_enabled else 0)
+    def large_object():
+        return np.zeros(10 ** 7, dtype=np.uint8)
+
+    @ray.remote
+    def dependent_task(x):
+        return
+
+    obj = large_object.options(resources={"node1": 1}).remote()
+    ray.get(dependent_task.options(resources={"node1": 1}).remote(obj))
+    # Force spilling.
+    objs = [large_object.options(resources={"node1": 1}).remote() for _ in range(20)]
+    for o in objs:
+        ray.get(o)
+
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    node_to_kill = cluster.add_node(
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10 ** 8
+    )
+
+    if reconstruction_enabled:
+        ray.get(dependent_task.remote(obj), timeout=60)
+    else:
+        with pytest.raises(ray.exceptions.RayTaskError):
+            ray.get(dependent_task.remote(obj), timeout=60)
+        with pytest.raises(ray.exceptions.ObjectLostError):
+            ray.get(obj, timeout=60)
+
+
+def test_memory_util(ray_start_cluster):
+    config = {
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_period_milliseconds": 100,
+        "object_timeout_milliseconds": 200,
+    }
+
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(
+        num_cpus=0,
+        resources={"head": 1},
+        _system_config=config,
+        enable_object_reconstruction=True,
+    )
+    ray.init(address=cluster.address)
+    # Node to place the initial object.
+    node_to_kill = cluster.add_node(
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10 ** 8
+    )
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def large_object(sema=None):
+        if sema is not None:
+            ray.get(sema.acquire.remote())
+        return np.zeros(10 ** 7, dtype=np.uint8)
+
+    @ray.remote
+    def dependent_task(x, sema):
+        ray.get(sema.acquire.remote())
+        return x
+
+    def stats():
+        info = memory_summary(cluster.address, line_wrap=False)
+        info = info.split("\n")
+        reconstructing_waiting = [
+            line
+            for line in info
+            if "Attempt #2" in line and WAITING_FOR_DEPENDENCIES in line
+        ]
+        reconstructing_scheduled = [
+            line for line in info if "Attempt #2" in line and SCHEDULED in line
+        ]
+        reconstructing_finished = [
+            line for line in info if "Attempt #2" in line and FINISHED in line
+        ]
+        return (
+            len(reconstructing_waiting),
+            len(reconstructing_scheduled),
+            len(reconstructing_finished),
+        )
+
+    sema = Semaphore.options(resources={"head": 1}).remote(value=0)
+    obj = large_object.options(resources={"node1": 1}).remote(sema)
+    x = dependent_task.options(resources={"node1": 1}).remote(obj, sema)
+    ref = dependent_task.options(resources={"node1": 1}).remote(x, sema)
+    ray.get(sema.release.remote())
+    ray.get(sema.release.remote())
+    ray.get(sema.release.remote())
+    ray.get(ref)
+    wait_for_condition(lambda: stats() == (0, 0, 0))
+    del ref
+
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    node_to_kill = cluster.add_node(
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10 ** 8
+    )
+
+    ref = dependent_task.remote(x, sema)
+    wait_for_condition(lambda: stats() == (1, 1, 0))
+    ray.get(sema.release.remote())
+    wait_for_condition(lambda: stats() == (0, 1, 1))
+    ray.get(sema.release.remote())
+    ray.get(sema.release.remote())
+    ray.get(ref)
+    wait_for_condition(lambda: stats() == (0, 0, 2))
 
 
 if __name__ == "__main__":

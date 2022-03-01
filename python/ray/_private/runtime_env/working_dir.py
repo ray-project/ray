@@ -2,9 +2,9 @@ import logging
 import os
 from typing import Any, Dict, Optional
 from pathlib import Path
+import asyncio
 
 from ray.experimental.internal_kv import _internal_kv_initialized
-from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     download_and_unpack_package,
@@ -103,21 +103,31 @@ class WorkingDirManager:
 
         return local_dir_size
 
-    def get_uri(self, runtime_env: RuntimeEnv) -> Optional[str]:
+    def get_uri(self, runtime_env: "RuntimeEnv") -> Optional[str]:  # noqa: F821
         working_dir_uri = runtime_env.working_dir()
         if working_dir_uri != "":
             return working_dir_uri
         return None
 
-    def create(
+    async def create(
         self,
         uri: str,
         runtime_env: dict,
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
-        local_dir = download_and_unpack_package(uri, self._resources_dir, logger=logger)
-        return get_directory_size_bytes(local_dir)
+        # Currently create method is still a sync process, to avoid blocking
+        # the loop, need to run this function in another thread.
+        # TODO(Catch-Bull): Refactor method create into an async process, and
+        # make this method running in current loop.
+        def _create():
+            local_dir = download_and_unpack_package(
+                uri, self._resources_dir, logger=logger
+            )
+            return get_directory_size_bytes(local_dir)
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _create)
 
     def modify_context(
         self, uri: Optional[str], runtime_env_dict: Dict, context: RuntimeEnvContext

@@ -45,6 +45,25 @@ class RayObject {
     Init(data, metadata, nested_refs, copy_data);
   }
 
+  /// This constructor creates a ray object instance whose data will be generated
+  /// by the data factory.
+  RayObject(const std::shared_ptr<Buffer> &metadata,
+            const std::vector<rpc::ObjectReference> &nested_refs,
+            std::function<std::shared_ptr<ray::Buffer>()> data_factory,
+            bool copy_data = false)
+      : data_factory_(std::move(data_factory)),
+        metadata_(metadata),
+        nested_refs_(nested_refs),
+        has_data_copy_(copy_data),
+        creation_time_nanos_(absl::GetCurrentTimeNanos()) {
+    if (has_data_copy_) {
+      if (metadata_ && !metadata_->OwnsData()) {
+        metadata_ = std::make_shared<LocalMemoryBuffer>(
+            metadata_->Data(), metadata_->Size(), /*copy_data=*/true);
+      }
+    }
+  }
+
   /// Create an Ray error object. It uses msgpack for the serialization format now.
   /// Ray error objects consist of metadata that indicates the error code (see
   /// rpc::ErrorType) and the serialized message pack that contains serialized
@@ -62,7 +81,13 @@ class RayObject {
   RayObject(rpc::ErrorType error_type, const rpc::RayErrorInfo *ray_error_info = nullptr);
 
   /// Return the data of the ray object.
-  const std::shared_ptr<Buffer> &GetData() const { return data_; }
+  std::shared_ptr<Buffer> GetData() const {
+    if (data_factory_ != nullptr) {
+      return data_factory_();
+    } else {
+      return data_;
+    }
+  }
 
   /// Return the metadata of the ray object.
   const std::shared_ptr<Buffer> &GetMetadata() const { return metadata_; }
@@ -78,7 +103,7 @@ class RayObject {
   }
 
   /// Whether this object has data.
-  bool HasData() const { return data_ != nullptr; }
+  bool HasData() const { return data_ != nullptr || data_factory_ != nullptr; }
 
   /// Whether this object has metadata.
   bool HasMetadata() const { return metadata_ != nullptr; }
@@ -127,6 +152,9 @@ class RayObject {
   }
 
   std::shared_ptr<Buffer> data_;
+  /// The data factory is used to allocate data from the language frontend.
+  /// Note that, if this is provided, `data_` should be null.
+  std::function<const std::shared_ptr<Buffer>()> data_factory_ = nullptr;
   std::shared_ptr<Buffer> metadata_;
   std::vector<rpc::ObjectReference> nested_refs_;
   /// Whether this class holds a data copy.

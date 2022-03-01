@@ -1,14 +1,16 @@
 .. _jobs-overview:
 
-===========================================================
-Ray Job Submission: Going from your laptop to production
-===========================================================
+==================
+Ray Job Submission
+==================
 
 .. note::
 
     This component is in **beta**.
 
-Ray Job submission is a mechanism to submit locally developed and tested applications to a running remote Ray cluster. It simplifies the user experience of packaging, deploying, and manage their Ray application as a "job". Jobs can be submitted by a "job manager", like Airflow or Kubernetes Jobs.
+Ray Job submission is a mechanism to submit locally developed and tested applications to a running remote Ray cluster. It simplifies the experience of packaging, deploying, and managing a Ray application.  Jobs can be submitted by a "job manager", like Airflow or Kubernetes Jobs.
+
+Jump to the :ref:`API Reference<ray-job-submission-api-ref>`, or continue reading for an overview with examples.
 
 Concepts
 --------
@@ -22,7 +24,7 @@ Concepts
 Example - Setup
 ---------------
 
-Let's start with a sample Ray script as an example for job submission. Once executed locally, this script will use Ray APIs to print counter value of a remote actor from 1 to 5, and print the version of 'requests' module it's using.
+Let's start with a sample Ray script as an example for job submission. Once executed locally, this script will use Ray APIs to print the counter value of a remote actor from 1 to 5, and print the version of the ``requests`` module it's using.
 
 We can put this file in a local directory of your choice, with filename "script.py", so your working directory will look like:
 
@@ -58,7 +60,7 @@ We can put this file in a local directory of your choice, with filename "script.
     print(requests.__version__)
 
 
-| Ensure we have a local Ray cluster with a running head node and the dashboard installed with :code:`pip install "ray[default]"`. The address and port shown in terminal should be where we submit Job requests to.
+Ensure we have a local Ray cluster with a running head node and the dashboard installed with :code:`pip install "ray[default]"`. The address and port shown in terminal should be where we submit Job requests to.
 
 .. code-block:: bash
 
@@ -81,24 +83,33 @@ We provide three APIs for Job submission: SDK, CLI and HTTP. Both the SDK and CL
 - **Entrypoint**: Shell command to run the job.
     - Typically :code:`python your_script.py`, can also be any shell script such as :code:`echo hello`.
 - **Runtime Environment**:
-    - :code:`working_dir` as local directory: It will be automatically zipped and uploaded to the target Ray cluster, then unpacked to where your submitted application runs.
-    - :code:`working_dir` as remote URIs, such as S3, Git or others: It will be downloaded and unpacked to where your submitted application runs. For details, see :ref:`Runtime Environments<runtime-environments>`.
+    - :code:`working_dir` as a local directory: It will be automatically zipped and uploaded to the target Ray cluster, then unpacked to where your submitted application runs.  This option has a size limit of 100 MB and is recommended for quick iteration and experimentation.
+    - :code:`working_dir` as a remote URI hosted on S3, GitHub or others: It will be downloaded and unpacked to where your submitted application runs.  This option has no size limit and is recommended for production use.  For details, see :ref:`remote-uris`.
 
 .. warning::
 
-    We currently don't support passing in :code:`requirements.txt` in :code:`pip` yet in job submission so user still need to pass in a list of packages. It will be supported in later releases.
+    We currently don't support passing in :code:`requirements.txt` in :code:`pip` yet in job submission so you still need to pass in a list of packages. It will be supported in later releases.
 
 
 Job CLI API
 -----------
 
-The easiest way to get started is to use Job submission CLI.
+The easiest way to get started with Ray job submission is to use the job submission CLI.
 
-If we have :code:`RAY_ADDRESS` environment variable set with a local Ray cluster, or just manually set it first:
+Using the CLI on a local cluster
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+First, start a local Ray cluster (e.g. with ``ray start --head``) and open a terminal (on the head node, which is your local machine).  
+Next, set the :code:`RAY_ADDRESS` environment variable:
 
 .. code-block:: bash
 
     export RAY_ADDRESS="http://127.0.0.1:8265"
+
+This tells Job Submission how to find our Ray cluster.  Here we are specifying port ``8265`` on the head node, the port that the Ray Dashboard listens on.  
+(Note that this is different from port ``10001``, which you would use to connect to the cluster via :ref:`Ray Client <ray-client>`.)
+
+Now you may run the following CLI commands:
 
 .. code-block::
 
@@ -132,7 +143,29 @@ If we have :code:`RAY_ADDRESS` environment variable set with a local Ray cluster
     5
     2.26.0
 
+Using the CLI with the Ray Cluster Launcher
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+The example above was for a local Ray cluster.  When connecting to a `remote` cluster, you need to be able to access the dashboard port of the cluster over HTTP.
+
+One way to do this is to port forward ``127.0.0.1:8265`` on your local machine to ``127.0.0.1:8265`` on the head node. If you started your remote cluster with the :ref:`Ray Cluster Launcher <ref-cluster-quick-start>`, then the port forwarding can be set up automatically using the ``ray dashboard`` command (see :ref:`monitor-cluster` for details).
+
+To use this, run the following command on your local machine, where ``cluster.yaml`` is the configuration file you used to launch your cluster:
+
+.. code-block:: bash
+
+    ray dashboard cluster.yaml
+
+Once this is running, check that you can view the Ray Dashboard in your local browser at ``http://127.0.0.1:8265``.  
+Once you have verified this and you have set the environment variable ``RAY_ADDRESS`` to ``"http://127.0.0.1:8265"``, you will be able to use the Jobs CLI on your local machine as in the example above to interact with your remote Ray cluster.
+
+Using the CLI on Kubernetes
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The instructions above still apply, but you can achieve the dashboard port forwarding using ``kubectl port-forward``:
+https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/
+
+Alternatively, you can set up Ingress to the dashboard port of the cluster over HTTP: https://kubernetes.io/docs/concepts/services-networking/ingress/
 
 Ray Job SDK
 ------------
@@ -143,7 +176,7 @@ We can import and initialize the Job submission client by providing a valid Ray 
 
 .. code-block:: python
 
-    from ray.dashboard.modules.job.sdk import JobSubmissionClient
+    from ray.job_submission import JobSubmissionClient
 
     client = JobSubmissionClient("http://127.0.0.1:8265")
 
@@ -169,14 +202,13 @@ Now we can have a simple polling loop that checks the job status until it reache
 
 .. code-block:: python
 
-    from ray.dashboard.modules.job.common import JobStatus, JobStatusInfo
+    from ray.job_submission import JobStatus
 
     def wait_until_finish(job_id):
         start = time.time()
         timeout = 5
         while time.time() - start <= timeout:
-            status_info = client.get_job_status(job_id)
-            status = status_info.status
+            status = client.get_job_status(job_id)
             print(f"status: {status}")
             if status in {JobStatus.SUCCEEDED, JobStatus.STOPPED, JobStatus.FAILED}:
                 break

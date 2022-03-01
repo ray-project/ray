@@ -3,7 +3,8 @@
 Analysis (tune.analysis)
 ========================
 
-You can use the ``ExperimentAnalysis`` object for analyzing results. It is returned automatically when calling ``tune.run``.
+You can use the ``ExperimentAnalysis`` object for analyzing results.
+It is returned automatically when calling ``tune.run``.
 
 .. code-block:: python
 
@@ -29,7 +30,8 @@ Here are some example operations for obtaining a summary of your experiment:
     # Get a list of trials
     trials = analysis.trials
 
-You may want to get a summary of multiple experiments that point to the same ``local_dir``. This is also supported by the ``ExperimentAnalysis`` class.
+You may want to get a summary of multiple experiments that point to the same ``local_dir``.
+This is also supported by the ``ExperimentAnalysis`` class.
 
 .. code-block:: python
 

@@ -16,6 +16,8 @@
 
 #include <functional>
 
+#include "ray/util/container_util.h"
+
 namespace ray {
 
 namespace raylet_scheduling_policy {
@@ -35,6 +37,37 @@ bool DoesNodeHaveGPUs(const NodeResources &resources) {
   return resources.predefined_resources[GPU].total > 0;
 }
 }  // namespace
+
+int64_t SchedulingPolicy::SpreadPolicy(const ResourceRequest &resource_request,
+                                       bool force_spillback, bool require_available,
+                                       std::function<bool(int64_t)> is_node_available) {
+  std::vector<int64_t> round;
+  round.reserve(nodes_.size());
+  for (const auto &pair : nodes_) {
+    round.emplace_back(pair.first);
+  }
+  std::sort(round.begin(), round.end());
+
+  size_t round_index = spread_scheduling_next_index_;
+  for (size_t i = 0; i < round.size(); ++i, ++round_index) {
+    const auto &node_id = round[round_index % round.size()];
+    const auto &node = map_find_or_die(nodes_, node_id);
+    if (node_id == local_node_id_ && force_spillback) {
+      continue;
+    }
+    if (!is_node_available(node_id) ||
+        !node.GetLocalView().IsFeasible(resource_request) ||
+        !node.GetLocalView().IsAvailable(resource_request, true)) {
+      continue;
+    }
+
+    spread_scheduling_next_index_ = ((round_index + 1) % round.size());
+    return node_id;
+  }
+
+  return HybridPolicy(resource_request, 0, force_spillback, require_available,
+                      is_node_available);
+}
 
 int64_t SchedulingPolicy::HybridPolicyWithFilter(
     const ResourceRequest &resource_request, float spread_threshold, bool force_spillback,

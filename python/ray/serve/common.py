@@ -1,23 +1,33 @@
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Dict, Optional
-from uuid import UUID
 
 import ray
 from ray.actor import ActorHandle
 from ray.serve.config import DeploymentConfig, ReplicaConfig
 from ray.serve.autoscaling_policy import AutoscalingPolicy
 
-str = str
 EndpointTag = str
 ReplicaTag = str
 NodeId = str
-GoalId = UUID
 Duration = float
 
 
 @dataclass
 class EndpointInfo:
     route: str
+
+
+class DeploymentStatus(str, Enum):
+    UPDATING = "UPDATING"
+    HEALTHY = "HEALTHY"
+    UNHEALTHY = "UNHEALTHY"
+
+
+@dataclass
+class DeploymentStatusInfo:
+    status: DeploymentStatus
+    message: str = ""
 
 
 class DeploymentInfo:
@@ -64,10 +74,25 @@ class DeploymentInfo:
 
         if self._cached_actor_def is None:
             assert self.actor_name is not None
-            assert self.serialized_deployment_def is not None
-            self._cached_actor_def = ray.remote(
-                create_replica_wrapper(self.actor_name, self.serialized_deployment_def)
+            assert (
+                self.replica_config.import_path is not None
+                or self.serialized_deployment_def is not None
             )
+            if self.replica_config.import_path is not None:
+                self._cached_actor_def = ray.remote(
+                    create_replica_wrapper(
+                        self.actor_name,
+                        import_path=self.replica_config.import_path,
+                    )
+                )
+            else:
+                self._cached_actor_def = ray.remote(
+                    create_replica_wrapper(
+                        self.actor_name,
+                        serialized_deployment_def=self.serialized_deployment_def,
+                    )
+                )
+
         return self._cached_actor_def
 
 

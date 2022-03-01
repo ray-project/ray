@@ -7,6 +7,7 @@ import os
 import sys
 import signal
 import time
+from typing import Any, Callable, Dict, Union
 import traceback
 import json
 from multiprocessing.synchronize import Event
@@ -31,6 +32,7 @@ from ray.autoscaler._private.constants import AUTOSCALER_MAX_RESOURCE_DEMAND_VEC
 from ray.autoscaler._private.util import format_readonly_node_type
 
 from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
+from ray.core.generated import gcs_pb2
 import ray.ray_constants as ray_constants
 from ray._private.ray_logging import setup_component_logger
 from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher
@@ -138,11 +140,11 @@ class Monitor:
 
     def __init__(
         self,
-        address,
-        autoscaling_config,
-        redis_password=None,
-        prefix_cluster_info=False,
-        monitor_ip=None,
+        address: str,
+        autoscaling_config: Union[str, Callable[[], Dict[str, Any]]],
+        redis_password: Optional[str] = None,
+        prefix_cluster_info: bool = False,
+        monitor_ip: Optional[str] = None,
         stop_event: Optional[Event] = None,
     ):
         if not use_gcs_for_bootstrap():
@@ -268,6 +270,7 @@ class Monitor:
         request = gcs_service_pb2.GetAllResourceUsageRequest()
         response = self.gcs_node_resources_stub.GetAllResourceUsage(request, timeout=60)
         resources_batch_data = response.resource_usage_data
+        log_resource_batch_data_if_desired(resources_batch_data)
 
         # Tell the readonly node provider what nodes to report.
         if self.readonly_config:
@@ -369,11 +372,21 @@ class Monitor:
                     "monitor_pid": os.getpid(),
                 }
 
-                # Process autoscaling actions
-                if self.autoscaler:
-                    # Only used to update the load metrics for the autoscaler.
+                if self.autoscaler and not self.load_metrics:
+                    # load_metrics is Falsey iff we haven't collected any
+                    # resource messages from the GCS, which can happen at startup if
+                    # the GCS hasn't yet received data from the Raylets.
+                    # In this case, do not do an autoscaler update.
+                    # Wait to get load metrics.
+                    logger.info(
+                        "Autoscaler has not yet received load metrics. Waiting."
+                    )
+                elif self.autoscaler:
+                    # Process autoscaling actions
                     self.autoscaler.update()
-                    status["autoscaler_report"] = asdict(self.autoscaler.summary())
+                    autoscaler_summary = self.autoscaler.summary()
+                    if autoscaler_summary:
+                        status["autoscaler_report"] = asdict(autoscaler_summary)
 
                     for msg in self.event_summarizer.summary():
                         # Need to prefix each line of the message for the lines to
@@ -512,6 +525,15 @@ class Monitor:
             raise
 
 
+def log_resource_batch_data_if_desired(
+    resources_batch_data: gcs_pb2.ResourceUsageBatchData,
+) -> None:
+    if os.getenv("AUTOSCALER_LOG_RESOURCE_BATCH_DATA") == "1":
+        logger.info("Logging raw resource message pulled from GCS.")
+        logger.info(resources_batch_data)
+        logger.info("Done logging raw resource message.")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description=("Parse Redis server for the " "monitor to connect to.")
@@ -520,7 +542,7 @@ if __name__ == "__main__":
         "--gcs-address", required=False, type=str, help="The address (ip:port) of GCS."
     )
     parser.add_argument(
-        "--redis-address", required=True, type=str, help="the address to use for Redis"
+        "--redis-address", required=False, type=str, help="the address to use for Redis"
     )
     parser.add_argument(
         "--autoscaling-config",
@@ -609,8 +631,14 @@ if __name__ == "__main__":
     else:
         autoscaling_config = None
 
+    bootstrap_address = (
+        args.gcs_address if use_gcs_for_bootstrap() else args.redis_address
+    )
+    if bootstrap_address is None:
+        raise ValueError("One of --gcs-address or --redis-address must be set!")
+
     monitor = Monitor(
-        args.gcs_address if use_gcs_for_bootstrap() else args.redis_address,
+        bootstrap_address,
         autoscaling_config,
         redis_password=args.redis_password,
         monitor_ip=args.monitor_ip,

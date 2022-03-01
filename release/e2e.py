@@ -188,8 +188,8 @@ Release test yaml example
 import argparse
 import enum
 import random
-import string
 import shlex
+import string
 
 import boto3
 import collections
@@ -402,7 +402,7 @@ class CommandRunnerHack:
         full_cmd = " ".join(f"{k}={v}" for k, v in env_vars.items()) + " " + cmd_to_run
         logger.info(f"Executing {cmd_to_run} with {env_vars} via ray job submit")
         proc = subprocess.Popen(
-            " ".join(["ray", "job", "submit", shlex.quote(full_cmd)]),
+            f"ray job submit -- bash -c {shlex.quote(full_cmd)}",
             shell=True,
             stdout=sys.stdout,
             stderr=sys.stderr,
@@ -479,7 +479,15 @@ class S3SyncSessionController(SessionController):
         )
         global_command_runner.wait_command(cid)
 
-    def push(self, session_name, source, target):
+    def push(
+        self,
+        session_name: str,
+        source: Optional[str],
+        target: Optional[str],
+        config: Optional[str],
+        all_nodes: bool,
+        no_warning: bool = False,
+    ):
         if source is None and target is None:
             self._push_local_dir(session_name)
             return
@@ -1153,6 +1161,7 @@ def create_and_wait_for_session(
     session_url = anyscale_session_url(
         project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"], session_id=session_id
     )
+    logger.info(f"URL: {session_url}")
     logger.info(f"Link to session: {_format_link(session_url)}")
 
     result = sdk.start_session(session_id, start_session_options={})
@@ -1215,6 +1224,7 @@ def run_session_command(
     session_url = anyscale_session_url(
         project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"], session_id=session_id
     )
+    logger.info(f"URL: {session_url}")
     logger.info(f"Link to session: {_format_link(session_url)}")
     result_queue.put(State(state_str, time.time(), None))
     result = sdk.create_session_command(
@@ -1475,12 +1485,16 @@ def run_test_config(
     if state_json is None:
         state_json = "/tmp/release_test_state.json"
 
+    custom_env_vars = {
+        "RAY_lineage_pinning_enabled": "1",
+    }
     env_vars = {
         "RAY_ADDRESS": os.environ.get("RAY_ADDRESS", "auto"),
         "TEST_OUTPUT_JSON": results_json,
         "TEST_STATE_JSON": state_json,
         "IS_SMOKE_TEST": "1" if smoke_test else "0",
     }
+    env_vars.update(custom_env_vars)
 
     with open(os.path.join(local_dir, ".anyscale.yaml"), "wt") as f:
         f.write(f"project_id: {project_id}")
@@ -1490,13 +1504,20 @@ def run_test_config(
     # Unfortunately, there currently seems to be no great way to
     # transfer files with the Anyscale SDK.
     # So we use the session controller instead.
-    sdk = AnyscaleSDK(auth_token=GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"])
+    sdk = AnyscaleSDK(
+        auth_token=GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"],
+        host=GLOBAL_CONFIG["ANYSCALE_HOST"],
+    )
 
     get_auth_api_client(
         cli_token=GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"],
         host=GLOBAL_CONFIG["ANYSCALE_HOST"],
     )
-    session_controller = S3SyncSessionController(sdk, result_queue)
+    on_k8s = test_config["cluster"].get("compute_on_k8s")
+    if on_k8s:
+        session_controller = S3SyncSessionController(sdk, result_queue)
+    else:
+        session_controller = SessionController()
 
     cloud_id = test_config["cluster"].get("cloud_id", None)
     cloud_name = test_config["cluster"].get("cloud_name", None)
@@ -1521,15 +1542,22 @@ def run_test_config(
 
     app_config_rel_path = test_config["cluster"].get("app_config", None)
     app_config = _load_config(local_dir, app_config_rel_path)
+    if app_config.get("env_vars") is None:
+        app_config["env_vars"] = {}
     # A lot of staging tests share the same app config yaml, except the flags.
     # `app_env_vars` in test config will help this one.
     # Here we extend the env_vars to use the one specified in the test config.
     if test_config.get("app_env_vars") is not None:
-        if app_config["env_vars"] is None:
-            app_config["env_vars"] = test_config["app_env_vars"]
-        else:
-            app_config["env_vars"].update(test_config["app_env_vars"])
+        app_config["env_vars"].update(test_config["app_env_vars"])
         logger.info(f"Using app config:\n{app_config}")
+
+    # Flags for redisless ray.
+    # TODO: remove them once done.
+    app_config["env_vars"]["MATCH_AUTOSCALER_AND_RAY_IMAGES"] = "1"
+    app_config["env_vars"]["RAY_bootstrap_with_gcs"] = "1"
+    app_config["env_vars"]["RAY_gcs_storage"] = "memory"
+    app_config["env_vars"]["RAY_USAGE_STATS_ENABLED"] = "1"
+    app_config["env_vars"]["RAY_USAGE_STATS_SOURCE"] = "nightly-tests"
 
     compute_tpl_rel_path = test_config["cluster"].get("compute_template", None)
     compute_tpl = _load_config(local_dir, compute_tpl_rel_path)
@@ -1646,6 +1674,8 @@ def run_test_config(
     # When running the test script in client mode, the finish command is a
     # completed local process.
     def _process_finished_client_command(returncode: int, logs: str):
+        if returncode != 0:
+            raise RuntimeError(f"Client returned non-success status: {returncode}")
         if upload_artifacts:
             saved_artifacts = pull_artifacts_and_store_in_cloud(
                 temp_dir=temp_dir,
@@ -1775,6 +1805,8 @@ def run_test_config(
                     session_name=session_name,
                     source=None,
                     target=None,
+                    config=None,
+                    all_nodes=False,
                 )
 
                 logger.info("Syncing test state to session...")
@@ -1782,6 +1814,8 @@ def run_test_config(
                     session_name=session_name,
                     source=test_state_file,
                     target=state_json,
+                    config=None,
+                    all_nodes=False,
                 )
 
                 session_url = anyscale_session_url(

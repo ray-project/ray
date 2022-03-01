@@ -22,7 +22,7 @@ class _StageRunner:
             # Force eager evaluation of all blocks in the pipeline stage. This
             # prevents resource deadlocks due to overlapping stage execution
             # (e.g., task -> actor stage).
-            return fn().force_reads()
+            return fn().fully_executed()
         finally:
             set_progress_bars(prev)
 
@@ -31,7 +31,7 @@ class PipelineExecutor:
     def __init__(self, pipeline: "DatasetPipeline[T]"):
         self._pipeline: "DatasetPipeline[T]" = pipeline
         self._stages: List[ObjectRef[Dataset[Any]]] = [None] * (
-            len(self._pipeline._stages) + 1
+            len(self._pipeline._optimized_stages) + 1
         )
         self._stage_runners = [_StageRunner.remote() for _ in self._stages]
         self._iter = iter(self._pipeline._base_iterable)
@@ -86,7 +86,7 @@ class PipelineExecutor:
                 if is_last:
                     output = result
                 else:
-                    fn = self._pipeline._stages[i]
+                    fn = self._pipeline._optimized_stages[i]
                     self._stages[i + 1] = self._stage_runners[i].run.remote(
                         lambda: fn(result), DatasetContext.get_current()
                     )
@@ -101,7 +101,7 @@ class PipelineExecutor:
                     pass
 
         self._pipeline._stats.wait_time_s.append(time.perf_counter() - start)
-        self._pipeline._stats.add(output._stats)
+        self._pipeline._stats.add(output._plan.stats())
         return output
 
 
@@ -115,6 +115,7 @@ class PipelineSplitExecutorCoordinator:
         context: DatasetContext,
     ):
         DatasetContext._set_current(context)
+        pipeline._optimize_stages()
         self.executor = PipelineExecutor(pipeline)
         self.n = n
         self.splitter = splitter
@@ -125,6 +126,7 @@ class PipelineSplitExecutorCoordinator:
         if all(s is None for s in self.cur_splits):
             ds = next(self.executor)
             self.cur_splits = self.splitter(ds)
+            assert len(self.cur_splits) == self.n, (self.cur_splits, self.n)
 
         # Return the dataset at the split index once per split.
         ret = self.cur_splits[split_index]
