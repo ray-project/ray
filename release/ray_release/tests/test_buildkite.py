@@ -3,6 +3,11 @@ import unittest
 from typing import Dict
 from unittest.mock import patch
 
+from ray_release.buildkite.concurrency import (
+    get_test_resources_from_cluster_compute,
+    get_concurrency_group,
+    CONCURRENY_GROUPS,
+)
 from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import (
     split_ray_repo_str,
@@ -238,3 +243,75 @@ class BuildkiteSettingsTest(unittest.TestCase):
 
         step = get_step(test, smoke_test=True)
         self.assertIn("--smoke-test", step["command"])
+
+    def testInstanceResources(self):
+        # AWS instances
+        cpus, gpus = get_test_resources_from_cluster_compute(
+            {
+                "head_node_type": {"instance_type": "m5.4xlarge"},  # 16 CPUs, 0 GPUs
+                "worker_node_types": [
+                    {
+                        "instance_type": "m5.8xlarge",  # 32 CPUS, 0 GPUs
+                        "max_workers": 4,
+                    },
+                    {
+                        "instance_type": "g3.8xlarge",  # 32 CPUs, 2 GPUs
+                        "min_workers": 8,
+                    },
+                ],
+            }
+        )
+        self.assertEqual(cpus, 16 + 32 * 4 + 32 * 8)
+        self.assertEqual(gpus, 2 * 8)
+
+        cpus, gpus = get_test_resources_from_cluster_compute(
+            {
+                "head_node_type": {
+                    "instance_type": "n1-standard-16"  # 16 CPUs, 0 GPUs
+                },
+                "worker_node_types": [
+                    {
+                        "instance_type": "random-str-xxx-32",  # 32 CPUS, 0 GPUs
+                        "max_workers": 4,
+                    },
+                    {
+                        "instance_type": "a2-highgpu-2g",  # 24 CPUs, 2 GPUs
+                        "min_workers": 8,
+                    },
+                ],
+            }
+        )
+        self.assertEqual(cpus, 16 + 32 * 4 + 24 * 8)
+        self.assertEqual(gpus, 2 * 8)
+
+    def testConcurrencyGroups(self):
+        def _return(ret):
+            def _inner(*args, **kwargs):
+                return ret
+
+            return _inner
+
+        test = Test(
+            {
+                "name": "test_1",
+            }
+        )
+
+        def test_concurrency(cpu, gpu, group):
+            with patch(
+                "ray_release.buildkite.concurrency.get_test_resources",
+                _return((cpu, gpu)),
+            ):
+                group_name, limit = get_concurrency_group(test)
+                self.assertEqual(group_name, group)
+                self.assertEqual(limit, CONCURRENY_GROUPS[group_name])
+
+        test_concurrency(12800, 8, "large-gpu")
+        test_concurrency(12800, 7, "small-gpu")
+        test_concurrency(12800, 1, "small-gpu")
+        test_concurrency(12800, 0, "large")
+        test_concurrency(512, 0, "large")
+        test_concurrency(511, 0, "medium")
+        test_concurrency(128, 0, "medium")
+        test_concurrency(127, 0, "small")
+        test_concurrency(1, 0, "small")

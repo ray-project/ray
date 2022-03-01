@@ -83,6 +83,7 @@ def get_default_settings() -> Dict:
         "ray_wheels": None,
         "ray_test_repo": None,
         "ray_test_branch": None,
+        "no_concurrency_limit": False,
     }
     return settings
 
@@ -103,6 +104,9 @@ def update_settings_from_environment(settings: Dict) -> Dict:
 
     if "TEST_NAME" in os.environ:
         settings["test_name_filter"] = os.environ["TEST_NAME"]
+
+    if "NO_CONCURRENCY_LIMIT" in os.environ:
+        settings["no_concurrency_limit"] = bool(int(os.environ["NO_CONCURRENCY_LIMIT"]))
 
     return settings
 
@@ -125,5 +129,9 @@ def update_settings_from_buildkite(settings: Dict):
     test_name_filter = get_buildkite_prompt_value("release-test-name")
     if ray_wheels:
         settings["test_name_filter"] = test_name_filter
+
+    no_concurrency_limit = get_buildkite_prompt_value("release-no-concurrency-limit")
+    if no_concurrency_limit == "yes":
+        settings["no_concurrency_limit"] = True
 
     return settings

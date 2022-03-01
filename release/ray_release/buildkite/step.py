@@ -1,7 +1,9 @@
 import copy
 from typing import Optional, Dict
 
+from ray_release.buildkite.concurrency import CONCURRENY_GROUPS, get_concurrency_group
 from ray_release.config import Test, get_test_env_var
+from ray_release.exception import ReleaseTestConfigError
 
 DEFAULT_STEP_TEMPLATE = {
     "env": {
@@ -56,6 +58,19 @@ def get_step(
     commit = get_test_env_var("RAY_COMMIT")
     branch = get_test_env_var("RAY_BRANCH")
     label = commit[:7] if commit else branch
+
+    concurrency_group = test.get("concurrency_group", None)
+    if concurrency_group:
+        if concurrency_group not in CONCURRENY_GROUPS:
+            raise ReleaseTestConfigError(
+                f"Unknown concurrency group: {concurrency_group}"
+            )
+        concurrency_limit = CONCURRENY_GROUPS[concurrency_group]
+    else:
+        concurrency_group, concurrency_limit = get_concurrency_group(test)
+
+    step["concurrency_group"] = concurrency_group
+    step["concurrency"] = concurrency_limit
 
     step["label"] = test["name"]
     if smoke_test:
