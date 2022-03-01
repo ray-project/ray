@@ -145,16 +145,7 @@ Datasets uses the Ray object store to store data blocks, which means it inherits
 Stage Fusion Optimization
 =========================
 
-To avoid unnecessary data movement in the distributed setting, Dataset pipelines will *fuse* compatible stages (i.e., stages with the same compute strategy and resource specifications). Read and map-like stages are always fused if possible. All-to-all dataset transformations such as ``random_shuffle`` can be fused with earlier map-like stages, but not later stages.
-
-All of the following optimizations are enabled by default for Dataset pipelines. For Datasets, only read stages are fused. This is since non-pipelined Datasets are eagerly executed except for their initial read stage.
-
-.. code-block:: python
-
-    context = DatasetContext.get_current()
-    context.optimize_fuse_stages = True  # Set to False to disable.
-    context.optimize_fuse_read_stages = True
-    context.optimize_fuse_shuffle_stages = True
+To avoid unnecessary data movement in the distributed setting, Dataset pipelines will *fuse* compatible stages (i.e., stages with the same compute strategy and resource specifications). Read and map-like stages are always fused if possible. All-to-all dataset transformations such as ``random_shuffle`` can be fused with earlier map-like stages, but not later stages. For Datasets, only read stages are fused. This is since non-pipelined Datasets are eagerly executed except for their initial read stage.
 
 You can tell if stage fusion is enabled by checking the :ref:`Dataset stats <data_performance_tips>` and looking for fused stages (e.g., ``read->map_batches``).
 
