@@ -512,7 +512,7 @@ def _get_docker_cpus(
                     else:
                         cpu_ids.append(int(num_or_range))
                 cpuset_num = len(cpu_ids)
-        except Exception as e:
+        except Exception:
             logger.exception("Unexpected error calculating docker cpuset ids.")
     # Possible to-do: Parse cgroups v2's cpuset.cpus.effective for the number
     # of accessible CPUs.
