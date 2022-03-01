@@ -36,4 +36,4 @@ lambda invoke --function-name DockerTagLatest \
 --cli-read-timeout 600 \
 --payload "{\"source_tag\" : \"$IMAGE\", \"destination_tag\" : \"latest\"}" /dev/stdout
 
-echo -e "Please check logs before rerunning!!!!\n\nAt the time of writing Ray-ML/Autoscaler Images are not built for Py39\nSo retagging errors for those images are expected!"
+echo -e "Please check logs before rerunning!!!!\n\nAt the time of writing, Autoscaler Images are not built & Ray-ML Images are not built for Py39\nSo retagging errors for those images are expected!"

@@ -14,8 +14,7 @@ def train_breast_cancer(config: dict):
     # Load dataset
     data, labels = sklearn.datasets.load_breast_cancer(return_X_y=True)
     # Split into train and test set
-    train_x, test_x, train_y, test_y = train_test_split(
-        data, labels, test_size=0.25)
+    train_x, test_x, train_y, test_y = train_test_split(data, labels, test_size=0.25)
     # Build input matrices for XGBoost
     train_set = xgb.DMatrix(train_x, label=train_y)
     test_set = xgb.DMatrix(test_x, label=test_y)
@@ -25,13 +24,14 @@ def train_breast_cancer(config: dict):
         train_set,
         evals=[(test_set, "eval")],
         verbose_eval=False,
-        callbacks=[TuneReportCheckpointCallback(filename="model.xgb")])
+        callbacks=[TuneReportCheckpointCallback(filename="model.xgb")],
+    )
 
 
 def get_best_model_checkpoint(analysis):
     best_bst = xgb.Booster()
     best_bst.load_model(os.path.join(analysis.best_checkpoint, "model.xgb"))
-    accuracy = 1. - analysis.best_result["eval-error"]
+    accuracy = 1.0 - analysis.best_result["eval-error"]
     print(f"Best model parameters: {analysis.best_config}")
     print(f"Best model total accuracy: {accuracy:.4f}")
     return best_bst
@@ -45,13 +45,12 @@ def tune_xgboost():
         "max_depth": tune.randint(1, 9),
         "min_child_weight": tune.choice([1, 2, 3]),
         "subsample": tune.uniform(0.5, 1.0),
-        "eta": tune.loguniform(1e-4, 1e-1)
+        "eta": tune.loguniform(1e-4, 1e-1),
     }
     # This will enable aggressive early stopping of bad trials.
     scheduler = ASHAScheduler(
-        max_t=10,  # 10 training iterations
-        grace_period=1,
-        reduction_factor=2)
+        max_t=10, grace_period=1, reduction_factor=2  # 10 training iterations
+    )
 
     analysis = tune.run(
         train_breast_cancer,
@@ -61,25 +60,28 @@ def tune_xgboost():
         resources_per_trial={"cpu": 1},
         config=search_space,
         num_samples=10,
-        scheduler=scheduler)
+        scheduler=scheduler,
+    )
 
     return analysis
 
 
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--server-address",
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using "
-        "Ray Client.")
+        help="The address of server to connect to if using " "Ray Client.",
+    )
     args, _ = parser.parse_known_args()
 
     if args.server_address:
         import ray
+
         ray.init(f"ray://{args.server_address}")
 
     analysis = tune_xgboost()
@@ -91,8 +93,8 @@ if __name__ == "__main__":
         # We have to make sure it gets executed on the same node that
         # ``tune.run`` is called on.
         from ray.util.ml_utils.node import force_on_current_node
-        remote_fn = force_on_current_node(
-            ray.remote(get_best_model_checkpoint))
+
+        remote_fn = force_on_current_node(ray.remote(get_best_model_checkpoint))
         best_bst = ray.get(remote_fn.remote(analysis))
     else:
         best_bst = get_best_model_checkpoint(analysis)

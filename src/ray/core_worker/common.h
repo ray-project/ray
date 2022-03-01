@@ -86,8 +86,8 @@ struct ActorCreationOptions {
                        const std::unordered_map<std::string, double> &resources,
                        const std::unordered_map<std::string, double> &placement_resources,
                        const std::vector<std::string> &dynamic_worker_options,
-                       bool is_detached, std::string &name, std::string &ray_namespace,
-                       bool is_asyncio,
+                       std::optional<bool> is_detached, std::string &name,
+                       std::string &ray_namespace, bool is_asyncio,
                        const rpc::SchedulingStrategy &scheduling_strategy,
                        const std::string &serialized_runtime_env = "{}",
                        const std::vector<ConcurrencyGroup> &concurrency_groups = {},
@@ -98,7 +98,7 @@ struct ActorCreationOptions {
         resources(resources),
         placement_resources(placement_resources),
         dynamic_worker_options(dynamic_worker_options),
-        is_detached(is_detached),
+        is_detached(std::move(is_detached)),
         name(name),
         ray_namespace(ray_namespace),
         is_asyncio(is_asyncio),
@@ -127,7 +127,7 @@ struct ActorCreationOptions {
   const std::vector<std::string> dynamic_worker_options;
   /// Whether to keep the actor persistent after driver exit. If true, this will set
   /// the worker to not be destroyed after the driver shutdown.
-  const bool is_detached = false;
+  std::optional<bool> is_detached;
   /// The name to give this detached actor that can be used to get a handle to it from
   /// other drivers. This must be globally unique across the cluster.
   /// This should set if and only if is_detached is true.

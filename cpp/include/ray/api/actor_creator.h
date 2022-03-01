@@ -32,7 +32,7 @@ class ActorCreator {
       : runtime_(runtime), remote_function_holder_(std::move(remote_function_holder)) {}
 
   template <typename... Args>
-  ray::ActorHandle<GetActorType<F>> Remote(Args &&...args);
+  ray::ActorHandle<GetActorType<F>, is_python_v<F>> Remote(Args &&...args);
 
   ActorCreator &SetName(std::string name) {
     create_options_.name = std::move(name);
@@ -75,15 +75,25 @@ class ActorCreator {
 // ---------- implementation ----------
 template <typename F>
 template <typename... Args>
-ActorHandle<GetActorType<F>> ActorCreator<F>::Remote(Args &&...args) {
-  StaticCheck<F, Args...>();
+ActorHandle<GetActorType<F>, is_python_v<F>> ActorCreator<F>::Remote(Args &&...args) {
   CheckTaskOptions(create_options_.resources);
-  using ArgsTuple = RemoveReference_t<boost::callable_traits::args_t<F>>;
-  Arguments::WrapArgs<ArgsTuple>(&args_, std::make_index_sequence<sizeof...(Args)>{},
-                                 std::forward<Args>(args)...);
+
+  if constexpr (is_python_v<F>) {
+    using ArgsTuple = std::tuple<Args...>;
+    Arguments::WrapArgs<ArgsTuple>(/*cross_lang=*/true, &args_,
+                                   std::make_index_sequence<sizeof...(Args)>{},
+                                   std::forward<Args>(args)...);
+  } else {
+    StaticCheck<F, Args...>();
+    using ArgsTuple = RemoveReference_t<boost::callable_traits::args_t<F>>;
+    Arguments::WrapArgs<ArgsTuple>(/*cross_lang=*/false, &args_,
+                                   std::make_index_sequence<sizeof...(Args)>{},
+                                   std::forward<Args>(args)...);
+  }
+
   auto returned_actor_id =
       runtime_->CreateActor(remote_function_holder_, args_, create_options_);
-  return ActorHandle<GetActorType<F>>(returned_actor_id);
+  return ActorHandle<GetActorType<F>, is_python_v<F>>(returned_actor_id);
 }
 }  // namespace internal
 }  // namespace ray

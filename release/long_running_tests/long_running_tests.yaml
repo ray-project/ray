@@ -72,7 +72,7 @@
   run:
     timeout: 86400
     prepare: ray stop
-    script: python workloads/many_drivers.py
+    script: python workloads/many_drivers.py --iteration-num=4000
     long_running: True
 
   smoke_test:
@@ -95,8 +95,6 @@
   smoke_test:
     run:
       timeout: 3600
-  stable: false
-
 
 - name: many_tasks
   team: core
@@ -193,4 +191,4 @@
 
   smoke_test:
     run:
-      timeout: 3600
+      timeout: 600

@@ -10,7 +10,7 @@
 /src/ray/protobuf/common.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen
 /src/ray/protobuf/gcs.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen
 /src/ray/protobuf/gcs_service.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen
-/dashboard/modules/snapshot @wuisawesome @ijrsvt @joeybai @alanwguo @architkulkarni @kombuchafox
+/dashboard/modules/snapshot @wuisawesome @ijrsvt @edoakes @alanwguo @architkulkarni
 
 # Metrics
 /src/ray/stats/metric_defs.h @ericl @scv119 @rkooo567
@@ -40,21 +40,26 @@
 # Ray Client
 /src/ray/protobuf/ray_client.proto @ijrsvt @ameerhajali @ckw017 @mwtian
 
+# Runtime Env
+# TODO(SongGuyang): Add new items to guarantee runtime env API compatibility in multiple languages.
+/src/ray/protobuf/runtime_env_common.proto @SongGuyang @raulchen @edoakes @architkulkarni
+/src/ray/protobuf/runtime_env_agent.proto @SongGuyang @raulchen @edoakes @architkulkarni
+
 # ==== Libraries and frameworks ====
 
 # Ray tune.
 /python/ray/tune/ @ray-project/ray-tune
 
 # Ray data.
-/python/ray/data/ @ericl @scv119
-/doc/source/data/ @ericl @scv119
+/python/ray/data/ @ericl @scv119 @clarkzinzow @jjyao
+/doc/source/data/ @ericl @scv119 @clarkzinzow @jjyao
 
 # Ray workflows.
 /python/ray/workflow/ @ericl @iycheng
 /doc/source/workflows/ @ericl @iycheng
 
 # RLlib.
-/python/ray/rllib/ @sven1977 @gjoliver @avnishn
+/rllib/ @sven1977 @gjoliver @avnishn
 
 # ML Docker Dependencies
 /python/requirements/ml/requirements_dl.txt @amogkam @sven1977 @richardliaw @matthewdeng

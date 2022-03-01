@@ -5,15 +5,16 @@ import pickle
 from typing import Dict, List, Optional, Tuple, Union, Any
 
 from ray.tune.result import DEFAULT_METRIC
-from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized, \
-    LogUniform
+from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized, LogUniform
 from ray.tune.suggest import Searcher
-from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
-    UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
+from ray.tune.suggest.suggestion import (
+    UNRESOLVED_SEARCH_SPACE,
+    UNDEFINED_METRIC_MODE,
+    UNDEFINED_SEARCH_SPACE,
+)
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils import flatten_dict
-from ray.tune.utils.util import is_nan_or_inf, unflatten_dict, \
-    validate_warmstart
+from ray.tune.utils.util import is_nan_or_inf, unflatten_dict, validate_warmstart
 
 try:
     import skopt as sko
@@ -117,19 +118,23 @@ class SkOptSearch(Searcher):
 
     """
 
-    def __init__(self,
-                 optimizer: Optional["sko.optimizer.Optimizer"] = None,
-                 space: Union[List[str], Dict[str, Union[Tuple, List]]] = None,
-                 metric: Optional[str] = None,
-                 mode: Optional[str] = None,
-                 points_to_evaluate: Optional[List[Dict]] = None,
-                 evaluated_rewards: Optional[List] = None,
-                 convert_to_python: bool = True,
-                 max_concurrent: Optional[int] = None,
-                 use_early_stopped_trials: Optional[bool] = None):
-        assert sko is not None, ("skopt must be installed! "
-                                 "You can install Skopt with the command: "
-                                 "`pip install scikit-optimize`.")
+    def __init__(
+        self,
+        optimizer: Optional["sko.optimizer.Optimizer"] = None,
+        space: Union[List[str], Dict[str, Union[Tuple, List]]] = None,
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+        points_to_evaluate: Optional[List[Dict]] = None,
+        evaluated_rewards: Optional[List] = None,
+        convert_to_python: bool = True,
+        max_concurrent: Optional[int] = None,
+        use_early_stopped_trials: Optional[bool] = None,
+    ):
+        assert sko is not None, (
+            "skopt must be installed! "
+            "You can install Skopt with the command: "
+            "`pip install scikit-optimize`."
+        )
 
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
@@ -138,7 +143,8 @@ class SkOptSearch(Searcher):
             metric=metric,
             mode=mode,
             max_concurrent=max_concurrent,
-            use_early_stopped_trials=use_early_stopped_trials)
+            use_early_stopped_trials=use_early_stopped_trials,
+        )
 
         self._initial_points = []
         self._parameters = None
@@ -149,8 +155,8 @@ class SkOptSearch(Searcher):
             resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
             if domain_vars or grid_vars:
                 logger.warning(
-                    UNRESOLVED_SEARCH_SPACE.format(
-                        par="space", cls=type(self)))
+                    UNRESOLVED_SEARCH_SPACE.format(par="space", cls=type(self))
+                )
                 space = self.convert_search_space(space, join=True)
 
         self._space = space
@@ -161,7 +167,8 @@ class SkOptSearch(Searcher):
                     raise ValueError(
                         "You passed an optimizer instance to SkOpt. Your "
                         "`space` parameter should be a list of parameter"
-                        "names.")
+                        "names."
+                    )
                 self._parameter_names = space
             else:
                 self._parameter_names = list(space.keys())
@@ -180,8 +187,7 @@ class SkOptSearch(Searcher):
         self._live_trial_mapping = {}
 
     def _setup_skopt(self):
-        if self._points_to_evaluate and isinstance(self._points_to_evaluate,
-                                                   list):
+        if self._points_to_evaluate and isinstance(self._points_to_evaluate, list):
             if isinstance(self._points_to_evaluate[0], list):
                 # Keep backwards compatibility
                 self._points_to_evaluate = [
@@ -190,20 +196,24 @@ class SkOptSearch(Searcher):
                 ]
             # Else: self._points_to_evaluate is already in correct format
 
-        validate_warmstart(self._parameter_names, self._points_to_evaluate,
-                           self._evaluated_rewards)
+        validate_warmstart(
+            self._parameter_names, self._points_to_evaluate, self._evaluated_rewards
+        )
 
         if not self._skopt_opt:
             if not self._space:
                 raise ValueError(
                     "If you don't pass an optimizer instance to SkOptSearch, "
-                    "pass a valid `space` parameter.")
+                    "pass a valid `space` parameter."
+                )
 
             self._skopt_opt = sko.Optimizer(self._parameter_ranges)
 
         if self._points_to_evaluate and self._evaluated_rewards:
-            skopt_points = [[point[par] for par in self._parameter_names]
-                            for point in self._points_to_evaluate]
+            skopt_points = [
+                [point[par] for par in self._parameter_names]
+                for point in self._points_to_evaluate
+            ]
             self._skopt_opt.tell(skopt_points, self._evaluated_rewards)
         elif self._points_to_evaluate:
             self._initial_points = self._points_to_evaluate
@@ -211,33 +221,38 @@ class SkOptSearch(Searcher):
 
         # Skopt internally minimizes, so "max" => -1
         if self._mode == "max":
-            self._metric_op = -1.
+            self._metric_op = -1.0
         elif self._mode == "min":
-            self._metric_op = 1.
+            self._metric_op = 1.0
 
         if self._metric is None and self._mode:
             # If only a mode was passed, use anonymous metric
             self._metric = DEFAULT_METRIC
 
-    def add_evaluated_point(self,
-                            parameters: Dict,
-                            value: float,
-                            error: bool = False,
-                            pruned: bool = False,
-                            intermediate_values: Optional[List[float]] = None):
+    def add_evaluated_point(
+        self,
+        parameters: Dict,
+        value: float,
+        error: bool = False,
+        pruned: bool = False,
+        intermediate_values: Optional[List[float]] = None,
+    ):
         assert self._skopt_opt, "Optimizer must be set."
         if intermediate_values:
             logger.warning("SkOpt doesn't use intermediate_values. Ignoring.")
         if not error and not pruned:
             self._skopt_opt.tell(
-                [parameters[par] for par in self._parameter_names], value)
+                [parameters[par] for par in self._parameter_names], value
+            )
 
         else:
-            logger.warning("Only non errored and non pruned points"
-                           " can be added to SkOpt.")
+            logger.warning(
+                "Only non errored and non pruned points" " can be added to SkOpt."
+            )
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict, **spec) -> bool:
+    def set_search_properties(
+        self, metric: Optional[str], mode: Optional[str], config: Dict, **spec
+    ) -> bool:
         if self._skopt_opt:
             return False
         space = self.convert_search_space(config)
@@ -258,13 +273,15 @@ class SkOptSearch(Searcher):
         if not self._skopt_opt:
             raise RuntimeError(
                 UNDEFINED_SEARCH_SPACE.format(
-                    cls=self.__class__.__name__, space="space"))
+                    cls=self.__class__.__name__, space="space"
+                )
+            )
         if not self._metric or not self._mode:
             raise RuntimeError(
                 UNDEFINED_METRIC_MODE.format(
-                    cls=self.__class__.__name__,
-                    metric=self._metric,
-                    mode=self._mode))
+                    cls=self.__class__.__name__, metric=self._metric, mode=self._mode
+                )
+            )
 
         if self._initial_points:
             suggested_config = self._initial_points.pop(0)
@@ -281,10 +298,9 @@ class SkOptSearch(Searcher):
 
         return unflatten_dict(suggested_config)
 
-    def on_trial_complete(self,
-                          trial_id: str,
-                          result: Optional[Dict] = None,
-                          error: bool = False):
+    def on_trial_complete(
+        self, trial_id: str, result: Optional[Dict] = None, error: bool = False
+    ):
         """Notification for the completion of trial.
 
         The result is internally negated when interacting with Skopt
@@ -299,8 +315,9 @@ class SkOptSearch(Searcher):
     def _process_result(self, trial_id: str, result: Dict):
         skopt_trial_info = self._live_trial_mapping[trial_id]
         if result and not is_nan_or_inf(result[self._metric]):
-            self._skopt_opt.tell(skopt_trial_info,
-                                 self._metric_op * result[self._metric])
+            self._skopt_opt.tell(
+                skopt_trial_info, self._metric_op * result[self._metric]
+            )
 
     def get_state(self) -> Dict[str, Any]:
         state = self.__dict__.copy()
@@ -330,7 +347,8 @@ class SkOptSearch(Searcher):
         if grid_vars:
             raise ValueError(
                 "Grid search parameters cannot be automatically converted "
-                "to a SkOpt search space.")
+                "to a SkOpt search space."
+            )
 
         # Flatten and resolve again after checking for grid search.
         spec = flatten_dict(spec, prevent_delimiter=True)
@@ -339,37 +357,40 @@ class SkOptSearch(Searcher):
         def resolve_value(domain: Domain) -> Union[Tuple, List]:
             sampler = domain.get_sampler()
             if isinstance(sampler, Quantized):
-                logger.warning("SkOpt search does not support quantization. "
-                               "Dropped quantization.")
+                logger.warning(
+                    "SkOpt search does not support quantization. "
+                    "Dropped quantization."
+                )
                 sampler = sampler.get_sampler()
 
             if isinstance(domain, Float):
                 if isinstance(domain.sampler, LogUniform):
                     return sko.space.Real(
-                        domain.lower, domain.upper, prior="log-uniform")
-                return sko.space.Real(
-                    domain.lower, domain.upper, prior="uniform")
+                        domain.lower, domain.upper, prior="log-uniform"
+                    )
+                return sko.space.Real(domain.lower, domain.upper, prior="uniform")
 
             elif isinstance(domain, Integer):
                 if isinstance(domain.sampler, LogUniform):
                     return sko.space.Integer(
-                        domain.lower, domain.upper - 1, prior="log-uniform")
+                        domain.lower, domain.upper - 1, prior="log-uniform"
+                    )
                 return sko.space.Integer(
-                    domain.lower, domain.upper - 1, prior="uniform")
+                    domain.lower, domain.upper - 1, prior="uniform"
+                )
 
             elif isinstance(domain, Categorical):
                 return sko.space.Categorical(domain.categories)
 
-            raise ValueError("SkOpt does not support parameters of type "
-                             "`{}` with samplers of type `{}`".format(
-                                 type(domain).__name__,
-                                 type(domain.sampler).__name__))
+            raise ValueError(
+                "SkOpt does not support parameters of type "
+                "`{}` with samplers of type `{}`".format(
+                    type(domain).__name__, type(domain.sampler).__name__
+                )
+            )
 
         # Parameter name is e.g. "a/b/c" for nested dicts
-        space = {
-            "/".join(path): resolve_value(domain)
-            for path, domain in domain_vars
-        }
+        space = {"/".join(path): resolve_value(domain) for path, domain in domain_vars}
 
         if join:
             spec.update(space)

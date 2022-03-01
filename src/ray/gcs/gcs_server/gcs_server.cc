@@ -211,9 +211,7 @@ void GcsServer::Stop() {
 
     gcs_resource_report_poller_->Stop();
 
-    if (config_.grpc_based_resource_broadcast) {
-      grpc_based_resource_broadcaster_->Stop();
-    }
+    grpc_based_resource_broadcaster_->Stop();
 
     // Shutdown the rpc server
     rpc_server_.Shutdown();
@@ -258,8 +256,8 @@ void GcsServer::InitGcsHeartbeatManager(const GcsInitData &gcs_init_data) {
 void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
   gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
-      main_service_, gcs_publisher_, gcs_table_storage_,
-      !config_.grpc_based_resource_broadcast);
+      main_service_, gcs_publisher_, gcs_table_storage_);
+
   // Initialize by gcs tables data.
   gcs_resource_manager_->Initialize(gcs_init_data);
   // Register service.
@@ -289,15 +287,17 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
 void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_ && gcs_node_manager_);
   std::unique_ptr<GcsActorSchedulerInterface> scheduler;
-  auto schedule_failure_handler = [this](std::shared_ptr<GcsActor> actor,
-                                         bool runtime_env_setup_failed) {
-    // When there are no available nodes to schedule the actor the
-    // gcs_actor_scheduler will treat it as failed and invoke this handler. In
-    // this case, the actor manager should schedule the actor once an
-    // eligible node is registered.
-    gcs_actor_manager_->OnActorSchedulingFailed(std::move(actor),
-                                                runtime_env_setup_failed);
-  };
+  auto schedule_failure_handler =
+      [this](std::shared_ptr<GcsActor> actor,
+             const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+             const std::string &scheduling_failure_message) {
+        // When there are no available nodes to schedule the actor the
+        // gcs_actor_scheduler will treat it as failed and invoke this handler. In
+        // this case, the actor manager should schedule the actor once an
+        // eligible node is registered.
+        gcs_actor_manager_->OnActorSchedulingFailed(std::move(actor), failure_type,
+                                                    scheduling_failure_message);
+      };
   auto schedule_success_handler = [this](std::shared_ptr<GcsActor> actor,
                                          const rpc::PushTaskReply &reply) {
     gcs_actor_manager_->OnActorCreationSuccess(std::move(actor), reply);
@@ -414,18 +414,13 @@ void GcsServer::InitResourceReportPolling(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitResourceReportBroadcasting(const GcsInitData &gcs_init_data) {
-  if (config_.grpc_based_resource_broadcast) {
-    grpc_based_resource_broadcaster_.reset(new GrpcBasedResourceBroadcaster(
-        raylet_client_pool_,
-        [this](rpc::ResourceUsageBroadcastData &buffer) {
-          gcs_resource_manager_->GetResourceUsageBatchForBroadcast(buffer);
-        }
+  grpc_based_resource_broadcaster_ = std::make_unique<GrpcBasedResourceBroadcaster>(
+      raylet_client_pool_, [this](rpc::ResourceUsageBroadcastData &buffer) {
+        gcs_resource_manager_->GetResourceUsageBatchForBroadcast(buffer);
+      });
 
-        ));
-
-    grpc_based_resource_broadcaster_->Initialize(gcs_init_data);
-    grpc_based_resource_broadcaster_->Start();
-  }
+  grpc_based_resource_broadcaster_->Initialize(gcs_init_data);
+  grpc_based_resource_broadcaster_->Start();
 }
 
 void GcsServer::InitStatsHandler() {
@@ -513,9 +508,7 @@ void GcsServer::InstallEventListeners() {
     gcs_actor_manager_->SchedulePendingActors();
     gcs_heartbeat_manager_->AddNode(NodeID::FromBinary(node->node_id()));
     gcs_resource_report_poller_->HandleNodeAdded(*node);
-    if (config_.grpc_based_resource_broadcast) {
-      grpc_based_resource_broadcaster_->HandleNodeAdded(*node);
-    }
+    grpc_based_resource_broadcaster_->HandleNodeAdded(*node);
   });
   gcs_node_manager_->AddNodeRemovedListener(
       [this](std::shared_ptr<rpc::GcsNodeInfo> node) {
@@ -528,9 +521,7 @@ void GcsServer::InstallEventListeners() {
         gcs_actor_manager_->OnNodeDead(node_id, node_ip_address);
         raylet_client_pool_->Disconnect(NodeID::FromBinary(node->node_id()));
         gcs_resource_report_poller_->HandleNodeRemoved(*node);
-        if (config_.grpc_based_resource_broadcast) {
-          grpc_based_resource_broadcaster_->HandleNodeRemoved(*node);
-        }
+        grpc_based_resource_broadcaster_->HandleNodeRemoved(*node);
       });
 
   // Install worker event listener.
@@ -595,9 +586,7 @@ std::string GcsServer::GetDebugState() const {
          << gcs_publisher_->DebugString() << "\n\n"
          << runtime_env_manager_->DebugString() << "\n\n";
 
-  if (config_.grpc_based_resource_broadcast) {
-    stream << grpc_based_resource_broadcaster_->DebugString();
-  }
+  stream << grpc_based_resource_broadcaster_->DebugString();
   return stream.str();
 }
 

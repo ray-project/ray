@@ -18,8 +18,9 @@ def str_to_execution_mode(s: str) -> ExecutionMode:
         return ExecutionMode.ACTORS
     else:
         valid_strs = [str(mode).split(".")[1] for mode in ExecutionMode]
-        raise ValueError(f"Unknown ExecutionMode str: '{s}'. "
-                         f"Valid options are: {valid_strs}.")
+        raise ValueError(
+            f"Unknown ExecutionMode str: '{s}'. " f"Valid options are: {valid_strs}."
+        )
 
 
 class StepConfig(BaseModel):

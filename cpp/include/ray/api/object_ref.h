@@ -113,6 +113,11 @@ inline static std::shared_ptr<T> GetFromRuntime(const ObjectRef<T> &object) {
   auto packed_object = internal::GetRayRuntime()->Get(object.ID());
   CheckResult(packed_object);
 
+  if (ray::internal::Serializer::IsXLang(packed_object->data(), packed_object->size())) {
+    return ray::internal::Serializer::Deserialize<std::shared_ptr<T>>(
+        packed_object->data(), packed_object->size(), internal::XLANG_HEADER_LEN);
+  }
+
   return ray::internal::Serializer::Deserialize<std::shared_ptr<T>>(
       packed_object->data(), packed_object->size());
 }

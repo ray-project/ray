@@ -7,13 +7,13 @@ we ended up using job submission API call's runtime_env instead of scripts
 def run():
     import ray
     import os
+
     ray.init(
         address=os.environ["RAY_ADDRESS"],
         runtime_env={
-            "env_vars": {
-                "TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "SHOULD_BE_OVERRIDEN"
-            }
-        })
+            "env_vars": {"TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "SHOULD_BE_OVERRIDEN"}
+        },
+    )
 
     @ray.remote
     def foo():

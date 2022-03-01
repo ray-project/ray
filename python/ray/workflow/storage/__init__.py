@@ -1,8 +1,7 @@
 import logging
 import urllib.parse as parse
 from ray.workflow.storage.base import Storage
-from ray.workflow.storage.base import (DataLoadError, DataSaveError,
-                                       KeyNotFoundError)
+from ray.workflow.storage.base import DataLoadError, DataSaveError, KeyNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -31,10 +30,12 @@ def create_storage(storage_url: str) -> Storage:
     """
     parsed_url = parse.urlparse(storage_url)
     if parsed_url.scheme == "file" or parsed_url.scheme == "":
-        from ray.workflow.storage.filesystem import (FilesystemStorageImpl)
+        from ray.workflow.storage.filesystem import FilesystemStorageImpl
+
         return FilesystemStorageImpl(parsed_url.path)
     elif parsed_url.scheme == "s3":
         from ray.workflow.storage.s3 import S3StorageImpl
+
         bucket = parsed_url.netloc
         s3_path = parsed_url.path.lstrip("/")
         if not s3_path:
@@ -43,9 +44,9 @@ def create_storage(storage_url: str) -> Storage:
         return S3StorageImpl(bucket, s3_path, **params)
     elif parsed_url.scheme == "debug":
         from ray.workflow.storage.debug import DebugStorage
+
         params = dict(parse.parse_qsl(parsed_url.query))
-        return DebugStorage(
-            create_storage(params["storage"]), path=parsed_url.path)
+        return DebugStorage(create_storage(params["storage"]), path=parsed_url.path)
     else:
         raise ValueError(f"Invalid url: {storage_url}")
 
@@ -57,8 +58,9 @@ _global_storage = None
 def get_global_storage() -> Storage:
     global _global_storage
     if _global_storage is None:
-        raise RuntimeError("`workflow.init()` must be called prior to "
-                           "using the workflows API.")
+        raise RuntimeError(
+            "`workflow.init()` must be called prior to " "using the workflows API."
+        )
     return _global_storage
 
 
@@ -67,6 +69,12 @@ def set_global_storage(storage: Storage) -> None:
     _global_storage = storage
 
 
-__all__ = ("Storage", "get_global_storage", "create_storage",
-           "set_global_storage", "DataLoadError", "DataSaveError",
-           "KeyNotFoundError")
+__all__ = (
+    "Storage",
+    "get_global_storage",
+    "create_storage",
+    "set_global_storage",
+    "DataLoadError",
+    "DataSaveError",
+    "KeyNotFoundError",
+)

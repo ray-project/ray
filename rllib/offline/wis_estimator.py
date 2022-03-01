@@ -1,5 +1,4 @@
-from ray.rllib.offline.off_policy_estimator import OffPolicyEstimator, \
-    OffPolicyEstimate
+from ray.rllib.offline.off_policy_estimator import OffPolicyEstimator, OffPolicyEstimate
 from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import SampleBatchType
@@ -41,14 +40,16 @@ class WeightedImportanceSamplingEstimator(OffPolicyEstimator):
         # calculate stepwise weighted IS estimate
         V_prev, V_step_WIS = 0.0, 0.0
         for t in range(batch.count):
-            V_prev += rewards[t] * self.gamma**t
+            V_prev += rewards[t] * self.gamma ** t
             w_t = self.filter_values[t] / self.filter_counts[t]
-            V_step_WIS += p[t] / w_t * rewards[t] * self.gamma**t
+            V_step_WIS += p[t] / w_t * rewards[t] * self.gamma ** t
 
         estimation = OffPolicyEstimate(
-            "wis", {
+            "wis",
+            {
                 "V_prev": V_prev,
                 "V_step_WIS": V_step_WIS,
                 "V_gain_est": V_step_WIS / max(1e-8, V_prev),
-            })
+            },
+        )
         return estimation

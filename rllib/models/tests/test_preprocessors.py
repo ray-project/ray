@@ -6,11 +6,21 @@ import unittest
 import ray
 import ray.rllib.agents.ppo as ppo
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.models.preprocessors import DictFlatteningPreprocessor, \
-    get_preprocessor, NoPreprocessor, TupleFlatteningPreprocessor, \
-    OneHotPreprocessor, AtariRamPreprocessor, GenericPixelPreprocessor
-from ray.rllib.utils.test_utils import check, check_compute_single_action, \
-    check_train_results, framework_iterator
+from ray.rllib.models.preprocessors import (
+    DictFlatteningPreprocessor,
+    get_preprocessor,
+    NoPreprocessor,
+    TupleFlatteningPreprocessor,
+    OneHotPreprocessor,
+    AtariRamPreprocessor,
+    GenericPixelPreprocessor,
+)
+from ray.rllib.utils.test_utils import (
+    check,
+    check_compute_single_action,
+    check_train_results,
+    framework_iterator,
+)
 
 
 class TestPreprocessors(unittest.TestCase):
@@ -28,15 +38,19 @@ class TestPreprocessors(unittest.TestCase):
         config["env"] = "ray.rllib.examples.env.random_env.RandomEnv"
         config["env_config"] = {
             "config": {
-                "observation_space": Dict({
-                    "a": Discrete(5),
-                    "b": Dict({
-                        "ba": Discrete(4),
-                        "bb": Box(-1.0, 1.0, (2, 3), dtype=np.float32)
-                    }),
-                    "c": Tuple((MultiDiscrete([2, 3]), Discrete(1))),
-                    "d": Box(-1.0, 1.0, (1, ), dtype=np.int32),
-                }),
+                "observation_space": Dict(
+                    {
+                        "a": Discrete(5),
+                        "b": Dict(
+                            {
+                                "ba": Discrete(4),
+                                "bb": Box(-1.0, 1.0, (2, 3), dtype=np.float32),
+                            }
+                        ),
+                        "c": Tuple((MultiDiscrete([2, 3]), Discrete(1))),
+                        "d": Box(-1.0, 1.0, (1,), dtype=np.int32),
+                    }
+                ),
             },
         }
         # Set this to True to enforce no preprocessors being used.
@@ -78,62 +92,71 @@ class TestPreprocessors(unittest.TestCase):
         class TupleEnv:
             def __init__(self):
                 self.observation_space = Tuple(
-                    [Discrete(5),
-                     Box(0, 5, shape=(3, ), dtype=np.float32)])
+                    [Discrete(5), Box(0, 5, shape=(3,), dtype=np.float32)]
+                )
 
         pp = ModelCatalog.get_preprocessor(TupleEnv())
         self.assertTrue(isinstance(pp, TupleFlatteningPreprocessor))
-        self.assertEqual(pp.shape, (8, ))
+        self.assertEqual(pp.shape, (8,))
         self.assertEqual(
             list(pp.transform((0, np.array([1, 2, 3], np.float32)))),
-            [float(x) for x in [1, 0, 0, 0, 0, 1, 2, 3]])
+            [float(x) for x in [1, 0, 0, 0, 0, 1, 2, 3]],
+        )
 
     def test_dict_flattening_preprocessor(self):
-        space = Dict({
-            "a": Discrete(2),
-            "b": Tuple([Discrete(3), Box(-1.0, 1.0, (4, ))]),
-        })
+        space = Dict(
+            {
+                "a": Discrete(2),
+                "b": Tuple([Discrete(3), Box(-1.0, 1.0, (4,))]),
+            }
+        )
         pp = get_preprocessor(space)(space)
         self.assertTrue(isinstance(pp, DictFlatteningPreprocessor))
-        self.assertEqual(pp.shape, (9, ))
+        self.assertEqual(pp.shape, (9,))
         check(
-            pp.transform({
-                "a": 1,
-                "b": (1, np.array([0.0, -0.5, 0.1, 0.6], np.float32))
-            }), [0.0, 1.0, 0.0, 1.0, 0.0, 0.0, -0.5, 0.1, 0.6])
+            pp.transform(
+                {"a": 1, "b": (1, np.array([0.0, -0.5, 0.1, 0.6], np.float32))}
+            ),
+            [0.0, 1.0, 0.0, 1.0, 0.0, 0.0, -0.5, 0.1, 0.6],
+        )
 
     def test_one_hot_preprocessor(self):
         space = Discrete(5)
         pp = get_preprocessor(space)(space)
         self.assertTrue(isinstance(pp, OneHotPreprocessor))
-        self.assertTrue(pp.shape == (5, ))
+        self.assertTrue(pp.shape == (5,))
         check(pp.transform(3), [0.0, 0.0, 0.0, 1.0, 0.0])
         check(pp.transform(0), [1.0, 0.0, 0.0, 0.0, 0.0])
 
         space = MultiDiscrete([2, 3, 4])
         pp = get_preprocessor(space)(space)
         self.assertTrue(isinstance(pp, OneHotPreprocessor))
-        self.assertTrue(pp.shape == (9, ))
+        self.assertTrue(pp.shape == (9,))
         check(
             pp.transform(np.array([1, 2, 0])),
-            [0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0])
+            [0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0],
+        )
         check(
             pp.transform(np.array([0, 1, 3])),
-            [1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0])
+            [1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+        )
 
     def test_nested_multidiscrete_one_hot_preprocessor(self):
-        space = Tuple((MultiDiscrete([2, 3, 4]), ))
+        space = Tuple((MultiDiscrete([2, 3, 4]),))
         pp = get_preprocessor(space)(space)
-        self.assertTrue(pp.shape == (9, ))
+        self.assertTrue(pp.shape == (9,))
         check(
-            pp.transform((np.array([1, 2, 0]), )),
-            [0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0])
+            pp.transform((np.array([1, 2, 0]),)),
+            [0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0],
+        )
         check(
-            pp.transform((np.array([0, 1, 3]), )),
-            [1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0])
+            pp.transform((np.array([0, 1, 3]),)),
+            [1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+        )
 
 
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

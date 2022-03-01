@@ -44,8 +44,8 @@ public class RunManager {
     }
     Matcher matcher = pattern.matcher(output);
     if (matcher.find()) {
-      String redisAddress = matcher.group(1);
-      rayConfig.setRedisAddress(redisAddress);
+      String bootstrapAddress = matcher.group(1);
+      rayConfig.setBootstrapAddress(bootstrapAddress);
     } else {
       throw new RuntimeException("Redis address is not found. output: " + output);
     }

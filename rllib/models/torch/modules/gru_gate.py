@@ -7,7 +7,7 @@ torch, nn = try_import_torch()
 class GRUGate(nn.Module):
     """Implements a gated recurrent unit for use in AttentionNet"""
 
-    def __init__(self, dim: int, init_bias: int = 0., **kwargs):
+    def __init__(self, dim: int, init_bias: int = 0.0, **kwargs):
         """
         input_shape (torch.Tensor): dimension of the input
         init_bias (int): Bias added to every input to stabilize training
@@ -34,23 +34,32 @@ class GRUGate(nn.Module):
         self.register_parameter("_u_z", self._u_z)
         self.register_parameter("_u_h", self._u_h)
 
-        self._bias_z = nn.Parameter(torch.zeros(dim, ).fill_(init_bias))
+        self._bias_z = nn.Parameter(
+            torch.zeros(
+                dim,
+            ).fill_(init_bias)
+        )
         self.register_parameter("_bias_z", self._bias_z)
 
     def forward(self, inputs: TensorType, **kwargs) -> TensorType:
         # Pass in internal state first.
         h, X = inputs
 
-        r = torch.tensordot(X, self._w_r, dims=1) + \
-            torch.tensordot(h, self._u_r, dims=1)
+        r = torch.tensordot(X, self._w_r, dims=1) + torch.tensordot(
+            h, self._u_r, dims=1
+        )
         r = torch.sigmoid(r)
 
-        z = torch.tensordot(X, self._w_z, dims=1) + \
-            torch.tensordot(h, self._u_z, dims=1) - self._bias_z
+        z = (
+            torch.tensordot(X, self._w_z, dims=1)
+            + torch.tensordot(h, self._u_z, dims=1)
+            - self._bias_z
+        )
         z = torch.sigmoid(z)
 
-        h_next = torch.tensordot(X, self._w_h, dims=1) + \
-            torch.tensordot((h * r), self._u_h, dims=1)
+        h_next = torch.tensordot(X, self._w_h, dims=1) + torch.tensordot(
+            (h * r), self._u_h, dims=1
+        )
         h_next = torch.tanh(h_next)
 
         return (1 - z) * h + z * h_next

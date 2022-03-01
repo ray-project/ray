@@ -89,10 +89,6 @@ cdef class Config:
         return RayConfig.instance().maximum_gcs_deletion_batch_size()
 
     @staticmethod
-    def max_tasks_in_flight_per_worker():
-        return RayConfig.instance().max_tasks_in_flight_per_worker()
-
-    @staticmethod
     def metrics_report_interval_ms():
         return RayConfig.instance().metrics_report_interval_ms()
 

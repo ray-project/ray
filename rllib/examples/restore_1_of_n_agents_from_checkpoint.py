@@ -33,27 +33,23 @@ parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "tfe", "torch"],
     default="tf",
-    help="The DL framework specifier.")
+    help="The DL framework specifier.",
+)
 parser.add_argument(
     "--as-test",
     action="store_true",
     help="Whether this script should be run as a test: --stop-reward must "
-    "be achieved within --stop-timesteps AND --stop-iters.")
+    "be achieved within --stop-timesteps AND --stop-iters.",
+)
 parser.add_argument(
-    "--stop-iters",
-    type=int,
-    default=200,
-    help="Number of iterations to train.")
+    "--stop-iters", type=int, default=200, help="Number of iterations to train."
+)
 parser.add_argument(
-    "--stop-timesteps",
-    type=int,
-    default=100000,
-    help="Number of timesteps to train.")
+    "--stop-timesteps", type=int, default=100000, help="Number of timesteps to train."
+)
 parser.add_argument(
-    "--stop-reward",
-    type=float,
-    default=150.0,
-    help="Reward at which we stop training.")
+    "--stop-reward", type=float, default=150.0, help="Reward at which we stop training."
+)
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -102,8 +98,7 @@ if __name__ == "__main__":
     )
     print("Pre-training done.")
 
-    best_checkpoint = results.get_best_checkpoint(
-        results.trials[0], mode="max")
+    best_checkpoint = results.get_best_checkpoint(results.trials[0], mode="max")
     print(f".. best checkpoint was: {best_checkpoint}")
 
     # Create a new dummy Trainer to "fix" our checkpoint.
@@ -115,14 +110,16 @@ if __name__ == "__main__":
     # Set back all weights (except for 1st agent) to original
     # untrained weights.
     new_trainer.set_weights(
-        {pid: w
-         for pid, w in untrained_weights.items() if pid != "policy_0"})
+        {pid: w for pid, w in untrained_weights.items() if pid != "policy_0"}
+    )
     # Create the checkpoint from which tune can pick up the
     # experiment.
     new_checkpoint = new_trainer.save()
     new_trainer.stop()
-    print(".. checkpoint to restore from (all policies reset, "
-          f"except policy_0): {new_checkpoint}")
+    print(
+        ".. checkpoint to restore from (all policies reset, "
+        f"except policy_0): {new_checkpoint}"
+    )
 
     print("Starting new tune.run")
 

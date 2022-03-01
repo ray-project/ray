@@ -1,27 +1,31 @@
 import logging
 import time
-from typing import Any, Callable, Dict, List, Optional, Tuple, \
-    TYPE_CHECKING
+from typing import Callable, Container, List, Optional, Tuple, TYPE_CHECKING
 
 import ray
-from ray.actor import ActorHandle
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.common import AGENT_STEPS_SAMPLED_COUNTER, \
-    STEPS_SAMPLED_COUNTER, SAMPLE_TIMER, GRAD_WAIT_TIMER, \
-    _check_sample_batch_type, _get_shared_metrics
-from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
-    MultiAgentBatch
+from ray.rllib.execution.common import (
+    AGENT_STEPS_SAMPLED_COUNTER,
+    STEPS_SAMPLED_COUNTER,
+    SAMPLE_TIMER,
+    GRAD_WAIT_TIMER,
+    _check_sample_batch_type,
+    _get_shared_metrics,
+)
+from ray.rllib.policy.sample_batch import (
+    SampleBatch,
+    DEFAULT_POLICY_ID,
+    MultiAgentBatch,
+)
 from ray.rllib.utils.annotations import ExperimentalAPI
-from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, \
-    LEARNER_STATS_KEY
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.typing import PolicyID, SampleBatchType, ModelGradients
 from ray.util.iter import from_actors, LocalIterator
 from ray.util.iter_metrics import SharedMetrics
 
 if TYPE_CHECKING:
-    from ray.rllib.agents.trainer import Trainer
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
 logger = logging.getLogger(__name__)
@@ -29,8 +33,8 @@ logger = logging.getLogger(__name__)
 
 @ExperimentalAPI
 def synchronous_parallel_sample(
-        worker_set: WorkerSet,
-        remote_fn: Optional[Callable[["RolloutWorker"], None]] = None,
+    worker_set: WorkerSet,
+    remote_fn: Optional[Callable[["RolloutWorker"], None]] = None,
 ) -> List[SampleBatch]:
     """Runs parallel and synchronous rollouts on all remote workers.
 
@@ -70,144 +74,15 @@ def synchronous_parallel_sample(
         return [worker_set.local_worker().sample()]
 
     # Loop over remote workers' `sample()` method in parallel.
-    sample_batches = ray.get(
-        [r.sample.remote() for r in worker_set.remote_workers()])
+    sample_batches = ray.get([r.sample.remote() for r in worker_set.remote_workers()])
 
     # Return all collected batches.
     return sample_batches
 
 
-# TODO: Move to generic parallel ops module and rename to
-#  `asynchronous_parallel_requests`:
-@ExperimentalAPI
-def asynchronous_parallel_sample(
-        trainer: "Trainer",
-        actors: List[ActorHandle],
-        ray_wait_timeout_s: Optional[float] = None,
-        max_remote_requests_in_flight_per_actor: int = 2,
-        remote_fn: Optional[Callable[["RolloutWorker"], None]] = None,
-        remote_args: Optional[List[List[Any]]] = None,
-        remote_kwargs: Optional[List[Dict[str, Any]]] = None,
-) -> Optional[List[SampleBatch]]:
-    """Runs parallel and asynchronous rollouts on all remote workers.
-
-    May use a timeout (if provided) on `ray.wait()` and returns only those
-    samples that could be gathered in the timeout window. Allows a maximum
-    of `max_remote_requests_in_flight_per_actor` remote calls to be in-flight
-    per remote actor.
-
-    Alternatively to calling `actor.sample.remote()`, the user can provide a
-    `remote_fn()`, which will be applied to the actor(s) instead.
-
-    Args:
-        trainer: The Trainer object that we run the sampling for.
-        actors: The List of ActorHandles to perform the remote requests on.
-        ray_wait_timeout_s: Timeout (in sec) to be used for the underlying
-            `ray.wait()` calls. If None (default), never time out (block
-            until at least one actor returns something).
-        max_remote_requests_in_flight_per_actor: Maximum number of remote
-            requests sent to each actor. 2 (default) is probably
-            sufficient to avoid idle times between two requests.
-        remote_fn: If provided, use `actor.apply.remote(remote_fn)` instead of
-            `actor.sample.remote()` to generate the requests.
-        remote_args: If provided, use this list (per-actor) of lists (call
-            args) as *args to be passed to the `remote_fn`.
-            E.g.: actors=[A, B],
-            remote_args=[[...] <- *args for A, [...] <- *args for B].
-        remote_kwargs: If provided, use this list (per-actor) of dicts
-            (kwargs) as **kwargs to be passed to the `remote_fn`.
-            E.g.: actors=[A, B],
-            remote_kwargs=[{...} <- **kwargs for A, {...} <- **kwargs for B].
-
-    Returns:
-        The list of asynchronously collected sample batch types. None, if no
-        samples are ready.
-
-    Examples:
-        >>> # 2 remote rollout workers (num_workers=2):
-        >>> batches = asynchronous_parallel_sample(
-        ...     trainer,
-        ...     actors=trainer.workers.remote_workers(),
-        ...     ray_wait_timeout_s=0.1,
-        ...     remote_fn=lambda w: time.sleep(1)  # sleep 1sec
-        ... )
-        >>> print(len(batches))
-        ... 2
-        >>> # Expect a timeout to have happened.
-        >>> batches[0] is None and batches[1] is None
-        ... True
-    """
-
-    if remote_args is not None:
-        assert len(remote_args) == len(actors)
-    if remote_kwargs is not None:
-        assert len(remote_kwargs) == len(actors)
-
-    # Collect all currently pending remote requests into a single set of
-    # object refs.
-    pending_remotes = set()
-    # Also build a map to get the associated actor for each remote request.
-    remote_to_actor = {}
-    for actor, set_ in trainer.remote_requests_in_flight.items():
-        pending_remotes |= set_
-        for r in set_:
-            remote_to_actor[r] = actor
-
-    # Add new requests, if possible (if
-    # `max_remote_requests_in_flight_per_actor` setting allows it).
-    for actor_idx, actor in enumerate(actors):
-        # Still room for another request to this actor.
-        if len(trainer.remote_requests_in_flight[actor]) < \
-                max_remote_requests_in_flight_per_actor:
-            if remote_fn is None:
-                req = actor.sample.remote()
-            else:
-                args = remote_args[actor_idx] if remote_args else []
-                kwargs = remote_kwargs[actor_idx] if remote_kwargs else {}
-                req = actor.apply.remote(remote_fn, *args, **kwargs)
-            # Add to our set to send to ray.wait().
-            pending_remotes.add(req)
-            # Keep our mappings properly updated.
-            trainer.remote_requests_in_flight[actor].add(req)
-            remote_to_actor[req] = actor
-
-    # There must always be pending remote requests.
-    assert len(pending_remotes) > 0
-    pending_remote_list = list(pending_remotes)
-
-    # No timeout: Block until at least one result is returned.
-    if ray_wait_timeout_s is None:
-        # First try to do a `ray.wait` w/o timeout for efficiency.
-        ready, _ = ray.wait(
-            pending_remote_list, num_returns=len(pending_remotes), timeout=0)
-        # Nothing returned and `timeout` is None -> Fall back to a
-        # blocking wait to make sure we can return something.
-        if not ready:
-            ready, _ = ray.wait(pending_remote_list, num_returns=1)
-    # Timeout: Do a `ray.wait() call` w/ timeout.
-    else:
-        ready, _ = ray.wait(
-            pending_remote_list,
-            num_returns=len(pending_remotes),
-            timeout=ray_wait_timeout_s)
-
-        # Return None if nothing ready after the timeout.
-        if not ready:
-            return None
-
-    for obj_ref in ready:
-        # Remove in-flight record for this ref.
-        trainer.remote_requests_in_flight[remote_to_actor[obj_ref]].remove(
-            obj_ref)
-        remote_to_actor.pop(obj_ref)
-
-    results = ray.get(ready)
-
-    return results
-
-
-def ParallelRollouts(workers: WorkerSet, *, mode="bulk_sync",
-                     num_async=1) -> LocalIterator[SampleBatch]:
+def ParallelRollouts(
+    workers: WorkerSet, *, mode="bulk_sync", num_async=1
+) -> LocalIterator[SampleBatch]:
     """Operator to collect experiences in parallel from rollout workers.
 
     If there are no remote workers, experiences will be collected serially from
@@ -249,8 +124,7 @@ def ParallelRollouts(workers: WorkerSet, *, mode="bulk_sync",
         metrics = _get_shared_metrics()
         metrics.counters[STEPS_SAMPLED_COUNTER] += batch.count
         if isinstance(batch, MultiAgentBatch):
-            metrics.counters[AGENT_STEPS_SAMPLED_COUNTER] += \
-                batch.agent_steps()
+            metrics.counters[AGENT_STEPS_SAMPLED_COUNTER] += batch.agent_steps()
         else:
             metrics.counters[AGENT_STEPS_SAMPLED_COUNTER] += batch.count
         return batch
@@ -262,29 +136,28 @@ def ParallelRollouts(workers: WorkerSet, *, mode="bulk_sync",
             while True:
                 yield workers.local_worker().sample()
 
-        return (LocalIterator(sampler,
-                              SharedMetrics()).for_each(report_timesteps))
+        return LocalIterator(sampler, SharedMetrics()).for_each(report_timesteps)
 
     # Create a parallel iterator over generated experiences.
     rollouts = from_actors(workers.remote_workers())
 
     if mode == "bulk_sync":
-        return rollouts \
-            .batch_across_shards() \
-            .for_each(lambda batches: SampleBatch.concat_samples(batches)) \
+        return (
+            rollouts.batch_across_shards()
+            .for_each(lambda batches: SampleBatch.concat_samples(batches))
             .for_each(report_timesteps)
+        )
     elif mode == "async":
-        return rollouts.gather_async(
-            num_async=num_async).for_each(report_timesteps)
+        return rollouts.gather_async(num_async=num_async).for_each(report_timesteps)
     elif mode == "raw":
         return rollouts
     else:
-        raise ValueError("mode must be one of 'bulk_sync', 'async', 'raw', "
-                         "got '{}'".format(mode))
+        raise ValueError(
+            "mode must be one of 'bulk_sync', 'async', 'raw', " "got '{}'".format(mode)
+        )
 
 
-def AsyncGradients(
-        workers: WorkerSet) -> LocalIterator[Tuple[ModelGradients, int]]:
+def AsyncGradients(workers: WorkerSet) -> LocalIterator[Tuple[ModelGradients, int]]:
     """Operator to compute gradients in parallel from rollout workers.
 
     Args:
@@ -318,11 +191,12 @@ def AsyncGradients(
             (grads, info), count = item
             metrics = _get_shared_metrics()
             metrics.counters[STEPS_SAMPLED_COUNTER] += count
-            metrics.info[LEARNER_INFO] = {
-                DEFAULT_POLICY_ID: info
-            } if LEARNER_STATS_KEY in info else info
-            metrics.timers[GRAD_WAIT_TIMER].push(time.perf_counter() -
-                                                 self.fetch_start_time)
+            metrics.info[LEARNER_INFO] = (
+                {DEFAULT_POLICY_ID: info} if LEARNER_STATS_KEY in info else info
+            )
+            metrics.timers[GRAD_WAIT_TIMER].push(
+                time.perf_counter() - self.fetch_start_time
+            )
             return grads, count
 
     rollouts = from_actors(workers.remote_workers())
@@ -356,9 +230,10 @@ class ConcatBatches:
         if self.count_steps_by == "env_steps":
             size = batch.count
         else:
-            assert isinstance(batch, MultiAgentBatch), \
-                "`count_steps_by=agent_steps` only allowed in multi-agent " \
+            assert isinstance(batch, MultiAgentBatch), (
+                "`count_steps_by=agent_steps` only allowed in multi-agent "
                 "environments!"
+            )
             size = batch.agent_steps()
 
         # Incoming batch is an empty dummy batch -> Ignore.
@@ -373,11 +248,12 @@ class ConcatBatches:
 
         if self.count >= self.min_batch_size:
             if self.count > self.min_batch_size * 2:
-                logger.info("Collected more training samples than expected "
-                            "(actual={}, expected={}). ".format(
-                                self.count, self.min_batch_size) +
-                            "This may be because you have many workers or "
-                            "long episodes in 'complete_episodes' batch mode.")
+                logger.info(
+                    "Collected more training samples than expected "
+                    "(actual={}, expected={}). ".format(self.count, self.min_batch_size)
+                    + "This may be because you have many workers or "
+                    "long episodes in 'complete_episodes' batch mode."
+                )
             out = SampleBatch.concat_samples(self.buffer)
 
             perf_counter = time.perf_counter()
@@ -404,19 +280,53 @@ class SelectExperiences:
         {"pol1", "pol2"}
     """
 
-    def __init__(self, policy_ids: List[PolicyID]):
-        assert isinstance(policy_ids, list), policy_ids
-        self.policy_ids = policy_ids
+    def __init__(
+        self,
+        policy_ids: Optional[Container[PolicyID]] = None,
+        local_worker: Optional["RolloutWorker"] = None,
+    ):
+        """Initializes a SelectExperiences instance.
+
+        Args:
+            policy_ids: Container of PolicyID to select from passing through
+                batches. If not provided, must provide the `local_worker` arg.
+            local_worker: The local worker to use to determine, which policy
+                IDs are trainable. If not provided, must provide the
+                `policy_ids` arg.
+        """
+        assert policy_ids is not None or local_worker is not None, (
+            "ERROR: Must provide either one of `policy_ids` or " "`local_worker` args!"
+        )
+
+        self.local_worker = self.policy_ids = None
+        if local_worker:
+            self.local_worker = local_worker
+        else:
+            assert isinstance(policy_ids, Container), policy_ids
+            self.policy_ids = set(policy_ids)
 
     def __call__(self, samples: SampleBatchType) -> SampleBatchType:
         _check_sample_batch_type(samples)
 
         if isinstance(samples, MultiAgentBatch):
-            samples = MultiAgentBatch({
-                k: v
-                for k, v in samples.policy_batches.items()
-                if k in self.policy_ids
-            }, samples.count)
+            if self.local_worker:
+                samples = MultiAgentBatch(
+                    {
+                        pid: batch
+                        for pid, batch in samples.policy_batches.items()
+                        if self.local_worker.is_policy_to_train(pid, batch)
+                    },
+                    samples.count,
+                )
+            else:
+                samples = MultiAgentBatch(
+                    {
+                        k: v
+                        for k, v in samples.policy_batches.items()
+                        if k in self.policy_ids
+                    },
+                    samples.count,
+                )
 
         return samples
 
@@ -455,7 +365,8 @@ class StandardizeFields:
                         f"{field} in its `postprocess_trajectory` method? Or "
                         "this policy is not meant to learn at all and you "
                         "forgot to add it to the list under `config."
-                        "multiagent.policies_to_train`.")
+                        "multiagent.policies_to_train`."
+                    )
                 batch[field] = standardized(batch[field])
 
         if wrapped:
