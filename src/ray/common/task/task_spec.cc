@@ -465,7 +465,7 @@ bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
 
 bool WorkerCacheKey::EnvIsEmpty() const {
   return IsRuntimeEnvEmpty(serialized_runtime_env) && required_resources.empty() &&
-         !is_actor && !is_gpu;
+         !is_gpu;
 }
 
 std::size_t WorkerCacheKey::Hash() const {
@@ -474,7 +474,11 @@ std::size_t WorkerCacheKey::Hash() const {
     if (EnvIsEmpty()) {
       // It's useful to have the same predetermined value for both unspecified and empty
       // runtime envs.
-      hash_ = 0;
+      if (is_actor) {
+        hash_ = 1;
+      } else {
+        hash_ = 0;
+      }
     } else {
       boost::hash_combine(hash_, serialized_runtime_env);
       boost::hash_combine(hash_, is_actor);
