@@ -9,7 +9,7 @@ from collections import namedtuple
 from typing import List, IO, Tuple
 
 import ray
-from ray.ray_constants import DEFAULT_OBJECT_PREFIX, DEFAULT_SPILLING_BUFFER_SIZE
+from ray.ray_constants import DEFAULT_OBJECT_PREFIX
 from ray._raylet import ObjectRef
 
 ParsedURL = namedtuple("ParsedURL", "base_url, offset, size")
@@ -268,7 +268,6 @@ class FileSystemStorage(ExternalStorage):
         )
         if buffer_size is not None:
             assert isinstance(buffer_size, int), "buffer_size must be an integer."
-        else:
             self._buffer_size = buffer_size
 
         # Create directories.
@@ -533,8 +532,6 @@ def setup_external_storage(config):
             _external_storage = SlowFileStorage(**config["params"])
         else:
             raise ValueError(f"Unknown external storage type: {storage_type}")
-
-        if "buffer_size" in
     else:
         _external_storage = NullStorage()
     return _external_storage
