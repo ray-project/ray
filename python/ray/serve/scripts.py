@@ -313,13 +313,15 @@ def status(address: str):
     type=str,
     help='Address of the Ray dashboard to query. For example, "http://localhost:8265".',
 )
-def delete(address: str):
-    click.confirm(
-        f"\nThis will shutdown the Serve application at address "
-        f'"{address}" and delete all deployments there. Do you '
-        "want to continue?",
-        abort=True,
-    )
+@click.option("--yes", "-y", is_flag=True, help="Bypass confirmation prompt.")
+def delete(address: str, yes: bool):
+    if not yes:
+        click.confirm(
+            f"\nThis will shutdown the Serve application at address "
+            f'"{address}" and delete all deployments there. Do you '
+            "want to continue?",
+            abort=True,
+        )
 
     full_address_path = f"{address}/api/serve/deployments/"
     response = requests.delete(full_address_path)

@@ -282,7 +282,7 @@ def test_delete(ray_start_stop):
         info = json.loads(info_response)
         len(info["deployments"]) == 2
 
-        subprocess.check_output(["echo", "yes", "|" "serve", "delete"])
+        subprocess.check_output(["serve", "delete", "-y"])
         info_response = subprocess.check_output(["serve", "info"])
         info = json.loads(info_response)
         len(info["deployments"]) == 2
