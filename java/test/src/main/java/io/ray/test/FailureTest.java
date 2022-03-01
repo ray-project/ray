@@ -6,13 +6,15 @@ import io.ray.api.Ray;
 import io.ray.api.function.RayFunc0;
 import io.ray.api.id.ObjectId;
 import io.ray.runtime.exception.RayActorException;
+import io.ray.runtime.exception.RayException;
 import io.ray.runtime.exception.RayTaskException;
 import io.ray.runtime.exception.RayWorkerException;
 import io.ray.runtime.exception.UnreconstructableException;
-import java.time.Duration;
-import java.time.Instant;
+import io.ray.runtime.util.SystemUtil;
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -208,17 +210,10 @@ public class FailureTest extends BaseTest {
     for (RayFunc0<Integer> badFunc : badFunctions) {
       ObjectRef<Integer> obj1 = Ray.task(badFunc).remote();
       ObjectRef<Integer> obj2 = Ray.task(FailureTest::slowFunc).remote();
-      Instant start = Instant.now();
-      try {
-        Ray.get(Arrays.asList(obj1, obj2));
-        Assert.fail("Should throw RayException.");
-      } catch (RuntimeException e) {
-        Instant end = Instant.now();
-        long duration = Duration.between(start, end).toMillis();
-        Assert.assertTrue(
-            duration < 5000,
-            "Should fail quickly. " + "Actual execution time: " + duration + " ms.");
-      }
+      TestUtils.executeWithinTime(
+          () ->
+              Assert.expectThrows(RuntimeException.class, () -> Ray.get(Arrays.asList(obj1, obj2))),
+          5000);
     }
   }
 
