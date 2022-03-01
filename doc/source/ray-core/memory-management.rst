@@ -275,7 +275,25 @@ usage across multiple physical devices if needed (e.g., SSD devices):
 
 .. note::
   
-  To optimize the performance, it is recommended to use SSD instead of HD when using object spilling for memory intensive workloads.
+  To optimize the performance, it is recommended to use SSD instead of HDD when using object spilling for memory intensive workloads.
+
+If you are using an HDD, it is recommended that you specify a large buffer size (> 1MB) to lower IO requests during spilling.
+
+.. code-block:: python
+
+    ray.init(
+        _system_config={
+            "object_spilling_config": json.dumps(
+                {
+                  "type": "filesystem", 
+                  "params": {
+                    "directory_path": "/tmp/spill",
+                    "buffer_size": 1000000
+                  }
+                },
+            )
+        },
+    )
 
 To enable object spilling to remote storage (any URI supported by `smart_open <https://pypi.org/project/smart-open/>`__):
 
