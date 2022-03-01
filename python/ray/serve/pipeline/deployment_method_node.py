@@ -12,6 +12,8 @@ class DeploymentMethodNode(DAGNode):
 
     def __init__(
         self,
+        # For serve structured deployment, deployment body can be import path
+        # to the class or function instead.
         deployment: Deployment,
         method_name: str,
         method_args: Tuple[Any],

@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, List, Tuple, Union
+from typing import Any, Callable, Dict, Optional, List, Tuple, Union
 
 from ray.experimental.dag import DAGNode, InputNode
 from ray.serve.handle import RayServeSyncHandle, RayServeHandle
@@ -13,7 +13,9 @@ class DeploymentNode(DAGNode):
 
     def __init__(
         self,
-        func_or_class,
+        # For serve structured deployment, deployment body can be import path
+        # to the class or function instead.
+        func_or_class: Union[Callable, str],
         deployment_name: str,
         deployment_init_args: Tuple[Any],
         deployment_init_kwargs: Dict[str, Any],

@@ -1,4 +1,4 @@
-from typing import Any, Dict, Tuple
+from typing import Any
 from importlib import import_module
 
 import json
@@ -25,57 +25,47 @@ class DAGNodeEncoder(json.JSONEncoder):
             dag_node = obj
             args = dag_node.get_args()
             kwargs = dag_node.get_kwargs()
-            # options = dag_node.get_options()
-            # other_args_to_resolve = dag_node.get_other_args_to_resolve()
-
+            options = dag_node.get_options()
+            other_args_to_resolve = dag_node.get_other_args_to_resolve()
             # stable_uuid will be re-generated upon new constructor execution
-            result_dict = {DAGNODE_TYPE_KEY: dag_node.__class__.__name__}
-
+            result_dict = {
+                DAGNODE_TYPE_KEY: dag_node.__class__.__name__,
+                "args": json.dumps(args, cls=DAGNodeEncoder),
+                "kwargs": json.dumps(kwargs, cls=DAGNodeEncoder),
+                # .options() should not contain any DAGNode type
+                "options": json.dumps(options),
+                "other_args_to_resolve": json.dumps(
+                    other_args_to_resolve, cls=DAGNodeEncoder
+                ),
+            }
+            # TODO: (jiaodong) Support arbitrary InputNode args and pydantic
+            # input schema.
+            import_path = ""
             if isinstance(dag_node, InputNode):
                 return result_dict
-
             # TODO: (jiaodong) Handle __main__ swap to filename
-            import_path = ""
             if isinstance(dag_node, ClassNode):
                 body = dag_node._body.__ray_actor_class__
+                import_path = f"{body.__module__}.{body.__qualname__}"
             elif isinstance(dag_node, FunctionNode):
                 body = dag_node._body
-            elif isinstance(dag_node, DeploymentMethodNode):
-                other_args_to_resolve = {
-                    "deployment_name": dag_node._deployment_name,
-                    "method_name": dag_node._method_name,
-                    # TODO: (jiaodong) Support passing deployment handle
-                    "deployment_init_args": json.dumps(
-                        dag_node._body.init_args, cls=DAGNodeEncoder
-                    ),
-                    "deployment_init_kwargs": json.dumps(
-                        dag_node._body.init_kwargs, cls=DAGNodeEncoder
-                    ),
-                }
-                if isinstance(dag_node._body._func_or_class, str):
+                import_path = f"{body.__module__}.{body.__qualname__}"
+            elif isinstance(dag_node, (DeploymentNode, DeploymentMethodNode)):
+                result_dict.update({"deployment_name": dag_node._deployment.name})
+                if isinstance(dag_node._deployment._func_or_class, str):
                     # We're processing a deserilized JSON node where import_path
                     # is dag_node body.
-                    result_dict.update(other_args_to_resolve)
-                    result_dict.update(
-                        {
-                            "import_path": dag_node._body._func_or_class,
-                            "args": json.dumps(args, cls=DAGNodeEncoder),
-                            "kwargs": json.dumps(kwargs, cls=DAGNodeEncoder),
-                        }
-                    )
-                    return result_dict
+                    import_path = dag_node._deployment._func_or_class
                 else:
-                    body = dag_node._body._func_or_class.__ray_actor_class__
-                    result_dict.update(other_args_to_resolve)
+                    body = dag_node._deployment._func_or_class.__ray_actor_class__
+                    import_path = f"{body.__module__}.{body.__qualname__}"
+                if isinstance(dag_node, DeploymentMethodNode):
+                    result_dict.update({"method_name": dag_node._method_name})
 
             # TODO:(jiaodong) Maybe use cache for idential objects
             result_dict.update(
-                {
-                    # TODO: (jiaodong) Support runtime_env with remote working_dir
-                    "import_path": f"{body.__module__}.{body.__qualname__}",
-                    "args": json.dumps(args, cls=DAGNodeEncoder),
-                    "kwargs": json.dumps(kwargs, cls=DAGNodeEncoder),
-                }
+                # TODO: (jiaodong) Support runtime_env with remote working_dir
+                {"import_path": import_path}
             )
 
             return result_dict
@@ -102,8 +92,11 @@ def dagnode_from_json(input_json: Any) -> DAGNode:
         # Pre-order JSON deserialization
         args = json.loads(input_json["args"], object_hook=dagnode_from_json)
         kwargs = json.loads(input_json["kwargs"], object_hook=dagnode_from_json)
-        # options =
-        # other_args_to_resolve =
+        # .options() should not contain any DAGNode type
+        options = json.loads(input_json["options"])
+        other_args_to_resolve = json.loads(
+            input_json["other_args_to_resolve"], object_hook=dagnode_from_json
+        )
         # TODO:(jiaodong) Use cache for idential objects
         module_name, attr_name = parse_import_path(input_json["import_path"])
         module = getattr(import_module(module_name), attr_name)
@@ -113,38 +106,42 @@ def dagnode_from_json(input_json: Any) -> DAGNode:
                 module._function,
                 args,
                 kwargs,
-                {},
-                {},
+                options,
+                other_args_to_resolve=other_args_to_resolve,
             )
         elif input_json[DAGNODE_TYPE_KEY] == ClassNode.__name__:
             return ClassNode(
                 module.__ray_metadata__.modified_class,
                 args,
                 kwargs,
-                {},
-                {},
+                options,
+                other_args_to_resolve=other_args_to_resolve,
+            )
+        elif input_json[DAGNODE_TYPE_KEY] == DeploymentNode.__name__:
+            return DeploymentNode(
+                input_json["import_path"],
+                input_json["deployment_name"],
+                args,
+                kwargs,
+                options,
+                other_args_to_resolve=other_args_to_resolve,
             )
         elif input_json[DAGNODE_TYPE_KEY] == DeploymentMethodNode.__name__:
-            deployment_init_args = json.loads(
-                input_json["deployment_init_args"],
-                object_hook=dagnode_from_json,
-            )
-            deployment_init_kwargs = json.loads(
-                input_json["deployment_init_kwargs"],
-                object_hook=dagnode_from_json,
-            )
             return DeploymentMethodNode(
                 Deployment(
                     input_json["import_path"],
                     input_json["deployment_name"],
+                    # TODO: (jiaodong) Support deployment config from user input
                     DeploymentConfig(),
-                    init_args=tuple(deployment_init_args),
-                    init_kwargs=deployment_init_kwargs,
+                    init_args=args,
+                    init_kwargs=kwargs,
+                    ray_actor_options=options,
                     _internal=True,
                 ),
                 input_json["deployment_name"],
                 input_json["method_name"],
                 args,
                 kwargs,
-                {},
+                options,
+                other_args_to_resolve=other_args_to_resolve,
             )

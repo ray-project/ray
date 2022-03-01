@@ -58,5 +58,5 @@ def fn_hello():
 
 
 @ray.remote
-def combine(m1_output, m2_output):
-    return m1_output + m2_output
+def combine(m1_output, m2_output, kwargs_output=0):
+    return m1_output + m2_output + kwargs_output

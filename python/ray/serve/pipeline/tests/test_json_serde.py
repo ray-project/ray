@@ -13,6 +13,8 @@ from ray.serve.pipeline.tests.test_modules import (
     combine,
     ClassHello,
     fn_hello,
+    Combine,
+    NESTED_HANDLE_KEY,
 )
 from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,
@@ -44,9 +46,7 @@ def test_simple_function_node_json_serde(serve_instance):
             "kwargs": "{}",
         }
     )
-    deserialized_dag_node = json.loads(
-        json_serialized, object_hook=dagnode_from_json
-    )
+    deserialized_dag_node = json.loads(json_serialized, object_hook=dagnode_from_json)
     assert ray.get(deserialized_dag_node.execute()) == ray.get(
         original_dag_node.execute()
     )
@@ -61,9 +61,7 @@ def test_simple_function_node_json_serde(serve_instance):
             "kwargs": '{"kwargs_output": 3}',
         }
     )
-    deserialized_dag_node = json.loads(
-        json_serialized, object_hook=dagnode_from_json
-    )
+    deserialized_dag_node = json.loads(json_serialized, object_hook=dagnode_from_json)
     assert ray.get(deserialized_dag_node.execute()) == ray.get(
         original_dag_node.execute()
     )
@@ -78,9 +76,7 @@ def test_simple_function_node_json_serde(serve_instance):
             "kwargs": "{}",
         }
     )
-    deserialized_dag_node = json.loads(
-        json_serialized, object_hook=dagnode_from_json
-    )
+    deserialized_dag_node = json.loads(json_serialized, object_hook=dagnode_from_json)
     assert ray.get(deserialized_dag_node.execute()) == ray.get(
         original_dag_node.execute()
     )
@@ -107,9 +103,7 @@ def test_simple_class_node_json_serde(serve_instance):
             "kwargs": "{}",
         }
     )
-    deserialized_dag_node = json.loads(
-        json_serialized, object_hook=dagnode_from_json
-    )
+    deserialized_dag_node = json.loads(json_serialized, object_hook=dagnode_from_json)
     # Creates actor of ClassHello
     original_actor = original_dag_node.execute()
     deserialized_actor = deserialized_dag_node.execute()
@@ -128,9 +122,7 @@ def test_simple_class_node_json_serde(serve_instance):
             "kwargs": "{}",
         }
     )
-    deserialized_dag_node = json.loads(
-        json_serialized, object_hook=dagnode_from_json
-    )
+    deserialized_dag_node = json.loads(json_serialized, object_hook=dagnode_from_json)
     # Creates actor of Model
     original_actor = original_dag_node.execute()
     deserialized_actor = deserialized_dag_node.execute()
@@ -149,9 +141,7 @@ def test_simple_class_node_json_serde(serve_instance):
             "kwargs": '{"ratio": 0.5}',
         }
     )
-    deserialized_dag_node = json.loads(
-        json_serialized, object_hook=dagnode_from_json
-    )
+    deserialized_dag_node = json.loads(json_serialized, object_hook=dagnode_from_json)
     # Creates actor of Model
     original_actor = original_dag_node.execute()
     deserialized_actor = deserialized_dag_node.execute()
@@ -161,116 +151,55 @@ def test_simple_class_node_json_serde(serve_instance):
     )
 
 
-def test_nested_deployment_node_json_serde(serve_instance):
-    # Ray DAG
-    """
-    (FunctionNode)(
-        body=ray.serve.pipeline.tests.test_modules.combine
-        args=[
-            (ClassMethodNode)(
-                body=ray.serve.pipeline.tests.test_modules.Model.forward()
-                args=[
-                    (InputNode)(
-                        body=__InputNode__
-                        args=[]
-                        kwargs={}
-                        options={}
-                        other_args_to_resolve={}
-                    )
-                ]
-                kwargs={}
-                options={}
-                other_args_to_resolve={
-                    parent_class_node:
-                        (ClassNode)(
-                            body=ray.serve.pipeline.tests.test_modules.Model
-                            args=[
-                                2,
-                            ]
-                            kwargs={}
-                            options={}
-                            other_args_to_resolve={}
-                        )
-                    prev_class_method_call: None
-                }
-            )
-            (ClassMethodNode)(
-                body=ray.serve.pipeline.tests.test_modules.Model.forward()
-                args=[
-                    (InputNode)(
-                        body=__InputNode__
-                        args=[]
-                        kwargs={}
-                        options={}
-                        other_args_to_resolve={}
-                    )
-                ]
-                kwargs={}
-                options={}
-                other_args_to_resolve={
-                    parent_class_node:
-                        (ClassNode)(
-                            body=ray.serve.pipeline.tests.test_modules.Model
-                            args=[
-                                3,
-                            ]
-                            kwargs={}
-                            options={}
-                            other_args_to_resolve={}
-                        )
-                    prev_class_method_call: None
-                }
-            )
-        ]
-        kwargs={}
-        options={}
-        other_args_to_resolve={}
-    )
-    """
-    # Transformed serve dag
-    """
-    (FunctionNode)(
-        body=ray.serve.pipeline.tests.test_modules.combine
-        args=[
-            (DeploymentMethodNode)(
-                method=forward()
-                deployment=Deployment(name=Model,version=None,route_prefix=/Model)
-                args=[
-                    (InputNode)(
-                        body=__InputNode__
-                        args=[]
-                        kwargs={}
-                        options={}
-                        other_args_to_resolve={}
-                    )
-                ]
-                kwargs={}
-                options={}
-                other_args_to_resolve={}
-            )
-            (DeploymentMethodNode)(
-                method=forward()
-                deployment=Deployment(name=Model,version=None,route_prefix=/Model)
-                args=[
-                    (InputNode)(
-                        body=__InputNode__
-                        args=[]
-                        kwargs={}
-                        options={}
-                        other_args_to_resolve={}
-                    )
-                ]
-                kwargs={}
-                options={}
-                other_args_to_resolve={}
-            )
-        ]
-        kwargs={}
-        options={}
-        other_args_to_resolve={}
-    )
-    """
+def test_multiple_serde_function():
+    pass
 
+
+def test_multiple_serde_class():
+    pass
+
+
+def test_json_serde_with_options():
+    pass
+
+
+def test_json_serde_with_other_args_to_resolve():
+    pass
+
+
+def test_class_method_node():
+    pass
+
+
+def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
+    m1 = Model._bind(2)
+    m2 = Model._bind(3)
+    combine = Combine._bind(m1, m2={NESTED_HANDLE_KEY: m2}, m2_nested=True)
+    ray_dag = combine.__call__._bind(InputNode())
+    print(f"Ray DAG: \n{ray_dag}")
+
+    serve_root_dag = ray_dag._apply_recursive(transform_ray_dag_to_serve_dag)
+    print(f"Serve DAG: \n{serve_root_dag}")
+
+    json_serialized = json.dumps(serve_root_dag, indent=4, cls=DAGNodeEncoder)
+    deserialized_serve_root_dag_node = json.loads(
+        json_serialized, object_hook=dagnode_from_json
+    )
+    deserialized_deployments = extract_deployments_from_serve_dag(
+        deserialized_serve_root_dag_node
+    )
+    print(f"JSON deserialized Serve DAG: \n{serve_root_dag}")
+    assert len(deserialized_deployments) == 3
+    # Deploy deserilized version to ensure JSON serde correctness
+    for model in deserialized_deployments:
+        model.deploy()
+    assert ray.get(ray_dag.execute(1)) == ray.get(serve_root_dag.execute(1))
+    assert ray.get(ray_dag.execute(1)) == ray.get(
+        deserialized_serve_root_dag_node.execute(1)
+    )
+
+
+def test_nested_deployment_node_json_serde(serve_instance):
     m1 = Model._bind(2)
     m2 = Model._bind(3)
 
@@ -281,15 +210,9 @@ def test_nested_deployment_node_json_serde(serve_instance):
     original_serve_root_dag = ray_dag._apply_recursive(
         lambda node: transform_ray_dag_to_serve_dag(node)
     )
-    json_serialized = json.dumps(
-        original_serve_root_dag, indent=4, cls=DAGNodeEncoder
-    )
+    json_serialized = json.dumps(original_serve_root_dag, indent=4, cls=DAGNodeEncoder)
     deserialized_serve_root_dag_node = json.loads(
         json_serialized, object_hook=dagnode_from_json
-    )
-    # Deployment init_arg is (2,)
-    original_deployments = extract_deployments_from_serve_dag(
-        original_serve_root_dag
     )
     # Deployment init_arg is [InputNode..]
     deserialized_deployments = extract_deployments_from_serve_dag(
@@ -299,9 +222,7 @@ def test_nested_deployment_node_json_serde(serve_instance):
     for model in deserialized_deployments:
         model.deploy()
 
-    assert ray.get(ray_dag.execute(1)) == ray.get(
-        original_serve_root_dag.execute(1)
-    )
+    assert ray.get(ray_dag.execute(1)) == ray.get(original_serve_root_dag.execute(1))
     assert ray.get(ray_dag.execute(1)) == ray.get(
         deserialized_serve_root_dag_node.execute(1)
     )
