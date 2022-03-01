@@ -242,6 +242,8 @@ def test_run(ray_start_stop):
     assert requests.get("http://localhost:8000/one").text == "2"
 
     p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
+    time.sleep(4)
+
     with pytest.raises(requests.exceptions.ConnectionError):
         requests.get("http://localhost:8000/shallow")
     with pytest.raises(requests.exceptions.ConnectionError):
@@ -254,6 +256,8 @@ def test_run(ray_start_stop):
     assert requests.get("http://localhost:8000/parrot?sound=squawk").text == "squawk"
 
     p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
+    time.sleep(4)
+
     with pytest.raises(requests.exceptions.ConnectionError):
         requests.get("http://localhost:8000/parrot?sound=squawk")
 
