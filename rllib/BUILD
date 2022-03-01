@@ -215,35 +215,25 @@ py_test(
 )
 
 # DDPG
-py_test(
-    name = "learning_tests_pendulum_ddpg",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = glob(["tuned_examples/ddpg/pendulum-ddpg.yaml"]),
-    args = ["--yaml-dir=tuned_examples/ddpg"]
-)
+# py_test(
+#    name = "learning_tests_pendulum_ddpg",
+#    main = "tests/run_regression_tests.py",
+#    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+#    size = "large",
+#    srcs = ["tests/run_regression_tests.py"],
+#    data = glob(["tuned_examples/ddpg/pendulum-ddpg.yaml"]),
+#    args = ["--yaml-dir=tuned_examples/ddpg"]
+# )
 
-py_test(
-    name = "learning_tests_pendulum_ddpg_tf2",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests_continuous_tf2_eager_off_policy"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = glob(["tuned_examples/ddpg/pendulum-ddpg.yaml"]),
-    args = ["--yaml-dir=tuned_examples/ddpg", "--override-mean-reward=-750.0"]
-)
-
-py_test(
-    name = "learning_tests_pendulum_ddpg_fake_gpus",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "fake_gpus"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ddpg/pendulum-ddpg-fake-gpus.yaml"],
-    args = ["--yaml-dir=tuned_examples/ddpg"]
-)
+# py_test(
+#    name = "learning_tests_pendulum_ddpg_fake_gpus",
+#    main = "tests/run_regression_tests.py",
+#    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "fake_gpus"],
+#    size = "large",
+#    srcs = ["tests/run_regression_tests.py"],
+#    data = ["tuned_examples/ddpg/pendulum-ddpg-fake-gpus.yaml"],
+#    args = ["--yaml-dir=tuned_examples/ddpg"]
+# )
 
 # DDPPO
 py_test(
@@ -513,61 +503,41 @@ py_test(
     args = ["--yaml-dir=tuned_examples/sac"]
 )
 
-py_test(
-    name = "learning_tests_pendulum_sac",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/sac/pendulum-sac.yaml"],
-    args = ["--yaml-dir=tuned_examples/sac"]
-)
+# py_test(
+#    name = "learning_tests_pendulum_sac",
+#    main = "tests/run_regression_tests.py",
+#    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+#    size = "large",
+#    srcs = ["tests/run_regression_tests.py"],
+#    data = ["tuned_examples/sac/pendulum-sac.yaml"],
+#    args = ["--yaml-dir=tuned_examples/sac"]
+# )
 
-py_test(
-    name = "learning_tests_transformed_actions_pendulum_sac",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/sac/pendulum-transformed-actions-sac.yaml"],
-    args = ["--yaml-dir=tuned_examples/sac"]
-)
+# py_test(
+#    name = "learning_tests_transformed_actions_pendulum_sac",
+#    main = "tests/run_regression_tests.py",
+#    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+#    size = "large",
+#    srcs = ["tests/run_regression_tests.py"],
+#    data = ["tuned_examples/sac/pendulum-transformed-actions-sac.yaml"],
+#    args = ["--yaml-dir=tuned_examples/sac"]
+# )
 
-py_test(
-    name = "learning_tests_pendulum_sac_tf2",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests_continuous_tf2_eager_off_policy"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/sac/pendulum-sac.yaml"],
-    args = ["--yaml-dir=tuned_examples/sac", "--override-mean-reward=-900.0"]
-)
-
-py_test(
-    name = "learning_tests_transformed_actions_pendulum_sac_tf2",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests_continuous_tf2_eager_off_policy"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/sac/pendulum-transformed-actions-sac.yaml"],
-    args = ["--yaml-dir=tuned_examples/sac" ,"--override-mean-reward=-850.0"]
-)
-
-py_test(
-    name = "learning_tests_pendulum_sac_fake_gpus",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "fake_gpus"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/sac/pendulum-sac-fake-gpus.yaml"],
-    args = ["--yaml-dir=tuned_examples/sac"]
-)
+# py_test(
+#    name = "learning_tests_pendulum_sac_fake_gpus",
+#    main = "tests/run_regression_tests.py",
+#    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "fake_gpus"],
+#    size = "large",
+#    srcs = ["tests/run_regression_tests.py"],
+#    data = ["tuned_examples/sac/pendulum-sac-fake-gpus.yaml"],
+#    args = ["--yaml-dir=tuned_examples/sac"]
+# )
 
 # SlateQ
 py_test(
     name = "learning_tests_interest_evolution_10_candidates_recsim_env_slateq",
     main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_discrete", "tf2_only"],
+    tags = ["team:ml", "learning_tests", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/slateq/interest-evolution-10-candidates-recsim-env-slateq.yaml"],

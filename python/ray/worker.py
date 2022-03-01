@@ -729,7 +729,7 @@ def init(
     logging_format: str = ray_constants.LOGGER_FORMAT,
     log_to_driver: bool = True,
     namespace: Optional[str] = None,
-    runtime_env: Dict[str, Any] = None,
+    runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
     # The following are unstable parameters and their use is discouraged.
     _enable_object_reconstruction: bool = False,
     _redis_max_memory: Optional[int] = None,
@@ -830,8 +830,8 @@ def init(
         log_to_driver (bool): If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
         namespace (str): Namespace to use
-        runtime_env (dict): The runtime environment to use for this job (see
-                :ref:`runtime-environments` for details).
+        runtime_env (dict, RuntimeEnv, None): The runtime environment to use
+            for this job (see :ref:`runtime-environments` for details).
         _enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
@@ -1305,9 +1305,18 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                 res = data["task_name"] + " " + res
             return res
 
+    def message_for(data: Dict[str, str], line: str) -> str:
+        """The printed message of this log line."""
+        if ray_constants.LOG_PREFIX_INFO_MESSAGE in line:
+            return line.split(ray_constants.LOG_PREFIX_INFO_MESSAGE)[1]
+        return line
+
     def color_for(data: Dict[str, str], line: str) -> str:
         """The color for this log line."""
-        if data.get("pid") == "raylet":
+        if (
+            data.get("pid") == "raylet"
+            and ray_constants.LOG_PREFIX_INFO_MESSAGE not in line
+        ):
             return colorama.Fore.YELLOW
         elif data.get("pid") == "autoscaler":
             if "Error:" in line or "Warning:" in line:
@@ -1333,7 +1342,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                     prefix_for(data),
                     pid,
                     colorama.Style.RESET_ALL,
-                    line,
+                    message_for(data, line),
                 ),
                 file=print_file,
             )
@@ -1347,7 +1356,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                     pid,
                     data.get("ip"),
                     colorama.Style.RESET_ALL,
-                    line,
+                    message_for(data, line),
                 ),
                 file=print_file,
             )

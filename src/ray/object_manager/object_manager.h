@@ -377,6 +377,11 @@ class ObjectManager : public ObjectManagerInterface,
   /// Object store runner.
   ObjectStoreRunner object_store_internal_;
 
+  /// Used by the buffer pool to read and write objects in the local store
+  /// during object transfers.
+  std::shared_ptr<plasma::PlasmaClient> buffer_pool_store_client_;
+
+  /// Manages accesses to local objects for object transfers.
   ObjectBufferPool buffer_pool_;
 
   /// Multi-thread asio service, deal with all outgoing and incoming RPC request.

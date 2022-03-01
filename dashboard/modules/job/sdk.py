@@ -22,12 +22,12 @@ from ray.dashboard.modules.job.common import (
     JobSubmitRequest,
     JobSubmitResponse,
     JobStopResponse,
-    JobData,
+    JobInfo,
     JobLogsResponse,
     uri_to_http_components,
 )
 from ray.ray_constants import DEFAULT_DASHBOARD_PORT
-
+from ray.util.annotations import PublicAPI
 from ray.client_builder import _split_address
 
 logger = logging.getLogger(__name__)
@@ -273,6 +273,7 @@ class JobSubmissionClient:
                 )
                 runtime_env["working_dir"] = package_uri
 
+    @PublicAPI(stability="beta")
     def get_version(self) -> str:
         r = self._do_request("GET", "/api/version")
         if r.status_code == 200:
@@ -280,6 +281,7 @@ class JobSubmissionClient:
         else:
             self._raise_error(r)
 
+    @PublicAPI(stability="beta")
     def submit_job(
         self,
         *,
@@ -308,6 +310,7 @@ class JobSubmissionClient:
         else:
             self._raise_error(r)
 
+    @PublicAPI(stability="beta")
     def stop_job(
         self,
         job_id: str,
@@ -320,20 +323,23 @@ class JobSubmissionClient:
         else:
             self._raise_error(r)
 
-    def get_job_data(
+    @PublicAPI(stability="beta")
+    def get_job_info(
         self,
         job_id: str,
-    ) -> JobData:
+    ) -> JobInfo:
         r = self._do_request("GET", f"/api/jobs/{job_id}")
 
         if r.status_code == 200:
-            return JobData(**r.json())
+            return JobInfo(**r.json())
         else:
             self._raise_error(r)
 
+    @PublicAPI(stability="beta")
     def get_job_status(self, job_id: str) -> JobStatus:
-        return self.get_job_data(job_id).status
+        return self.get_job_info(job_id).status
 
+    @PublicAPI(stability="beta")
     def get_job_logs(self, job_id: str) -> str:
         r = self._do_request("GET", f"/api/jobs/{job_id}/logs")
 
@@ -342,6 +348,7 @@ class JobSubmissionClient:
         else:
             self._raise_error(r)
 
+    @PublicAPI(stability="beta")
     async def tail_job_logs(self, job_id: str) -> Iterator[str]:
         async with aiohttp.ClientSession(cookies=self._cookies) as session:
             ws = await session.ws_connect(

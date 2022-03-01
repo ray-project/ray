@@ -1,14 +1,16 @@
 .. _jobs-overview:
 
-===========================================================
-Ray Job Submission: Going from your laptop to production
-===========================================================
+==================
+Ray Job Submission
+==================
 
 .. note::
 
     This component is in **beta**.
 
-Ray Job submission is a mechanism to submit locally developed and tested applications to a running remote Ray cluster. It simplifies the user experience of packaging, deploying, and manage their Ray application as a "job". Jobs can be submitted by a "job manager", like Airflow or Kubernetes Jobs.
+Ray Job submission is a mechanism to submit locally developed and tested applications to a running remote Ray cluster. It simplifies the experience of packaging, deploying, and managing a Ray application.  Jobs can be submitted by a "job manager", like Airflow or Kubernetes Jobs.
+
+Jump to the :ref:`API Reference<ray-job-submission-api-ref>`, or continue reading for an overview with examples.
 
 Concepts
 --------
@@ -58,7 +60,7 @@ We can put this file in a local directory of your choice, with filename "script.
     print(requests.__version__)
 
 
-| Ensure we have a local Ray cluster with a running head node and the dashboard installed with :code:`pip install "ray[default]"`. The address and port shown in terminal should be where we submit Job requests to.
+Ensure we have a local Ray cluster with a running head node and the dashboard installed with :code:`pip install "ray[default]"`. The address and port shown in terminal should be where we submit Job requests to.
 
 .. code-block:: bash
 
@@ -103,6 +105,9 @@ Next, set the :code:`RAY_ADDRESS` environment variable:
 .. code-block:: bash
 
     export RAY_ADDRESS="http://127.0.0.1:8265"
+
+This tells Job Submission how to find our Ray cluster.  Here we are specifying port ``8265`` on the head node, the port that the Ray Dashboard listens on.  
+(Note that this is different from port ``10001``, which you would use to connect to the cluster via :ref:`Ray Client <ray-client>`.)
 
 Now you may run the following CLI commands:
 

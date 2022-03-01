@@ -66,6 +66,13 @@ TEST(TaskIDTest, TestTaskID) {
     const TaskID task_id_1 =
         TaskID::ForActorTask(kDefaultJobId, kDefaultDriverTaskId, 1, actor_id);
     ASSERT_EQ(actor_id, task_id_1.ActorId());
+    ASSERT_FALSE(task_id_1.IsForActorCreationTask());
+
+    auto actor_creation_task_id = TaskID::ForActorCreationTask(actor_id);
+    ASSERT_TRUE(actor_creation_task_id.IsForActorCreationTask());
+
+    ASSERT_FALSE(TaskID::Nil().IsForActorCreationTask());
+    ASSERT_FALSE(TaskID::FromRandom(kDefaultJobId).IsForActorCreationTask());
   }
 }
 

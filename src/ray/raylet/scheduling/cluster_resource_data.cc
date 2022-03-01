@@ -224,6 +224,11 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
     RAY_LOG(DEBUG) << "At pull manager capacity";
     return false;
   }
+
+  if (resource_request.IsEmpty()) {
+    return true;
+  }
+
   // First, check predefined resources.
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (i >= this->predefined_resources.size()) {
@@ -256,6 +261,9 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
 }
 
 bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
+  if (resource_request.IsEmpty()) {
+    return true;
+  }
   // First, check predefined resources.
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (i >= this->predefined_resources.size()) {
