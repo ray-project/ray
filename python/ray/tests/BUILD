@@ -22,7 +22,6 @@ py_test_module_list(
     "test_autoscaling_policy.py",
     "test_basic.py",
     "test_basic_2.py",
-    "test_basic_3.py",
     "test_basic_4.py",
     "test_basic_5.py",
     "test_cancel.py",
@@ -205,6 +204,7 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_basic_3.py",
     "test_output.py",
     "test_failure_2.py",
     "test_failure_4.py",
