@@ -191,8 +191,8 @@ def deploy(config_file_name: str, address: str):
     required=False,
     type=str,
     help="Either a Serve YAML configuration file path or an import path to "
-         "a class or function to deploy. Import paths must be of the form "
-         '"module.submodule_1...submodule_n.MyClassOrFunction".',
+    "a class or function to deploy. Import paths must be of the form "
+    '"module.submodule_1...submodule_n.MyClassOrFunction".',
 )
 @click.option(
     "--address",
@@ -218,8 +218,9 @@ def run(config_or_import_path: str, address: str):
     serve.start()
 
     if is_config:
-        cli_logger.print("Deploying application in config file at "
-                         f"{config_or_import_path}.")
+        cli_logger.print(
+            "Deploying application in config file at " f"{config_or_import_path}."
+        )
         with open(config_or_import_path, "r") as config_file:
             config = yaml.safe_load(config_file)
 
@@ -229,21 +230,24 @@ def run(config_or_import_path: str, address: str):
 
         cli_logger.newline()
         cli_logger.success(
-            f"\nDeployments from config file at \"{config_or_import_path}\" "
+            f'\nDeployments from config file at "{config_or_import_path}" '
             "deployed successfully!\n"
         )
         cli_logger.newline()
 
     if not is_config:
-        cli_logger.print("Deploying function or class imported from "
-                         f"{config_or_import_path}.")
+        cli_logger.print(
+            "Deploying function or class imported from " f"{config_or_import_path}."
+        )
         func_or_class = import_attr(config_or_import_path)
         if not isinstance(func_or_class, Deployment):
             func_or_class = serve.deployment(func_or_class)
         func_or_class.deploy()
 
         cli_logger.newline()
-        cli_logger.print(f"\nDeployed import at {config_or_import_path} successfully!\n")
+        cli_logger.print(
+            f"\nDeployed import at {config_or_import_path} successfully!\n"
+        )
         cli_logger.newline()
 
     while True:
