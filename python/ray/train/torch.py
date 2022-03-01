@@ -195,27 +195,50 @@ class _WrappedDataLoader(DataLoader):
     def __init__(self, base_dataloader: DataLoader, device: torch.device):
 
         self.__dict__.update(getattr(base_dataloader, "__dict__", {}))
-        self.dataloader = base_dataloader
+        self._dataloader = base_dataloader
+        self.dataloader_iter = None
         self.device = device
+        self._memcpy_stream = (
+            torch.cuda.Stream(device) if device.type == "cuda" else None
+        )
+        self.curr_batch = None
+        self._prepare()
 
     def _move_to_device(self, item):
+        if item is None:
+            return None
+
         def try_move_device(i):
             try:
-                i = i.to(self.device)
+                i = i.to(self.device, non_blocking=True)
             except AttributeError:
                 logger.debug(f"Item {i} cannot be moved to device " f"{self.device}.")
             return i
 
-        return tuple(try_move_device(i) for i in item)
+        with torch.cuda.stream(self._memcpy_stream):
+            return tuple(try_move_device(i) for i in item)
 
     def __len__(self):
-        return len(self.dataloader)
+        return len(self._dataloader)
+
+    def _prepare(self):
+        self.dataloader_iter = iter(self._dataloader)
+        self._get_next_batch()
+
+    def _get_next_batch(self):
+        next_batch = next(self.dataloader_iter, None)
+        self.curr_batch = self._move_to_device(next_batch)
 
     def __iter__(self):
-        iterator = iter(self.dataloader)
+        return self
 
-        for item in iterator:
-            yield self._move_to_device(item)
+    def __next__(self):
+        ret_batch = self.curr_batch
+        if ret_batch is None:
+            self._prepare()
+            raise StopIteration
+        self._get_next_batch()
+        return ret_batch
 
 
 @PublicAPI(stability="beta")
