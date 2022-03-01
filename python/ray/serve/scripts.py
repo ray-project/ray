@@ -4,9 +4,10 @@ import yaml
 import os
 import requests
 import click
+import time
 
 import ray
-from ray.serve.api import Deployment
+from ray.serve.api import Deployment, deploy_group, get_deployment_statuses
 from ray.serve.config import DeploymentMode
 from ray._private.utils import import_attr
 from ray import serve
@@ -15,7 +16,11 @@ from ray.serve.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
 )
-from ray.dashboard.modules.serve.schema import ServeApplicationSchema
+from ray.dashboard.modules.serve.schema import (
+    ServeApplicationSchema,
+    schema_to_serve_application,
+    serve_application_status_to_schema,
+)
 from ray.autoscaler._private.cli_logger import cli_logger
 
 
@@ -174,6 +179,89 @@ def deploy(config_file_name: str, address: str):
         cli_logger.newline()
     else:
         log_failed_request(response, address)
+
+
+@cli.command(
+    help="[Experimental] Run deployments via Serve's Python API.",
+    hidden=True,
+)
+@click.option(
+    "--config_file_path",
+    "-c",
+    default=None,
+    required=False,
+    type=str,
+    help="Path to a Serve YAML configuration file.",
+)
+@click.option(
+    "--import_path",
+    "-i",
+    default=None,
+    required=False,
+    type=str,
+    help=(
+        "Import path to class or function to deploy. Must be of form "
+        '"module.submodule_1...submodule_n.MyClassOrFunction".'
+    ),
+)
+@click.option(
+    "--address",
+    "-a",
+    default=None,
+    required=False,
+    type=str,
+    help="Address of the running Ray cluster to connect to. " 'Defaults to "auto".',
+)
+def run(config_file_path: str, import_path: str, address: str):
+    if config_file_path is None and import_path is None:
+        raise ValueError(
+            "Did not get a config_file_path or an import_path. "
+            "Expected one to be specified."
+        )
+    elif config_file_path is not None and import_path is not None:
+        raise ValueError(
+            f'Got "{config_file_path}" as config_file_path and '
+            f'got "{import_path}" as import_path. Expected '
+            "only one to be specified."
+        )
+
+    if address is not None:
+        ray.init(address=address, namespace="serve")
+    serve.start()
+
+    if config_file_path is not None:
+        with open(config_file_path, "r") as config_file:
+            config = yaml.safe_load(config_file)
+
+        schematized_config = ServeApplicationSchema.parse_obj(config)
+        deployments = schema_to_serve_application(schematized_config)
+        deploy_group(deployments)
+
+        cli_logger.newline()
+        cli_logger.success(
+            f"\nDeployments from {config_file_path} deployed " "successfully!\n"
+        )
+        cli_logger.newline()
+
+    if import_path is not None:
+        func_or_class = import_attr(import_path)
+        if not isinstance(func_or_class, Deployment):
+            func_or_class = serve.deployment(func_or_class)
+        func_or_class.deploy()
+
+        cli_logger.newline()
+        cli_logger.print(f"\nDeployed {import_path} successfully!\n")
+        cli_logger.newline()
+
+    while True:
+        time.sleep(10)
+        status_json = serve_application_status_to_schema(
+            get_deployment_statuses()
+        ).json()
+        print(
+            f"\nStatus at time {time.ctime()}: \n"
+            f"{json.dumps(json.loads(status_json), indent=4)}\n"
+        )
 
 
 @cli.command(
