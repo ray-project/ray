@@ -156,7 +156,7 @@ All of the following optimizations are enabled by default for Dataset pipelines.
     context.optimize_fuse_read_stages = True
     context.optimize_fuse_shuffle_stages = True
 
-You can tell if stage fusion is enabled by checking the :ref:`Dataset stats <data_performance_tips>`.
+You can tell if stage fusion is enabled by checking the :ref:`Dataset stats <data_performance_tips>` and looking for fused stages (e.g., ``read->map_batches``).
 
 .. code-block::
 
