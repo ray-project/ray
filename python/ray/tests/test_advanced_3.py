@@ -672,7 +672,7 @@ def test_detect_docker_cpus():
                 cpu_quota_file_name="nope",
                 cpu_period_file_name="give_up",
                 cpuset_file_name="lose_hope",
-                cpu_max_file_name=cpu_max_file.name
+                cpu_max_file_name=cpu_max_file.name,
             )
             == 2.0
         )
@@ -686,9 +686,9 @@ def test_detect_docker_cpus():
                 cpu_quota_file_name="nope",
                 cpu_period_file_name="give_up",
                 cpuset_file_name="lose_hope",
-                cpu_max_file_name=cpu_max_file.name
+                cpu_max_file_name=cpu_max_file.name,
             )
-            == None
+            is None
         )
 
 
