@@ -41,6 +41,7 @@ def build_slateq_model_and_distribution(
     Returns:
         Tuple consisting of 1) Q-model and 2) an action distribution class.
     """
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model = SlateQTorchModel(
         obs_space,
         action_space,
@@ -48,7 +49,7 @@ def build_slateq_model_and_distribution(
         model_config=config["model"],
         name="slateq_model",
         fcnet_hiddens_per_candidate=config["fcnet_hiddens_per_candidate"],
-    )
+    ).to(device)
 
     policy.target_model = SlateQTorchModel(
         obs_space,
@@ -57,7 +58,7 @@ def build_slateq_model_and_distribution(
         model_config=config["model"],
         name="target_slateq_model",
         fcnet_hiddens_per_candidate=config["fcnet_hiddens_per_candidate"],
-    )
+    ).to(device)
 
     return model, TorchCategorical
 
@@ -154,7 +155,7 @@ def build_slateq_losses(
 
     clicked = torch.sum(click_indicator, dim=1)
     mask_clicked_slates = clicked > 0
-    clicked_indices = torch.arange(batch_size)
+    clicked_indices = torch.arange(batch_size).to(mask_clicked_slates.device)
     clicked_indices = torch.masked_select(clicked_indices, mask_clicked_slates)
     # Clicked_indices is a vector and torch.gather selects the batch dimension.
     q_clicked = torch.gather(replay_click_q, 0, clicked_indices)
@@ -289,15 +290,15 @@ def action_distribution_fn(
     q_values = model.get_q_values(user_obs, doc_obs)
 
     per_slate_q_values = get_per_slate_q_values(
-        policy, score_no_click, scores, q_values
+        policy, scores, score_no_click, q_values
     )
     if not hasattr(model, "slates"):
         model.slates = policy.slates
     return per_slate_q_values, TorchCategorical, []
 
 
-def get_per_slate_q_values(policy, score_no_click, scores, q_values):
-    indices = policy.slates_indices
+def get_per_slate_q_values(policy, scores, score_no_click, q_values):
+    indices = policy.slates_indices.to(scores.device)
     A, S = policy.slates.shape
     slate_q_values = torch.take_along_dim(scores * q_values, indices, dim=1).reshape(
         [-1, A, S]
@@ -320,7 +321,9 @@ def score_documents(
         torch.multiply(user_obs.unsqueeze(1), torch.stack(doc_obs, dim=1)), dim=2
     )
     # Compile a constant no-click score tensor.
-    score_no_click = torch.full(size=[user_obs.shape[0], 1], fill_value=no_click_score)
+    # Make sure it lives on the same device as scores_per_candidate.
+    score_no_click = torch.full(
+        size=[user_obs.shape[0], 1], fill_value=no_click_score).to(scores_per_candidate.device)
     # Concatenate click and no-click scores.
     all_scores = torch.cat([scores_per_candidate, score_no_click], dim=1)
 
@@ -356,8 +359,9 @@ def setup_early(policy, obs_space, action_space, config):
 
     # Store all possible slates only once in policy object.
     policy.slates = slates.long()
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     # [1, AxS] Useful for torch.take_along_dim()
-    policy.slates_indices = policy.slates.reshape(-1).unsqueeze(0)
+    policy.slates_indices = policy.slates.reshape(-1).unsqueeze(0).to(device)
 
 
 def optimizer_fn(
