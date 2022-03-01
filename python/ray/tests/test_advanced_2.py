@@ -38,7 +38,7 @@ def test_resource_constraints(shutdown_only):
         ):
             break
 
-    time_buffer = 2
+    time_buffer = 5
 
     # At most 10 copies of this can run at once.
     @ray.remote(num_cpus=1)
