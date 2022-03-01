@@ -57,9 +57,7 @@ def log_failed_request(response: requests.models.Response, address: str):
     default=r"{}",
     required=False,
     type=str,
-    help=(
-        "Runtime environment dictionary to pass into ray.init. Defaults to empty."
-    ),
+    help=("Runtime environment dictionary to pass into ray.init. Defaults to empty."),
 )
 def cli(address, namespace, runtime_env_json):
     ray.init(
