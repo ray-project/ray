@@ -143,7 +143,7 @@ Stage Fusion Optimization
 
 To avoid unnecessary data movement in the distributed setting, Dataset pipelines will *fuse* compatible stages (i.e., stages with the same compute strategy and resource specifications). Read and map-like stages are always fused if possible. All-to-all dataset transformations such as ``random_shuffle`` can be fused with earlier map-like stages, but not later stages.
 
-All of the following optimizations are enabled by default for Dataset pipelines. For Datasets, only read stages are fused. This is since non-pipelined Datasets are eagerly executed.
+All of the following optimizations are enabled by default for Dataset pipelines. For Datasets, only read stages are fused. This is since non-pipelined Datasets are eagerly executed except for their initial read stage.
 
 .. code-block:: python
 
