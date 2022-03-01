@@ -120,7 +120,9 @@ class TestTrainer(unittest.TestCase):
                 def _has_policy(w):
                     return w.get_policy("p0") is not None
 
-                self.assertTrue(all(test.evaluation_workers.foreach_worker(_has_policy)))
+                self.assertTrue(
+                    all(test.evaluation_workers.foreach_worker(_has_policy))
+                )
 
                 # Make sure trainer can continue training the restored policy.
                 pol0 = test.get_policy("p0")
