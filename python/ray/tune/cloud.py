@@ -1,6 +1,7 @@
 import os
 import shutil
 import tempfile
+import warnings
 from typing import Optional
 
 from ray import logger
@@ -372,6 +373,11 @@ class TrialCheckpoint(MultiLocationCheckpoint, _TrialCheckpoint):
         local_path: Optional[str] = None,
         overwrite: bool = False,
     ) -> str:
+        warnings.warn(
+            "`checkpoint.download()` is deprecated and will be removed in "
+            "the future. Please use `checkpoint.to_directory()` instead.",
+            DeprecationWarning,
+        )
         return _TrialCheckpoint.download(self, cloud_path, local_path, overwrite)
 
     def upload(
@@ -380,7 +386,18 @@ class TrialCheckpoint(MultiLocationCheckpoint, _TrialCheckpoint):
         local_path: Optional[str] = None,
         clean_before: bool = False,
     ):
+        warnings.warn(
+            "`checkpoint.upload()` is deprecated and will be removed in "
+            "the future. Please use `checkpoint.to_uri()` instead.",
+            DeprecationWarning,
+        )
         return _TrialCheckpoint.upload(self, cloud_path, local_path, clean_before)
 
     def save(self, path: Optional[str] = None, force_download: bool = False):
+        warnings.warn(
+            "`checkpoint.save()` is deprecated and will be removed in "
+            "the future. Please use `checkpoint.to_directory()` or"
+            "`checkpoint.to_uri()` instead.",
+            DeprecationWarning,
+        )
         return _TrialCheckpoint.save(self, path, force_download)
