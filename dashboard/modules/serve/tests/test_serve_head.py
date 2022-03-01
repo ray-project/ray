@@ -109,7 +109,7 @@ def test_put_get_success(ray_start_stop):
         assert get_response.status_code == 200
 
         with open(three_deployments, "r") as f:
-            response_deployments = json.loads(get_response.json())["deployments"]
+            response_deployments = get_response.json()["deployments"]
             expected_deployments = json.load(f)["deployments"]
             assert deployments_match(
                 response_deployments,
@@ -133,7 +133,7 @@ def test_put_get_success(ray_start_stop):
         assert get_response.status_code == 200
 
         with open(two_deployments, "r") as f:
-            response_deployments = json.loads(get_response.json())["deployments"]
+            response_deployments = get_response.json()["deployments"]
             expected_deployments = json.load(f)["deployments"]
             assert deployments_match(
                 response_deployments,
@@ -176,7 +176,7 @@ def test_delete_success(ray_start_stop):
 
         # Make sure no deployments exist
         get_response = requests.get(GET_OR_PUT_URL, timeout=30)
-        assert len(json.loads(get_response.json())["deployments"]) == 0
+        assert len(get_response.json()["deployments"]) == 0
 
 
 def test_get_status_info(ray_start_stop):
@@ -215,7 +215,7 @@ def test_get_status_info(ray_start_stop):
     status_response = requests.get(STATUS_URL, timeout=30)
     assert status_response.status_code == 200
 
-    statuses = json.loads(status_response.json())["statuses"]
+    statuses = status_response.json()["statuses"]
     assert len(statuses) == len(deployments)
     expected_deployment_names = {deployment["name"] for deployment in deployments}
     for deployment_status in statuses:

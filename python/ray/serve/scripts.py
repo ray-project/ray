@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 import json
+import yaml
 import os
-
+import requests
 import click
 
 import ray
@@ -14,6 +15,19 @@ from ray.serve.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
 )
+from ray.dashboard.modules.serve.schema import ServeApplicationSchema
+from ray.autoscaler._private.cli_logger import cli_logger
+
+
+def log_failed_request(response: requests.models.Response, address: str):
+    error_message = (
+        f"\nRequest to address {address} failed. Got response status code "
+        f"{response.status_code} with the following message:"
+        f"\n\n{response.text}"
+    )
+    cli_logger.newline()
+    cli_logger.error(error_message)
+    cli_logger.newline()
 
 
 @click.group(help="[EXPERIMENTAL] CLI for managing Serve instances on a Ray cluster.")
@@ -114,9 +128,70 @@ class may or may not be decorated with ``@serve.deployment``.
     type=str,
     help="JSON string for the deployments options",
 )
-def deploy(deployment: str, options_json: str):
+def create_deployment(deployment: str, options_json: str):
     deployment_cls = import_attr(deployment)
     if not isinstance(deployment_cls, Deployment):
         deployment_cls = serve.deployment(deployment_cls)
     options = json.loads(options_json)
     deployment_cls.options(**options).deploy()
+
+
+@cli.command(
+    help="""
+    [Experimental] Deploy a YAML configuration file via REST API to
+    your Serve cluster.
+    """,
+    hidden=True,
+)
+@click.argument("config_file_name")
+@click.option(
+    "--address",
+    "-a",
+    default=os.environ.get("RAY_ADDRESS", "http://localhost:8265"),
+    required=False,
+    type=str,
+    help='Address of the Ray dashboard to query. For example, "http://localhost:8265".',
+)
+def deploy(config_file_name: str, address: str):
+    full_address_path = f"{address}/api/serve/deployments/"
+
+    with open(config_file_name, "r") as config_file:
+        config = yaml.safe_load(config_file)
+
+    # Generate a schema using the config to ensure its format is valid
+    ServeApplicationSchema.parse_obj(config)
+
+    response = requests.put(full_address_path, json=config)
+
+    if response.status_code == 200:
+        cli_logger.newline()
+        cli_logger.success(
+            "\nSent deploy request successfully!\n "
+            "* Use `serve status` to check your deployments' statuses.\n "
+            "* Use `serve info` to see your running Serve "
+            "application's configuration.\n"
+        )
+        cli_logger.newline()
+    else:
+        log_failed_request(response, address)
+
+
+@cli.command(
+    help="[Experimental] Get info about your Serve application's config.",
+    hidden=True,
+)
+@click.option(
+    "--address",
+    "-a",
+    default=os.environ.get("RAY_ADDRESS", "http://localhost:8265"),
+    required=False,
+    type=str,
+    help='Address of the Ray dashboard to query. For example, "http://localhost:8265".',
+)
+def info(address: str):
+    full_address_path = f"{address}/api/serve/deployments/"
+    response = requests.get(full_address_path)
+    if response.status_code == 200:
+        print(json.dumps(response.json(), indent=4))
+    else:
+        log_failed_request(response, address)

@@ -10,7 +10,9 @@ import ray
 from ray.dashboard.modules.serve.schema import (
     RayActorOptionsSchema,
     DeploymentSchema,
+    DeploymentStatusSchema,
     ServeApplicationSchema,
+    ServeApplicationStatusSchema,
     deployment_to_schema,
     schema_to_deployment,
     serve_application_to_schema,
@@ -100,6 +102,27 @@ class TestRayActorOptionsSchema:
         }
 
         RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+
+    def test_extra_fields_invalid_ray_actor_options(self):
+        # Undefined fields should be forbidden in the schema
+
+        ray_actor_options_schema = {
+            "runtime_env": None,
+            "num_cpus": None,
+            "num_gpus": None,
+            "memory": None,
+            "object_store_memory": None,
+            "resources": None,
+            "accelerator_type": None,
+        }
+
+        # Schema should be createable with valid fields
+        RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+
+        # Schema should raise error when a nonspecified field is included
+        ray_actor_options_schema["fake_field"] = None
+        with pytest.raises(ValidationError):
+            RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
 
 
 class TestDeploymentSchema:
@@ -281,12 +304,23 @@ class TestDeploymentSchema:
         with pytest.raises(ValueError):
             DeploymentSchema.parse_obj(deployment_schema)
 
+    def test_extra_fields_invalid_deployment_schema(self):
+        # Undefined fields should be forbidden in the schema
+
+        deployment_schema = self.get_minimal_deployment_schema()
+
+        # Schema should be createable with valid fields
+        DeploymentSchema.parse_obj(deployment_schema)
+
+        # Schema should raise error when a nonspecified field is included
+        deployment_schema["fake_field"] = None
+        with pytest.raises(ValidationError):
+            DeploymentSchema.parse_obj(deployment_schema)
+
 
 class TestServeApplicationSchema:
-    def test_valid_serve_application_schema(self):
-        # Ensure a valid ServeApplicationSchema can be generated
-
-        serve_application_schema = {
+    def get_valid_serve_application_schema(self):
+        return {
             "deployments": [
                 {
                     "name": "shallow",
@@ -350,20 +384,40 @@ class TestServeApplicationSchema:
             ]
         }
 
+    def test_valid_serve_application_schema(self):
+        # Ensure a valid ServeApplicationSchema can be generated
+
+        serve_application_schema = self.get_valid_serve_application_schema()
         ServeApplicationSchema.parse_obj(serve_application_schema)
+
+    def test_extra_fields_invalid_serve_application_schema(self):
+        # Undefined fields should be forbidden in the schema
+
+        serve_application_schema = self.get_valid_serve_application_schema()
+
+        # Schema should be createable with valid fields
+        ServeApplicationSchema.parse_obj(serve_application_schema)
+
+        # Schema should raise error when a nonspecified field is included
+        serve_application_schema["fake_field"] = None
+        with pytest.raises(ValidationError):
+            ServeApplicationSchema.parse_obj(serve_application_schema)
 
 
 class TestDeploymentStatusSchema:
-    def test_valid_deployment_status_schema(self):
-        # Ensure valid DeploymentStatusSchemas can be generated
-
-        deployment_status_schemas = {
+    def get_valid_deployment_status_schema(self):
+        return {
             "deployment_1": DeploymentStatusInfo(DeploymentStatus.HEALTHY),
             "deployment_2": DeploymentStatusInfo(
                 DeploymentStatus.UNHEALTHY, "This is an unhealthy deployment."
             ),
             "deployment_3": DeploymentStatusInfo(DeploymentStatus.UPDATING),
         }
+
+    def test_valid_deployment_status_schema(self):
+        # Ensure valid DeploymentStatusSchemas can be generated
+
+        deployment_status_schemas = self.get_valid_deployment_status_schema()
 
         for name, status_info in deployment_status_schemas.items():
             status_info_to_schema(name, status_info)
@@ -378,12 +432,31 @@ class TestDeploymentStatusSchema:
         with pytest.raises(ValidationError):
             status_info_to_schema("deployment name", status_info)
 
+    def test_extra_fields_invalid_deployment_status_schema(self):
+        # Undefined fields should be forbidden in the schema
+
+        deployment_status_schemas = self.get_valid_deployment_status_schema()
+
+        # Schema should be createable with valid fields
+        for name, status_info in deployment_status_schemas.items():
+            DeploymentStatusSchema(
+                name=name, status=status_info.status, message=status_info.message
+            )
+
+        # Schema should raise error when a nonspecified field is included
+        for name, status_info in deployment_status_schemas.items():
+            with pytest.raises(ValidationError):
+                DeploymentStatusSchema(
+                    name=name,
+                    status=status_info.status,
+                    message=status_info.message,
+                    fake_field=None,
+                )
+
 
 class TestServeApplicationStatusSchema:
-    def test_valid_serve_application_status_schema(self):
-        # Ensure a valid ServeApplicationStatusSchema can be generated
-
-        serve_application_status_schema = {
+    def get_valid_serve_application_status_schema(self):
+        return {
             "deployment_1": {"status": "HEALTHY", "message": ""},
             "deployment_2": {
                 "status": "UNHEALTHY",
@@ -391,7 +464,31 @@ class TestServeApplicationStatusSchema:
             },
         }
 
+    def test_valid_serve_application_status_schema(self):
+        # Ensure a valid ServeApplicationStatusSchema can be generated
+
+        serve_application_status_schema = (
+            self.get_valid_serve_application_status_schema()
+        )
         serve_application_status_to_schema(serve_application_status_schema)
+
+    def test_extra_fields_invalid_serve_application_status_schema(self):
+        # Undefined fields should be forbidden in the schema
+
+        serve_application_status_schema = (
+            self.get_valid_serve_application_status_schema()
+        )
+
+        # Schema should be createable with valid fields
+        serve_application_status_to_schema(serve_application_status_schema)
+
+        # Schema should raise error when a nonspecified field is included
+        with pytest.raises(ValidationError):
+            statuses = [
+                status_info_to_schema(name, status_info)
+                for name, status_info in serve_application_status_schema.items()
+            ]
+            ServeApplicationStatusSchema(statuses=statuses, fake_field=None)
 
 
 # This function is defined globally to be accessible via import path

@@ -126,15 +126,9 @@ class ClusterResourceScheduler {
   ///
   ///  \param resource_request: Resource request to be scheduled.
   ///  \param node_id: ID of the node.
-  ///  \param resources: Node's resources. (Note: Technically, this is
-  ///     redundant, as we can get the node's resources from nodes_
-  ///     using node_id. However, typically both node_id and resources
-  ///     are available when we call this function, and this way we avoid
-  ///     a map find call which could be expensive.)
   ///
   ///  \return: Whether the request can be scheduled.
-  bool IsSchedulable(const ResourceRequest &resource_request, int64_t node_id,
-                     const NodeResources &resources) const;
+  bool IsSchedulable(const ResourceRequest &resource_request, int64_t node_id) const;
 
   ///  Find a node in the cluster on which we can schedule a given resource request.
   ///  In hybrid mode, see `scheduling_policy.h` for a description of the policy.
@@ -173,8 +167,6 @@ class ClusterResourceScheduler {
   StringIdMap string_to_int_map_;
   /// Identifier of local node.
   int64_t local_node_id_;
-  /// Internally maintained random number generator.
-  std::mt19937_64 gen_;
   /// Gcs client. It's not owned by this class.
   gcs::GcsClient *gcs_client_;
   /// Resources of local node.
