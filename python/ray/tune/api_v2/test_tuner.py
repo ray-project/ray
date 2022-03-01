@@ -10,7 +10,6 @@ from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.trainable import Trainable
 from ray.tune.integration.xgboost import TuneReportCheckpointCallback
 from ray.tune.api_v2.convertible_to_trainable import ConvertibleToTrainable
-from ray.tune.api_v2.dataset_wrapper import DatasetWrapper
 from ray.tune.api_v2.tuner import Tuner
 
 from dataclasses import dataclass
@@ -25,7 +24,6 @@ import os
 import pickle
 import tarfile
 import tempfile
-import time
 from typing import Any, Optional
 
 import xgboost
@@ -611,14 +609,14 @@ def test_xgboost_tuner(fail_after_finished: int = 0):
             "cpus_per_actor": 2,
             "gpus_per_actor": 0,
         },
-        # "preprocessor": tune.grid_search([prep_v1, prep_v2]),
-        "preprocessor": prep_v1,
+        "preprocessor": tune.grid_search([prep_v1, prep_v2]),
+        # "preprocessor": prep_v1,
         # "datasets": {
         #     "train_dataset": tune.grid_search([DatasetWrapper(gen_dataset_func(), gen_dataset_func), DatasetWrapper(gen_dataset_func(), gen_dataset_func)]),
         # },
-        # "datasets": {
-        #     "train_dataset": tune.grid_search([dataset_v1, dataset_v2]),
-        # },
+        "datasets": {
+            "train_dataset": tune.grid_search([gen_dataset_func(), gen_dataset_func()]),
+        },
         "params": {
             "objective": "binary:logistic",
             "tree_method": "approx",
@@ -672,7 +670,7 @@ def test_xgboost_resume():
 
 
 if __name__ == "__main__":
-    ray.init("ray://127.0.0.1:10001")
-    # ray.init()
-    # test_xgboost_tuner()
-    test_xgboost_resume()
+    # ray.init("ray://127.0.0.1:10001")
+    ray.init()
+    test_xgboost_tuner()
+    # test_xgboost_resume()

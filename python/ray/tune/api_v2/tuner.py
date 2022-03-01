@@ -1,24 +1,20 @@
-from collections import deque
 import copy
 import os
 from typing import Any, Callable, Dict, List, Optional, Type, Union
-from xgboost_ray.tune import TuneReportCheckpointCallback, _get_tune_resources
 
 import ray
-from ray import ObjectRef
 import ray.cloudpickle as pickle
 from ray.data import Dataset
 
 from ray.tune import TuneError
 from ray.tune.api_v2.convertible_to_trainable import ConvertibleToTrainable
-from ray.tune.api_v2.dataset_wrapper import DatasetWrapper, dataset_registry
 from ray.tune.callback import Callback
 from ray.tune.trainable import Trainable
 from ray.tune.tune import run
+from ray.util.client.common import ClientActorHandle
 
 TUNER_INTERNAL = "tuner_internal"
 DATASETS = "datasets"
-# TRAIN_DATASET = "train_dataset"
 
 
 class TunerInternal:
@@ -41,7 +37,6 @@ class TunerInternal:
     ):
         # Start from restore
         if restore_path:
-            self.is_restored = True
             trainable_ckpt = os.path.join(restore_path, "trainable.pkl")
             with open(trainable_ckpt, "rb") as fp:
                 trainable = pickle.load(fp)
@@ -49,7 +44,9 @@ class TunerInternal:
             tuner_ckpt = os.path.join(restore_path, "tuner.pkl")
             with open(tuner_ckpt, "rb") as fp:
                 tuner = pickle.load(fp)
+                self.__dict__.update(tuner.__dict__)
 
+            self.is_restored = True
             self.trainable = trainable
             self.experiment_path = restore_path
             return
@@ -85,31 +82,26 @@ class TunerInternal:
             for k, v in dataset_dict.items():
                 if isinstance(v, dict):
                     _helper(v)
-                elif isinstance(v, DatasetWrapper):
-                    dataset_dict[k] = dataset_registry.register_if_needed(
-                        dataset_dict[k]
-                    )
+                elif isinstance(v, Dataset):
+                    dataset_dict[k].fully_executed()
                 elif isinstance(v, int):
                     # CV settings
                     pass
                 elif isinstance(v, list):
-                    if len(v) == 0 or isinstance(v[0], int):  # CV
-                        break
-                    else:
-                        if not isinstance(v[0], DatasetWrapper):
-                            raise TuneError("Unexpected dataset param passed in.")
-                        _new_list = [
-                            dataset_registry.register_if_needed(v_item) for v_item in v
-                        ]
-                        dataset_dict[k] = _new_list
+                    if not all([isinstance(v_item, int) for v_item in v]) and not all(
+                        [isinstance(v_item, Dataset) for v_item in v]
+                    ):
+                        raise TuneError("Wrongly formed dataset param passed in Tune!")
+                    if len(v) > 0 and isinstance(v[0], Dataset):
+                        [v_item.fully_executed() for v_item in v]
                 else:
                     # We shouldn't be expecting anything here.
                     raise TuneError("Unexpected dataset param passed in.")
 
         if DATASETS in self.param_space:
             ds = self.param_space[DATASETS]
-            if isinstance(ds, DatasetWrapper):
-                self.param_space[DATASETS] = dataset_registry.register_if_needed(ds)
+            if isinstance(ds, Dataset):
+                ds.fully_executed()
             elif isinstance(ds, dict):
                 _helper(ds)
             elif isinstance(ds, int):
@@ -203,7 +195,7 @@ class Tuner:
     """
 
     _local_tuner: Optional[TunerInternal]  # Only used in none ray client mode.
-    # _remote_tuner: Optional[ObjectRef]  # Only used in ray client mode.
+    _remote_tuner: Optional[ClientActorHandle]  # Only used in ray client mode.
 
     def __init__(self, **kwargs):
         self._is_ray_client = ray.util.client.ray.is_connected()

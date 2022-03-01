@@ -16,7 +16,7 @@ import ray.cloudpickle as cloudpickle
 from ray.data import Dataset
 from ray.exceptions import RayActorError
 from ray.tune import TuneError
-from ray.tune.api_v2.dataset_wrapper import DatasetWrapper, dataset_registry
+from ray.tune.api_v2.dataset_registry import dataset_registry
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
@@ -47,13 +47,13 @@ DEBUG_PRINT_INTERVAL = 5
 logger = logging.getLogger(__name__)
 
 
-def _serialize_dataset(dataset_input):
+def _serialize_dataset(dataset_input) -> Union[bytes, Dict]:
     """Before checkpointing a trial to disk."""
 
     def _helper(dataset_dict: dict):
         for k, v in dataset_dict.items():
             if isinstance(v, Dataset):
-                dataset_dict[k] = dataset_registry.get_id(v)
+                dataset_dict[k] = v.serialize_out_of_band()
             elif isinstance(v, int):
                 pass
             elif isinstance(v, dict):
@@ -63,7 +63,7 @@ def _serialize_dataset(dataset_input):
 
     _dataset = copy.deepcopy(dataset_input)
     if isinstance(_dataset, Dataset):
-        return dataset_registry.get_id(_dataset)
+        return _dataset.serialize_out_of_band()
     elif isinstance(_dataset, dict):
         _helper(_dataset)
         return _dataset
@@ -71,12 +71,12 @@ def _serialize_dataset(dataset_input):
         raise TuneError("Unexpected dataset config before serialization!!")
 
 
-def _deserialize_dataset(dataset_input):
+def _deserialize_dataset(dataset_input) -> Union[Dataset, Dict]:
     def _helper(dataset_dict: dict):
         for k, v in dataset_dict.items():
-            if isinstance(v, str):
-
-                dataset_dict[k] = dataset_registry.get_dataset(v)
+            if isinstance(v, bytes):
+                dataset_dict[k] = Dataset.deserialize_out_of_band(dataset_input)
+                dataset_registry.execute_if_needed(dataset_dict[k])
             elif isinstance(v, int):
                 pass
             elif isinstance(v, dict):
@@ -84,8 +84,10 @@ def _deserialize_dataset(dataset_input):
             else:
                 raise TuneError("Unexpected dataset config upon restoring!!")
 
-    if isinstance(dataset_input, str):
-        return dataset_registry.get_dataset(dataset_input)
+    if isinstance(dataset_input, bytes):
+        des_dataset_input = Dataset.deserialize_out_of_band(dataset_input)
+        dataset_registry.execute_if_needed(des_dataset_input)
+        return des_dataset_input
     elif isinstance(dataset_input, dict):
         _helper(dataset_input)
         return dataset_input
@@ -852,6 +854,7 @@ class Trial:
             else None
         )
         state = self.__dict__.copy()
+
         # Have to do one more layer of copy.
         state["config"] = state["config"].copy()
         # swap out state["config"]["datasets"].
