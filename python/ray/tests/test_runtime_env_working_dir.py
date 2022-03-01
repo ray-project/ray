@@ -57,7 +57,14 @@ async def test_create_delete_size_equal(tmpdir, ray_start_regular):
 
 
 @pytest.mark.parametrize(
-    "option", ["failure", "working_dir", "working_dir_zip", "py_modules"]
+    "option",
+    [
+        "failure",
+        "working_dir",
+        "working_dir_zip",
+        "py_modules",
+        "working_dir_and_py_modules",
+    ],
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
@@ -94,6 +101,20 @@ def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
                     ]
                 },
             )
+        elif option == "working_dir_and_py_modules":
+            ray.init(
+                address,
+                runtime_env={
+                    "working_dir": tmp_working_dir,
+                    "py_modules": [
+                        str(Path(tmp_working_dir) / "test_module"),
+                        Path(os.path.dirname(__file__))
+                        / "pip_install_test-0.5-py3-none-any.whl",
+                    ],
+                },
+            )
+        else:
+            raise ValueError(f"unexpected pytest parameter {option}")
 
     call_ray_init()
 
@@ -119,7 +140,7 @@ def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
     else:
         assert ray.get(test_import.remote()) == 1
 
-    if option == "py_modules":
+    if option in {"py_modules", "working_dir_and_py_modules"}:
 
         @ray.remote
         def test_py_modules_whl():
@@ -142,7 +163,7 @@ def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
     if option == "failure":
         with pytest.raises(FileNotFoundError):
             ray.get(test_read.remote())
-    elif option == "working_dir":
+    elif option in {"working_dir_and_py_modules", "working_dir"}:
         assert ray.get(test_read.remote()) == "world"
 
     reinit()
@@ -163,7 +184,7 @@ def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
             assert ray.get(a.test_import.remote()) == 1
         with pytest.raises(FileNotFoundError):
             assert ray.get(a.test_read.remote()) == "world"
-    elif option == "working_dir":
+    elif option in {"working_dir_and_py_modules", "working_dir"}:
         assert ray.get(a.test_import.remote()) == 1
         assert ray.get(a.test_read.remote()) == "world"
 

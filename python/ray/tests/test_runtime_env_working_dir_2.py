@@ -290,7 +290,16 @@ class TestGC:
         elif option == "py_modules":
             if source != S3_PACKAGE_URI:
                 source = str(Path(source) / "test_module")
-            ray.init(address, runtime_env={"py_modules": [source]})
+            ray.init(
+                address,
+                runtime_env={
+                    "py_modules": [
+                        source,
+                        Path(os.path.dirname(__file__))
+                        / "pip_install_test-0.5-py3-none-any.whl",
+                    ]
+                },
+            )
 
         # For a local directory, the package should be in the GCS.
         # For an S3 URI, there should be nothing in the GCS because
@@ -305,6 +314,8 @@ class TestGC:
             def test_import(self):
                 import test_module
 
+                if option == "py_modules":
+                    import pip_install_test  # noqa: F401
                 test_module.one()
 
         num_cpus = int(ray.available_resources()["CPU"])
@@ -344,12 +355,22 @@ class TestGC:
             def check(self):
                 import test_module
 
+                if option == "py_modules":
+                    import pip_install_test  # noqa: F401
                 test_module.one()
 
         if option == "working_dir":
             A = A.options(runtime_env={"working_dir": S3_PACKAGE_URI})
         else:
-            A = A.options(runtime_env={"py_modules": [S3_PACKAGE_URI]})
+            A = A.options(
+                runtime_env={
+                    "py_modules": [
+                        S3_PACKAGE_URI,
+                        Path(os.path.dirname(__file__))
+                        / "pip_install_test-0.5-py3-none-any.whl",
+                    ]
+                }
+            )
 
         num_cpus = int(ray.available_resources()["CPU"])
         actors = [A.remote() for _ in range(num_cpus)]
@@ -375,7 +396,17 @@ class TestGC:
         elif option == "py_modules":
             if source != S3_PACKAGE_URI:
                 source = str(Path(source) / "test_module")
-            ray.init(address, namespace="test", runtime_env={"py_modules": [source]})
+            ray.init(
+                address,
+                namespace="test",
+                runtime_env={
+                    "py_modules": [
+                        source,
+                        Path(os.path.dirname(__file__))
+                        / "pip_install_test-0.5-py3-none-any.whl",
+                    ]
+                },
+            )
 
         # For a local directory, the package should be in the GCS.
         # For an S3 URI, there should be nothing in the GCS because
@@ -390,6 +421,8 @@ class TestGC:
             def test_import(self):
                 import test_module
 
+                if option == "py_modules":
+                    import pip_install_test  # noqa: F401
                 test_module.one()
 
         a = A.options(name="test", lifetime="detached").remote()

@@ -1,10 +1,10 @@
 import logging
 import os
-import shutil
 import tempfile
 from types import ModuleType
 from typing import Any, Dict, List, Optional
 from pathlib import Path
+from zipfile import ZipFile
 import asyncio
 
 from ray.experimental.internal_kv import _internal_kv_initialized
@@ -15,9 +15,11 @@ from ray._private.runtime_env.packaging import (
     delete_package,
     get_local_dir_from_uri,
     get_uri_for_directory,
+    get_uri_for_package,
     parse_uri,
     Protocol,
     upload_package_if_needed,
+    upload_package_to_gcs,
 )
 from ray._private.utils import get_directory_size_bytes
 from ray._private.utils import try_to_create_directory
@@ -95,16 +97,12 @@ def upload_py_modules_if_needed(
                     logger=logger,
                 )
             elif Path(module_path).suffix == ".whl":
-                with tempfile.TemporaryDirectory() as temp_dir:
-                    shutil.copy2(module_path, temp_dir)
-                    module_uri = get_uri_for_directory(temp_dir)
-                    upload_package_if_needed(
-                        module_uri,
-                        scratch_dir,
-                        module_path,
-                        include_parent_dir=True,
-                        logger=logger,
-                    )
+                module_uri = get_uri_for_package(Path(module_path))
+                with tempfile.TemporaryDirectory() as tmpdirname:
+                    local_zip_path = os.path.join(tmpdirname, "user_wheel.zip")
+                    with ZipFile(local_zip_path, "w") as zip_handler:
+                        zip_handler.write(module_path, Path(module_path).name)
+                    upload_package_to_gcs(module_uri, Path(local_zip_path).read_bytes())
             else:
                 raise ValueError(
                     "py_modules entry must be a directory or a .whl file; "
@@ -173,7 +171,8 @@ class PyModulesManager:
                 exit_code, output = exec_cmd_stream_to_logger(pip_install_cmd, logger)
                 if exit_code != 0:
                     raise RuntimeError(
-                        f"Failed to install python requirements to {module_dir}:\n{output}"
+                        "Failed to install python requirements "
+                        f"to {module_dir}:\n{output}"
                     )
 
             return get_directory_size_bytes(module_dir)
