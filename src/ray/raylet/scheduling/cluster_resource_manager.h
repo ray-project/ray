@@ -86,6 +86,17 @@ class ClusterResourceManager {
   bool SubtractNodeAvailableResources(int64_t node_id,
                                       const ResourceRequest &resource_request);
 
+  /// Check if we have sufficient resource to fullfill resource request for an given node.
+  ///
+  /// \param node_id: the id of the node.
+  /// \param resource_request: the request we want to check.
+  /// \param ignore_object_store_memory_requirement: if true, we will ignore the
+  ///  require_object_store_memory in the resource_request.
+  bool HasSufficientResource(int64_t node_id, const ResourceRequest &resource_request,
+                             bool ignore_object_store_memory_requirement) const;
+
+  void DebugString(std::stringstream &buffer) const;
+
  private:
   friend class ClusterResourceScheduler;
 
@@ -118,6 +129,7 @@ class ClusterResourceManager {
   StringIdMap &string_to_int_map_;
 
   friend class ClusterResourceSchedulerTest;
+  friend struct ClusterResourceManagerTest;
   friend class raylet::ClusterTaskManagerTest;
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingDeleteClusterNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingModifyClusterNodeTest);

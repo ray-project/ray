@@ -258,4 +258,56 @@ bool ClusterResourceManager::SubtractNodeAvailableResources(
 
   return true;
 }
+
+bool ClusterResourceManager::HasSufficientResource(
+    int64_t node_id, const ResourceRequest &resource_request,
+    bool ignore_object_store_memory_requirement) const {
+  auto it = nodes_.find(node_id);
+  if (it == nodes_.end()) {
+    return false;
+  }
+
+  const NodeResources &resources = it->second.GetLocalView();
+
+  if (!ignore_object_store_memory_requirement && resources.object_pulls_queued &&
+      resource_request.requires_object_store_memory) {
+    return false;
+  }
+
+  // First, check predefined resources.
+  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    if (resource_request.predefined_resources[i] >
+        resources.predefined_resources[i].available) {
+      // A hard constraint has been violated, so we cannot schedule
+      // this resource request.
+      return false;
+    }
+  }
+
+  // Now check custom resources.
+  for (const auto &task_req_custom_resource : resource_request.custom_resources) {
+    auto it = resources.custom_resources.find(task_req_custom_resource.first);
+
+    if (it == resources.custom_resources.end()) {
+      // Requested resource doesn't exist at this node.
+      // This is a hard constraint so cannot schedule this resource request.
+      return false;
+    } else {
+      if (task_req_custom_resource.second > it->second.available) {
+        // Resource constraint is violated.
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+void ClusterResourceManager::DebugString(std::stringstream &buffer) const {
+  for (auto &node : GetResourceView()) {
+    buffer << "node id: " << node.first;
+    buffer << node.second.GetLocalView().DebugString(string_to_int_map_);
+  }
+}
+
 }  // namespace ray
