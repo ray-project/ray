@@ -317,7 +317,7 @@ def logs(address: Optional[str], job_id: str, follow: bool):
     else:
         # Set no_format to True because the logs may have unescaped "{" and "}"
         # and the CLILogger calls str.format().
-        cli_logger.print(client.get_job_logs(job_id), end="", _no_format=True)
+        cli_logger.print(client.get_job_logs(job_id), end="", no_format=True)
 
 
 @job_cli_group.command()
@@ -342,4 +342,4 @@ def list(address: Optional[str]):
     client = _get_sdk_client(address)
     # Set no_format to True because the logs may have unescaped "{" and "}"
     # and the CLILogger calls str.format().
-    cli_logger.print(pprint.pformat(client.list_jobs()), _no_format=True)
+    cli_logger.print(pprint.pformat(client.list_jobs()), no_format=True)
