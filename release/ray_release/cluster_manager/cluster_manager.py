@@ -34,6 +34,13 @@ class ClusterManager(abc.ABC):
 
     def set_cluster_env(self, cluster_env: Dict[str, Any]):
         self.cluster_env = cluster_env
+
+        # Add flags for redisless Ray
+        self.cluster_env.setdefault("env_vars", {})
+        self.cluster_env["env_vars"]["MATCH_AUTOSCALER_AND_RAY_IMAGES"] = "1"
+        self.cluster_env["env_vars"]["RAY_bootstrap_with_gcs"] = "1"
+        self.cluster_env["env_vars"]["RAY_gcs_storage"] = "memory"
+
         self.cluster_env_name = (
             f"{self.project_name}_{self.project_id[4:8]}"
             f"__env__{self.test_name}__"

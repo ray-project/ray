@@ -171,7 +171,7 @@ def create_replica_wrapper(
             query = Query(request_args, request_kwargs, request_metadata)
             return await self.replica.handle_request(query)
 
-        async def is_allocated(self):
+        async def is_allocated(self) -> str:
             """poke the replica to check whether it's alive.
 
             When calling this method on an ActorHandle, it will complete as
@@ -179,8 +179,10 @@ def create_replica_wrapper(
             detect when a replica has been allocated a worker slot.
             At this time, the replica can transition from PENDING_ALLOCATION
             to PENDING_INITIALIZATION startup state.
+
+            Return the NodeID of this replica
             """
-            pass
+            return ray.get_runtime_context().node_id
 
         async def reconfigure(
             self, user_config: Optional[Any] = None

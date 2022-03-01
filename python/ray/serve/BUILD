@@ -283,6 +283,14 @@ py_test(
     deps = [":serve_lib"],
 )
 
+py_test(
+    name = "test_cross_langauge",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
 # Runs test_api and test_failure with injected failures in the controller.
 py_test(
    name = "test_controller_crashes",

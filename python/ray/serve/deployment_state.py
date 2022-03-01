@@ -1,5 +1,6 @@
 from collections import defaultdict, OrderedDict
 from enum import Enum
+import itertools
 import json
 import math
 import os
@@ -27,12 +28,15 @@ from ray.serve.constants import (
     MAX_NUM_DELETED_DEPLOYMENTS,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
 )
+from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.utils import (
+    JavaActorHandleProxy,
     format_actor_name,
     get_random_letters,
     logger,
+    msgpack_serialize,
 )
 from ray.serve.version import DeploymentVersion, VersionedReplica
 from ray.util.placement_group import PlacementGroup
@@ -88,6 +92,34 @@ def print_verbose_scaling_log():
     logger.error(f"Scaling information\n{json.dumps(debug_info, indent=2)}")
 
 
+def rank_replicas_for_stopping(
+    all_available_replicas: List["DeploymentReplica"],
+) -> List["DeploymentReplica"]:
+    """Prioritize replicas that have fewest copies on a node.
+
+    This algorithm helps to scale down more intelligently because it can
+    relinquish node faster. Note that this algorithm doesn't consider other
+    deployments or other actors on the same node. See more at
+    https://github.com/ray-project/ray/issues/20599.
+    """
+    # Categorize replicas to node they belong to.
+    node_to_replicas = defaultdict(list)
+    for replica in all_available_replicas:
+        node_to_replicas[replica.actor_node_id].append(replica)
+
+    # Replicas not in running state might have _node_id = None.
+    # We will prioritize those first.
+    node_to_replicas.setdefault(None, [])
+    return list(
+        itertools.chain.from_iterable(
+            [
+                node_to_replicas.pop(None),
+            ]
+            + sorted(node_to_replicas.values(), key=lambda lst: len(lst))
+        )
+    )
+
+
 class ActorReplicaWrapper:
     """Wraps a Ray actor for a deployment replica.
 
@@ -132,8 +164,13 @@ class ActorReplicaWrapper:
         self._actor_handle: ActorHandle = None
         self._placement_group: PlacementGroup = None
 
+        # Populated after replica is allocated.
+        self._node_id: str = None
+
         # Populated in self.stop().
         self._graceful_shutdown_ref: ObjectRef = None
+
+        self._is_cross_language = False
 
     @property
     def replica_tag(self) -> str:
@@ -153,11 +190,20 @@ class ActorReplicaWrapper:
             except ValueError:
                 self._actor_handle = None
 
+        if self._is_cross_language:
+            assert isinstance(self._actor_handle, JavaActorHandleProxy)
+            return self._actor_handle.handle
+
         return self._actor_handle
 
     @property
     def max_concurrent_queries(self) -> int:
         return self._max_concurrent_queries
+
+    @property
+    def node_id(self) -> Optional[str]:
+        """Returns the node id of the actor, None if not placed."""
+        return self._node_id
 
     def _check_obj_ref_ready(self, obj_ref: ObjectRef) -> bool:
         ready, _ = ray.wait([obj_ref], timeout=0)
@@ -228,14 +274,8 @@ class ActorReplicaWrapper:
             f"{self.deployment_name} replica={self.replica_tag}"
         )
 
-        self._actor_handle = deployment_info.actor_def.options(
-            name=self._actor_name,
-            namespace=self._controller_namespace,
-            lifetime="detached" if self._detached else None,
-            placement_group=self._placement_group,
-            placement_group_capture_child_tasks=False,
-            **deployment_info.replica_config.ray_actor_options,
-        ).remote(
+        actor_def = deployment_info.actor_def
+        init_args = (
             self.deployment_name,
             self.replica_tag,
             deployment_info.replica_config.init_args,
@@ -246,6 +286,43 @@ class ActorReplicaWrapper:
             self._controller_namespace,
             self._detached,
         )
+        # TODO(simon): unify the constructor arguments across language
+        if (
+            deployment_info.deployment_config.deployment_language
+            == DeploymentLanguage.JAVA
+        ):
+            self._is_cross_language = True
+            actor_def = ray.java_actor_class("io.ray.serve.RayServeWrappedReplica")
+            init_args = (
+                # String deploymentName,
+                self.deployment_name,
+                # String replicaTag,
+                self.replica_tag,
+                # String deploymentDef
+                deployment_info.replica_config.func_or_class_name,
+                # byte[] initArgsbytes
+                msgpack_serialize(deployment_info.replica_config.init_args),
+                # byte[] deploymentConfigBytes,
+                deployment_info.deployment_config.to_proto_bytes(),
+                # byte[] deploymentVersionBytes,
+                version.to_proto().SerializeToString(),
+                # String controllerName
+                self._controller_name,
+            )
+
+        self._actor_handle = actor_def.options(
+            name=self._actor_name,
+            namespace=self._controller_namespace,
+            lifetime="detached" if self._detached else None,
+            placement_group=self._placement_group,
+            placement_group_capture_child_tasks=False,
+            **deployment_info.replica_config.ray_actor_options,
+        ).remote(*init_args)
+
+        # Perform auto method name translation for java handles.
+        # See https://github.com/ray-project/ray/issues/21474
+        if self._is_cross_language:
+            self._actor_handle = JavaActorHandleProxy(self._actor_handle)
 
         self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(
@@ -323,6 +400,10 @@ class ActorReplicaWrapper:
             return ReplicaStartupStatus.PENDING_INITIALIZATION, None
         else:
             try:
+                # TODO(simon): fully implement reconfigure for Java replicas.
+                if self._is_cross_language:
+                    return ReplicaStartupStatus.SUCCEEDED, None
+
                 deployment_config, version = ray.get(self._ready_obj_ref)
                 self._max_concurrent_queries = deployment_config.max_concurrent_queries
                 self._graceful_shutdown_timeout_s = (
@@ -330,6 +411,7 @@ class ActorReplicaWrapper:
                 )
                 self._health_check_period_s = deployment_config.health_check_period_s
                 self._health_check_timeout_s = deployment_config.health_check_timeout_s
+                self._node_id = ray.get(self._allocated_obj_ref)
             except Exception:
                 logger.exception(f"Exception in deployment '{self._deployment_name}'")
                 return ReplicaStartupStatus.FAILED, None
@@ -564,6 +646,11 @@ class DeploymentReplica(VersionedReplica):
     def actor_handle(self) -> ActorHandle:
         return self._actor.actor_handle
 
+    @property
+    def actor_node_id(self) -> Optional[str]:
+        """Returns the node id of the actor, None if not placed."""
+        return self._actor.node_id
+
     def start(self, deployment_info: DeploymentInfo, version: DeploymentVersion):
         """
         Start a new actor for current DeploymentReplica instance.
@@ -709,6 +796,9 @@ class ReplicaStateContainer:
         exclude_version: Optional[DeploymentVersion] = None,
         states: Optional[List[ReplicaState]] = None,
         max_replicas: Optional[int] = math.inf,
+        ranking_function: Optional[
+            Callable[[List["DeploymentReplica"]], List["DeploymentReplica"]]
+        ] = None,
     ) -> List[VersionedReplica]:
         """Get and remove all replicas of the given states.
 
@@ -722,6 +812,9 @@ class ReplicaStateContainer:
                 are considered.
             max_replicas (int): max number of replicas to return. If not
                 specified, will pop all replicas matching the criteria.
+            ranking_function (callable): optional function to sort the replicas
+                within each state before they are truncated to max_replicas and
+                returned.
         """
         if states is None:
             states = ALL_REPLICA_STATES
@@ -733,7 +826,12 @@ class ReplicaStateContainer:
         for state in states:
             popped = []
             remaining = []
-            for replica in self._replicas[state]:
+
+            replicas_to_process = self._replicas[state]
+            if ranking_function:
+                replicas_to_process = ranking_function(replicas_to_process)
+
+            for replica in replicas_to_process:
                 if len(replicas) + len(popped) == max_replicas:
                     remaining.append(replica)
                 elif exclude_version is not None and replica.version == exclude_version:
@@ -1022,6 +1120,7 @@ class DeploymentState:
             exclude_version=self._target_version,
             states=[ReplicaState.STARTING, ReplicaState.RUNNING],
             max_replicas=max_to_stop,
+            ranking_function=rank_replicas_for_stopping,
         )
 
         replicas_stopped = False
@@ -1134,6 +1233,7 @@ class DeploymentState:
                     ReplicaState.RUNNING,
                 ],
                 max_replicas=to_remove,
+                ranking_function=rank_replicas_for_stopping,
             )
 
             for replica in replicas_to_stop:
