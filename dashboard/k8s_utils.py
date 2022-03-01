@@ -51,8 +51,8 @@ def cpu_percent():
         last_cpu_usage = cpu_usage
         # Computed percentage might be slightly above 100%.
         return min(cpu_percent, 100.0)
-    except Exception as e:
-        logger.exception("Error computing CPU usage of Ray Kubernetes pod.", e)
+    except Exception:
+        logger.exception("Error computing CPU usage of Ray Kubernetes pod.")
         return 0.0
 
 

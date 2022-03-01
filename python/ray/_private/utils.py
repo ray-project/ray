@@ -478,8 +478,8 @@ def _get_docker_cpus(
                 cpu_period_file_name, "r"
             ) as period_file:
                 cpu_quota = float(quota_file.read()) / float(period_file.read())
-        except Exception as e:
-            logger.exception("Unexpected error calculating docker cpu quota.", e)
+        except Exception:
+            logger.exception("Unexpected error calculating docker cpu quota.")
     # Look at cpu.max for cgroups v2
     elif os.path.exists(cpu_max_file_name):
         try:
@@ -490,8 +490,8 @@ def _get_docker_cpus(
             else:
                 # quota_str is "max" meaning the cpu quota is unset
                 cpu_quota = None
-        except Exception as e:
-            logger.exception("Unexpected error calculating docker cpu quota.", e)
+        except Exception:
+            logger.exception("Unexpected error calculating docker cpu quota.")
     if (cpu_quota is not None) and (cpu_quota < 0):
         cpu_quota = None
     elif cpu_quota == 0:
@@ -513,7 +513,7 @@ def _get_docker_cpus(
                         cpu_ids.append(int(num_or_range))
                 cpuset_num = len(cpu_ids)
         except Exception as e:
-            logger.exception("Unexpected error calculating docker cpuset ids.", e)
+            logger.exception("Unexpected error calculating docker cpuset ids.")
     # Possible to-do: Parse cgroups v2's cpuset.cpus.effective for the number
     # of accessible CPUs.
 
