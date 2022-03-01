@@ -92,6 +92,12 @@ class GcsActor {
 
     task_spec_ = std::make_unique<rpc::TaskSpec>(task_spec);
 
+    // Set required resources.
+    auto resource_map =
+        GetCreationTaskSpecification().GetRequiredResources().GetResourceMap();
+    actor_table_data_.mutable_required_resources()->insert(resource_map.begin(),
+                                                           resource_map.end());
+
     const auto &function_descriptor = task_spec.function_descriptor();
     switch (function_descriptor.function_descriptor_case()) {
     case rpc::FunctionDescriptor::FunctionDescriptorCase::kJavaFunctionDescriptor:

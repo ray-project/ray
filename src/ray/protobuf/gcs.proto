@@ -160,6 +160,8 @@ message ActorTableData {
   bool execute_out_of_order = 26;
   // The max number of pending actor calls.
   int32 max_pending_calls = 27;
+  // Quantities of the different resources required by this actor.
+  map<string, double> required_resources = 28;
 }
 
 message ErrorTableData {
