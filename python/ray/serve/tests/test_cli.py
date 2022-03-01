@@ -6,11 +6,11 @@ import sys
 import signal
 import pytest
 import requests
-import time
 
 import ray
 from ray import serve
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
+from ray._private.test_utils import wait_for_condition
 from ray.dashboard.optional_utils import RAY_INTERNAL_DASHBOARD_NAMESPACE
 
 
@@ -231,35 +231,40 @@ def parrot(request):
 def test_run(ray_start_stop):
     # Deploys valid config file and import path via serve run
 
+    def ping_endpoint(endpoint: str, params: str = ""):
+        try:
+            return requests.get(f"http://localhost:8000/{endpoint}{params}").text
+        except requests.exceptions.ConnectionError:
+            return "connection error"
+
     # Deploy via config file
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
     )
-    p = subprocess.Popen(["serve", "run", "-c", config_file_name])
-    time.sleep(4)
 
-    assert requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
-    assert requests.get("http://localhost:8000/one").text == "2"
+    p = subprocess.Popen(["serve", "run", "-c", config_file_name])
+    wait_for_condition(lambda: ping_endpoint("one") == "2", timeout=5)
+    wait_for_condition(
+        lambda: ping_endpoint("shallow") == "Hello shallow world!", timeout=5
+    )
 
     p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
-    time.sleep(4)
-
-    with pytest.raises(requests.exceptions.ConnectionError):
-        requests.get("http://localhost:8000/shallow")
-    with pytest.raises(requests.exceptions.ConnectionError):
-        requests.get("http://localhost:8000/one")
+    wait_for_condition(lambda: ping_endpoint("one") == "connection error", timeout=5)
+    wait_for_condition(
+        lambda: ping_endpoint("shallow") == "connection error", timeout=10
+    )
 
     # Deploy via import path
     p = subprocess.Popen(["serve", "run", "-i", "ray.serve.tests.test_cli.parrot"])
-    time.sleep(4)
-
-    assert requests.get("http://localhost:8000/parrot?sound=squawk").text == "squawk"
+    wait_for_condition(
+        lambda: ping_endpoint("parrot", params="?sound=squawk") == "squawk", timeout=5
+    )
 
     p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
-    time.sleep(4)
-
-    with pytest.raises(requests.exceptions.ConnectionError):
-        requests.get("http://localhost:8000/parrot?sound=squawk")
+    wait_for_condition(
+        lambda: ping_endpoint("parrot", params="?sound=squawk") == "connection error",
+        timeout=5,
+    )
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
