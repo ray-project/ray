@@ -29,40 +29,59 @@ class RedisStoreClient : public StoreClient {
   explicit RedisStoreClient(std::shared_ptr<RedisClient> redis_client)
       : redis_client_(std::move(redis_client)) {}
 
-  Status AsyncPut(const std::string &table_name, const std::string &key,
-                  const std::string &data, const StatusCallback &callback) override;
+  Status AsyncPut(
+      const std::string &table_name,
+      const std::string &key,
+      const std::string &data,
+      const StatusCallback &callback) override;
 
-  Status AsyncPutWithIndex(const std::string &table_name, const std::string &key,
-                           const std::string &index_key, const std::string &data,
-                           const StatusCallback &callback) override;
+  Status AsyncPutWithIndex(
+      const std::string &table_name,
+      const std::string &key,
+      const std::string &index_key,
+      const std::string &data,
+      const StatusCallback &callback) override;
 
-  Status AsyncGet(const std::string &table_name, const std::string &key,
-                  const OptionalItemCallback<std::string> &callback) override;
+  Status AsyncGet(
+      const std::string &table_name,
+      const std::string &key,
+      const OptionalItemCallback<std::string> &callback) override;
 
-  Status AsyncGetByIndex(const std::string &table_name, const std::string &index_key,
-                         const MapCallback<std::string, std::string> &callback) override;
+  Status AsyncGetByIndex(
+      const std::string &table_name,
+      const std::string &index_key,
+      const MapCallback<std::string, std::string> &callback) override;
 
-  Status AsyncGetAll(const std::string &table_name,
-                     const MapCallback<std::string, std::string> &callback) override;
+  Status AsyncGetAll(
+      const std::string &table_name,
+      const MapCallback<std::string, std::string> &callback) override;
 
-  Status AsyncDelete(const std::string &table_name, const std::string &key,
-                     const StatusCallback &callback) override;
+  Status AsyncDelete(
+      const std::string &table_name,
+      const std::string &key,
+      const StatusCallback &callback) override;
 
-  Status AsyncDeleteWithIndex(const std::string &table_name, const std::string &key,
-                              const std::string &index_key,
-                              const StatusCallback &callback) override;
+  Status AsyncDeleteWithIndex(
+      const std::string &table_name,
+      const std::string &key,
+      const std::string &index_key,
+      const StatusCallback &callback) override;
 
-  Status AsyncBatchDelete(const std::string &table_name,
-                          const std::vector<std::string> &keys,
-                          const StatusCallback &callback) override;
+  Status AsyncBatchDelete(
+      const std::string &table_name,
+      const std::vector<std::string> &keys,
+      const StatusCallback &callback) override;
 
-  Status AsyncBatchDeleteWithIndex(const std::string &table_name,
-                                   const std::vector<std::string> &keys,
-                                   const std::vector<std::string> &index_keys,
-                                   const StatusCallback &callback) override;
+  Status AsyncBatchDeleteWithIndex(
+      const std::string &table_name,
+      const std::vector<std::string> &keys,
+      const std::vector<std::string> &index_keys,
+      const StatusCallback &callback) override;
 
-  Status AsyncDeleteByIndex(const std::string &table_name, const std::string &index_key,
-                            const StatusCallback &callback) override;
+  Status AsyncDeleteByIndex(
+      const std::string &table_name,
+      const std::string &index_key,
+      const StatusCallback &callback) override;
 
   int GetNextJobID() override;
 
@@ -74,21 +93,26 @@ class RedisStoreClient : public StoreClient {
   /// Otherwise it will disturb the status of the RedisScanner.
   class RedisScanner {
    public:
-    explicit RedisScanner(std::shared_ptr<RedisClient> redis_client,
-                          const std::string &table_name);
+    explicit RedisScanner(
+        std::shared_ptr<RedisClient> redis_client,
+        const std::string &table_name);
 
-    Status ScanKeysAndValues(const std::string &match_pattern,
-                             const MapCallback<std::string, std::string> &callback);
+    Status ScanKeysAndValues(
+        const std::string &match_pattern,
+        const MapCallback<std::string, std::string> &callback);
 
-    Status ScanKeys(const std::string &match_pattern,
-                    const MultiItemCallback<std::string> &callback);
+    Status ScanKeys(
+        const std::string &match_pattern,
+        const MultiItemCallback<std::string> &callback);
 
    private:
     void Scan(const std::string &match_pattern, const StatusCallback &callback);
 
-    void OnScanCallback(const std::string &match_pattern, size_t shard_index,
-                        const std::shared_ptr<CallbackReply> &reply,
-                        const StatusCallback &callback);
+    void OnScanCallback(
+        const std::string &match_pattern,
+        size_t shard_index,
+        const std::shared_ptr<CallbackReply> &reply,
+        const StatusCallback &callback);
 
     std::string table_name_;
 
@@ -108,18 +132,21 @@ class RedisStoreClient : public StoreClient {
     std::shared_ptr<RedisClient> redis_client_;
   };
 
-  Status DoPut(const std::string &key, const std::string &data,
-               const StatusCallback &callback);
+  Status
+  DoPut(const std::string &key, const std::string &data, const StatusCallback &callback);
 
-  Status DeleteByKeys(const std::vector<std::string> &keys,
-                      const StatusCallback &callback);
+  Status DeleteByKeys(
+      const std::vector<std::string> &keys,
+      const StatusCallback &callback);
 
   /// The return value is a map, whose key is the shard and the value is a list of batch
   /// operations.
   static std::unordered_map<RedisContext *, std::list<std::vector<std::string>>>
-  GenCommandsByShards(const std::shared_ptr<RedisClient> &redis_client,
-                      const std::string &command, const std::vector<std::string> &keys,
-                      int *count);
+  GenCommandsByShards(
+      const std::shared_ptr<RedisClient> &redis_client,
+      const std::string &command,
+      const std::vector<std::string> &keys,
+      int *count);
 
   /// The separator is used when building redis key.
   static std::string table_separator_;
@@ -127,25 +154,31 @@ class RedisStoreClient : public StoreClient {
 
   static std::string GenRedisKey(const std::string &table_name, const std::string &key);
 
-  static std::string GenRedisKey(const std::string &table_name, const std::string &key,
-                                 const std::string &index_key);
+  static std::string GenRedisKey(
+      const std::string &table_name,
+      const std::string &key,
+      const std::string &index_key);
 
   static std::string GenRedisMatchPattern(const std::string &table_name);
 
-  static std::string GenRedisMatchPattern(const std::string &table_name,
-                                          const std::string &index_key);
+  static std::string GenRedisMatchPattern(
+      const std::string &table_name,
+      const std::string &index_key);
 
-  static std::string GetKeyFromRedisKey(const std::string &redis_key,
-                                        const std::string &table_name);
+  static std::string GetKeyFromRedisKey(
+      const std::string &redis_key,
+      const std::string &table_name);
 
-  static std::string GetKeyFromRedisKey(const std::string &redis_key,
-                                        const std::string &table_name,
-                                        const std::string &index_key);
+  static std::string GetKeyFromRedisKey(
+      const std::string &redis_key,
+      const std::string &table_name,
+      const std::string &index_key);
 
-  static Status MGetValues(std::shared_ptr<RedisClient> redis_client,
-                           const std::string &table_name,
-                           const std::vector<std::string> &keys,
-                           const MapCallback<std::string, std::string> &callback);
+  static Status MGetValues(
+      std::shared_ptr<RedisClient> redis_client,
+      const std::string &table_name,
+      const std::vector<std::string> &keys,
+      const MapCallback<std::string, std::string> &callback);
 
   std::shared_ptr<RedisClient> redis_client_;
 };

@@ -26,40 +26,45 @@ extern "C" {
 #endif
 
 JNIEXPORT jint JNICALL
-Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentTaskType(JNIEnv *env,
-                                                                         jclass) {
+Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentTaskType(
+    JNIEnv *env,
+    jclass) {
   auto task_spec = CoreWorkerProcess::GetCoreWorker().GetWorkerContext().GetCurrentTask();
   RAY_CHECK(task_spec) << "Current task is not set.";
   return static_cast<int>(task_spec->GetMessage().type());
 }
 
 JNIEXPORT jobject JNICALL
-Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentTaskId(JNIEnv *env,
-                                                                       jclass) {
+Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentTaskId(
+    JNIEnv *env,
+    jclass) {
   const TaskID &task_id =
       CoreWorkerProcess::GetCoreWorker().GetWorkerContext().GetCurrentTaskID();
   return IdToJavaByteBuffer<TaskID>(env, task_id);
 }
 
 JNIEXPORT jobject JNICALL
-Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentJobId(JNIEnv *env,
-                                                                      jclass) {
+Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentJobId(
+    JNIEnv *env,
+    jclass) {
   const auto &job_id =
       CoreWorkerProcess::GetCoreWorker().GetWorkerContext().GetCurrentJobID();
   return IdToJavaByteBuffer<JobID>(env, job_id);
 }
 
 JNIEXPORT jobject JNICALL
-Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentWorkerId(JNIEnv *env,
-                                                                         jclass) {
+Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentWorkerId(
+    JNIEnv *env,
+    jclass) {
   const auto &worker_id =
       CoreWorkerProcess::GetCoreWorker().GetWorkerContext().GetWorkerID();
   return IdToJavaByteBuffer<WorkerID>(env, worker_id);
 }
 
 JNIEXPORT jobject JNICALL
-Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentActorId(JNIEnv *env,
-                                                                        jclass) {
+Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentActorId(
+    JNIEnv *env,
+    jclass) {
   const auto &actor_id =
       CoreWorkerProcess::GetCoreWorker().GetWorkerContext().GetCurrentActorID();
   return IdToJavaByteBuffer<ActorID>(env, actor_id);

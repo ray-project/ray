@@ -24,8 +24,8 @@ namespace internal {
 
 class NativeObjectStore : public ObjectStore {
  public:
-  std::vector<bool> Wait(const std::vector<ObjectID> &ids, int num_objects,
-                         int timeout_ms);
+  std::vector<bool>
+  Wait(const std::vector<ObjectID> &ids, int num_objects, int timeout_ms);
 
   void AddLocalReference(const std::string &id);
 
@@ -38,10 +38,12 @@ class NativeObjectStore : public ObjectStore {
 
   std::shared_ptr<msgpack::sbuffer> GetRaw(const ObjectID &object_id, int timeout_ms);
 
-  std::vector<std::shared_ptr<msgpack::sbuffer>> GetRaw(const std::vector<ObjectID> &ids,
-                                                        int timeout_ms);
-  void CheckException(const std::string &meta_str,
-                      const std::shared_ptr<Buffer> &data_buffer);
+  std::vector<std::shared_ptr<msgpack::sbuffer>> GetRaw(
+      const std::vector<ObjectID> &ids,
+      int timeout_ms);
+  void CheckException(
+      const std::string &meta_str,
+      const std::shared_ptr<Buffer> &data_buffer);
 };
 
 }  // namespace internal

@@ -18,9 +18,10 @@ namespace ray {
 namespace core {
 
 struct TaskState {
-  TaskState(TaskSpecification t,
-            absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> deps,
-            std::vector<ActorID> actor_ids)
+  TaskState(
+      TaskSpecification t,
+      absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> deps,
+      std::vector<ActorID> actor_ids)
       : task(t),
         local_dependencies(std::move(deps)),
         actor_dependencies(std::move(actor_ids)),
@@ -43,7 +44,8 @@ struct TaskState {
 
 void InlineDependencies(
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> dependencies,
-    TaskSpecification &task, std::vector<ObjectID> *inlined_dependency_ids,
+    TaskSpecification &task,
+    std::vector<ObjectID> *inlined_dependency_ids,
     std::vector<ObjectID> *contained_ids) {
   auto &msg = task.GetMutableMessage();
   size_t found = 0;
@@ -81,7 +83,8 @@ void InlineDependencies(
 }
 
 void LocalDependencyResolver::ResolveDependencies(
-    TaskSpecification &task, std::function<void(Status)> on_complete) {
+    TaskSpecification &task,
+    std::function<void(Status)> on_complete) {
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> local_dependencies;
   std::vector<ActorID> actor_dependences;
   for (size_t i = 0; i < task.NumArgs(); i++) {
@@ -105,41 +108,50 @@ void LocalDependencyResolver::ResolveDependencies(
 
   // This is deleted when the last dependency fetch callback finishes.
   std::shared_ptr<TaskState> state = std::make_shared<TaskState>(
-      task, std::move(local_dependencies), std::move(actor_dependences));
+      task,
+      std::move(local_dependencies),
+      std::move(actor_dependences));
   num_pending_ += 1;
 
   for (const auto &it : state->local_dependencies) {
     const ObjectID &obj_id = it.first;
-    in_memory_store_.GetAsync(obj_id, [this, state, obj_id,
-                                       on_complete](std::shared_ptr<RayObject> obj) {
-      RAY_CHECK(obj != nullptr);
-      bool complete = false;
-      std::vector<ObjectID> inlined_dependency_ids;
-      std::vector<ObjectID> contained_ids;
-      {
-        absl::MutexLock lock(&mu_);
-        state->local_dependencies[obj_id] = std::move(obj);
-        if (--state->obj_dependencies_remaining == 0) {
-          InlineDependencies(state->local_dependencies, state->task,
-                             &inlined_dependency_ids, &contained_ids);
-          if (state->actor_dependencies_remaining == 0) {
-            complete = true;
-            num_pending_ -= 1;
+    in_memory_store_.GetAsync(
+        obj_id,
+        [this, state, obj_id, on_complete](std::shared_ptr<RayObject> obj) {
+          RAY_CHECK(obj != nullptr);
+          bool complete = false;
+          std::vector<ObjectID> inlined_dependency_ids;
+          std::vector<ObjectID> contained_ids;
+          {
+            absl::MutexLock lock(&mu_);
+            state->local_dependencies[obj_id] = std::move(obj);
+            if (--state->obj_dependencies_remaining == 0) {
+              InlineDependencies(
+                  state->local_dependencies,
+                  state->task,
+                  &inlined_dependency_ids,
+                  &contained_ids);
+              if (state->actor_dependencies_remaining == 0) {
+                complete = true;
+                num_pending_ -= 1;
+              }
+            }
           }
-        }
-      }
-      if (inlined_dependency_ids.size() > 0) {
-        task_finisher_.OnTaskDependenciesInlined(inlined_dependency_ids, contained_ids);
-      }
-      if (complete) {
-        on_complete(state->status);
-      }
-    });
+          if (inlined_dependency_ids.size() > 0) {
+            task_finisher_.OnTaskDependenciesInlined(
+                inlined_dependency_ids,
+                contained_ids);
+          }
+          if (complete) {
+            on_complete(state->status);
+          }
+        });
   }
 
   for (const auto &actor_id : state->actor_dependencies) {
     actor_creator_.AsyncWaitForActorRegisterFinish(
-        actor_id, [this, state, on_complete](const Status &status) {
+        actor_id,
+        [this, state, on_complete](const Status &status) {
           if (!status.ok()) {
             state->status = status;
           }

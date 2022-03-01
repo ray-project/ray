@@ -22,8 +22,9 @@ bool DependencyManager::CheckObjectLocal(const ObjectID &object_id) const {
   return local_objects_.count(object_id) == 1;
 }
 
-bool DependencyManager::GetOwnerAddress(const ObjectID &object_id,
-                                        rpc::Address *owner_address) const {
+bool DependencyManager::GetOwnerAddress(
+    const ObjectID &object_id,
+    rpc::Address *owner_address) const {
   auto obj = required_objects_.find(object_id);
   if (obj == required_objects_.end()) {
     return false;
@@ -49,8 +50,9 @@ void DependencyManager::RemoveObjectIfNotNeeded(
 }
 
 absl::flat_hash_map<ObjectID, DependencyManager::ObjectDependencies>::iterator
-DependencyManager::GetOrInsertRequiredObject(const ObjectID &object_id,
-                                             const rpc::ObjectReference &ref) {
+DependencyManager::GetOrInsertRequiredObject(
+    const ObjectID &object_id,
+    const rpc::ObjectReference &ref) {
   auto it = required_objects_.find(object_id);
   if (it == required_objects_.end()) {
     it = required_objects_.emplace(object_id, ref).first;
@@ -167,7 +169,8 @@ void DependencyManager::CancelGetRequest(const WorkerID &worker_id) {
 
 /// Request dependencies for a queued task.
 bool DependencyManager::RequestTaskDependencies(
-    const TaskID &task_id, const std::vector<rpc::ObjectReference> &required_objects) {
+    const TaskID &task_id,
+    const std::vector<rpc::ObjectReference> &required_objects) {
   RAY_LOG(DEBUG) << "Adding dependencies for task " << task_id
                  << ". Required objects length: " << required_objects.size();
 

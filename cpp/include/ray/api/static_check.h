@@ -55,9 +55,10 @@ struct is_invocable
 
 template <typename Function, typename... Args>
 inline std::enable_if_t<!std::is_member_function_pointer<Function>::value> StaticCheck() {
-  static_assert(is_invocable<Function, typename FilterArgType<Args>::type...>::value ||
-                    is_invocable<Function, Args...>::value,
-                "arguments not match");
+  static_assert(
+      is_invocable<Function, typename FilterArgType<Args>::type...>::value ||
+          is_invocable<Function, Args...>::value,
+      "arguments not match");
 }
 
 template <typename Function, typename... Args>

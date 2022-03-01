@@ -52,10 +52,12 @@ static absl::Mutex stats_mutex;
 /// \param global_tags[in] Tags that will be appended to all metrics in this process.
 /// \param metrics_agent_port[in] The port to export metrics at each node.
 /// \param exporter_to_use[in] The exporter client you will use for this process' metrics.
-static inline void Init(const TagsType &global_tags, const int metrics_agent_port,
-                        std::shared_ptr<MetricExporterClient> exporter_to_use = nullptr,
-                        int64_t metrics_report_batch_size =
-                            RayConfig::instance().metrics_report_batch_size()) {
+static inline void Init(
+    const TagsType &global_tags,
+    const int metrics_agent_port,
+    std::shared_ptr<MetricExporterClient> exporter_to_use = nullptr,
+    int64_t metrics_report_batch_size =
+        RayConfig::instance().metrics_report_batch_size()) {
   absl::MutexLock lock(&stats_mutex);
   if (StatsConfig::instance().IsInitialized()) {
     RAY_CHECK(metrics_io_service_pool != nullptr);
@@ -88,14 +90,17 @@ static inline void Init(const TagsType &global_tags, const int metrics_agent_por
 
   // Set interval.
   StatsConfig::instance().SetReportInterval(absl::Milliseconds(std::max(
-      RayConfig::instance().metrics_report_interval_ms(), static_cast<uint64_t>(1000))));
-  StatsConfig::instance().SetHarvestInterval(
-      absl::Milliseconds(std::max(RayConfig::instance().metrics_report_interval_ms() / 2,
-                                  static_cast<uint64_t>(500))));
+      RayConfig::instance().metrics_report_interval_ms(),
+      static_cast<uint64_t>(1000))));
+  StatsConfig::instance().SetHarvestInterval(absl::Milliseconds(std::max(
+      RayConfig::instance().metrics_report_interval_ms() / 2,
+      static_cast<uint64_t>(500))));
 
   MetricPointExporter::Register(exporter, metrics_report_batch_size);
-  OpenCensusProtoExporter::Register(metrics_agent_port, (*metrics_io_service),
-                                    "127.0.0.1");
+  OpenCensusProtoExporter::Register(
+      metrics_agent_port,
+      (*metrics_io_service),
+      "127.0.0.1");
   opencensus::stats::StatsExporter::SetInterval(
       StatsConfig::instance().GetReportInterval());
   opencensus::stats::DeltaProducer::Get()->SetHarvestInterval(

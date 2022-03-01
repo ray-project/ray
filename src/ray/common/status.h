@@ -180,8 +180,9 @@ class RAY_EXPORT Status {
   }
 
   static Status CreationTaskError() {
-    return Status(StatusCode::CreationTaskError,
-                  "error raised in creation task, cause worker to exit");
+    return Status(
+        StatusCode::CreationTaskError,
+        "error raised in creation task, cause worker to exit");
   }
 
   static Status NotFound(const std::string &msg) {

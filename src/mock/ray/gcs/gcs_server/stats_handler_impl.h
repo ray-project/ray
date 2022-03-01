@@ -17,15 +17,20 @@ namespace rpc {
 
 class MockDefaultStatsHandler : public DefaultStatsHandler {
  public:
-  MOCK_METHOD(void, HandleAddProfileData,
-              (const AddProfileDataRequest &request, AddProfileDataReply *reply,
-               SendReplyCallback send_reply_callback),
-              (override));
-  MOCK_METHOD(void, HandleGetAllProfileInfo,
-              (const rpc::GetAllProfileInfoRequest &request,
-               rpc::GetAllProfileInfoReply *reply,
-               rpc::SendReplyCallback send_reply_callback),
-              (override));
+  MOCK_METHOD(
+      void,
+      HandleAddProfileData,
+      (const AddProfileDataRequest &request,
+       AddProfileDataReply *reply,
+       SendReplyCallback send_reply_callback),
+      (override));
+  MOCK_METHOD(
+      void,
+      HandleGetAllProfileInfo,
+      (const rpc::GetAllProfileInfoRequest &request,
+       rpc::GetAllProfileInfoReply *reply,
+       rpc::SendReplyCallback send_reply_callback),
+      (override));
 };
 
 }  // namespace rpc

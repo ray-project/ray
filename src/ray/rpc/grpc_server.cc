@@ -27,9 +27,12 @@
 namespace ray {
 namespace rpc {
 
-GrpcServer::GrpcServer(std::string name, const uint32_t port,
-                       bool listen_to_localhost_only, int num_threads,
-                       int64_t keepalive_time_ms)
+GrpcServer::GrpcServer(
+    std::string name,
+    const uint32_t port,
+    bool listen_to_localhost_only,
+    int num_threads,
+    int64_t keepalive_time_ms)
     : name_(std::move(name)),
       port_(port),
       listen_to_localhost_only_(listen_to_localhost_only),
@@ -41,20 +44,23 @@ GrpcServer::GrpcServer(std::string name, const uint32_t port,
 
 void GrpcServer::Run() {
   uint32_t specified_port = port_;
-  std::string server_address((listen_to_localhost_only_ ? "127.0.0.1:" : "0.0.0.0:") +
-                             std::to_string(port_));
+  std::string server_address(
+      (listen_to_localhost_only_ ? "127.0.0.1:" : "0.0.0.0:") + std::to_string(port_));
   grpc::ServerBuilder builder;
   // Disable the SO_REUSEPORT option. We don't need it in ray. If the option is enabled
   // (default behavior in grpc), we may see multiple workers listen on the same port and
   // the requests sent to this port may be handled by any of the workers.
   builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
-  builder.AddChannelArgument(GRPC_ARG_MAX_SEND_MESSAGE_LENGTH,
-                             RayConfig::instance().max_grpc_message_size());
-  builder.AddChannelArgument(GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH,
-                             RayConfig::instance().max_grpc_message_size());
+  builder.AddChannelArgument(
+      GRPC_ARG_MAX_SEND_MESSAGE_LENGTH,
+      RayConfig::instance().max_grpc_message_size());
+  builder.AddChannelArgument(
+      GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH,
+      RayConfig::instance().max_grpc_message_size());
   builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIME_MS, keepalive_time_ms_);
-  builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIMEOUT_MS,
-                             RayConfig::instance().grpc_keepalive_timeout_ms());
+  builder.AddChannelArgument(
+      GRPC_ARG_KEEPALIVE_TIMEOUT_MS,
+      RayConfig::instance().grpc_keepalive_timeout_ms());
   builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 0);
 
   if (RayConfig::instance().USE_TLS()) {

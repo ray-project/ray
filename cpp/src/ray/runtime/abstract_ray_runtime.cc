@@ -32,8 +32,9 @@ msgpack::sbuffer PackError(std::string error_msg) {
   msgpack::sbuffer sbuffer;
   msgpack::packer<msgpack::sbuffer> packer(sbuffer);
   packer.pack(msgpack::type::nil_t());
-  packer.pack(std::make_tuple((int)ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION,
-                              std::move(error_msg)));
+  packer.pack(std::make_tuple(
+      (int)ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION,
+      std::move(error_msg)));
 
   return sbuffer;
 }
@@ -76,13 +77,15 @@ void AbstractRayRuntime::DoShutdown() {
   }
 }
 
-void AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data,
-                             ObjectID *object_id) {
+void AbstractRayRuntime::Put(
+    std::shared_ptr<msgpack::sbuffer> data,
+    ObjectID *object_id) {
   object_store_->Put(data, object_id);
 }
 
-void AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data,
-                             const ObjectID &object_id) {
+void AbstractRayRuntime::Put(
+    std::shared_ptr<msgpack::sbuffer> data,
+    const ObjectID &object_id) {
   object_store_->Put(data, object_id);
 }
 
@@ -110,29 +113,37 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> AbstractRayRuntime::Get(
   return object_store_->Get(StringIDsToObjectIDs(ids), -1);
 }
 
-std::vector<bool> AbstractRayRuntime::Wait(const std::vector<std::string> &ids,
-                                           int num_objects, int timeout_ms) {
+std::vector<bool> AbstractRayRuntime::Wait(
+    const std::vector<std::string> &ids,
+    int num_objects,
+    int timeout_ms) {
   return object_store_->Wait(StringIDsToObjectIDs(ids), num_objects, timeout_ms);
 }
 
 std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
-    std::vector<ray::internal::TaskArg> &args, bool cross_lang) {
+    std::vector<ray::internal::TaskArg> &args,
+    bool cross_lang) {
   std::vector<std::unique_ptr<::ray::TaskArg>> ray_args;
   for (auto &arg : args) {
     std::unique_ptr<::ray::TaskArg> ray_arg = nullptr;
     if (arg.buf) {
       auto &buffer = *arg.buf;
       auto memory_buffer = std::make_shared<ray::LocalMemoryBuffer>(
-          reinterpret_cast<uint8_t *>(buffer.data()), buffer.size(), true);
+          reinterpret_cast<uint8_t *>(buffer.data()),
+          buffer.size(),
+          true);
       std::shared_ptr<Buffer> metadata = nullptr;
       if (cross_lang) {
         auto meta_str = arg.meta_str;
         metadata = std::make_shared<ray::LocalMemoryBuffer>(
             reinterpret_cast<uint8_t *>(const_cast<char *>(meta_str.data())),
-            meta_str.size(), true);
+            meta_str.size(),
+            true);
       }
       ray_arg = absl::make_unique<ray::TaskArgByValue>(std::make_shared<ray::RayObject>(
-          memory_buffer, metadata, std::vector<rpc::ObjectReference>()));
+          memory_buffer,
+          metadata,
+          std::vector<rpc::ObjectReference>()));
     } else {
       RAY_CHECK(arg.id);
       auto id = ObjectID::FromBinary(*arg.id);
@@ -141,8 +152,10 @@ std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
         auto &core_worker = CoreWorkerProcess::GetCoreWorker();
         owner_address = core_worker.GetOwnerAddress(id);
       }
-      ray_arg = absl::make_unique<ray::TaskArgByReference>(id, owner_address,
-                                                           /*call_site=*/"");
+      ray_arg = absl::make_unique<ray::TaskArgByReference>(
+          id,
+          owner_address,
+          /*call_site=*/"");
     }
     ray_args.push_back(std::move(ray_arg));
   }
@@ -150,10 +163,11 @@ std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
   return ray_args;
 }
 
-InvocationSpec BuildInvocationSpec1(TaskType task_type,
-                                    const RemoteFunctionHolder &remote_function_holder,
-                                    std::vector<ray::internal::TaskArg> &args,
-                                    const ActorID &actor) {
+InvocationSpec BuildInvocationSpec1(
+    TaskType task_type,
+    const RemoteFunctionHolder &remote_function_holder,
+    std::vector<ray::internal::TaskArg> &args,
+    const ActorID &actor) {
   InvocationSpec invocation_spec;
   invocation_spec.task_type = task_type;
   invocation_spec.remote_function_holder = remote_function_holder;
@@ -163,11 +177,15 @@ InvocationSpec BuildInvocationSpec1(TaskType task_type,
   return invocation_spec;
 }
 
-std::string AbstractRayRuntime::Call(const RemoteFunctionHolder &remote_function_holder,
-                                     std::vector<ray::internal::TaskArg> &args,
-                                     const CallOptions &task_options) {
+std::string AbstractRayRuntime::Call(
+    const RemoteFunctionHolder &remote_function_holder,
+    std::vector<ray::internal::TaskArg> &args,
+    const CallOptions &task_options) {
   auto invocation_spec = BuildInvocationSpec1(
-      TaskType::NORMAL_TASK, remote_function_holder, args, ActorID::Nil());
+      TaskType::NORMAL_TASK,
+      remote_function_holder,
+      args,
+      ActorID::Nil());
   return task_submitter_->SubmitTask(invocation_spec, task_options).Binary();
 }
 
@@ -176,13 +194,18 @@ std::string AbstractRayRuntime::CreateActor(
     std::vector<ray::internal::TaskArg> &args,
     const ActorCreationOptions &create_options) {
   auto invocation_spec = BuildInvocationSpec1(
-      TaskType::ACTOR_CREATION_TASK, remote_function_holder, args, ActorID::Nil());
+      TaskType::ACTOR_CREATION_TASK,
+      remote_function_holder,
+      args,
+      ActorID::Nil());
   return task_submitter_->CreateActor(invocation_spec, create_options).Binary();
 }
 
 std::string AbstractRayRuntime::CallActor(
-    const RemoteFunctionHolder &remote_function_holder, const std::string &actor,
-    std::vector<ray::internal::TaskArg> &args, const CallOptions &call_options) {
+    const RemoteFunctionHolder &remote_function_holder,
+    const std::string &actor,
+    std::vector<ray::internal::TaskArg> &args,
+    const CallOptions &call_options) {
   InvocationSpec invocation_spec{};
   if (remote_function_holder.lang_type == LangType::PYTHON) {
     const auto native_actor_handle = CoreWorkerProcess::GetCoreWorker().GetActorHandle(
@@ -192,11 +215,17 @@ std::string AbstractRayRuntime::CallActor(
     RemoteFunctionHolder func_holder = remote_function_holder;
     func_holder.module_name = typed_descriptor->ModuleName();
     func_holder.class_name = typed_descriptor->ClassName();
-    invocation_spec = BuildInvocationSpec1(TaskType::ACTOR_TASK, func_holder, args,
-                                           ActorID::FromBinary(actor));
+    invocation_spec = BuildInvocationSpec1(
+        TaskType::ACTOR_TASK,
+        func_holder,
+        args,
+        ActorID::FromBinary(actor));
   } else {
-    invocation_spec = BuildInvocationSpec1(TaskType::ACTOR_TASK, remote_function_holder,
-                                           args, ActorID::FromBinary(actor));
+    invocation_spec = BuildInvocationSpec1(
+        TaskType::ACTOR_TASK,
+        remote_function_holder,
+        args,
+        ActorID::FromBinary(actor));
   }
 
   return task_submitter_->SubmitActorTask(invocation_spec, call_options).Binary();
@@ -289,8 +318,9 @@ void AbstractRayRuntime::RemovePlacementGroup(const std::string &group_id) {
   return task_submitter_->RemovePlacementGroup(group_id);
 }
 
-bool AbstractRayRuntime::WaitPlacementGroupReady(const std::string &group_id,
-                                                 int timeout_seconds) {
+bool AbstractRayRuntime::WaitPlacementGroupReady(
+    const std::string &group_id,
+    int timeout_seconds) {
   return task_submitter_->WaitPlacementGroupReady(group_id, timeout_seconds);
 }
 
@@ -308,8 +338,10 @@ PlacementGroup AbstractRayRuntime::GeneratePlacementGroup(const std::string &str
     options.bundles.emplace_back(bundle);
   }
   options.strategy = PlacementStrategy(pg_table_data.strategy());
-  PlacementGroup group(pg_table_data.placement_group_id(), std::move(options),
-                       PlacementGroupState(pg_table_data.state()));
+  PlacementGroup group(
+      pg_table_data.placement_group_id(),
+      std::move(options),
+      PlacementGroupState(pg_table_data.state()));
   return group;
 }
 

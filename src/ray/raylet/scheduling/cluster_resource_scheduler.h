@@ -50,9 +50,10 @@ class ClusterResourceScheduler {
   /// \param local_node_id: ID of local node,
   /// \param local_node_resources: The total and the available resources associated
   /// with the local node.
-  ClusterResourceScheduler(int64_t local_node_id,
-                           const NodeResources &local_node_resources,
-                           gcs::GcsClient &gcs_client);
+  ClusterResourceScheduler(
+      int64_t local_node_id,
+      const NodeResources &local_node_resources,
+      gcs::GcsClient &gcs_client);
   ClusterResourceScheduler(
       const std::string &local_node_id,
       const absl::flat_hash_map<std::string, double> &local_node_resources,
@@ -76,10 +77,12 @@ class ClusterResourceScheduler {
   ///
   ///  \return emptry string, if no node can schedule the current request; otherwise,
   ///          return the string name of a node that can schedule the resource request.
-  std::string GetBestSchedulableNode(const TaskSpecification &task_spec,
-                                     bool prioritize_local_node, bool exclude_local_node,
-                                     bool requires_object_store_memory,
-                                     bool *is_infeasible);
+  std::string GetBestSchedulableNode(
+      const TaskSpecification &task_spec,
+      bool prioritize_local_node,
+      bool exclude_local_node,
+      bool requires_object_store_memory,
+      bool *is_infeasible);
 
   /// Subtract the resources required by a given resource request (resource_request) from
   /// a given remote node.
@@ -100,8 +103,9 @@ class ClusterResourceScheduler {
   ///
   /// \param node_name Name of the node.
   /// \param shape The resource demand's shape.
-  bool IsSchedulableOnNode(const std::string &node_name,
-                           const absl::flat_hash_map<std::string, double> &shape);
+  bool IsSchedulableOnNode(
+      const std::string &node_name,
+      const absl::flat_hash_map<std::string, double> &shape);
 
   LocalResourceManager &GetLocalResourceManager() { return *local_resource_manager_; }
   ClusterResourceManager &GetClusterResourceManager() {
@@ -119,8 +123,9 @@ class ClusterResourceScheduler {
   ///
   /// \return true, if resource_request can be indeed scheduled on the node,
   /// and false otherwise.
-  bool SubtractRemoteNodeAvailableResources(int64_t node_id,
-                                            const ResourceRequest &resource_request);
+  bool SubtractRemoteNodeAvailableResources(
+      int64_t node_id,
+      const ResourceRequest &resource_request);
 
   /// Check whether a resource request can be scheduled given a node.
   ///
@@ -145,10 +150,13 @@ class ClusterResourceScheduler {
   ///
   ///  \return -1, if no node can schedule the current request; otherwise,
   ///          return the ID of a node that can schedule the resource request.
-  int64_t GetBestSchedulableNode(const ResourceRequest &resource_request,
-                                 const rpc::SchedulingStrategy &scheduling_strategy,
-                                 bool actor_creation, bool force_spillback,
-                                 int64_t *violations, bool *is_infeasible);
+  int64_t GetBestSchedulableNode(
+      const ResourceRequest &resource_request,
+      const rpc::SchedulingStrategy &scheduling_strategy,
+      bool actor_creation,
+      bool force_spillback,
+      int64_t *violations,
+      bool *is_infeasible);
 
   /// Similar to
   ///    int64_t GetBestSchedulableNode(...)
@@ -159,8 +167,11 @@ class ClusterResourceScheduler {
   std::string GetBestSchedulableNode(
       const absl::flat_hash_map<std::string, double> &resource_request,
       const rpc::SchedulingStrategy &scheduling_strategy,
-      bool requires_object_store_memory, bool actor_creation, bool force_spillback,
-      int64_t *violations, bool *is_infeasible);
+      bool requires_object_store_memory,
+      bool actor_creation,
+      bool force_spillback,
+      int64_t *violations,
+      bool *is_infeasible);
 
   /// Keep the mapping between node and resource IDs in string representation
   /// to integer representation. Used for improving map performance.
@@ -185,8 +196,9 @@ class ClusterResourceScheduler {
   FRIEND_TEST(ClusterResourceSchedulerTest, SpreadSchedulingStrategyTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingResourceRequestTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
-  FRIEND_TEST(ClusterResourceSchedulerTest,
-              UpdateLocalAvailableResourcesFromResourceInstancesTest);
+  FRIEND_TEST(
+      ClusterResourceSchedulerTest,
+      UpdateLocalAvailableResourcesFromResourceInstancesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, ResourceUsageReportTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, DeadNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, TestAlwaysSpillInfeasibleTask);

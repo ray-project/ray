@@ -29,9 +29,10 @@ void GcsJobManager::Initialize(const GcsInitData &gcs_init_data) {
   }
 }
 
-void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
-                                 rpc::AddJobReply *reply,
-                                 rpc::SendReplyCallback send_reply_callback) {
+void GcsJobManager::HandleAddJob(
+    const rpc::AddJobRequest &request,
+    rpc::AddJobReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   rpc::JobTableData mutable_job_table_data;
   mutable_job_table_data.CopyFrom(request.data());
   auto time = current_sys_time_ms();
@@ -41,8 +42,8 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
   RAY_LOG(INFO) << "Adding job, job id = " << job_id
                 << ", driver pid = " << mutable_job_table_data.driver_pid();
 
-  auto on_done = [this, job_id, mutable_job_table_data, reply,
-                  send_reply_callback](const Status &status) {
+  auto on_done = [this, job_id, mutable_job_table_data, reply, send_reply_callback](
+                     const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to add job, job id = " << job_id
                      << ", driver pid = " << mutable_job_table_data.driver_pid();
@@ -50,7 +51,8 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
       RAY_CHECK_OK(gcs_publisher_->PublishJob(job_id, mutable_job_table_data, nullptr));
       if (mutable_job_table_data.config().has_runtime_env_info()) {
         runtime_env_manager_.AddURIReference(
-            job_id.Hex(), mutable_job_table_data.config().runtime_env_info());
+            job_id.Hex(),
+            mutable_job_table_data.config().runtime_env_info());
       }
       function_manager_.AddJobReference(job_id);
       RAY_LOG(INFO) << "Finished adding job, job id = " << job_id
@@ -68,8 +70,9 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
   }
 }
 
-void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
-                                      std::function<void(Status)> done_callback) {
+void GcsJobManager::MarkJobAsFinished(
+    rpc::JobTableData job_table_data,
+    std::function<void(Status)> done_callback) {
   const JobID job_id = JobID::FromBinary(job_table_data.job_id());
 
   auto time = current_sys_time_ms();
@@ -97,9 +100,10 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
   }
 }
 
-void GcsJobManager::HandleMarkJobFinished(const rpc::MarkJobFinishedRequest &request,
-                                          rpc::MarkJobFinishedReply *reply,
-                                          rpc::SendReplyCallback send_reply_callback) {
+void GcsJobManager::HandleMarkJobFinished(
+    const rpc::MarkJobFinishedRequest &request,
+    rpc::MarkJobFinishedReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   const JobID job_id = JobID::FromBinary(request.job_id());
 
   auto send_reply = [send_reply_callback, reply](Status status) {
@@ -107,8 +111,10 @@ void GcsJobManager::HandleMarkJobFinished(const rpc::MarkJobFinishedRequest &req
   };
 
   Status status = gcs_table_storage_->JobTable().Get(
-      job_id, [this, job_id, send_reply](
-                  Status status, const boost::optional<rpc::JobTableData> &result) {
+      job_id,
+      [this,
+       job_id,
+       send_reply](Status status, const boost::optional<rpc::JobTableData> &result) {
         if (status.ok() && result) {
           MarkJobAsFinished(*result, send_reply);
         } else {
@@ -144,9 +150,10 @@ void GcsJobManager::AddJobFinishedListener(
   job_finished_listeners_.emplace_back(std::move(listener));
 }
 
-void GcsJobManager::HandleGetAllJobInfo(const rpc::GetAllJobInfoRequest &request,
-                                        rpc::GetAllJobInfoReply *reply,
-                                        rpc::SendReplyCallback send_reply_callback) {
+void GcsJobManager::HandleGetAllJobInfo(
+    const rpc::GetAllJobInfoRequest &request,
+    rpc::GetAllJobInfoReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(INFO) << "Getting all job info.";
   auto on_done = [reply, send_reply_callback](
                      const std::unordered_map<JobID, JobTableData> &result) {
@@ -162,17 +169,19 @@ void GcsJobManager::HandleGetAllJobInfo(const rpc::GetAllJobInfoRequest &request
   }
 }
 
-void GcsJobManager::HandleReportJobError(const rpc::ReportJobErrorRequest &request,
-                                         rpc::ReportJobErrorReply *reply,
-                                         rpc::SendReplyCallback send_reply_callback) {
+void GcsJobManager::HandleReportJobError(
+    const rpc::ReportJobErrorRequest &request,
+    rpc::ReportJobErrorReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   auto job_id = JobID::FromBinary(request.job_error().job_id());
   RAY_CHECK_OK(gcs_publisher_->PublishError(job_id.Hex(), request.job_error(), nullptr));
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
-void GcsJobManager::HandleGetNextJobID(const rpc::GetNextJobIDRequest &request,
-                                       rpc::GetNextJobIDReply *reply,
-                                       rpc::SendReplyCallback send_reply_callback) {
+void GcsJobManager::HandleGetNextJobID(
+    const rpc::GetNextJobIDRequest &request,
+    rpc::GetNextJobIDReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   reply->set_job_id(gcs_table_storage_->GetNextJobID());
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }

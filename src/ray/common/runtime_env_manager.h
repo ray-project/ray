@@ -37,8 +37,9 @@ class RuntimeEnvManager {
   ///
   /// \param[in] hex_id The id of the runtime env. It can be an actor or job id.
   /// \param[in] runtime_env_info The runtime env used by the id.
-  void AddURIReference(const std::string &hex_id,
-                       const rpc::RuntimeEnvInfo &runtime_env_info);
+  void AddURIReference(
+      const std::string &hex_id,
+      const rpc::RuntimeEnvInfo &runtime_env_info);
 
   /// Get the reference of URIs by id.
   ///

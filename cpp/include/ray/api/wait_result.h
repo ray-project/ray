@@ -14,9 +14,9 @@
 
 #pragma once
 
-#include <list>
-
 #include <ray/api/object_ref.h>
+
+#include <list>
 
 namespace ray {
 
@@ -29,8 +29,9 @@ class WaitResult {
   /// The object id list of unready objects
   std::list<ObjectRef<T>> unready;
   WaitResult(){};
-  WaitResult(std::list<ObjectRef<T>> &&ready_objects,
-             std::list<ObjectRef<T>> &&unready_objects)
+  WaitResult(
+      std::list<ObjectRef<T>> &&ready_objects,
+      std::list<ObjectRef<T>> &&unready_objects)
       : ready(ready_objects), unready(unready_objects){};
 };
 

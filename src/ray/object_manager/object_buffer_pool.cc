@@ -21,7 +21,8 @@
 namespace ray {
 
 ObjectBufferPool::ObjectBufferPool(
-    std::shared_ptr<plasma::PlasmaClientInterface> store_client, uint64_t chunk_size)
+    std::shared_ptr<plasma::PlasmaClientInterface> store_client,
+    uint64_t chunk_size)
     : store_client_(store_client), default_chunk_size_(chunk_size) {}
 
 ObjectBufferPool::~ObjectBufferPool() {
@@ -61,16 +62,17 @@ uint64_t ObjectBufferPool::GetNumChunks(uint64_t data_size) const {
   return (data_size + default_chunk_size_ - 1) / default_chunk_size_;
 }
 
-uint64_t ObjectBufferPool::GetBufferLength(uint64_t chunk_index,
-                                           uint64_t data_size) const {
+uint64_t ObjectBufferPool::GetBufferLength(uint64_t chunk_index, uint64_t data_size)
+    const {
   return (chunk_index + 1) * default_chunk_size_ > data_size
              ? data_size % default_chunk_size_
              : default_chunk_size_;
 }
 
 std::pair<std::shared_ptr<MemoryObjectReader>, ray::Status>
-ObjectBufferPool::CreateObjectReader(const ObjectID &object_id,
-                                     rpc::Address owner_address) {
+ObjectBufferPool::CreateObjectReader(
+    const ObjectID &object_id,
+    rpc::Address owner_address) {
   absl::MutexLock lock(&pool_mutex_);
 
   std::vector<ObjectID> object_ids{object_id};
@@ -89,18 +91,25 @@ ObjectBufferPool::CreateObjectReader(const ObjectID &object_id,
   }
 
   return std::pair<std::shared_ptr<MemoryObjectReader>, ray::Status>(
-      std::make_shared<MemoryObjectReader>(std::move(object_buffers[0]),
-                                           std::move(owner_address)),
+      std::make_shared<MemoryObjectReader>(
+          std::move(object_buffers[0]),
+          std::move(owner_address)),
       ray::Status::OK());
 }
 
-ray::Status ObjectBufferPool::CreateChunk(const ObjectID &object_id,
-                                          const rpc::Address &owner_address,
-                                          uint64_t data_size, uint64_t metadata_size,
-                                          uint64_t chunk_index) {
+ray::Status ObjectBufferPool::CreateChunk(
+    const ObjectID &object_id,
+    const rpc::Address &owner_address,
+    uint64_t data_size,
+    uint64_t metadata_size,
+    uint64_t chunk_index) {
   absl::MutexLock lock(&pool_mutex_);
-  RAY_RETURN_NOT_OK(EnsureBufferExists(object_id, owner_address, data_size, metadata_size,
-                                       chunk_index));
+  RAY_RETURN_NOT_OK(EnsureBufferExists(
+      object_id,
+      owner_address,
+      data_size,
+      metadata_size,
+      chunk_index));
   auto &state = create_buffer_state_.at(object_id);
   if (chunk_index >= state.chunk_state.size()) {
     return ray::Status::IOError("Object size mismatch");
@@ -113,9 +122,12 @@ ray::Status ObjectBufferPool::CreateChunk(const ObjectID &object_id,
   return ray::Status::OK();
 }
 
-void ObjectBufferPool::WriteChunk(const ObjectID &object_id, uint64_t data_size,
-                                  uint64_t metadata_size, const uint64_t chunk_index,
-                                  const std::string &data) {
+void ObjectBufferPool::WriteChunk(
+    const ObjectID &object_id,
+    uint64_t data_size,
+    uint64_t metadata_size,
+    const uint64_t chunk_index,
+    const std::string &data) {
   absl::MutexLock lock(&pool_mutex_);
   auto it = create_buffer_state_.find(object_id);
   if (it == create_buffer_state_.end() || chunk_index >= it->second.chunk_state.size() ||
@@ -162,7 +174,9 @@ void ObjectBufferPool::AbortCreateInternal(const ObjectID &object_id) {
 }
 
 std::vector<ObjectBufferPool::ChunkInfo> ObjectBufferPool::BuildChunks(
-    const ObjectID &object_id, uint8_t *data, uint64_t data_size,
+    const ObjectID &object_id,
+    uint8_t *data,
+    uint64_t data_size,
     std::shared_ptr<Buffer> buffer_ref) {
   uint64_t space_remaining = data_size;
   std::vector<ChunkInfo> chunks;
@@ -173,19 +187,20 @@ std::vector<ObjectBufferPool::ChunkInfo> ObjectBufferPool::BuildChunks(
       chunks.emplace_back(chunks.size(), data + position, space_remaining, buffer_ref);
       space_remaining = 0;
     } else {
-      chunks.emplace_back(chunks.size(), data + position, default_chunk_size_,
-                          buffer_ref);
+      chunks
+          .emplace_back(chunks.size(), data + position, default_chunk_size_, buffer_ref);
       space_remaining -= default_chunk_size_;
     }
   }
   return chunks;
 }
 
-ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
-                                                 const rpc::Address &owner_address,
-                                                 uint64_t data_size,
-                                                 uint64_t metadata_size,
-                                                 uint64_t chunk_index) {
+ray::Status ObjectBufferPool::EnsureBufferExists(
+    const ObjectID &object_id,
+    const rpc::Address &owner_address,
+    uint64_t data_size,
+    uint64_t metadata_size,
+    uint64_t chunk_index) {
   while (true) {
     // Buffer for object_id already exists and the size matches ours.
     {
@@ -218,8 +233,8 @@ ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
   {
     auto it = create_buffer_state_.find(object_id);
     if (it != create_buffer_state_.end()) {
-      RAY_CHECK(it->second.data_size != data_size ||
-                it->second.metadata_size != metadata_size);
+      RAY_CHECK(
+          it->second.data_size != data_size || it->second.metadata_size != metadata_size);
       RAY_LOG(WARNING) << "Object " << object_id << " size (" << data_size
                        << ") differs from the original (" << it->second.data_size
                        << "). This is likely due to re-execution of a task with a "
@@ -236,8 +251,12 @@ ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
   // Release pool_mutex_ during the blocking create call.
   pool_mutex_.Unlock();
   Status s = store_client_->CreateAndSpillIfNeeded(
-      object_id, owner_address, static_cast<int64_t>(object_size), nullptr,
-      static_cast<int64_t>(metadata_size), &data,
+      object_id,
+      owner_address,
+      static_cast<int64_t>(object_size),
+      nullptr,
+      static_cast<int64_t>(metadata_size),
+      &data,
       plasma::flatbuf::ObjectSource::ReceivedFromRemoteRaylet);
   pool_mutex_.Lock();
 
@@ -263,9 +282,12 @@ ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
   uint8_t *mutable_data = data->Data();
   uint64_t num_chunks = GetNumChunks(data_size);
   auto inserted = create_buffer_state_.emplace(
-      std::piecewise_construct, std::forward_as_tuple(object_id),
-      std::forward_as_tuple(metadata_size, data_size,
-                            BuildChunks(object_id, mutable_data, data_size, data)));
+      std::piecewise_construct,
+      std::forward_as_tuple(object_id),
+      std::forward_as_tuple(
+          metadata_size,
+          data_size,
+          BuildChunks(object_id, mutable_data, data_size, data)));
   RAY_CHECK(inserted.first->second.chunk_info.size() == num_chunks);
   RAY_LOG(DEBUG) << "Created object " << object_id
                  << " in plasma store, number of chunks: " << num_chunks

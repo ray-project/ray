@@ -48,8 +48,10 @@ class MockWorkerPool : public WorkerPoolInterface {
  public:
   MockWorkerPool() : num_pops(0) {}
 
-  void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback &callback,
-                 const std::string &allocated_instances_serialized_json) {
+  void PopWorker(
+      const TaskSpecification &task_spec,
+      const PopWorkerCallback &callback,
+      const std::string &allocated_instances_serialized_json) {
     num_pops++;
     const WorkerCacheKey env = {task_spec.SerializedRuntimeEnv(), {}};
     const int runtime_env_hash = env.IntHash();
@@ -67,14 +69,16 @@ class MockWorkerPool : public WorkerPoolInterface {
   }
 
   void TriggerCallbacksWithNotOKStatus(
-      PopWorkerStatus status, const std::string &runtime_env_setup_error_msg = "") {
+      PopWorkerStatus status,
+      const std::string &runtime_env_setup_error_msg = "") {
     RAY_CHECK(status != PopWorkerStatus::OK);
     for (const auto &pair : callbacks) {
       for (const auto &callback : pair.second) {
         // No task should be dispatched.
-        ASSERT_FALSE(
-            callback(nullptr, status,
-                     /*runtime_env_setup_error_msg*/ runtime_env_setup_error_msg));
+        ASSERT_FALSE(callback(
+            nullptr,
+            status,
+            /*runtime_env_setup_error_msg*/ runtime_env_setup_error_msg));
       }
     }
     callbacks.clear();
@@ -124,7 +128,10 @@ class MockWorkerPool : public WorkerPoolInterface {
 };
 
 std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
-    const std::string &id, double num_cpus, double num_gpus, gcs::GcsClient &gcs_client) {
+    const std::string &id,
+    double num_cpus,
+    double num_gpus,
+    gcs::GcsClient &gcs_client) {
   absl::flat_hash_map<std::string, double> local_node_resources;
   local_node_resources[ray::kCPU_ResourceLabel] = num_cpus;
   local_node_resources[ray::kGPU_ResourceLabel] = num_gpus;
@@ -136,19 +143,33 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
   return scheduler;
 }
 
-RayTask CreateTask(const std::unordered_map<std::string, double> &required_resources,
-                   int num_args = 0, std::vector<ObjectID> args = {},
-                   const std::string &serialized_runtime_env = "{}",
-                   const std::vector<std::string> &runtime_env_uris = {}) {
+RayTask CreateTask(
+    const std::unordered_map<std::string, double> &required_resources,
+    int num_args = 0,
+    std::vector<ObjectID> args = {},
+    const std::string &serialized_runtime_env = "{}",
+    const std::vector<std::string> &runtime_env_uris = {}) {
   TaskSpecBuilder spec_builder;
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
   rpc::Address address;
-  spec_builder.SetCommonTaskSpec(id, "dummy_task", Language::PYTHON,
-                                 FunctionDescriptorBuilder::BuildPython("", "", "", ""),
-                                 job_id, TaskID::Nil(), 0, TaskID::Nil(), address, 0,
-                                 required_resources, {}, "", 0, serialized_runtime_env,
-                                 runtime_env_uris);
+  spec_builder.SetCommonTaskSpec(
+      id,
+      "dummy_task",
+      Language::PYTHON,
+      FunctionDescriptorBuilder::BuildPython("", "", "", ""),
+      job_id,
+      TaskID::Nil(),
+      0,
+      TaskID::Nil(),
+      address,
+      0,
+      required_resources,
+      {},
+      "",
+      0,
+      serialized_runtime_env,
+      runtime_env_uris);
 
   if (!args.empty()) {
     for (auto &arg : args) {
@@ -170,7 +191,8 @@ class MockTaskDependencyManager : public TaskDependencyManagerInterface {
       : missing_objects_(missing_objects) {}
 
   bool RequestTaskDependencies(
-      const TaskID &task_id, const std::vector<rpc::ObjectReference> &required_objects) {
+      const TaskID &task_id,
+      const std::vector<rpc::ObjectReference> &required_objects) {
     RAY_CHECK(subscribed_tasks.insert(task_id).second);
     for (auto &obj_ref : required_objects) {
       if (missing_objects_.find(ObjectRefToId(obj_ref)) != missing_objects_.end()) {
@@ -216,14 +238,19 @@ class ClusterTaskManagerTest : public ::testing::Test {
   ClusterTaskManagerTest(double num_cpus_at_head = 8.0, double num_gpus_at_head = 0.0)
       : gcs_client_(std::make_unique<gcs::MockGcsClient>()),
         id_(NodeID::FromRandom()),
-        scheduler_(CreateSingleNodeScheduler(id_.Binary(), num_cpus_at_head,
-                                             num_gpus_at_head, *gcs_client_)),
+        scheduler_(CreateSingleNodeScheduler(
+            id_.Binary(),
+            num_cpus_at_head,
+            num_gpus_at_head,
+            *gcs_client_)),
         is_owner_alive_(true),
         node_info_calls_(0),
         announce_infeasible_task_calls_(0),
         dependency_manager_(missing_objects_),
         local_task_manager_(std::make_shared<LocalTaskManager>(
-            id_, scheduler_, dependency_manager_, /* is_owner_alive= */
+            id_,
+            scheduler_,
+            dependency_manager_, /* is_owner_alive= */
             [this](const WorkerID &worker_id, const NodeID &node_id) {
               return is_owner_alive_;
             },
@@ -235,10 +262,12 @@ class ClusterTaskManagerTest : public ::testing::Test {
               }
               return nullptr;
             },
-            pool_, leased_workers_,
+            pool_,
+            leased_workers_,
             /* get_task_arguments= */
-            [this](const std::vector<ObjectID> &object_ids,
-                   std::vector<std::unique_ptr<RayObject>> *results) {
+            [this](
+                const std::vector<ObjectID> &object_ids,
+                std::vector<std::unique_ptr<RayObject>> *results) {
               for (auto &obj_id : object_ids) {
                 if (missing_objects_.count(obj_id) == 0) {
                   results->emplace_back(MakeDummyArg());
@@ -251,7 +280,8 @@ class ClusterTaskManagerTest : public ::testing::Test {
             /*max_pinned_task_arguments_bytes=*/1000,
             /*get_time=*/[this]() { return current_time_ms_; })),
         task_manager_(
-            id_, scheduler_,
+            id_,
+            scheduler_,
             /* get_node_info= */
             [this](const NodeID &node_id) -> const rpc::GcsNodeInfo * {
               node_info_calls_++;
@@ -280,14 +310,16 @@ class ClusterTaskManagerTest : public ::testing::Test {
 
   void Shutdown() {}
 
-  void AddNode(const NodeID &id, double num_cpus, double num_gpus = 0,
-               double memory = 0) {
+  void
+  AddNode(const NodeID &id, double num_cpus, double num_gpus = 0, double memory = 0) {
     absl::flat_hash_map<std::string, double> node_resources;
     node_resources[ray::kCPU_ResourceLabel] = num_cpus;
     node_resources[ray::kGPU_ResourceLabel] = num_gpus;
     node_resources[ray::kMemory_ResourceLabel] = memory;
-    scheduler_->GetClusterResourceManager().AddOrUpdateNode(id.Binary(), node_resources,
-                                                            node_resources);
+    scheduler_->GetClusterResourceManager().AddOrUpdateNode(
+        id.Binary(),
+        node_resources,
+        node_resources);
 
     rpc::GcsNodeInfo info;
     node_info_[id] = info;
@@ -381,10 +413,10 @@ TEST_F(ClusterTaskManagerTest, BasicTest) {
   rpc::RequestWorkerLeaseReply reply;
   bool callback_occurred = false;
   bool *callback_occurred_ptr = &callback_occurred;
-  auto callback = [callback_occurred_ptr](Status, std::function<void()>,
-                                          std::function<void()>) {
-    *callback_occurred_ptr = true;
-  };
+  auto callback =
+      [callback_occurred_ptr](Status, std::function<void()>, std::function<void()>) {
+        *callback_occurred_ptr = true;
+      };
 
   task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
   pool_.TriggerCallbacks();
@@ -404,8 +436,9 @@ TEST_F(ClusterTaskManagerTest, BasicTest) {
 
   RayTask finished_task;
   local_task_manager_->TaskFinished(leased_workers_.begin()->second, &finished_task);
-  ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
-            task.GetTaskSpecification().TaskId());
+  ASSERT_EQ(
+      finished_task.GetTaskSpecification().TaskId(),
+      task.GetTaskSpecification().TaskId());
   AssertNoLeaks();
 }
 
@@ -420,10 +453,10 @@ TEST_F(ClusterTaskManagerTest, IdempotencyTest) {
   rpc::RequestWorkerLeaseReply reply;
   bool callback_occurred = false;
   bool *callback_occurred_ptr = &callback_occurred;
-  auto callback = [callback_occurred_ptr](Status, std::function<void()>,
-                                          std::function<void()>) {
-    *callback_occurred_ptr = true;
-  };
+  auto callback =
+      [callback_occurred_ptr](Status, std::function<void()>, std::function<void()>) {
+        *callback_occurred_ptr = true;
+      };
 
   task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
   pool_.TriggerCallbacks();
@@ -456,8 +489,9 @@ TEST_F(ClusterTaskManagerTest, IdempotencyTest) {
   RayTask finished_task;
   local_task_manager_->TaskFinished(leased_workers_.begin()->second, &finished_task);
   local_task_manager_->TaskFinished(leased_workers_.begin()->second, &finished_task);
-  ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
-            task.GetTaskSpecification().TaskId());
+  ASSERT_EQ(
+      finished_task.GetTaskSpecification().TaskId(),
+      task.GetTaskSpecification().TaskId());
   ASSERT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 8.0);
   AssertNoLeaks();
 }
@@ -475,21 +509,30 @@ TEST_F(ClusterTaskManagerTest, DispatchQueueNonBlockingTest) {
       {ray::kCPU_ResourceLabel, 4}};
 
   std::string serialized_runtime_env_A = "mock_env_A";
-  RayTask task_A = CreateTask(required_resources, /*num_args=*/0, /*args=*/{},
-                              serialized_runtime_env_A);
+  RayTask task_A = CreateTask(
+      required_resources,
+      /*num_args=*/0,
+      /*args=*/{},
+      serialized_runtime_env_A);
   rpc::RequestWorkerLeaseReply reply_A;
   bool callback_occurred = false;
   bool *callback_occurred_ptr = &callback_occurred;
-  auto callback = [callback_occurred_ptr](Status, std::function<void()>,
-                                          std::function<void()>) {
-    *callback_occurred_ptr = true;
-  };
+  auto callback =
+      [callback_occurred_ptr](Status, std::function<void()>, std::function<void()>) {
+        *callback_occurred_ptr = true;
+      };
 
   std::string serialized_runtime_env_B = "mock_env_B";
-  RayTask task_B_1 = CreateTask(required_resources, /*num_args=*/0, /*args=*/{},
-                                serialized_runtime_env_B);
-  RayTask task_B_2 = CreateTask(required_resources, /*num_args=*/0, /*args=*/{},
-                                serialized_runtime_env_B);
+  RayTask task_B_1 = CreateTask(
+      required_resources,
+      /*num_args=*/0,
+      /*args=*/{},
+      serialized_runtime_env_B);
+  RayTask task_B_2 = CreateTask(
+      required_resources,
+      /*num_args=*/0,
+      /*args=*/{},
+      serialized_runtime_env_B);
   rpc::RequestWorkerLeaseReply reply_B_1;
   rpc::RequestWorkerLeaseReply reply_B_2;
   auto empty_callback = [](Status, std::function<void()>, std::function<void()>) {};
@@ -515,8 +558,9 @@ TEST_F(ClusterTaskManagerTest, DispatchQueueNonBlockingTest) {
 
   RayTask finished_task;
   local_task_manager_->TaskFinished(leased_workers_.begin()->second, &finished_task);
-  ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
-            task_A.GetTaskSpecification().TaskId());
+  ASSERT_EQ(
+      finished_task.GetTaskSpecification().TaskId(),
+      task_A.GetTaskSpecification().TaskId());
 
   // task_B_1 and task_B_2 remain in the dispatch queue, so don't call AssertNoLeaks().
   // AssertNoLeaks();
@@ -531,10 +575,10 @@ TEST_F(ClusterTaskManagerTest, BlockedWorkerDiesTest) {
   rpc::RequestWorkerLeaseReply reply;
   bool callback_occurred = false;
   bool *callback_occurred_ptr = &callback_occurred;
-  auto callback = [callback_occurred_ptr](Status, std::function<void()>,
-                                          std::function<void()>) {
-    *callback_occurred_ptr = true;
-  };
+  auto callback =
+      [callback_occurred_ptr](Status, std::function<void()>, std::function<void()>) {
+        *callback_occurred_ptr = true;
+      };
 
   task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
   pool_.TriggerCallbacks();
@@ -561,8 +605,9 @@ TEST_F(ClusterTaskManagerTest, BlockedWorkerDiesTest) {
   RayTask finished_task;
   // If a resource was double-freed, we will crash in this call.
   local_task_manager_->TaskFinished(leased_workers_.begin()->second, &finished_task);
-  ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
-            task.GetTaskSpecification().TaskId());
+  ASSERT_EQ(
+      finished_task.GetTaskSpecification().TaskId(),
+      task.GetTaskSpecification().TaskId());
 
   AssertNoLeaks();
 }
@@ -576,10 +621,10 @@ TEST_F(ClusterTaskManagerTest, BlockedWorkerDies2Test) {
   rpc::RequestWorkerLeaseReply reply;
   bool callback_occurred = false;
   bool *callback_occurred_ptr = &callback_occurred;
-  auto callback = [callback_occurred_ptr](Status, std::function<void()>,
-                                          std::function<void()>) {
-    *callback_occurred_ptr = true;
-  };
+  auto callback =
+      [callback_occurred_ptr](Status, std::function<void()>, std::function<void()>) {
+        *callback_occurred_ptr = true;
+      };
 
   task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
   pool_.TriggerCallbacks();
@@ -602,8 +647,9 @@ TEST_F(ClusterTaskManagerTest, BlockedWorkerDies2Test) {
 
   RayTask finished_task;
   local_task_manager_->TaskFinished(leased_workers_.begin()->second, &finished_task);
-  ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
-            task.GetTaskSpecification().TaskId());
+  ASSERT_EQ(
+      finished_task.GetTaskSpecification().TaskId(),
+      task.GetTaskSpecification().TaskId());
 
   // Block the worker. Which releases only the CPU resource.
   local_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(worker);
@@ -621,10 +667,10 @@ TEST_F(ClusterTaskManagerTest, NoFeasibleNodeTest) {
 
   bool callback_called = false;
   bool *callback_called_ptr = &callback_called;
-  auto callback = [callback_called_ptr](Status, std::function<void()>,
-                                        std::function<void()>) {
-    *callback_called_ptr = true;
-  };
+  auto callback =
+      [callback_called_ptr](Status, std::function<void()>, std::function<void()>) {
+        *callback_called_ptr = true;
+      };
 
   task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
   pool_.TriggerCallbacks();
@@ -652,10 +698,10 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   rpc::RequestWorkerLeaseReply reply;
   int num_callbacks = 0;
   int *num_callbacks_ptr = &num_callbacks;
-  auto callback = [num_callbacks_ptr](Status, std::function<void()>,
-                                      std::function<void()>) {
-    (*num_callbacks_ptr) = *num_callbacks_ptr + 1;
-  };
+  auto callback =
+      [num_callbacks_ptr](Status, std::function<void()>, std::function<void()>) {
+        (*num_callbacks_ptr) = *num_callbacks_ptr + 1;
+      };
 
   /* Blocked on dependencies */
   auto task = CreateTask({{ray::kCPU_ResourceLabel, 5}}, 2);
@@ -738,7 +784,11 @@ TEST_F(ClusterTaskManagerTest, TestIsSelectedBasedOnLocality) {
   auto task1 = CreateTask({{ray::kCPU_ResourceLabel, 5}});
   rpc::RequestWorkerLeaseReply local_reply;
   task_manager_.QueueAndScheduleTask(
-      task1, false, /*is_selected_based_on_locality=*/false, &local_reply, callback);
+      task1,
+      false,
+      /*is_selected_based_on_locality=*/false,
+      &local_reply,
+      callback);
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 1);
   // The first task was dispatched.
@@ -748,18 +798,27 @@ TEST_F(ClusterTaskManagerTest, TestIsSelectedBasedOnLocality) {
   auto task2 = CreateTask({{ray::kCPU_ResourceLabel, 1}});
   rpc::RequestWorkerLeaseReply spillback_reply;
   task_manager_.QueueAndScheduleTask(
-      task2, false, /*is_selected_based_on_locality=*/false, &spillback_reply, callback);
+      task2,
+      false,
+      /*is_selected_based_on_locality=*/false,
+      &spillback_reply,
+      callback);
   pool_.TriggerCallbacks();
   // The second task was spilled.
   ASSERT_EQ(num_callbacks, 2);
-  ASSERT_EQ(spillback_reply.retry_at_raylet_address().raylet_id(),
-            remote_node_id.Binary());
+  ASSERT_EQ(
+      spillback_reply.retry_at_raylet_address().raylet_id(),
+      remote_node_id.Binary());
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(pool_.workers.size(), 1);
 
   auto task3 = CreateTask({{ray::kCPU_ResourceLabel, 1}});
-  task_manager_.QueueAndScheduleTask(task3, false, /*is_selected_based_on_locality=*/true,
-                                     &local_reply, callback);
+  task_manager_.QueueAndScheduleTask(
+      task3,
+      false,
+      /*is_selected_based_on_locality=*/true,
+      &local_reply,
+      callback);
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 3);
   // The third task was dispatched.
@@ -792,8 +851,12 @@ TEST_F(ClusterTaskManagerTest, TestGrantOrReject) {
 
   auto task1 = CreateTask({{ray::kCPU_ResourceLabel, 5}});
   rpc::RequestWorkerLeaseReply local_reply;
-  task_manager_.QueueAndScheduleTask(task1, /*grant_or_reject=*/false, false,
-                                     &local_reply, callback);
+  task_manager_.QueueAndScheduleTask(
+      task1,
+      /*grant_or_reject=*/false,
+      false,
+      &local_reply,
+      callback);
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 1);
   // The first task was dispatched.
@@ -802,19 +865,28 @@ TEST_F(ClusterTaskManagerTest, TestGrantOrReject) {
 
   auto task2 = CreateTask({{ray::kCPU_ResourceLabel, 1}});
   rpc::RequestWorkerLeaseReply spillback_reply;
-  task_manager_.QueueAndScheduleTask(task2, /*grant_or_reject=*/false, false,
-                                     &spillback_reply, callback);
+  task_manager_.QueueAndScheduleTask(
+      task2,
+      /*grant_or_reject=*/false,
+      false,
+      &spillback_reply,
+      callback);
   pool_.TriggerCallbacks();
   // The second task was spilled.
   ASSERT_EQ(num_callbacks, 2);
-  ASSERT_EQ(spillback_reply.retry_at_raylet_address().raylet_id(),
-            remote_node_id.Binary());
+  ASSERT_EQ(
+      spillback_reply.retry_at_raylet_address().raylet_id(),
+      remote_node_id.Binary());
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(pool_.workers.size(), 1);
 
   auto task3 = CreateTask({{ray::kCPU_ResourceLabel, 1}});
-  task_manager_.QueueAndScheduleTask(task3, /*grant_or_reject=*/true, false, &local_reply,
-                                     callback);
+  task_manager_.QueueAndScheduleTask(
+      task3,
+      /*grant_or_reject=*/true,
+      false,
+      &local_reply,
+      callback);
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 3);
   // The third task was dispatched.
@@ -858,8 +930,12 @@ TEST_F(ClusterTaskManagerTest, TestSpillAfterAssigned) {
   // Resources are no longer available for the second.
   auto task2 = CreateTask({{ray::kCPU_ResourceLabel, 5}});
   rpc::RequestWorkerLeaseReply reject_reply;
-  task_manager_.QueueAndScheduleTask(task2, /*grant_or_reject=*/true, false,
-                                     &reject_reply, callback);
+  task_manager_.QueueAndScheduleTask(
+      task2,
+      /*grant_or_reject=*/true,
+      false,
+      &reject_reply,
+      callback);
   pool_.TriggerCallbacks();
 
   // The second task was rejected.
@@ -875,8 +951,9 @@ TEST_F(ClusterTaskManagerTest, TestSpillAfterAssigned) {
 
   // The third task was spilled.
   ASSERT_EQ(num_callbacks, 2);
-  ASSERT_EQ(spillback_reply.retry_at_raylet_address().raylet_id(),
-            remote_node_id.Binary());
+  ASSERT_EQ(
+      spillback_reply.retry_at_raylet_address().raylet_id(),
+      remote_node_id.Binary());
   ASSERT_EQ(leased_workers_.size(), 0);
 
   // Two workers start. First task was dispatched now.
@@ -893,8 +970,9 @@ TEST_F(ClusterTaskManagerTest, TestSpillAfterAssigned) {
 
   RayTask finished_task;
   local_task_manager_->TaskFinished(leased_workers_.begin()->second, &finished_task);
-  ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
-            task.GetTaskSpecification().TaskId());
+  ASSERT_EQ(
+      finished_task.GetTaskSpecification().TaskId(),
+      task.GetTaskSpecification().TaskId());
 
   AssertNoLeaks();
 }
@@ -904,10 +982,10 @@ TEST_F(ClusterTaskManagerTest, NotOKPopWorkerTest) {
   rpc::RequestWorkerLeaseReply reply;
   bool callback_called = false;
   bool *callback_called_ptr = &callback_called;
-  auto callback = [callback_called_ptr](Status, std::function<void()>,
-                                        std::function<void()>) {
-    *callback_called_ptr = true;
-  };
+  auto callback =
+      [callback_called_ptr](Status, std::function<void()>, std::function<void()>) {
+        *callback_called_ptr = true;
+      };
   task_manager_.QueueAndScheduleTask(task1, false, false, &reply, callback);
   ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING_FOR_WORKER), 1);
   ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING), 0);
@@ -928,8 +1006,9 @@ TEST_F(ClusterTaskManagerTest, NotOKPopWorkerTest) {
   ASSERT_EQ(NumRunningTasks(), 1);
   // The task should be cancelled.
   const auto runtime_env_error_msg = "Runtime env error message";
-  pool_.TriggerCallbacksWithNotOKStatus(PopWorkerStatus::RuntimeEnvCreationFailed,
-                                        runtime_env_error_msg);
+  pool_.TriggerCallbacksWithNotOKStatus(
+      PopWorkerStatus::RuntimeEnvCreationFailed,
+      runtime_env_error_msg);
   ASSERT_TRUE(callback_called);
   ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING_FOR_WORKER), 0);
   ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING), 0);
@@ -948,10 +1027,10 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
 
   bool callback_called = false;
   bool *callback_called_ptr = &callback_called;
-  auto callback = [callback_called_ptr](Status, std::function<void()>,
-                                        std::function<void()>) {
-    *callback_called_ptr = true;
-  };
+  auto callback =
+      [callback_called_ptr](Status, std::function<void()>, std::function<void()>) {
+        *callback_called_ptr = true;
+      };
 
   // Task1 not queued so we can't cancel it.
   ASSERT_FALSE(task_manager_.CancelTask(task1.GetTaskSpecification().TaskId()));
@@ -987,8 +1066,9 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
 
   RayTask finished_task;
   local_task_manager_->TaskFinished(leased_workers_.begin()->second, &finished_task);
-  ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
-            task2.GetTaskSpecification().TaskId());
+  ASSERT_EQ(
+      finished_task.GetTaskSpecification().TaskId(),
+      task2.GetTaskSpecification().TaskId());
 
   AssertNoLeaks();
 }
@@ -1004,10 +1084,10 @@ TEST_F(ClusterTaskManagerTest, TaskCancelInfeasibleTask) {
 
   bool callback_called = false;
   bool *callback_called_ptr = &callback_called;
-  auto callback = [callback_called_ptr](Status, std::function<void()>,
-                                        std::function<void()>) {
-    *callback_called_ptr = true;
-  };
+  auto callback =
+      [callback_called_ptr](Status, std::function<void()>, std::function<void()>) {
+        *callback_called_ptr = true;
+      };
 
   task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
   pool_.TriggerCallbacks();
@@ -1046,10 +1126,10 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
 
     bool callback_called = false;
     bool *callback_called_ptr = &callback_called;
-    auto callback = [callback_called_ptr](Status, std::function<void()>,
-                                          std::function<void()>) {
-      *callback_called_ptr = true;
-    };
+    auto callback =
+        [callback_called_ptr](Status, std::function<void()>, std::function<void()>) {
+          *callback_called_ptr = true;
+        };
 
     task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
     pool_.TriggerCallbacks();
@@ -1063,10 +1143,10 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
 
     bool callback_called = false;
     bool *callback_called_ptr = &callback_called;
-    auto callback = [callback_called_ptr](Status, std::function<void()>,
-                                          std::function<void()>) {
-      *callback_called_ptr = true;
-    };
+    auto callback =
+        [callback_called_ptr](Status, std::function<void()>, std::function<void()>) {
+          *callback_called_ptr = true;
+        };
 
     task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
     pool_.TriggerCallbacks();
@@ -1081,10 +1161,10 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
 
     bool callback_called = false;
     bool *callback_called_ptr = &callback_called;
-    auto callback = [callback_called_ptr](Status, std::function<void()>,
-                                          std::function<void()>) {
-      *callback_called_ptr = true;
-    };
+    auto callback =
+        [callback_called_ptr](Status, std::function<void()>, std::function<void()>) {
+          *callback_called_ptr = true;
+        };
 
     task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
     pool_.TriggerCallbacks();
@@ -1099,10 +1179,10 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
 
     bool callback_called = false;
     bool *callback_called_ptr = &callback_called;
-    auto callback = [callback_called_ptr](Status, std::function<void()>,
-                                          std::function<void()>) {
-      *callback_called_ptr = true;
-    };
+    auto callback =
+        [callback_called_ptr](Status, std::function<void()>, std::function<void()>) {
+          *callback_called_ptr = true;
+        };
 
     task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
     pool_.TriggerCallbacks();
@@ -1163,10 +1243,10 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
   rpc::RequestWorkerLeaseReply reply;
   bool callback_occurred = false;
   bool *callback_occurred_ptr = &callback_occurred;
-  auto callback = [callback_occurred_ptr](Status, std::function<void()>,
-                                          std::function<void()>) {
-    *callback_occurred_ptr = true;
-  };
+  auto callback =
+      [callback_occurred_ptr](Status, std::function<void()>, std::function<void()>) {
+        *callback_occurred_ptr = true;
+      };
 
   std::vector<TaskID> to_cancel;
 
@@ -1176,7 +1256,8 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
     RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}});
     task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
     local_task_manager_->SetWorkerBacklog(
-        task.GetTaskSpecification().GetSchedulingClass(), worker_id_submitting_first_task,
+        task.GetTaskSpecification().GetSchedulingClass(),
+        worker_id_submitting_first_task,
         10 - i);
     pool_.TriggerCallbacks();
   }
@@ -1185,7 +1266,9 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
     RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}});
     task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
     local_task_manager_->SetWorkerBacklog(
-        task.GetTaskSpecification().GetSchedulingClass(), WorkerID::FromRandom(), 10 - i);
+        task.GetTaskSpecification().GetSchedulingClass(),
+        WorkerID::FromRandom(),
+        10 - i);
     pool_.TriggerCallbacks();
     to_cancel.push_back(task.GetTaskSpecification().TaskId());
   }
@@ -1255,10 +1338,10 @@ TEST_F(ClusterTaskManagerTest, OwnerDeadTest) {
   rpc::RequestWorkerLeaseReply reply;
   bool callback_occurred = false;
   bool *callback_occurred_ptr = &callback_occurred;
-  auto callback = [callback_occurred_ptr](Status, std::function<void()>,
-                                          std::function<void()>) {
-    *callback_occurred_ptr = true;
-  };
+  auto callback =
+      [callback_occurred_ptr](Status, std::function<void()>, std::function<void()>) {
+        *callback_occurred_ptr = true;
+      };
 
   std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
@@ -1291,10 +1374,10 @@ TEST_F(ClusterTaskManagerTest, TestInfeasibleTaskWarning) {
   RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 12}});
   rpc::RequestWorkerLeaseReply reply;
   std::shared_ptr<bool> callback_occurred = std::make_shared<bool>(false);
-  auto callback = [callback_occurred](Status, std::function<void()>,
-                                      std::function<void()>) {
-    *callback_occurred = true;
-  };
+  auto callback =
+      [callback_occurred](Status, std::function<void()>, std::function<void()>) {
+        *callback_occurred = true;
+      };
   task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
   pool_.TriggerCallbacks();
   ASSERT_EQ(announce_infeasible_task_calls_, 1);
@@ -1338,10 +1421,10 @@ TEST_F(ClusterTaskManagerTest, TestMultipleInfeasibleTasksWarnOnce) {
   RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 12}});
   rpc::RequestWorkerLeaseReply reply;
   std::shared_ptr<bool> callback_occurred = std::make_shared<bool>(false);
-  auto callback = [callback_occurred](Status, std::function<void()>,
-                                      std::function<void()>) {
-    *callback_occurred = true;
-  };
+  auto callback =
+      [callback_occurred](Status, std::function<void()>, std::function<void()>) {
+        *callback_occurred = true;
+      };
   task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
   pool_.TriggerCallbacks();
   ASSERT_EQ(announce_infeasible_task_calls_, 1);
@@ -1350,10 +1433,10 @@ TEST_F(ClusterTaskManagerTest, TestMultipleInfeasibleTasksWarnOnce) {
   RayTask task2 = CreateTask({{ray::kCPU_ResourceLabel, 12}});
   rpc::RequestWorkerLeaseReply reply2;
   std::shared_ptr<bool> callback_occurred2 = std::make_shared<bool>(false);
-  auto callback2 = [callback_occurred2](Status, std::function<void()>,
-                                        std::function<void()>) {
-    *callback_occurred2 = true;
-  };
+  auto callback2 =
+      [callback_occurred2](Status, std::function<void()>, std::function<void()>) {
+        *callback_occurred2 = true;
+      };
   task_manager_.QueueAndScheduleTask(task2, false, false, &reply2, callback2);
   pool_.TriggerCallbacks();
   ASSERT_EQ(announce_infeasible_task_calls_, 1);
@@ -1371,10 +1454,10 @@ TEST_F(ClusterTaskManagerTest, TestAnyPendingTasksForResourceAcquisition) {
   RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 6}});
   rpc::RequestWorkerLeaseReply reply;
   std::shared_ptr<bool> callback_occurred = std::make_shared<bool>(false);
-  auto callback = [callback_occurred](Status, std::function<void()>,
-                                      std::function<void()>) {
-    *callback_occurred = true;
-  };
+  auto callback =
+      [callback_occurred](Status, std::function<void()>, std::function<void()>) {
+        *callback_occurred = true;
+      };
   task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
   pool_.TriggerCallbacks();
   ASSERT_TRUE(*callback_occurred);
@@ -1387,21 +1470,27 @@ TEST_F(ClusterTaskManagerTest, TestAnyPendingTasksForResourceAcquisition) {
   int pending_actor_creations = 0;
   int pending_tasks = 0;
   ASSERT_FALSE(task_manager_.AnyPendingTasksForResourceAcquisition(
-      &exemplar, &any_pending, &pending_actor_creations, &pending_tasks));
+      &exemplar,
+      &any_pending,
+      &pending_actor_creations,
+      &pending_tasks));
 
   // task1: running, task2: queued.
   RayTask task2 = CreateTask({{ray::kCPU_ResourceLabel, 6}});
   rpc::RequestWorkerLeaseReply reply2;
   std::shared_ptr<bool> callback_occurred2 = std::make_shared<bool>(false);
-  auto callback2 = [callback_occurred2](Status, std::function<void()>,
-                                        std::function<void()>) {
-    *callback_occurred2 = true;
-  };
+  auto callback2 =
+      [callback_occurred2](Status, std::function<void()>, std::function<void()>) {
+        *callback_occurred2 = true;
+      };
   task_manager_.QueueAndScheduleTask(task2, false, false, &reply2, callback2);
   pool_.TriggerCallbacks();
   ASSERT_FALSE(*callback_occurred2);
   ASSERT_TRUE(task_manager_.AnyPendingTasksForResourceAcquisition(
-      &exemplar, &any_pending, &pending_actor_creations, &pending_tasks));
+      &exemplar,
+      &any_pending,
+      &pending_actor_creations,
+      &pending_tasks));
 }
 
 TEST_F(ClusterTaskManagerTest, ArgumentEvicted) {
@@ -1416,10 +1505,10 @@ TEST_F(ClusterTaskManagerTest, ArgumentEvicted) {
   rpc::RequestWorkerLeaseReply reply;
   int num_callbacks = 0;
   int *num_callbacks_ptr = &num_callbacks;
-  auto callback = [num_callbacks_ptr](Status, std::function<void()>,
-                                      std::function<void()>) {
-    (*num_callbacks_ptr) = *num_callbacks_ptr + 1;
-  };
+  auto callback =
+      [num_callbacks_ptr](Status, std::function<void()>, std::function<void()>) {
+        (*num_callbacks_ptr) = *num_callbacks_ptr + 1;
+      };
 
   /* Blocked on dependencies */
   auto task = CreateTask({{ray::kCPU_ResourceLabel, 5}}, 2);
@@ -1451,8 +1540,9 @@ TEST_F(ClusterTaskManagerTest, ArgumentEvicted) {
 
   RayTask finished_task;
   local_task_manager_->TaskFinished(leased_workers_.begin()->second, &finished_task);
-  ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
-            task.GetTaskSpecification().TaskId());
+  ASSERT_EQ(
+      finished_task.GetTaskSpecification().TaskId(),
+      task.GetTaskSpecification().TaskId());
 
   AssertNoLeaks();
 }
@@ -1467,7 +1557,10 @@ TEST_F(ClusterTaskManagerTest, FeasibleToNonFeasible) {
   rpc::RequestWorkerLeaseReply reply1;
   bool callback_occurred1 = false;
   task_manager_.QueueAndScheduleTask(
-      task1, false, false, &reply1,
+      task1,
+      false,
+      false,
+      &reply1,
       [&callback_occurred1](Status, std::function<void()>, std::function<void()>) {
         callback_occurred1 = true;
       });
@@ -1487,7 +1580,10 @@ TEST_F(ClusterTaskManagerTest, FeasibleToNonFeasible) {
   rpc::RequestWorkerLeaseReply reply2;
   bool callback_occurred2 = false;
   task_manager_.QueueAndScheduleTask(
-      task2, false, false, &reply2,
+      task2,
+      false,
+      false,
+      &reply2,
       [&callback_occurred2](Status, std::function<void()>, std::function<void()>) {
         callback_occurred2 = true;
       });
@@ -1501,8 +1597,9 @@ TEST_F(ClusterTaskManagerTest, FeasibleToNonFeasible) {
 
   RayTask finished_task;
   local_task_manager_->TaskFinished(leased_workers_.begin()->second, &finished_task);
-  ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
-            task1.GetTaskSpecification().TaskId());
+  ASSERT_EQ(
+      finished_task.GetTaskSpecification().TaskId(),
+      task1.GetTaskSpecification().TaskId());
 }
 
 TEST_F(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources) {
@@ -1524,7 +1621,8 @@ TEST_F(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources) 
   auto allocated_instances = std::make_shared<TaskResourceInstances>();
   const absl::flat_hash_map<std::string, double> task_spec = {{"CPU", 1.}, {"GPU", 1.}};
   ASSERT_TRUE(scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
-      task_spec, allocated_instances));
+      task_spec,
+      allocated_instances));
   worker->SetAllocatedInstances(allocated_instances);
 
   // Check that the resoruces are allocated successfully.
@@ -1653,10 +1751,10 @@ TEST_F(ClusterTaskManagerTest, PinnedArgsMemoryTest) {
   rpc::RequestWorkerLeaseReply reply;
   int num_callbacks = 0;
   int *num_callbacks_ptr = &num_callbacks;
-  auto callback = [num_callbacks_ptr](Status, std::function<void()>,
-                                      std::function<void()>) {
-    (*num_callbacks_ptr) = *num_callbacks_ptr + 1;
-  };
+  auto callback =
+      [num_callbacks_ptr](Status, std::function<void()>, std::function<void()>) {
+        (*num_callbacks_ptr) = *num_callbacks_ptr + 1;
+      };
 
   // This task can run.
   default_arg_size_ = 600;
@@ -1707,10 +1805,10 @@ TEST_F(ClusterTaskManagerTest, PinnedArgsSameMemoryTest) {
   rpc::RequestWorkerLeaseReply reply;
   int num_callbacks = 0;
   int *num_callbacks_ptr = &num_callbacks;
-  auto callback = [num_callbacks_ptr](Status, std::function<void()>,
-                                      std::function<void()>) {
-    (*num_callbacks_ptr) = *num_callbacks_ptr + 1;
-  };
+  auto callback =
+      [num_callbacks_ptr](Status, std::function<void()>, std::function<void()>) {
+        (*num_callbacks_ptr) = *num_callbacks_ptr + 1;
+      };
 
   // This task can run.
   default_arg_size_ = 600;
@@ -1723,8 +1821,10 @@ TEST_F(ClusterTaskManagerTest, PinnedArgsSameMemoryTest) {
   AssertPinnedTaskArgumentsPresent(task);
 
   // This task can run because it depends on the same object as the first task.
-  auto task2 = CreateTask({{ray::kCPU_ResourceLabel, 1}}, 1,
-                          task.GetTaskSpecification().GetDependencyIds());
+  auto task2 = CreateTask(
+      {{ray::kCPU_ResourceLabel, 1}},
+      1,
+      task.GetTaskSpecification().GetDependencyIds());
   task_manager_.QueueAndScheduleTask(task2, false, false, &reply, callback);
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 2);
@@ -1746,10 +1846,10 @@ TEST_F(ClusterTaskManagerTest, LargeArgsNoStarvationTest) {
   rpc::RequestWorkerLeaseReply reply;
   int num_callbacks = 0;
   int *num_callbacks_ptr = &num_callbacks;
-  auto callback = [num_callbacks_ptr](Status, std::function<void()>,
-                                      std::function<void()>) {
-    (*num_callbacks_ptr) = *num_callbacks_ptr + 1;
-  };
+  auto callback =
+      [num_callbacks_ptr](Status, std::function<void()>, std::function<void()>) {
+        (*num_callbacks_ptr) = *num_callbacks_ptr + 1;
+      };
 
   default_arg_size_ = 2000;
   auto task = CreateTask({{ray::kCPU_ResourceLabel, 1}}, 1);
@@ -1787,16 +1887,19 @@ TEST_F(ClusterTaskManagerTest, TestResourceDiff) {
 TEST_F(ClusterTaskManagerTest, PopWorkerExactlyOnce) {
   // Create and queue one task.
   std::string serialized_runtime_env = "mock_env";
-  RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 4}}, /*num_args=*/0, /*args=*/{},
-                            serialized_runtime_env);
+  RayTask task = CreateTask(
+      {{ray::kCPU_ResourceLabel, 4}},
+      /*num_args=*/0,
+      /*args=*/{},
+      serialized_runtime_env);
   auto runtime_env_hash = task.GetTaskSpecification().GetRuntimeEnvHash();
   rpc::RequestWorkerLeaseReply reply;
   bool callback_occurred = false;
   bool *callback_occurred_ptr = &callback_occurred;
-  auto callback = [callback_occurred_ptr](Status, std::function<void()>,
-                                          std::function<void()>) {
-    *callback_occurred_ptr = true;
-  };
+  auto callback =
+      [callback_occurred_ptr](Status, std::function<void()>, std::function<void()>) {
+        *callback_occurred_ptr = true;
+      };
 
   task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
 
@@ -1826,20 +1929,28 @@ TEST_F(ClusterTaskManagerTest, PopWorkerExactlyOnce) {
 
   RayTask finished_task;
   local_task_manager_->TaskFinished(leased_workers_.begin()->second, &finished_task);
-  ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
-            task.GetTaskSpecification().TaskId());
+  ASSERT_EQ(
+      finished_task.GetTaskSpecification().TaskId(),
+      task.GetTaskSpecification().TaskId());
   AssertNoLeaks();
 }
 
 TEST_F(ClusterTaskManagerTest, CapRunningOnDispatchQueue) {
-  scheduler_->GetLocalResourceManager().AddLocalResourceInstances(ray::kGPU_ResourceLabel,
-                                                                  {1, 1, 1});
-  RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 4}, {ray::kGPU_ResourceLabel, 1}},
-                            /*num_args=*/0, /*args=*/{});
-  RayTask task2 = CreateTask({{ray::kCPU_ResourceLabel, 4}, {ray::kGPU_ResourceLabel, 1}},
-                             /*num_args=*/0, /*args=*/{});
-  RayTask task3 = CreateTask({{ray::kCPU_ResourceLabel, 4}, {ray::kGPU_ResourceLabel, 1}},
-                             /*num_args=*/0, /*args=*/{});
+  scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
+      ray::kGPU_ResourceLabel,
+      {1, 1, 1});
+  RayTask task = CreateTask(
+      {{ray::kCPU_ResourceLabel, 4}, {ray::kGPU_ResourceLabel, 1}},
+      /*num_args=*/0,
+      /*args=*/{});
+  RayTask task2 = CreateTask(
+      {{ray::kCPU_ResourceLabel, 4}, {ray::kGPU_ResourceLabel, 1}},
+      /*num_args=*/0,
+      /*args=*/{});
+  RayTask task3 = CreateTask(
+      {{ray::kCPU_ResourceLabel, 4}, {ray::kGPU_ResourceLabel, 1}},
+      /*num_args=*/0,
+      /*args=*/{});
   auto runtime_env_hash = task.GetTaskSpecification().GetRuntimeEnvHash();
   std::vector<std::shared_ptr<MockWorker>> workers;
   for (int i = 0; i < 3; i++) {
@@ -1884,8 +1995,9 @@ TEST_F(ClusterTaskManagerTest, CapRunningOnDispatchQueue) {
 }
 
 TEST_F(ClusterTaskManagerTest, ZeroCPUTasks) {
-  scheduler_->GetLocalResourceManager().AddLocalResourceInstances(ray::kGPU_ResourceLabel,
-                                                                  {1, 1, 1});
+  scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
+      ray::kGPU_ResourceLabel,
+      {1, 1, 1});
   RayTask task = CreateTask({{"GPU", 1}}, /*num_args=*/0, /*args=*/{});
   RayTask task2 = CreateTask({{"GPU", 1}}, /*num_args=*/0, /*args=*/{});
   RayTask task3 = CreateTask({{"GPU", 1}}, /*num_args=*/0, /*args=*/{});
@@ -1970,8 +2082,10 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapIncrease) {
   int64_t UNIT = RayConfig::instance().worker_cap_initial_backoff_delay_ms();
   std::vector<RayTask> tasks;
   for (int i = 0; i < 3; i++) {
-    RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
-                              /*num_args=*/0, /*args=*/{});
+    RayTask task = CreateTask(
+        {{ray::kCPU_ResourceLabel, 8}},
+        /*num_args=*/0,
+        /*args=*/{});
     tasks.emplace_back(task);
   }
 
@@ -2035,8 +2149,10 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapIncrease) {
   current_time_ms_ += UNIT;
 
   // Now schedule another task of the same scheduling class.
-  RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
-                            /*num_args=*/0, /*args=*/{});
+  RayTask task = CreateTask(
+      {{ray::kCPU_ResourceLabel, 8}},
+      /*num_args=*/0,
+      /*args=*/{});
   task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
 
   std::shared_ptr<MockWorker> new_worker =
@@ -2067,8 +2183,10 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapResetTest) {
   int64_t UNIT = RayConfig::instance().worker_cap_initial_backoff_delay_ms();
   std::vector<RayTask> tasks;
   for (int i = 0; i < 2; i++) {
-    RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
-                              /*num_args=*/0, /*args=*/{});
+    RayTask task = CreateTask(
+        {{ray::kCPU_ResourceLabel, 8}},
+        /*num_args=*/0,
+        /*args=*/{});
     tasks.emplace_back(task);
   }
 
@@ -2107,8 +2225,10 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapResetTest) {
   AssertNoLeaks();
 
   for (int i = 0; i < 2; i++) {
-    RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
-                              /*num_args=*/0, /*args=*/{});
+    RayTask task = CreateTask(
+        {{ray::kCPU_ResourceLabel, 8}},
+        /*num_args=*/0,
+        /*args=*/{});
     task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
   }
 
@@ -2132,8 +2252,10 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapResetTest) {
 
   {
     // Ensure a class of a differenct scheduling class can still be scheduled.
-    RayTask task5 = CreateTask({},
-                               /*num_args=*/0, /*args=*/{});
+    RayTask task5 = CreateTask(
+        {},
+        /*num_args=*/0,
+        /*args=*/{});
     task_manager_.QueueAndScheduleTask(task5, false, false, &reply, callback);
     std::shared_ptr<MockWorker> worker5 =
         std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
@@ -2154,8 +2276,10 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapResetTest) {
 /// their timer after the new task is submitted, not before.
 TEST_F(ClusterTaskManagerTest, DispatchTimerAfterRequestTest) {
   int64_t UNIT = RayConfig::instance().worker_cap_initial_backoff_delay_ms();
-  RayTask first_task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
-                                  /*num_args=*/0, /*args=*/{});
+  RayTask first_task = CreateTask(
+      {{ray::kCPU_ResourceLabel, 8}},
+      /*num_args=*/0,
+      /*args=*/{});
 
   rpc::RequestWorkerLeaseReply reply;
   int num_callbacks = 0;
@@ -2177,8 +2301,10 @@ TEST_F(ClusterTaskManagerTest, DispatchTimerAfterRequestTest) {
 
   ASSERT_EQ(num_callbacks, 1);
 
-  RayTask second_task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
-                                   /*num_args=*/0, /*args=*/{});
+  RayTask second_task = CreateTask(
+      {{ray::kCPU_ResourceLabel, 8}},
+      /*num_args=*/0,
+      /*args=*/{});
   task_manager_.QueueAndScheduleTask(second_task, false, false, &reply, callback);
   pool_.TriggerCallbacks();
 
@@ -2204,8 +2330,10 @@ TEST_F(ClusterTaskManagerTest, DispatchTimerAfterRequestTest) {
   /// A lot of time passes, definitely more than the timeout.
   current_time_ms_ += 100000 * UNIT;
 
-  RayTask third_task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
-                                  /*num_args=*/0, /*args=*/{});
+  RayTask third_task = CreateTask(
+      {{ray::kCPU_ResourceLabel, 8}},
+      /*num_args=*/0,
+      /*args=*/{});
   task_manager_.QueueAndScheduleTask(third_task, false, false, &reply, callback);
   pool_.TriggerCallbacks();
 
@@ -2234,10 +2362,10 @@ TEST_F(ClusterTaskManagerTestWithoutCPUsAtHead, OneCpuInfeasibleTask) {
   rpc::RequestWorkerLeaseReply reply;
   bool callback_occurred = false;
   bool *callback_occurred_ptr = &callback_occurred;
-  auto callback = [callback_occurred_ptr](const Status &, const std::function<void()> &,
-                                          const std::function<void()> &) {
-    *callback_occurred_ptr = true;
-  };
+  auto callback = [callback_occurred_ptr](
+                      const Status &,
+                      const std::function<void()> &,
+                      const std::function<void()> &) { *callback_occurred_ptr = true; };
 
   constexpr int num_cases = 5;
   // Create 5 tasks with different CPU requests.

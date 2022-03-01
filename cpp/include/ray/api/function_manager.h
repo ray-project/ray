@@ -64,8 +64,9 @@ template <typename Function>
 struct Invoker {
   /// Invoke functions by networking stream, at first deserialize the binary data to a
   /// tuple, then call function with tuple.
-  static inline msgpack::sbuffer Apply(const Function &func,
-                                       const ArgsBufferList &args_buffer) {
+  static inline msgpack::sbuffer Apply(
+      const Function &func,
+      const ArgsBufferList &args_buffer) {
     using RetrunType = boost::callable_traits::return_type_t<Function>;
     using ArgsTuple = RemoveReference_t<boost::callable_traits::args_t<Function>>;
     if (std::tuple_size<ArgsTuple>::value != args_buffer.size()) {
@@ -75,7 +76,9 @@ struct Invoker {
     msgpack::sbuffer result;
     ArgsTuple tp{};
     bool is_ok = GetArgsTuple(
-        tp, args_buffer, std::make_index_sequence<std::tuple_size<ArgsTuple>::value>{});
+        tp,
+        args_buffer,
+        std::make_index_sequence<std::tuple_size<ArgsTuple>::value>{});
     if (!is_ok) {
       throw std::invalid_argument("Arguments error");
     }
@@ -84,8 +87,10 @@ struct Invoker {
     return result;
   }
 
-  static inline msgpack::sbuffer ApplyMember(const Function &func, msgpack::sbuffer *ptr,
-                                             const ArgsBufferList &args_buffer) {
+  static inline msgpack::sbuffer ApplyMember(
+      const Function &func,
+      msgpack::sbuffer *ptr,
+      const ArgsBufferList &args_buffer) {
     using RetrunType = boost::callable_traits::return_type_t<Function>;
     using ArgsTuple =
         RemoveReference_t<RemoveFirst_t<boost::callable_traits::args_t<Function>>>;
@@ -96,7 +101,9 @@ struct Invoker {
     msgpack::sbuffer result;
     ArgsTuple tp{};
     bool is_ok = GetArgsTuple(
-        tp, args_buffer, std::make_index_sequence<std::tuple_size<ArgsTuple>::value>{});
+        tp,
+        args_buffer,
+        std::make_index_sequence<std::tuple_size<ArgsTuple>::value>{});
     if (!is_ok) {
       throw std::invalid_argument("Arguments error");
     }
@@ -124,15 +131,18 @@ struct Invoker {
     }
   }
 
-  static inline bool GetArgsTuple(std::tuple<> &tup, const ArgsBufferList &args_buffer,
-                                  std::index_sequence<>) {
+  static inline bool GetArgsTuple(
+      std::tuple<> &tup,
+      const ArgsBufferList &args_buffer,
+      std::index_sequence<>) {
     return true;
   }
 
   template <size_t... I, typename... Args>
-  static inline bool GetArgsTuple(std::tuple<Args...> &tp,
-                                  const ArgsBufferList &args_buffer,
-                                  std::index_sequence<I...>) {
+  static inline bool GetArgsTuple(
+      std::tuple<Args...> &tp,
+      const ArgsBufferList &args_buffer,
+      std::index_sequence<I...>) {
     bool is_ok = true;
     (void)std::initializer_list<int>{
         (std::get<I>(tp) = ParseArg<Args>(args_buffer.at(I), is_ok), 0)...};
@@ -141,46 +151,57 @@ struct Invoker {
 
   template <typename R, typename F, typename... Args>
   static std::enable_if_t<std::is_void<R>::value, msgpack::sbuffer> Call(
-      const F &f, std::tuple<Args...> args) {
+      const F &f,
+      std::tuple<Args...> args) {
     CallInternal<R>(f, std::make_index_sequence<sizeof...(Args)>{}, std::move(args));
     return PackVoid();
   }
 
   template <typename R, typename F, typename... Args>
   static std::enable_if_t<!std::is_void<R>::value, msgpack::sbuffer> Call(
-      const F &f, std::tuple<Args...> args) {
+      const F &f,
+      std::tuple<Args...> args) {
     auto r =
         CallInternal<R>(f, std::make_index_sequence<sizeof...(Args)>{}, std::move(args));
     return PackReturnValue(r);
   }
 
   template <typename R, typename F, size_t... I, typename... Args>
-  static R CallInternal(const F &f, const std::index_sequence<I...> &,
-                        std::tuple<Args...> args) {
+  static R
+  CallInternal(const F &f, const std::index_sequence<I...> &, std::tuple<Args...> args) {
     (void)args;
     using ArgsTuple = boost::callable_traits::args_t<F>;
     return f(((typename std::tuple_element<I, ArgsTuple>::type)std::get<I>(args))...);
   }
 
   template <typename R, typename F, typename Self, typename... Args>
-  static std::enable_if_t<std::is_void<R>::value, msgpack::sbuffer> CallMember(
-      const F &f, Self *self, std::tuple<Args...> args) {
-    CallMemberInternal<R>(f, self, std::make_index_sequence<sizeof...(Args)>{},
-                          std::move(args));
+  static std::enable_if_t<std::is_void<R>::value, msgpack::sbuffer>
+  CallMember(const F &f, Self *self, std::tuple<Args...> args) {
+    CallMemberInternal<R>(
+        f,
+        self,
+        std::make_index_sequence<sizeof...(Args)>{},
+        std::move(args));
     return PackVoid();
   }
 
   template <typename R, typename F, typename Self, typename... Args>
-  static std::enable_if_t<!std::is_void<R>::value, msgpack::sbuffer> CallMember(
-      const F &f, Self *self, std::tuple<Args...> args) {
-    auto r = CallMemberInternal<R>(f, self, std::make_index_sequence<sizeof...(Args)>{},
-                                   std::move(args));
+  static std::enable_if_t<!std::is_void<R>::value, msgpack::sbuffer>
+  CallMember(const F &f, Self *self, std::tuple<Args...> args) {
+    auto r = CallMemberInternal<R>(
+        f,
+        self,
+        std::make_index_sequence<sizeof...(Args)>{},
+        std::move(args));
     return PackReturnValue(r);
   }
 
   template <typename R, typename F, typename Self, size_t... I, typename... Args>
-  static R CallMemberInternal(const F &f, Self *self, const std::index_sequence<I...> &,
-                              std::tuple<Args...> args) {
+  static R CallMemberInternal(
+      const F &f,
+      Self *self,
+      const std::index_sequence<I...> &,
+      std::tuple<Args...> args) {
     (void)args;
     using ArgsTuple = boost::callable_traits::args_t<F>;
     return (self->*f)(
@@ -200,7 +221,8 @@ class FunctionManager {
   std::pair<const RemoteFunctionMap_t &, const RemoteMemberFunctionMap_t &>
   GetRemoteFunctions() {
     return std::pair<const RemoteFunctionMap_t &, const RemoteMemberFunctionMap_t &>(
-        map_invokers_, map_mem_func_invokers_);
+        map_invokers_,
+        map_mem_func_invokers_);
   }
 
   RemoteFunction *GetFunction(const std::string &func_name) {
@@ -288,23 +310,30 @@ class FunctionManager {
   template <typename Function>
   bool RegisterNonMemberFunc(std::string const &name, Function f) {
     return map_invokers_
-        .emplace(name, std::bind(&Invoker<Function>::Apply, std::move(f),
-                                 std::placeholders::_1))
+        .emplace(
+            name,
+            std::bind(&Invoker<Function>::Apply, std::move(f), std::placeholders::_1))
         .second;
   }
 
   template <typename Function>
   bool RegisterMemberFunc(std::string const &name, Function f) {
     return map_mem_func_invokers_
-        .emplace(name, std::bind(&Invoker<Function>::ApplyMember, std::move(f),
-                                 std::placeholders::_1, std::placeholders::_2))
+        .emplace(
+            name,
+            std::bind(
+                &Invoker<Function>::ApplyMember,
+                std::move(f),
+                std::placeholders::_1,
+                std::placeholders::_2))
         .second;
   }
 
   template <class Dest, class Source>
   Dest BitCast(const Source &source) {
-    static_assert(sizeof(Dest) == sizeof(Source),
-                  "BitCast requires source and destination to be the same size");
+    static_assert(
+        sizeof(Dest) == sizeof(Source),
+        "BitCast requires source and destination to be the same size");
 
     Dest dest;
     memcpy(&dest, &source, sizeof(dest));

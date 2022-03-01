@@ -23,8 +23,10 @@ namespace ray {
 namespace rpc {
 class TestServiceHandler {
  public:
-  void HandlePing(const PingRequest &request, PingReply *reply,
-                  SendReplyCallback send_reply_callback) {
+  void HandlePing(
+      const PingRequest &request,
+      PingReply *reply,
+      SendReplyCallback send_reply_callback) {
     RAY_LOG(INFO) << "Got ping request, no_reply=" << request.no_reply();
     request_count++;
     while (frozen) {
@@ -46,8 +48,10 @@ class TestServiceHandler {
         });
   }
 
-  void HandlePingTimeout(const PingTimeoutRequest &request, PingTimeoutReply *reply,
-                         SendReplyCallback send_reply_callback) {
+  void HandlePingTimeout(
+      const PingTimeoutRequest &request,
+      PingTimeoutReply *reply,
+      SendReplyCallback send_reply_callback) {
     while (frozen) {
       RAY_LOG(INFO) << "Server is frozen...";
       std::this_thread::sleep_for(std::chrono::milliseconds(1000));
@@ -73,8 +77,9 @@ class TestGrpcService : public GrpcService {
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit TestGrpcService(instrumented_io_context &handler_io_service_,
-                           TestServiceHandler &handler)
+  explicit TestGrpcService(
+      instrumented_io_context &handler_io_service_,
+      TestServiceHandler &handler)
       : GrpcService(handler_io_service_), service_handler_(handler){};
 
  protected:
@@ -120,8 +125,10 @@ class TestGrpcServerClientFixture : public ::testing::Test {
       client_io_service_.run();
     });
     client_call_manager_.reset(new ClientCallManager(client_io_service_));
-    grpc_client_.reset(new GrpcClient<TestService>("127.0.0.1", grpc_server_->GetPort(),
-                                                   *client_call_manager_));
+    grpc_client_.reset(new GrpcClient<TestService>(
+        "127.0.0.1",
+        grpc_server_->GetPort(),
+        *client_call_manager_));
   }
 
   void ShutdownClient() {
@@ -149,8 +156,11 @@ class TestGrpcServerClientFixture : public ::testing::Test {
 
  protected:
   VOID_RPC_CLIENT_METHOD(TestService, Ping, grpc_client_, /*method_timeout_ms*/ -1, )
-  VOID_RPC_CLIENT_METHOD(TestService, PingTimeout, grpc_client_,
-                         /*method_timeout_ms*/ 100, )
+  VOID_RPC_CLIENT_METHOD(
+      TestService,
+      PingTimeout,
+      grpc_client_,
+      /*method_timeout_ms*/ 100, )
   // Server
   TestServiceHandler test_service_handler_;
   instrumented_io_context handler_io_service_;
@@ -205,10 +215,14 @@ TEST_F(TestGrpcServerClientFixture, TestClientCallManagerTimeout) {
   // Reinit ClientCallManager with short timeout.
   grpc_client_.reset();
   client_call_manager_.reset();
-  client_call_manager_.reset(new ClientCallManager(client_io_service_, /*num_thread=*/1,
-                                                   /*call_timeout_ms=*/100));
-  grpc_client_.reset(new GrpcClient<TestService>("127.0.0.1", grpc_server_->GetPort(),
-                                                 *client_call_manager_));
+  client_call_manager_.reset(new ClientCallManager(
+      client_io_service_,
+      /*num_thread=*/1,
+      /*call_timeout_ms=*/100));
+  grpc_client_.reset(new GrpcClient<TestService>(
+      "127.0.0.1",
+      grpc_server_->GetPort(),
+      *client_call_manager_));
   // Freeze server first, it won't reply any request.
   test_service_handler_.frozen = true;
   // Send request.
@@ -237,10 +251,14 @@ TEST_F(TestGrpcServerClientFixture, TestClientDiedBeforeReply) {
   // Reinit ClientCallManager with short timeout, so that call won't block.
   grpc_client_.reset();
   client_call_manager_.reset();
-  client_call_manager_.reset(new ClientCallManager(client_io_service_, /*num_thread=*/1,
-                                                   /*call_timeout_ms=*/100));
-  grpc_client_.reset(new GrpcClient<TestService>("127.0.0.1", grpc_server_->GetPort(),
-                                                 *client_call_manager_));
+  client_call_manager_.reset(new ClientCallManager(
+      client_io_service_,
+      /*num_thread=*/1,
+      /*call_timeout_ms=*/100));
+  grpc_client_.reset(new GrpcClient<TestService>(
+      "127.0.0.1",
+      grpc_server_->GetPort(),
+      *client_call_manager_));
   // Freeze server first, it won't reply any request.
   test_service_handler_.frozen = true;
   // Send request.
@@ -267,8 +285,10 @@ TEST_F(TestGrpcServerClientFixture, TestClientDiedBeforeReply) {
   }
   // Reinit client with infinite timeout.
   client_call_manager_.reset(new ClientCallManager(client_io_service_));
-  grpc_client_.reset(new GrpcClient<TestService>("127.0.0.1", grpc_server_->GetPort(),
-                                                 *client_call_manager_));
+  grpc_client_.reset(new GrpcClient<TestService>(
+      "127.0.0.1",
+      grpc_server_->GetPort(),
+      *client_call_manager_));
   // Send again, this request should be replied. If any leaking happened, this call won't
   // be replied to since the max_active_rpcs is 1.
   std::atomic<bool> done(false);
@@ -288,12 +308,13 @@ TEST_F(TestGrpcServerClientFixture, TestTimeoutMacro) {
   // Send request.
   PingTimeoutRequest request;
   std::atomic<bool> call_timed_out(false);
-  PingTimeout(request,
-              [&call_timed_out](const Status &status, const PingTimeoutReply &reply) {
-                RAY_LOG(INFO) << "Replied, status=" << status;
-                ASSERT_TRUE(status.IsTimedOut());
-                call_timed_out = true;
-              });
+  PingTimeout(
+      request,
+      [&call_timed_out](const Status &status, const PingTimeoutReply &reply) {
+        RAY_LOG(INFO) << "Replied, status=" << status;
+        ASSERT_TRUE(status.IsTimedOut());
+        call_timed_out = true;
+      });
   // Wait for clinet call timed out.
   while (!call_timed_out) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));

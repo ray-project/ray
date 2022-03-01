@@ -24,18 +24,28 @@ namespace core {
 
 class MockActorSchedulingQueue {
  public:
-  MockActorSchedulingQueue(instrumented_io_context &main_io_service,
-                           DependencyWaiter &waiter)
+  MockActorSchedulingQueue(
+      instrumented_io_context &main_io_service,
+      DependencyWaiter &waiter)
       : queue_(main_io_service, waiter) {}
-  void Add(int64_t seq_no, int64_t client_processed_up_to,
-           std::function<void(rpc::SendReplyCallback)> accept_request,
-           std::function<void(rpc::SendReplyCallback)> reject_request,
-           rpc::SendReplyCallback send_reply_callback = nullptr,
-           TaskID task_id = TaskID::Nil(),
-           const std::vector<rpc::ObjectReference> &dependencies = {}) {
-    queue_.Add(seq_no, client_processed_up_to, std::move(accept_request),
-               std::move(reject_request), send_reply_callback, "",
-               FunctionDescriptorBuilder::Empty(), task_id, dependencies);
+  void Add(
+      int64_t seq_no,
+      int64_t client_processed_up_to,
+      std::function<void(rpc::SendReplyCallback)> accept_request,
+      std::function<void(rpc::SendReplyCallback)> reject_request,
+      rpc::SendReplyCallback send_reply_callback = nullptr,
+      TaskID task_id = TaskID::Nil(),
+      const std::vector<rpc::ObjectReference> &dependencies = {}) {
+    queue_.Add(
+        seq_no,
+        client_processed_up_to,
+        std::move(accept_request),
+        std::move(reject_request),
+        send_reply_callback,
+        "",
+        FunctionDescriptorBuilder::Empty(),
+        task_id,
+        dependencies);
   }
 
  private:
@@ -46,8 +56,9 @@ class MockWaiter : public DependencyWaiter {
  public:
   MockWaiter() {}
 
-  void Wait(const std::vector<rpc::ObjectReference> &dependencies,
-            std::function<void()> on_dependencies_available) override {
+  void Wait(
+      const std::vector<rpc::ObjectReference> &dependencies,
+      std::function<void()> on_dependencies_available) override {
     callbacks_.push_back([on_dependencies_available]() { on_dependencies_available(); });
   }
 

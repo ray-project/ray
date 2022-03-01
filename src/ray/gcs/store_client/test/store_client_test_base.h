@@ -67,12 +67,17 @@ class StoreClientTestBase : public ::testing::Test {
     };
     for (const auto &elem : key_to_value_) {
       ++pending_count_;
-      RAY_CHECK_OK(store_client_->AsyncPut(table_name_, elem.first.Binary(),
-                                           elem.second.SerializeAsString(),
-                                           put_calllback));
+      RAY_CHECK_OK(store_client_->AsyncPut(
+          table_name_,
+          elem.first.Binary(),
+          elem.second.SerializeAsString(),
+          put_calllback));
       // Make sure no-op callback is handled well
-      RAY_CHECK_OK(store_client_->AsyncPut(table_name_, elem.first.Binary(),
-                                           elem.second.SerializeAsString(), nullptr));
+      RAY_CHECK_OK(store_client_->AsyncPut(
+          table_name_,
+          elem.first.Binary(),
+          elem.second.SerializeAsString(),
+          nullptr));
     }
     WaitPendingDone();
   }
@@ -93,17 +98,17 @@ class StoreClientTestBase : public ::testing::Test {
   }
 
   void Get() {
-    auto get_callback = [this](const Status &status,
-                               const boost::optional<std::string> &result) {
-      RAY_CHECK_OK(status);
-      RAY_CHECK(result);
-      rpc::ActorTableData data;
-      RAY_CHECK(data.ParseFromString(*result));
-      ActorID actor_id = ActorID::FromBinary(data.actor_id());
-      auto it = key_to_value_.find(actor_id);
-      RAY_CHECK(it != key_to_value_.end());
-      --pending_count_;
-    };
+    auto get_callback =
+        [this](const Status &status, const boost::optional<std::string> &result) {
+          RAY_CHECK_OK(status);
+          RAY_CHECK(result);
+          rpc::ActorTableData data;
+          RAY_CHECK(data.ParseFromString(*result));
+          ActorID actor_id = ActorID::FromBinary(data.actor_id());
+          auto it = key_to_value_.find(actor_id);
+          RAY_CHECK(it != key_to_value_.end());
+          --pending_count_;
+        };
     for (const auto &elem : key_to_value_) {
       ++pending_count_;
       RAY_CHECK_OK(
@@ -115,12 +120,12 @@ class StoreClientTestBase : public ::testing::Test {
   void GetEmpty() {
     for (const auto &elem : key_to_value_) {
       auto key = elem.first.Binary();
-      auto get_callback = [this, key](const Status &status,
-                                      const boost::optional<std::string> &result) {
-        RAY_CHECK_OK(status);
-        RAY_CHECK(!result);
-        --pending_count_;
-      };
+      auto get_callback =
+          [this, key](const Status &status, const boost::optional<std::string> &result) {
+            RAY_CHECK_OK(status);
+            RAY_CHECK(!result);
+            --pending_count_;
+          };
 
       ++pending_count_;
       RAY_CHECK_OK(store_client_->AsyncGet(table_name_, key, get_callback));
@@ -133,12 +138,18 @@ class StoreClientTestBase : public ::testing::Test {
     for (const auto &elem : key_to_value_) {
       ++pending_count_;
       RAY_CHECK_OK(store_client_->AsyncPutWithIndex(
-          table_name_, elem.first.Binary(), key_to_index_[elem.first].Hex(),
-          elem.second.SerializeAsString(), put_calllback));
+          table_name_,
+          elem.first.Binary(),
+          key_to_index_[elem.first].Hex(),
+          elem.second.SerializeAsString(),
+          put_calllback));
       // Make sure no-op callback is handled well
       RAY_CHECK_OK(store_client_->AsyncPutWithIndex(
-          table_name_, elem.first.Binary(), key_to_index_[elem.first].Hex(),
-          elem.second.SerializeAsString(), nullptr));
+          table_name_,
+          elem.first.Binary(),
+          key_to_index_[elem.first].Hex(),
+          elem.second.SerializeAsString(),
+          nullptr));
     }
     WaitPendingDone();
   }
@@ -168,8 +179,10 @@ class StoreClientTestBase : public ::testing::Test {
     };
     for (const auto &elem : index_to_keys_) {
       ++pending_count_;
-      RAY_CHECK_OK(store_client_->AsyncDeleteByIndex(table_name_, elem.first.Hex(),
-                                                     delete_calllback));
+      RAY_CHECK_OK(store_client_->AsyncDeleteByIndex(
+          table_name_,
+          elem.first.Hex(),
+          delete_calllback));
       // Make sure no-op callback is handled well
       RAY_CHECK_OK(
           store_client_->AsyncDeleteByIndex(table_name_, elem.first.Hex(), nullptr));
@@ -222,12 +235,17 @@ class StoreClientTestBase : public ::testing::Test {
     };
     for (const auto &elem : key_to_value_) {
       ++pending_count_;
-      RAY_CHECK_OK(store_client_->AsyncDeleteWithIndex(table_name_, elem.first.Binary(),
-                                                       key_to_index_[elem.first].Hex(),
-                                                       delete_calllback));
+      RAY_CHECK_OK(store_client_->AsyncDeleteWithIndex(
+          table_name_,
+          elem.first.Binary(),
+          key_to_index_[elem.first].Hex(),
+          delete_calllback));
       // Make sure no-op callback is handled well
       RAY_CHECK_OK(store_client_->AsyncDeleteWithIndex(
-          table_name_, elem.first.Binary(), key_to_index_[elem.first].Hex(), nullptr));
+          table_name_,
+          elem.first.Binary(),
+          key_to_index_[elem.first].Hex(),
+          nullptr));
     }
     WaitPendingDone();
   }
@@ -244,8 +262,11 @@ class StoreClientTestBase : public ::testing::Test {
       keys.push_back(elem.first.Binary());
       index_keys.push_back(key_to_index_[elem.first].Hex());
     }
-    RAY_CHECK_OK(store_client_->AsyncBatchDeleteWithIndex(table_name_, keys, index_keys,
-                                                          delete_calllback));
+    RAY_CHECK_OK(store_client_->AsyncBatchDeleteWithIndex(
+        table_name_,
+        keys,
+        index_keys,
+        delete_calllback));
     // Make sure no-op callback is handled well
     RAY_CHECK_OK(
         store_client_->AsyncBatchDeleteWithIndex(table_name_, keys, index_keys, nullptr));

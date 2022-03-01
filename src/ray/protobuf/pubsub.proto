@@ -120,8 +120,7 @@ message WorkerObjectLocationsPubMessage {
 }
 
 /// Indicating the subscriber needs to handle failure callback.
-message FailureMessage {
-}
+message FailureMessage {}
 
 ///
 /// Subscribe
@@ -144,8 +143,7 @@ message Command {
   }
 }
 
-message UnsubscribeMessage {
-}
+message UnsubscribeMessage {}
 
 /// Each of subscribe command needs to include request body because in Ray's pubsub
 /// module, it doesn't subscribe the same data structure (like for Redis,
@@ -212,8 +210,7 @@ message PubsubCommandBatchRequest {
   repeated Command commands = 2;
 }
 
-message PubsubCommandBatchReply {
-}
+message PubsubCommandBatchReply {}
 
 service SubscriberService {
   /// The long polling request sent to the publisher for pubsub operations.

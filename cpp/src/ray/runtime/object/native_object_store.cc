@@ -28,13 +28,17 @@ namespace internal {
 
 using ray::core::CoreWorkerProcess;
 
-void NativeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
-                               ObjectID *object_id) {
+void NativeObjectStore::PutRaw(
+    std::shared_ptr<msgpack::sbuffer> data,
+    ObjectID *object_id) {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   auto buffer = std::make_shared<::ray::LocalMemoryBuffer>(
-      reinterpret_cast<uint8_t *>(data->data()), data->size(), true);
+      reinterpret_cast<uint8_t *>(data->data()),
+      data->size(),
+      true);
   auto status = core_worker.Put(
-      ::ray::RayObject(buffer, nullptr, std::vector<rpc::ObjectReference>()), {},
+      ::ray::RayObject(buffer, nullptr, std::vector<rpc::ObjectReference>()),
+      {},
       object_id);
   if (!status.ok()) {
     throw RayException("Put object error");
@@ -42,13 +46,17 @@ void NativeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
   return;
 }
 
-void NativeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
-                               const ObjectID &object_id) {
+void NativeObjectStore::PutRaw(
+    std::shared_ptr<msgpack::sbuffer> data,
+    const ObjectID &object_id) {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   auto buffer = std::make_shared<::ray::LocalMemoryBuffer>(
-      reinterpret_cast<uint8_t *>(data->data()), data->size(), true);
+      reinterpret_cast<uint8_t *>(data->data()),
+      data->size(),
+      true);
   auto status = core_worker.Put(
-      ::ray::RayObject(buffer, nullptr, std::vector<rpc::ObjectReference>()), {},
+      ::ray::RayObject(buffer, nullptr, std::vector<rpc::ObjectReference>()),
+      {},
       object_id);
   if (!status.ok()) {
     throw RayException("Put object error");
@@ -56,8 +64,9 @@ void NativeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
   return;
 }
 
-std::shared_ptr<msgpack::sbuffer> NativeObjectStore::GetRaw(const ObjectID &object_id,
-                                                            int timeout_ms) {
+std::shared_ptr<msgpack::sbuffer> NativeObjectStore::GetRaw(
+    const ObjectID &object_id,
+    int timeout_ms) {
   std::vector<ObjectID> object_ids;
   object_ids.push_back(object_id);
   auto buffers = GetRaw(object_ids, timeout_ms);
@@ -65,8 +74,9 @@ std::shared_ptr<msgpack::sbuffer> NativeObjectStore::GetRaw(const ObjectID &obje
   return buffers[0];
 }
 
-void NativeObjectStore::CheckException(const std::string &meta_str,
-                                       const std::shared_ptr<Buffer> &data_buffer) {
+void NativeObjectStore::CheckException(
+    const std::string &meta_str,
+    const std::shared_ptr<Buffer> &data_buffer) {
   std::string data_str =
       data_buffer ? std::string((char *)data_buffer->Data(), data_buffer->Size()) : "";
 
@@ -74,10 +84,11 @@ void NativeObjectStore::CheckException(const std::string &meta_str,
     throw RayWorkerException(std::move(data_str));
   } else if (meta_str == std::to_string(ray::rpc::ErrorType::ACTOR_DIED)) {
     throw RayActorException(std::move(data_str));
-  } else if (meta_str == std::to_string(ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE) ||
-             meta_str == std::to_string(ray::rpc::ErrorType::OBJECT_LOST) ||
-             meta_str == std::to_string(ray::rpc::ErrorType::OWNER_DIED) ||
-             meta_str == std::to_string(ray::rpc::ErrorType::OBJECT_DELETED)) {
+  } else if (
+      meta_str == std::to_string(ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE) ||
+      meta_str == std::to_string(ray::rpc::ErrorType::OBJECT_LOST) ||
+      meta_str == std::to_string(ray::rpc::ErrorType::OWNER_DIED) ||
+      meta_str == std::to_string(ray::rpc::ErrorType::OBJECT_DELETED)) {
     // TODO: Differentiate object errors.
     throw UnreconstructableException(std::move(data_str));
   } else if (meta_str == std::to_string(ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION)) {
@@ -86,7 +97,8 @@ void NativeObjectStore::CheckException(const std::string &meta_str,
 }
 
 std::vector<std::shared_ptr<msgpack::sbuffer>> NativeObjectStore::GetRaw(
-    const std::vector<ObjectID> &ids, int timeout_ms) {
+    const std::vector<ObjectID> &ids,
+    int timeout_ms) {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   std::vector<std::shared_ptr<::ray::RayObject>> results;
   ::ray::Status status = core_worker.Get(ids, timeout_ms, &results);
@@ -105,15 +117,18 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> NativeObjectStore::GetRaw(
     }
 
     auto sbuffer = std::make_shared<msgpack::sbuffer>(data_buffer->Size());
-    sbuffer->write(reinterpret_cast<const char *>(data_buffer->Data()),
-                   data_buffer->Size());
+    sbuffer->write(
+        reinterpret_cast<const char *>(data_buffer->Data()),
+        data_buffer->Size());
     result_sbuffers.push_back(sbuffer);
   }
   return result_sbuffers;
 }
 
-std::vector<bool> NativeObjectStore::Wait(const std::vector<ObjectID> &ids,
-                                          int num_objects, int timeout_ms) {
+std::vector<bool> NativeObjectStore::Wait(
+    const std::vector<ObjectID> &ids,
+    int num_objects,
+    int timeout_ms) {
   std::vector<bool> results;
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   // TODO(SongGuyang): Support `fetch_local` option in API.

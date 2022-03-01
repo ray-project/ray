@@ -37,7 +37,8 @@ void FunctionHelper::LoadDll(const boost::filesystem::path &lib_path) {
   std::shared_ptr<boost::dll::shared_library> lib = nullptr;
   try {
     lib = std::make_shared<boost::dll::shared_library>(
-        lib_path.string(), boost::dll::load_mode::type::rtld_lazy);
+        lib_path.string(),
+        boost::dll::load_mode::type::rtld_lazy);
   } catch (std::exception &e) {
     RAY_LOG(FATAL) << "Load library failed, lib_path: " << lib_path
                    << ", failed reason: " << e.what();
@@ -53,8 +54,9 @@ void FunctionHelper::LoadDll(const boost::filesystem::path &lib_path) {
 
   try {
     auto entry_func = boost::dll::import_alias<msgpack::sbuffer(
-        const std::string &, const ArgsBufferList &, msgpack::sbuffer *)>(
-        *lib, "TaskExecutionHandler");
+        const std::string &,
+        const ArgsBufferList &,
+        msgpack::sbuffer *)>(*lib, "TaskExecutionHandler");
     auto function_names = LoadAllRemoteFunctions(lib_path.string(), *lib, entry_func);
     if (function_names.empty()) {
       RAY_LOG(WARNING) << "No remote functions in library " << lib_path
@@ -77,9 +79,10 @@ void FunctionHelper::LoadDll(const boost::filesystem::path &lib_path) {
   return;
 }
 
-std::string FunctionHelper::LoadAllRemoteFunctions(const std::string lib_path,
-                                                   const boost::dll::shared_library &lib,
-                                                   const EntryFuntion &entry_function) {
+std::string FunctionHelper::LoadAllRemoteFunctions(
+    const std::string lib_path,
+    const boost::dll::shared_library &lib,
+    const EntryFuntion &entry_function) {
   static const std::string internal_function_name = "GetRemoteFunctions";
   if (!lib.has(internal_function_name)) {
     RAY_LOG(WARNING) << "Internal function '" << internal_function_name
@@ -96,7 +99,8 @@ std::string FunctionHelper::LoadAllRemoteFunctions(const std::string lib_path,
 
   auto get_remote_func = boost::dll::import_alias<
       std::pair<const RemoteFunctionMap_t &, const RemoteMemberFunctionMap_t &>()>(
-      lib, internal_function_name);
+      lib,
+      internal_function_name);
   std::string names_str;
   auto function_maps = get_remote_func();
   for (const auto &pair : function_maps.first) {
@@ -114,13 +118,15 @@ std::string FunctionHelper::LoadAllRemoteFunctions(const std::string lib_path,
   return names_str;
 }
 
-void FindDynamicLibrary(boost::filesystem::path path,
-                        std::list<boost::filesystem::path> &dynamic_libraries) {
+void FindDynamicLibrary(
+    boost::filesystem::path path,
+    std::list<boost::filesystem::path> &dynamic_libraries) {
 #if defined(_WIN32)
   static const std::unordered_set<std::string> dynamic_library_extension = {".dll"};
 #elif __APPLE__
-  static const std::unordered_set<std::string> dynamic_library_extension = {".dylib",
-                                                                            ".so"};
+  static const std::unordered_set<std::string> dynamic_library_extension = {
+      ".dylib",
+      ".so"};
 #else
   static const std::unordered_set<std::string> dynamic_library_extension = {".so"};
 #endif
@@ -157,8 +163,8 @@ const EntryFuntion &FunctionHelper::GetExecutableFunctions(
     const std::string &function_name) {
   auto it = remote_funcs_.find(function_name);
   if (it == remote_funcs_.end()) {
-    throw RayFunctionNotFound("Executable function not found, the function name " +
-                              function_name);
+    throw RayFunctionNotFound(
+        "Executable function not found, the function name " + function_name);
   } else {
     return it->second;
   }
@@ -168,8 +174,8 @@ const EntryFuntion &FunctionHelper::GetExecutableMemberFunctions(
     const std::string &function_name) {
   auto it = remote_member_funcs_.find(function_name);
   if (it == remote_member_funcs_.end()) {
-    throw RayFunctionNotFound("Executable member function not found, the function name " +
-                              function_name);
+    throw RayFunctionNotFound(
+        "Executable member function not found, the function name " + function_name);
   } else {
     return it->second;
   }

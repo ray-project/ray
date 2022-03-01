@@ -18,38 +18,44 @@ namespace ray {
 
 namespace gcs {
 
-Status InMemoryStoreClient::AsyncPut(const std::string &table_name,
-                                     const std::string &key, const std::string &data,
-                                     const StatusCallback &callback) {
+Status InMemoryStoreClient::AsyncPut(
+    const std::string &table_name,
+    const std::string &key,
+    const std::string &data,
+    const StatusCallback &callback) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   table->records_[key] = data;
   if (callback != nullptr) {
-    main_io_service_.post([callback]() { callback(Status::OK()); },
-                          "GcsInMemoryStore.Put");
+    main_io_service_.post(
+        [callback]() { callback(Status::OK()); },
+        "GcsInMemoryStore.Put");
   }
   return Status::OK();
 }
 
-Status InMemoryStoreClient::AsyncPutWithIndex(const std::string &table_name,
-                                              const std::string &key,
-                                              const std::string &index_key,
-                                              const std::string &data,
-                                              const StatusCallback &callback) {
+Status InMemoryStoreClient::AsyncPutWithIndex(
+    const std::string &table_name,
+    const std::string &key,
+    const std::string &index_key,
+    const std::string &data,
+    const StatusCallback &callback) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   table->records_[key] = data;
   table->index_keys_[index_key].emplace_back(key);
   if (callback != nullptr) {
-    main_io_service_.post([callback]() { callback(Status::OK()); },
-                          "GcsInMemoryStore.PutWithIndex");
+    main_io_service_.post(
+        [callback]() { callback(Status::OK()); },
+        "GcsInMemoryStore.PutWithIndex");
   }
   return Status::OK();
 }
 
-Status InMemoryStoreClient::AsyncGet(const std::string &table_name,
-                                     const std::string &key,
-                                     const OptionalItemCallback<std::string> &callback) {
+Status InMemoryStoreClient::AsyncGet(
+    const std::string &table_name,
+    const std::string &key,
+    const OptionalItemCallback<std::string> &callback) {
   RAY_CHECK(callback != nullptr);
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
@@ -80,23 +86,26 @@ Status InMemoryStoreClient::AsyncGetAll(
   return Status::OK();
 }
 
-Status InMemoryStoreClient::AsyncDelete(const std::string &table_name,
-                                        const std::string &key,
-                                        const StatusCallback &callback) {
+Status InMemoryStoreClient::AsyncDelete(
+    const std::string &table_name,
+    const std::string &key,
+    const StatusCallback &callback) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   table->records_.erase(key);
   if (callback != nullptr) {
-    main_io_service_.post([callback]() { callback(Status::OK()); },
-                          "GcsInMemoryStore.Delete");
+    main_io_service_.post(
+        [callback]() { callback(Status::OK()); },
+        "GcsInMemoryStore.Delete");
   }
   return Status::OK();
 }
 
-Status InMemoryStoreClient::AsyncDeleteWithIndex(const std::string &table_name,
-                                                 const std::string &key,
-                                                 const std::string &index_key,
-                                                 const StatusCallback &callback) {
+Status InMemoryStoreClient::AsyncDeleteWithIndex(
+    const std::string &table_name,
+    const std::string &key,
+    const std::string &index_key,
+    const StatusCallback &callback) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   // Remove key-value data.
@@ -114,30 +123,35 @@ Status InMemoryStoreClient::AsyncDeleteWithIndex(const std::string &table_name,
     }
   }
   if (callback != nullptr) {
-    main_io_service_.post([callback]() { callback(Status::OK()); },
-                          "GcsInMemoryStore.DeleteWithIndex");
+    main_io_service_.post(
+        [callback]() { callback(Status::OK()); },
+        "GcsInMemoryStore.DeleteWithIndex");
   }
   return Status::OK();
 }
 
-Status InMemoryStoreClient::AsyncBatchDelete(const std::string &table_name,
-                                             const std::vector<std::string> &keys,
-                                             const StatusCallback &callback) {
+Status InMemoryStoreClient::AsyncBatchDelete(
+    const std::string &table_name,
+    const std::vector<std::string> &keys,
+    const StatusCallback &callback) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   for (auto &key : keys) {
     table->records_.erase(key);
   }
   if (callback != nullptr) {
-    main_io_service_.post([callback]() { callback(Status::OK()); },
-                          "GcsInMemoryStore.BatchDelete");
+    main_io_service_.post(
+        [callback]() { callback(Status::OK()); },
+        "GcsInMemoryStore.BatchDelete");
   }
   return Status::OK();
 }
 
 Status InMemoryStoreClient::AsyncBatchDeleteWithIndex(
-    const std::string &table_name, const std::vector<std::string> &keys,
-    const std::vector<std::string> &index_keys, const StatusCallback &callback) {
+    const std::string &table_name,
+    const std::vector<std::string> &keys,
+    const std::vector<std::string> &index_keys,
+    const StatusCallback &callback) {
   RAY_CHECK(keys.size() == index_keys.size());
 
   auto table = GetOrCreateTable(table_name);
@@ -161,15 +175,17 @@ Status InMemoryStoreClient::AsyncBatchDeleteWithIndex(
   }
 
   if (callback != nullptr) {
-    main_io_service_.post([callback]() { callback(Status::OK()); },
-                          "GcsInMemoryStore.BatchDeleteWithIndex");
+    main_io_service_.post(
+        [callback]() { callback(Status::OK()); },
+        "GcsInMemoryStore.BatchDeleteWithIndex");
   }
 
   return Status::OK();
 }
 
 Status InMemoryStoreClient::AsyncGetByIndex(
-    const std::string &table_name, const std::string &index_key,
+    const std::string &table_name,
+    const std::string &index_key,
     const MapCallback<std::string, std::string> &callback) {
   RAY_CHECK(callback);
   auto table = GetOrCreateTable(table_name);
@@ -191,9 +207,10 @@ Status InMemoryStoreClient::AsyncGetByIndex(
   return Status::OK();
 }
 
-Status InMemoryStoreClient::AsyncDeleteByIndex(const std::string &table_name,
-                                               const std::string &index_key,
-                                               const StatusCallback &callback) {
+Status InMemoryStoreClient::AsyncDeleteByIndex(
+    const std::string &table_name,
+    const std::string &index_key,
+    const StatusCallback &callback) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   auto iter = table->index_keys_.find(index_key);
@@ -204,8 +221,9 @@ Status InMemoryStoreClient::AsyncDeleteByIndex(const std::string &table_name,
     table->index_keys_.erase(iter);
   }
   if (callback != nullptr) {
-    main_io_service_.post([callback]() { callback(Status::OK()); },
-                          "GcsInMemoryStore.DeleteByIndex");
+    main_io_service_.post(
+        [callback]() { callback(Status::OK()); },
+        "GcsInMemoryStore.DeleteByIndex");
   }
   return Status::OK();
 }

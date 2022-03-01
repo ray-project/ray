@@ -45,9 +45,13 @@ class GcsClientOptions {
   /// \param ip redis service ip.
   /// \param port redis service port.
   /// \param password redis service password.
-  GcsClientOptions(const std::string &redis_ip, int redis_port,
-                   const std::string &password, bool enable_sync_conn = true,
-                   bool enable_async_conn = true, bool enable_subscribe_conn = true)
+  GcsClientOptions(
+      const std::string &redis_ip,
+      int redis_port,
+      const std::string &password,
+      bool enable_sync_conn = true,
+      bool enable_async_conn = true,
+      bool enable_subscribe_conn = true)
       : redis_ip_(redis_ip),
         redis_port_(redis_port),
         password_(password),
@@ -100,9 +104,10 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   ///
   /// \param options Options for client.
   /// \param get_gcs_server_address_func Function to get GCS server address.
-  explicit GcsClient(const GcsClientOptions &options,
-                     std::function<bool(std::pair<std::string, int> *)>
-                         get_gcs_server_address_func = nullptr);
+  explicit GcsClient(
+      const GcsClientOptions &options,
+      std::function<bool(std::pair<std::string, int> *)> get_gcs_server_address_func =
+          nullptr);
 
   virtual ~GcsClient() = default;
 
@@ -208,9 +213,10 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// \param address The address of gcs server.
   /// \param max_attempts The maximum number of times to get gcs server rpc address.
   /// \return Returns true if gcs server address is obtained, False otherwise.
-  bool GetGcsServerAddressFromRedis(redisContext *context,
-                                    std::pair<std::string, int> *address,
-                                    int max_attempts = 1);
+  bool GetGcsServerAddressFromRedis(
+      redisContext *context,
+      std::pair<std::string, int> *address,
+      int max_attempts = 1);
 
   /// Fire a periodic timer to check if GCS sever address has changed.
   void PeriodicallyCheckGcsServerAddress();

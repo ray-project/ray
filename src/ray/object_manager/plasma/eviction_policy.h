@@ -90,8 +90,9 @@ class IEvictionPolicy {
   /// \param objects_to_evict The object IDs that were chosen for eviction will
   ///        be stored into this vector.
   /// \return The total number of bytes of space chosen to be evicted.
-  virtual int64_t ChooseObjectsToEvict(int64_t num_bytes_required,
-                                       std::vector<ObjectID> &objects_to_evict) = 0;
+  virtual int64_t ChooseObjectsToEvict(
+      int64_t num_bytes_required,
+      std::vector<ObjectID> &objects_to_evict) = 0;
 
   /// This method will be called when an object is going to be removed
   ///
@@ -116,8 +117,9 @@ class LRUCache {
 
   int64_t Remove(const ObjectID &key);
 
-  int64_t ChooseObjectsToEvict(int64_t num_bytes_required,
-                               std::vector<ObjectID> &objects_to_evict);
+  int64_t ChooseObjectsToEvict(
+      int64_t num_bytes_required,
+      std::vector<ObjectID> &objects_to_evict);
 
   int64_t OriginalCapacity() const;
 
@@ -169,8 +171,9 @@ class EvictionPolicy : public IEvictionPolicy {
 
   void EndObjectAccess(const ObjectID &object_id) override;
 
-  int64_t ChooseObjectsToEvict(int64_t num_bytes_required,
-                               std::vector<ObjectID> &objects_to_evict) override;
+  int64_t ChooseObjectsToEvict(
+      int64_t num_bytes_required,
+      std::vector<ObjectID> &objects_to_evict) override;
 
   void RemoveObject(const ObjectID &object_id) override;
 

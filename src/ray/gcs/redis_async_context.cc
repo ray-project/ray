@@ -65,8 +65,11 @@ void RedisAsyncContext::RedisAsyncHandleWrite() {
   redisAsyncHandleWrite(redis_async_context_);
 }
 
-Status RedisAsyncContext::RedisAsyncCommand(redisCallbackFn *fn, void *privdata,
-                                            const char *format, ...) {
+Status RedisAsyncContext::RedisAsyncCommand(
+    redisCallbackFn *fn,
+    void *privdata,
+    const char *format,
+    ...) {
   va_list ap;
   va_start(ap, format);
 
@@ -89,9 +92,12 @@ Status RedisAsyncContext::RedisAsyncCommand(redisCallbackFn *fn, void *privdata,
   return Status::OK();
 }
 
-Status RedisAsyncContext::RedisAsyncCommandArgv(redisCallbackFn *fn, void *privdata,
-                                                int argc, const char **argv,
-                                                const size_t *argvlen) {
+Status RedisAsyncContext::RedisAsyncCommandArgv(
+    redisCallbackFn *fn,
+    void *privdata,
+    int argc,
+    const char **argv,
+    const size_t *argvlen) {
   int ret_code = 0;
   {
     // `redisAsyncCommandArgv` will mutate `redis_async_context_`, use a lock to protect

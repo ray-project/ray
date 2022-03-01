@@ -40,9 +40,10 @@ class IObjectStore {
   /// \param fallback_allocate Whether to use fallback allocation.
   /// \return
   ///   - pointer to created object or nullptr when out of space.
-  virtual const LocalObject *CreateObject(const ray::ObjectInfo &object_info,
-                                          plasma::flatbuf::ObjectSource source,
-                                          bool fallback_allocate) = 0;
+  virtual const LocalObject *CreateObject(
+      const ray::ObjectInfo &object_info,
+      plasma::flatbuf::ObjectSource source,
+      bool fallback_allocate) = 0;
 
   /// Get object by id.
   ///
@@ -75,9 +76,10 @@ class ObjectStore : public IObjectStore {
  public:
   explicit ObjectStore(IAllocator &allocator);
 
-  const LocalObject *CreateObject(const ray::ObjectInfo &object_info,
-                                  plasma::flatbuf::ObjectSource source,
-                                  bool fallback_allocate) override;
+  const LocalObject *CreateObject(
+      const ray::ObjectInfo &object_info,
+      plasma::flatbuf::ObjectSource source,
+      bool fallback_allocate) override;
 
   const LocalObject *GetObject(const ObjectID &object_id) const override;
 

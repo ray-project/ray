@@ -51,8 +51,9 @@ class GcsPlacementGroup {
   /// Create a GcsPlacementGroup by CreatePlacementGroupRequest.
   ///
   /// \param request Contains the placement group creation task specification.
-  explicit GcsPlacementGroup(const ray::rpc::CreatePlacementGroupRequest &request,
-                             std::string ray_namespace) {
+  explicit GcsPlacementGroup(
+      const ray::rpc::CreatePlacementGroupRequest &request,
+      std::string ray_namespace) {
     const auto &placement_group_spec = request.placement_group_spec();
     placement_group_table_data_.set_placement_group_id(
         placement_group_spec.placement_group_id());
@@ -182,25 +183,30 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
 
   ~GcsPlacementGroupManager() = default;
 
-  void HandleCreatePlacementGroup(const rpc::CreatePlacementGroupRequest &request,
-                                  rpc::CreatePlacementGroupReply *reply,
-                                  rpc::SendReplyCallback send_reply_callback) override;
+  void HandleCreatePlacementGroup(
+      const rpc::CreatePlacementGroupRequest &request,
+      rpc::CreatePlacementGroupReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleRemovePlacementGroup(const rpc::RemovePlacementGroupRequest &request,
-                                  rpc::RemovePlacementGroupReply *reply,
-                                  rpc::SendReplyCallback send_reply_callback) override;
+  void HandleRemovePlacementGroup(
+      const rpc::RemovePlacementGroupRequest &request,
+      rpc::RemovePlacementGroupReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleGetPlacementGroup(const rpc::GetPlacementGroupRequest &request,
-                               rpc::GetPlacementGroupReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) override;
+  void HandleGetPlacementGroup(
+      const rpc::GetPlacementGroupRequest &request,
+      rpc::GetPlacementGroupReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleGetNamedPlacementGroup(const rpc::GetNamedPlacementGroupRequest &request,
-                                    rpc::GetNamedPlacementGroupReply *reply,
-                                    rpc::SendReplyCallback send_reply_callback) override;
+  void HandleGetNamedPlacementGroup(
+      const rpc::GetNamedPlacementGroupRequest &request,
+      rpc::GetNamedPlacementGroupReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleGetAllPlacementGroup(const rpc::GetAllPlacementGroupRequest &request,
-                                  rpc::GetAllPlacementGroupReply *reply,
-                                  rpc::SendReplyCallback send_reply_callback) override;
+  void HandleGetAllPlacementGroup(
+      const rpc::GetAllPlacementGroupRequest &request,
+      rpc::GetAllPlacementGroupReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
   void HandleWaitPlacementGroupUntilReady(
       const rpc::WaitPlacementGroupUntilReadyRequest &request,
       rpc::WaitPlacementGroupUntilReadyReply *reply,
@@ -211,8 +217,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param placement_group_id The placement group id which we want to listen.
   /// \param callback Will be invoked after the placement group is created successfully or
   /// be invoked if the placement group is deleted before create successfully.
-  void WaitPlacementGroup(const PlacementGroupID &placement_group_id,
-                          StatusCallback callback);
+  void WaitPlacementGroup(
+      const PlacementGroupID &placement_group_id,
+      StatusCallback callback);
 
   /// Register placement_group asynchronously.
   ///
@@ -221,8 +228,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// be invoked immediately if the placement_group is already registered to
   /// `registered_placement_groups_` and its state is `CREATED`. The callback will not be
   /// called in this case.
-  void RegisterPlacementGroup(const std::shared_ptr<GcsPlacementGroup> &placement_group,
-                              StatusCallback callback);
+  void RegisterPlacementGroup(
+      const std::shared_ptr<GcsPlacementGroup> &placement_group,
+      StatusCallback callback);
 
   /// Schedule placement_groups in the `pending_placement_groups_` queue.
   /// The method handles all states of placement groups
@@ -234,16 +242,19 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param name The name of the  placement_group to look up.
   /// \returns PlacementGroupID The ID of the placement_group. Nil if the
   /// placement_group was not found.
-  PlacementGroupID GetPlacementGroupIDByName(const std::string &name,
-                                             const std::string &ray_namespace);
+  PlacementGroupID GetPlacementGroupIDByName(
+      const std::string &name,
+      const std::string &ray_namespace);
 
   /// Handle placement_group creation task failure. This should be called when scheduling
   /// an placement_group creation task is infeasible.
   ///
   /// \param placement_group The placement_group whose creation task is infeasible.
   /// \param is_feasible whether the scheduler can be retry or not currently.
-  void OnPlacementGroupCreationFailed(std::shared_ptr<GcsPlacementGroup> placement_group,
-                                      ExponentialBackOff backoff, bool is_feasible);
+  void OnPlacementGroupCreationFailed(
+      std::shared_ptr<GcsPlacementGroup> placement_group,
+      ExponentialBackOff backoff,
+      bool is_feasible);
 
   /// Handle placement_group creation task success. This should be called when the
   /// placement_group creation task has been scheduled successfully.
@@ -253,8 +264,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
       const std::shared_ptr<GcsPlacementGroup> &placement_group);
 
   /// Remove the placement group of a given id.
-  void RemovePlacementGroup(const PlacementGroupID &placement_group_id,
-                            StatusCallback on_placement_group_removed);
+  void RemovePlacementGroup(
+      const PlacementGroupID &placement_group_id,
+      StatusCallback on_placement_group_removed);
 
   /// Handle a node death. This will reschedule all bundles associated with the
   /// specified node id.
@@ -320,9 +332,10 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// priority.
   /// \param exp_backer The exponential backoff. A default one will be given if
   /// it's not set. This will be used to generate the deferred time for this pg.
-  void AddToPendingQueue(std::shared_ptr<GcsPlacementGroup> pg,
-                         std::optional<int64_t> rank = std::nullopt,
-                         std::optional<ExponentialBackOff> exp_backer = std::nullopt);
+  void AddToPendingQueue(
+      std::shared_ptr<GcsPlacementGroup> pg,
+      std::optional<int64_t> rank = std::nullopt,
+      std::optional<ExponentialBackOff> exp_backer = std::nullopt);
   void RemoveFromPendingQueue(const PlacementGroupID &pg_id);
 
   /// Try to create placement group after a short time.
@@ -378,8 +391,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// inserting an element into the queue with a bigger key. With this, we don't
   /// need to post retry job to io context. And when schedule pending placement
   /// group, we always start with the one with the smallest key.
-  absl::btree_multimap<int64_t,
-                       std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>>
+  absl::btree_multimap<
+      int64_t,
+      std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>>
       pending_placement_groups_;
 
   /// The infeasible placement_groups that can't be scheduled currently.

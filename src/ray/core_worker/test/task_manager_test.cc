@@ -25,8 +25,9 @@
 namespace ray {
 namespace core {
 
-TaskSpecification CreateTaskHelper(uint64_t num_returns,
-                                   std::vector<ObjectID> dependencies) {
+TaskSpecification CreateTaskHelper(
+    uint64_t num_returns,
+    std::vector<ObjectID> dependencies) {
   TaskSpecification task;
   task.GetMutableMessage().set_task_id(TaskID::FromRandom(JobID::FromInt(1)).Binary());
   task.GetMutableMessage().set_num_returns(num_returns);
@@ -39,17 +40,21 @@ TaskSpecification CreateTaskHelper(uint64_t num_returns,
 
 class TaskManagerTest : public ::testing::Test {
  public:
-  TaskManagerTest(bool lineage_pinning_enabled = false,
-                  int64_t max_lineage_bytes = 1024 * 1024 * 1024)
+  TaskManagerTest(
+      bool lineage_pinning_enabled = false,
+      int64_t max_lineage_bytes = 1024 * 1024 * 1024)
       : store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
         publisher_(std::make_shared<mock_pubsub::MockPublisher>()),
         subscriber_(std::make_shared<mock_pubsub::MockSubscriber>()),
         reference_counter_(std::shared_ptr<ReferenceCounter>(new ReferenceCounter(
-            rpc::Address(), publisher_.get(), subscriber_.get(),
+            rpc::Address(),
+            publisher_.get(),
+            subscriber_.get(),
             [this](const NodeID &node_id) { return all_nodes_alive_; },
             lineage_pinning_enabled))),
         manager_(
-            store_, reference_counter_,
+            store_,
+            reference_counter_,
             [this](const RayObject &object, const ObjectID &object_id) {
               stored_in_plasma.insert(object_id);
             },
@@ -57,7 +62,8 @@ class TaskManagerTest : public ::testing::Test {
               num_retries_++;
               return Status::OK();
             },
-            [](const JobID &job_id, const std::string &type,
+            [](const JobID &job_id,
+               const std::string &type,
                const std::string &error_message,
                double timestamp) { return Status::OK(); },
             max_lineage_bytes) {}
@@ -114,9 +120,12 @@ TEST_F(TaskManagerTest, TestTaskSuccess) {
   RAY_CHECK_OK(store_->Get({return_id}, 1, -1, ctx, false, &results));
   ASSERT_EQ(results.size(), 1);
   ASSERT_FALSE(results[0]->IsException());
-  ASSERT_EQ(std::memcmp(results[0]->GetData()->Data(), return_object->data().data(),
-                        return_object->data().size()),
-            0);
+  ASSERT_EQ(
+      std::memcmp(
+          results[0]->GetData()->Data(),
+          return_object->data().data(),
+          return_object->data().size()),
+      0);
   ASSERT_EQ(num_retries_, 0);
 
   std::vector<ObjectID> removed;

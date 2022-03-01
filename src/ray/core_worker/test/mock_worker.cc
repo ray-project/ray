@@ -33,9 +33,12 @@ namespace core {
 /// for more details on how this class is used.
 class MockWorker {
  public:
-  MockWorker(const std::string &store_socket, const std::string &raylet_socket,
-             int node_manager_port, const gcs::GcsClientOptions &gcs_options,
-             StartupToken startup_token) {
+  MockWorker(
+      const std::string &store_socket,
+      const std::string &raylet_socket,
+      int node_manager_port,
+      const gcs::GcsClientOptions &gcs_options,
+      StartupToken startup_token) {
     CoreWorkerOptions options;
     options.worker_type = WorkerType::WORKER;
     options.language = Language::PYTHON;
@@ -58,18 +61,20 @@ class MockWorker {
   void RunTaskExecutionLoop() { CoreWorkerProcess::RunTaskExecutionLoop(); }
 
  private:
-  Status ExecuteTask(TaskType task_type, const std::string task_name,
-                     const RayFunction &ray_function,
-                     const std::unordered_map<std::string, double> &required_resources,
-                     const std::vector<std::shared_ptr<RayObject>> &args,
-                     const std::vector<rpc::ObjectReference> &arg_refs,
-                     const std::vector<ObjectID> &return_ids,
-                     const std::string &debugger_breakpoint,
-                     std::vector<std::shared_ptr<RayObject>> *results) {
+  Status ExecuteTask(
+      TaskType task_type,
+      const std::string task_name,
+      const RayFunction &ray_function,
+      const std::unordered_map<std::string, double> &required_resources,
+      const std::vector<std::shared_ptr<RayObject>> &args,
+      const std::vector<rpc::ObjectReference> &arg_refs,
+      const std::vector<ObjectID> &return_ids,
+      const std::string &debugger_breakpoint,
+      std::vector<std::shared_ptr<RayObject>> *results) {
     // Note that this doesn't include dummy object id.
     const FunctionDescriptor function_descriptor = ray_function.GetFunctionDescriptor();
-    RAY_CHECK(function_descriptor->Type() ==
-              FunctionDescriptorType::kPythonFunctionDescriptor);
+    RAY_CHECK(
+        function_descriptor->Type() == FunctionDescriptorType::kPythonFunctionDescriptor);
     auto typed_descriptor = function_descriptor->As<PythonFunctionDescriptor>();
 
     if ("actor creation task" == typed_descriptor->ModuleName()) {
@@ -83,8 +88,8 @@ class MockWorker {
     } else if ("WhileTrueLoop" == typed_descriptor->ModuleName()) {
       return WhileTrueLoop(args, return_ids, results);
     } else {
-      return Status::TypeError("Unknown function descriptor: " +
-                               typed_descriptor->ModuleName());
+      return Status::TypeError(
+          "Unknown function descriptor: " + typed_descriptor->ModuleName());
     }
   }
 
@@ -95,14 +100,17 @@ class MockWorker {
         const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(pid_string.data()));
     auto memory_buffer =
         std::make_shared<LocalMemoryBuffer>(data, pid_string.size(), true);
-    results->push_back(std::make_shared<RayObject>(memory_buffer, nullptr,
-                                                   std::vector<rpc::ObjectReference>()));
+    results->push_back(std::make_shared<RayObject>(
+        memory_buffer,
+        nullptr,
+        std::vector<rpc::ObjectReference>()));
     return Status::OK();
   }
 
-  Status MergeInputArgsAsOutput(const std::vector<std::shared_ptr<RayObject>> &args,
-                                const std::vector<ObjectID> &return_ids,
-                                std::vector<std::shared_ptr<RayObject>> *results) {
+  Status MergeInputArgsAsOutput(
+      const std::vector<std::shared_ptr<RayObject>> &args,
+      const std::vector<ObjectID> &return_ids,
+      std::vector<std::shared_ptr<RayObject>> *results) {
     // Merge all the content from input args.
     std::vector<uint8_t> buffer;
     for (const auto &arg : args) {
@@ -125,15 +133,18 @@ class MockWorker {
     // Write the merged content to each of return ids.
     for (size_t i = 0; i < return_ids.size(); i++) {
       results->push_back(std::make_shared<RayObject>(
-          memory_buffer, nullptr, std::vector<rpc::ObjectReference>()));
+          memory_buffer,
+          nullptr,
+          std::vector<rpc::ObjectReference>()));
     }
 
     return Status::OK();
   }
 
-  Status WhileTrueLoop(const std::vector<std::shared_ptr<RayObject>> &args,
-                       const std::vector<ObjectID> &return_ids,
-                       std::vector<std::shared_ptr<RayObject>> *results) {
+  Status WhileTrueLoop(
+      const std::vector<std::shared_ptr<RayObject>> &args,
+      const std::vector<ObjectID> &return_ids,
+      std::vector<std::shared_ptr<RayObject>> *results) {
     while (1) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
@@ -156,8 +167,12 @@ int main(int argc, char **argv) {
   auto startup_token = std::stoi(startup_token_str.substr(start));
 
   ray::gcs::GcsClientOptions gcs_options("127.0.0.1", 6379, "");
-  ray::core::MockWorker worker(store_socket, raylet_socket, node_manager_port,
-                               gcs_options, startup_token);
+  ray::core::MockWorker worker(
+      store_socket,
+      raylet_socket,
+      node_manager_port,
+      gcs_options,
+      startup_token);
   worker.RunTaskExecutionLoop();
   return 0;
 }

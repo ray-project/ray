@@ -29,8 +29,10 @@ const int64_t kTaskFailureThrottlingThreshold = 50;
 const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
 std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
-    const rpc::Address &caller_address, const TaskSpecification &spec,
-    const std::string &call_site, int max_retries) {
+    const rpc::Address &caller_address,
+    const TaskSpecification &spec,
+    const std::string &call_site,
+    int max_retries) {
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId() << " with " << max_retries
                  << " retries";
 
@@ -74,10 +76,14 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
       // object is considered in scope before we return the ObjectRef to the
       // language frontend. Note that the language bindings should set
       // skip_adding_local_ref=True to avoid double referencing the object.
-      reference_counter_->AddOwnedObject(return_id,
-                                         /*inner_ids=*/{}, caller_address, call_site, -1,
-                                         /*is_reconstructable=*/is_reconstructable,
-                                         /*add_local_ref=*/true);
+      reference_counter_->AddOwnedObject(
+          return_id,
+          /*inner_ids=*/{},
+          caller_address,
+          call_site,
+          -1,
+          /*is_reconstructable=*/is_reconstructable,
+          /*add_local_ref=*/true);
     }
 
     return_ids.push_back(return_id);
@@ -92,8 +98,9 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
 
   {
     absl::MutexLock lock(&mu_);
-    auto inserted = submissible_tasks_.emplace(spec.TaskId(),
-                                               TaskEntry(spec, max_retries, num_returns));
+    auto inserted = submissible_tasks_.emplace(
+        spec.TaskId(),
+        TaskEntry(spec, max_retries, num_returns));
     RAY_CHECK(inserted.second);
     num_pending_tasks_++;
   }
@@ -153,8 +160,9 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
     reference_counter_->UpdateResubmittedTaskReferences(return_ids, *task_deps);
     if (spec.IsActorTask()) {
       const auto actor_creation_return_id = spec.ActorCreationDummyObjectId();
-      reference_counter_->UpdateResubmittedTaskReferences(return_ids,
-                                                          {actor_creation_return_id});
+      reference_counter_->UpdateResubmittedTaskReferences(
+          return_ids,
+          {actor_creation_return_id});
     }
 
     retry_task_callback_(spec, /*delay=*/false);
@@ -206,9 +214,10 @@ size_t TaskManager::NumPendingTasks() const {
   return num_pending_tasks_;
 }
 
-void TaskManager::CompletePendingTask(const TaskID &task_id,
-                                      const rpc::PushTaskReply &reply,
-                                      const rpc::Address &worker_addr) {
+void TaskManager::CompletePendingTask(
+    const TaskID &task_id,
+    const rpc::PushTaskReply &reply,
+    const rpc::Address &worker_addr) {
   RAY_LOG(DEBUG) << "Completing task " << task_id;
 
   // Objects that were stored in plasma upon the first successful execution of
@@ -378,10 +387,12 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id) {
   }
 }
 
-void TaskManager::FailPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
-                                  const Status *status,
-                                  const rpc::RayErrorInfo *ray_error_info,
-                                  bool mark_task_object_failed) {
+void TaskManager::FailPendingTask(
+    const TaskID &task_id,
+    rpc::ErrorType error_type,
+    const Status *status,
+    const rpc::RayErrorInfo *ray_error_info,
+    bool mark_task_object_failed) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
   RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
@@ -419,8 +430,11 @@ void TaskManager::FailPendingTask(const TaskID &task_id, rpc::ErrorType error_ty
 
   // The worker failed to execute the task, so it cannot be borrowing any
   // objects.
-  RemoveFinishedTaskReferences(spec, /*release_lineage=*/true, rpc::Address(),
-                               ReferenceCounter::ReferenceTableProto());
+  RemoveFinishedTaskReferences(
+      spec,
+      /*release_lineage=*/true,
+      rpc::Address(),
+      ReferenceCounter::ReferenceTableProto());
   if (mark_task_object_failed) {
     MarkTaskReturnObjectsFailed(spec, error_type, ray_error_info);
   }
@@ -428,10 +442,12 @@ void TaskManager::FailPendingTask(const TaskID &task_id, rpc::ErrorType error_ty
   ShutdownIfNeeded();
 }
 
-bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
-                                         const Status *status,
-                                         const rpc::RayErrorInfo *ray_error_info,
-                                         bool mark_task_object_failed) {
+bool TaskManager::FailOrRetryPendingTask(
+    const TaskID &task_id,
+    rpc::ErrorType error_type,
+    const Status *status,
+    const rpc::RayErrorInfo *ray_error_info,
+    bool mark_task_object_failed) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
   RAY_LOG(DEBUG) << "Task attempt " << task_id << " failed with error "
@@ -469,12 +485,15 @@ void TaskManager::OnTaskDependenciesInlined(
   reference_counter_->UpdateSubmittedTaskReferences(
       /*return_ids=*/{},
       /*argument_ids_to_add=*/contained_ids,
-      /*argument_ids_to_remove=*/inlined_dependency_ids, &deleted);
+      /*argument_ids_to_remove=*/inlined_dependency_ids,
+      &deleted);
   in_memory_store_->Delete(deleted);
 }
 
 void TaskManager::RemoveFinishedTaskReferences(
-    TaskSpecification &spec, bool release_lineage, const rpc::Address &borrower_addr,
+    TaskSpecification &spec,
+    bool release_lineage,
+    const rpc::Address &borrower_addr,
     const ReferenceCounter::ReferenceTableProto &borrowed_refs) {
   std::vector<ObjectID> plasma_dependencies;
   for (size_t i = 0; i < spec.NumArgs(); i++) {
@@ -502,14 +521,19 @@ void TaskManager::RemoveFinishedTaskReferences(
   }
 
   std::vector<ObjectID> deleted;
-  reference_counter_->UpdateFinishedTaskReferences(return_ids, plasma_dependencies,
-                                                   release_lineage, borrower_addr,
-                                                   borrowed_refs, &deleted);
+  reference_counter_->UpdateFinishedTaskReferences(
+      return_ids,
+      plasma_dependencies,
+      release_lineage,
+      borrower_addr,
+      borrowed_refs,
+      &deleted);
   in_memory_store_->Delete(deleted);
 }
 
-int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
-                                            std::vector<ObjectID> *released_objects) {
+int64_t TaskManager::RemoveLineageReference(
+    const ObjectID &object_id,
+    std::vector<ObjectID> *released_objects) {
   absl::MutexLock lock(&mu_);
   const int64_t total_lineage_footprint_bytes_prev(total_lineage_footprint_bytes_);
 
@@ -561,9 +585,10 @@ bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
   return it != submissible_tasks_.end();
 }
 
-void TaskManager::MarkTaskReturnObjectsFailed(const TaskSpecification &spec,
-                                              rpc::ErrorType error_type,
-                                              const rpc::RayErrorInfo *ray_error_info) {
+void TaskManager::MarkTaskReturnObjectsFailed(
+    const TaskSpecification &spec,
+    rpc::ErrorType error_type,
+    const rpc::RayErrorInfo *ray_error_info) {
   const TaskID task_id = spec.TaskId();
   RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
                  << ", error_type: " << ErrorType_Name(error_type);

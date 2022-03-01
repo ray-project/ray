@@ -43,9 +43,11 @@ rpc::ActorDeathCause CreateMockDeathCause() {
   return death_cause;
 }
 
-TaskSpecification CreateActorTaskHelper(ActorID actor_id, WorkerID caller_worker_id,
-                                        int64_t counter,
-                                        TaskID caller_id = TaskID::Nil()) {
+TaskSpecification CreateActorTaskHelper(
+    ActorID actor_id,
+    WorkerID caller_worker_id,
+    int64_t counter,
+    TaskID caller_id = TaskID::Nil()) {
   TaskSpecification task;
   task.GetMutableMessage().set_task_id(TaskID::FromRandom(actor_id.JobId()).Binary());
   task.GetMutableMessage().set_caller_id(caller_id.Binary());
@@ -58,10 +60,12 @@ TaskSpecification CreateActorTaskHelper(ActorID actor_id, WorkerID caller_worker
   return task;
 }
 
-rpc::PushTaskRequest CreatePushTaskRequestHelper(ActorID actor_id, int64_t counter,
-                                                 WorkerID caller_worker_id,
-                                                 TaskID caller_id,
-                                                 int64_t caller_timestamp) {
+rpc::PushTaskRequest CreatePushTaskRequestHelper(
+    ActorID actor_id,
+    int64_t counter,
+    WorkerID caller_worker_id,
+    TaskID caller_id,
+    int64_t caller_timestamp) {
   auto task_spec = CreateActorTaskHelper(actor_id, caller_worker_id, counter, caller_id);
 
   rpc::PushTaskRequest request;
@@ -75,8 +79,10 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
   const rpc::Address &Addr() const override { return addr; }
 
-  void PushActorTask(std::unique_ptr<rpc::PushTaskRequest> request, bool skip_queue,
-                     const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
+  void PushActorTask(
+      std::unique_ptr<rpc::PushTaskRequest> request,
+      bool skip_queue,
+      const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
     received_seq_nos.push_back(request->sequence_number());
     callbacks.push_back(callback);
   }
@@ -112,7 +118,10 @@ class DirectActorSubmitterTest : public ::testing::TestWithParam<bool> {
         task_finisher_(std::make_shared<MockTaskFinisherInterface>()),
         io_work(io_context),
         submitter_(
-            *client_pool_, *store_, *task_finisher_, actor_creator_,
+            *client_pool_,
+            *store_,
+            *task_finisher_,
+            actor_creator_,
             [this](const ActorID &actor_id, int64_t num_queued) {
               last_queue_warning_ = num_queued;
             },
@@ -658,13 +667,18 @@ TEST_P(DirectActorSubmitterTest, TestPendingTasks) {
   ASSERT_FALSE(submitter_.PendingTasksFull(actor_id));
 }
 
-INSTANTIATE_TEST_SUITE_P(ExecuteOutOfOrder, DirectActorSubmitterTest,
-                         ::testing::Values(true, false));
+INSTANTIATE_TEST_SUITE_P(
+    ExecuteOutOfOrder,
+    DirectActorSubmitterTest,
+    ::testing::Values(true, false));
 
 class MockDependencyWaiter : public DependencyWaiter {
  public:
-  MOCK_METHOD2(Wait, void(const std::vector<rpc::ObjectReference> &dependencies,
-                          std::function<void()> on_dependencies_available));
+  MOCK_METHOD2(
+      Wait,
+      void(
+          const std::vector<rpc::ObjectReference> &dependencies,
+          std::function<void()> on_dependencies_available));
 
   virtual ~MockDependencyWaiter() {}
 };
@@ -679,15 +693,20 @@ class MockWorkerContext : public WorkerContext {
 
 class MockCoreWorkerDirectTaskReceiver : public CoreWorkerDirectTaskReceiver {
  public:
-  MockCoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
-                                   instrumented_io_context &main_io_service,
-                                   const TaskHandler &task_handler,
-                                   const OnTaskDone &task_done)
-      : CoreWorkerDirectTaskReceiver(worker_context, main_io_service, task_handler,
-                                     task_done) {}
+  MockCoreWorkerDirectTaskReceiver(
+      WorkerContext &worker_context,
+      instrumented_io_context &main_io_service,
+      const TaskHandler &task_handler,
+      const OnTaskDone &task_done)
+      : CoreWorkerDirectTaskReceiver(
+            worker_context,
+            main_io_service,
+            task_handler,
+            task_done) {}
 
-  void UpdateConcurrencyGroupsCache(const ActorID &actor_id,
-                                    const std::vector<ConcurrencyGroup> &cgs) {
+  void UpdateConcurrencyGroupsCache(
+      const ActorID &actor_id,
+      const std::vector<ConcurrencyGroup> &cgs) {
     concurrency_groups_cache_[actor_id] = cgs;
   }
 };
@@ -698,20 +717,30 @@ class DirectActorReceiverTest : public ::testing::Test {
       : worker_context_(WorkerType::WORKER, JobID::FromInt(0)),
         worker_client_(std::shared_ptr<MockWorkerClient>(new MockWorkerClient())),
         dependency_waiter_(std::make_shared<MockDependencyWaiter>()) {
-    auto execute_task =
-        std::bind(&DirectActorReceiverTest::MockExecuteTask, this, std::placeholders::_1,
-                  std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
+    auto execute_task = std::bind(
+        &DirectActorReceiverTest::MockExecuteTask,
+        this,
+        std::placeholders::_1,
+        std::placeholders::_2,
+        std::placeholders::_3,
+        std::placeholders::_4);
     receiver_ = std::make_unique<MockCoreWorkerDirectTaskReceiver>(
-        worker_context_, main_io_service_, execute_task, [] { return Status::OK(); });
-    receiver_->Init(std::make_shared<rpc::CoreWorkerClientPool>(
-                        [&](const rpc::Address &addr) { return worker_client_; }),
-                    rpc_address_, dependency_waiter_);
+        worker_context_,
+        main_io_service_,
+        execute_task,
+        [] { return Status::OK(); });
+    receiver_->Init(
+        std::make_shared<rpc::CoreWorkerClientPool>(
+            [&](const rpc::Address &addr) { return worker_client_; }),
+        rpc_address_,
+        dependency_waiter_);
   }
 
-  Status MockExecuteTask(const TaskSpecification &task_spec,
-                         const std::shared_ptr<ResourceMappingType> &resource_ids,
-                         std::vector<std::shared_ptr<RayObject>> *return_objects,
-                         ReferenceCounter::ReferenceTableProto *borrowed_refs) {
+  Status MockExecuteTask(
+      const TaskSpecification &task_spec,
+      const std::shared_ptr<ResourceMappingType> &resource_ids,
+      std::vector<std::shared_ptr<RayObject>> *return_objects,
+      ReferenceCounter::ReferenceTableProto *borrowed_refs) {
     return Status::OK();
   }
 
@@ -753,8 +782,10 @@ TEST_F(DirectActorReceiverTest, TestNewTaskFromDifferentWorker) {
     auto request =
         CreatePushTaskRequestHelper(actor_id, 0, worker_id, caller_id, curr_timestamp);
     rpc::PushTaskReply reply;
-    auto reply_callback = [&callback_count](Status status, std::function<void()> success,
-                                            std::function<void()> failure) {
+    auto reply_callback = [&callback_count](
+                              Status status,
+                              std::function<void()> success,
+                              std::function<void()> failure) {
       ++callback_count;
       ASSERT_TRUE(status.ok());
     };
@@ -768,8 +799,10 @@ TEST_F(DirectActorReceiverTest, TestNewTaskFromDifferentWorker) {
     auto request =
         CreatePushTaskRequestHelper(actor_id, 1, worker_id, caller_id, curr_timestamp);
     rpc::PushTaskReply reply;
-    auto reply_callback = [&callback_count](Status status, std::function<void()> success,
-                                            std::function<void()> failure) {
+    auto reply_callback = [&callback_count](
+                              Status status,
+                              std::function<void()> success,
+                              std::function<void()> failure) {
       ++callback_count;
       ASSERT_TRUE(status.ok());
     };
@@ -786,8 +819,10 @@ TEST_F(DirectActorReceiverTest, TestNewTaskFromDifferentWorker) {
     auto request =
         CreatePushTaskRequestHelper(actor_id, 0, worker_id, caller_id, new_timestamp);
     rpc::PushTaskReply reply;
-    auto reply_callback = [&callback_count](Status status, std::function<void()> success,
-                                            std::function<void()> failure) {
+    auto reply_callback = [&callback_count](
+                              Status status,
+                              std::function<void()> success,
+                              std::function<void()> failure) {
       ++callback_count;
       ASSERT_TRUE(status.ok());
     };
@@ -801,8 +836,10 @@ TEST_F(DirectActorReceiverTest, TestNewTaskFromDifferentWorker) {
     auto request =
         CreatePushTaskRequestHelper(actor_id, 1, worker_id, caller_id, old_timestamp);
     rpc::PushTaskReply reply;
-    auto reply_callback = [&callback_count](Status status, std::function<void()> success,
-                                            std::function<void()> failure) {
+    auto reply_callback = [&callback_count](
+                              Status status,
+                              std::function<void()> success,
+                              std::function<void()> failure) {
       ++callback_count;
       ASSERT_TRUE(!status.ok());
     };
@@ -825,10 +862,12 @@ TEST_F(DirectActorReceiverTest, TestNewTaskFromDifferentWorker) {
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
 
-  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
-                                         ray::RayLog::ShutDownRayLog, argv[0],
-                                         ray::RayLogLevel::INFO,
-                                         /*log_dir=*/"");
+  InitShutdownRAII ray_log_shutdown_raii(
+      ray::RayLog::StartRayLog,
+      ray::RayLog::ShutDownRayLog,
+      argv[0],
+      ray::RayLogLevel::INFO,
+      /*log_dir=*/"");
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   return RUN_ALL_TESTS();
 }

@@ -77,8 +77,11 @@ class PlasmaClientInterface {
   /// \param[out] object_buffers The object results.
   /// \param is_from_worker Whether or not if the Get request comes from a Ray workers.
   /// \return The return status.
-  virtual Status Get(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
-                     std::vector<ObjectBuffer> *object_buffers, bool is_from_worker) = 0;
+  virtual Status Get(
+      const std::vector<ObjectID> &object_ids,
+      int64_t timeout_ms,
+      std::vector<ObjectBuffer> *object_buffers,
+      bool is_from_worker) = 0;
 
   /// Seal an object in the object store. The object will be immutable after
   /// this
@@ -123,13 +126,15 @@ class PlasmaClientInterface {
   ///
   /// The returned object must be released once it is done with.  It must also
   /// be either sealed or aborted.
-  virtual Status CreateAndSpillIfNeeded(const ObjectID &object_id,
-                                        const ray::rpc::Address &owner_address,
-                                        int64_t data_size, const uint8_t *metadata,
-                                        int64_t metadata_size,
-                                        std::shared_ptr<Buffer> *data,
-                                        plasma::flatbuf::ObjectSource source,
-                                        int device_num = 0) = 0;
+  virtual Status CreateAndSpillIfNeeded(
+      const ObjectID &object_id,
+      const ray::rpc::Address &owner_address,
+      int64_t data_size,
+      const uint8_t *metadata,
+      int64_t metadata_size,
+      std::shared_ptr<Buffer> *data,
+      plasma::flatbuf::ObjectSource source,
+      int device_num = 0) = 0;
 
   /// Delete a list of objects from the object store. This currently assumes that the
   /// object is present, has been sealed and not used by another client. Otherwise,
@@ -157,9 +162,11 @@ class PlasmaClient : public PlasmaClientInterface {
   /// \param release_delay Deprecated (not used).
   /// \param num_retries number of attempts to connect to IPC socket, default 50
   /// \return The return status.
-  Status Connect(const std::string &store_socket_name,
-                 const std::string &manager_socket_name = "", int release_delay = 0,
-                 int num_retries = -1);
+  Status Connect(
+      const std::string &store_socket_name,
+      const std::string &manager_socket_name = "",
+      int release_delay = 0,
+      int num_retries = -1);
 
   /// Create an object in the Plasma Store. Any metadata for this object must be
   /// be passed in when the object is created.
@@ -187,11 +194,15 @@ class PlasmaClient : public PlasmaClientInterface {
   ///
   /// The returned object must be released once it is done with.  It must also
   /// be either sealed or aborted.
-  Status CreateAndSpillIfNeeded(const ObjectID &object_id,
-                                const ray::rpc::Address &owner_address, int64_t data_size,
-                                const uint8_t *metadata, int64_t metadata_size,
-                                std::shared_ptr<Buffer> *data,
-                                plasma::flatbuf::ObjectSource source, int device_num = 0);
+  Status CreateAndSpillIfNeeded(
+      const ObjectID &object_id,
+      const ray::rpc::Address &owner_address,
+      int64_t data_size,
+      const uint8_t *metadata,
+      int64_t metadata_size,
+      std::shared_ptr<Buffer> *data,
+      plasma::flatbuf::ObjectSource source,
+      int device_num = 0);
 
   /// Create an object in the Plasma Store. Any metadata for this object must be
   /// be passed in when the object is created.
@@ -219,11 +230,15 @@ class PlasmaClient : public PlasmaClientInterface {
   ///
   /// The returned object must be released once it is done with.  It must also
   /// be either sealed or aborted.
-  Status TryCreateImmediately(const ObjectID &object_id,
-                              const ray::rpc::Address &owner_address, int64_t data_size,
-                              const uint8_t *metadata, int64_t metadata_size,
-                              std::shared_ptr<Buffer> *data,
-                              plasma::flatbuf::ObjectSource source, int device_num = 0);
+  Status TryCreateImmediately(
+      const ObjectID &object_id,
+      const ray::rpc::Address &owner_address,
+      int64_t data_size,
+      const uint8_t *metadata,
+      int64_t metadata_size,
+      std::shared_ptr<Buffer> *data,
+      plasma::flatbuf::ObjectSource source,
+      int device_num = 0);
 
   /// Get some objects from the Plasma Store. This function will block until the
   /// objects have all been created and sealed in the Plasma Store or the
@@ -240,8 +255,11 @@ class PlasmaClient : public PlasmaClientInterface {
   /// \param[out] object_buffers The object results.
   /// \param is_from_worker Whether or not if the Get request comes from a Ray workers.
   /// \return The return status.
-  Status Get(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
-             std::vector<ObjectBuffer> *object_buffers, bool is_from_worker);
+  Status Get(
+      const std::vector<ObjectID> &object_ids,
+      int64_t timeout_ms,
+      std::vector<ObjectBuffer> *object_buffers,
+      bool is_from_worker);
 
   /// Tell Plasma that the client no longer needs the object. This should be
   /// called after Get() or Create() when the client is done with the object.
@@ -334,9 +352,12 @@ class PlasmaClient : public PlasmaClientInterface {
   /// \param retry_with_request_id If the request is not yet fulfilled, this
   ///        will be set to a unique ID with which the client should retry.
   /// \param data The address of the newly created object will be written here.
-  Status RetryCreate(const ObjectID &object_id, uint64_t request_id,
-                     const uint8_t *metadata, uint64_t *retry_with_request_id,
-                     std::shared_ptr<Buffer> *data);
+  Status RetryCreate(
+      const ObjectID &object_id,
+      uint64_t request_id,
+      const uint8_t *metadata,
+      uint64_t *retry_with_request_id,
+      std::shared_ptr<Buffer> *data);
 
   friend class PlasmaBuffer;
   friend class PlasmaMutableBuffer;

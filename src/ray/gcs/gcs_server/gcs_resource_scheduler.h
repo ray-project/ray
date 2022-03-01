@@ -61,16 +61,18 @@ class NodeScorer {
   /// \param node_resources The node resources which contains available and total
   /// resources.
   /// \return Score of the node.
-  virtual double Score(const ResourceSet &required_resources,
-                       const SchedulingResources &node_resources) = 0;
+  virtual double Score(
+      const ResourceSet &required_resources,
+      const SchedulingResources &node_resources) = 0;
 };
 
 /// LeastResourceScorer is a score plugin that favors nodes with fewer allocation
 /// requested resources based on requested resources.
 class LeastResourceScorer : public NodeScorer {
  public:
-  double Score(const ResourceSet &required_resources,
-               const SchedulingResources &node_resources) override;
+  double Score(
+      const ResourceSet &required_resources,
+      const SchedulingResources &node_resources) override;
 
  private:
   /// \brief Calculate one of the resource scores.
@@ -146,8 +148,9 @@ class GcsResourceScheduler {
   /// \return `SchedulingResult`, including the selected nodes if schedule successful,
   /// otherwise, it will return an empty vector and a flag to indicate whether this
   /// request can be retry or not.
-  SchedulingResult SpreadSchedule(const std::vector<ResourceSet> &required_resources_list,
-                                  const absl::flat_hash_set<NodeID> &candidate_nodes);
+  SchedulingResult SpreadSchedule(
+      const std::vector<ResourceSet> &required_resources_list,
+      const absl::flat_hash_set<NodeID> &candidate_nodes);
 
   /// Schedule resources according to `STRICT_PACK` strategy.
   ///
@@ -167,16 +170,18 @@ class GcsResourceScheduler {
   /// \return `SchedulingResult`, including the selected nodes if schedule successful,
   /// otherwise, it will return an empty vector and a flag to indicate whether this
   /// request can be retry or not.
-  SchedulingResult PackSchedule(const std::vector<ResourceSet> &required_resources_list,
-                                const absl::flat_hash_set<NodeID> &candidate_nodes);
+  SchedulingResult PackSchedule(
+      const std::vector<ResourceSet> &required_resources_list,
+      const absl::flat_hash_set<NodeID> &candidate_nodes);
 
   /// Score all nodes according to the specified resources.
   ///
   /// \param required_resources The resources to be scheduled.
   /// \param candidate_nodes The nodes can be used for scheduling.
   /// \return Score of all nodes.
-  std::optional<NodeID> GetBestNode(const ResourceSet &required_resources,
-                                    const absl::flat_hash_set<NodeID> &candidate_nodes);
+  std::optional<NodeID> GetBestNode(
+      const ResourceSet &required_resources,
+      const absl::flat_hash_set<NodeID> &candidate_nodes);
 
   /// Return the resources temporarily deducted from gcs resource manager.
   ///

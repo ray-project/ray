@@ -57,8 +57,9 @@ class ResourceSet {
 
   /// \brief Constructs ResourceSet from two equal-length vectors with label and capacity
   /// specification.
-  ResourceSet(const std::vector<std::string> &resource_labels,
-              const std::vector<double> resource_capacity);
+  ResourceSet(
+      const std::vector<std::string> &resource_labels,
+      const std::vector<double> resource_capacity);
 
   /// \brief Empty ResourceSet destructor.
   ~ResourceSet();
@@ -109,8 +110,9 @@ class ResourceSet {
   /// \param other: The other resource set to add.
   /// \param total_resources: Total resource set which sets upper limits on capacity for
   /// each label.
-  void AddResourcesCapacityConstrained(const ResourceSet &other,
-                                       const ResourceSet &total_resources);
+  void AddResourcesCapacityConstrained(
+      const ResourceSet &other,
+      const ResourceSet &total_resources);
 
   /// \brief Aggregate resources from the other set into this set, adding any missing
   /// resource labels to this set.

@@ -60,12 +60,14 @@ class PullManager {
   /// \param restore_spilled_object A callback which should
   /// retrieve an spilled object from the external store.
   PullManager(
-      NodeID &self_node_id, const std::function<bool(const ObjectID &)> object_is_local,
+      NodeID &self_node_id,
+      const std::function<bool(const ObjectID &)> object_is_local,
       const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
       const std::function<void(const ObjectID &)> cancel_pull_request,
       const std::function<void(const ObjectID &)> fail_pull_request,
       const RestoreSpilledObjectCallback restore_spilled_object,
-      const std::function<double()> get_time_seconds, int pull_timeout_ms,
+      const std::function<double()> get_time_seconds,
+      int pull_timeout_ms,
       int64_t num_bytes_available,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
       std::function<std::string(const ObjectID &)> get_locally_spilled_object_url);
@@ -83,9 +85,10 @@ class PullManager {
   /// should subscribe to, and call OnLocationChange for.
   /// prioritized over queued task arguments.
   /// \return A request ID that can be used to cancel the request.
-  uint64_t Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
-                BundlePriority prio,
-                std::vector<rpc::ObjectReference> *objects_to_locate);
+  uint64_t Pull(
+      const std::vector<rpc::ObjectReference> &object_ref_bundle,
+      BundlePriority prio,
+      std::vector<rpc::ObjectReference> *objects_to_locate);
 
   /// Update the pull requests that are currently being pulled, according to
   /// the current capacity. The PullManager will choose the objects to pull by
@@ -109,10 +112,13 @@ class PullManager {
   /// used to time out objects that have had no locations for too long.
   /// \param object_size The size of the object. Used to compute how many
   /// objects we can safely pull.
-  void OnLocationChange(const ObjectID &object_id,
-                        const std::unordered_set<NodeID> &client_ids,
-                        const std::string &spilled_url, const NodeID &spilled_node_id,
-                        bool pending_creation, size_t object_size);
+  void OnLocationChange(
+      const ObjectID &object_id,
+      const std::unordered_set<NodeID> &client_ids,
+      const std::string &spilled_url,
+      const NodeID &spilled_node_id,
+      bool pending_creation,
+      size_t object_size);
 
   /// Cancel an existing pull request.
   ///
@@ -253,17 +259,19 @@ class PullManager {
   /// size information), or activating the request would exceed memory quota.
   ///
   /// Note that we allow exceeding the quota to maintain at least 1 active bundle.
-  bool ActivateNextPullBundleRequest(const Queue &bundles,
-                                     uint64_t *highest_req_id_being_pulled,
-                                     bool respect_quota,
-                                     std::vector<ObjectID> *objects_to_pull);
+  bool ActivateNextPullBundleRequest(
+      const Queue &bundles,
+      uint64_t *highest_req_id_being_pulled,
+      bool respect_quota,
+      std::vector<ObjectID> *objects_to_pull);
 
   /// Deactivate a pull request in the queue. This cancels any pull or restore
   /// operations for the object.
-  void DeactivatePullBundleRequest(const Queue &bundles,
-                                   const Queue::iterator &request_it,
-                                   uint64_t *highest_req_id_being_pulled,
-                                   std::unordered_set<ObjectID> *objects_to_cancel);
+  void DeactivatePullBundleRequest(
+      const Queue &bundles,
+      const Queue::iterator &request_it,
+      uint64_t *highest_req_id_being_pulled,
+      std::unordered_set<ObjectID> *objects_to_cancel);
 
   /// Helper method that deactivates requests from the given queue until the pull
   /// memory usage is within quota.
@@ -272,18 +280,21 @@ class PullManager {
   ///                   bundles (in any queue) below this threshold.
   /// \param quota_margin Keep deactivating bundles until this amount of quota margin
   ///                     becomes available.
-  void DeactivateUntilMarginAvailable(const std::string &debug_name, Queue &bundles,
-                                      int retain_min, int64_t quota_margin,
-                                      uint64_t *highest_id_for_bundle,
-                                      std::unordered_set<ObjectID> *objects_to_cancel);
+  void DeactivateUntilMarginAvailable(
+      const std::string &debug_name,
+      Queue &bundles,
+      int retain_min,
+      int64_t quota_margin,
+      uint64_t *highest_id_for_bundle,
+      std::unordered_set<ObjectID> *objects_to_cancel);
 
   /// Return debug info about this bundle queue.
   std::string BundleInfo(const Queue &bundles, uint64_t highest_id_being_pulled) const;
 
   /// Return the incremental space required to pull the next bundle, if available.
   /// If the next bundle is not ready for pulling, 0L will be returned.
-  int64_t NextRequestBundleSize(const Queue &bundles,
-                                uint64_t highest_id_being_pulled) const;
+  int64_t NextRequestBundleSize(const Queue &bundles, uint64_t highest_id_being_pulled)
+      const;
 
   /// See the constructor's arguments.
   NodeID self_node_id_;

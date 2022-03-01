@@ -64,8 +64,9 @@ template <typename F>
 TaskCaller<F>::TaskCaller() {}
 
 template <typename F>
-TaskCaller<F>::TaskCaller(RayRuntime *runtime,
-                          RemoteFunctionHolder remote_function_holder)
+TaskCaller<F>::TaskCaller(
+    RayRuntime *runtime,
+    RemoteFunctionHolder remote_function_holder)
     : runtime_(runtime), remote_function_holder_(std::move(remote_function_holder)) {}
 
 template <typename F>
@@ -76,15 +77,19 @@ ObjectRef<boost::callable_traits::return_type_t<F>> TaskCaller<F>::Remote(
 
   if constexpr (is_python_v<F>) {
     using ArgsTuple = std::tuple<Args...>;
-    Arguments::WrapArgs<ArgsTuple>(/*cross_lang=*/true, &args_,
-                                   std::make_index_sequence<sizeof...(Args)>{},
-                                   std::forward<Args>(args)...);
+    Arguments::WrapArgs<ArgsTuple>(
+        /*cross_lang=*/true,
+        &args_,
+        std::make_index_sequence<sizeof...(Args)>{},
+        std::forward<Args>(args)...);
   } else {
     StaticCheck<F, Args...>();
     using ArgsTuple = RemoveReference_t<boost::callable_traits::args_t<F>>;
-    Arguments::WrapArgs<ArgsTuple>(/*cross_lang=*/false, &args_,
-                                   std::make_index_sequence<sizeof...(Args)>{},
-                                   std::forward<Args>(args)...);
+    Arguments::WrapArgs<ArgsTuple>(
+        /*cross_lang=*/false,
+        &args_,
+        std::make_index_sequence<sizeof...(Args)>{},
+        std::forward<Args>(args)...);
   }
 
   auto returned_object_id = runtime_->Call(remote_function_holder_, args_, task_options_);

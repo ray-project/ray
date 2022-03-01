@@ -49,8 +49,9 @@ class ActorInfoAccessor {
   /// \param actor_id The ID of actor to look up in the GCS.
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
-  virtual Status AsyncGet(const ActorID &actor_id,
-                          const OptionalItemCallback<rpc::ActorTableData> &callback);
+  virtual Status AsyncGet(
+      const ActorID &actor_id,
+      const OptionalItemCallback<rpc::ActorTableData> &callback);
 
   /// Get all actor specification from the GCS asynchronously.
   ///
@@ -65,9 +66,11 @@ class ActorInfoAccessor {
   /// \param callback Callback that will be called after lookup finishes.
   /// \param timeout_ms RPC timeout in milliseconds. -1 means the default.
   /// \return Status
-  virtual Status AsyncGetByName(const std::string &name, const std::string &ray_namespace,
-                                const OptionalItemCallback<rpc::ActorTableData> &callback,
-                                int64_t timeout_ms = -1);
+  virtual Status AsyncGetByName(
+      const std::string &name,
+      const std::string &ray_namespace,
+      const OptionalItemCallback<rpc::ActorTableData> &callback,
+      int64_t timeout_ms = -1);
 
   /// Get actor specification for a named actor from the GCS synchronously.
   ///
@@ -77,8 +80,10 @@ class ActorInfoAccessor {
   /// \param ray_namespace The namespace to filter to.
   /// \return Status. TimedOut status if RPC is timed out.
   /// NotFound if the name doesn't exist.
-  virtual Status SyncGetByName(const std::string &name, const std::string &ray_namespace,
-                               rpc::ActorTableData &actor_table_data);
+  virtual Status SyncGetByName(
+      const std::string &name,
+      const std::string &ray_namespace,
+      rpc::ActorTableData &actor_table_data);
 
   /// List all named actors from the GCS asynchronously.
   ///
@@ -88,7 +93,8 @@ class ActorInfoAccessor {
   /// \param timeout_ms The RPC timeout in milliseconds. -1 means the default.
   /// \return Status
   virtual Status AsyncListNamedActors(
-      bool all_namespaces, const std::string &ray_namespace,
+      bool all_namespaces,
+      const std::string &ray_namespace,
       const OptionalItemCallback<std::vector<rpc::NamedActorInfo>> &callback,
       int64_t timeout_ms = -1);
 
@@ -101,7 +107,8 @@ class ActorInfoAccessor {
   /// \param[out] actors The pair of list of named actors. Each pair includes the
   /// namespace and name of the actor. \return Status. TimeOut if RPC times out.
   virtual Status SyncListNamedActors(
-      bool all_namespaces, const std::string &ray_namespace,
+      bool all_namespaces,
+      const std::string &ray_namespace,
       std::vector<std::pair<std::string, std::string>> &actors);
 
   /// Register actor to GCS asynchronously.
@@ -110,9 +117,10 @@ class ActorInfoAccessor {
   /// \param callback Callback that will be called after the actor info is written to GCS.
   /// \param timeout_ms RPC timeout ms. -1 means there's no timeout.
   /// \return Status
-  virtual Status AsyncRegisterActor(const TaskSpecification &task_spec,
-                                    const StatusCallback &callback,
-                                    int64_t timeout_ms = -1);
+  virtual Status AsyncRegisterActor(
+      const TaskSpecification &task_spec,
+      const StatusCallback &callback,
+      int64_t timeout_ms = -1);
 
   /// Register actor to GCS synchronously.
   ///
@@ -130,8 +138,11 @@ class ActorInfoAccessor {
   /// \param no_restart If set to true, the killed actor will not be restarted anymore.
   /// \param callback Callback that will be called after the actor is destroyed.
   /// \return Status
-  virtual Status AsyncKillActor(const ActorID &actor_id, bool force_kill, bool no_restart,
-                                const StatusCallback &callback);
+  virtual Status AsyncKillActor(
+      const ActorID &actor_id,
+      bool force_kill,
+      bool no_restart,
+      const StatusCallback &callback);
 
   /// Asynchronously request GCS to create the actor.
   ///
@@ -209,8 +220,9 @@ class JobInfoAccessor {
   /// \param callback Callback that will be called after job has been added
   /// to GCS.
   /// \return Status
-  virtual Status AsyncAdd(const std::shared_ptr<rpc::JobTableData> &data_ptr,
-                          const StatusCallback &callback);
+  virtual Status AsyncAdd(
+      const std::shared_ptr<rpc::JobTableData> &data_ptr,
+      const StatusCallback &callback);
 
   /// Mark job as finished in GCS asynchronously.
   ///
@@ -275,8 +287,9 @@ class NodeInfoAccessor {
   /// \param node_info The information of node to register to GCS.
   /// \param callback Callback that will be called when registration is complete.
   /// \return Status
-  virtual Status RegisterSelf(const rpc::GcsNodeInfo &local_node_info,
-                              const StatusCallback &callback);
+  virtual Status RegisterSelf(
+      const rpc::GcsNodeInfo &local_node_info,
+      const StatusCallback &callback);
 
   /// Drain (remove the information of the node from the cluster) the local node from GCS
   /// synchronously.
@@ -301,8 +314,9 @@ class NodeInfoAccessor {
   /// \param node_info The information of node to register to GCS.
   /// \param callback Callback that will be called when registration is complete.
   /// \return Status
-  virtual Status AsyncRegister(const rpc::GcsNodeInfo &node_info,
-                               const StatusCallback &callback);
+  virtual Status AsyncRegister(
+      const rpc::GcsNodeInfo &node_info,
+      const StatusCallback &callback);
 
   /// Drain (remove the information of the node from the cluster) the local node from GCS
   /// asynchronously.
@@ -367,8 +381,9 @@ class NodeInfoAccessor {
   /// \return Status
   virtual  // TODO(micafan) NodeStateAccessor will call this method to report heartbeat.
       Status
-      AsyncReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
-                           const StatusCallback &callback);
+      AsyncReportHeartbeat(
+          const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
+          const StatusCallback &callback);
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
@@ -433,8 +448,9 @@ class NodeResourceInfoAccessor {
   /// \param node_id The ID of node to lookup dynamic resources.
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
-  virtual Status AsyncGetResources(const NodeID &node_id,
-                                   const OptionalItemCallback<ResourceMap> &callback);
+  virtual Status AsyncGetResources(
+      const NodeID &node_id,
+      const OptionalItemCallback<ResourceMap> &callback);
 
   /// Get available resources of all nodes from GCS asynchronously.
   ///
@@ -448,17 +464,20 @@ class NodeResourceInfoAccessor {
   /// \param node_id The ID of node to update dynamic resources.
   /// \param resources The dynamic resources of node to be updated.
   /// \param callback Callback that will be called after update finishes.
-  virtual Status AsyncUpdateResources(const NodeID &node_id, const ResourceMap &resources,
-                                      const StatusCallback &callback);
+  virtual Status AsyncUpdateResources(
+      const NodeID &node_id,
+      const ResourceMap &resources,
+      const StatusCallback &callback);
 
   /// Delete resources of a node from GCS asynchronously.
   ///
   /// \param node_id The ID of node to delete resources from GCS.
   /// \param resource_names The names of resource to be deleted.
   /// \param callback Callback that will be called after delete finishes.
-  virtual Status AsyncDeleteResources(const NodeID &node_id,
-                                      const std::vector<std::string> &resource_names,
-                                      const StatusCallback &callback);
+  virtual Status AsyncDeleteResources(
+      const NodeID &node_id,
+      const std::vector<std::string> &resource_names,
+      const StatusCallback &callback);
 
   /// Subscribe to node resource changes.
   ///
@@ -466,7 +485,8 @@ class NodeResourceInfoAccessor {
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   virtual Status AsyncSubscribeToResources(
-      const ItemCallback<rpc::NodeResourceChange> &subscribe, const StatusCallback &done);
+      const ItemCallback<rpc::NodeResourceChange> &subscribe,
+      const StatusCallback &done);
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
@@ -558,8 +578,9 @@ class ErrorInfoAccessor {
   /// \param data_ptr The error message that will be reported to GCS.
   /// \param callback Callback that will be called when report is complete.
   /// \return Status
-  virtual Status AsyncReportJobError(const std::shared_ptr<rpc::ErrorTableData> &data_ptr,
-                                     const StatusCallback &callback);
+  virtual Status AsyncReportJobError(
+      const std::shared_ptr<rpc::ErrorTableData> &data_ptr,
+      const StatusCallback &callback);
 
  private:
   GcsClient *client_impl_;
@@ -610,7 +631,8 @@ class WorkerInfoAccessor {
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   virtual Status AsyncSubscribeToWorkerFailures(
-      const ItemCallback<rpc::WorkerDeltaData> &subscribe, const StatusCallback &done);
+      const ItemCallback<rpc::WorkerDeltaData> &subscribe,
+      const StatusCallback &done);
 
   /// Report a worker failure to GCS asynchronously.
   ///
@@ -626,8 +648,9 @@ class WorkerInfoAccessor {
   /// \param worker_id The ID of worker to look up in the GCS.
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
-  virtual Status AsyncGet(const WorkerID &worker_id,
-                          const OptionalItemCallback<rpc::WorkerTableData> &callback);
+  virtual Status AsyncGet(
+      const WorkerID &worker_id,
+      const OptionalItemCallback<rpc::WorkerTableData> &callback);
 
   /// Get all worker info from GCS asynchronously.
   ///
@@ -641,8 +664,9 @@ class WorkerInfoAccessor {
   /// \param callback Callback that will be called after worker information has been added
   /// to GCS.
   /// \return Status
-  virtual Status AsyncAdd(const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
-                          const StatusCallback &callback);
+  virtual Status AsyncAdd(
+      const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
+      const StatusCallback &callback);
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
@@ -693,7 +717,8 @@ class PlacementGroupInfoAccessor {
   /// \param timeout_ms The RPC timeout in milliseconds. -1 means the default.
   /// \return Status.
   virtual Status AsyncGetByName(
-      const std::string &placement_group_name, const std::string &ray_namespace,
+      const std::string &placement_group_name,
+      const std::string &ray_namespace,
       const OptionalItemCallback<rpc::PlacementGroupTableData> &callback,
       int64_t timeout_ms = -1);
 
@@ -737,7 +762,8 @@ class InternalKVAccessor {
   /// \param callback Callback that will be called after scanning.
   /// \return Status
   virtual Status AsyncInternalKVKeys(
-      const std::string &ns, const std::string &prefix,
+      const std::string &ns,
+      const std::string &prefix,
       const OptionalItemCallback<std::vector<std::string>> &callback);
 
   /// Asynchronously get the value for a given key.
@@ -745,8 +771,10 @@ class InternalKVAccessor {
   /// \param ns The namespace to lookup.
   /// \param key The key to lookup.
   /// \param callback Callback that will be called after get the value.
-  virtual Status AsyncInternalKVGet(const std::string &ns, const std::string &key,
-                                    const OptionalItemCallback<std::string> &callback);
+  virtual Status AsyncInternalKVGet(
+      const std::string &ns,
+      const std::string &key,
+      const OptionalItemCallback<std::string> &callback);
 
   /// Asynchronously set the value for a given key.
   ///
@@ -755,9 +783,12 @@ class InternalKVAccessor {
   /// \param value The value associated with the key
   /// \param callback Callback that will be called after the operation.
   /// \return Status
-  virtual Status AsyncInternalKVPut(const std::string &ns, const std::string &key,
-                                    const std::string &value, bool overwrite,
-                                    const OptionalItemCallback<int> &callback);
+  virtual Status AsyncInternalKVPut(
+      const std::string &ns,
+      const std::string &key,
+      const std::string &value,
+      bool overwrite,
+      const OptionalItemCallback<int> &callback);
 
   /// Asynchronously check the existence of a given key
   ///
@@ -765,8 +796,10 @@ class InternalKVAccessor {
   /// \param key The key to check.
   /// \param callback Callback that will be called after the operation.
   /// \return Status
-  virtual Status AsyncInternalKVExists(const std::string &ns, const std::string &key,
-                                       const OptionalItemCallback<bool> &callback);
+  virtual Status AsyncInternalKVExists(
+      const std::string &ns,
+      const std::string &key,
+      const OptionalItemCallback<bool> &callback);
 
   /// Asynchronously delete a key
   ///
@@ -775,8 +808,11 @@ class InternalKVAccessor {
   /// \param del_by_prefix If set to be true, delete all keys with prefix as `key`.
   /// \param callback Callback that will be called after the operation.
   /// \return Status
-  virtual Status AsyncInternalKVDel(const std::string &ns, const std::string &key,
-                                    bool del_by_prefix, const StatusCallback &callback);
+  virtual Status AsyncInternalKVDel(
+      const std::string &ns,
+      const std::string &key,
+      bool del_by_prefix,
+      const StatusCallback &callback);
 
   // These are sync functions of the async above
 
@@ -788,8 +824,8 @@ class InternalKVAccessor {
   /// \param prefix The prefix to scan.
   /// \param value It's an output parameter. It'll be set to the keys with `prefix`
   /// \return Status
-  virtual Status Keys(const std::string &ns, const std::string &prefix,
-                      std::vector<std::string> &value);
+  virtual Status
+  Keys(const std::string &ns, const std::string &prefix, std::vector<std::string> &value);
 
   /// Set the <key, value> in the store
   ///
@@ -803,8 +839,12 @@ class InternalKVAccessor {
   /// \param added It's an output parameter. It'll be set to be true if
   ///     any row is added.
   /// \return Status
-  virtual Status Put(const std::string &ns, const std::string &key,
-                     const std::string &value, bool overwrite, bool &added);
+  virtual Status Put(
+      const std::string &ns,
+      const std::string &key,
+      const std::string &value,
+      bool overwrite,
+      bool &added);
 
   /// Retrive the value associated with a key
   ///

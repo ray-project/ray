@@ -41,8 +41,11 @@ class StoreClient {
   /// \param data The value of the key that will be written to the table.
   /// \param callback Callback that will be called after write finishes.
   /// \return Status
-  virtual Status AsyncPut(const std::string &table_name, const std::string &key,
-                          const std::string &data, const StatusCallback &callback) = 0;
+  virtual Status AsyncPut(
+      const std::string &table_name,
+      const std::string &key,
+      const std::string &data,
+      const StatusCallback &callback) = 0;
 
   /// Write data to the given table asynchronously.
   ///
@@ -52,9 +55,12 @@ class StoreClient {
   /// \param data The value of the key that will be written to the table.
   /// \param callback Callback that will be called after write finishes.
   /// \return Status
-  virtual Status AsyncPutWithIndex(const std::string &table_name, const std::string &key,
-                                   const std::string &index_key, const std::string &data,
-                                   const StatusCallback &callback) = 0;
+  virtual Status AsyncPutWithIndex(
+      const std::string &table_name,
+      const std::string &key,
+      const std::string &index_key,
+      const std::string &data,
+      const StatusCallback &callback) = 0;
 
   /// Get data from the given table asynchronously.
   ///
@@ -62,8 +68,10 @@ class StoreClient {
   /// \param key The key to lookup from the table.
   /// \param callback Callback that will be called after read finishes.
   /// \return Status
-  virtual Status AsyncGet(const std::string &table_name, const std::string &key,
-                          const OptionalItemCallback<std::string> &callback) = 0;
+  virtual Status AsyncGet(
+      const std::string &table_name,
+      const std::string &key,
+      const OptionalItemCallback<std::string> &callback) = 0;
 
   /// Get data by index from the given table asynchronously.
   ///
@@ -72,7 +80,8 @@ class StoreClient {
   /// \param callback Callback that will be called after read finishes.
   /// \return Status
   virtual Status AsyncGetByIndex(
-      const std::string &table_name, const std::string &index_key,
+      const std::string &table_name,
+      const std::string &index_key,
       const MapCallback<std::string, std::string> &callback) = 0;
 
   /// Get all data from the given table asynchronously.
@@ -80,8 +89,9 @@ class StoreClient {
   /// \param table_name The name of the table to be read.
   /// \param callback Callback that will be called after data has been received.
   /// \return Status
-  virtual Status AsyncGetAll(const std::string &table_name,
-                             const MapCallback<std::string, std::string> &callback) = 0;
+  virtual Status AsyncGetAll(
+      const std::string &table_name,
+      const MapCallback<std::string, std::string> &callback) = 0;
 
   /// Delete data from the given table asynchronously.
   ///
@@ -89,8 +99,10 @@ class StoreClient {
   /// \param key The key that will be deleted from the table.
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
-  virtual Status AsyncDelete(const std::string &table_name, const std::string &key,
-                             const StatusCallback &callback) = 0;
+  virtual Status AsyncDelete(
+      const std::string &table_name,
+      const std::string &key,
+      const StatusCallback &callback) = 0;
 
   /// Delete data from the given table asynchronously, this can delete
   /// key--value and index--key.
@@ -100,10 +112,11 @@ class StoreClient {
   /// \param index_key The index key of the given key.
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
-  virtual Status AsyncDeleteWithIndex(const std::string &table_name,
-                                      const std::string &key,
-                                      const std::string &index_key,
-                                      const StatusCallback &callback) = 0;
+  virtual Status AsyncDeleteWithIndex(
+      const std::string &table_name,
+      const std::string &key,
+      const std::string &index_key,
+      const StatusCallback &callback) = 0;
 
   /// Batch delete data from the given table asynchronously.
   ///
@@ -111,9 +124,10 @@ class StoreClient {
   /// \param keys The keys that will be deleted from the table.
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
-  virtual Status AsyncBatchDelete(const std::string &table_name,
-                                  const std::vector<std::string> &keys,
-                                  const StatusCallback &callback) = 0;
+  virtual Status AsyncBatchDelete(
+      const std::string &table_name,
+      const std::vector<std::string> &keys,
+      const StatusCallback &callback) = 0;
 
   /// Batch delete data from the given table asynchronously, this can delete all
   /// key--value data and index--key data.
@@ -124,10 +138,11 @@ class StoreClient {
   ///                   correspondence
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
-  virtual Status AsyncBatchDeleteWithIndex(const std::string &table_name,
-                                           const std::vector<std::string> &keys,
-                                           const std::vector<std::string> &index_keys,
-                                           const StatusCallback &callback) = 0;
+  virtual Status AsyncBatchDeleteWithIndex(
+      const std::string &table_name,
+      const std::vector<std::string> &keys,
+      const std::vector<std::string> &index_keys,
+      const StatusCallback &callback) = 0;
 
   /// Delete by index from the given table asynchronously.
   ///
@@ -136,9 +151,10 @@ class StoreClient {
   /// from the table.
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
-  virtual Status AsyncDeleteByIndex(const std::string &table_name,
-                                    const std::string &index_key,
-                                    const StatusCallback &callback) = 0;
+  virtual Status AsyncDeleteByIndex(
+      const std::string &table_name,
+      const std::string &index_key,
+      const StatusCallback &callback) = 0;
 
   /// Get next job id by `INCR` "JobCounter" key synchronously.
   ///

@@ -36,7 +36,8 @@ TEST(SerializationTest, TypeHybridTest) {
   // unmarshall
   std::tie(out_arg1, out_arg2) =
       ray::internal::Serializer::Deserialize<std::tuple<uint32_t, std::string>>(
-          buffer2.data(), buffer2.size());
+          buffer2.data(),
+          buffer2.size());
 
   EXPECT_EQ(in_arg1, out_arg1);
   EXPECT_EQ(in_arg2, out_arg2);

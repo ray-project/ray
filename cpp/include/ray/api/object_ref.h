@@ -32,7 +32,9 @@ inline void CheckResult(const std::shared_ptr<msgpack::sbuffer> &packed_object) 
       ray::internal::Serializer::HasError(packed_object->data(), packed_object->size());
   if (has_error) {
     auto tp = ray::internal::Serializer::Deserialize<std::tuple<int, std::string>>(
-        packed_object->data(), packed_object->size(), 1);
+        packed_object->data(),
+        packed_object->size(),
+        1);
     std::string err_msg = std::get<1>(tp);
     throw ray::internal::RayTaskException(err_msg);
   }
@@ -115,11 +117,14 @@ inline static std::shared_ptr<T> GetFromRuntime(const ObjectRef<T> &object) {
 
   if (ray::internal::Serializer::IsXLang(packed_object->data(), packed_object->size())) {
     return ray::internal::Serializer::Deserialize<std::shared_ptr<T>>(
-        packed_object->data(), packed_object->size(), internal::XLANG_HEADER_LEN);
+        packed_object->data(),
+        packed_object->size(),
+        internal::XLANG_HEADER_LEN);
   }
 
   return ray::internal::Serializer::Deserialize<std::shared_ptr<T>>(
-      packed_object->data(), packed_object->size());
+      packed_object->data(),
+      packed_object->size());
 }
 
 template <typename T>

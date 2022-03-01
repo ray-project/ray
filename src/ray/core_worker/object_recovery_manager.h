@@ -25,31 +25,32 @@
 namespace ray {
 namespace core {
 
-typedef std::function<std::shared_ptr<PinObjectsInterface>(const std::string &ip_address,
-                                                           int port)>
+typedef std::function<
+    std::shared_ptr<PinObjectsInterface>(const std::string &ip_address, int port)>
     ObjectPinningClientFactoryFn;
 
-typedef std::function<void(const ObjectID &object_id,
-                           const std::vector<rpc::Address> &raylet_locations)>
+typedef std::function<
+    void(const ObjectID &object_id, const std::vector<rpc::Address> &raylet_locations)>
     ObjectLookupCallback;
 
 // A callback for if we fail to recover an object.
-typedef std::function<void(const ObjectID &object_id, rpc::ErrorType reason,
-                           bool pin_object)>
+typedef std::function<
+    void(const ObjectID &object_id, rpc::ErrorType reason, bool pin_object)>
     ObjectRecoveryFailureCallback;
 
 class ObjectRecoveryManager {
  public:
-  ObjectRecoveryManager(const rpc::Address &rpc_address,
-                        ObjectPinningClientFactoryFn client_factory,
-                        std::shared_ptr<PinObjectsInterface> local_object_pinning_client,
-                        std::function<Status(const ObjectID &object_id,
-                                             const ObjectLookupCallback &callback)>
-                            object_lookup,
-                        std::shared_ptr<TaskResubmissionInterface> task_resubmitter,
-                        std::shared_ptr<ReferenceCounter> reference_counter,
-                        std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
-                        const ObjectRecoveryFailureCallback &recovery_failure_callback)
+  ObjectRecoveryManager(
+      const rpc::Address &rpc_address,
+      ObjectPinningClientFactoryFn client_factory,
+      std::shared_ptr<PinObjectsInterface> local_object_pinning_client,
+      std::function<
+          Status(const ObjectID &object_id, const ObjectLookupCallback &callback)>
+          object_lookup,
+      std::shared_ptr<TaskResubmissionInterface> task_resubmitter,
+      std::shared_ptr<ReferenceCounter> reference_counter,
+      std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
+      const ObjectRecoveryFailureCallback &recovery_failure_callback)
       : task_resubmitter_(task_resubmitter),
         reference_counter_(reference_counter),
         rpc_address_(rpc_address),
@@ -93,14 +94,16 @@ class ObjectRecoveryManager {
   /// Pin a new copy for a lost object from the given locations or, if that
   /// fails, attempt to reconstruct it by resubmitting the task that created
   /// the object.
-  void PinOrReconstructObject(const ObjectID &object_id,
-                              const std::vector<rpc::Address> &locations);
+  void PinOrReconstructObject(
+      const ObjectID &object_id,
+      const std::vector<rpc::Address> &locations);
 
   /// Pin a new copy for the object at the given location. If that fails, then
   /// try one of the other locations.
-  void PinExistingObjectCopy(const ObjectID &object_id,
-                             const rpc::Address &raylet_address,
-                             const std::vector<rpc::Address> &other_locations);
+  void PinExistingObjectCopy(
+      const ObjectID &object_id,
+      const rpc::Address &raylet_address,
+      const std::vector<rpc::Address> &other_locations);
 
   /// Reconstruct an object by resubmitting the task that created it.
   void ReconstructObject(const ObjectID &object_id);
@@ -121,8 +124,8 @@ class ObjectRecoveryManager {
   std::shared_ptr<PinObjectsInterface> local_object_pinning_client_;
 
   /// Function to lookup an object's locations from the global database.
-  const std::function<Status(const ObjectID &object_id,
-                             const ObjectLookupCallback &callback)>
+  const std::function<
+      Status(const ObjectID &object_id, const ObjectLookupCallback &callback)>
       object_lookup_;
 
   /// Used to store object values (InPlasmaError) if recovery succeeds.

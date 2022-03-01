@@ -31,8 +31,10 @@ PeriodicalRunner::~PeriodicalRunner() {
   RAY_LOG(DEBUG) << "PeriodicalRunner is destructed";
 }
 
-void PeriodicalRunner::RunFnPeriodically(std::function<void()> fn, uint64_t period_ms,
-                                         const std::string name) {
+void PeriodicalRunner::RunFnPeriodically(
+    std::function<void()> fn,
+    uint64_t period_ms,
+    const std::string name) {
   if (period_ms > 0) {
     auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
     {
@@ -43,7 +45,10 @@ void PeriodicalRunner::RunFnPeriodically(std::function<void()> fn, uint64_t peri
         [this, fn = std::move(fn), period_ms, name, timer = std::move(timer)]() {
           if (RayConfig::instance().event_stats()) {
             DoRunFnPeriodicallyInstrumented(
-                fn, boost::posix_time::milliseconds(period_ms), timer, name);
+                fn,
+                boost::posix_time::milliseconds(period_ms),
+                timer,
+                name);
           } else {
             DoRunFnPeriodically(fn, boost::posix_time::milliseconds(period_ms), timer);
           }
@@ -53,13 +58,14 @@ void PeriodicalRunner::RunFnPeriodically(std::function<void()> fn, uint64_t peri
 }
 
 void PeriodicalRunner::DoRunFnPeriodically(
-    const std::function<void()> &fn, boost::posix_time::milliseconds period,
+    const std::function<void()> &fn,
+    boost::posix_time::milliseconds period,
     std::shared_ptr<boost::asio::deadline_timer> timer) {
   fn();
   absl::MutexLock lock(&mutex_);
   timer->expires_from_now(period);
-  timer->async_wait([this, fn = std::move(fn), period,
-                     timer = std::move(timer)](const boost::system::error_code &error) {
+  timer->async_wait([this, fn = std::move(fn), period, timer = std::move(timer)](
+                        const boost::system::error_code &error) {
     if (error == boost::asio::error::operation_aborted) {
       // `operation_aborted` is set when `timer` is canceled or destroyed.
       // The Monitor lifetime may be short than the object who use it. (e.g.
@@ -72,8 +78,10 @@ void PeriodicalRunner::DoRunFnPeriodically(
 }
 
 void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
-    const std::function<void()> &fn, boost::posix_time::milliseconds period,
-    std::shared_ptr<boost::asio::deadline_timer> timer, const std::string name) {
+    const std::function<void()> &fn,
+    boost::posix_time::milliseconds period,
+    std::shared_ptr<boost::asio::deadline_timer> timer,
+    const std::string name) {
   fn();
   absl::MutexLock lock(&mutex_);
   timer->expires_from_now(period);
@@ -81,7 +89,10 @@ void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
   // which the handler was elgible to execute on the event loop but was queued by the
   // event loop.
   auto stats_handle = io_service_.stats().RecordStart(name, period.total_nanoseconds());
-  timer->async_wait([this, fn = std::move(fn), period, timer = std::move(timer),
+  timer->async_wait([this,
+                     fn = std::move(fn),
+                     period,
+                     timer = std::move(timer),
                      stats_handle = std::move(stats_handle),
                      name](const boost::system::error_code &error) {
     io_service_.stats().RecordExecution(

@@ -18,10 +18,13 @@ namespace ray {
 namespace core {
 
 ActorSchedulingQueue::ActorSchedulingQueue(
-    instrumented_io_context &main_io_service, DependencyWaiter &waiter,
+    instrumented_io_context &main_io_service,
+    DependencyWaiter &waiter,
     std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
-    bool is_asyncio, int fiber_max_concurrency,
-    const std::vector<ConcurrencyGroup> &concurrency_groups, int64_t reorder_wait_seconds)
+    bool is_asyncio,
+    int fiber_max_concurrency,
+    const std::vector<ConcurrencyGroup> &concurrency_groups,
+    int64_t reorder_wait_seconds)
     : reorder_wait_seconds_(reorder_wait_seconds),
       wait_timer_(main_io_service),
       main_thread_id_(boost::this_thread::get_id()),
@@ -37,7 +40,8 @@ ActorSchedulingQueue::ActorSchedulingQueue(
     }
     RAY_LOG(INFO) << ss.str();
     fiber_state_manager_ = std::make_unique<ConcurrencyGroupManager<FiberState>>(
-        concurrency_groups, fiber_max_concurrency);
+        concurrency_groups,
+        fiber_max_concurrency);
   }
 }
 
@@ -62,14 +66,16 @@ size_t ActorSchedulingQueue::Size() const {
 }
 
 /// Add a new actor task's callbacks to the worker queue.
-void ActorSchedulingQueue::Add(int64_t seq_no, int64_t client_processed_up_to,
-                               std::function<void(rpc::SendReplyCallback)> accept_request,
-                               std::function<void(rpc::SendReplyCallback)> reject_request,
-                               rpc::SendReplyCallback send_reply_callback,
-                               const std::string &concurrency_group_name,
-                               const ray::FunctionDescriptor &function_descriptor,
-                               TaskID task_id,
-                               const std::vector<rpc::ObjectReference> &dependencies) {
+void ActorSchedulingQueue::Add(
+    int64_t seq_no,
+    int64_t client_processed_up_to,
+    std::function<void(rpc::SendReplyCallback)> accept_request,
+    std::function<void(rpc::SendReplyCallback)> reject_request,
+    rpc::SendReplyCallback send_reply_callback,
+    const std::string &concurrency_group_name,
+    const ray::FunctionDescriptor &function_descriptor,
+    TaskID task_id,
+    const std::vector<rpc::ObjectReference> &dependencies) {
   // A seq_no of -1 means no ordering constraint. Actor tasks must be executed in order.
   RAY_CHECK(seq_no != -1);
 
@@ -81,10 +87,14 @@ void ActorSchedulingQueue::Add(int64_t seq_no, int64_t client_processed_up_to,
   }
   RAY_LOG(DEBUG) << "Enqueue " << seq_no << " cur seqno " << next_seq_no_;
 
-  pending_actor_tasks_[seq_no] =
-      InboundRequest(std::move(accept_request), std::move(reject_request),
-                     std::move(send_reply_callback), task_id, dependencies.size() > 0,
-                     concurrency_group_name, function_descriptor);
+  pending_actor_tasks_[seq_no] = InboundRequest(
+      std::move(accept_request),
+      std::move(reject_request),
+      std::move(send_reply_callback),
+      task_id,
+      dependencies.size() > 0,
+      concurrency_group_name,
+      function_descriptor);
 
   if (dependencies.size() > 0) {
     waiter_.Wait(dependencies, [seq_no, this]() {
@@ -129,14 +139,16 @@ void ActorSchedulingQueue::ScheduleRequests() {
 
     if (is_asyncio_) {
       // Process async actor task.
-      auto fiber = fiber_state_manager_->GetExecutor(request.ConcurrencyGroupName(),
-                                                     request.FunctionDescriptor());
+      auto fiber = fiber_state_manager_->GetExecutor(
+          request.ConcurrencyGroupName(),
+          request.FunctionDescriptor());
       fiber->EnqueueFiber([request]() mutable { request.Accept(); });
     } else {
       // Process actor tasks.
       RAY_CHECK(pool_manager_ != nullptr);
-      auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
-                                             request.FunctionDescriptor());
+      auto pool = pool_manager_->GetExecutor(
+          request.ConcurrencyGroupName(),
+          request.FunctionDescriptor());
       if (pool == nullptr) {
         request.Accept();
       } else {

@@ -31,7 +31,9 @@ using SpaceReleasedCallback = std::function<void()>;
 
 /// A callback to call when a spilled object needs to be returned to the object store.
 using RestoreSpilledObjectCallback = std::function<void(
-    const ObjectID &, const std::string &, std::function<void(const ray::Status &)>)>;
+    const ObjectID &,
+    const std::string &,
+    std::function<void(const ray::Status &)>)>;
 
 /// A struct that includes info about the object.
 struct ObjectInfo {
@@ -50,12 +52,12 @@ struct ObjectInfo {
   int64_t GetObjectSize() const { return data_size + metadata_size; }
 
   bool operator==(const ObjectInfo &other) const {
-    return ((object_id == other.object_id) && (data_size == other.data_size) &&
-            (metadata_size == other.metadata_size) &&
-            (owner_raylet_id == other.owner_raylet_id) &&
-            (owner_ip_address == other.owner_ip_address) &&
-            (owner_port == other.owner_port) &&
-            (owner_worker_id == other.owner_worker_id));
+    return (
+        (object_id == other.object_id) && (data_size == other.data_size) &&
+        (metadata_size == other.metadata_size) &&
+        (owner_raylet_id == other.owner_raylet_id) &&
+        (owner_ip_address == other.owner_ip_address) &&
+        (owner_port == other.owner_port) && (owner_worker_id == other.owner_worker_id));
   }
 };
 

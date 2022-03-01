@@ -154,17 +154,17 @@ class GlobalStateAccessor {
   /// PlacementGroupTableData and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
   std::unique_ptr<std::string> GetPlacementGroupByName(
-      const std::string &placement_group_name, const std::string &ray_namespace)
-      LOCKS_EXCLUDED(mutex_);
+      const std::string &placement_group_name,
+      const std::string &ray_namespace) LOCKS_EXCLUDED(mutex_);
 
   /// Get value of the key from GCS Service.
   ///
   /// \param ns namespace to get.
   /// \param key key to get.
   /// \return Value of the key.
-  std::unique_ptr<std::string> GetInternalKV(const std::string &ns,
-                                             const std::string &key)
-      LOCKS_EXCLUDED(mutex_);
+  std::unique_ptr<std::string> GetInternalKV(
+      const std::string &ns,
+      const std::string &key) LOCKS_EXCLUDED(mutex_);
 
   /// Get the serialized system config from GCS.
   ///
@@ -177,9 +177,9 @@ class GlobalStateAccessor {
   /// \param[out] node_to_connect The info of the node to connect. To support
   /// multi-language, we serialize each GcsNodeInfo and return the serialized string.
   /// Where used, it needs to be deserialized with protobuf function.
-  ray::Status GetNodeToConnectForDriver(const std::string &node_ip_address,
-                                        std::string *node_to_connect)
-      LOCKS_EXCLUDED(mutex_);
+  ray::Status GetNodeToConnectForDriver(
+      const std::string &node_ip_address,
+      std::string *node_to_connect) LOCKS_EXCLUDED(mutex_);
 
  private:
   /// MultiItem transformation helper in template style.
@@ -187,11 +187,15 @@ class GlobalStateAccessor {
   /// \return MultiItemCallback within in rpc type DATA.
   template <class DATA>
   MultiItemCallback<DATA> TransformForMultiItemCallback(
-      std::vector<std::string> &data_vec, std::promise<bool> &promise) {
+      std::vector<std::string> &data_vec,
+      std::promise<bool> &promise) {
     return [&data_vec, &promise](const Status &status, std::vector<DATA> &&result) {
       RAY_CHECK_OK(status);
-      std::transform(result.begin(), result.end(), std::back_inserter(data_vec),
-                     [](const DATA &data) { return data.SerializeAsString(); });
+      std::transform(
+          result.begin(),
+          result.end(),
+          std::back_inserter(data_vec),
+          [](const DATA &data) { return data.SerializeAsString(); });
       promise.set_value(true);
     };
   }
@@ -201,7 +205,8 @@ class GlobalStateAccessor {
   /// \return OptionalItemCallback within in rpc type DATA.
   template <class DATA>
   OptionalItemCallback<DATA> TransformForOptionalItemCallback(
-      std::unique_ptr<std::string> &data, std::promise<bool> &promise) {
+      std::unique_ptr<std::string> &data,
+      std::promise<bool> &promise) {
     return [&data, &promise](const Status &status, const boost::optional<DATA> &result) {
       RAY_CHECK_OK(status);
       if (result) {
@@ -215,8 +220,9 @@ class GlobalStateAccessor {
   ///
   /// \return ItemCallback within in rpc type DATA.
   template <class DATA>
-  ItemCallback<DATA> TransformForItemCallback(std::unique_ptr<std::string> &data,
-                                              std::promise<bool> &promise) {
+  ItemCallback<DATA> TransformForItemCallback(
+      std::unique_ptr<std::string> &data,
+      std::promise<bool> &promise) {
     return [&data, &promise](const DATA &result) {
       data.reset(new std::string(result.SerializeAsString()));
       promise.set_value(true);

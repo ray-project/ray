@@ -30,8 +30,11 @@ SpilledObjectReader::CreateSpilledObjectReader(const std::string &object_url) {
   uint64_t object_offset = 0;
   uint64_t object_size = 0;
 
-  if (!SpilledObjectReader::ParseObjectURL(object_url, file_path, object_offset,
-                                           object_size)) {
+  if (!SpilledObjectReader::ParseObjectURL(
+          object_url,
+          file_path,
+          object_offset,
+          object_size)) {
     RAY_LOG(WARNING) << "Failed to parse spilled object url: " << object_url;
     return absl::optional<SpilledObjectReader>();
   }
@@ -43,16 +46,26 @@ SpilledObjectReader::CreateSpilledObjectReader(const std::string &object_url) {
   rpc::Address owner_address;
 
   std::ifstream is(file_path, std::ios::binary);
-  if (!is || !SpilledObjectReader::ParseObjectHeader(is, object_offset, data_offset,
-                                                     data_size, metadata_offset,
-                                                     metadata_size, owner_address)) {
+  if (!is || !SpilledObjectReader::ParseObjectHeader(
+                 is,
+                 object_offset,
+                 data_offset,
+                 data_size,
+                 metadata_offset,
+                 metadata_size,
+                 owner_address)) {
     RAY_LOG(WARNING) << "Failed to parse object header for spilled object " << object_url;
     return absl::optional<SpilledObjectReader>();
   }
 
-  return absl::optional<SpilledObjectReader>(
-      SpilledObjectReader(std::move(file_path), object_size, data_offset, data_size,
-                          metadata_offset, metadata_size, std::move(owner_address)));
+  return absl::optional<SpilledObjectReader>(SpilledObjectReader(
+      std::move(file_path),
+      object_size,
+      data_offset,
+      data_size,
+      metadata_offset,
+      metadata_size,
+      std::move(owner_address)));
 }
 
 uint64_t SpilledObjectReader::GetDataSize() const { return data_size_; }
@@ -63,10 +76,14 @@ const rpc::Address &SpilledObjectReader::GetOwnerAddress() const {
   return owner_address_;
 }
 
-SpilledObjectReader::SpilledObjectReader(std::string file_path, uint64_t object_size,
-                                         uint64_t data_offset, uint64_t data_size,
-                                         uint64_t metadata_offset, uint64_t metadata_size,
-                                         rpc::Address owner_address)
+SpilledObjectReader::SpilledObjectReader(
+    std::string file_path,
+    uint64_t object_size,
+    uint64_t data_offset,
+    uint64_t data_size,
+    uint64_t metadata_offset,
+    uint64_t metadata_size,
+    rpc::Address owner_address)
     : file_path_(std::move(file_path)),
       object_size_(object_size),
       data_offset_(data_offset),
@@ -75,10 +92,11 @@ SpilledObjectReader::SpilledObjectReader(std::string file_path, uint64_t object_
       metadata_size_(metadata_size),
       owner_address_(std::move(owner_address)) {}
 
-/* static */ bool SpilledObjectReader::ParseObjectURL(const std::string &object_url,
-                                                      std::string &file_path,
-                                                      uint64_t &object_offset,
-                                                      uint64_t &object_size) {
+/* static */ bool SpilledObjectReader::ParseObjectURL(
+    const std::string &object_url,
+    std::string &file_path,
+    uint64_t &object_offset,
+    uint64_t &object_size) {
   static const std::regex object_url_pattern("^(.*)\\?offset=(\\d+)&size=(\\d+)$");
   std::smatch match_groups;
   if (!std::regex_match(object_url, match_groups, object_url_pattern) ||
@@ -105,11 +123,14 @@ SpilledObjectReader::SpilledObjectReader(std::string file_path, uint64_t object_
 }
 
 /* static */
-bool SpilledObjectReader::ParseObjectHeader(std::istream &is, uint64_t object_offset,
-                                            uint64_t &data_offset, uint64_t &data_size,
-                                            uint64_t &metadata_offset,
-                                            uint64_t &metadata_size,
-                                            rpc::Address &owner_address) {
+bool SpilledObjectReader::ParseObjectHeader(
+    std::istream &is,
+    uint64_t object_offset,
+    uint64_t &data_offset,
+    uint64_t &data_size,
+    uint64_t &metadata_offset,
+    uint64_t &metadata_size,
+    rpc::Address &owner_address) {
   if (!is.seekg(object_offset)) {
     return false;
   }
@@ -152,14 +173,18 @@ uint64_t SpilledObjectReader::ToUINT64(const std::string &s) {
   return result;
 }
 
-bool SpilledObjectReader::ReadFromDataSection(uint64_t offset, uint64_t size,
-                                              char *output) const {
+bool SpilledObjectReader::ReadFromDataSection(
+    uint64_t offset,
+    uint64_t size,
+    char *output) const {
   std::ifstream is(file_path_, std::ios::binary);
   return is.seekg(data_offset_ + offset) && is.read(output, size);
 }
 
-bool SpilledObjectReader::ReadFromMetadataSection(uint64_t offset, uint64_t size,
-                                                  char *output) const {
+bool SpilledObjectReader::ReadFromMetadataSection(
+    uint64_t offset,
+    uint64_t size,
+    char *output) const {
   std::ifstream is(file_path_, std::ios::binary);
   return is.seekg(metadata_offset_ + offset) && is.read(output, size);
 }

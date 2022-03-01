@@ -27,11 +27,14 @@ namespace core {
 class InboundRequest {
  public:
   InboundRequest();
-  InboundRequest(std::function<void(rpc::SendReplyCallback)> accept_callback,
-                 std::function<void(rpc::SendReplyCallback)> reject_callback,
-                 rpc::SendReplyCallback send_reply_callback, TaskID task_id,
-                 bool has_dependencies, const std::string &concurrency_group_name,
-                 const ray::FunctionDescriptor &function_descriptor);
+  InboundRequest(
+      std::function<void(rpc::SendReplyCallback)> accept_callback,
+      std::function<void(rpc::SendReplyCallback)> reject_callback,
+      rpc::SendReplyCallback send_reply_callback,
+      TaskID task_id,
+      bool has_dependencies,
+      const std::string &concurrency_group_name,
+      const ray::FunctionDescriptor &function_descriptor);
 
   void Accept();
   void Cancel();
@@ -56,8 +59,9 @@ class InboundRequest {
 class DependencyWaiter {
  public:
   /// Calls `callback` once the specified objects become available.
-  virtual void Wait(const std::vector<rpc::ObjectReference> &dependencies,
-                    std::function<void()> on_dependencies_available) = 0;
+  virtual void Wait(
+      const std::vector<rpc::ObjectReference> &dependencies,
+      std::function<void()> on_dependencies_available) = 0;
 
   virtual ~DependencyWaiter(){};
 };
@@ -66,8 +70,9 @@ class DependencyWaiterImpl : public DependencyWaiter {
  public:
   DependencyWaiterImpl(DependencyWaiterInterface &dependency_client);
 
-  void Wait(const std::vector<rpc::ObjectReference> &dependencies,
-            std::function<void()> on_dependencies_available) override;
+  void Wait(
+      const std::vector<rpc::ObjectReference> &dependencies,
+      std::function<void()> on_dependencies_available) override;
 
   /// Fulfills the callback stored by Wait().
   void OnWaitComplete(int64_t tag);

@@ -49,8 +49,7 @@ message ReportOCMetricsRequest {
   repeated opencensus.proto.metrics.v1.Metric metrics = 1;
 }
 
-message ReportOCMetricsReply {
-}
+message ReportOCMetricsReply {}
 
 // Resource usage reported by the node reporter.
 message NodeResourceUsage {

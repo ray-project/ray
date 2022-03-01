@@ -33,11 +33,12 @@ using ReportLocalityDataCallback =
 // was available. This class is thread-safe.
 class FutureResolver {
  public:
-  FutureResolver(std::shared_ptr<CoreWorkerMemoryStore> store,
-                 std::shared_ptr<ReferenceCounter> ref_counter,
-                 ReportLocalityDataCallback report_locality_data_callback,
-                 std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
-                 const rpc::Address &rpc_address)
+  FutureResolver(
+      std::shared_ptr<CoreWorkerMemoryStore> store,
+      std::shared_ptr<ReferenceCounter> ref_counter,
+      ReportLocalityDataCallback report_locality_data_callback,
+      std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
+      const rpc::Address &rpc_address)
       : in_memory_store_(store),
         reference_counter_(ref_counter),
         report_locality_data_callback_(std::move(report_locality_data_callback)),
@@ -60,9 +61,11 @@ class FutureResolver {
   /// \param[in] object_id The ID of the future to resolve.
   /// \param[in] status Any error code from the owner obtaining the object status.
   /// \param[in] object_status The object status.
-  void ProcessResolvedObject(const ObjectID &object_id, const rpc::Address &owner_address,
-                             const Status &status,
-                             const rpc::GetObjectStatusReply &object_status);
+  void ProcessResolvedObject(
+      const ObjectID &object_id,
+      const rpc::Address &owner_address,
+      const Status &status,
+      const rpc::GetObjectStatusReply &object_status);
 
  private:
   /// Used to store values of resolved futures.

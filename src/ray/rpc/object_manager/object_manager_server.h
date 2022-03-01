@@ -39,15 +39,20 @@ class ObjectManagerServiceHandler {
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
-  virtual void HandlePush(const PushRequest &request, PushReply *reply,
-                          SendReplyCallback send_reply_callback) = 0;
+  virtual void HandlePush(
+      const PushRequest &request,
+      PushReply *reply,
+      SendReplyCallback send_reply_callback) = 0;
   /// Handle a `Pull` request
-  virtual void HandlePull(const PullRequest &request, PullReply *reply,
-                          SendReplyCallback send_reply_callback) = 0;
+  virtual void HandlePull(
+      const PullRequest &request,
+      PullReply *reply,
+      SendReplyCallback send_reply_callback) = 0;
   /// Handle a `FreeObjects` request
-  virtual void HandleFreeObjects(const FreeObjectsRequest &request,
-                                 FreeObjectsReply *reply,
-                                 SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleFreeObjects(
+      const FreeObjectsRequest &request,
+      FreeObjectsReply *reply,
+      SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `ObjectManagerGrpcService`.
@@ -57,8 +62,9 @@ class ObjectManagerGrpcService : public GrpcService {
   ///
   /// \param[in] port See `GrpcService`.
   /// \param[in] handler The service handler that actually handle the requests.
-  ObjectManagerGrpcService(instrumented_io_context &io_service,
-                           ObjectManagerServiceHandler &service_handler)
+  ObjectManagerGrpcService(
+      instrumented_io_context &io_service,
+      ObjectManagerServiceHandler &service_handler)
       : GrpcService(io_service), service_handler_(service_handler){};
 
  protected:

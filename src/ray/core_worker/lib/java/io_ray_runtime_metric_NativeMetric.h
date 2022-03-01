@@ -35,7 +35,12 @@ Java_io_ray_runtime_metric_NativeMetric_registerTagkeyNative(JNIEnv *, jclass, j
  * Signature: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)J
  */
 JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_NativeMetric_registerCountNative(
-    JNIEnv *, jclass, jstring, jstring, jstring, jobject);
+    JNIEnv *,
+    jclass,
+    jstring,
+    jstring,
+    jstring,
+    jobject);
 
 /*
  * Class:     io_ray_runtime_metric_NativeMetric
@@ -43,7 +48,12 @@ JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_NativeMetric_registerCountNat
  * Signature: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)J
  */
 JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_NativeMetric_registerGaugeNative(
-    JNIEnv *, jclass, jstring, jstring, jstring, jobject);
+    JNIEnv *,
+    jclass,
+    jstring,
+    jstring,
+    jstring,
+    jobject);
 
 /*
  * Class:     io_ray_runtime_metric_NativeMetric
@@ -51,7 +61,13 @@ JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_NativeMetric_registerGaugeNat
  * Signature: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[DLjava/util/List;)J
  */
 JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_NativeMetric_registerHistogramNative(
-    JNIEnv *, jclass, jstring, jstring, jstring, jdoubleArray, jobject);
+    JNIEnv *,
+    jclass,
+    jstring,
+    jstring,
+    jstring,
+    jdoubleArray,
+    jobject);
 
 /*
  * Class:     io_ray_runtime_metric_NativeMetric
@@ -59,7 +75,12 @@ JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_NativeMetric_registerHistogra
  * Signature: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)J
  */
 JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_NativeMetric_registerSumNative(
-    JNIEnv *, jclass, jstring, jstring, jstring, jobject);
+    JNIEnv *,
+    jclass,
+    jstring,
+    jstring,
+    jstring,
+    jobject);
 
 /*
  * Class:     io_ray_runtime_metric_NativeMetric
@@ -67,7 +88,12 @@ JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_NativeMetric_registerSumNativ
  * Signature: (JDLjava/util/List;Ljava/util/List;)V
  */
 JNIEXPORT void JNICALL Java_io_ray_runtime_metric_NativeMetric_recordNative(
-    JNIEnv *, jclass, jlong, jdouble, jobject, jobject);
+    JNIEnv *,
+    jclass,
+    jlong,
+    jdouble,
+    jobject,
+    jobject);
 
 /*
  * Class:     io_ray_runtime_metric_NativeMetric

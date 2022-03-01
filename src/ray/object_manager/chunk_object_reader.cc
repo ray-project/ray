@@ -13,12 +13,14 @@
 // limitations under the License.
 
 #include "ray/object_manager/chunk_object_reader.h"
+
 #include "ray/util/logging.h"
 
 namespace ray {
 
-ChunkObjectReader::ChunkObjectReader(std::shared_ptr<IObjectReader> object,
-                                     uint64_t chunk_size)
+ChunkObjectReader::ChunkObjectReader(
+    std::shared_ptr<IObjectReader> object,
+    uint64_t chunk_size)
     : object_(std::move(object)), chunk_size_(chunk_size) {
   RAY_CHECK(chunk_size_ > 0) << "chunk_size shouldn't be 0";
 }
@@ -33,9 +35,9 @@ absl::optional<std::string> ChunkObjectReader::GetChunk(uint64_t chunk_index) co
   // return data before metadata. We achieve by first read from data section,
   // then read from metadata section.
   const auto cur_chunk_offset = chunk_index * chunk_size_;
-  const auto cur_chunk_size =
-      std::min(chunk_size_,
-               object_->GetDataSize() + object_->GetMetadataSize() - cur_chunk_offset);
+  const auto cur_chunk_size = std::min(
+      chunk_size_,
+      object_->GetDataSize() + object_->GetMetadataSize() - cur_chunk_offset);
 
   std::string result(cur_chunk_size, '\0');
   size_t result_offset = 0;
@@ -54,8 +56,9 @@ absl::optional<std::string> ChunkObjectReader::GetChunk(uint64_t chunk_index) co
     // read from metadata section.
     auto offset =
         std::max(cur_chunk_offset, object_->GetDataSize()) - object_->GetDataSize();
-    auto size = std::min(cur_chunk_offset + cur_chunk_size - object_->GetDataSize(),
-                         cur_chunk_size);
+    auto size = std::min(
+        cur_chunk_offset + cur_chunk_size - object_->GetDataSize(),
+        cur_chunk_size);
     if (!object_->ReadFromMetadataSection(offset, size, &result[result_offset])) {
       return absl::optional<std::string>();
     }

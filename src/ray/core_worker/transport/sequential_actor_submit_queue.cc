@@ -19,8 +19,9 @@ namespace core {
 SequentialActorSubmitQueue::SequentialActorSubmitQueue(ActorID actor_id)
     : actor_id(actor_id) {}
 
-bool SequentialActorSubmitQueue::Emplace(uint64_t sequence_no,
-                                         const TaskSpecification &spec) {
+bool SequentialActorSubmitQueue::Emplace(
+    uint64_t sequence_no,
+    const TaskSpecification &spec) {
   return requests
       .emplace(sequence_no, std::make_pair(spec, /*dependency_resolved*/ false))
       .second;
@@ -95,8 +96,9 @@ uint64_t SequentialActorSubmitQueue::GetSequenceNumber(
   return task_spec.ActorCounter() - caller_starts_at;
 }
 
-void SequentialActorSubmitQueue::MarkTaskCompleted(uint64_t sequence_no,
-                                                   const TaskSpecification &task_spec) {
+void SequentialActorSubmitQueue::MarkTaskCompleted(
+    uint64_t sequence_no,
+    const TaskSpecification &task_spec) {
   // Try to increment queue.next_task_reply_position consecutively until we
   // cannot. In the case of tasks not received in order, the following block
   // ensure queue.next_task_reply_position are incremented to the max possible

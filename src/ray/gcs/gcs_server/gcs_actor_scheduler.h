@@ -36,7 +36,8 @@ namespace gcs {
 class GcsActor;
 
 using GcsActorSchedulerFailureCallback = std::function<void(
-    std::shared_ptr<GcsActor>, rpc::RequestWorkerLeaseReply::SchedulingFailureType,
+    std::shared_ptr<GcsActor>,
+    rpc::RequestWorkerLeaseReply::SchedulingFailureType,
     const std::string &)>;
 using GcsActorSchedulerSuccessCallback =
     std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>;
@@ -63,8 +64,10 @@ class GcsActorSchedulerInterface {
   ///
   /// \param node_id ID of the node where the actor leasing request has been sent.
   /// \param actor_id ID of an actor.
-  virtual void CancelOnLeasing(const NodeID &node_id, const ActorID &actor_id,
-                               const TaskID &task_id) = 0;
+  virtual void CancelOnLeasing(
+      const NodeID &node_id,
+      const ActorID &actor_id,
+      const TaskID &task_id) = 0;
 
   /// Cancel the actor that is being scheduled to the specified worker.
   ///
@@ -106,7 +109,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param client_factory Factory to create remote core worker client, default factor
   /// will be used if not set.
   explicit GcsActorScheduler(
-      instrumented_io_context &io_context, GcsActorTable &gcs_actor_table,
+      instrumented_io_context &io_context,
+      GcsActorTable &gcs_actor_table,
       const GcsNodeManager &gcs_node_manager,
       GcsActorSchedulerFailureCallback schedule_failure_handler,
       GcsActorSchedulerSuccessCallback schedule_success_handler,
@@ -140,8 +144,10 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   ///
   /// \param node_id ID of the node where the actor leasing request has been sent.
   /// \param actor_id ID of an actor.
-  void CancelOnLeasing(const NodeID &node_id, const ActorID &actor_id,
-                       const TaskID &task_id) override;
+  void CancelOnLeasing(
+      const NodeID &node_id,
+      const ActorID &actor_id,
+      const TaskID &task_id) override;
 
   /// Cancel the actor that is being scheduled to the specified worker.
   ///
@@ -175,9 +181,10 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
     /// \param address the Address of the remote leased worker.
     /// \param resources the resources that leased from the remote node(raylet).
     /// \param actor_id ID of the actor associated with this leased worker.
-    explicit GcsLeasedWorker(rpc::Address address,
-                             std::vector<rpc::ResourceMapEntry> resources,
-                             const ActorID &actor_id)
+    explicit GcsLeasedWorker(
+        rpc::Address address,
+        std::vector<rpc::ResourceMapEntry> resources,
+        const ActorID &actor_id)
         : address_(std::move(address)),
           resources_(std::move(resources)),
           assigned_actor_id_(actor_id) {}
@@ -226,8 +233,9 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param actor A description of the actor to create. This object has the resource
   /// specification needed to lease workers from the specified node.
   /// \param node The node that the worker will be leased from.
-  void LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
-                           std::shared_ptr<rpc::GcsNodeInfo> node);
+  void LeaseWorkerFromNode(
+      std::shared_ptr<GcsActor> actor,
+      std::shared_ptr<rpc::GcsNodeInfo> node);
 
   /// Handler to process a worker lease reply.
   ///
@@ -235,10 +243,11 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param node The selected node at which a worker is to be leased.
   /// \param status Status of the reply of `RequestWorkerLeaseRequest`.
   /// \param reply The reply of `RequestWorkerLeaseRequest`.
-  virtual void HandleWorkerLeaseReply(std::shared_ptr<GcsActor> actor,
-                                      std::shared_ptr<rpc::GcsNodeInfo> node,
-                                      const Status &status,
-                                      const rpc::RequestWorkerLeaseReply &reply) = 0;
+  virtual void HandleWorkerLeaseReply(
+      std::shared_ptr<GcsActor> actor,
+      std::shared_ptr<rpc::GcsNodeInfo> node,
+      const Status &status,
+      const rpc::RequestWorkerLeaseReply &reply) = 0;
 
   /// Retry leasing a worker from the specified node for the specified actor.
   /// Make it a virtual method so that the io_context_ could be mocked out.
@@ -246,8 +255,9 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param actor A description of the actor to create. This object has the resource
   /// specification needed to lease workers from the specified node.
   /// \param node The node that the worker will be leased from.
-  virtual void RetryLeasingWorkerFromNode(std::shared_ptr<GcsActor> actor,
-                                          std::shared_ptr<rpc::GcsNodeInfo> node);
+  virtual void RetryLeasingWorkerFromNode(
+      std::shared_ptr<GcsActor> actor,
+      std::shared_ptr<rpc::GcsNodeInfo> node);
 
   /// This method is only invoked inside `RetryLeasingWorkerFromNode`, the purpose of this
   /// is to make it easy to write unit tests.
@@ -255,15 +265,17 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param actor A description of the actor to create. This object has the resource
   /// specification needed to lease workers from the specified node.
   /// \param node The node that the worker will be leased from.
-  void DoRetryLeasingWorkerFromNode(std::shared_ptr<GcsActor> actor,
-                                    std::shared_ptr<rpc::GcsNodeInfo> node);
+  void DoRetryLeasingWorkerFromNode(
+      std::shared_ptr<GcsActor> actor,
+      std::shared_ptr<rpc::GcsNodeInfo> node);
 
   /// Handler to process a granted lease.
   ///
   /// \param actor Contains the resources needed to lease workers from the specified node.
   /// \param reply The reply of `RequestWorkerLeaseRequest`.
-  void HandleWorkerLeaseGrantedReply(std::shared_ptr<GcsActor> actor,
-                                     const rpc::RequestWorkerLeaseReply &reply);
+  void HandleWorkerLeaseGrantedReply(
+      std::shared_ptr<GcsActor> actor,
+      const rpc::RequestWorkerLeaseReply &reply);
 
   /// Handler to request worker lease canceled.
   ///
@@ -272,7 +284,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param failure_type The type of the canceling.
   /// \param scheduling_failure_message The scheduling failure error message.
   void HandleRequestWorkerLeaseCanceled(
-      std::shared_ptr<GcsActor> actor, const NodeID &node_id,
+      std::shared_ptr<GcsActor> actor,
+      const NodeID &node_id,
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
       const std::string &scheduling_failure_message);
 
@@ -280,24 +293,27 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   ///
   /// \param actor The actor to be created.
   /// \param worker The worker that the actor will created on.
-  void CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
-                           std::shared_ptr<GcsLeasedWorker> worker);
+  void CreateActorOnWorker(
+      std::shared_ptr<GcsActor> actor,
+      std::shared_ptr<GcsLeasedWorker> worker);
 
   /// Retry creating the specified actor on the specified worker asynchoronously.
   /// Make it a virtual method so that the io_context_ could be mocked out.
   ///
   /// \param actor The actor to be created.
   /// \param worker The worker that the actor will created on.
-  virtual void RetryCreatingActorOnWorker(std::shared_ptr<GcsActor> actor,
-                                          std::shared_ptr<GcsLeasedWorker> worker);
+  virtual void RetryCreatingActorOnWorker(
+      std::shared_ptr<GcsActor> actor,
+      std::shared_ptr<GcsLeasedWorker> worker);
 
   /// This method is only invoked inside `RetryCreatingActorOnWorker`, the purpose of this
   /// is to make it easy to write unit tests.
   ///
   /// \param actor The actor to be created.
   /// \param worker The worker that the actor will created on.
-  void DoRetryCreatingActorOnWorker(std::shared_ptr<GcsActor> actor,
-                                    std::shared_ptr<GcsLeasedWorker> worker);
+  void DoRetryCreatingActorOnWorker(
+      std::shared_ptr<GcsActor> actor,
+      std::shared_ptr<GcsLeasedWorker> worker);
 
   /// Get an existing lease client or connect a new one.
   std::shared_ptr<WorkerLeaseInterface> GetOrConnectLeaseClient(
@@ -318,8 +334,9 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   absl::flat_hash_map<NodeID, absl::flat_hash_set<ActorID>> node_to_actors_when_leasing_;
   /// Map from node ID to the workers on which we are trying to create actors. This is
   /// needed so that we can cancel actor creation requests if the worker is removed.
-  absl::flat_hash_map<NodeID,
-                      absl::flat_hash_map<WorkerID, std::shared_ptr<GcsLeasedWorker>>>
+  absl::flat_hash_map<
+      NodeID,
+      absl::flat_hash_map<WorkerID, std::shared_ptr<GcsLeasedWorker>>>
       node_to_workers_when_creating_;
   /// Reference of GcsNodeManager.
   const GcsNodeManager &gcs_node_manager_;
@@ -357,10 +374,11 @@ class RayletBasedActorScheduler : public GcsActorScheduler {
   /// \param node The selected node at which a worker is to be leased.
   /// \param status Status of the reply of `RequestWorkerLeaseRequest`.
   /// \param reply The reply of `RequestWorkerLeaseRequest`.
-  void HandleWorkerLeaseReply(std::shared_ptr<GcsActor> actor,
-                              std::shared_ptr<rpc::GcsNodeInfo> node,
-                              const Status &status,
-                              const rpc::RequestWorkerLeaseReply &reply) override;
+  void HandleWorkerLeaseReply(
+      std::shared_ptr<GcsActor> actor,
+      std::shared_ptr<rpc::GcsNodeInfo> node,
+      const Status &status,
+      const rpc::RequestWorkerLeaseReply &reply) override;
 
  private:
   /// A helper function to select a node from alive nodes randomly.

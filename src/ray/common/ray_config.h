@@ -32,8 +32,9 @@ T ConvertValue(const std::string &type_string, const std::string &value) {
 }
 
 template <>
-inline std::string ConvertValue<std::string>(const std::string &type_string,
-                                             const std::string &value) {
+inline std::string ConvertValue<std::string>(
+    const std::string &type_string,
+    const std::string &value) {
   return value;
 }
 

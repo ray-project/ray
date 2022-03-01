@@ -106,16 +106,14 @@ message CommitBundleResourcesRequest {
   repeated Bundle bundle_specs = 1;
 }
 
-message CommitBundleResourcesReply {
-}
+message CommitBundleResourcesReply {}
 
 message CancelResourceReserveRequest {
   // Bundle containing the requested resources.
   Bundle bundle_spec = 1;
 }
 
-message CancelResourceReserveReply {
-}
+message CancelResourceReserveReply {}
 
 // Release a worker back to its raylet.
 message ReturnWorkerRequest {
@@ -130,15 +128,13 @@ message ReturnWorkerRequest {
   bool worker_exiting = 4;
 }
 
-message ReturnWorkerReply {
-}
+message ReturnWorkerReply {}
 
 message ReleaseUnusedWorkersRequest {
   repeated bytes worker_ids_in_use = 1;
 }
 
-message ReleaseUnusedWorkersReply {
-}
+message ReleaseUnusedWorkersReply {}
 
 message ShutdownRayletRequest {
   /// Whether the shutdown request is graceful or not.
@@ -167,8 +163,7 @@ message PinObjectIDsRequest {
   repeated bytes object_ids = 2;
 }
 
-message PinObjectIDsReply {
-}
+message PinObjectIDsReply {}
 
 message GetNodeStatsRequest {
   // Whether to include memory stats. This could be large since it includes
@@ -218,11 +213,9 @@ message GetNodeStatsReply {
   ObjectStoreStats store_stats = 6;
 }
 
-message GlobalGCRequest {
-}
+message GlobalGCRequest {}
 
-message GlobalGCReply {
-}
+message GlobalGCReply {}
 
 // Accumulates memory info across all nodes. To access per-node memory info,
 // use GetNodeStats() calls instead.
@@ -261,18 +254,15 @@ message ReleaseUnusedBundlesRequest {
   repeated Bundle bundles_in_use = 1;
 }
 
-message ReleaseUnusedBundlesReply {
-}
+message ReleaseUnusedBundlesReply {}
 
-message GetSystemConfigRequest {
-}
+message GetSystemConfigRequest {}
 
 message GetSystemConfigReply {
   string system_config = 1;
 }
 
-message RequestResourceReportRequest {
-}
+message RequestResourceReportRequest {}
 
 message RequestResourceReportReply {
   ResourcesData resources = 1;
@@ -285,11 +275,9 @@ message UpdateResourceUsageRequest {
   bytes serialized_resource_usage_batch = 1;
 }
 
-message UpdateResourceUsageReply {
-}
+message UpdateResourceUsageReply {}
 
-message GetGcsServerAddressRequest {
-}
+message GetGcsServerAddressRequest {}
 
 message GetGcsServerAddressReply {
   string ip = 1;

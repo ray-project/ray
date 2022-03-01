@@ -53,13 +53,16 @@ using flatbuf::PlasmaError;
 
 class PlasmaStore {
  public:
-  PlasmaStore(instrumented_io_context &main_service, IAllocator &allocator,
-              const std::string &socket_name, uint32_t delay_on_oom_ms,
-              float object_spilling_threshold,
-              ray::SpillObjectsCallback spill_objects_callback,
-              std::function<void()> object_store_full_callback,
-              ray::AddObjectCallback add_object_callback,
-              ray::DeleteObjectCallback delete_object_callback);
+  PlasmaStore(
+      instrumented_io_context &main_service,
+      IAllocator &allocator,
+      const std::string &socket_name,
+      uint32_t delay_on_oom_ms,
+      float object_spilling_threshold,
+      ray::SpillObjectsCallback spill_objects_callback,
+      std::function<void()> object_store_full_callback,
+      ray::AddObjectCallback add_object_callback,
+      ray::DeleteObjectCallback delete_object_callback);
 
   ~PlasmaStore();
 
@@ -85,14 +88,16 @@ class PlasmaStore {
   void GetAvailableMemory(std::function<void(size_t)> callback) const
       LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock lock(&mutex_);
-    RAY_CHECK((object_lifecycle_mgr_.GetNumBytesUnsealed() > 0 &&
-               object_lifecycle_mgr_.GetNumObjectsUnsealed() > 0) ||
-              (object_lifecycle_mgr_.GetNumBytesUnsealed() == 0 &&
-               object_lifecycle_mgr_.GetNumObjectsUnsealed() == 0))
+    RAY_CHECK(
+        (object_lifecycle_mgr_.GetNumBytesUnsealed() > 0 &&
+         object_lifecycle_mgr_.GetNumObjectsUnsealed() > 0) ||
+        (object_lifecycle_mgr_.GetNumBytesUnsealed() == 0 &&
+         object_lifecycle_mgr_.GetNumObjectsUnsealed() == 0))
         << "Tracking for available memory in the plasma store has gone out of sync. "
            "Please file a GitHub issue.";
-    RAY_CHECK(object_lifecycle_mgr_.GetNumBytesInUse() >=
-              object_lifecycle_mgr_.GetNumBytesUnsealed());
+    RAY_CHECK(
+        object_lifecycle_mgr_.GetNumBytesInUse() >=
+        object_lifecycle_mgr_.GetNumBytesUnsealed());
     // We do not count unsealed objects as in use because these may have been
     // created by the object manager.
     int64_t num_bytes_in_use = object_lifecycle_mgr_.GetNumBytesInUse() -
@@ -120,10 +125,12 @@ class PlasmaStore {
   ///  - PlasmaError::OutOfMemory, if the store is out of memory and
   ///    cannot create the object. In this case, the client should not call
   ///    plasma_release.
-  PlasmaError CreateObject(const ray::ObjectInfo &object_info,
-                           plasma::flatbuf::ObjectSource source,
-                           const std::shared_ptr<Client> &client, bool fallback_allocator,
-                           PlasmaObject *result) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  PlasmaError CreateObject(
+      const ray::ObjectInfo &object_info,
+      plasma::flatbuf::ObjectSource source,
+      const std::shared_ptr<Client> &client,
+      bool fallback_allocator,
+      PlasmaObject *result) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Abort a created but unsealed object. If the client is not the
   /// creator, then the abort will fail.
@@ -155,9 +162,11 @@ class PlasmaStore {
   /// \param client The client making this request.
   /// \param object_ids Object IDs of the objects to be gotten.
   /// \param timeout_ms The timeout for the get request in milliseconds.
-  void ProcessGetRequest(const std::shared_ptr<Client> &client,
-                         const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
-                         bool is_from_worker) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void ProcessGetRequest(
+      const std::shared_ptr<Client> &client,
+      const std::vector<ObjectID> &object_ids,
+      int64_t timeout_ms,
+      bool is_from_worker) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Process queued requests to create an object.
   void ProcessCreateRequests() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -188,29 +197,32 @@ class PlasmaStore {
   void DisconnectClient(const std::shared_ptr<Client> &client)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  Status ProcessMessage(const std::shared_ptr<Client> &client,
-                        plasma::flatbuf::MessageType type,
-                        const std::vector<uint8_t> &message) LOCKS_EXCLUDED(mutex_);
+  Status ProcessMessage(
+      const std::shared_ptr<Client> &client,
+      plasma::flatbuf::MessageType type,
+      const std::vector<uint8_t> &message) LOCKS_EXCLUDED(mutex_);
 
-  PlasmaError HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
-                                        const std::vector<uint8_t> &message,
-                                        bool fallback_allocator, PlasmaObject *object,
-                                        bool *spilling_required)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  PlasmaError HandleCreateObjectRequest(
+      const std::shared_ptr<Client> &client,
+      const std::vector<uint8_t> &message,
+      bool fallback_allocator,
+      PlasmaObject *object,
+      bool *spilling_required) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  void ReplyToCreateClient(const std::shared_ptr<Client> &client,
-                           const ObjectID &object_id, uint64_t req_id)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void ReplyToCreateClient(
+      const std::shared_ptr<Client> &client,
+      const ObjectID &object_id,
+      uint64_t req_id) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  void AddToClientObjectIds(const ObjectID &object_id,
-                            const std::shared_ptr<ClientInterface> &client)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void AddToClientObjectIds(
+      const ObjectID &object_id,
+      const std::shared_ptr<ClientInterface> &client) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void ReturnFromGet(const std::shared_ptr<GetRequest> &get_request);
 
-  int RemoveFromClientObjectIds(const ObjectID &object_id,
-                                const std::shared_ptr<Client> &client)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  int RemoveFromClientObjectIds(
+      const ObjectID &object_id,
+      const std::shared_ptr<Client> &client) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Start listening for clients.
   void DoAccept();

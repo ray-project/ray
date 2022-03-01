@@ -20,13 +20,19 @@ class MockGcsActorSchedulerInterface : public GcsActorSchedulerInterface {
   MOCK_METHOD(void, Schedule, (std::shared_ptr<GcsActor> actor), (override));
   MOCK_METHOD(void, Reschedule, (std::shared_ptr<GcsActor> actor), (override));
   MOCK_METHOD(std::vector<ActorID>, CancelOnNode, (const NodeID &node_id), (override));
-  MOCK_METHOD(void, CancelOnLeasing,
-              (const NodeID &node_id, const ActorID &actor_id, const TaskID &task_id),
-              (override));
-  MOCK_METHOD(ActorID, CancelOnWorker, (const NodeID &node_id, const WorkerID &worker_id),
-              (override));
   MOCK_METHOD(
-      void, ReleaseUnusedWorkers,
+      void,
+      CancelOnLeasing,
+      (const NodeID &node_id, const ActorID &actor_id, const TaskID &task_id),
+      (override));
+  MOCK_METHOD(
+      ActorID,
+      CancelOnWorker,
+      (const NodeID &node_id, const WorkerID &worker_id),
+      (override));
+  MOCK_METHOD(
+      void,
+      ReleaseUnusedWorkers,
       ((const std::unordered_map<NodeID, std::vector<WorkerID>> &node_to_workers)),
       (override));
 };
@@ -42,27 +48,44 @@ class MockGcsActorScheduler : public GcsActorScheduler {
   MOCK_METHOD(void, Schedule, (std::shared_ptr<GcsActor> actor), (override));
   MOCK_METHOD(void, Reschedule, (std::shared_ptr<GcsActor> actor), (override));
   MOCK_METHOD(std::vector<ActorID>, CancelOnNode, (const NodeID &node_id), (override));
-  MOCK_METHOD(void, CancelOnLeasing,
-              (const NodeID &node_id, const ActorID &actor_id, const TaskID &task_id),
-              (override));
-  MOCK_METHOD(ActorID, CancelOnWorker, (const NodeID &node_id, const WorkerID &worker_id),
-              (override));
   MOCK_METHOD(
-      void, ReleaseUnusedWorkers,
+      void,
+      CancelOnLeasing,
+      (const NodeID &node_id, const ActorID &actor_id, const TaskID &task_id),
+      (override));
+  MOCK_METHOD(
+      ActorID,
+      CancelOnWorker,
+      (const NodeID &node_id, const WorkerID &worker_id),
+      (override));
+  MOCK_METHOD(
+      void,
+      ReleaseUnusedWorkers,
       ((const std::unordered_map<NodeID, std::vector<WorkerID>> &node_to_workers)),
       (override));
-  MOCK_METHOD(std::shared_ptr<rpc::GcsNodeInfo>, SelectNode,
-              (std::shared_ptr<GcsActor> actor), (override));
-  MOCK_METHOD(void, HandleWorkerLeaseReply,
-              (std::shared_ptr<GcsActor> actor, std::shared_ptr<rpc::GcsNodeInfo> node,
-               const Status &status, const rpc::RequestWorkerLeaseReply &reply),
-              (override));
-  MOCK_METHOD(void, RetryLeasingWorkerFromNode,
-              (std::shared_ptr<GcsActor> actor, std::shared_ptr<rpc::GcsNodeInfo> node),
-              (override));
-  MOCK_METHOD(void, RetryCreatingActorOnWorker,
-              (std::shared_ptr<GcsActor> actor, std::shared_ptr<GcsLeasedWorker> worker),
-              (override));
+  MOCK_METHOD(
+      std::shared_ptr<rpc::GcsNodeInfo>,
+      SelectNode,
+      (std::shared_ptr<GcsActor> actor),
+      (override));
+  MOCK_METHOD(
+      void,
+      HandleWorkerLeaseReply,
+      (std::shared_ptr<GcsActor> actor,
+       std::shared_ptr<rpc::GcsNodeInfo> node,
+       const Status &status,
+       const rpc::RequestWorkerLeaseReply &reply),
+      (override));
+  MOCK_METHOD(
+      void,
+      RetryLeasingWorkerFromNode,
+      (std::shared_ptr<GcsActor> actor, std::shared_ptr<rpc::GcsNodeInfo> node),
+      (override));
+  MOCK_METHOD(
+      void,
+      RetryCreatingActorOnWorker,
+      (std::shared_ptr<GcsActor> actor, std::shared_ptr<GcsLeasedWorker> worker),
+      (override));
 };
 
 }  // namespace gcs
@@ -73,12 +96,19 @@ namespace gcs {
 
 class MockRayletBasedActorScheduler : public RayletBasedActorScheduler {
  public:
-  MOCK_METHOD(std::shared_ptr<rpc::GcsNodeInfo>, SelectNode,
-              (std::shared_ptr<GcsActor> actor), (override));
-  MOCK_METHOD(void, HandleWorkerLeaseReply,
-              (std::shared_ptr<GcsActor> actor, std::shared_ptr<rpc::GcsNodeInfo> node,
-               const Status &status, const rpc::RequestWorkerLeaseReply &reply),
-              (override));
+  MOCK_METHOD(
+      std::shared_ptr<rpc::GcsNodeInfo>,
+      SelectNode,
+      (std::shared_ptr<GcsActor> actor),
+      (override));
+  MOCK_METHOD(
+      void,
+      HandleWorkerLeaseReply,
+      (std::shared_ptr<GcsActor> actor,
+       std::shared_ptr<rpc::GcsNodeInfo> node,
+       const Status &status,
+       const rpc::RequestWorkerLeaseReply &reply),
+      (override));
 };
 
 }  // namespace gcs

@@ -34,8 +34,8 @@
 namespace ray {
 namespace core {
 
-typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string &ip_address,
-                                                            int port)>
+typedef std::function<
+    std::shared_ptr<WorkerLeaseInterface>(const std::string &ip_address, int port)>
     LeaseClientFactoryFn;
 
 // The task queues are keyed on resource shape & function descriptor
@@ -57,14 +57,18 @@ using SchedulingKey =
 class CoreWorkerDirectTaskSubmitter {
  public:
   explicit CoreWorkerDirectTaskSubmitter(
-      rpc::Address rpc_address, std::shared_ptr<WorkerLeaseInterface> lease_client,
+      rpc::Address rpc_address,
+      std::shared_ptr<WorkerLeaseInterface> lease_client,
       std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
       LeaseClientFactoryFn lease_client_factory,
       std::shared_ptr<LeasePolicyInterface> lease_policy,
       std::shared_ptr<CoreWorkerMemoryStore> store,
-      std::shared_ptr<TaskFinisherInterface> task_finisher, NodeID local_raylet_id,
-      WorkerType worker_type, int64_t lease_timeout_ms,
-      std::shared_ptr<ActorCreatorInterface> actor_creator, const JobID &job_id,
+      std::shared_ptr<TaskFinisherInterface> task_finisher,
+      NodeID local_raylet_id,
+      WorkerType worker_type,
+      int64_t lease_timeout_ms,
+      std::shared_ptr<ActorCreatorInterface> actor_creator,
+      const JobID &job_id,
       absl::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt,
       uint64_t max_pending_lease_requests_per_scheduling_category =
           ::RayConfig::instance().max_pending_lease_requests_per_scheduling_category())
@@ -95,8 +99,11 @@ class CoreWorkerDirectTaskSubmitter {
   /// \param[in] force_kill Whether to kill the worker executing the task.
   Status CancelTask(TaskSpecification task_spec, bool force_kill, bool recursive);
 
-  Status CancelRemoteTask(const ObjectID &object_id, const rpc::Address &worker_addr,
-                          bool force_kill, bool recursive);
+  Status CancelRemoteTask(
+      const ObjectID &object_id,
+      const rpc::Address &worker_addr,
+      bool force_kill,
+      bool recursive);
   /// Check that the scheduling_key_entries_ hashmap is empty by calling the private
   /// CheckNoSchedulingKeyEntries function after acquiring the lock.
   bool CheckNoSchedulingKeyEntriesPublic() {
@@ -127,7 +134,9 @@ class CoreWorkerDirectTaskSubmitter {
   /// \param[in] worker_exiting Whether the worker is exiting.
   /// \param[in] assigned_resources Resource ids previously assigned to the worker.
   void OnWorkerIdle(
-      const rpc::WorkerAddress &addr, const SchedulingKey &task_queue_key, bool was_error,
+      const rpc::WorkerAddress &addr,
+      const SchedulingKey &task_queue_key,
+      bool was_error,
       bool worker_exiting,
       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -150,9 +159,9 @@ class CoreWorkerDirectTaskSubmitter {
   /// flight and there are tasks queued. If a raylet address is provided, then
   /// the worker should be requested from the raylet at that address. Else, the
   /// worker should be requested from the local raylet.
-  void RequestNewWorkerIfNeeded(const SchedulingKey &task_queue_key,
-                                const rpc::Address *raylet_address = nullptr)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void RequestNewWorkerIfNeeded(
+      const SchedulingKey &task_queue_key,
+      const rpc::Address *raylet_address = nullptr) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Cancel a pending worker lease and retry until the cancellation succeeds
   /// (i.e., the raylet drops the request). This should be called when there
@@ -163,7 +172,8 @@ class CoreWorkerDirectTaskSubmitter {
 
   /// Set up client state for newly granted worker lease.
   void AddWorkerLeaseClient(
-      const rpc::WorkerAddress &addr, std::shared_ptr<WorkerLeaseInterface> lease_client,
+      const rpc::WorkerAddress &addr,
+      std::shared_ptr<WorkerLeaseInterface> lease_client,
       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources,
       const SchedulingKey &scheduling_key) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
@@ -171,8 +181,11 @@ class CoreWorkerDirectTaskSubmitter {
   /// \param[in] addr The address of the worker.
   /// \param[in] was_error Whether the task failed to be submitted.
   /// \param[in] worker_exiting Whether the worker is exiting.
-  void ReturnWorker(const rpc::WorkerAddress addr, bool was_error, bool worker_exiting,
-                    const SchedulingKey &scheduling_key) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void ReturnWorker(
+      const rpc::WorkerAddress addr,
+      bool was_error,
+      bool worker_exiting,
+      const SchedulingKey &scheduling_key) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Check that the scheduling_key_entries_ hashmap is empty.
   inline bool CheckNoSchedulingKeyEntries() const EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -180,12 +193,13 @@ class CoreWorkerDirectTaskSubmitter {
   }
 
   /// Push a task to a specific worker.
-  void PushNormalTask(const rpc::WorkerAddress &addr,
-                      rpc::CoreWorkerClientInterface &client,
-                      const SchedulingKey &task_queue_key,
-                      const TaskSpecification &task_spec,
-                      const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>
-                          &assigned_resources);
+  void PushNormalTask(
+      const rpc::WorkerAddress &addr,
+      rpc::CoreWorkerClientInterface &client,
+      const SchedulingKey &task_queue_key,
+      const TaskSpecification &task_spec,
+      const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>
+          &assigned_resources);
 
   /// Address of our RPC server.
   rpc::Address rpc_address_;
@@ -254,8 +268,8 @@ class CoreWorkerDirectTaskSubmitter {
         int64_t lease_expiration_time = 0,
         google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources =
             google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>(),
-        SchedulingKey scheduling_key = std::make_tuple(0, std::vector<ObjectID>(),
-                                                       ActorID::Nil(), 0))
+        SchedulingKey scheduling_key =
+            std::make_tuple(0, std::vector<ObjectID>(), ActorID::Nil(), 0))
         : lease_client(lease_client),
           lease_expiration_time(lease_expiration_time),
           assigned_resources(assigned_resources),

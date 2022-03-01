@@ -64,7 +64,8 @@ bool NewPlacementGroupResourceManager::PrepareBundle(
   auto resource_instances = std::make_shared<TaskResourceInstances>();
   bool allocated =
       cluster_resource_scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
-          bundle_spec.GetRequiredResources().GetResourceMap(), resource_instances);
+          bundle_spec.GetRequiredResources().GetResourceMap(),
+          resource_instances);
 
   if (!allocated) {
     return false;
@@ -73,8 +74,9 @@ bool NewPlacementGroupResourceManager::PrepareBundle(
   auto bundle_state =
       std::make_shared<BundleTransactionState>(CommitState::PREPARED, resource_instances);
   pg_bundles_[bundle_spec.BundleId()] = bundle_state;
-  bundle_spec_map_.emplace(bundle_spec.BundleId(), std::make_shared<BundleSpecification>(
-                                                       bundle_spec.GetMessage()));
+  bundle_spec_map_.emplace(
+      bundle_spec.BundleId(),
+      std::make_shared<BundleSpecification>(bundle_spec.GetMessage()));
 
   return true;
 }
@@ -139,10 +141,12 @@ void NewPlacementGroupResourceManager::CommitBundle(
       const auto &instances =
           task_resource_instances.Get(original_resource_name, string_id_map);
       cluster_resource_scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
-          resource_name, instances);
+          resource_name,
+          instances);
     } else {
       cluster_resource_scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
-          resource_name, {resource.second});
+          resource_name,
+          {resource.second});
     }
   }
   update_resources_(
@@ -181,7 +185,8 @@ void NewPlacementGroupResourceManager::ReturnBundle(
   const auto &placement_group_resources = bundle_spec.GetFormattedResources();
   auto resource_instances = std::make_shared<TaskResourceInstances>();
   cluster_resource_scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
-      placement_group_resources, resource_instances);
+      placement_group_resources,
+      resource_instances);
 
   std::vector<std::string> deleted;
   for (const auto &resource : placement_group_resources) {

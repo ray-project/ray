@@ -21,8 +21,9 @@
 namespace ray {
 namespace core {
 
-inline std::shared_ptr<ray::LocalMemoryBuffer> MakeBufferFromString(const uint8_t *data,
-                                                                    size_t data_size) {
+inline std::shared_ptr<ray::LocalMemoryBuffer> MakeBufferFromString(
+    const uint8_t *data,
+    size_t data_size) {
   auto metadata = const_cast<uint8_t *>(data);
   auto meta_buffer =
       std::make_shared<ray::LocalMemoryBuffer>(metadata, data_size, /*copy_data=*/true);
@@ -41,7 +42,10 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
 
   std::shared_ptr<CoreWorkerMemoryStore> provider =
       std::make_shared<CoreWorkerMemoryStore>(
-          nullptr, nullptr, nullptr, [&](const RayObject &obj) { unhandled_count++; });
+          nullptr,
+          nullptr,
+          nullptr,
+          [&](const RayObject &obj) { unhandled_count++; });
   RayObject obj1(rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
   RayObject obj2(rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
   auto id1 = ObjectID::FromRandom();
@@ -175,8 +179,9 @@ class TestBuffer : public Buffer {
 
 TEST(TestMemoryStore, TestObjectAllocator) {
   MockBufferManager mock_buffer_manager;
-  auto my_object_allocator = [&mock_buffer_manager](const ray::RayObject &object,
-                                                    const ObjectID &object_id) {
+  auto my_object_allocator = [&mock_buffer_manager](
+                                 const ray::RayObject &object,
+                                 const ObjectID &object_id) {
     auto buf = object.GetData();
     mock_buffer_manager.AcquireMemory(buf->Size());
     auto data_factory = [&mock_buffer_manager, object]() -> std::shared_ptr<ray::Buffer> {
@@ -185,12 +190,19 @@ TEST(TestMemoryStore, TestObjectAllocator) {
       return std::make_shared<TestBuffer>(mock_buffer_manager, data);
     };
 
-    return std::make_shared<ray::RayObject>(object.GetMetadata(), object.GetNestedRefs(),
-                                            std::move(data_factory), /*copy_data=*/true);
+    return std::make_shared<ray::RayObject>(
+        object.GetMetadata(),
+        object.GetNestedRefs(),
+        std::move(data_factory),
+        /*copy_data=*/true);
   };
   std::shared_ptr<CoreWorkerMemoryStore> memory_store =
-      std::make_shared<CoreWorkerMemoryStore>(nullptr, nullptr, nullptr, nullptr,
-                                              std::move(my_object_allocator));
+      std::make_shared<CoreWorkerMemoryStore>(
+          nullptr,
+          nullptr,
+          nullptr,
+          nullptr,
+          std::move(my_object_allocator));
   const int32_t max_rounds = 1000;
   const std::string hello = "hello";
   for (auto i = 0; i < max_rounds; ++i) {

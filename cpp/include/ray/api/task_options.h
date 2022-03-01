@@ -22,8 +22,9 @@ namespace internal {
 inline void CheckTaskOptions(const std::unordered_map<std::string, double> &resources) {
   for (auto &pair : resources) {
     if (pair.first.empty() || pair.second == 0) {
-      throw RayException("Resource values should be positive. Specified resource: " +
-                         pair.first + " = " + std::to_string(pair.second) + ".");
+      throw RayException(
+          "Resource values should be positive. Specified resource: " + pair.first +
+          " = " + std::to_string(pair.second) + ".");
     }
     // Note: A resource value should be an integer if it is greater than 1.0.
     // e.g. 3.0 is a valid resource value, but 3.5 is not.
@@ -64,8 +65,10 @@ struct PlacementGroupCreationOptions {
 class PlacementGroup {
  public:
   PlacementGroup() = default;
-  PlacementGroup(std::string id, PlacementGroupCreationOptions options,
-                 PlacementGroupState state = PlacementGroupState::UNRECOGNIZED)
+  PlacementGroup(
+      std::string id,
+      PlacementGroupCreationOptions options,
+      PlacementGroupState state = PlacementGroupState::UNRECOGNIZED)
       : id_(std::move(id)), options_(std::move(options)), state_(state) {}
   std::string GetID() const { return id_; }
   std::string GetName() { return options_.name; }

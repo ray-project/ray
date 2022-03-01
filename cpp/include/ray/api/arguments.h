@@ -26,8 +26,8 @@ namespace internal {
 class Arguments {
  public:
   template <typename OriginArgType, typename InputArgTypes>
-  static void WrapArgsImpl(bool cross_lang, std::vector<TaskArg> *task_args,
-                           InputArgTypes &&arg) {
+  static void
+  WrapArgsImpl(bool cross_lang, std::vector<TaskArg> *task_args, InputArgTypes &&arg) {
     if constexpr (is_object_ref_v<OriginArgType>) {
       PushReferenceArg(task_args, std::forward<InputArgTypes>(arg));
     } else if constexpr (is_object_ref_v<InputArgTypes>) {
@@ -65,11 +65,16 @@ class Arguments {
   }
 
   template <typename OriginArgsTuple, size_t... I, typename... InputArgTypes>
-  static void WrapArgs(bool cross_lang, std::vector<TaskArg> *task_args,
-                       std::index_sequence<I...>, InputArgTypes &&...args) {
+  static void WrapArgs(
+      bool cross_lang,
+      std::vector<TaskArg> *task_args,
+      std::index_sequence<I...>,
+      InputArgTypes &&...args) {
     (void)std::initializer_list<int>{
         (WrapArgsImpl<std::tuple_element_t<I, OriginArgsTuple>>(
-             cross_lang, task_args, std::forward<InputArgTypes>(args)),
+             cross_lang,
+             task_args,
+             std::forward<InputArgTypes>(args)),
          0)...};
     /// Silence gcc warning error.
     (void)task_args;
@@ -77,8 +82,10 @@ class Arguments {
   }
 
  private:
-  static void PushValueArg(std::vector<TaskArg> *task_args, msgpack::sbuffer &&buffer,
-                           std::string_view meta_str = "") {
+  static void PushValueArg(
+      std::vector<TaskArg> *task_args,
+      msgpack::sbuffer &&buffer,
+      std::string_view meta_str = "") {
     /// Pass by value.
     TaskArg task_arg;
     task_arg.buf = std::move(buffer);

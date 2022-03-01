@@ -26,15 +26,20 @@ using MessageType = ray::protocol::MessageType;
 
 namespace {
 inline flatbuffers::Offset<ray::protocol::Address> to_flatbuf(
-    flatbuffers::FlatBufferBuilder &fbb, const ray::rpc::Address &address) {
+    flatbuffers::FlatBufferBuilder &fbb,
+    const ray::rpc::Address &address) {
   return ray::protocol::CreateAddress(
-      fbb, fbb.CreateString(address.raylet_id()), fbb.CreateString(address.ip_address()),
-      address.port(), fbb.CreateString(address.worker_id()));
+      fbb,
+      fbb.CreateString(address.raylet_id()),
+      fbb.CreateString(address.ip_address()),
+      address.port(),
+      fbb.CreateString(address.worker_id()));
 }
 
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<ray::protocol::Address>>>
-AddressesToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb,
-                      const std::vector<ray::rpc::Address> &addresses) {
+AddressesToFlatbuffer(
+    flatbuffers::FlatBufferBuilder &fbb,
+    const std::vector<ray::rpc::Address> &addresses) {
   std::vector<flatbuffers::Offset<ray::protocol::Address>> address_vec;
   address_vec.reserve(addresses.size());
   for (const auto &addr : addresses) {
@@ -47,9 +52,11 @@ AddressesToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb,
 
 namespace ray {
 
-raylet::RayletConnection::RayletConnection(instrumented_io_context &io_service,
-                                           const std::string &raylet_socket,
-                                           int num_retries, int64_t timeout) {
+raylet::RayletConnection::RayletConnection(
+    instrumented_io_context &io_service,
+    const std::string &raylet_socket,
+    int num_retries,
+    int64_t timeout) {
   local_stream_socket socket(io_service);
   Status s = ConnectSocketRetry(socket, raylet_socket, num_retries, timeout);
   // If we could not connect to the socket, exit.
@@ -59,8 +66,9 @@ raylet::RayletConnection::RayletConnection(instrumented_io_context &io_service,
   conn_ = ServerConnection::Create(std::move(socket));
 }
 
-Status raylet::RayletConnection::WriteMessage(MessageType type,
-                                              flatbuffers::FlatBufferBuilder *fbb) {
+Status raylet::RayletConnection::WriteMessage(
+    MessageType type,
+    flatbuffers::FlatBufferBuilder *fbb) {
   std::unique_lock<std::mutex> guard(write_mutex_);
   int64_t length = fbb ? fbb->GetSize() : 0;
   uint8_t *bytes = fbb ? fbb->GetBufferPointer() : nullptr;
@@ -69,10 +77,11 @@ Status raylet::RayletConnection::WriteMessage(MessageType type,
   return status;
 }
 
-Status raylet::RayletConnection::AtomicRequestReply(MessageType request_type,
-                                                    MessageType reply_type,
-                                                    std::vector<uint8_t> *reply_message,
-                                                    flatbuffers::FlatBufferBuilder *fbb) {
+Status raylet::RayletConnection::AtomicRequestReply(
+    MessageType request_type,
+    MessageType reply_type,
+    std::vector<uint8_t> *reply_message,
+    flatbuffers::FlatBufferBuilder *fbb) {
   std::unique_lock<std::mutex> guard(mutex_);
   RAY_RETURN_NOT_OK(WriteMessage(request_type, fbb));
   auto status = conn_->ReadMessage(static_cast<int64_t>(reply_type), reply_message);
@@ -97,10 +106,17 @@ raylet::RayletClient::RayletClient(
 raylet::RayletClient::RayletClient(
     instrumented_io_context &io_service,
     std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
-    const std::string &raylet_socket, const WorkerID &worker_id,
-    rpc::WorkerType worker_type, const JobID &job_id, const int &runtime_env_hash,
-    const Language &language, const std::string &ip_address, Status *status,
-    NodeID *raylet_id, int *port, std::string *serialized_job_config,
+    const std::string &raylet_socket,
+    const WorkerID &worker_id,
+    rpc::WorkerType worker_type,
+    const JobID &job_id,
+    const int &runtime_env_hash,
+    const Language &language,
+    const std::string &ip_address,
+    Status *status,
+    NodeID *raylet_id,
+    int *port,
+    std::string *serialized_job_config,
     StartupToken startup_token)
     : grpc_client_(std::move(grpc_client)), worker_id_(worker_id), job_id_(job_id) {
   conn_ = std::make_unique<raylet::RayletConnection>(io_service, raylet_socket, -1, -1);
@@ -108,21 +124,31 @@ raylet::RayletClient::RayletClient(
   flatbuffers::FlatBufferBuilder fbb;
   // TODO(suquark): Use `WorkerType` in `common.proto` without converting to int.
   auto message = protocol::CreateRegisterClientRequest(
-      fbb, static_cast<int>(worker_type), to_flatbuf(fbb, worker_id), getpid(),
-      startup_token, to_flatbuf(fbb, job_id), runtime_env_hash, language,
+      fbb,
+      static_cast<int>(worker_type),
+      to_flatbuf(fbb, worker_id),
+      getpid(),
+      startup_token,
+      to_flatbuf(fbb, job_id),
+      runtime_env_hash,
+      language,
       fbb.CreateString(ip_address),
-      /*port=*/0, fbb.CreateString(*serialized_job_config));
+      /*port=*/0,
+      fbb.CreateString(*serialized_job_config));
   fbb.Finish(message);
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
   std::vector<uint8_t> reply;
   auto request_status = conn_->AtomicRequestReply(
-      MessageType::RegisterClientRequest, MessageType::RegisterClientReply, &reply, &fbb);
+      MessageType::RegisterClientRequest,
+      MessageType::RegisterClientReply,
+      &reply,
+      &fbb);
   if (!request_status.ok()) {
-    *status =
-        Status(request_status.code(),
-               std::string("[RayletClient] Unable to register worker with raylet. ") +
-                   request_status.message());
+    *status = Status(
+        request_status.code(),
+        std::string("[RayletClient] Unable to register worker with raylet. ") +
+            request_status.message());
     return;
   }
   auto reply_message = flatbuffers::GetRoot<protocol::RegisterClientReply>(reply.data());
@@ -150,9 +176,9 @@ Status raylet::RayletClient::Disconnect(
   flatbuffers::Offset<flatbuffers::Vector<uint8_t>>
       creation_task_exception_pb_bytes_fb_vector;
   if (creation_task_exception_pb_bytes != nullptr) {
-    creation_task_exception_pb_bytes_fb_vector =
-        fbb.CreateVector(creation_task_exception_pb_bytes->Data(),
-                         creation_task_exception_pb_bytes->Size());
+    creation_task_exception_pb_bytes_fb_vector = fbb.CreateVector(
+        creation_task_exception_pb_bytes->Data(),
+        creation_task_exception_pb_bytes->Size());
   }
   protocol::DisconnectClientBuilder builder(fbb);
   // Add to table builder here to avoid nested construction of flatbuffers
@@ -186,14 +212,20 @@ Status raylet::RayletClient::TaskDone() {
 
 Status raylet::RayletClient::FetchOrReconstruct(
     const std::vector<ObjectID> &object_ids,
-    const std::vector<rpc::Address> &owner_addresses, bool fetch_only,
-    bool mark_worker_blocked, const TaskID &current_task_id) {
+    const std::vector<rpc::Address> &owner_addresses,
+    bool fetch_only,
+    bool mark_worker_blocked,
+    const TaskID &current_task_id) {
   RAY_CHECK(object_ids.size() == owner_addresses.size());
   flatbuffers::FlatBufferBuilder fbb;
   auto object_ids_message = to_flatbuf(fbb, object_ids);
   auto message = protocol::CreateFetchOrReconstruct(
-      fbb, object_ids_message, AddressesToFlatbuffer(fbb, owner_addresses), fetch_only,
-      mark_worker_blocked, to_flatbuf(fbb, current_task_id));
+      fbb,
+      object_ids_message,
+      AddressesToFlatbuffer(fbb, owner_addresses),
+      fetch_only,
+      mark_worker_blocked,
+      to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::FetchOrReconstruct, &fbb);
 }
@@ -219,21 +251,31 @@ Status raylet::RayletClient::NotifyDirectCallTaskUnblocked() {
   return conn_->WriteMessage(MessageType::NotifyDirectCallTaskUnblocked, &fbb);
 }
 
-Status raylet::RayletClient::Wait(const std::vector<ObjectID> &object_ids,
-                                  const std::vector<rpc::Address> &owner_addresses,
-                                  int num_returns, int64_t timeout_milliseconds,
-                                  bool mark_worker_blocked, const TaskID &current_task_id,
-                                  WaitResultPair *result) {
+Status raylet::RayletClient::Wait(
+    const std::vector<ObjectID> &object_ids,
+    const std::vector<rpc::Address> &owner_addresses,
+    int num_returns,
+    int64_t timeout_milliseconds,
+    bool mark_worker_blocked,
+    const TaskID &current_task_id,
+    WaitResultPair *result) {
   // Write request.
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateWaitRequest(
-      fbb, to_flatbuf(fbb, object_ids), AddressesToFlatbuffer(fbb, owner_addresses),
-      num_returns, timeout_milliseconds, mark_worker_blocked,
+      fbb,
+      to_flatbuf(fbb, object_ids),
+      AddressesToFlatbuffer(fbb, owner_addresses),
+      num_returns,
+      timeout_milliseconds,
+      mark_worker_blocked,
       to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   std::vector<uint8_t> reply;
-  RAY_RETURN_NOT_OK(conn_->AtomicRequestReply(MessageType::WaitRequest,
-                                              MessageType::WaitReply, &reply, &fbb));
+  RAY_RETURN_NOT_OK(conn_->AtomicRequestReply(
+      MessageType::WaitRequest,
+      MessageType::WaitReply,
+      &reply,
+      &fbb));
   // Parse the flatbuffer object.
   auto reply_message = flatbuffers::GetRoot<protocol::WaitReply>(reply.data());
   auto found = reply_message->found();
@@ -250,7 +292,8 @@ Status raylet::RayletClient::Wait(const std::vector<ObjectID> &object_ids,
 }
 
 Status raylet::RayletClient::WaitForDirectActorCallArgs(
-    const std::vector<rpc::ObjectReference> &references, int64_t tag) {
+    const std::vector<rpc::ObjectReference> &references,
+    int64_t tag) {
   flatbuffers::FlatBufferBuilder fbb;
   std::vector<ObjectID> object_ids;
   std::vector<rpc::Address> owner_addresses;
@@ -259,24 +302,33 @@ Status raylet::RayletClient::WaitForDirectActorCallArgs(
     owner_addresses.push_back(ref.owner_address());
   }
   auto message = protocol::CreateWaitForDirectActorCallArgsRequest(
-      fbb, to_flatbuf(fbb, object_ids), AddressesToFlatbuffer(fbb, owner_addresses), tag);
+      fbb,
+      to_flatbuf(fbb, object_ids),
+      AddressesToFlatbuffer(fbb, owner_addresses),
+      tag);
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::WaitForDirectActorCallArgsRequest, &fbb);
 }
 
-Status raylet::RayletClient::PushError(const JobID &job_id, const std::string &type,
-                                       const std::string &error_message,
-                                       double timestamp) {
+Status raylet::RayletClient::PushError(
+    const JobID &job_id,
+    const std::string &type,
+    const std::string &error_message,
+    double timestamp) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreatePushErrorRequest(
-      fbb, to_flatbuf(fbb, job_id), fbb.CreateString(type),
-      fbb.CreateString(error_message), timestamp);
+      fbb,
+      to_flatbuf(fbb, job_id),
+      fbb.CreateString(type),
+      fbb.CreateString(error_message),
+      timestamp);
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::PushErrorRequest, &fbb);
 }
 
-Status raylet::RayletClient::FreeObjects(const std::vector<ObjectID> &object_ids,
-                                         bool local_only) {
+Status raylet::RayletClient::FreeObjects(
+    const std::vector<ObjectID> &object_ids,
+    bool local_only) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
       protocol::CreateFreeObjectsRequest(fbb, local_only, to_flatbuf(fbb, object_ids));
@@ -285,9 +337,11 @@ Status raylet::RayletClient::FreeObjects(const std::vector<ObjectID> &object_ids
 }
 
 void raylet::RayletClient::RequestWorkerLease(
-    const rpc::TaskSpec &task_spec, bool grant_or_reject,
+    const rpc::TaskSpec &task_spec,
+    bool grant_or_reject,
     const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
-    const int64_t backlog_size, const bool is_selected_based_on_locality) {
+    const int64_t backlog_size,
+    const bool is_selected_based_on_locality) {
   google::protobuf::Arena arena;
   auto request =
       google::protobuf::Arena::CreateMessage<rpc::RequestWorkerLeaseRequest>(&arena);
@@ -319,22 +373,27 @@ void raylet::RayletClient::ReportWorkerBacklog(
   request.set_worker_id(worker_id.Binary());
   request.mutable_backlog_reports()->Add(backlog_reports.begin(), backlog_reports.end());
   grpc_client_->ReportWorkerBacklog(
-      request, [](const Status &status, const rpc::ReportWorkerBacklogReply &reply) {
+      request,
+      [](const Status &status, const rpc::ReportWorkerBacklogReply &reply) {
         if (!status.ok()) {
           RAY_LOG(INFO) << "Error reporting task backlog information: " << status;
         }
       });
 }
 
-Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worker_id,
-                                          bool disconnect_worker, bool worker_exiting) {
+Status raylet::RayletClient::ReturnWorker(
+    int worker_port,
+    const WorkerID &worker_id,
+    bool disconnect_worker,
+    bool worker_exiting) {
   rpc::ReturnWorkerRequest request;
   request.set_worker_port(worker_port);
   request.set_worker_id(worker_id.Binary());
   request.set_disconnect_worker(disconnect_worker);
   request.set_worker_exiting(worker_exiting);
   grpc_client_->ReturnWorker(
-      request, [](const Status &status, const rpc::ReturnWorkerReply &reply) {
+      request,
+      [](const Status &status, const rpc::ReturnWorkerReply &reply) {
         if (!status.ok()) {
           RAY_LOG(INFO) << "Error returning worker: " << status;
         }
@@ -425,7 +484,8 @@ void raylet::RayletClient::ReleaseUnusedBundles(
 }
 
 void raylet::RayletClient::PinObjectIDs(
-    const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
+    const rpc::Address &caller_address,
+    const std::vector<ObjectID> &object_ids,
     const rpc::ClientCallback<rpc::PinObjectIDsReply> &callback) {
   rpc::PinObjectIDsRequest request;
   request.mutable_owner_address()->CopyFrom(caller_address);
@@ -434,7 +494,8 @@ void raylet::RayletClient::PinObjectIDs(
   }
   pins_in_flight_++;
   auto rpc_callback = [this, callback = std::move(callback)](
-                          Status status, const rpc::PinObjectIDsReply &reply) {
+                          Status status,
+                          const rpc::PinObjectIDsReply &reply) {
     pins_in_flight_--;
     callback(status, reply);
   };
@@ -442,7 +503,8 @@ void raylet::RayletClient::PinObjectIDs(
 }
 
 void raylet::RayletClient::ShutdownRaylet(
-    const NodeID &node_id, bool graceful,
+    const NodeID &node_id,
+    bool graceful,
     const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) {
   rpc::ShutdownRayletRequest request;
   request.set_graceful(graceful);
@@ -470,11 +532,14 @@ void raylet::RayletClient::RequestResourceReport(
   grpc_client_->RequestResourceReport(request, callback);
 }
 
-void raylet::RayletClient::SubscribeToPlasma(const ObjectID &object_id,
-                                             const rpc::Address &owner_address) {
+void raylet::RayletClient::SubscribeToPlasma(
+    const ObjectID &object_id,
+    const rpc::Address &owner_address) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateSubscribePlasmaReady(fbb, to_flatbuf(fbb, object_id),
-                                                      to_flatbuf(fbb, owner_address));
+  auto message = protocol::CreateSubscribePlasmaReady(
+      fbb,
+      to_flatbuf(fbb, object_id),
+      to_flatbuf(fbb, owner_address));
   fbb.Finish(message);
 
   RAY_CHECK_OK(conn_->WriteMessage(MessageType::SubscribePlasmaReady, &fbb));

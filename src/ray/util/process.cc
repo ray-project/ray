@@ -69,8 +69,8 @@ bool EnvironmentVariableLess::operator()(char a, char b) const {
   return std::less<char>()(tolower(a), tolower(b));
 }
 
-bool EnvironmentVariableLess::operator()(const std::string &a,
-                                         const std::string &b) const {
+bool EnvironmentVariableLess::operator()(const std::string &a, const std::string &b)
+    const {
   bool result;
 #ifdef _WIN32
   result = std::lexicographical_compare(a.begin(), a.end(), b.begin(), b.end(), *this);
@@ -98,8 +98,11 @@ class ProcessFD {
   pid_t GetId() const;
 
   // Fork + exec combo. Returns -1 for the PID on failure.
-  static ProcessFD spawnvpe(const char *argv[], std::error_code &ec, bool decouple,
-                            const ProcessEnvironment &env) {
+  static ProcessFD spawnvpe(
+      const char *argv[],
+      std::error_code &ec,
+      bool decouple,
+      const ProcessEnvironment &env) {
     ec = std::error_code();
     intptr_t fd;
     pid_t pid;
@@ -191,8 +194,10 @@ class ProcessFD {
       // This is the spawned process. Any intermediate parent is now dead.
       pid_t my_pid = getpid();
       if (write(pipefds[1], &my_pid, sizeof(my_pid)) == sizeof(my_pid)) {
-        execvpe(argv[0], const_cast<char *const *>(argv),
-                const_cast<char *const *>(envp));
+        execvpe(
+            argv[0],
+            const_cast<char *const *>(argv),
+            const_cast<char *const *>(envp));
       }
       _exit(errno);  // fork() succeeded and exec() failed, so abort the child
     }
@@ -303,9 +308,14 @@ intptr_t ProcessFD::CloneFD() const {
 #ifdef _WIN32
     HANDLE handle;
     BOOL inheritable = FALSE;
-    fd = DuplicateHandle(GetCurrentProcess(), reinterpret_cast<HANDLE>(fd_),
-                         GetCurrentProcess(), &handle, 0, inheritable,
-                         DUPLICATE_SAME_ACCESS)
+    fd = DuplicateHandle(
+             GetCurrentProcess(),
+             reinterpret_cast<HANDLE>(fd_),
+             GetCurrentProcess(),
+             &handle,
+             0,
+             inheritable,
+             DUPLICATE_SAME_ACCESS)
              ? reinterpret_cast<intptr_t>(handle)
              : -1;
 #else
@@ -339,8 +349,12 @@ Process &Process::operator=(Process other) {
 
 Process::Process(pid_t pid) { p_ = std::make_shared<ProcessFD>(pid); }
 
-Process::Process(const char *argv[], void *io_service, std::error_code &ec, bool decouple,
-                 const ProcessEnvironment &env) {
+Process::Process(
+    const char *argv[],
+    void *io_service,
+    std::error_code &ec,
+    bool decouple,
+    const ProcessEnvironment &env) {
   (void)io_service;
   ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env);
   if (!ec) {
@@ -348,8 +362,9 @@ Process::Process(const char *argv[], void *io_service, std::error_code &ec, bool
   }
 }
 
-std::error_code Process::Call(const std::vector<std::string> &args,
-                              const ProcessEnvironment &env) {
+std::error_code Process::Call(
+    const std::vector<std::string> &args,
+    const ProcessEnvironment &env) {
   std::vector<const char *> argv;
   for (size_t i = 0; i != args.size(); ++i) {
     argv.push_back(args[i].c_str());
@@ -386,10 +401,11 @@ bool Process::IsNull() const { return !p_; }
 
 bool Process::IsValid() const { return GetId() != -1; }
 
-std::pair<Process, std::error_code> Process::Spawn(const std::vector<std::string> &args,
-                                                   bool decouple,
-                                                   const std::string &pid_file,
-                                                   const ProcessEnvironment &env) {
+std::pair<Process, std::error_code> Process::Spawn(
+    const std::vector<std::string> &args,
+    bool decouple,
+    const std::string &pid_file,
+    const ProcessEnvironment &env) {
   std::vector<const char *> argv;
   for (size_t i = 0; i != args.size(); ++i) {
     argv.push_back(args[i].c_str());
@@ -524,11 +540,12 @@ void Process::Kill() {
 #define STATUS_BUFFER_OVERFLOW ((NTSTATUS)0x80000005L)
 #endif
 typedef LONG NTSTATUS;
-typedef NTSTATUS WINAPI NtQueryInformationProcess_t(HANDLE ProcessHandle,
-                                                    ULONG ProcessInformationClass,
-                                                    PVOID ProcessInformation,
-                                                    ULONG ProcessInformationLength,
-                                                    ULONG *ReturnLength);
+typedef NTSTATUS WINAPI NtQueryInformationProcess_t(
+    HANDLE ProcessHandle,
+    ULONG ProcessInformationClass,
+    PVOID ProcessInformation,
+    ULONG ProcessInformationLength,
+    ULONG *ReturnLength);
 
 static std::atomic<NtQueryInformationProcess_t *> NtQueryInformationProcess_ =
     ATOMIC_VAR_INIT(NULL);
@@ -536,9 +553,10 @@ static std::atomic<NtQueryInformationProcess_t *> NtQueryInformationProcess_ =
 pid_t GetParentPID() {
   NtQueryInformationProcess_t *NtQueryInformationProcess = NtQueryInformationProcess_;
   if (!NtQueryInformationProcess) {
-    NtQueryInformationProcess = reinterpret_cast<NtQueryInformationProcess_t *>(
-        GetProcAddress(GetModuleHandle(TEXT("ntdll.dll")),
-                       _CRT_STRINGIZE(NtQueryInformationProcess)));
+    NtQueryInformationProcess =
+        reinterpret_cast<NtQueryInformationProcess_t *>(GetProcAddress(
+            GetModuleHandle(TEXT("ntdll.dll")),
+            _CRT_STRINGIZE(NtQueryInformationProcess)));
     NtQueryInformationProcess_ = NtQueryInformationProcess;
   }
   DWORD ppid = 0;
@@ -555,10 +573,18 @@ pid_t GetParentPID() {
     if (HANDLE parent = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, ppid)) {
       long long me_created, parent_created;
       FILETIME unused;
-      if (GetProcessTimes(GetCurrentProcess(), reinterpret_cast<FILETIME *>(&me_created),
-                          &unused, &unused, &unused) &&
-          GetProcessTimes(parent, reinterpret_cast<FILETIME *>(&parent_created), &unused,
-                          &unused, &unused)) {
+      if (GetProcessTimes(
+              GetCurrentProcess(),
+              reinterpret_cast<FILETIME *>(&me_created),
+              &unused,
+              &unused,
+              &unused) &&
+          GetProcessTimes(
+              parent,
+              reinterpret_cast<FILETIME *>(&parent_created),
+              &unused,
+              &unused,
+              &unused)) {
         if (me_created >= parent_created) {
           // We verified the child is younger than the parent, so we know the parent
           // is still alive.
@@ -609,8 +635,8 @@ bool IsProcessAlive(pid_t pid) {
 
 namespace std {
 
-bool equal_to<ray::Process>::operator()(const ray::Process &x,
-                                        const ray::Process &y) const {
+bool equal_to<ray::Process>::operator()(const ray::Process &x, const ray::Process &y)
+    const {
   using namespace ray;
   return !x.IsNull()
              ? !y.IsNull()

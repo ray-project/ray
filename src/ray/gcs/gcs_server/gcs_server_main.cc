@@ -34,9 +34,12 @@ DEFINE_bool(retry_redis, false, "Whether we retry to connect to the redis.");
 DEFINE_string(node_ip_address, "", "The ip address of the node.");
 
 int main(int argc, char *argv[]) {
-  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
-                                         ray::RayLog::ShutDownRayLog, argv[0],
-                                         ray::RayLogLevel::INFO, /*log_dir=*/"");
+  InitShutdownRAII ray_log_shutdown_raii(
+      ray::RayLog::StartRayLog,
+      ray::RayLog::ShutDownRayLog,
+      argv[0],
+      ray::RayLogLevel::INFO,
+      /*log_dir=*/"");
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
 
   gflags::ParseCommandLineFlags(&argc, &argv, true);
@@ -69,9 +72,11 @@ int main(int argc, char *argv[]) {
 
   // Initialize event framework.
   if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
-    ray::RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_GCS,
-                      std::unordered_map<std::string, std::string>(), log_dir,
-                      RayConfig::instance().event_level());
+    ray::RayEventInit(
+        ray::rpc::Event_SourceType::Event_SourceType_GCS,
+        std::unordered_map<std::string, std::string>(),
+        log_dir,
+        RayConfig::instance().event_level());
   }
 
   ray::gcs::GcsServerConfig gcs_server_config;
@@ -92,8 +97,9 @@ int main(int argc, char *argv[]) {
   // Destroy the GCS server on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop
   // instead of returning immediately.
-  auto handler = [&main_service, &gcs_server](const boost::system::error_code &error,
-                                              int signal_number) {
+  auto handler = [&main_service, &gcs_server](
+                     const boost::system::error_code &error,
+                     int signal_number) {
     RAY_LOG(INFO) << "GCS server received SIGTERM, shutting down...";
     gcs_server.Stop();
     ray::stats::Shutdown();

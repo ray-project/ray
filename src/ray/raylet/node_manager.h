@@ -143,10 +143,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///
   /// \param resource_config The initial set of node resources.
   /// \param object_manager A reference to the local object manager.
-  NodeManager(instrumented_io_context &io_service, const NodeID &self_node_id,
-              const NodeManagerConfig &config,
-              const ObjectManagerConfig &object_manager_config,
-              std::shared_ptr<gcs::GcsClient> gcs_client);
+  NodeManager(
+      instrumented_io_context &io_service,
+      const NodeID &self_node_id,
+      const NodeManagerConfig &config,
+      const ObjectManagerConfig &object_manager_config,
+      std::shared_ptr<gcs::GcsClient> gcs_client);
 
   /// Process a new client connection.
   ///
@@ -162,8 +164,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param message_type The message type (e.g., a flatbuffer enum).
   /// \param message_data A pointer to the message data.
   /// \return Void.
-  void ProcessClientMessage(const std::shared_ptr<ClientConnection> &client,
-                            int64_t message_type, const uint8_t *message_data);
+  void ProcessClientMessage(
+      const std::shared_ptr<ClientConnection> &client,
+      int64_t message_type,
+      const uint8_t *message_data);
 
   /// Subscribe to the relevant GCS tables and set up handlers.
   ///
@@ -197,9 +201,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param error_type The type of the error that caused this task to fail.
   /// \param object_ids The object ids to store error messages into.
   /// \param job_id The optional job to push errors to if the writes fail.
-  void MarkObjectsAsFailed(const ErrorType &error_type,
-                           const std::vector<rpc::ObjectReference> object_ids,
-                           const JobID &job_id);
+  void MarkObjectsAsFailed(
+      const ErrorType &error_type,
+      const std::vector<rpc::ObjectReference> object_ids,
+      const JobID &job_id);
 
   /// Stop this node manager.
   void Stop();
@@ -227,15 +232,17 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param node_id ID of the node that created or updated resources.
   /// \param createUpdatedResources Created or updated resources.
   /// \return Void.
-  void ResourceCreateUpdated(const NodeID &node_id,
-                             const ResourceSet &createUpdatedResources);
+  void ResourceCreateUpdated(
+      const NodeID &node_id,
+      const ResourceSet &createUpdatedResources);
 
   /// Handler for the deletion of a resource in the GCS
   /// \param node_id ID of the node that deleted resources.
   /// \param resource_names Names of deleted resources.
   /// \return Void.
-  void ResourceDeleted(const NodeID &node_id,
-                       const std::vector<std::string> &resource_names);
+  void ResourceDeleted(
+      const NodeID &node_id,
+      const std::vector<std::string> &resource_names);
 
   /// Evaluates the local infeasible queue to check if any tasks can be scheduled.
   /// This is called whenever there's an update to the resources on the local node.
@@ -294,10 +301,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param mark_worker_blocked Whether to mark the worker as blocked. This
   ///                            should be False for direct calls.
   /// \return Void.
-  void AsyncResolveObjects(const std::shared_ptr<ClientConnection> &client,
-                           const std::vector<rpc::ObjectReference> &required_object_refs,
-                           const TaskID &current_task_id, bool ray_get,
-                           bool mark_worker_blocked);
+  void AsyncResolveObjects(
+      const std::shared_ptr<ClientConnection> &client,
+      const std::vector<rpc::ObjectReference> &required_object_refs,
+      const TaskID &current_task_id,
+      bool ray_get,
+      bool mark_worker_blocked);
 
   /// Handle end of a blocking object get. This could be a task assigned to a
   /// worker, an out-of-band task (e.g., a thread created by the application),
@@ -310,15 +319,18 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param worker_was_blocked Whether we previously marked the worker as
   ///                           blocked in AsyncResolveObjects().
   /// \return Void.
-  void AsyncResolveObjectsFinish(const std::shared_ptr<ClientConnection> &client,
-                                 const TaskID &current_task_id, bool was_blocked);
+  void AsyncResolveObjectsFinish(
+      const std::shared_ptr<ClientConnection> &client,
+      const TaskID &current_task_id,
+      bool was_blocked);
 
   /// Handle a direct call task that is blocked. Note that this callback may
   /// arrive after the worker lease has been returned to the node manager.
   ///
   /// \param worker Shared ptr to the worker, or nullptr if lost.
-  void HandleDirectCallTaskBlocked(const std::shared_ptr<WorkerInterface> &worker,
-                                   bool release_resources);
+  void HandleDirectCallTaskBlocked(
+      const std::shared_ptr<WorkerInterface> &worker,
+      bool release_resources);
 
   /// Handle a direct call task that is unblocked. Note that this callback may
   /// arrive after the worker lease has been returned to the node manager.
@@ -380,8 +392,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///
   /// \param message_data A pointer to the message data.
   /// \return Void.
-  void ProcessDirectCallTaskBlocked(const std::shared_ptr<ClientConnection> &client,
-                                    const uint8_t *message_data);
+  void ProcessDirectCallTaskBlocked(
+      const std::shared_ptr<ClientConnection> &client,
+      const uint8_t *message_data);
 
   /// Process client message of RegisterClientRequest
   ///
@@ -389,15 +402,17 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param message_data A pointer to the message data.
   /// \return Void.
   void ProcessRegisterClientRequestMessage(
-      const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data);
+      const std::shared_ptr<ClientConnection> &client,
+      const uint8_t *message_data);
 
   /// Process client message of AnnounceWorkerPort
   ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
   /// \return Void.
-  void ProcessAnnounceWorkerPortMessage(const std::shared_ptr<ClientConnection> &client,
-                                        const uint8_t *message_data);
+  void ProcessAnnounceWorkerPortMessage(
+      const std::shared_ptr<ClientConnection> &client,
+      const uint8_t *message_data);
 
   /// Handle the case that a worker is available.
   ///
@@ -419,24 +434,27 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
   /// \return Void.
-  void ProcessDisconnectClientMessage(const std::shared_ptr<ClientConnection> &client,
-                                      const uint8_t *message_data);
+  void ProcessDisconnectClientMessage(
+      const std::shared_ptr<ClientConnection> &client,
+      const uint8_t *message_data);
 
   /// Process client message of FetchOrReconstruct
   ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
   /// \return Void.
-  void ProcessFetchOrReconstructMessage(const std::shared_ptr<ClientConnection> &client,
-                                        const uint8_t *message_data);
+  void ProcessFetchOrReconstructMessage(
+      const std::shared_ptr<ClientConnection> &client,
+      const uint8_t *message_data);
 
   /// Process client message of WaitRequest
   ///
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
   /// \return Void.
-  void ProcessWaitRequestMessage(const std::shared_ptr<ClientConnection> &client,
-                                 const uint8_t *message_data);
+  void ProcessWaitRequestMessage(
+      const std::shared_ptr<ClientConnection> &client,
+      const uint8_t *message_data);
 
   /// Process client message of WaitForDirectActorCallArgsRequest
   ///
@@ -444,7 +462,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param message_data A pointer to the message data.
   /// \return Void.
   void ProcessWaitForDirectActorCallArgsRequestMessage(
-      const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data);
+      const std::shared_ptr<ClientConnection> &client,
+      const uint8_t *message_data);
 
   /// Process client message of PushErrorRequest
   ///
@@ -459,101 +478,122 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
   /// \return void.
-  void ProcessSubscribePlasmaReady(const std::shared_ptr<ClientConnection> &client,
-                                   const uint8_t *message_data);
+  void ProcessSubscribePlasmaReady(
+      const std::shared_ptr<ClientConnection> &client,
+      const uint8_t *message_data);
 
-  void HandleUpdateResourceUsage(const rpc::UpdateResourceUsageRequest &request,
-                                 rpc::UpdateResourceUsageReply *reply,
-                                 rpc::SendReplyCallback send_reply_callback) override;
+  void HandleUpdateResourceUsage(
+      const rpc::UpdateResourceUsageRequest &request,
+      rpc::UpdateResourceUsageReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `RequestResourceReport` request.
-  void HandleRequestResourceReport(const rpc::RequestResourceReportRequest &request,
-                                   rpc::RequestResourceReportReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) override;
+  void HandleRequestResourceReport(
+      const rpc::RequestResourceReportRequest &request,
+      rpc::RequestResourceReportReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `PrepareBundleResources` request.
-  void HandlePrepareBundleResources(const rpc::PrepareBundleResourcesRequest &request,
-                                    rpc::PrepareBundleResourcesReply *reply,
-                                    rpc::SendReplyCallback send_reply_callback) override;
+  void HandlePrepareBundleResources(
+      const rpc::PrepareBundleResourcesRequest &request,
+      rpc::PrepareBundleResourcesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `CommitBundleResources` request.
-  void HandleCommitBundleResources(const rpc::CommitBundleResourcesRequest &request,
-                                   rpc::CommitBundleResourcesReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) override;
+  void HandleCommitBundleResources(
+      const rpc::CommitBundleResourcesRequest &request,
+      rpc::CommitBundleResourcesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ResourcesReturn` request.
-  void HandleCancelResourceReserve(const rpc::CancelResourceReserveRequest &request,
-                                   rpc::CancelResourceReserveReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) override;
+  void HandleCancelResourceReserve(
+      const rpc::CancelResourceReserveRequest &request,
+      rpc::CancelResourceReserveReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `WorkerLease` request.
-  void HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest &request,
-                                rpc::RequestWorkerLeaseReply *reply,
-                                rpc::SendReplyCallback send_reply_callback) override;
+  void HandleRequestWorkerLease(
+      const rpc::RequestWorkerLeaseRequest &request,
+      rpc::RequestWorkerLeaseReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ReportWorkerBacklog` request.
-  void HandleReportWorkerBacklog(const rpc::ReportWorkerBacklogRequest &request,
-                                 rpc::ReportWorkerBacklogReply *reply,
-                                 rpc::SendReplyCallback send_reply_callback) override;
+  void HandleReportWorkerBacklog(
+      const rpc::ReportWorkerBacklogRequest &request,
+      rpc::ReportWorkerBacklogReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ReturnWorker` request.
-  void HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
-                          rpc::ReturnWorkerReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) override;
+  void HandleReturnWorker(
+      const rpc::ReturnWorkerRequest &request,
+      rpc::ReturnWorkerReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ReleaseUnusedWorkers` request.
-  void HandleReleaseUnusedWorkers(const rpc::ReleaseUnusedWorkersRequest &request,
-                                  rpc::ReleaseUnusedWorkersReply *reply,
-                                  rpc::SendReplyCallback send_reply_callback) override;
+  void HandleReleaseUnusedWorkers(
+      const rpc::ReleaseUnusedWorkersRequest &request,
+      rpc::ReleaseUnusedWorkersReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ShutdownRaylet` request.
-  void HandleShutdownRaylet(const rpc::ShutdownRayletRequest &request,
-                            rpc::ShutdownRayletReply *reply,
-                            rpc::SendReplyCallback send_reply_callback) override;
+  void HandleShutdownRaylet(
+      const rpc::ShutdownRayletRequest &request,
+      rpc::ShutdownRayletReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ReturnWorker` request.
-  void HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &request,
-                               rpc::CancelWorkerLeaseReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) override;
+  void HandleCancelWorkerLease(
+      const rpc::CancelWorkerLeaseRequest &request,
+      rpc::CancelWorkerLeaseReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `PinObjectIDs` request.
-  void HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
-                          rpc::PinObjectIDsReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) override;
+  void HandlePinObjectIDs(
+      const rpc::PinObjectIDsRequest &request,
+      rpc::PinObjectIDsReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `NodeStats` request.
-  void HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
-                          rpc::GetNodeStatsReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) override;
+  void HandleGetNodeStats(
+      const rpc::GetNodeStatsRequest &request,
+      rpc::GetNodeStatsReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `GlobalGC` request.
-  void HandleGlobalGC(const rpc::GlobalGCRequest &request, rpc::GlobalGCReply *reply,
-                      rpc::SendReplyCallback send_reply_callback) override;
+  void HandleGlobalGC(
+      const rpc::GlobalGCRequest &request,
+      rpc::GlobalGCReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `FormatGlobalMemoryInfo`` request.
-  void HandleFormatGlobalMemoryInfo(const rpc::FormatGlobalMemoryInfoRequest &request,
-                                    rpc::FormatGlobalMemoryInfoReply *reply,
-                                    rpc::SendReplyCallback send_reply_callback) override;
+  void HandleFormatGlobalMemoryInfo(
+      const rpc::FormatGlobalMemoryInfoRequest &request,
+      rpc::FormatGlobalMemoryInfoReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `RequestObjectSpillage` request.
-  void HandleRequestObjectSpillage(const rpc::RequestObjectSpillageRequest &request,
-                                   rpc::RequestObjectSpillageReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) override;
+  void HandleRequestObjectSpillage(
+      const rpc::RequestObjectSpillageRequest &request,
+      rpc::RequestObjectSpillageReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ReleaseUnusedBundles` request.
-  void HandleReleaseUnusedBundles(const rpc::ReleaseUnusedBundlesRequest &request,
-                                  rpc::ReleaseUnusedBundlesReply *reply,
-                                  rpc::SendReplyCallback send_reply_callback) override;
+  void HandleReleaseUnusedBundles(
+      const rpc::ReleaseUnusedBundlesRequest &request,
+      rpc::ReleaseUnusedBundlesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `GetSystemConfig` request.
-  void HandleGetSystemConfig(const rpc::GetSystemConfigRequest &request,
-                             rpc::GetSystemConfigReply *reply,
-                             rpc::SendReplyCallback send_reply_callback) override;
+  void HandleGetSystemConfig(
+      const rpc::GetSystemConfigRequest &request,
+      rpc::GetSystemConfigReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `GetGcsServerAddress` request.
-  void HandleGetGcsServerAddress(const rpc::GetGcsServerAddressRequest &request,
-                                 rpc::GetGcsServerAddressReply *reply,
-                                 rpc::SendReplyCallback send_reply_callback) override;
+  void HandleGetGcsServerAddress(
+      const rpc::GetGcsServerAddressRequest &request,
+      rpc::GetGcsServerAddressReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Trigger local GC on each worker of this raylet.
   void DoLocalGC();
@@ -587,8 +627,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param[out] results The pointers to objects stored in
   /// plasma.
   /// \return Whether the request was successful.
-  bool GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
-                            std::vector<std::unique_ptr<RayObject>> *results);
+  bool GetObjectsFromPlasma(
+      const std::vector<ObjectID> &object_ids,
+      std::vector<std::unique_ptr<RayObject>> *results);
 
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending raylet <-> gcs heartbeats. In particular, this should fill in

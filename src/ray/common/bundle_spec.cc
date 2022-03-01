@@ -67,7 +67,8 @@ BundleID BundleSpecification::BundleId() const {
   }
   int64_t index = message_->bundle_id().bundle_index();
   return std::make_pair(
-      PlacementGroupID::FromBinary(message_->bundle_id().placement_group_id()), index);
+      PlacementGroupID::FromBinary(message_->bundle_id().placement_group_id()),
+      index);
 }
 
 PlacementGroupID BundleSpecification::PlacementGroupId() const {
@@ -90,9 +91,10 @@ std::string BundleSpecification::DebugString() const {
   return stream.str();
 }
 
-std::string FormatPlacementGroupResource(const std::string &original_resource_name,
-                                         const PlacementGroupID &group_id,
-                                         int64_t bundle_index) {
+std::string FormatPlacementGroupResource(
+    const std::string &original_resource_name,
+    const PlacementGroupID &group_id,
+    int64_t bundle_index) {
   std::stringstream os;
   if (bundle_index >= 0) {
     os << original_resource_name << kGroupKeyword << std::to_string(bundle_index) << "_"
@@ -108,16 +110,22 @@ std::string FormatPlacementGroupResource(const std::string &original_resource_na
   return result;
 }
 
-std::string FormatPlacementGroupResource(const std::string &original_resource_name,
-                                         const BundleSpecification &bundle_spec) {
+std::string FormatPlacementGroupResource(
+    const std::string &original_resource_name,
+    const BundleSpecification &bundle_spec) {
   return FormatPlacementGroupResource(
-      original_resource_name, bundle_spec.PlacementGroupId(), bundle_spec.Index());
+      original_resource_name,
+      bundle_spec.PlacementGroupId(),
+      bundle_spec.Index());
 }
 
-bool IsBundleIndex(const std::string &resource, const PlacementGroupID &group_id,
-                   const int bundle_index) {
-  return resource.find(kGroupKeyword + std::to_string(bundle_index) + "_" +
-                       group_id.Hex()) != std::string::npos;
+bool IsBundleIndex(
+    const std::string &resource,
+    const PlacementGroupID &group_id,
+    const int bundle_index) {
+  return resource.find(
+             kGroupKeyword + std::to_string(bundle_index) + "_" + group_id.Hex()) !=
+         std::string::npos;
 }
 
 std::string GetOriginalResourceName(const std::string &resource) {

@@ -40,8 +40,11 @@ class GcsPlacementGroupManagerMockTest : public Test {
         std::make_shared<MockGcsResourceManager>(io_context_, nullptr, nullptr);
 
     gcs_placement_group_manager_ = std::make_unique<GcsPlacementGroupManager>(
-        io_context_, gcs_placement_group_scheduler_, gcs_table_storage_,
-        *resource_manager_, [](auto &) { return ""; });
+        io_context_,
+        gcs_placement_group_scheduler_,
+        gcs_table_storage_,
+        *resource_manager_,
+        [](auto &) { return ""; });
   }
 
   std::unique_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
@@ -121,8 +124,8 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed) {
   ASSERT_EQ(1, pending_queue.size());
   ASSERT_EQ(rank, pending_queue.begin()->first);
 
-  absl::SleepFor(absl::Milliseconds(1) +
-                 absl::Nanoseconds(rank - absl::GetCurrentTimeNanos()));
+  absl::SleepFor(
+      absl::Milliseconds(1) + absl::Nanoseconds(rank - absl::GetCurrentTimeNanos()));
   gcs_placement_group_manager_->SchedulePendingPlacementGroups();
   ASSERT_EQ(0, pending_queue.size());
   pg->UpdateState(rpc::PlacementGroupTableData::PENDING);

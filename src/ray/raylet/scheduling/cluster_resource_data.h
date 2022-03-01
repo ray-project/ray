@@ -84,8 +84,9 @@ class TaskResourceInstances {
   absl::flat_hash_map<int64_t, std::vector<FixedPoint>> custom_resources;
   bool operator==(const TaskResourceInstances &other);
   /// Get instances based on the string.
-  const std::vector<FixedPoint> &Get(const std::string &resource_name,
-                                     const StringIdMap &string_id_map) const;
+  const std::vector<FixedPoint> &Get(
+      const std::string &resource_name,
+      const StringIdMap &string_id_map) const;
   /// For each resource of this request aggregate its instances.
   ResourceRequest ToResourceRequest() const;
   /// Get CPU instances only.
@@ -161,8 +162,9 @@ class NodeResources {
   float CalculateCriticalResourceUtilization() const;
   /// Returns true if the node has the available resources to run the task.
   /// Note: This doesn't account for the binpacking of unit resources.
-  bool IsAvailable(const ResourceRequest &resource_request,
-                   bool ignore_at_capacity = false) const;
+  bool IsAvailable(
+      const ResourceRequest &resource_request,
+      bool ignore_at_capacity = false) const;
   /// Returns true if the node's total resources are enough to run the task.
   /// Note: This doesn't account for the binpacking of unit resources.
   bool IsFeasible(const ResourceRequest &resource_request) const;

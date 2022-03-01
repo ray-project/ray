@@ -22,7 +22,9 @@
 using json = nlohmann::json;
 
 JNIEXPORT jstring JNICALL Java_io_ray_runtime_util_SystemConfig_nativeGetSystemConfig(
-    JNIEnv *env, jclass clz, jstring java_key) {
+    JNIEnv *env,
+    jclass clz,
+    jstring java_key) {
   RAY_CHECK(java_key != nullptr);
   const auto key = JavaStringToNativeString(env, java_key);
 

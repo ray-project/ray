@@ -48,7 +48,8 @@ ConcurrencyGroupManager<ExecutorType>::ConcurrencyGroupManager(
 
 template <typename ExecutorType>
 std::shared_ptr<ExecutorType> ConcurrencyGroupManager<ExecutorType>::GetExecutor(
-    const std::string &concurrency_group_name, const ray::FunctionDescriptor &fd) {
+    const std::string &concurrency_group_name,
+    const ray::FunctionDescriptor &fd) {
   if (!concurrency_group_name.empty()) {
     auto it = name_to_executor_index_.find(concurrency_group_name);
     /// TODO(qwang): Fail the user task.

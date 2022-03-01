@@ -30,8 +30,9 @@ LocalModeTaskSubmitter::LocalModeTaskSubmitter(
   thread_pool_.reset(new boost::asio::thread_pool(10));
 }
 
-ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
-                                        const ActorCreationOptions &options) {
+ObjectID LocalModeTaskSubmitter::Submit(
+    InvocationSpec &invocation,
+    const ActorCreationOptions &options) {
   /// TODO(SongGuyang): Make the information of TaskSpecification more reasonable
   /// We just reuse the TaskSpecification class and make the single process mode work.
   /// Maybe some infomation of TaskSpecification are not reasonable or invalid.
@@ -49,27 +50,44 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
       invocation.name.empty() ? functionDescriptor->DefaultTaskName() : invocation.name;
 
   // TODO (Alex): Properly set the depth here?
-  builder.SetCommonTaskSpec(task_id, task_name, rpc::Language::CPP, functionDescriptor,
-                            local_mode_ray_tuntime_.GetCurrentJobID(),
-                            local_mode_ray_tuntime_.GetCurrentTaskId(), 0,
-                            local_mode_ray_tuntime_.GetCurrentTaskId(), address, 1,
-                            required_resources, required_placement_resources, "",
-                            /*depth=*/0);
+  builder.SetCommonTaskSpec(
+      task_id,
+      task_name,
+      rpc::Language::CPP,
+      functionDescriptor,
+      local_mode_ray_tuntime_.GetCurrentJobID(),
+      local_mode_ray_tuntime_.GetCurrentTaskId(),
+      0,
+      local_mode_ray_tuntime_.GetCurrentTaskId(),
+      address,
+      1,
+      required_resources,
+      required_placement_resources,
+      "",
+      /*depth=*/0);
   if (invocation.task_type == TaskType::NORMAL_TASK) {
   } else if (invocation.task_type == TaskType::ACTOR_CREATION_TASK) {
     invocation.actor_id = local_mode_ray_tuntime_.GetNextActorID();
     rpc::SchedulingStrategy scheduling_strategy;
     scheduling_strategy.mutable_default_scheduling_strategy();
-    builder.SetActorCreationTaskSpec(invocation.actor_id, /*serialized_actor_handle=*/"",
-                                     scheduling_strategy, options.max_restarts,
-                                     /*max_task_retries=*/0, {}, options.max_concurrency);
+    builder.SetActorCreationTaskSpec(
+        invocation.actor_id,
+        /*serialized_actor_handle=*/"",
+        scheduling_strategy,
+        options.max_restarts,
+        /*max_task_retries=*/0,
+        {},
+        options.max_concurrency);
   } else if (invocation.task_type == TaskType::ACTOR_TASK) {
     const TaskID actor_creation_task_id =
         TaskID::ForActorCreationTask(invocation.actor_id);
     const ObjectID actor_creation_dummy_object_id =
         ObjectID::FromIndex(actor_creation_task_id, 1);
-    builder.SetActorTaskSpec(invocation.actor_id, actor_creation_dummy_object_id,
-                             ObjectID(), invocation.actor_counter);
+    builder.SetActorTaskSpec(
+        invocation.actor_id,
+        actor_creation_dummy_object_id,
+        ObjectID(),
+        invocation.actor_counter);
   } else {
     throw RayException("unknown task type");
   }
@@ -92,31 +110,41 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
     /// TODO(SongGuyang): Handle task dependencies.
     /// Execute actor task directly in the main thread because we must guarantee the actor
     /// task executed by calling order.
-    TaskExecutor::Invoke(task_specification, actor, runtime, actor_contexts_,
-                         actor_contexts_mutex_);
+    TaskExecutor::Invoke(
+        task_specification,
+        actor,
+        runtime,
+        actor_contexts_,
+        actor_contexts_mutex_);
   } else {
-    boost::asio::post(*thread_pool_.get(),
-                      std::bind(
-                          [actor, mutex, runtime, this](TaskSpecification &ts) {
-                            if (mutex) {
-                              absl::MutexLock lock(mutex.get());
-                            }
-                            TaskExecutor::Invoke(ts, actor, runtime,
-                                                 this->actor_contexts_,
-                                                 this->actor_contexts_mutex_);
-                          },
-                          std::move(task_specification)));
+    boost::asio::post(
+        *thread_pool_.get(),
+        std::bind(
+            [actor, mutex, runtime, this](TaskSpecification &ts) {
+              if (mutex) {
+                absl::MutexLock lock(mutex.get());
+              }
+              TaskExecutor::Invoke(
+                  ts,
+                  actor,
+                  runtime,
+                  this->actor_contexts_,
+                  this->actor_contexts_mutex_);
+            },
+            std::move(task_specification)));
   }
   return return_object_id;
 }
 
-ObjectID LocalModeTaskSubmitter::SubmitTask(InvocationSpec &invocation,
-                                            const CallOptions &call_options) {
+ObjectID LocalModeTaskSubmitter::SubmitTask(
+    InvocationSpec &invocation,
+    const CallOptions &call_options) {
   return Submit(invocation, {});
 }
 
-ActorID LocalModeTaskSubmitter::CreateActor(InvocationSpec &invocation,
-                                            const ActorCreationOptions &create_options) {
+ActorID LocalModeTaskSubmitter::CreateActor(
+    InvocationSpec &invocation,
+    const ActorCreationOptions &create_options) {
   Submit(invocation, create_options);
   if (!create_options.name.empty()) {
     absl::MutexLock lock(&named_actors_mutex_);
@@ -126,8 +154,9 @@ ActorID LocalModeTaskSubmitter::CreateActor(InvocationSpec &invocation,
   return invocation.actor_id;
 }
 
-ObjectID LocalModeTaskSubmitter::SubmitActorTask(InvocationSpec &invocation,
-                                                 const CallOptions &call_options) {
+ObjectID LocalModeTaskSubmitter::SubmitActorTask(
+    InvocationSpec &invocation,
+    const CallOptions &call_options) {
   return Submit(invocation, {});
 }
 
@@ -143,8 +172,9 @@ ActorID LocalModeTaskSubmitter::GetActor(const std::string &actor_name) const {
 
 ray::PlacementGroup LocalModeTaskSubmitter::CreatePlacementGroup(
     const ray::PlacementGroupCreationOptions &create_options) {
-  ray::PlacementGroup placement_group{ray::PlacementGroupID::FromRandom().Binary(),
-                                      create_options};
+  ray::PlacementGroup placement_group{
+      ray::PlacementGroupID::FromRandom().Binary(),
+      create_options};
   placement_group.SetWaitCallbak([this](const std::string &id, int timeout_seconds) {
     return WaitPlacementGroupReady(id, timeout_seconds);
   });

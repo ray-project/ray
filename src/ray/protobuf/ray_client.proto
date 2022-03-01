@@ -251,8 +251,7 @@ message KVDelRequest {
   bytes key = 1;
 }
 
-message KVDelResponse {
-}
+message KVDelResponse {}
 
 message KVListRequest {
   bytes prefix = 1;
@@ -274,11 +273,9 @@ message InitResponse {
   string msg = 2;
 }
 
-message PrepRuntimeEnvRequest {
-}
+message PrepRuntimeEnvRequest {}
 
-message PrepRuntimeEnvResponse {
-}
+message PrepRuntimeEnvResponse {}
 
 message ClientListNamedActorsRequest {
   bool all_namespaces = 1;
@@ -289,35 +286,21 @@ message ClientListNamedActorsResponse {
 }
 
 service RayletDriver {
-  rpc Init(InitRequest) returns (InitResponse) {
-  }
-  rpc PrepRuntimeEnv(PrepRuntimeEnvRequest) returns (PrepRuntimeEnvResponse) {
-  }
-  rpc GetObject(GetRequest) returns (GetResponse) {
-  }
-  rpc PutObject(PutRequest) returns (PutResponse) {
-  }
-  rpc WaitObject(WaitRequest) returns (WaitResponse) {
-  }
-  rpc Schedule(ClientTask) returns (ClientTaskTicket) {
-  }
-  rpc Terminate(TerminateRequest) returns (TerminateResponse) {
-  }
-  rpc ClusterInfo(ClusterInfoRequest) returns (ClusterInfoResponse) {
-  }
-  rpc KVGet(KVGetRequest) returns (KVGetResponse) {
-  }
-  rpc KVPut(KVPutRequest) returns (KVPutResponse) {
-  }
-  rpc KVDel(KVDelRequest) returns (KVDelResponse) {
-  }
-  rpc KVList(KVListRequest) returns (KVListResponse) {
-  }
-  rpc KVExists(KVExistsRequest) returns (KVExistsResponse) {
-  }
+  rpc Init(InitRequest) returns (InitResponse) {}
+  rpc PrepRuntimeEnv(PrepRuntimeEnvRequest) returns (PrepRuntimeEnvResponse) {}
+  rpc GetObject(GetRequest) returns (GetResponse) {}
+  rpc PutObject(PutRequest) returns (PutResponse) {}
+  rpc WaitObject(WaitRequest) returns (WaitResponse) {}
+  rpc Schedule(ClientTask) returns (ClientTaskTicket) {}
+  rpc Terminate(TerminateRequest) returns (TerminateResponse) {}
+  rpc ClusterInfo(ClusterInfoRequest) returns (ClusterInfoResponse) {}
+  rpc KVGet(KVGetRequest) returns (KVGetResponse) {}
+  rpc KVPut(KVPutRequest) returns (KVPutResponse) {}
+  rpc KVDel(KVDelRequest) returns (KVDelResponse) {}
+  rpc KVList(KVListRequest) returns (KVListResponse) {}
+  rpc KVExists(KVExistsRequest) returns (KVExistsResponse) {}
   rpc ListNamedActors(ClientListNamedActorsRequest)
-      returns (ClientListNamedActorsResponse) {
-  }
+      returns (ClientListNamedActorsResponse) {}
 }
 
 message ReleaseRequest {
@@ -331,8 +314,7 @@ message ReleaseResponse {
   repeated bool ok = 2;
 }
 
-message ConnectionInfoRequest {
-}
+message ConnectionInfoRequest {}
 
 message ConnectionInfoResponse {
   // The number of data clients connected to the server, including the caller.
@@ -401,8 +383,7 @@ message DataResponse {
 }
 
 service RayletDataStreamer {
-  rpc Datapath(stream DataRequest) returns (stream DataResponse) {
-  }
+  rpc Datapath(stream DataRequest) returns (stream DataResponse) {}
 }
 
 // A request to change the quantity or type of the logs
@@ -428,6 +409,5 @@ message LogData {
 }
 
 service RayletLogStreamer {
-  rpc Logstream(stream LogSettingsRequest) returns (stream LogData) {
-  }
+  rpc Logstream(stream LogSettingsRequest) returns (stream LogData) {}
 }

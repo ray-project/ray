@@ -22,8 +22,10 @@ InboundRequest::InboundRequest() {}
 InboundRequest::InboundRequest(
     std::function<void(rpc::SendReplyCallback)> accept_callback,
     std::function<void(rpc::SendReplyCallback)> reject_callback,
-    rpc::SendReplyCallback send_reply_callback, class TaskID task_id,
-    bool has_dependencies, const std::string &concurrency_group_name,
+    rpc::SendReplyCallback send_reply_callback,
+    class TaskID task_id,
+    bool has_dependencies,
+    const std::string &concurrency_group_name,
     const ray::FunctionDescriptor &function_descriptor)
     : accept_callback_(std::move(accept_callback)),
       reject_callback_(std::move(reject_callback)),
@@ -49,8 +51,9 @@ void InboundRequest::MarkDependenciesSatisfied() { has_pending_dependencies_ = f
 DependencyWaiterImpl::DependencyWaiterImpl(DependencyWaiterInterface &dependency_client)
     : dependency_client_(dependency_client) {}
 
-void DependencyWaiterImpl::Wait(const std::vector<rpc::ObjectReference> &dependencies,
-                                std::function<void()> on_dependencies_available) {
+void DependencyWaiterImpl::Wait(
+    const std::vector<rpc::ObjectReference> &dependencies,
+    std::function<void()> on_dependencies_available) {
   auto tag = next_request_id_++;
   requests_[tag] = on_dependencies_available;
   RAY_CHECK_OK(dependency_client_.WaitForDirectActorCallArgs(dependencies, tag));

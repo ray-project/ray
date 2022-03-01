@@ -66,8 +66,9 @@ class GcsPlacementGroupManager;
 /// https://docs.google.com/document/d/1d-9qBlsh2UQHo-AWMWR0GptI_Ajwu4SKx0Q0LHKPpeI/edit#heading=h.csi0gaglj2pv
 class GcsServer {
  public:
-  explicit GcsServer(const GcsServerConfig &config,
-                     instrumented_io_context &main_service);
+  explicit GcsServer(
+      const GcsServerConfig &config,
+      instrumented_io_context &main_service);
   virtual ~GcsServer();
 
   /// Start gcs server.

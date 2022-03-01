@@ -45,8 +45,11 @@ struct Person {
 
 TEST(RayClusterModeTest, FullTest) {
   ray::RayConfig config;
-  config.head_args = {"--num-cpus", "2", "--resources",
-                      "{\"resource1\":1,\"resource2\":2}"};
+  config.head_args = {
+      "--num-cpus",
+      "2",
+      "--resources",
+      "{\"resource1\":1,\"resource2\":2}"};
   if (absl::GetFlag<bool>(FLAGS_external_cluster)) {
     auto port = absl::GetFlag<int32_t>(FLAGS_redis_port);
     std::string password = absl::GetFlag<std::string>(FLAGS_redis_password);
@@ -105,8 +108,9 @@ TEST(RayClusterModeTest, FullTest) {
 
   named_actor_handle.Kill();
   std::this_thread::sleep_for(std::chrono::seconds(2));
-  EXPECT_THROW(named_actor_handle.Task(&Counter::Plus1).Remote().Get(),
-               ray::internal::RayActorException);
+  EXPECT_THROW(
+      named_actor_handle.Task(&Counter::Plus1).Remote().Get(),
+      ray::internal::RayActorException);
 
   EXPECT_FALSE(ray::GetActor<Counter>("named_actor"));
 
@@ -238,15 +242,17 @@ TEST(RayClusterModeTest, PythonInvocationTest) {
           .Remote(42);
   EXPECT_EQ(42, *py_obj1.Get());
 
-  auto py_obj2 = ray::Task(ray::PyFunction<std::string>{"test_cross_language_invocation",
-                                                        "py_return_input"})
+  auto py_obj2 = ray::Task(ray::PyFunction<std::string>{
+                               "test_cross_language_invocation",
+                               "py_return_input"})
                      .Remote("hello");
   EXPECT_EQ("hello", *py_obj2.Get());
 
   Person p{"tom", 20};
-  auto py_obj3 = ray::Task(ray::PyFunction<Person>{"test_cross_language_invocation",
-                                                   "py_return_input"})
-                     .Remote(p);
+  auto py_obj3 =
+      ray::Task(
+          ray::PyFunction<Person>{"test_cross_language_invocation", "py_return_input"})
+          .Remote(p);
   auto py_result = *py_obj3.Get();
   EXPECT_EQ(p.age, py_result.age);
   EXPECT_EQ(p.name, py_result.name);
@@ -309,8 +315,9 @@ TEST(RayClusterModeTest, GetAllNodeInfoTest) {
 
   ray::rpc::GcsNodeInfo node_info;
   node_info.ParseFromString(all_node_info[0]);
-  EXPECT_EQ(node_info.state(),
-            ray::rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE);
+  EXPECT_EQ(
+      node_info.state(),
+      ray::rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE);
 }
 
 bool CheckRefCount(
@@ -339,13 +346,13 @@ TEST(RayClusterModeTest, DependencyRefrenceTest) {
     EXPECT_TRUE(CheckRefCount({{object_id, std::make_pair(1, 0)}}));
 
     auto r2 = ray::Task(Plus1).Remote(r1);
-    EXPECT_TRUE(
-        CheckRefCount({{object_id, std::make_pair(1, 1)},
-                       {ray::ObjectID::FromBinary(r2.ID()), std::make_pair(1, 0)}}));
+    EXPECT_TRUE(CheckRefCount(
+        {{object_id, std::make_pair(1, 1)},
+         {ray::ObjectID::FromBinary(r2.ID()), std::make_pair(1, 0)}}));
     r2.Get();
-    EXPECT_TRUE(
-        CheckRefCount({{object_id, std::make_pair(1, 0)},
-                       {ray::ObjectID::FromBinary(r2.ID()), std::make_pair(1, 0)}}));
+    EXPECT_TRUE(CheckRefCount(
+        {{object_id, std::make_pair(1, 0)},
+         {ray::ObjectID::FromBinary(r2.ID()), std::make_pair(1, 0)}}));
   }
   EXPECT_TRUE(CheckRefCount({}));
 }
@@ -376,8 +383,9 @@ ray::PlacementGroup CreateSimplePlacementGroup(const std::string &name) {
 TEST(RayClusterModeTest, CreateAndRemovePlacementGroup) {
   auto first_placement_group = CreateSimplePlacementGroup("first_placement_group");
   EXPECT_TRUE(first_placement_group.Wait(10));
-  EXPECT_THROW(CreateSimplePlacementGroup("first_placement_group"),
-               ray::internal::RayException);
+  EXPECT_THROW(
+      CreateSimplePlacementGroup("first_placement_group"),
+      ray::internal::RayException);
 
   auto groups = ray::GetAllPlacementGroups();
   EXPECT_EQ(groups.size(), 1);
@@ -401,8 +409,10 @@ TEST(RayClusterModeTest, CreateAndRemovePlacementGroup) {
 TEST(RayClusterModeTest, CreatePlacementGroupExceedsClusterResource) {
   std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 10000}}};
 
-  ray::PlacementGroupCreationOptions options{"first_placement_group", bundles,
-                                             ray::PlacementStrategy::PACK};
+  ray::PlacementGroupCreationOptions options{
+      "first_placement_group",
+      bundles,
+      ray::PlacementStrategy::PACK};
   auto first_placement_group = ray::CreatePlacementGroup(options);
   EXPECT_FALSE(first_placement_group.Wait(3));
   ray::RemovePlacementGroup(first_placement_group.GetID());

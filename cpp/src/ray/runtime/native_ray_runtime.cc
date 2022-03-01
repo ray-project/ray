@@ -40,7 +40,8 @@ NativeRayRuntime::NativeRayRuntime() {
         ProcessHelper::GetInstance().CreateGlobalStateAccessor(bootstrap_address);
   } else {
     global_state_accessor_ = ProcessHelper::GetInstance().CreateGlobalStateAccessor(
-        bootstrap_address, ConfigInternal::Instance().redis_password);
+        bootstrap_address,
+        ConfigInternal::Instance().redis_password);
   }
 }
 

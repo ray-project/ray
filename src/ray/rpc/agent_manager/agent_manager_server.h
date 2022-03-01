@@ -38,9 +38,10 @@ class AgentManagerServiceHandler {
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
-  virtual void HandleRegisterAgent(const RegisterAgentRequest &request,
-                                   RegisterAgentReply *reply,
-                                   SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleRegisterAgent(
+      const RegisterAgentRequest &request,
+      RegisterAgentReply *reply,
+      SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `AgentManagerGrpcService`.
@@ -50,8 +51,9 @@ class AgentManagerGrpcService : public GrpcService {
   ///
   /// \param[in] port See `GrpcService`.
   /// \param[in] handler The service handler that actually handle the requests.
-  AgentManagerGrpcService(instrumented_io_context &io_service,
-                          AgentManagerServiceHandler &service_handler)
+  AgentManagerGrpcService(
+      instrumented_io_context &io_service,
+      AgentManagerServiceHandler &service_handler)
       : GrpcService(io_service), service_handler_(service_handler){};
 
  protected:

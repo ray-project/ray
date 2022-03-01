@@ -41,26 +41,30 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// \param main_io_service The main event loop.
   /// \param gcs_publisher GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
-  explicit GcsResourceManager(instrumented_io_context &main_io_service,
-                              std::shared_ptr<GcsPublisher> gcs_publisher,
-                              std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
+  explicit GcsResourceManager(
+      instrumented_io_context &main_io_service,
+      std::shared_ptr<GcsPublisher> gcs_publisher,
+      std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
 
   virtual ~GcsResourceManager() {}
 
   /// Handle get resource rpc request.
-  void HandleGetResources(const rpc::GetResourcesRequest &request,
-                          rpc::GetResourcesReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) override;
+  void HandleGetResources(
+      const rpc::GetResourcesRequest &request,
+      rpc::GetResourcesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle update resource rpc request.
-  void HandleUpdateResources(const rpc::UpdateResourcesRequest &request,
-                             rpc::UpdateResourcesReply *reply,
-                             rpc::SendReplyCallback send_reply_callback) override;
+  void HandleUpdateResources(
+      const rpc::UpdateResourcesRequest &request,
+      rpc::UpdateResourcesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle delete resource rpc request.
-  void HandleDeleteResources(const rpc::DeleteResourcesRequest &request,
-                             rpc::DeleteResourcesReply *reply,
-                             rpc::SendReplyCallback send_reply_callback) override;
+  void HandleDeleteResources(
+      const rpc::DeleteResourcesRequest &request,
+      rpc::DeleteResourcesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle get available resources of all nodes.
   void HandleGetAllAvailableResources(
@@ -69,14 +73,16 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle report resource usage rpc come from raylet.
-  void HandleReportResourceUsage(const rpc::ReportResourceUsageRequest &request,
-                                 rpc::ReportResourceUsageReply *reply,
-                                 rpc::SendReplyCallback send_reply_callback) override;
+  void HandleReportResourceUsage(
+      const rpc::ReportResourceUsageRequest &request,
+      rpc::ReportResourceUsageReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle get all resource usage rpc request.
-  void HandleGetAllResourceUsage(const rpc::GetAllResourceUsageRequest &request,
-                                 rpc::GetAllResourceUsageReply *reply,
-                                 rpc::SendReplyCallback send_reply_callback) override;
+  void HandleGetAllResourceUsage(
+      const rpc::GetAllResourceUsageRequest &request,
+      rpc::GetAllResourceUsageReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Get the resources of all nodes in the cluster.
   ///
@@ -130,15 +136,17 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   void AddResourcesChangedListener(std::function<void()> listener);
 
   // Update node normal task resources.
-  void UpdateNodeNormalTaskResources(const NodeID &node_id,
-                                     const rpc::ResourcesData &heartbeat);
+  void UpdateNodeNormalTaskResources(
+      const NodeID &node_id,
+      const rpc::ResourcesData &heartbeat);
 
   /// Update resource usage of given node.
   ///
   /// \param node_id Node id.
   /// \param request Request containing resource usage.
-  void UpdateNodeResourceUsage(const NodeID &node_id,
-                               const rpc::ResourcesData &resources);
+  void UpdateNodeResourceUsage(
+      const NodeID &node_id,
+      const rpc::ResourcesData &resources);
 
   /// Process a new resource report from a node, independent of the rpc handler it came
   /// from.
@@ -163,8 +171,9 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   ///
   /// \param node_id Id of a node.
   /// \param deleted_resources Deleted resources of a node.
-  void DeleteResources(const NodeID &node_id,
-                       const std::vector<std::string> &deleted_resources);
+  void DeleteResources(
+      const NodeID &node_id,
+      const std::vector<std::string> &deleted_resources);
 
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;

@@ -20,8 +20,7 @@ package ray.rpc;
 message PingRequest {
   bool no_reply = 1;
 }
-message PingReply {
-}
+message PingReply {}
 
 message PingTimeoutRequest {}
 message PingTimeoutReply {}

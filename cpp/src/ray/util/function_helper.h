@@ -28,8 +28,8 @@ using namespace ::ray::internal;
 namespace ray {
 namespace internal {
 
-using EntryFuntion = std::function<msgpack::sbuffer(
-    const std::string &, const ArgsBufferList &, msgpack::sbuffer *)>;
+using EntryFuntion = std::function<
+    msgpack::sbuffer(const std::string &, const ArgsBufferList &, msgpack::sbuffer *)>;
 
 class FunctionHelper {
  public:
@@ -51,9 +51,10 @@ class FunctionHelper {
   ~FunctionHelper() = default;
   FunctionHelper(FunctionHelper const &) = delete;
   FunctionHelper(FunctionHelper &&) = delete;
-  std::string LoadAllRemoteFunctions(const std::string lib_path,
-                                     const boost::dll::shared_library &lib,
-                                     const EntryFuntion &entry_function);
+  std::string LoadAllRemoteFunctions(
+      const std::string lib_path,
+      const boost::dll::shared_library &lib,
+      const EntryFuntion &entry_function);
   std::unordered_map<std::string, std::shared_ptr<boost::dll::shared_library>> libraries_;
   // Map from remote function name to executable entry function.
   std::unordered_map<std::string, EntryFuntion> remote_funcs_;

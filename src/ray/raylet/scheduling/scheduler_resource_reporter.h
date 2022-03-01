@@ -27,11 +27,12 @@ namespace raylet {
 class SchedulerResourceReporter {
  public:
   SchedulerResourceReporter(
-      const absl::flat_hash_map<SchedulingClass,
-                                std::deque<std::shared_ptr<internal::Work>>>
-          &tasks_to_schedule,
       const absl::flat_hash_map<
-          SchedulingClass, std::deque<std::shared_ptr<internal::Work>>> &infeasible_tasks,
+          SchedulingClass,
+          std::deque<std::shared_ptr<internal::Work>>> &tasks_to_schedule,
+      const absl::flat_hash_map<
+          SchedulingClass,
+          std::deque<std::shared_ptr<internal::Work>>> &infeasible_tasks,
       const LocalTaskManager &local_task_manager);
 
   /// Populate the relevant parts of the heartbeat table. This is intended for

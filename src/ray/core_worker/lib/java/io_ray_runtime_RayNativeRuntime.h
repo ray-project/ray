@@ -28,8 +28,21 @@ extern "C" {
  * (ILjava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;[BLio/ray/runtime/gcs/GcsClientOptions;ILjava/lang/String;[BII)V
  */
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
-    JNIEnv *, jclass, jint, jstring, jint, jstring, jstring, jstring, jbyteArray, jobject,
-    jint, jstring, jbyteArray, jint, jint);
+    JNIEnv *,
+    jclass,
+    jint,
+    jstring,
+    jint,
+    jstring,
+    jstring,
+    jstring,
+    jbyteArray,
+    jobject,
+    jint,
+    jstring,
+    jbyteArray,
+    jint,
+    jint);
 
 /*
  * Class:     io_ray_runtime_RayNativeRuntime
@@ -44,18 +57,19 @@ Java_io_ray_runtime_RayNativeRuntime_nativeRunTaskExecutor(JNIEnv *, jclass, job
  * Method:    nativeShutdown
  * Signature: ()V
  */
-JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEnv *,
-                                                                           jclass);
+JNIEXPORT void JNICALL
+Java_io_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEnv *, jclass);
 
 /*
  * Class:     io_ray_runtime_RayNativeRuntime
  * Method:    nativeKillActor
  * Signature: ([BZ)V
  */
-JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeKillActor(JNIEnv *,
-                                                                            jclass,
-                                                                            jbyteArray,
-                                                                            jboolean);
+JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeKillActor(
+    JNIEnv *,
+    jclass,
+    jbyteArray,
+    jboolean);
 
 /*
  * Class:     io_ray_runtime_RayNativeRuntime
@@ -63,8 +77,11 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeKillActor(JNIE
  * Signature: (Ljava/lang/String;Ljava/lang/String;)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *, jclass,
-                                                                  jstring, jstring);
+Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(
+    JNIEnv *,
+    jclass,
+    jstring,
+    jstring);
 
 /*
  * Class:     io_ray_runtime_RayNativeRuntime

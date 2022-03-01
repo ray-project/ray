@@ -17,8 +17,9 @@
 namespace ray {
 namespace core {
 
-void FutureResolver::ResolveFutureAsync(const ObjectID &object_id,
-                                        const rpc::Address &owner_address) {
+void FutureResolver::ResolveFutureAsync(
+    const ObjectID &object_id,
+    const rpc::Address &owner_address) {
   if (rpc_address_.worker_id() == owner_address.worker_id()) {
     // We do not need to resolve objects that we own. This can happen if a task
     // with a borrowed reference executes on the object's owning worker.
@@ -30,16 +31,19 @@ void FutureResolver::ResolveFutureAsync(const ObjectID &object_id,
   request.set_object_id(object_id.Binary());
   request.set_owner_worker_id(owner_address.worker_id());
   conn->GetObjectStatus(
-      request, [this, object_id, owner_address](const Status &status,
-                                                const rpc::GetObjectStatusReply &reply) {
+      request,
+      [this,
+       object_id,
+       owner_address](const Status &status, const rpc::GetObjectStatusReply &reply) {
         ProcessResolvedObject(object_id, owner_address, status, reply);
       });
 }
 
-void FutureResolver::ProcessResolvedObject(const ObjectID &object_id,
-                                           const rpc::Address &owner_address,
-                                           const Status &status,
-                                           const rpc::GetObjectStatusReply &reply) {
+void FutureResolver::ProcessResolvedObject(
+    const ObjectID &object_id,
+    const rpc::Address &owner_address,
+    const Status &status,
+    const rpc::GetObjectStatusReply &reply) {
   if (!status.ok()) {
     RAY_LOG(WARNING) << "Error retrieving the value of object ID " << object_id
                      << " that was deserialized: " << status.ToString();
@@ -96,11 +100,14 @@ void FutureResolver::ProcessResolvedObject(const ObjectID &object_id,
     auto inlined_refs =
         VectorFromProtobuf<rpc::ObjectReference>(reply.object().nested_inlined_refs());
     for (const auto &inlined_ref : inlined_refs) {
-      reference_counter_->AddBorrowedObject(ObjectID::FromBinary(inlined_ref.object_id()),
-                                            object_id, inlined_ref.owner_address());
+      reference_counter_->AddBorrowedObject(
+          ObjectID::FromBinary(inlined_ref.object_id()),
+          object_id,
+          inlined_ref.owner_address());
     }
     RAY_UNUSED(in_memory_store_->Put(
-        RayObject(data_buffer, metadata_buffer, inlined_refs), object_id));
+        RayObject(data_buffer, metadata_buffer, inlined_refs),
+        object_id));
   }
 }
 

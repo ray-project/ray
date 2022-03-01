@@ -20,8 +20,9 @@ namespace core {
 OutofOrderActorSubmitQueue::OutofOrderActorSubmitQueue(ActorID actor_id)
     : kActorId(actor_id) {}
 
-bool OutofOrderActorSubmitQueue::Emplace(uint64_t position,
-                                         const TaskSpecification &spec) {
+bool OutofOrderActorSubmitQueue::Emplace(
+    uint64_t position,
+    const TaskSpecification &spec) {
   if (Contains(position)) {
     return false;
   }
@@ -56,8 +57,9 @@ void OutofOrderActorSubmitQueue::MarkDependencyResolved(uint64_t position) {
   auto spec = std::move(it->second.first);
   pending_queue_.erase(it);
 
-  sending_queue_.emplace(position,
-                         std::make_pair(std::move(spec), /*dependency_resolved*/ true));
+  sending_queue_.emplace(
+      position,
+      std::make_pair(std::move(spec), /*dependency_resolved*/ true));
 }
 
 std::vector<TaskID> OutofOrderActorSubmitQueue::ClearAllTasks() {
@@ -96,8 +98,9 @@ uint64_t OutofOrderActorSubmitQueue::GetSequenceNumber(
   return task_spec.ActorCounter();
 }
 
-void OutofOrderActorSubmitQueue::MarkTaskCompleted(uint64_t position,
-                                                   const TaskSpecification &task_spec) {}
+void OutofOrderActorSubmitQueue::MarkTaskCompleted(
+    uint64_t position,
+    const TaskSpecification &task_spec) {}
 
 }  // namespace core
 }  // namespace ray

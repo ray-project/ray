@@ -30,7 +30,10 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   NodeID pinned_at;
   bool spilled = false;
   bool ref_exists = reference_counter_->IsPlasmaObjectPinnedOrSpilled(
-      object_id, &owned_by_us, &pinned_at, &spilled);
+      object_id,
+      &owned_by_us,
+      &pinned_at,
+      &spilled);
   if (!ref_exists) {
     // References that have gone out of scope cannot be recovered.
     return false;
@@ -56,7 +59,8 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   if (!already_pending_recovery) {
     RAY_LOG(DEBUG) << "Starting recovery for object " << object_id;
     in_memory_store_->GetAsync(
-        object_id, [this, object_id](std::shared_ptr<RayObject> obj) {
+        object_id,
+        [this, object_id](std::shared_ptr<RayObject> obj) {
           absl::MutexLock lock(&mu_);
           RAY_CHECK(objects_pending_recovery_.erase(object_id)) << object_id;
           RAY_LOG(INFO) << "Recovery complete for object " << object_id;
@@ -77,7 +81,8 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
 }
 
 void ObjectRecoveryManager::PinOrReconstructObject(
-    const ObjectID &object_id, const std::vector<rpc::Address> &locations) {
+    const ObjectID &object_id,
+    const std::vector<rpc::Address> &locations) {
   RAY_LOG(DEBUG) << "Lost object " << object_id << " has " << locations.size()
                  << " locations";
   if (!locations.empty()) {
@@ -92,7 +97,8 @@ void ObjectRecoveryManager::PinOrReconstructObject(
 }
 
 void ObjectRecoveryManager::PinExistingObjectCopy(
-    const ObjectID &object_id, const rpc::Address &raylet_address,
+    const ObjectID &object_id,
+    const rpc::Address &raylet_address,
     const std::vector<rpc::Address> &other_locations) {
   // If a copy still exists, pin the object by sending a
   // PinObjectIDs RPC.
@@ -108,30 +114,35 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
     auto client_it = remote_object_pinning_clients_.find(node_id);
     if (client_it == remote_object_pinning_clients_.end()) {
       RAY_LOG(DEBUG) << "Connecting to raylet " << node_id;
-      client_it = remote_object_pinning_clients_
-                      .emplace(node_id, client_factory_(raylet_address.ip_address(),
-                                                        raylet_address.port()))
-                      .first;
+      client_it =
+          remote_object_pinning_clients_
+              .emplace(
+                  node_id,
+                  client_factory_(raylet_address.ip_address(), raylet_address.port()))
+              .first;
     }
     client = client_it->second;
   }
 
-  client->PinObjectIDs(rpc_address_, {object_id},
-                       [this, object_id, other_locations, node_id](
-                           const Status &status, const rpc::PinObjectIDsReply &reply) {
-                         if (status.ok()) {
-                           // TODO(swang): Make sure that the node is still alive when
-                           // marking the object as pinned.
-                           RAY_CHECK(in_memory_store_->Put(
-                               RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
-                           reference_counter_->UpdateObjectPinnedAtRaylet(object_id,
-                                                                          node_id);
-                         } else {
-                           RAY_LOG(INFO) << "Error pinning new copy of lost object "
-                                         << object_id << ", trying again";
-                           PinOrReconstructObject(object_id, other_locations);
-                         }
-                       });
+  client->PinObjectIDs(
+      rpc_address_,
+      {object_id},
+      [this, object_id, other_locations, node_id](
+          const Status &status,
+          const rpc::PinObjectIDsReply &reply) {
+        if (status.ok()) {
+          // TODO(swang): Make sure that the node is still alive when
+          // marking the object as pinned.
+          RAY_CHECK(in_memory_store_->Put(
+              RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+              object_id));
+          reference_counter_->UpdateObjectPinnedAtRaylet(object_id, node_id);
+        } else {
+          RAY_LOG(INFO) << "Error pinning new copy of lost object " << object_id
+                        << ", trying again";
+          PinOrReconstructObject(object_id, other_locations);
+        }
+      });
 }
 
 void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
@@ -142,12 +153,15 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
       // TODO(swang): We may not report the LINEAGE_EVICTED error (just reports
       // general OBJECT_UNRECONSTRUCTABLE error) if lineage eviction races with
       // reconstruction.
-      recovery_failure_callback_(object_id,
-                                 rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED,
-                                 /*pin_object=*/true);
+      recovery_failure_callback_(
+          object_id,
+          rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED,
+          /*pin_object=*/true);
     } else {
-      recovery_failure_callback_(object_id, rpc::ErrorType::OBJECT_LOST,
-                                 /*pin_object=*/true);
+      recovery_failure_callback_(
+          object_id,
+          rpc::ErrorType::OBJECT_LOST,
+          /*pin_object=*/true);
     }
     return;
   }
@@ -169,15 +183,18 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
         // worker, or if there was a bug in reconstruction that caused us to GC
         // the dependency ref.
         // We do not pin the dependency because we may not be the owner.
-        recovery_failure_callback_(dep, rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE,
-                                   /*pin_object=*/false);
+        recovery_failure_callback_(
+            dep,
+            rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE,
+            /*pin_object=*/false);
       }
     }
   } else {
     RAY_LOG(INFO) << "Failed to reconstruct object " << object_id
                   << " because lineage has already been deleted";
     recovery_failure_callback_(
-        object_id, rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED,
+        object_id,
+        rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED,
         /*pin_object=*/true);
   }
 }

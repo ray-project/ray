@@ -13,12 +13,14 @@
 // limitations under the License.
 
 #include "ray/object_manager/memory_object_reader.h"
+
 #include <cstring>
 
 namespace ray {
 
-MemoryObjectReader::MemoryObjectReader(plasma::ObjectBuffer object_buffer,
-                                       rpc::Address owner_address)
+MemoryObjectReader::MemoryObjectReader(
+    plasma::ObjectBuffer object_buffer,
+    rpc::Address owner_address)
     : object_buffer_(std::move(object_buffer)),
       owner_address_(std::move(owner_address)) {}
 
@@ -30,8 +32,8 @@ uint64_t MemoryObjectReader::GetMetadataSize() const {
 
 const rpc::Address &MemoryObjectReader::GetOwnerAddress() const { return owner_address_; }
 
-bool MemoryObjectReader::ReadFromDataSection(uint64_t offset, uint64_t size,
-                                             char *output) const {
+bool MemoryObjectReader::ReadFromDataSection(uint64_t offset, uint64_t size, char *output)
+    const {
   if (offset + size > GetDataSize()) {
     return false;
   }
@@ -39,8 +41,10 @@ bool MemoryObjectReader::ReadFromDataSection(uint64_t offset, uint64_t size,
   return true;
 }
 
-bool MemoryObjectReader::ReadFromMetadataSection(uint64_t offset, uint64_t size,
-                                                 char *output) const {
+bool MemoryObjectReader::ReadFromMetadataSection(
+    uint64_t offset,
+    uint64_t size,
+    char *output) const {
   if (offset + size > GetMetadataSize()) {
     return false;
   }

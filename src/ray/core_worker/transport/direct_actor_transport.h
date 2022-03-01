@@ -49,19 +49,20 @@ namespace core {
 
 class CoreWorkerDirectTaskReceiver {
  public:
-  using TaskHandler =
-      std::function<Status(const TaskSpecification &task_spec,
-                           const std::shared_ptr<ResourceMappingType> resource_ids,
-                           std::vector<std::shared_ptr<RayObject>> *return_objects,
-                           ReferenceCounter::ReferenceTableProto *borrower_refs,
-                           bool *is_application_level_error)>;
+  using TaskHandler = std::function<Status(
+      const TaskSpecification &task_spec,
+      const std::shared_ptr<ResourceMappingType> resource_ids,
+      std::vector<std::shared_ptr<RayObject>> *return_objects,
+      ReferenceCounter::ReferenceTableProto *borrower_refs,
+      bool *is_application_level_error)>;
 
   using OnTaskDone = std::function<Status()>;
 
-  CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
-                               instrumented_io_context &main_io_service,
-                               const TaskHandler &task_handler,
-                               const OnTaskDone &task_done)
+  CoreWorkerDirectTaskReceiver(
+      WorkerContext &worker_context,
+      instrumented_io_context &main_io_service,
+      const TaskHandler &task_handler,
+      const OnTaskDone &task_done)
       : worker_context_(worker_context),
         task_handler_(task_handler),
         task_main_io_service_(main_io_service),
@@ -69,8 +70,10 @@ class CoreWorkerDirectTaskReceiver {
         pool_manager_(std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>()) {}
 
   /// Initialize this receiver. This must be called prior to use.
-  void Init(std::shared_ptr<rpc::CoreWorkerClientPool>, rpc::Address rpc_address,
-            std::shared_ptr<DependencyWaiter> dependency_waiter);
+  void Init(
+      std::shared_ptr<rpc::CoreWorkerClientPool>,
+      rpc::Address rpc_address,
+      std::shared_ptr<DependencyWaiter> dependency_waiter);
 
   /// Handle a `PushTask` request. If it's an actor request, this function will enqueue
   /// the task and then start scheduling the requests to begin the execution. If it's a
@@ -79,8 +82,10 @@ class CoreWorkerDirectTaskReceiver {
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
-  void HandleTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
-                  rpc::SendReplyCallback send_reply_callback);
+  void HandleTask(
+      const rpc::PushTaskRequest &request,
+      rpc::PushTaskReply *reply,
+      rpc::SendReplyCallback send_reply_callback);
 
   /// Pop tasks from the queue and execute them sequentially
   void RunNormalTasksFromQueue();
