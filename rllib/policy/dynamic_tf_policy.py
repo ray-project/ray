@@ -70,7 +70,10 @@ class DynamicTFPolicy(TFPolicy):
             ]
         ] = None,
         action_sampler_fn: Optional[
-            Callable[[TensorType, List[TensorType]], Tuple[TensorType, TensorType]]
+            Callable[
+                [TensorType, List[TensorType]],
+                Tuple[TensorType, TensorType, TensorType, List[TensorType]],
+            ]
         ] = None,
         action_distribution_fn: Optional[
             Callable[
