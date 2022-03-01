@@ -663,6 +663,34 @@ def test_detect_docker_cpus():
             == 0.42
         )
 
+    # cgroups v2, cpu_quota set
+    with tempfile.NamedTemporaryFile("w") as cpu_max_file:
+        cpu_max_file.write("200000 100000")
+        cpu_max_file.flush()
+        assert (
+            ray._private.utils._get_docker_cpus(
+                cpu_quota_file_name="nope",
+                cpu_period_file_name="give_up",
+                cpuset_file_name="lose_hope",
+                cpu_max_file_name=cpu_max_file.name
+            )
+            == 2.0
+        )
+
+    # cgroups v2, cpu_quota unset
+    with tempfile.NamedTemporaryFile("w") as cpu_max_file:
+        cpu_max_file.write("max 100000")
+        cpu_max_file.flush()
+        assert (
+            ray._private.utils._get_docker_cpus(
+                cpu_quota_file_name="nope",
+                cpu_period_file_name="give_up",
+                cpuset_file_name="lose_hope",
+                cpu_max_file_name=cpu_max_file.name
+            )
+            == None
+        )
+
 
 @pytest.mark.skipif(
     sys.platform.startswith("win"), reason="No need to test on Windows."
