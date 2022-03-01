@@ -65,6 +65,7 @@ from ray.data.datasource.file_based_datasource import (
 )
 from ray.data.row import TableRow
 from ray.data.aggregate import AggregateFn, Sum, Max, Min, Mean, Std
+from ray.data.random_access_map import RandomAccessMap
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
 from ray.data.impl.plan import ExecutionPlan, OneToOneStage, AllToAllStage
@@ -2486,6 +2487,36 @@ Dict[str, List[str]]]): The names of the columns
 
         block_to_arrow = cached_remote_fn(_block_to_arrow)
         return [block_to_arrow.remote(block) for block in blocks]
+
+    def to_random_access_map(
+        self,
+        key: str,
+        num_workers: Optional[int] = None,
+        threads_per_worker: int = 4,
+    ) -> RandomAccessMap:
+        """Convert this Dataset into a (distributed) RandomAccessMap.
+
+        RandomAccessMap partitions the dataset across the cluster by the given sort
+        key, providing efficient random access to records via binary search. A number
+        of worker actors are created, each of which has zero-copy access to the
+        underlying sorted data blocks of the Dataset.
+
+        This is only supported for Arrow-format datasets.
+
+        Args:
+            key: The key column over which records can be queried.
+            num_workers: The number of actors to use to serve random access queries.
+                By default, this is determined by multiplying the number of Ray nodes
+                in the cluster by two. As a rule of thumb, you can expect each worker
+                to provide ~3000 records / second via ``get_async()``, and
+                ~10000 records / second via ``multiget()``.
+            threads_per_worker: The number of threads to use per worker.
+        """
+        if num_workers is None:
+            num_workers = 2 * len(ray.nodes())
+        return RandomAccessMap(
+            self, key, num_workers=num_workers, threads_per_worker=threads_per_worker
+        )
 
     def repeat(self, times: Optional[int] = None) -> "DatasetPipeline[T]":
         """Convert this into a DatasetPipeline by looping over this dataset.
