@@ -38,7 +38,8 @@ class ActorHandle {
               const FunctionDescriptor &actor_creation_task_function_descriptor,
               const std::string &extension_data, int64_t max_task_retries,
               const std::string &name, const std::string &ray_namespace,
-              int32_t max_pending_calls, bool execute_out_of_order = false);
+              int32_t max_pending_calls, bool execute_out_of_order = false,
+              bool enable_task_fast_fail = false);
 
   /// Constructs an ActorHandle from a serialized string.
   explicit ActorHandle(const std::string &serialized);

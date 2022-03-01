@@ -301,6 +301,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   // Whether or not we should capture parent's placement group implicitly.
   bool PlacementGroupCaptureChildTasks() const;
 
+  bool EnableTaskFastFail() const;
+
   // Concurrency groups of the actor.
   std::vector<ConcurrencyGroup> ConcurrencyGroups() const;
 

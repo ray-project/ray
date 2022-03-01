@@ -26,7 +26,7 @@ rpc::ActorHandle CreateInnerActorHandle(
     const FunctionDescriptor &actor_creation_task_function_descriptor,
     const std::string &extension_data, int64_t max_task_retries, const std::string &name,
     const std::string &ray_namespace, int32_t max_pending_calls,
-    bool execute_out_of_order) {
+    bool execute_out_of_order, bool enable_task_fast_fail) {
   rpc::ActorHandle inner;
   inner.set_actor_id(actor_id.Data(), actor_id.Size());
   inner.set_owner_id(owner_id.Binary());
@@ -42,6 +42,7 @@ rpc::ActorHandle CreateInnerActorHandle(
   inner.set_ray_namespace(ray_namespace);
   inner.set_execute_out_of_order(execute_out_of_order);
   inner.set_max_pending_calls(max_pending_calls);
+  inner.set_enable_task_fast_fail(enable_task_fast_fail);
   return inner;
 }
 
@@ -85,11 +86,11 @@ ActorHandle::ActorHandle(
     const FunctionDescriptor &actor_creation_task_function_descriptor,
     const std::string &extension_data, int64_t max_task_retries, const std::string &name,
     const std::string &ray_namespace, int32_t max_pending_calls,
-    bool execute_out_of_order)
+    bool execute_out_of_order, bool enable_task_fast_fail)
     : ActorHandle(CreateInnerActorHandle(
           actor_id, owner_id, owner_address, job_id, initial_cursor, actor_language,
           actor_creation_task_function_descriptor, extension_data, max_task_retries, name,
-          ray_namespace, max_pending_calls, execute_out_of_order)) {}
+          ray_namespace, max_pending_calls, execute_out_of_order, enable_task_fast_fail)) {}
 
 ActorHandle::ActorHandle(const std::string &serialized)
     : ActorHandle(CreateInnerActorHandleFromString(serialized)) {}
@@ -105,7 +106,7 @@ void ActorHandle::SetActorTaskSpec(TaskSpecBuilder &builder, const ObjectID new_
       ObjectID::FromIndex(actor_creation_task_id, /*index=*/1);
   builder.SetActorTaskSpec(GetActorID(), actor_creation_dummy_object_id,
                            /*previous_actor_task_dummy_object_id=*/actor_cursor_,
-                           task_counter_++);
+                           task_counter_++, inner_.enable_task_fast_fail());
   actor_cursor_ = new_cursor;
 }
 

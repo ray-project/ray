@@ -71,6 +71,21 @@ public class FailureTest extends BaseTest {
     }
   }
 
+  public static class SlowActor {
+    public SlowActor() {
+      try {
+        // This is to slow down the restarting process and make the test case more stable.
+        TimeUnit.SECONDS.sleep(2);
+      } catch (InterruptedException e) {
+        throw new RuntimeException(e);
+      }
+    }
+
+    public int getPid() {
+      return SystemUtil.pid();
+    }
+  }
+
   private static void assertTaskFailedWithRayTaskException(ObjectRef<?> objectRef) {
     try {
       objectRef.get();
@@ -140,6 +155,50 @@ public class FailureTest extends BaseTest {
       // When a actor task is submitted to a dead actor, we should also receive an
       // RayActorException.
     }
+  }
+
+  public void testActorTaskFastFail() throws IOException {
+    ActorHandle<SlowActor> actor =
+        Ray.actor(SlowActor::new).setMaxRestarts(1).setEnableTaskFastFail(true).remote();
+    int pid = actor.task(SlowActor::getPid).remote().get();
+    Runtime.getRuntime().exec("kill -9 " + pid);
+
+    // Send tasks until the caller finds out that the actor is unavailable.
+    boolean[] exceptionOccurred = new boolean[] {false};
+    while (!exceptionOccurred[0]) {
+      // Make sure the task execution finishes or the exception throws quickly.
+      TestUtils.executeWithinTime(
+          () -> {
+            try {
+              actor.task(SlowActor::getPid).remote().get();
+            } catch (RayActorException e) {
+              exceptionOccurred[0] = true;
+            }
+          },
+          500);
+    }
+
+    // The actor is still restarting. Send more tasks and all of them should fail quickly
+    // until the actor is restarted.
+    int failedCount = 0;
+    while (true) {
+      ObjectRef<Integer> newPidObject = actor.task(SlowActor::getPid).remote();
+      int newPid = 0;
+      long startTime = System.currentTimeMillis();
+      try {
+        newPid = newPidObject.get();
+      } catch (RayException e) {
+        failedCount++;
+      }
+      if (newPid != 0) {
+        Assert.assertNotEquals(pid, newPid);
+        break;
+      } else {
+        long endTime = System.currentTimeMillis();
+        Assert.assertTrue(endTime - startTime <= 500);
+      }
+    }
+    Assert.assertTrue(failedCount > 0);
   }
 
   public void testGetThrowsQuicklyWhenFoundException() {

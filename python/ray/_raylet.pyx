@@ -1601,6 +1601,7 @@ cdef class CoreWorker:
                         is_asyncio,
                         c_scheduling_strategy,
                         serialized_runtime_env,
+                        False,  # enable_task_fast_fail
                         c_concurrency_groups,
                         # execute out of order for
                         # async or threaded actors.

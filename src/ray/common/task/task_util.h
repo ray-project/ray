@@ -218,7 +218,7 @@ class TaskSpecBuilder {
   TaskSpecBuilder &SetActorTaskSpec(const ActorID &actor_id,
                                     const ObjectID &actor_creation_dummy_object_id,
                                     const ObjectID &previous_actor_task_dummy_object_id,
-                                    uint64_t actor_counter) {
+                                    uint64_t actor_counter, bool enable_task_fast_fail) {
     message_->set_type(TaskType::ACTOR_TASK);
     auto actor_spec = message_->mutable_actor_task_spec();
     actor_spec->set_actor_id(actor_id.Binary());
@@ -227,6 +227,7 @@ class TaskSpecBuilder {
     actor_spec->set_previous_actor_task_dummy_object_id(
         previous_actor_task_dummy_object_id.Binary());
     actor_spec->set_actor_counter(actor_counter);
+    actor_spec->set_enable_task_fast_fail(enable_task_fast_fail);
     return *this;
   }
 

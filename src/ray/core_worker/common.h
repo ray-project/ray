@@ -90,6 +90,7 @@ struct ActorCreationOptions {
                        std::string &ray_namespace, bool is_asyncio,
                        const rpc::SchedulingStrategy &scheduling_strategy,
                        const std::string &serialized_runtime_env = "{}",
+                       bool enable_task_fast_fail = false,
                        const std::vector<ConcurrencyGroup> &concurrency_groups = {},
                        bool execute_out_of_order = false, int32_t max_pending_calls = -1)
       : max_restarts(max_restarts),
@@ -104,9 +105,10 @@ struct ActorCreationOptions {
         is_asyncio(is_asyncio),
         serialized_runtime_env(serialized_runtime_env),
         concurrency_groups(concurrency_groups.begin(), concurrency_groups.end()),
+        enable_task_fast_fail(enable_task_fast_fail),
         execute_out_of_order(execute_out_of_order),
         max_pending_calls(max_pending_calls),
-        scheduling_strategy(scheduling_strategy){};
+        scheduling_strategy(scheduling_strategy) {};
 
   /// Maximum number of times that the actor should be restarted if it dies
   /// unexpectedly. A value of -1 indicates infinite restarts. If it's 0, the
@@ -143,6 +145,9 @@ struct ActorCreationOptions {
   /// The actor concurrency groups to indicate how this actor perform its
   /// methods concurrently.
   const std::vector<ConcurrencyGroup> concurrency_groups;
+  // If enabled, tasks of this actor will fail immediately when the actor is temporarily
+  // unavailable. E.g., when there is a network issue, or when the actor is restarting.
+  bool enable_task_fast_fail = false;
   /// Wether the actor execute tasks out of order.
   const bool execute_out_of_order = false;
   /// The maxmium actor call pending count.

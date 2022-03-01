@@ -349,7 +349,9 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
       break;
     }
     RAY_CHECK(!client_queue.worker_id.empty());
-    PushActorTask(client_queue, task.value().first, task.value().second);
+    bool force_fail = client_queue.state == rpc::ActorTableData::RESTARTING &&
+                      task.value().first.EnableTaskFastFail();
+    PushActorTask(client_queue, task.value().first, task.value().second, force_fail);
   }
 }
 
@@ -374,7 +376,7 @@ void CoreWorkerDirectActorTaskSubmitter::ResendOutOfOrderTasks(const ActorID &ac
 
 void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
                                                        const TaskSpecification &task_spec,
-                                                       bool skip_queue) {
+                                                       bool skip_queue, bool force_fail) {
   auto request = std::make_unique<rpc::PushTaskRequest>();
   // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
   // fails, then the task data will be gone when the TaskManager attempts to
@@ -478,6 +480,12 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
         }
         reply_callback(status, reply);
       };
+
+  if (force_fail) {
+    rpc::PushTaskReply reply;
+    wrapped_callback(Status::IOError("The actor is temporarily unavailable."), reply);
+    return;
+  }
 
   queue.rpc_client->PushActorTask(std::move(request), skip_queue, wrapped_callback);
 }

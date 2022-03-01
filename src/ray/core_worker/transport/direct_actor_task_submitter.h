@@ -220,9 +220,12 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \param[in] task_spec The task to send.
   /// \param[in] skip_queue Whether to skip the task queue. This will send the
   /// task for execution immediately.
+  /// \param[in] force_fail Instead of sending the task via an RPC client, fail it
+  /// immediately.
   /// \return Void.
   void PushActorTask(ClientQueue &queue, const TaskSpecification &task_spec,
-                     bool skip_queue) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+                     bool skip_queue, bool force_fail = false)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Send all pending tasks for an actor.
   ///

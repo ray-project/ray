@@ -18,6 +18,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
   public final int maxConcurrency;
   public final PlacementGroup group;
   public final int bundleIndex;
+  public final boolean enableTaskFastFail;
   public final List<ConcurrencyGroup> concurrencyGroups;
   public final String serializedRuntimeEnv;
   public final int maxPendingCalls;
@@ -33,7 +34,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
       int bundleIndex,
       List<ConcurrencyGroup> concurrencyGroups,
       String serializedRuntimeEnv,
-      int maxPendingCalls) {
+      int maxPendingCalls,
+      boolean enableTaskFastFail) {
     super(resources);
     this.name = name;
     this.lifetime = lifetime;
@@ -45,6 +47,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     this.concurrencyGroups = concurrencyGroups;
     this.serializedRuntimeEnv = serializedRuntimeEnv;
     this.maxPendingCalls = maxPendingCalls;
+    this.enableTaskFastFail = enableTaskFastFail;
   }
 
   /** The inner class for building ActorCreationOptions. */
@@ -57,6 +60,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     private int maxConcurrency = 1;
     private PlacementGroup group;
     private int bundleIndex;
+    private boolean enableTaskFastFail = false;
     private List<ConcurrencyGroup> concurrencyGroups = new ArrayList<>();
     private RuntimeEnv runtimeEnv = null;
     private int maxPendingCalls = -1;
@@ -182,6 +186,18 @@ public class ActorCreationOptions extends BaseTaskOptions {
       return this;
     }
 
+    /**
+     * If enabled, tasks of this actor will fail immediately when the actor is temporarily
+     * unavailable. E.g., when there is a network issue, or when the actor is restarting.
+     *
+     * @param enabled Whether to enable this option.
+     * @return self
+     */
+    public Builder setEnableTaskFastFail(boolean enabled) {
+      this.enableTaskFastFail = enabled;
+      return this;
+    }
+
     public ActorCreationOptions build() {
       return new ActorCreationOptions(
           name,
@@ -194,7 +210,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
           bundleIndex,
           concurrencyGroups,
           runtimeEnv != null ? runtimeEnv.toJsonBytes() : "",
-          maxPendingCalls);
+          maxPendingCalls,
+          enableTaskFastFail);
     }
 
     /** Set the concurrency groups for this actor. */
