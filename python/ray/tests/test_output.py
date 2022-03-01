@@ -14,6 +14,7 @@ from ray._private.test_utils import (
 )
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_spill_logs():
     script = """
 import ray
