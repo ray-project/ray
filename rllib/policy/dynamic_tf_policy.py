@@ -291,7 +291,12 @@ class DynamicTFPolicy(TFPolicy):
 
             # Fully customized action generation (e.g., custom policy).
             if action_sampler_fn:
-                sampled_action, sampled_action_logp = action_sampler_fn(
+                (
+                    sampled_action,
+                    sampled_action_logp,
+                    dist_inputs,
+                    self._state_out,
+                ) = action_sampler_fn(
                     self,
                     self.model,
                     obs_batch=self._input_dict[SampleBatch.CUR_OBS],
