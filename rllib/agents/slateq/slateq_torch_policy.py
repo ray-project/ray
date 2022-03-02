@@ -155,7 +155,7 @@ def build_slateq_losses(
 
     clicked = torch.sum(click_indicator, dim=1)
     mask_clicked_slates = clicked > 0
-    clicked_indices = torch.arange(batch_size).to(mask_clicked_slates.device)
+    clicked_indices = torch.arange(batch_size).to(policy.device)
     clicked_indices = torch.masked_select(clicked_indices, mask_clicked_slates)
     # Clicked_indices is a vector and torch.gather selects the batch dimension.
     q_clicked = torch.gather(replay_click_q, 0, clicked_indices)
@@ -298,7 +298,7 @@ def action_distribution_fn(
 
 
 def get_per_slate_q_values(policy, scores, score_no_click, q_values):
-    indices = policy.slates_indices.to(scores.device)
+    indices = policy.slates_indices
     A, S = policy.slates.shape
     slate_q_values = torch.take_along_dim(scores * q_values, indices, dim=1).reshape(
         [-1, A, S]
@@ -360,9 +360,6 @@ def setup_early(policy, obs_space, action_space, config):
 
     # Store all possible slates only once in policy object.
     policy.slates = slates.long()
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    # [1, AxS] Useful for torch.take_along_dim()
-    policy.slates_indices = policy.slates.reshape(-1).unsqueeze(0).to(device)
 
 
 def optimizer_fn(
@@ -397,7 +394,7 @@ def postprocess_fn_add_next_actions_for_sarsa(
     return batch
 
 
-def setup_late_mixins(
+def setup_late(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
@@ -411,6 +408,20 @@ def setup_late_mixins(
         action_space: The Policy's action space.
         config: The Policy's config.
     """
+    # [1, AxS] Useful for torch.take_along_dim()
+    policy.slates_indices = policy.slates.reshape(-1).unsqueeze(0).to(policy.device)
+
+    setup_mixins(policy)
+
+
+def setup_late_mixins(
+    policy: Policy,
+) -> None:
+    """Call all mixin classes' constructors before SlateQTorchPolicy initialization.
+
+    Args:
+        policy: The Policy object.
+    """
     TargetNetworkMixin.__init__(policy)
 
 
@@ -419,7 +430,7 @@ SlateQTorchPolicy = build_policy_class(
     framework="torch",
     get_default_config=lambda: ray.rllib.agents.slateq.slateq.DEFAULT_CONFIG,
     before_init=setup_early,
-    after_init=setup_late_mixins,
+    after_init=setup_late,
     loss_fn=build_slateq_losses,
     stats_fn=build_slateq_stats,
     # Build model, loss functions, and optimizers
