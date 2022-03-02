@@ -164,6 +164,8 @@ def test_deploy(ray_start_stop):
                 requests.get(f"{request_url}{name}").text
                 == deployment_config["response"]
             )
+    
+    ray.shutdown()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
