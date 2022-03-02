@@ -1,4 +1,3 @@
-import abc
 import json
 import shutil
 import tarfile
@@ -6,7 +5,7 @@ import tempfile
 
 import cloudpickle as pickle
 import os
-from typing import Any, Optional, Dict, Tuple
+from typing import Any, Optional, Dict
 
 import ray
 from ray.util.ml_utils.cloud import (
@@ -16,23 +15,15 @@ from ray.util.ml_utils.cloud import (
 )
 
 
-DICT_CHECKPOINT_FILE_NAME = "checkpoint.pkl"
-META_IS_DICT_CHECKPOINT = "is_dict_checkpoint"
+DICT_CHECKPOINT_FILE_NAME = "dict_checkpoint.pkl"
 
 
-class Checkpoint(abc.ABC):
-    """Checkpoint interface.
+class Checkpoint:
+    """Ray ML Checkpoint.
 
     This implementation provides interfaces to translate between
     different checkpoint storage locations: Local FS storage, remote
     node FS storage, data object, and cloud storage location.
-
-    The following metadata keys are introduced for correct serialization
-    and deserialization of checkpoints:
-
-        is_dict_checkpoint (bool): If this is set, this checkpoint was
-            created from a dictionary and can thus be deserialized into a
-            dictionary checkpoint again for downstream processing.
     """
 
     def __init__(self, data: Any, metadata: Optional[Dict] = None):
@@ -48,10 +39,11 @@ class Checkpoint(abc.ABC):
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "Checkpoint":
-        """Create checkpoint object from bytes object.
+        """Create Checkpoint object from bytes string.
 
         Args:
             data (bytes): Data object containing pickled checkpoint data.
+                The checkpoint data is assumed to be a pickled dict.
 
         Returns:
             Checkpoint: checkpoint object.
@@ -65,6 +57,9 @@ class Checkpoint(abc.ABC):
 
     def to_bytes(self) -> bytes:
         """Return Checkpoint serialized as bytes object.
+
+        Will convert the checkpoint into a dict and return a pickled
+        bytes string.
 
         Returns:
             bytes: Bytes object containing checkpoint data.
@@ -110,12 +105,10 @@ class Checkpoint(abc.ABC):
 
             metadata = _load_metadata(load_path)
 
-            if _is_dict_checkpoint(metadata):
+            checkpoint_data_path = os.path.join(load_path, DICT_CHECKPOINT_FILE_NAME)
+            if os.path.exists(checkpoint_data_path):
                 # If we are restoring a dict checkpoint, load the dict
                 # from the checkpoint file.
-                checkpoint_data_path = os.path.join(
-                    load_path, DICT_CHECKPOINT_FILE_NAME
-                )
                 with open(checkpoint_data_path, "rb") as f:
                     checkpoint_data = pickle.load(f)
             else:
@@ -138,6 +131,9 @@ class Checkpoint(abc.ABC):
     @classmethod
     def from_object_ref(cls, obj_ref: ray.ObjectRef) -> "Checkpoint":
         """Create checkpoint object from object reference.
+
+        The object reference is assumed to point to a dictionary containing
+        the checkpoint data.
 
         Args:
             obj_ref (ray.ObjectRef): ObjectRef pointing to checkpoint data.
@@ -207,12 +203,11 @@ class Checkpoint(abc.ABC):
                 checkpoint_data_path = os.path.join(path, DICT_CHECKPOINT_FILE_NAME)
                 with open(checkpoint_data_path, "wb") as f:
                     pickle.dump(data_dict, f)
-                _write_metadata(path, {**self.metadata, META_IS_DICT_CHECKPOINT: True})
+                _write_metadata(path, self.metadata)
         else:
             # This is either a local fs, remote node fs, or external fs
             local_path = _get_local_path(self.data)
             external_path = _get_external_path(self.data)
-            node_ip, node_path = _get_node_path(self.data)
             if local_path:
                 # If this exists on the local path, just copy over
                 if path and os.path.exists(path):
@@ -221,13 +216,6 @@ class Checkpoint(abc.ABC):
             elif external_path:
                 # If this exists on external storage (e.g. cloud), download
                 download_from_bucket(bucket=external_path, local_path=path)
-            elif node_path:
-                # If this exists on a remote node, transfer
-                remote_pack = ray.remote(_pack).options(
-                    resources={f"node:{node_ip}": 0.01}
-                )
-                packed = ray.get(remote_pack.remote(node_path))
-                _unpack(packed, path)
             else:
                 raise RuntimeError(
                     f"No valid location found for checkpoint {self}: " f"{self.data}"
@@ -283,17 +271,11 @@ class Checkpoint(abc.ABC):
         return location
 
 
-def _is_dict_checkpoint(metadata: Dict):
-    return metadata.get(META_IS_DICT_CHECKPOINT, False)
-
-
 def _get_local_path(path: str) -> Optional[str]:
     if is_cloud_target(path):
         return None
     if path.startswith("file://"):
-        return path[7:]
-    if path.startswith("node://"):
-        _node, path = _get_node_path(path)
+        path = path[7:]
     if os.path.exists(path):
         return path
     return None
@@ -303,17 +285,6 @@ def _get_external_path(path: str) -> Optional[str]:
     if not is_cloud_target(path):
         return None
     return path
-
-
-def _get_node_path(path: str) -> Tuple[Optional[str], Optional[str]]:
-    if is_cloud_target(path):
-        return None, None
-    if not path.startswith("node://"):
-        node = ray.util.get_node_ip_address()
-        path = path
-    else:
-        node, path = path[7:].split("/", maxsplit=1)
-    return node, path
 
 
 def _write_metadata(path: str, metadata: Dict[str, Any]) -> None:
