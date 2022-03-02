@@ -17,6 +17,7 @@ from ray._private.runtime_env.packaging import (
     get_uri_for_directory,
     parse_uri,
 )
+from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 from ray.dashboard.modules.job.common import (
     JobStatus,
     JobSubmitRequest,
@@ -133,7 +134,7 @@ def parse_cluster_info(
         )
 
 
-class JobSubmissionClient:
+class JobSubmissionClient(SubmissionClient):
     def __init__(
         self,
         address: str,
