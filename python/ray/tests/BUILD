@@ -10,7 +10,6 @@ SRCS = [] + select({
 
 py_test_module_list(
   files = [
-    "test_actor.py",
     "test_actor_pool.py",
     "test_async.py",
     "test_actor_failures.py",
@@ -23,7 +22,6 @@ py_test_module_list(
     "test_autoscaling_policy.py",
     "test_basic.py",
     "test_basic_2.py",
-    "test_basic_3.py",
     "test_basic_4.py",
     "test_basic_5.py",
     "test_cancel.py",
@@ -81,6 +79,7 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_usage_stats.py",
     "test_autoscaler_fake_scaledown.py",  # Temporarily owned by core.
     "test_memory_scheduling.py",
     "test_metrics.py",
@@ -147,7 +146,6 @@ py_test_module_list(
     "test_list_actors_2.py",
     "test_list_actors_3.py",
     "test_list_actors_4.py",
-    "test_usage_stats.py",
   ],
   size = "small",
   extra_srcs = SRCS,
@@ -188,6 +186,7 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_actor.py",
     "test_cli.py",
     "test_failure.py",
     "test_actor_advanced.py",
@@ -205,6 +204,7 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_basic_3.py",
     "test_output.py",
     "test_failure_2.py",
     "test_failure_4.py",
@@ -349,7 +349,7 @@ py_test_module_list(
     "test_list_actors_3.py",
     "test_list_actors_4.py",
   ],
-  size = "medium",
+  size = "large",
   extra_srcs = SRCS,
   name_suffix = "_client_mode",
   env = {"RAY_CLIENT_MODE": "1", "RAY_PROFILING": "1"},

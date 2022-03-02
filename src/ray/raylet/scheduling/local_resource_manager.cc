@@ -22,20 +22,17 @@
 namespace ray {
 
 LocalResourceManager::LocalResourceManager(
-    int64_t local_node_id, StringIdMap &resource_name_to_id,
-    const NodeResources &node_resources,
+    scheduling::NodeID local_node_id, const NodeResources &node_resources,
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity,
     std::function<void(const NodeResources &)> resource_change_subscriber)
     : local_node_id_(local_node_id),
-      resource_name_to_id_(resource_name_to_id),
       get_used_object_store_memory_(get_used_object_store_memory),
       get_pull_manager_at_capacity_(get_pull_manager_at_capacity),
       resource_change_subscriber_(resource_change_subscriber) {
   InitResourceUnitInstanceInfo();
   InitLocalResources(node_resources);
-  RAY_LOG(DEBUG) << "local resources: "
-                 << local_resources_.DebugString(resource_name_to_id);
+  RAY_LOG(DEBUG) << "local resources: " << local_resources_.DebugString();
 }
 
 void LocalResourceManager::InitResourceUnitInstanceInfo() {
@@ -57,14 +54,15 @@ void LocalResourceManager::InitResourceUnitInstanceInfo() {
     std::vector<std::string> results;
     boost::split(results, custom_unit_instance_resources, boost::is_any_of(","));
     for (std::string &result : results) {
-      int64_t resource_id = resource_name_to_id_.Insert(result);
+      int64_t resource_id = scheduling::ResourceID(result).ToInt();
       custom_unit_instance_resources_.emplace(resource_id);
     }
   }
 }
 
 void LocalResourceManager::AddLocalResourceInstances(
-    const std::string &resource_name, const std::vector<FixedPoint> &instances) {
+    scheduling::ResourceID resource_id, const std::vector<FixedPoint> &instances) {
+  auto resource_name = resource_id.Binary();
   ResourceInstanceCapacities *node_instances;
   local_resources_.predefined_resources.resize(PredefinedResources_MAX);
   if (kCPU_ResourceLabel == resource_name) {
@@ -76,9 +74,7 @@ void LocalResourceManager::AddLocalResourceInstances(
   } else if (kMemory_ResourceLabel == resource_name) {
     node_instances = &local_resources_.predefined_resources[MEM];
   } else {
-    resource_name_to_id_.Insert(resource_name);
-    int64_t resource_id = resource_name_to_id_.Get(resource_name);
-    node_instances = &local_resources_.custom_resources[resource_id];
+    node_instances = &local_resources_.custom_resources[resource_id.ToInt()];
   }
 
   if (node_instances->total.size() < instances.size()) {
@@ -93,8 +89,8 @@ void LocalResourceManager::AddLocalResourceInstances(
   OnResourceChanged();
 }
 
-void LocalResourceManager::DeleteLocalResource(const std::string &resource_name) {
-  int idx = GetPredefinedResourceIndex(resource_name);
+void LocalResourceManager::DeleteLocalResource(scheduling::ResourceID resource_id) {
+  int idx = GetPredefinedResourceIndex(resource_id);
   if (idx != -1) {
     for (auto &total : local_resources_.predefined_resources[idx].total) {
       total = 0;
@@ -103,26 +99,23 @@ void LocalResourceManager::DeleteLocalResource(const std::string &resource_name)
       available = 0;
     }
   } else {
-    int64_t resource_id = resource_name_to_id_.Get(resource_name);
-    auto c_itr = local_resources_.custom_resources.find(resource_id);
+    auto c_itr = local_resources_.custom_resources.find(resource_id.ToInt());
     if (c_itr != local_resources_.custom_resources.end()) {
-      local_resources_.custom_resources[resource_id].total.clear();
-      local_resources_.custom_resources[resource_id].available.clear();
+      local_resources_.custom_resources[resource_id.ToInt()].total.clear();
+      local_resources_.custom_resources[resource_id.ToInt()].available.clear();
       local_resources_.custom_resources.erase(c_itr);
     }
   }
   OnResourceChanged();
 }
 
-bool LocalResourceManager::IsAvailableResourceEmpty(const std::string &resource_name) {
-  int idx = GetPredefinedResourceIndex(resource_name);
+bool LocalResourceManager::IsAvailableResourceEmpty(scheduling::ResourceID resource_id) {
+  int idx = GetPredefinedResourceIndex(resource_id);
 
   if (idx != -1) {
     return FixedPoint::Sum(local_resources_.predefined_resources[idx].available) <= 0;
   }
-  resource_name_to_id_.Insert(resource_name);
-  int64_t resource_id = resource_name_to_id_.Get(resource_name);
-  auto itr = local_resources_.custom_resources.find(resource_id);
+  auto itr = local_resources_.custom_resources.find(resource_id.ToInt());
   if (itr != local_resources_.custom_resources.end()) {
     return FixedPoint::Sum(itr->second.available) <= 0;
   } else {
@@ -132,7 +125,7 @@ bool LocalResourceManager::IsAvailableResourceEmpty(const std::string &resource_
 
 std::string LocalResourceManager::DebugString(void) const {
   std::stringstream buffer;
-  buffer << local_resources_.DebugString(resource_name_to_id_);
+  buffer << local_resources_.DebugString();
   return buffer.str();
 }
 
@@ -441,7 +434,7 @@ bool LocalResourceManager::AllocateLocalTaskResources(
   RAY_CHECK(task_allocation != nullptr);
   // We don't track object store memory demands so no need to allocate them.
   ResourceRequest resource_request = ResourceMapToResourceRequest(
-      resource_name_to_id_, task_resources, /*requires_object_store_memory=*/false);
+      task_resources, /*requires_object_store_memory=*/false);
   return AllocateLocalTaskResources(resource_request, task_allocation);
 }
 
@@ -510,8 +503,7 @@ void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data)
 
   // Initialize if last report resources is empty.
   if (!last_report_resources_) {
-    NodeResources node_resources =
-        ResourceMapToNodeResources(resource_name_to_id_, {{}}, {{}});
+    NodeResources node_resources = ResourceMapToNodeResources({{}}, {{}});
     last_report_resources_.reset(new NodeResources(node_resources));
   }
 
@@ -533,7 +525,7 @@ void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data)
     uint64_t custom_id = it.first;
     const auto &capacity = it.second;
     const auto &last_capacity = last_report_resources_->custom_resources[custom_id];
-    const auto &label = resource_name_to_id_.Get(custom_id);
+    auto label = scheduling::ResourceID(custom_id).Binary();
     // Note: available may be negative, but only report positive to GCS.
     if (capacity.available != last_capacity.available && capacity.available > 0) {
       resources_data.set_resources_available_changed(true);
@@ -541,7 +533,8 @@ void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data)
           capacity.available.Double();
     }
     if (capacity.total != last_capacity.total) {
-      (*resources_data.mutable_resources_total())[label] = capacity.total.Double();
+      (*resources_data.mutable_resources_total())[std::move(label)] =
+          capacity.total.Double();
     }
   }
 
@@ -586,7 +579,7 @@ ray::gcs::NodeResourceInfoAccessor::ResourceMap LocalResourceManager::GetResourc
   }
 
   for (auto entry : local_resources_.custom_resources) {
-    std::string resource_name = resource_name_to_id_.Get(entry.first);
+    std::string resource_name = scheduling::ResourceID(entry.first).Binary();
     double resource_total = FixedPoint::Sum(entry.second.total).Double();
     if (!resource_map_filter.contains(resource_name)) {
       continue;
@@ -646,36 +639,28 @@ std::string LocalResourceManager::SerializedTaskResourceInstances(
 
 void LocalResourceManager::ResetLastReportResourceUsage(
     const SchedulingResources &replacement) {
-  last_report_resources_ = std::make_unique<NodeResources>(ResourceMapToNodeResources(
-      resource_name_to_id_, replacement.GetTotalResources().GetResourceMap(),
-      replacement.GetAvailableResources().GetResourceMap()));
+  last_report_resources_ = std::make_unique<NodeResources>(
+      ResourceMapToNodeResources(replacement.GetTotalResources().GetResourceMap(),
+                                 replacement.GetAvailableResources().GetResourceMap()));
 }
 
-bool LocalResourceManager::ResourcesExist(const std::string &resource_name) {
-  int idx = GetPredefinedResourceIndex(resource_name);
+bool LocalResourceManager::ResourcesExist(scheduling::ResourceID resource_id) {
+  int idx = GetPredefinedResourceIndex(resource_id);
   if (idx != -1) {
     // Return true directly for predefined resources as we always initialize this kind of
     // resources at the beginning.
     return true;
   } else {
-    int64_t resource_id = resource_name_to_id_.Get(resource_name);
-    const auto &it = local_resources_.custom_resources.find(resource_id);
+    const auto &it = local_resources_.custom_resources.find(resource_id.ToInt());
     return it != local_resources_.custom_resources.end();
   }
 }
 
-int GetPredefinedResourceIndex(const std::string &resource_name) {
-  int idx = -1;
-  if (resource_name == ray::kCPU_ResourceLabel) {
-    idx = (int)ray::CPU;
-  } else if (resource_name == ray::kGPU_ResourceLabel) {
-    idx = (int)ray::GPU;
-  } else if (resource_name == ray::kObjectStoreMemory_ResourceLabel) {
-    idx = (int)ray::OBJECT_STORE_MEM;
-  } else if (resource_name == ray::kMemory_ResourceLabel) {
-    idx = (int)ray::MEM;
-  };
-  return idx;
+int GetPredefinedResourceIndex(scheduling::ResourceID resource_id) {
+  if (resource_id.ToInt() >= 0 && resource_id.ToInt() < PredefinedResources_MAX) {
+    return resource_id.ToInt();
+  }
+  return -1;
 }
 
 }  // namespace ray

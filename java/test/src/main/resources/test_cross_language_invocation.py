@@ -143,3 +143,14 @@ def py_func_call_java_overrided_method_with_default_keyword():
     cls = ray.java_actor_class("io.ray.test.ExampleImpl")
     handle = cls.remote()
     return ray.get(handle.echo.remote("hi"))
+
+
+@ray.remote
+def py_func_call_java_overloaded_method():
+    cls = ray.java_actor_class("io.ray.test.ExampleImpl")
+    handle = cls.remote()
+    ref1 = handle.overloadedFunc.remote("first")
+    ref2 = handle.overloadedFunc.remote("first", "second")
+    result = ray.get([ref1, ref2])
+    assert result == ["first", "firstsecond"]
+    return True

@@ -259,17 +259,16 @@ def read_datasource(
 
     if ray_remote_args is None:
         ray_remote_args = {}
-    # Increase the read parallelism by default to maximize IO throughput. This
-    # is particularly important when reading from e.g., remote storage.
-    if "num_cpus" not in ray_remote_args:
-        # Note that the too many workers warning triggers at 4x subscription,
-        # so we go at 0.5 to avoid the warning message.
-        ray_remote_args["num_cpus"] = 0.5
     if "scheduling_strategy" not in ray_remote_args:
         ray_remote_args["scheduling_strategy"] = "SPREAD"
     remote_read = cached_remote_fn(remote_read)
 
     if _spread_resource_prefix is not None:
+        if context.optimize_fuse_stages:
+            logger.warning(
+                "_spread_resource_prefix has no effect when optimize_fuse_stages "
+                "is enabled. Tasks are spread by default."
+            )
         # Use given spread resource prefix for round-robin resource-based
         # scheduling.
         nodes = ray.nodes()
@@ -294,6 +293,7 @@ def read_datasource(
     block_list = LazyBlockList(calls, metadata)
     # TODO(ekl) consider refactoring LazyBlockList to take read_tasks explicitly.
     block_list._read_tasks = read_tasks
+    block_list._read_remote_args = ray_remote_args
 
     # Get the schema from the first block synchronously.
     if metadata and metadata[0].schema is None:
@@ -542,7 +542,7 @@ def read_numpy(
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     **numpy_load_args,
 ) -> Dataset[ArrowRow]:
-    """Create an Arrow dataset from csv files.
+    """Create an Arrow dataset from numpy files.
 
     Examples:
         >>> # Read a directory of files in remote storage.
