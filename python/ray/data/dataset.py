@@ -329,7 +329,7 @@ class Dataset(Generic[T]):
         Args:
             col: Name of the column to add. If the name already exists, the
                 column will be overwritten.
-            fn: Dataset function generating the column values given a batch of
+            fn: Map function generating the column values given a batch of
                 records in pandas format.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
