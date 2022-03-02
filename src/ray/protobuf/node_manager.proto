@@ -174,6 +174,8 @@ message GetNodeStatsRequest {
   // Whether to include memory stats. This could be large since it includes
   // metadata for all live object references.
   bool include_memory_info = 1;
+  bool exclude_stats = 2;
+  bool include_tasks = 3;
 }
 
 // Object store stats, which may be reported per-node or aggregated across
@@ -216,6 +218,8 @@ message GetNodeStatsReply {
   repeated TaskSpec infeasible_tasks = 4;
   repeated TaskSpec ready_tasks = 5;
   ObjectStoreStats store_stats = 6;
+  repeated TaskInfoEntry task_info_entries = 7;
+  repeated DetailedSchedulingState detailed_scheduling_states = 8;
 }
 
 message GlobalGCRequest {

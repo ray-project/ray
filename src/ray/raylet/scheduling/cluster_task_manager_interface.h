@@ -42,6 +42,8 @@ class ClusterTaskManagerInterface {
   /// \param Output parameter.
   virtual void FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const = 0;
 
+  virtual void FillTaskInformation(rpc::GetNodeStatsReply *reply) const = 0;
+
   /// Attempt to cancel an already queued task.
   ///
   /// \param task_id: The id of the task to remove.

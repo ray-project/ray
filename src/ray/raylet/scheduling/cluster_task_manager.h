@@ -105,6 +105,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param[out] reply: Output parameter. `infeasible_tasks` is the only field filled.
   void FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const override;
 
+  void FillTaskInformation(rpc::GetNodeStatsReply *reply) const override;
+
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending resource usage of raylet to gcs. In particular, this should fill in
   /// resource_load and resource_load_by_shape.

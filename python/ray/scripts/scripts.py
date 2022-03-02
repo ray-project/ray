@@ -44,6 +44,7 @@ from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_lo
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.dashboard.modules.job.cli import job_cli_group
+from ray.scripts.state_cli import get_state_cli_group
 from distutils.dir_util import copy_tree
 
 logger = logging.getLogger(__name__)
@@ -2238,6 +2239,8 @@ cli.add_command(timeline)
 cli.add_command(install_nightly)
 cli.add_command(cpp)
 add_command_alias(job_cli_group, name="job", hidden=True)
+add_command_alias(get_state_cli_group, name="get", hidden=True)
+
 
 try:
     from ray.serve.scripts import serve_cli

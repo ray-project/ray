@@ -164,6 +164,8 @@ class LocalTaskManager {
 
   void ClearWorkerBacklog(const WorkerID &worker_id);
 
+  void FillTaskInformation(rpc::GetNodeStatsReply *reply) const;
+
  private:
   struct SchedulingClassInfo;
 

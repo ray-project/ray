@@ -257,11 +257,13 @@ message GetCoreWorkerStatsRequest {
   // Whether to include memory stats. This could be large since it includes
   // metadata for all live object references.
   bool include_memory_info = 2;
+  bool include_task_info = 3;
 }
 
 message GetCoreWorkerStatsReply {
   // Debug information returned from the core worker.
   CoreWorkerStats core_worker_stats = 1;
+  repeated TaskInfoEntry task_info_entries = 2;
 }
 
 message LocalGCRequest {
