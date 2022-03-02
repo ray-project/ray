@@ -227,11 +227,11 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
             return GetLocalObjectManager().IsSpillingInProgress();
           },
           /*on_object_creation_blocked_callback=*/
-          [this](const Priority &base_priority, int flags) {
-		    if(flags & (1<<0)){
+          [this](const Priority &base_priority, bool block_tasks, bool evict_tasks) {
+		    if(block_tasks){
               cluster_task_manager_->BlockTasks(base_priority);
 			}
-			if(flags & (1<<2)){
+			if(evict_tasks){
               bool should_spill = cluster_task_manager_->EvictTasks(base_priority);
               io_service_.post([this, should_spill](){
                 object_manager_.SetShouldSpill(should_spill);

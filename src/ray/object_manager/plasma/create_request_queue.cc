@@ -151,24 +151,12 @@ void CreateRequestQueue::SetShouldSpill(bool should_spill) {
   should_spill_ = should_spill;
 }
 
-static inline int set_BlockEvictSpill_flag(){
-  int BlockEvictSpill_flag = 0;
-  if(RayConfig::instance().enable_BlockTasks()){
-    BlockEvictSpill_flag += (1<<0);
-  }
-  if(RayConfig::instance().enable_BlockTasksSpill()){
-    BlockEvictSpill_flag += (1<<1);
-  }
-  if(RayConfig::instance().enable_EvictTasks()){
-    BlockEvictSpill_flag += (1<<2);
-  }
-  return BlockEvictSpill_flag;
-}
-
 Status CreateRequestQueue::ProcessRequests() {
   // Suppress OOM dump to once per grace period.
   bool logged_oom = false;
-  int BlockEvictSpill_flag = set_BlockEvictSpill_flag();
+  bool enable_blocktasks = RayConfig::instance().enable_BlockTasks();
+  bool enable_blocktasks_spill = RayConfig::instance().enable_BlockTasksSpill();
+  bool enable_evicttasks = RayConfig::instance().enable_EvictTasks();
 
   while (!queue_.empty()) {
     auto queue_it = queue_.begin();
@@ -184,16 +172,13 @@ Status CreateRequestQueue::ProcessRequests() {
     if (spilling_required) {
       spill_objects_callback_();
     }
+    //Turn these flags on only when matching flags are on
+	block_tasks_required = !(block_tasks_required^enable_blocktasks); 
+	evict_tasks_required = !(evict_tasks_required^enable_evicttasks());
 
-	int blockevictspill_flag = BlockEvictSpill_flag;
-	if (RayConfig::instance().enable_BlockTasks() && !block_tasks_required) {
-	  blockevictspill_flag -= (1<<0);
-	}
-	if (RayConfig::instance().enable_EvictTasks() && !evict_tasks_required) {
-	  blockevictspill_flag -= (1<<2);
-	}
-	if (blockevictspill_flag) {
-	  on_object_creation_blocked_callback_(lowest_pri, blockevictspill_flag);
+	if (block_tasks_required || evict_tasks_required) {
+	  on_object_creation_blocked_callback_(lowest_pri, block_tasks_required,
+			  evict_tasks_required);
 	}
 
     auto now = get_time_();
@@ -211,15 +196,15 @@ Status CreateRequestQueue::ProcessRequests() {
         oom_start_time_ns_ = now;
       }
 
-	  if (BlockEvictSpill_flag) {
-        RAY_LOG(DEBUG) << "[JAE_DEBUG] calling object_creation_blocked_callback " 
-			<< BlockEvictSpill_flag << " on priority "
+	  if (enable_blocktasks || enable_evicttasks) {
+        RAY_LOG(DEBUG) << "[JAE_DEBUG] calling object_creation_blocked_callback (" 
+			<< enable_blocktasks <<" " << enable_evicttasks << " " 
+			<< enable_blocktasks_spill << ") on priority "
 			<< lowest_pri;
 		if(!block_tasks_required && !evict_tasks_required){
-	      on_object_creation_blocked_callback_(lowest_pri, BlockEvictSpill_flag);
+	      on_object_creation_blocked_callback_(lowest_pri, enable_blocktasks , enable_evicttasks);
 		}
-	    if (RayConfig::instance().enable_BlockTasksSpill() || 
-				(RayConfig::instance().enable_EvictTasks() && (!should_spill_))
+	    if (enable_blocktasks_spill || (enable_evicttasks && (!should_spill_))
 		  /*if evictTasks is enabled, do not trigger spill unless should_spill_ is set*/) { 
           return Status::TransientObjectStoreFull(
               "Waiting for higher priority tasks to finish");
