@@ -303,7 +303,7 @@ def test_delete(ray_start_stop):
         wait_for_condition(lambda: get_num_deployments() == 2, timeout=15)
 
         subprocess.check_output(["serve", "delete", "-y"])
-        wait_for_condition(lambda: get_num_deployments() == 0, timeout=15)
+        wait_for_condition(lambda: get_num_deployments() == 0, timeout=25)
 
 
 if __name__ == "__main__":
