@@ -173,8 +173,8 @@ Status CreateRequestQueue::ProcessRequests() {
       spill_objects_callback_();
     }
     //Turn these flags on only when matching flags are on
-	block_tasks_required = !(block_tasks_required^enable_blocktasks); 
-	evict_tasks_required = !(evict_tasks_required^enable_evicttasks());
+	block_tasks_required = (block_tasks_required&enable_blocktasks); 
+	evict_tasks_required = (evict_tasks_required&enable_evicttasks);
 
 	if (block_tasks_required || evict_tasks_required) {
 	  on_object_creation_blocked_callback_(lowest_pri, block_tasks_required,

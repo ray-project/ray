@@ -55,7 +55,7 @@ ray::Priority ObjectStore::GetLowestPriObject() {
   // Return the lowest priority object in object_table
   auto it = object_table_.begin();
   if(it == object_table_.end())
-	  return Priority();
+	return ray::Priority();
   ray::Priority lowest_priority = it->second->GetPriority();
   for (; it != object_table_.end(); it++){
 	ray::Priority p = it->second->GetPriority();
