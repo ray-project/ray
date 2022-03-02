@@ -185,6 +185,19 @@ The following manifests should be installed in the order listed:
 - The Ray Operator, `namespaced`_ or `cluster-scoped`_.\Note that the cluster-scoped operator is configured to run in namespaced ``default``. Modify as needed.
 - A RayCluster custom resource: `example`_.
 
+Settings Ray container envs
+---------------------------
+Ray container environment variables are not currently exposed in the Ray Helm chart.
+Should you need to modify the environment variables for your Ray cluster's container, here
+are some options.
+
+1. Build a docker image with the `environment variables specified`_. Then specify the image in the Helm chart.
+2. :ref:`Deploy without Helm<no-helm>` and specify the variables in the `RayCluster custom resource`_ for each Ray podType.
+3. Modify the Helm chart by editing the `RayCluster template`_.
+
+Methods 2 and 3 above can be used to specify any Ray pod or container fields not currently
+exposed in the Ray Helm chart.
+
 Ray Cluster Lifecycle
 ---------------------
 
@@ -241,3 +254,6 @@ Questions or Issues?
 .. _`timeout`: https://github.com/ray-project/ray/blob/b08b2c5103c634c680de31b237b2bfcceb9bc150/python/ray/autoscaler/_private/constants.py#L22
 .. _`Helm docs`: https://helm.sh/docs/helm/helm_install/
 .. _`Ray GitHub`: https://github.com/ray-project/ray/tree/master/deploy/components/
+.. _`environment variables specified`: https://docs.docker.com/engine/reference/builder/#environment-replacement
+.. _`RayCluster template`: https://github.com/ray-project/ray/blob/f51566e62205dc8fc8869a90a1f32425949b59e1/deploy/charts/ray/templates/raycluster.yaml#L50
+.. _`RayCluster custom resource`: https://github.com/ray-project/ray/blob/a8d8d0e1a6307ee4a92df5a57b69f7379b11187a/deploy/components/example_cluster.yaml#L48
