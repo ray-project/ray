@@ -313,8 +313,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
   SchedulingResources local_resources(config.resource_config);
   cluster_resource_scheduler_ =
       std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
-          self_node_id_.Binary(), local_resources.GetTotalResources().GetResourceMap(),
-          *gcs_client_,
+          scheduling::NodeID(self_node_id_.Binary()),
+          local_resources.GetTotalResources().GetResourceMap(), *gcs_client_,
           [this]() {
             if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
               return local_object_manager_.GetPinnedBytes();
@@ -771,7 +771,7 @@ void NodeManager::WarnResourceDeadlock() {
         << "\n"
         << "Available resources on this node: "
         << cluster_resource_scheduler_->GetClusterResourceManager()
-               .GetNodeResourceViewString(self_node_id_.Binary())
+               .GetNodeResourceViewString(scheduling::NodeID(self_node_id_.Binary()))
         << " In total there are " << pending_tasks << " pending tasks and "
         << pending_actor_creations << " pending actors on this node.";
 
@@ -847,7 +847,7 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
 
   // Remove the node from the resource map.
   if (!cluster_resource_scheduler_->GetClusterResourceManager().RemoveNode(
-          node_id.Binary())) {
+          scheduling::NodeID(node_id.Binary()))) {
     RAY_LOG(DEBUG) << "Received NodeRemoved callback for an unknown node: " << node_id
                    << ".";
     return;
@@ -933,7 +933,8 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
     const std::string &resource_label = resource_pair.first;
     const double &new_resource_capacity = resource_pair.second;
     cluster_resource_scheduler_->GetClusterResourceManager().UpdateResourceCapacity(
-        node_id.Binary(), resource_label, new_resource_capacity);
+        scheduling::NodeID(node_id.Binary()), scheduling::ResourceID(resource_label),
+        new_resource_capacity);
   }
   RAY_LOG(DEBUG) << "[ResourceCreateUpdated] Updated cluster_resource_map.";
   cluster_task_manager_->ScheduleAndDispatchTasks();
@@ -961,7 +962,7 @@ void NodeManager::ResourceDeleted(const NodeID &node_id,
   // Update local_available_resources_ and SchedulingResources
   for (const auto &resource_label : resource_names) {
     cluster_resource_scheduler_->GetClusterResourceManager().DeleteResource(
-        node_id.Binary(), resource_label);
+        scheduling::NodeID(node_id.Binary()), scheduling::ResourceID(resource_label));
   }
   return;
 }
@@ -969,7 +970,7 @@ void NodeManager::ResourceDeleted(const NodeID &node_id,
 void NodeManager::UpdateResourceUsage(const NodeID &node_id,
                                       const rpc::ResourcesData &resource_data) {
   if (!cluster_resource_scheduler_->GetClusterResourceManager().UpdateNode(
-          node_id.Binary(), resource_data)) {
+          scheduling::NodeID(node_id.Binary()), resource_data)) {
     RAY_LOG(INFO)
         << "[UpdateResourceUsage]: received resource usage from unknown node id "
         << node_id;
@@ -1605,7 +1606,8 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
                      << ", normal_task_resources = " << normal_task_resources.ToString()
                      << ", local_resoruce_view = "
                      << cluster_resource_scheduler_->GetClusterResourceManager()
-                            .GetNodeResourceViewString(self_node_id_.Binary());
+                            .GetNodeResourceViewString(
+                                scheduling::NodeID(self_node_id_.Binary()));
       auto resources_data = reply->mutable_resources_data();
       resources_data->set_node_id(self_node_id_.Binary());
       resources_data->set_resources_normal_task_changed(true);
