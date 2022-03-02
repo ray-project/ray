@@ -14,7 +14,6 @@ from ray.util.scheduling_strategies import (
 from ray._private.test_utils import wait_for_condition, make_global_state_accessor
 
 
-
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows. Multi node."
 )
@@ -310,6 +309,7 @@ def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
 def test_demand_report_when_scale_up(shutdown_only):
     # https://github.com/ray-project/ray/issues/22122
     from ray.cluster_utils import AutoscalingCluster
+
     cluster = AutoscalingCluster(
         head_resources={"CPU": 0},
         worker_node_types={
@@ -327,13 +327,16 @@ def test_demand_report_when_scale_up(shutdown_only):
     cluster.start()
 
     info = ray.init("auto")
+
     @ray.remote
     def foo():
-          import time
-          time.sleep(999)
+        import time
 
-    tasks = [foo.remote() for _ in range(10000)]
+        time.sleep(999)
+
+    tasks = [foo.remote() for _ in range(10000)]  # noqa: F841
     global_state_accessor = make_global_state_accessor(info)
+
     def get_backlog_size():
         message = global_state_accessor.get_all_resource_usage()
         if message is None:
@@ -344,7 +347,9 @@ def test_demand_report_when_scale_up(shutdown_only):
         if len(aggregate_resource_load) == 1:
             return aggregate_resource_load[0].backlog_size
         return 0
+
     wait_for_condition(lambda: get_backlog_size() == 9990, 10)
+
 
 if __name__ == "__main__":
     import pytest
