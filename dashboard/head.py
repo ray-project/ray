@@ -41,21 +41,6 @@ GRPC_CHANNEL_OPTIONS = (
 )
 
 
-async def get_gcs_address_with_retry(redis_client) -> str:
-    while True:
-        try:
-            gcs_address = (
-                await redis_client.get(dashboard_consts.GCS_SERVER_ADDRESS)
-            ).decode()
-            if not gcs_address:
-                raise Exception("GCS address not found.")
-            logger.info("Connect to GCS at %s", gcs_address)
-            return gcs_address
-        except Exception as ex:
-            logger.error("Connect to GCS failed: %s, retry...", ex)
-            await asyncio.sleep(dashboard_consts.GCS_RETRY_CONNECT_INTERVAL_SECONDS)
-
-
 class GCSHealthCheckThread(threading.Thread):
     def __init__(self, gcs_address: str):
         self.grpc_gcs_channel = ray._private.utils.init_grpc_channel(
@@ -106,8 +91,6 @@ class DashboardHead:
         http_port,
         http_port_retries,
         gcs_address,
-        redis_address,
-        redis_password,
         log_dir,
         temp_dir,
         session_dir,
@@ -123,27 +106,16 @@ class DashboardHead:
         self.http_port_retries = http_port_retries
 
         self.gcs_address = None
-        self.redis_address = None
-        self.redis_password = None
-        if use_gcs_for_bootstrap():
-            assert gcs_address is not None
-            self.gcs_address = gcs_address
-        else:
-            self.redis_address = dashboard_utils.address_tuple(redis_address)
-            self.redis_password = redis_password
-
+        assert gcs_address is not None
+        self.gcs_address = gcs_address
         self.log_dir = log_dir
         self.temp_dir = temp_dir
         self.session_dir = session_dir
-        self.aioredis_client = None
         self.aiogrpc_gcs_channel = None
         self.gcs_error_subscriber = None
         self.gcs_log_subscriber = None
         self.ip = ray.util.get_node_ip_address()
-        if not use_gcs_for_bootstrap():
-            ip, port = redis_address.split(":")
-        else:
-            ip, port = gcs_address.split(":")
+        ip, port = gcs_address.split(":")
 
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0),))
         grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
@@ -220,24 +192,7 @@ class DashboardHead:
         return modules
 
     async def get_gcs_address(self):
-        # Create an aioredis client for all modules.
-        if use_gcs_for_bootstrap():
-            return self.gcs_address
-        else:
-            try:
-                self.aioredis_client = await dashboard_utils.get_aioredis_client(
-                    self.redis_address,
-                    self.redis_password,
-                    dashboard_consts.CONNECT_REDIS_INTERNAL_SECONDS,
-                    dashboard_consts.RETRY_REDIS_CONNECTION_TIMES,
-                )
-            except (socket.gaierror, ConnectionError):
-                logger.error(
-                    "Dashboard head exiting: " "Failed to connect to redis at %s",
-                    self.redis_address,
-                )
-                sys.exit(-1)
-            return await get_gcs_address_with_retry(self.aioredis_client)
+        return self.gcs_address
 
     async def run(self):
         gcs_address = await self.get_gcs_address()
