@@ -5,11 +5,14 @@ import sys
 import time
 
 import ray
+import ray._private.gcs_utils as gcs_utils
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 import ray.experimental.internal_kv as internal_kv
 from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
 )
+from ray._private.test_utils import wait_for_condition, make_global_state_accessor
+
 
 
 @pytest.mark.skipif(
@@ -303,6 +306,45 @@ def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
         internal_kv._internal_kv_del("test_task2")
         assert set(ray.get(locations)) == worker_node_ids
 
+
+def test_demand_report_when_scale_up(shutdown_only):
+    # https://github.com/ray-project/ray/issues/22122
+    from ray.cluster_utils import AutoscalingCluster
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 0},
+        worker_node_types={
+            "cpu_node": {
+                "resources": {
+                    "CPU": 1,
+                    "object_store_memory": 1024 * 1024 * 1024,
+                },
+                "node_config": {},
+                "max_workers": 10,
+            },
+        },
+    )
+
+    cluster.start()
+
+    info = ray.init("auto")
+    @ray.remote
+    def foo():
+          import time
+          time.sleep(999)
+
+    tasks = [foo.remote() for _ in range(10000)]
+    global_state_accessor = make_global_state_accessor(info)
+    def get_backlog_size():
+        message = global_state_accessor.get_all_resource_usage()
+        if message is None:
+            return 0
+
+        resource_usage = gcs_utils.ResourceUsageBatchData.FromString(message)
+        aggregate_resource_load = resource_usage.resource_load_by_shape.resource_demands
+        if len(aggregate_resource_load) == 1:
+            return aggregate_resource_load[0].backlog_size
+        return 0
+    wait_for_condition(lambda: get_backlog_size() == 9990, 10)
 
 if __name__ == "__main__":
     import pytest
