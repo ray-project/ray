@@ -35,6 +35,74 @@ NodeResources CreateNodeResources(double available_cpu, double total_cpu,
 
 class SchedulingPolicyTest : public ::testing::Test {};
 
+TEST_F(SchedulingPolicyTest, SpreadPolicyTest) {
+  StringIdMap map;
+  ResourceRequest req = ResourceMapToResourceRequest(map, {{"CPU", 1}}, false);
+  int64_t local_node = 0;
+  int64_t remote_node_1 = 1;
+  int64_t remote_node_2 = 2;
+  int64_t remote_node_3 = 3;
+
+  absl::flat_hash_map<int64_t, Node> nodes;
+  nodes.emplace(local_node, CreateNodeResources(20, 20, 0, 0, 0, 0));
+  // Unavailable node
+  nodes.emplace(remote_node_1, CreateNodeResources(0, 20, 0, 0, 0, 0));
+  // Infeasible node
+  nodes.emplace(remote_node_2, CreateNodeResources(0, 0, 0, 0, 0, 0));
+  nodes.emplace(remote_node_3, CreateNodeResources(20, 20, 0, 0, 0, 0));
+
+  raylet_scheduling_policy::SchedulingPolicy scheduling_policy(local_node, nodes);
+
+  int64_t to_schedule =
+      scheduling_policy.SpreadPolicy(req, false, false, [](auto) { return true; });
+  ASSERT_EQ(to_schedule, local_node);
+
+  to_schedule =
+      scheduling_policy.SpreadPolicy(req, false, false, [](auto) { return true; });
+  ASSERT_EQ(to_schedule, remote_node_3);
+
+  to_schedule = scheduling_policy.SpreadPolicy(req, /*force_spillback=*/true, false,
+                                               [](auto) { return true; });
+  ASSERT_EQ(to_schedule, remote_node_3);
+}
+
+TEST_F(SchedulingPolicyTest, RandomPolicyTest) {
+  StringIdMap map;
+  ResourceRequest req = ResourceMapToResourceRequest(map, {{"CPU", 1}}, false);
+  int64_t local_node = 0;
+  int64_t remote_node_1 = 1;
+  int64_t remote_node_2 = 2;
+  int64_t remote_node_3 = 3;
+
+  absl::flat_hash_map<int64_t, Node> nodes;
+
+  nodes.emplace(local_node, CreateNodeResources(20, 20, 0, 0, 0, 0));
+  nodes.emplace(remote_node_1, CreateNodeResources(20, 20, 0, 0, 0, 0));
+  // Unavailable node
+  nodes.emplace(remote_node_2, CreateNodeResources(0, 20, 0, 0, 0, 0));
+  // Infeasible node
+  nodes.emplace(remote_node_3, CreateNodeResources(0, 0, 0, 0, 0, 0));
+
+  raylet_scheduling_policy::SchedulingPolicy scheduling_policy(local_node, nodes);
+
+  std::map<int64_t, size_t> decisions;
+  size_t num_node_0_picks = 0;
+  size_t num_node_1_picks = 0;
+  for (int i = 0; i < 1000; i++) {
+    int64_t to_schedule = scheduling_policy.RandomPolicy(req, [](auto) { return true; });
+    ASSERT_TRUE(to_schedule >= 0);
+    ASSERT_TRUE(to_schedule <= 1);
+    if (to_schedule == 0) {
+      num_node_0_picks++;
+    } else {
+      num_node_1_picks++;
+    }
+  }
+  // It's extremely unlikely the only node 0 or node 1 is picked for 1000 runs.
+  ASSERT_TRUE(num_node_0_picks > 0);
+  ASSERT_TRUE(num_node_1_picks > 0);
+}
+
 TEST_F(SchedulingPolicyTest, FeasibleDefinitionTest) {
   StringIdMap map;
   auto task_req1 =

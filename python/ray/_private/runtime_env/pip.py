@@ -1,4 +1,3 @@
-import contextlib
 import os
 import sys
 import json
@@ -6,14 +5,16 @@ import logging
 import hashlib
 import shutil
 
-from filelock import FileLock
 from typing import Optional, List, Dict, Tuple
 
-from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
+from ray._private.async_compat import asynccontextmanager, create_task, get_running_loop
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import Protocol, parse_uri
-from ray._private.runtime_env.utils import RuntimeEnv
-from ray._private.utils import get_directory_size_bytes, try_to_create_directory
+from ray._private.runtime_env.utils import check_output_cmd
+from ray._private.utils import (
+    get_directory_size_bytes,
+    try_to_create_directory,
+)
 
 default_logger = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ class PipProcessor:
     def __init__(
         self,
         target_dir: str,
-        runtime_env: RuntimeEnv,
+        runtime_env: "RuntimeEnv",  # noqa: F821
         logger: Optional[logging.Logger] = default_logger,
     ):
         try:
@@ -86,8 +87,8 @@ class PipProcessor:
         )
 
     @staticmethod
-    @contextlib.contextmanager
-    def _check_ray(python: str, cwd: str, logger: logging.Logger):
+    @asynccontextmanager
+    async def _check_ray(python: str, cwd: str, logger: logging.Logger):
         """A context manager to check ray is not overwritten.
 
         Currently, we only check ray version and path. It works for virtualenv,
@@ -96,24 +97,22 @@ class PipProcessor:
           - ray is in virtualenv's site-packages.
         """
 
-        def _get_ray_version_and_path() -> Tuple[str, str]:
+        async def _get_ray_version_and_path() -> Tuple[str, str]:
             check_ray_cmd = [
                 python,
                 "-c",
                 "import ray; print(ray.__version__, ray.__path__[0])",
             ]
-            exit_code, output = exec_cmd_stream_to_logger(
-                check_ray_cmd, logger, cwd=cwd, env={}
+            output = await check_output_cmd(
+                check_ray_cmd, logger=logger, cwd=cwd, env={}
             )
-            if exit_code != 0:
-                raise RuntimeError("Get ray version and path failed.")
             # print after import ray may have [0m endings, so we strip them by *_
             ray_version, ray_path, *_ = [s.strip() for s in output.split()]
             return ray_version, ray_path
 
-        version, path = _get_ray_version_and_path()
+        version, path = await _get_ray_version_and_path()
         yield
-        actual_version, actual_path = _get_ray_version_and_path()
+        actual_version, actual_path = await _get_ray_version_and_path()
         if actual_version != version or actual_path != path:
             raise RuntimeError(
                 "Changing the ray version is not allowed: \n"
@@ -126,64 +125,75 @@ class PipProcessor:
             )
 
     @classmethod
-    def _create_or_get_virtualenv(cls, path: str, cwd: str, logger: logging.Logger):
+    async def _create_or_get_virtualenv(
+        cls, path: str, cwd: str, logger: logging.Logger
+    ):
         """Create or get a virtualenv from path."""
-        if cls._is_in_virtualenv():
-            # TODO(fyrestone): Handle create virtualenv from virtualenv.
-            #
-            # Currently, create a virtualenv from virtualenv will get an
-            # unexpected result. The new created virtualenv only inherits
-            # the site packages from the real Python, not current
-            # virtualenv.
-            #
-            # It's possible to copy the virtualenv to create a new
-            # virtualenv, but copying the entire Python is very slow.
-            #
-            # So, we decide to raise an exception until creating virtualenv
-            # from virtualenv is fully supported.
-            raise RuntimeError("Can't create virtualenv from virtualenv.")
+
         python = sys.executable
         virtualenv_path = os.path.join(path, "virtualenv")
         virtualenv_app_data_path = os.path.join(path, "virtualenv_app_data")
-        # virtualenv options:
-        # https://virtualenv.pypa.io/en/latest/cli_interface.html
-        #
-        # --app-data
-        # --reset-app-data
-        #   Set an empty seperated app data folder for current virtualenv.
-        #
-        # --no-periodic-update
-        #   Disable the periodic (once every 14 days) update of the embedded
-        #   wheels.
-        #
-        # --system-site-packages
-        #   Inherit site packages.
-        #
-        # --no-download
-        #   Never download the latest pip/setuptools/wheel from PyPI.
-        create_venv_cmd = [
-            python,
-            "-m",
-            "virtualenv",
-            "--app-data",
-            virtualenv_app_data_path,
-            "--reset-app-data",
-            "--no-periodic-update",
-            "--system-site-packages",
-            "--no-download",
-            virtualenv_path,
-        ]
-        logger.info("Creating virtualenv at %s", virtualenv_path)
-        exit_code, output = exec_cmd_stream_to_logger(
-            create_venv_cmd, logger, cwd=cwd, env={}
+        current_python_dir = os.path.abspath(
+            os.path.join(os.path.dirname(python), "..")
         )
-        if exit_code != 0:
-            raise RuntimeError(
-                f"Failed to create virtualenv {virtualenv_path}:\n{output}"
+
+        if cls._is_in_virtualenv():
+            # virtualenv-clone homepage:
+            # https://github.com/edwardgeorge/virtualenv-clone
+            # virtualenv-clone Usage:
+            # virtualenv-clone /path/to/existing/venv /path/to/cloned/ven
+            # or
+            # python -m clonevirtualenv /path/to/existing/venv /path/to/cloned/ven
+            clonevirtualenv = os.path.join(
+                os.path.dirname(__file__), "_clonevirtualenv.py"
             )
+            create_venv_cmd = [
+                python,
+                clonevirtualenv,
+                current_python_dir,
+                virtualenv_path,
+            ]
+            logger.info(
+                "Cloning virtualenv %s to %s", current_python_dir, virtualenv_path
+            )
+        else:
+            # virtualenv options:
+            # https://virtualenv.pypa.io/en/latest/cli_interface.html
+            #
+            # --app-data
+            # --reset-app-data
+            #   Set an empty seperated app data folder for current virtualenv.
+            #
+            # --no-periodic-update
+            #   Disable the periodic (once every 14 days) update of the embedded
+            #   wheels.
+            #
+            # --system-site-packages
+            #   Inherit site packages.
+            #
+            # --no-download
+            #   Never download the latest pip/setuptools/wheel from PyPI.
+            create_venv_cmd = [
+                python,
+                "-m",
+                "virtualenv",
+                "--app-data",
+                virtualenv_app_data_path,
+                "--reset-app-data",
+                "--no-periodic-update",
+                "--system-site-packages",
+                "--no-download",
+                virtualenv_path,
+            ]
+            logger.info(
+                "Creating virtualenv at %s, current python dir %s",
+                virtualenv_path,
+                current_python_dir,
+            )
+        await check_output_cmd(create_venv_cmd, logger=logger, cwd=cwd, env={})
 
     @classmethod
-    def _install_pip_packages(
+    async def _install_pip_packages(
         cls,
         path: str,
         pip_packages: List[str],
@@ -194,28 +204,39 @@ class PipProcessor:
         python = _PathHelper.get_virtualenv_python(path)
         # TODO(fyrestone): Support -i, --no-deps, --no-cache-dir, ...
         pip_requirements_file = _PathHelper.get_requirements_file(path)
-        with open(pip_requirements_file, "w") as file:
-            for line in pip_packages:
-                file.write(line + "\n")
+
+        def _gen_requirements_txt():
+            with open(pip_requirements_file, "w") as file:
+                for line in pip_packages:
+                    file.write(line + "\n")
+
+        # Avoid blocking the event loop.
+        loop = get_running_loop()
+        await loop.run_in_executor(None, _gen_requirements_txt)
+
+        # pip options
+        #
+        # --disable-pip-version-check
+        #   Don't periodically check PyPI to determine whether a new version
+        #   of pip is available for download.
+        #
+        # --no-cache-dir
+        #   Disable the cache, the pip runtime env is a one-time installation,
+        #   and we don't need to handle the pip cache broken.
         pip_install_cmd = [
             python,
             "-m",
             "pip",
             "install",
             "--disable-pip-version-check",
+            "--no-cache-dir",
             "-r",
             pip_requirements_file,
         ]
         logger.info("Installing python requirements to %s", virtualenv_path)
-        exit_code, output = exec_cmd_stream_to_logger(
-            pip_install_cmd, logger, cwd=cwd, env={}
-        )
-        if exit_code != 0:
-            raise RuntimeError(
-                f"Failed to install python requirements to {virtualenv_path}:\n{output}"
-            )
+        await check_output_cmd(pip_install_cmd, logger=logger, cwd=cwd, env={})
 
-    def run(self):
+    async def _run(self):
         path = self._target_dir
         logger = self._logger
         pip_packages = self._runtime_env.pip_packages()
@@ -225,10 +246,10 @@ class PipProcessor:
         exec_cwd = os.path.join(path, "exec_cwd")
         os.makedirs(exec_cwd, exist_ok=True)
         try:
-            self._create_or_get_virtualenv(path, exec_cwd, logger)
+            await self._create_or_get_virtualenv(path, exec_cwd, logger)
             python = _PathHelper.get_virtualenv_python(path)
-            with self._check_ray(python, exec_cwd, logger):
-                self._install_pip_packages(path, pip_packages, exec_cwd, logger)
+            async with self._check_ray(python, exec_cwd, logger):
+                await self._install_pip_packages(path, pip_packages, exec_cwd, logger)
             # TODO(fyrestone): pip check.
         except Exception:
             logger.info("Delete incomplete virtualenv: %s", path)
@@ -236,16 +257,15 @@ class PipProcessor:
             logger.exception("Failed to install pip packages.")
             raise
 
+    def __await__(self):
+        return self._run().__await__()
+
 
 class PipManager:
     def __init__(self, resources_dir: str):
         self._pip_resources_dir = os.path.join(resources_dir, "pip")
+        self._creating_task = {}
         try_to_create_directory(self._pip_resources_dir)
-        # Concurrent pip installs are unsafe.  This lock prevents concurrent
-        # installs (and deletions).
-        self._installs_and_deletions_file_lock = os.path.join(
-            self._pip_resources_dir, "ray-pip-installs-and-deletions.lock"
-        )
 
     def _get_path_from_hash(self, hash: str) -> str:
         """Generate a path from the hash of a pip spec.
@@ -256,7 +276,7 @@ class PipManager:
         """
         return os.path.join(self._pip_resources_dir, hash)
 
-    def get_uri(self, runtime_env: RuntimeEnv) -> Optional[str]:
+    def get_uri(self, runtime_env: "RuntimeEnv") -> Optional[str]:  # noqa: F821
         """Return the pip URI from the RuntimeEnv if it exists, else None."""
         pip_uri = runtime_env.pip_uri()
         if pip_uri != "":
@@ -275,11 +295,15 @@ class PipManager:
                 f"pip. Received protocol {protocol}, URI {uri}"
             )
 
+        # Cancel running create task.
+        task = self._creating_task.pop(hash, None)
+        if task is not None:
+            task.cancel()
+
         pip_env_path = self._get_path_from_hash(hash)
         local_dir_size = get_directory_size_bytes(pip_env_path)
         try:
-            with FileLock(self._installs_and_deletions_file_lock):
-                shutil.rmtree(pip_env_path)
+            shutil.rmtree(pip_env_path)
         except OSError as e:
             logger.warning(f"Error when deleting pip env {pip_env_path}: {str(e)}")
             return 0
@@ -289,7 +313,7 @@ class PipManager:
     async def create(
         self,
         uri: str,
-        runtime_env: RuntimeEnv,
+        runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
@@ -299,16 +323,22 @@ class PipManager:
         protocol, hash = parse_uri(uri)
         target_dir = self._get_path_from_hash(hash)
 
-        with FileLock(self._installs_and_deletions_file_lock):
-            pip_processor = PipProcessor(target_dir, runtime_env, logger)
-            pip_processor.run()
+        async def _create_for_hash():
+            await PipProcessor(target_dir, runtime_env, logger)
 
-        return get_directory_size_bytes(target_dir)
+            loop = get_running_loop()
+            return await loop.run_in_executor(
+                None, get_directory_size_bytes, target_dir
+            )
+
+        self._creating_task[hash] = task = create_task(_create_for_hash())
+        task.add_done_callback(lambda _: self._creating_task.pop(hash, None))
+        return await task
 
     def modify_context(
         self,
         uri: str,
-        runtime_env: RuntimeEnv,
+        runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ):

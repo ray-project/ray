@@ -10,7 +10,7 @@
 /src/ray/protobuf/common.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen
 /src/ray/protobuf/gcs.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen
 /src/ray/protobuf/gcs_service.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen
-/dashboard/modules/snapshot @wuisawesome @ijrsvt @joeybai @alanwguo @architkulkarni @kombuchafox
+/dashboard/modules/snapshot @wuisawesome @ijrsvt @edoakes @alanwguo @architkulkarni
 
 # Metrics
 /src/ray/stats/metric_defs.h @ericl @scv119 @rkooo567
@@ -51,8 +51,8 @@
 /python/ray/tune/ @ray-project/ray-tune
 
 # Ray data.
-/python/ray/data/ @ericl @scv119
-/doc/source/data/ @ericl @scv119
+/python/ray/data/ @ericl @scv119 @clarkzinzow @jjyao
+/doc/source/data/ @ericl @scv119 @clarkzinzow @jjyao
 
 # Ray workflows.
 /python/ray/workflow/ @ericl @iycheng

@@ -60,8 +60,8 @@ from ray.data.datasource import (
     WriteResult,
 )
 from ray.data.datasource.file_based_datasource import (
-    _wrap_s3_filesystem_workaround,
-    _unwrap_s3_filesystem_workaround,
+    _wrap_arrow_serialization_workaround,
+    _unwrap_arrow_serialization_workaround,
 )
 from ray.data.row import TableRow
 from ray.data.aggregate import AggregateFn, Sum, Max, Min, Mean, Std
@@ -72,7 +72,8 @@ from ray.data.impl.stats import DatasetStats
 from ray.data.impl.compute import cache_wrapper, CallableClass
 from ray.data.impl.output_buffer import BlockOutputBuffer
 from ray.data.impl.progress_bar import ProgressBar
-from ray.data.impl.shuffle import simple_shuffle, _shuffle_reduce
+from ray.data.impl.shuffle import simple_shuffle
+from ray.data.impl.fast_repartition import fast_repartition
 from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
@@ -123,6 +124,7 @@ class Dataset(Generic[T]):
         self._lazy = lazy
 
         if not lazy:
+            # TODO(ekl) we should clear inputs once we have full lineage recorded.
             self._plan.execute(clear_input_blocks=False)
 
     def map(
@@ -153,9 +155,9 @@ class Dataset(Generic[T]):
             ...        return self.model(batch)
 
             >>> # Apply the transform in parallel on GPUs. Since
-            >>> # compute="actors", the transform will be applied on an
-            >>> # autoscaling pool of Ray actors, each allocated 1 GPU by Ray.
-            >>> ds.map(CachedModel, compute="actors", num_gpus=1)
+            >>> # compute=ActorPoolStrategy(2, 8) the transform will be applied on an
+            >>> # autoscaling pool of 2-8 Ray actors, each allocated 1 GPU by Ray.
+            >>> ds.map(CachedModel, compute=ActorPoolStrategy(2, 8), num_gpus=1)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -163,7 +165,7 @@ class Dataset(Generic[T]):
             fn: The function to apply to each record, or a class type
                 that can be instantiated to create such a callable.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or "actors" to use an autoscaling Ray actor pool.
+                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -214,11 +216,11 @@ class Dataset(Generic[T]):
             ...        return self.model(item)
 
             >>> # Apply the transform in parallel on GPUs. Since
-            >>> # compute="actors", the transform will be applied on an
-            >>> # autoscaling pool of Ray actors, each allocated 1 GPU by Ray.
+            >>> # compute=ActorPoolStrategy(2, 8) the transform will be applied on an
+            >>> # autoscaling pool of 2-8 Ray actors, each allocated 1 GPU by Ray.
             >>> ds.map_batches(
             ...    CachedModel,
-            ...    batch_size=256, compute="actors", num_gpus=1)
+            ...    batch_size=256, compute=ActorPoolStrategy(2, 8), num_gpus=1)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -228,7 +230,7 @@ class Dataset(Generic[T]):
             batch_size: Request a specific batch size, or None to use entire
                 blocks as batches. Defaults to a system-chosen batch size.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or "actors" to use an autoscaling Ray actor pool.
+                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
             batch_format: Specify "native" to use the native block format
                 (promotes Arrow to pandas), "pandas" to select
                 ``pandas.DataFrame`` as the batch format,
@@ -329,7 +331,7 @@ class Dataset(Generic[T]):
             fn: Map function generating the column values given a batch of
                 records in pandas format.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or "actors" to use an autoscaling Ray actor pool.
+                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -366,7 +368,7 @@ class Dataset(Generic[T]):
             fn: The function to apply to each record, or a class type
                 that can be instantiated to create such a callable.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or "actors" to use an autoscaling Ray actor pool.
+                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -413,7 +415,7 @@ class Dataset(Generic[T]):
             fn: The predicate to apply to each record, or a class type
                 that can be instantiated to create such a callable.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or "actors" to use an autoscaling Ray actor pool.
+                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -462,74 +464,42 @@ class Dataset(Generic[T]):
 
         if shuffle:
 
-            def do_shuffle(blocks, clear_input_blocks: bool):
-                # TODO: implement clear_input_blocks
-                return simple_shuffle(blocks, num_blocks)
+            def do_shuffle(
+                block_list, clear_input_blocks: bool, block_udf, remote_args
+            ):
+                if clear_input_blocks:
+                    blocks = block_list.copy()
+                    block_list.clear()
+                else:
+                    blocks = block_list
+                return simple_shuffle(
+                    blocks,
+                    block_udf,
+                    num_blocks,
+                    map_ray_remote_args=remote_args,
+                    reduce_ray_remote_args=remote_args,
+                )
 
             plan = self._plan.with_stage(
-                AllToAllStage("repartition", num_blocks, do_shuffle)
-            )
-            return Dataset(plan, self._epoch, self._lazy)
-
-        def do_fast(blocks, clear_input_blocks: bool):
-            # TODO: this won't work in lazy mode since it references `self`.
-            # TODO: implement clear_input_blocks.
-            # Compute the (n-1) indices needed for an equal split of the data.
-            count = self.count()
-            indices = []
-            cur_idx = 0
-            for _ in range(num_blocks - 1):
-                cur_idx += count / num_blocks
-                indices.append(int(cur_idx))
-            assert len(indices) < num_blocks, (indices, num_blocks)
-            if indices:
-                splits = self.split_at_indices(indices)
-            else:
-                splits = [self]
-            # TODO(ekl) include stats for the split tasks. We may also want to
-            # consider combining the split and coalesce tasks as an optimization.
-
-            # Coalesce each split into a single block.
-            reduce_task = cached_remote_fn(_shuffle_reduce).options(num_returns=2)
-            reduce_bar = ProgressBar("Repartition", position=0, total=len(splits))
-            reduce_out = [
-                reduce_task.remote(*s.get_internal_block_refs())
-                for s in splits
-                if s.num_blocks() > 0
-            ]
-            del splits  # Early-release memory.
-            new_blocks, new_metadata = zip(*reduce_out)
-            new_blocks, new_metadata = list(new_blocks), list(new_metadata)
-            new_metadata = reduce_bar.fetch_until_complete(new_metadata)
-            reduce_bar.close()
-
-            # Handle empty blocks.
-            if len(new_blocks) < num_blocks:
-                from ray.data.impl.arrow_block import ArrowBlockBuilder
-                from ray.data.impl.pandas_block import PandasBlockBuilder
-                from ray.data.impl.simple_block import SimpleBlockBuilder
-
-                num_empties = num_blocks - len(new_blocks)
-                dataset_format = self._dataset_format()
-                if dataset_format == "arrow":
-                    builder = ArrowBlockBuilder()
-                elif dataset_format == "pandas":
-                    builder = PandasBlockBuilder()
-                else:
-                    builder = SimpleBlockBuilder()
-                empty_block = builder.build()
-                empty_meta = BlockAccessor.for_block(empty_block).get_metadata(
-                    input_files=None, exec_stats=None
-                )  # No stats for empty block.
-                empty_blocks, empty_metadata = zip(
-                    *[(ray.put(empty_block), empty_meta) for _ in range(num_empties)]
+                AllToAllStage(
+                    "repartition", num_blocks, do_shuffle, supports_block_udf=True
                 )
-                new_blocks += empty_blocks
-                new_metadata += empty_metadata
+            )
 
-            return BlockList(new_blocks, new_metadata), {}
+        else:
 
-        plan = self._plan.with_stage(AllToAllStage("repartition", num_blocks, do_fast))
+            def do_fast_repartition(block_list, clear_input_blocks: bool, *_):
+                if clear_input_blocks:
+                    blocks = block_list.copy()
+                    block_list.clear()
+                else:
+                    blocks = block_list
+                return fast_repartition(blocks, num_blocks)
+
+            plan = self._plan.with_stage(
+                AllToAllStage("repartition", num_blocks, do_fast_repartition)
+            )
+
         return Dataset(plan, self._epoch, self._lazy)
 
     def random_shuffle(
@@ -538,7 +508,7 @@ class Dataset(Generic[T]):
         seed: Optional[int] = None,
         num_blocks: Optional[int] = None,
         _spread_resource_prefix: Optional[str] = None,
-        _move: bool = False,
+        _move: bool = False,  # TODO: deprecate.
     ) -> "Dataset[T]":
         """Randomly shuffle the elements of this dataset.
 
@@ -563,27 +533,31 @@ class Dataset(Generic[T]):
             The shuffled dataset.
         """
 
-        def do_shuffle(block_list, clear_input_blocks: bool):
+        def do_shuffle(block_list, clear_input_blocks: bool, block_udf, remote_args):
             num_blocks = block_list.executed_num_blocks()  # Blocking.
             if num_blocks == 0:
                 return block_list, {}
-            # TODO: implement clear_input_blocks instead.
-            if _move:
+            if _move or clear_input_blocks:
                 blocks = block_list.copy()
                 block_list.clear()
             else:
                 blocks = block_list
             new_blocks, stage_info = simple_shuffle(
                 blocks,
+                block_udf,
                 num_blocks,
                 random_shuffle=True,
                 random_seed=seed,
                 _spread_resource_prefix=_spread_resource_prefix,
+                map_ray_remote_args=remote_args,
+                reduce_ray_remote_args=remote_args,
             )
             return new_blocks, stage_info
 
         plan = self._plan.with_stage(
-            AllToAllStage("random_shuffle", num_blocks, do_shuffle)
+            AllToAllStage(
+                "random_shuffle", num_blocks, do_shuffle, supports_block_udf=True
+            )
         )
         return Dataset(plan, self._epoch, self._lazy)
 
@@ -625,6 +599,10 @@ class Dataset(Generic[T]):
                 f"The length of locality_hints {len(locality_hints)} "
                 "doesn't equal the number of splits {n}."
             )
+            if len(set(locality_hints)) != len(locality_hints):
+                raise ValueError(
+                    "locality_hints must not contain duplicate actor handles"
+                )
 
         blocks = self._plan.execute()
         stats = self._plan.stats()
@@ -655,6 +633,8 @@ class Dataset(Generic[T]):
 
             This assume that the given splits are sorted in ascending order.
             """
+            if target_size == 0:
+                return splits
             new_splits = []
             leftovers = []
             for split in splits:
@@ -783,7 +763,7 @@ class Dataset(Generic[T]):
         metadata_mapping = {b: m for b, m in zip(block_refs, metadata)}
 
         if locality_hints is None:
-            return equalize(
+            ds = equalize(
                 [
                     Dataset(
                         ExecutionPlan(
@@ -796,10 +776,11 @@ class Dataset(Generic[T]):
                         self._lazy,
                     )
                     for blocks in np.array_split(block_refs, n)
-                    if not equal or len(blocks) > 0
                 ],
                 n,
             )
+            assert len(ds) == n, (ds, n)
+            return ds
 
         # If the locality_hints is set, we use a two-round greedy algorithm
         # to co-locate the blocks with the actors based on block
@@ -1005,7 +986,8 @@ class Dataset(Generic[T]):
                 )
                 _epoch_warned = True
         dataset_stats = DatasetStats(
-            stages={"union": []}, parent=[d._plan.stats() for d in datasets]
+            stages={"union": []},
+            parent=[d._plan.stats() for d in datasets],
         )
         dataset_stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
@@ -1409,11 +1391,15 @@ class Dataset(Generic[T]):
             A new, sorted dataset.
         """
 
-        def do_sort(blocks, keep_input_blocks: bool):
-            # TODO: implement clear_input_blocks
+        def do_sort(block_list, clear_input_blocks: bool, *_):
             # Handle empty dataset.
-            if blocks.initial_num_blocks() == 0:
-                return blocks, {}
+            if block_list.initial_num_blocks() == 0:
+                return block_list, {}
+            if clear_input_blocks:
+                blocks = block_list.copy()
+                block_list.clear()
+            else:
+                blocks = block_list
             if isinstance(key, list):
                 if not key:
                     raise ValueError("`key` must be a list of non-zero length")
@@ -1449,10 +1435,12 @@ class Dataset(Generic[T]):
             comes from the first dataset and v comes from the second.
         """
 
-        def do_zip_all(blocks, keep_input_blocks: bool):
-            # TODO: implement clear_input_blocks
-            blocks1 = blocks.get_blocks()
+        def do_zip_all(block_list, clear_input_blocks: bool, *_):
+            blocks1 = block_list.get_blocks()
             blocks2 = other.get_internal_block_refs()
+
+            if clear_input_blocks:
+                block_list.clear()
 
             if len(blocks1) != len(blocks2):
                 # TODO(ekl) consider supporting if num_rows are equal.
@@ -1477,6 +1465,9 @@ class Dataset(Generic[T]):
                 res, meta = do_zip_fn.remote(b1, b2)
                 blocks.append(res)
                 metadata.append(meta)
+
+            # Early release memory.
+            del blocks1, blocks2
 
             # TODO(ekl) it might be nice to have a progress bar here.
             metadata = ray.get(metadata)
@@ -1895,7 +1886,7 @@ class Dataset(Generic[T]):
                     ctx,
                     blocks,
                     metadata,
-                    _wrap_s3_filesystem_workaround(write_args),
+                    _wrap_arrow_serialization_workaround(write_args),
                 )
             )
 
@@ -2525,29 +2516,59 @@ Dict[str, List[str]]]): The names of the columns
         """
         from ray.data.dataset_pipeline import DatasetPipeline
 
+        # If optimizations are enabled, rewrite the read stage into a OneToOneStage
+        # to enable fusion with downstream map stages.
+        ctx = DatasetContext.get_current()
+        if self._plan._is_read_stage() and ctx.optimize_fuse_read_stages:
+            blocks, read_stage = self._plan._rewrite_read_stage()
+            outer_stats = DatasetStats(stages={}, parent=None)
+        else:
+            blocks = self._plan.execute()
+            read_stage = None
+            outer_stats = self._plan.stats()
+
         if times is not None and times < 1:
             raise ValueError("`times` must be >= 1, got {}".format(times))
+        uuid = self._get_uuid()
 
         class Iterator:
-            def __init__(self, ds: "Dataset[T]"):
-                self._ds = ds
+            def __init__(self, blocks):
+                self._blocks = blocks
                 self._i = 0
 
             def __next__(self) -> "Dataset[T]":
                 if times and self._i >= times:
                     raise StopIteration
-                self._ds._set_epoch(self._i)
+                epoch = self._i
+                blocks = self._blocks
                 self._i += 1
-                return lambda: self._ds.fully_executed()
+
+                def gen():
+                    ds = Dataset(
+                        ExecutionPlan(blocks, outer_stats, dataset_uuid=uuid),
+                        epoch,
+                        lazy=False,
+                    )
+                    ds._set_uuid(uuid)
+                    return ds
+
+                return gen
 
         class Iterable:
-            def __init__(self, ds: "Dataset[T]"):
-                self._ds = ds
+            def __init__(self, blocks):
+                self._blocks = blocks
 
             def __iter__(self):
-                return Iterator(self._ds)
+                return Iterator(self._blocks)
 
-        return DatasetPipeline(Iterable(self), length=times or float("inf"))
+        pipe = DatasetPipeline(Iterable(blocks), length=times or float("inf"))
+        if read_stage:
+            pipe = pipe.foreach_window(
+                lambda ds, read_stage=read_stage: Dataset(
+                    ds._plan.with_stage(read_stage), ds._epoch, True
+                )
+            )
+        return pipe
 
     def pipeline(self, *, parallelism: int = 10) -> "DatasetPipeline[T]":
         raise DeprecationWarning(
@@ -2603,8 +2624,16 @@ Dict[str, List[str]]]): The names of the columns
         """
         from ray.data.dataset_pipeline import DatasetPipeline
 
-        blocks = self._plan.execute()
-        outer_stats = self._plan.stats()
+        # If optimizations are enabled, rewrite the read stage into a OneToOneStage
+        # to enable fusion with downstream map stages.
+        ctx = DatasetContext.get_current()
+        if self._plan._is_read_stage() and ctx.optimize_fuse_read_stages:
+            blocks, read_stage = self._plan._rewrite_read_stage()
+            outer_stats = DatasetStats(stages={}, parent=None)
+        else:
+            blocks = self._plan.execute()
+            read_stage = None
+            outer_stats = self._plan.stats()
 
         class Iterator:
             def __init__(self, splits, epoch):
@@ -2634,7 +2663,14 @@ Dict[str, List[str]]]): The names of the columns
                 return Iterator(self._splits, self._epoch)
 
         it = Iterable(blocks, self._epoch)
-        return DatasetPipeline(it, length=len(it._splits))
+        pipe = DatasetPipeline(it, length=len(it._splits))
+        if read_stage:
+            pipe = pipe.foreach_window(
+                lambda ds, read_stage=read_stage: Dataset(
+                    ds._plan.with_stage(read_stage), ds._epoch, True
+                )
+            )
+        return pipe
 
     @DeveloperAPI
     def get_internal_block_refs(self) -> List[ObjectRef[Block]]:
@@ -2656,11 +2692,24 @@ Dict[str, List[str]]]): The names of the columns
 
         This can be used to read all blocks into memory. By default, Datasets
         doesn't read blocks from the datasource until the first transform.
+
+        Returns:
+            A Dataset with all blocks fully materialized in memory.
         """
         blocks = self.get_internal_block_refs()
         bar = ProgressBar("Force reads", len(blocks))
         bar.block_until_complete(blocks)
-        return self
+        ds = Dataset(
+            ExecutionPlan(
+                BlockList(blocks, self._plan.execute().get_metadata()),
+                self._plan.stats(),
+                dataset_uuid=self._get_uuid(),
+            ),
+            self._epoch,
+            lazy=False,
+        )
+        ds._set_uuid(self._get_uuid())
+        return ds
 
     @DeveloperAPI
     def stats(self) -> str:
@@ -2964,6 +3013,6 @@ def _do_write(
     meta: List[BlockMetadata],
     write_args: dict,
 ) -> List[ObjectRef[WriteResult]]:
-    write_args = _unwrap_s3_filesystem_workaround(write_args)
+    write_args = _unwrap_arrow_serialization_workaround(write_args)
     DatasetContext._set_current(ctx)
     return ds.do_write(blocks, meta, **write_args)
