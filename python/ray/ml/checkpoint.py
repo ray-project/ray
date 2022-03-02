@@ -103,8 +103,6 @@ class Checkpoint:
                 load_path = self.to_directory()
                 cleanup = True
 
-            metadata = _load_metadata(load_path)
-
             checkpoint_data_path = os.path.join(load_path, DICT_CHECKPOINT_FILE_NAME)
             if os.path.exists(checkpoint_data_path):
                 # If we are restoring a dict checkpoint, load the dict
@@ -114,6 +112,8 @@ class Checkpoint:
             else:
                 # Else, we have a true FS checkpoint.
                 # Serialize directory into data blob.
+                metadata = _load_metadata(load_path)
+
                 data = _pack(load_path)
 
                 checkpoint_data = {
@@ -141,6 +141,7 @@ class Checkpoint:
         Returns:
             Checkpoint: checkpoint object.
         """
+        # Metadata will be loaded in `to_directory()` or `to_dict()` calls.
         return Checkpoint(data=obj_ref, metadata=None)
 
     def to_object_ref(self) -> ray.ObjectRef:
@@ -194,16 +195,19 @@ class Checkpoint:
             # This is a object ref or dict
             data_dict = self.to_dict()
 
+            # If the object metadata has been changed, it takes precedence
+            metadata = self.metadata or data_dict.get("metadata", {})
+
             if "fs_checkpoint" in data_dict:
                 # This used to be a true fs checkpoint, so restore
                 _unpack(data_dict["fs_checkpoint"], path)
-                _write_metadata(path, self.metadata)
+                _write_metadata(path, metadata)
             else:
                 # This is a dict checkpoint. Dump data into checkpoint.pkl
                 checkpoint_data_path = os.path.join(path, DICT_CHECKPOINT_FILE_NAME)
                 with open(checkpoint_data_path, "wb") as f:
                     pickle.dump(data_dict, f)
-                _write_metadata(path, self.metadata)
+                _write_metadata(path, metadata)
         else:
             # This is either a local fs, remote node fs, or external fs
             local_path = _get_local_path(self.data)
@@ -218,7 +222,7 @@ class Checkpoint:
                 download_from_bucket(bucket=external_path, local_path=path)
             else:
                 raise RuntimeError(
-                    f"No valid location found for checkpoint {self}: " f"{self.data}"
+                    f"No valid location found for checkpoint {self}: {self.data}"
                 )
 
         return path
@@ -236,6 +240,7 @@ class Checkpoint:
         local_path = _get_local_path(location)
         if local_path:
             return Checkpoint.from_directory(local_path)
+        # Metadata will be loaded in `to_directory()` or `to_dict()` calls.
         return Checkpoint(data=location, metadata=None)
 
     def to_uri(self, location: str) -> str:
