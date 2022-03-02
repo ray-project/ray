@@ -6,6 +6,7 @@ from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
 from ray.experimental.dag.format_utils import get_dag_node_str
 from ray.serve.api import Deployment, DeploymentConfig
+from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 
 
 class DeploymentNode(DAGNode):
@@ -152,3 +153,30 @@ class DeploymentNode(DAGNode):
 
     def __str__(self) -> str:
         return get_dag_node_str(self, str(self._deployment))
+
+    def to_json(self, encoder_cls) -> Dict[str, Any]:
+        json_dict = super().to_json_base(encoder_cls)
+        json_dict[DAGNODE_TYPE_KEY] = DeploymentNode.__name__
+        json_dict["deployment_name"] = self._deployment.name
+
+        if isinstance(self._deployment._func_or_class, str):
+            # We're processing a deserilized JSON node where import_path
+            # is dag_node body.
+            json_dict["import_path"] = self._deployment._func_or_class
+        else:
+            body = self._deployment._func_or_class.__ray_actor_class__
+            json_dict["import_path"] = f"{body.__module__}.{body.__qualname__}"
+
+        return json_dict
+
+    @classmethod
+    def from_json(cls, input_json, object_hook=None):
+        args_dict = super().from_json_base(input_json, object_hook=object_hook)
+        return cls(
+            input_json["import_path"],
+            input_json["deployment_name"],
+            args_dict["args"],
+            args_dict["kwargs"],
+            args_dict["options"],
+            other_args_to_resolve=args_dict["other_args_to_resolve"],
+        )

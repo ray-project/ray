@@ -2,9 +2,10 @@ from typing import Any, Dict, Optional, Tuple, List, Union
 
 from ray.experimental.dag import DAGNode
 from ray.experimental.dag.format_utils import get_dag_node_str
-from ray.serve.api import Deployment
 from ray.serve.handle import RayServeSyncHandle, RayServeHandle
 from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
+from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
+from ray.serve.api import Deployment, DeploymentConfig
 
 
 class DeploymentMethodNode(DAGNode):
@@ -93,4 +94,41 @@ class DeploymentMethodNode(DAGNode):
     def __str__(self) -> str:
         return get_dag_node_str(
             self, str(self._method_name) + "() @ " + str(self._deployment)
+        )
+
+    def to_json(self, encoder_cls) -> Dict[str, Any]:
+        json_dict = super().to_json_base(encoder_cls)
+        json_dict[DAGNODE_TYPE_KEY] = DeploymentMethodNode.__name__
+        json_dict["deployment_name"] = self._deployment.name
+        json_dict["method_name"] = self._method_name
+
+        if isinstance(self._deployment._func_or_class, str):
+            # We're processing a deserilized JSON node where import_path
+            # is dag_node body.
+            json_dict["import_path"] = self._deployment._func_or_class
+        else:
+            body = self._deployment._func_or_class.__ray_actor_class__
+            json_dict["import_path"] = f"{body.__module__}.{body.__qualname__}"
+
+        return json_dict
+
+    @classmethod
+    def from_json(cls, input_json, object_hook=None):
+        args_dict = super().from_json_base(input_json, object_hook=object_hook)
+        return cls(
+            Deployment(
+                input_json["import_path"],
+                input_json["deployment_name"],
+                # TODO: (jiaodong) Support deployment config from user input
+                DeploymentConfig(),
+                init_args=args_dict["args"],
+                init_kwargs=args_dict["kwargs"],
+                ray_actor_options=args_dict["options"],
+                _internal=True,
+            ),
+            input_json["method_name"],
+            args_dict["args"],
+            args_dict["kwargs"],
+            args_dict["options"],
+            other_args_to_resolve=args_dict["other_args_to_resolve"],
         )

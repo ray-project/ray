@@ -5,6 +5,7 @@ from ray.experimental.dag.format_utils import get_dag_node_str
 from ray.experimental.dag.constants import (
     PARENT_CLASS_NODE_KEY,
     PREV_CLASS_METHOD_CALL_KEY,
+    DAGNODE_TYPE_KEY,
 )
 
 from typing import Any, Dict, List, Optional, Tuple
@@ -79,6 +80,24 @@ class ClassNode(DAGNode):
 
     def __str__(self) -> str:
         return get_dag_node_str(self, str(self._body))
+
+    def to_json(self, encoder_cls) -> Dict[str, Any]:
+        json_dict = super().to_json_base(encoder_cls)
+        json_dict[DAGNODE_TYPE_KEY] = ClassNode.__name__
+        body = self._body.__ray_actor_class__
+        json_dict["import_path"] = f"{body.__module__}.{body.__qualname__}"
+        return json_dict
+
+    @classmethod
+    def from_json(cls, input_json, module, object_hook=None):
+        args_dict = super().from_json_base(input_json, object_hook=object_hook)
+        return cls(
+            module.__ray_metadata__.modified_class,
+            args_dict["args"],
+            args_dict["kwargs"],
+            args_dict["options"],
+            other_args_to_resolve=args_dict["other_args_to_resolve"],
+        )
 
 
 class _UnboundClassMethodNode(object):
@@ -169,3 +188,35 @@ class ClassMethodNode(DAGNode):
 
     def __str__(self) -> str:
         return get_dag_node_str(self, f"{self._method_name}()")
+
+    def to_json(self, encoder_cls) -> Dict[str, Any]:
+        json_dict = super().to_json_base(encoder_cls)
+        json_dict[DAGNODE_TYPE_KEY] = ClassMethodNode.__name__
+        body = self._parent_class_node._body.__ray_actor_class__
+        json_dict["import_path"] = f"{body.__module__}.{body.__qualname__}"
+        json_dict.update(
+            {
+                "method_name": self._method_name,
+                "parent_class_node_stable_uuid": self._parent_class_node._stable_uuid,
+            }
+        )
+        return json_dict
+
+    @classmethod
+    def from_json(cls, input_json, object_hook=None):
+        args_dict = super().from_json_base(input_json, object_hook=object_hook)
+        node = cls(
+            input_json["method_name"],
+            args_dict["args"],
+            args_dict["kwargs"],
+            args_dict["options"],
+            other_args_to_resolve=args_dict["other_args_to_resolve"],
+        )
+        # For ClassNode types in Ray DAG we need to ensure all executions
+        # re-uses the same ClassNode instance across all ClassMethodNode
+        # calls, thus stable_uuid needs to be preserved to match ray DAG's
+        # _copy implementation.
+        node._parent_class_node._stable_uuid = input_json[
+            "parent_class_node_stable_uuid"
+        ]
+        return node
