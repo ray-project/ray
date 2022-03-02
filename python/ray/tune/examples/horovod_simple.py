@@ -86,13 +86,12 @@ def train(config):
 
 
 def tune_horovod(
-    hosts_per_trial, workers_per_host, num_samples, use_gpu, mode="square", x_max=1.0
+    num_workers, num_samples, use_gpu, mode="square", x_max=1.0
 ):
     horovod_trainable = DistributedTrainableCreator(
         train,
         use_gpu=use_gpu,
-        num_hosts=hosts_per_trial,
-        num_workers=workers_per_host,
+        num_workers=num_workers,
         replicate_pem=False,
     )
     analysis = tune.run(
@@ -121,8 +120,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help=("Finish quickly for testing.")
     )
-    parser.add_argument("--hosts-per-trial", type=int, default=1)
-    parser.add_argument("--workers-per-host", type=int, default=2)
+    parser.add_argument("--num-workers", type=int, default=2)
     parser.add_argument(
         "--server-address",
         type=str,
@@ -141,8 +139,7 @@ if __name__ == "__main__":
     # ray.init(address="auto")  # assumes ray is started with ray up
 
     tune_horovod(
-        hosts_per_trial=args.hosts_per_trial,
-        workers_per_host=args.workers_per_host,
+        num_workers=args.num_workers,
         num_samples=2 if args.smoke_test else 10,
         use_gpu=args.gpu,
         mode=args.mode,

@@ -44,7 +44,7 @@ def ray_connect_cluster():
 
 def test_single_step(ray_start_2_cpus):
     trainable_cls = DistributedTrainableCreator(
-        _train_simple, num_hosts=1, num_workers=2
+        _train_simple, num_workers=2
     )
     trainer = trainable_cls()
     trainer.train()
@@ -53,7 +53,7 @@ def test_single_step(ray_start_2_cpus):
 
 def test_step_after_completion(ray_start_2_cpus):
     trainable_cls = DistributedTrainableCreator(
-        _train_simple, num_hosts=1, num_workers=2
+        _train_simple, num_workers=2
     )
     trainer = trainable_cls(config={"epochs": 1})
     with pytest.raises(RuntimeError):

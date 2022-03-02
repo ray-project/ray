@@ -163,8 +163,8 @@ class _HorovodTrainable(DistributedTrainable):
 def DistributedTrainableCreator(
     func: Callable,
     use_gpu: bool = False,
-    num_hosts: int = 1,
-    num_workers: int = 1,
+    num_hosts: Optional[int] = None,
+    num_workers: Optional[int] = None,
     num_cpus_per_worker: int = 1,
     timeout_s: int = 30,
     replicate_pem: bool = False,
