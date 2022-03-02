@@ -164,7 +164,7 @@ def test_deploy(ray_start_stop):
                 requests.get(f"{request_url}{name}").text
                 == deployment_config["response"]
             )
-    
+
     ray.shutdown()
 
 
