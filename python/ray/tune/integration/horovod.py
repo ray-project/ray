@@ -1,4 +1,4 @@
-from typing import Callable, Dict, Type
+from typing import Callable, Dict, Type, Optional
 
 from contextlib import contextmanager
 import os
