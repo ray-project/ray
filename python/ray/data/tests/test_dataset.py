@@ -18,6 +18,7 @@ from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
 from ray.data.row import TableRow
 from ray.data.impl.arrow_block import ArrowRow
+from ray.data.impl.block_builder import BlockBuilder
 from ray.data.impl.pandas_block import PandasRow
 from ray.data.aggregate import AggregateFn, Count, Sum, Min, Max, Mean, Std
 from ray.data.extensions.tensor_extension import (
@@ -81,6 +82,16 @@ def test_basic_actors(shutdown_only, pipelined):
         range(1, n + 1)
     )
 
+    # Should still work even if num actors > num cpus.
+    ds = ray.data.range(n)
+    ds = maybe_pipeline(ds, pipelined)
+    assert sorted(
+        ds.map(lambda x: x + 1, compute=ray.data.ActorPoolStrategy(4, 4)).take()
+    ) == list(range(1, n + 1))
+
+    with pytest.raises(ValueError):
+        ray.data.range(10).map(lambda x: x, compute=ray.data.ActorPoolStrategy(8, 4))
+
 
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_avoid_placement_group_capture(shutdown_only, pipelined):
@@ -121,7 +132,7 @@ def test_callable_classes(shutdown_only):
     task_reuse = ds.map(StatefulFn, compute="tasks").take()
     assert sorted(task_reuse) == list(range(10)), task_reuse
     actor_reuse = ds.map(StatefulFn, compute="actors").take()
-    assert sorted(actor_reuse) == list(range(10, 20)), actor_reuse
+    assert sorted(actor_reuse) == list(range(10)), actor_reuse
 
     class StatefulFn:
         def __init__(self):
@@ -136,13 +147,13 @@ def test_callable_classes(shutdown_only):
     task_reuse = ds.flat_map(StatefulFn, compute="tasks").take()
     assert sorted(task_reuse) == list(range(10)), task_reuse
     actor_reuse = ds.flat_map(StatefulFn, compute="actors").take()
-    assert sorted(actor_reuse) == list(range(10, 20)), actor_reuse
+    assert sorted(actor_reuse) == list(range(10)), actor_reuse
 
     # map batches
     task_reuse = ds.map_batches(StatefulFn, compute="tasks").take()
     assert sorted(task_reuse) == list(range(10)), task_reuse
     actor_reuse = ds.map_batches(StatefulFn, compute="actors").take()
-    assert sorted(actor_reuse) == list(range(10, 20)), actor_reuse
+    assert sorted(actor_reuse) == list(range(10)), actor_reuse
 
     class StatefulFn:
         def __init__(self):
@@ -157,7 +168,7 @@ def test_callable_classes(shutdown_only):
     task_reuse = ds.filter(StatefulFn, compute="tasks").take()
     assert len(task_reuse) == 9, task_reuse
     actor_reuse = ds.filter(StatefulFn, compute="actors").take()
-    assert len(actor_reuse) == 10, actor_reuse
+    assert len(actor_reuse) == 9, actor_reuse
 
 
 def test_transform_failure(shutdown_only):
@@ -1701,6 +1712,39 @@ def test_to_torch_feature_columns(
     if not label_type:
         df.drop("label", axis=1, inplace=True)
     assert np.array_equal(df.values, combined_iterations)
+
+
+def test_block_builder_for_block(ray_start_regular_shared):
+    # list
+    builder = BlockBuilder.for_block(list())
+    builder.add_block([1, 2])
+    assert builder.build() == [1, 2]
+    builder.add_block([3, 4])
+    assert builder.build() == [1, 2, 3, 4]
+
+    # pandas dataframe
+    builder = BlockBuilder.for_block(pd.DataFrame())
+    b1 = pd.DataFrame({"A": [1], "B": ["a"]})
+    builder.add_block(b1)
+    assert builder.build().equals(b1)
+    b2 = pd.DataFrame({"A": [2, 3], "B": ["c", "d"]})
+    builder.add_block(b2)
+    expected = pd.DataFrame({"A": [1, 2, 3], "B": ["a", "c", "d"]})
+    assert builder.build().equals(expected)
+
+    # pyarrow table
+    builder = BlockBuilder.for_block(pa.Table.from_arrays(list()))
+    b1 = pa.Table.from_pydict({"A": [1], "B": ["a"]})
+    builder.add_block(b1)
+    builder.build().equals(b1)
+    b2 = pa.Table.from_pydict({"A": [2, 3], "B": ["c", "d"]})
+    builder.add_block(b2)
+    expected = pa.Table.from_pydict({"A": [1, 2, 3], "B": ["a", "c", "d"]})
+    builder.build().equals(expected)
+
+    # wrong type
+    with pytest.raises(TypeError):
+        BlockBuilder.for_block(str())
 
 
 def test_groupby_arrow(ray_start_regular_shared):

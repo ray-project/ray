@@ -40,30 +40,29 @@ namespace ray {
 class LocalResourceManager {
  public:
   LocalResourceManager(
-      int64_t local_node_id, StringIdMap &resource_name_to_id,
-      const NodeResources &node_resources,
+      scheduling::NodeID local_node_id, const NodeResources &node_resources,
       std::function<int64_t(void)> get_used_object_store_memory,
       std::function<bool(void)> get_pull_manager_at_capacity,
       std::function<void(const NodeResources &)> resource_change_subscriber);
 
-  int64_t GetNodeId() const { return local_node_id_; }
+  scheduling::NodeID GetNodeId() const { return local_node_id_; }
 
   /// Add a local resource that is available.
   ///
   /// \param resource_name: Resource which we want to update.
   /// \param resource_total: New capacity of the resource.
-  void AddLocalResourceInstances(const std::string &resource_name,
+  void AddLocalResourceInstances(scheduling::ResourceID resource_id,
                                  const std::vector<FixedPoint> &instances);
 
   /// Delete a given resource from the local node.
   ///
   /// \param resource_name: Resource we want to delete
-  void DeleteLocalResource(const std::string &resource_name);
+  void DeleteLocalResource(scheduling::ResourceID resource_id);
 
   /// Check whether the available resources are empty.
   ///
   /// \param resource_name: Resource which we want to check.
-  bool IsAvailableResourceEmpty(const std::string &resource_name);
+  bool IsAvailableResourceEmpty(scheduling::ResourceID resource_id);
 
   /// Return local resources.
   NodeResourceInstances GetLocalResources() const { return local_resources_; }
@@ -164,7 +163,7 @@ class LocalResourceManager {
   /// \param resource_name: the specific resource name.
   ///
   /// \return true, if exist. otherwise, false.
-  bool ResourcesExist(const std::string &resource_name);
+  bool ResourcesExist(scheduling::ResourceID resource_id);
 
  private:
   /// Create instances for each resource associated with the local node, given
@@ -270,10 +269,7 @@ class LocalResourceManager {
   void UpdateAvailableObjectStoreMemResource();
 
   /// Identifier of local node.
-  int64_t local_node_id_;
-  /// Keep the mapping between node and resource IDs in string representation
-  /// to integer representation. Used for improving map performance.
-  StringIdMap &resource_name_to_id_;
+  scheduling::NodeID local_node_id_;
   /// Resources of local node.
   NodeResourceInstances local_resources_;
   /// Cached resources, used to compare with newest one in light heartbeat mode.
@@ -301,6 +297,6 @@ class LocalResourceManager {
   FRIEND_TEST(ClusterResourceSchedulerTest, CustomResourceInstanceTest);
 };
 
-int GetPredefinedResourceIndex(const std::string &resource_name);
+int GetPredefinedResourceIndex(scheduling::ResourceID resource_id);
 
 }  // end namespace ray

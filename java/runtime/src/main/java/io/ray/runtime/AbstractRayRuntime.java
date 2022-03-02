@@ -21,6 +21,7 @@ import io.ray.api.options.CallOptions;
 import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.runtimecontext.RuntimeContext;
+import io.ray.api.runtimeenv.RuntimeEnv;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.config.RunMode;
 import io.ray.runtime.context.RuntimeContextImpl;
@@ -33,6 +34,7 @@ import io.ray.runtime.generated.Common;
 import io.ray.runtime.generated.Common.Language;
 import io.ray.runtime.object.ObjectRefImpl;
 import io.ray.runtime.object.ObjectStore;
+import io.ray.runtime.runtimeenv.RuntimeEnvImpl;
 import io.ray.runtime.task.ArgumentsBuilder;
 import io.ray.runtime.task.FunctionArg;
 import io.ray.runtime.task.TaskExecutor;
@@ -40,6 +42,7 @@ import io.ray.runtime.task.TaskSubmitter;
 import io.ray.runtime.util.ConcurrencyGroupUtils;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
@@ -283,6 +286,11 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   @Override
   public List<ConcurrencyGroup> extractConcurrencyGroups(RayFuncR<?> actorConstructorLambda) {
     return ConcurrencyGroupUtils.extractConcurrencyGroupsByAnnotations(actorConstructorLambda);
+  }
+
+  @Override
+  public RuntimeEnv createRuntimeEnv(Map<String, String> envVars) {
+    return new RuntimeEnvImpl(envVars);
   }
 
   private ObjectRef callNormalFunction(

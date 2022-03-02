@@ -131,18 +131,10 @@ spec:
               cpu: 250m
               memory: 512Mi
           volumeMounts:
-            - mountPath: /autoscaler/
-              name: autoscaler-config
             - mountPath: /tmp/ray
               name: ray-logs
         volumes:
         # You set volumes at the Pod level, then mount them into containers inside that Pod
-        - name: autoscaler-config
-          configMap:
-            name: autoscaler-config
-            items:
-            - key: ray_bootstrap_config.yaml
-              path: ray_bootstrap_config.yaml
         - name: ray-logs
           emptyDir: {}
   workerGroupSpecs:
