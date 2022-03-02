@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/raylet/scheduling/scheduler_resource_reporter.h"
+
 #include <google/protobuf/util/json_util.h>
 
 #include <boost/range/join.hpp>
@@ -171,7 +172,7 @@ void SchedulerResourceReporter::FillResourceUsage(
 
   for (const auto &pair : backlog_tracker_) {
     const auto &scheduling_class = pair.first;
-    if(visited.count(scheduling_class)) {
+    if (visited.count(scheduling_class)) {
       continue;
     }
     if (num_reported++ >= max_resource_shapes_per_load_report_ &&
@@ -230,13 +231,8 @@ void SchedulerResourceReporter::FillResourceUsage(
   std::string output;
   google::protobuf::util::MessageToJsonString(data, &output);
   RAY_LOG(ERROR) << "SchedulerResourceReporter::FillResourceUsage: " << output;
-  RAY_LOG(ERROR) << tasks_to_schedule_.size()
-                 << "\t"
-                 << tasks_to_dispatch_.size()
-                 << "\t"
-                 << infeasible_tasks_.size()
-                 << "\t"
-                 << backlog_tracker_.size();
+  RAY_LOG(ERROR) << tasks_to_schedule_.size() << "\t" << tasks_to_dispatch_.size() << "\t"
+                 << infeasible_tasks_.size() << "\t" << backlog_tracker_.size();
 }
 
 void SchedulerResourceReporter::FillPendingActorInfo(
