@@ -129,7 +129,7 @@ def placement_groups(ctx):
     r.raise_for_status()
     pgs = r.json()["data"]["pgs"]
     if len(pgs) == 0:
-        print("No actors in the cluster.")
+        print("No pgs in the cluster.")
         return
 
     keys = ["placementGroupId", "state", "bundles"]
@@ -142,6 +142,35 @@ def placement_groups(ctx):
                 values[k].append([p["unitResources"] for p in pg[k]])
             else:
                 values[k].append(pg[k])
+    from tabulate import tabulate
+
+    print(tabulate(values, headers="keys", tablefmt="github"))
+
+
+@get_state_cli_group.command()
+@click.pass_context
+def nodes(ctx):
+    url = ctx.obj["api_server_url"]
+    r = requests.request(
+        "GET",
+        f"{url}/nodes/get",
+        headers={"Content-Type": "application/json"},
+        json=None,
+        timeout=10,
+    )
+    r.raise_for_status()
+    nodes = r.json()["data"]["nodes"]
+    if len(nodes) == 0:
+        print("No nodes in the cluster.")
+        return
+
+    keys = ["nodeId", "nodeManagerAddress", "state"]
+    from collections import defaultdict
+
+    values = defaultdict(list)
+    for node in nodes.values():
+        for k in keys:
+            values[k].append(node[k])
     from tabulate import tabulate
 
     print(tabulate(values, headers="keys", tablefmt="github"))

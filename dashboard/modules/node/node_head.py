@@ -187,6 +187,14 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             success=True, message="Node details fetched.", detail=node_info
         )
 
+    @routes.get("/nodes/get")
+    @dashboard_optional_utils.aiohttp_cache
+    async def get_node(self, req) -> aiohttp.web.Response:
+        nodes = await self._get_nodes()
+        return dashboard_optional_utils.rest_response(
+            success=True, message="Node details fetched.", nodes=nodes
+        )
+
     @routes.get("/memory/memory_table")
     async def get_memory_table(self, req) -> aiohttp.web.Response:
         group_by = req.query.get("group_by")
