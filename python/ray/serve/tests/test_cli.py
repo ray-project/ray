@@ -249,10 +249,9 @@ def test_run(ray_start_stop):
     )
 
     p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
-    wait_for_condition(lambda: ping_endpoint("one") == "connection error", timeout=10)
-    wait_for_condition(
-        lambda: ping_endpoint("shallow") == "connection error", timeout=10
-    )
+    p.wait()
+    assert ping_endpoint("one") == "connection error"
+    assert ping_endpoint("shallow") == "connection error"
 
     # Deploy via import path
     p = subprocess.Popen(["serve", "run", "ray.serve.tests.test_cli.parrot"])
@@ -261,10 +260,8 @@ def test_run(ray_start_stop):
     )
 
     p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
-    wait_for_condition(
-        lambda: ping_endpoint("parrot", params="?sound=squawk") == "connection error",
-        timeout=10,
-    )
+    p.wait()
+    assert ping_endpoint("parrot", params="?sound=squawk") == "connection error"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
