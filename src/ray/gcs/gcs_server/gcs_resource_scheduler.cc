@@ -69,7 +69,7 @@ double LeastResourceScorer::Calculate(const FixedPoint &requested,
 /////////////////////////////////////////////////////////////////////////////////////////
 
 SchedulingResult SortScheduleResult(const SchedulingResult &result,
-                              const std::vector<size_t> &sorted_index) {
+                                    const std::vector<size_t> &sorted_index) {
   if (result.first == SchedulingResultStatus::SUCCESS) {
     std::vector<NodeID> sorted_nodes(result.second.size());
     for (size_t i = 0; i < sorted_index.size(); i++) {
@@ -113,11 +113,14 @@ SchedulingResult GcsResourceScheduler::Schedule(
   // Score and rank nodes.
   switch (scheduling_type) {
   case PACK:
-    return SortScheduleResult(PackSchedule(sorted_resources, candidate_nodes), sorted_index);
+    return SortScheduleResult(PackSchedule(sorted_resources, candidate_nodes),
+                              sorted_index);
   case SPREAD:
-    return SortScheduleResult(SpreadSchedule(sorted_resources, candidate_nodes), sorted_index);
+    return SortScheduleResult(SpreadSchedule(sorted_resources, candidate_nodes),
+                              sorted_index);
   case STRICT_SPREAD:
-    return SortScheduleResult(StrictSpreadSchedule(sorted_resources, candidate_nodes), sorted_index);
+    return SortScheduleResult(StrictSpreadSchedule(sorted_resources, candidate_nodes),
+                              sorted_index);
   default:
     RAY_LOG(FATAL) << "Unsupported scheduling type: " << scheduling_type;
     return SchedulingResult();
