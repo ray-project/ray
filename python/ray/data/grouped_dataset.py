@@ -152,7 +152,7 @@ class GroupedDataset(Generic[T]):
         *,
         compute: Optional[str] = None,
         batch_format: str = "native",
-        **ray_remote_args
+        **ray_remote_args,
     ) -> "Dataset[Any]":
         """Apply the given function to each group of records of this dataset.
 
