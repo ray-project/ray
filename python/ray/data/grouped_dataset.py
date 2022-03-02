@@ -156,37 +156,37 @@ class GroupedDataset(Generic[T]):
     ) -> "Dataset[Any]":
         """Apply the given function to each group of records of this dataset.
 
-        While the map_groups() is very flexibile, note that it comes with downsides:
+        While the map_groups() is very flexible, note that it comes with downsides:
             - It may be slower than using more specific methods such as min(), max().
-            - It requires the size of each group fit on a single node.
-        So when specific methods are applicable, try to use them before reaching
-        map_groups().
+            - It requires that each group fits in memory on a single node.
+        In general, prefer to use aggregate() methods instead of map_groups().
 
         This is a blocking operation.
 
         Examples:
-            >>> # Compute an arbitrary function on each group.
+            >>> # Return a single record per group (list of multiple records in,
+            >>> # list of a single record out).
             >>> ray.data.range(100).groupby(lambda x: x % 3).map_groups(
-                    lambda x: [min(x) / max(x)])
+            ...     lambda x: [min(x) / max(x)])
 
-            >>> # Define a callable class that persists state across
-            >>> # function invocations for efficiency.
-            >>> class CachedModel:
-            ...    def __init__(self):
-            ...        self.model = init_model()
-            ...    def __call__(self, group):
-            ...        return self.model(group)
-
-            >>> # Apply the transform in parallel on GPUs. Since
-            >>> # compute="actors", the transform will be applied on an
-            >>> # autoscaling pool of Ray actors, each allocated 1 GPU by Ray.
-            >>> ds.map_groups(CachedModel, compute="actors", num_gpus=1)
+            >>> # Return multiple records per group (dataframe in, dataframe out).
+            >>> df = pd.DataFrame(
+            ...     {"A": ["a", "a", "b"], "B": [1, 1, 3], "C": [4, 6, 5]}
+            ... )
+            >>> grouped = ray.data.from_pandas(df).groupby("A")
+            >>> grouped.map_groups(
+            ...     lambda g: g.apply(
+            ...         lambda c: c / g[c.name].sum() if c.name in ["B", "C"] else c
+            ...     )
+            ... )
 
         Args:
-            fn: The function to apply to each group of records , or a class type
-                that can be instantiated to create such a callable.
+            fn: The function to apply to each group of records, or a class type
+                that can be instantiated to create such a callable. It takes a
+                batch of records from the same group, and returns a batch of one
+                or more records, similar to map_batches().
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or "actors" to use an autoscaling Ray actor pool.
+                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
             batch_format: Specify "native" to use the native block format
                 (promotes Arrow to pandas), "pandas" to select
                 ``pandas.DataFrame`` as the batch format,
