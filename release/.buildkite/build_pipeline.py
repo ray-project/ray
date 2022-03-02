@@ -94,6 +94,7 @@ CORE_NIGHTLY_TESTS = {
         "shuffle_data_loader",
         "pipelined_training_50_gb",
         "pipelined_ingestion_1500_gb",
+        "dataset_random_access",
         "datasets_preprocess_ingest",
         "datasets_ingest_400G",
         SmokeTest("datasets_ingest_train_infer"),
