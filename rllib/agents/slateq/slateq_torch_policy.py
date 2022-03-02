@@ -400,7 +400,7 @@ def setup_late(
     action_space: gym.spaces.Space,
     config: TrainerConfigDict,
 ) -> None:
-    """Call all mixin classes' constructors before SlateQTorchPolicy initialization.
+    """Late setup after init is done.
 
     Args:
         policy: The Policy object.
