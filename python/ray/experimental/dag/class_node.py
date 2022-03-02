@@ -194,29 +194,16 @@ class ClassMethodNode(DAGNode):
         json_dict[DAGNODE_TYPE_KEY] = ClassMethodNode.__name__
         body = self._parent_class_node._body.__ray_actor_class__
         json_dict["import_path"] = f"{body.__module__}.{body.__qualname__}"
-        json_dict.update(
-            {
-                "method_name": self._method_name,
-                "parent_class_node_stable_uuid": self._parent_class_node._stable_uuid,
-            }
-        )
+        json_dict.update({"method_name": self._method_name})
         return json_dict
 
     @classmethod
     def from_json(cls, input_json, object_hook=None):
         args_dict = super().from_json_base(input_json, object_hook=object_hook)
-        node = cls(
+        return cls(
             input_json["method_name"],
             args_dict["args"],
             args_dict["kwargs"],
             args_dict["options"],
             other_args_to_resolve=args_dict["other_args_to_resolve"],
         )
-        # For ClassNode types in Ray DAG we need to ensure all executions
-        # re-uses the same ClassNode instance across all ClassMethodNode
-        # calls, thus stable_uuid needs to be preserved to match ray DAG's
-        # _copy implementation.
-        node._parent_class_node._stable_uuid = input_json[
-            "parent_class_node_stable_uuid"
-        ]
-        return node

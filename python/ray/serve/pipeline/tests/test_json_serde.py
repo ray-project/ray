@@ -3,6 +3,7 @@ import json
 from typing import TypeVar
 
 import ray
+from ray.experimental.dag.dag_node import DAGNode
 from ray.serve.pipeline.json_serde import (
     DAGNodeEncoder,
     dagnode_from_json,
@@ -52,12 +53,6 @@ def _test_execution_function_node(original_dag_node, deserialized_dag_node):
     )
 
 
-def _test_execution_class_method_node_Counter(original_dag_node, deserialized_dag_node):
-    assert ray.get(deserialized_dag_node.execute()) == ray.get(
-        original_dag_node.execute()
-    )
-
-
 def _test_json_serde_helper(
     original_dag_node, executor_fn=None, expected_json_dict=None
 ):
@@ -68,8 +63,7 @@ def _test_json_serde_helper(
         provides the same value as if it's only JSON serialized once
     """
     json_serialized = json.dumps(original_dag_node, cls=DAGNodeEncoder)
-    if expected_json_dict != "SKIP":
-        assert json_serialized == json.dumps(expected_json_dict)
+    assert json_serialized == json.dumps(expected_json_dict)
     deserialized_dag_node = json.loads(json_serialized, object_hook=dagnode_from_json)
 
     executor_fn(original_dag_node, deserialized_dag_node)
@@ -197,18 +191,58 @@ def test_simple_class_node_json_serde(serve_instance):
         },
     )
 
+
+def _test_deployment_json_serde_helper(
+    ray_dag: DAGNode, input=None, expected_num_deployments=None
+):
+    """Helper function for DeploymentNode and DeploymentMethodNode calls, checks
+    the following:
+        1) Transform ray dag to serve dag, and ensure serve dag is JSON
+            serializable.
+        2) Serve dag JSON and be deserialized back to serve dag.
+        3) Deserialized serve dag can extract correct number and definition of
+            serve deployments.
+    """
+    serve_root_dag = ray_dag._apply_recursive(transform_ray_dag_to_serve_dag)
+    json_serialized = json.dumps(serve_root_dag, cls=DAGNodeEncoder)
+    deserialized_serve_root_dag_node = json.loads(
+        json_serialized, object_hook=dagnode_from_json
+    )
+    deserialized_deployments = extract_deployments_from_serve_dag(
+        deserialized_serve_root_dag_node
+    )
+    assert len(deserialized_deployments) == expected_num_deployments
+    # Deploy deserilized version to ensure JSON serde correctness
+    for model in deserialized_deployments:
+        model.deploy()
+    if input is None:
+        assert ray.get(ray_dag.execute()) == ray.get(serve_root_dag.execute())
+    else:
+        assert ray.get(ray_dag.execute(input)) == ray.get(serve_root_dag.execute(input))
+    return serve_root_dag, deserialized_serve_root_dag_node
+
+
+def test_simple_deployment_method_call_chain(serve_instance):
+    """In Ray Core DAG, we maintain a simple linked list to keep track of
+    method call lineage on the SAME parent class node with same uuid. However
+    JSON serialization is only applicable in serve and we convert all
+    ClassMethodNode to DeploymentMethodNode that acts on deployment handle
+    that is uniquely identified by its name without dependency of uuid.
+    """
     counter = Counter._bind(0)
     counter.inc._bind(1)
     counter.inc._bind(2)
-    original_dag_node = counter.get._bind()
-    print(original_dag_node)
-    assert ray.get(original_dag_node.execute()) == 3
-    _test_json_serde_helper(
-        original_dag_node,
-        executor_fn=_test_execution_class_method_node_Counter,
-        # TODO: (jiaodong) Make nested ClassMethodNode JSON more human readable
-        # thus feasible to manually write a test
-        expected_json_dict="SKIP",
+    ray_dag = counter.get._bind()
+    assert ray.get(ray_dag.execute()) == 3
+    (
+        serve_root_dag,
+        deserialized_serve_root_dag_node,
+    ) = _test_deployment_json_serde_helper(ray_dag, expected_num_deployments=1)
+    # Deployment to Deployment, possible DeploymentMethodNode call chain
+    # Both serve dags uses the same underlying deployments, thus the rhs value
+    # went through two execute()
+    assert ray.get(serve_root_dag.execute()) + ray.get(ray_dag.execute()) == ray.get(
+        deserialized_serve_root_dag_node.execute()
     )
 
 
@@ -218,21 +252,11 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
     combine = Combine._bind(m1, m2={NESTED_HANDLE_KEY: m2}, m2_nested=True)
     ray_dag = combine.__call__._bind(InputNode())
 
-    serve_root_dag = ray_dag._apply_recursive(transform_ray_dag_to_serve_dag)
-
-    json_serialized = json.dumps(serve_root_dag, cls=DAGNodeEncoder)
-    deserialized_serve_root_dag_node = json.loads(
-        json_serialized, object_hook=dagnode_from_json
-    )
-    deserialized_deployments = extract_deployments_from_serve_dag(
-        deserialized_serve_root_dag_node
-    )
-    assert len(deserialized_deployments) == 3
-    # Deploy deserilized version to ensure JSON serde correctness
-    for model in deserialized_deployments:
-        model.deploy()
-    assert ray.get(ray_dag.execute(1)) == ray.get(serve_root_dag.execute(1))
-    assert ray.get(ray_dag.execute(1)) == ray.get(
+    (
+        serve_root_dag,
+        deserialized_serve_root_dag_node,
+    ) = _test_deployment_json_serde_helper(ray_dag, input=1, expected_num_deployments=3)
+    assert ray.get(serve_root_dag.execute(1)) == ray.get(
         deserialized_serve_root_dag_node.execute(1)
     )
 
@@ -245,23 +269,11 @@ def test_nested_deployment_node_json_serde(serve_instance):
     m2_output = m2.forward._bind(InputNode())
 
     ray_dag = combine._bind(m1_output, m2_output)
-    original_serve_root_dag = ray_dag._apply_recursive(
-        lambda node: transform_ray_dag_to_serve_dag(node)
-    )
-    json_serialized = json.dumps(original_serve_root_dag, cls=DAGNodeEncoder)
-    deserialized_serve_root_dag_node = json.loads(
-        json_serialized, object_hook=dagnode_from_json
-    )
-    # Deployment init_arg is [InputNode..]
-    deserialized_deployments = extract_deployments_from_serve_dag(
-        deserialized_serve_root_dag_node
-    )
-    # Deploy deserilized version to ensure JSON serde correctness
-    for model in deserialized_deployments:
-        model.deploy()
-
-    assert ray.get(ray_dag.execute(1)) == ray.get(original_serve_root_dag.execute(1))
-    assert ray.get(ray_dag.execute(1)) == ray.get(
+    (
+        serve_root_dag,
+        deserialized_serve_root_dag_node,
+    ) = _test_deployment_json_serde_helper(ray_dag, input=1, expected_num_deployments=2)
+    assert ray.get(serve_root_dag.execute(1)) == ray.get(
         deserialized_serve_root_dag_node.execute(1)
     )
 
