@@ -41,7 +41,7 @@ def _check_spilled_mb(address, spilled=None, restored=None, fallback=None):
                 return False
         return True
 
-    wait_for_condition(ok, timeout=3, retry_interval_ms=1000)
+    wait_for_condition(ok, timeout=10, retry_interval_ms=1000)
 
 
 @pytest.mark.skipif(
