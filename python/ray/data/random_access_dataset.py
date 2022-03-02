@@ -255,34 +255,6 @@ def _get_bounds(block, key):
 
 
 if __name__ == "__main__":
-    ds = ray.data.range_arrow(100000000, parallelism=10)
-    rmap = RandomAccessDataset(ds, "value", num_workers=1)
-
-    print("Demo:")
-    print(ray.get(rmap.get_async(1)))
-    print(ray.get(rmap.get_async(-1)))
-    print(rmap.multiget([1, 2]))
-    print(rmap.multiget([1, 2, 200000, -1]))
-
-    print("Multiget throughput: ", end="")
-    start = time.time()
-    total = 0
-    rand_values = [random.randint(0, 100_000_000) for _ in range(1000)]
-    while time.time() - start < 3:
-        rmap.multiget(rand_values)
-        total += 1000
-    print(total / (time.time() - start), "keys / second / worker")
-
-    print("Single get throughput: ", end="")
-    start = time.time()
-    total = 0
-    while time.time() - start < 3:
-        ray.get([rmap.get_async(random.randint(0, 100_000_000)) for _ in range(1000)])
-        total += 1000
-    print(total / (time.time() - start), "keys / second / worker")
-    print(rmap.stats())
-
-if __name__ == "__main__":
     if "LARGE_RUN" in os.environ:
         # On a 20-node cluster:
         # Multiget throughput: 516600.7075172231 keys / second
@@ -294,6 +266,9 @@ if __name__ == "__main__":
         num_workers = 400
         run_time = 15
     else:
+        # On a laptop:
+        # Multiget throughput: 13236.238851667515 keys / second
+        # Single get throughput: 3035.6024155680234 keys / second
         nrow = 100_000_000
         nclient = 1
         batch_size = 1000
@@ -315,11 +290,13 @@ if __name__ == "__main__":
             rmap.multiget(rand_values)
             total += batch_size
         return total
+
     total = sum(ray.get([client.remote() for _ in range(nclient)]))
     print(total / (time.time() - start), "keys / second")
 
     print("Single get throughput: ", end="")
     start = time.time()
+
     @ray.remote(scheduling_strategy="SPREAD")
     def client():
         total = 0
@@ -327,6 +304,7 @@ if __name__ == "__main__":
             ray.get([rmap.get_async(random.randint(0, nrow)) for _ in range(1000)])
             total += 1000
         return total
+
     total = sum(ray.get([client.remote() for _ in range(nclient)]))
     print(total / (time.time() - start), "keys / second")
 
