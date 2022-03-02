@@ -24,17 +24,27 @@ logger = logging.getLogger(__name__)
 def _build_proto_pip_runtime_env(runtime_env_dict: dict, runtime_env: ProtoRuntimeEnv):
     """Construct pip runtime env protobuf from runtime env dict."""
     if runtime_env_dict.get("pip"):
-        runtime_env.python_runtime_env.pip_runtime_env.config.packages.extend(
-            runtime_env_dict["pip"]
-        )
+        if isinstance(runtime_env_dict["pip"], list):
+            runtime_env.python_runtime_env.pip_runtime_env.config.packages.extend(
+                runtime_env_dict["pip"]
+            )
+        else:
+            runtime_env.python_runtime_env.pip_runtime_env.virtual_env_name = (
+                runtime_env_dict["pip"]
+            )
 
 
 def _parse_proto_pip_runtime_env(runtime_env: ProtoRuntimeEnv, runtime_env_dict: dict):
     """Parse pip runtime env protobuf to runtime env dict."""
     if runtime_env.python_runtime_env.HasField("pip_runtime_env"):
-        runtime_env_dict["pip"] = list(
-            runtime_env.python_runtime_env.pip_runtime_env.config.packages
-        )
+        if runtime_env.python_runtime_env.pip_runtime_env.HasField("config"):
+            runtime_env_dict["pip"] = list(
+                runtime_env.python_runtime_env.pip_runtime_env.config.packages
+            )
+        else:
+            runtime_env_dict[
+                "pip"
+            ] = runtime_env.python_runtime_env.pip_runtime_env.virtual_env_name
 
 
 def _build_proto_conda_runtime_env(
@@ -57,11 +67,14 @@ def _parse_proto_conda_runtime_env(
 ):
     """Parse conda runtime env protobuf to runtime env dict."""
     if runtime_env.python_runtime_env.HasField("conda_runtime_env"):
-        conda_runtime_env = runtime_env.python_runtime_env.conda_runtime_env
-        if conda_runtime_env.HasField("conda_env_name"):
-            runtime_env_dict["conda"] = conda_runtime_env.conda_env_name
+        if runtime_env.python_runtime_env.conda_runtime_env.HasField("conda_env_name"):
+            runtime_env_dict[
+                "conda"
+            ] = runtime_env.python_runtime_env.conda_runtime_env.conda_env_name
         else:
-            runtime_env_dict["conda"] = json.loads(conda_runtime_env.config)
+            runtime_env_dict["conda"] = json.loads(
+                runtime_env.python_runtime_env.conda_runtime_env.config
+            )
 
 
 def _build_proto_container_runtime_env(
@@ -86,6 +99,7 @@ def _parse_proto_container_runtime_env(
 ):
     """Parse container runtime env protobuf to runtime env dict."""
     if runtime_env.python_runtime_env.HasField("container_runtime_env"):
+        runtime_env_dict["container"] = dict()
         runtime_env_dict["container"][
             "image"
         ] = runtime_env.python_runtime_env.container_runtime_env.image
@@ -113,11 +127,9 @@ def _parse_proto_plugin_runtime_env(
 ):
     """Parse plugin runtime env protobuf to runtime env dict."""
     if runtime_env.python_runtime_env.HasField("plugin_runtime_env"):
-        plugins: Dict[str, Any] = {}
+        runtime_env_dict["plugins"] = dict()
         for plugin in runtime_env.python_runtime_env.plugin_runtime_env.plugins:
-            plugins[plugin.class_path] = dict(json.loads(plugin.config))
-        if plugins:
-            runtime_env_dict["plugins"] = plugins
+            runtime_env_dict["plugins"][plugin.class_path] = json.loads(plugin.config)
 
 
 @PublicAPI

@@ -163,8 +163,8 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
     auto java_actor_lifetime = (jobject)env->GetObjectField(
         actorCreationOptions, java_actor_creation_options_lifetime);
     if (java_actor_lifetime != nullptr) {
-      is_detached =
-          std::make_optional<bool>(env->IsSameObject(java_actor_lifetime, STATUS_DETACHED));
+      is_detached = std::make_optional<bool>(
+          env->IsSameObject(java_actor_lifetime, STATUS_DETACHED));
     }
 
     max_restarts =
@@ -224,8 +224,8 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
           return ray::ConcurrencyGroup{concurrency_group_name, max_concurrency,
                                        native_func_descriptors};
         });
-    auto java_serialized_runtime_env = (jstring)env->GetObjectField(actorCreationOptions,
-                                                  java_actor_creation_options_serialized_runtime_env);
+    auto java_serialized_runtime_env = (jstring)env->GetObjectField(
+        actorCreationOptions, java_actor_creation_options_serialized_runtime_env);
     if (java_serialized_runtime_env) {
       serialized_runtime_env = JavaStringToNativeString(env, java_serialized_runtime_env);
     }
