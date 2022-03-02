@@ -163,7 +163,7 @@ class RandomAccessDataset(object):
         accesses = [s["num_accesses"] for s in stats]
         blocks = [s["num_blocks"] for s in stats]
         msg = "RandomAccessDataset:\n"
-        msg += "- Build time: {}s\n".format(self._build_time)
+        msg += "- Build time: {}s\n".format(round(self._build_time, 2))
         msg += "- Num workers: {}\n".format(len(stats))
         msg += "- Threads per worker: {}\n".format(self._threads_per_worker)
         msg += "- Blocks per worker: {} min, {} max, {} mean\n".format(
