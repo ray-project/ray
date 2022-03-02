@@ -295,7 +295,8 @@ def test_run_init_args_kwargs(ray_start_stop):
     )
     wait_for_condition(lambda: ping_endpoint("run") == "Molly is green!", timeout=10)
     p.send_signal(signal.SIGINT)
-    wait_for_condition(lambda: ping_endpoint("run") == "connection error", timeout=10)
+    p.wait()
+    ping_endpoint("run") == "connection error"
 
     # Incorrect args/kwargs ordering
     with pytest.raises(subprocess.CalledProcessError):
@@ -320,6 +321,43 @@ def test_run_init_args_kwargs(ray_start_stop):
         subprocess.check_output(
             ["serve", "run", config_file_name, "--", "green", "--name", "Molly"]
         )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run_working_dir(ray_start_stop):
+    # Tests serve run with working_dirs specified
+
+    # Use local working_dir
+    p = subprocess.Popen(
+        [
+            "serve",
+            "run",
+            "test_cli.Macaw",
+            "--working_dir",
+            os.path.dirname(__file__),
+            "--",
+            "green",
+            "--name",
+            "Molly",
+        ]
+    )
+    wait_for_condition(lambda: ping_endpoint("run") == "Molly is green!", timeout=10)
+    p.send_signal(signal.SIGINT)
+    p.wait()
+
+    # Use remote working_dir
+    p = subprocess.Popen(
+        [
+            "serve",
+            "run",
+            "test_module.test.one",
+            "--working_dir",
+            "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip",
+        ]
+    )
+    wait_for_condition(lambda: ping_endpoint("run") == "2", timeout=10)
+    p.send_signal(signal.SIGINT)
+    p.wait()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
