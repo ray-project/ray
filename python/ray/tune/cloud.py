@@ -7,9 +7,8 @@ from typing import Optional
 from ray import logger
 from ray.ml.checkpoint import (
     Checkpoint,
-    LocalStorageCheckpoint,
-    ExternalStorageCheckpoint,
-    MultiLocationCheckpoint,
+    _get_local_path,
+    _get_external_path,
 )
 
 from ray.util.annotations import Deprecated
@@ -321,51 +320,59 @@ class _TrialCheckpoint(os.PathLike):
 
 
 @Deprecated
-class TrialCheckpoint(MultiLocationCheckpoint, _TrialCheckpoint):
+class TrialCheckpoint(Checkpoint, _TrialCheckpoint):
     def __init__(
         self,
         local_path: Optional[str] = None,
         cloud_path: Optional[str] = None,
     ):
-        MultiLocationCheckpoint.__init__(self)
         _TrialCheckpoint.__init__(self)
+        data = None
+        locations = set()
         if local_path:
-            self.local_path = local_path
+            self._local_path = local_path
+            locations.add(local_path)
+            data = local_path
         if cloud_path:
-            self.cloud_path = cloud_path
+            self._cloud_path = cloud_path
+            locations.add(cloud_path)
+            data = cloud_path
+        Checkpoint.__init__(self, data, metadata={"locations": locations})
 
     @property
     def local_path(self):
-        return self.path or self._local_path
+        local_path = _get_local_path(self.data)
+        if not local_path:
+            for candidate in self.metadata["locations"]:
+                local_path = _get_local_path(candidate)
+                if local_path:
+                    break
+        return local_path or self._local_path
 
     @local_path.setter
     def local_path(self, path: str):
         self._local_path = path
-        if not os.path.exists(path):
+        if not path or not os.path.exists(path):
             return
-        local_checkpoint = self.search_checkpoint(LocalStorageCheckpoint)
-        if local_checkpoint:
-            local_checkpoint.path = path
-        else:
-            local_checkpoint = Checkpoint.from_directory(path)
-            self.locations += (local_checkpoint,)
+        self.data = path
+        self.metadata["locations"].add(path)
 
     @property
     def cloud_path(self):
-        cloud_checkpoint = self.search_checkpoint(ExternalStorageCheckpoint)
-        if cloud_checkpoint:
-            return cloud_checkpoint.location
-        return self._cloud_path
+        cloud_path = _get_external_path(self.data)
+        if not cloud_path:
+            for candidate in self.metadata["locations"]:
+                cloud_path = _get_external_path(candidate)
+                if cloud_path:
+                    break
+        return cloud_path or self._cloud_path
 
     @cloud_path.setter
     def cloud_path(self, path: str):
         self._cloud_path = path
-        cloud_checkpoint = self.search_checkpoint(ExternalStorageCheckpoint)
-        if cloud_checkpoint:
-            cloud_checkpoint.location = path
-        else:
-            cloud_checkpoint = Checkpoint.from_uri(path)
-            self.locations += (cloud_checkpoint,)
+        if not self.data:
+            self.data = path
+        self.metadata["locations"].add(path)
 
     def download(
         self,

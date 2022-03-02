@@ -288,7 +288,7 @@ def _is_dict_checkpoint(metadata: Dict):
 
 
 def _get_local_path(path: str) -> Optional[str]:
-    if is_cloud_target(path):
+    if not path or is_cloud_target(path):
         return None
     if path.startswith("file://"):
         return path[7:]
@@ -300,13 +300,13 @@ def _get_local_path(path: str) -> Optional[str]:
 
 
 def _get_external_path(path: str) -> Optional[str]:
-    if not is_cloud_target(path):
+    if not path or not is_cloud_target(path):
         return None
     return path
 
 
 def _get_node_path(path: str) -> Tuple[Optional[str], Optional[str]]:
-    if is_cloud_target(path):
+    if not path or is_cloud_target(path):
         return None, None
     if not path.startswith("node://"):
         node = ray.util.get_node_ip_address()
