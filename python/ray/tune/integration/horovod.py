@@ -80,9 +80,9 @@ class _HorovodTrainable(DistributedTrainable):
     # Callable function for training.
     _function = None
     # Number of workers to allocate per trial.
-    _num_workers: Optional[int] = None,
+    _num_workers: Optional[int] = (None,)
     # Number of hosts (nodes) to allocate per trial
-    _num_hosts: Optional[int] = None,
+    _num_hosts: Optional[int] = (None,)
     # Number of CPU resources to reserve for each worker.
     _num_cpus_per_worker: int = 1
     # Whether to reserve and pass GPU resources through.
