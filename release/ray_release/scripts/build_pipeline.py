@@ -147,6 +147,7 @@ def main(test_collection_file: Optional[str] = None):
             json.dump(steps, fp)
 
         settings["frequency"] = settings["frequency"].value
+        settings["priority"] = settings["priority"].value
         with open(os.path.join(PIPELINE_ARTIFACT_PATH, "settings.json"), "wt") as fp:
             json.dump(settings, fp)
 
