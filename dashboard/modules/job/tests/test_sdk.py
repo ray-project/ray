@@ -2,7 +2,7 @@ import pytest
 from typing import Dict, Optional, Tuple
 from unittest.mock import Mock, patch
 
-from ray.dashboard.modules.job.sdk import parse_cluster_info
+from ray.dashboard.modules.dashboard_sdk import parse_cluster_info
 
 
 @pytest.mark.parametrize(
@@ -25,7 +25,7 @@ def test_parse_cluster_info(
     headers: Optional[Dict[str, str]],
 ):
     """
-    Test ray.dashboard.modules.job.sdk.parse_cluster_info for different
+    Test ray.dashboard.modules.dashboard_sdk.parse_cluster_info for different
     format of addresses.
     """
     mock_get_submission_client_cluster = Mock(return_value="Ray ClusterInfo")

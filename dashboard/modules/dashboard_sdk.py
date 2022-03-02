@@ -3,7 +3,7 @@ import importlib
 import logging
 from pathlib import Path
 import tempfile
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, List, Optional
 
 try:
     import aiohttp
