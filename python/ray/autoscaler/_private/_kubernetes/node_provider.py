@@ -6,10 +6,15 @@ from uuid import uuid4
 from kubernetes.client.rest import ApiException
 
 from ray.autoscaler._private.command_runner import KubernetesCommandRunner
-from ray.autoscaler._private._kubernetes import core_api, log_prefix, \
-    extensions_beta_api
-from ray.autoscaler._private._kubernetes.config import bootstrap_kubernetes, \
-    fillout_resources_kubernetes
+from ray.autoscaler._private._kubernetes import (
+    core_api,
+    log_prefix,
+    networking_api,
+)
+from ray.autoscaler._private._kubernetes.config import (
+    bootstrap_kubernetes,
+    fillout_resources_kubernetes,
+)
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import NODE_KIND_HEAD
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME
@@ -164,7 +169,7 @@ class KubernetesNodeProvider(NodeProvider):
                 ingress_spec["metadata"] = metadata
                 ingress_spec = _add_service_name_to_service_port(
                     ingress_spec, new_svc.metadata.name)
-                extensions_beta_api().create_namespaced_ingress(
+                networking_api().create_namespaced_ingress(
                     self.namespace, ingress_spec)
 
     def terminate_node(self, node_id):
@@ -182,7 +187,7 @@ class KubernetesNodeProvider(NodeProvider):
         except ApiException:
             pass
         try:
-            extensions_beta_api().delete_namespaced_ingress(
+            networking_api().delete_namespaced_ingress(
                 node_id,
                 self.namespace,
             )
