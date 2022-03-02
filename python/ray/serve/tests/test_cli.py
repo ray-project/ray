@@ -258,12 +258,12 @@ def test_run_basic(ray_start_stop):
     # Deploy via import path
     p = subprocess.Popen(["serve", "run", "ray.serve.tests.test_cli.parrot"])
     wait_for_condition(
-        lambda: ping_endpoint("parrot", params="?sound=squawk") == "squawk", timeout=10
+        lambda: ping_endpoint("run", params="?sound=squawk") == "squawk", timeout=10
     )
 
     p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
     wait_for_condition(
-        lambda: ping_endpoint("parrot", params="?sound=squawk") == "connection error",
+        lambda: ping_endpoint("run", params="?sound=squawk") == "connection error",
         timeout=10,
     )
 
@@ -293,9 +293,9 @@ def test_run_init_args_kwargs(ray_start_stop):
             "Molly",
         ]
     )
-    wait_for_condition(lambda: ping_endpoint("Macaw") == "Molly is green!", timeout=10)
+    wait_for_condition(lambda: ping_endpoint("run") == "Molly is green!", timeout=10)
     p.send_signal(signal.SIGINT)
-    wait_for_condition(lambda: ping_endpoint("Macaw") == "connection error", timeout=10)
+    wait_for_condition(lambda: ping_endpoint("run") == "connection error", timeout=10)
 
     # Incorrect args/kwargs ordering
     with pytest.raises(subprocess.CalledProcessError):
