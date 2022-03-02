@@ -87,7 +87,7 @@ void SchedulerResourceReporter::FillResourceUsage(
               .resource_set.GetResourceMap();
       auto by_shape_entry = resource_load_by_shape->Add();
 
-      if(count != 0) {
+      if (count != 0) {
         for (const auto &resource : resources) {
           // Add to `resource_loads`.
           const auto &label = resource.first;
@@ -119,7 +119,7 @@ void SchedulerResourceReporter::FillResourceUsage(
   auto infeasible_tasks_range =
       infeasible_tasks_ | boost::adaptors::transformed(transform_func);
   auto backlog_tracker_range =
-      backlog_tracker_ | boost::adaptors::transformed([](const auto& pair) {
+      backlog_tracker_ | boost::adaptors::transformed([](const auto &pair) {
         return std::make_pair(pair.first, 0);
       });
 
