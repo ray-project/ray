@@ -247,7 +247,8 @@ def test_wait_failure_recovery_2(workflow_start_regular_shared):
     indirect=True,
 )
 def test_wait_recovery_step_id(workflow_start_regular_shared):
-    # Test failing "workflow.wait" and its input steps.
+    # This test ensures workflow reuse the original directory and
+    # step id for "workflow.wait" during recovery.
 
     @workflow.step
     def identity(x: int):
@@ -270,6 +271,7 @@ def test_wait_recovery_step_id(workflow_start_regular_shared):
         "test_wait_recovery_step_id", global_storage
     )
     index = wf_storage.gen_step_id("workflow.wait")
+    # no new step id
     assert index <= 1
 
 
