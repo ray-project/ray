@@ -129,8 +129,8 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
   local_node_resources[ray::kGPU_ResourceLabel] = num_gpus;
   local_node_resources[ray::kMemory_ResourceLabel] = 128;
 
-  auto scheduler =
-      std::make_shared<ClusterResourceScheduler>(id, local_node_resources, gcs_client);
+  auto scheduler = std::make_shared<ClusterResourceScheduler>(
+      scheduling::NodeID(id), local_node_resources, gcs_client);
 
   return scheduler;
 }
@@ -285,8 +285,8 @@ class ClusterTaskManagerTest : public ::testing::Test {
     node_resources[ray::kCPU_ResourceLabel] = num_cpus;
     node_resources[ray::kGPU_ResourceLabel] = num_gpus;
     node_resources[ray::kMemory_ResourceLabel] = memory;
-    scheduler_->GetClusterResourceManager().AddOrUpdateNode(id.Binary(), node_resources,
-                                                            node_resources);
+    scheduler_->GetClusterResourceManager().AddOrUpdateNode(
+        scheduling::NodeID(id.Binary()), node_resources, node_resources);
 
     rpc::GcsNodeInfo info;
     node_info_[id] = info;
@@ -1480,7 +1480,8 @@ TEST_F(ClusterTaskManagerTest, FeasibleToNonFeasible) {
 
   // Delete cpu resource of local node, then task 2 should be turned into
   // infeasible.
-  scheduler_->GetLocalResourceManager().DeleteLocalResource(ray::kCPU_ResourceLabel);
+  scheduler_->GetLocalResourceManager().DeleteLocalResource(
+      scheduling::ResourceID(ray::kCPU_ResourceLabel));
 
   RayTask task2 = CreateTask({{ray::kCPU_ResourceLabel, 4}});
   rpc::RequestWorkerLeaseReply reply2;
@@ -1506,7 +1507,8 @@ TEST_F(ClusterTaskManagerTest, FeasibleToNonFeasible) {
 
 TEST_F(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources) {
   const NodeResources &node_resources =
-      scheduler_->GetClusterResourceManager().GetNodeResources(id_.Binary());
+      scheduler_->GetClusterResourceManager().GetNodeResources(
+          scheduling::NodeID(id_.Binary()));
   ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::CPU].available, 8);
   ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::GPU].available, 4);
 
@@ -1831,8 +1833,8 @@ TEST_F(ClusterTaskManagerTest, PopWorkerExactlyOnce) {
 }
 
 TEST_F(ClusterTaskManagerTest, CapRunningOnDispatchQueue) {
-  scheduler_->GetLocalResourceManager().AddLocalResourceInstances(ray::kGPU_ResourceLabel,
-                                                                  {1, 1, 1});
+  scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
+      scheduling::ResourceID(ray::kGPU_ResourceLabel), {1, 1, 1});
   RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 4}, {ray::kGPU_ResourceLabel, 1}},
                             /*num_args=*/0, /*args=*/{});
   RayTask task2 = CreateTask({{ray::kCPU_ResourceLabel, 4}, {ray::kGPU_ResourceLabel, 1}},
@@ -1883,8 +1885,8 @@ TEST_F(ClusterTaskManagerTest, CapRunningOnDispatchQueue) {
 }
 
 TEST_F(ClusterTaskManagerTest, ZeroCPUTasks) {
-  scheduler_->GetLocalResourceManager().AddLocalResourceInstances(ray::kGPU_ResourceLabel,
-                                                                  {1, 1, 1});
+  scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
+      scheduling::ResourceID(ray::kGPU_ResourceLabel), {1, 1, 1});
   RayTask task = CreateTask({{"GPU", 1}}, /*num_args=*/0, /*args=*/{});
   RayTask task2 = CreateTask({{"GPU", 1}}, /*num_args=*/0, /*args=*/{});
   RayTask task3 = CreateTask({{"GPU", 1}}, /*num_args=*/0, /*args=*/{});
