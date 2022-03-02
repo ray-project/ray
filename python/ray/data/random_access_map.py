@@ -1,7 +1,7 @@
 import bisect
-import collections
 import logging
 import random
+from collections import defaultdict
 from typing import List, Any, Optional, TYPE_CHECKING
 
 import ray
@@ -56,21 +56,60 @@ class RandomAccessMap(object):
                 self._upper_bounds.append(b[1])
 
         logger.info("[setup] Creating {} random access workers.".format(num_workers))
-        # TODO(ekl) partition the blocks among the workers in a locality sensitive way.
-        # This could be done in two phases: (1) launch the workers with no blocks,
-        # (2) assign blocks to workers based on the worker and block locations.
         self._workers = [
             _RandomAccessWorker.options(
                 scheduling_strategy="SPREAD", max_concurrency=threads_per_worker
-            ).remote(self._valid_blocks, key)
+            ).remote(key)
             for _ in range(num_workers)
         ]
-        self._block_to_workers_map = {
-            i: self._workers for i in range(len(self._valid_blocks))
-        }
+        (
+            self._block_to_workers_map,
+            self._worker_to_blocks_map,
+        ) = self._compute_block_to_worker_assignments()
 
-        logger.info("[setup] Waiting for workers to start.")
-        ray.get([w.ping.remote() for w in self._workers])
+        logger.info(
+            "[setup] Worker to blocks assignment: {}".format(self._worker_to_blocks_map)
+        )
+        ray.get(
+            [
+                w.assign_blocks.remote(
+                    {i: self._valid_blocks[i] for i in self._worker_to_blocks_map[w]}
+                )
+                for w in self._workers
+            ]
+        )
+
+        logger.info("[setup] Finished assigning blocks to workers.")
+
+    def _compute_block_to_worker_assignments(self):
+        # Return values.
+        blocks_to_workers: dict[int, List["ray.ActorHandle"]] = defaultdict(list)
+        workers_to_blocks: dict["ray.ActorHandle", List[int]] = defaultdict(list)
+
+        # Aux data structures.
+        loc_to_workers: dict[str, List["ray.ActorHandle"]] = defaultdict(list)
+        locs = ray.get([w.ping.remote() for w in self._workers])
+        for i, loc in enumerate(locs):
+            loc_to_workers[loc].append(self._workers[i])
+        block_locs = ray.experimental.get_object_locations(self._valid_blocks)
+
+        # First, try to assign all blocks to all workers at its location.
+        for block_idx, block in enumerate(self._valid_blocks):
+            block_info = block_locs[block]
+            locs = block_info.get("node_ids", [])
+            for loc in locs:
+                for worker in loc_to_workers[loc]:
+                    blocks_to_workers[block_idx].append(worker)
+                    workers_to_blocks[worker].append(block_idx)
+
+        # Randomly assign any leftover blocks to at least one worker.
+        for block_idx, block in enumerate(self._valid_blocks):
+            if len(blocks_to_workers[block_idx]) == 0:
+                worker = random.choice(self._workers)
+                blocks_to_workers[block_idx].append(worker)
+                workers_to_blocks[worker].append(block_idx)
+
+        return blocks_to_workers, workers_to_blocks
 
     def get_async(self, key: Any) -> ObjectRef[Optional[T]]:
         """Asynchronously finds the record for a single key.
@@ -95,7 +134,7 @@ class RandomAccessMap(object):
         Returns:
             List of found records (in pydict form), or None for missing records.
         """
-        batches = collections.defaultdict(list)
+        batches = defaultdict(list)
         for k in keys:
             batches[self._find_le(k)].append(k)
         futures = {}
@@ -126,9 +165,12 @@ class RandomAccessMap(object):
 
 @ray.remote(num_cpus=0, placement_group=None)
 class _RandomAccessWorker:
-    def __init__(self, blocks, key_field):
-        self.blocks = ray.get(blocks)
+    def __init__(self, key_field):
+        self.blocks = None
         self.key_field = key_field
+
+    def assign_blocks(self, block_ref_dict):
+        self.blocks = {k: ray.get(ref) for k, ref in block_ref_dict.items()}
 
     def get(self, block_index, key):
         if block_index is None:
@@ -145,7 +187,7 @@ class _RandomAccessWorker:
         return [self.get(i, k) for i, k in zip(block_indices, keys)]
 
     def ping(self):
-        return "OK"
+        return ray.get_runtime_context().node_id.hex()
 
 
 def _binary_search_find(column, x):
