@@ -596,6 +596,7 @@ cc_library(
     srcs = [
         "src/ray/stats/metric.cc",
         "src/ray/stats/metric_defs.cc",
+        "src/ray/stats/tag_defs.cc",
     ],
     hdrs = [
         "src/ray/stats/metric.h",
@@ -1046,6 +1047,34 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":ray_mock",
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "cluster_resource_manager_test",
+    size = "small",
+    srcs = [
+        "src/ray/raylet/scheduling/cluster_resource_manager_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "scheduling_ids_test",
+    size = "small",
+    srcs = [
+        "src/ray/raylet/scheduling/scheduling_ids_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
