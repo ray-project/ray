@@ -54,6 +54,7 @@ class CheckpointsTest(unittest.TestCase):
     def _prepare_dict_checkpoint(self) -> Checkpoint:
         # Create checkpoint from dict
         checkpoint = Checkpoint.from_dict(self.checkpoint_dict_data)
+        checkpoint.metadata["preserve"] = "value"
         self.assertIsInstance(checkpoint, Checkpoint)
         self.assertIsInstance(checkpoint.data, dict)
         self.assertEqual(checkpoint.data["metric"], self.checkpoint_dict_data["metric"])
@@ -63,6 +64,11 @@ class CheckpointsTest(unittest.TestCase):
         # Convert into dict
         checkpoint_data = checkpoint.to_dict()
         self.assertDictEqual(checkpoint_data, self.checkpoint_dict_data)
+
+        # For metadata check, load again from dict
+        checkpoint = Checkpoint.from_dict(checkpoint_data)
+        self.assertIn("preserve", checkpoint.metadata)
+        self.assertEqual(checkpoint.metadata["preserve"], "value")
 
     def test_dict_checkpoint_bytes(self):
         """Test conversion from dict to bytes checkpoint and back."""
@@ -94,10 +100,7 @@ class CheckpointsTest(unittest.TestCase):
 
     def test_dict_checkpoint_fs(self):
         """Test conversion from dict to FS checkpoint and back."""
-        # Create checkpoint from dict
-        checkpoint = Checkpoint.from_dict(self.checkpoint_dict_data)
-        self.assertIsInstance(checkpoint, Checkpoint)
-        self.assertEqual(checkpoint.data["metric"], self.checkpoint_dict_data["metric"])
+        checkpoint = self._prepare_dict_checkpoint()
 
         # Convert into fs checkpoint
         path = checkpoint.to_directory()
@@ -147,6 +150,9 @@ class CheckpointsTest(unittest.TestCase):
     def _prepare_fs_checkpoint(self) -> Checkpoint:
         # Create checkpoint from fs
         checkpoint = Checkpoint.from_directory(self.checkpoint_dir)
+        checkpoint.metadata["preserve"] = "value"
+        checkpoint.to_directory(self.checkpoint_dir)  # Write metadata
+
         self.assertIsInstance(checkpoint, Checkpoint)
         self.assertIsInstance(checkpoint.data, str)
         self.assertEqual(checkpoint.data, self.checkpoint_dir)
@@ -167,6 +173,11 @@ class CheckpointsTest(unittest.TestCase):
             local_dir.startswith(self.tmpdir),
             msg=f"Checkpoint dir {local_dir} is not contained in {self.tmpdir}",
         )
+
+        # For metadata check, load again from directory
+        checkpoint = checkpoint.from_directory(local_dir)
+        self.assertIn("preserve", checkpoint.metadata)
+        self.assertEqual(checkpoint.metadata["preserve"], "value")
 
     def test_fs_checkpoint_bytes(self):
         """Test conversion from fs to bytes checkpoint and back."""

@@ -88,7 +88,10 @@ class Checkpoint:
         """
         if isinstance(self.data, dict):
             # If the checkpoint data is already a dict, return
-            return self.data
+            data_dict = self.data
+            # Also save metadata in dict representation
+            data_dict.setdefault("metadata", self.metadata)
+            return data_dict
         elif isinstance(self.data, ray.ObjectRef):
             # If the checkpoint data is an object reference, resolve
             return ray.get(self.data)
@@ -191,12 +194,13 @@ class Checkpoint:
         # Drop marker
         open(os.path.join(path, ".is_checkpoint"), "a").close()
 
+        metadata = self.metadata
         if isinstance(self.data, (ray.ObjectRef, dict)):
             # This is a object ref or dict
             data_dict = self.to_dict()
 
             # If the object metadata has been changed, it takes precedence
-            metadata = self.metadata or data_dict.get("metadata", {})
+            metadata = metadata or data_dict.get("metadata", {})
 
             if "fs_checkpoint" in data_dict:
                 # This used to be a true fs checkpoint, so restore
@@ -213,17 +217,20 @@ class Checkpoint:
             local_path = _get_local_path(self.data)
             external_path = _get_external_path(self.data)
             if local_path:
-                # If this exists on the local path, just copy over
-                if path and os.path.exists(path):
-                    shutil.rmtree(path)
-                shutil.copytree(local_path, path)
+                if local_path != path:
+                    # If this exists on the local path, just copy over
+                    if path and os.path.exists(path):
+                        shutil.rmtree(path)
+                    shutil.copytree(local_path, path)
             elif external_path:
                 # If this exists on external storage (e.g. cloud), download
                 download_from_bucket(bucket=external_path, local_path=path)
+                metadata = _load_metadata(path)
             else:
                 raise RuntimeError(
                     f"No valid location found for checkpoint {self}: {self.data}"
                 )
+            _write_metadata(path, metadata)
 
         return path
 
