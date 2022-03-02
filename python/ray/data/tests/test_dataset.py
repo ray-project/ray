@@ -132,7 +132,7 @@ def test_callable_classes(shutdown_only):
     task_reuse = ds.map(StatefulFn, compute="tasks").take()
     assert sorted(task_reuse) == list(range(10)), task_reuse
     actor_reuse = ds.map(StatefulFn, compute="actors").take()
-    assert sorted(actor_reuse) == list(range(10, 20)), actor_reuse
+    assert sorted(actor_reuse) == list(range(10)), actor_reuse
 
     class StatefulFn:
         def __init__(self):
@@ -147,13 +147,13 @@ def test_callable_classes(shutdown_only):
     task_reuse = ds.flat_map(StatefulFn, compute="tasks").take()
     assert sorted(task_reuse) == list(range(10)), task_reuse
     actor_reuse = ds.flat_map(StatefulFn, compute="actors").take()
-    assert sorted(actor_reuse) == list(range(10, 20)), actor_reuse
+    assert sorted(actor_reuse) == list(range(10)), actor_reuse
 
     # map batches
     task_reuse = ds.map_batches(StatefulFn, compute="tasks").take()
     assert sorted(task_reuse) == list(range(10)), task_reuse
     actor_reuse = ds.map_batches(StatefulFn, compute="actors").take()
-    assert sorted(actor_reuse) == list(range(10, 20)), actor_reuse
+    assert sorted(actor_reuse) == list(range(10)), actor_reuse
 
     class StatefulFn:
         def __init__(self):
@@ -168,7 +168,7 @@ def test_callable_classes(shutdown_only):
     task_reuse = ds.filter(StatefulFn, compute="tasks").take()
     assert len(task_reuse) == 9, task_reuse
     actor_reuse = ds.filter(StatefulFn, compute="actors").take()
-    assert len(actor_reuse) == 10, actor_reuse
+    assert len(actor_reuse) == 9, actor_reuse
 
 
 def test_transform_failure(shutdown_only):

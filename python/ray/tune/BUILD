@@ -446,7 +446,7 @@ py_test(
 
 py_test(
     name = "bohb_example",
-    size = "small",
+    size = "medium",
     srcs = ["examples/bohb_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"]
