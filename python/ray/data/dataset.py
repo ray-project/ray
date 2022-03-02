@@ -2494,7 +2494,7 @@ Dict[str, List[str]]]): The names of the columns
         num_workers: Optional[int] = None,
         threads_per_worker: int = 4,
     ) -> RandomAccessMap:
-        """Experimental: Convert this Dataset into a distributed RandomAccessMap.
+        """Convert this Dataset into a distributed RandomAccessMap (EXPERIMENTAL).
 
         RandomAccessMap partitions the dataset across the cluster by the given sort
         key, providing efficient random access to records via binary search. A number
