@@ -168,8 +168,6 @@ extern jfieldID java_call_options_name;
 extern jfieldID java_task_creation_options_group;
 /// bundleIndex field of CallOptions class
 extern jfieldID java_task_creation_options_bundle_index;
-/// enableTaskFastFail field of ActorCreationOptions class
-extern jfieldID java_actor_creation_options_enable_task_fast_fail;
 /// concurrencyGroupName field of CallOptions class
 extern jfieldID java_call_options_concurrency_group_name;
 
@@ -189,6 +187,8 @@ extern jfieldID java_actor_creation_options_max_concurrency;
 extern jfieldID java_actor_creation_options_group;
 /// bundleIndex field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_bundle_index;
+/// enableTaskFastFail field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_enable_task_fast_fail;
 /// concurrencyGroups field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_concurrency_groups;
 /// serializedRuntimeEnv field of ActorCreatrionOptions class

@@ -292,8 +292,6 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       java_call_options_class, "group", "Lio/ray/api/placementgroup/PlacementGroup;");
   java_task_creation_options_bundle_index =
       env->GetFieldID(java_call_options_class, "bundleIndex", "I");
-  java_actor_creation_options_enable_task_fast_fail =
-      env->GetFieldID(java_actor_creation_options_class, "enableTaskFastFail", "Z");
   java_call_options_concurrency_group_name = env->GetFieldID(
       java_call_options_class, "concurrencyGroupName", "Ljava/lang/String;");
 
@@ -334,6 +332,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
                       "Lio/ray/api/placementgroup/PlacementGroup;");
   java_actor_creation_options_bundle_index =
       env->GetFieldID(java_actor_creation_options_class, "bundleIndex", "I");
+  java_actor_creation_options_enable_task_fast_fail =
+      env->GetFieldID(java_actor_creation_options_class, "enableTaskFastFail", "Z");
   java_actor_creation_options_concurrency_groups = env->GetFieldID(
       java_actor_creation_options_class, "concurrencyGroups", "Ljava/util/List;");
   java_actor_creation_options_serialized_runtime_env =
