@@ -267,9 +267,14 @@ class DatasetPipeline(Generic[T]):
 
     def _split(self, n: int, splitter: Callable[[Dataset], "DatasetPipeline[T]"]):
 
-        coordinator = PipelineSplitExecutorCoordinator.remote(
-            self, n, splitter, DatasetContext.get_current()
-        )
+        # Pin the coordinator (and any child actors) to the local node to avoid
+        # errors during node failures. If the local node dies, then the driver
+        # will fate-share with the coordinator anyway.
+        local_node_resource = "node:{}".format(ray.util.get_node_ip_address())
+        coordinator = PipelineSplitExecutorCoordinator.options(
+            resources={local_node_resource: 0.0001},
+            placement_group=None,
+        ).remote(self, n, splitter, DatasetContext.get_current())
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
         self._executed[0] = True

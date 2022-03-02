@@ -71,7 +71,7 @@ def test_parse_cluster_info(
                 == "Other module ClusterInfo"
             )
             mock_import_module.assert_called_once_with(module_string)
-            mock_module.get_job_submission_client_cluster_info.assert_called_once_with(
+            mock_module.get_submission_client_cluster_info.assert_called_once_with(
                 inner_address,
                 create_cluster_if_needed=create_cluster_if_needed,
                 cookies=cookies,

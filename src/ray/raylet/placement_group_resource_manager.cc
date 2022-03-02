@@ -128,7 +128,6 @@ void NewPlacementGroupResourceManager::CommitBundle(
   const auto &bundle_state = it->second;
   bundle_state->state_ = CommitState::COMMITTED;
 
-  const auto &string_id_map = cluster_resource_scheduler_->GetStringIdMap();
   const auto &task_resource_instances = *bundle_state->resources_;
 
   const auto &resources = bundle_spec.GetFormattedResources();
@@ -136,13 +135,12 @@ void NewPlacementGroupResourceManager::CommitBundle(
     const auto &resource_name = resource.first;
     const auto &original_resource_name = GetOriginalResourceName(resource_name);
     if (original_resource_name != kBundle_ResourceLabel) {
-      const auto &instances =
-          task_resource_instances.Get(original_resource_name, string_id_map);
+      const auto &instances = task_resource_instances.Get(original_resource_name);
       cluster_resource_scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
-          resource_name, instances);
+          scheduling::ResourceID{resource_name}, instances);
     } else {
       cluster_resource_scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
-          resource_name, {resource.second});
+          scheduling::ResourceID{resource_name}, {resource.second});
     }
   }
   update_resources_(
@@ -185,14 +183,15 @@ void NewPlacementGroupResourceManager::ReturnBundle(
 
   std::vector<std::string> deleted;
   for (const auto &resource : placement_group_resources) {
+    auto resource_id = scheduling::ResourceID{resource.first};
     if (cluster_resource_scheduler_->GetLocalResourceManager().IsAvailableResourceEmpty(
-            resource.first)) {
+            resource_id)) {
       RAY_LOG(DEBUG) << "Available bundle resource:[" << resource.first
                      << "] is empty, Will delete it from local resource";
       // Delete local resource if available resource is empty when return bundle, or there
       // will be resource leak.
       cluster_resource_scheduler_->GetLocalResourceManager().DeleteLocalResource(
-          resource.first);
+          resource_id);
       deleted.push_back(resource.first);
     } else {
       RAY_LOG(DEBUG) << "Available bundle resource:[" << resource.first

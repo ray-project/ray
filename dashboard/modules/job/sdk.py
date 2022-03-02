@@ -6,8 +6,8 @@ try:
     import aiohttp
 except ImportError:
     aiohttp = None
+    requests = None
 
-from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 from ray.dashboard.modules.job.common import (
     JobStatus,
     JobSubmitRequest,
@@ -16,6 +16,8 @@ from ray.dashboard.modules.job.common import (
     JobInfo,
     JobLogsResponse,
 )
+from ray.dashboard.modules.dashboard_sdk import SubmissionClient
+
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -74,6 +76,20 @@ class JobSubmissionClient(SubmissionClient):
 
         if r.status_code == 200:
             return JobInfo(**r.json())
+        else:
+            self._raise_error(r)
+
+    @PublicAPI(stability="beta")
+    def list_jobs(self) -> Dict[str, JobInfo]:
+        r = self._do_request("GET", "/api/jobs/")
+
+        if r.status_code == 200:
+            jobs_info_json = r.json()
+            jobs_info = {
+                job_id: JobInfo(**job_info_json)
+                for job_id, job_info_json in jobs_info_json.items()
+            }
+            return jobs_info
         else:
             self._raise_error(r)
 

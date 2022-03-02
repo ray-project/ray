@@ -3,11 +3,13 @@ import importlib
 import logging
 from pathlib import Path
 import tempfile
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 try:
+    import aiohttp
     import requests
 except ImportError:
+    aiohttp = None
     requests = None
 
 from ray._private.runtime_env.packaging import (
@@ -16,6 +18,7 @@ from ray._private.runtime_env.packaging import (
     parse_uri,
 )
 from ray.dashboard.modules.job.common import uri_to_http_components
+
 from ray.ray_constants import DEFAULT_DASHBOARD_PORT
 from ray.util.annotations import PublicAPI
 from ray.client_builder import _split_address
@@ -155,7 +158,7 @@ class SubmissionClient:
             r = self._do_request("GET", "/api/version")
             if r.status_code == 404:
                 raise RuntimeError(
-                    "Jobs API and local working_dirs in the Serve CLI are not "
+                    "Jobs API and working_dir in the Serve CLI are not "
                     "supported on the Ray cluster. "
                     "Please ensure the cluster is running "
                     "Ray 1.9 or higher."
@@ -180,7 +183,7 @@ class SubmissionClient:
         *,
         data: Optional[bytes] = None,
         json_data: Optional[dict] = None,
-    ) -> Optional[object]:
+    ) -> "requests.Response":
         url = self._address + endpoint
         logger.debug(f"Sending request to {url} with json data: {json_data or {}}.")
         return requests.request(

@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import pprint
 from subprocess import list2cmdline
 import time
 from typing import Optional, Tuple
@@ -314,4 +315,31 @@ def logs(address: Optional[str], job_id: str, follow: bool):
                 "for this feature."
             )
     else:
-        print(client.get_job_logs(job_id), end="")
+        # Set no_format to True because the logs may have unescaped "{" and "}"
+        # and the CLILogger calls str.format().
+        cli_logger.print(client.get_job_logs(job_id), end="", no_format=True)
+
+
+@job_cli_group.command()
+@click.option(
+    "--address",
+    type=str,
+    default=None,
+    required=False,
+    help=(
+        "Address of the Ray cluster to connect to. Can also be specified "
+        "using the RAY_ADDRESS environment variable."
+    ),
+)
+@add_click_logging_options
+@PublicAPI(stability="beta")
+def list(address: Optional[str]):
+    """Lists all running jobs and their information.
+
+    Example:
+        >>> ray job list
+    """
+    client = _get_sdk_client(address)
+    # Set no_format to True because the logs may have unescaped "{" and "}"
+    # and the CLILogger calls str.format().
+    cli_logger.print(pprint.pformat(client.list_jobs()), no_format=True)
