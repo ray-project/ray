@@ -263,9 +263,9 @@ class PB2(PopulationBasedTraining):
         >>>     metric="episode_reward_mean",
         >>>     mode="max",
         >>>     perturbation_interval=10000,
-        >>>     hyperparam_mutations={
-        >>>         # These must be continuous, currently a limitation.
-        >>>         "factor_1": lambda: random.uniform(0.0, 20.0),
+        >>>     hyperparam_bounds={
+        >>>         "factor_1": [0.0, 20.0],
+        >>>         "factor_2": [0.0, 1.0]
         >>>     })
         >>> tune.run({...}, num_samples=8, scheduler=pb2)
     """
