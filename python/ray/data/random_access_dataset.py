@@ -1,6 +1,7 @@
 import bisect
 import logging
 import random
+import time
 from collections import defaultdict
 from typing import List, Any, Optional, TYPE_CHECKING
 
@@ -34,10 +35,9 @@ class RandomAccessDataset(object):
         ``dataset.to_random_access_dataset()`` to construct a RandomAccessDataset.
         """
         if dataset._dataset_format() != "arrow":
-            raise ValueError(
-                "RandomAccessDataset can only be constructed from Arrow-format datasets."
-            )
+            raise ValueError("RandomAccessDataset only supports Arrow-format datasets.")
 
+        start = time.perf_counter()
         logger.info("[setup] Indexing dataset by sort key.")
         sorted_ds = dataset.sort(key)
         get_bounds = cached_remote_fn(_get_bounds)
@@ -56,6 +56,7 @@ class RandomAccessDataset(object):
                 self._upper_bounds.append(b[1])
 
         logger.info("[setup] Creating {} random access workers.".format(num_workers))
+        self._threads_per_worker = threads_per_worker
         self._workers = [
             _RandomAccessWorker.options(
                 scheduling_strategy="SPREAD", max_concurrency=threads_per_worker
@@ -80,6 +81,7 @@ class RandomAccessDataset(object):
         )
 
         logger.info("[setup] Finished assigning blocks to workers.")
+        self._build_time = time.perf_counter() - start
 
     def _compute_block_to_worker_assignments(self):
         # Return values.
@@ -103,6 +105,7 @@ class RandomAccessDataset(object):
                     workers_to_blocks[worker].append(block_idx)
 
         # Randomly assign any leftover blocks to at least one worker.
+        # TODO: the load balancing here could be improved.
         for block_idx, block in enumerate(self._valid_blocks):
             if len(blocks_to_workers[block_idx]) == 0:
                 worker = random.choice(self._workers)
@@ -153,6 +156,27 @@ class RandomAccessDataset(object):
                 results[k] = v
         return [results.get(k) for k in keys]
 
+    def stats(self) -> str:
+        """Returns a string containing access timing information."""
+        stats = ray.get([w.stats.remote() for w in self._workers])
+        total_time = sum(s["total_time"] for s in stats)
+        accesses = [s["num_accesses"] for s in stats]
+        blocks = [s["num_blocks"] for s in stats]
+        msg = "RandomAccessDataset:\n"
+        msg += "- Build time: {}s\n".format(self._build_time)
+        msg += "- Num workers: {}\n".format(len(stats))
+        msg += "- Threads per worker: {}\n".format(self._threads_per_worker)
+        msg += "- Blocks per worker: {} min, {} max, {} mean\n".format(
+            min(blocks), max(blocks), int(sum(blocks) / len(blocks))
+        )
+        msg += "- Accesses per worker: {} min, {} max, {} mean\n".format(
+            min(accesses), max(accesses), int(sum(accesses) / len(accesses))
+        )
+        msg += "- Mean access time: {}us\n".format(
+            int(total_time / sum(accesses) * 1e6)
+        )
+        return msg
+
     def _worker_for(self, block_index: int):
         return random.choice(self._block_to_workers_map[block_index])
 
@@ -168,26 +192,45 @@ class _RandomAccessWorker:
     def __init__(self, key_field):
         self.blocks = None
         self.key_field = key_field
+        self.num_accesses = 0
+        self.total_time = 0
 
     def assign_blocks(self, block_ref_dict):
         self.blocks = {k: ray.get(ref) for k, ref in block_ref_dict.items()}
 
     def get(self, block_index, key):
+        start = time.perf_counter()
+        result = self._get(block_index, key)
+        self.total_time += time.perf_counter() - start
+        self.num_accesses += 1
+        return result
+
+    def multiget(self, block_indices, keys):
+        start = time.perf_counter()
+        result = [self.get(i, k) for i, k in zip(block_indices, keys)]
+        self.total_time += time.perf_counter() - start
+        self.num_accesses += 1
+        return result
+
+    def ping(self):
+        return ray.get_runtime_context().node_id.hex()
+
+    def stats(self) -> dict:
+        return {
+            "num_blocks": len(self.blocks),
+            "num_accesses": self.num_accesses,
+            "total_time": self.total_time,
+        }
+
+    def _get(self, block_index, key):
         if block_index is None:
             return None
         block = self.blocks[block_index]
         i = _binary_search_find(block[self.key_field], key)
         if i is None:
             return None
-        else:
-            acc = BlockAccessor.for_block(block)
-            return acc._create_table_row(acc.slice(i, i + 1, copy=True))
-
-    def multiget(self, block_indices, keys):
-        return [self.get(i, k) for i, k in zip(block_indices, keys)]
-
-    def ping(self):
-        return ray.get_runtime_context().node_id.hex()
+        acc = BlockAccessor.for_block(block)
+        return acc._create_table_row(acc.slice(i, i + 1, copy=True))
 
 
 def _binary_search_find(column, x):
@@ -216,8 +259,6 @@ def _get_bounds(block, key):
 
 
 if __name__ == "__main__":
-    import time
-
     ds = ray.data.range_arrow(100000000, parallelism=10)
     rmap = ds.to_random_access_dataset("value", num_workers=1, threads_per_worker=4)
 
@@ -242,3 +283,4 @@ if __name__ == "__main__":
         ray.get([rmap.get_async(90000) for _ in range(1000)])
         total += 1000
     print(total / (time.time() - start), "keys / second / worker")
+    print(rmap.stats())
