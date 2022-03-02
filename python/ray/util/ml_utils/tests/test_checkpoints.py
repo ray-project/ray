@@ -109,11 +109,36 @@ class CheckpointsTest(unittest.TestCase):
 
         self._assert_dict_checkpoint(checkpoint)
 
+    def test_dict_checkpoint_remote_node(self):
+        """Test conversion from dict to remote fs checkpoint and back."""
+        import ray
+
+        if not ray.is_initialized():
+            ray.init()
+
+        checkpoint = self._prepare_dict_checkpoint()
+
+        # Convert into fs checkpoint in a "remote" location
+        remote_location = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, remote_location)
+        path = checkpoint.to_directory(remote_location)
+        self.assertIsInstance(path, str)
+
+        node_ip = ray.util.get_node_ip_address()
+        path = f"node://{node_ip}/{path}"
+
+        # Create from URI
+        checkpoint = Checkpoint.from_uri(path)
+        self.assertIsInstance(checkpoint.data, str)
+
+        with patch("ray.ml.checkpoint._get_local_path", lambda *a, **kw: None):
+            self._assert_dict_checkpoint(checkpoint)
+
     def test_dict_checkpoint_obj_store(self):
         """Test conversion from fs to obj store checkpoint and back."""
         import ray
 
-        if not ray.is_initialized:
+        if not ray.is_initialized():
             ray.init()
 
         checkpoint = self._prepare_dict_checkpoint()
@@ -210,11 +235,36 @@ class CheckpointsTest(unittest.TestCase):
 
         self._assert_fs_checkpoint(checkpoint)
 
+    def test_fs_checkpoint_remote_node(self):
+        """Test conversion from fs to remote fs checkpoint and back."""
+        import ray
+
+        if not ray.is_initialized():
+            ray.init()
+
+        checkpoint = self._prepare_fs_checkpoint()
+
+        # Convert into fs checkpoint in a "remote" location
+        remote_location = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, remote_location)
+        path = checkpoint.to_directory(remote_location)
+        self.assertIsInstance(path, str)
+
+        node_ip = ray.util.get_node_ip_address()
+        path = f"node://{node_ip}/{path}"
+
+        # Create from URI
+        checkpoint = Checkpoint.from_uri(path)
+        self.assertIsInstance(checkpoint.data, str)
+
+        with patch("ray.ml.checkpoint._get_local_path", lambda *a, **kw: None):
+            self._assert_fs_checkpoint(checkpoint)
+
     def test_fs_checkpoint_obj_store(self):
         """Test conversion from fs to obj store checkpoint and back."""
         import ray
 
-        if not ray.is_initialized:
+        if not ray.is_initialized():
             ray.init()
 
         checkpoint = self._prepare_fs_checkpoint()

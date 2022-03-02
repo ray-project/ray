@@ -223,8 +223,10 @@ class Checkpoint(abc.ABC):
                 download_from_bucket(bucket=external_path, local_path=path)
             elif node_path:
                 # If this exists on a remote node, transfer
-                remote_pack = ray.remote(_pack).options(resources=f"node:{node_ip}")
-                packed = ray.get(remote_pack.remote(path))
+                remote_pack = ray.remote(_pack).options(
+                    resources={f"node:{node_ip}": 0.01}
+                )
+                packed = ray.get(remote_pack.remote(node_path))
                 _unpack(packed, path)
             else:
                 raise RuntimeError(
@@ -243,6 +245,9 @@ class Checkpoint(abc.ABC):
         Returns:
             Checkpoint: checkpoint object.
         """
+        local_path = _get_local_path(location)
+        if local_path:
+            return Checkpoint.from_directory(local_path)
         return Checkpoint(data=location, metadata=None)
 
     def to_uri(self, location: str) -> str:
@@ -254,6 +259,10 @@ class Checkpoint(abc.ABC):
         Returns:
             str: Cloud location containing checkpoint data.
         """
+        if location.startswith("file://"):
+            local_path = location[7:]
+            return self.to_directory(local_path)
+
         assert is_cloud_target(location)
 
         cleanup = False
@@ -281,6 +290,8 @@ def _is_dict_checkpoint(metadata: Dict):
 def _get_local_path(path: str) -> Optional[str]:
     if is_cloud_target(path):
         return None
+    if path.startswith("file://"):
+        return path[7:]
     if path.startswith("node://"):
         _node, path = _get_node_path(path)
     if os.path.exists(path):
