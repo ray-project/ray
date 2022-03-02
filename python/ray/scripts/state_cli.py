@@ -47,6 +47,7 @@ def tasks(ctx):
     data = list(r.json()["data"]["tasks"].values())
     if len(data) == 0:
         print("No tasks in the cluster")
+        return
 
     keys = ["name", "schedulingState", "requiredResources", "SchedulingStateDetail"]
     from collections import defaultdict
@@ -55,20 +56,92 @@ def tasks(ctx):
     for d in data:
         if "name" in d:
             if "SchedulingStateDetail" not in d:
-                d["SchedulingStateDetail"] = ""
+                d["SchedulingStateDetail"] = "?"
                 d["schedulingState"] = "Running"
+            if "requiredResources" not in d:
+                d["requiredResources"] = "?"
             for k in keys:
                 values[k].append(d[k])
     from tabulate import tabulate
 
     print(tabulate(values, headers="keys", tablefmt="github"))
 
-    # print(result["data"]["tasks"])
-    # print(tabulate(result["data"]["tasks"].values(), headers="key"))
-
 
 @get_state_cli_group.command()
 @click.pass_context
 def actors(ctx):
-    state = ctx.obj["state"]
-    print(state.actor_table(None))
+    url = ctx.obj["api_server_url"]
+    r = requests.request(
+        "GET",
+        f"{url}/actors/get",
+        headers={"Content-Type": "application/json"},
+        json=None,
+        timeout=10,
+    )
+    r.raise_for_status()
+    actors = r.json()["data"]["actors"]
+    if len(actors) == 0:
+        print("No actors in the cluster.")
+        return
+
+    keys = ["actorClass", "state", "pid", "actorId"]
+    from collections import defaultdict
+
+    values = defaultdict(list)
+    for actor in actors.values():
+        for k in keys:
+            values[k].append(actor[k])
+    from tabulate import tabulate
+
+    print(tabulate(values, headers="keys", tablefmt="github"))
+
+
+@get_state_cli_group.command()
+@click.pass_context
+def objects(ctx):
+    url = ctx.obj["api_server_url"]
+    r = requests.request(
+        "GET",
+        f"{url}/objects/get",
+        headers={"Content-Type": "application/json"},
+        json=None,
+        timeout=10,
+    )
+    r.raise_for_status()
+    objects = r.json()["data"]["memory"]
+    if len(objects) == 0:
+        print("No actors in the cluster.")
+        return
+    print(objects)
+
+
+@get_state_cli_group.command()
+@click.pass_context
+def placement_groups(ctx):
+    url = ctx.obj["api_server_url"]
+    r = requests.request(
+        "GET",
+        f"{url}/placement_groups/get",
+        headers={"Content-Type": "application/json"},
+        json=None,
+        timeout=10,
+    )
+    r.raise_for_status()
+    pgs = r.json()["data"]["pgs"]
+    if len(pgs) == 0:
+        print("No actors in the cluster.")
+        return
+
+    keys = ["placementGroupId", "state", "bundles"]
+    from collections import defaultdict
+
+    values = defaultdict(list)
+    for pg in pgs.values():
+        for k in keys:
+            if k == "bundles":
+                values[k].append([p["unitResources"] for p in pg[k]])
+            else:
+                values[k].append(pg[k])
+    from tabulate import tabulate
+
+    print(tabulate(values, headers="keys", tablefmt="github"))

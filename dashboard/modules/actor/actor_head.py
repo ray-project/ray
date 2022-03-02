@@ -257,6 +257,12 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
 
         return rest_response(success=True, message=f"Killed actor with id {actor_id}")
 
+    @routes.get("/actors/get")
+    async def get_all_actors(self, req) -> aiohttp.web.Response:
+        return rest_response(
+            success=True, message="All actors fetched.", actors=DataSource.actors
+        )
+
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
         self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(

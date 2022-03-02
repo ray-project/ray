@@ -10,6 +10,8 @@ import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.optional_utils import rest_response
 from ray.core.generated import node_manager_pb2_grpc
 from ray.core.generated import node_manager_pb2
+from ray.core.generated import gcs_service_pb2
+from ray.core.generated import gcs_service_pb2_grpc
 from ray.dashboard.datacenter import DataSource
 from ray._raylet import TaskID
 
@@ -81,7 +83,32 @@ class TaskHead(dashboard_utils.DashboardHeadModule):
 
         return rest_response(success=True, message="Tasks fetched", tasks=tasks)
 
+    @routes.get("/objects/get")
+    @dashboard_optional_utils.aiohttp_cache
+    async def get_objects(self, req) -> aiohttp.web.Response:
+        from ray.dashboard.memory_utils import memory_summary
+
+        return rest_response(
+            success=True,
+            message="Objects fetched",
+            memory=memory_summary(ray.state.state),
+        )
+
+    @routes.get("/placement_groups/get")
+    @dashboard_optional_utils.aiohttp_cache
+    async def get_placement_groups(self, req) -> aiohttp.web.Response:
+        request = gcs_service_pb2.GetAllPlacementGroupRequest()
+        reply = await self.stub.GetAllPlacementGroup(request, timeout=5)
+        if reply.status.code == 0:
+            pgs = {}
+            for msg in reply.placement_group_table_data:
+                data = dashboard_utils.message_to_dict(msg, ["placementGroupId"])
+                pgs[data["placementGroupId"]] = data
+        return rest_response(success=True, message="Objects fetched", pgs=pgs)
+
     async def run(self, server):
+        gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
+        self.stub = gcs_service_pb2_grpc.PlacementGroupInfoGcsServiceStub(gcs_channel)
         pass
 
     @staticmethod
