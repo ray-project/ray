@@ -573,36 +573,35 @@ class XGBoostPredictor:
 #     print(predicted)
 
 
-# from ray.data.datasource.datasource import Datasource, ReadTask
-# from ray.data.impl.block_list import BlockMetadata
-#
-#
-# class TestDatasource(Datasource):
-#     def prepare_read(self, parallelism: int, **read_args):
-#         import pyarrow as pa
-#
-#         def load_data():
-#             data_raw = load_breast_cancer(as_frame=True)
-#             dataset_df = data_raw["data"]
-#             dataset_df["target"] = data_raw["target"]
-#             return pa.Table.from_pandas(dataset_df)
-#
-#         meta = BlockMetadata(num_rows=None, size_bytes=None, schema=None, input_files=None, exec_stats=None)
-#         return [ReadTask(load_data, meta)]
-#
-#
-# def gen_dataset_func() -> Dataset:
-#     test_datasource = TestDatasource()
-#     ray.data.read_datasource(test_datasource)
+from ray.data.datasource.datasource import Datasource, ReadTask
+from ray.data.impl.block_list import BlockMetadata
 
 
-def gen_dataset_func() -> ray.data.Dataset:
-    data_raw = load_breast_cancer(as_frame=True)
-    dataset_df = data_raw["data"]
-    dataset_df["target"] = data_raw["target"]
-    dataset = ray.data.from_pandas(dataset_df)
-    return dataset
+class TestDatasource(Datasource):
+    def prepare_read(self, parallelism: int, **read_args):
+        import pyarrow as pa
 
+        def load_data():
+            data_raw = load_breast_cancer(as_frame=True)
+            dataset_df = data_raw["data"]
+            dataset_df["target"] = data_raw["target"]
+            return [pa.Table.from_pandas(dataset_df)]
+
+        meta = BlockMetadata(num_rows=None, size_bytes=None, schema=None, input_files=None, exec_stats=None)
+        return [ReadTask(load_data, meta)]
+
+
+def gen_dataset_func() -> Dataset:
+    test_datasource = TestDatasource()
+    return ray.data.read_datasource(test_datasource)
+
+
+# def gen_dataset_func() -> ray.data.Dataset:
+#     data_raw = load_breast_cancer(as_frame=True)
+#     dataset_df = data_raw["data"]
+#     dataset_df["target"] = data_raw["target"]
+#     dataset = ray.data.from_pandas(dataset_df)
+#     return dataset
 
 def test_xgboost_tuner(fail_after_finished: int = 0):
     shutil.rmtree("/Users/xwjiang/ray_results/tuner_resume", ignore_errors=True)
@@ -695,6 +694,7 @@ def test_xgboost_resume():
 
 if __name__ == "__main__":
     # ray.init("ray://127.0.0.1:10001")
+
     ray.init()
     test_xgboost_tuner()
     # test_xgboost_resume()
