@@ -68,7 +68,6 @@ void SchedulerResourceReporter::FillResourceUsage(
   int64_t skipped_requests = 0;
 
   absl::flat_hash_set<SchedulingClass> visited;
-  auto chain = boost::make_iterator_range(std::begin());
   auto fill_resource_usage_helper = [&](auto &range) mutable {
     for (auto [scheduling_class, count] : range) {
       if (num_reported++ >= max_resource_shapes_per_load_report_ &&
