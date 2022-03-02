@@ -16,8 +16,8 @@
 
 #include <google/protobuf/util/json_util.h>
 
-#include <boost/range/join.hpp>
 #include <boost/range/adaptor/transformed.hpp>
+#include <boost/range/join.hpp>
 
 namespace ray {
 namespace raylet {
@@ -69,23 +69,23 @@ void SchedulerResourceReporter::FillResourceUsage(
 
   absl::flat_hash_set<SchedulingClass> visited;
   auto chain = boost::make_iterator_range(std::begin());
-  auto fill_resource_usage_helper = [&] (auto& range) mutable {
+  auto fill_resource_usage_helper = [&](auto &range) mutable {
     for (auto [scheduling_class, count] : range) {
       if (num_reported++ >= max_resource_shapes_per_load_report_ &&
           max_resource_shapes_per_load_report_ >= 0) {
-        // TODO (Alex): It's possible that we skip a different scheduling key which contains
-        // the same resources.
+        // TODO (Alex): It's possible that we skip a different scheduling key which
+        // contains the same resources.
         skipped_requests++;
         break;
       }
 
-      if(visited.count(scheduling_class) != 0) {
+      if (visited.count(scheduling_class) != 0) {
         continue;
       }
 
       const auto &resources =
           TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
-          .resource_set.GetResourceMap();
+              .resource_set.GetResourceMap();
 
       auto by_shape_entry = resource_load_by_shape->Add();
 
@@ -99,7 +99,7 @@ void SchedulerResourceReporter::FillResourceUsage(
         (*by_shape_entry->mutable_shape())[label] = quantity;
       }
 
-      if(infeasible_tasks_.count(scheduling_class) != 0) {
+      if (infeasible_tasks_.count(scheduling_class) != 0) {
         by_shape_entry->set_num_ready_requests_queued(count);
       } else {
         by_shape_entry->set_num_infeasible_requests_queued(count);
@@ -109,11 +109,17 @@ void SchedulerResourceReporter::FillResourceUsage(
     }
   };
 
-  auto transform_func = [](auto& pair) {return std::make_pair(pair.first, pair.second.size());};
-  auto tasks_to_schedule_range = tasks_to_schedule_ | boost::adaptors::transformed(transform_func);
-  auto tasks_to_dispatch_range = tasks_to_dispatch_ | boost::adaptors::transformed(transform_func);
-  auto infeasible_tasks_range = infeasible_tasks_ | boost::adaptors::transformed(transform_func);
-  auto backlog_tracker_range = backlog_tracker_ | boost::adaptors::transformed(transform_func);
+  auto transform_func = [](auto &pair) {
+    return std::make_pair(pair.first, pair.second.size());
+  };
+  auto tasks_to_schedule_range =
+      tasks_to_schedule_ | boost::adaptors::transformed(transform_func);
+  auto tasks_to_dispatch_range =
+      tasks_to_dispatch_ | boost::adaptors::transformed(transform_func);
+  auto infeasible_tasks_range =
+      infeasible_tasks_ | boost::adaptors::transformed(transform_func);
+  auto backlog_tracker_range =
+      backlog_tracker_ | boost::adaptors::transformed(transform_func);
 
   fill_resource_usage_helper(tasks_to_schedule_range);
   fill_resource_usage_helper(tasks_to_dispatch_range);
