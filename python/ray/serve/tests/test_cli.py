@@ -21,6 +21,13 @@ def ray_start_stop():
     subprocess.check_output(["ray", "stop", "--force"])
 
 
+def ping_endpoint(endpoint: str, params: str = ""):
+    try:
+        return requests.get(f"http://localhost:8000/{endpoint}{params}").text
+    except requests.exceptions.ConnectionError:
+        return "connection error"
+
+
 def test_start_shutdown(ray_start_stop):
     with pytest.raises(subprocess.CalledProcessError):
         subprocess.check_output(["serve", "shutdown"])
@@ -228,14 +235,8 @@ def parrot(request):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run(ray_start_stop):
+def test_run_basic(ray_start_stop):
     # Deploys valid config file and import path via serve run
-
-    def ping_endpoint(endpoint: str, params: str = ""):
-        try:
-            return requests.get(f"http://localhost:8000/{endpoint}{params}").text
-        except requests.exceptions.ConnectionError:
-            return "connection error"
 
     # Deploy via config file
     config_file_name = os.path.join(
@@ -265,6 +266,60 @@ def test_run(ray_start_stop):
         lambda: ping_endpoint("parrot", params="?sound=squawk") == "connection error",
         timeout=10,
     )
+
+
+class Macaw:
+    def __init__(self, color, name="Mulligan"):
+        self.color = color
+        self.name = name
+
+    def __call__(self):
+        return f"{self.name} is {self.color}!"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run_init_args_kwargs(ray_start_stop):
+    # Tests serve run with specified args and kwargs
+
+    # Deploy via import path
+    p = subprocess.Popen(
+        [
+            "serve",
+            "run",
+            "ray.serve.tests.test_cli.Macaw",
+            "--",
+            "green",
+            "--name",
+            "Molly",
+        ]
+    )
+    wait_for_condition(lambda: ping_endpoint("Macaw") == "Molly is green!", timeout=10)
+    p.send_signal(signal.SIGINT)
+    wait_for_condition(lambda: ping_endpoint("Macaw") == "connection error", timeout=10)
+
+    # Incorrect args/kwargs ordering
+    with pytest.raises(subprocess.CalledProcessError):
+        subprocess.check_output(
+            [
+                "serve",
+                "run",
+                "ray.serve.tests.test_cli.Macaw",
+                "--",
+                "--name",
+                "Molly",
+                "green",
+            ]
+        )
+
+    # Args/kwargs with config file
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "macaw.yaml"
+    )
+
+    with pytest.raises(subprocess.CalledProcessError):
+        subprocess.check_output(
+            ["serve", "run", config_file_name, "--", "green", "--name", "Molly"]
+        )
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
