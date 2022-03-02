@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+import json
 import os
 import logging
 import sys
@@ -155,6 +156,26 @@ class TestJobStop:
         stdout, _ = _run_cmd(f"ray job stop --no-wait {job_id}")
         assert "Waiting for job" not in stdout
         assert f"Job '{job_id}' was stopped" not in stdout
+
+
+class TestJobList:
+    def test_empty(self, ray_start_stop):
+        stdout, _ = _run_cmd("ray job list")
+        assert "{}" in stdout
+
+    def test_list(self, ray_start_stop):
+        _run_cmd("ray job submit --job-id='hello_id' -- echo hello")
+
+        runtime_env = {"env_vars": {"TEST": "123"}}
+        _run_cmd(
+            "ray job submit --job-id='hi_id' "
+            f"--runtime-env-json='{json.dumps(runtime_env)}' -- echo hi"
+        )
+        stdout, _ = _run_cmd("ray job list")
+        assert "JobInfo" in stdout
+        assert "123" in stdout
+        assert "hello_id" in stdout
+        assert "hi_id" in stdout
 
 
 def test_quote_escaping(ray_start_stop):
