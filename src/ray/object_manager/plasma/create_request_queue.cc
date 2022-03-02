@@ -247,7 +247,7 @@ Status CreateRequestQueue::ProcessRequests() {
   // run new tasks again.
   if (RayConfig::instance().enable_BlockTasks()) {
     RAY_LOG(DEBUG) << "[JAE_DEBUG] resetting object_creation_blocked_callback priority";
-    RAY_UNUSED(on_object_creation_blocked_callback_(ray::Priority(), (1<<0)));
+    RAY_UNUSED(on_object_creation_blocked_callback_(ray::Priority(), true, false));
   }
 
   return Status::OK();
