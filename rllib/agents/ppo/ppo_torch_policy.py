@@ -261,3 +261,17 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
             self.entropy_coeff = self._entropy_coeff_schedule.value(
                 global_vars["timestep"]
             )
+
+    @override(TorchPolicy)
+    def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
+        state = super().get_state()
+        # Add current kl-coeff value.
+        state["current_kl_coeff"] = self.kl_coeff
+        return state
+
+    @override(TorchPolicy)
+    def set_state(self, state: dict) -> None:
+        # Set current kl-coeff value first.
+        self.kl_coeff = state.pop("current_kl_coeff", self.config["kl_coeff"])
+        # Call super's set_state with rest of the state dict.
+        super().set_state(state)

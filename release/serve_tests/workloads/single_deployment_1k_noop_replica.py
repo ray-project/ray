@@ -28,9 +28,11 @@ import click
 import json
 import math
 import os
+import time
 
 from ray import serve
 from ray.serve.utils import logger
+from ray.serve.api import _get_global_client
 from serve_test_utils import (
     aggregate_all_metrics,
     run_wrk_on_all_nodes,
@@ -58,7 +60,9 @@ DEFAULT_FULL_TEST_TRIAL_LENGTH = "10m"
 
 
 def deploy_replicas(num_replicas, max_batch_size):
-    @serve.deployment(name="echo", num_replicas=num_replicas)
+    name = "echo"
+
+    @serve.deployment(name=name, num_replicas=num_replicas)
     class Echo:
         @serve.batch(max_batch_size=max_batch_size)
         async def handle_batch(self, requests):
@@ -67,7 +71,25 @@ def deploy_replicas(num_replicas, max_batch_size):
         async def __call__(self, request):
             return await self.handle_batch(request)
 
-    Echo.deploy()
+    # Set _blocking=False to allow for a custom extended grace period for the
+    # health check, which is necessary to prevent this test from being flaky.
+    Echo.deploy(_blocking=False)
+
+    start = time.time()
+    client = _get_global_client()
+    # Wait for up to 10 minutes for the deployment to be healthy, allowing
+    # time for any actors that crashed to restart.
+    while time.time() - start < 10 * 60:
+        try:
+            # Raises RuntimeError if deployment enters the "UNHEALTHY" state.
+            client._wait_for_deployment_healthy(name)
+        except RuntimeError:
+            time.sleep(1)
+            pass
+
+    # If the deployment is still unhealthy at this point, allow RuntimeError
+    # to be raised and let this test fail.
+    client._wait_for_deployment_healthy(name)
 
 
 def save_results(final_result, default_name):

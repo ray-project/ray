@@ -109,7 +109,7 @@ class Metric {
         tag_keys_(tag_keys),
         measure_(nullptr) {}
 
-  virtual ~Metric() { opencensus::stats::StatsExporter::RemoveView(name_); }
+  virtual ~Metric();
 
   Metric &operator()() { return *this; }
 

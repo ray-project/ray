@@ -191,7 +191,9 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
 
-  // Resource syncer
+  // For the updates from placement group, it needs to report to the syncer
+  // so it can be broadcasted to other nodes.
+  // TODO (iycheng): remove this one once we change how pg is reported.
   syncer::RaySyncer *ray_syncer_;
 };
 

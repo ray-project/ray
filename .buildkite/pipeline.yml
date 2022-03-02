@@ -253,7 +253,7 @@
     - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./scripts/bazel_export_options)
       python/ray/tests/test_serve_ray_minimal
     - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./scripts/bazel_export_options)
-      python/ray/dashboard/test_dashboard 
+      python/ray/dashboard/test_dashboard
     - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./scripts/bazel_export_options)
       python/ray/tests/test_usage_stats
 
@@ -308,6 +308,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
+    - pip install "grpcio >= 1.28.1, <= 1.43.0"
     - bazel test --config=ci --config=asan $(./scripts/bazel_export_options)
       --config=asan-buildkite
       --test_tag_filters=-kubernetes,asan_tests
@@ -415,3 +416,8 @@
       - ./ci/travis/env_info.sh
       - python ./ci/travis/check_minimal_install.py
       - bazel test --config=ci $(./scripts/bazel_export_options)  --build_tests_only --test_tag_filters=minimal python/ray/train/...
+
+- label: ":kubernetes: operator"
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/travis/prep-k8s-environment.sh

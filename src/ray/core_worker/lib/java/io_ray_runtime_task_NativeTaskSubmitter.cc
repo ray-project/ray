@@ -151,6 +151,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   uint64_t max_concurrency = 1;
   auto placement_options = std::make_pair(PlacementGroupID::Nil(), -1);
   std::vector<ConcurrencyGroup> concurrency_groups;
+  std::string serialized_runtime_env = "";
   int32_t max_pending_calls = -1;
 
   if (actorCreationOptions) {
@@ -162,8 +163,8 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
     auto java_actor_lifetime = (jobject)env->GetObjectField(
         actorCreationOptions, java_actor_creation_options_lifetime);
     if (java_actor_lifetime != nullptr) {
-      is_detached =
-          std::make_optional<bool>(env->IsSameObject(java_actor_lifetime, STATUS_DETACHED));
+      is_detached = std::make_optional<bool>(
+          env->IsSameObject(java_actor_lifetime, STATUS_DETACHED));
     }
 
     max_restarts =
@@ -223,6 +224,12 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
           return ray::ConcurrencyGroup{concurrency_group_name, max_concurrency,
                                        native_func_descriptors};
         });
+    auto java_serialized_runtime_env = (jstring)env->GetObjectField(
+        actorCreationOptions, java_actor_creation_options_serialized_runtime_env);
+    if (java_serialized_runtime_env) {
+      serialized_runtime_env = JavaStringToNativeString(env, java_serialized_runtime_env);
+    }
+
     max_pending_calls = static_cast<int32_t>(env->GetIntField(
         actorCreationOptions, java_actor_creation_options_max_pending_calls));
   }
@@ -253,7 +260,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       ray_namespace,
       /*is_asyncio=*/false,
       /*scheduling_strategy=*/scheduling_strategy,
-      /*serialized_runtime_env=*/"{}",
+      serialized_runtime_env,
       concurrency_groups,
       /*execute_out_of_order*/ false,
       max_pending_calls};

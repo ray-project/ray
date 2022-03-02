@@ -352,6 +352,8 @@ class BasicVariantGenerator(SearchAlgorithm):
         Returns:
             Trial: Returns a single trial.
         """
+        if self.is_finished():
+            return None
         if self.max_concurrent > 0 and len(self._live_trials) >= self.max_concurrent:
             return None
         if not self._trial_iter:
