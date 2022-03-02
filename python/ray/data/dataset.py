@@ -65,7 +65,7 @@ from ray.data.datasource.file_based_datasource import (
 )
 from ray.data.row import TableRow
 from ray.data.aggregate import AggregateFn, Sum, Max, Min, Mean, Std
-from ray.data.random_access_map import RandomAccessMap
+from ray.data.random_access_dataset import RandomAccessDataset
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
 from ray.data.impl.plan import ExecutionPlan, OneToOneStage, AllToAllStage
@@ -329,7 +329,7 @@ class Dataset(Generic[T]):
         Args:
             col: Name of the column to add. If the name already exists, the
                 column will be overwritten.
-            fn: Map function generating the column values given a batch of
+            fn: Dataset function generating the column values given a batch of
                 records in pandas format.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
@@ -2488,15 +2488,15 @@ Dict[str, List[str]]]): The names of the columns
         block_to_arrow = cached_remote_fn(_block_to_arrow)
         return [block_to_arrow.remote(block) for block in blocks]
 
-    def to_random_access_map(
+    def to_random_access_dataset(
         self,
         key: str,
         num_workers: Optional[int] = None,
         threads_per_worker: int = 4,
-    ) -> RandomAccessMap:
-        """Convert this Dataset into a distributed RandomAccessMap (EXPERIMENTAL).
+    ) -> RandomAccessDataset:
+        """Convert this Dataset into a distributed RandomAccessDataset (EXPERIMENTAL).
 
-        RandomAccessMap partitions the dataset across the cluster by the given sort
+        RandomAccessDataset partitions the dataset across the cluster by the given sort
         key, providing efficient random access to records via binary search. A number
         of worker actors are created, each of which has zero-copy access to the
         underlying sorted data blocks of the Dataset.
@@ -2514,7 +2514,7 @@ Dict[str, List[str]]]): The names of the columns
         """
         if num_workers is None:
             num_workers = 2 * len(ray.nodes())
-        return RandomAccessMap(
+        return RandomAccessDataset(
             self, key, num_workers=num_workers, threads_per_worker=threads_per_worker
         )
 

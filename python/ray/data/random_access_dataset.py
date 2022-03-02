@@ -15,10 +15,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class RandomAccessMap(object):
+class RandomAccessDataset(object):
     """A class that provides distributed, random access to a Dataset.
 
-    See: ``Dataset.to_random_access_map()``.
+    See: ``Dataset.to_random_access_dataset()``.
     """
 
     def __init__(
@@ -28,14 +28,14 @@ class RandomAccessMap(object):
         num_workers: int,
         threads_per_worker: int,
     ):
-        """Construct a RandomAccessMap (internal API).
+        """Construct a RandomAccessDataset (internal API).
 
         The constructor is not part of the Datasets API. Use
-        ``dataset.to_random_access_map()`` to construct a RandomAccessMap.
+        ``dataset.to_random_access_dataset()`` to construct a RandomAccessDataset.
         """
         if dataset._dataset_format() != "arrow":
             raise ValueError(
-                "RandomAccessMap can only be constructed from Arrow-format datasets."
+                "RandomAccessDataset can only be constructed from Arrow-format datasets."
             )
 
         logger.info("[setup] Indexing dataset by sort key.")
@@ -219,7 +219,7 @@ if __name__ == "__main__":
     import time
 
     ds = ray.data.range_arrow(100000000, parallelism=10)
-    rmap = ds.to_random_access_map("value", num_workers=1, threads_per_worker=4)
+    rmap = ds.to_random_access_dataset("value", num_workers=1, threads_per_worker=4)
 
     print("Demo:")
     print(ray.get(rmap.get_async(1)))
