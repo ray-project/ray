@@ -277,12 +277,12 @@ def test_delete(ray_start_stop):
         subprocess.check_output(["serve", "deploy", config_file_name])
         info_response = subprocess.check_output(["serve", "info"])
         info = json.loads(info_response)
-        len(info["deployments"]) == 2
+        assert len(info["deployments"]) == 2
 
         subprocess.check_output(["serve", "delete", "-y"])
         info_response = subprocess.check_output(["serve", "info"])
         info = json.loads(info_response)
-        len(info["deployments"]) == 2
+        assert len(info["deployments"]) == 0
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
