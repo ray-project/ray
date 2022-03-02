@@ -60,14 +60,14 @@ class ExecutionPlan:
         Returns:
             A shallow copy of this execution plan.
         """
-        copy = ExecutionPlan(self._in_blocks, self._in_stats)
+        plan_copy = ExecutionPlan(self._in_blocks, self._in_stats)
         if self._snapshot_blocks is not None:
             # Copy over the existing snapshot.
-            copy._snapshot_blocks = self._snapshot_blocks
-            copy._snapshot_stats = self._snapshot_stats
-            copy._snapshot_stage_idx = self._snapshot_stage_idx
-        copy._stages = self._stages.copy()
-        return copy
+            plan_copy._snapshot_blocks = self._snapshot_blocks
+            plan_copy._snapshot_stats = self._snapshot_stats
+            plan_copy._snapshot_stage_idx = self._snapshot_stage_idx
+        plan_copy._stages = self._stages.copy()
+        return plan_copy
 
     def deep_copy(self, preserve_uuid: bool = False) -> "ExecutionPlan":
         """Create a deep copy of this execution plan.
@@ -93,7 +93,7 @@ class ExecutionPlan:
                 snapshot_blocks = snapshot_blocks.copy()
             plan_copy._snapshot_blocks = snapshot_blocks
             plan_copy._snapshot_stats = copy.copy(self._snapshot_stats)
-            copy._snapshot_stage_idx = self._snapshot_stage_idx
+            plan_copy._snapshot_stage_idx = self._snapshot_stage_idx
         plan_copy._stages = self._stages.copy()
         return plan_copy
 
@@ -104,6 +104,8 @@ class ExecutionPlan:
         for stage in self._stages[::-1]:
             if stage.num_blocks is not None:
                 return stage.num_blocks
+        if self._snapshot_blocks is not None:
+            return self._snapshot_blocks.initial_num_blocks()
         return self._in_blocks.initial_num_blocks()
 
     def schema(
@@ -120,6 +122,7 @@ class ExecutionPlan:
         if self._stages:
             if fetch_if_missing:
                 self.execute()
+        if self._snapshot_blocks is not None:
             # Snapshot is guaranteed to be the output of the final stage after executing
             # the plan.
             blocks = self._snapshot_blocks
@@ -134,7 +137,7 @@ class ExecutionPlan:
         if not fetch_if_missing:
             return None
         # Need to synchronously fetch schema.
-        return blocks.ensure_schema_for_first_block()
+        return blocks.ensure_schema_for_first_block() if blocks else None
 
     def meta_count(self) -> Optional[int]:
         """Get the number of rows after applying all plan stages if possible.
