@@ -68,7 +68,10 @@ void SchedulerResourceReporter::FillResourceUsage(
   int64_t skipped_requests = 0;
 
   absl::flat_hash_set<SchedulingClass> visited;
-  auto fill_resource_usage_helper = [&](auto &range) mutable {
+  auto transform_func = [](auto &pair) {
+    return std::make_pair(pair.first, pair.second.size());
+  };
+  auto fill_resource_usage_helper = [&](auto &range, bool is_infeasible) mutable {
     for (auto [scheduling_class, count] : range) {
       if (num_reported++ >= max_resource_shapes_per_load_report_ &&
           max_resource_shapes_per_load_report_ >= 0) {
@@ -85,7 +88,6 @@ void SchedulerResourceReporter::FillResourceUsage(
       const auto &resources =
           TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
               .resource_set.GetResourceMap();
-
       auto by_shape_entry = resource_load_by_shape->Add();
 
       for (const auto &resource : resources) {
@@ -98,19 +100,16 @@ void SchedulerResourceReporter::FillResourceUsage(
         (*by_shape_entry->mutable_shape())[label] = quantity;
       }
 
-      if (infeasible_tasks_.count(scheduling_class) != 0) {
-        by_shape_entry->set_num_ready_requests_queued(count);
-      } else {
+      if (is_infeasible) {
         by_shape_entry->set_num_infeasible_requests_queued(count);
+      } else {
+        by_shape_entry->set_num_ready_requests_queued(count);
       }
       by_shape_entry->set_backlog_size(TotalBacklogSize(scheduling_class));
       visited.insert(scheduling_class);
     }
   };
 
-  auto transform_func = [](auto &pair) {
-    return std::make_pair(pair.first, pair.second.size());
-  };
   auto tasks_to_schedule_range =
       tasks_to_schedule_ | boost::adaptors::transformed(transform_func);
   auto tasks_to_dispatch_range =
@@ -120,10 +119,10 @@ void SchedulerResourceReporter::FillResourceUsage(
   auto backlog_tracker_range =
       backlog_tracker_ | boost::adaptors::transformed(transform_func);
 
-  fill_resource_usage_helper(tasks_to_schedule_range);
-  fill_resource_usage_helper(tasks_to_dispatch_range);
-  fill_resource_usage_helper(infeasible_tasks_range);
-  fill_resource_usage_helper(backlog_tracker_range);
+  fill_resource_usage_helper(tasks_to_schedule_range, false);
+  fill_resource_usage_helper(tasks_to_dispatch_range, false);
+  fill_resource_usage_helper(infeasible_tasks_range, true);
+  fill_resource_usage_helper(backlog_tracker_range, false);
 
   if (skipped_requests > 0) {
     RAY_LOG(INFO) << "More than " << max_resource_shapes_per_load_report_
