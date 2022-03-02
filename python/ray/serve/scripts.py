@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import json
+from dashboard.modules.dashboard_sdk import SubmissionClient
 import yaml
 import os
 import sys
@@ -59,7 +60,7 @@ def process_args_and_kwargs(
     args, kwargs = [], {}
 
     token_idx = 0
-    while token_idx < len(args_and_kwargs):
+    while args_and_kwargs is not None and token_idx < len(args_and_kwargs):
         token = args_and_kwargs[token_idx]
         if token[:2] == "--":
             if token_idx + 1 < len(args_and_kwargs):
@@ -235,14 +236,31 @@ def deploy(config_file_name: str, address: str):
 @click.argument("config_or_import_path")
 @click.argument("args_and_kwargs", required=False, nargs=-1)
 @click.option(
-    "--address",
-    "-a",
+    "--working_dir",
+    "-w",
     default=None,
     required=False,
     type=str,
-    help='Address of the running Ray cluster to connect to. Defaults to "auto".',
+    help="Local path or remote URI of working directory for the deployment. "
+    "Only works with deployment accessed by import path.",
 )
-def run(config_or_import_path: str, args_and_kwargs: Tuple[str], address: str):
+@click.option(
+    "--address",
+    "-a",
+    default=os.environ.get("RAY_ADDRESS", "http://localhost:8265"),
+    required=False,
+    type=str,
+    help=(
+        "Address of the Ray dashboard to query. Only necessary if a "
+        "working_dir is specified."
+    ),
+)
+def run(
+    config_or_import_path: str,
+    args_and_kwargs: Tuple[str],
+    working_dir: str,
+    address: str,
+):
     """
     Deploys deployment(s) from CONFIG_OR_IMPORT_PATH, which must be either a
     Serve YAML configuration file path or an import path to
@@ -253,14 +271,14 @@ def run(config_or_import_path: str, args_and_kwargs: Tuple[str], address: str):
     try:
         # Check if path provided is for config or import
         is_config = pathlib.Path(config_or_import_path).is_file()
-
-        if address is not None:
-            ray.init(address=address, namespace="serve")
-        serve.start()
-
         args, kwargs = process_args_and_kwargs(args_and_kwargs)
 
         if is_config:
+            if working_dir is not None:
+                raise ValueError(
+                    "WORKING_DIR is not supported for config file deployment. "
+                    "Please specify the working_dir inside the config file."
+                )
             if len(args) + len(kwargs) > 0:
                 raise ValueError(
                     "ARGS_AND_KWARGS cannot be defined for a "
@@ -276,6 +294,8 @@ def run(config_or_import_path: str, args_and_kwargs: Tuple[str], address: str):
 
             schematized_config = ServeApplicationSchema.parse_obj(config)
             deployments = schema_to_serve_application(schematized_config)
+
+            serve.start()
             deploy_group(deployments)
 
             cli_logger.newline()
@@ -286,13 +306,25 @@ def run(config_or_import_path: str, args_and_kwargs: Tuple[str], address: str):
             cli_logger.newline()
 
         if not is_config:
+            runtime_env = {}
+            if working_dir is not None:
+                runtime_env = {"working_dir": working_dir}
+                submission_client = SubmissionClient(address)
+                submission_client._upload_working_dir_if_needed(runtime_env)
+
             cli_logger.print(
                 "Deploying function or class imported from " f"{config_or_import_path}."
             )
             func_or_class = import_attr(config_or_import_path)
             if not isinstance(func_or_class, Deployment):
                 func_or_class = serve.deployment(func_or_class)
-            func_or_class.options(init_args=args, init_kwargs=kwargs).deploy()
+
+            serve.start()
+            func_or_class.options(
+                init_args=args,
+                init_kwargs=kwargs,
+                ray_actor_options={"runtime_env": runtime_env},
+            ).deploy()
 
             cli_logger.newline()
             cli_logger.print(
