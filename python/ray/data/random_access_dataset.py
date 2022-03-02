@@ -27,7 +27,6 @@ class RandomAccessDataset(object):
         dataset: "Dataset[T]",
         key: str,
         num_workers: int,
-        threads_per_worker: int,
     ):
         """Construct a RandomAccessDataset (internal API).
 
@@ -56,11 +55,8 @@ class RandomAccessDataset(object):
                 self._upper_bounds.append(b[1])
 
         logger.info("[setup] Creating {} random access workers.".format(num_workers))
-        self._threads_per_worker = threads_per_worker
         self._workers = [
-            _RandomAccessWorker.options(
-                scheduling_strategy="SPREAD", max_concurrency=threads_per_worker
-            ).remote(key)
+            _RandomAccessWorker.options(scheduling_strategy="SPREAD").remote(key)
             for _ in range(num_workers)
         ]
         (
@@ -165,7 +161,6 @@ class RandomAccessDataset(object):
         msg = "RandomAccessDataset:\n"
         msg += "- Build time: {}s\n".format(round(self._build_time, 2))
         msg += "- Num workers: {}\n".format(len(stats))
-        msg += "- Threads per worker: {}\n".format(self._threads_per_worker)
         msg += "- Blocks per worker: {} min, {} max, {} mean\n".format(
             min(blocks), max(blocks), int(sum(blocks) / len(blocks))
         )
@@ -260,7 +255,7 @@ def _get_bounds(block, key):
 
 if __name__ == "__main__":
     ds = ray.data.range_arrow(100000000, parallelism=10)
-    rmap = RandomAccessDataset(ds, "value", num_workers=1, threads_per_worker=4)
+    rmap = RandomAccessDataset(ds, "value", num_workers=1)
 
     print("Demo:")
     print(ray.get(rmap.get_async(1)))

@@ -2492,7 +2492,6 @@ Dict[str, List[str]]]): The names of the columns
         self,
         key: str,
         num_workers: Optional[int] = None,
-        threads_per_worker: int = 4,
     ) -> RandomAccessDataset:
         """Convert this Dataset into a distributed RandomAccessDataset (EXPERIMENTAL).
 
@@ -2510,13 +2509,10 @@ Dict[str, List[str]]]): The names of the columns
                 in the cluster by two. As a rule of thumb, you can expect each worker
                 to provide ~3000 records / second via ``get_async()``, and
                 ~10000 records / second via ``multiget()``.
-            threads_per_worker: The number of threads to use per worker.
         """
         if num_workers is None:
             num_workers = 2 * len(ray.nodes())
-        return RandomAccessDataset(
-            self, key, num_workers=num_workers, threads_per_worker=threads_per_worker
-        )
+        return RandomAccessDataset(self, key, num_workers=num_workers)
 
     def repeat(self, times: Optional[int] = None) -> "DatasetPipeline[T]":
         """Convert this into a DatasetPipeline by looping over this dataset.
