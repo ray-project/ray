@@ -1241,8 +1241,6 @@ Backwards Compatibility with Ray SGD
 
 If you are currently using :ref:`RaySGD <sgd-index>`, you can migrate to Ray Train by following: :ref:`sgd-migration`.
 
-
-
 FAQ
 ---
 
