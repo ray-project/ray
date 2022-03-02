@@ -47,7 +47,16 @@ class DAGNodeEncoder(json.JSONEncoder):
             return obj.to_json(DAGNodeEncoder)
         else:
             # Let the base class default method raise the TypeError
-            return json.JSONEncoder.default(self, obj)
+            try:
+                return json.JSONEncoder.default(self, obj)
+            except Exception as e:
+                raise TypeError(
+                    "All args and kwargs used in Ray DAG building for serve "
+                    "deployment need to be JSON serializable. Please JSON "
+                    "serialize your args to make your ray application "
+                    "deployment ready."
+                    f"\n Original exception message: {e}"
+                )
 
 
 def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:

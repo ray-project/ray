@@ -80,6 +80,42 @@ def _test_json_serde_helper(
     assert multiple_json_serialized == json_serialized
 
 
+def test_non_json_serializable_args():
+    """Use non-JSON serializable object in Ray DAG and ensure we throw exception
+    with reasonable error messages.
+    """
+
+    class MyNonJSONClass:
+        def __init__(self, val):
+            self.val = val
+
+    ray_dag = combine._bind(MyNonJSONClass(1), MyNonJSONClass(2))
+    # General context
+    with pytest.raises(
+        TypeError,
+        match=(
+            "All args and kwargs used in Ray DAG building for serve "
+            "deployment need to be JSON serializable."
+        ),
+    ):
+        _ = json.dumps(ray_dag, cls=DAGNodeEncoder)
+    # User actionable item
+    with pytest.raises(
+        TypeError,
+        match=(
+            "Please JSON serialize your args to make your ray application "
+            "deployment ready"
+        ),
+    ):
+        _ = json.dumps(ray_dag, cls=DAGNodeEncoder)
+    # Original error message
+    with pytest.raises(
+        TypeError,
+        match="Object of type 'MyNonJSONClass' is not JSON serializable",
+    ):
+        _ = json.dumps(ray_dag, cls=DAGNodeEncoder)
+
+
 def test_simple_function_node_json_serde(serve_instance):
     """
     Test the following behavior
