@@ -1,4 +1,5 @@
 import bisect
+import os
 import logging
 import random
 import time
@@ -279,4 +280,54 @@ if __name__ == "__main__":
         ray.get([rmap.get_async(random.randint(0, 100_000_000)) for _ in range(1000)])
         total += 1000
     print(total / (time.time() - start), "keys / second / worker")
+    print(rmap.stats())
+
+if __name__ == "__main__":
+    if "LARGE_RUN" in os.environ:
+        # On a 20-node cluster:
+        # Multiget throughput: 516600.7075172231 keys / second
+        # Single get throughput: 84203.5265246087 keys / second
+        nrow = 10_000_000_000
+        nclient = 40
+        batch_size = 100000
+        parallelism = 200
+        num_workers = 400
+        run_time = 15
+    else:
+        nrow = 100_000_000
+        nclient = 1
+        batch_size = 1000
+        parallelism = 20
+        num_workers = 1
+        run_time = 3
+
+    ds = ray.data.range_arrow(nrow, parallelism=parallelism)
+    rmap = RandomAccessDataset(ds, "value", num_workers=num_workers)
+
+    print("Multiget throughput: ", end="")
+    start = time.time()
+
+    @ray.remote(scheduling_strategy="SPREAD")
+    def client():
+        total = 0
+        rand_values = [random.randint(0, nrow) for _ in range(batch_size)]
+        while time.time() - start < run_time:
+            rmap.multiget(rand_values)
+            total += batch_size
+        return total
+    total = sum(ray.get([client.remote() for _ in range(nclient)]))
+    print(total / (time.time() - start), "keys / second")
+
+    print("Single get throughput: ", end="")
+    start = time.time()
+    @ray.remote(scheduling_strategy="SPREAD")
+    def client():
+        total = 0
+        while time.time() - start < run_time:
+            ray.get([rmap.get_async(random.randint(0, nrow)) for _ in range(1000)])
+            total += 1000
+        return total
+    total = sum(ray.get([client.remote() for _ in range(nclient)]))
+    print(total / (time.time() - start), "keys / second")
+
     print(rmap.stats())
