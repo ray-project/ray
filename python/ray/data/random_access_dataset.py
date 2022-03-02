@@ -173,7 +173,7 @@ class RandomAccessDataset(object):
             min(accesses), max(accesses), int(sum(accesses) / len(accesses))
         )
         msg += "- Mean access time: {}us\n".format(
-            int(total_time / sum(accesses) * 1e6)
+            int(total_time / (1 + sum(accesses)) * 1e6)
         )
         return msg
 
@@ -207,7 +207,7 @@ class _RandomAccessWorker:
 
     def multiget(self, block_indices, keys):
         start = time.perf_counter()
-        result = [self.get(i, k) for i, k in zip(block_indices, keys)]
+        result = [self._get(i, k) for i, k in zip(block_indices, keys)]
         self.total_time += time.perf_counter() - start
         self.num_accesses += 1
         return result
@@ -271,8 +271,9 @@ if __name__ == "__main__":
     print("Multiget throughput: ", end="")
     start = time.time()
     total = 0
+    rand_values = [random.randint(0, 100_000_000) for _ in range(1000)]
     while time.time() - start < 3:
-        rmap.multiget([90000] * 1000)
+        rmap.multiget(rand_values)
         total += 1000
     print(total / (time.time() - start), "keys / second / worker")
 
@@ -280,7 +281,7 @@ if __name__ == "__main__":
     start = time.time()
     total = 0
     while time.time() - start < 3:
-        ray.get([rmap.get_async(90000) for _ in range(1000)])
+        ray.get([rmap.get_async(random.randint(0, 100_000_000)) for _ in range(1000)])
         total += 1000
     print(total / (time.time() - start), "keys / second / worker")
     print(rmap.stats())
