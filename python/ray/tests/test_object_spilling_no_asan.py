@@ -1,4 +1,5 @@
 import numpy as np
+import platform
 import pytest
 import os
 import sys
@@ -8,6 +9,7 @@ import ray
 
 # NOTE(swang): This test currently fails in ASAN mode because it tests a
 # performance issue that is likely sensitive to timing.
+@pytest.mark.skipif(platform.system() == "Windows", reason="Hangs on Windows.")
 def test_spill_fusion(object_spilling_config):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, temp_folder = object_spilling_config
