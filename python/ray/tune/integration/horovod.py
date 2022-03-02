@@ -79,10 +79,10 @@ class _HorovodTrainable(DistributedTrainable):
 
     # Callable function for training.
     _function = None
+    # Number of workers to allocate per trial.
+    _num_workers: Optional[int] = None,
     # Number of hosts (nodes) to allocate per trial
-    _num_hosts: int = 1
-    # Number of workers to place on each host.
-    _num_workers: int = 1
+    _num_hosts: Optional[int] = None,
     # Number of CPU resources to reserve for each worker.
     _num_cpus_per_worker: int = 1
     # Whether to reserve and pass GPU resources through.
@@ -97,7 +97,7 @@ class _HorovodTrainable(DistributedTrainable):
 
     @property
     def num_workers(self):
-        return self._num_hosts * self._num_workers
+        return self._num_workers
 
     def setup(self, config: Dict):
         trainable = wrap_function(self.__class__._function)
@@ -117,7 +117,6 @@ class _HorovodTrainable(DistributedTrainable):
             settings,
             cpus_per_worker=self._num_cpus_per_worker,
             use_gpu=self._use_gpu,
-            num_hosts=self._num_hosts,
             num_workers=self._num_workers,
         )
 
@@ -258,7 +257,7 @@ def DistributedTrainableCreator(
             return PlacementGroupFactory(
                 [{}]
                 + [{"CPU": cls._num_cpus_per_worker, "GPU": int(use_gpu)}]
-                * (num_hosts * num_workers)
+                * (num_workers)
             )
 
     return WrappedHorovodTrainable

@@ -85,9 +85,7 @@ def train(config):
     print(f"Took {total:0.3f} s. Avg: {total / num_steps:0.3f} s.")
 
 
-def tune_horovod(
-    num_workers, num_samples, use_gpu, mode="square", x_max=1.0
-):
+def tune_horovod(num_workers, num_samples, use_gpu, mode="square", x_max=1.0):
     horovod_trainable = DistributedTrainableCreator(
         train,
         use_gpu=use_gpu,
