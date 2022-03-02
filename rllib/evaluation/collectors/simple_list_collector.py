@@ -533,7 +533,7 @@ class SimpleListCollector(SampleCollector):
         policy_map: PolicyMap,
         clip_rewards: Union[bool, float],
         callbacks: "DefaultCallbacks",
-        multiple_episodes_in_batch: bool = True,
+        collect_complete_episodes: bool = False,
         rollout_fragment_length: int = 200,
         count_steps_by: str = "env_steps",
     ):
@@ -543,7 +543,7 @@ class SimpleListCollector(SampleCollector):
             policy_map,
             clip_rewards,
             callbacks,
-            multiple_episodes_in_batch,
+            collect_complete_episodes,
             rollout_fragment_length,
             count_steps_by,
         )
@@ -617,7 +617,7 @@ class SimpleListCollector(SampleCollector):
                         "Also, you may be waiting for your Env to "
                         "terminate (batch_mode=`complete_episodes`). Make sure "
                         "it does at some point."
-                        if not self.multiple_episodes_in_batch
+                        if self.collect_complete_episodes
                         else ""
                     )
                 )

@@ -32,7 +32,7 @@ class SampleCollector(metaclass=ABCMeta):
                  policy_map: PolicyMap,
                  clip_rewards: Union[bool, float],
                  callbacks: "DefaultCallbacks",
-                 multiple_episodes_in_batch: bool = True,
+                 collect_complete_episodes: bool = False,
                  rollout_fragment_length: int = 200,
                  count_steps_by: str = "env_steps"):
         """Initializes a SampleCollector instance.
@@ -42,16 +42,17 @@ class SampleCollector(metaclass=ABCMeta):
             clip_rewards (Union[bool, float]): Whether to clip rewards before
                 postprocessing (at +/-1.0) or the actual value to +/- clip.
             callbacks (DefaultCallbacks): RLlib callbacks.
-            multiple_episodes_in_batch (bool): Whether it's allowed to pack
-                multiple episodes into the same built batch.
-            rollout_fragment_length (int): The
+            collect_complete_episodes (bool): Whether only complete episodes 
+                should be packed into a built batch.
+            rollout_fragment_length (int): The number of steps collected per 
+                rollout of a worker.
 
         """
 
         self.policy_map = policy_map
         self.clip_rewards = clip_rewards
         self.callbacks = callbacks
-        self.multiple_episodes_in_batch = multiple_episodes_in_batch
+        self.collect_complete_episodes = collect_complete_episodes
         self.rollout_fragment_length = rollout_fragment_length
         self.count_steps_by = count_steps_by
 

@@ -179,7 +179,7 @@ class SyncSampler(SamplerInput):
         count_steps_by: str = "env_steps",
         callbacks: "DefaultCallbacks",
         horizon: int = None,
-        multiple_episodes_in_batch: bool = False,
+        collect_complete_episodes: bool = True,
         normalize_actions: bool = True,
         clip_actions: bool = False,
         soft_horizon: bool = False,
@@ -214,9 +214,9 @@ class SyncSampler(SamplerInput):
             callbacks: The Callbacks object to use when episode
                 events happen during rollout.
             horizon: Hard-reset the Env after this many timesteps.
-            multiple_episodes_in_batch: Whether to pack multiple
-                episodes into each batch. This guarantees batches will be
-                exactly `rollout_fragment_length` in size.
+            collect_complete_episodes: Whether only complete episodes
+                should be packed into a built batch. This cannot guarantee
+                batches will be exactly `rollout_fragment_length` in size.
             normalize_actions: Whether to normalize actions to the
                 action space's bounds.
             clip_actions: Whether to clip actions according to the
@@ -258,7 +258,7 @@ class SyncSampler(SamplerInput):
             worker.policy_map,
             clip_rewards,
             callbacks,
-            multiple_episodes_in_batch,
+            collect_complete_episodes,
             rollout_fragment_length,
             count_steps_by=count_steps_by,
         )
@@ -272,7 +272,7 @@ class SyncSampler(SamplerInput):
             self.horizon,
             normalize_actions,
             clip_actions,
-            multiple_episodes_in_batch,
+            collect_complete_episodes,
             callbacks,
             self.perf_stats,
             soft_horizon,
@@ -336,7 +336,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
         count_steps_by: str = "env_steps",
         callbacks: "DefaultCallbacks",
         horizon: Optional[int] = None,
-        multiple_episodes_in_batch: bool = False,
+        collect_complete_episodes: bool = False,
         normalize_actions: bool = True,
         clip_actions: bool = False,
         soft_horizon: bool = False,
@@ -370,9 +370,9 @@ class AsyncSampler(threading.Thread, SamplerInput):
                 on how many agents are present at any given time in the
                 ongoing episode.
             horizon: Hard-reset the Env after this many timesteps.
-            multiple_episodes_in_batch: Whether to pack multiple
-                episodes into each batch. This guarantees batches will be
-                exactly `rollout_fragment_length` in size.
+            collect_complete_episodes: Whether only complete episodes
+                should be packed into a built batch. This cannot guarantee
+                batches will be exactly `rollout_fragment_length` in size.
             normalize_actions: Whether to normalize actions to the
                 action space's bounds.
             clip_actions: Whether to clip actions according to the
@@ -421,7 +421,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.horizon = horizon
         self.clip_rewards = clip_rewards
         self.daemon = True
-        self.multiple_episodes_in_batch = multiple_episodes_in_batch
+        self.collect_complete_episodes = collect_complete_episodes
         self.callbacks = callbacks
         self.normalize_actions = normalize_actions
         self.clip_actions = clip_actions
@@ -438,7 +438,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
             self.worker.policy_map,
             self.clip_rewards,
             self.callbacks,
-            self.multiple_episodes_in_batch,
+            self.collect_complete_episodes,
             self.rollout_fragment_length,
             count_steps_by=count_steps_by,
         )
@@ -473,7 +473,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
             self.horizon,
             self.normalize_actions,
             self.clip_actions,
-            self.multiple_episodes_in_batch,
+            self.collect_complete_episodes,
             self.callbacks,
             self.perf_stats,
             self.soft_horizon,
@@ -536,7 +536,7 @@ def _env_runner(
     horizon: Optional[int],
     normalize_actions: bool,
     clip_actions: bool,
-    multiple_episodes_in_batch: bool,
+    collect_complete_episodes: bool,
     callbacks: "DefaultCallbacks",
     perf_stats: _PerfStats,
     soft_horizon: bool,
@@ -552,9 +552,10 @@ def _env_runner(
         base_env: Env implementing BaseEnv.
         extra_batch_callback: function to send extra batch data to.
         horizon: Horizon of the episode.
-        multiple_episodes_in_batch: Whether to pack multiple
-            episodes into each batch. This guarantees batches will be exactly
-            `rollout_fragment_length` in size.
+        collect_complete_episodes: Whether only complete episodes
+            should be packed into a built batch. This cannot
+            guarantee batches will be exactly `rollout_fragment_length`
+            in size.
         normalize_actions: Whether to normalize actions to the action
             space's bounds.
         clip_actions: Whether to clip actions to the space range.
@@ -685,7 +686,7 @@ def _env_runner(
             dones=dones,
             infos=infos,
             horizon=horizon,
-            multiple_episodes_in_batch=multiple_episodes_in_batch,
+            collect_complete_episodes=collect_complete_episodes,
             callbacks=callbacks,
             soft_horizon=soft_horizon,
             no_done_at_end=no_done_at_end,
@@ -771,7 +772,7 @@ def _process_observations(
     dones: Dict[EnvID, Dict[AgentID, bool]],
     infos: Dict[EnvID, Dict[AgentID, EnvInfoDict]],
     horizon: int,
-    multiple_episodes_in_batch: bool,
+    collect_complete_episodes: bool,
     callbacks: "DefaultCallbacks",
     soft_horizon: bool,
     no_done_at_end: bool,
@@ -799,9 +800,9 @@ def _process_observations(
         infos: Doubly keyed dict of env-ids -> agent ids ->
             info dicts, returned by a `BaseEnv.poll()` call.
         horizon: Horizon of the episode.
-        multiple_episodes_in_batch: Whether to pack multiple
-            episodes into each batch. This guarantees batches will be exactly
-            `rollout_fragment_length` in size.
+        collect_complete_episodes: Whether only complete episodes
+            should be packed into a built batch. This cannot guarantees
+            batches will be exactly `rollout_fragment_length` in size.
         callbacks: User callbacks to run on episode events.
         soft_horizon: Calculate rewards but don't reset the
             environment when the horizon is hit.
@@ -1011,7 +1012,7 @@ def _process_observations(
                 episode,
                 is_done=is_done or (hit_horizon and not soft_horizon),
                 check_dones=check_dones,
-                build=not multiple_episodes_in_batch,
+                build=collect_complete_episodes,
             )
             if ma_sample_batch:
                 outputs.append(ma_sample_batch)
@@ -1106,7 +1107,7 @@ def _process_observations(
                     to_eval[policy_id].append(item)
 
     # Try to build something.
-    if multiple_episodes_in_batch:
+    if not collect_complete_episodes:
         sample_batches = (
             sample_collector.try_build_truncated_episode_multi_agent_batch()
         )
