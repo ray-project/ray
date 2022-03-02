@@ -26,28 +26,6 @@ reason() {
   echo "${REASON}"
 }
 
-while [[ $# -gt 0 ]]
-do
-key="$1"
-case $key in
-    --ray-test-repo)
-    shift
-    RAY_TEST_REPO=$1
-    ;;
-    --ray-test-branch)
-    shift
-    RAY_TEST_BRANCH=$1
-    ;;
-    --release-results-dir)
-    shift
-    RELEASE_RESULTS_DIR=$1
-    ;;
-    *)
-    break
-esac
-shift
-done
-
 RAY_TEST_SCRIPT=${RAY_TEST_SCRIPT-ray_release/scripts/run_release_test.py}
 RAY_TEST_REPO=${RAY_TEST_REPO-https://github.com/ray-project/ray.git}
 RAY_TEST_BRANCH=${RAY_TEST_BRANCH-master}

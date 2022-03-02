@@ -1,11 +1,11 @@
-from pydantic import BaseModel, Field, root_validator, validator
+from pydantic import BaseModel, Field, Extra, root_validator, validator
 from typing import Union, Tuple, List, Dict
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve.api import Deployment, deployment
 from ray.serve.common import DeploymentStatus, DeploymentStatusInfo
 
 
-class RayActorOptionsSchema(BaseModel):
+class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
     runtime_env: dict = Field(
         default=None,
         description=(
@@ -74,7 +74,7 @@ class RayActorOptionsSchema(BaseModel):
         return v
 
 
-class DeploymentSchema(BaseModel):
+class DeploymentSchema(BaseModel, extra=Extra.forbid):
     name: str = Field(
         ..., description=("Globally-unique name identifying this deployment.")
     )
@@ -293,11 +293,11 @@ class DeploymentSchema(BaseModel):
         return v
 
 
-class ServeApplicationSchema(BaseModel):
+class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
     deployments: List[DeploymentSchema] = Field(...)
 
 
-class DeploymentStatusSchema(BaseModel):
+class DeploymentStatusSchema(BaseModel, extra=Extra.forbid):
     name: str = Field(..., description="The deployment's name.")
     status: DeploymentStatus = Field(
         default=None, description="The deployment's status."
@@ -307,7 +307,7 @@ class DeploymentStatusSchema(BaseModel):
     )
 
 
-class ServeApplicationStatusSchema(BaseModel):
+class ServeApplicationStatusSchema(BaseModel, extra=Extra.forbid):
     statuses: List[DeploymentStatusSchema] = Field(...)
 
 
