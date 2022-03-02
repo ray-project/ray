@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 import json
-from dashboard.modules.dashboard_sdk import SubmissionClient
 import yaml
 import os
 import sys
@@ -25,6 +24,7 @@ from ray.dashboard.modules.serve.schema import (
     schema_to_serve_application,
     serve_application_status_to_schema,
 )
+from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 from ray.autoscaler._private.cli_logger import cli_logger
 
 
@@ -306,6 +306,8 @@ def run(
             cli_logger.newline()
 
         if not is_config:
+            serve.start()
+
             runtime_env = {}
             if working_dir is not None:
                 runtime_env = {"working_dir": working_dir}
@@ -315,12 +317,9 @@ def run(
             cli_logger.print(
                 "Deploying function or class imported from " f"{config_or_import_path}."
             )
-            func_or_class = import_attr(config_or_import_path)
-            if not isinstance(func_or_class, Deployment):
-                func_or_class = serve.deployment(func_or_class)
+            deployment = serve.deployment(name="run")(config_or_import_path)
 
-            serve.start()
-            func_or_class.options(
+            deployment.options(
                 init_args=args,
                 init_kwargs=kwargs,
                 ray_actor_options={"runtime_env": runtime_env},
