@@ -8,7 +8,6 @@ from typing import Any, Dict, Iterator, List, Optional
 try:
     import aiohttp
     import requests
-    from requests import Response
 except ImportError:
     aiohttp = None
     requests = None
@@ -191,7 +190,7 @@ class JobSubmissionClient:
         *,
         data: Optional[bytes] = None,
         json_data: Optional[dict] = None,
-    ) -> Response:
+    ) -> "requests.Response":
         url = self._address + endpoint
         logger.debug(f"Sending request to {url} with json data: {json_data or {}}.")
         return requests.request(
