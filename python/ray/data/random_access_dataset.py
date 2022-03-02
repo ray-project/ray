@@ -260,7 +260,7 @@ def _get_bounds(block, key):
 
 if __name__ == "__main__":
     ds = ray.data.range_arrow(100000000, parallelism=10)
-    rmap = ds.to_random_access_dataset("value", num_workers=1, threads_per_worker=4)
+    rmap = RandomAccessDataset(ds, "value", num_workers=1, threads_per_worker=4)
 
     print("Demo:")
     print(ray.get(rmap.get_async(1)))
