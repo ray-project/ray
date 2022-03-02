@@ -269,7 +269,7 @@ py_test(
 
 py_test(
     name = "test_cli",
-    size = "large",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
