@@ -1,13 +1,13 @@
-import json
 import shutil
 import tarfile
 import tempfile
 
 import cloudpickle as pickle
 import os
-from typing import Any, Optional, Dict
+from typing import Optional
 
 import ray
+from ray.rllib.utils import DeveloperAPI
 from ray.util.ml_utils.cloud import (
     upload_to_bucket,
     is_cloud_target,
@@ -26,16 +26,36 @@ class Checkpoint:
     node FS storage, data object, and cloud storage location.
     """
 
-    def __init__(self, data: Any, metadata: Optional[Dict] = None):
-        self.data = data
-        self.metadata = metadata or {}
+    @DeveloperAPI
+    def __init__(
+        self,
+        local_path: Optional[str] = None,
+        data_dict: Optional[dict] = None,
+        uri: Optional[str] = None,
+        obj_ref: Optional[ray.ObjectRef] = None,
+    ):
+        if local_path:
+            assert not data_dict and not uri and not obj_ref
+        elif data_dict:
+            assert not local_path and not uri and not obj_ref
+        elif uri:
+            assert not local_path and not data_dict and not obj_ref
+            # resolve file:// paths to local_path
+            local_path = _get_local_path(uri)
+            if local_path:
+                uri = None
+        elif obj_ref:
+            assert not local_path and not data_dict and not uri
+        else:
+            raise ValueError("Cannot create checkpoint without data.")
+
+        self._local_path = local_path
+        self._data_dict = data_dict
+        self._uri = uri
+        self._obj_ref = obj_ref
 
     def __eq__(self, other):
-        return (
-            isinstance(other, Checkpoint)
-            and self.data == other.data
-            and self.metadata == other.metadata
-        )
+        return isinstance(other, Checkpoint) and self.__dict__ == other.__dict__
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "Checkpoint":
@@ -52,7 +72,7 @@ class Checkpoint:
         if isinstance(bytes_data, dict):
             data_dict = bytes_data
         else:
-            data_dict = {"data": bytes_data}
+            data_dict = {"bytes_data": bytes_data}
         return cls.from_dict(data_dict)
 
     def to_bytes(self) -> bytes:
@@ -65,6 +85,9 @@ class Checkpoint:
             bytes: Bytes object containing checkpoint data.
         """
         # Todo: Add support for stream in the future (to_bytes(file_like))
+        data_dict = self.to_dict()
+        if "bytes_data" in data_dict:
+            return data_dict["bytes_data"]
         return pickle.dumps(self.to_dict())
 
     @classmethod
@@ -77,8 +100,7 @@ class Checkpoint:
         Returns:
             Checkpoint: checkpoint object.
         """
-        metadata = data.get("metadata", {})
-        return Checkpoint(data=data, metadata=metadata)
+        return Checkpoint(data_dict=data)
 
     def to_dict(self) -> dict:
         """Return checkpoint data as dictionary.
@@ -86,50 +108,42 @@ class Checkpoint:
         Returns:
             dict: Dictionary containing checkpoint data.
         """
-        if isinstance(self.data, dict):
+        if self._data_dict:
             # If the checkpoint data is already a dict, return
-            data_dict = self.data
-            # Also save metadata in dict representation
-            data_dict.setdefault("metadata", self.metadata)
-            return data_dict
-        elif isinstance(self.data, ray.ObjectRef):
+            return self._data_dict
+        elif self._obj_ref:
             # If the checkpoint data is an object reference, resolve
-            return ray.get(self.data)
-        elif isinstance(self.data, str):
+            return ray.get(self._obj_ref)
+        elif self._local_path or self._uri:
             # Else, checkpoint is either on FS or external storage
             cleanup = False
 
-            load_path = _get_local_path(self.data)
-            if not load_path:
+            local_path = self._local_path
+            if not local_path:
                 # Checkpoint does not exist on local path. Save
                 # in temporary directory, but clean up later
-                load_path = self.to_directory()
+                local_path = self.to_directory()
                 cleanup = True
 
-            checkpoint_data_path = os.path.join(load_path, DICT_CHECKPOINT_FILE_NAME)
+            checkpoint_data_path = os.path.join(local_path, DICT_CHECKPOINT_FILE_NAME)
             if os.path.exists(checkpoint_data_path):
                 # If we are restoring a dict checkpoint, load the dict
                 # from the checkpoint file.
                 with open(checkpoint_data_path, "rb") as f:
                     checkpoint_data = pickle.load(f)
             else:
-                # Else, we have a true FS checkpoint.
-                # Serialize directory into data blob.
-                metadata = _load_metadata(load_path)
-
-                data = _pack(load_path)
+                data = _pack(local_path)
 
                 checkpoint_data = {
                     "fs_checkpoint": data,
-                    "metadata": metadata,
                 }
 
             if cleanup:
-                shutil.rmtree(load_path)
+                shutil.rmtree(local_path)
 
             return checkpoint_data
         else:
-            raise RuntimeError(f"Invalid data type for checkpoint {self}: {self.data}")
+            raise RuntimeError(f"Empty data for checkpoint {self}")
 
     @classmethod
     def from_object_ref(cls, obj_ref: ray.ObjectRef) -> "Checkpoint":
@@ -144,8 +158,7 @@ class Checkpoint:
         Returns:
             Checkpoint: checkpoint object.
         """
-        # Metadata will be loaded in `to_directory()` or `to_dict()` calls.
-        return Checkpoint(data=obj_ref, metadata=None)
+        return Checkpoint(obj_ref=obj_ref)
 
     def to_object_ref(self) -> ray.ObjectRef:
         """Return checkpoint data as object reference.
@@ -153,8 +166,8 @@ class Checkpoint:
         Returns:
             ray.ObjectRef: ObjectRef pointing to checkpoint data.
         """
-        if isinstance(self.data, ray.ObjectRef):
-            return self.data
+        if self._obj_ref:
+            return self._obj_ref
         else:
             return ray.put(self.to_dict())
 
@@ -174,9 +187,7 @@ class Checkpoint:
                 f"not exist on local node: {path}"
             )
 
-        metadata = _load_metadata(path)
-
-        local_checkpoint = Checkpoint(data=path, metadata=metadata)
+        local_checkpoint = Checkpoint(local_path=path)
         return local_checkpoint
 
     def to_directory(self, path: Optional[str] = None) -> str:
@@ -194,28 +205,22 @@ class Checkpoint:
         # Drop marker
         open(os.path.join(path, ".is_checkpoint"), "a").close()
 
-        metadata = self.metadata
-        if isinstance(self.data, (ray.ObjectRef, dict)):
+        if self._data_dict or self._obj_ref:
             # This is a object ref or dict
             data_dict = self.to_dict()
-
-            # If the object metadata has been changed, it takes precedence
-            metadata = metadata or data_dict.get("metadata", {})
 
             if "fs_checkpoint" in data_dict:
                 # This used to be a true fs checkpoint, so restore
                 _unpack(data_dict["fs_checkpoint"], path)
-                _write_metadata(path, metadata)
             else:
                 # This is a dict checkpoint. Dump data into checkpoint.pkl
                 checkpoint_data_path = os.path.join(path, DICT_CHECKPOINT_FILE_NAME)
                 with open(checkpoint_data_path, "wb") as f:
                     pickle.dump(data_dict, f)
-                _write_metadata(path, metadata)
         else:
             # This is either a local fs, remote node fs, or external fs
-            local_path = _get_local_path(self.data)
-            external_path = _get_external_path(self.data)
+            local_path = self._local_path
+            external_path = _get_external_path(self._uri)
             if local_path:
                 if local_path != path:
                     # If this exists on the local path, just copy over
@@ -225,66 +230,60 @@ class Checkpoint:
             elif external_path:
                 # If this exists on external storage (e.g. cloud), download
                 download_from_bucket(bucket=external_path, local_path=path)
-                metadata = _load_metadata(path)
             else:
                 raise RuntimeError(
-                    f"No valid location found for checkpoint {self}: {self.data}"
+                    f"No valid location found for checkpoint {self}: {self._uri}"
                 )
-            _write_metadata(path, metadata)
 
         return path
 
     @classmethod
-    def from_uri(cls, location: str) -> "Checkpoint":
+    def from_uri(cls, uri: str) -> "Checkpoint":
         """Create checkpoint object from location URI (e.g. cloud storage).
 
         Args:
-            location (str): Source location URI to read data from.
+            uri (str): Source location URI to read data from.
 
         Returns:
             Checkpoint: checkpoint object.
         """
-        local_path = _get_local_path(location)
+        local_path = _get_local_path(uri)
         if local_path:
             return Checkpoint.from_directory(local_path)
-        # Metadata will be loaded in `to_directory()` or `to_dict()` calls.
-        return Checkpoint(data=location, metadata=None)
+        return Checkpoint(uri=uri)
 
-    def to_uri(self, location: str) -> str:
+    def to_uri(self, uri: str) -> str:
         """Write checkpoint data to location URI (e.g. cloud storage).
 
         ARgs:
-            location (str): Target location URI to write data to.
+            uri (str): Target location URI to write data to.
 
         Returns:
             str: Cloud location containing checkpoint data.
         """
-        if location.startswith("file://"):
-            local_path = location[7:]
+        if uri.startswith("file://"):
+            local_path = uri[7:]
             return self.to_directory(local_path)
 
-        assert is_cloud_target(location)
+        assert is_cloud_target(uri)
 
         cleanup = False
-        local_path = None
 
-        if isinstance(self.data, str):
-            local_path = _get_local_path(self.data)
-
+        local_path = self._local_path
         if not local_path:
             cleanup = True
             local_path = self.to_directory()
 
-        upload_to_bucket(bucket=location, local_path=local_path)
+        upload_to_bucket(bucket=uri, local_path=local_path)
 
         if cleanup:
             shutil.rmtree(local_path)
 
-        return location
+        return uri
 
 
-def _get_local_path(path: str) -> Optional[str]:
-    if is_cloud_target(path):
+def _get_local_path(path: Optional[str]) -> Optional[str]:
+    if path is None or is_cloud_target(path):
         return None
     if path.startswith("file://"):
         path = path[7:]
@@ -293,24 +292,10 @@ def _get_local_path(path: str) -> Optional[str]:
     return None
 
 
-def _get_external_path(path: str) -> Optional[str]:
-    if not is_cloud_target(path):
+def _get_external_path(path: Optional[str]) -> Optional[str]:
+    if path is None or not is_cloud_target(path):
         return None
     return path
-
-
-def _write_metadata(path: str, metadata: Dict[str, Any]) -> None:
-    metadata_file = os.path.join(path, ".checkpoint_metadata")
-    with open(metadata_file, "wt") as fp:
-        json.dump(metadata, fp)
-
-
-def _load_metadata(path: str) -> Dict[str, Any]:
-    metadata_file = os.path.join(path, ".checkpoint_metadata")
-    if os.path.exists(metadata_file):
-        with open(metadata_file, "rt") as fp:
-            return json.load(fp)
-    return {}
 
 
 def _temporary_checkpoint_dir() -> str:

@@ -54,21 +54,17 @@ class CheckpointsTest(unittest.TestCase):
     def _prepare_dict_checkpoint(self) -> Checkpoint:
         # Create checkpoint from dict
         checkpoint = Checkpoint.from_dict(self.checkpoint_dict_data)
-        checkpoint.metadata["preserve"] = "value"
         self.assertIsInstance(checkpoint, Checkpoint)
-        self.assertIsInstance(checkpoint.data, dict)
-        self.assertEqual(checkpoint.data["metric"], self.checkpoint_dict_data["metric"])
+        self.assertTrue(checkpoint._data_dict)
+        self.assertEqual(
+            checkpoint._data_dict["metric"], self.checkpoint_dict_data["metric"]
+        )
         return checkpoint
 
     def _assert_dict_checkpoint(self, checkpoint):
         # Convert into dict
         checkpoint_data = checkpoint.to_dict()
         self.assertDictEqual(checkpoint_data, self.checkpoint_dict_data)
-
-        # For metadata check, load again from dict
-        checkpoint = Checkpoint.from_dict(checkpoint_data)
-        self.assertIn("preserve", checkpoint.metadata)
-        self.assertEqual(checkpoint.metadata["preserve"], "value")
 
     def test_dict_checkpoint_bytes(self):
         """Test conversion from dict to bytes checkpoint and back."""
@@ -80,7 +76,7 @@ class CheckpointsTest(unittest.TestCase):
 
         # Create from bytes
         checkpoint = Checkpoint.from_bytes(blob)
-        self.assertIsInstance(checkpoint.data, dict)
+        self.assertTrue(checkpoint._data_dict)
 
         self._assert_dict_checkpoint(checkpoint)
 
@@ -88,13 +84,13 @@ class CheckpointsTest(unittest.TestCase):
         """Test conversion from dict to dict checkpoint and back."""
         checkpoint = self._prepare_dict_checkpoint()
 
-        # Convert into bytes checkpoint
+        # Convert into dict checkpoint
         data_dict = checkpoint.to_dict()
         self.assertIsInstance(data_dict, dict)
 
-        # Create from bytes
+        # Create from dict
         checkpoint = Checkpoint.from_dict(data_dict)
-        self.assertIsInstance(checkpoint.data, dict)
+        self.assertTrue(checkpoint._data_dict)
 
         self._assert_dict_checkpoint(checkpoint)
 
@@ -108,7 +104,7 @@ class CheckpointsTest(unittest.TestCase):
 
         # Create from path
         checkpoint = Checkpoint.from_directory(path)
-        self.assertIsInstance(checkpoint.data, str)
+        self.assertTrue(checkpoint._local_path)
 
         self._assert_dict_checkpoint(checkpoint)
 
@@ -127,7 +123,7 @@ class CheckpointsTest(unittest.TestCase):
 
         # Create from dict
         checkpoint = Checkpoint.from_object_ref(obj_ref)
-        self.assertIsInstance(checkpoint.data, ray.ObjectRef)
+        self.assertTrue(checkpoint._obj_ref)
 
         self._assert_dict_checkpoint(checkpoint)
 
@@ -143,19 +139,17 @@ class CheckpointsTest(unittest.TestCase):
 
             # Create from dict
             checkpoint = Checkpoint.from_uri(location)
-            self.assertIsInstance(checkpoint.data, str)
+            self.assertTrue(checkpoint._uri)
 
             self._assert_dict_checkpoint(checkpoint)
 
     def _prepare_fs_checkpoint(self) -> Checkpoint:
         # Create checkpoint from fs
         checkpoint = Checkpoint.from_directory(self.checkpoint_dir)
-        checkpoint.metadata["preserve"] = "value"
-        checkpoint.to_directory(self.checkpoint_dir)  # Write metadata
 
         self.assertIsInstance(checkpoint, Checkpoint)
-        self.assertIsInstance(checkpoint.data, str)
-        self.assertEqual(checkpoint.data, self.checkpoint_dir)
+        self.assertTrue(checkpoint._local_path, str)
+        self.assertEqual(checkpoint._local_path, self.checkpoint_dir)
 
         return checkpoint
 
@@ -174,22 +168,17 @@ class CheckpointsTest(unittest.TestCase):
             msg=f"Checkpoint dir {local_dir} is not contained in {self.tmpdir}",
         )
 
-        # For metadata check, load again from directory
-        checkpoint = checkpoint.from_directory(local_dir)
-        self.assertIn("preserve", checkpoint.metadata)
-        self.assertEqual(checkpoint.metadata["preserve"], "value")
-
     def test_fs_checkpoint_bytes(self):
         """Test conversion from fs to bytes checkpoint and back."""
         checkpoint = self._prepare_fs_checkpoint()
 
-        # Convert into dict checkpoint
+        # Convert into bytest checkpoint
         blob = checkpoint.to_bytes()
         self.assertIsInstance(blob, bytes)
 
-        # Create from dict
+        # Create from bytes
         checkpoint = Checkpoint.from_bytes(blob)
-        self.assertIsInstance(checkpoint.data, dict)
+        self.assertTrue(checkpoint._data_dict)
 
         self._assert_fs_checkpoint(checkpoint)
 
@@ -203,7 +192,7 @@ class CheckpointsTest(unittest.TestCase):
 
         # Create from dict
         checkpoint = Checkpoint.from_dict(data_dict)
-        self.assertIsInstance(checkpoint.data, dict)
+        self.assertTrue(checkpoint._data_dict)
 
         self._assert_fs_checkpoint(checkpoint)
 
@@ -211,13 +200,13 @@ class CheckpointsTest(unittest.TestCase):
         """Test conversion from fs to fs checkpoint and back."""
         checkpoint = self._prepare_fs_checkpoint()
 
-        # Convert into dict checkpoint
+        # Convert into fs checkpoint
         path = checkpoint.to_directory()
         self.assertIsInstance(path, str)
 
-        # Create from dict
+        # Create from fs
         checkpoint = Checkpoint.from_directory(path)
-        self.assertIsInstance(checkpoint.data, str)
+        self.assertTrue(checkpoint._local_path)
 
         self._assert_fs_checkpoint(checkpoint)
 
@@ -230,13 +219,12 @@ class CheckpointsTest(unittest.TestCase):
 
         checkpoint = self._prepare_fs_checkpoint()
 
-        # Convert into dict checkpoint
+        # Convert into obj ref checkpoint
         obj_ref = checkpoint.to_object_ref()
-        self.assertIsInstance(obj_ref, ray.ObjectRef)
 
         # Create from object ref
         checkpoint = Checkpoint.from_object_ref(obj_ref)
-        self.assertIsInstance(checkpoint.data, ray.ObjectRef)
+        self.assertIsInstance(checkpoint._obj_ref, ray.ObjectRef)
 
         self._assert_fs_checkpoint(checkpoint)
 
@@ -252,7 +240,7 @@ class CheckpointsTest(unittest.TestCase):
 
             # Create from dict
             checkpoint = Checkpoint.from_uri(location)
-            self.assertIsInstance(checkpoint.data, str)
+            self.assertTrue(checkpoint._uri)
 
             self._assert_fs_checkpoint(checkpoint)
 
