@@ -3,7 +3,6 @@ import numpy as np
 import random
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv, make_multi_agent
-from ray.rllib.examples.env.mock_env import MockEnv, MockEnv2
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.utils.deprecation import Deprecated
 
@@ -25,6 +24,8 @@ class BasicMultiAgent(MultiAgentEnv):
     }
 
     def __init__(self, num):
+        from ray.rllib.examples.env.mock_env import MockEnv
+
         super().__init__()
         self.agents = [MockEnv(25) for _ in range(num)]
         self._agent_ids = set(range(num))
@@ -58,6 +59,8 @@ class EarlyDoneMultiAgent(MultiAgentEnv):
     """Env for testing when the env terminates (after agent 0 does)."""
 
     def __init__(self):
+        from ray.rllib.examples.env.mock_env import MockEnv
+
         super().__init__()
         self.agents = [MockEnv(3), MockEnv(5)]
         self._agent_ids = set(range(len(self.agents)))
@@ -121,6 +124,8 @@ class FlexAgentsMultiAgent(MultiAgentEnv):
         self.resetted = False
 
     def spawn(self):
+        from ray.rllib.examples.env.mock_env import MockEnv
+
         # Spawn a new agent into the current episode.
         agentID = self.agentID
         self.agents[agentID] = MockEnv(25)
@@ -172,6 +177,8 @@ class RoundRobinMultiAgent(MultiAgentEnv):
     On each step() of the env, only one agent takes an action."""
 
     def __init__(self, num, increment_obs=False):
+        from ray.rllib.examples.env.mock_env import MockEnv, MockEnv2
+
         super().__init__()
         if increment_obs:
             # Observations are 0, 1, 2, 3... etc. as time advances

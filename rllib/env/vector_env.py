@@ -3,7 +3,8 @@ import gym
 import numpy as np
 from typing import Callable, List, Optional, Tuple, Union, Set
 
-from ray.rllib.env.base_env import BaseEnv, _DUMMY_AGENT_ID
+from ray.rllib.env.base_env import BaseEnv, _DUMMY_AGENT_ID, with_dummy_agent_id
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.annotations import Deprecated, override, PublicAPI
 from ray.rllib.utils.typing import (
     EnvActionType,
@@ -274,10 +275,31 @@ class VectorEnvWrapper(BaseEnv):
     def __init__(self, vector_env: VectorEnv):
         self.vector_env = vector_env
         self.num_envs = vector_env.num_envs
+
+        # This VectorEnv is multi-agent.
+        self.is_multiagent = False
+        for sub_env in self.vector_env.get_sub_environments():
+            if isinstance(sub_env, MultiAgentEnv):
+                assert all(
+                    isinstance(e, MultiAgentEnv)
+                    for e in self.vector_env.get_sub_environments()
+                )
+                self.is_multiagent = True
+                break
+
         self.new_obs = None  # lazily initialized
-        self.cur_rewards = [None for _ in range(self.num_envs)]
-        self.cur_dones = [False for _ in range(self.num_envs)]
-        self.cur_infos = [None for _ in range(self.num_envs)]
+        if not self.is_multiagent:
+            self.cur_rewards = [None for _ in range(self.num_envs)]
+            self.cur_dones = [False for _ in range(self.num_envs)]
+            self.cur_infos = [None for _ in range(self.num_envs)]
+        else:
+            self.cur_rewards = [
+                {a: None for a in self.get_agent_ids()} for _ in range(self.num_envs)
+            ]
+            self.cur_dones = [{"__all__": False} for _ in range(self.num_envs)]
+            self.cur_infos = [
+                {a: None for a in self.get_agent_ids()} for _ in range(self.num_envs)
+            ]
         self._observation_space = vector_env.observation_space
         self._action_space = vector_env.action_space
 
@@ -285,33 +307,38 @@ class VectorEnvWrapper(BaseEnv):
     def poll(
         self,
     ) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict]:
-        from ray.rllib.env.base_env import with_dummy_agent_id
-
         if self.new_obs is None:
             self.new_obs = self.vector_env.vector_reset()
         new_obs = dict(enumerate(self.new_obs))
         rewards = dict(enumerate(self.cur_rewards))
         dones = dict(enumerate(self.cur_dones))
         infos = dict(enumerate(self.cur_infos))
+        if not self.is_multiagent:
+            ret = (
+                with_dummy_agent_id(new_obs),
+                with_dummy_agent_id(rewards),
+                with_dummy_agent_id(dones, "__all__"),
+                with_dummy_agent_id(infos),
+                {},
+            )
+        else:
+            ret = (new_obs, rewards, dones, infos, {})
+
         self.new_obs = []
         self.cur_rewards = []
         self.cur_dones = []
         self.cur_infos = []
-        return (
-            with_dummy_agent_id(new_obs),
-            with_dummy_agent_id(rewards),
-            with_dummy_agent_id(dones, "__all__"),
-            with_dummy_agent_id(infos),
-            {},
-        )
+
+        return ret
 
     @override(BaseEnv)
     def send_actions(self, action_dict: MultiEnvDict) -> None:
-        from ray.rllib.env.base_env import _DUMMY_AGENT_ID
-
         action_vector = [None] * self.num_envs
         for i in range(self.num_envs):
-            action_vector[i] = action_dict[i][_DUMMY_AGENT_ID]
+            if not self.is_multiagent:
+                action_vector[i] = action_dict[i][_DUMMY_AGENT_ID]
+            else:
+                action_vector[i] = action_dict[i]
         (
             self.new_obs,
             self.cur_rewards,
@@ -321,14 +348,13 @@ class VectorEnvWrapper(BaseEnv):
 
     @override(BaseEnv)
     def try_reset(self, env_id: Optional[EnvID] = None) -> MultiEnvDict:
-        from ray.rllib.env.base_env import _DUMMY_AGENT_ID
-
         assert env_id is None or isinstance(env_id, int)
-        return {
-            env_id
-            if env_id is not None
-            else 0: {_DUMMY_AGENT_ID: self.vector_env.reset_at(env_id)}
-        }
+        if not self.is_multiagent:
+            from ray.rllib.env.base_env import _DUMMY_AGENT_ID
+
+            return {env_id or 0: {_DUMMY_AGENT_ID: self.vector_env.reset_at(env_id)}}
+        else:
+            return {env_id or 0: self.vector_env.reset_at(env_id)}
 
     @override(BaseEnv)
     def get_sub_environments(self, as_dict: bool = False) -> Union[List[EnvType], dict]:
@@ -360,16 +386,26 @@ class VectorEnvWrapper(BaseEnv):
     @override(BaseEnv)
     @PublicAPI
     def action_space_sample(self, agent_id: list = None) -> MultiEnvDict:
-        del agent_id
-        return {0: {_DUMMY_AGENT_ID: self._action_space.sample()}}
+        if not self.is_multiagent:
+            return {0: {_DUMMY_AGENT_ID: self._action_space.sample()}}
+        else:
+            return {0: self._action_space.sample()}
 
     @override(BaseEnv)
     @PublicAPI
     def observation_space_sample(self, agent_id: list = None) -> MultiEnvDict:
-        del agent_id
-        return {0: {_DUMMY_AGENT_ID: self._observation_space.sample()}}
+        if not self.is_multiagent:
+            return {0: {_DUMMY_AGENT_ID: self._observation_space.sample()}}
+        else:
+            return {0: self._observation_space.sample()}
 
     @override(BaseEnv)
     @PublicAPI
     def get_agent_ids(self) -> Set[AgentID]:
-        return {_DUMMY_AGENT_ID}
+        if not self.is_multiagent:
+            return {_DUMMY_AGENT_ID}
+        else:
+            agent_ids = set()
+            for e in self.get_sub_environments():
+                agent_ids |= e.get_agent_ids()
+            return agent_ids

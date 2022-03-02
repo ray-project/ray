@@ -834,6 +834,10 @@ def _process_observations(
             episode._add_agent_rewards(rewards[env_id])
 
         # Check episode termination conditions.
+        try:  # TODO
+            dones[env_id]["__all__"]
+        except Exception as e:
+            raise e
         if dones[env_id]["__all__"] or episode.length >= horizon:
             hit_horizon = episode.length >= horizon and not dones[env_id]["__all__"]
             all_agents_done = True
@@ -903,7 +907,10 @@ def _process_observations(
             preprocessor = _get_or_raise(worker.preprocessors, policy_id)
             prep_obs: EnvObsType = raw_obs
             if preprocessor is not None:
-                prep_obs = preprocessor.transform(raw_obs)
+                try:  # TODO
+                    prep_obs = preprocessor.transform(raw_obs)
+                except Exception as e:
+                    raise e
                 if log_once("prep_obs"):
                     logger.info("Preprocessed obs: {}".format(summarize(prep_obs)))
             filtered_obs: EnvObsType = _get_or_raise(worker.filters, policy_id)(

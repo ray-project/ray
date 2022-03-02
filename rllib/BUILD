@@ -2289,6 +2289,24 @@ py_test(
 )
 
 py_test(
+    name = "examples/custom_vector_multi_agent_env_tf2",
+    main = "examples/custom_vector_multi_agent_env.py",
+    tags = ["team:ml", "examples", "examples_C", "examples_C_UtoZ"],
+    size = "medium",
+    srcs = ["examples/custom_vector_multi_agent_env.py"],
+    args = ["--as-test", "--framework=tf2", "--eager-tracing", --stop-reward=40.0"]
+)
+
+py_test(
+    name = "examples/custom_vector_multi_agent_env_torch",
+    main = "examples/custom_vector_multi_agent_env.py",
+    tags = ["team:ml", "examples", "examples_C", "examples_C_UtoZ"],
+    size = "medium",
+    srcs = ["examples/custom_vector_multi_agent_env.py"],
+    args = ["--as-test", "--framework=torch", "--stop-reward=40.0"]
+)
+
+py_test(
     name = "examples/deterministic_training_tf",
     main = "examples/deterministic_training.py",
     tags = ["team:ml", "multi_gpu"],

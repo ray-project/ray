@@ -2,6 +2,7 @@ import gym
 import numpy as np
 
 from ray.rllib.env.vector_env import VectorEnv
+from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.annotations import override
 
 
@@ -170,6 +171,59 @@ class MockVectorEnv(VectorEnv):
             done_batch.append(done)
             info_batch.append(info)
             if done:
+                remaining = self.num_envs - (i + 1)
+                obs_batch.extend([obs for _ in range(remaining)])
+                rew_batch.extend([rew for _ in range(remaining)])
+                done_batch.extend([done for _ in range(remaining)])
+                info_batch.extend([info for _ in range(remaining)])
+                break
+        return obs_batch, rew_batch, done_batch, info_batch
+
+    @override(VectorEnv)
+    def get_sub_environments(self):
+        # You may also leave this method as-is, in which case, it would
+        # return an empty list.
+        return [self.env for _ in range(self.num_envs)]
+
+
+class MockMultiAgentVectorEnv(VectorEnv):
+    """A custom vector env that uses a single(!) MultiAgentCartPole sub-env.
+
+    However, this env pretends to be a vectorized one to illustrate how one
+    could create custom VectorEnvs w/o the need for actual vectorizations of
+    sub-envs under the hood.
+    """
+
+    def __init__(self, episode_length, mocked_num_envs):
+        self.env = MultiAgentCartPole({"num_agents": 4})
+        super().__init__(
+            observation_space=self.env.observation_space[0],
+            action_space=self.env.action_space[0],
+            num_envs=mocked_num_envs,
+        )
+        self.episode_len = episode_length
+
+    @override(VectorEnv)
+    def vector_reset(self):
+        obs = self.env.reset()
+        return [obs for _ in range(self.num_envs)]
+
+    @override(VectorEnv)
+    def reset_at(self, index):
+        return self.env.reset()
+
+    @override(VectorEnv)
+    def vector_step(self, actions):
+        # Apply all actions sequentially to the same env.
+        # Whether this would make a lot of sense is debatable.
+        obs_batch, rew_batch, done_batch, info_batch = [], [], [], []
+        for i in range(self.num_envs):
+            obs, rew, done, info = self.env.step(actions[i])
+            obs_batch.append(obs)
+            rew_batch.append(rew)
+            done_batch.append(done)
+            info_batch.append(info)
+            if done["__all__"]:
                 remaining = self.num_envs - (i + 1)
                 obs_batch.extend([obs for _ in range(remaining)])
                 rew_batch.extend([rew for _ in range(remaining)])
