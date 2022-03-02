@@ -877,7 +877,6 @@ void LocalTaskManager::Dispatch(
 }
 
 void LocalTaskManager::ClearWorkerBacklog(const WorkerID &worker_id) {
-  RAY_LOG(ERROR) << "LocalTaskManager::ClearWorkerBacklog: " << worker_id;
   for (auto it = backlog_tracker_.begin(); it != backlog_tracker_.end();) {
     it->second.erase(worker_id);
     if (it->second.empty()) {
@@ -890,8 +889,6 @@ void LocalTaskManager::ClearWorkerBacklog(const WorkerID &worker_id) {
 
 void LocalTaskManager::SetWorkerBacklog(SchedulingClass scheduling_class,
                                         const WorkerID &worker_id, int64_t backlog_size) {
-  RAY_LOG(ERROR) << "LocalTaskManager::SetWorkerBacklog: " << worker_id << "\t"
-                 << backlog_size;
   if (backlog_size == 0) {
     backlog_tracker_[scheduling_class].erase(worker_id);
     if (backlog_tracker_[scheduling_class].empty()) {

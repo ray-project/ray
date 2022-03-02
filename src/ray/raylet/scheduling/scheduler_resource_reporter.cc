@@ -17,6 +17,7 @@
 #include <google/protobuf/util/json_util.h>
 
 #include <boost/range/join.hpp>
+#include <boost/range/adaptor/transformed.hpp>
 
 namespace ray {
 namespace raylet {
@@ -58,7 +59,7 @@ void SchedulerResourceReporter::FillResourceUsage(
   if (max_resource_shapes_per_load_report_ == 0) {
     return;
   }
-  absl::flat_hash_set<SchedulingClass> visited;
+
   auto resource_loads = data.mutable_resource_load();
   auto resource_load_by_shape =
       data.mutable_resource_load_by_shape()->mutable_resource_demands();
@@ -66,149 +67,58 @@ void SchedulerResourceReporter::FillResourceUsage(
   int num_reported = 0;
   int64_t skipped_requests = 0;
 
-  for (const auto &pair : tasks_to_schedule_) {
-    const auto &scheduling_class = pair.first;
-    if (num_reported++ >= max_resource_shapes_per_load_report_ &&
-        max_resource_shapes_per_load_report_ >= 0) {
-      // TODO (Alex): It's possible that we skip a different scheduling key which contains
-      // the same resources.
-      skipped_requests++;
-      break;
+  absl::flat_hash_set<SchedulingClass> visited;
+  auto chain = boost::make_iterator_range(std::begin());
+  auto fill_resource_usage_helper = [&] (auto& range) mutable {
+    for (auto [scheduling_class, count] : range) {
+      if (num_reported++ >= max_resource_shapes_per_load_report_ &&
+          max_resource_shapes_per_load_report_ >= 0) {
+        // TODO (Alex): It's possible that we skip a different scheduling key which contains
+        // the same resources.
+        skipped_requests++;
+        break;
+      }
+
+      if(visited.count(scheduling_class) != 0) {
+        continue;
+      }
+
+      const auto &resources =
+          TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
+          .resource_set.GetResourceMap();
+
+      auto by_shape_entry = resource_load_by_shape->Add();
+
+      for (const auto &resource : resources) {
+        // Add to `resource_loads`.
+        const auto &label = resource.first;
+        const auto &quantity = resource.second;
+        (*resource_loads)[label] += quantity * count;
+
+        // Add to `resource_load_by_shape`.
+        (*by_shape_entry->mutable_shape())[label] = quantity;
+      }
+
+      if(infeasible_tasks_.count(scheduling_class) != 0) {
+        by_shape_entry->set_num_ready_requests_queued(count);
+      } else {
+        by_shape_entry->set_num_infeasible_requests_queued(count);
+      }
+      by_shape_entry->set_backlog_size(TotalBacklogSize(scheduling_class));
+      visited.insert(scheduling_class);
     }
-    const auto &resources =
-        TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
-            .resource_set.GetResourceMap();
-    const auto &queue = pair.second;
-    const auto &count = queue.size();
+  };
 
-    auto by_shape_entry = resource_load_by_shape->Add();
+  auto transform_func = [](auto& pair) {return std::make_pair(pair.first, pair.second.size());};
+  auto tasks_to_schedule_range = tasks_to_schedule_ | boost::adaptors::transformed(transform_func);
+  auto tasks_to_dispatch_range = tasks_to_dispatch_ | boost::adaptors::transformed(transform_func);
+  auto infeasible_tasks_range = infeasible_tasks_ | boost::adaptors::transformed(transform_func);
+  auto backlog_tracker_range = backlog_tracker_ | boost::adaptors::transformed(transform_func);
 
-    for (const auto &resource : resources) {
-      // Add to `resource_loads`.
-      const auto &label = resource.first;
-      const auto &quantity = resource.second;
-      (*resource_loads)[label] += quantity * count;
-
-      // Add to `resource_load_by_shape`.
-      (*by_shape_entry->mutable_shape())[label] = quantity;
-    }
-
-    // If a task is not feasible on the local node it will not be feasible on any other
-    // node in the cluster. See the scheduling policy defined by
-    // ClusterResourceScheduler::GetBestSchedulableNode for more details.
-    int num_ready = by_shape_entry->num_ready_requests_queued();
-    by_shape_entry->set_num_ready_requests_queued(num_ready + count);
-    by_shape_entry->set_backlog_size(TotalBacklogSize(scheduling_class));
-    RAY_LOG(ERROR) << "tasks_to_schedule_: " << TotalBacklogSize(scheduling_class);
-    visited.insert(scheduling_class);
-  }
-  for (const auto &pair : tasks_to_dispatch_) {
-    const auto &scheduling_class = pair.first;
-    if (num_reported++ >= max_resource_shapes_per_load_report_ &&
-        max_resource_shapes_per_load_report_ >= 0) {
-      // TODO (Alex): It's possible that we skip a different scheduling key which contains
-      // the same resources.
-      skipped_requests++;
-      break;
-    }
-    const auto &resources =
-        TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
-            .resource_set.GetResourceMap();
-    const auto &queue = pair.second;
-    const auto &count = queue.size();
-
-    auto by_shape_entry = resource_load_by_shape->Add();
-
-    for (const auto &resource : resources) {
-      // Add to `resource_loads`.
-      const auto &label = resource.first;
-      const auto &quantity = resource.second;
-      (*resource_loads)[label] += quantity * count;
-
-      // Add to `resource_load_by_shape`.
-      (*by_shape_entry->mutable_shape())[label] = quantity;
-    }
-    int num_ready = by_shape_entry->num_ready_requests_queued();
-    by_shape_entry->set_num_ready_requests_queued(num_ready + count);
-    by_shape_entry->set_backlog_size(TotalBacklogSize(scheduling_class));
-    RAY_LOG(ERROR) << "tasks_to_dispatch_: " << TotalBacklogSize(scheduling_class);
-    visited.insert(scheduling_class);
-  }
-  for (const auto &pair : infeasible_tasks_) {
-    const auto &scheduling_class = pair.first;
-    if (num_reported++ >= max_resource_shapes_per_load_report_ &&
-        max_resource_shapes_per_load_report_ >= 0) {
-      // TODO (Alex): It's possible that we skip a different scheduling key which contains
-      // the same resources.
-      skipped_requests++;
-      break;
-    }
-    const auto &resources =
-        TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
-            .resource_set.GetResourceMap();
-    const auto &queue = pair.second;
-    const auto &count = queue.size();
-
-    auto by_shape_entry = resource_load_by_shape->Add();
-    for (const auto &resource : resources) {
-      // Add to `resource_loads`.
-      const auto &label = resource.first;
-      const auto &quantity = resource.second;
-      (*resource_loads)[label] += quantity * count;
-
-      // Add to `resource_load_by_shape`.
-      (*by_shape_entry->mutable_shape())[label] = quantity;
-    }
-
-    // If a task is not feasible on the local node it will not be feasible on any other
-    // node in the cluster. See the scheduling policy defined by
-    // ClusterResourceScheduler::GetBestSchedulableNode for more details.
-    int num_infeasible = by_shape_entry->num_infeasible_requests_queued();
-    by_shape_entry->set_num_infeasible_requests_queued(num_infeasible + count);
-    by_shape_entry->set_backlog_size(TotalBacklogSize(scheduling_class));
-    RAY_LOG(ERROR) << "infeasible_tasks_: " << TotalBacklogSize(scheduling_class);
-    visited.insert(scheduling_class);
-  }
-
-  for (const auto &pair : backlog_tracker_) {
-    const auto &scheduling_class = pair.first;
-    if (visited.count(scheduling_class)) {
-      continue;
-    }
-    if (num_reported++ >= max_resource_shapes_per_load_report_ &&
-        max_resource_shapes_per_load_report_ >= 0) {
-      // TODO (Alex): It's possible that we skip a different scheduling key which contains
-      // the same resources.
-      skipped_requests++;
-      break;
-    }
-    const auto &resources =
-        TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
-            .resource_set.GetResourceMap();
-    const auto &queue = pair.second;
-    const auto &count = queue.size();
-
-    auto by_shape_entry = resource_load_by_shape->Add();
-
-    for (const auto &resource : resources) {
-      // Add to `resource_loads`.
-      const auto &label = resource.first;
-      const auto &quantity = resource.second;
-      (*resource_loads)[label] += quantity * count;
-
-      // Add to `resource_load_by_shape`.
-      (*by_shape_entry->mutable_shape())[label] = quantity;
-    }
-
-    // If a task is not feasible on the local node it will not be feasible on any other
-    // node in the cluster. See the scheduling policy defined by
-    // ClusterResourceScheduler::GetBestSchedulableNode for more details.
-    int num_ready = by_shape_entry->num_ready_requests_queued();
-    by_shape_entry->set_num_ready_requests_queued(num_ready + count);
-    by_shape_entry->set_backlog_size(TotalBacklogSize(scheduling_class));
-    RAY_LOG(ERROR) << "tasks_to_schedule_: " << TotalBacklogSize(scheduling_class);
-    visited.insert(scheduling_class);
-  }
+  fill_resource_usage_helper(tasks_to_schedule_range);
+  fill_resource_usage_helper(tasks_to_dispatch_range);
+  fill_resource_usage_helper(infeasible_tasks_range);
+  fill_resource_usage_helper(backlog_tracker_range);
 
   if (skipped_requests > 0) {
     RAY_LOG(INFO) << "More than " << max_resource_shapes_per_load_report_
@@ -228,11 +138,6 @@ void SchedulerResourceReporter::FillResourceUsage(
   } else {
     data.set_resource_load_changed(true);
   }
-  std::string output;
-  google::protobuf::util::MessageToJsonString(data, &output);
-  RAY_LOG(ERROR) << "SchedulerResourceReporter::FillResourceUsage: " << output;
-  RAY_LOG(ERROR) << tasks_to_schedule_.size() << "\t" << tasks_to_dispatch_.size() << "\t"
-                 << infeasible_tasks_.size() << "\t" << backlog_tracker_.size();
 }
 
 void SchedulerResourceReporter::FillPendingActorInfo(

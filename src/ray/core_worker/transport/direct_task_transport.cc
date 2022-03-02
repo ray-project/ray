@@ -278,8 +278,6 @@ void CoreWorkerDirectTaskSubmitter::ReportWorkerBacklogInternal() {
   for (const auto &backlog : backlogs) {
     rpc::WorkerBacklogReport backlog_report;
     backlog_report.mutable_resource_spec()->CopyFrom(backlog.second.first.GetMessage());
-    RAY_LOG(ERROR) << "CoreWorkerDirectTaskSubmitter::ReportWorkerBacklogInternal:\t"
-                   << backlog.second.second;
     backlog_report.set_backlog_size(backlog.second.second);
     backlog_reports.emplace_back(backlog_report);
   }
@@ -293,8 +291,6 @@ void CoreWorkerDirectTaskSubmitter::ReportWorkerBacklogIfNeeded(
 
   if (scheduling_key_entry.last_reported_backlog_size !=
       scheduling_key_entry.BacklogSize()) {
-    RAY_LOG(ERROR) << "ReportBacklog: " << scheduling_key_entry.last_reported_backlog_size
-                   << "\t" << scheduling_key_entry.BacklogSize();
     ReportWorkerBacklogInternal();
   }
 }
