@@ -4,10 +4,7 @@ import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.memory_utils as memory_utils
 
 # TODO(fyrestone): Not import from dashboard module.
-from ray.dashboard.modules.actor.actor_utils import (
-    actor_classname_from_func_descriptor,
-    actor_classname_from_task_spec,
-)
+from ray.dashboard.modules.actor.actor_utils import actor_classname_from_task_spec
 from ray.dashboard.utils import Dict, Signal, async_loop_forever
 
 logger = logging.getLogger(__name__)
