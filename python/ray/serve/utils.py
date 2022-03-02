@@ -22,8 +22,8 @@ from ray.util.serialization import StandaloneSerializationContext
 from ray.serve.http_util import build_starlette_request, HTTPRequestWrapper
 from ray.serve.constants import (
     HTTP_PROXY_TIMEOUT,
-    SERVE_ASYNC_HANDLE_JSON_KEY,
-    SERVE_SYNC_HANDLE_JSON_KEY,
+    SERVE_HANDLE_JSON_KEY,
+    ServeHandleType,
 )
 from ray import serve
 
@@ -118,12 +118,14 @@ class ServeHandleEncoder(json.JSONEncoder):
         # Import RayServeHandle in utils file lead to import errors
         if type(obj).__name__ == "RayServeSyncHandle":
             return {
-                f"{SERVE_SYNC_HANDLE_JSON_KEY}": obj.deployment_name,
+                SERVE_HANDLE_JSON_KEY: ServeHandleType.SYNC,
+                "deployment_name": obj.deployment_name,
                 "_internal_pickled_http_request": obj._pickled_http_request,
             }
         elif type(obj).__name__ == "RayServeHandle":
             return {
-                f"{SERVE_ASYNC_HANDLE_JSON_KEY}": obj.deployment_name,
+                SERVE_HANDLE_JSON_KEY: ServeHandleType.ASYNC,
+                "deployment_name": obj.deployment_name,
                 "_internal_pickled_http_request": obj._pickled_http_request,
             }
         else:
@@ -139,19 +141,15 @@ def serve_handle_object_hook(ray_serve_handle_json: Dict[str, Any]):
         - _internal_pickled_http_request
     """
 
-    if SERVE_SYNC_HANDLE_JSON_KEY in ray_serve_handle_json:
-        return serve.api._get_global_client().get_handle(
-            ray_serve_handle_json[SERVE_SYNC_HANDLE_JSON_KEY],
-            sync=True,
-            missing_ok=True,
-            _internal_pickled_http_request=ray_serve_handle_json[
-                "_internal_pickled_http_request"
-            ],
+    if SERVE_HANDLE_JSON_KEY in ray_serve_handle_json:
+        is_sync = (
+            True
+            if ray_serve_handle_json[SERVE_HANDLE_JSON_KEY] == ServeHandleType.SYNC
+            else False
         )
-    elif SERVE_ASYNC_HANDLE_JSON_KEY in ray_serve_handle_json:
         return serve.api._get_global_client().get_handle(
-            ray_serve_handle_json[SERVE_ASYNC_HANDLE_JSON_KEY],
-            sync=False,
+            ray_serve_handle_json["deployment_name"],
+            sync=is_sync,
             missing_ok=True,
             _internal_pickled_http_request=ray_serve_handle_json[
                 "_internal_pickled_http_request"

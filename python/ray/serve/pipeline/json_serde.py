@@ -16,10 +16,7 @@ from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.utils import parse_import_path
 from ray.serve.handle import RayServeHandle
 from ray.serve.utils import ServeHandleEncoder, serve_handle_object_hook
-from ray.serve.constants import (
-    SERVE_ASYNC_HANDLE_JSON_KEY,
-    SERVE_SYNC_HANDLE_JSON_KEY,
-)
+from ray.serve.constants import SERVE_HANDLE_JSON_KEY
 
 
 class DAGNodeEncoder(json.JSONEncoder):
@@ -71,40 +68,33 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
                 that we perserve the same parent node.
         - .options() does not contain any DAGNode type
     """
-    # TODO: (jiaodong) Have better abtraction for users to extend and use
-    # JSON serialization of their own object types
-    # Deserialize a RayServeHandle.
-    if (
-        SERVE_SYNC_HANDLE_JSON_KEY in input_json
-        or SERVE_ASYNC_HANDLE_JSON_KEY in input_json
-    ):
+    # Deserialize RayServeHandle type
+    if SERVE_HANDLE_JSON_KEY in input_json:
         return json.loads(input_json, object_hook=serve_handle_object_hook)
-    # Base case for plain objects.
+    # Base case for plain objects
     elif DAGNODE_TYPE_KEY not in input_json:
-        return input_json
-
-    if input_json[DAGNODE_TYPE_KEY] == InputNode.__name__:
-        # TODO: (jiaodong) Support user passing inputs to InputNode in JSON
+        try:
+            return json.loads(input_json)
+        except Exception:
+            return input_json
+    # Deserialize DAGNode type
+    elif input_json[DAGNODE_TYPE_KEY] == InputNode.__name__:
         return InputNode.from_json(input_json)
-
-    # TODO:(jiaodong) Use cache for idential objects
-    module_name, attr_name = parse_import_path(input_json["import_path"])
-    module = getattr(import_module(module_name), attr_name)
-
-    if input_json[DAGNODE_TYPE_KEY] == FunctionNode.__name__:
-        return FunctionNode.from_json(input_json, module, object_hook=dagnode_from_json)
-    elif input_json[DAGNODE_TYPE_KEY] == ClassNode.__name__:
-        return ClassNode.from_json(input_json, module, object_hook=dagnode_from_json)
     elif input_json[DAGNODE_TYPE_KEY] == ClassMethodNode.__name__:
-        # For ClassNode types in Ray DAG we need to ensure all executions
-        # re-uses the same ClassNode instance across all ClassMethodNode
-        # calls, thus stable_uuid needs to be preserved to match ray DAG's
-        # _copy implementation.
         return ClassMethodNode.from_json(input_json, object_hook=dagnode_from_json)
     elif input_json[DAGNODE_TYPE_KEY] == DeploymentNode.__name__:
         return DeploymentNode.from_json(input_json, object_hook=dagnode_from_json)
     elif input_json[DAGNODE_TYPE_KEY] == DeploymentMethodNode.__name__:
         return DeploymentMethodNode.from_json(input_json, object_hook=dagnode_from_json)
     else:
-        # Not supported DAGNode type, just return default deserialization
-        return json.loads(input_json)
+        # Class and Function nodes require original module as body.
+        module_name, attr_name = parse_import_path(input_json["import_path"])
+        module = getattr(import_module(module_name), attr_name)
+        if input_json[DAGNODE_TYPE_KEY] == FunctionNode.__name__:
+            return FunctionNode.from_json(
+                input_json, module, object_hook=dagnode_from_json
+            )
+        elif input_json[DAGNODE_TYPE_KEY] == ClassNode.__name__:
+            return ClassNode.from_json(
+                input_json, module, object_hook=dagnode_from_json
+            )
