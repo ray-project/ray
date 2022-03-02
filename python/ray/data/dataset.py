@@ -110,6 +110,10 @@ class Dataset(Generic[T]):
     Dataset supports parallel transformations such as .map(), .map_batches(),
     and simple repartition, but currently not aggregations and joins.
     """
+    #
+    # def __deepcopy__(self, memo):
+    #     import copy
+    #     return copy.copy(self)
 
     def __init__(
         self,
@@ -2704,11 +2708,7 @@ Dict[str, List[str]]]): The names of the columns
         bar = ProgressBar("Force reads", len(blocks))
         bar.block_until_complete(blocks)
         ds = Dataset(
-            ExecutionPlan(
-                BlockList(blocks, self._plan.execute().get_metadata()),
-                self._plan.stats(),
-                dataset_uuid=self._get_uuid(),
-            ),
+            self._plan.copy(),
             self._epoch,
             lazy=False,
         )

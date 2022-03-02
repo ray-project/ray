@@ -362,5 +362,11 @@ class _StatsActorWrapper:
     def __init__(self, handle: ray.actor.ActorHandle):
         self.handle = handle
 
+    def __getstate__(self):
+        return vars(self)
+
+    def __setstate__(self, state):
+        vars(self).update(state)
+
     def __getattr__(self, attr):
         return getattr(self.handle, attr)
