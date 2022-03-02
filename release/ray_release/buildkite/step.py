@@ -32,6 +32,7 @@ DEFAULT_STEP_TEMPLATE = {
         }
     ],
     "artifact_paths": ["/tmp/ray_release_test_artifacts/**/*"],
+    "priority": 0,
 }
 
 
@@ -40,6 +41,7 @@ def get_step(
     smoke_test: bool = False,
     ray_wheels: Optional[str] = None,
     env: Optional[Dict] = None,
+    priority_val: int = 0,
 ):
     env = env or {}
 
@@ -71,6 +73,8 @@ def get_step(
 
     step["concurrency_group"] = concurrency_group
     step["concurrency"] = concurrency_limit
+
+    step["priority"] = priority_val
 
     step["label"] = test["name"]
     if smoke_test:

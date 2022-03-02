@@ -69,6 +69,7 @@ def main(test_collection_file: Optional[str] = None):
     frequency = settings["frequency"]
     test_name_filter = settings["test_name_filter"]
     ray_wheels = settings["ray_wheels"]
+    priority = settings["priority"]
 
     logger.info(
         f"Found the following buildkite pipeline settings:\n\n"
@@ -77,6 +78,7 @@ def main(test_collection_file: Optional[str] = None):
         f"  ray_wheels =           {settings['ray_wheels']}\n"
         f"  ray_test_repo =        {settings['ray_test_repo']}\n"
         f"  ray_test_branch =      {settings['ray_test_branch']}\n"
+        f"  priority =             {settings['priority']}\n"
         f"  no_concurrency_limit = {settings['no_concurrency_limit']}\n"
     )
 
@@ -119,7 +121,11 @@ def main(test_collection_file: Optional[str] = None):
         group_steps = []
         for test, smoke_test in tests:
             step = get_step(
-                test, smoke_test=smoke_test, ray_wheels=ray_wheels_url, env=env
+                test,
+                smoke_test=smoke_test,
+                ray_wheels=ray_wheels_url,
+                env=env,
+                priority_val=priority.value,
             )
 
             if no_concurrency_limit:

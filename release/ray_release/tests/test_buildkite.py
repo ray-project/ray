@@ -15,6 +15,7 @@ from ray_release.buildkite.settings import (
     update_settings_from_environment,
     Frequency,
     update_settings_from_buildkite,
+    Priority,
 )
 from ray_release.buildkite.step import get_step
 from ray_release.config import Test
@@ -79,11 +80,18 @@ class BuildkiteSettingsTest(unittest.TestCase):
         with self.assertRaises(ReleaseTestConfigError):
             update_settings_from_environment(updated_settings)
 
+        # Invalid priority
+        os.environ["RELEASE_PRIORITY"] = "invalid"
+        updated_settings = settings.copy()
+        with self.assertRaises(ReleaseTestConfigError):
+            update_settings_from_environment(updated_settings)
+
         os.environ["RELEASE_FREQUENCY"] = "nightly"
         os.environ["RAY_TEST_REPO"] = "https://github.com/user/ray.git"
         os.environ["RAY_TEST_BRANCH"] = "sub/branch"
         os.environ["RAY_WHEELS"] = "custom-wheels"
         os.environ["TEST_NAME"] = "name_filter"
+        os.environ["RELEASE_PRIORITY"] = "manual"
         updated_settings = settings.copy()
         update_settings_from_environment(updated_settings)
 
@@ -95,6 +103,8 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 "ray_wheels": "custom-wheels",
                 "ray_test_repo": "https://github.com/user/ray.git",
                 "ray_test_branch": "sub/branch",
+                "priority": Priority.MANUAL,
+                "no_concurrency_limit": False,
             },
         )
 
@@ -118,10 +128,17 @@ class BuildkiteSettingsTest(unittest.TestCase):
             with self.assertRaises(ReleaseTestConfigError):
                 update_settings_from_buildkite(updated_settings)
 
+            # Invalid priority
+            self.buildkite["release-priority"] = "invalid"
+            updated_settings = settings.copy()
+            with self.assertRaises(ReleaseTestConfigError):
+                update_settings_from_buildkite(updated_settings)
+
             self.buildkite["release-frequency"] = "nightly"
             self.buildkite["release-ray-test-repo-branch"] = "user:sub/branch"
             self.buildkite["release-ray-wheels"] = "custom-wheels"
             self.buildkite["release-test-name"] = "name_filter"
+            self.buildkite["release-priority"] = "manual"
             updated_settings = settings.copy()
             update_settings_from_buildkite(updated_settings)
 
@@ -133,6 +150,8 @@ class BuildkiteSettingsTest(unittest.TestCase):
                     "ray_wheels": "custom-wheels",
                     "ray_test_repo": "https://github.com/user/ray.git",
                     "ray_test_branch": "sub/branch",
+                    "priority": Priority.MANUAL,
+                    "no_concurrency_limit": False,
                 },
             )
 
@@ -243,6 +262,9 @@ class BuildkiteSettingsTest(unittest.TestCase):
 
         step = get_step(test, smoke_test=True)
         self.assertIn("--smoke-test", step["command"])
+
+        step = get_step(test, priority_val=20)
+        self.assertEqual(step["priority"], 20)
 
     def testInstanceResources(self):
         # AWS instances
