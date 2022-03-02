@@ -268,6 +268,11 @@ def test_run(ray_start_stop):
 def test_delete(ray_start_stop):
     # Deploys a config file and deletes it
 
+    def get_num_deployments():
+        info_response = subprocess.check_output(["serve", "info"])
+        info = json.loads(info_response)
+        return len(info["deployments"])
+
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
     )
@@ -275,14 +280,10 @@ def test_delete(ray_start_stop):
     # Check idempotence
     for _ in range(2):
         subprocess.check_output(["serve", "deploy", config_file_name])
-        info_response = subprocess.check_output(["serve", "info"])
-        info = json.loads(info_response)
-        assert len(info["deployments"]) == 2
+        wait_for_condition(lambda: get_num_deployments() == 2, timeout=15)
 
         subprocess.check_output(["serve", "delete", "-y"])
-        info_response = subprocess.check_output(["serve", "info"])
-        info = json.loads(info_response)
-        assert len(info["deployments"]) == 0
+        wait_for_condition(lambda: get_num_deployments() == 0, timeout=15)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
