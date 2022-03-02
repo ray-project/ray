@@ -15,6 +15,7 @@
 #pragma once
 #include <optional>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
@@ -125,7 +126,7 @@ class GcsResourceScheduler {
   ///
   /// \param required_resources The resources to be scheduled.
   /// \return The Sorted resources.
-  const std::vector<ResourceSet> &SortRequiredResources(
+  std::vector<size_t> SortRequiredResources(
       const std::vector<ResourceSet> &required_resources);
 
   /// Schedule resources according to `STRICT_SPREAD` strategy.

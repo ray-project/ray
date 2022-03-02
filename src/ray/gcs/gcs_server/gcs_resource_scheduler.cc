@@ -14,6 +14,8 @@
 
 #include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
 
+#include <numeric>
+
 namespace ray {
 namespace gcs {
 
@@ -66,6 +68,19 @@ double LeastResourceScorer::Calculate(const FixedPoint &requested,
 
 /////////////////////////////////////////////////////////////////////////////////////////
 
+SchedulingResult SortScheduleResult(const SchedulingResult &result,
+                              const std::vector<size_t> &sorted_index) {
+  if (result.first == SchedulingResultStatus::SUCCESS) {
+    std::vector<NodeID> sorted_nodes(result.second.size());
+    for (size_t i = 0; i < sorted_index.size(); i++) {
+      sorted_nodes[sorted_index[i]] = result.second[i];
+    }
+    return std::make_pair(result.first, sorted_nodes);
+  } else {
+    return result;
+  }
+}
+
 SchedulingResult GcsResourceScheduler::Schedule(
     const std::vector<ResourceSet> &required_resources_list,
     const SchedulingType &scheduling_type,
@@ -80,30 +95,33 @@ SchedulingResult GcsResourceScheduler::Schedule(
     return std::make_pair(SchedulingResultStatus::INFEASIBLE, std::vector<NodeID>());
   }
 
+  // If scheduling type is strict pack, we do not need to sort resources of each placement
+  // group since they must exist on the same node
+  if (scheduling_type == SchedulingType::STRICT_PACK) {
+    return StrictPackSchedule(required_resources_list, candidate_nodes);
+  }
+
   // First schedule scarce resources (such as GPU) and large capacity resources to improve
   // the scheduling success rate.
-  const auto &to_schedule_resources = SortRequiredResources(required_resources_list);
+  const auto &sorted_index = SortRequiredResources(required_resources_list);
+
+  std::vector<ResourceSet> sorted_resources(required_resources_list);
+  for (size_t i = 0; i < sorted_index.size(); i++) {
+    sorted_resources[i] = required_resources_list[sorted_index[i]];
+  }
 
   // Score and rank nodes.
-  SchedulingResult result;
   switch (scheduling_type) {
-  case SPREAD:
-    result = SpreadSchedule(to_schedule_resources, candidate_nodes);
-    break;
-  case STRICT_SPREAD:
-    result = StrictSpreadSchedule(to_schedule_resources, candidate_nodes);
-    break;
   case PACK:
-    result = PackSchedule(to_schedule_resources, candidate_nodes);
-    break;
-  case STRICT_PACK:
-    result = StrictPackSchedule(to_schedule_resources, candidate_nodes);
-    break;
+    return SortScheduleResult(PackSchedule(sorted_resources, candidate_nodes), sorted_index);
+  case SPREAD:
+    return SortScheduleResult(SpreadSchedule(sorted_resources, candidate_nodes), sorted_index);
+  case STRICT_SPREAD:
+    return SortScheduleResult(StrictSpreadSchedule(sorted_resources, candidate_nodes), sorted_index);
   default:
     RAY_LOG(FATAL) << "Unsupported scheduling type: " << scheduling_type;
-    break;
+    return SchedulingResult();
   }
-  return result;
 }
 
 absl::flat_hash_set<NodeID> GcsResourceScheduler::FilterCandidateNodes(
@@ -121,12 +139,66 @@ absl::flat_hash_set<NodeID> GcsResourceScheduler::FilterCandidateNodes(
   return result;
 }
 
-const std::vector<ResourceSet> &GcsResourceScheduler::SortRequiredResources(
+std::tuple<bool, bool> cmp_resource(
+    const std::string &resource,
+    const absl::flat_hash_map<std::string, FixedPoint> &a_map,
+    const absl::flat_hash_map<std::string, FixedPoint> &b_map) {
+  auto a_resource = a_map.find(resource);
+  auto b_resource = b_map.find(resource);
+
+  bool a_less_than_b = false;
+  bool finished = false;
+
+  if (a_resource != a_map.end() && b_resource != b_map.end()) {
+    if (a_resource->second != b_resource->second) {
+      a_less_than_b = a_resource->second < b_resource->second;
+      finished = true;
+    }
+  } else if (a_resource != a_map.end() && a_resource->second != 0) {
+    a_less_than_b = false;
+    finished = true;
+  } else if (b_resource != b_map.end() && b_resource->second != 0) {
+    a_less_than_b = true;
+    finished = true;
+  }
+  return std::make_tuple(finished, a_less_than_b);
+}
+
+std::vector<size_t> GcsResourceScheduler::SortRequiredResources(
     const std::vector<ResourceSet> &required_resources) {
-  // TODO(ffbin): A bundle may require special resources, such as GPU. We need to
-  // schedule bundles with special resource requirements first, which will be implemented
-  // in the next pr.
-  return required_resources;
+  std::vector<size_t> sorted_index(required_resources.size());
+  std::iota(sorted_index.begin(), sorted_index.end(), 0);
+  std::sort(sorted_index.begin(), sorted_index.end(), [required_resources](int b, int a) {
+    auto a_map = required_resources[a].GetResourceAmountMap();
+    auto b_map = required_resources[b].GetResourceAmountMap();
+    bool finished, cmp_res;
+    // TODO (jon-chuang): the exact resource priority defined here needs to be revisted.
+    std::tie(finished, cmp_res) = cmp_resource("GPU", a_map, b_map);
+    if (finished) {
+      return cmp_res;
+    }
+    // Make sure that resources are always sorted in the same order
+    std::set<std::string> extra_resources_set;
+    for (auto r : a_map) {
+      extra_resources_set.insert(r.first);
+    }
+    for (auto r : b_map) {
+      extra_resources_set.insert(r.first);
+    }
+    for (auto r : extra_resources_set) {
+      std::tie(finished, cmp_res) = cmp_resource(r, a_map, b_map);
+      if (finished) {
+        return cmp_res;
+      }
+    }
+    std::tie(finished, cmp_res) = cmp_resource("CPU", a_map, b_map);
+    if (finished) {
+      return cmp_res;
+    } else {
+      return false;
+    }
+  });
+  return sorted_index;
 }
 
 SchedulingResult GcsResourceScheduler::StrictSpreadSchedule(
