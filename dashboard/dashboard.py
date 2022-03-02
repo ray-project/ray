@@ -9,10 +9,9 @@ import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.head as dashboard_head
 import ray.dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
-import ray._private.gcs_utils as gcs_utils
 import ray._private.services
 import ray._private.utils
-from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher
+from ray._private.gcs_pubsub import GcsPublisher
 from ray._private.ray_logging import setup_component_logger
 
 # Logger for this module. It should be configured at the entry point

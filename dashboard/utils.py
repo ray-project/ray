@@ -6,7 +6,6 @@ import importlib
 import json
 import logging
 import pkgutil
-import socket
 from abc import ABCMeta, abstractmethod
 from base64 import b64decode
 from collections import namedtuple

@@ -7,7 +7,6 @@ import traceback
 import ray
 import pytest
 import ray.dashboard.utils as dashboard_utils
-import ray.ray_constants as ray_constants
 import ray._private.gcs_utils as gcs_utils
 import ray._private.gcs_pubsub as gcs_pubsub
 from ray.dashboard.tests.conftest import *  # noqa

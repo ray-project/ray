@@ -29,7 +29,6 @@ from ray.dashboard import dashboard
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.modules
-from ray._private.gcs_utils import use_gcs_for_bootstrap
 
 try:
     import aiohttp.web

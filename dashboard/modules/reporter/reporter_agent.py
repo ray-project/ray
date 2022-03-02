@@ -15,10 +15,9 @@ import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 from ray.dashboard import k8s_utils
 import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
-from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsAioPublisher
+from ray._private.gcs_pubsub import GcsAioPublisher
 import ray._private.services
 import ray._private.utils
-from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
 from ray.ray_constants import DEBUG_AUTOSCALING_STATUS

@@ -1,6 +1,4 @@
 import os
-import sys
-import socket
 import asyncio
 import logging
 import threading
@@ -16,13 +14,12 @@ except ImportError:
 
 import ray.experimental.internal_kv as internal_kv
 import ray._private.utils
-from ray._private.gcs_utils import GcsClient, use_gcs_for_bootstrap
+from ray._private.gcs_utils import GcsClient
 import ray._private.services
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 from ray import ray_constants
 from ray._private.gcs_pubsub import (
-    gcs_pubsub_enabled,
     GcsAioErrorSubscriber,
     GcsAioLogSubscriber,
 )
@@ -203,11 +200,11 @@ class DashboardHead:
         self.aiogrpc_gcs_channel = ray._private.utils.init_grpc_channel(
             gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True
         )
-        if gcs_pubsub_enabled():
-            self.gcs_error_subscriber = GcsAioErrorSubscriber(address=gcs_address)
-            self.gcs_log_subscriber = GcsAioLogSubscriber(address=gcs_address)
-            await self.gcs_error_subscriber.subscribe()
-            await self.gcs_log_subscriber.subscribe()
+
+        self.gcs_error_subscriber = GcsAioErrorSubscriber(address=gcs_address)
+        self.gcs_log_subscriber = GcsAioLogSubscriber(address=gcs_address)
+        await self.gcs_error_subscriber.subscribe()
+        await self.gcs_log_subscriber.subscribe()
 
         self.health_check_thread = GCSHealthCheckThread(gcs_address)
         self.health_check_thread.start()

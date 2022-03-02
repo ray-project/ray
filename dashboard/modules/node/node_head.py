@@ -5,7 +5,6 @@ import json
 import aiohttp.web
 
 import ray._private.utils
-import ray._private.gcs_utils as gcs_utils
 from ray import ray_constants
 from ray.dashboard.modules.node import node_consts
 from ray.dashboard.modules.node.node_consts import (
