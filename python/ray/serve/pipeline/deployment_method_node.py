@@ -14,14 +14,14 @@ class DeploymentMethodNode(DAGNode):
     def __init__(
         self,
         deployment: Deployment,
-        method_name: str,
+        deployment_method_name: str,
         method_args: Tuple[Any],
         method_kwargs: Dict[str, Any],
         method_options: Dict[str, Any],
         other_args_to_resolve: Optional[Dict[str, Any]] = None,
     ):
         self._deployment = deployment
-        self._method_name: str = method_name
+        self._deployment_method_name: str = deployment_method_name
         super().__init__(
             method_args,
             method_kwargs,
@@ -41,7 +41,7 @@ class DeploymentMethodNode(DAGNode):
     ):
         return DeploymentMethodNode(
             self._deployment,
-            self._method_name,
+            self._deployment_method_name,
             new_args,
             new_kwargs,
             new_options,
@@ -51,7 +51,7 @@ class DeploymentMethodNode(DAGNode):
     def _execute_impl(self, *args):
         """Executor of DeploymentMethodNode by ray.remote()"""
         # Execute with bound args.
-        method_body = getattr(self._deployment_handle, self._method_name)
+        method_body = getattr(self._deployment_handle, self._deployment_method_name)
 
         return method_body.options(**self._bound_options).remote(
             *self._bound_args,
@@ -93,27 +93,36 @@ class DeploymentMethodNode(DAGNode):
 
     def __str__(self) -> str:
         return get_dag_node_str(
-            self, str(self._method_name) + "() @ " + str(self._deployment)
+            self,
+            str(self._deployment_method_name) + "() @ " + str(self._deployment),
         )
 
-    def to_json(self, encoder_cls) -> Dict[str, Any]:
-        json_dict = super().to_json_base(encoder_cls)
-        json_dict[DAGNODE_TYPE_KEY] = DeploymentMethodNode.__name__
-        json_dict["deployment_name"] = self._deployment.name
-        json_dict["method_name"] = self._method_name
+    def get_deployment_name(self) -> str:
+        return self._deployment.name
 
+    def get_deployment_method_name(self) -> str:
+        return self._deployment_method_name
+
+    def get_import_path(self) -> str:
         if isinstance(self._deployment._func_or_class, str):
             # We're processing a deserilized JSON node where import_path
             # is dag_node body.
-            json_dict["import_path"] = self._deployment._func_or_class
+            return self._deployment._func_or_class
         else:
             body = self._deployment._func_or_class.__ray_actor_class__
-            json_dict["import_path"] = f"{body.__module__}.{body.__qualname__}"
+            return f"{body.__module__}.{body.__qualname__}"
+
+    def to_json(self, encoder_cls) -> Dict[str, Any]:
+        json_dict = super().to_json_base(encoder_cls, DeploymentMethodNode.__name__)
+        json_dict["deployment_name"] = self.get_deployment_name()
+        json_dict["deployment_method_name"] = self.get_deployment_method_name()
+        json_dict["import_path"] = self.get_import_path()
 
         return json_dict
 
     @classmethod
     def from_json(cls, input_json, object_hook=None):
+        assert input_json[DAGNODE_TYPE_KEY] == DeploymentMethodNode.__name__
         args_dict = super().from_json_base(input_json, object_hook=object_hook)
         return cls(
             Deployment(
@@ -126,7 +135,7 @@ class DeploymentMethodNode(DAGNode):
                 ray_actor_options=args_dict["options"],
                 _internal=True,
             ),
-            input_json["method_name"],
+            input_json["deployment_method_name"],
             args_dict["args"],
             args_dict["kwargs"],
             args_dict["options"],

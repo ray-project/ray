@@ -54,8 +54,7 @@ class InputNode(DAGNode):
     def to_json(self, encoder_cls) -> Dict[str, Any]:
         # TODO: (jiaodong) Support arbitrary InputNode args and pydantic
         # input schema.
-        json_dict = super().to_json_base(encoder_cls)
-        json_dict[DAGNODE_TYPE_KEY] = InputNode.__name__
+        json_dict = super().to_json_base(encoder_cls, InputNode.__name__)
         return json_dict
 
     @classmethod

@@ -263,7 +263,9 @@ class DAGNode:
         """
         raise ValueError(f"DAGNode cannot be serialized. DAGNode: {str(self)}")
 
-    def to_json_base(self, encoder_cls: json.JSONEncoder) -> Dict[str, Any]:
+    def to_json_base(
+        self, encoder_cls: json.JSONEncoder, dag_node_type: str
+    ) -> Dict[str, Any]:
         """
         Base JSON serializer for DAGNode types with base info. Each DAGNode
         subclass needs to update with its own fields.
@@ -284,9 +286,8 @@ class DAGNode:
         # stable_uuid will be re-generated upon new constructor execution
         # except for ClassNode used as parent of ClassMethodNode
         return {
-            # Will be overriden by subclass implementation
-            DAGNODE_TYPE_KEY: DAGNode.__name__,
-            # Placeholder for better ordering
+            DAGNODE_TYPE_KEY: dag_node_type,
+            # Will be overriden by build()
             "import_path": "",
             "args": json.dumps(self.get_args(), cls=encoder_cls),
             "kwargs": json.dumps(self.get_kwargs(), cls=encoder_cls),
