@@ -244,7 +244,7 @@ class LogMonitor:
                 # Catch "file not found" errors.
                 if e.errno == errno.ENOENT:
                     logger.warning(
-                        f"Warning: The file {file_info.filename} " "was not found."
+                        f"Warning: The file {file_info.filename} was not found."
                     )
                     self.log_filenames.remove(file_info.filename)
                     continue
@@ -258,7 +258,7 @@ class LogMonitor:
                 except (IOError, OSError) as e:
                     if e.errno == errno.ENOENT:
                         logger.warning(
-                            f"Warning: The file {file_info.filename} " "was not found."
+                            f"Warning: The file {file_info.filename} was not found."
                         )
                         self.log_filenames.remove(file_info.filename)
                         continue
