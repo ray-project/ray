@@ -337,17 +337,25 @@ def test_demand_report_when_scale_up(shutdown_only):
     tasks = [foo.remote() for _ in range(10000)]  # noqa: F841
     global_state_accessor = make_global_state_accessor(info)
 
-    def get_backlog_info():
+    def check_backlog_info():
         message = global_state_accessor.get_all_resource_usage()
         if message is None:
             return 0
 
         resource_usage = gcs_utils.ResourceUsageBatchData.FromString(message)
         aggregate_resource_load = resource_usage.resource_load_by_shape.resource_demands
-        print(aggregate_resource_load)
-        return aggregate_resource_load[0].backlog_size
-    time.sleep(5)
-    wait_for_condition(lambda: get_backlog_info() == 9990, 10000)
+
+        if len(aggregate_resource_load) == 1:
+            if aggregate_resource_load[0].backlog_size != 9980:
+                return False
+            if aggregate_resource_load[0].num_ready_requests_queued != 10:
+                return False
+            if aggregate_resource_load[0].shape != {"CPU": 1.0}:
+                return False
+            return True
+        return False
+
+    wait_for_condition(check_backlog_info, 10)
     cluster.shutdown()
 
 
