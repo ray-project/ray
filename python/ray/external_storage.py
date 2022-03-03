@@ -406,7 +406,7 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
         self._uris = [u.strip("/") for u in uri]
         assert len(self._uris) == len(uri)
         
-        s3 = [uri.startswith("s3") for u in self._uris]
+        s3 = [u.startswith("s3") for u in self._uris]
         if (any(s3)):
             assert ( all(s3) ), "all uri's must be s3 or none can be s3."
         self.is_for_s3 = all(s3)
