@@ -44,7 +44,7 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
 )
 @click.option(
     "--ray-wheels",
-    default="master",
+    default=None,
     type=str,
     help=(
         "Commit hash or URL to Ray wheels to be used for testing. "
