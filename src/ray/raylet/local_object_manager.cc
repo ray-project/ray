@@ -188,16 +188,6 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
     counts += 1;
   }
   if (!objects_to_spill.empty()) {
-    if (it == pinned_objects_.end() && bytes_to_spill <= num_bytes_to_spill &&
-        !objects_pending_spill_.empty()) {
-      // We have gone through all spillable objects but we have not yet reached
-      // the minimum bytes to spill and we are already spilling other objects.
-      // Let those spill requests finish before we try to spill the current
-      // objects. This gives us some time to decide whether we really need to
-      // spill the current objects or if we can afford to wait for additional
-      // objects to fuse with.
-      return false;
-    }
     RAY_LOG(DEBUG) << "Spilling objects of total size " << bytes_to_spill
                    << " num objects " << objects_to_spill.size();
     auto start_time = absl::GetCurrentTimeNanos();
@@ -215,13 +205,27 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
         spill_time_total_s_ += (now - std::max(start_time, last_spill_finish_ns_)) / 1e9;
         if (now - last_spill_log_ns_ > 1e9) {
           last_spill_log_ns_ = now;
-          RAY_LOG(INFO) << "Spilled "
-                        << static_cast<int>(spilled_bytes_total_ / (1024 * 1024))
-                        << " MiB, " << spilled_objects_total_
-                        << " objects, write throughput "
-                        << static_cast<int>(spilled_bytes_total_ / (1024 * 1024) /
-                                            spill_time_total_s_)
-                        << " MiB/s";
+          std::stringstream msg;
+          // Keep :info_message: in sync with LOG_PREFIX_INFO_MESSAGE in ray_constants.py.
+          msg << ":info_message:Spilled "
+              << static_cast<int>(spilled_bytes_total_ / (1024 * 1024)) << " MiB, "
+              << spilled_objects_total_ << " objects, write throughput "
+              << static_cast<int>(spilled_bytes_total_ / (1024 * 1024) /
+                                  spill_time_total_s_)
+              << " MiB/s.";
+          if (next_spill_error_log_bytes_ > 0 &&
+              spilled_bytes_total_ >= next_spill_error_log_bytes_) {
+            // Add an advisory the first time this is logged.
+            if (next_spill_error_log_bytes_ ==
+                RayConfig::instance().verbose_spill_logs()) {
+              msg << " Set RAY_verbose_spill_logs=0 to disable this message.";
+            }
+            // Exponential backoff on the spill messages.
+            next_spill_error_log_bytes_ *= 2;
+            RAY_LOG(ERROR) << msg.str();
+          } else {
+            RAY_LOG(INFO) << msg.str();
+          }
         }
         last_spill_finish_ns_ = now;
       }

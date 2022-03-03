@@ -53,10 +53,22 @@ class Combine:
 
 
 @ray.remote
+class Counter:
+    def __init__(self, val):
+        self.val = val
+
+    def get(self):
+        return self.val
+
+    def inc(self, inc):
+        self.val += inc
+
+
+@ray.remote
 def fn_hello():
     return "hello"
 
 
 @ray.remote
-def combine(m1_output, m2_output):
-    return m1_output + m2_output
+def combine(m1_output, m2_output, kwargs_output=0):
+    return m1_output + m2_output + kwargs_output

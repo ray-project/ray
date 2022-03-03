@@ -333,8 +333,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       env->GetFieldID(java_actor_creation_options_class, "bundleIndex", "I");
   java_actor_creation_options_concurrency_groups = env->GetFieldID(
       java_actor_creation_options_class, "concurrencyGroups", "Ljava/util/List;");
-  java_actor_creation_options_serialized_runtime_env =
-      env->GetFieldID(java_actor_creation_options_class, "serializedRuntimeEnv", "Ljava/lang/String;");
+  java_actor_creation_options_serialized_runtime_env = env->GetFieldID(
+      java_actor_creation_options_class, "serializedRuntimeEnv", "Ljava/lang/String;");
   java_actor_creation_options_max_pending_calls =
       env->GetFieldID(java_actor_creation_options_class, "maxPendingCalls", "I");
 

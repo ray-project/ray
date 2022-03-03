@@ -43,24 +43,24 @@ def test_window_by_bytes(ray_start_regular_shared):
         ray.data.range_arrow(10).window(blocks_per_window=2, bytes_per_window=2)
 
     pipe = ray.data.range_arrow(10000000, parallelism=100).window(blocks_per_window=2)
-    assert str(pipe) == "DatasetPipeline(num_windows=50, num_stages=1)"
+    assert str(pipe) == "DatasetPipeline(num_windows=50, num_stages=2)"
 
     pipe = ray.data.range_arrow(10000000, parallelism=100).window(
         bytes_per_window=10 * 1024 * 1024
     )
-    assert str(pipe) == "DatasetPipeline(num_windows=8, num_stages=1)"
+    assert str(pipe) == "DatasetPipeline(num_windows=8, num_stages=2)"
     dss = list(pipe.iter_datasets())
     assert len(dss) == 8, dss
     for ds in dss[:-1]:
         assert ds.num_blocks() in [12, 13]
 
     pipe = ray.data.range_arrow(10000000, parallelism=100).window(bytes_per_window=1)
-    assert str(pipe) == "DatasetPipeline(num_windows=100, num_stages=1)"
+    assert str(pipe) == "DatasetPipeline(num_windows=100, num_stages=2)"
     for ds in pipe.iter_datasets():
         assert ds.num_blocks() == 1
 
     pipe = ray.data.range_arrow(10000000, parallelism=100).window(bytes_per_window=1e9)
-    assert str(pipe) == "DatasetPipeline(num_windows=1, num_stages=1)"
+    assert str(pipe) == "DatasetPipeline(num_windows=1, num_stages=2)"
     for ds in pipe.iter_datasets():
         assert ds.num_blocks() == 100
 
