@@ -9,7 +9,7 @@ from ray.data.aggregate import AggregateFn, Count, Sum, Max, Min, Mean, Std
 from ray.data.block import BlockExecStats, KeyFn
 from ray.data.impl.plan import AllToAllStage
 from ray.data.impl.block_list import BlockList
-from ray.data.impl.compute import CallableClass
+from ray.data.impl.compute import CallableClass, ComputeStrategy
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U, KeyType
@@ -150,7 +150,7 @@ class GroupedDataset(Generic[T]):
         self,
         fn: Union[CallableClass, Callable[[BatchType], BatchType]],
         *,
-        compute: Optional[str] = None,
+        compute: Union[str, ComputeStrategy] = None,
         batch_format: str = "native",
         **ray_remote_args,
     ) -> "Dataset[Any]":
@@ -159,15 +159,16 @@ class GroupedDataset(Generic[T]):
         While the map_groups() is very flexible, note that it comes with downsides:
             - It may be slower than using more specific methods such as min(), max().
             - It requires that each group fits in memory on a single node.
-        In general, prefer to use aggregate() methods instead of map_groups().
+        In general, prefer to use aggregate() instead of map_groups().
 
         This is a blocking operation.
 
         Examples:
             >>> # Return a single record per group (list of multiple records in,
-            >>> # list of a single record out).
+            >>> # list of a single record out). Note that median is not an
+            >>> # associative function so cannot be computed with aggregate().
             >>> ray.data.range(100).groupby(lambda x: x % 3).map_groups(
-            ...     lambda x: [min(x) / max(x)])
+            ...     lambda x: [median(x)])
 
             >>> # Return multiple records per group (dataframe in, dataframe out).
             >>> df = pd.DataFrame(
@@ -182,9 +183,10 @@ class GroupedDataset(Generic[T]):
 
         Args:
             fn: The function to apply to each group of records, or a class type
-                that can be instantiated to create such a callable. It takes a
-                batch of records from the same group, and returns a batch of one
-                or more records, similar to map_batches().
+                that can be instantiated to create such a callable. It takes as
+                input a batch of all records from a single group, and returns a
+                batch of zero or more records, similar to map_batches().
+
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
             batch_format: Specify "native" to use the native block format
@@ -201,9 +203,10 @@ class GroupedDataset(Generic[T]):
         # Globally sort records by key.
         # Note that sort() will ensure that records of the same key partitioned
         # into the same block.
-        sorted_ds = self._dataset
         if self._key is not None:
             sorted_ds = self._dataset.sort(self._key)
+        else:
+            sorted_ds = self._dataset.repartition(1)
 
         def get_key(row):
             if isinstance(self._key, Callable):
@@ -213,7 +216,7 @@ class GroupedDataset(Generic[T]):
             else:
                 return None
 
-        # Returns the group boundries.
+        # Returns the group boundaries.
         def get_boundaries(block):
             boundaries = []
             pre = None

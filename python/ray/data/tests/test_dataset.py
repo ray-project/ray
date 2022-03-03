@@ -2520,9 +2520,7 @@ def test_groupby_map_groups_for_empty_dataset(ray_start_regular_shared):
     assert mapped.take_all() == []
 
 
-# When grouping by None, the entire dataset is in one group. To make sure each group
-# is contained within on block, we have to make it a single shard.
-@pytest.mark.parametrize("num_parts", [1])
+@pytest.mark.parametrize("num_parts", [1, 2, 30])
 def test_groupby_map_groups_for_none_groupkey(ray_start_regular_shared, num_parts):
     ds = ray.data.from_items(list(range(100)))
     mapped = (
@@ -2530,6 +2528,19 @@ def test_groupby_map_groups_for_none_groupkey(ray_start_regular_shared, num_part
     )
     assert mapped.count() == 1
     assert mapped.take_all() == [99]
+
+
+@pytest.mark.parametrize("num_parts", [1, 2, 30])
+def test_groupby_map_groups_returning_empty_result(ray_start_regular_shared, num_parts):
+    xs = list(range(100))
+    mapped = (
+        ray.data.from_items(xs)
+        .repartition(num_parts)
+        .groupby(lambda x: x % 3)
+        .map_groups(lambda x: [])
+    )
+    assert mapped.count() == 0
+    assert mapped.take_all() == []
 
 
 # TODO(jian): after fix issue #22673, add more num_parts values.
