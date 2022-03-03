@@ -4,7 +4,7 @@ request, for all DAGNode types.
 """
 
 import pytest
-from ray.experimental.dag.input_node import InputNode, InputSchema, OutputSchema
+from ray.experimental.dag.input_node import InputNode, InputSchema
 from typing import TypeVar
 
 import ray
@@ -218,9 +218,10 @@ RayHandleLike = TypeVar("RayHandleLike")
 
 def test_simple_full_input_adapt_and_validate(shared_ray_instance):
     """str to int."""
-    input_schema = InputSchema()
-    output_schema = OutputSchema()
+    def validator(input):
+        assert isinstance(input, str)
 
+    input_schema = InputSchema(validator=validator)
     def adapter_fn(input):
         if isinstance(input, str):
             return int(input)
@@ -229,10 +230,9 @@ def test_simple_full_input_adapt_and_validate(shared_ray_instance):
 
     input = InputNode(
         input_schema=input_schema,
-        output_schema=output_schema,
         adapter_fn=adapter_fn,
     )
-    assert ray.get(input.execute("1")) == 1
+    assert input.execute("1") == 1
 
 
 if __name__ == "__main__":
