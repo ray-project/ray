@@ -12,6 +12,7 @@ from ray import serve
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray._private.test_utils import wait_for_condition
 from ray.dashboard.optional_utils import RAY_INTERNAL_DASHBOARD_NAMESPACE
+from ray.serve.scripts import process_args_and_kwargs
 
 
 def ping_endpoint(endpoint: str, params: str = ""):
@@ -26,6 +27,85 @@ def ray_start_stop():
     subprocess.check_output(["ray", "start", "--head"])
     yield
     subprocess.check_output(["ray", "stop", "--force"])
+
+
+class TestProcessArgsAndKwargs:
+    def test_valid_args_and_kwargs(self):
+        args_and_kwargs = (
+            "argval1",
+            "argval2",
+            "--kwarg1",
+            "kwval1",
+            "--kwarg2",
+            "kwval2",
+        )
+        args, kwargs = process_args_and_kwargs(args_and_kwargs)
+        assert args == ["argval1", "argval2"]
+        assert kwargs == {"kwarg1": "kwval1", "kwarg2": "kwval2"}
+
+    def test_mixed_args_and_kwargs(self):
+        args_and_kwargs = (
+            "argval1",
+            "--kwarg1",
+            "kwval1",
+            "argval2",
+            "--kwarg2",
+            "kwval2",
+        )
+        with pytest.raises(ValueError):
+            process_args_and_kwargs(args_and_kwargs)
+
+    def test_empty_kwarg(self):
+        args_and_kwargs = (
+            "argval1",
+            "--kwarg1",
+            "--kwarg2",
+            "kwval2",
+        )
+        with pytest.raises(ValueError):
+            process_args_and_kwargs(args_and_kwargs)
+
+        args_and_kwargs = ("--empty_kwarg_only",)
+        with pytest.raises(ValueError):
+            process_args_and_kwargs(args_and_kwargs)
+
+    def test_only_args(self):
+        args_and_kwargs = ("argval1", "argval2", "argval3")
+        args, kwargs = process_args_and_kwargs(args_and_kwargs)
+        assert args == ["argval1", "argval2", "argval3"]
+        assert kwargs == {}
+
+        args_and_kwargs = ("single_arg",)
+        args, kwargs = process_args_and_kwargs(args_and_kwargs)
+        assert args == ["single_arg"]
+        assert kwargs == {}
+
+    def test_only_kwargs(self):
+        args_and_kwargs = (
+            "--kwarg1",
+            "kwval1",
+            "--kwarg2",
+            "kwval2",
+            "--kwarg3",
+            "kwval3",
+        )
+        args, kwargs = process_args_and_kwargs(args_and_kwargs)
+        assert args == []
+        assert kwargs == {"kwarg1": "kwval1", "kwarg2": "kwval2", "kwarg3": "kwval3"}
+
+        args_and_kwargs = (
+            "--single_kwarg",
+            "single_kwval",
+        )
+        args, kwargs = process_args_and_kwargs(args_and_kwargs)
+        assert args == []
+        assert kwargs == {"single_kwarg": "single_kwval"}
+
+    def test_empty_args_and_kwargs(self):
+        for empty_val in [None, ()]:
+            args, kwargs = process_args_and_kwargs(empty_val)
+            assert args == []
+            assert kwargs == {}
 
 
 def test_start_shutdown(ray_start_stop):
