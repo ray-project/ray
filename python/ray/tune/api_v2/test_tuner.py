@@ -478,8 +478,8 @@ class XGBoostTrainer(FunctionTrainer):
         params: Optional[Dict[str, Any]],
         **kwargs,
     ):
-        # train_dataset = datasets["train_dataset"]
-        train_dataset = gen_dataset_func()
+        train_dataset = datasets["train_dataset"]
+        # train_dataset = gen_dataset_func()
         prep_v1 = Chain(
             Scaler(["worst radius", "worst area"]), Repartitioner(num_partitions=4)
         )
@@ -696,5 +696,5 @@ if __name__ == "__main__":
     # ray.init("ray://127.0.0.1:10001")
 
     ray.init()
-    test_xgboost_tuner()
-    # test_xgboost_resume()
+    # test_xgboost_tuner()
+    test_xgboost_resume()

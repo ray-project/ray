@@ -76,7 +76,7 @@ def _deserialize_dataset(dataset_input) -> Union[Dataset, Dict]:
         for k, v in dataset_dict.items():
             if isinstance(v, bytes):
                 dataset_dict[k] = dataset_registry.execute_if_needed(
-                    Dataset.deserialize_out_of_band(dataset_input)
+                    Dataset.deserialize_out_of_band(v)
                 )
             elif isinstance(v, int):
                 pass

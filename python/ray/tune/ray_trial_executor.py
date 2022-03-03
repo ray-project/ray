@@ -372,6 +372,8 @@ class RayTrialExecutor(TrialExecutor):
                 ) from e
 
         with self._change_working_directory(trial):
+            # kwargs["config"]["datasets"]["train_dataset"]._plan._in_stats = None
+            # kwargs["config"]["datasets"]["train_dataset"]._plan._snapshot_stats = None
             return full_actor_class.remote(**kwargs)
 
     def _train(self, trial):
