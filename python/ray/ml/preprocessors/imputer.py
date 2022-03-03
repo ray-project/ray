@@ -17,18 +17,16 @@ class SimpleImputer(Preprocessor):
     def __init__(self, columns: List[str]):
         super().__init__()
         self.columns = columns
-        self.stats = None
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         aggregates = [Mean(col) for col in self.columns]
-        self.stats = dataset.aggregate(*aggregates)
+        self.stats_ = dataset.aggregate(*aggregates)
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
-        for column in self.columns:
-            mean = self.stats[f"mean({column})"]
-            df[column] = df[column].fillna(mean)
+        means = {column: self.stats_[f"mean({column})"] for column in self.columns}
+        df = df.fillna(means)
         return df
 
     def __repr__(self):
-        return f"<Imputer columns={self.columns} stats={self.stats}>"
+        return f"<Imputer columns={self.columns} stats={self.stats_}>"

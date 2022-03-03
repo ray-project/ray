@@ -217,24 +217,6 @@ class Std(_AggregateOnKeyBase):
         )
 
 
-class UniqueValues(_AggregateOnKeyBase):
-    """Defines unique value aggregation.
-
-    Computes a list of all (de-duped) values.
-    """
-
-    def __init__(self, on: Optional[KeyFn] = None):
-        self._set_key_fn(on)
-        on_fn = _to_on_fn(on)
-
-        super().__init__(
-            init=lambda k: [],
-            accumulate=lambda a, r: list(set(a) | {on_fn(r)}),
-            merge=lambda a1, a2: list(set(a1).union(set(a2))),
-            name=(f"unique_values({str(on)})"),
-        )
-
-
 def _to_on_fn(on: Optional[KeyFn]):
     if on is None:
         return lambda r: r

@@ -1,9 +1,9 @@
+from functools import partial
 from typing import List, Dict
 
 import pandas as pd
 
 from ray.data import Dataset
-from ray.data.aggregate import UniqueValues
 from ray.ml.preprocessor import Preprocessor
 
 
@@ -25,14 +25,14 @@ class OrdinalEncoder(Preprocessor):
         self.columns = columns
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
-        aggregates = [UniqueValues(col) for col in self.columns]
-        stats = dataset.aggregate(*aggregates)
-        self.stats = {row: _sorted_value_indices(stats[row]) for row in stats}
+        self.stats_ = _get_unique_value_indices(dataset, *self.columns)
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
+        df.loc[:, self.columns].isnull().values.any()
+
         def column_ordinal_encoder(s: pd.Series):
-            s_values = self.stats[f"unique_values({s.name})"]
+            s_values = self.stats_[f"unique_values({s.name})"]
             return s.map(s_values)
 
         df.loc[:, self.columns] = df.loc[:, self.columns].transform(
@@ -41,7 +41,7 @@ class OrdinalEncoder(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"<Encoder columns={self.columns} stats={self.stats}>"
+        return f"<Encoder columns={self.columns} stats={self.stats_}>"
 
 
 class OneHotEncoder(Preprocessor):
@@ -59,29 +59,31 @@ class OneHotEncoder(Preprocessor):
     """
 
     def __init__(self, columns: List[str]):
+        # TODO: add `drop` parameter.
         super().__init__()
         self.columns = columns
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
-        aggregates = [UniqueValues(col) for col in self.columns]
-        stats = dataset.aggregate(*aggregates)
-        self.stats = {row: _sorted_value_indices(stats[row]) for row in stats}
+        self.stats_ = _get_unique_value_indices(dataset, *self.columns)
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
+        # Compute new columns
+        new_columns = {}
         for column in self.columns:
-            column_values = self.stats[f"unique_values({column})"]
+            column_values = self.stats_[f"unique_values({column})"]
             for column_value in column_values:
-                df[f"{column}_{column_value}"] = df[column].map(
-                    lambda x: int(x == column_value)
-                )
-
+                new_columns[f"{column}_{column_value}"] = (
+                    df[column] == column_value
+                ).astype(int)
         # Drop original unencoded columns.
         df = df.drop(columns=self.columns)
+        # Add new columns.
+        df = pd.concat([df, pd.DataFrame(new_columns)], axis=1)
         return df
 
     def __repr__(self):
-        return f"<Encoder columns={self.columns} stats={self.stats}>"
+        return f"<Encoder columns={self.columns} stats={self.stats_}>"
 
 
 class LabelEncoder(Preprocessor):
@@ -101,23 +103,39 @@ class LabelEncoder(Preprocessor):
         self.label_column = label_column
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
-        stats = dataset.aggregate(UniqueValues(self.label_column))
-        self.stats = {row: _sorted_value_indices(stats[row]) for row in stats}
+        self.stats_ = _get_unique_value_indices(dataset, self.label_column)
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
         def column_label_encoder(s: pd.Series):
-            s_values = self.stats[f"unique_values({s.name})"]
+            s_values = self.stats_[f"unique_values({s.name})"]
             return s.map(s_values)
 
         df[self.label_column] = df[self.label_column].transform(column_label_encoder)
         return df
 
     def __repr__(self):
-        return f"<Encoder label column={self.label_column} stats={self.stats}>"
+        return f"<Encoder label column={self.label_column} stats={self.stats_}>"
 
 
-def _sorted_value_indices(values: List) -> Dict:
+def _get_unique_value_indices(
+    dataset: Dataset, *columns: str
+) -> Dict[str, Dict[str, int]]:
+    results = {}
+    for column in columns:
+        values = _get_unique_values(dataset, column)
+        value_to_index = _sorted_value_indices(values)
+        results[f"unique_values({column})"] = value_to_index
+    return results
+
+
+def _get_unique_values(dataset: Dataset, column: str) -> List[str]:
+    agg_ds = dataset.groupby(column).count()
+    # TODO: Support an upper limit by using `agg_ds.take(N)` instead.
+    return [row[column] for row in agg_ds.iter_rows()]
+
+
+def _sorted_value_indices(values: List) -> Dict[str, int]:
     """Converts values to a Dict mapping to unique indexes.
 
     Values will be de-duped and sorted.
@@ -127,3 +145,4 @@ def _sorted_value_indices(values: List) -> Dict:
         {"a": 0, "b": 1, "c": 2}
     """
     return {value: i for i, value in enumerate(sorted(set(values)))}
+

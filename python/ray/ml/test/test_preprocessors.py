@@ -17,9 +17,9 @@ from ray.ml.preprocessors import (
 
 def test_standard_scaler():
     """Tests basic StandardScaler functionality."""
-    col_a = [-1, 0, 1]
-    col_b = [1, 3, 5]
-    col_c = [1, 1, None]
+    col_a = [-1, 0, 1, 2]
+    col_b = [1, 1, 5, 5]
+    col_c = [1, 1, 1, None]
     in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
     ds = ray.data.from_pandas(in_df)
 
@@ -31,7 +31,7 @@ def test_standard_scaler():
 
     # Fit data.
     scaler.fit(ds)
-    assert scaler.stats == {
+    assert scaler.stats_ == {
         "mean(B)": 3.0,
         "mean(C)": 1.0,
         "std(B)": 2.0,
@@ -43,8 +43,8 @@ def test_standard_scaler():
     out_df = transformed.to_pandas()
 
     processed_col_a = col_a
-    processed_col_b = [-1.0, 0.0, 1.0]
-    processed_col_c = [0.0, 0.0, None]
+    processed_col_b = [-1.0, -1.0, 1.0, 1.0]
+    processed_col_c = [0.0, 0.0, 0.0, None]
     expected_df = pd.DataFrame.from_dict(
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
     )
@@ -91,7 +91,7 @@ def test_min_max_scaler():
 
     # Fit data.
     scaler.fit(ds)
-    assert scaler.stats == {"min(B)": 1, "max(B)": 5, "min(C)": 1, "max(C)": 1}
+    assert scaler.stats_ == {"min(B)": 1, "max(B)": 5, "min(C)": 1, "max(C)": 1}
 
     transformed = scaler.transform(ds)
     out_df = transformed.to_pandas()
@@ -145,7 +145,7 @@ def test_ordinal_encoder():
 
     # Fit data.
     encoder.fit(ds)
-    assert encoder.stats == {
+    assert encoder.stats_ == {
         "unique_values(B)": {"cold": 0, "hot": 1, "warm": 2},
         "unique_values(C)": {1: 0, 5: 1, 10: 2},
     }
@@ -204,7 +204,7 @@ def test_one_hot_encoder():
     # Fit data.
     encoder.fit(ds)
 
-    assert encoder.stats == {
+    assert encoder.stats_ == {
         "unique_values(B)": {"cold": 0, "hot": 1, "warm": 2},
         "unique_values(C)": {1: 0, 5: 1, 10: 2},
     }
@@ -283,7 +283,7 @@ def test_label_encoder():
     # Fit data.
     encoder.fit(ds)
 
-    assert encoder.stats == {"unique_values(A)": {"blue": 0, "green": 1, "red": 2}}
+    assert encoder.stats_ == {"unique_values(A)": {"blue": 0, "green": 1, "red": 2}}
 
     # Transform data.
     transformed = encoder.transform(ds)
@@ -336,7 +336,7 @@ def test_simple_imputer():
 
     # Fit data.
     imputer.fit(ds)
-    assert imputer.stats == {"mean(B)": 2.0, "mean(C)": 1.0}
+    assert imputer.stats_ == {"mean(B)": 2.0, "mean(C)": 1.0}
 
     # Transform data.
     transformed = imputer.transform(ds)
@@ -377,9 +377,9 @@ def test_simple_imputer():
 
 def test_chain():
     """Tests basic Chain functionality."""
-    col_a = [-1, 0, 1]
-    col_b = [1, 1, None]
-    col_c = ["sunday", "monday", "tuesday"]
+    col_a = [-1, -1, 1, 1]
+    col_b = [1, 1, 1, None]
+    col_c = ["sunday", "monday", "tuesday", "tuesday"]
     in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
     ds = ray.data.from_pandas(in_df)
 
@@ -390,16 +390,16 @@ def test_chain():
 
     # Fit data.
     chain.fit(ds)
-    assert scaler.stats == {
+    assert scaler.stats_ == {
         "mean(A)": 0.0,
         "mean(B)": 1.0,
         "std(A)": 1.0,
         "std(B)": 0.0,
     }
-    assert imputer.stats == {
+    assert imputer.stats_ == {
         "mean(B)": 0.0,
     }
-    assert encoder.stats == {
+    assert encoder.stats_ == {
         "unique_values(C)": {"monday": 0, "sunday": 1, "tuesday": 2}
     }
 
@@ -407,9 +407,9 @@ def test_chain():
     transformed = chain.transform(ds)
     out_df = transformed.to_pandas()
 
-    processed_col_a = [-1.0, 0.0, 1.0]
-    processed_col_b = [0.0, 0.0, 0.0]
-    processed_col_c = [1, 0, 2]
+    processed_col_a = [-1.0, -1.0, 1.0, 1.0]
+    processed_col_b = [0.0, 0.0, 0.0, 0.0]
+    processed_col_c = [1, 0, 2, 2]
     expected_df = pd.DataFrame.from_dict(
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
     )

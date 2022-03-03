@@ -13,7 +13,7 @@ class Chain(Preprocessor):
         preprocessors: The preprocessors that should be executed sequentially.
     """
 
-    is_fittable = False
+    _is_fittable = False
 
     def __init__(self, *preprocessors: Preprocessor):
         super().__init__()
@@ -23,6 +23,7 @@ class Chain(Preprocessor):
         for preprocessor in self.preprocessors[:-1]:
             ds = preprocessor.fit_transform(ds)
         self.preprocessors[-1].fit(ds)
+        self._is_fitted = True
         return self
 
     def fit_transform(self, ds: Dataset) -> Dataset:
@@ -37,7 +38,7 @@ class Chain(Preprocessor):
 
     def _transform_batch(self, df: DataBatchType) -> DataBatchType:
         for preprocessor in self.preprocessors:
-            preprocessor.transform_batch(df)
+            df = preprocessor.transform_batch(df)
         return df
 
     def __repr__(self):

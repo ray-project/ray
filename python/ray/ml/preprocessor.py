@@ -20,10 +20,7 @@ class Preprocessor(abc.ABC):
     """Preprocessor interface for transforming Datasets."""
 
     # Preprocessors that do not need to be fitted must override this.
-    is_fittable = True
-
-    def __init__(self):
-        self.is_fitted = False
+    _is_fittable = True
 
     def fit(self, dataset: Dataset) -> "Preprocessor":
         """Fit this Preprocessor to the Dataset.
@@ -33,15 +30,13 @@ class Preprocessor(abc.ABC):
         Returns:
             Preprocessor: The fitted Preprocessor with state attributes.
         """
-        if self.is_fitted:
+        if self.check_is_fitted():
             raise PreprocessorAlreadyFittedException(
                 "`fit` cannot be called multiple times. "
                 "Create a new Preprocessor to fit a new Dataset."
             )
 
-        result = self._fit(dataset)
-        self.is_fitted = True
-        return result
+        return self._fit(dataset)
 
     def _fit(self, dataset: Dataset) -> "Preprocessor":
         raise NotImplementedError()
@@ -65,7 +60,7 @@ class Preprocessor(abc.ABC):
         Returns:
             Dataset: The transformed Dataset.
         """
-        if self.is_fittable and not self.is_fitted:
+        if self._is_fittable and not self.check_is_fitted():
             raise PreprocessorNotFittedException(
                 "`fit` must be called before `transform`."
             )
@@ -83,18 +78,27 @@ class Preprocessor(abc.ABC):
             DataBatchType: The transformed data batch.
         """
 
-        if self.is_fittable and not self.is_fitted:
+        if self._is_fittable and not self.check_is_fitted:
             raise PreprocessorNotFittedException(
                 "`fit` must be called before `transform_batch`."
             )
         return self._transform_batch(df)
 
     def _transform_batch(self, df: DataBatchType) -> DataBatchType:
+        import pandas as pd
+
         if not isinstance(df, pd.DataFrame):
             raise NotImplementedError(
                 "`transform_batch` is currently only implemented for Pandas DataFrames."
             )
         return self._transform_pandas(df)
 
-    def _transform_pandas(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
         raise NotImplementedError()
+
+    def check_is_fitted(self) -> bool:
+        if hasattr(self, "_is_fitted") and self._is_fitted:
+            return True
+
+        fitted_vars = [v for v in vars(self) if v.endswith("_")]
+        return bool(fitted_vars)

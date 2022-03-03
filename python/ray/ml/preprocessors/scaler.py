@@ -15,22 +15,24 @@ class StandardScaler(Preprocessor):
 
     Args:
         columns: The columns that will individually be scaled.
+        ddof: The delta degrees of freedom used to calculate standard deviation.
     """
 
-    def __init__(self, columns: List[str]):
+    def __init__(self, columns: List[str], ddof=0):
         super().__init__()
         self.columns = columns
+        self.ddof = ddof
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
-        # TODO: confirm what to set ddof as for calculating Std.
-        aggregates = [Agg(col) for Agg in [Mean, Std] for col in self.columns]
-        self.stats = dataset.aggregate(*aggregates)
+        mean_aggregates = [Mean(col) for col in self.columns]
+        std_aggregates = [Std(col, ddof=self.ddof) for col in self.columns]
+        self.stats_ = dataset.aggregate(*mean_aggregates, *std_aggregates)
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
         def column_standard_scaler(s: pd.Series):
-            s_mean = self.stats[f"mean({s.name})"]
-            s_std = self.stats[f"std({s.name})"]
+            s_mean = self.stats_[f"mean({s.name})"]
+            s_std = self.stats_[f"std({s.name})"]
 
             # Handle division by zero.
             # TODO: extend this to handle near-zero values.
@@ -45,7 +47,7 @@ class StandardScaler(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"<Scaler columns={self.columns} stats={self.stats}>"
+        return f"<Scaler columns={self.columns} stats={self.stats_}>"
 
 
 class MinMaxScaler(Preprocessor):
@@ -67,13 +69,13 @@ class MinMaxScaler(Preprocessor):
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         aggregates = [Agg(col) for Agg in [Min, Max] for col in self.columns]
-        self.stats = dataset.aggregate(*aggregates)
+        self.stats_ = dataset.aggregate(*aggregates)
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
         def column_min_max_scaler(s: pd.Series):
-            s_min = self.stats[f"min({s.name})"]
-            s_max = self.stats[f"max({s.name})"]
+            s_min = self.stats_[f"min({s.name})"]
+            s_max = self.stats_[f"max({s.name})"]
             diff = s_max - s_min
 
             # Handle division by zero.
@@ -89,4 +91,4 @@ class MinMaxScaler(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"<Scaler columns={self.columns} stats={self.stats}>"
+        return f"<Scaler columns={self.columns} stats={self.stats_}>"
