@@ -519,5 +519,4 @@ def test_placement_group_bin_packing_priority(
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(
-        ["-sv", f"{__file__}"]))
+    sys.exit(pytest.main(["-sv", f"{__file__}"]))
