@@ -1,12 +1,13 @@
 cartpole-pg:
-#    num_samples: 3
+    num_samples: 3
     env: CartPole-v0
     run: PG
     stop:
-        episode_reward_mean: 150
-        timesteps_total: 100000
+#        episode_reward_mean: 150
+        timesteps_total: 1000000
     config:
         # Works for both torch and tf.
         seed: 42
         framework: torch
         num_workers: 2
+        num_training_workers: 2

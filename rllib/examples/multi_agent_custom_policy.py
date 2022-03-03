@@ -20,7 +20,8 @@ import ray
 from ray import tune
 from ray.tune.registry import register_env
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
-from ray.rllib.examples.policy.random_policy import RandomPolicy
+
+# from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.test_utils import check_learning_achieved
 
@@ -28,7 +29,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "tfe", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
 )
 parser.add_argument(
@@ -50,7 +51,6 @@ parser.add_argument(
 if __name__ == "__main__":
     args = parser.parse_args()
     ray.init()
-
     # Simple environment with 4 independent cartpole entities
     register_env(
         "multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": 4})
@@ -70,24 +70,26 @@ if __name__ == "__main__":
                 # The Policy we are actually learning.
                 "pg_policy": PolicySpec(config={"framework": args.framework}),
                 # Random policy we are playing against.
-                "random": PolicySpec(policy_class=RandomPolicy),
+                # "random": PolicySpec(policy_class=RandomPolicy),
+                "pg_policy2": PolicySpec(config={"framework": args.framework}),
             },
             # Map to either random behavior or PR learning behavior based on
             # the agent's ID.
             "policy_mapping_fn": (
-                lambda aid, **kwargs: ["pg_policy", "random"][aid % 2]
+                lambda aid, **kwargs: ["pg_policy", "pg_policy2"][aid % 2]
             ),
             # We wouldn't have to specify this here as the RandomPolicy does
             # not learn anyways (it has an empty `learn_on_batch` method), but
             # it's good practice to define this list here either way.
-            "policies_to_train": ["pg_policy"],
+            "policies_to_train": ["pg_policy", "pg_policy2"],
         },
         "framework": args.framework,
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+        "num_training_workers": 2,
     }
 
-    results = tune.run("PG", config=config, stop=stop, verbose=1)
+    results = tune.run("PG", config=config, stop=stop, verbose=2)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)
