@@ -278,7 +278,6 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   void PushActorTask(std::unique_ptr<PushTaskRequest> request, bool skip_queue,
                      const ClientCallback<PushTaskReply> &callback) override {
     if (skip_queue) {
-      RAY_LOG(ERROR) << "Skip queue true";
       // Set this value so that the actor does not skip any tasks when
       // processing this request. We could also set it to max_finished_seq_no_,
       // but we just set it to the default of -1 to avoid taking the lock.
@@ -299,7 +298,6 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   void PushNormalTask(std::unique_ptr<PushTaskRequest> request,
                       const ClientCallback<PushTaskReply> &callback) override {
-    RAY_LOG(ERROR) << "Push normal task";
     request->set_sequence_number(-1);
     request->set_client_processed_up_to(-1);
     INVOKE_RPC_CALL(CoreWorkerService, PushTask, *request, callback, grpc_client_,
@@ -333,7 +331,6 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
           if (seq_no > max_finished_seq_no_) {
             max_finished_seq_no_ = seq_no;
           }
-          RAY_LOG(ERROR) << "Process " << seq_no << " " << max_finished_seq_no_;
           rpc_bytes_in_flight_ -= task_size;
           RAY_CHECK(rpc_bytes_in_flight_ >= 0);
         }
