@@ -5,6 +5,16 @@ import ray
 import ray.cluster_utils
 
 
+def test_cross_language_cpp(shutdown_only):
+    ray.init(
+        job_config=ray.job_config.JobConfig(
+            code_search_path=["/home/admin/code/ray/bazel-bin/cpp/plus.so"]
+        )
+    )
+    obj = ray.cpp_function("Plus1").remote(1)
+    print(ray.get(obj))
+
+
 def test_cross_language_raise_kwargs(shutdown_only):
     ray.init(job_config=ray.job_config.JobConfig(code_search_path=sys.path))
 

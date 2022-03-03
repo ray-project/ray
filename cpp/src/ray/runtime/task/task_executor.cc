@@ -145,6 +145,15 @@ Status TaskExecutor::ExecuteTask(
   ArgsBufferList ray_args_buffer;
   for (size_t i = 0; i < args_buffer.size(); i++) {
     auto &arg = args_buffer.at(i);
+    {
+      auto meta_data = arg->GetMetadata();
+      if(meta_data) {
+        std::string meta_str1((const char*)meta_data->Data(), meta_data->Size());
+        std::cout<<"meta_str1="<<meta_str1<<", "<<func_name<<", Language "<<ray_function.GetLanguage()<<'\n';
+      }else {
+        std::cout<<"meta_str1=null"<<", "<<func_name<<", Language"<<ray_function.GetLanguage()<<'\n';
+      }
+    }
     msgpack::sbuffer sbuf;
     sbuf.write((const char *)(arg->GetData()->Data()), arg->GetData()->Size());
     ray_args_buffer.push_back(std::move(sbuf));
@@ -187,14 +196,31 @@ Status TaskExecutor::ExecuteTask(
     auto &result_id = return_ids[0];
     auto result_ptr = &(*results)[0];
     int64_t task_output_inlined_bytes = 0;
+
+    meta_buffer = std::make_shared<ray::LocalMemoryBuffer>(
+        (uint8_t *)(&METADATA_STR_XLANG[0]), METADATA_STR_XLANG.size(), true);
+
     RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
-        result_id, data_size, meta_buffer, std::vector<ray::ObjectID>(),
+        result_id, XLANG_HEADER_LEN+data_size, meta_buffer, std::vector<ray::ObjectID>(),
         &task_output_inlined_bytes, result_ptr));
 
     auto result = *result_ptr;
     if (result != nullptr) {
+      // if(result->HasMetadata()) {
+      //   std::cout<<"HasMetadata\n";
+      //   memcpy(result->GetMetadata()->Data(), meta_buffer->Data(), meta_buffer->Size());
+      // }
       if (result->HasData()) {
-        memcpy(result->GetData()->Data(), data->data(), data_size);
+        auto len_buf = Serializer::Serialize(data_size);
+
+        msgpack::sbuffer buffer(XLANG_HEADER_LEN + data_size);
+        buffer.write(len_buf.data(), len_buf.size());
+        for (size_t i = 0; i < XLANG_HEADER_LEN - len_buf.size(); ++i) {
+          buffer.write("", 1);
+        }
+        buffer.write(data->data(), data_size);
+
+        memcpy(result->GetData()->Data(), buffer.data(), buffer.size());
       }
     }
 

@@ -5,10 +5,12 @@ from __future__ import print_function
 from ray import Language
 from ray.util.annotations import PublicAPI
 from ray._raylet import JavaFunctionDescriptor
+from ray._raylet import CppFunctionDescriptor
 
 __all__ = [
     "java_function",
     "java_actor_class",
+    "cpp_function",
 ]
 
 
@@ -73,6 +75,36 @@ def java_function(class_name, function_name):
         Language.JAVA,
         lambda *args, **kwargs: None,
         JavaFunctionDescriptor(class_name, function_name, ""),
+        None,  # num_cpus,
+        None,  # num_gpus,
+        None,  # memory,
+        None,  # object_store_memory,
+        None,  # resources,
+        None,  # accelerator_type,
+        None,  # num_returns,
+        None,  # max_calls,
+        None,  # max_retries,
+        None,  # retry_exceptions,
+        None,  # runtime_env,
+        None,  # placement_group,
+        None,
+    )  # scheduling_strategy,
+
+
+@PublicAPI(stability="beta")
+def cpp_function(function_name):
+    """Define a Java function.
+
+    Args:
+        class_name (str): Java class name.
+        function_name (str): Java function name.
+    """
+    from ray.remote_function import RemoteFunction
+
+    return RemoteFunction(
+        Language.CPP,
+        lambda *args, **kwargs: None,
+        CppFunctionDescriptor(function_name),
         None,  # num_cpus,
         None,  # num_gpus,
         None,  # memory,
