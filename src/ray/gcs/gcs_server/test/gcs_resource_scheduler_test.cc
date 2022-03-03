@@ -46,6 +46,16 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     gcs_resource_manager_->OnNodeAdd(*node);
   }
 
+  void AddClusterResources(const NodeID &node_id,
+                           const std::vector<std::pair<std::string, double>> &resource) {
+    auto node = Mocker::GenNodeInfo();
+    node->set_node_id(node_id.Binary());
+    for (auto r : resource) {
+      (*node->mutable_resources_total())[r.first] = r.second;
+    }
+    gcs_resource_manager_->OnNodeAdd(*node);
+  }
+
   void CheckClusterAvailableResources(const NodeID &node_id,
                                       const std::string &resource_name,
                                       double resource_value) {
@@ -90,12 +100,65 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     CheckClusterAvailableResources(node_id, cpu_resource, node_cpu_num);
   }
 
+  void TestBinPackingByPriority(const gcs::SchedulingType &scheduling_type) {
+    // Add node resources.
+    std::string cpu_resource = "CPU";
+    std::string gpu_resource = "GPU";
+    std::string mem_resource = "memory";
+
+    std::vector<std::vector<std::pair<std::string, double>>> resources_list;
+
+    resources_list.emplace_back(std::vector({std::make_pair(cpu_resource, 1.0)}));
+    resources_list.emplace_back(std::vector({std::make_pair(cpu_resource, 2.0)}));
+    resources_list.emplace_back(std::vector(
+        {std::make_pair(cpu_resource, 1.0), std::make_pair(gpu_resource, 1.0)}));
+    resources_list.emplace_back(std::vector(
+        {std::make_pair(cpu_resource, 1.0), std::make_pair(gpu_resource, 2.0)}));
+    resources_list.emplace_back(std::vector(
+        {std::make_pair(cpu_resource, 1.0), std::make_pair(mem_resource, 1.0)}));
+    resources_list.emplace_back(std::vector(
+        {std::make_pair(cpu_resource, 1.0), std::make_pair(mem_resource, 2.0)}));
+
+    std::vector<NodeID> node_ids;
+    for (int i = 0; i < 6; i++) {
+      node_ids.emplace_back(NodeID::FromRandom());
+      AddClusterResources(node_ids.back(), resources_list[i]);
+    }
+
+    // Scheduling succeeded and node resources are used up.
+    std::vector<ResourceSet> required_resources_list;
+    for (auto resources : resources_list) {
+      absl::flat_hash_map<std::string, double> resource_map;
+      for (auto r : resources) {
+        resource_map[r.first] = r.second;
+      }
+      required_resources_list.emplace_back(resource_map);
+    }
+
+    const auto &result1 =
+        gcs_resource_scheduler_->Schedule(required_resources_list, scheduling_type);
+    ASSERT_TRUE(result1.first == gcs::SchedulingResultStatus::SUCCESS);
+    ASSERT_EQ(result1.second.size(), 6);
+  }
+
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<gcs::GcsResourceScheduler> gcs_resource_scheduler_;
 
  private:
   instrumented_io_context io_service_;
 };
+
+TEST_F(GcsResourceSchedulerTest, TestPackBinPackingByPriority) {
+  TestBinPackingByPriority(gcs::SchedulingType::PACK);
+}
+
+TEST_F(GcsResourceSchedulerTest, TestStrictSpreadBinPackingByPriority) {
+  TestBinPackingByPriority(gcs::SchedulingType::STRICT_SPREAD);
+}
+
+TEST_F(GcsResourceSchedulerTest, TestSpreadBinPackingByPriority) {
+  TestBinPackingByPriority(gcs::SchedulingType::SPREAD);
+}
 
 TEST_F(GcsResourceSchedulerTest, TestPackScheduleResourceLeaks) {
   TestResourceLeaks(gcs::SchedulingType::PACK);
