@@ -1,7 +1,11 @@
 Tips for first-time users
 =========================
 
-Ray provides a highly flexible, yet minimalist and easy to use API. On this page, we describe several tips that can help first-time Ray users to avoid some common mistakes that can significantly hurt the performance of their programs.
+Ray provides a highly flexible, yet minimalist and easy to use API.
+On this page, we describe several tips that can help first-time Ray users to avoid some
+common mistakes that can significantly hurt the performance of their programs.
+For an in-depth treatment of advanced design patterns, please refer to our
+:ref:`Ray Design Patterns <ray-design-patterns>` page.
 
 .. list-table:: The core Ray API we use in this document.
    :header-rows: 1
@@ -33,9 +37,14 @@ Ray provides a highly flexible, yet minimalist and easy to use API. On this page
        | By default, it returns one ready object ID at a time.
 
 
-All the results reported in this page were obtained on a 13-inch MacBook Pro with a 2.7 GHz Core i7 CPU and 16GB of RAM. While ``ray.init()`` automatically detects the number of cores when it runs on a single machine, to reduce the variability of the results you observe on your machine when running the code below, here we specify num_cpus = 4, i.e., a machine with 4 CPUs.
+All the results reported in this page were obtained on a 13-inch MacBook Pro with a 2.7 GHz Core i7 CPU and 16GB of RAM.
+While ``ray.init()`` automatically detects the number of cores when it runs on a single machine,
+to reduce the variability of the results you observe on your machine when running the code below,
+here we specify num_cpus = 4, i.e., a machine with 4 CPUs.
 
-Since each task requests by default one CPU, this setting allows us to execute up to four tasks in parallel. As a result, our Ray system consists of one driver executing the program, and up to four workers running remote tasks or actors.
+Since each task requests by default one CPU, this setting allows us to execute up to four tasks in parallel.
+As a result, our Ray system consists of one driver executing the program,
+and up to four workers running remote tasks or actors.
 
 
 Tip 1: Delay ray.get()
