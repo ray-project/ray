@@ -100,8 +100,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
       gcs::GcsClientOptions options("127.0.0.1:5397");
       gcs_client_ = std::make_unique<gcs::GcsClient>(options);
     } else {
-      gcs::GcsClientOptions options(config_.redis_address, config_.redis_port,
-                                    config_.redis_password);
+      gcs::GcsClientOptions options(
+          config_.redis_address, config_.redis_port, config_.redis_password);
       gcs_client_ = std::make_unique<gcs::GcsClient>(options);
     }
     RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
@@ -185,8 +185,9 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
       const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
-        actor_id, subscribe,
-        [&promise](Status status) { promise.set_value(status.ok()); }));
+        actor_id, subscribe, [&promise](Status status) {
+          promise.set_value(status.ok());
+        }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -202,7 +203,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   }
 
   bool RegisterActor(const std::shared_ptr<rpc::ActorTableData> &actor_table_data,
-                     bool is_detached = true, bool skip_wait = false) {
+                     bool is_detached = true,
+                     bool skip_wait = false) {
     rpc::TaskSpec message;
     auto actor_id = ActorID::FromBinary(actor_table_data->actor_id());
     message.set_job_id(actor_id.JobId().Binary());
@@ -247,8 +249,9 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     std::promise<bool> promise;
     rpc::ActorTableData actor_table_data;
     RAY_CHECK_OK(gcs_client_->Actors().AsyncGet(
-        actor_id, [&actor_table_data, &promise](
-                      Status status, const boost::optional<rpc::ActorTableData> &result) {
+        actor_id,
+        [&actor_table_data, &promise](
+            Status status, const boost::optional<rpc::ActorTableData> &result) {
           assert(result);
           actor_table_data.CopyFrom(*result);
           promise.set_value(true);
@@ -356,8 +359,9 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     resource->set_resource_capacity(1.0);
     resource_map[key] = resource;
     RAY_CHECK_OK(gcs_client_->NodeResources().AsyncUpdateResources(
-        node_id, resource_map,
-        [&promise](Status status) { promise.set_value(status.ok()); }));
+        node_id, resource_map, [&promise](Status status) {
+          promise.set_value(status.ok());
+        }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -365,8 +369,9 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
                        const std::vector<std::string> &resource_names) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->NodeResources().AsyncDeleteResources(
-        node_id, resource_names,
-        [&promise](Status status) { promise.set_value(status.ok()); }));
+        node_id, resource_names, [&promise](Status status) {
+          promise.set_value(status.ok());
+        }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -1021,7 +1026,8 @@ TEST_P(GcsClientTest, TestEvictExpiredDeadNodes) {
 
 int main(int argc, char **argv) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
-                                         ray::RayLog::ShutDownRayLog, argv[0],
+                                         ray::RayLog::ShutDownRayLog,
+                                         argv[0],
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
   ::testing::InitGoogleTest(&argc, argv);

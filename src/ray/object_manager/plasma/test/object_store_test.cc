@@ -40,9 +40,14 @@ Allocation CreateAllocation(Allocation alloc, int64_t size) {
 }
 
 const std::string Serialize(const Allocation &allocation) {
-  return absl::StrFormat("%p/%d/%d/%d/%d/%d/%d", allocation.address, allocation.size,
-                         allocation.fd.first, allocation.fd.second, allocation.offset,
-                         allocation.device_num, allocation.mmap_size);
+  return absl::StrFormat("%p/%d/%d/%d/%d/%d/%d",
+                         allocation.address,
+                         allocation.size,
+                         allocation.fd.first,
+                         allocation.fd.second,
+                         allocation.offset,
+                         allocation.device_num,
+                         allocation.mmap_size);
 }
 
 ObjectInfo CreateObjectInfo(ObjectID object_id, int64_t object_size) {

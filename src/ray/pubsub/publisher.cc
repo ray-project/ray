@@ -39,8 +39,8 @@ std::vector<SubscriberID> SubscriptionIndex::GetSubscriberIdsByKeyId(
     const std::string &key_id) const {
   std::vector<SubscriberID> subscribers;
   if (!subscribers_to_all_.empty()) {
-    subscribers.insert(subscribers.end(), subscribers_to_all_.begin(),
-                       subscribers_to_all_.end());
+    subscribers.insert(
+        subscribers.end(), subscribers_to_all_.begin(), subscribers_to_all_.end());
   }
   auto it = key_id_to_subscribers_.find(key_id);
   if (it != key_id_to_subscribers_.end()) {

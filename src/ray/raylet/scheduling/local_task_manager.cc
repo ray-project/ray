@@ -29,12 +29,14 @@ LocalTaskManager::LocalTaskManager(
     std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
     TaskDependencyManagerInterface &task_dependency_manager,
     std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive,
-    internal::NodeInfoGetter get_node_info, WorkerPoolInterface &worker_pool,
+    internal::NodeInfoGetter get_node_info,
+    WorkerPoolInterface &worker_pool,
     absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
     std::function<bool(const std::vector<ObjectID> &object_ids,
                        std::vector<std::unique_ptr<RayObject>> *results)>
         get_task_arguments,
-    size_t max_pinned_task_arguments_bytes, std::function<int64_t(void)> get_time_ms,
+    size_t max_pinned_task_arguments_bytes,
+    std::function<int64_t(void)> get_time_ms,
     int64_t sched_cls_cap_interval_ms)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
@@ -255,10 +257,16 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
         worker_pool_.PopWorker(
             spec,
             [this, task_id, scheduling_class, work, is_detached_actor, owner_address](
-                const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status,
+                const std::shared_ptr<WorkerInterface> worker,
+                PopWorkerStatus status,
                 const std::string &runtime_env_setup_error_message) -> bool {
-              return PoppedWorkerHandler(worker, status, task_id, scheduling_class, work,
-                                         is_detached_actor, owner_address,
+              return PoppedWorkerHandler(worker,
+                                         status,
+                                         task_id,
+                                         scheduling_class,
+                                         work,
+                                         is_detached_actor,
+                                         owner_address,
                                          runtime_env_setup_error_message);
             },
             allocated_instances_serialized_json);
@@ -319,7 +327,8 @@ void LocalTaskManager::SpillWaitingTasks() {
         (*it)->task.GetTaskSpecification(),
         /*prioritize_local_node*/ true,
         /*exclude_local_node*/ force_spillback,
-        /*requires_object_store_memory*/ true, &is_infeasible);
+        /*requires_object_store_memory*/ true,
+        &is_infeasible);
     if (!node_id_string.empty() && node_id_string != self_node_id_.Binary()) {
       NodeID node_id = NodeID::FromBinary(node_id_string);
       Spillback(node_id, *it);
@@ -348,9 +357,11 @@ void LocalTaskManager::SpillWaitingTasks() {
 bool LocalTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
                                     bool &is_infeasible) {
   std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-      work->task.GetTaskSpecification(), work->PrioritizeLocalNode(),
+      work->task.GetTaskSpecification(),
+      work->PrioritizeLocalNode(),
       /*exclude_local_node*/ false,
-      /*requires_object_store_memory*/ false, &is_infeasible);
+      /*requires_object_store_memory*/ false,
+      &is_infeasible);
 
   if (is_infeasible || node_id_string == self_node_id_.Binary() ||
       node_id_string.empty()) {
@@ -363,9 +374,12 @@ bool LocalTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
 }
 
 bool LocalTaskManager::PoppedWorkerHandler(
-    const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status,
-    const TaskID &task_id, SchedulingClass scheduling_class,
-    const std::shared_ptr<internal::Work> &work, bool is_detached_actor,
+    const std::shared_ptr<WorkerInterface> worker,
+    PopWorkerStatus status,
+    const TaskID &task_id,
+    SchedulingClass scheduling_class,
+    const std::shared_ptr<internal::Work> &work,
+    bool is_detached_actor,
     const rpc::Address &owner_address,
     const std::string &runtime_env_setup_error_message) {
   const auto &reply = work->reply;
@@ -752,7 +766,9 @@ bool LocalTaskManager::CancelTask(
 }
 
 bool LocalTaskManager::AnyPendingTasksForResourceAcquisition(
-    RayTask *exemplar, bool *any_pending, int *num_pending_actor_creation,
+    RayTask *exemplar,
+    bool *any_pending,
+    int *num_pending_actor_creation,
     int *num_pending_tasks) const {
   // We are guaranteed that these tasks are blocked waiting for resources after a
   // call to ScheduleAndDispatchTasks(). They may be waiting for workers as well, but
@@ -800,7 +816,8 @@ void LocalTaskManager::Dispatch(
     std::shared_ptr<WorkerInterface> worker,
     absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
     const std::shared_ptr<TaskResourceInstances> &allocated_instances,
-    const RayTask &task, rpc::RequestWorkerLeaseReply *reply,
+    const RayTask &task,
+    rpc::RequestWorkerLeaseReply *reply,
     std::function<void(void)> send_reply_callback) {
   const auto &task_spec = task.GetTaskSpecification();
 
@@ -886,7 +903,8 @@ void LocalTaskManager::ClearWorkerBacklog(const WorkerID &worker_id) {
 }
 
 void LocalTaskManager::SetWorkerBacklog(SchedulingClass scheduling_class,
-                                        const WorkerID &worker_id, int64_t backlog_size) {
+                                        const WorkerID &worker_id,
+                                        int64_t backlog_size) {
   if (backlog_size == 0) {
     backlog_tracker_[scheduling_class].erase(worker_id);
     if (backlog_tracker_[scheduling_class].empty()) {

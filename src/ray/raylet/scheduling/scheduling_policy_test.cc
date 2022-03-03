@@ -23,9 +23,12 @@ namespace raylet {
 
 using ::testing::_;
 
-NodeResources CreateNodeResources(double available_cpu, double total_cpu,
-                                  double available_memory, double total_memory,
-                                  double available_gpu, double total_gpu) {
+NodeResources CreateNodeResources(double available_cpu,
+                                  double total_cpu,
+                                  double available_memory,
+                                  double total_memory,
+                                  double available_gpu,
+                                  double total_gpu) {
   NodeResources resources;
   resources.predefined_resources = {{available_cpu, total_cpu},
                                     {available_memory, total_memory},
@@ -61,8 +64,8 @@ TEST_F(SchedulingPolicyTest, SpreadPolicyTest) {
       scheduling_policy.SpreadPolicy(req, false, false, [](auto) { return true; });
   ASSERT_EQ(to_schedule, remote_node_3);
 
-  to_schedule = scheduling_policy.SpreadPolicy(req, /*force_spillback=*/true, false,
-                                               [](auto) { return true; });
+  to_schedule = scheduling_policy.SpreadPolicy(
+      req, /*force_spillback=*/true, false, [](auto) { return true; });
   ASSERT_EQ(to_schedule, remote_node_3);
 }
 
@@ -328,8 +331,12 @@ TEST_F(SchedulingPolicyTest, AvoidSchedulingCPURequestsOnGPUNodes) {
     const int to_schedule =
         raylet_scheduling_policy::SchedulingPolicy(local_node, nodes)
             .HybridPolicy(
-                ResourceMapToResourceRequest(map, {{"CPU", 1}}, false), 0.51, false, true,
-                [](auto) { return true; }, true);
+                ResourceMapToResourceRequest(map, {{"CPU", 1}}, false),
+                0.51,
+                false,
+                true,
+                [](auto) { return true; },
+                true);
     ASSERT_EQ(to_schedule, remote_node);
   }
   {
@@ -434,28 +441,44 @@ TEST_F(SchedulingPolicyTest, NonGpuNodePreferredSchedulingTest) {
   ResourceRequest req = ResourceMapToResourceRequest(map, {{"CPU", 1}}, false);
   int to_schedule = raylet_scheduling_policy::SchedulingPolicy(local_node, nodes)
                         .HybridPolicy(
-                            req, 0.51, false, true, [](auto) { return true; },
+                            req,
+                            0.51,
+                            false,
+                            true,
+                            [](auto) { return true; },
                             /*gpu_avoid_scheduling*/ true);
   ASSERT_EQ(to_schedule, remote_node_1);
 
   req = ResourceMapToResourceRequest(map, {{"CPU", 3}}, false);
   to_schedule = raylet_scheduling_policy::SchedulingPolicy(local_node, nodes)
                     .HybridPolicy(
-                        req, 0.51, false, true, [](auto) { return true; },
+                        req,
+                        0.51,
+                        false,
+                        true,
+                        [](auto) { return true; },
                         /*gpu_avoid_scheduling*/ true);
   ASSERT_EQ(to_schedule, remote_node_2);
 
   req = ResourceMapToResourceRequest(map, {{"CPU", 1}, {"GPU", 1}}, false);
   to_schedule = raylet_scheduling_policy::SchedulingPolicy(local_node, nodes)
                     .HybridPolicy(
-                        req, 0.51, false, true, [](auto) { return true; },
+                        req,
+                        0.51,
+                        false,
+                        true,
+                        [](auto) { return true; },
                         /*gpu_avoid_scheduling*/ true);
   ASSERT_EQ(to_schedule, local_node);
 
   req = ResourceMapToResourceRequest(map, {{"CPU", 2}}, false);
   to_schedule = raylet_scheduling_policy::SchedulingPolicy(local_node, nodes)
                     .HybridPolicy(
-                        req, 0.51, false, true, [](auto) { return true; },
+                        req,
+                        0.51,
+                        false,
+                        true,
+                        [](auto) { return true; },
                         /*gpu_avoid_scheduling*/ true);
   ASSERT_EQ(to_schedule, remote_node_1);
 }

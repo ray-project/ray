@@ -29,7 +29,8 @@ class GrpcBasedResourceBroadcaster {
           get_resource_usage_batch_for_broadcast,
       /* Default values should only be changed for testing. */
       std::function<void(const rpc::Address &,
-                         std::shared_ptr<rpc::NodeManagerClientPool> &, std::string &,
+                         std::shared_ptr<rpc::NodeManagerClientPool> &,
+                         std::string &,
                          const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &)>
           send_batch =
               [](const rpc::Address &address,
@@ -75,7 +76,8 @@ class GrpcBasedResourceBroadcaster {
   std::function<void(rpc::ResourceUsageBroadcastData &)>
       get_resource_usage_batch_for_broadcast_;
 
-  std::function<void(const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,
+  std::function<void(const rpc::Address &,
+                     std::shared_ptr<rpc::NodeManagerClientPool> &,
                      std::string &,
                      const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &)>
       send_batch_;

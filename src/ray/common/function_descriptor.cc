@@ -33,8 +33,10 @@ FunctionDescriptor FunctionDescriptorBuilder::BuildJava(const std::string &class
 }
 
 FunctionDescriptor FunctionDescriptorBuilder::BuildPython(
-    const std::string &module_name, const std::string &class_name,
-    const std::string &function_name, const std::string &function_hash) {
+    const std::string &module_name,
+    const std::string &class_name,
+    const std::string &function_name,
+    const std::string &function_hash) {
   rpc::FunctionDescriptor descriptor;
   auto typed_descriptor = descriptor.mutable_python_function_descriptor();
   typed_descriptor->set_module_name(module_name);

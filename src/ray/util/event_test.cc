@@ -43,9 +43,14 @@ class TestEventReporter : public BaseEventReporter {
 
 std::vector<rpc::Event> TestEventReporter::event_list = std::vector<rpc::Event>();
 
-void CheckEventDetail(rpc::Event &event, std::string job_id, std::string node_id,
-                      std::string task_id, std::string source_type, std::string severity,
-                      std::string label, std::string message) {
+void CheckEventDetail(rpc::Event &event,
+                      std::string job_id,
+                      std::string node_id,
+                      std::string task_id,
+                      std::string source_type,
+                      std::string severity,
+                      std::string label,
+                      std::string message) {
   int custom_key_num = 0;
   auto mp = (*event.mutable_custom_fields());
 
@@ -118,7 +123,8 @@ rpc::Event GetEventFromString(std::string seq, json *custom_fields) {
   return event;
 }
 
-void ParallelRunning(int nthreads, int loop_times,
+void ParallelRunning(int nthreads,
+                     int loop_times,
                      std::function<void()> event_context_init,
                      std::function<void(int)> loop_function) {
   if (nthreads > 1) {
@@ -132,7 +138,8 @@ void ParallelRunning(int nthreads, int loop_times,
             }
           },
           t * loop_times / nthreads,
-          (t + 1) == nthreads ? loop_times : (t + 1) * loop_times / nthreads, t));
+          (t + 1) == nthreads ? loop_times : (t + 1) * loop_times / nthreads,
+          t));
     }
     std::for_each(threads.begin(), threads.end(), [](std::thread &x) { x.join(); });
   } else {
@@ -143,7 +150,8 @@ void ParallelRunning(int nthreads, int loop_times,
   }
 }
 
-void ReadContentFromFile(std::vector<std::string> &vc, std::string log_file,
+void ReadContentFromFile(std::vector<std::string> &vc,
+                         std::string log_file,
                          std::string filter = "") {
   std::string line;
   std::ifstream read_file;
@@ -213,13 +221,25 @@ TEST_F(EventTest, TestBasic) {
 
   EXPECT_EQ(result.size(), 4);
 
-  CheckEventDetail(result[0], "", "", "", "COMMON", "WARNING", "label 0",
-                   "send message 0");
+  CheckEventDetail(
+      result[0], "", "", "", "COMMON", "WARNING", "label 0", "send message 0");
 
-  CheckEventDetail(result[1], "job 1", "node 1", "task 1", "CORE_WORKER", "INFO",
-                   "label 1", "send message 1");
+  CheckEventDetail(result[1],
+                   "job 1",
+                   "node 1",
+                   "task 1",
+                   "CORE_WORKER",
+                   "INFO",
+                   "label 1",
+                   "send message 1");
 
-  CheckEventDetail(result[2], "job 2", "node 2", "", "RAYLET", "ERROR", "label 2",
+  CheckEventDetail(result[2],
+                   "job 2",
+                   "node 2",
+                   "",
+                   "RAYLET",
+                   "ERROR",
+                   "label 2",
                    "send message 2 send message again");
 
   CheckEventDetail(result[3], "", "", "", "GCS", "FATAL", "", "");
@@ -247,11 +267,23 @@ TEST_F(EventTest, TestUpdateCustomFields) {
 
   EXPECT_EQ(result.size(), 2);
 
-  CheckEventDetail(result[0], "job 1", "node 1", "", "CORE_WORKER", "INFO", "label 1",
+  CheckEventDetail(result[0],
+                   "job 1",
+                   "node 1",
+                   "",
+                   "CORE_WORKER",
+                   "INFO",
+                   "label 1",
                    "send message 1");
 
-  CheckEventDetail(result[1], "job 2", "node 1", "task 2", "CORE_WORKER", "ERROR",
-                   "label 2", "send message 2 send message again");
+  CheckEventDetail(result[1],
+                   "job 2",
+                   "node 1",
+                   "task 2",
+                   "CORE_WORKER",
+                   "ERROR",
+                   "label 2",
+                   "send message 2 send message again");
 }
 
 TEST_F(EventTest, TestLogOneThread) {
@@ -276,7 +308,12 @@ TEST_F(EventTest, TestLogOneThread) {
   for (int i = 0, len = vc.size(); i < print_times; ++i) {
     json custom_fields;
     rpc::Event ele = GetEventFromString(vc[len - print_times + i], &custom_fields);
-    CheckEventDetail(ele, "job 1", "node 1", "task 1", "RAYLET", "INFO",
+    CheckEventDetail(ele,
+                     "job 1",
+                     "node 1",
+                     "task 1",
+                     "RAYLET",
+                     "INFO",
                      "label " + std::to_string(i + 1),
                      "send message " + std::to_string(i + 1));
   }
@@ -304,10 +341,10 @@ TEST_F(EventTest, TestMultiThreadContextCopy) {
 
   EXPECT_EQ(result.size(), 3);
   CheckEventDetail(result[0], "", "", "", "COMMON", "INFO", "label 0", "send message 0");
-  CheckEventDetail(result[1], "job 1", "node 1", "task 1", "GCS", "INFO", "label 2",
-                   "send message 2");
-  CheckEventDetail(result[2], "job 1", "node 1", "task 1", "GCS", "INFO", "label 1",
-                   "send message 1");
+  CheckEventDetail(
+      result[1], "job 1", "node 1", "task 1", "GCS", "INFO", "label 2", "send message 2");
+  CheckEventDetail(
+      result[2], "job 1", "node 1", "task 1", "GCS", "INFO", "label 1", "send message 1");
 
   ray::RayEventContext::Instance().ResetEventContext();
   TestEventReporter::event_list.clear();
@@ -324,8 +361,8 @@ TEST_F(EventTest, TestMultiThreadContextCopy) {
   RAY_EVENT(INFO, "label 3") << "send message 3";
 
   EXPECT_EQ(result.size(), 2);
-  CheckEventDetail(result[0], "job 1", "", "", "RAYLET", "INFO", "label 2",
-                   "send message 2");
+  CheckEventDetail(
+      result[0], "job 1", "", "", "RAYLET", "INFO", "label 2", "send message 2");
   CheckEventDetail(result[1], "", "", "", "COMMON", "INFO", "label 3", "send message 3");
 }
 
@@ -336,7 +373,8 @@ TEST_F(EventTest, TestLogMultiThread) {
   int print_times = 1000;
 
   ParallelRunning(
-      nthreads, print_times,
+      nthreads,
+      print_times,
       []() {
         RayEventContext::Instance().SetEventContext(
             rpc::Event_SourceType::Event_SourceType_GCS,
@@ -418,8 +456,8 @@ TEST_F(EventTest, TestWithField) {
 
   json custom_fields;
   rpc::Event ele = GetEventFromString(vc[0], &custom_fields);
-  CheckEventDetail(ele, "job 1", "node 1", "task 1", "RAYLET", "INFO", "label 1",
-                   "send message 1");
+  CheckEventDetail(
+      ele, "job 1", "node 1", "task 1", "RAYLET", "INFO", "label 1", "send message 1");
   auto string_value = custom_fields["string"].get<std::string>();
   EXPECT_EQ(string_value, "test string");
   auto int_value = custom_fields["int"].get<int>();
@@ -449,8 +487,14 @@ TEST_F(EventTest, TestRayCheckAbort) {
   json out_custom_fields;
   rpc::Event ele_1 = GetEventFromString(vc.back(), &out_custom_fields);
 
-  CheckEventDetail(ele_1, "job 1", "node 1", "task 1", "RAYLET", "FATAL",
-                   EL_RAY_FATAL_CHECK_FAILED, "NULL");
+  CheckEventDetail(ele_1,
+                   "job 1",
+                   "node 1",
+                   "task 1",
+                   "RAYLET",
+                   "FATAL",
+                   EL_RAY_FATAL_CHECK_FAILED,
+                   "NULL");
   EXPECT_THAT(ele_1.message(),
               testing::HasSubstr("Check failed: 1 < 0 incorrect test case"));
   EXPECT_THAT(ele_1.message(), testing::HasSubstr("*** StackTrace Information ***"));
@@ -472,8 +516,8 @@ TEST_F(EventTest, TestRayEventInit) {
   json out_custom_fields;
   rpc::Event ele_1 = GetEventFromString(vc.back(), &out_custom_fields);
 
-  CheckEventDetail(ele_1, "job 1", "node 1", "task 1", "RAYLET", "FATAL", "label",
-                   "NULL");
+  CheckEventDetail(
+      ele_1, "job 1", "node 1", "task 1", "RAYLET", "FATAL", "label", "NULL");
 }
 
 TEST_F(EventTest, TestLogLevel) {
@@ -492,8 +536,8 @@ TEST_F(EventTest, TestLogLevel) {
   std::vector<rpc::Event> &result = TestEventReporter::event_list;
   EXPECT_EQ(result.size(), 4);
   CheckEventDetail(result[0], "", "", "", "CORE_WORKER", "INFO", "label", "test info");
-  CheckEventDetail(result[1], "", "", "", "CORE_WORKER", "WARNING", "label",
-                   "test warning");
+  CheckEventDetail(
+      result[1], "", "", "", "CORE_WORKER", "WARNING", "label", "test warning");
   CheckEventDetail(result[2], "", "", "", "CORE_WORKER", "ERROR", "label", "test error");
   CheckEventDetail(result[3], "", "", "", "CORE_WORKER", "FATAL", "label", "test fatal");
   result.clear();
@@ -506,8 +550,8 @@ TEST_F(EventTest, TestLogLevel) {
   RAY_EVENT(FATAL, "label") << "test fatal";
 
   EXPECT_EQ(result.size(), 3);
-  CheckEventDetail(result[0], "", "", "", "CORE_WORKER", "WARNING", "label",
-                   "test warning");
+  CheckEventDetail(
+      result[0], "", "", "", "CORE_WORKER", "WARNING", "label", "test warning");
   CheckEventDetail(result[1], "", "", "", "CORE_WORKER", "ERROR", "label", "test error");
   CheckEventDetail(result[2], "", "", "", "CORE_WORKER", "FATAL", "label", "test fatal");
   result.clear();
@@ -551,8 +595,8 @@ TEST_F(EventTest, TestLogEvent) {
   RAY_EVENT(FATAL, "label") << "test fatal";
 
   std::vector<std::string> vc;
-  ReadContentFromFile(vc, log_dir + "/event_test_" + std::to_string(getpid()) + ".log",
-                      "[ Event ");
+  ReadContentFromFile(
+      vc, log_dir + "/event_test_" + std::to_string(getpid()) + ".log", "[ Event ");
   EXPECT_EQ((int)vc.size(), 2);
   // Check ERROR event
   EXPECT_THAT(vc[0], testing::HasSubstr(" E "));
@@ -576,8 +620,8 @@ TEST_F(EventTest, TestLogEvent) {
   RAY_EVENT(FATAL, "label") << "test fatal 2";
 
   vc.clear();
-  ReadContentFromFile(vc, log_dir + "/event_test_" + std::to_string(getpid()) + ".log",
-                      "[ Event ");
+  ReadContentFromFile(
+      vc, log_dir + "/event_test_" + std::to_string(getpid()) + ".log", "[ Event ");
   EXPECT_EQ((int)vc.size(), 4);
   // Check INFO event
   EXPECT_THAT(vc[0], testing::HasSubstr(" I "));

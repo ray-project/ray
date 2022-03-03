@@ -67,7 +67,8 @@ class ClusterResourceManager {
   /// \param resource_name: Resource which we want to update.
   /// \param resource_total: New capacity of the resource.
   void UpdateResourceCapacity(const std::string &node_name,
-                              const std::string &resource_name, double resource_total);
+                              const std::string &resource_name,
+                              double resource_total);
 
   /// Delete a given resource from a given node.
   ///
@@ -92,7 +93,8 @@ class ClusterResourceManager {
   /// \param resource_request: the request we want to check.
   /// \param ignore_object_store_memory_requirement: if true, we will ignore the
   ///  require_object_store_memory in the resource_request.
-  bool HasSufficientResource(int64_t node_id, const ResourceRequest &resource_request,
+  bool HasSufficientResource(int64_t node_id,
+                             const ResourceRequest &resource_request,
                              bool ignore_object_store_memory_requirement) const;
 
   void DebugString(std::stringstream &buffer) const;

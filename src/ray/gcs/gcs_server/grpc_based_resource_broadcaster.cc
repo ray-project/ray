@@ -24,7 +24,8 @@ GrpcBasedResourceBroadcaster::GrpcBasedResourceBroadcaster(
     std::function<void(rpc::ResourceUsageBroadcastData &)>
         get_resource_usage_batch_for_broadcast,
     std::function<void(const rpc::Address &,
-                       std::shared_ptr<rpc::NodeManagerClientPool> &, std::string &,
+                       std::shared_ptr<rpc::NodeManagerClientPool> &,
+                       std::string &,
                        const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &)>
         send_batch
 
@@ -56,7 +57,8 @@ void GrpcBasedResourceBroadcaster::Start() {
            "the cluster has stopped";
   }});
   ticker_.RunFnPeriodically(
-      [this] { SendBroadcast(); }, broadcast_period_ms_,
+      [this] { SendBroadcast(); },
+      broadcast_period_ms_,
       "GrpcBasedResourceBroadcaster.deadline_timer.pull_resource_report");
 }
 

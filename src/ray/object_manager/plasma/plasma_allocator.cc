@@ -26,7 +26,8 @@ namespace internal {
 bool IsOutsideInitialAllocation(void *ptr);
 
 void SetDLMallocConfig(const std::string &plasma_directory,
-                       const std::string &fallback_directory, bool hugepage_enabled,
+                       const std::string &fallback_directory,
+                       bool hugepage_enabled,
                        bool fallback_enabled);
 }  // namespace internal
 
@@ -59,12 +60,15 @@ const int64_t kDlMallocReserved = 256 * sizeof(size_t);
 
 PlasmaAllocator::PlasmaAllocator(const std::string &plasma_directory,
                                  const std::string &fallback_directory,
-                                 bool hugepage_enabled, int64_t footprint_limit)
+                                 bool hugepage_enabled,
+                                 int64_t footprint_limit)
     : kFootprintLimit(footprint_limit),
       kAlignment(kAllocationAlignment),
       allocated_(0),
       fallback_allocated_(0) {
-  internal::SetDLMallocConfig(plasma_directory, fallback_directory, hugepage_enabled,
+  internal::SetDLMallocConfig(plasma_directory,
+                              fallback_directory,
+                              hugepage_enabled,
                               /*fallback_enabled=*/true);
   RAY_CHECK(kFootprintLimit > kDlMallocReserved)
       << "Footprint limit has to be greater than " << kDlMallocReserved;
@@ -134,8 +138,12 @@ absl::optional<Allocation> PlasmaAllocator::BuildAllocation(void *addr, size_t s
   ptrdiff_t offset;
 
   if (internal::GetMallocMapinfo(addr, &fd, &mmap_size, &offset)) {
-    return Allocation(addr, static_cast<int64_t>(size), std::move(fd), offset,
-                      0 /* device_number*/, mmap_size);
+    return Allocation(addr,
+                      static_cast<int64_t>(size),
+                      std::move(fd),
+                      offset,
+                      0 /* device_number*/,
+                      mmap_size);
   }
   return absl::nullopt;
 }

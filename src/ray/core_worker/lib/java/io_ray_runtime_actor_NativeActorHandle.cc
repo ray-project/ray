@@ -52,14 +52,17 @@ JNIEXPORT jbyteArray JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeS
   ObjectID actor_handle_id;
   Status status = CoreWorkerProcess::GetCoreWorker().SerializeActorHandle(
       actor_id, &output, &actor_handle_id);
-  env->SetByteArrayRegion(actorHandleId, 0, ObjectID::kLength,
+  env->SetByteArrayRegion(actorHandleId,
+                          0,
+                          ObjectID::kLength,
                           reinterpret_cast<const jbyte *>(actor_handle_id.Data()));
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   return NativeStringToJavaByteArray(env, output);
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_actor_NativeActorHandle_nativeDeserialize(JNIEnv *env, jclass o,
+Java_io_ray_runtime_actor_NativeActorHandle_nativeDeserialize(JNIEnv *env,
+                                                              jclass o,
                                                               jbyteArray data) {
   auto buffer = JavaByteArrayToNativeBuffer(env, data);
   RAY_CHECK(buffer->Size() > 0);

@@ -87,7 +87,8 @@ struct ConcurrencyGroup {
 
   ConcurrencyGroup() = default;
 
-  ConcurrencyGroup(const std::string &name, uint32_t max_concurrency,
+  ConcurrencyGroup(const std::string &name,
+                   uint32_t max_concurrency,
                    const std::vector<ray::FunctionDescriptor> &fds)
       : name(name), max_concurrency(max_concurrency), function_descriptors(fds) {}
 

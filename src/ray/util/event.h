@@ -45,7 +45,9 @@ namespace ray {
   ::ray::RayEvent(::ray::rpc::Event_Severity::Event_Severity_##event_type,      \
                   ray::RayEvent::EventLevelToLogLevel(                          \
                       ::ray::rpc::Event_Severity::Event_Severity_##event_type), \
-                  label, __FILE__, __LINE__)
+                  label,                                                        \
+                  __FILE__,                                                     \
+                  __LINE__)
 
 // interface of event reporter
 class BaseEventReporter {
@@ -61,8 +63,10 @@ class BaseEventReporter {
 // responsible for writing event to specific file
 class LogEventReporter : public BaseEventReporter {
  public:
-  LogEventReporter(rpc::Event_SourceType source_type, const std::string &log_dir,
-                   bool force_flush = true, int rotate_max_file_size = 100,
+  LogEventReporter(rpc::Event_SourceType source_type,
+                   const std::string &log_dir,
+                   bool force_flush = true,
+                   int rotate_max_file_size = 100,
                    int rotate_max_file_num = 20);
 
   virtual ~LogEventReporter();
@@ -196,8 +200,11 @@ class RayEvent {
  public:
   // We require file_name to be a string which has static storage before RayEvent
   // deconstructed. Otherwise we might have memory issues.
-  RayEvent(rpc::Event_Severity severity, RayLogLevel log_severity,
-           const std::string &label, const char *file_name, int line_number)
+  RayEvent(rpc::Event_Severity severity,
+           RayLogLevel log_severity,
+           const std::string &label,
+           const char *file_name,
+           int line_number)
       : severity_(severity),
         log_severity_(log_severity),
         label_(label),
@@ -219,8 +226,10 @@ class RayEvent {
     return *this;
   }
 
-  static void ReportEvent(const std::string &severity, const std::string &label,
-                          const std::string &message, const char *file_name,
+  static void ReportEvent(const std::string &severity,
+                          const std::string &label,
+                          const std::string &message,
+                          const char *file_name,
                           int line_number);
 
   /// Return whether or not the event level is enabled in current setting.
@@ -271,6 +280,7 @@ class RayEvent {
 /// \return void.
 void RayEventInit(rpc::Event_SourceType source_type,
                   const std::unordered_map<std::string, std::string> &custom_fields,
-                  const std::string &log_dir, const std::string &event_level = "warning");
+                  const std::string &log_dir,
+                  const std::string &event_level = "warning");
 
 }  // namespace ray

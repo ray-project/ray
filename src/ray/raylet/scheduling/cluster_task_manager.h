@@ -83,7 +83,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   ///                         but no spillback.
   /// \param reply: The reply of the lease request.
   /// \param send_reply_callback: The function used during dispatching.
-  void QueueAndScheduleTask(const RayTask &task, bool grant_or_reject,
+  void QueueAndScheduleTask(const RayTask &task,
+                            bool grant_or_reject,
                             bool is_selected_based_on_locality,
                             rpc::RequestWorkerLeaseReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
@@ -126,7 +127,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param[in,out] num_pending_tasks: Number of pending tasks.
   /// \param[in,out] any_pending: True if there's any pending exemplar.
   /// \return True if any progress is any tasks are pending.
-  bool AnyPendingTasksForResourceAcquisition(RayTask *exemplar, bool *any_pending,
+  bool AnyPendingTasksForResourceAcquisition(RayTask *exemplar,
+                                             bool *any_pending,
                                              int *num_pending_actor_creation,
                                              int *num_pending_tasks) const override;
 

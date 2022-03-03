@@ -213,7 +213,8 @@ SchedulingResult GcsResourceScheduler::StrictPackSchedule(
   const auto &cluster_resource = gcs_resource_manager_.GetClusterResources();
 
   const auto &right_node_it = std::find_if(
-      cluster_resource.begin(), cluster_resource.end(),
+      cluster_resource.begin(),
+      cluster_resource.end(),
       [required_resources](const auto &node_resource) {
         return required_resources.IsSubset(node_resource.second->GetTotalResources());
       });

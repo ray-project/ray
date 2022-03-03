@@ -39,8 +39,10 @@ class MockEvictionPolicy : public IEvictionPolicy {
 
 class MockObjectStore : public IObjectStore {
  public:
-  MOCK_METHOD3(CreateObject, const LocalObject *(const ray::ObjectInfo &,
-                                                 plasma::flatbuf::ObjectSource, bool));
+  MOCK_METHOD3(CreateObject,
+               const LocalObject *(const ray::ObjectInfo &,
+                                   plasma::flatbuf::ObjectSource,
+                                   bool));
   MOCK_CONST_METHOD1(GetObject, const LocalObject *(const ObjectID &));
   MOCK_METHOD1(SealObject, const LocalObject *(const ObjectID &));
   MOCK_METHOD1(DeleteObject, bool(const ObjectID &));
@@ -54,9 +56,10 @@ struct ObjectLifecycleManagerTest : public Test {
     auto object_store = std::make_unique<MockObjectStore>();
     eviction_policy_ = eviction_policy.get();
     object_store_ = object_store.get();
-    manager_ = std::make_unique<ObjectLifecycleManager>(
-        ObjectLifecycleManager(std::move(object_store), std::move(eviction_policy),
-                               [this](auto &id) { notify_deleted_ids_.push_back(id); }));
+    manager_ = std::make_unique<ObjectLifecycleManager>(ObjectLifecycleManager(
+        std::move(object_store), std::move(eviction_policy), [this](auto &id) {
+          notify_deleted_ids_.push_back(id);
+        }));
     sealed_object_.state = ObjectState::PLASMA_SEALED;
     not_sealed_object_.state = ObjectState::PLASMA_CREATED;
     one_ref_object_.state = ObjectState::PLASMA_SEALED;

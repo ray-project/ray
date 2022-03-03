@@ -137,7 +137,8 @@ class SubscriberChannel {
   /// id. \return Return true if the given key id needs to be unsubscribed. False
   /// otherwise.
   bool HandlePublisherFailureInternal(const rpc::Address &publisher_address,
-                                      const std::string &key_id, const Status &status);
+                                      const std::string &key_id,
+                                      const Status &status);
 
   /// Returns a subscription callback; Returns a nullopt if the object id is not
   /// subscribed.
@@ -222,8 +223,10 @@ class SubscriberInterface {
   /// \param subscription_failure_callback A callback that is invoked whenever the
   /// connection to publisher is broken (e.g. the publisher fails).
   [[nodiscard]] virtual bool Subscribe(
-      std::unique_ptr<rpc::SubMessage> sub_message, rpc::ChannelType channel_type,
-      const rpc::Address &publisher_address, const std::string &key_id,
+      std::unique_ptr<rpc::SubMessage> sub_message,
+      rpc::ChannelType channel_type,
+      const rpc::Address &publisher_address,
+      const std::string &key_id,
       SubscribeDoneCallback subscribe_done_callback,
       SubscriptionItemCallback subscription_callback,
       SubscriptionFailureCallback subscription_failure_callback) = 0;
@@ -238,7 +241,8 @@ class SubscriberInterface {
   /// \param subscription_failure_callback A callback that is invoked whenever the
   /// connection to publisher is broken (e.g. the publisher fails).
   [[nodiscard]] virtual bool SubscribeChannel(
-      std::unique_ptr<rpc::SubMessage> sub_message, rpc::ChannelType channel_type,
+      std::unique_ptr<rpc::SubMessage> sub_message,
+      rpc::ChannelType channel_type,
       const rpc::Address &publisher_address,
       SubscribeDoneCallback subscribe_done_callback,
       SubscriptionItemCallback subscription_callback,
@@ -313,7 +317,8 @@ class SubscriberClientInterface {
 class Subscriber : public SubscriberInterface {
  public:
   Subscriber(
-      const SubscriberID subscriber_id, const std::vector<rpc::ChannelType> &channels,
+      const SubscriberID subscriber_id,
+      const std::vector<rpc::ChannelType> &channels,
       const int64_t max_command_batch_size,
       std::function<std::shared_ptr<SubscriberClientInterface>(const rpc::Address &)>
           get_client,
@@ -331,13 +336,15 @@ class Subscriber : public SubscriberInterface {
 
   bool Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
                  const rpc::ChannelType channel_type,
-                 const rpc::Address &publisher_address, const std::string &key_id,
+                 const rpc::Address &publisher_address,
+                 const std::string &key_id,
                  SubscribeDoneCallback subscribe_done_callback,
                  SubscriptionItemCallback subscription_callback,
                  SubscriptionFailureCallback subscription_failure_callback) override;
 
   bool SubscribeChannel(
-      std::unique_ptr<rpc::SubMessage> sub_message, rpc::ChannelType channel_type,
+      std::unique_ptr<rpc::SubMessage> sub_message,
+      rpc::ChannelType channel_type,
       const rpc::Address &publisher_address,
       SubscribeDoneCallback subscribe_done_callback,
       SubscriptionItemCallback subscription_callback,

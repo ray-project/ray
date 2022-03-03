@@ -22,7 +22,8 @@
 namespace ray {
 
 LocalResourceManager::LocalResourceManager(
-    int64_t local_node_id, StringIdMap &resource_name_to_id,
+    int64_t local_node_id,
+    StringIdMap &resource_name_to_id,
     const NodeResources &node_resources,
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity,
@@ -166,7 +167,8 @@ void LocalResourceManager::InitLocalResources(const NodeResources &node_resource
       bool is_unit_instance = predefined_unit_instance_resources_.find(i) !=
                               predefined_unit_instance_resources_.end();
       InitResourceInstances(node_resources.predefined_resources[i].total,
-                            is_unit_instance, &local_resources_.predefined_resources[i]);
+                            is_unit_instance,
+                            &local_resources_.predefined_resources[i]);
     }
   }
 
@@ -175,7 +177,8 @@ void LocalResourceManager::InitLocalResources(const NodeResources &node_resource
   }
 
   for (auto it = node_resources.custom_resources.begin();
-       it != node_resources.custom_resources.end(); ++it) {
+       it != node_resources.custom_resources.end();
+       ++it) {
     if (it->second.total > 0) {
       bool is_unit_instance = custom_unit_instance_resources_.find(it->first) !=
                               custom_unit_instance_resources_.end();
@@ -202,7 +205,8 @@ std::vector<FixedPoint> LocalResourceManager::AddAvailableResourceInstances(
 }
 
 std::vector<FixedPoint> LocalResourceManager::SubtractAvailableResourceInstances(
-    std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances,
+    std::vector<FixedPoint> available,
+    ResourceInstanceCapacities *resource_instances,
     bool allow_going_negative) const {
   RAY_CHECK(available.size() == resource_instances->available.size());
 
@@ -227,7 +231,8 @@ std::vector<FixedPoint> LocalResourceManager::SubtractAvailableResourceInstances
 }
 
 bool LocalResourceManager::AllocateResourceInstances(
-    FixedPoint demand, std::vector<FixedPoint> &available,
+    FixedPoint demand,
+    std::vector<FixedPoint> &available,
     std::vector<FixedPoint> *allocation) const {
   allocation->resize(available.size());
   FixedPoint remaining_demand = demand;
@@ -320,8 +325,8 @@ bool LocalResourceManager::AllocateTaskResourceInstances(
     if (it != local_resources_.custom_resources.end()) {
       if (task_req_custom_resource.second > 0) {
         std::vector<FixedPoint> allocation;
-        bool success = AllocateResourceInstances(task_req_custom_resource.second,
-                                                 it->second.available, &allocation);
+        bool success = AllocateResourceInstances(
+            task_req_custom_resource.second, it->second.available, &allocation);
         // Even if allocation failed we need to remember partial allocations to correctly
         // free resources.
         task_allocation->custom_resources.emplace(it->first, allocation);
@@ -385,9 +390,10 @@ std::vector<double> LocalResourceManager::SubtractCPUResourceInstances(
     return cpu_instances;  // No underflow.
   }
 
-  auto underflow = SubtractAvailableResourceInstances(
-      cpu_instances_fp, &local_resources_.predefined_resources[CPU],
-      allow_going_negative);
+  auto underflow =
+      SubtractAvailableResourceInstances(cpu_instances_fp,
+                                         &local_resources_.predefined_resources[CPU],
+                                         allow_going_negative);
   OnResourceChanged();
 
   return VectorFixedPointToVectorDouble(underflow);
@@ -441,7 +447,8 @@ bool LocalResourceManager::AllocateLocalTaskResources(
   RAY_CHECK(task_allocation != nullptr);
   // We don't track object store memory demands so no need to allocate them.
   ResourceRequest resource_request =
-      ResourceMapToResourceRequest(resource_name_to_id_, task_resources,
+      ResourceMapToResourceRequest(resource_name_to_id_,
+                                   task_resources,
                                    /*requires_object_store_memory=*/false);
   return AllocateLocalTaskResources(resource_request, task_allocation);
 }
@@ -475,8 +482,8 @@ NodeResources ToNodeResources(const NodeResourceInstances &instance) {
     int64_t resource_name = custom_resource.first;
     auto &instances = custom_resource.second;
 
-    FixedPoint available = std::accumulate(instances.available.begin(),
-                                           instances.available.end(), FixedPoint());
+    FixedPoint available = std::accumulate(
+        instances.available.begin(), instances.available.end(), FixedPoint());
     FixedPoint total =
         std::accumulate(instances.total.begin(), instances.total.end(), FixedPoint());
 
@@ -647,9 +654,10 @@ std::string LocalResourceManager::SerializedTaskResourceInstances(
 
 void LocalResourceManager::ResetLastReportResourceUsage(
     const SchedulingResources &replacement) {
-  last_report_resources_ = std::make_unique<NodeResources>(ResourceMapToNodeResources(
-      resource_name_to_id_, replacement.GetTotalResources().GetResourceMap(),
-      replacement.GetAvailableResources().GetResourceMap()));
+  last_report_resources_ = std::make_unique<NodeResources>(
+      ResourceMapToNodeResources(resource_name_to_id_,
+                                 replacement.GetTotalResources().GetResourceMap(),
+                                 replacement.GetAvailableResources().GetResourceMap()));
 }
 
 bool LocalResourceManager::ResourcesExist(const std::string &resource_name) {

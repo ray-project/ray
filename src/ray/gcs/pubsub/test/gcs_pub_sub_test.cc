@@ -37,7 +37,8 @@ class GcsPubSubTest : public ::testing::Test {
     }));
 
     gcs::RedisClientOptions redis_client_options("127.0.0.1",
-                                                 TEST_REDIS_SERVER_PORTS.front(), "",
+                                                 TEST_REDIS_SERVER_PORTS.front(),
+                                                 "",
                                                  /*enable_sharding_conn=*/false);
     client_ = std::make_shared<gcs::RedisClient>(redis_client_options);
     RAY_CHECK_OK(client_->Connect(io_service_));
@@ -57,7 +58,8 @@ class GcsPubSubTest : public ::testing::Test {
     client_.reset();
   }
 
-  void Subscribe(const std::string &channel, const std::string &id,
+  void Subscribe(const std::string &channel,
+                 const std::string &id,
                  std::vector<std::string> &result) {
     std::promise<bool> promise;
     auto done = [&promise](const Status &status) { promise.set_value(status.ok()); };
@@ -85,7 +87,8 @@ class GcsPubSubTest : public ::testing::Test {
     RAY_CHECK_OK(pub_sub_->Unsubscribe(channel, id));
   }
 
-  bool Publish(const std::string &channel, const std::string &id,
+  bool Publish(const std::string &channel,
+               const std::string &id,
                const std::string &data) {
     std::promise<bool> promise;
     auto done = [&promise](const Status &status) { promise.set_value(status.ok()); };

@@ -274,8 +274,8 @@ TEST_F(PublisherTest, TestSubscriber) {
   std::unordered_set<ObjectID> object_ids_published;
   rpc::PubsubLongPollingReply reply;
   rpc::SendReplyCallback send_reply_callback =
-      [&reply, &object_ids_published](Status status, std::function<void()> success,
-                                      std::function<void()> failure) {
+      [&reply, &object_ids_published](
+          Status status, std::function<void()> success, std::function<void()> failure) {
         for (int i = 0; i < reply.pub_messages_size(); i++) {
           const auto &msg = reply.pub_messages(i);
           const auto oid =
@@ -327,8 +327,8 @@ TEST_F(PublisherTest, TestSubscriberBatchSize) {
   std::unordered_set<ObjectID> object_ids_published;
   rpc::PubsubLongPollingReply reply;
   rpc::SendReplyCallback send_reply_callback =
-      [&reply, &object_ids_published](Status status, std::function<void()> success,
-                                      std::function<void()> failure) {
+      [&reply, &object_ids_published](
+          Status status, std::function<void()> success, std::function<void()> failure) {
         for (int i = 0; i < reply.pub_messages_size(); i++) {
           const auto &msg = reply.pub_messages(i);
           const auto oid =
@@ -379,7 +379,8 @@ TEST_F(PublisherTest, TestSubscriberActiveTimeout) {
   auto reply_cnt = 0;
   rpc::PubsubLongPollingReply reply;
   rpc::SendReplyCallback send_reply_callback =
-      [&reply_cnt](Status status, std::function<void()> success,
+      [&reply_cnt](Status status,
+                   std::function<void()> success,
                    std::function<void()> failure) { reply_cnt++; };
 
   std::shared_ptr<Subscriber> subscriber = std::make_shared<Subscriber>(
@@ -439,7 +440,8 @@ TEST_F(PublisherTest, TestSubscriberDisconnected) {
   auto reply_cnt = 0;
   rpc::PubsubLongPollingReply reply;
   rpc::SendReplyCallback send_reply_callback =
-      [&reply_cnt](Status status, std::function<void()> success,
+      [&reply_cnt](Status status,
+                   std::function<void()> success,
                    std::function<void()> failure) { reply_cnt++; };
 
   std::shared_ptr<Subscriber> subscriber = std::make_shared<Subscriber>(
@@ -498,7 +500,8 @@ TEST_F(PublisherTest, TestSubscriberTimeoutComplicated) {
   auto reply_cnt = 0;
   rpc::PubsubLongPollingReply reply;
   rpc::SendReplyCallback send_reply_callback =
-      [&reply_cnt](Status status, std::function<void()> success,
+      [&reply_cnt](Status status,
+                   std::function<void()> success,
                    std::function<void()> failure) { reply_cnt++; };
 
   std::shared_ptr<Subscriber> subscriber = std::make_shared<Subscriber>(
@@ -540,8 +543,8 @@ TEST_F(PublisherTest, TestBasicSingleSubscriber) {
   std::vector<ObjectID> batched_ids;
   rpc::PubsubLongPollingReply reply;
   rpc::SendReplyCallback send_reply_callback =
-      [&reply, &batched_ids](Status status, std::function<void()> success,
-                             std::function<void()> failure) {
+      [&reply, &batched_ids](
+          Status status, std::function<void()> success, std::function<void()> failure) {
         for (int i = 0; i < reply.pub_messages_size(); i++) {
           const auto &msg = reply.pub_messages(i);
           const auto oid =
@@ -554,10 +557,10 @@ TEST_F(PublisherTest, TestBasicSingleSubscriber) {
   const auto subscriber_node_id = NodeID::FromRandom();
   const auto oid = ObjectID::FromRandom();
 
-  object_status_publisher_->ConnectToSubscriber(subscriber_node_id, &reply,
-                                                send_reply_callback);
-  object_status_publisher_->RegisterSubscription(rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                                 subscriber_node_id, oid.Binary());
+  object_status_publisher_->ConnectToSubscriber(
+      subscriber_node_id, &reply, send_reply_callback);
+  object_status_publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary());
   object_status_publisher_->Publish(GeneratePubMessage(oid));
   ASSERT_EQ(batched_ids[0], oid);
 }
@@ -566,8 +569,8 @@ TEST_F(PublisherTest, TestNoConnectionWhenRegistered) {
   std::vector<ObjectID> batched_ids;
   rpc::PubsubLongPollingReply reply;
   rpc::SendReplyCallback send_reply_callback =
-      [&reply, &batched_ids](Status status, std::function<void()> success,
-                             std::function<void()> failure) {
+      [&reply, &batched_ids](
+          Status status, std::function<void()> success, std::function<void()> failure) {
         for (int i = 0; i < reply.pub_messages_size(); i++) {
           const auto &msg = reply.pub_messages(i);
           const auto oid =
@@ -580,13 +583,13 @@ TEST_F(PublisherTest, TestNoConnectionWhenRegistered) {
   const auto subscriber_node_id = NodeID::FromRandom();
   const auto oid = ObjectID::FromRandom();
 
-  object_status_publisher_->RegisterSubscription(rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                                 subscriber_node_id, oid.Binary());
+  object_status_publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary());
   object_status_publisher_->Publish(GeneratePubMessage(oid));
   // Nothing has been published because there's no connection.
   ASSERT_EQ(batched_ids.size(), 0);
-  object_status_publisher_->ConnectToSubscriber(subscriber_node_id, &reply,
-                                                send_reply_callback);
+  object_status_publisher_->ConnectToSubscriber(
+      subscriber_node_id, &reply, send_reply_callback);
   // When the connection is coming, it should be published.
   ASSERT_EQ(batched_ids[0], oid);
 }
@@ -595,8 +598,8 @@ TEST_F(PublisherTest, TestMultiObjectsFromSingleNode) {
   std::vector<ObjectID> batched_ids;
   rpc::PubsubLongPollingReply reply;
   rpc::SendReplyCallback send_reply_callback =
-      [&reply, &batched_ids](Status status, std::function<void()> success,
-                             std::function<void()> failure) {
+      [&reply, &batched_ids](
+          Status status, std::function<void()> success, std::function<void()> failure) {
         for (int i = 0; i < reply.pub_messages_size(); i++) {
           const auto &msg = reply.pub_messages(i);
           const auto oid =
@@ -619,8 +622,8 @@ TEST_F(PublisherTest, TestMultiObjectsFromSingleNode) {
   ASSERT_EQ(batched_ids.size(), 0);
 
   // Now connection is initiated, and all oids are published.
-  object_status_publisher_->ConnectToSubscriber(subscriber_node_id, &reply,
-                                                send_reply_callback);
+  object_status_publisher_->ConnectToSubscriber(
+      subscriber_node_id, &reply, send_reply_callback);
   for (int i = 0; i < num_oids; i++) {
     const auto oid_test = oids[i];
     const auto published_oid = batched_ids[i];
@@ -632,8 +635,8 @@ TEST_F(PublisherTest, TestMultiObjectsFromMultiNodes) {
   std::vector<ObjectID> batched_ids;
   rpc::PubsubLongPollingReply reply;
   rpc::SendReplyCallback send_reply_callback =
-      [&reply, &batched_ids](Status status, std::function<void()> success,
-                             std::function<void()> failure) {
+      [&reply, &batched_ids](
+          Status status, std::function<void()> success, std::function<void()> failure) {
         for (int i = 0; i < reply.pub_messages_size(); i++) {
           const auto &msg = reply.pub_messages(i);
           const auto oid =
@@ -664,8 +667,8 @@ TEST_F(PublisherTest, TestMultiObjectsFromMultiNodes) {
   // Check all of nodes are publishing objects properly.
   for (int i = 0; i < num_nodes; i++) {
     const auto subscriber_node_id = subscribers[i];
-    object_status_publisher_->ConnectToSubscriber(subscriber_node_id, &reply,
-                                                  send_reply_callback);
+    object_status_publisher_->ConnectToSubscriber(
+        subscriber_node_id, &reply, send_reply_callback);
     const auto oid_test = oids[i];
     const auto published_oid = batched_ids[i];
     ASSERT_EQ(oid_test, published_oid);
@@ -677,8 +680,8 @@ TEST_F(PublisherTest, TestMultiSubscribers) {
   rpc::PubsubLongPollingReply reply;
   int reply_invoked = 0;
   rpc::SendReplyCallback send_reply_callback =
-      [&reply, &batched_ids, &reply_invoked](Status status, std::function<void()> success,
-                                             std::function<void()> failure) {
+      [&reply, &batched_ids, &reply_invoked](
+          Status status, std::function<void()> success, std::function<void()> failure) {
         for (int i = 0; i < reply.pub_messages_size(); i++) {
           const auto &msg = reply.pub_messages(i);
           const auto oid =
@@ -707,8 +710,8 @@ TEST_F(PublisherTest, TestMultiSubscribers) {
   // Check all of nodes are publishing objects properly.
   for (int i = 0; i < num_nodes; i++) {
     const auto subscriber_node_id = subscribers[i];
-    object_status_publisher_->ConnectToSubscriber(subscriber_node_id, &reply,
-                                                  send_reply_callback);
+    object_status_publisher_->ConnectToSubscriber(
+        subscriber_node_id, &reply, send_reply_callback);
   }
   object_status_publisher_->Publish(GeneratePubMessage(oid));
   ASSERT_EQ(batched_ids.size(), 1);
@@ -720,8 +723,8 @@ TEST_F(PublisherTest, TestBatch) {
   std::vector<ObjectID> batched_ids;
   rpc::PubsubLongPollingReply reply;
   rpc::SendReplyCallback send_reply_callback =
-      [&reply, &batched_ids](Status status, std::function<void()> success,
-                             std::function<void()> failure) {
+      [&reply, &batched_ids](
+          Status status, std::function<void()> success, std::function<void()> failure) {
         for (int i = 0; i < reply.pub_messages_size(); i++) {
           const auto &msg = reply.pub_messages(i);
           const auto oid =
@@ -744,8 +747,8 @@ TEST_F(PublisherTest, TestBatch) {
   ASSERT_EQ(batched_ids.size(), 0);
 
   // Now connection is initiated, and all oids are published.
-  object_status_publisher_->ConnectToSubscriber(subscriber_node_id, &reply,
-                                                send_reply_callback);
+  object_status_publisher_->ConnectToSubscriber(
+      subscriber_node_id, &reply, send_reply_callback);
   for (int i = 0; i < num_oids; i++) {
     const auto oid_test = oids[i];
     const auto published_oid = batched_ids[i];
@@ -762,8 +765,8 @@ TEST_F(PublisherTest, TestBatch) {
         rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary());
     object_status_publisher_->Publish(GeneratePubMessage(oid));
   }
-  object_status_publisher_->ConnectToSubscriber(subscriber_node_id, &reply,
-                                                send_reply_callback);
+  object_status_publisher_->ConnectToSubscriber(
+      subscriber_node_id, &reply, send_reply_callback);
   for (int i = 0; i < num_oids; i++) {
     const auto oid_test = oids[i];
     const auto published_oid = batched_ids[i];
@@ -775,18 +778,18 @@ TEST_F(PublisherTest, TestNodeFailureWhenConnectionExisted) {
   bool long_polling_connection_replied = false;
   rpc::PubsubLongPollingReply reply;
   rpc::SendReplyCallback send_reply_callback =
-      [&long_polling_connection_replied](Status status, std::function<void()> success,
-                                         std::function<void()> failure) {
+      [&long_polling_connection_replied](
+          Status status, std::function<void()> success, std::function<void()> failure) {
         long_polling_connection_replied = true;
       };
 
   const auto subscriber_node_id = NodeID::FromRandom();
   const auto oid = ObjectID::FromRandom();
-  object_status_publisher_->ConnectToSubscriber(subscriber_node_id, &reply,
-                                                send_reply_callback);
+  object_status_publisher_->ConnectToSubscriber(
+      subscriber_node_id, &reply, send_reply_callback);
   // This information should be cleaned up as the subscriber is dead.
-  object_status_publisher_->RegisterSubscription(rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                                 subscriber_node_id, oid.Binary());
+  object_status_publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary());
   // Timeout is reached. The connection should've been refreshed. Since the subscriber is
   // dead, no new connection is made.
   current_time_ += subscriber_timeout_ms_;
@@ -806,8 +809,8 @@ TEST_F(PublisherTest, TestNodeFailureWhenConnectionExisted) {
   // New subscriber is registsered for some reason. Since there's no new long polling
   // connection for the timeout, it should be removed.
   long_polling_connection_replied = false;
-  object_status_publisher_->RegisterSubscription(rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                                 subscriber_node_id, oid.Binary());
+  object_status_publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary());
   current_time_ += subscriber_timeout_ms_;
   object_status_publisher_->CheckDeadSubscribers();
   erased = object_status_publisher_->UnregisterSubscriber(subscriber_node_id);
@@ -819,8 +822,8 @@ TEST_F(PublisherTest, TestNodeFailureWhenConnectionDoesntExist) {
   bool long_polling_connection_replied = false;
   rpc::PubsubLongPollingReply reply;
   rpc::SendReplyCallback send_reply_callback =
-      [&long_polling_connection_replied](Status status, std::function<void()> success,
-                                         std::function<void()> failure) {
+      [&long_polling_connection_replied](
+          Status status, std::function<void()> success, std::function<void()> failure) {
         long_polling_connection_replied = true;
       };
 
@@ -829,15 +832,15 @@ TEST_F(PublisherTest, TestNodeFailureWhenConnectionDoesntExist) {
   ///
   auto subscriber_node_id = NodeID::FromRandom();
   auto oid = ObjectID::FromRandom();
-  object_status_publisher_->RegisterSubscription(rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                                 subscriber_node_id, oid.Binary());
+  object_status_publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary());
   object_status_publisher_->Publish(GeneratePubMessage(oid));
   // There was no long polling connection yet.
   ASSERT_EQ(long_polling_connection_replied, false);
 
   // Connect should be removed eventually to avoid having a memory leak.
-  object_status_publisher_->ConnectToSubscriber(subscriber_node_id, &reply,
-                                                send_reply_callback);
+  object_status_publisher_->ConnectToSubscriber(
+      subscriber_node_id, &reply, send_reply_callback);
   ASSERT_EQ(long_polling_connection_replied, true);
   // Nothing happens at first.
   object_status_publisher_->CheckDeadSubscribers();
@@ -851,8 +854,8 @@ TEST_F(PublisherTest, TestNodeFailureWhenConnectionDoesntExist) {
 
   /// Test the case where there's no connection coming at all when there was a
   /// registration.
-  object_status_publisher_->RegisterSubscription(rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                                 subscriber_node_id, oid.Binary());
+  object_status_publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary());
   object_status_publisher_->Publish(GeneratePubMessage(oid));
 
   // No new long polling connection was made until timeout.
@@ -867,17 +870,17 @@ TEST_F(PublisherTest, TestUnregisterSubscription) {
   bool long_polling_connection_replied = false;
   rpc::PubsubLongPollingReply reply;
   rpc::SendReplyCallback send_reply_callback =
-      [&long_polling_connection_replied](Status status, std::function<void()> success,
-                                         std::function<void()> failure) {
+      [&long_polling_connection_replied](
+          Status status, std::function<void()> success, std::function<void()> failure) {
         long_polling_connection_replied = true;
       };
 
   const auto subscriber_node_id = NodeID::FromRandom();
   const auto oid = ObjectID::FromRandom();
-  object_status_publisher_->ConnectToSubscriber(subscriber_node_id, &reply,
-                                                send_reply_callback);
-  object_status_publisher_->RegisterSubscription(rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                                 subscriber_node_id, oid.Binary());
+  object_status_publisher_->ConnectToSubscriber(
+      subscriber_node_id, &reply, send_reply_callback);
+  object_status_publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary());
   ASSERT_EQ(long_polling_connection_replied, false);
 
   // Connection should be replied (removed) when the subscriber is unregistered.
@@ -888,7 +891,8 @@ TEST_F(PublisherTest, TestUnregisterSubscription) {
 
   // Make sure when the entries don't exist, it doesn't delete anything.
   ASSERT_EQ(object_status_publisher_->UnregisterSubscription(
-                rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id,
+                rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                subscriber_node_id,
                 ObjectID::FromRandom().Binary()),
             0);
   ASSERT_EQ(
@@ -896,7 +900,8 @@ TEST_F(PublisherTest, TestUnregisterSubscription) {
           rpc::ChannelType::WORKER_OBJECT_EVICTION, NodeID::FromRandom(), oid.Binary()),
       0);
   ASSERT_EQ(object_status_publisher_->UnregisterSubscription(
-                rpc::ChannelType::WORKER_OBJECT_EVICTION, NodeID::FromRandom(),
+                rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                NodeID::FromRandom(),
                 ObjectID::FromRandom().Binary()),
             0);
   ASSERT_EQ(long_polling_connection_replied, false);
@@ -910,18 +915,18 @@ TEST_F(PublisherTest, TestUnregisterSubscriber) {
   bool long_polling_connection_replied = false;
   rpc::PubsubLongPollingReply reply;
   rpc::SendReplyCallback send_reply_callback =
-      [&long_polling_connection_replied](Status status, std::function<void()> success,
-                                         std::function<void()> failure) {
+      [&long_polling_connection_replied](
+          Status status, std::function<void()> success, std::function<void()> failure) {
         long_polling_connection_replied = true;
       };
 
   // Test basic.
   const auto subscriber_node_id = NodeID::FromRandom();
   const auto oid = ObjectID::FromRandom();
-  object_status_publisher_->ConnectToSubscriber(subscriber_node_id, &reply,
-                                                send_reply_callback);
-  object_status_publisher_->RegisterSubscription(rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                                 subscriber_node_id, oid.Binary());
+  object_status_publisher_->ConnectToSubscriber(
+      subscriber_node_id, &reply, send_reply_callback);
+  object_status_publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary());
   ASSERT_EQ(long_polling_connection_replied, false);
   int erased = object_status_publisher_->UnregisterSubscriber(subscriber_node_id);
   ASSERT_TRUE(erased);
@@ -930,16 +935,16 @@ TEST_F(PublisherTest, TestUnregisterSubscriber) {
 
   // Test when registration wasn't done.
   long_polling_connection_replied = false;
-  object_status_publisher_->ConnectToSubscriber(subscriber_node_id, &reply,
-                                                send_reply_callback);
+  object_status_publisher_->ConnectToSubscriber(
+      subscriber_node_id, &reply, send_reply_callback);
   erased = object_status_publisher_->UnregisterSubscriber(subscriber_node_id);
   ASSERT_FALSE(erased);
   ASSERT_EQ(long_polling_connection_replied, true);
 
   // Test when connect wasn't done.
   long_polling_connection_replied = false;
-  object_status_publisher_->RegisterSubscription(rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                                 subscriber_node_id, oid.Binary());
+  object_status_publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary());
   erased = object_status_publisher_->UnregisterSubscriber(subscriber_node_id);
   ASSERT_TRUE(erased);
   ASSERT_EQ(long_polling_connection_replied, false);
@@ -978,8 +983,8 @@ TEST_F(PublisherTest, TestPublishFailure) {
   std::vector<ObjectID> failed_ids;
   rpc::PubsubLongPollingReply reply;
   rpc::SendReplyCallback send_reply_callback =
-      [&reply, &failed_ids](Status status, std::function<void()> success,
-                            std::function<void()> failure) {
+      [&reply, &failed_ids](
+          Status status, std::function<void()> success, std::function<void()> failure) {
         for (int i = 0; i < reply.pub_messages_size(); i++) {
           const auto &msg = reply.pub_messages(i);
           RAY_LOG(ERROR) << "ha";
@@ -994,10 +999,10 @@ TEST_F(PublisherTest, TestPublishFailure) {
   const auto subscriber_node_id = NodeID::FromRandom();
   const auto oid = ObjectID::FromRandom();
 
-  object_status_publisher_->ConnectToSubscriber(subscriber_node_id, &reply,
-                                                send_reply_callback);
-  object_status_publisher_->RegisterSubscription(rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                                 subscriber_node_id, oid.Binary());
+  object_status_publisher_->ConnectToSubscriber(
+      subscriber_node_id, &reply, send_reply_callback);
+  object_status_publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary());
   object_status_publisher_->PublishFailure(rpc::ChannelType::WORKER_OBJECT_EVICTION,
                                            oid.Binary());
   ASSERT_EQ(failed_ids[0], oid);

@@ -77,7 +77,8 @@ class ClusterResourceScheduler {
   ///  \return emptry string, if no node can schedule the current request; otherwise,
   ///          return the string name of a node that can schedule the resource request.
   std::string GetBestSchedulableNode(const TaskSpecification &task_spec,
-                                     bool prioritize_local_node, bool exclude_local_node,
+                                     bool prioritize_local_node,
+                                     bool exclude_local_node,
                                      bool requires_object_store_memory,
                                      bool *is_infeasible);
 
@@ -147,8 +148,10 @@ class ClusterResourceScheduler {
   ///          return the ID of a node that can schedule the resource request.
   int64_t GetBestSchedulableNode(const ResourceRequest &resource_request,
                                  const rpc::SchedulingStrategy &scheduling_strategy,
-                                 bool actor_creation, bool force_spillback,
-                                 int64_t *violations, bool *is_infeasible);
+                                 bool actor_creation,
+                                 bool force_spillback,
+                                 int64_t *violations,
+                                 bool *is_infeasible);
 
   /// Similar to
   ///    int64_t GetBestSchedulableNode(...)
@@ -159,8 +162,11 @@ class ClusterResourceScheduler {
   std::string GetBestSchedulableNode(
       const absl::flat_hash_map<std::string, double> &resource_request,
       const rpc::SchedulingStrategy &scheduling_strategy,
-      bool requires_object_store_memory, bool actor_creation, bool force_spillback,
-      int64_t *violations, bool *is_infeasible);
+      bool requires_object_store_memory,
+      bool actor_creation,
+      bool force_spillback,
+      int64_t *violations,
+      bool *is_infeasible);
 
   /// Keep the mapping between node and resource IDs in string representation
   /// to integer representation. Used for improving map performance.
