@@ -130,12 +130,11 @@ def build_slateq_losses(
 
     # next_q_values_slate.shape: [B, A, S]
     indices = policy.slates_indices.to(next_q_values.device)
-    next_q_values_slate = torch.take_along_dim(next_q_values, indices, dim=1
-    ).reshape([-1, A, S])
-    # scores_slate.shape [B, A, S]
-    scores_slate = torch.take_along_dim(scores, indices, dim=1).reshape(
+    next_q_values_slate = torch.take_along_dim(next_q_values, indices, dim=1).reshape(
         [-1, A, S]
     )
+    # scores_slate.shape [B, A, S]
+    scores_slate = torch.take_along_dim(scores, indices, dim=1).reshape([-1, A, S])
     # score_no_click_slate.shape: [B, A]
     score_no_click_slate = torch.reshape(
         torch.tile(score_no_click, policy.slates.shape[:1]), [batch_size, -1]
