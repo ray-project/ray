@@ -235,6 +235,9 @@ Supported Output Formats
    * - TensorFlow Iterable Dataset
      - :meth:`ds.to_tf() <ray.data.Dataset.to_tf>`
      - ✅
+   * - Random Access Dataset
+     - :meth:`ds.to_random_access_dataset() <ray.data.Dataset.to_random_access_dataset>`
+     - ✅
    * - Custom Datasource
      - :meth:`ds.write_datasource() <ray.data.Dataset.write_datasource>`
      - ✅

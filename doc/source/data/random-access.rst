@@ -27,6 +27,8 @@ Any Arrow-format dataset can be enabled for random access by calling ``dataset.t
     rmap.multiget([4, 2])
     # -> [{"value": 4, "embedding": 16}, {"value": 2, "embedding": 4}]
 
+Similar to Dataset, a RandomAccessDataset can be passed to and used from any Ray actor or task.
+
 Architecture
 ------------
 
