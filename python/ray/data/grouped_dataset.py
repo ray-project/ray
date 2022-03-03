@@ -132,7 +132,7 @@ class GroupedDataset(Generic[T]):
         on: Union[KeyFn, List[KeyFn]],
         ignore_nulls: bool,
         *args,
-        **kwargs
+        **kwargs,
     ):
         """Helper for aggregating on a particular subset of the dataset.
 
@@ -156,7 +156,7 @@ class GroupedDataset(Generic[T]):
     ) -> "Dataset[Any]":
         """Apply the given function to each group of records of this dataset.
 
-        While the map_groups() is very flexible, note that it comes with downsides:
+        While map_groups() is very flexible, note that it comes with downsides:
             - It may be slower than using more specific methods such as min(), max().
             - It requires that each group fits in memory on a single node.
         In general, prefer to use aggregate() instead of map_groups().
@@ -186,7 +186,6 @@ class GroupedDataset(Generic[T]):
                 that can be instantiated to create such a callable. It takes as
                 input a batch of all records from a single group, and returns a
                 batch of zero or more records, similar to map_batches().
-
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
             batch_format: Specify "native" to use the native block format
@@ -251,7 +250,7 @@ class GroupedDataset(Generic[T]):
             batch_size=None,
             compute=compute,
             batch_format=batch_format,
-            **ray_remote_args
+            **ray_remote_args,
         )
 
     def count(self) -> Dataset[U]:
