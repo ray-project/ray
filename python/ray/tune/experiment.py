@@ -1,13 +1,11 @@
-from functools import partial
-from typing import Dict, Sequence, Any
 import copy
+from functools import partial
+from grpc import RpcError
 import inspect
 import logging
 import os
-
 from pickle import PicklingError
-
-import grpc
+from typing import Dict, Sequence, Any
 
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable
@@ -125,7 +123,7 @@ class Experiment:
                 )
         try:
             self._run_identifier = Experiment.register_if_needed(run)
-        except grpc.RpcError as e:
+        except RpcError as e:
             if e.code() == grpc.StatusCode.RESOURCE_EXHAUSTED:
                 raise TuneError(
                     "The Trainable/training function is too large for grpc resource "
