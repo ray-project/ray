@@ -55,8 +55,10 @@ class CheckpointsTest(unittest.TestCase):
         # Create checkpoint from dict
         checkpoint = Checkpoint.from_dict(self.checkpoint_dict_data)
         self.assertIsInstance(checkpoint, Checkpoint)
-        self.assertIsInstance(checkpoint.data, dict)
-        self.assertEqual(checkpoint.data["metric"], self.checkpoint_dict_data["metric"])
+        self.assertTrue(checkpoint._data_dict)
+        self.assertEqual(
+            checkpoint._data_dict["metric"], self.checkpoint_dict_data["metric"]
+        )
         return checkpoint
 
     def _assert_dict_checkpoint(self, checkpoint):
@@ -74,7 +76,7 @@ class CheckpointsTest(unittest.TestCase):
 
         # Create from bytes
         checkpoint = Checkpoint.from_bytes(blob)
-        self.assertIsInstance(checkpoint.data, dict)
+        self.assertTrue(checkpoint._data_dict)
 
         self._assert_dict_checkpoint(checkpoint)
 
@@ -82,22 +84,19 @@ class CheckpointsTest(unittest.TestCase):
         """Test conversion from dict to dict checkpoint and back."""
         checkpoint = self._prepare_dict_checkpoint()
 
-        # Convert into bytes checkpoint
+        # Convert into dict checkpoint
         data_dict = checkpoint.to_dict()
         self.assertIsInstance(data_dict, dict)
 
-        # Create from bytes
+        # Create from dict
         checkpoint = Checkpoint.from_dict(data_dict)
-        self.assertIsInstance(checkpoint.data, dict)
+        self.assertTrue(checkpoint._data_dict)
 
         self._assert_dict_checkpoint(checkpoint)
 
     def test_dict_checkpoint_fs(self):
         """Test conversion from dict to FS checkpoint and back."""
-        # Create checkpoint from dict
-        checkpoint = Checkpoint.from_dict(self.checkpoint_dict_data)
-        self.assertIsInstance(checkpoint, Checkpoint)
-        self.assertEqual(checkpoint.data["metric"], self.checkpoint_dict_data["metric"])
+        checkpoint = self._prepare_dict_checkpoint()
 
         # Convert into fs checkpoint
         path = checkpoint.to_directory()
@@ -105,34 +104,9 @@ class CheckpointsTest(unittest.TestCase):
 
         # Create from path
         checkpoint = Checkpoint.from_directory(path)
-        self.assertIsInstance(checkpoint.data, str)
+        self.assertTrue(checkpoint._local_path)
 
         self._assert_dict_checkpoint(checkpoint)
-
-    def test_dict_checkpoint_remote_node(self):
-        """Test conversion from dict to remote fs checkpoint and back."""
-        import ray
-
-        if not ray.is_initialized():
-            ray.init()
-
-        checkpoint = self._prepare_dict_checkpoint()
-
-        # Convert into fs checkpoint in a "remote" location
-        remote_location = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, remote_location)
-        path = checkpoint.to_directory(remote_location)
-        self.assertIsInstance(path, str)
-
-        node_ip = ray.util.get_node_ip_address()
-        path = f"node://{node_ip}/{path}"
-
-        # Create from URI
-        checkpoint = Checkpoint.from_uri(path)
-        self.assertIsInstance(checkpoint.data, str)
-
-        with patch("ray.ml.checkpoint._get_local_path", lambda *a, **kw: None):
-            self._assert_dict_checkpoint(checkpoint)
 
     def test_dict_checkpoint_obj_store(self):
         """Test conversion from fs to obj store checkpoint and back."""
@@ -149,7 +123,7 @@ class CheckpointsTest(unittest.TestCase):
 
         # Create from dict
         checkpoint = Checkpoint.from_object_ref(obj_ref)
-        self.assertIsInstance(checkpoint.data, ray.ObjectRef)
+        self.assertTrue(checkpoint._obj_ref)
 
         self._assert_dict_checkpoint(checkpoint)
 
@@ -165,16 +139,17 @@ class CheckpointsTest(unittest.TestCase):
 
             # Create from dict
             checkpoint = Checkpoint.from_uri(location)
-            self.assertIsInstance(checkpoint.data, str)
+            self.assertTrue(checkpoint._uri)
 
             self._assert_dict_checkpoint(checkpoint)
 
     def _prepare_fs_checkpoint(self) -> Checkpoint:
         # Create checkpoint from fs
         checkpoint = Checkpoint.from_directory(self.checkpoint_dir)
+
         self.assertIsInstance(checkpoint, Checkpoint)
-        self.assertIsInstance(checkpoint.data, str)
-        self.assertEqual(checkpoint.data, self.checkpoint_dir)
+        self.assertTrue(checkpoint._local_path, str)
+        self.assertEqual(checkpoint._local_path, self.checkpoint_dir)
 
         return checkpoint
 
@@ -197,13 +172,13 @@ class CheckpointsTest(unittest.TestCase):
         """Test conversion from fs to bytes checkpoint and back."""
         checkpoint = self._prepare_fs_checkpoint()
 
-        # Convert into dict checkpoint
+        # Convert into bytest checkpoint
         blob = checkpoint.to_bytes()
         self.assertIsInstance(blob, bytes)
 
-        # Create from dict
+        # Create from bytes
         checkpoint = Checkpoint.from_bytes(blob)
-        self.assertIsInstance(checkpoint.data, dict)
+        self.assertTrue(checkpoint._data_dict)
 
         self._assert_fs_checkpoint(checkpoint)
 
@@ -217,7 +192,7 @@ class CheckpointsTest(unittest.TestCase):
 
         # Create from dict
         checkpoint = Checkpoint.from_dict(data_dict)
-        self.assertIsInstance(checkpoint.data, dict)
+        self.assertTrue(checkpoint._data_dict)
 
         self._assert_fs_checkpoint(checkpoint)
 
@@ -225,40 +200,15 @@ class CheckpointsTest(unittest.TestCase):
         """Test conversion from fs to fs checkpoint and back."""
         checkpoint = self._prepare_fs_checkpoint()
 
-        # Convert into dict checkpoint
+        # Convert into fs checkpoint
         path = checkpoint.to_directory()
         self.assertIsInstance(path, str)
 
-        # Create from dict
+        # Create from fs
         checkpoint = Checkpoint.from_directory(path)
-        self.assertIsInstance(checkpoint.data, str)
+        self.assertTrue(checkpoint._local_path)
 
         self._assert_fs_checkpoint(checkpoint)
-
-    def test_fs_checkpoint_remote_node(self):
-        """Test conversion from fs to remote fs checkpoint and back."""
-        import ray
-
-        if not ray.is_initialized():
-            ray.init()
-
-        checkpoint = self._prepare_fs_checkpoint()
-
-        # Convert into fs checkpoint in a "remote" location
-        remote_location = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, remote_location)
-        path = checkpoint.to_directory(remote_location)
-        self.assertIsInstance(path, str)
-
-        node_ip = ray.util.get_node_ip_address()
-        path = f"node://{node_ip}/{path}"
-
-        # Create from URI
-        checkpoint = Checkpoint.from_uri(path)
-        self.assertIsInstance(checkpoint.data, str)
-
-        with patch("ray.ml.checkpoint._get_local_path", lambda *a, **kw: None):
-            self._assert_fs_checkpoint(checkpoint)
 
     def test_fs_checkpoint_obj_store(self):
         """Test conversion from fs to obj store checkpoint and back."""
@@ -269,13 +219,12 @@ class CheckpointsTest(unittest.TestCase):
 
         checkpoint = self._prepare_fs_checkpoint()
 
-        # Convert into dict checkpoint
+        # Convert into obj ref checkpoint
         obj_ref = checkpoint.to_object_ref()
-        self.assertIsInstance(obj_ref, ray.ObjectRef)
 
         # Create from object ref
         checkpoint = Checkpoint.from_object_ref(obj_ref)
-        self.assertIsInstance(checkpoint.data, ray.ObjectRef)
+        self.assertIsInstance(checkpoint._obj_ref, ray.ObjectRef)
 
         self._assert_fs_checkpoint(checkpoint)
 
@@ -291,7 +240,7 @@ class CheckpointsTest(unittest.TestCase):
 
             # Create from dict
             checkpoint = Checkpoint.from_uri(location)
-            self.assertIsInstance(checkpoint.data, str)
+            self.assertTrue(checkpoint._uri)
 
             self._assert_fs_checkpoint(checkpoint)
 
