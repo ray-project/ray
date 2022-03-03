@@ -7,7 +7,7 @@ import pathlib
 import requests
 import click
 import time
-from typing import Tuple
+from typing import Tuple, List, Dict
 
 import ray
 from ray.serve.api import Deployment, deploy_group, get_deployment_statuses
@@ -36,6 +36,52 @@ def log_failed_request(response: requests.models.Response, address: str):
     cli_logger.newline()
     cli_logger.error(error_message)
     cli_logger.newline()
+
+
+def process_args_and_kwargs(
+    args_and_kwargs: Tuple[str],
+) -> Tuple[List[str], Dict[str, str]]:
+    """
+    Takes in a Tuple of strings. Any string prepended with "--" is considered a
+    keyword and the string following it is considered its value. All other
+    strings are considered args. All args must come before kwargs.
+
+    For example:
+
+    ("argval1", "argval2", "--kwarg1", "kwval1", "--kwarg2", "kwval2",)
+
+    becomes
+
+    args = ["argval1", "argval2"]
+    kwargs = {"kwarg1": "kwval1", "kwarg2": "kwval2"}
+    """
+
+    args, kwargs = [], {}
+
+    token_idx = 0
+    while args_and_kwargs is not None and token_idx < len(args_and_kwargs):
+        token = args_and_kwargs[token_idx]
+        if token[:2] == "--":
+            if token_idx + 1 < len(args_and_kwargs):
+                kwargs[token[2:]] = args_and_kwargs[token_idx + 1]
+                token_idx += 2
+            else:
+                raise ValueError(
+                    f"Got no value for keyword {token[:2]}. All "
+                    "keyword arguments specified must have a value."
+                )
+        else:
+            if len(kwargs) > 0:
+                raise ValueError(
+                    f"Got argument {token} after some keyword "
+                    "arguments were already specified. All args "
+                    "must come before kwargs."
+                )
+            else:
+                args.append(token)
+                token_idx += 1
+
+    return args, kwargs
 
 
 @click.group(help="[EXPERIMENTAL] CLI for managing Serve instances on a Ray cluster.")
