@@ -294,7 +294,7 @@ bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
   return true;
 }
 
-bool NodeResources::operator==(const NodeResources &other) {
+bool NodeResources::operator==(const NodeResources &other) const {
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (this->predefined_resources[i].total != other.predefined_resources[i].total) {
       return false;
@@ -325,7 +325,9 @@ bool NodeResources::operator==(const NodeResources &other) {
   return true;
 }
 
-bool NodeResources::operator!=(const NodeResources &other) { return !(*this == other); }
+bool NodeResources::operator!=(const NodeResources &other) const {
+  return !(*this == other);
+}
 
 std::string NodeResources::DebugString() const {
   std::stringstream buffer;
