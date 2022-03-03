@@ -33,7 +33,8 @@ class RandomAccessDataset(object):
         The constructor is not part of the Datasets API. Use
         ``dataset.to_random_access_dataset()`` to construct a RandomAccessDataset.
         """
-        if dataset._dataset_format() != "arrow":
+        self._format = dataset._dataset_format()
+        if self._format not in ["arrow", "pandas"]:
             raise ValueError("RandomAccessDataset only supports Arrow-format datasets.")
 
         start = time.perf_counter()
@@ -43,7 +44,7 @@ class RandomAccessDataset(object):
         blocks = sorted_ds.get_internal_block_refs()
 
         logger.info("[setup] Computing block range bounds.")
-        bounds = ray.get([get_bounds.remote(b, key) for b in blocks])
+        bounds = ray.get([get_bounds.remote(b, key, self._format) for b in blocks])
         self._valid_blocks = []
         self._lower_bound = None
         self._upper_bounds = []
@@ -56,7 +57,9 @@ class RandomAccessDataset(object):
 
         logger.info("[setup] Creating {} random access workers.".format(num_workers))
         self._workers = [
-            _RandomAccessWorker.options(scheduling_strategy="SPREAD").remote(key)
+            _RandomAccessWorker.options(scheduling_strategy="SPREAD").remote(
+                key, self._format
+            )
             for _ in range(num_workers)
         ]
         (
@@ -176,7 +179,7 @@ class RandomAccessDataset(object):
         return random.choice(self._block_to_workers_map[block_index])
 
     def _find_le(self, x: Any) -> int:
-        i = bisect.bisect_right(self._upper_bounds, x)
+        i = bisect.bisect_left(self._upper_bounds, x)
         if i >= len(self._upper_bounds) or x < self._lower_bound:
             return None
         return i
@@ -184,9 +187,10 @@ class RandomAccessDataset(object):
 
 @ray.remote(num_cpus=0, placement_group=None)
 class _RandomAccessWorker:
-    def __init__(self, key_field):
+    def __init__(self, key_field, dataset_format):
         self.blocks = None
         self.key_field = key_field
+        self.dataset_format = dataset_format
         self.num_accesses = 0
         self.total_time = 0
 
@@ -221,7 +225,10 @@ class _RandomAccessWorker:
         if block_index is None:
             return None
         block = self.blocks[block_index]
-        i = _binary_search_find(block[self.key_field], key)
+        column = block[self.key_field]
+        if self.dataset_format == "arrow":
+            column = _ArrowListWrapper(column)
+        i = _binary_search_find(column, key)
         if i is None:
             return None
         acc = BlockAccessor.for_block(block)
@@ -229,7 +236,6 @@ class _RandomAccessWorker:
 
 
 def _binary_search_find(column, x):
-    column = _ArrowListWrapper(column)
     i = bisect.bisect_left(column, x)
     if i != len(column) and column[i] == x:
         return i
@@ -247,7 +253,10 @@ class _ArrowListWrapper:
         return len(self.arrow_col)
 
 
-def _get_bounds(block, key):
+def _get_bounds(block, key, dataset_format):
     if len(block) == 0:
         return None
-    return (block[key][0].as_py(), block[key][-1].as_py())
+    b = (block[key][0], block[key][len(block) - 1])
+    if dataset_format == "arrow":
+        b = (b[0].as_py(), b[1].as_py())
+    return b
