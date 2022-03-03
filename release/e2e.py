@@ -792,6 +792,31 @@ def report_result(
     )
     logger.info("Result has been persisted to the database")
 
+    # TODO(jjyao) Migrate to new infra later
+    logger.info("Persisting results to the databricks delta lake...")
+
+    result_json = {
+        "_table": "release_test_result",
+        "created_on": now.strftime("%Y-%m-%d %H:%M:%S"),
+        "status": status,
+        "results": results,
+        "test_name": test_name,
+        "team": team,
+        "cluster_url": results["_session_url"],
+        "wheel_url": results["_commit_url"],
+        "runtime": results["_runtime"],
+        "stable": results["_stable"],
+    }
+
+    logger.debug(f"Result json: {json.dumps(result_json)}")
+
+    firehose_client = boto3.client("firehose", region_name="us-west-2")
+    firehose_client.put_record(
+        DeliveryStreamName="ray-ci-results", Record={"Data": json.dumps(result_json)}
+    )
+
+    logger.info("Result has been persisted to the databricks delta lake")
+
 
 def log_results_and_artifacts(result: Dict):
     results = result.get("results", {})
@@ -1556,6 +1581,8 @@ def run_test_config(
     app_config["env_vars"]["MATCH_AUTOSCALER_AND_RAY_IMAGES"] = "1"
     app_config["env_vars"]["RAY_bootstrap_with_gcs"] = "1"
     app_config["env_vars"]["RAY_gcs_storage"] = "memory"
+    app_config["env_vars"]["RAY_USAGE_STATS_ENABLED"] = "1"
+    app_config["env_vars"]["RAY_USAGE_STATS_SOURCE"] = "nightly-tests"
 
     compute_tpl_rel_path = test_config["cluster"].get("compute_template", None)
     compute_tpl = _load_config(local_dir, compute_tpl_rel_path)

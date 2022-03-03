@@ -216,7 +216,10 @@ class DatasetPipeline(Generic[T]):
             A list of ``n`` disjoint pipeline splits.
         """
         return self._split(
-            n, lambda ds: ds.split(n, equal=equal, locality_hints=locality_hints)
+            n,
+            lambda ds, equal=equal: ds.split(
+                n, equal=equal, locality_hints=locality_hints
+            ),
         )
 
     def split_at_indices(self, indices: List[int]) -> List["DatasetPipeline[T]"]:
@@ -264,9 +267,14 @@ class DatasetPipeline(Generic[T]):
 
     def _split(self, n: int, splitter: Callable[[Dataset], "DatasetPipeline[T]"]):
 
-        coordinator = PipelineSplitExecutorCoordinator.remote(
-            self, n, splitter, DatasetContext.get_current()
-        )
+        # Pin the coordinator (and any child actors) to the local node to avoid
+        # errors during node failures. If the local node dies, then the driver
+        # will fate-share with the coordinator anyway.
+        local_node_resource = "node:{}".format(ray.util.get_node_ip_address())
+        coordinator = PipelineSplitExecutorCoordinator.options(
+            resources={local_node_resource: 0.0001},
+            placement_group=None,
+        ).remote(self, n, splitter, DatasetContext.get_current())
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
         self._executed[0] = True
@@ -391,10 +399,6 @@ class DatasetPipeline(Generic[T]):
         This operation is only allowed for pipelines of a finite length. An
         error will be raised for pipelines of infinite length.
 
-        Transformations prior to the call to ``repeat()`` are evaluated once.
-        Transformations done on the repeated pipeline are evaluated on each
-        loop of the pipeline over the base pipeline.
-
         Note that every repeat of the pipeline is considered an "epoch" for
         the purposes of ``iter_epochs()``. If there are multiple repeat calls,
         the latest repeat takes precedence for the purpose of defining epochs.
@@ -421,10 +425,15 @@ class DatasetPipeline(Generic[T]):
                 # Still going through the original pipeline.
                 if self._original_iter:
                     try:
-                        res = next(self._original_iter)
-                        res._set_epoch(0)
-                        self._results.append(res)
-                        return lambda: res
+                        make_ds = next(self._original_iter)
+                        self._results.append(make_ds)
+
+                        def gen():
+                            res = make_ds()
+                            res._set_epoch(0)
+                            return res
+
+                        return gen
                     except StopIteration:
                         self._original_iter = None
                         # Calculate the cursor limit.
@@ -434,10 +443,16 @@ class DatasetPipeline(Generic[T]):
                             self._max_i = float("inf")
                 # Going through a repeat of the pipeline.
                 if self._i < self._max_i:
-                    res = self._results[self._i % len(self._results)]
-                    res._set_epoch(1 + self._i // len(self._results))
+                    make_ds = self._results[self._i % len(self._results)]
+                    epoch = 1 + self._i // len(self._results)
+
+                    def gen():
+                        res = make_ds()
+                        res._set_epoch(epoch)
+                        return res
+
                     self._i += 1
-                    return lambda: res
+                    return gen
                 else:
                     raise StopIteration
 
@@ -455,7 +470,11 @@ class DatasetPipeline(Generic[T]):
         else:
             length = None
 
-        return DatasetPipeline(RepeatIterable(self.iter_datasets()), length=length)
+        return DatasetPipeline(
+            RepeatIterable(iter(self._base_iterable)),
+            stages=self._stages.copy(),
+            length=length,
+        )
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         """Return the schema of the dataset pipeline.

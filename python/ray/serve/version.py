@@ -4,6 +4,7 @@ from typing import Any, Optional
 from zlib import crc32
 
 from ray.serve.utils import get_random_letters
+from ray.serve.generated.serve_pb2 import DeploymentVersion as DeploymentVersionProto
 
 
 class DeploymentVersion:
@@ -18,6 +19,7 @@ class DeploymentVersion:
             self.code_version = code_version
 
         self.user_config = user_config
+        # TODO(simon): make this xlang compatible
         pickled_user_config = pickle.dumps(user_config)
         self.user_config_hash = crc32(pickled_user_config)
         self._hash = crc32(pickled_user_config + self.code_version.encode("utf-8"))
@@ -29,6 +31,10 @@ class DeploymentVersion:
         if not isinstance(other, DeploymentVersion):
             return False
         return self._hash == other._hash
+
+    def to_proto(self) -> bytes:
+        # TODO(simon): enable cross language user config
+        return DeploymentVersionProto(code_version=self.code_version, user_config=b"")
 
 
 class VersionedReplica(ABC):

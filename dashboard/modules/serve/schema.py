@@ -1,9 +1,11 @@
-from pydantic import BaseModel, Field, root_validator, validator
+from pydantic import BaseModel, Field, Extra, root_validator, validator
 from typing import Union, Tuple, List, Dict
 from ray._private.runtime_env.packaging import parse_uri
+from ray.serve.api import Deployment, deployment
+from ray.serve.common import DeploymentStatus, DeploymentStatusInfo
 
 
-class RayActorOptions(BaseModel):
+class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
     runtime_env: dict = Field(
         default=None,
         description=(
@@ -18,7 +20,7 @@ class RayActorOptions(BaseModel):
             "application per replica. This is the same as a ray "
             "actor's num_cpus. Uses a default if null."
         ),
-        gt=0,
+        ge=0,
     )
     num_gpus: float = Field(
         default=None,
@@ -27,14 +29,14 @@ class RayActorOptions(BaseModel):
             "application per replica. This is the same as a ray "
             "actor's num_gpus. Uses a default if null."
         ),
-        gt=0,
+        ge=0,
     )
     memory: float = Field(
         default=None,
         description=(
             "Restrict the heap memory usage of each replica. Uses a default if null."
         ),
-        gt=0,
+        ge=0,
     )
     object_store_memory: float = Field(
         default=None,
@@ -42,7 +44,7 @@ class RayActorOptions(BaseModel):
             "Restrict the object store memory used per replica when "
             "creating objects. Uses a default if null."
         ),
-        gt=0,
+        ge=0,
     )
     resources: Dict = Field(
         default=None, description=("The custom resources required by each replica.")
@@ -66,10 +68,13 @@ class RayActorOptions(BaseModel):
             uris.append(v["working_dir"])
 
         for uri in uris:
-            parse_uri(uri)
+            if uri is not None:
+                parse_uri(uri)
+
+        return v
 
 
-class DeploymentConfig(BaseModel):
+class DeploymentSchema(BaseModel, extra=Extra.forbid):
     name: str = Field(
         ..., description=("Globally-unique name identifying this deployment.")
     )
@@ -182,7 +187,9 @@ class DeploymentConfig(BaseModel):
         ),
         gt=0,
     )
-    ray_actor_options: RayActorOptions = Field(...)
+    ray_actor_options: RayActorOptionsSchema = Field(
+        default=None, description="Options set for each replica actor."
+    )
 
     @root_validator
     def application_sufficiently_specified(cls, values):
@@ -239,6 +246,19 @@ class DeploymentConfig(BaseModel):
 
         return values
 
+    @root_validator
+    def num_replicas_and_autoscaling_config_mutually_exclusive(cls, values):
+        if (
+            values.get("num_replicas", None) is not None
+            and values.get("autoscaling_config", None) is not None
+        ):
+            raise ValueError(
+                "Manually setting num_replicas is not allowed "
+                "when autoscaling_config is provided."
+            )
+
+        return values
+
     @validator("route_prefix")
     def route_prefix_format(cls, v):
         """
@@ -251,7 +271,7 @@ class DeploymentConfig(BaseModel):
         # route_prefix of None means the deployment is not exposed
         # over HTTP.
         if v is None:
-            return
+            return v
 
         if len(v) < 1 or v[0] != "/":
             raise ValueError(
@@ -270,6 +290,110 @@ class DeploymentConfig(BaseModel):
                 'contain "{" or "}".'
             )
 
+        return v
 
-class ServeInstanceConfig(BaseModel):
-    deployments: List[DeploymentConfig] = Field(...)
+
+class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
+    deployments: List[DeploymentSchema] = Field(...)
+
+
+class DeploymentStatusSchema(BaseModel, extra=Extra.forbid):
+    name: str = Field(..., description="The deployment's name.")
+    status: DeploymentStatus = Field(
+        default=None, description="The deployment's status."
+    )
+    message: str = Field(
+        default="", description="Information about the deployment's status."
+    )
+
+
+class ServeApplicationStatusSchema(BaseModel, extra=Extra.forbid):
+    statuses: List[DeploymentStatusSchema] = Field(...)
+
+
+def deployment_to_schema(d: Deployment) -> DeploymentSchema:
+    if d.ray_actor_options is not None:
+        ray_actor_options_schema = RayActorOptionsSchema.parse_obj(d.ray_actor_options)
+    else:
+        ray_actor_options_schema = None
+
+    return DeploymentSchema(
+        name=d.name,
+        import_path=d.func_or_class,
+        init_args=d.init_args,
+        init_kwargs=d.init_kwargs,
+        num_replicas=d.num_replicas,
+        route_prefix=d.route_prefix,
+        max_concurrent_queries=d.max_concurrent_queries,
+        user_config=d.user_config,
+        autoscaling_config=d._config.autoscaling_config,
+        graceful_shutdown_wait_loop_s=d._config.graceful_shutdown_wait_loop_s,
+        graceful_shutdown_timeout_s=d._config.graceful_shutdown_timeout_s,
+        health_check_period_s=d._config.health_check_period_s,
+        health_check_timeout_s=d._config.health_check_timeout_s,
+        ray_actor_options=ray_actor_options_schema,
+    )
+
+
+def schema_to_deployment(s: DeploymentSchema) -> Deployment:
+    if s.ray_actor_options is None:
+        ray_actor_options = None
+    else:
+        ray_actor_options = s.ray_actor_options.dict()
+
+    return deployment(
+        name=s.name,
+        num_replicas=s.num_replicas,
+        init_args=s.init_args,
+        init_kwargs=s.init_kwargs,
+        route_prefix=s.route_prefix,
+        ray_actor_options=ray_actor_options,
+        max_concurrent_queries=s.max_concurrent_queries,
+        _autoscaling_config=s.autoscaling_config,
+        _graceful_shutdown_wait_loop_s=s.graceful_shutdown_wait_loop_s,
+        _graceful_shutdown_timeout_s=s.graceful_shutdown_timeout_s,
+        _health_check_period_s=s.health_check_period_s,
+        _health_check_timeout_s=s.health_check_timeout_s,
+    )(s.import_path)
+
+
+def serve_application_to_schema(
+    deployments: List[Deployment],
+) -> ServeApplicationSchema:
+    schemas = [deployment_to_schema(d) for d in deployments]
+    return ServeApplicationSchema(deployments=schemas)
+
+
+def schema_to_serve_application(schema: ServeApplicationSchema) -> List[Deployment]:
+    return [schema_to_deployment(s) for s in schema.deployments]
+
+
+def status_info_to_schema(
+    deployment_name: str, status_info: Union[DeploymentStatusInfo, Dict]
+) -> DeploymentStatusSchema:
+    if isinstance(status_info, DeploymentStatusInfo):
+        return DeploymentStatusSchema(
+            name=deployment_name, status=status_info.status, message=status_info.message
+        )
+    elif isinstance(status_info, dict):
+        return DeploymentStatusSchema(
+            name=deployment_name,
+            status=status_info["status"],
+            message=status_info["message"],
+        )
+    else:
+        raise TypeError(
+            f"Got {type(status_info)} as status_info's "
+            "type. Expected status_info to be either a "
+            "DeploymentStatusInfo or a dictionary."
+        )
+
+
+def serve_application_status_to_schema(
+    status_infos: Dict[str, Union[DeploymentStatusInfo, Dict]]
+) -> ServeApplicationStatusSchema:
+    schemas = [
+        status_info_to_schema(deployment_name, status_info)
+        for deployment_name, status_info in status_infos.items()
+    ]
+    return ServeApplicationStatusSchema(statuses=schemas)
