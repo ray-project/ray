@@ -3,13 +3,14 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-
+import signal
 import pytest
 import requests
 
 import ray
 from ray import serve
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
+from ray._private.test_utils import wait_for_condition
 from ray.dashboard.optional_utils import RAY_INTERNAL_DASHBOARD_NAMESPACE
 
 
@@ -164,6 +165,8 @@ def test_deploy(ray_start_stop):
                 == deployment_config["response"]
             )
 
+    ray.shutdown()
+
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_info(ray_start_stop):
@@ -220,6 +223,89 @@ def test_info(ray_start_stop):
         "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
         in one_info["ray_actor_options"]["runtime_env"]["py_modules"]
     )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_status(ray_start_stop):
+    # Deploys a config file and checks its status
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "three_deployments.yaml"
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file_name])
+    status_response = subprocess.check_output(["serve", "status"])
+    statuses = json.loads(status_response)["statuses"]
+
+    expected_deployments = {"shallow", "deep", "one"}
+    for status in statuses:
+        expected_deployments.remove(status["name"])
+        assert status["status"] in {"HEALTHY", "UPDATING"}
+        assert "message" in status
+    assert len(expected_deployments) == 0
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_delete(ray_start_stop):
+    # Deploys a config file and deletes it
+
+    def get_num_deployments():
+        info_response = subprocess.check_output(["serve", "info"])
+        info = json.loads(info_response)
+        return len(info["deployments"])
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
+    )
+
+    # Check idempotence
+    for _ in range(2):
+        subprocess.check_output(["serve", "deploy", config_file_name])
+        wait_for_condition(lambda: get_num_deployments() == 2, timeout=35)
+
+        subprocess.check_output(["serve", "delete", "-y"])
+        wait_for_condition(lambda: get_num_deployments() == 0, timeout=35)
+
+
+def parrot(request):
+    return request.query_params["sound"]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run(ray_start_stop):
+    # Deploys valid config file and import path via serve run
+
+    def ping_endpoint(endpoint: str, params: str = ""):
+        try:
+            return requests.get(f"http://localhost:8000/{endpoint}{params}").text
+        except requests.exceptions.ConnectionError:
+            return "connection error"
+
+    # Deploy via config file
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
+    )
+
+    p = subprocess.Popen(["serve", "run", config_file_name])
+    wait_for_condition(lambda: ping_endpoint("one") == "2", timeout=10)
+    wait_for_condition(
+        lambda: ping_endpoint("shallow") == "Hello shallow world!", timeout=10
+    )
+
+    p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
+    p.wait()
+    assert ping_endpoint("one") == "connection error"
+    assert ping_endpoint("shallow") == "connection error"
+
+    # Deploy via import path
+    p = subprocess.Popen(["serve", "run", "ray.serve.tests.test_cli.parrot"])
+    wait_for_condition(
+        lambda: ping_endpoint("parrot", params="?sound=squawk") == "squawk", timeout=10
+    )
+
+    p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
+    p.wait()
+    assert ping_endpoint("parrot", params="?sound=squawk") == "connection error"
 
 
 if __name__ == "__main__":
