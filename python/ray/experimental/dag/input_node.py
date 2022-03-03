@@ -1,15 +1,37 @@
-from typing import Any, Dict, List
+from calendar import c
+from typing import Any, Callable, Dict, List, Optional
 
 from ray.experimental.dag import DAGNode
 from ray.experimental.dag.format_utils import get_dag_node_str
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 
+# Internal keys used to keep track of key fields throughout Ray DAG execution,
+# copy and replacement.
+INPUT_SCHEMA_KEY = "__input_schema__"
+OUTPUT_SCHEMA_KEY = "__output_schema__"
+ADAPTER_FN_KEY = "__adapter_fn__"
+
+#TODO (jiaodong): Better interface without depending on pydantic
+class InputSchema:
+    def __init__(self, validator: Callable):
+        self.validator = validator
+
+    def validate(self, input_data: Any):
+        self.validator(input_data)
+
+class OutputSchema:
+    def __init__(self, validator: Callable):
+        self.validator = validator
+
+    def validate(self, input_data: Any):
+        self.validator(input_data)
 
 class InputNode(DAGNode):
     """Ray dag node used in DAG building API to mark entrypoints of a DAG.
 
     Should only be function or class method. A DAG can have multiple
-    entrypoints.
+    entrypoints, but only one instance of InputNode exists per DAG, shared
+    among all DAGNodes.
 
     Ex:
                 A.forward
@@ -21,18 +43,51 @@ class InputNode(DAGNode):
     In this pipeline, each user input is broadcasted to both A.forward and
     B.forward as first stop of the DAG, and authored like
 
-    a = A.forward.bind(ray.dag.InputNode())
-    b = B.forward.bind(ray.dag.InputNode())
+    input = ray.dag.InputNode()
+    a = A.forward.bind(input)
+    b = B.forward.bind(input)
     dag = ensemble.bind(a, b)
 
     dag.execute(user_input) --> broadcast to a and b
     """
 
-    def __init__(self, *args, **kwargs):
-        # TODO: (jiaodong) Support better structured user input data
-        if len(args) != 0 or len(kwargs) != 0:
-            raise ValueError("InputNode should not take any args or kwargs.")
-        super().__init__([], {}, {}, {})
+    """
+    1) Binding value to InputNode ? No, just schema
+    """
+
+    def __init__(
+        self,
+        input_schema: Optional[InputSchema] = None,
+        output_schema: Optional[OutputSchema] = None,
+        adapter_fn: Optional[Callable] = None,
+        other_args_to_resolve: Optional[Dict[str, Any]] = None,
+    ):
+        self._input_schema = input_schema
+        self._output_schema = output_schema
+        self._adapter_fn = adapter_fn
+
+        super().__init__(
+            [],
+            {
+                INPUT_SCHEMA_KEY: input_schema,
+                OUTPUT_SCHEMA_KEY: output_schema,
+                ADAPTER_FN_KEY: adapter_fn,
+            },
+            {},
+            other_args_to_resolve=other_args_to_resolve
+        )
+
+    def _validate_input(self):
+        if self._input_schema:
+            self._input_schema.validate()
+        else:
+            pass
+
+    def _validate_output(self):
+        if self.output_schema:
+            self.output_schema.validate()
+        else:
+            pass
 
     def _copy_impl(
         self,
@@ -41,12 +96,22 @@ class InputNode(DAGNode):
         new_options: Dict[str, Any],
         new_other_args_to_resolve: Dict[str, Any],
     ):
-        return InputNode()
+        return InputNode(
+            self._body,
+            new_kwargs[INPUT_SCHEMA_KEY],
+            new_kwargs[OUTPUT_SCHEMA_KEY],
+            new_kwargs[ADAPTER_FN_KEY],
+            other_args_to_resolve=new_other_args_to_resolve,
+        )
 
-    def _execute_impl(self, *args):
+    def _execute_impl(self, data):
         """Executor of InputNode by ray.remote()"""
-        # TODO: (jiaodong) Extend this to take more complicated user inputs
-        return args[0]
+        # TODO: (jiaodong) Maybe a contenxt manager ?
+        self._validate_input(data)
+        converted_data = self._adapter_fn(data)
+        self._validate_output(converted_data)
+
+        return converted_data
 
     def __str__(self) -> str:
         return get_dag_node_str(self, "__InputNode__")
