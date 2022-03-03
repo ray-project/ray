@@ -45,12 +45,21 @@ You can experiment with this behavior by running the following code.
         except ray.exceptions.WorkerCrashedError:
             print('FAILURE')
 
-Ray will also retry tasks whose outputs were lost from the distributed object
-store. This can occur during node failures.  Ray will first automatically
-attempt to recover the value by looking for copies of the same object on other
-nodes. If none are found, then Ray will automatically recover the value by
-re-executing the task that created the value. Arguments to the task are
-recursively reconstructed with the same method.
+.. _object-reconstruction:
+
+Ray also implements *lineage reconstruction* to recover task outputs that are
+lost from the distributed object store. This can occur during node failures.
+Ray will first automatically attempt to recover the value by looking for copies
+of the same object on other nodes. If none are found, then Ray will
+automatically recover the value by re-executing the task that created the
+value. Arguments to the task are recursively reconstructed with the same
+method.
+
+Note that lineage reconstruction can cause higher than usual driver memory
+usage because the driver keeps the descriptions of any tasks that may be
+re-executed in case of a failure. To limit the amount of memory used by
+lineage, set the environment variable ``RAY_max_lineage_bytes`` (default 1GB)
+to evict lineage if the threshold is exceeded.
 
 To disable this behavior, set the environment variable
 ``RAY_lineage_pinning_enabled=0`` during ``ray start`` or ``ray.init``.  With
@@ -114,8 +123,6 @@ error with ``RayActorError``, a Python-level exception that is thrown when
 exception may be thrown even though the task did indeed execute successfully.
 For example, this can happen if the actor dies immediately after executing the
 task.
-
-.. _object-reconstruction:
 
 Ray also offers at-least-once execution semantics for actor tasks
 (``max_task_retries=-1`` or ``max_task_retries > 0``). This means that if an
