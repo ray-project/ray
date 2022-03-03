@@ -77,7 +77,7 @@ public class FailureTest extends BaseTest {
     public SlowActor() {
       try {
         // This is to slow down the restarting process and make the test case more stable.
-        TimeUnit.SECONDS.sleep(2);
+        TimeUnit.SECONDS.sleep(5);
       } catch (InterruptedException e) {
         throw new RuntimeException(e);
       }
@@ -177,7 +177,7 @@ public class FailureTest extends BaseTest {
               exceptionOccurred[0] = true;
             }
           },
-          500);
+          2000);
     }
 
     // The actor is still restarting. Send more tasks and all of them should fail quickly
