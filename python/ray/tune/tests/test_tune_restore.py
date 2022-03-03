@@ -490,7 +490,8 @@ class SearcherTest(unittest.TestCase):
 
 class WorkingDirectoryTest(unittest.TestCase):
     def testWorkingDir(self):
-        """Trainables should know the original working dir on driver through env variable."""
+        """Trainables should know the original working dir on driver through env
+        variable."""
         working_dir = os.getcwd()
 
         def f(config):
