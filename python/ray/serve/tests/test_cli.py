@@ -310,58 +310,12 @@ def test_run_basic(ray_start_stop):
 
 
 class Macaw:
-    def __init__(self, color, name="Mulligan"):
+    def __init__(self, color="green", name="Mulligan"):
         self.color = color
         self.name = name
 
     def __call__(self):
         return f"{self.name} is {self.color}!"
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_init_args_kwargs(ray_start_stop):
-    # Tests serve run with specified args and kwargs
-
-    # Deploy via import path
-    p = subprocess.Popen(
-        [
-            "serve",
-            "run",
-            "ray.serve.tests.test_cli.Macaw",
-            "--",
-            "green",
-            "--name",
-            "Molly",
-        ]
-    )
-    wait_for_condition(lambda: ping_endpoint("run") == "Molly is green!", timeout=10)
-    p.send_signal(signal.SIGINT)
-    p.wait()
-    ping_endpoint("run") == "connection error"
-
-    # Incorrect args/kwargs ordering
-    with pytest.raises(subprocess.CalledProcessError):
-        subprocess.check_output(
-            [
-                "serve",
-                "run",
-                "ray.serve.tests.test_cli.Macaw",
-                "--",
-                "--name",
-                "Molly",
-                "green",
-            ]
-        )
-
-    # Args/kwargs with config file
-    config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "macaw.yaml"
-    )
-
-    with pytest.raises(subprocess.CalledProcessError):
-        subprocess.check_output(
-            ["serve", "run", config_file_name, "--", "green", "--name", "Molly"]
-        )
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -376,13 +330,9 @@ def test_run_working_dir(ray_start_stop):
             "test_cli.Macaw",
             "--working_dir",
             os.path.dirname(__file__),
-            "--",
-            "green",
-            "--name",
-            "Molly",
         ]
     )
-    wait_for_condition(lambda: ping_endpoint("run") == "Molly is green!", timeout=10)
+    wait_for_condition(lambda: ping_endpoint("run") == "Mulligan is green!", timeout=10)
     p.send_signal(signal.SIGINT)
     p.wait()
 

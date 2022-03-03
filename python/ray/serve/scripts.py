@@ -7,7 +7,6 @@ import pathlib
 import requests
 import click
 import time
-from typing import Tuple, List, Dict
 
 import ray
 from ray.serve.api import Deployment, deploy_group, get_deployment_statuses
@@ -37,52 +36,6 @@ def log_failed_request(response: requests.models.Response, address: str):
     cli_logger.newline()
     cli_logger.error(error_message)
     cli_logger.newline()
-
-
-def process_args_and_kwargs(
-    args_and_kwargs: Tuple[str],
-) -> Tuple[List[str], Dict[str, str]]:
-    """
-    Takes in a Tuple of strings. Any string prepended with "--" is considered a
-    keyword and the string following it is considered its value. All other
-    strings are considered args. All args must come before kwargs.
-
-    For example:
-
-    ("argval1", "argval2", "--kwarg1", "kwval1", "--kwarg2", "kwval2",)
-
-    becomes
-
-    args = ["argval1", "argval2"]
-    kwargs = {"kwarg1": "kwval1", "kwarg2": "kwval2"}
-    """
-
-    args, kwargs = [], {}
-
-    token_idx = 0
-    while args_and_kwargs is not None and token_idx < len(args_and_kwargs):
-        token = args_and_kwargs[token_idx]
-        if token[:2] == "--":
-            if token_idx + 1 < len(args_and_kwargs):
-                kwargs[token[2:]] = args_and_kwargs[token_idx + 1]
-                token_idx += 2
-            else:
-                raise ValueError(
-                    f"Got no value for keyword {token[:2]}. All "
-                    "keyword arguments specified must have a value."
-                )
-        else:
-            if len(kwargs) > 0:
-                raise ValueError(
-                    f"Got argument {token} after some keyword "
-                    "arguments were already specified. All args "
-                    "must come before kwargs."
-                )
-            else:
-                args.append(token)
-                token_idx += 1
-
-    return args, kwargs
 
 
 def configure_working_dir(
@@ -253,7 +206,6 @@ def deploy(config_file_name: str, address: str):
     hidden=True,
 )
 @click.argument("config_or_import_path")
-@click.argument("args_and_kwargs", required=False, nargs=-1)
 @click.option(
     "--working_dir",
     "-w",
@@ -275,7 +227,6 @@ def deploy(config_file_name: str, address: str):
 )
 def run(
     config_or_import_path: str,
-    args_and_kwargs: Tuple[str],
     working_dir: str,
     address: str,
 ):
@@ -289,15 +240,8 @@ def run(
     try:
         # Check if path provided is for config or import
         is_config = pathlib.Path(config_or_import_path).is_file()
-        args, kwargs = process_args_and_kwargs(args_and_kwargs)
 
         if is_config:
-            if len(args) + len(kwargs) > 0:
-                raise ValueError(
-                    "ARGS_AND_KWARGS cannot be defined for a "
-                    "config file deployment. Please specify the "
-                    "init_args and init_kwargs inside the config file."
-                )
 
             cli_logger.print(
                 "Deploying application in config file at " f"{config_or_import_path}."
@@ -335,10 +279,7 @@ def run(
                 submission_client = SubmissionClient(address)
                 configure_working_dir(deployment, working_dir, submission_client)
 
-            deployment.options(
-                init_args=args,
-                init_kwargs=kwargs,
-            ).deploy()
+            deployment.deploy()
 
             cli_logger.newline()
             cli_logger.print(
