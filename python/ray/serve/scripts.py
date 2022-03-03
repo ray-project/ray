@@ -253,11 +253,12 @@ def run(config_or_import_path: str, address: str):
             cli_logger.newline()
 
         while True:
-            status_json = serve_application_status_to_schema(
+            statuses = serve_application_status_to_schema(
                 get_deployment_statuses()
-            ).json()
-            status_string = f"{json.dumps(json.loads(status_json), indent=4)}\n"
-            cli_logger.print(status_string.replace("{", "{{").replace("}", "}}"))
+            ).json(indent=4)
+            cli_logger.newline()
+            cli_logger.print(f"\n{statuses}", no_format=True)
+            cli_logger.newline()
             time.sleep(10)
 
     except KeyboardInterrupt:
