@@ -17,9 +17,8 @@
 namespace ray {
 namespace gcs {
 
-double LeastResourceScorer::Score(
-    const ResourceSet &required_resources,
-    const SchedulingResources &node_resources) {
+double LeastResourceScorer::Score(const ResourceSet &required_resources,
+                                  const SchedulingResources &node_resources) {
   // In GCS-based actor scheduling, the `resources_available_` (of class
   // `SchedulingResources`) is only acquired or released by actor scheduling, instead of
   // being updated by resource reports from raylets. So the 'actual' available resources
@@ -55,9 +54,8 @@ double LeastResourceScorer::Score(
   return node_score;
 }
 
-double LeastResourceScorer::Calculate(
-    const FixedPoint &requested,
-    const FixedPoint &available) {
+double LeastResourceScorer::Calculate(const FixedPoint &requested,
+                                      const FixedPoint &available) {
   RAY_CHECK(available >= 0) << "Available resource " << available.Double()
                             << " should be nonnegative.";
   if (requested > available) {
@@ -215,8 +213,7 @@ SchedulingResult GcsResourceScheduler::StrictPackSchedule(
   const auto &cluster_resource = gcs_resource_manager_.GetClusterResources();
 
   const auto &right_node_it = std::find_if(
-      cluster_resource.begin(),
-      cluster_resource.end(),
+      cluster_resource.begin(), cluster_resource.end(),
       [required_resources](const auto &node_resource) {
         return required_resources.IsSubset(node_resource.second->GetTotalResources());
       });
@@ -325,9 +322,8 @@ void GcsResourceScheduler::ReleaseTemporarilyDeductedResources(
   for (int index = 0; index < (int)nodes.size(); index++) {
     // If `PackSchedule` fails, the id of some nodes may be nil.
     if (!nodes[index].IsNil()) {
-      RAY_CHECK(gcs_resource_manager_.ReleaseResources(
-          nodes[index],
-          required_resources_list[index]));
+      RAY_CHECK(gcs_resource_manager_.ReleaseResources(nodes[index],
+                                                       required_resources_list[index]));
     }
   }
 }

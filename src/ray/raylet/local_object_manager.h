@@ -37,16 +37,10 @@ namespace raylet {
 class LocalObjectManager {
  public:
   LocalObjectManager(
-      const NodeID &node_id,
-      std::string self_node_address,
-      int self_node_port,
-      size_t free_objects_batch_size,
-      int64_t free_objects_period_ms,
-      IOWorkerPoolInterface &io_worker_pool,
-      rpc::CoreWorkerClientPool &owner_client_pool,
-      int max_io_workers,
-      int64_t min_spilling_size,
-      bool is_external_storage_type_fs,
+      const NodeID &node_id, std::string self_node_address, int self_node_port,
+      size_t free_objects_batch_size, int64_t free_objects_period_ms,
+      IOWorkerPoolInterface &io_worker_pool, rpc::CoreWorkerClientPool &owner_client_pool,
+      int max_io_workers, int64_t min_spilling_size, bool is_external_storage_type_fs,
       int64_t max_fused_object_count,
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
       std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable,
@@ -78,10 +72,9 @@ class LocalObjectManager {
   /// \param objects Pointers to the objects to be pinned. The pointer should
   /// be kept in scope until the object can be released.
   /// \param owner_address The owner of the objects to be pinned.
-  void PinObjectsAndWaitForFree(
-      const std::vector<ObjectID> &object_ids,
-      std::vector<std::unique_ptr<RayObject>> &&objects,
-      const rpc::Address &owner_address);
+  void PinObjectsAndWaitForFree(const std::vector<ObjectID> &object_ids,
+                                std::vector<std::unique_ptr<RayObject>> &&objects,
+                                const rpc::Address &owner_address);
 
   /// Spill objects as much as possible as fast as possible up to the max throughput.
   ///
@@ -93,9 +86,8 @@ class LocalObjectManager {
   /// \param objects_ids_to_spill The objects to be spilled.
   /// \param callback A callback to call once the objects have been spilled, or
   /// there is an error.
-  void SpillObjects(
-      const std::vector<ObjectID> &objects_ids,
-      std::function<void(const ray::Status &)> callback);
+  void SpillObjects(const std::vector<ObjectID> &objects_ids,
+                    std::function<void(const ray::Status &)> callback);
 
   /// Restore a spilled object from external storage back into local memory.
   /// Note: This is no-op if the same restoration request is in flight or the requested
@@ -106,10 +98,8 @@ class LocalObjectManager {
   /// \param object_url The URL where the object is spilled.
   /// \param callback A callback to call when the restoration is done.
   /// Status will contain the error during restoration, if any.
-  void AsyncRestoreSpilledObject(
-      const ObjectID &object_id,
-      const std::string &object_url,
-      std::function<void(const ray::Status &)> callback);
+  void AsyncRestoreSpilledObject(const ObjectID &object_id, const std::string &object_url,
+                                 std::function<void(const ray::Status &)> callback);
 
   /// Clear any freed objects. This will trigger the callback for freed
   /// objects.
@@ -156,9 +146,8 @@ class LocalObjectManager {
  private:
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSize);
   FRIEND_TEST(LocalObjectManagerTest, TestSpillUptoMaxFuseCount);
-  FRIEND_TEST(
-      LocalObjectManagerTest,
-      TestSpillObjectsOfSizeNumBytesToSpillHigherThanMinBytesToSpill);
+  FRIEND_TEST(LocalObjectManagerTest,
+              TestSpillObjectsOfSizeNumBytesToSpillHigherThanMinBytesToSpill);
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectNotEvictable);
 
   /// Asynchronously spill objects when space is needed.
@@ -171,9 +160,8 @@ class LocalObjectManager {
   bool SpillObjectsOfSize(int64_t num_bytes_to_spill);
 
   /// Internal helper method for spilling objects.
-  void SpillObjectsInternal(
-      const std::vector<ObjectID> &objects_ids,
-      std::function<void(const ray::Status &)> callback);
+  void SpillObjectsInternal(const std::vector<ObjectID> &objects_ids,
+                            std::function<void(const ray::Status &)> callback);
 
   /// Release an object that has been freed by its owner.
   void ReleaseFreedObject(const ObjectID &object_id);
@@ -183,9 +171,8 @@ class LocalObjectManager {
   /// 2. Update the spilled URL to the owner.
   /// 3. Update the spilled URL to the local directory if it doesn't
   ///    use the external storages like S3.
-  void OnObjectSpilled(
-      const std::vector<ObjectID> &object_ids,
-      const rpc::SpillObjectsReply &worker_reply);
+  void OnObjectSpilled(const std::vector<ObjectID> &object_ids,
+                       const rpc::SpillObjectsReply &worker_reply);
 
   /// Delete spilled objects stored in given urls.
   ///

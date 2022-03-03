@@ -22,8 +22,7 @@ GcsResourceReportPoller::GcsResourceReportPoller(
     std::function<void(const rpc::ResourcesData &)> handle_resource_report,
     std::function<int64_t(void)> get_current_time_milli,
     std::function<void(
-        const rpc::Address &,
-        std::shared_ptr<rpc::NodeManagerClientPool> &,
+        const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,
         std::function<void(const Status &, const rpc::RequestResourceReportReply &)>)>
         request_report)
     : ticker_(polling_service_),
@@ -53,8 +52,7 @@ void GcsResourceReportPoller::Start() {
                       "the cluster has stopped";
   }});
   ticker_.RunFnPeriodically(
-      [this] { TryPullResourceReport(); },
-      10,
+      [this] { TryPullResourceReport(); }, 10,
       "GcsResourceReportPoller.deadline_timer.pull_resource_report");
 }
 
@@ -77,11 +75,9 @@ void GcsResourceReportPoller::HandleNodeAdded(const rpc::GcsNodeInfo &node_info)
   address.set_ip_address(node_info.node_manager_address());
   address.set_port(node_info.node_manager_port());
 
-  auto state = std::make_shared<PullState>(
-      NodeID::FromBinary(node_info.node_id()),
-      std::move(address),
-      -1,
-      get_current_time_milli_());
+  auto state =
+      std::make_shared<PullState>(NodeID::FromBinary(node_info.node_id()),
+                                  std::move(address), -1, get_current_time_milli_());
 
   const auto &node_id = state->node_id;
 
@@ -91,9 +87,8 @@ void GcsResourceReportPoller::HandleNodeAdded(const rpc::GcsNodeInfo &node_info)
   to_pull_queue_.push_front(state);
   RAY_LOG(DEBUG) << "Node was added with id: " << node_id;
 
-  polling_service_.post(
-      [this]() { TryPullResourceReport(); },
-      "GcsResourceReportPoller.TryPullResourceReport");
+  polling_service_.post([this]() { TryPullResourceReport(); },
+                        "GcsResourceReportPoller.TryPullResourceReport");
 }
 
 void GcsResourceReportPoller::HandleNodeRemoved(const rpc::GcsNodeInfo &node_info) {
@@ -133,8 +128,7 @@ void GcsResourceReportPoller::PullResourceReport(const std::shared_ptr<PullState
   inflight_pulls_++;
 
   request_report_(
-      state->address,
-      raylet_client_pool_,
+      state->address, raylet_client_pool_,
       [this, state](const Status &status, const rpc::RequestResourceReportReply &reply) {
         if (status.ok()) {
           // TODO (Alex): This callback is always posted onto the main thread. Since most
@@ -145,9 +139,8 @@ void GcsResourceReportPoller::PullResourceReport(const std::shared_ptr<PullState
           RAY_LOG(INFO) << "Couldn't get resource request from raylet " << state->node_id
                         << ": " << status.ToString();
         }
-        polling_service_.post(
-            [this, state]() { NodeResourceReportReceived(state); },
-            "GcsResourceReportPoller.PullResourceReport");
+        polling_service_.post([this, state]() { NodeResourceReportReceived(state); },
+                              "GcsResourceReportPoller.PullResourceReport");
       });
 }
 
@@ -161,9 +154,8 @@ void GcsResourceReportPoller::NodeResourceReportReceived(
   state->next_pull_time = get_current_time_milli_() + poll_period_ms_;
   to_pull_queue_.push_back(state);
 
-  polling_service_.post(
-      [this] { TryPullResourceReport(); },
-      "GcsResourceReportPoller.TryPullResourceReport");
+  polling_service_.post([this] { TryPullResourceReport(); },
+                        "GcsResourceReportPoller.TryPullResourceReport");
 }
 
 }  // namespace gcs

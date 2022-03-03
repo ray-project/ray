@@ -110,12 +110,10 @@ TEST(RayApiTest, DuplicateRegister) {
   EXPECT_TRUE(r);
 
   /// Duplicate register
-  EXPECT_THROW(
-      FunctionManager::Instance().RegisterRemoteFunction("Return", Return),
-      ray::internal::RayException);
-  EXPECT_THROW(
-      FunctionManager::Instance().RegisterRemoteFunction("PlusOne", PlusOne),
-      ray::internal::RayException);
+  EXPECT_THROW(FunctionManager::Instance().RegisterRemoteFunction("Return", Return),
+               ray::internal::RayException);
+  EXPECT_THROW(FunctionManager::Instance().RegisterRemoteFunction("PlusOne", PlusOne),
+               ray::internal::RayException);
 }
 
 TEST(RayApiTest, NormalTask) {

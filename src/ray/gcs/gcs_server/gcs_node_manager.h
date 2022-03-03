@@ -39,34 +39,28 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   ///
   /// \param gcs_publisher GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
-  explicit GcsNodeManager(
-      std::shared_ptr<GcsPublisher> gcs_publisher,
-      std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-      std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
+  explicit GcsNodeManager(std::shared_ptr<GcsPublisher> gcs_publisher,
+                          std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+                          std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
 
   /// Handle register rpc request come from raylet.
-  void HandleRegisterNode(
-      const rpc::RegisterNodeRequest &request,
-      rpc::RegisterNodeReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
+  void HandleRegisterNode(const rpc::RegisterNodeRequest &request,
+                          rpc::RegisterNodeReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle unregister rpc request come from raylet.
-  void HandleDrainNode(
-      const rpc::DrainNodeRequest &request,
-      rpc::DrainNodeReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
+  void HandleDrainNode(const rpc::DrainNodeRequest &request, rpc::DrainNodeReply *reply,
+                       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle get all node info rpc request.
-  void HandleGetAllNodeInfo(
-      const rpc::GetAllNodeInfoRequest &request,
-      rpc::GetAllNodeInfoReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
+  void HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &request,
+                            rpc::GetAllNodeInfoReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle get internal config.
-  void HandleGetInternalConfig(
-      const rpc::GetInternalConfigRequest &request,
-      rpc::GetInternalConfigReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
+  void HandleGetInternalConfig(const rpc::GetInternalConfigRequest &request,
+                               rpc::GetInternalConfigReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
 
   void OnNodeFailure(const NodeID &node_id);
 
@@ -80,9 +74,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param node_id The ID of the node to be removed.
   /// \param is_intended False if this is triggered by `node_failure_detector_`, else
   /// True.
-  std::shared_ptr<rpc::GcsNodeInfo> RemoveNode(
-      const NodeID &node_id,
-      bool is_intended = false);
+  std::shared_ptr<rpc::GcsNodeInfo> RemoveNode(const NodeID &node_id,
+                                               bool is_intended = false);
 
   /// Get alive node by ID.
   ///

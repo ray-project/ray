@@ -80,9 +80,8 @@ std::string EndpointToUrl(
 #ifdef BOOST_ASIO_HAS_LOCAL_SOCKETS
   case AF_UNIX:
     scheme = "unix://";
-    result.append(
-        reinterpret_cast<const struct sockaddr_un *>(ep.data())->sun_path,
-        ep.size() - offsetof(sockaddr_un, sun_path));
+    result.append(reinterpret_cast<const struct sockaddr_un *>(ep.data())->sun_path,
+                  ep.size() - offsetof(sockaddr_un, sun_path));
     break;
 #endif
   default:
@@ -319,9 +318,8 @@ static std::string CreateWindowsCommandLine(const std::vector<std::string> &args
   return result;
 }
 
-std::string CreateCommandLine(
-    const std::vector<std::string> &args,
-    CommandLineSyntax kind) {
+std::string CreateCommandLine(const std::vector<std::string> &args,
+                              CommandLineSyntax kind) {
   if (kind == CommandLineSyntax::System) {
 #ifdef _WIN32
     kind = CommandLineSyntax::Windows;

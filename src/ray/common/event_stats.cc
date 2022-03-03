@@ -44,9 +44,8 @@ EventStats to_event_stats_view(std::shared_ptr<GuardedEventStats> stats) {
 /// A helper for converting a duration into a human readable string, such as "5.346 ms".
 std::string to_human_readable(double duration) {
   static const std::array<std::string, 4> to_unit{{"ns", "us", "ms", "s"}};
-  size_t idx = std::min(
-      to_unit.size() - 1,
-      static_cast<size_t>(std::log(duration) / std::log(1000)));
+  size_t idx = std::min(to_unit.size() - 1,
+                        static_cast<size_t>(std::log(duration) / std::log(1000)));
   double new_duration = duration / std::pow(1000, idx);
   std::stringstream result;
   result << std::fixed << std::setprecision(3) << new_duration << " " << to_unit[idx];
@@ -61,8 +60,7 @@ std::string to_human_readable(int64_t duration) {
 }  // namespace
 
 std::shared_ptr<StatsHandle> EventTracker::RecordStart(
-    const std::string &name,
-    int64_t expected_queueing_delay_ns) {
+    const std::string &name, int64_t expected_queueing_delay_ns) {
   auto stats = GetOrCreate(name);
   int64_t curr_count = 0;
   {
@@ -73,15 +71,12 @@ std::shared_ptr<StatsHandle> EventTracker::RecordStart(
   ray::stats::STATS_operation_count.Record(curr_count, name);
   ray::stats::STATS_operation_active_count.Record(curr_count, name);
   return std::make_shared<StatsHandle>(
-      name,
-      absl::GetCurrentTimeNanos() + expected_queueing_delay_ns,
-      std::move(stats),
+      name, absl::GetCurrentTimeNanos() + expected_queueing_delay_ns, std::move(stats),
       global_stats_);
 }
 
-void EventTracker::RecordExecution(
-    const std::function<void()> &fn,
-    std::shared_ptr<StatsHandle> handle) {
+void EventTracker::RecordExecution(const std::function<void()> &fn,
+                                   std::shared_ptr<StatsHandle> handle) {
   int64_t start_execution = absl::GetCurrentTimeNanos();
   // Update running count
   {
@@ -95,9 +90,8 @@ void EventTracker::RecordExecution(
   // Update execution time stats.
   const auto execution_time_ns = end_execution - start_execution;
   // Update event-specific stats.
-  ray::stats::STATS_operation_run_time_ms.Record(
-      execution_time_ns / 1000000,
-      handle->event_name);
+  ray::stats::STATS_operation_run_time_ms.Record(execution_time_ns / 1000000,
+                                                 handle->event_name);
   int64_t curr_count;
   {
     auto &stats = handle->handler_stats;
@@ -112,9 +106,8 @@ void EventTracker::RecordExecution(
   ray::stats::STATS_operation_active_count.Record(curr_count, handle->event_name);
   // Update global stats.
   const auto queue_time_ns = start_execution - handle->start_time;
-  ray::stats::STATS_operation_queue_time_ms.Record(
-      queue_time_ns / 1000000,
-      handle->event_name);
+  ray::stats::STATS_operation_queue_time_ms.Record(queue_time_ns / 1000000,
+                                                   handle->event_name);
   {
     auto global_stats = handle->global_stats;
     absl::MutexLock lock(&(global_stats->mutex));
@@ -172,13 +165,11 @@ std::vector<std::pair<std::string, EventStats>> EventTracker::get_event_stats() 
   absl::ReaderMutexLock lock(&mutex_);
   std::vector<std::pair<std::string, EventStats>> stats;
   stats.reserve(post_handler_stats_.size());
-  std::transform(
-      post_handler_stats_.begin(),
-      post_handler_stats_.end(),
-      std::back_inserter(stats),
-      [](const std::pair<std::string, std::shared_ptr<GuardedEventStats>> &p) {
-        return std::make_pair(p.first, to_event_stats_view(p.second));
-      });
+  std::transform(post_handler_stats_.begin(), post_handler_stats_.end(),
+                 std::back_inserter(stats),
+                 [](const std::pair<std::string, std::shared_ptr<GuardedEventStats>> &p) {
+                   return std::make_pair(p.first, to_event_stats_view(p.second));
+                 });
   return stats;
 }
 
@@ -190,13 +181,11 @@ std::string EventTracker::StatsString() const {
   }
   auto stats = get_event_stats();
   // Sort stats by cumulative count, outside of the table lock.
-  sort(
-      stats.begin(),
-      stats.end(),
-      [](const std::pair<std::string, EventStats> &a,
-         const std::pair<std::string, EventStats> &b) {
-        return a.second.cum_count > b.second.cum_count;
-      });
+  sort(stats.begin(), stats.end(),
+       [](const std::pair<std::string, EventStats> &a,
+          const std::pair<std::string, EventStats> &b) {
+         return a.second.cum_count > b.second.cum_count;
+       });
   int64_t cum_count = 0;
   int64_t curr_count = 0;
   int64_t cum_execution_time = 0;
@@ -211,9 +200,8 @@ std::string EventTracker::StatsString() const {
       event_stats_stream << ", " << entry.second.running_count << " running";
     }
     event_stats_stream << "), CPU time: mean = "
-                       << to_human_readable(
-                              entry.second.cum_execution_time /
-                              static_cast<double>(entry.second.cum_count))
+                       << to_human_readable(entry.second.cum_execution_time /
+                                            static_cast<double>(entry.second.cum_count))
                        << ", total = "
                        << to_human_readable(entry.second.cum_execution_time);
   }
@@ -222,8 +210,8 @@ std::string EventTracker::StatsString() const {
   stats_stream << "\nGlobal stats: " << cum_count << " total (" << curr_count
                << " active)";
   stats_stream << "\nQueueing time: mean = "
-               << to_human_readable(
-                      global_stats.cum_queue_time / static_cast<double>(cum_count))
+               << to_human_readable(global_stats.cum_queue_time /
+                                    static_cast<double>(cum_count))
                << ", max = " << to_human_readable(global_stats.max_queue_time)
                << ", min = " << to_human_readable(global_stats.min_queue_time)
                << ", total = " << to_human_readable(global_stats.cum_queue_time);

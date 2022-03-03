@@ -27,11 +27,10 @@ namespace gcs {
 /// This implementation class of `JobInfoHandler`.
 class GcsJobManager : public rpc::JobInfoHandler {
  public:
-  explicit GcsJobManager(
-      std::shared_ptr<GcsTableStorage> gcs_table_storage,
-      std::shared_ptr<GcsPublisher> gcs_publisher,
-      RuntimeEnvManager &runtime_env_manager,
-      GcsFunctionManager &function_manager)
+  explicit GcsJobManager(std::shared_ptr<GcsTableStorage> gcs_table_storage,
+                         std::shared_ptr<GcsPublisher> gcs_publisher,
+                         RuntimeEnvManager &runtime_env_manager,
+                         GcsFunctionManager &function_manager)
       : gcs_table_storage_(std::move(gcs_table_storage)),
         gcs_publisher_(std::move(gcs_publisher)),
         runtime_env_manager_(runtime_env_manager),
@@ -39,30 +38,24 @@ class GcsJobManager : public rpc::JobInfoHandler {
 
   void Initialize(const GcsInitData &gcs_init_data);
 
-  void HandleAddJob(
-      const rpc::AddJobRequest &request,
-      rpc::AddJobReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
+  void HandleAddJob(const rpc::AddJobRequest &request, rpc::AddJobReply *reply,
+                    rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleMarkJobFinished(
-      const rpc::MarkJobFinishedRequest &request,
-      rpc::MarkJobFinishedReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
+  void HandleMarkJobFinished(const rpc::MarkJobFinishedRequest &request,
+                             rpc::MarkJobFinishedReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleGetAllJobInfo(
-      const rpc::GetAllJobInfoRequest &request,
-      rpc::GetAllJobInfoReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
+  void HandleGetAllJobInfo(const rpc::GetAllJobInfoRequest &request,
+                           rpc::GetAllJobInfoReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleReportJobError(
-      const rpc::ReportJobErrorRequest &request,
-      rpc::ReportJobErrorReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
+  void HandleReportJobError(const rpc::ReportJobErrorRequest &request,
+                            rpc::ReportJobErrorReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleGetNextJobID(
-      const rpc::GetNextJobIDRequest &request,
-      rpc::GetNextJobIDReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
+  void HandleGetNextJobID(const rpc::GetNextJobIDRequest &request,
+                          rpc::GetNextJobIDReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
 
   void AddJobFinishedListener(
       std::function<void(std::shared_ptr<JobID>)> listener) override;
@@ -83,9 +76,8 @@ class GcsJobManager : public rpc::JobInfoHandler {
   GcsFunctionManager &function_manager_;
   void ClearJobInfos(const JobID &job_id);
 
-  void MarkJobAsFinished(
-      rpc::JobTableData job_table_data,
-      std::function<void(Status)> done_callback);
+  void MarkJobAsFinished(rpc::JobTableData job_table_data,
+                         std::function<void(Status)> done_callback);
 };
 
 }  // namespace gcs

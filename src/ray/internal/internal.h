@@ -30,11 +30,9 @@ using ray::core::RayFunction;
 /// \param[in] function the function descriptor of peer's function.
 /// \param[in] return_num return value number of the call.
 /// \param[out] return_ids return ids from SubmitActorTask.
-std::vector<rpc::ObjectReference> SendInternal(
-    const ActorID &peer_actor_id,
-    std::shared_ptr<LocalMemoryBuffer> buffer,
-    RayFunction &function,
-    int return_num);
+std::vector<rpc::ObjectReference> SendInternal(const ActorID &peer_actor_id,
+                                               std::shared_ptr<LocalMemoryBuffer> buffer,
+                                               RayFunction &function, int return_num);
 
 const stats::TagKeyType TagRegister(const std::string tag_name);
 }  // namespace internal

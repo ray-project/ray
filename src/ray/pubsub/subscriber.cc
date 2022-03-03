@@ -23,8 +23,7 @@ namespace pubsub {
 ///////////////////////////////////////////////////////////////////////////////
 
 bool SubscriberChannel::Subscribe(
-    const rpc::Address &publisher_address,
-    const std::optional<std::string> &key_id,
+    const rpc::Address &publisher_address, const std::optional<std::string> &key_id,
     SubscriptionItemCallback subscription_callback,
     SubscriptionFailureCallback subscription_failure_callback) {
   cum_subscribe_requests_++;
@@ -33,11 +32,8 @@ bool SubscriberChannel::Subscribe(
   if (key_id) {
     return subscription_map_[publisher_id]
         .per_entity_subscription
-        .try_emplace(
-            *key_id,
-            std::make_pair(
-                std::move(subscription_callback),
-                std::move(subscription_failure_callback)))
+        .try_emplace(*key_id, std::make_pair(std::move(subscription_callback),
+                                             std::move(subscription_failure_callback)))
         .second;
   }
   auto &all_entities_subscription =
@@ -47,14 +43,12 @@ bool SubscriberChannel::Subscribe(
   }
   all_entities_subscription =
       std::make_unique<std::pair<SubscriptionItemCallback, SubscriptionFailureCallback>>(
-          std::move(subscription_callback),
-          std::move(subscription_failure_callback));
+          std::move(subscription_callback), std::move(subscription_failure_callback));
   return true;
 }
 
-bool SubscriberChannel::Unsubscribe(
-    const rpc::Address &publisher_address,
-    const std::optional<std::string> &key_id) {
+bool SubscriberChannel::Unsubscribe(const rpc::Address &publisher_address,
+                                    const std::optional<std::string> &key_id) {
   cum_unsubscribe_requests_++;
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
 
@@ -89,9 +83,8 @@ bool SubscriberChannel::Unsubscribe(
   return true;
 }
 
-bool SubscriberChannel::IsSubscribed(
-    const rpc::Address &publisher_address,
-    const std::string &key_id) const {
+bool SubscriberChannel::IsSubscribed(const rpc::Address &publisher_address,
+                                     const std::string &key_id) const {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   auto subscription_it = subscription_map_.find(publisher_id);
   if (subscription_it == subscription_map_.end()) {
@@ -118,9 +111,8 @@ bool SubscriberChannel::CheckNoLeaks() const {
   return subscription_map_.size() == 0;
 }
 
-void SubscriberChannel::HandlePublishedMessage(
-    const rpc::Address &publisher_address,
-    const rpc::PubMessage &pub_message) const {
+void SubscriberChannel::HandlePublishedMessage(const rpc::Address &publisher_address,
+                                               const rpc::PubMessage &pub_message) const {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   auto subscription_it = subscription_map_.find(publisher_id);
   // If there's no more subscription, do nothing.
@@ -150,9 +142,8 @@ void SubscriberChannel::HandlePublishedMessage(
       "Subscriber.HandlePublishedMessage_" + channel_name);
 }
 
-void SubscriberChannel::HandlePublisherFailure(
-    const rpc::Address &publisher_address,
-    const Status &status) {
+void SubscriberChannel::HandlePublisherFailure(const rpc::Address &publisher_address,
+                                               const Status &status) {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   const auto &subscription_it = subscription_map_.find(publisher_id);
   // If there's no more subscription, do nothing.
@@ -180,9 +171,8 @@ void SubscriberChannel::HandlePublisherFailure(
   }
 }
 
-void SubscriberChannel::HandlePublisherFailure(
-    const rpc::Address &publisher_address,
-    const std::string &key_id) {
+void SubscriberChannel::HandlePublisherFailure(const rpc::Address &publisher_address,
+                                               const std::string &key_id) {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   const auto &subscription_it = subscription_map_.find(publisher_id);
   // If there's no more subscription, do nothing.
@@ -198,18 +188,15 @@ void SubscriberChannel::HandlePublisherFailure(
 }
 
 bool SubscriberChannel::HandlePublisherFailureInternal(
-    const rpc::Address &publisher_address,
-    const std::string &key_id,
+    const rpc::Address &publisher_address, const std::string &key_id,
     const Status &status) {
   auto maybe_failure_callback = GetFailureCallback(publisher_address, key_id);
   if (maybe_failure_callback.has_value()) {
     const auto &channel_name =
         rpc::ChannelType_descriptor()->FindValueByNumber(channel_type_)->name();
-    callback_service_->post(
-        [failure_callback = std::move(maybe_failure_callback.value()), key_id, status]() {
-          failure_callback(key_id, status);
-        },
-        "Subscriber.HandleFailureCallback_" + channel_name);
+    callback_service_->post([failure_callback = std::move(maybe_failure_callback.value()),
+                             key_id, status]() { failure_callback(key_id, status); },
+                            "Subscriber.HandleFailureCallback_" + channel_name);
     return true;
   }
   return false;
@@ -236,45 +223,33 @@ Subscriber::~Subscriber() {
   // TODO(mwtian): flush Subscriber and ensure there is no leak during destruction.
 }
 
-bool Subscriber::Subscribe(
-    std::unique_ptr<rpc::SubMessage> sub_message,
-    const rpc::ChannelType channel_type,
-    const rpc::Address &publisher_address,
-    const std::string &key_id,
-    SubscribeDoneCallback subscribe_done_callback,
-    SubscriptionItemCallback subscription_callback,
-    SubscriptionFailureCallback subscription_failure_callback) {
-  return SubscribeInternal(
-      std::move(sub_message),
-      channel_type,
-      publisher_address,
-      key_id,
-      std::move(subscribe_done_callback),
-      std::move(subscription_callback),
-      std::move(subscription_failure_callback));
+bool Subscriber::Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
+                           const rpc::ChannelType channel_type,
+                           const rpc::Address &publisher_address,
+                           const std::string &key_id,
+                           SubscribeDoneCallback subscribe_done_callback,
+                           SubscriptionItemCallback subscription_callback,
+                           SubscriptionFailureCallback subscription_failure_callback) {
+  return SubscribeInternal(std::move(sub_message), channel_type, publisher_address,
+                           key_id, std::move(subscribe_done_callback),
+                           std::move(subscription_callback),
+                           std::move(subscription_failure_callback));
 }
 
 bool Subscriber::SubscribeChannel(
-    std::unique_ptr<rpc::SubMessage> sub_message,
-    const rpc::ChannelType channel_type,
-    const rpc::Address &publisher_address,
-    SubscribeDoneCallback subscribe_done_callback,
+    std::unique_ptr<rpc::SubMessage> sub_message, const rpc::ChannelType channel_type,
+    const rpc::Address &publisher_address, SubscribeDoneCallback subscribe_done_callback,
     SubscriptionItemCallback subscription_callback,
     SubscriptionFailureCallback subscription_failure_callback) {
-  return SubscribeInternal(
-      std::move(sub_message),
-      channel_type,
-      publisher_address,
-      std::nullopt,
-      std::move(subscribe_done_callback),
-      std::move(subscription_callback),
-      std::move(subscription_failure_callback));
+  return SubscribeInternal(std::move(sub_message), channel_type, publisher_address,
+                           std::nullopt, std::move(subscribe_done_callback),
+                           std::move(subscription_callback),
+                           std::move(subscription_failure_callback));
 }
 
-bool Subscriber::Unsubscribe(
-    const rpc::ChannelType channel_type,
-    const rpc::Address &publisher_address,
-    const std::string &key_id) {
+bool Subscriber::Unsubscribe(const rpc::ChannelType channel_type,
+                             const rpc::Address &publisher_address,
+                             const std::string &key_id) {
   // Batch the unsubscribe command.
   auto command = std::make_unique<CommandItem>();
   command->cmd.set_channel_type(channel_type);
@@ -289,9 +264,8 @@ bool Subscriber::Unsubscribe(
   return Channel(channel_type)->Unsubscribe(publisher_address, key_id);
 }
 
-bool Subscriber::UnsubscribeChannel(
-    const rpc::ChannelType channel_type,
-    const rpc::Address &publisher_address) {
+bool Subscriber::UnsubscribeChannel(const rpc::ChannelType channel_type,
+                                    const rpc::Address &publisher_address) {
   // Batch the unsubscribe command.
   auto command = std::make_unique<CommandItem>();
   command->cmd.set_channel_type(channel_type);
@@ -305,10 +279,9 @@ bool Subscriber::UnsubscribeChannel(
   return Channel(channel_type)->Unsubscribe(publisher_address, std::nullopt);
 }
 
-bool Subscriber::IsSubscribed(
-    const rpc::ChannelType channel_type,
-    const rpc::Address &publisher_address,
-    const std::string &key_id) const {
+bool Subscriber::IsSubscribed(const rpc::ChannelType channel_type,
+                              const rpc::Address &publisher_address,
+                              const std::string &key_id) const {
   absl::MutexLock lock(&mutex_);
   auto *channel = Channel(channel_type);
   if (channel == nullptr) {
@@ -318,10 +291,8 @@ bool Subscriber::IsSubscribed(
 }
 
 bool Subscriber::SubscribeInternal(
-    std::unique_ptr<rpc::SubMessage> sub_message,
-    const rpc::ChannelType channel_type,
-    const rpc::Address &publisher_address,
-    const std::optional<std::string> &key_id,
+    std::unique_ptr<rpc::SubMessage> sub_message, const rpc::ChannelType channel_type,
+    const rpc::Address &publisher_address, const std::optional<std::string> &key_id,
     SubscribeDoneCallback subscribe_done_callback,
     SubscriptionItemCallback subscription_callback,
     SubscriptionFailureCallback subscription_failure_callback) {
@@ -342,11 +313,8 @@ bool Subscriber::SubscribeInternal(
   SendCommandBatchIfPossible(publisher_address);
   MakeLongPollingConnectionIfNotConnected(publisher_address);
   return Channel(channel_type)
-      ->Subscribe(
-          publisher_address,
-          key_id,
-          std::move(subscription_callback),
-          std::move(subscription_failure_callback));
+      ->Subscribe(publisher_address, key_id, std::move(subscription_callback),
+                  std::move(subscription_failure_callback));
 }
 
 void Subscriber::MakeLongPollingConnectionIfNotConnected(
@@ -374,10 +342,9 @@ void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_a
       });
 }
 
-void Subscriber::HandleLongPollingResponse(
-    const rpc::Address &publisher_address,
-    const Status &status,
-    const rpc::PubsubLongPollingReply &reply) {
+void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address,
+                                           const Status &status,
+                                           const rpc::PubsubLongPollingReply &reply) {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   RAY_LOG(DEBUG) << "Long polling request has replied from " << publisher_id;
   RAY_CHECK(publishers_connected_.count(publisher_id));
@@ -459,8 +426,7 @@ void Subscriber::SendCommandBatchIfPossible(const rpc::Address &publisher_addres
     subscriber_client->PubsubCommandBatch(
         command_batch_request,
         [this, publisher_address, publisher_id, done_cb = std::move(done_cb)](
-            Status status,
-            const rpc::PubsubCommandBatchReply &reply) {
+            Status status, const rpc::PubsubCommandBatchReply &reply) {
           {
             absl::MutexLock lock(&mutex_);
             auto command_batch_sent_it = command_batch_sent_.find(publisher_id);

@@ -26,19 +26,16 @@ namespace gcs {
 /// de-registering subscribers.
 class InternalPubSubHandler : public rpc::InternalPubSubHandler {
  public:
-  InternalPubSubHandler(
-      instrumented_io_context &io_service,
-      const std::shared_ptr<gcs::GcsPublisher> &gcs_publisher);
+  InternalPubSubHandler(instrumented_io_context &io_service,
+                        const std::shared_ptr<gcs::GcsPublisher> &gcs_publisher);
 
-  void HandleGcsPublish(
-      const rpc::GcsPublishRequest &request,
-      rpc::GcsPublishReply *reply,
-      rpc::SendReplyCallback send_reply_callback) final;
+  void HandleGcsPublish(const rpc::GcsPublishRequest &request,
+                        rpc::GcsPublishReply *reply,
+                        rpc::SendReplyCallback send_reply_callback) final;
 
-  void HandleGcsSubscriberPoll(
-      const rpc::GcsSubscriberPollRequest &request,
-      rpc::GcsSubscriberPollReply *reply,
-      rpc::SendReplyCallback send_reply_callback) final;
+  void HandleGcsSubscriberPoll(const rpc::GcsSubscriberPollRequest &request,
+                               rpc::GcsSubscriberPollReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) final;
 
   void HandleGcsSubscriberCommandBatch(
       const rpc::GcsSubscriberCommandBatchRequest &request,

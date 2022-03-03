@@ -23,11 +23,10 @@ GrpcBasedResourceBroadcaster::GrpcBasedResourceBroadcaster(
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
     std::function<void(rpc::ResourceUsageBroadcastData &)>
         get_resource_usage_batch_for_broadcast,
-    std::function<void(
-        const rpc::Address &,
-        std::shared_ptr<rpc::NodeManagerClientPool> &,
-        std::string &,
-        const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &)> send_batch
+    std::function<void(const rpc::Address &,
+                       std::shared_ptr<rpc::NodeManagerClientPool> &, std::string &,
+                       const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &)>
+        send_batch
 
     )
     : seq_no_(absl::GetCurrentTimeNanos()),
@@ -57,8 +56,7 @@ void GrpcBasedResourceBroadcaster::Start() {
            "the cluster has stopped";
   }});
   ticker_.RunFnPeriodically(
-      [this] { SendBroadcast(); },
-      broadcast_period_ms_,
+      [this] { SendBroadcast(); }, broadcast_period_ms_,
       "GrpcBasedResourceBroadcaster.deadline_timer.pull_resource_report");
 }
 
@@ -122,12 +120,12 @@ void GrpcBasedResourceBroadcaster::SendBroadcast() {
   for (const auto &pair : nodes_) {
     const auto &address = pair.second;
     double start_time = absl::GetCurrentTimeNanos();
-    auto callback =
-        [start_time](const Status &status, const rpc::UpdateResourceUsageReply &reply) {
-          double end_time = absl::GetCurrentTimeNanos();
-          double lapsed_time_ms = static_cast<double>(end_time - start_time) / 1e6;
-          ray::stats::GcsUpdateResourceUsageTime.Record(lapsed_time_ms);
-        };
+    auto callback = [start_time](const Status &status,
+                                 const rpc::UpdateResourceUsageReply &reply) {
+      double end_time = absl::GetCurrentTimeNanos();
+      double lapsed_time_ms = static_cast<double>(end_time - start_time) / 1e6;
+      ray::stats::GcsUpdateResourceUsageTime.Record(lapsed_time_ms);
+    };
     send_batch_(address, raylet_client_pool_, serialized_batch, callback);
   }
 }

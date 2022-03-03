@@ -47,9 +47,8 @@ class DelayManager {
   int64_t GetMethodDelay(const std::string &name) const {
     auto it = delay_.find(name);
     if (it == delay_.end()) {
-      return GenRandomDelay(
-          default_delay_range_us_.first,
-          default_delay_range_us_.second);
+      return GenRandomDelay(default_delay_range_us_.first,
+                            default_delay_range_us_.second);
     }
     int64_t actual_delay = GenRandomDelay(it->second.first, it->second.second);
     if (actual_delay != 0) {

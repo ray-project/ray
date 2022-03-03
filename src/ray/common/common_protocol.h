@@ -28,9 +28,8 @@
 /// @param id The ID to be converted.
 /// @return The flatbuffer string containing the ID.
 template <typename ID>
-flatbuffers::Offset<flatbuffers::String> to_flatbuf(
-    flatbuffers::FlatBufferBuilder &fbb,
-    ID id);
+flatbuffers::Offset<flatbuffers::String> to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
+                                                    ID id);
 
 /// Convert a flatbuffer string to an unique ID.
 ///
@@ -71,8 +70,7 @@ const std::vector<ID> ids_from_flatbuf(const flatbuffers::String &string);
 /// @return Flatbuffer string of concatenated IDs.
 template <typename ID>
 flatbuffers::Offset<flatbuffers::String> ids_to_flatbuf(
-    flatbuffers::FlatBufferBuilder &fbb,
-    const std::vector<ID> &ids);
+    flatbuffers::FlatBufferBuilder &fbb, const std::vector<ID> &ids);
 
 /// Convert an array of unique IDs to a flatbuffer vector of strings.
 ///
@@ -113,14 +111,12 @@ std::vector<std::string> string_vec_from_flatbuf(
     const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &flatbuf_vec);
 
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
-string_vec_to_flatbuf(
-    flatbuffers::FlatBufferBuilder &fbb,
-    const std::vector<std::string> &string_vector);
+string_vec_to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
+                      const std::vector<std::string> &string_vector);
 
 template <typename ID>
-flatbuffers::Offset<flatbuffers::String> to_flatbuf(
-    flatbuffers::FlatBufferBuilder &fbb,
-    ID id) {
+flatbuffers::Offset<flatbuffers::String> to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
+                                                    ID id) {
   return fbb.CreateString(reinterpret_cast<const char *>(id.Data()), id.Size());
 }
 
@@ -168,8 +164,7 @@ const std::vector<ID> ids_from_flatbuf(const flatbuffers::String &string) {
 
 template <typename ID>
 flatbuffers::Offset<flatbuffers::String> ids_to_flatbuf(
-    flatbuffers::FlatBufferBuilder &fbb,
-    const std::vector<ID> &ids) {
+    flatbuffers::FlatBufferBuilder &fbb, const std::vector<ID> &ids) {
   std::string result;
   for (const auto &id : ids) {
     result += id.Binary();
@@ -209,8 +204,7 @@ to_flatbuf(flatbuffers::FlatBufferBuilder &fbb, const std::unordered_set<ID> &id
 }
 
 static inline ray::rpc::ObjectReference ObjectIdToRef(
-    const ray::ObjectID &object_id,
-    const ray::rpc::Address owner_address) {
+    const ray::ObjectID &object_id, const ray::rpc::Address owner_address) {
   ray::rpc::ObjectReference ref;
   ref.set_object_id(object_id.Binary());
   ref.mutable_owner_address()->CopyFrom(owner_address);

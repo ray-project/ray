@@ -19,27 +19,21 @@
 namespace ray {
 namespace core {
 
-ActorID ActorManager::RegisterActorHandle(
-    std::unique_ptr<ActorHandle> actor_handle,
-    const ObjectID &outer_object_id,
-    const std::string &call_site,
-    const rpc::Address &caller_address,
-    bool is_self) {
+ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_handle,
+                                          const ObjectID &outer_object_id,
+                                          const std::string &call_site,
+                                          const rpc::Address &caller_address,
+                                          bool is_self) {
   const ActorID actor_id = actor_handle->GetActorID();
   const rpc::Address owner_address = actor_handle->GetOwnerAddress();
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
 
   // Note we need set `cached_actor_name` to empty string as we only cache named actors
   // when getting them from GCS.
-  RAY_UNUSED(AddActorHandle(
-      std::move(actor_handle),
-      /*cached_actor_name=*/"",
-      /*is_owner_handle=*/false,
-      call_site,
-      caller_address,
-      actor_id,
-      actor_creation_return_id,
-      is_self));
+  RAY_UNUSED(AddActorHandle(std::move(actor_handle),
+                            /*cached_actor_name=*/"",
+                            /*is_owner_handle=*/false, call_site, caller_address,
+                            actor_id, actor_creation_return_id, is_self));
   ObjectID actor_handle_id = ObjectID::ForActorHandle(actor_id);
   reference_counter_->AddBorrowedObject(actor_handle_id, outer_object_id, owner_address);
   return actor_id;
@@ -55,10 +49,8 @@ std::shared_ptr<ActorHandle> ActorManager::GetActorHandle(const ActorID &actor_i
 }
 
 std::pair<std::shared_ptr<const ActorHandle>, Status> ActorManager::GetNamedActorHandle(
-    const std::string &name,
-    const std::string &ray_namespace,
-    const std::string &call_site,
-    const rpc::Address &caller_address) {
+    const std::string &name, const std::string &ray_namespace,
+    const std::string &call_site, const rpc::Address &caller_address) {
   ActorID actor_id = GetCachedNamedActorID(GenerateCachedActorName(ray_namespace, name));
   if (actor_id.IsNil()) {
     // This call needs to be blocking because we can't return until the actor
@@ -71,12 +63,10 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> ActorManager::GetNamedActo
     if (status.ok()) {
       auto actor_handle = std::make_unique<ActorHandle>(result);
       actor_id = actor_handle->GetActorID();
-      AddNewActorHandle(
-          std::move(actor_handle),
-          GenerateCachedActorName(result.ray_namespace(), result.name()),
-          call_site,
-          caller_address,
-          /*is_detached*/ true);
+      AddNewActorHandle(std::move(actor_handle),
+                        GenerateCachedActorName(result.ray_namespace(), result.name()),
+                        call_site, caller_address,
+                        /*is_detached*/ true);
     } else {
       // Use a NIL actor ID to signal that the actor wasn't found.
       RAY_LOG(DEBUG) << "Failed to look up actor with name: " << name;
@@ -113,65 +103,48 @@ bool ActorManager::CheckActorHandleExists(const ActorID &actor_id) {
   return actor_handles_.find(actor_id) != actor_handles_.end();
 }
 
-bool ActorManager::AddNewActorHandle(
-    std::unique_ptr<ActorHandle> actor_handle,
-    const std::string &cached_actor_name,
-    const std::string &call_site,
-    const rpc::Address &caller_address,
-    bool is_detached) {
+bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
+                                     const std::string &cached_actor_name,
+                                     const std::string &call_site,
+                                     const rpc::Address &caller_address,
+                                     bool is_detached) {
   const auto &actor_id = actor_handle->GetActorID();
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
   // Detached actor doesn't need ref counting.
   if (!is_detached) {
     // We don't need to add an initial local ref here because it will get added
     // in AddActorHandle.
-    reference_counter_->AddOwnedObject(
-        actor_creation_return_id,
-        /*inner_ids=*/{},
-        caller_address,
-        call_site,
-        /*object_size*/ -1,
-        /*is_reconstructable=*/true,
-        /*add_local_ref=*/false);
+    reference_counter_->AddOwnedObject(actor_creation_return_id,
+                                       /*inner_ids=*/{}, caller_address, call_site,
+                                       /*object_size*/ -1,
+                                       /*is_reconstructable=*/true,
+                                       /*add_local_ref=*/false);
   }
 
-  return AddActorHandle(
-      std::move(actor_handle),
-      cached_actor_name,
-      /*is_owner_handle=*/!is_detached,
-      call_site,
-      caller_address,
-      actor_id,
-      actor_creation_return_id);
+  return AddActorHandle(std::move(actor_handle), cached_actor_name,
+                        /*is_owner_handle=*/!is_detached, call_site, caller_address,
+                        actor_id, actor_creation_return_id);
 }
 
-bool ActorManager::AddNewActorHandle(
-    std::unique_ptr<ActorHandle> actor_handle,
-    const std::string &call_site,
-    const rpc::Address &caller_address,
-    bool is_detached) {
-  return AddNewActorHandle(
-      std::move(actor_handle),
-      /*cached_actor_name=*/"",
-      call_site,
-      caller_address,
-      is_detached);
+bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
+                                     const std::string &call_site,
+                                     const rpc::Address &caller_address,
+                                     bool is_detached) {
+  return AddNewActorHandle(std::move(actor_handle),
+                           /*cached_actor_name=*/"", call_site, caller_address,
+                           is_detached);
 }
 
-bool ActorManager::AddActorHandle(
-    std::unique_ptr<ActorHandle> actor_handle,
-    const std::string &cached_actor_name,
-    bool is_owner_handle,
-    const std::string &call_site,
-    const rpc::Address &caller_address,
-    const ActorID &actor_id,
-    const ObjectID &actor_creation_return_id,
-    bool is_self) {
+bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
+                                  const std::string &cached_actor_name,
+                                  bool is_owner_handle, const std::string &call_site,
+                                  const rpc::Address &caller_address,
+                                  const ActorID &actor_id,
+                                  const ObjectID &actor_creation_return_id,
+                                  bool is_self) {
   reference_counter_->AddLocalReference(actor_creation_return_id, call_site);
   direct_actor_submitter_->AddActorQueueIfNotExists(
-      actor_id,
-      actor_handle->MaxPendingCalls(),
-      actor_handle->ExecuteOutOfOrder());
+      actor_id, actor_handle->MaxPendingCalls(), actor_handle->ExecuteOutOfOrder());
   bool inserted;
   {
     absl::MutexLock lock(&mutex_);
@@ -188,14 +161,11 @@ bool ActorManager::AddActorHandle(
 
   if (inserted) {
     // Register a callback to handle actor notifications.
-    auto actor_notification_callback = std::bind(
-        &ActorManager::HandleActorStateNotification,
-        this,
-        std::placeholders::_1,
-        std::placeholders::_2);
+    auto actor_notification_callback =
+        std::bind(&ActorManager::HandleActorStateNotification, this,
+                  std::placeholders::_1, std::placeholders::_2);
     RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
-        actor_id,
-        actor_notification_callback,
+        actor_id, actor_notification_callback,
         [this, actor_id, cached_actor_name](Status status) {
           if (status.ok() && !cached_actor_name.empty()) {
             {
@@ -248,9 +218,8 @@ void ActorManager::WaitForActorOutOfScope(
   }
 }
 
-void ActorManager::HandleActorStateNotification(
-    const ActorID &actor_id,
-    const rpc::ActorTableData &actor_data) {
+void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
+                                                const rpc::ActorTableData &actor_data) {
   const auto &actor_state = rpc::ActorTableData::ActorState_Name(actor_data.state());
   RAY_LOG(INFO) << "received notification on actor, state: " << actor_state
                 << ", actor_id: " << actor_id
@@ -262,26 +231,18 @@ void ActorManager::HandleActorStateNotification(
                 << ", death context type="
                 << gcs::GetActorDeathCauseString(actor_data.death_cause());
   if (actor_data.state() == rpc::ActorTableData::RESTARTING) {
-    direct_actor_submitter_->DisconnectActor(
-        actor_id,
-        actor_data.num_restarts(),
-        /*is_dead=*/false,
-        actor_data.death_cause());
+    direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(),
+                                             /*is_dead=*/false, actor_data.death_cause());
   } else if (actor_data.state() == rpc::ActorTableData::DEAD) {
     OnActorKilled(actor_id);
-    direct_actor_submitter_->DisconnectActor(
-        actor_id,
-        actor_data.num_restarts(),
-        /*is_dead=*/true,
-        actor_data.death_cause());
+    direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(),
+                                             /*is_dead=*/true, actor_data.death_cause());
     // We cannot erase the actor handle here because clients can still
     // submit tasks to dead actors. This also means we defer unsubscription,
     // otherwise we crash when bulk unsubscribing all actor handles.
   } else if (actor_data.state() == rpc::ActorTableData::ALIVE) {
-    direct_actor_submitter_->ConnectActor(
-        actor_id,
-        actor_data.address(),
-        actor_data.num_restarts());
+    direct_actor_submitter_->ConnectActor(actor_id, actor_data.address(),
+                                          actor_data.num_restarts());
   } else {
     // The actor is being created and not yet ready, just ignore!
   }

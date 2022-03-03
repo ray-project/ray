@@ -120,13 +120,9 @@ DLMallocConfig dlmalloc_config;
 
 #ifdef _WIN32
 void create_and_mmap_buffer(int64_t size, void **pointer, HANDLE *handle) {
-  *handle = CreateFileMapping(
-      INVALID_HANDLE_VALUE,
-      NULL,
-      PAGE_READWRITE,
-      (DWORD)((uint64_t)size >> (CHAR_BIT * sizeof(DWORD))),
-      (DWORD)(uint64_t)size,
-      NULL);
+  *handle = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE,
+                              (DWORD)((uint64_t)size >> (CHAR_BIT * sizeof(DWORD))),
+                              (DWORD)(uint64_t)size, NULL);
   RAY_CHECK(*handle != nullptr)
       << "CreateFileMapping() failed. GetLastError() = " << GetLastError();
   *pointer = MapViewOfFile(*handle, FILE_MAP_ALL_ACCESS, 0, 0, (size_t)size);
@@ -301,11 +297,9 @@ bool IsOutsideInitialAllocation(void *p) {
   return (p < initial_region_ptr) || (p >= (initial_region_ptr + initial_region_size));
 }
 
-void SetDLMallocConfig(
-    const std::string &plasma_directory,
-    const std::string &fallback_directory,
-    bool hugepage_enabled,
-    bool fallback_enabled) {
+void SetDLMallocConfig(const std::string &plasma_directory,
+                       const std::string &fallback_directory, bool hugepage_enabled,
+                       bool fallback_enabled) {
   dlmalloc_config.hugepages_enabled = hugepage_enabled;
   dlmalloc_config.directory = plasma_directory;
   dlmalloc_config.fallback_directory = fallback_directory;

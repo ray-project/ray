@@ -49,9 +49,8 @@ class ClusterResourceManager {
   ///
   /// \param node_id_string ID of the node which resoruces need to be udpated.
   /// \param resource_data The node resource data.
-  bool UpdateNode(
-      const std::string &node_id_string,
-      const rpc::ResourcesData &resource_data);
+  bool UpdateNode(const std::string &node_id_string,
+                  const rpc::ResourcesData &resource_data);
 
   /// Remove node from the cluster data structure. This happens
   /// when a node fails or it is removed from the cluster.
@@ -67,10 +66,8 @@ class ClusterResourceManager {
   /// \param node_name: Node whose resource we want to update.
   /// \param resource_name: Resource which we want to update.
   /// \param resource_total: New capacity of the resource.
-  void UpdateResourceCapacity(
-      const std::string &node_name,
-      const std::string &resource_name,
-      double resource_total);
+  void UpdateResourceCapacity(const std::string &node_name,
+                              const std::string &resource_name, double resource_total);
 
   /// Delete a given resource from a given node.
   ///
@@ -86,9 +83,8 @@ class ClusterResourceManager {
 
   /// Subtract available resource from a given node.
   //// Return false if such node doesn't exist.
-  bool SubtractNodeAvailableResources(
-      int64_t node_id,
-      const ResourceRequest &resource_request);
+  bool SubtractNodeAvailableResources(int64_t node_id,
+                                      const ResourceRequest &resource_request);
 
   /// Check if we have sufficient resource to fullfill resource request for an given node.
   ///
@@ -96,10 +92,8 @@ class ClusterResourceManager {
   /// \param resource_request: the request we want to check.
   /// \param ignore_object_store_memory_requirement: if true, we will ignore the
   ///  require_object_store_memory in the resource_request.
-  bool HasSufficientResource(
-      int64_t node_id,
-      const ResourceRequest &resource_request,
-      bool ignore_object_store_memory_requirement) const;
+  bool HasSufficientResource(int64_t node_id, const ResourceRequest &resource_request,
+                             bool ignore_object_store_memory_requirement) const;
 
   void DebugString(std::stringstream &buffer) const;
 
@@ -144,9 +138,8 @@ class ClusterResourceManager {
   FRIEND_TEST(ClusterResourceSchedulerTest, SpreadSchedulingStrategyTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingResourceRequestTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
-  FRIEND_TEST(
-      ClusterResourceSchedulerTest,
-      UpdateLocalAvailableResourcesFromResourceInstancesTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest,
+              UpdateLocalAvailableResourcesFromResourceInstancesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, ResourceUsageReportTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, DeadNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, TestAlwaysSpillInfeasibleTask);

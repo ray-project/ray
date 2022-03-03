@@ -47,11 +47,8 @@ class PushManager {
   /// \param send_chunk_fn This function will be called with args 0...{num_chunks-1}.
   ///                      The caller promises to call PushManager::OnChunkComplete()
   ///                      once a call to send_chunk_fn finishes.
-  void StartPush(
-      const NodeID &dest_id,
-      const ObjectID &obj_id,
-      int64_t num_chunks,
-      std::function<void(int64_t)> send_chunk_fn);
+  void StartPush(const NodeID &dest_id, const ObjectID &obj_id, int64_t num_chunks,
+                 std::function<void(int64_t)> send_chunk_fn);
 
   /// Called every time a chunk completes to trigger additional sends.
   /// TODO(ekl) maybe we should cancel the entire push on error.

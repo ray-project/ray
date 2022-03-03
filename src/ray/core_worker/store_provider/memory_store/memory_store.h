@@ -52,8 +52,8 @@ class CoreWorkerMemoryStore {
       std::shared_ptr<raylet::RayletClient> raylet_client = nullptr,
       std::function<Status()> check_signals = nullptr,
       std::function<void(const RayObject &)> unhandled_exception_handler = nullptr,
-      std::function<
-          std::shared_ptr<RayObject>(const RayObject &object, const ObjectID &object_id)>
+      std::function<std::shared_ptr<RayObject>(const RayObject &object,
+                                               const ObjectID &object_id)>
           object_allocator = nullptr);
   ~CoreWorkerMemoryStore(){};
 
@@ -75,29 +75,20 @@ class CoreWorkerMemoryStore {
   /// finishes. This has no effect if ref counting is enabled.
   /// \param[out] results Result list of objects data.
   /// \return Status.
-  Status Get(
-      const std::vector<ObjectID> &object_ids,
-      int num_objects,
-      int64_t timeout_ms,
-      const WorkerContext &ctx,
-      bool remove_after_get,
-      std::vector<std::shared_ptr<RayObject>> *results);
+  Status Get(const std::vector<ObjectID> &object_ids, int num_objects, int64_t timeout_ms,
+             const WorkerContext &ctx, bool remove_after_get,
+             std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Convenience wrapper around Get() that stores results in a given result map.
-  Status Get(
-      const absl::flat_hash_set<ObjectID> &object_ids,
-      int64_t timeout_ms,
-      const WorkerContext &ctx,
-      absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
-      bool *got_exception);
+  Status Get(const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
+             const WorkerContext &ctx,
+             absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
+             bool *got_exception);
 
   /// Convenience wrapper around Get() that stores ready objects in a given result set.
-  Status Wait(
-      const absl::flat_hash_set<ObjectID> &object_ids,
-      int num_objects,
-      int64_t timeout_ms,
-      const WorkerContext &ctx,
-      absl::flat_hash_set<ObjectID> *ready);
+  Status Wait(const absl::flat_hash_set<ObjectID> &object_ids, int num_objects,
+              int64_t timeout_ms, const WorkerContext &ctx,
+              absl::flat_hash_set<ObjectID> *ready);
 
   /// Get an object if it exists.
   ///
@@ -111,9 +102,8 @@ class CoreWorkerMemoryStore {
   /// \param[in] object_id The object id to get.
   /// \param[in] callback The callback to run with the reference to the retrieved
   ///            object value once available.
-  void GetAsync(
-      const ObjectID &object_id,
-      std::function<void(std::shared_ptr<RayObject>)> callback);
+  void GetAsync(const ObjectID &object_id,
+                std::function<void(std::shared_ptr<RayObject>)> callback);
 
   /// Delete a list of objects from the object store.
   /// NOTE(swang): Objects that contain IsInPlasmaError will not be
@@ -126,9 +116,8 @@ class CoreWorkerMemoryStore {
   /// include the IDs of the plasma objects to delete, based on the
   /// in-memory objects that contained InPlasmaError.
   /// \return Void.
-  void Delete(
-      const absl::flat_hash_set<ObjectID> &object_ids,
-      absl::flat_hash_set<ObjectID> *plasma_ids_to_delete);
+  void Delete(const absl::flat_hash_set<ObjectID> &object_ids,
+              absl::flat_hash_set<ObjectID> *plasma_ids_to_delete);
 
   /// Delete a list of objects from the object store.
   ///
@@ -174,22 +163,18 @@ class CoreWorkerMemoryStore {
   /// See the public version of `Get` for meaning of the other arguments.
   /// \param[in] abort_if_any_object_is_exception Whether we should abort if any object
   /// resources. is an exception.
-  Status GetImpl(
-      const std::vector<ObjectID> &object_ids,
-      int num_objects,
-      int64_t timeout_ms,
-      const WorkerContext &ctx,
-      bool remove_after_get,
-      std::vector<std::shared_ptr<RayObject>> *results,
-      bool abort_if_any_object_is_exception);
+  Status GetImpl(const std::vector<ObjectID> &object_ids, int num_objects,
+                 int64_t timeout_ms, const WorkerContext &ctx, bool remove_after_get,
+                 std::vector<std::shared_ptr<RayObject>> *results,
+                 bool abort_if_any_object_is_exception);
 
   /// Called when an object is deleted from the store.
   void OnDelete(std::shared_ptr<RayObject> obj);
 
   /// Emplace the given object entry to the in-memory-store and update stats properly.
-  void EmplaceObjectAndUpdateStats(
-      const ObjectID &object_id,
-      std::shared_ptr<RayObject> &object_entry) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void EmplaceObjectAndUpdateStats(const ObjectID &object_id,
+                                   std::shared_ptr<RayObject> &object_entry)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Erase the object of the object id from the in memory store and update stats
   /// properly.
@@ -215,9 +200,8 @@ class CoreWorkerMemoryStore {
       object_get_requests_ GUARDED_BY(mu_);
 
   /// Map from object ID to its async get requests.
-  absl::flat_hash_map<
-      ObjectID,
-      std::vector<std::function<void(std::shared_ptr<RayObject>)>>>
+  absl::flat_hash_map<ObjectID,
+                      std::vector<std::function<void(std::shared_ptr<RayObject>)>>>
       object_async_get_requests_ GUARDED_BY(mu_);
 
   /// Function passed in to be called to check for signals (e.g., Ctrl-C).
@@ -239,8 +223,8 @@ class CoreWorkerMemoryStore {
 
   /// This lambda is used to allow language frontend to allocate the objects
   /// in the memory store.
-  std::function<
-      std::shared_ptr<RayObject>(const RayObject &object, const ObjectID &object_id)>
+  std::function<std::shared_ptr<RayObject>(const RayObject &object,
+                                           const ObjectID &object_id)>
       object_allocator_;
 };
 

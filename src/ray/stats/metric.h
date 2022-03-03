@@ -101,11 +101,8 @@ class StatsConfig final {
 /// A thin wrapper that wraps the `opencensus::tag::measure` for using it simply.
 class Metric {
  public:
-  Metric(
-      const std::string &name,
-      const std::string &description,
-      const std::string &unit,
-      const std::vector<opencensus::tags::TagKey> &tag_keys = {})
+  Metric(const std::string &name, const std::string &description, const std::string &unit,
+         const std::vector<opencensus::tags::TagKey> &tag_keys = {})
       : name_(name),
         description_(description),
         unit_(unit),
@@ -151,11 +148,8 @@ class Metric {
 
 class Gauge : public Metric {
  public:
-  Gauge(
-      const std::string &name,
-      const std::string &description,
-      const std::string &unit,
-      const std::vector<opencensus::tags::TagKey> &tag_keys = {})
+  Gauge(const std::string &name, const std::string &description, const std::string &unit,
+        const std::vector<opencensus::tags::TagKey> &tag_keys = {})
       : Metric(name, description, unit, tag_keys) {}
 
  private:
@@ -165,12 +159,9 @@ class Gauge : public Metric {
 
 class Histogram : public Metric {
  public:
-  Histogram(
-      const std::string &name,
-      const std::string &description,
-      const std::string &unit,
-      const std::vector<double> boundaries,
-      const std::vector<opencensus::tags::TagKey> &tag_keys = {})
+  Histogram(const std::string &name, const std::string &description,
+            const std::string &unit, const std::vector<double> boundaries,
+            const std::vector<opencensus::tags::TagKey> &tag_keys = {})
       : Metric(name, description, unit, tag_keys), boundaries_(boundaries) {}
 
  private:
@@ -183,11 +174,8 @@ class Histogram : public Metric {
 
 class Count : public Metric {
  public:
-  Count(
-      const std::string &name,
-      const std::string &description,
-      const std::string &unit,
-      const std::vector<opencensus::tags::TagKey> &tag_keys = {})
+  Count(const std::string &name, const std::string &description, const std::string &unit,
+        const std::vector<opencensus::tags::TagKey> &tag_keys = {})
       : Metric(name, description, unit, tag_keys) {}
 
  private:
@@ -197,9 +185,7 @@ class Count : public Metric {
 
 class Sum : public Metric {
  public:
-  Sum(const std::string &name,
-      const std::string &description,
-      const std::string &unit,
+  Sum(const std::string &name, const std::string &description, const std::string &unit,
       const std::vector<opencensus::tags::TagKey> &tag_keys = {})
       : Metric(name, description, unit, tag_keys) {}
 
@@ -220,9 +206,8 @@ struct MetricPoint {
 enum StatsType : int { COUNT, SUM, GAUGE, HISTOGRAM };
 
 namespace internal {
-void RegisterAsView(
-    opencensus::stats::ViewDescriptor view_descriptor,
-    const std::vector<opencensus::tags::TagKey> &keys);
+void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
+                    const std::vector<opencensus::tags::TagKey> &keys);
 template <StatsType T>
 struct StatsTypeMap {
   static constexpr const char *val = "_void";
@@ -262,11 +247,9 @@ struct StatsTypeMap<HISTOGRAM> {
 };
 
 template <StatsType T>
-void RegisterView(
-    const std::string &name,
-    const std::string &description,
-    const std::vector<opencensus::tags::TagKey> &tag_keys,
-    const std::vector<double> &buckets) {
+void RegisterView(const std::string &name, const std::string &description,
+                  const std::vector<opencensus::tags::TagKey> &tag_keys,
+                  const std::vector<double> &buckets) {
   using I = StatsTypeMap<T>;
   auto view_descriptor = opencensus::stats::ViewDescriptor()
                              .set_name(name + I::val)
@@ -277,20 +260,16 @@ void RegisterView(
 }
 
 template <typename T = void>
-void RegisterViewWithTagList(
-    const std::string &name,
-    const std::string &description,
-    const std::vector<opencensus::tags::TagKey> &tag_keys,
-    const std::vector<double> &buckets) {
+void RegisterViewWithTagList(const std::string &name, const std::string &description,
+                             const std::vector<opencensus::tags::TagKey> &tag_keys,
+                             const std::vector<double> &buckets) {
   static_assert(std::is_same_v<T, void>);
 }
 
 template <StatsType T, StatsType... Ts>
-void RegisterViewWithTagList(
-    const std::string &name,
-    const std::string &description,
-    const std::vector<opencensus::tags::TagKey> &tag_keys,
-    const std::vector<double> &buckets) {
+void RegisterViewWithTagList(const std::string &name, const std::string &description,
+                             const std::vector<opencensus::tags::TagKey> &tag_keys,
+                             const std::vector<double> &buckets) {
   RegisterView<T>(name, description, tag_keys, buckets);
   RegisterViewWithTagList<Ts...>(name, description, tag_keys, buckets);
 }
@@ -318,16 +297,12 @@ class Stats {
   /// \param measure The name for the metric
   /// \description The description for the metric
   /// \register_func The function to register the metric
-  Stats(
-      const std::string &measure,
-      const std::string &description,
-      std::vector<std::string> tag_keys,
-      std::vector<double> buckets,
-      std::function<void(
-          const std::string &,
-          const std::string,
-          const std::vector<opencensus::tags::TagKey>,
-          const std::vector<double> &buckets)> register_func)
+  Stats(const std::string &measure, const std::string &description,
+        std::vector<std::string> tag_keys, std::vector<double> buckets,
+        std::function<void(const std::string &, const std::string,
+                           const std::vector<opencensus::tags::TagKey>,
+                           const std::vector<double> &buckets)>
+            register_func)
       : tag_keys_(convert_tags(tag_keys)) {
     auto stats_init = [register_func, measure, description, buckets, this]() {
       measure_ = std::make_unique<Measure>(Measure::Register(measure, description, ""));
@@ -427,10 +402,7 @@ class Stats {
           (), ray::stats::GAUGE);
       STATS_async_pool_req_execution_time_ms.record(1, "method");
 */
-#define DEFINE_stats(name, description, tags, buckets, ...) \
-  ray::stats::internal::Stats STATS_##name(                 \
-      #name,                                                \
-      description,                                          \
-      {STATS_DEPAREN(tags)},                                \
-      {STATS_DEPAREN(buckets)},                             \
+#define DEFINE_stats(name, description, tags, buckets, ...)                \
+  ray::stats::internal::Stats STATS_##name(                                \
+      #name, description, {STATS_DEPAREN(tags)}, {STATS_DEPAREN(buckets)}, \
       ray::stats::internal::RegisterViewWithTagList<__VA_ARGS__>)

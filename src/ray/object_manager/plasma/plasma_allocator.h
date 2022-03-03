@@ -40,11 +40,9 @@ namespace plasma {
 // based mmapped file.
 class PlasmaAllocator : public IAllocator {
  public:
-  PlasmaAllocator(
-      const std::string &plasma_directory,
-      const std::string &fallback_directory,
-      bool hugepage_enabled,
-      int64_t footprint_limit);
+  PlasmaAllocator(const std::string &plasma_directory,
+                  const std::string &fallback_directory, bool hugepage_enabled,
+                  int64_t footprint_limit);
 
   /// On linux, it allocates memory from a pre-mmapped file from /dev/shm.
   /// On other system, it allocates memory from a pre-mmapped file on disk.

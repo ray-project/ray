@@ -38,11 +38,8 @@ class ObjectBufferPool {
   /// This is the structure returned whenever an object chunk is
   /// accessed via Get and Create.
   struct ChunkInfo {
-    ChunkInfo(
-        uint64_t chunk_index,
-        uint8_t *data,
-        uint64_t buffer_length,
-        std::shared_ptr<Buffer> buffer_ref)
+    ChunkInfo(uint64_t chunk_index, uint8_t *data, uint64_t buffer_length,
+              std::shared_ptr<Buffer> buffer_ref)
         : chunk_index(chunk_index),
           data(data),
           buffer_length(buffer_length),
@@ -61,9 +58,8 @@ class ObjectBufferPool {
   ///
   /// \param store_client Plasma store client. Used for testing purposes only.
   /// \param chunk_size The chunk size into which objects are to be split.
-  ObjectBufferPool(
-      std::shared_ptr<plasma::PlasmaClientInterface> store_client,
-      const uint64_t chunk_size);
+  ObjectBufferPool(std::shared_ptr<plasma::PlasmaClientInterface> store_client,
+                   const uint64_t chunk_size);
 
   ~ObjectBufferPool();
 
@@ -91,8 +87,7 @@ class ObjectBufferPool {
   /// this method. An IOError status is returned if the Get call on the plasma store
   /// fails, and the MemoryObjectReader will be empty.
   std::pair<std::shared_ptr<MemoryObjectReader>, ray::Status> CreateObjectReader(
-      const ObjectID &object_id,
-      rpc::Address owner_address) LOCKS_EXCLUDED(pool_mutex_);
+      const ObjectID &object_id, rpc::Address owner_address) LOCKS_EXCLUDED(pool_mutex_);
 
   /// Returns a chunk of an empty object at the given chunk_index. The object chunk
   /// serves as the buffer that is to be written to by a connection receiving an
@@ -111,12 +106,9 @@ class ObjectBufferPool {
   /// An IOError status is returned if object creation on the store client fails,
   /// or if create is invoked consecutively on the same chunk
   /// (with no intermediate AbortCreateChunk).
-  ray::Status CreateChunk(
-      const ObjectID &object_id,
-      const rpc::Address &owner_address,
-      uint64_t data_size,
-      uint64_t metadata_size,
-      uint64_t chunk_index) LOCKS_EXCLUDED(pool_mutex_);
+  ray::Status CreateChunk(const ObjectID &object_id, const rpc::Address &owner_address,
+                          uint64_t data_size, uint64_t metadata_size,
+                          uint64_t chunk_index) LOCKS_EXCLUDED(pool_mutex_);
 
   /// Write to a Chunk of an object. If all chunks of an object is written,
   /// it seals the object.
@@ -128,12 +120,9 @@ class ObjectBufferPool {
   /// \param object_id The ObjectID.
   /// \param chunk_index The index of the chunk.
   /// \param data The data to write into the chunk.
-  void WriteChunk(
-      const ObjectID &object_id,
-      uint64_t data_size,
-      uint64_t metadata_size,
-      uint64_t chunk_index,
-      const std::string &data) LOCKS_EXCLUDED(pool_mutex_);
+  void WriteChunk(const ObjectID &object_id, uint64_t data_size, uint64_t metadata_size,
+                  uint64_t chunk_index, const std::string &data)
+      LOCKS_EXCLUDED(pool_mutex_);
 
   /// Free a list of objects from object store.
   ///
@@ -153,22 +142,19 @@ class ObjectBufferPool {
  private:
   /// Splits an object into ceil(data_size/chunk_size) chunks, which will
   /// either be read or written to in parallel.
-  std::vector<ChunkInfo> BuildChunks(
-      const ObjectID &object_id,
-      uint8_t *data,
-      uint64_t data_size,
-      std::shared_ptr<Buffer> buffer_ref) EXCLUSIVE_LOCKS_REQUIRED(pool_mutex_);
+  std::vector<ChunkInfo> BuildChunks(const ObjectID &object_id, uint8_t *data,
+                                     uint64_t data_size,
+                                     std::shared_ptr<Buffer> buffer_ref)
+      EXCLUSIVE_LOCKS_REQUIRED(pool_mutex_);
 
   /// Ensures buffer for the object exists, and creates the buffer if needed.
   /// Returns OK if buffer exists.
   /// Must hold pool_mutex_ when calling this function. pool_mutex_ can be released
   /// during the call.
-  ray::Status EnsureBufferExists(
-      const ObjectID &object_id,
-      const rpc::Address &owner_address,
-      uint64_t data_size,
-      uint64_t metadata_size,
-      uint64_t chunk_index) EXCLUSIVE_LOCKS_REQUIRED(pool_mutex_);
+  ray::Status EnsureBufferExists(const ObjectID &object_id,
+                                 const rpc::Address &owner_address, uint64_t data_size,
+                                 uint64_t metadata_size, uint64_t chunk_index)
+      EXCLUSIVE_LOCKS_REQUIRED(pool_mutex_);
 
   void AbortCreateInternal(const ObjectID &object_id)
       EXCLUSIVE_LOCKS_REQUIRED(pool_mutex_);
@@ -178,10 +164,8 @@ class ObjectBufferPool {
 
   /// Holds the state of creating chunks. Members are protected by pool_mutex_.
   struct CreateBufferState {
-    CreateBufferState(
-        uint64_t metadata_size,
-        uint64_t data_size,
-        std::vector<ChunkInfo> chunk_info)
+    CreateBufferState(uint64_t metadata_size, uint64_t data_size,
+                      std::vector<ChunkInfo> chunk_info)
         : metadata_size(metadata_size),
           data_size(data_size),
           chunk_info(chunk_info),

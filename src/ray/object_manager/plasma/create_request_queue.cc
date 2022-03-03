@@ -24,11 +24,10 @@
 
 namespace plasma {
 
-uint64_t CreateRequestQueue::AddRequest(
-    const ObjectID &object_id,
-    const std::shared_ptr<ClientInterface> &client,
-    const CreateObjectCallback &create_callback,
-    size_t object_size) {
+uint64_t CreateRequestQueue::AddRequest(const ObjectID &object_id,
+                                        const std::shared_ptr<ClientInterface> &client,
+                                        const CreateObjectCallback &create_callback,
+                                        size_t object_size) {
   auto req_id = next_req_id_++;
   fulfilled_requests_[req_id] = nullptr;
   queue_.emplace_back(
@@ -37,10 +36,8 @@ uint64_t CreateRequestQueue::AddRequest(
   return req_id;
 }
 
-bool CreateRequestQueue::GetRequestResult(
-    uint64_t req_id,
-    PlasmaObject *result,
-    PlasmaError *error) {
+bool CreateRequestQueue::GetRequestResult(uint64_t req_id, PlasmaObject *result,
+                                          PlasmaError *error) {
   auto it = fulfilled_requests_.find(req_id);
   if (it == fulfilled_requests_.end()) {
     RAY_LOG(ERROR)
@@ -62,24 +59,20 @@ bool CreateRequestQueue::GetRequestResult(
 }
 
 std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
-    const ObjectID &object_id,
-    const std::shared_ptr<ClientInterface> &client,
-    const CreateObjectCallback &create_callback,
-    size_t object_size) {
+    const ObjectID &object_id, const std::shared_ptr<ClientInterface> &client,
+    const CreateObjectCallback &create_callback, size_t object_size) {
   PlasmaObject result = {};
 
   // Immediately fulfill it using the fallback allocator.
   PlasmaError error = create_callback(
-      /*fallback_allocator=*/true,
-      &result,
+      /*fallback_allocator=*/true, &result,
       /*spilling_required=*/nullptr);
   return {result, error};
 }
 
-Status CreateRequestQueue::ProcessRequest(
-    bool fallback_allocator,
-    std::unique_ptr<CreateRequest> &request,
-    bool *spilling_required) {
+Status CreateRequestQueue::ProcessRequest(bool fallback_allocator,
+                                          std::unique_ptr<CreateRequest> &request,
+                                          bool *spilling_required) {
   request->error =
       request->create_callback(fallback_allocator, &request->result, spilling_required);
   if (request->error == PlasmaError::OutOfMemory) {
@@ -128,8 +121,7 @@ Status CreateRequestQueue::ProcessRequests() {
       } else {
         // Trigger the fallback allocator.
         status = ProcessRequest(
-            /*fallback_allocator=*/true,
-            *request_it,
+            /*fallback_allocator=*/true, *request_it,
             /*spilling_required=*/nullptr);
         if (!status.ok()) {
           std::string dump = "";

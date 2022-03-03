@@ -21,18 +21,16 @@
 
 namespace plasma {
 struct GetRequest;
-using ObjectReadyCallback = std::function<
-    void(const ObjectID &object_id, const std::shared_ptr<GetRequest> &get_request)>;
+using ObjectReadyCallback = std::function<void(
+    const ObjectID &object_id, const std::shared_ptr<GetRequest> &get_request)>;
 using AllObjectReadyCallback =
     std::function<void(const std::shared_ptr<GetRequest> &get_request)>;
 
 struct GetRequest {
-  GetRequest(
-      instrumented_io_context &io_context,
-      const std::shared_ptr<ClientInterface> &client,
-      const std::vector<ObjectID> &object_ids,
-      bool is_from_worker,
-      int64_t num_unique_objects_to_wait_for);
+  GetRequest(instrumented_io_context &io_context,
+             const std::shared_ptr<ClientInterface> &client,
+             const std::vector<ObjectID> &object_ids, bool is_from_worker,
+             int64_t num_unique_objects_to_wait_for);
   /// The client that called get.
   std::shared_ptr<ClientInterface> client;
   /// The object IDs involved in this request. This is used in the reply.
@@ -49,9 +47,8 @@ struct GetRequest {
   /// of total objects that are consumed by core worker.
   const bool is_from_worker;
 
-  void AsyncWait(
-      int64_t timeout_ms,
-      std::function<void(const boost::system::error_code &)> on_timeout);
+  void AsyncWait(int64_t timeout_ms,
+                 std::function<void(const boost::system::error_code &)> on_timeout);
 
   void CancelTimer();
 
@@ -72,11 +69,10 @@ struct GetRequest {
 
 class GetRequestQueue {
  public:
-  GetRequestQueue(
-      instrumented_io_context &io_context,
-      IObjectLifecycleManager &object_lifecycle_mgr,
-      ObjectReadyCallback object_callback,
-      AllObjectReadyCallback all_objects_callback)
+  GetRequestQueue(instrumented_io_context &io_context,
+                  IObjectLifecycleManager &object_lifecycle_mgr,
+                  ObjectReadyCallback object_callback,
+                  AllObjectReadyCallback all_objects_callback)
       : io_context_(io_context),
         object_lifecycle_mgr_(object_lifecycle_mgr),
         object_satisfied_callback_(object_callback),
@@ -92,11 +88,9 @@ class GetRequestQueue {
   /// \param object_callback the callback function called once any object has been
   /// satisfied. \param all_objects_callback the callback function called when all objects
   /// has been satisfied.
-  void AddRequest(
-      const std::shared_ptr<ClientInterface> &client,
-      const std::vector<ObjectID> &object_ids,
-      int64_t timeout_ms,
-      bool is_from_worker);
+  void AddRequest(const std::shared_ptr<ClientInterface> &client,
+                  const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
+                  bool is_from_worker);
 
   /// Remove all of the GetRequests for a given client.
   ///

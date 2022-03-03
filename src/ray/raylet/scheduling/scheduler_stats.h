@@ -29,9 +29,8 @@ class ClusterTaskManager;
 // readable string.
 class SchedulerStats {
  public:
-  explicit SchedulerStats(
-      const ClusterTaskManager &cluster_task_manager,
-      const LocalTaskManager &local_task_manager);
+  explicit SchedulerStats(const ClusterTaskManager &cluster_task_manager,
+                          const LocalTaskManager &local_task_manager);
 
   // Report metrics doesn't recompute the stats.
   void RecordMetrics() const;

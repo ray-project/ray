@@ -23,9 +23,8 @@
 #include "ray/common/asio/asio_chaos.h"
 #include "ray/common/asio/asio_util.h"
 
-void instrumented_io_context::post(
-    std::function<void()> handler,
-    const std::string name) {
+void instrumented_io_context::post(std::function<void()> handler,
+                                   const std::string name) {
   if (RayConfig::instance().event_stats()) {
     // References are only invalidated upon deletion of the corresponding item from the
     // table, which we won't do until this io_context is deleted. Provided that
@@ -46,9 +45,8 @@ void instrumented_io_context::post(
   }
 }
 
-void instrumented_io_context::post(
-    std::function<void()> handler,
-    std::shared_ptr<StatsHandle> stats_handle) {
+void instrumented_io_context::post(std::function<void()> handler,
+                                   std::shared_ptr<StatsHandle> stats_handle) {
   size_t defer_us = 0;
   if (stats_handle) {
     defer_us = ray::asio::testing::get_delay_us(stats_handle->event_name);
@@ -71,9 +69,8 @@ void instrumented_io_context::post(
   }
 }
 
-void instrumented_io_context::dispatch(
-    std::function<void()> handler,
-    const std::string name) {
+void instrumented_io_context::dispatch(std::function<void()> handler,
+                                       const std::string name) {
   if (!RayConfig::instance().event_stats()) {
     return boost::asio::io_context::post(std::move(handler));
   }

@@ -142,8 +142,8 @@ class SharedMemoryBuffer : public Buffer {
     RAY_CHECK(size_ <= parent_->Size());
   }
 
-  static std::shared_ptr<SharedMemoryBuffer>
-  Slice(const std::shared_ptr<Buffer> &buffer, int64_t offset, int64_t size) {
+  static std::shared_ptr<SharedMemoryBuffer> Slice(const std::shared_ptr<Buffer> &buffer,
+                                                   int64_t offset, int64_t size) {
     return std::make_shared<SharedMemoryBuffer>(buffer, offset, size);
   }
 

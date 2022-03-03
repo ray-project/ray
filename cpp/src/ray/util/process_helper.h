@@ -29,10 +29,8 @@ class ProcessHelper {
  public:
   void RayStart(CoreWorkerOptions::TaskExecutionCallback callback);
   void RayStop();
-  void StartRayNode(
-      const int redis_port,
-      const std::string redis_password,
-      const std::vector<std::string> &head_args = {});
+  void StartRayNode(const int redis_port, const std::string redis_password,
+                    const std::vector<std::string> &head_args = {});
   void StopRayNode();
 
   static ProcessHelper &GetInstance() {
@@ -41,8 +39,7 @@ class ProcessHelper {
   }
 
   std::unique_ptr<ray::gcs::GlobalStateAccessor> CreateGlobalStateAccessor(
-      const std::string &redis_address,
-      const std::string &redis_password);
+      const std::string &redis_address, const std::string &redis_password);
 
   std::unique_ptr<ray::gcs::GlobalStateAccessor> CreateGlobalStateAccessor(
       const std::string &gcs_address);

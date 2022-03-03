@@ -20,11 +20,9 @@
 
 namespace ray {
 
-void PushManager::StartPush(
-    const NodeID &dest_id,
-    const ObjectID &obj_id,
-    int64_t num_chunks,
-    std::function<void(int64_t)> send_chunk_fn) {
+void PushManager::StartPush(const NodeID &dest_id, const ObjectID &obj_id,
+                            int64_t num_chunks,
+                            std::function<void(int64_t)> send_chunk_fn) {
   auto push_id = std::make_pair(dest_id, obj_id);
   if (push_info_.contains(push_id)) {
     RAY_LOG(DEBUG) << "Duplicate push request " << push_id.first << ", "

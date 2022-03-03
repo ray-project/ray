@@ -120,11 +120,8 @@ class RedisCallbackManager {
   struct CallbackItem : public std::enable_shared_from_this<CallbackItem> {
     CallbackItem() = default;
 
-    CallbackItem(
-        const RedisCallback &callback,
-        bool is_subscription,
-        int64_t start_time,
-        instrumented_io_context &io_service)
+    CallbackItem(const RedisCallback &callback, bool is_subscription, int64_t start_time,
+                 instrumented_io_context &io_service)
         : callback_(callback),
           is_subscription_(is_subscription),
           start_time_(start_time),
@@ -133,9 +130,8 @@ class RedisCallbackManager {
     void Dispatch(std::shared_ptr<CallbackReply> &reply) {
       std::shared_ptr<CallbackItem> self = shared_from_this();
       if (callback_ != nullptr) {
-        io_service_->post(
-            [self, reply]() { self->callback_(std::move(reply)); },
-            "RedisCallbackManager.DispatchCallback");
+        io_service_->post([self, reply]() { self->callback_(std::move(reply)); },
+                          "RedisCallbackManager.DispatchCallback");
       }
     }
 
@@ -149,11 +145,8 @@ class RedisCallbackManager {
   int64_t AllocateCallbackIndex();
 
   /// Add a callback at an optionally specified index.
-  int64_t AddCallback(
-      const RedisCallback &function,
-      bool is_subscription,
-      instrumented_io_context &io_service,
-      int64_t callback_index = -1);
+  int64_t AddCallback(const RedisCallback &function, bool is_subscription,
+                      instrumented_io_context &io_service, int64_t callback_index = -1);
 
   /// Remove a callback.
   void RemoveCallback(int64_t callback_index);
@@ -186,14 +179,9 @@ class RedisContext {
   /// \return The Status that we would get if we Connected.
   Status PingPort(const std::string &address, int port);
 
-  Status Connect(
-      const std::string &address,
-      int port,
-      bool sharding,
-      const std::string &password,
-      bool enable_sync_conn = true,
-      bool enable_async_conn = true,
-      bool enable_subscribe_conn = true);
+  Status Connect(const std::string &address, int port, bool sharding,
+                 const std::string &password, bool enable_sync_conn = true,
+                 bool enable_async_conn = true, bool enable_subscribe_conn = true);
 
   /// Run an arbitrary Redis command synchronously.
   ///
@@ -206,9 +194,8 @@ class RedisContext {
   /// \param args The vector of command args to pass to Redis.
   /// \param redis_callback The Redis callback function.
   /// \return Status.
-  Status RunArgvAsync(
-      const std::vector<std::string> &args,
-      const RedisCallback &redis_callback = nullptr);
+  Status RunArgvAsync(const std::vector<std::string> &args,
+                      const RedisCallback &redis_callback = nullptr);
 
   /// Subscribe to a specific Pub-Sub channel.
   ///
@@ -217,11 +204,8 @@ class RedisContext {
   /// \param redisCallback The callback function that the notification calls.
   /// \param out_callback_index The output pointer to callback index.
   /// \return Status.
-  Status SubscribeAsync(
-      const NodeID &node_id,
-      const TablePubsub pubsub_channel,
-      const RedisCallback &redisCallback,
-      int64_t *out_callback_index);
+  Status SubscribeAsync(const NodeID &node_id, const TablePubsub pubsub_channel,
+                        const RedisCallback &redisCallback, int64_t *out_callback_index);
 
   /// Subscribes the client to the given channel.
   ///
@@ -231,10 +215,8 @@ class RedisContext {
   /// must already be allocated in the callback manager via
   /// RedisCallbackManager::AllocateCallbackIndex.
   /// \return Status.
-  Status SubscribeAsync(
-      const std::string &channel,
-      const RedisCallback &redisCallback,
-      int64_t callback_index);
+  Status SubscribeAsync(const std::string &channel, const RedisCallback &redisCallback,
+                        int64_t callback_index);
 
   /// Unsubscribes the client from the given channel.
   ///
@@ -250,10 +232,8 @@ class RedisContext {
   /// must already be allocated in the callback manager via
   /// RedisCallbackManager::AllocateCallbackIndex.
   /// \return Status.
-  Status PSubscribeAsync(
-      const std::string &pattern,
-      const RedisCallback &redisCallback,
-      int64_t callback_index);
+  Status PSubscribeAsync(const std::string &pattern, const RedisCallback &redisCallback,
+                         int64_t callback_index);
 
   /// Unsubscribes the client from the given pattern.
   ///
@@ -267,10 +247,8 @@ class RedisContext {
   /// \param message The message to be published to redis.
   /// \param redisCallback The callback will be called when the message is published to
   /// redis. \return Status.
-  Status PublishAsync(
-      const std::string &channel,
-      const std::string &message,
-      const RedisCallback &redisCallback);
+  Status PublishAsync(const std::string &channel, const std::string &message,
+                      const RedisCallback &redisCallback);
 
   redisContext *sync_context() {
     RAY_CHECK(context_);

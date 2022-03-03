@@ -59,45 +59,38 @@ class NodeManagerServiceHandler {
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
 
-  virtual void HandleUpdateResourceUsage(
-      const rpc::UpdateResourceUsageRequest &request,
-      rpc::UpdateResourceUsageReply *reply,
-      rpc::SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleUpdateResourceUsage(const rpc::UpdateResourceUsageRequest &request,
+                                         rpc::UpdateResourceUsageReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleRequestResourceReport(
       const rpc::RequestResourceReportRequest &request,
       rpc::RequestResourceReportReply *reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleRequestWorkerLease(
-      const RequestWorkerLeaseRequest &request,
-      RequestWorkerLeaseReply *reply,
-      SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleRequestWorkerLease(const RequestWorkerLeaseRequest &request,
+                                        RequestWorkerLeaseReply *reply,
+                                        SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleReportWorkerBacklog(
-      const ReportWorkerBacklogRequest &request,
-      ReportWorkerBacklogReply *reply,
-      SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleReportWorkerBacklog(const ReportWorkerBacklogRequest &request,
+                                         ReportWorkerBacklogReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleReturnWorker(
-      const ReturnWorkerRequest &request,
-      ReturnWorkerReply *reply,
-      SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleReturnWorker(const ReturnWorkerRequest &request,
+                                  ReturnWorkerReply *reply,
+                                  SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleReleaseUnusedWorkers(
-      const ReleaseUnusedWorkersRequest &request,
-      ReleaseUnusedWorkersReply *reply,
-      SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleReleaseUnusedWorkers(const ReleaseUnusedWorkersRequest &request,
+                                          ReleaseUnusedWorkersReply *reply,
+                                          SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleShutdownRaylet(
-      const ShutdownRayletRequest &request,
-      ShutdownRayletReply *reply,
-      SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleShutdownRaylet(const ShutdownRayletRequest &request,
+                                    ShutdownRayletReply *reply,
+                                    SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleCancelWorkerLease(
-      const rpc::CancelWorkerLeaseRequest &request,
-      rpc::CancelWorkerLeaseReply *reply,
-      rpc::SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &request,
+                                       rpc::CancelWorkerLeaseReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandlePrepareBundleResources(
       const rpc::PrepareBundleResourcesRequest &request,
@@ -114,45 +107,36 @@ class NodeManagerServiceHandler {
       rpc::CancelResourceReserveReply *reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandlePinObjectIDs(
-      const PinObjectIDsRequest &request,
-      PinObjectIDsReply *reply,
-      SendReplyCallback send_reply_callback) = 0;
+  virtual void HandlePinObjectIDs(const PinObjectIDsRequest &request,
+                                  PinObjectIDsReply *reply,
+                                  SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetNodeStats(
-      const GetNodeStatsRequest &request,
-      GetNodeStatsReply *reply,
-      SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleGetNodeStats(const GetNodeStatsRequest &request,
+                                  GetNodeStatsReply *reply,
+                                  SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGlobalGC(
-      const GlobalGCRequest &request,
-      GlobalGCReply *reply,
-      SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleGlobalGC(const GlobalGCRequest &request, GlobalGCReply *reply,
+                              SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleFormatGlobalMemoryInfo(
-      const FormatGlobalMemoryInfoRequest &request,
-      FormatGlobalMemoryInfoReply *reply,
-      SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleFormatGlobalMemoryInfo(const FormatGlobalMemoryInfoRequest &request,
+                                            FormatGlobalMemoryInfoReply *reply,
+                                            SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleRequestObjectSpillage(
-      const RequestObjectSpillageRequest &request,
-      RequestObjectSpillageReply *reply,
-      SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleRequestObjectSpillage(const RequestObjectSpillageRequest &request,
+                                           RequestObjectSpillageReply *reply,
+                                           SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleReleaseUnusedBundles(
-      const ReleaseUnusedBundlesRequest &request,
-      ReleaseUnusedBundlesReply *reply,
-      SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleReleaseUnusedBundles(const ReleaseUnusedBundlesRequest &request,
+                                          ReleaseUnusedBundlesReply *reply,
+                                          SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetSystemConfig(
-      const GetSystemConfigRequest &request,
-      GetSystemConfigReply *reply,
-      SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleGetSystemConfig(const GetSystemConfigRequest &request,
+                                     GetSystemConfigReply *reply,
+                                     SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetGcsServerAddress(
-      const GetGcsServerAddressRequest &request,
-      GetGcsServerAddressReply *reply,
-      SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleGetGcsServerAddress(const GetGcsServerAddressRequest &request,
+                                         GetGcsServerAddressReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeManagerService`.
@@ -162,9 +146,8 @@ class NodeManagerGrpcService : public GrpcService {
   ///
   /// \param[in] io_service See super class.
   /// \param[in] handler The service handler that actually handle the requests.
-  NodeManagerGrpcService(
-      instrumented_io_context &io_service,
-      NodeManagerServiceHandler &service_handler)
+  NodeManagerGrpcService(instrumented_io_context &io_service,
+                         NodeManagerServiceHandler &service_handler)
       : GrpcService(io_service), service_handler_(service_handler){};
 
  protected:

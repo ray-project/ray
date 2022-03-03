@@ -54,9 +54,8 @@ class RedisAsioClient {
   /// \param io_service The single-threaded event loop for this client.
   /// \param redis_async_context The redis async context used to execute redis commands
   /// for this client.
-  RedisAsioClient(
-      instrumented_io_context &io_service,
-      ray::gcs::RedisAsyncContext &redis_async_context);
+  RedisAsioClient(instrumented_io_context &io_service,
+                  ray::gcs::RedisAsyncContext &redis_async_context);
 
   void operate();
 

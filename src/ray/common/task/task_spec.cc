@@ -471,8 +471,7 @@ std::size_t WorkerCacheKey::Hash() const {
       boost::hash_combine(hash_, serialized_runtime_env);
 
       std::vector<std::pair<std::string, double>> resource_vars(
-          required_resources.begin(),
-          required_resources.end());
+          required_resources.begin(), required_resources.end());
       // Sort the variables so different permutations yield the same hash.
       std::sort(resource_vars.begin(), resource_vars.end());
       for (auto &pair : resource_vars) {

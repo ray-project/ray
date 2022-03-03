@@ -90,12 +90,11 @@ struct LocalObjectInfo {
 };
 class ObjectStoreRunner {
  public:
-  ObjectStoreRunner(
-      const ObjectManagerConfig &config,
-      SpillObjectsCallback spill_objects_callback,
-      std::function<void()> object_store_full_callback,
-      AddObjectCallback add_object_callback,
-      DeleteObjectCallback delete_object_callback);
+  ObjectStoreRunner(const ObjectManagerConfig &config,
+                    SpillObjectsCallback spill_objects_callback,
+                    std::function<void()> object_store_full_callback,
+                    AddObjectCallback add_object_callback,
+                    DeleteObjectCallback delete_object_callback);
   ~ObjectStoreRunner();
 
  private:
@@ -104,9 +103,8 @@ class ObjectStoreRunner {
 
 class ObjectManagerInterface {
  public:
-  virtual uint64_t Pull(
-      const std::vector<rpc::ObjectReference> &object_refs,
-      BundlePriority prio) = 0;
+  virtual uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs,
+                        BundlePriority prio) = 0;
   virtual void CancelPull(uint64_t request_id) = 0;
   virtual bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const = 0;
   virtual ~ObjectManagerInterface(){};
@@ -117,9 +115,7 @@ class ObjectManager : public ObjectManagerInterface,
                       public rpc::ObjectManagerServiceHandler {
  public:
   using RestoreSpilledObjectCallback = std::function<void(
-      const ObjectID &,
-      const std::string &,
-      std::function<void(const ray::Status &)>)>;
+      const ObjectID &, const std::string &, std::function<void(const ray::Status &)>)>;
 
   /// Implementation of object manager service
 
@@ -131,30 +127,25 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param request Push request including the object chunk data
   /// \param reply Reply to the sender
   /// \param send_reply_callback Callback of the request
-  void HandlePush(
-      const rpc::PushRequest &request,
-      rpc::PushReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
+  void HandlePush(const rpc::PushRequest &request, rpc::PushReply *reply,
+                  rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle pull request from remote object manager
   ///
   /// \param request Pull request
   /// \param reply Reply
   /// \param send_reply_callback Callback of request
-  void HandlePull(
-      const rpc::PullRequest &request,
-      rpc::PullReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
+  void HandlePull(const rpc::PullRequest &request, rpc::PullReply *reply,
+                  rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle free objects request
   ///
   /// \param request Free objects request
   /// \param reply Reply
   /// \param send_reply_callback
-  void HandleFreeObjects(
-      const rpc::FreeObjectsRequest &request,
-      rpc::FreeObjectsReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
+  void HandleFreeObjects(const rpc::FreeObjectsRequest &request,
+                         rpc::FreeObjectsReply *reply,
+                         rpc::SendReplyCallback send_reply_callback) override;
 
   /// Get the port of the object manager rpc server.
   int GetServerPort() const { return object_manager_server_.GetPort(); }
@@ -172,16 +163,13 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param config ObjectManager configuration.
   /// \param object_directory An object implementing the object directory interface.
   explicit ObjectManager(
-      instrumented_io_context &main_service,
-      const NodeID &self_node_id,
-      const ObjectManagerConfig &config,
-      IObjectDirectory *object_directory,
+      instrumented_io_context &main_service, const NodeID &self_node_id,
+      const ObjectManagerConfig &config, IObjectDirectory *object_directory,
       RestoreSpilledObjectCallback restore_spilled_object,
       std::function<std::string(const ObjectID &)> get_spilled_object_url,
       SpillObjectsCallback spill_objects_callback,
       std::function<void()> object_store_full_callback,
-      AddObjectCallback add_object_callback,
-      DeleteObjectCallback delete_object_callback,
+      AddObjectCallback add_object_callback, DeleteObjectCallback delete_object_callback,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
       const std::function<void(const ObjectID &)> fail_pull_request);
 
@@ -213,8 +201,8 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param object_refs The bundle of objects that must be made local.
   /// \param prio The bundle priority.
   /// \return A request ID that can be used to cancel the request.
-  uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs, BundlePriority prio)
-      override;
+  uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs,
+                BundlePriority prio) override;
 
   /// Cancels the pull request with the given ID. This cancels any fetches for
   /// objects that were passed to the original pull request, if no other pull
@@ -278,10 +266,8 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param node_id The remote node's id.
   /// \param spilled_url The url of the spilled object.
   /// \return Void.
-  void PushFromFilesystem(
-      const ObjectID &object_id,
-      const NodeID &node_id,
-      const std::string &spilled_url);
+  void PushFromFilesystem(const ObjectID &object_id, const NodeID &node_id,
+                          const std::string &spilled_url);
 
   /// The internal implementation of pushing an object.
   ///
@@ -289,10 +275,8 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param node_id The remote node's id.
   /// \param chunk_reader Chunk reader used to read a chunk of the object
   /// Status::OK() if the read succeeded.
-  void PushObjectInternal(
-      const ObjectID &object_id,
-      const NodeID &node_id,
-      std::shared_ptr<ChunkObjectReader> chunk_reader);
+  void PushObjectInternal(const ObjectID &object_id, const NodeID &node_id,
+                          std::shared_ptr<ChunkObjectReader> chunk_reader);
 
   /// Send one chunk of the object to remote object manager
   ///
@@ -305,14 +289,11 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param rpc_client Rpc client used to send message to remote object manager
   /// \param on_complete Callback when the chunk is sent
   /// \param chunk_reader Chunk reader used to read a chunk of the object
-  void SendObjectChunk(
-      const UniqueID &push_id,
-      const ObjectID &object_id,
-      const NodeID &node_id,
-      uint64_t chunk_index,
-      std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
-      std::function<void(const Status &)> on_complete,
-      std::shared_ptr<ChunkObjectReader> chunk_reader);
+  void SendObjectChunk(const UniqueID &push_id, const ObjectID &object_id,
+                       const NodeID &node_id, uint64_t chunk_index,
+                       std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
+                       std::function<void(const Status &)> on_complete,
+                       std::shared_ptr<ChunkObjectReader> chunk_reader);
 
   /// Handle starting, running, and stopping asio rpc_service.
   void StartRpcService();
@@ -341,13 +322,9 @@ class ObjectManager : public ObjectManagerInterface,
   /// chunk.
   /// \param status The status of the send (e.g., did it succeed or fail).
   /// \return Void.
-  void HandleSendFinished(
-      const ObjectID &object_id,
-      const NodeID &node_id,
-      uint64_t chunk_index,
-      double start_time_us,
-      double end_time_us,
-      ray::Status status);
+  void HandleSendFinished(const ObjectID &object_id, const NodeID &node_id,
+                          uint64_t chunk_index, double start_time_us, double end_time_us,
+                          ray::Status status);
 
   /// Handle Push task timeout.
   void HandlePushTaskTimeout(const ObjectID &object_id, const NodeID &node_id);
@@ -372,14 +349,10 @@ class ObjectManager : public ObjectManagerInterface,
   /// \return Whether the chunk was successfully written into the local object
   /// store. This can fail if the chunk was already received in the past, or if
   /// the object is no longer being actively pulled.
-  bool ReceiveObjectChunk(
-      const NodeID &node_id,
-      const ObjectID &object_id,
-      const rpc::Address &owner_address,
-      uint64_t data_size,
-      uint64_t metadata_size,
-      uint64_t chunk_index,
-      const std::string &data);
+  bool ReceiveObjectChunk(const NodeID &node_id, const ObjectID &object_id,
+                          const rpc::Address &owner_address, uint64_t data_size,
+                          uint64_t metadata_size, uint64_t chunk_index,
+                          const std::string &data);
 
   /// Send pull request
   ///
@@ -433,8 +406,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// Maintains a map of push requests that have not been fulfilled due to an object not
   /// being local. Objects are removed from this map after push_timeout_ms have elapsed.
   std::unordered_map<
-      ObjectID,
-      std::unordered_map<NodeID, std::unique_ptr<boost::asio::deadline_timer>>>
+      ObjectID, std::unordered_map<NodeID, std::unique_ptr<boost::asio::deadline_timer>>>
       unfulfilled_push_requests_;
 
   /// The gPRC server.

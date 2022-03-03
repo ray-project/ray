@@ -82,10 +82,8 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
       gcs_client_ = std::make_unique<gcs::GcsClient>(options);
       global_state_ = std::make_unique<gcs::GlobalStateAccessor>(options);
     } else {
-      gcs::GcsClientOptions options(
-          config.redis_address,
-          config.redis_port,
-          config.redis_password);
+      gcs::GcsClientOptions options(config.redis_address, config.redis_port,
+                                    config.redis_password);
       gcs_client_ = std::make_unique<gcs::GcsClient>(options);
       global_state_ = std::make_unique<gcs::GlobalStateAccessor>(options);
     }
@@ -134,9 +132,8 @@ TEST_P(GlobalStateAccessorTest, TestJobTable) {
     auto job_id = JobID::FromInt(index);
     auto job_table_data = Mocker::GenJobTableData(job_id);
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(job_table_data, [&promise](Status status) {
-      promise.set_value(status.ok());
-    }));
+    RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
+        job_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
     promise.get_future().get();
   }
   ASSERT_EQ(global_state_->GetAllJobInfo().size(), job_count);
@@ -151,8 +148,7 @@ TEST_P(GlobalStateAccessorTest, TestNodeTable) {
         Mocker::GenNodeInfo(index, std::string("127.0.0.") + std::to_string(index));
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
-        *node_table_data,
-        [&promise](Status status) { promise.set_value(status.ok()); }));
+        *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
     WaitReady(promise.get_future(), timeout_ms_);
   }
   auto node_table = global_state_->GetAllNodeInfo();
@@ -160,9 +156,8 @@ TEST_P(GlobalStateAccessorTest, TestNodeTable) {
   for (int index = 0; index < node_count; ++index) {
     rpc::GcsNodeInfo node_data;
     node_data.ParseFromString(node_table[index]);
-    ASSERT_EQ(
-        node_data.node_manager_address(),
-        std::string("127.0.0.") + std::to_string(node_data.node_manager_port()));
+    ASSERT_EQ(node_data.node_manager_address(),
+              std::string("127.0.0.") + std::to_string(node_data.node_manager_port()));
   }
 }
 
@@ -175,8 +170,7 @@ TEST_P(GlobalStateAccessorTest, TestNodeResourceTable) {
     auto node_id = NodeID::FromBinary(node_table_data->node_id());
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
-        *node_table_data,
-        [&promise](Status status) { promise.set_value(status.ok()); }));
+        *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
     WaitReady(promise.get_future(), timeout_ms_);
     ray::gcs::NodeResourceInfoAccessor::ResourceMap resources;
     rpc::ResourceTableData resource_table_data;
@@ -184,9 +178,7 @@ TEST_P(GlobalStateAccessorTest, TestNodeResourceTable) {
     resources[std::to_string(index)] =
         std::make_shared<rpc::ResourceTableData>(resource_table_data);
     RAY_IGNORE_EXPR(gcs_client_->NodeResources().AsyncUpdateResources(
-        node_id,
-        resources,
-        [](Status status) { RAY_CHECK(status.ok()); }));
+        node_id, resources, [](Status status) { RAY_CHECK(status.ok()); }));
   }
   auto node_table = global_state_->GetAllNodeInfo();
   ASSERT_EQ(node_table.size(), node_count);
@@ -214,8 +206,7 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   auto node_table_data = Mocker::GenNodeInfo();
   std::promise<bool> promise;
   RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
-      *node_table_data,
-      [&promise](Status status) { promise.set_value(status.ok()); }));
+      *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
   WaitReady(promise.get_future(), timeout_ms_);
   auto node_table = global_state_->GetAllNodeInfo();
   ASSERT_EQ(node_table.size(), 1);
@@ -225,8 +216,7 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   auto resources1 = std::make_shared<rpc::ResourcesData>();
   resources1->set_node_id(node_table_data->node_id());
   RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(
-      resources1,
-      [&promise1](Status status) { promise1.set_value(status.ok()); }));
+      resources1, [&promise1](Status status) { promise1.set_value(status.ok()); }));
   WaitReady(promise1.get_future(), timeout_ms_);
 
   resources = global_state_->GetAllResourceUsage();
@@ -242,8 +232,7 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   heartbeat2->set_resources_available_changed(true);
   (*heartbeat2->mutable_resources_available())["GPU"] = 5;
   RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(
-      heartbeat2,
-      [&promise2](Status status) { promise2.set_value(status.ok()); }));
+      heartbeat2, [&promise2](Status status) { promise2.set_value(status.ok()); }));
   WaitReady(promise2.get_future(), timeout_ms_);
 
   resources = global_state_->GetAllResourceUsage();
@@ -264,8 +253,7 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   (*heartbeat3->mutable_resources_available())["CPU"] = 1;
   (*heartbeat3->mutable_resources_available())["GPU"] = 6;
   RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(
-      heartbeat3,
-      [&promise3](Status status) { promise3.set_value(status.ok()); }));
+      heartbeat3, [&promise3](Status status) { promise3.set_value(status.ok()); }));
   WaitReady(promise3.get_future(), timeout_ms_);
 
   resources = global_state_->GetAllResourceUsage();
@@ -291,9 +279,8 @@ TEST_P(GlobalStateAccessorTest, TestProfileTable) {
         [&promise](Status status) { promise.set_value(status.ok()); }));
     WaitReady(promise.get_future(), timeout_ms_);
   }
-  ASSERT_EQ(
-      global_state_->GetAllProfileInfo().size(),
-      RayConfig::instance().maximum_profile_table_rows_count());
+  ASSERT_EQ(global_state_->GetAllProfileInfo().size(),
+            RayConfig::instance().maximum_profile_table_rows_count());
 }
 
 TEST_P(GlobalStateAccessorTest, TestWorkerTable) {
@@ -321,21 +308,17 @@ TEST_P(GlobalStateAccessorTest, TestPlacementGroupTable) {
   ASSERT_EQ(global_state_->GetAllPlacementGroupInfo().size(), 0);
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    RedisRemovalTest,
-    GlobalStateAccessorTest,
-    ::testing::Values(false, true));
+INSTANTIATE_TEST_SUITE_P(RedisRemovalTest, GlobalStateAccessorTest,
+                         ::testing::Values(false, true));
 
 }  // namespace ray
 
 int main(int argc, char **argv) {
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
-  InitShutdownRAII ray_log_shutdown_raii(
-      ray::RayLog::StartRayLog,
-      ray::RayLog::ShutDownRayLog,
-      argv[0],
-      ray::RayLogLevel::INFO,
-      /*log_dir=*/"");
+  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
+                                         ray::RayLog::ShutDownRayLog, argv[0],
+                                         ray::RayLogLevel::INFO,
+                                         /*log_dir=*/"");
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 3);
   ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];

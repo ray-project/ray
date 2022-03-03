@@ -95,9 +95,8 @@ class CoreWorkerGrpcService : public GrpcService {
   ///
   /// \param[in] main_service See super class.
   /// \param[in] handler The service handler that actually handle the requests.
-  CoreWorkerGrpcService(
-      instrumented_io_context &main_service,
-      CoreWorkerServiceHandler &service_handler)
+  CoreWorkerGrpcService(instrumented_io_context &main_service,
+                        CoreWorkerServiceHandler &service_handler)
       : GrpcService(main_service), service_handler_(service_handler) {}
 
  protected:

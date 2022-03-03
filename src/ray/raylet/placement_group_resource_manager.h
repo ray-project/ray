@@ -39,9 +39,8 @@ struct pair_hash {
 };
 
 struct BundleTransactionState {
-  BundleTransactionState(
-      CommitState state,
-      std::shared_ptr<TaskResourceInstances> &resources)
+  BundleTransactionState(CommitState state,
+                         std::shared_ptr<TaskResourceInstances> &resources)
       : state_(state), resources_(resources) {}
   CommitState state_;
   std::shared_ptr<TaskResourceInstances> resources_;
@@ -95,8 +94,9 @@ class NewPlacementGroupResourceManager : public PlacementGroupResourceManager {
   /// \param delete_resources: Called when a custom resource is deleted.
   NewPlacementGroupResourceManager(
       std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
-      std::function<void(const ray::gcs::NodeResourceInfoAccessor::ResourceMap
-                             &resources)> update_resources,
+      std::function<
+          void(const ray::gcs::NodeResourceInfoAccessor::ResourceMap &resources)>
+          update_resources,
       std::function<void(const std::vector<std::string> &resource_names)>
           delete_resources);
 

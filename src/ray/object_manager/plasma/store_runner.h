@@ -12,17 +12,13 @@ namespace plasma {
 
 class PlasmaStoreRunner {
  public:
-  PlasmaStoreRunner(
-      std::string socket_name,
-      int64_t system_memory,
-      bool hugepages_enabled,
-      std::string plasma_directory,
-      std::string fallback_directory);
-  void Start(
-      ray::SpillObjectsCallback spill_objects_callback,
-      std::function<void()> object_store_full_callback,
-      ray::AddObjectCallback add_object_callback,
-      ray::DeleteObjectCallback delete_object_callback);
+  PlasmaStoreRunner(std::string socket_name, int64_t system_memory,
+                    bool hugepages_enabled, std::string plasma_directory,
+                    std::string fallback_directory);
+  void Start(ray::SpillObjectsCallback spill_objects_callback,
+             std::function<void()> object_store_full_callback,
+             ray::AddObjectCallback add_object_callback,
+             ray::DeleteObjectCallback delete_object_callback);
   void Stop();
 
   bool IsPlasmaObjectSpillable(const ObjectID &object_id);
@@ -31,9 +27,8 @@ class PlasmaStoreRunner {
   int64_t GetFallbackAllocated() const;
 
   void GetAvailableMemoryAsync(std::function<void(size_t)> callback) const {
-    main_service_.post(
-        [this, callback]() { store_->GetAvailableMemory(callback); },
-        "PlasmaStoreRunner.GetAvailableMemory");
+    main_service_.post([this, callback]() { store_->GetAvailableMemory(callback); },
+                       "PlasmaStoreRunner.GetAvailableMemory");
   }
 
  private:

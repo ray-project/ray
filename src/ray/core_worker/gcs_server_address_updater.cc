@@ -18,14 +18,11 @@ namespace ray {
 namespace core {
 
 GcsServerAddressUpdater::GcsServerAddressUpdater(
-    const std::string raylet_ip_address,
-    const int port,
+    const std::string raylet_ip_address, const int port,
     std::function<void(std::string, int)> update_func)
     : client_call_manager_(updater_io_service_),
-      raylet_client_(rpc::NodeManagerWorkerClient::make(
-          raylet_ip_address,
-          port,
-          client_call_manager_)),
+      raylet_client_(rpc::NodeManagerWorkerClient::make(raylet_ip_address, port,
+                                                        client_call_manager_)),
       update_func_(update_func),
       updater_runner_(updater_io_service_),
       updater_thread_([this] {
@@ -55,9 +52,8 @@ GcsServerAddressUpdater::~GcsServerAddressUpdater() {
 }
 
 void GcsServerAddressUpdater::UpdateGcsServerAddress() {
-  raylet_client_.GetGcsServerAddress([this](
-                                         const Status &status,
-                                         const rpc::GetGcsServerAddressReply &reply) {
+  raylet_client_.GetGcsServerAddress([this](const Status &status,
+                                            const rpc::GetGcsServerAddressReply &reply) {
     const int64_t max_retries =
         RayConfig::instance().gcs_rpc_server_reconnect_timeout_s() * 1000 /
         RayConfig::instance().gcs_service_address_check_interval_milliseconds();

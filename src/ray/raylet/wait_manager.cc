@@ -19,19 +19,15 @@
 namespace ray {
 namespace raylet {
 
-void WaitManager::Wait(
-    const std::vector<ObjectID> &object_ids,
-    int64_t timeout_ms,
-    uint64_t num_required_objects,
-    const WaitCallback &callback) {
+void WaitManager::Wait(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
+                       uint64_t num_required_objects, const WaitCallback &callback) {
   RAY_CHECK(timeout_ms >= 0 || timeout_ms == -1);
   RAY_CHECK_NE(num_required_objects, 0u);
   RAY_CHECK_LE(num_required_objects, object_ids.size());
 
   const uint64_t wait_id = next_wait_id_++;
   wait_requests_.emplace(
-      wait_id,
-      WaitRequest(timeout_ms, callback, object_ids, num_required_objects));
+      wait_id, WaitRequest(timeout_ms, callback, object_ids, num_required_objects));
 
   auto &wait_request = wait_requests_.at(wait_id);
   for (const auto &object_id : object_ids) {

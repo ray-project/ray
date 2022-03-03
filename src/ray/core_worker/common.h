@@ -56,12 +56,10 @@ class RayFunction {
 /// Options for all tasks (actor and non-actor) except for actor creation.
 struct TaskOptions {
   TaskOptions() {}
-  TaskOptions(
-      std::string name,
-      int num_returns,
-      std::unordered_map<std::string, double> &resources,
-      const std::string &concurrency_group_name = "",
-      const std::string &serialized_runtime_env = "{}")
+  TaskOptions(std::string name, int num_returns,
+              std::unordered_map<std::string, double> &resources,
+              const std::string &concurrency_group_name = "",
+              const std::string &serialized_runtime_env = "{}")
       : name(name),
         num_returns(num_returns),
         resources(resources),
@@ -83,22 +81,17 @@ struct TaskOptions {
 /// Options for actor creation tasks.
 struct ActorCreationOptions {
   ActorCreationOptions() {}
-  ActorCreationOptions(
-      int64_t max_restarts,
-      int64_t max_task_retries,
-      int max_concurrency,
-      const std::unordered_map<std::string, double> &resources,
-      const std::unordered_map<std::string, double> &placement_resources,
-      const std::vector<std::string> &dynamic_worker_options,
-      std::optional<bool> is_detached,
-      std::string &name,
-      std::string &ray_namespace,
-      bool is_asyncio,
-      const rpc::SchedulingStrategy &scheduling_strategy,
-      const std::string &serialized_runtime_env = "{}",
-      const std::vector<ConcurrencyGroup> &concurrency_groups = {},
-      bool execute_out_of_order = false,
-      int32_t max_pending_calls = -1)
+  ActorCreationOptions(int64_t max_restarts, int64_t max_task_retries,
+                       int max_concurrency,
+                       const std::unordered_map<std::string, double> &resources,
+                       const std::unordered_map<std::string, double> &placement_resources,
+                       const std::vector<std::string> &dynamic_worker_options,
+                       std::optional<bool> is_detached, std::string &name,
+                       std::string &ray_namespace, bool is_asyncio,
+                       const rpc::SchedulingStrategy &scheduling_strategy,
+                       const std::string &serialized_runtime_env = "{}",
+                       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
+                       bool execute_out_of_order = false, int32_t max_pending_calls = -1)
       : max_restarts(max_restarts),
         max_task_retries(max_task_retries),
         max_concurrency(max_concurrency),
@@ -162,10 +155,8 @@ using PlacementStrategy = rpc::PlacementStrategy;
 
 struct PlacementGroupCreationOptions {
   PlacementGroupCreationOptions(
-      std::string name,
-      PlacementStrategy strategy,
-      std::vector<std::unordered_map<std::string, double>> bundles,
-      bool is_detached)
+      std::string name, PlacementStrategy strategy,
+      std::vector<std::unordered_map<std::string, double>> bundles, bool is_detached)
       : name(std::move(name)),
         strategy(strategy),
         bundles(std::move(bundles)),
@@ -183,13 +174,9 @@ struct PlacementGroupCreationOptions {
 
 class ObjectLocation {
  public:
-  ObjectLocation(
-      NodeID primary_node_id,
-      uint64_t object_size,
-      std::vector<NodeID> node_ids,
-      bool is_spilled,
-      std::string spilled_url,
-      NodeID spilled_node_id)
+  ObjectLocation(NodeID primary_node_id, uint64_t object_size,
+                 std::vector<NodeID> node_ids, bool is_spilled, std::string spilled_url,
+                 NodeID spilled_node_id)
       : primary_node_id_(primary_node_id),
         object_size_(object_size),
         node_ids_(std::move(node_ids)),

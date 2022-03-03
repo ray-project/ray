@@ -78,11 +78,9 @@ TEST_F(RedisAsioTest, TestRedisCommands) {
           ->PingPort(std::string("127.0.0.1"), TEST_REDIS_SERVER_PORTS.front() + 987)
           .ok());
   ASSERT_TRUE(shard_context
-                  ->Connect(
-                      std::string("127.0.0.1"),
-                      TEST_REDIS_SERVER_PORTS.front(),
-                      /*sharding=*/true,
-                      /*password=*/std::string())
+                  ->Connect(std::string("127.0.0.1"), TEST_REDIS_SERVER_PORTS.front(),
+                            /*sharding=*/true,
+                            /*password=*/std::string())
                   .ok());
 
   io_service.run();
@@ -93,12 +91,10 @@ TEST_F(RedisAsioTest, TestRedisCommands) {
 }  // namespace ray
 
 int main(int argc, char **argv) {
-  InitShutdownRAII ray_log_shutdown_raii(
-      ray::RayLog::StartRayLog,
-      ray::RayLog::ShutDownRayLog,
-      argv[0],
-      ray::RayLogLevel::INFO,
-      /*log_dir=*/"");
+  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
+                                         ray::RayLog::ShutDownRayLog, argv[0],
+                                         ray::RayLogLevel::INFO,
+                                         /*log_dir=*/"");
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 3);
   ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];

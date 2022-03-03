@@ -36,11 +36,9 @@ class GcsPubSubTest : public ::testing::Test {
       io_service_.run();
     }));
 
-    gcs::RedisClientOptions redis_client_options(
-        "127.0.0.1",
-        TEST_REDIS_SERVER_PORTS.front(),
-        "",
-        /*enable_sharding_conn=*/false);
+    gcs::RedisClientOptions redis_client_options("127.0.0.1",
+                                                 TEST_REDIS_SERVER_PORTS.front(), "",
+                                                 /*enable_sharding_conn=*/false);
     client_ = std::make_shared<gcs::RedisClient>(redis_client_options);
     RAY_CHECK_OK(client_->Connect(io_service_));
     pub_sub_ = std::make_shared<gcs::GcsPubSub>(client_);
@@ -59,10 +57,8 @@ class GcsPubSubTest : public ::testing::Test {
     client_.reset();
   }
 
-  void Subscribe(
-      const std::string &channel,
-      const std::string &id,
-      std::vector<std::string> &result) {
+  void Subscribe(const std::string &channel, const std::string &id,
+                 std::vector<std::string> &result) {
     std::promise<bool> promise;
     auto done = [&promise](const Status &status) { promise.set_value(status.ok()); };
     auto subscribe = [this, &result](const std::string &id, const std::string &data) {
@@ -73,9 +69,8 @@ class GcsPubSubTest : public ::testing::Test {
     WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  void SubscribeAll(
-      const std::string &channel,
-      std::vector<std::pair<std::string, std::string>> &result) {
+  void SubscribeAll(const std::string &channel,
+                    std::vector<std::pair<std::string, std::string>> &result) {
     std::promise<bool> promise;
     auto done = [&promise](const Status &status) { promise.set_value(status.ok()); };
     auto subscribe = [this, &result](const std::string &id, const std::string &data) {
@@ -90,8 +85,8 @@ class GcsPubSubTest : public ::testing::Test {
     RAY_CHECK_OK(pub_sub_->Unsubscribe(channel, id));
   }
 
-  bool
-  Publish(const std::string &channel, const std::string &id, const std::string &data) {
+  bool Publish(const std::string &channel, const std::string &id,
+               const std::string &data) {
     std::promise<bool> promise;
     auto done = [&promise](const Status &status) { promise.set_value(status.ok()); };
     RAY_CHECK_OK((pub_sub_->Publish(channel, id, data, done)));
@@ -180,9 +175,10 @@ TEST_F(GcsPubSubTest, TestMultithreading) {
     auto id = ss.str();
     threads[index].reset(
         new std::thread([this, sub_message_count, sub_finished_count, id, channel] {
-          auto subscribe = [sub_message_count](
-                               const std::string &id,
-                               const std::string &data) { ++(*sub_message_count); };
+          auto subscribe = [sub_message_count](const std::string &id,
+                                               const std::string &data) {
+            ++(*sub_message_count);
+          };
           auto on_done = [sub_finished_count](const Status &status) {
             RAY_CHECK_OK(status);
             ++(*sub_finished_count);
@@ -229,12 +225,12 @@ TEST_F(GcsPubSubTest, TestPubSubWithTableData) {
     ObjectID object_id = ObjectID::FromRandom();
     std::promise<bool> promise;
     auto done = [&promise](const Status &status) { promise.set_value(status.ok()); };
-    auto subscribe =
-        [this, channel, &result](const std::string &id, const std::string &data) {
-          RAY_CHECK_OK(pub_sub_->Unsubscribe(channel, id));
-          absl::MutexLock lock(&vector_mutex_);
-          result.push_back(data);
-        };
+    auto subscribe = [this, channel, &result](const std::string &id,
+                                              const std::string &data) {
+      RAY_CHECK_OK(pub_sub_->Unsubscribe(channel, id));
+      absl::MutexLock lock(&vector_mutex_);
+      result.push_back(data);
+    };
     RAY_CHECK_OK((pub_sub_->Subscribe(channel, object_id.Hex(), subscribe, done)));
     WaitReady(promise.get_future(), timeout_ms_);
     RAY_CHECK_OK((pub_sub_->Publish(channel, object_id.Hex(), data, nullptr)));

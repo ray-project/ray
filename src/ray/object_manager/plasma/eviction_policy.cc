@@ -77,9 +77,8 @@ std::string LRUCache::DebugString() const {
   return result.str();
 }
 
-int64_t LRUCache::ChooseObjectsToEvict(
-    int64_t num_bytes_required,
-    std::vector<ObjectID> &objects_to_evict) {
+int64_t LRUCache::ChooseObjectsToEvict(int64_t num_bytes_required,
+                                       std::vector<ObjectID> &objects_to_evict) {
   int64_t bytes_evicted = 0;
   auto it = item_list_.end();
   while (bytes_evicted < num_bytes_required && it != item_list_.begin()) {
@@ -94,17 +93,15 @@ int64_t LRUCache::ChooseObjectsToEvict(
 
 bool LRUCache::Exists(const ObjectID &key) const { return item_map_.count(key) > 0; }
 
-EvictionPolicy::EvictionPolicy(
-    const IObjectStore &object_store,
-    const IAllocator &allocator)
+EvictionPolicy::EvictionPolicy(const IObjectStore &object_store,
+                               const IAllocator &allocator)
     : pinned_memory_bytes_(0),
       cache_("global lru", allocator.GetFootprintLimit()),
       object_store_(object_store),
       allocator_(allocator) {}
 
-int64_t EvictionPolicy::ChooseObjectsToEvict(
-    int64_t num_bytes_required,
-    std::vector<ObjectID> &objects_to_evict) {
+int64_t EvictionPolicy::ChooseObjectsToEvict(int64_t num_bytes_required,
+                                             std::vector<ObjectID> &objects_to_evict) {
   int64_t bytes_evicted =
       cache_.ChooseObjectsToEvict(num_bytes_required, objects_to_evict);
   // Update the LRU cache.
@@ -118,9 +115,8 @@ void EvictionPolicy::ObjectCreated(const ObjectID &object_id) {
   cache_.Add(object_id, GetObjectSize(object_id));
 }
 
-int64_t EvictionPolicy::RequireSpace(
-    int64_t size,
-    std::vector<ObjectID> &objects_to_evict) {
+int64_t EvictionPolicy::RequireSpace(int64_t size,
+                                     std::vector<ObjectID> &objects_to_evict) {
   // Check if there is enough space to create the object.
   int64_t required_space = allocator_.Allocated() + size - allocator_.GetFootprintLimit();
   // Try to free up at least as much space as we need right now but ideally

@@ -21,10 +21,9 @@ FunctionDescriptor FunctionDescriptorBuilder::Empty() {
   return empty;
 }
 
-FunctionDescriptor FunctionDescriptorBuilder::BuildJava(
-    const std::string &class_name,
-    const std::string &function_name,
-    const std::string &signature) {
+FunctionDescriptor FunctionDescriptorBuilder::BuildJava(const std::string &class_name,
+                                                        const std::string &function_name,
+                                                        const std::string &signature) {
   rpc::FunctionDescriptor descriptor;
   auto typed_descriptor = descriptor.mutable_java_function_descriptor();
   typed_descriptor->set_class_name(class_name);
@@ -34,10 +33,8 @@ FunctionDescriptor FunctionDescriptorBuilder::BuildJava(
 }
 
 FunctionDescriptor FunctionDescriptorBuilder::BuildPython(
-    const std::string &module_name,
-    const std::string &class_name,
-    const std::string &function_name,
-    const std::string &function_hash) {
+    const std::string &module_name, const std::string &class_name,
+    const std::string &function_name, const std::string &function_hash) {
   rpc::FunctionDescriptor descriptor;
   auto typed_descriptor = descriptor.mutable_python_function_descriptor();
   typed_descriptor->set_module_name(module_name);
@@ -71,8 +68,7 @@ FunctionDescriptor FunctionDescriptorBuilder::FromProto(rpc::FunctionDescriptor 
 }
 
 FunctionDescriptor FunctionDescriptorBuilder::FromVector(
-    rpc::Language language,
-    const std::vector<std::string> &function_descriptor_list) {
+    rpc::Language language, const std::vector<std::string> &function_descriptor_list) {
   if (language == rpc::Language::JAVA) {
     RAY_CHECK(function_descriptor_list.size() == 3);
     return FunctionDescriptorBuilder::BuildJava(

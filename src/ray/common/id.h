@@ -144,8 +144,8 @@ class ActorID : public BaseID<ActorID> {
   /// \param parent_task_counter The counter of the parent task.
   ///
   /// \return The random `ActorID`.
-  static ActorID
-  Of(const JobID &job_id, const TaskID &parent_task_id, const size_t parent_task_counter);
+  static ActorID Of(const JobID &job_id, const TaskID &parent_task_id,
+                    const size_t parent_task_counter);
 
   /// Creates a nil ActorID with the given job.
   ///
@@ -210,11 +210,8 @@ class TaskID : public BaseID<TaskID> {
   /// \param actor_id The ID of the actor to which this task belongs.
   ///
   /// \return The ID of the actor task.
-  static TaskID ForActorTask(
-      const JobID &job_id,
-      const TaskID &parent_task_id,
-      size_t parent_task_counter,
-      const ActorID &actor_id);
+  static TaskID ForActorTask(const JobID &job_id, const TaskID &parent_task_id,
+                             size_t parent_task_counter, const ActorID &actor_id);
 
   /// Creates a TaskID for normal task.
   ///
@@ -224,10 +221,8 @@ class TaskID : public BaseID<TaskID> {
   ///        parent task before this one.
   ///
   /// \return The ID of the normal task.
-  static TaskID ForNormalTask(
-      const JobID &job_id,
-      const TaskID &parent_task_id,
-      size_t parent_task_counter);
+  static TaskID ForNormalTask(const JobID &job_id, const TaskID &parent_task_id,
+                              size_t parent_task_counter);
 
   /// Given a base task ID, create a task ID that represents the n-th execution
   /// of that task. This task ID should be used to seed any TaskIDs or
@@ -324,9 +319,8 @@ class ObjectID : public BaseID<ObjectID> {
 
  private:
   /// A helper method to generate an ObjectID.
-  static ObjectID GenerateObjectId(
-      const std::string &task_id_binary,
-      ObjectIDIndexType object_index = 0);
+  static ObjectID GenerateObjectId(const std::string &task_id_binary,
+                                   ObjectIDIndexType object_index = 0);
 
  private:
   uint8_t id_[kLength];
@@ -352,21 +346,16 @@ class PlacementGroupID : public BaseID<PlacementGroupID> {
 
 typedef std::pair<PlacementGroupID, int64_t> BundleID;
 
-static_assert(
-    sizeof(JobID) == JobID::kLength + sizeof(size_t),
-    "JobID size is not as expected");
-static_assert(
-    sizeof(ActorID) == ActorID::kLength + sizeof(size_t),
-    "ActorID size is not as expected");
-static_assert(
-    sizeof(TaskID) == TaskID::kLength + sizeof(size_t),
-    "TaskID size is not as expected");
-static_assert(
-    sizeof(ObjectID) == ObjectID::kLength + sizeof(size_t),
-    "ObjectID size is not as expected");
-static_assert(
-    sizeof(PlacementGroupID) == PlacementGroupID::kLength + sizeof(size_t),
-    "PlacementGroupID size is not as expected");
+static_assert(sizeof(JobID) == JobID::kLength + sizeof(size_t),
+              "JobID size is not as expected");
+static_assert(sizeof(ActorID) == ActorID::kLength + sizeof(size_t),
+              "ActorID size is not as expected");
+static_assert(sizeof(TaskID) == TaskID::kLength + sizeof(size_t),
+              "TaskID size is not as expected");
+static_assert(sizeof(ObjectID) == ObjectID::kLength + sizeof(size_t),
+              "ObjectID size is not as expected");
+static_assert(sizeof(PlacementGroupID) == PlacementGroupID::kLength + sizeof(size_t),
+              "PlacementGroupID size is not as expected");
 
 std::ostream &operator<<(std::ostream &os, const UniqueID &id);
 std::ostream &operator<<(std::ostream &os, const JobID &id);

@@ -42,8 +42,7 @@ class IObjectLifecycleManager {
   ///   - nullptr and error message, including ObjectExists/OutOfMemory
   /// TODO(scv119): use RAII instead of pointer for returned object.
   virtual std::pair<const LocalObject *, flatbuf::PlasmaError> CreateObject(
-      const ray::ObjectInfo &object_info,
-      plasma::flatbuf::ObjectSource source,
+      const ray::ObjectInfo &object_info, plasma::flatbuf::ObjectSource source,
       bool fallback_allocator) = 0;
 
   /// Get object by id.
@@ -100,13 +99,11 @@ class IObjectLifecycleManager {
 // (created/sealed). It lazily garbage collects objects when running out of space.
 class ObjectLifecycleManager : public IObjectLifecycleManager {
  public:
-  ObjectLifecycleManager(
-      IAllocator &allocator,
-      ray::DeleteObjectCallback delete_object_callback);
+  ObjectLifecycleManager(IAllocator &allocator,
+                         ray::DeleteObjectCallback delete_object_callback);
 
   std::pair<const LocalObject *, flatbuf::PlasmaError> CreateObject(
-      const ray::ObjectInfo &object_info,
-      plasma::flatbuf::ObjectSource source,
+      const ray::ObjectInfo &object_info, plasma::flatbuf::ObjectSource source,
       bool fallback_allocator) override;
 
   const LocalObject *GetObject(const ObjectID &object_id) const override;
@@ -146,15 +143,13 @@ class ObjectLifecycleManager : public IObjectLifecycleManager {
 
  private:
   // Test only
-  ObjectLifecycleManager(
-      std::unique_ptr<IObjectStore> store,
-      std::unique_ptr<IEvictionPolicy> eviction_policy,
-      ray::DeleteObjectCallback delete_object_callback);
+  ObjectLifecycleManager(std::unique_ptr<IObjectStore> store,
+                         std::unique_ptr<IEvictionPolicy> eviction_policy,
+                         ray::DeleteObjectCallback delete_object_callback);
 
-  const LocalObject *CreateObjectInternal(
-      const ray::ObjectInfo &object_info,
-      plasma::flatbuf::ObjectSource source,
-      bool allow_fallback_allocation);
+  const LocalObject *CreateObjectInternal(const ray::ObjectInfo &object_info,
+                                          plasma::flatbuf::ObjectSource source,
+                                          bool allow_fallback_allocation);
 
   // Evict objects returned by the eviction policy.
   //

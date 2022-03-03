@@ -27,10 +27,9 @@ namespace ray {
 
 namespace internal {
 /// Execute remote functions by networking stream.
-msgpack::sbuffer TaskExecutionHandler(
-    const std::string &func_name,
-    const ArgsBufferList &args_buffer,
-    msgpack::sbuffer *actor_ptr) {
+msgpack::sbuffer TaskExecutionHandler(const std::string &func_name,
+                                      const ArgsBufferList &args_buffer,
+                                      msgpack::sbuffer *actor_ptr) {
   if (func_name.empty()) {
     throw std::invalid_argument("Task function name is empty");
   }
@@ -86,8 +85,7 @@ std::unique_ptr<ObjectID> TaskExecutor::Execute(InvocationSpec &invocation) {
 /// TODO(qicosmos): Need to add more details of the error messages, such as object id,
 /// task id etc.
 std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
-    const std::string &func_name,
-    const ArgsBufferList &args_buffer,
+    const std::string &func_name, const ArgsBufferList &args_buffer,
     msgpack::sbuffer *actor_ptr) {
   try {
     EntryFuntion entry_function;
@@ -100,17 +98,15 @@ std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
     RAY_LOG(DEBUG) << "Get executable function " << func_name << " ok.";
     auto result = entry_function(func_name, args_buffer, actor_ptr);
     RAY_LOG(DEBUG) << "Execute function " << func_name << " ok.";
-    return std::make_pair(
-        ray::Status::OK(),
-        std::make_shared<msgpack::sbuffer>(std::move(result)));
+    return std::make_pair(ray::Status::OK(),
+                          std::make_shared<msgpack::sbuffer>(std::move(result)));
   } catch (RayIntentionalSystemExitException &e) {
     return std::make_pair(ray::Status::IntentionalSystemExit(), nullptr);
   } catch (RayException &e) {
     return std::make_pair(ray::Status::NotFound(e.what()), nullptr);
   } catch (msgpack::type_error &e) {
     return std::make_pair(
-        ray::Status::Invalid(std::string("invalid arguments: ") + e.what()),
-        nullptr);
+        ray::Status::Invalid(std::string("invalid arguments: ") + e.what()), nullptr);
   } catch (const std::invalid_argument &e) {
     return std::make_pair(
         ray::Status::Invalid(std::string("function execute exception: ") + e.what()),
@@ -120,21 +116,17 @@ std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
         ray::Status::Invalid(std::string("function execute exception: ") + e.what()),
         nullptr);
   } catch (...) {
-    return std::make_pair(
-        ray::Status::UnknownError(std::string("unknown exception")),
-        nullptr);
+    return std::make_pair(ray::Status::UnknownError(std::string("unknown exception")),
+                          nullptr);
   }
 }
 
 Status TaskExecutor::ExecuteTask(
-    ray::TaskType task_type,
-    const std::string task_name,
-    const RayFunction &ray_function,
+    ray::TaskType task_type, const std::string task_name, const RayFunction &ray_function,
     const std::unordered_map<std::string, double> &required_resources,
     const std::vector<std::shared_ptr<ray::RayObject>> &args_buffer,
     const std::vector<rpc::ObjectReference> &arg_refs,
-    const std::vector<ObjectID> &return_ids,
-    const std::string &debugger_breakpoint,
+    const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
     std::vector<std::shared_ptr<ray::RayObject>> *results,
     std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes,
     bool *is_application_level_error,
@@ -143,8 +135,8 @@ Status TaskExecutor::ExecuteTask(
   RAY_LOG(INFO) << "Execute task: " << TaskType_Name(task_type);
   RAY_CHECK(ray_function.GetLanguage() == ray::Language::CPP);
   auto function_descriptor = ray_function.GetFunctionDescriptor();
-  RAY_CHECK(
-      function_descriptor->Type() == ray::FunctionDescriptorType::kCppFunctionDescriptor);
+  RAY_CHECK(function_descriptor->Type() ==
+            ray::FunctionDescriptorType::kCppFunctionDescriptor);
   auto typed_descriptor = function_descriptor->As<ray::CppFunctionDescriptor>();
   std::string func_name = typed_descriptor->FunctionName();
 
@@ -181,9 +173,7 @@ Status TaskExecutor::ExecuteTask(
 
     std::string meta_str = std::to_string(ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
     meta_buffer = std::make_shared<ray::LocalMemoryBuffer>(
-        reinterpret_cast<uint8_t *>(&meta_str[0]),
-        meta_str.size(),
-        true);
+        reinterpret_cast<uint8_t *>(&meta_str[0]), meta_str.size(), true);
 
     msgpack::sbuffer buf;
     std::string msg = status.ToString();
@@ -198,12 +188,8 @@ Status TaskExecutor::ExecuteTask(
     auto result_ptr = &(*results)[0];
     int64_t task_output_inlined_bytes = 0;
     RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
-        result_id,
-        data_size,
-        meta_buffer,
-        std::vector<ray::ObjectID>(),
-        &task_output_inlined_bytes,
-        result_ptr));
+        result_id, data_size, meta_buffer, std::vector<ray::ObjectID>(),
+        &task_output_inlined_bytes, result_ptr));
 
     auto result = *result_ptr;
     if (result != nullptr) {
@@ -222,8 +208,7 @@ Status TaskExecutor::ExecuteTask(
 }
 
 void TaskExecutor::Invoke(
-    const TaskSpecification &task_spec,
-    std::shared_ptr<msgpack::sbuffer> actor,
+    const TaskSpecification &task_spec, std::shared_ptr<msgpack::sbuffer> actor,
     AbstractRayRuntime *runtime,
     std::unordered_map<ActorID, std::unique_ptr<ActorContext>> &actor_contexts,
     absl::Mutex &actor_contexts_mutex) {
@@ -247,10 +232,8 @@ void TaskExecutor::Invoke(
   std::shared_ptr<msgpack::sbuffer> data;
   try {
     if (actor) {
-      auto result = TaskExecutionHandler(
-          typed_descriptor->FunctionName(),
-          args_buffer,
-          actor.get());
+      auto result = TaskExecutionHandler(typed_descriptor->FunctionName(), args_buffer,
+                                         actor.get());
       data = std::make_shared<msgpack::sbuffer>(std::move(result));
       runtime->Put(std::move(data), task_spec.ReturnId(0));
     } else {

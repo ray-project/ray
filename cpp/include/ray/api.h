@@ -82,8 +82,8 @@ std::vector<std::shared_ptr<T>> Get(const std::vector<ray::ObjectRef<T>> &object
 /// \return Two arrays, one containing locally available objects, one containing the
 /// rest.
 template <typename T>
-WaitResult<T>
-Wait(const std::vector<ray::ObjectRef<T>> &objects, int num_objects, int timeout_ms);
+WaitResult<T> Wait(const std::vector<ray::ObjectRef<T>> &objects, int num_objects,
+                   int timeout_ms);
 
 /// Create a `TaskCaller` for calling remote function.
 /// It is used for normal task, such as ray::Task(Plus1).Remote(1),
@@ -182,9 +182,8 @@ inline std::vector<std::shared_ptr<T>> Get(const std::vector<std::string> &ids) 
   std::vector<std::shared_ptr<T>> return_objects;
   return_objects.reserve(result.size());
   for (auto it = result.begin(); it != result.end(); it++) {
-    auto obj = ray::internal::Serializer::Deserialize<std::shared_ptr<T>>(
-        (*it)->data(),
-        (*it)->size());
+    auto obj = ray::internal::Serializer::Deserialize<std::shared_ptr<T>>((*it)->data(),
+                                                                          (*it)->size());
     return_objects.push_back(std::move(obj));
   }
   return return_objects;
@@ -197,8 +196,8 @@ inline std::vector<std::shared_ptr<T>> Get(const std::vector<ray::ObjectRef<T>> 
 }
 
 template <typename T>
-inline WaitResult<T>
-Wait(const std::vector<ray::ObjectRef<T>> &objects, int num_objects, int timeout_ms) {
+inline WaitResult<T> Wait(const std::vector<ray::ObjectRef<T>> &objects, int num_objects,
+                          int timeout_ms) {
   auto object_ids = ObjectRefsToObjectIDs<T>(objects);
   auto results =
       ray::internal::GetRayRuntime()->Wait(object_ids, num_objects, timeout_ms);
@@ -216,9 +215,7 @@ Wait(const std::vector<ray::ObjectRef<T>> &objects, int num_objects, int timeout
 
 inline ray::internal::ActorCreator<PyActorClass> Actor(PyActorClass func) {
   ray::internal::RemoteFunctionHolder remote_func_holder(
-      func.module_name,
-      func.function_name,
-      func.class_name,
+      func.module_name, func.function_name, func.class_name,
       ray::internal::LangType::PYTHON);
   return {ray::internal::GetRayRuntime().get(), std::move(remote_func_holder)};
 }
@@ -226,10 +223,7 @@ inline ray::internal::ActorCreator<PyActorClass> Actor(PyActorClass func) {
 template <typename R>
 inline ray::internal::TaskCaller<PyFunction<R>> Task(PyFunction<R> func) {
   ray::internal::RemoteFunctionHolder remote_func_holder(
-      func.module_name,
-      func.function_name,
-      "",
-      ray::internal::LangType::PYTHON);
+      func.module_name, func.function_name, "", ray::internal::LangType::PYTHON);
   return {ray::internal::GetRayRuntime().get(), std::move(remote_func_holder)};
 }
 
@@ -237,22 +231,19 @@ inline ray::internal::TaskCaller<PyFunction<R>> Task(PyFunction<R> func) {
 template <typename F>
 inline ray::internal::TaskCaller<F> Task(F func) {
   static_assert(!ray::internal::is_python_v<F>, "Must be a cpp function.");
-  static_assert(
-      !std::is_member_function_pointer_v<F>,
-      "Incompatible type: member function cannot be called with ray::Task.");
+  static_assert(!std::is_member_function_pointer_v<F>,
+                "Incompatible type: member function cannot be called with ray::Task.");
   ray::internal::RemoteFunctionHolder remote_func_holder(std::move(func));
-  return ray::internal::TaskCaller<F>(
-      ray::internal::GetRayRuntime().get(),
-      std::move(remote_func_holder));
+  return ray::internal::TaskCaller<F>(ray::internal::GetRayRuntime().get(),
+                                      std::move(remote_func_holder));
 }
 
 /// Creating an actor.
 template <typename F>
 inline ray::internal::ActorCreator<F> Actor(F create_func) {
   ray::internal::RemoteFunctionHolder remote_func_holder(std::move(create_func));
-  return ray::internal::ActorCreator<F>(
-      ray::internal::GetRayRuntime().get(),
-      std::move(remote_func_holder));
+  return ray::internal::ActorCreator<F>(ray::internal::GetRayRuntime().get(),
+                                        std::move(remote_func_holder));
 }
 
 template <typename T>

@@ -87,9 +87,8 @@ class SubscriptionIndex {
 };
 
 struct LongPollConnection {
-  LongPollConnection(
-      rpc::PubsubLongPollingReply *reply,
-      rpc::SendReplyCallback send_reply_callback)
+  LongPollConnection(rpc::PubsubLongPollingReply *reply,
+                     rpc::SendReplyCallback send_reply_callback)
       : reply(reply), send_reply_callback(send_reply_callback) {}
 
   rpc::PubsubLongPollingReply *reply;
@@ -99,10 +98,8 @@ struct LongPollConnection {
 /// Abstraction to each subscriber.
 class Subscriber {
  public:
-  Subscriber(
-      std::function<double()> get_time_ms,
-      uint64_t connection_timeout_ms,
-      const int publish_batch_size)
+  Subscriber(std::function<double()> get_time_ms, uint64_t connection_timeout_ms,
+             const int publish_batch_size)
       : get_time_ms_(std::move(get_time_ms)),
         connection_timeout_ms_(connection_timeout_ms),
         publish_batch_size_(publish_batch_size),
@@ -116,9 +113,8 @@ class Subscriber {
   /// \param reply pubsub long polling reply.
   /// \param send_reply_callback A callback to reply to the long polling subscriber.
   /// \return True if connection is new. False if there were already connections cached.
-  bool ConnectToSubscriber(
-      rpc::PubsubLongPollingReply *reply,
-      rpc::SendReplyCallback send_reply_callback);
+  bool ConnectToSubscriber(rpc::PubsubLongPollingReply *reply,
+                           rpc::SendReplyCallback send_reply_callback);
 
   /// Queue the pubsub message to publish to the subscriber.
   ///
@@ -178,10 +174,9 @@ class PublisherInterface {
   /// \param key_id The key_id that the subscriber is subscribing to. std::nullopt if
   /// subscribing to all.
   /// \return True if registration is new. False otherwise.
-  virtual bool RegisterSubscription(
-      const rpc::ChannelType channel_type,
-      const SubscriberID &subscriber_id,
-      const std::optional<std::string> &key_id) = 0;
+  virtual bool RegisterSubscription(const rpc::ChannelType channel_type,
+                                    const SubscriberID &subscriber_id,
+                                    const std::optional<std::string> &key_id) = 0;
 
   /// Publish the given object id to subscribers.
   ///
@@ -194,9 +189,8 @@ class PublisherInterface {
   ///
   /// \param channel_type The type of the channel.
   /// \param key_id The message id to publish.
-  virtual void PublishFailure(
-      const rpc::ChannelType channel_type,
-      const std::string &key_id) = 0;
+  virtual void PublishFailure(const rpc::ChannelType channel_type,
+                              const std::string &key_id) = 0;
 
   /// Unregister subscription. It means the given object id won't be published to the
   /// subscriber anymore.
@@ -205,10 +199,9 @@ class PublisherInterface {
   /// \param subscriber_id The node id of the subscriber.
   /// \param key_id The key_id of the subscriber. std::nullopt if subscribing to all.
   /// \return True if erased. False otherwise.
-  virtual bool UnregisterSubscription(
-      const rpc::ChannelType channel_type,
-      const SubscriberID &subscriber_id,
-      const std::optional<std::string> &key_id) = 0;
+  virtual bool UnregisterSubscription(const rpc::ChannelType channel_type,
+                                      const SubscriberID &subscriber_id,
+                                      const std::optional<std::string> &key_id) = 0;
 };
 
 /// Protocol detail
@@ -237,12 +230,10 @@ class Publisher : public PublisherInterface {
   /// \param subscriber_timeout_ms The subscriber timeout in milliseconds.
   /// Check out CheckDeadSubscribers for more details.
   /// \param publish_batch_size The batch size of published messages.
-  Publisher(
-      const std::vector<rpc::ChannelType> &channels,
-      PeriodicalRunner *const periodical_runner,
-      std::function<double()> get_time_ms,
-      const uint64_t subscriber_timeout_ms,
-      const int publish_batch_size)
+  Publisher(const std::vector<rpc::ChannelType> &channels,
+            PeriodicalRunner *const periodical_runner,
+            std::function<double()> get_time_ms, const uint64_t subscriber_timeout_ms,
+            const int publish_batch_size)
       : periodical_runner_(periodical_runner),
         get_time_ms_(std::move(get_time_ms)),
         subscriber_timeout_ms_(subscriber_timeout_ms),
@@ -252,9 +243,8 @@ class Publisher : public PublisherInterface {
       subscription_index_map_.emplace(type, pub_internal::SubscriptionIndex());
     }
 
-    periodical_runner_->RunFnPeriodically(
-        [this] { CheckDeadSubscribers(); },
-        subscriber_timeout_ms);
+    periodical_runner_->RunFnPeriodically([this] { CheckDeadSubscribers(); },
+                                          subscriber_timeout_ms);
   }
 
   ~Publisher() override = default;
@@ -264,10 +254,9 @@ class Publisher : public PublisherInterface {
   /// TODO(sang): Currently, we need to pass the callback for connection because we are
   /// using long polling internally. This should be changed once the bidirectional grpc
   /// streaming is supported.
-  void ConnectToSubscriber(
-      const SubscriberID &subscriber_id,
-      rpc::PubsubLongPollingReply *reply,
-      rpc::SendReplyCallback send_reply_callback);
+  void ConnectToSubscriber(const SubscriberID &subscriber_id,
+                           rpc::PubsubLongPollingReply *reply,
+                           rpc::SendReplyCallback send_reply_callback);
 
   /// Register the subscription.
   ///
@@ -275,10 +264,9 @@ class Publisher : public PublisherInterface {
   /// \param subscriber_id The node id of the subscriber.
   /// \param key_id The key_id that the subscriber is subscribing to.
   /// \return True if the registration is new. False otherwise.
-  bool RegisterSubscription(
-      const rpc::ChannelType channel_type,
-      const SubscriberID &subscriber_id,
-      const std::optional<std::string> &key_id) override;
+  bool RegisterSubscription(const rpc::ChannelType channel_type,
+                            const SubscriberID &subscriber_id,
+                            const std::optional<std::string> &key_id) override;
 
   /// Publish the given object id to subscribers.
   ///
@@ -291,8 +279,8 @@ class Publisher : public PublisherInterface {
   ///
   /// \param channel_type The type of the channel.
   /// \param key_id The message id to publish.
-  void PublishFailure(const rpc::ChannelType channel_type, const std::string &key_id)
-      override;
+  void PublishFailure(const rpc::ChannelType channel_type,
+                      const std::string &key_id) override;
 
   /// Unregister subscription. It means the given object id won't be published to the
   /// subscriber anymore.
@@ -301,10 +289,9 @@ class Publisher : public PublisherInterface {
   /// \param subscriber_id The node id of the subscriber.
   /// \param key_id The key_id of the subscriber.
   /// \return True if erased. False otherwise.
-  bool UnregisterSubscription(
-      const rpc::ChannelType channel_type,
-      const SubscriberID &subscriber_id,
-      const std::optional<std::string> &key_id) override;
+  bool UnregisterSubscription(const rpc::ChannelType channel_type,
+                              const SubscriberID &subscriber_id,
+                              const std::optional<std::string> &key_id) override;
 
   /// Remove the subscriber. Once the subscriber is removed, messages won't be published
   /// to it anymore.

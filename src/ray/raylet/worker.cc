@@ -26,16 +26,11 @@ namespace ray {
 namespace raylet {
 
 /// A constructor responsible for initializing the state of a worker.
-Worker::Worker(
-    const JobID &job_id,
-    const int runtime_env_hash,
-    const WorkerID &worker_id,
-    const Language &language,
-    rpc::WorkerType worker_type,
-    const std::string &ip_address,
-    std::shared_ptr<ClientConnection> connection,
-    rpc::ClientCallManager &client_call_manager,
-    StartupToken startup_token)
+Worker::Worker(const JobID &job_id, const int runtime_env_hash, const WorkerID &worker_id,
+               const Language &language, rpc::WorkerType worker_type,
+               const std::string &ip_address,
+               std::shared_ptr<ClientConnection> connection,
+               rpc::ClientCallManager &client_call_manager, StartupToken startup_token)
     : worker_id_(worker_id),
       startup_token_(startup_token),
       language_(language),
@@ -156,8 +151,7 @@ void Worker::DirectActorCallArgWaitComplete(int64_t tag) {
   request.set_tag(tag);
   request.set_intended_worker_id(worker_id_.Binary());
   rpc_client_->DirectActorCallArgWaitComplete(
-      request,
-      [](Status status, const rpc::DirectActorCallArgWaitCompleteReply &reply) {
+      request, [](Status status, const rpc::DirectActorCallArgWaitCompleteReply &reply) {
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Failed to send wait complete: " << status.ToString();
         }

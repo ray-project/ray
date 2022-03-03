@@ -28,18 +28,18 @@ class GrpcBasedResourceBroadcaster {
       std::function<void(rpc::ResourceUsageBroadcastData &)>
           get_resource_usage_batch_for_broadcast,
       /* Default values should only be changed for testing. */
-      std::function<void(
-          const rpc::Address &,
-          std::shared_ptr<rpc::NodeManagerClientPool> &,
-          std::string &,
-          const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &)> send_batch =
-          [](const rpc::Address &address,
-             std::shared_ptr<rpc::NodeManagerClientPool> &raylet_client_pool,
-             std::string &serialized_resource_usage_batch,
-             const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) {
-            auto raylet_client = raylet_client_pool->GetOrConnectByAddress(address);
-            raylet_client->UpdateResourceUsage(serialized_resource_usage_batch, callback);
-          });
+      std::function<void(const rpc::Address &,
+                         std::shared_ptr<rpc::NodeManagerClientPool> &, std::string &,
+                         const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &)>
+          send_batch =
+              [](const rpc::Address &address,
+                 std::shared_ptr<rpc::NodeManagerClientPool> &raylet_client_pool,
+                 std::string &serialized_resource_usage_batch,
+                 const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) {
+                auto raylet_client = raylet_client_pool->GetOrConnectByAddress(address);
+                raylet_client->UpdateResourceUsage(serialized_resource_usage_batch,
+                                                   callback);
+              });
   ~GrpcBasedResourceBroadcaster();
 
   void Initialize(const GcsInitData &gcs_init_data);
@@ -75,11 +75,9 @@ class GrpcBasedResourceBroadcaster {
   std::function<void(rpc::ResourceUsageBroadcastData &)>
       get_resource_usage_batch_for_broadcast_;
 
-  std::function<void(
-      const rpc::Address &,
-      std::shared_ptr<rpc::NodeManagerClientPool> &,
-      std::string &,
-      const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &)>
+  std::function<void(const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,
+                     std::string &,
+                     const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &)>
       send_batch_;
 
   /// A lock to protect the data structures.

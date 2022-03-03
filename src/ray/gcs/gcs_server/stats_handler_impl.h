@@ -32,15 +32,13 @@ class DefaultStatsHandler : public rpc::StatsHandler {
     }
   }
 
-  void HandleAddProfileData(
-      const AddProfileDataRequest &request,
-      AddProfileDataReply *reply,
-      SendReplyCallback send_reply_callback) override;
+  void HandleAddProfileData(const AddProfileDataRequest &request,
+                            AddProfileDataReply *reply,
+                            SendReplyCallback send_reply_callback) override;
 
-  void HandleGetAllProfileInfo(
-      const rpc::GetAllProfileInfoRequest &request,
-      rpc::GetAllProfileInfoReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
+  void HandleGetAllProfileInfo(const rpc::GetAllProfileInfoRequest &request,
+                               rpc::GetAllProfileInfoReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
 
  private:
   int cursor_ = 0;

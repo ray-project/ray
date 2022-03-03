@@ -64,11 +64,8 @@ class GcsPubSub {
   /// \param data The data of message to be published to redis.
   /// \param done Callback that will be called when the message is published to redis.
   /// \return Status
-  virtual Status Publish(
-      std::string_view channel,
-      const std::string &id,
-      const std::string &data,
-      const StatusCallback &done);
+  virtual Status Publish(std::string_view channel, const std::string &id,
+                         const std::string &data, const StatusCallback &done);
 
   /// Subscribe to messages with the specified ID under the specified channel.
   ///
@@ -78,11 +75,8 @@ class GcsPubSub {
   /// received.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  Status Subscribe(
-      std::string_view channel,
-      const std::string &id,
-      const Callback &subscribe,
-      const StatusCallback &done);
+  Status Subscribe(std::string_view channel, const std::string &id,
+                   const Callback &subscribe, const StatusCallback &done);
 
   /// Subscribe to messages with the specified channel.
   ///
@@ -91,10 +85,8 @@ class GcsPubSub {
   /// received.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  Status SubscribeAll(
-      std::string_view channel,
-      const Callback &subscribe,
-      const StatusCallback &done);
+  Status SubscribeAll(std::string_view channel, const Callback &subscribe,
+                      const StatusCallback &done);
 
   /// Unsubscribe to messages with the specified ID under the specified channel.
   ///
@@ -120,10 +112,8 @@ class GcsPubSub {
   /// channel.
   struct Command {
     /// SUBSCRIBE constructor.
-    Command(
-        const Callback &subscribe_callback,
-        const StatusCallback &done_callback,
-        bool is_sub_or_unsub_all)
+    Command(const Callback &subscribe_callback, const StatusCallback &done_callback,
+            bool is_sub_or_unsub_all)
         : is_subscribe(true),
           subscribe_callback(subscribe_callback),
           done_callback(done_callback),
@@ -169,19 +159,16 @@ class GcsPubSub {
   /// subscribe command can execute if the channel's callback index is not set.
   /// An unsubscribe command can execute if the channel's callback index is
   /// set.
-  Status ExecuteCommandIfPossible(
-      const std::string &channel_key,
-      GcsPubSub::Channel &channel) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  Status ExecuteCommandIfPossible(const std::string &channel_key,
+                                  GcsPubSub::Channel &channel)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  Status SubscribeInternal(
-      std::string_view channel_name,
-      const Callback &subscribe,
-      const StatusCallback &done,
-      const std::optional<std::string_view> &id);
+  Status SubscribeInternal(std::string_view channel_name, const Callback &subscribe,
+                           const StatusCallback &done,
+                           const std::optional<std::string_view> &id);
 
-  std::string GenChannelPattern(
-      std::string_view channel,
-      const std::optional<std::string_view> &id);
+  std::string GenChannelPattern(std::string_view channel,
+                                const std::optional<std::string_view> &id);
 
   std::shared_ptr<RedisClient> redis_client_;
 
@@ -201,9 +188,8 @@ class GcsPublisher {
   /// Initializes GcsPublisher with both Redis and GCS based publishers.
   /// Publish*() member functions below would be incrementally converted to use the GCS
   /// based publisher, if available.
-  GcsPublisher(
-      const std::shared_ptr<RedisClient> &redis_client,
-      std::unique_ptr<pubsub::Publisher> publisher)
+  GcsPublisher(const std::shared_ptr<RedisClient> &redis_client,
+               std::unique_ptr<pubsub::Publisher> publisher)
       : pubsub_(std::make_unique<GcsPubSub>(redis_client)),
         publisher_(std::move(publisher)) {}
 
@@ -227,47 +213,34 @@ class GcsPublisher {
   /// TODO: Implement optimization for channels where only latest data per ID is useful.
 
   /// Uses Redis pubsub.
-  Status PublishActor(
-      const ActorID &id,
-      const rpc::ActorTableData &message,
-      const StatusCallback &done);
+  Status PublishActor(const ActorID &id, const rpc::ActorTableData &message,
+                      const StatusCallback &done);
 
   /// Uses Redis pubsub.
-  Status PublishJob(
-      const JobID &id,
-      const rpc::JobTableData &message,
-      const StatusCallback &done);
+  Status PublishJob(const JobID &id, const rpc::JobTableData &message,
+                    const StatusCallback &done);
 
   /// Uses Redis pubsub.
-  Status PublishNodeInfo(
-      const NodeID &id,
-      const rpc::GcsNodeInfo &message,
-      const StatusCallback &done);
+  Status PublishNodeInfo(const NodeID &id, const rpc::GcsNodeInfo &message,
+                         const StatusCallback &done);
 
   /// Uses Redis pubsub.
-  Status PublishNodeResource(
-      const NodeID &id,
-      const rpc::NodeResourceChange &message,
-      const StatusCallback &done);
+  Status PublishNodeResource(const NodeID &id, const rpc::NodeResourceChange &message,
+                             const StatusCallback &done);
 
   /// Actually rpc::WorkerDeltaData is not a delta message.
   /// Uses Redis pubsub.
-  Status PublishWorkerFailure(
-      const WorkerID &id,
-      const rpc::WorkerDeltaData &message,
-      const StatusCallback &done);
+  Status PublishWorkerFailure(const WorkerID &id, const rpc::WorkerDeltaData &message,
+                              const StatusCallback &done);
 
   /// Uses Redis pubsub.
-  Status PublishError(
-      const std::string &id,
-      const rpc::ErrorTableData &message,
-      const StatusCallback &done);
+  Status PublishError(const std::string &id, const rpc::ErrorTableData &message,
+                      const StatusCallback &done);
 
   /// TODO: remove once it is converted to GRPC-based push broadcasting.
   /// Uses Redis pubsub.
-  Status PublishResourceBatch(
-      const rpc::ResourceUsageBatchData &message,
-      const StatusCallback &done);
+  Status PublishResourceBatch(const rpc::ResourceUsageBatchData &message,
+                              const StatusCallback &done);
 
   /// Prints debugging info for the publisher.
   std::string DebugString() const;
@@ -284,10 +257,9 @@ class GcsSubscriber {
  public:
   /// Initializes GcsSubscriber with both Redis and GCS based GcsSubscribers.
   // TODO: Support restarted GCS publisher, at the same or a different address.
-  GcsSubscriber(
-      const std::shared_ptr<RedisClient> &redis_client,
-      const rpc::Address &gcs_address,
-      std::unique_ptr<pubsub::Subscriber> subscriber)
+  GcsSubscriber(const std::shared_ptr<RedisClient> &redis_client,
+                const rpc::Address &gcs_address,
+                std::unique_ptr<pubsub::Subscriber> subscriber)
       : gcs_address_(gcs_address), subscriber_(std::move(subscriber)) {
     if (redis_client) {
       pubsub_ = std::make_unique<GcsPubSub>(redis_client);
@@ -303,32 +275,27 @@ class GcsSubscriber {
   /// empty.
 
   /// Uses GCS pubsub when created with `subscriber`.
-  Status SubscribeActor(
-      const ActorID &id,
-      const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-      const StatusCallback &done);
+  Status SubscribeActor(const ActorID &id,
+                        const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+                        const StatusCallback &done);
   Status UnsubscribeActor(const ActorID &id);
   bool IsActorUnsubscribed(const ActorID &id);
 
   /// Uses Redis pubsub.
-  Status SubscribeAllJobs(
-      const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
-      const StatusCallback &done);
+  Status SubscribeAllJobs(const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
+                          const StatusCallback &done);
 
   /// Uses Redis pubsub.
-  Status SubscribeAllNodeInfo(
-      const ItemCallback<rpc::GcsNodeInfo> &subscribe,
-      const StatusCallback &done);
+  Status SubscribeAllNodeInfo(const ItemCallback<rpc::GcsNodeInfo> &subscribe,
+                              const StatusCallback &done);
 
   /// Uses Redis pubsub.
-  Status SubscribeAllNodeResources(
-      const ItemCallback<rpc::NodeResourceChange> &subscribe,
-      const StatusCallback &done);
+  Status SubscribeAllNodeResources(const ItemCallback<rpc::NodeResourceChange> &subscribe,
+                                   const StatusCallback &done);
 
   /// Uses Redis pubsub.
-  Status SubscribeAllWorkerFailures(
-      const ItemCallback<rpc::WorkerDeltaData> &subscribe,
-      const StatusCallback &done);
+  Status SubscribeAllWorkerFailures(const ItemCallback<rpc::WorkerDeltaData> &subscribe,
+                                    const StatusCallback &done);
 
   /// TODO: remove once it is converted to GRPC-based push broadcasting.
   /// Uses Redis pubsub.

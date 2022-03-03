@@ -46,9 +46,8 @@ TEST_F(ActorCreatorTest, IsRegister) {
   ASSERT_FALSE(actor_creator->IsActorInRegistering(actor_id));
   auto task_spec = GetTaskSpec(actor_id);
   std::function<void(Status)> cb;
-  EXPECT_CALL(
-      *gcs_client->mock_actor_accessor,
-      AsyncRegisterActor(task_spec, ::testing::_, ::testing::_))
+  EXPECT_CALL(*gcs_client->mock_actor_accessor,
+              AsyncRegisterActor(task_spec, ::testing::_, ::testing::_))
       .WillOnce(
           ::testing::DoAll(::testing::SaveArg<1>(&cb), ::testing::Return(Status::OK())));
   ASSERT_TRUE(actor_creator->AsyncRegisterActor(task_spec, nullptr).ok());
@@ -61,9 +60,8 @@ TEST_F(ActorCreatorTest, AsyncWaitForFinish) {
   auto actor_id = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
   auto task_spec = GetTaskSpec(actor_id);
   std::function<void(Status)> cb;
-  EXPECT_CALL(
-      *gcs_client->mock_actor_accessor,
-      AsyncRegisterActor(::testing::_, ::testing::_, ::testing::_))
+  EXPECT_CALL(*gcs_client->mock_actor_accessor,
+              AsyncRegisterActor(::testing::_, ::testing::_, ::testing::_))
       .WillRepeatedly(
           ::testing::DoAll(::testing::SaveArg<1>(&cb), ::testing::Return(Status::OK())));
   int cnt = 0;
@@ -87,12 +85,10 @@ TEST_F(ActorCreatorTest, AsyncWaitForFinish) {
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
 
-  InitShutdownRAII ray_log_shutdown_raii(
-      ray::RayLog::StartRayLog,
-      ray::RayLog::ShutDownRayLog,
-      argv[0],
-      ray::RayLogLevel::INFO,
-      /*log_dir=*/"");
+  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
+                                         ray::RayLog::ShutDownRayLog, argv[0],
+                                         ray::RayLogLevel::INFO,
+                                         /*log_dir=*/"");
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   return RUN_ALL_TESTS();
 }

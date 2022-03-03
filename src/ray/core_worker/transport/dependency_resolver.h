@@ -28,10 +28,9 @@ namespace core {
 // This class is thread-safe.
 class LocalDependencyResolver {
  public:
-  LocalDependencyResolver(
-      CoreWorkerMemoryStore &store,
-      TaskFinisherInterface &task_finisher,
-      ActorCreatorInterface &actor_creator)
+  LocalDependencyResolver(CoreWorkerMemoryStore &store,
+                          TaskFinisherInterface &task_finisher,
+                          ActorCreatorInterface &actor_creator)
       : in_memory_store_(store),
         task_finisher_(task_finisher),
         actor_creator_(actor_creator),
@@ -45,9 +44,8 @@ class LocalDependencyResolver {
   ///
   /// Postcondition: all direct call id arguments that haven't been spilled to plasma
   /// are converted to values and all remaining arguments are arguments in the task spec.
-  void ResolveDependencies(
-      TaskSpecification &task,
-      std::function<void(Status)> on_complete);
+  void ResolveDependencies(TaskSpecification &task,
+                           std::function<void(Status)> on_complete);
 
   /// Return the number of tasks pending dependency resolution.
   /// TODO(ekl) this should be exposed in worker stats.

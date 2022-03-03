@@ -37,12 +37,7 @@ class DirectTaskTransportTest : public ::testing::Test {
         [&](const rpc::Address &) { return nullptr; });
     memory_store = std::make_unique<CoreWorkerMemoryStore>();
     actor_task_submitter = std::make_unique<CoreWorkerDirectActorTaskSubmitter>(
-        *client_pool,
-        *memory_store,
-        *task_finisher,
-        *actor_creator,
-        nullptr,
-        io_context);
+        *client_pool, *memory_store, *task_finisher, *actor_creator, nullptr, io_context);
   }
 
   TaskSpecification GetActorTaskSpec(const ActorID &actor_id) {
@@ -91,24 +86,17 @@ TEST_F(DirectTaskTransportTest, ActorRegisterFailure) {
   auto inline_obj_ref = task_arg->add_nested_inlined_refs();
   inline_obj_ref->set_object_id(ObjectID::ForActorHandle(actor_id).Binary());
   std::function<void(Status)> register_cb;
-  EXPECT_CALL(
-      *gcs_client->mock_actor_accessor,
-      AsyncRegisterActor(creation_task_spec, ::testing::_, ::testing::_))
-      .WillOnce(::testing::DoAll(
-          ::testing::SaveArg<1>(&register_cb),
-          ::testing::Return(Status::OK())));
+  EXPECT_CALL(*gcs_client->mock_actor_accessor,
+              AsyncRegisterActor(creation_task_spec, ::testing::_, ::testing::_))
+      .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&register_cb),
+                                 ::testing::Return(Status::OK())));
   ASSERT_TRUE(actor_creator->AsyncRegisterActor(creation_task_spec, nullptr).ok());
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
   actor_task_submitter->AddActorQueueIfNotExists(actor_id, -1);
   ASSERT_TRUE(CheckSubmitTask(task_spec));
-  EXPECT_CALL(
-      *task_finisher,
-      FailOrRetryPendingTask(
-          task_spec.TaskId(),
-          rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED,
-          _,
-          _,
-          _));
+  EXPECT_CALL(*task_finisher, FailOrRetryPendingTask(
+                                  task_spec.TaskId(),
+                                  rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, _, _, _));
   register_cb(Status::IOError(""));
 }
 
@@ -122,12 +110,10 @@ TEST_F(DirectTaskTransportTest, ActorRegisterOk) {
   auto inline_obj_ref = task_arg->add_nested_inlined_refs();
   inline_obj_ref->set_object_id(ObjectID::ForActorHandle(actor_id).Binary());
   std::function<void(Status)> register_cb;
-  EXPECT_CALL(
-      *gcs_client->mock_actor_accessor,
-      AsyncRegisterActor(creation_task_spec, ::testing::_, ::testing::_))
-      .WillOnce(::testing::DoAll(
-          ::testing::SaveArg<1>(&register_cb),
-          ::testing::Return(Status::OK())));
+  EXPECT_CALL(*gcs_client->mock_actor_accessor,
+              AsyncRegisterActor(creation_task_spec, ::testing::_, ::testing::_))
+      .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&register_cb),
+                                 ::testing::Return(Status::OK())));
   ASSERT_TRUE(actor_creator->AsyncRegisterActor(creation_task_spec, nullptr).ok());
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
   actor_task_submitter->AddActorQueueIfNotExists(actor_id, -1);

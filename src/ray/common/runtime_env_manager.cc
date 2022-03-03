@@ -17,9 +17,8 @@
 #include "ray/util/logging.h"
 namespace ray {
 
-void RuntimeEnvManager::AddURIReference(
-    const std::string &hex_id,
-    const rpc::RuntimeEnvInfo &runtime_env_info) {
+void RuntimeEnvManager::AddURIReference(const std::string &hex_id,
+                                        const rpc::RuntimeEnvInfo &runtime_env_info) {
   const auto &uris = runtime_env_info.uris();
   for (const auto &uri : uris) {
     uri_reference_[uri]++;

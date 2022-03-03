@@ -29,8 +29,8 @@ class LocalModeObjectStore : public ObjectStore {
  public:
   LocalModeObjectStore(LocalModeRayRuntime &local_mode_ray_tuntime);
 
-  std::vector<bool>
-  Wait(const std::vector<ObjectID> &ids, int num_objects, int timeout_ms);
+  std::vector<bool> Wait(const std::vector<ObjectID> &ids, int num_objects,
+                         int timeout_ms);
 
   void AddLocalReference(const std::string &id);
 
@@ -43,9 +43,8 @@ class LocalModeObjectStore : public ObjectStore {
 
   std::shared_ptr<msgpack::sbuffer> GetRaw(const ObjectID &object_id, int timeout_ms);
 
-  std::vector<std::shared_ptr<msgpack::sbuffer>> GetRaw(
-      const std::vector<ObjectID> &ids,
-      int timeout_ms);
+  std::vector<std::shared_ptr<msgpack::sbuffer>> GetRaw(const std::vector<ObjectID> &ids,
+                                                        int timeout_ms);
 
   std::unique_ptr<CoreWorkerMemoryStore> memory_store_;
 

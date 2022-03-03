@@ -20,21 +20,15 @@ namespace ray {
 namespace gcs {
 
 void GcsWorkerManager::HandleReportWorkerFailure(
-    const rpc::ReportWorkerFailureRequest &request,
-    rpc::ReportWorkerFailureReply *reply,
+    const rpc::ReportWorkerFailureRequest &request, rpc::ReportWorkerFailureReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const rpc::Address worker_address = request.worker_failure().worker_address();
   const auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
   const auto node_id = NodeID::FromBinary(worker_address.raylet_id());
   std::string message = absl::StrCat(
-      "Reporting worker exit, worker id = ",
-      worker_id.Hex(),
-      ", node id = ",
-      node_id.Hex(),
-      ", address = ",
-      worker_address.ip_address(),
-      ", exit_type = ",
-      rpc::WorkerExitType_Name(request.worker_failure().exit_type()),
+      "Reporting worker exit, worker id = ", worker_id.Hex(),
+      ", node id = ", node_id.Hex(), ", address = ", worker_address.ip_address(),
+      ", exit_type = ", rpc::WorkerExitType_Name(request.worker_failure().exit_type()),
       request.worker_failure().has_creation_task_exception());
   if (request.worker_failure().exit_type() == rpc::WorkerExitType::INTENDED_EXIT ||
       request.worker_failure().exit_type() == rpc::WorkerExitType::IDLE_EXIT) {
@@ -53,12 +47,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
     listener(worker_failure_data);
   }
 
-  auto on_done = [this,
-                  worker_address,
-                  worker_id,
-                  node_id,
-                  worker_failure_data,
-                  reply,
+  auto on_done = [this, worker_address, worker_id, node_id, worker_failure_data, reply,
                   send_reply_callback](const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to report worker failure, worker id = " << worker_id
@@ -88,10 +77,9 @@ void GcsWorkerManager::HandleReportWorkerFailure(
   }
 }
 
-void GcsWorkerManager::HandleGetWorkerInfo(
-    const rpc::GetWorkerInfoRequest &request,
-    rpc::GetWorkerInfoReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+void GcsWorkerManager::HandleGetWorkerInfo(const rpc::GetWorkerInfoRequest &request,
+                                           rpc::GetWorkerInfoReply *reply,
+                                           rpc::SendReplyCallback send_reply_callback) {
   WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
   RAY_LOG(DEBUG) << "Getting worker info, worker id = " << worker_id;
 
@@ -112,8 +100,7 @@ void GcsWorkerManager::HandleGetWorkerInfo(
 }
 
 void GcsWorkerManager::HandleGetAllWorkerInfo(
-    const rpc::GetAllWorkerInfoRequest &request,
-    rpc::GetAllWorkerInfoReply *reply,
+    const rpc::GetAllWorkerInfoRequest &request, rpc::GetAllWorkerInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting all worker info.";
   auto on_done = [reply, send_reply_callback](
@@ -130,24 +117,23 @@ void GcsWorkerManager::HandleGetAllWorkerInfo(
   }
 }
 
-void GcsWorkerManager::HandleAddWorkerInfo(
-    const rpc::AddWorkerInfoRequest &request,
-    rpc::AddWorkerInfoReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+void GcsWorkerManager::HandleAddWorkerInfo(const rpc::AddWorkerInfoRequest &request,
+                                           rpc::AddWorkerInfoReply *reply,
+                                           rpc::SendReplyCallback send_reply_callback) {
   auto worker_data = std::make_shared<WorkerTableData>();
   worker_data->CopyFrom(request.worker_data());
   auto worker_id = WorkerID::FromBinary(worker_data->worker_address().worker_id());
   RAY_LOG(DEBUG) << "Adding worker " << worker_id;
 
-  auto on_done =
-      [worker_id, worker_data, reply, send_reply_callback](const Status &status) {
-        if (!status.ok()) {
-          RAY_LOG(ERROR) << "Failed to add worker information, "
-                         << worker_data->DebugString();
-        }
-        RAY_LOG(DEBUG) << "Finished adding worker " << worker_id;
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-      };
+  auto on_done = [worker_id, worker_data, reply,
+                  send_reply_callback](const Status &status) {
+    if (!status.ok()) {
+      RAY_LOG(ERROR) << "Failed to add worker information, "
+                     << worker_data->DebugString();
+    }
+    RAY_LOG(DEBUG) << "Finished adding worker " << worker_id;
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  };
 
   Status status = gcs_table_storage_->WorkerTable().Put(worker_id, *worker_data, on_done);
   if (!status.ok()) {

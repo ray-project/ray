@@ -48,9 +48,8 @@ class ConcurrencyGroupManager final {
   /// \return Return the corresponding executor of the concurrency group
   /// if concurrency_group_name is given.
   /// Otherwise return the corresponding executor by the given function descriptor.
-  std::shared_ptr<ExecutorType> GetExecutor(
-      const std::string &concurrency_group_name,
-      const ray::FunctionDescriptor &fd);
+  std::shared_ptr<ExecutorType> GetExecutor(const std::string &concurrency_group_name,
+                                            const ray::FunctionDescriptor &fd);
 
   /// Get the default executor.
   std::shared_ptr<ExecutorType> GetDefaultExecutor() const;

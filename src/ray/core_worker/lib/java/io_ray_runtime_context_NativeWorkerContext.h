@@ -27,9 +27,8 @@ extern "C" {
  * Signature: ()I
  */
 JNIEXPORT jint JNICALL
-Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentTaskType(
-    JNIEnv *,
-    jclass);
+Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentTaskType(JNIEnv *,
+                                                                         jclass);
 
 /*
  * Class:     io_ray_runtime_context_NativeWorkerContext
@@ -53,9 +52,8 @@ Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentJobId(JNIEnv *, 
  * Signature: ()Ljava/nio/ByteBuffer;
  */
 JNIEXPORT jobject JNICALL
-Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentWorkerId(
-    JNIEnv *,
-    jclass);
+Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentWorkerId(JNIEnv *,
+                                                                         jclass);
 
 /*
  * Class:     io_ray_runtime_context_NativeWorkerContext

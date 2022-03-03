@@ -17,9 +17,8 @@
 #include "msgpack.hpp"
 
 namespace {
-std::shared_ptr<ray::LocalMemoryBuffer> MakeBufferFromString(
-    const uint8_t *data,
-    size_t data_size) {
+std::shared_ptr<ray::LocalMemoryBuffer> MakeBufferFromString(const uint8_t *data,
+                                                             size_t data_size) {
   auto metadata = const_cast<uint8_t *>(data);
   auto meta_buffer =
       std::make_shared<ray::LocalMemoryBuffer>(metadata, data_size, /*copy_data=*/true);
@@ -71,13 +70,11 @@ std::shared_ptr<ray::LocalMemoryBuffer> MakeSerializedErrorBuffer(
   packer.pack_bin(pb_serialized_exception.size());
   packer.pack_bin_body(pb_serialized_exception.data(), pb_serialized_exception.size());
   std::unique_ptr<ray::LocalMemoryBuffer> final_buffer =
-      std::make_unique<ray::LocalMemoryBuffer>(
-          msgpack_serialized_exception.size() + kMessagePackOffset);
+      std::make_unique<ray::LocalMemoryBuffer>(msgpack_serialized_exception.size() +
+                                               kMessagePackOffset);
   // copy msgpack-serialized bytes
-  std::memcpy(
-      final_buffer->Data() + kMessagePackOffset,
-      msgpack_serialized_exception.data(),
-      msgpack_serialized_exception.size());
+  std::memcpy(final_buffer->Data() + kMessagePackOffset,
+              msgpack_serialized_exception.data(), msgpack_serialized_exception.size());
   // copy offset
   msgpack::sbuffer msgpack_int;
   msgpack::pack(msgpack_int, msgpack_serialized_exception.size());
@@ -108,9 +105,8 @@ bool RayObject::IsException(rpc::ErrorType *error_type) const {
     return false;
   }
   // TODO (kfstorm): metadata should be structured.
-  const std::string metadata(
-      reinterpret_cast<const char *>(metadata_->Data()),
-      metadata_->Size());
+  const std::string metadata(reinterpret_cast<const char *>(metadata_->Data()),
+                             metadata_->Size());
   const auto error_type_descriptor = ray::rpc::ErrorType_descriptor();
   for (int i = 0; i < error_type_descriptor->value_count(); i++) {
     const auto error_type_number = error_type_descriptor->value(i)->number();
@@ -128,9 +124,8 @@ bool RayObject::IsInPlasmaError() const {
   if (metadata_ == nullptr) {
     return false;
   }
-  const std::string metadata(
-      reinterpret_cast<const char *>(metadata_->Data()),
-      metadata_->Size());
+  const std::string metadata(reinterpret_cast<const char *>(metadata_->Data()),
+                             metadata_->Size());
   return metadata == std::to_string(ray::rpc::ErrorType::OBJECT_IN_PLASMA);
 }
 

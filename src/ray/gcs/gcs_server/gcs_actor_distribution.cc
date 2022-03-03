@@ -20,10 +20,9 @@ namespace ray {
 
 namespace gcs {
 
-GcsActorWorkerAssignment::GcsActorWorkerAssignment(
-    const NodeID &node_id,
-    const ResourceSet &acquired_resources,
-    bool is_shared)
+GcsActorWorkerAssignment::GcsActorWorkerAssignment(const NodeID &node_id,
+                                                   const ResourceSet &acquired_resources,
+                                                   bool is_shared)
     : node_id_(node_id), acquired_resources_(acquired_resources), is_shared_(is_shared) {}
 
 const NodeID &GcsActorWorkerAssignment::GetNodeID() const { return node_id_; }
@@ -35,8 +34,7 @@ const ResourceSet &GcsActorWorkerAssignment::GetResources() const {
 bool GcsActorWorkerAssignment::IsShared() const { return is_shared_; }
 
 GcsBasedActorScheduler::GcsBasedActorScheduler(
-    instrumented_io_context &io_context,
-    GcsActorTable &gcs_actor_table,
+    instrumented_io_context &io_context, GcsActorTable &gcs_actor_table,
     const GcsNodeManager &gcs_node_manager,
     std::shared_ptr<GcsResourceManager> gcs_resource_manager,
     std::shared_ptr<GcsResourceScheduler> gcs_resource_scheduler,
@@ -44,14 +42,9 @@ GcsBasedActorScheduler::GcsBasedActorScheduler(
     GcsActorSchedulerSuccessCallback schedule_success_handler,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
     rpc::ClientFactoryFn client_factory)
-    : GcsActorScheduler(
-          io_context,
-          gcs_actor_table,
-          gcs_node_manager,
-          schedule_failure_handler,
-          schedule_success_handler,
-          raylet_client_pool,
-          client_factory),
+    : GcsActorScheduler(io_context, gcs_actor_table, gcs_node_manager,
+                        schedule_failure_handler, schedule_success_handler,
+                        raylet_client_pool, client_factory),
       gcs_resource_manager_(std::move(gcs_resource_manager)),
       gcs_resource_scheduler_(std::move(gcs_resource_scheduler)) {}
 
@@ -62,8 +55,7 @@ NodeID GcsBasedActorScheduler::SelectNode(std::shared_ptr<GcsActor> actor) {
   // TODO(Chong-Li): Java actors may not need a sole assignment (worker process).
   bool need_sole_actor_worker_assignment = true;
   if (auto selected_actor_worker_assignment = SelectOrAllocateActorWorkerAssignment(
-          actor,
-          need_sole_actor_worker_assignment)) {
+          actor, need_sole_actor_worker_assignment)) {
     auto node_id = selected_actor_worker_assignment->GetNodeID();
     actor->SetActorWorkerAssignment(std::move(selected_actor_worker_assignment));
     return node_id;
@@ -73,24 +65,20 @@ NodeID GcsBasedActorScheduler::SelectNode(std::shared_ptr<GcsActor> actor) {
 
 std::unique_ptr<GcsActorWorkerAssignment>
 GcsBasedActorScheduler::SelectOrAllocateActorWorkerAssignment(
-    std::shared_ptr<GcsActor> actor,
-    bool need_sole_actor_worker_assignment) {
+    std::shared_ptr<GcsActor> actor, bool need_sole_actor_worker_assignment) {
   const auto &task_spec = actor->GetCreationTaskSpecification();
   auto required_resources = task_spec.GetRequiredPlacementResources();
 
   // If the task needs a sole actor worker assignment then allocate a new one.
-  return AllocateNewActorWorkerAssignment(
-      required_resources,
-      /*is_shared=*/false,
-      task_spec);
+  return AllocateNewActorWorkerAssignment(required_resources,
+                                          /*is_shared=*/false, task_spec);
 
   // TODO(Chong-Li): code path for actors that do not need a sole assignment.
 }
 
 std::unique_ptr<GcsActorWorkerAssignment>
 GcsBasedActorScheduler::AllocateNewActorWorkerAssignment(
-    const ResourceSet &required_resources,
-    bool is_shared,
+    const ResourceSet &required_resources, bool is_shared,
     const TaskSpecification &task_spec) {
   // Allocate resources from cluster.
   auto selected_node_id = AllocateResources(required_resources);
@@ -101,9 +89,7 @@ GcsBasedActorScheduler::AllocateNewActorWorkerAssignment(
 
   // Create a new gcs actor worker assignment.
   auto gcs_actor_worker_assignment = std::make_unique<GcsActorWorkerAssignment>(
-      selected_node_id,
-      required_resources,
-      is_shared);
+      selected_node_id, required_resources, is_shared);
 
   return gcs_actor_worker_assignment;
 }
@@ -152,8 +138,7 @@ NodeID GcsBasedActorScheduler::GetHighestScoreNodeResource(
 }
 
 void GcsBasedActorScheduler::WarnResourceAllocationFailure(
-    const TaskSpecification &task_spec,
-    const ResourceSet &required_resources) const {
+    const TaskSpecification &task_spec, const ResourceSet &required_resources) const {
   auto scheduling_node_id = GetHighestScoreNodeResource(required_resources);
   const SchedulingResources *scheduling_resource = nullptr;
   auto iter = gcs_resource_manager_->GetClusterResources().find(scheduling_node_id);
@@ -175,10 +160,8 @@ void GcsBasedActorScheduler::WarnResourceAllocationFailure(
 }
 
 void GcsBasedActorScheduler::HandleWorkerLeaseReply(
-    std::shared_ptr<GcsActor> actor,
-    std::shared_ptr<rpc::GcsNodeInfo> node,
-    const Status &status,
-    const rpc::RequestWorkerLeaseReply &reply) {
+    std::shared_ptr<GcsActor> actor, std::shared_ptr<rpc::GcsNodeInfo> node,
+    const Status &status, const rpc::RequestWorkerLeaseReply &reply) {
   auto node_id = NodeID::FromBinary(node->node_id());
   // If the actor is still in the leasing map and the status is ok, remove the actor
   // from the leasing map and handle the reply. Otherwise, lease again, because it
@@ -209,11 +192,8 @@ void GcsBasedActorScheduler::HandleWorkerLeaseReply(
       }
       if (reply.canceled()) {
         // TODO(sang): Should properly update the failure message.
-        HandleRequestWorkerLeaseCanceled(
-            actor,
-            node_id,
-            reply.failure_type(),
-            /*scheduling_failure_message*/ "");
+        HandleRequestWorkerLeaseCanceled(actor, node_id, reply.failure_type(),
+                                         /*scheduling_failure_message*/ "");
       } else if (reply.rejected()) {
         RAY_LOG(INFO) << "Failed to lease worker from node " << node_id << " for actor "
                       << actor->GetActorID()
@@ -236,8 +216,7 @@ void GcsBasedActorScheduler::HandleWorkerLeaseReply(
 }
 
 void GcsBasedActorScheduler::HandleWorkerLeaseRejectedReply(
-    std::shared_ptr<GcsActor> actor,
-    const rpc::RequestWorkerLeaseReply &reply) {
+    std::shared_ptr<GcsActor> actor, const rpc::RequestWorkerLeaseReply &reply) {
   // The request was rejected because of insufficient resources.
   auto node_id = actor->GetNodeID();
   gcs_resource_manager_->UpdateNodeNormalTaskResources(node_id, reply.resources_data());

@@ -23,12 +23,9 @@ namespace ray {
 ///
 /// LogEventReporter
 ///
-LogEventReporter::LogEventReporter(
-    rpc::Event_SourceType source_type,
-    const std::string &log_dir,
-    bool force_flush,
-    int rotate_max_file_size,
-    int rotate_max_file_num)
+LogEventReporter::LogEventReporter(rpc::Event_SourceType source_type,
+                                   const std::string &log_dir, bool force_flush,
+                                   int rotate_max_file_size, int rotate_max_file_num)
     : log_dir_(log_dir),
       force_flush_(force_flush),
       rotate_max_file_size_(rotate_max_file_size),
@@ -54,11 +51,9 @@ LogEventReporter::LogEventReporter(
   // for example event_GCS.0.log, event_GCS.1.log, event_GCS.2.log ...
   // We alow to rotate for {rotate_max_file_num_} times.
   if (log_sink_ == nullptr) {
-    log_sink_ = spdlog::rotating_logger_mt(
-        log_sink_key,
-        log_dir_ + file_name_,
-        1048576 * rotate_max_file_size_,
-        rotate_max_file_num_);
+    log_sink_ =
+        spdlog::rotating_logger_mt(log_sink_key, log_dir_ + file_name_,
+                                   1048576 * rotate_max_file_size_, rotate_max_file_num_);
   }
   log_sink_->set_pattern("%v");
 }
@@ -80,9 +75,8 @@ std::string LogEventReporter::replaceLineFeed(std::string message) {
   return ss.str();
 }
 
-std::string LogEventReporter::EventToString(
-    const rpc::Event &event,
-    const json &custom_fields) {
+std::string LogEventReporter::EventToString(const rpc::Event &event,
+                                            const json &custom_fields) {
   json j;
 
   auto time_stamp = event.timestamp();
@@ -90,9 +84,9 @@ std::string LogEventReporter::EventToString(
 
   absl::Time absl_time = absl::FromTimeT(epoch_time_as_time_t);
   std::stringstream time_stamp_buffer;
-  time_stamp_buffer
-      << absl::FormatTime("%Y-%m-%d %H:%M:%S.", absl_time, absl::LocalTimeZone())
-      << std::setw(6) << std::setfill('0') << time_stamp % 1000000;
+  time_stamp_buffer << absl::FormatTime("%Y-%m-%d %H:%M:%S.", absl_time,
+                                        absl::LocalTimeZone())
+                    << std::setw(6) << std::setfill('0') << time_stamp % 1000000;
 
   j["time_stamp"] = time_stamp_buffer.str();
   j["severity"] = Event_Severity_Name(event.severity());
@@ -198,9 +192,8 @@ void RayEventContext::ResetEventContext() {
   global_context_finished_setting_ = false;
 }
 
-void RayEventContext::UpdateCustomField(
-    const std::string &key,
-    const std::string &value) {
+void RayEventContext::UpdateCustomField(const std::string &key,
+                                        const std::string &value) {
   // This method should be used while source type has been set.
   RAY_CHECK(GetInitialzed());
   custom_fields_[key] = value;
@@ -236,21 +229,14 @@ static void SetEventLevel(const std::string &event_level) {
   RAY_LOG(INFO) << "Set ray event level to " << level;
 }
 
-void RayEvent::ReportEvent(
-    const std::string &severity,
-    const std::string &label,
-    const std::string &message,
-    const char *file_name,
-    int line_number) {
+void RayEvent::ReportEvent(const std::string &severity, const std::string &label,
+                           const std::string &message, const char *file_name,
+                           int line_number) {
   rpc::Event_Severity severity_ele =
       rpc::Event_Severity::Event_Severity_Event_Severity_INT_MIN_SENTINEL_DO_NOT_USE_;
   RAY_CHECK(rpc::Event_Severity_Parse(severity, &severity_ele));
-  RayEvent(
-      severity_ele,
-      EventLevelToLogLevel(severity_ele),
-      label,
-      file_name,
-      line_number)
+  RayEvent(severity_ele, EventLevelToLogLevel(severity_ele), label, file_name,
+           line_number)
       << message;
 }
 
@@ -328,11 +314,9 @@ void RayEvent::SendMessage(const std::string &message) {
 
 static absl::once_flag init_once_;
 
-void RayEventInit(
-    rpc::Event_SourceType source_type,
-    const std::unordered_map<std::string, std::string> &custom_fields,
-    const std::string &log_dir,
-    const std::string &event_level) {
+void RayEventInit(rpc::Event_SourceType source_type,
+                  const std::unordered_map<std::string, std::string> &custom_fields,
+                  const std::string &log_dir, const std::string &event_level) {
   absl::call_once(init_once_, [&source_type, &custom_fields, &log_dir, &event_level]() {
     RayEventContext::Instance().SetEventContext(source_type, custom_fields);
     auto event_dir = boost::filesystem::path(log_dir) / boost::filesystem::path("events");

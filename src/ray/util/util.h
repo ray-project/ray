@@ -73,9 +73,8 @@ inline std::string StringToHex(const std::string &str) {
 }
 
 // Append append_str to the begining of each line of str.
-inline std::string AppendToEachLine(
-    const std::string &str,
-    const std::string &append_str) {
+inline std::string AppendToEachLine(const std::string &str,
+                                    const std::string &append_str) {
   std::stringstream ss;
   ss << append_str;
   for (char c : str) {
@@ -123,8 +122,7 @@ inline int64_t current_sys_time_us() {
 ///
 /// \return The command-line arguments, after processing any escape sequences.
 std::vector<std::string> ParseCommandLine(
-    const std::string &cmdline,
-    CommandLineSyntax syntax = CommandLineSyntax::System);
+    const std::string &cmdline, CommandLineSyntax syntax = CommandLineSyntax::System);
 
 /// A helper function to combine command-line arguments in a platform-compatible manner.
 /// The result of this function is intended to be suitable for the shell used by popen().
@@ -132,9 +130,8 @@ std::vector<std::string> ParseCommandLine(
 /// \param cmdline The command-line arguments to combine.
 ///
 /// \return The command-line string, including any necessary escape sequences.
-std::string CreateCommandLine(
-    const std::vector<std::string> &args,
-    CommandLineSyntax syntax = CommandLineSyntax::System);
+std::string CreateCommandLine(const std::vector<std::string> &args,
+                              CommandLineSyntax syntax = CommandLineSyntax::System);
 
 /// Converts the given endpoint (such as TCP or UNIX domain socket address) to a string.
 /// \param include_scheme Whether to include the scheme prefix (such as tcp://).
@@ -306,10 +303,8 @@ class ExponentialBackOff {
   /// \param[in] multiplier The multiplier for this counter.
   /// \param[in] max_value The maximum value for this counter. By default it's
   ///    infinite double.
-  ExponentialBackOff(
-      uint64_t initial_value,
-      double multiplier,
-      uint64_t max_value = std::numeric_limits<uint64_t>::max())
+  ExponentialBackOff(uint64_t initial_value, double multiplier,
+                     uint64_t max_value = std::numeric_limits<uint64_t>::max())
       : curr_value_(initial_value),
         initial_value_(initial_value),
         max_value_(max_value),

@@ -20,9 +20,7 @@
 namespace ray {
 
 const std::string resource_labels[] = {
-    ray::kCPU_ResourceLabel,
-    ray::kMemory_ResourceLabel,
-    ray::kGPU_ResourceLabel,
+    ray::kCPU_ResourceLabel, ray::kMemory_ResourceLabel, ray::kGPU_ResourceLabel,
     ray::kObjectStoreMemory_ResourceLabel};
 
 const std::string ResourceEnumToString(PredefinedResources resource) {
@@ -118,8 +116,7 @@ ResourceRequest ResourceMapToResourceRequest(
 }
 
 const std::vector<FixedPoint> &TaskResourceInstances::Get(
-    const std::string &resource_name,
-    const StringIdMap &string_id_map) const {
+    const std::string &resource_name, const StringIdMap &string_id_map) const {
   if (ray::kCPU_ResourceLabel == resource_name) {
     return predefined_resources[CPU];
   } else if (ray::kGPU_ResourceLabel == resource_name) {
@@ -194,9 +191,8 @@ NodeResources ResourceMapToNodeResources(
       node_resources.predefined_resources[MEM] = resource_capacity;
     } else {
       // This is a custom resource.
-      node_resources.custom_resources.emplace(
-          string_to_int_map.Insert(resource.first),
-          resource_capacity);
+      node_resources.custom_resources.emplace(string_to_int_map.Insert(resource.first),
+                                              resource_capacity);
     }
   }
   return node_resources;
@@ -221,9 +217,8 @@ float NodeResources::CalculateCriticalResourceUtilization() const {
   return highest;
 }
 
-bool NodeResources::IsAvailable(
-    const ResourceRequest &resource_request,
-    bool ignore_pull_manager_at_capacity) const {
+bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
+                                bool ignore_pull_manager_at_capacity) const {
   if (!ignore_pull_manager_at_capacity && resource_request.requires_object_store_memory &&
       object_pulls_queued) {
     RAY_LOG(DEBUG) << "At pull manager capacity";
@@ -413,14 +408,12 @@ std::string NodeResources::DictString(StringIdMap string_to_in_map) const {
 
 bool NodeResourceInstances::operator==(const NodeResourceInstances &other) {
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
-    if (!EqualVectors(
-            this->predefined_resources[i].total,
-            other.predefined_resources[i].total)) {
+    if (!EqualVectors(this->predefined_resources[i].total,
+                      other.predefined_resources[i].total)) {
       return false;
     }
-    if (!EqualVectors(
-            this->predefined_resources[i].available,
-            other.predefined_resources[i].available)) {
+    if (!EqualVectors(this->predefined_resources[i].available,
+                      other.predefined_resources[i].available)) {
       return false;
     }
   }

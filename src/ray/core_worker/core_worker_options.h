@@ -33,14 +33,11 @@ struct CoreWorkerOptions {
   // Callback that must be implemented and provided by the language-specific worker
   // frontend to execute tasks and return their results.
   using TaskExecutionCallback = std::function<Status(
-      TaskType task_type,
-      const std::string task_name,
-      const RayFunction &ray_function,
+      TaskType task_type, const std::string task_name, const RayFunction &ray_function,
       const std::unordered_map<std::string, double> &required_resources,
       const std::vector<std::shared_ptr<RayObject>> &args,
       const std::vector<rpc::ObjectReference> &arg_refs,
-      const std::vector<ObjectID> &return_ids,
-      const std::string &debugger_breakpoint,
+      const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
       std::vector<std::shared_ptr<RayObject>> *results,
       std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes,
       bool *is_application_level_error,
@@ -134,9 +131,8 @@ struct CoreWorkerOptions {
   std::function<std::vector<std::string>(const std::vector<rpc::ObjectReference> &)>
       spill_objects;
   /// Application-language callback to restore objects from external storage.
-  std::function<int64_t(
-      const std::vector<rpc::ObjectReference> &,
-      const std::vector<std::string> &)>
+  std::function<int64_t(const std::vector<rpc::ObjectReference> &,
+                        const std::vector<std::string> &)>
       restore_spilled_objects;
   /// Application-language callback to delete objects from external storage.
   std::function<void(const std::vector<std::string> &, rpc::WorkerType)>

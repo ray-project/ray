@@ -40,8 +40,7 @@ namespace ray {
 class LocalResourceManager {
  public:
   LocalResourceManager(
-      int64_t local_node_id,
-      StringIdMap &resource_name_to_id,
+      int64_t local_node_id, StringIdMap &resource_name_to_id,
       const NodeResources &node_resources,
       std::function<int64_t(void)> get_used_object_store_memory,
       std::function<bool(void)> get_pull_manager_at_capacity,
@@ -53,9 +52,8 @@ class LocalResourceManager {
   ///
   /// \param resource_name: Resource which we want to update.
   /// \param resource_total: New capacity of the resource.
-  void AddLocalResourceInstances(
-      const std::string &resource_name,
-      const std::vector<FixedPoint> &instances);
+  void AddLocalResourceInstances(const std::string &resource_name,
+                                 const std::vector<FixedPoint> &instances);
 
   /// Delete a given resource from the local node.
   ///
@@ -85,9 +83,8 @@ class LocalResourceManager {
   ///
   /// \return Underflow capacities of CPU instances after subtracting CPU
   /// capacities in cpu_instances.
-  std::vector<double> SubtractCPUResourceInstances(
-      std::vector<double> &cpu_instances,
-      bool allow_going_negative = false);
+  std::vector<double> SubtractCPUResourceInstances(std::vector<double> &cpu_instances,
+                                                   bool allow_going_negative = false);
 
   /// Increase the available GPU instances of this node.
   ///
@@ -119,9 +116,8 @@ class LocalResourceManager {
       const absl::flat_hash_map<std::string, double> &task_resources,
       std::shared_ptr<TaskResourceInstances> task_allocation);
 
-  bool AllocateLocalTaskResources(
-      const ResourceRequest &resource_request,
-      std::shared_ptr<TaskResourceInstances> task_allocation);
+  bool AllocateLocalTaskResources(const ResourceRequest &resource_request,
+                                  std::shared_ptr<TaskResourceInstances> task_allocation);
 
   void ReleaseWorkerResources(std::shared_ptr<TaskResourceInstances> task_allocation);
 
@@ -186,10 +182,8 @@ class LocalResourceManager {
   /// \param unit_instances: If true, we split the resource in unit-size instances.
   /// If false, we create a single instance of capacity "total".
   /// \param instance_list: The list of capacities this resource instances.
-  void InitResourceInstances(
-      FixedPoint total,
-      bool unit_instances,
-      ResourceInstanceCapacities *instance_list);
+  void InitResourceInstances(FixedPoint total, bool unit_instances,
+                             ResourceInstanceCapacities *instance_list);
 
   /// Init the information about which resources are unit_instance.
   void InitResourceUnitInstanceInfo();
@@ -218,8 +212,7 @@ class LocalResourceManager {
   /// capacities in "available", i.e.,.
   /// max(available - reasource_instances.available, 0)
   std::vector<FixedPoint> SubtractAvailableResourceInstances(
-      std::vector<FixedPoint> available,
-      ResourceInstanceCapacities *resource_instances,
+      std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances,
       bool allow_going_negative = false) const;
 
   /// Allocate enough capacity across the instances of a resource to satisfy "demand".
@@ -253,10 +246,8 @@ class LocalResourceManager {
   /// \return true, if allocation successful. In this case, the sum of the elements in
   /// "allocation" is equal to "demand".
 
-  bool AllocateResourceInstances(
-      FixedPoint demand,
-      std::vector<FixedPoint> &available,
-      std::vector<FixedPoint> *allocation) const;
+  bool AllocateResourceInstances(FixedPoint demand, std::vector<FixedPoint> &available,
+                                 std::vector<FixedPoint> *allocation) const;
 
   /// Allocate local resources to satisfy a given request (resource_request).
   ///

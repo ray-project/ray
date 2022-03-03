@@ -24,8 +24,7 @@ namespace plasma {
 using namespace flatbuf;
 
 ObjectLifecycleManager::ObjectLifecycleManager(
-    IAllocator &allocator,
-    ray::DeleteObjectCallback delete_object_callback)
+    IAllocator &allocator, ray::DeleteObjectCallback delete_object_callback)
     : object_store_(std::make_unique<ObjectStore>(allocator)),
       eviction_policy_(std::make_unique<EvictionPolicy>(*object_store_, allocator)),
       delete_object_callback_(delete_object_callback),
@@ -33,8 +32,7 @@ ObjectLifecycleManager::ObjectLifecycleManager(
       stats_collector_() {}
 
 std::pair<const LocalObject *, flatbuf::PlasmaError> ObjectLifecycleManager::CreateObject(
-    const ray::ObjectInfo &object_info,
-    plasma::flatbuf::ObjectSource source,
+    const ray::ObjectInfo &object_info, plasma::flatbuf::ObjectSource source,
     bool fallback_allocator) {
   RAY_LOG(DEBUG) << "attempting to create object " << object_info.object_id << " size "
                  << object_info.data_size;
@@ -173,8 +171,7 @@ std::string ObjectLifecycleManager::EvictionPolicyDebugString() const {
 }
 
 const LocalObject *ObjectLifecycleManager::CreateObjectInternal(
-    const ray::ObjectInfo &object_info,
-    plasma::flatbuf::ObjectSource source,
+    const ray::ObjectInfo &object_info, plasma::flatbuf::ObjectSource source,
     bool allow_fallback_allocation) {
   // Try to evict objects until there is enough space.
   // NOTE(ekl) if we can't achieve this after a number of retries, it's
@@ -280,8 +277,7 @@ void ObjectLifecycleManager::GetDebugDump(std::stringstream &buffer) const {
 
 // For test only.
 ObjectLifecycleManager::ObjectLifecycleManager(
-    std::unique_ptr<IObjectStore> store,
-    std::unique_ptr<IEvictionPolicy> eviction_policy,
+    std::unique_ptr<IObjectStore> store, std::unique_ptr<IEvictionPolicy> eviction_policy,
     ray::DeleteObjectCallback delete_object_callback)
     : object_store_(std::move(store)),
       eviction_policy_(std::move(eviction_policy)),

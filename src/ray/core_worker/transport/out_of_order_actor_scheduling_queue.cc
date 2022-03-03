@@ -18,11 +18,9 @@ namespace ray {
 namespace core {
 
 OutOfOrderActorSchedulingQueue::OutOfOrderActorSchedulingQueue(
-    instrumented_io_context &main_io_service,
-    DependencyWaiter &waiter,
+    instrumented_io_context &main_io_service, DependencyWaiter &waiter,
     std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
-    bool is_asyncio,
-    int fiber_max_concurrency,
+    bool is_asyncio, int fiber_max_concurrency,
     const std::vector<ConcurrencyGroup> &concurrency_groups)
     : main_thread_id_(boost::this_thread::get_id()),
       waiter_(waiter),
@@ -37,8 +35,7 @@ OutOfOrderActorSchedulingQueue::OutOfOrderActorSchedulingQueue(
     }
     RAY_LOG(INFO) << ss.str();
     fiber_state_manager_ = std::make_unique<ConcurrencyGroupManager<FiberState>>(
-        concurrency_groups,
-        fiber_max_concurrency);
+        concurrency_groups, fiber_max_concurrency);
   }
 }
 
@@ -59,24 +56,17 @@ size_t OutOfOrderActorSchedulingQueue::Size() const {
 }
 
 void OutOfOrderActorSchedulingQueue::Add(
-    int64_t seq_no,
-    int64_t client_processed_up_to,
+    int64_t seq_no, int64_t client_processed_up_to,
     std::function<void(rpc::SendReplyCallback)> accept_request,
     std::function<void(rpc::SendReplyCallback)> reject_request,
-    rpc::SendReplyCallback send_reply_callback,
-    const std::string &concurrency_group_name,
-    const ray::FunctionDescriptor &function_descriptor,
-    TaskID task_id,
+    rpc::SendReplyCallback send_reply_callback, const std::string &concurrency_group_name,
+    const ray::FunctionDescriptor &function_descriptor, TaskID task_id,
     const std::vector<rpc::ObjectReference> &dependencies) {
   RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
-  auto request = InboundRequest(
-      std::move(accept_request),
-      std::move(reject_request),
-      std::move(send_reply_callback),
-      task_id,
-      dependencies.size() > 0,
-      concurrency_group_name,
-      function_descriptor);
+  auto request =
+      InboundRequest(std::move(accept_request), std::move(reject_request),
+                     std::move(send_reply_callback), task_id, dependencies.size() > 0,
+                     concurrency_group_name, function_descriptor);
 
   if (dependencies.size() > 0) {
     waiter_.Wait(dependencies, [this, request = std::move(request)]() mutable {
@@ -103,16 +93,14 @@ void OutOfOrderActorSchedulingQueue::ScheduleRequests() {
     auto request = pending_actor_tasks_.front();
     if (is_asyncio_) {
       // Process async actor task.
-      auto fiber = fiber_state_manager_->GetExecutor(
-          request.ConcurrencyGroupName(),
-          request.FunctionDescriptor());
+      auto fiber = fiber_state_manager_->GetExecutor(request.ConcurrencyGroupName(),
+                                                     request.FunctionDescriptor());
       fiber->EnqueueFiber([request]() mutable { request.Accept(); });
     } else {
       // Process actor tasks.
       RAY_CHECK(pool_manager_ != nullptr);
-      auto pool = pool_manager_->GetExecutor(
-          request.ConcurrencyGroupName(),
-          request.FunctionDescriptor());
+      auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
+                                             request.FunctionDescriptor());
       if (pool == nullptr) {
         request.Accept();
       } else {

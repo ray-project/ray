@@ -143,11 +143,9 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
 
   // Initialize event framework.
   if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {
-    RayEventInit(
-        ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
-        std::unordered_map<std::string, std::string>(),
-        options_.log_dir,
-        RayConfig::instance().event_level());
+    RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
+                 std::unordered_map<std::string, std::string>(), options_.log_dir,
+                 RayConfig::instance().event_level());
   }
 }
 
@@ -187,20 +185,14 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
     boost::asio::io_service::work work(io_service);
     rpc::ClientCallManager client_call_manager(io_service);
     auto grpc_client = rpc::NodeManagerWorkerClient::make(
-        options_.raylet_ip_address,
-        options_.node_manager_port,
-        client_call_manager);
+        options_.raylet_ip_address, options_.node_manager_port, client_call_manager);
     raylet::RayletClient raylet_client(grpc_client);
 
-    std::function<void(int64_t)> get_once = [this,
-                                             &get_once,
-                                             &raylet_client,
-                                             &promise,
+    std::function<void(int64_t)> get_once = [this, &get_once, &raylet_client, &promise,
                                              &io_service](int64_t num_attempts) {
       raylet_client.GetSystemConfig(
           [this, num_attempts, &get_once, &promise, &io_service](
-              const Status &status,
-              const rpc::GetSystemConfigReply &reply) {
+              const Status &status, const rpc::GetSystemConfigReply &reply) {
             RAY_LOG(DEBUG) << "Getting system config from raylet, remaining retries = "
                            << num_attempts;
             if (status.ok()) {

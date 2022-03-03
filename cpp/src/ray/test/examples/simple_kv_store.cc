@@ -25,13 +25,11 @@ const std::string MAIN_SERVER_NAME = "main_actor";
 const std::string BACKUP_SERVER_NAME = "backup_actor";
 // Resources that each actor needs: 1 CPU core and 1 GB memory.
 const std::unordered_map<std::string, double> RESOUECES{
-    {"CPU", 1.0},
-    {"memory", 1024.0 * 1024.0 * 1024.0}};
+    {"CPU", 1.0}, {"memory", 1024.0 * 1024.0 * 1024.0}};
 
 namespace common {
 inline std::pair<bool, std::string> Get(
-    const std::string &key,
-    const std::unordered_map<std::string, std::string> &data) {
+    const std::string &key, const std::unordered_map<std::string, std::string> &data) {
   auto it = data.find(key);
   if (it == data.end()) {
     return std::pair<bool, std::string>{};
@@ -153,10 +151,8 @@ void StartServer() {
   // different nodes if possible.
   std::vector<std::unordered_map<std::string, double>> bundles{RESOUECES, RESOUECES};
 
-  ray::PlacementGroupCreationOptions options{
-      "kv_server_pg",
-      bundles,
-      ray::PlacementStrategy::SPREAD};
+  ray::PlacementGroupCreationOptions options{"kv_server_pg", bundles,
+                                             ray::PlacementStrategy::SPREAD};
   auto placement_group = ray::CreatePlacementGroup(options);
   // Wait until the placement group is created.
   assert(placement_group.Wait(10));

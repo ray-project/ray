@@ -20,18 +20,12 @@ namespace ray {
 namespace core {
 namespace {
 rpc::ActorHandle CreateInnerActorHandle(
-    const class ActorID &actor_id,
-    const TaskID &owner_id,
-    const rpc::Address &owner_address,
-    const class JobID &job_id,
-    const ObjectID &initial_cursor,
-    const Language actor_language,
+    const class ActorID &actor_id, const TaskID &owner_id,
+    const rpc::Address &owner_address, const class JobID &job_id,
+    const ObjectID &initial_cursor, const Language actor_language,
     const FunctionDescriptor &actor_creation_task_function_descriptor,
-    const std::string &extension_data,
-    int64_t max_task_retries,
-    const std::string &name,
-    const std::string &ray_namespace,
-    int32_t max_pending_calls,
+    const std::string &extension_data, int64_t max_task_retries, const std::string &name,
+    const std::string &ray_namespace, int32_t max_pending_calls,
     bool execute_out_of_order) {
   rpc::ActorHandle inner;
   inner.set_actor_id(actor_id.Data(), actor_id.Size());
@@ -85,33 +79,17 @@ rpc::ActorHandle CreateInnerActorHandleFromActorTableData(
 }  // namespace
 
 ActorHandle::ActorHandle(
-    const class ActorID &actor_id,
-    const TaskID &owner_id,
-    const rpc::Address &owner_address,
-    const class JobID &job_id,
-    const ObjectID &initial_cursor,
-    const Language actor_language,
+    const class ActorID &actor_id, const TaskID &owner_id,
+    const rpc::Address &owner_address, const class JobID &job_id,
+    const ObjectID &initial_cursor, const Language actor_language,
     const FunctionDescriptor &actor_creation_task_function_descriptor,
-    const std::string &extension_data,
-    int64_t max_task_retries,
-    const std::string &name,
-    const std::string &ray_namespace,
-    int32_t max_pending_calls,
+    const std::string &extension_data, int64_t max_task_retries, const std::string &name,
+    const std::string &ray_namespace, int32_t max_pending_calls,
     bool execute_out_of_order)
     : ActorHandle(CreateInnerActorHandle(
-          actor_id,
-          owner_id,
-          owner_address,
-          job_id,
-          initial_cursor,
-          actor_language,
-          actor_creation_task_function_descriptor,
-          extension_data,
-          max_task_retries,
-          name,
-          ray_namespace,
-          max_pending_calls,
-          execute_out_of_order)) {}
+          actor_id, owner_id, owner_address, job_id, initial_cursor, actor_language,
+          actor_creation_task_function_descriptor, extension_data, max_task_retries, name,
+          ray_namespace, max_pending_calls, execute_out_of_order)) {}
 
 ActorHandle::ActorHandle(const std::string &serialized)
     : ActorHandle(CreateInnerActorHandleFromString(serialized)) {}
@@ -125,17 +103,14 @@ void ActorHandle::SetActorTaskSpec(TaskSpecBuilder &builder, const ObjectID new_
   const TaskID actor_creation_task_id = TaskID::ForActorCreationTask(GetActorID());
   const ObjectID actor_creation_dummy_object_id =
       ObjectID::FromIndex(actor_creation_task_id, /*index=*/1);
-  builder.SetActorTaskSpec(
-      GetActorID(),
-      actor_creation_dummy_object_id,
-      /*previous_actor_task_dummy_object_id=*/actor_cursor_,
-      task_counter_++);
+  builder.SetActorTaskSpec(GetActorID(), actor_creation_dummy_object_id,
+                           /*previous_actor_task_dummy_object_id=*/actor_cursor_,
+                           task_counter_++);
   actor_cursor_ = new_cursor;
 }
 
-void ActorHandle::SetResubmittedActorTaskSpec(
-    TaskSpecification &spec,
-    const ObjectID new_cursor) {
+void ActorHandle::SetResubmittedActorTaskSpec(TaskSpecification &spec,
+                                              const ObjectID new_cursor) {
   absl::MutexLock guard(&mutex_);
   auto mutable_spec = spec.GetMutableMessage().mutable_actor_task_spec();
   mutable_spec->set_previous_actor_task_dummy_object_id(actor_cursor_.Binary());

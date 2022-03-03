@@ -23,9 +23,8 @@ constexpr size_t kUniqueIDSize = 28;
 /// An ObjectID's bytes are split into the task ID itself and the index of the
 /// object's creation. This is the maximum width of the object index in bits.
 constexpr int kObjectIdIndexSize = 32;
-static_assert(
-    kObjectIdIndexSize % CHAR_BIT == 0,
-    "ObjectID prefix not a multiple of bytes");
+static_assert(kObjectIdIndexSize % CHAR_BIT == 0,
+              "ObjectID prefix not a multiple of bytes");
 
 /// Raylet exit code on plasma store socket error.
 constexpr int kRayletStoreErrorExitCode = 100;

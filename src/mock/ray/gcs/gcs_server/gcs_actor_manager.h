@@ -27,55 +27,38 @@ namespace gcs {
 
 class MockGcsActorManager : public GcsActorManager {
  public:
-  MOCK_METHOD(
-      void,
-      HandleRegisterActor,
-      (const rpc::RegisterActorRequest &request,
-       rpc::RegisterActorReply *reply,
-       rpc::SendReplyCallback send_reply_callback),
-      (override));
-  MOCK_METHOD(
-      void,
-      HandleCreateActor,
-      (const rpc::CreateActorRequest &request,
-       rpc::CreateActorReply *reply,
-       rpc::SendReplyCallback send_reply_callback),
-      (override));
-  MOCK_METHOD(
-      void,
-      HandleGetActorInfo,
-      (const rpc::GetActorInfoRequest &request,
-       rpc::GetActorInfoReply *reply,
-       rpc::SendReplyCallback send_reply_callback),
-      (override));
-  MOCK_METHOD(
-      void,
-      HandleGetNamedActorInfo,
-      (const rpc::GetNamedActorInfoRequest &request,
-       rpc::GetNamedActorInfoReply *reply,
-       rpc::SendReplyCallback send_reply_callback),
-      (override));
-  MOCK_METHOD(
-      void,
-      HandleListNamedActors,
-      (const rpc::ListNamedActorsRequest &request,
-       rpc::ListNamedActorsReply *reply,
-       rpc::SendReplyCallback send_reply_callback),
-      (override));
-  MOCK_METHOD(
-      void,
-      HandleGetAllActorInfo,
-      (const rpc::GetAllActorInfoRequest &request,
-       rpc::GetAllActorInfoReply *reply,
-       rpc::SendReplyCallback send_reply_callback),
-      (override));
-  MOCK_METHOD(
-      void,
-      HandleKillActorViaGcs,
-      (const rpc::KillActorViaGcsRequest &request,
-       rpc::KillActorViaGcsReply *reply,
-       rpc::SendReplyCallback send_reply_callback),
-      (override));
+  MOCK_METHOD(void, HandleRegisterActor,
+              (const rpc::RegisterActorRequest &request, rpc::RegisterActorReply *reply,
+               rpc::SendReplyCallback send_reply_callback),
+              (override));
+  MOCK_METHOD(void, HandleCreateActor,
+              (const rpc::CreateActorRequest &request, rpc::CreateActorReply *reply,
+               rpc::SendReplyCallback send_reply_callback),
+              (override));
+  MOCK_METHOD(void, HandleGetActorInfo,
+              (const rpc::GetActorInfoRequest &request, rpc::GetActorInfoReply *reply,
+               rpc::SendReplyCallback send_reply_callback),
+              (override));
+  MOCK_METHOD(void, HandleGetNamedActorInfo,
+              (const rpc::GetNamedActorInfoRequest &request,
+               rpc::GetNamedActorInfoReply *reply,
+               rpc::SendReplyCallback send_reply_callback),
+              (override));
+  MOCK_METHOD(void, HandleListNamedActors,
+              (const rpc::ListNamedActorsRequest &request,
+               rpc::ListNamedActorsReply *reply,
+               rpc::SendReplyCallback send_reply_callback),
+              (override));
+  MOCK_METHOD(void, HandleGetAllActorInfo,
+              (const rpc::GetAllActorInfoRequest &request,
+               rpc::GetAllActorInfoReply *reply,
+               rpc::SendReplyCallback send_reply_callback),
+              (override));
+  MOCK_METHOD(void, HandleKillActorViaGcs,
+              (const rpc::KillActorViaGcsRequest &request,
+               rpc::KillActorViaGcsReply *reply,
+               rpc::SendReplyCallback send_reply_callback),
+              (override));
 };
 
 }  // namespace gcs

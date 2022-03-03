@@ -36,31 +36,24 @@ class ActorHandle {
   /// Include the `Call` methods for calling remote functions.
   template <typename F>
   ray::internal::ActorTaskCaller<F> Task(F actor_func) {
-    static_assert(
-        !IsXlang && !ray::internal::is_python_v<F>,
-        "Actor method is not a member function of actor class.");
-    static_assert(
-        std::is_member_function_pointer_v<F>,
-        "Actor method is not a member function of actor class.");
+    static_assert(!IsXlang && !ray::internal::is_python_v<F>,
+                  "Actor method is not a member function of actor class.");
+    static_assert(std::is_member_function_pointer_v<F>,
+                  "Actor method is not a member function of actor class.");
     using Self = boost::callable_traits::class_of_t<F>;
     static_assert(
         std::is_same<ActorType, Self>::value || std::is_base_of<Self, ActorType>::value,
         "Class types must be same.");
     ray::internal::RemoteFunctionHolder remote_func_holder(actor_func);
-    return ray::internal::ActorTaskCaller<F>(
-        internal::GetRayRuntime().get(),
-        id_,
-        std::move(remote_func_holder));
+    return ray::internal::ActorTaskCaller<F>(internal::GetRayRuntime().get(), id_,
+                                             std::move(remote_func_holder));
   }
 
   template <typename R>
   ray::internal::ActorTaskCaller<PyActorMethod<R>> Task(PyActorMethod<R> func) {
     static_assert(IsXlang, "Actor function type is not match with actor class");
     ray::internal::RemoteFunctionHolder remote_func_holder(
-        "",
-        func.function_name,
-        "",
-        ray::internal::LangType::PYTHON);
+        "", func.function_name, "", ray::internal::LangType::PYTHON);
     return {ray::internal::GetRayRuntime().get(), id_, std::move(remote_func_holder)};
   }
 

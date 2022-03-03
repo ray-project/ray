@@ -27,9 +27,7 @@ extern "C" {
  * Signature: ([B)I
  */
 JNIEXPORT jint JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeGetLanguage(
-    JNIEnv *,
-    jclass,
-    jbyteArray);
+    JNIEnv *, jclass, jbyteArray);
 
 /*
  * Class:     io_ray_runtime_actor_NativeActorHandle
@@ -38,9 +36,7 @@ JNIEXPORT jint JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeGetLang
  */
 JNIEXPORT jobject JNICALL
 Java_io_ray_runtime_actor_NativeActorHandle_nativeGetActorCreationTaskFunctionDescriptor(
-    JNIEnv *,
-    jclass,
-    jbyteArray);
+    JNIEnv *, jclass, jbyteArray);
 
 /*
  * Class:     io_ray_runtime_actor_NativeActorHandle
@@ -48,10 +44,7 @@ Java_io_ray_runtime_actor_NativeActorHandle_nativeGetActorCreationTaskFunctionDe
  * Signature: ([B[B)[B
  */
 JNIEXPORT jbyteArray JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeSerialize(
-    JNIEnv *,
-    jclass,
-    jbyteArray,
-    jbyteArray);
+    JNIEnv *, jclass, jbyteArray, jbyteArray);
 
 /*
  * Class:     io_ray_runtime_actor_NativeActorHandle
@@ -59,10 +52,8 @@ JNIEXPORT jbyteArray JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeS
  * Signature: ([B)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_actor_NativeActorHandle_nativeDeserialize(
-    JNIEnv *,
-    jclass,
-    jbyteArray);
+Java_io_ray_runtime_actor_NativeActorHandle_nativeDeserialize(JNIEnv *, jclass,
+                                                              jbyteArray);
 
 /*
  * Class:     io_ray_runtime_actor_NativeActorHandle
@@ -70,11 +61,10 @@ Java_io_ray_runtime_actor_NativeActorHandle_nativeDeserialize(
  * Signature: ([B[B)V
  */
 JNIEXPORT void JNICALL
-Java_io_ray_runtime_actor_NativeActorHandle_nativeRemoveActorHandleReference(
-    JNIEnv *,
-    jclass,
-    jbyteArray,
-    jbyteArray);
+Java_io_ray_runtime_actor_NativeActorHandle_nativeRemoveActorHandleReference(JNIEnv *,
+                                                                             jclass,
+                                                                             jbyteArray,
+                                                                             jbyteArray);
 
 #ifdef __cplusplus
 }

@@ -43,12 +43,8 @@ struct RemoteConnectionInfo {
 
 /// Callback for object location notifications.
 using OnLocationsFound = std::function<void(
-    const ray::ObjectID &object_id,
-    const std::unordered_set<ray::NodeID> &,
-    const std::string &,
-    const NodeID &,
-    bool pending_creation,
-    size_t object_size)>;
+    const ray::ObjectID &object_id, const std::unordered_set<ray::NodeID> &,
+    const std::string &, const NodeID &, bool pending_creation, size_t object_size)>;
 
 class IObjectDirectory {
  public:
@@ -73,10 +69,9 @@ class IObjectDirectory {
   /// \param object_id The object's ObjectID.
   /// \param callback Invoked with (possibly empty) list of node ids and object_id.
   /// \return Status of whether async call to backend succeeded.
-  virtual ray::Status LookupLocations(
-      const ObjectID &object_id,
-      const rpc::Address &owner_address,
-      const OnLocationsFound &callback) = 0;
+  virtual ray::Status LookupLocations(const ObjectID &object_id,
+                                      const rpc::Address &owner_address,
+                                      const OnLocationsFound &callback) = 0;
 
   /// Handle the removal of an object manager node. This updates the
   /// locations of all subscribed objects that have the removed node as a
@@ -98,11 +93,10 @@ class IObjectDirectory {
   /// \param object_id The required object's ObjectID.
   /// \param success_cb Invoked with non-empty list of node ids and object_id.
   /// \return Status of whether subscription succeeded.
-  virtual ray::Status SubscribeObjectLocations(
-      const UniqueID &callback_id,
-      const ObjectID &object_id,
-      const rpc::Address &owner_address,
-      const OnLocationsFound &callback) = 0;
+  virtual ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
+                                               const ObjectID &object_id,
+                                               const rpc::Address &owner_address,
+                                               const OnLocationsFound &callback) = 0;
 
   /// Unsubscribe to object location notifications.
   ///
@@ -111,29 +105,24 @@ class IObjectDirectory {
   /// further notifications about the given object's location.
   /// \param object_id The object id invoked with Subscribe.
   /// \return Status of unsubscribing from object location notifications.
-  virtual ray::Status UnsubscribeObjectLocations(
-      const UniqueID &callback_id,
-      const ObjectID &object_id) = 0;
+  virtual ray::Status UnsubscribeObjectLocations(const UniqueID &callback_id,
+                                                 const ObjectID &object_id) = 0;
 
   /// Report objects added to this node's store to the object directory.
   ///
   /// \param object_id The object id that was put into the store.
   /// \param node_id The node id corresponding to this node.
   /// \param object_info Additional information about the object.
-  virtual void ReportObjectAdded(
-      const ObjectID &object_id,
-      const NodeID &node_id,
-      const ObjectInfo &object_info) = 0;
+  virtual void ReportObjectAdded(const ObjectID &object_id, const NodeID &node_id,
+                                 const ObjectInfo &object_info) = 0;
 
   /// Report objects removed from this node's store to the object directory.
   ///
   /// \param object_id The object id that was removed from the store.
   /// \param node_id The node id corresponding to this node.
   /// \param object_info Additional information about the object.
-  virtual void ReportObjectRemoved(
-      const ObjectID &object_id,
-      const NodeID &node_id,
-      const ObjectInfo &object_info) = 0;
+  virtual void ReportObjectRemoved(const ObjectID &object_id, const NodeID &node_id,
+                                   const ObjectInfo &object_info) = 0;
 
   /// Record metrics.
   virtual void RecordMetrics(uint64_t duration_ms) = 0;

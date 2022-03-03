@@ -31,9 +31,8 @@ using ::testing::Return;
 
 class MockObjectManager : public ObjectManagerInterface {
  public:
-  uint64_t Pull(
-      const std::vector<rpc::ObjectReference> &object_refs,
-      BundlePriority prio) {
+  uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs,
+                BundlePriority prio) {
     if (prio == BundlePriority::GET_REQUEST) {
       active_get_requests.insert(req_id);
     } else if (prio == BundlePriority::WAIT_REQUEST) {
@@ -45,9 +44,9 @@ class MockObjectManager : public ObjectManagerInterface {
   }
 
   void CancelPull(uint64_t request_id) {
-    ASSERT_TRUE(
-        active_get_requests.erase(request_id) || active_wait_requests.erase(request_id) ||
-        active_task_requests.erase(request_id));
+    ASSERT_TRUE(active_get_requests.erase(request_id) ||
+                active_wait_requests.erase(request_id) ||
+                active_task_requests.erase(request_id));
   }
 
   bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const {
@@ -124,8 +123,7 @@ TEST_F(DependencyManagerTest, TestMultipleTasks) {
     TaskID task_id = RandomTaskId();
     dependent_tasks.push_back(task_id);
     bool ready = dependency_manager_.RequestTaskDependencies(
-        task_id,
-        ObjectIdsToRefs({argument_id}));
+        task_id, ObjectIdsToRefs({argument_id}));
     ASSERT_FALSE(ready);
     // The object should be requested from the object manager once for each task.
     ASSERT_EQ(object_manager_mock_.active_task_requests.size(), i + 1);

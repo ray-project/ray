@@ -20,9 +20,8 @@ extern "C" {
 #include "hiredis/async.h"
 }
 
-RedisAsioClient::RedisAsioClient(
-    instrumented_io_context &io_service,
-    ray::gcs::RedisAsyncContext &redis_async_context)
+RedisAsioClient::RedisAsioClient(instrumented_io_context &io_service,
+                                 ray::gcs::RedisAsyncContext &redis_async_context)
     : redis_async_context_(redis_async_context),
       io_service_(io_service),
       socket_(io_service),
@@ -65,32 +64,23 @@ RedisAsioClient::RedisAsioClient(
 void RedisAsioClient::operate() {
   if (read_requested_ && !read_in_progress_) {
     read_in_progress_ = true;
-    socket_.async_read_some(
-        boost::asio::null_buffers(),
-        boost::bind(
-            &RedisAsioClient::handle_io,
-            this,
-            boost::asio::placeholders::error,
-            false));
+    socket_.async_read_some(boost::asio::null_buffers(),
+                            boost::bind(&RedisAsioClient::handle_io, this,
+                                        boost::asio::placeholders::error, false));
   }
 
   if (write_requested_ && !write_in_progress_) {
     write_in_progress_ = true;
-    socket_.async_write_some(
-        boost::asio::null_buffers(),
-        boost::bind(
-            &RedisAsioClient::handle_io,
-            this,
-            boost::asio::placeholders::error,
-            true));
+    socket_.async_write_some(boost::asio::null_buffers(),
+                             boost::bind(&RedisAsioClient::handle_io, this,
+                                         boost::asio::placeholders::error, true));
   }
 }
 
 void RedisAsioClient::handle_io(boost::system::error_code error_code, bool write) {
-  RAY_CHECK(
-      !error_code || error_code == boost::asio::error::would_block ||
-      error_code == boost::asio::error::connection_reset ||
-      error_code == boost::asio::error::operation_aborted)
+  RAY_CHECK(!error_code || error_code == boost::asio::error::would_block ||
+            error_code == boost::asio::error::connection_reset ||
+            error_code == boost::asio::error::operation_aborted)
       << "handle_io(error_code = " << error_code << ")";
   (write ? write_in_progress_ : read_in_progress_) = false;
   if (error_code != boost::asio::error::operation_aborted) {

@@ -44,9 +44,8 @@ TEST(TestCallbackReply, TestParseAsStringArray) {
     CallbackReply callback_reply(&redis_reply_array);
     ASSERT_EQ(
         callback_reply.ReadAsStringArray(),
-        (std::vector<std::optional<std::string>>{
-            std::optional<std::string>(string1),
-            std::optional<std::string>(string2)}));
+        (std::vector<std::optional<std::string>>{std::optional<std::string>(string1),
+                                                 std::optional<std::string>(string2)}));
   }
 
   {
@@ -70,12 +69,10 @@ TEST(TestCallbackReply, TestParseAsStringArray) {
     redis_reply_array_elements[2] = &redis_reply_nil2;
     redis_reply_array.element = redis_reply_array_elements;
     CallbackReply callback_reply(&redis_reply_array);
-    ASSERT_EQ(
-        callback_reply.ReadAsStringArray(),
-        (std::vector<std::optional<std::string>>{
-            std::optional<std::string>(),
-            std::optional<std::string>(string1),
-            std::optional<std::string>()}));
+    ASSERT_EQ(callback_reply.ReadAsStringArray(),
+              (std::vector<std::optional<std::string>>{
+                  std::optional<std::string>(), std::optional<std::string>(string1),
+                  std::optional<std::string>()}));
   }
 }
 }  // namespace ray::gcs

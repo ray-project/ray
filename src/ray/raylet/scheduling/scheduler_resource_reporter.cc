@@ -25,11 +25,9 @@ const int kMaxPendingActorsToReport = 20;
 
 SchedulerResourceReporter::SchedulerResourceReporter(
     const absl::flat_hash_map<
-        SchedulingClass,
-        std::deque<std::shared_ptr<internal::Work>>> &tasks_to_schedule,
+        SchedulingClass, std::deque<std::shared_ptr<internal::Work>>> &tasks_to_schedule,
     const absl::flat_hash_map<
-        SchedulingClass,
-        std::deque<std::shared_ptr<internal::Work>>> &infeasible_tasks,
+        SchedulingClass, std::deque<std::shared_ptr<internal::Work>>> &infeasible_tasks,
     const LocalTaskManager &local_task_manager)
     : max_resource_shapes_per_load_report_(
           RayConfig::instance().max_resource_shapes_per_load_report()),
@@ -173,8 +171,7 @@ void SchedulerResourceReporter::FillResourceUsage(
   if (RayConfig::instance().enable_light_weight_resource_report()) {
     // Check whether resources have been changed.
     absl::flat_hash_map<std::string, double> local_resource_map(
-        data.resource_load().begin(),
-        data.resource_load().end());
+        data.resource_load().begin(), data.resource_load().end());
     ResourceSet local_resource(local_resource_map);
     if (last_reported_resources == nullptr ||
         !last_reported_resources->GetLoadResources().IsEqual(local_resource)) {

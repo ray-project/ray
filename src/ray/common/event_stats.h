@@ -71,11 +71,9 @@ struct StatsHandle {
   std::shared_ptr<GuardedGlobalStats> global_stats;
   std::atomic<bool> execution_recorded;
 
-  StatsHandle(
-      std::string event_name_,
-      int64_t start_time_,
-      std::shared_ptr<GuardedEventStats> handler_stats_,
-      std::shared_ptr<GuardedGlobalStats> global_stats_)
+  StatsHandle(std::string event_name_, int64_t start_time_,
+              std::shared_ptr<GuardedEventStats> handler_stats_,
+              std::shared_ptr<GuardedGlobalStats> global_stats_)
       : event_name(std::move(event_name_)),
         start_time(start_time_),
         handler_stats(std::move(handler_stats_)),
@@ -110,9 +108,8 @@ class EventTracker {
   /// \param expected_queueing_delay_ns How much to pad the observed queueing start time,
   ///  in nanoseconds.
   /// \return An opaque stats handle, to be given to RecordExecution().
-  std::shared_ptr<StatsHandle> RecordStart(
-      const std::string &name,
-      int64_t expected_queueing_delay_ns = 0);
+  std::shared_ptr<StatsHandle> RecordStart(const std::string &name,
+                                           int64_t expected_queueing_delay_ns = 0);
 
   /// Records stats about the provided function's execution. This is used in conjunction
   /// with RecordStart() to manually instrument an event loop handler that doesn't call
@@ -120,9 +117,8 @@ class EventTracker {
   ///
   /// \param fn The function to execute and instrument.
   /// \param handle An opaque stats handle returned by RecordStart().
-  static void RecordExecution(
-      const std::function<void()> &fn,
-      std::shared_ptr<StatsHandle> handle);
+  static void RecordExecution(const std::function<void()> &fn,
+                              std::shared_ptr<StatsHandle> handle);
 
   /// Returns a snapshot view of the global count, queueing, and execution statistics
   /// across all handlers.

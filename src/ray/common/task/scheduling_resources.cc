@@ -37,9 +37,8 @@ ResourceSet::ResourceSet(const absl::flat_hash_map<std::string, double> &resourc
   }
 }
 
-ResourceSet::ResourceSet(
-    const std::vector<std::string> &resource_labels,
-    const std::vector<double> resource_capacity) {
+ResourceSet::ResourceSet(const std::vector<std::string> &resource_labels,
+                         const std::vector<double> resource_capacity) {
   RAY_CHECK(resource_labels.size() == resource_capacity.size());
   for (size_t i = 0; i < resource_labels.size(); i++) {
     RAY_CHECK(resource_capacity[i] > 0);
@@ -82,9 +81,8 @@ bool ResourceSet::IsEqual(const ResourceSet &rhs) const {
   return (this->IsSubset(rhs) && rhs.IsSubset(*this));
 }
 
-void ResourceSet::AddOrUpdateResource(
-    const std::string &resource_name,
-    const FixedPoint &capacity) {
+void ResourceSet::AddOrUpdateResource(const std::string &resource_name,
+                                      const FixedPoint &capacity) {
   if (capacity > 0) {
     resource_capacity_[resource_name] = capacity;
   }
@@ -139,9 +137,8 @@ void ResourceSet::SubtractResourcesStrict(const ResourceSet &other) {
 
 // Add a set of resources to the current set of resources subject to upper limits on
 // capacity from the total_resource set
-void ResourceSet::AddResourcesCapacityConstrained(
-    const ResourceSet &other,
-    const ResourceSet &total_resources) {
+void ResourceSet::AddResourcesCapacityConstrained(const ResourceSet &other,
+                                                  const ResourceSet &total_resources) {
   const absl::flat_hash_map<std::string, FixedPoint> &total_resource_map =
       total_resources.GetResourceAmountMap();
   for (const auto &resource_pair : other.GetResourceAmountMap()) {
@@ -152,9 +149,9 @@ void ResourceSet::AddResourcesCapacityConstrained(
       // If the new capacity is less than the total capacity, set the new capacity to
       // the local capacity (capping to the total).
       const FixedPoint &total_capacity = total_resource_map.at(to_add_resource_label);
-      resource_capacity_[to_add_resource_label] = std::min(
-          resource_capacity_[to_add_resource_label] + to_add_resource_capacity,
-          total_capacity);
+      resource_capacity_[to_add_resource_label] =
+          std::min(resource_capacity_[to_add_resource_label] + to_add_resource_capacity,
+                   total_capacity);
     } else {
       // Resource does not exist in the total map, it probably got deleted from the total.
       // Don't panic, do nothing and simply continue.
@@ -293,9 +290,8 @@ void SchedulingResources::SetLoadResources(ResourceSet &&newset) {
 
 // Return specified resources back to SchedulingResources.
 void SchedulingResources::Release(const ResourceSet &resources) {
-  return resources_available_.AddResourcesCapacityConstrained(
-      resources,
-      resources_total_);
+  return resources_available_.AddResourcesCapacityConstrained(resources,
+                                                              resources_total_);
 }
 
 // Take specified resources from SchedulingResources.
@@ -311,9 +307,8 @@ void SchedulingResources::AddResource(const ResourceSet &resources) {
   resources_available_.AddResources(resources);
 }
 
-void SchedulingResources::UpdateResourceCapacity(
-    const std::string &resource_name,
-    int64_t capacity) {
+void SchedulingResources::UpdateResourceCapacity(const std::string &resource_name,
+                                                 int64_t capacity) {
   const FixedPoint new_capacity = FixedPoint(capacity);
   const FixedPoint &current_capacity = resources_total_.GetResource(resource_name);
   if (current_capacity > 0) {

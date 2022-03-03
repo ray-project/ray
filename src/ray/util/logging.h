@@ -155,14 +155,14 @@ enum class RayLogLevel {
 // Occasional logging with DEBUG fallback:
 // If DEBUG is not enabled, log every n'th occurrence of an event.
 // Otherwise, if DEBUG is enabled, always log as DEBUG events.
-#define RAY_LOG_EVERY_N_OR_DEBUG(level, n)                                            \
-  static std::atomic<uint64_t> RAY_LOG_OCCURRENCES(0);                                \
-  if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::DEBUG) ||                         \
-      (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level) &&                        \
-       RAY_LOG_OCCURRENCES.fetch_add(1) % n == 0))                                    \
-  RAY_LOG_INTERNAL(                                                                   \
-      ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level) ? ray::RayLogLevel::level  \
-                                                           : ray::RayLogLevel::DEBUG) \
+#define RAY_LOG_EVERY_N_OR_DEBUG(level, n)                              \
+  static std::atomic<uint64_t> RAY_LOG_OCCURRENCES(0);                  \
+  if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::DEBUG) ||           \
+      (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level) &&          \
+       RAY_LOG_OCCURRENCES.fetch_add(1) % n == 0))                      \
+  RAY_LOG_INTERNAL(ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level) \
+                       ? ray::RayLogLevel::level                        \
+                       : ray::RayLogLevel::DEBUG)                       \
       << "[" << RAY_LOG_OCCURRENCES << "] "
 
 /// Macros for RAY_LOG_EVERY_MS
@@ -180,9 +180,8 @@ enum class RayLogLevel {
       RAY_LOG_PREVIOUS_TIME_RAW.load(std::memory_order_relaxed));                        \
   const auto RAY_LOG_TIME_DELTA = RAY_LOG_CURRENT_TIME - RAY_LOG_PREVIOUS_TIME;          \
   if (RAY_LOG_TIME_DELTA > RAY_LOG_TIME_PERIOD)                                          \
-    RAY_LOG_PREVIOUS_TIME_RAW.store(                                                     \
-        RAY_LOG_CURRENT_TIME.count(),                                                    \
-        std::memory_order_relaxed);                                                      \
+    RAY_LOG_PREVIOUS_TIME_RAW.store(RAY_LOG_CURRENT_TIME.count(),                        \
+                                    std::memory_order_relaxed);                          \
   if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level) &&                            \
       RAY_LOG_TIME_DELTA > RAY_LOG_TIME_PERIOD)                                          \
   RAY_LOG_INTERNAL(ray::RayLogLevel::level)
@@ -242,10 +241,9 @@ class RayLog : public RayLogBase {
   /// \parem appName The app name which starts the log.
   /// \param severity_threshold Logging threshold for the program.
   /// \param logDir Logging output file name. If empty, the log won't output to file.
-  static void StartRayLog(
-      const std::string &appName,
-      RayLogLevel severity_threshold = RayLogLevel::INFO,
-      const std::string &logDir = "");
+  static void StartRayLog(const std::string &appName,
+                          RayLogLevel severity_threshold = RayLogLevel::INFO,
+                          const std::string &logDir = "");
 
   /// The shutdown function of ray log which should be used with StartRayLog as a pair.
   /// If `StartRayLog` wasn't called before, it will be no-op.
@@ -271,9 +269,8 @@ class RayLog : public RayLogBase {
   /// https://github.com/abseil/abseil-cpp/blob/7e446075d4aff4601c1e7627c7c0be2c4833a53a/absl/debugging/failure_signal_handler.h#L76-L88
   /// This is currently used to enable signal handler from both Python and C++ in Python
   /// worker.
-  static void InstallFailureSignalHandler(
-      const char *argv0,
-      bool call_previous_handler = false);
+  static void InstallFailureSignalHandler(const char *argv0,
+                                          bool call_previous_handler = false);
 
   /// To check failure signal handler enabled or not.
   static bool IsFailureSignalHandlerEnabled();

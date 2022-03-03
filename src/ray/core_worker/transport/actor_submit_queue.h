@@ -74,9 +74,8 @@ class IActorSubmitQueue {
   /// Get the sequence number of the task to send according to the protocol.
   virtual uint64_t GetSequenceNumber(const TaskSpecification &task_spec) const = 0;
   /// Mark a task has been executed on the receiver side.
-  virtual void MarkTaskCompleted(
-      uint64_t sequence_no,
-      const TaskSpecification &task_spec) = 0;
+  virtual void MarkTaskCompleted(uint64_t sequence_no,
+                                 const TaskSpecification &task_spec) = 0;
 };
 }  // namespace core
 }  // namespace ray

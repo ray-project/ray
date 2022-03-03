@@ -29,26 +29,20 @@ namespace core {
 
 class TaskFinisherInterface {
  public:
-  virtual void CompletePendingTask(
-      const TaskID &task_id,
-      const rpc::PushTaskReply &reply,
-      const rpc::Address &actor_addr) = 0;
+  virtual void CompletePendingTask(const TaskID &task_id, const rpc::PushTaskReply &reply,
+                                   const rpc::Address &actor_addr) = 0;
 
   virtual bool RetryTaskIfPossible(const TaskID &task_id) = 0;
 
-  virtual void FailPendingTask(
-      const TaskID &task_id,
-      rpc::ErrorType error_type,
-      const Status *status = nullptr,
-      const rpc::RayErrorInfo *ray_error_info = nullptr,
-      bool mark_task_object_failed = true) = 0;
+  virtual void FailPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
+                               const Status *status = nullptr,
+                               const rpc::RayErrorInfo *ray_error_info = nullptr,
+                               bool mark_task_object_failed = true) = 0;
 
-  virtual bool FailOrRetryPendingTask(
-      const TaskID &task_id,
-      rpc::ErrorType error_type,
-      const Status *status,
-      const rpc::RayErrorInfo *ray_error_info = nullptr,
-      bool mark_task_object_failed = true) = 0;
+  virtual bool FailOrRetryPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
+                                      const Status *status,
+                                      const rpc::RayErrorInfo *ray_error_info = nullptr,
+                                      bool mark_task_object_failed = true) = 0;
 
   virtual void OnTaskDependenciesInlined(
       const std::vector<ObjectID> &inlined_dependency_ids,
@@ -59,8 +53,7 @@ class TaskFinisherInterface {
   virtual bool MarkTaskCanceled(const TaskID &task_id) = 0;
 
   virtual void MarkTaskReturnObjectsFailed(
-      const TaskSpecification &spec,
-      rpc::ErrorType error_type,
+      const TaskSpecification &spec, rpc::ErrorType error_type,
       const rpc::RayErrorInfo *ray_error_info = nullptr) = 0;
 
   virtual absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const = 0;
@@ -79,21 +72,17 @@ using PutInLocalPlasmaCallback =
     std::function<void(const RayObject &object, const ObjectID &object_id)>;
 using RetryTaskCallback = std::function<void(TaskSpecification &spec, bool delay)>;
 using ReconstructObjectCallback = std::function<void(const ObjectID &object_id)>;
-using PushErrorCallback = std::function<Status(
-    const JobID &job_id,
-    const std::string &type,
-    const std::string &error_message,
-    double timestamp)>;
+using PushErrorCallback =
+    std::function<Status(const JobID &job_id, const std::string &type,
+                         const std::string &error_message, double timestamp)>;
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
  public:
-  TaskManager(
-      std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
-      std::shared_ptr<ReferenceCounter> reference_counter,
-      PutInLocalPlasmaCallback put_in_local_plasma_callback,
-      RetryTaskCallback retry_task_callback,
-      PushErrorCallback push_error_callback,
-      int64_t max_lineage_bytes)
+  TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
+              std::shared_ptr<ReferenceCounter> reference_counter,
+              PutInLocalPlasmaCallback put_in_local_plasma_callback,
+              RetryTaskCallback retry_task_callback,
+              PushErrorCallback push_error_callback, int64_t max_lineage_bytes)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         put_in_local_plasma_callback_(put_in_local_plasma_callback),
@@ -119,11 +108,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] max_retries Number of times this task may be retried
   /// on failure.
   /// \return ObjectRefs returned by this task.
-  std::vector<rpc::ObjectReference> AddPendingTask(
-      const rpc::Address &caller_address,
-      const TaskSpecification &spec,
-      const std::string &call_site,
-      int max_retries = 0);
+  std::vector<rpc::ObjectReference> AddPendingTask(const rpc::Address &caller_address,
+                                                   const TaskSpecification &spec,
+                                                   const std::string &call_site,
+                                                   int max_retries = 0);
 
   /// Resubmit a task that has completed execution before. This is used to
   /// reconstruct objects stored in Plasma that were lost.
@@ -149,10 +137,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] reply Proto response to a direct actor or task call.
   /// \param[in] worker_addr Address of the worker that executed the task.
   /// \return Void.
-  void CompletePendingTask(
-      const TaskID &task_id,
-      const rpc::PushTaskReply &reply,
-      const rpc::Address &worker_addr) override;
+  void CompletePendingTask(const TaskID &task_id, const rpc::PushTaskReply &reply,
+                           const rpc::Address &worker_addr) override;
 
   bool RetryTaskIfPossible(const TaskID &task_id) override;
 
@@ -168,12 +154,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] mark_task_object_failed whether or not it marks the task
   /// return object as failed.
   /// \return Whether the task will be retried or not.
-  bool FailOrRetryPendingTask(
-      const TaskID &task_id,
-      rpc::ErrorType error_type,
-      const Status *status = nullptr,
-      const rpc::RayErrorInfo *ray_error_info = nullptr,
-      bool mark_task_object_failed = true) override;
+  bool FailOrRetryPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
+                              const Status *status = nullptr,
+                              const rpc::RayErrorInfo *ray_error_info = nullptr,
+                              bool mark_task_object_failed = true) override;
 
   /// A pending task failed. This will mark the task as failed.
   /// This doesn't always mark the return object as failed
@@ -185,12 +169,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] ray_error_info The error information of a given error type.
   /// \param[in] mark_task_object_failed whether or not it marks the task
   /// return object as failed.
-  void FailPendingTask(
-      const TaskID &task_id,
-      rpc::ErrorType error_type,
-      const Status *status = nullptr,
-      const rpc::RayErrorInfo *ray_error_info = nullptr,
-      bool mark_task_object_failed = true) override;
+  void FailPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
+                       const Status *status = nullptr,
+                       const rpc::RayErrorInfo *ray_error_info = nullptr,
+                       bool mark_task_object_failed = true) override;
 
   /// Treat a pending task's returned Ray object as failed. The lock should not be held
   /// when calling this method because it may trigger callbacks in this or other classes.
@@ -199,8 +181,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] error_type The error type the returned Ray object will store.
   /// \param[in] ray_error_info The error information of a given error type.
   void MarkTaskReturnObjectsFailed(
-      const TaskSpecification &spec,
-      rpc::ErrorType error_type,
+      const TaskSpecification &spec, rpc::ErrorType error_type,
       const rpc::RayErrorInfo *ray_error_info = nullptr) override LOCKS_EXCLUDED(mu_);
 
   /// A task's dependencies were inlined in the task spec. This will decrement
@@ -212,9 +193,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] contained_ids Any ObjectIDs that were newly inlined in the
   /// task spec, because a serialized copy of the ID was contained in one of
   /// the inlined dependencies.
-  void OnTaskDependenciesInlined(
-      const std::vector<ObjectID> &inlined_dependency_ids,
-      const std::vector<ObjectID> &contained_ids) override;
+  void OnTaskDependenciesInlined(const std::vector<ObjectID> &inlined_dependency_ids,
+                                 const std::vector<ObjectID> &contained_ids) override;
 
   /// Set number of retries to zero for a task that is being canceled.
   ///
@@ -268,10 +248,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
  private:
   struct TaskEntry {
-    TaskEntry(
-        const TaskSpecification &spec_arg,
-        int num_retries_left_arg,
-        size_t num_returns)
+    TaskEntry(const TaskSpecification &spec_arg, int num_retries_left_arg,
+              size_t num_returns)
         : spec(spec_arg), num_retries_left(num_retries_left_arg) {
       for (size_t i = 0; i < num_returns; i++) {
         reconstructable_return_ids.insert(spec.ReturnId(i));
@@ -325,18 +303,16 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[out] ids_to_release If a task was deleted, then these are the
   /// task's arguments whose lineage should also be released.
   /// \param[out] The amount of lineage in bytes that was removed.
-  int64_t RemoveLineageReference(
-      const ObjectID &object_id,
-      std::vector<ObjectID> *ids_to_release) LOCKS_EXCLUDED(mu_);
+  int64_t RemoveLineageReference(const ObjectID &object_id,
+                                 std::vector<ObjectID> *ids_to_release)
+      LOCKS_EXCLUDED(mu_);
 
   /// Helper function to call RemoveSubmittedTaskReferences on the remaining
   /// dependencies of the given task spec after the task has finished or
   /// failed. The remaining dependencies are plasma objects and any ObjectIDs
   /// that were inlined in the task spec.
   void RemoveFinishedTaskReferences(
-      TaskSpecification &spec,
-      bool release_lineage,
-      const rpc::Address &worker_addr,
+      TaskSpecification &spec, bool release_lineage, const rpc::Address &worker_addr,
       const ReferenceCounter::ReferenceTableProto &borrowed_refs);
 
   /// Shutdown if all tasks are finished and shutdown is scheduled.

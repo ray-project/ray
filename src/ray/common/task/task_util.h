@@ -34,10 +34,8 @@ class TaskArgByReference : public TaskArg {
   ///
   /// \param[in] object_id Id of the argument.
   /// \return The task argument.
-  TaskArgByReference(
-      const ObjectID &object_id,
-      const rpc::Address &owner_address,
-      const std::string &call_site)
+  TaskArgByReference(const ObjectID &object_id, const rpc::Address &owner_address,
+                     const std::string &call_site)
       : id_(object_id), owner_address_(owner_address), call_site_(call_site) {}
 
   void ToProto(rpc::TaskArg *arg_proto) const {
@@ -99,20 +97,13 @@ class TaskSpecBuilder {
   ///
   /// \return Reference to the builder object itself.
   TaskSpecBuilder &SetCommonTaskSpec(
-      const TaskID &task_id,
-      const std::string name,
-      const Language &language,
-      const ray::FunctionDescriptor &function_descriptor,
-      const JobID &job_id,
-      const TaskID &parent_task_id,
-      uint64_t parent_counter,
-      const TaskID &caller_id,
-      const rpc::Address &caller_address,
-      uint64_t num_returns,
+      const TaskID &task_id, const std::string name, const Language &language,
+      const ray::FunctionDescriptor &function_descriptor, const JobID &job_id,
+      const TaskID &parent_task_id, uint64_t parent_counter, const TaskID &caller_id,
+      const rpc::Address &caller_address, uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
-      const std::string &debugger_breakpoint,
-      int64_t depth,
+      const std::string &debugger_breakpoint, int64_t depth,
       const std::string &serialized_runtime_env = "{}",
       const std::vector<std::string> &runtime_env_uris = {},
       const std::string &concurrency_group_name = "") {
@@ -127,12 +118,10 @@ class TaskSpecBuilder {
     message_->set_caller_id(caller_id.Binary());
     message_->mutable_caller_address()->CopyFrom(caller_address);
     message_->set_num_returns(num_returns);
-    message_->mutable_required_resources()->insert(
-        required_resources.begin(),
-        required_resources.end());
+    message_->mutable_required_resources()->insert(required_resources.begin(),
+                                                   required_resources.end());
     message_->mutable_required_placement_resources()->insert(
-        required_placement_resources.begin(),
-        required_placement_resources.end());
+        required_placement_resources.begin(), required_placement_resources.end());
     message_->set_debugger_breakpoint(debugger_breakpoint);
     message_->set_depth(depth);
     message_->mutable_runtime_env_info()->set_serialized_runtime_env(
@@ -144,10 +133,8 @@ class TaskSpecBuilder {
     return *this;
   }
 
-  TaskSpecBuilder &SetNormalTaskSpec(
-      int max_retries,
-      bool retry_exceptions,
-      const rpc::SchedulingStrategy &scheduling_strategy) {
+  TaskSpecBuilder &SetNormalTaskSpec(int max_retries, bool retry_exceptions,
+                                     const rpc::SchedulingStrategy &scheduling_strategy) {
     message_->set_max_retries(max_retries);
     message_->set_retry_exceptions(retry_exceptions);
     message_->mutable_scheduling_strategy()->CopyFrom(scheduling_strategy);
@@ -158,13 +145,10 @@ class TaskSpecBuilder {
   /// See `common.proto` for meaning of the arguments.
   ///
   /// \return Reference to the builder object itself.
-  TaskSpecBuilder &SetDriverTaskSpec(
-      const TaskID &task_id,
-      const Language &language,
-      const JobID &job_id,
-      const TaskID &parent_task_id,
-      const TaskID &caller_id,
-      const rpc::Address &caller_address) {
+  TaskSpecBuilder &SetDriverTaskSpec(const TaskID &task_id, const Language &language,
+                                     const JobID &job_id, const TaskID &parent_task_id,
+                                     const TaskID &caller_id,
+                                     const rpc::Address &caller_address) {
     message_->set_type(TaskType::DRIVER_TASK);
     message_->set_language(language);
     message_->set_job_id(job_id.Binary());
@@ -189,20 +173,14 @@ class TaskSpecBuilder {
   ///
   /// \return Reference to the builder object itself.
   TaskSpecBuilder &SetActorCreationTaskSpec(
-      const ActorID &actor_id,
-      const std::string &serialized_actor_handle,
-      const rpc::SchedulingStrategy &scheduling_strategy,
-      int64_t max_restarts = 0,
+      const ActorID &actor_id, const std::string &serialized_actor_handle,
+      const rpc::SchedulingStrategy &scheduling_strategy, int64_t max_restarts = 0,
       int64_t max_task_retries = 0,
       const std::vector<std::string> &dynamic_worker_options = {},
-      int max_concurrency = 1,
-      bool is_detached = false,
-      std::string name = "",
-      std::string ray_namespace = "",
-      bool is_asyncio = false,
+      int max_concurrency = 1, bool is_detached = false, std::string name = "",
+      std::string ray_namespace = "", bool is_asyncio = false,
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
-      const std::string &extension_data = "",
-      bool execute_out_of_order = false) {
+      const std::string &extension_data = "", bool execute_out_of_order = false) {
     message_->set_type(TaskType::ACTOR_CREATION_TASK);
     auto actor_creation_spec = message_->mutable_actor_creation_task_spec();
     actor_creation_spec->set_actor_id(actor_id.Binary());
@@ -237,11 +215,10 @@ class TaskSpecBuilder {
   /// See `common.proto` for meaning of the arguments.
   ///
   /// \return Reference to the builder object itself.
-  TaskSpecBuilder &SetActorTaskSpec(
-      const ActorID &actor_id,
-      const ObjectID &actor_creation_dummy_object_id,
-      const ObjectID &previous_actor_task_dummy_object_id,
-      uint64_t actor_counter) {
+  TaskSpecBuilder &SetActorTaskSpec(const ActorID &actor_id,
+                                    const ObjectID &actor_creation_dummy_object_id,
+                                    const ObjectID &previous_actor_task_dummy_object_id,
+                                    uint64_t actor_counter) {
     message_->set_type(TaskType::ACTOR_TASK);
     auto actor_spec = message_->mutable_actor_task_spec();
     actor_spec->set_actor_id(actor_id.Binary());

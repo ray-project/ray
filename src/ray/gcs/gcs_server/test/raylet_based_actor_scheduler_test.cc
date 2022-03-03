@@ -31,28 +31,22 @@ class RayletBasedActorSchedulerTest : public ::testing::Test {
         std::make_unique<GcsServerMocker::MockGcsPubSub>(redis_client_));
     gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
     gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
-        gcs_publisher_,
-        gcs_table_storage_,
-        raylet_client_pool_);
+        gcs_publisher_, gcs_table_storage_, raylet_client_pool_);
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
     gcs_actor_table_ =
         std::make_shared<GcsServerMocker::MockedGcsActorTable>(store_client_);
     gcs_actor_scheduler_ =
         std::make_shared<GcsServerMocker::MockedRayletBasedActorScheduler>(
-            io_service_,
-            *gcs_actor_table_,
-            *gcs_node_manager_,
+            io_service_, *gcs_actor_table_, *gcs_node_manager_,
             /*schedule_failure_handler=*/
-            [this](
-                std::shared_ptr<gcs::GcsActor> actor,
-                const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
-                const std::string &scheduling_failure_message) {
+            [this](std::shared_ptr<gcs::GcsActor> actor,
+                   const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+                   const std::string &scheduling_failure_message) {
               failure_actors_.emplace_back(std::move(actor));
             },
             /*schedule_success_handler=*/
-            [this](
-                std::shared_ptr<gcs::GcsActor> actor,
-                const rpc::PushTaskReply &reply) {
+            [this](std::shared_ptr<gcs::GcsActor> actor,
+                   const rpc::PushTaskReply &reply) {
               success_actors_.emplace_back(std::move(actor));
             },
             raylet_client_pool_,
@@ -114,12 +108,9 @@ TEST_F(RayletBasedActorSchedulerTest, TestScheduleActorSuccess) {
 
   // Grant a worker, then the actor creation request should be send to the worker.
   WorkerID worker_id = WorkerID::FromRandom();
-  ASSERT_TRUE(raylet_client_->GrantWorkerLease(
-      node->node_manager_address(),
-      node->node_manager_port(),
-      worker_id,
-      node_id,
-      NodeID::Nil()));
+  ASSERT_TRUE(raylet_client_->GrantWorkerLease(node->node_manager_address(),
+                                               node->node_manager_port(), worker_id,
+                                               node_id, NodeID::Nil()));
   ASSERT_EQ(0, raylet_client_->callbacks.size());
   ASSERT_EQ(1, worker_client_->callbacks.size());
 
@@ -153,12 +144,8 @@ TEST_F(RayletBasedActorSchedulerTest, TestScheduleRetryWhenLeasing) {
 
   // Mock a IOError reply, then the lease request will retry again.
   ASSERT_TRUE(raylet_client_->GrantWorkerLease(
-      node->node_manager_address(),
-      node->node_manager_port(),
-      WorkerID::FromRandom(),
-      node_id,
-      NodeID::Nil(),
-      Status::IOError("")));
+      node->node_manager_address(), node->node_manager_port(), WorkerID::FromRandom(),
+      node_id, NodeID::Nil(), Status::IOError("")));
   ASSERT_EQ(1, gcs_actor_scheduler_->num_retry_leasing_count_);
   ASSERT_EQ(2, raylet_client_->num_workers_requested);
   ASSERT_EQ(1, raylet_client_->callbacks.size());
@@ -166,12 +153,9 @@ TEST_F(RayletBasedActorSchedulerTest, TestScheduleRetryWhenLeasing) {
 
   // Grant a worker, then the actor creation request should be send to the worker.
   WorkerID worker_id = WorkerID::FromRandom();
-  ASSERT_TRUE(raylet_client_->GrantWorkerLease(
-      node->node_manager_address(),
-      node->node_manager_port(),
-      worker_id,
-      node_id,
-      NodeID::Nil()));
+  ASSERT_TRUE(raylet_client_->GrantWorkerLease(node->node_manager_address(),
+                                               node->node_manager_port(), worker_id,
+                                               node_id, NodeID::Nil()));
   ASSERT_EQ(0, raylet_client_->callbacks.size());
   ASSERT_EQ(1, worker_client_->callbacks.size());
 
@@ -204,12 +188,9 @@ TEST_F(RayletBasedActorSchedulerTest, TestScheduleRetryWhenCreating) {
 
   // Grant a worker, then the actor creation request should be send to the worker.
   WorkerID worker_id = WorkerID::FromRandom();
-  ASSERT_TRUE(raylet_client_->GrantWorkerLease(
-      node->node_manager_address(),
-      node->node_manager_port(),
-      worker_id,
-      node_id,
-      NodeID::Nil()));
+  ASSERT_TRUE(raylet_client_->GrantWorkerLease(node->node_manager_address(),
+                                               node->node_manager_port(), worker_id,
+                                               node_id, NodeID::Nil()));
   ASSERT_EQ(0, raylet_client_->callbacks.size());
   ASSERT_EQ(1, worker_client_->callbacks.size());
   ASSERT_EQ(0, gcs_actor_scheduler_->num_retry_creating_count_);
@@ -257,11 +238,8 @@ TEST_F(RayletBasedActorSchedulerTest, TestNodeFailedWhenLeasing) {
 
   // Grant a worker, which will influence nothing.
   ASSERT_TRUE(raylet_client_->GrantWorkerLease(
-      node->node_manager_address(),
-      node->node_manager_port(),
-      WorkerID::FromRandom(),
-      node_id,
-      NodeID::Nil()));
+      node->node_manager_address(), node->node_manager_port(), WorkerID::FromRandom(),
+      node_id, NodeID::Nil()));
   ASSERT_EQ(1, raylet_client_->num_workers_requested);
   ASSERT_EQ(0, raylet_client_->callbacks.size());
   ASSERT_EQ(0, gcs_actor_scheduler_->num_retry_leasing_count_);
@@ -294,11 +272,8 @@ TEST_F(RayletBasedActorSchedulerTest, TestLeasingCancelledWhenLeasing) {
 
   // Grant a worker, which will influence nothing.
   ASSERT_TRUE(raylet_client_->GrantWorkerLease(
-      node->node_manager_address(),
-      node->node_manager_port(),
-      WorkerID::FromRandom(),
-      node_id,
-      NodeID::Nil()));
+      node->node_manager_address(), node->node_manager_port(), WorkerID::FromRandom(),
+      node_id, NodeID::Nil()));
   ASSERT_EQ(1, raylet_client_->num_workers_requested);
   ASSERT_EQ(0, raylet_client_->callbacks.size());
   ASSERT_EQ(0, gcs_actor_scheduler_->num_retry_leasing_count_);
@@ -326,11 +301,8 @@ TEST_F(RayletBasedActorSchedulerTest, TestNodeFailedWhenCreating) {
 
   // Grant a worker, then the actor creation request should be send to the worker.
   ASSERT_TRUE(raylet_client_->GrantWorkerLease(
-      node->node_manager_address(),
-      node->node_manager_port(),
-      WorkerID::FromRandom(),
-      node_id,
-      NodeID::Nil()));
+      node->node_manager_address(), node->node_manager_port(), WorkerID::FromRandom(),
+      node_id, NodeID::Nil()));
   ASSERT_EQ(0, raylet_client_->callbacks.size());
   ASSERT_EQ(1, worker_client_->callbacks.size());
 
@@ -371,19 +343,15 @@ TEST_F(RayletBasedActorSchedulerTest, TestWorkerFailedWhenCreating) {
 
   // Grant a worker, then the actor creation request should be send to the worker.
   auto worker_id = WorkerID::FromRandom();
-  ASSERT_TRUE(raylet_client_->GrantWorkerLease(
-      node->node_manager_address(),
-      node->node_manager_port(),
-      worker_id,
-      node_id,
-      NodeID::Nil()));
+  ASSERT_TRUE(raylet_client_->GrantWorkerLease(node->node_manager_address(),
+                                               node->node_manager_port(), worker_id,
+                                               node_id, NodeID::Nil()));
   ASSERT_EQ(0, raylet_client_->callbacks.size());
   ASSERT_EQ(1, worker_client_->callbacks.size());
 
   // Cancel the scheduling on this node, the scheduling should be interrupted.
-  ASSERT_EQ(
-      actor->GetActorID(),
-      gcs_actor_scheduler_->CancelOnWorker(node_id, worker_id));
+  ASSERT_EQ(actor->GetActorID(),
+            gcs_actor_scheduler_->CancelOnWorker(node_id, worker_id));
   ASSERT_EQ(1, worker_client_->callbacks.size());
 
   // Reply the actor creation request, which will influence nothing.
@@ -421,35 +389,26 @@ TEST_F(RayletBasedActorSchedulerTest, TestSpillback) {
   // Grant with an invalid spillback node, and schedule again.
   auto invalid_node_id = NodeID::FromBinary(Mocker::GenNodeInfo()->node_id());
   ASSERT_TRUE(raylet_client_->GrantWorkerLease(
-      node2->node_manager_address(),
-      node2->node_manager_port(),
-      WorkerID::Nil(),
-      node_id_1,
-      invalid_node_id));
+      node2->node_manager_address(), node2->node_manager_port(), WorkerID::Nil(),
+      node_id_1, invalid_node_id));
   ASSERT_EQ(2, raylet_client_->num_workers_requested);
   ASSERT_EQ(1, raylet_client_->callbacks.size());
   ASSERT_EQ(0, worker_client_->callbacks.size());
 
   // Grant with a spillback node(node2), and the lease request should be send to the
   // node2.
-  ASSERT_TRUE(raylet_client_->GrantWorkerLease(
-      node2->node_manager_address(),
-      node2->node_manager_port(),
-      WorkerID::Nil(),
-      node_id_1,
-      node_id_2));
+  ASSERT_TRUE(raylet_client_->GrantWorkerLease(node2->node_manager_address(),
+                                               node2->node_manager_port(),
+                                               WorkerID::Nil(), node_id_1, node_id_2));
   ASSERT_EQ(3, raylet_client_->num_workers_requested);
   ASSERT_EQ(1, raylet_client_->callbacks.size());
   ASSERT_EQ(0, worker_client_->callbacks.size());
 
   // Grant a worker, then the actor creation request should be send to the worker.
   WorkerID worker_id = WorkerID::FromRandom();
-  ASSERT_TRUE(raylet_client_->GrantWorkerLease(
-      node2->node_manager_address(),
-      node2->node_manager_port(),
-      worker_id,
-      node_id_2,
-      NodeID::Nil()));
+  ASSERT_TRUE(raylet_client_->GrantWorkerLease(node2->node_manager_address(),
+                                               node2->node_manager_port(), worker_id,
+                                               node_id_2, NodeID::Nil()));
   ASSERT_EQ(0, raylet_client_->callbacks.size());
   ASSERT_EQ(1, worker_client_->callbacks.size());
 
@@ -499,12 +458,9 @@ TEST_F(RayletBasedActorSchedulerTest, TestReschedule) {
   gcs_actor_scheduler_->Reschedule(actor);
 
   // Grant a worker, then the actor creation request should be send to the worker.
-  ASSERT_TRUE(raylet_client_->GrantWorkerLease(
-      node1->node_manager_address(),
-      node1->node_manager_port(),
-      worker_id,
-      node_id_1,
-      NodeID::Nil()));
+  ASSERT_TRUE(raylet_client_->GrantWorkerLease(node1->node_manager_address(),
+                                               node1->node_manager_port(), worker_id,
+                                               node_id_1, NodeID::Nil()));
   ASSERT_EQ(0, raylet_client_->callbacks.size());
   ASSERT_EQ(1, worker_client_->callbacks.size());
 

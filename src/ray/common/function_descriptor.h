@@ -73,9 +73,8 @@ class EmptyFunctionDescriptor : public FunctionDescriptorInterface {
   ///
   /// \param message The protobuf message.
   explicit EmptyFunctionDescriptor() : FunctionDescriptorInterface() {
-    RAY_CHECK(
-        message_->function_descriptor_case() ==
-        ray::FunctionDescriptorType::FUNCTION_DESCRIPTOR_NOT_SET);
+    RAY_CHECK(message_->function_descriptor_case() ==
+              ray::FunctionDescriptorType::FUNCTION_DESCRIPTOR_NOT_SET);
   }
 
   virtual size_t Hash() const {
@@ -99,9 +98,8 @@ class JavaFunctionDescriptor : public FunctionDescriptorInterface {
   /// \param message The protobuf message.
   explicit JavaFunctionDescriptor(rpc::FunctionDescriptor message)
       : FunctionDescriptorInterface(std::move(message)) {
-    RAY_CHECK(
-        message_->function_descriptor_case() ==
-        ray::FunctionDescriptorType::kJavaFunctionDescriptor);
+    RAY_CHECK(message_->function_descriptor_case() ==
+              ray::FunctionDescriptorType::kJavaFunctionDescriptor);
     typed_message_ = &(message_->java_function_descriptor());
   }
 
@@ -155,9 +153,8 @@ class PythonFunctionDescriptor : public FunctionDescriptorInterface {
   /// \param message The protobuf message.
   explicit PythonFunctionDescriptor(rpc::FunctionDescriptor message)
       : FunctionDescriptorInterface(std::move(message)) {
-    RAY_CHECK(
-        message_->function_descriptor_case() ==
-        ray::FunctionDescriptorType::kPythonFunctionDescriptor);
+    RAY_CHECK(message_->function_descriptor_case() ==
+              ray::FunctionDescriptorType::kPythonFunctionDescriptor);
     typed_message_ = &(message_->python_function_descriptor());
   }
 
@@ -226,9 +223,8 @@ class CppFunctionDescriptor : public FunctionDescriptorInterface {
   /// \param message The protobuf message.
   explicit CppFunctionDescriptor(rpc::FunctionDescriptor message)
       : FunctionDescriptorInterface(std::move(message)) {
-    RAY_CHECK(
-        message_->function_descriptor_case() ==
-        ray::FunctionDescriptorType::kCppFunctionDescriptor);
+    RAY_CHECK(message_->function_descriptor_case() ==
+              ray::FunctionDescriptorType::kCppFunctionDescriptor);
     typed_message_ = &(message_->cpp_function_descriptor());
   }
 
@@ -309,19 +305,17 @@ class FunctionDescriptorBuilder {
   /// Build a JavaFunctionDescriptor.
   ///
   /// \return a ray::JavaFunctionDescriptor
-  static FunctionDescriptor BuildJava(
-      const std::string &class_name,
-      const std::string &function_name,
-      const std::string &signature);
+  static FunctionDescriptor BuildJava(const std::string &class_name,
+                                      const std::string &function_name,
+                                      const std::string &signature);
 
   /// Build a PythonFunctionDescriptor.
   ///
   /// \return a ray::PythonFunctionDescriptor
-  static FunctionDescriptor BuildPython(
-      const std::string &module_name,
-      const std::string &class_name,
-      const std::string &function_name,
-      const std::string &function_hash);
+  static FunctionDescriptor BuildPython(const std::string &module_name,
+                                        const std::string &class_name,
+                                        const std::string &function_name,
+                                        const std::string &function_hash);
 
   /// Build a CppFunctionDescriptor.
   ///
@@ -337,8 +331,7 @@ class FunctionDescriptorBuilder {
   ///
   /// \return new ray::FunctionDescriptor
   static FunctionDescriptor FromVector(
-      rpc::Language language,
-      const std::vector<std::string> &function_descriptor_list);
+      rpc::Language language, const std::vector<std::string> &function_descriptor_list);
 
   /// Build a ray::FunctionDescriptor from serialized binary.
   ///

@@ -83,12 +83,10 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   ///                         but no spillback.
   /// \param reply: The reply of the lease request.
   /// \param send_reply_callback: The function used during dispatching.
-  void QueueAndScheduleTask(
-      const RayTask &task,
-      bool grant_or_reject,
-      bool is_selected_based_on_locality,
-      rpc::RequestWorkerLeaseReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
+  void QueueAndScheduleTask(const RayTask &task, bool grant_or_reject,
+                            bool is_selected_based_on_locality,
+                            rpc::RequestWorkerLeaseReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
 
   /// Attempt to cancel an already queued task.
   ///
@@ -97,11 +95,10 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   ///
   /// \return True if task was successfully removed. This function will return
   /// false if the task is already running.
-  bool CancelTask(
-      const TaskID &task_id,
-      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
-          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
-      const std::string &scheduling_failure_message = "") override;
+  bool CancelTask(const TaskID &task_id,
+                  rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
+                      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
+                  const std::string &scheduling_failure_message = "") override;
 
   /// Populate the list of pending or infeasible actor tasks for node stats.
   ///
@@ -118,10 +115,9 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param[in] last_reported_resources: The last reported resources. Used to check
   /// whether
   ///                                     resources have been changed.
-  void FillResourceUsage(
-      rpc::ResourcesData &data,
-      const std::shared_ptr<SchedulingResources> &last_reported_resources =
-          nullptr) override;
+  void FillResourceUsage(rpc::ResourcesData &data,
+                         const std::shared_ptr<SchedulingResources>
+                             &last_reported_resources = nullptr) override;
 
   /// Return if any tasks are pending resource acquisition.
   ///
@@ -130,11 +126,9 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param[in,out] num_pending_tasks: Number of pending tasks.
   /// \param[in,out] any_pending: True if there's any pending exemplar.
   /// \return True if any progress is any tasks are pending.
-  bool AnyPendingTasksForResourceAcquisition(
-      RayTask *exemplar,
-      bool *any_pending,
-      int *num_pending_actor_creation,
-      int *num_pending_tasks) const override;
+  bool AnyPendingTasksForResourceAcquisition(RayTask *exemplar, bool *any_pending,
+                                             int *num_pending_actor_creation,
+                                             int *num_pending_tasks) const override;
 
   // Schedule and dispatch tasks.
   void ScheduleAndDispatchTasks() override;
@@ -149,9 +143,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   void TryScheduleInfeasibleTask();
 
   // Schedule the task onto a node (which could be either remote or local).
-  void ScheduleOnNode(
-      const NodeID &node_to_schedule,
-      const std::shared_ptr<internal::Work> &work);
+  void ScheduleOnNode(const NodeID &node_to_schedule,
+                      const std::shared_ptr<internal::Work> &work);
 
   /// Recompute the debug stats.
   /// It is needed because updating the debug state is expensive for cluster_task_manager.

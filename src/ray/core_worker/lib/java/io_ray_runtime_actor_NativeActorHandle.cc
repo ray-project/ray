@@ -28,9 +28,7 @@ extern "C" {
 #endif
 
 JNIEXPORT jint JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeGetLanguage(
-    JNIEnv *env,
-    jclass o,
-    jbyteArray actorId) {
+    JNIEnv *env, jclass o, jbyteArray actorId) {
   auto actor_id = JavaByteArrayToId<ActorID>(env, actorId);
   const auto native_actor_handle =
       CoreWorkerProcess::GetCoreWorker().GetActorHandle(actor_id);
@@ -39,9 +37,7 @@ JNIEXPORT jint JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeGetLang
 
 JNIEXPORT jobject JNICALL
 Java_io_ray_runtime_actor_NativeActorHandle_nativeGetActorCreationTaskFunctionDescriptor(
-    JNIEnv *env,
-    jclass o,
-    jbyteArray actorId) {
+    JNIEnv *env, jclass o, jbyteArray actorId) {
   auto actor_id = JavaByteArrayToId<ActorID>(env, actorId);
   const auto native_actor_handle =
       CoreWorkerProcess::GetCoreWorker().GetActorHandle(actor_id);
@@ -50,31 +46,21 @@ Java_io_ray_runtime_actor_NativeActorHandle_nativeGetActorCreationTaskFunctionDe
 }
 
 JNIEXPORT jbyteArray JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeSerialize(
-    JNIEnv *env,
-    jclass o,
-    jbyteArray actorId,
-    jbyteArray actorHandleId) {
+    JNIEnv *env, jclass o, jbyteArray actorId, jbyteArray actorHandleId) {
   auto actor_id = JavaByteArrayToId<ActorID>(env, actorId);
   std::string output;
   ObjectID actor_handle_id;
   Status status = CoreWorkerProcess::GetCoreWorker().SerializeActorHandle(
-      actor_id,
-      &output,
-      &actor_handle_id);
-  env->SetByteArrayRegion(
-      actorHandleId,
-      0,
-      ObjectID::kLength,
-      reinterpret_cast<const jbyte *>(actor_handle_id.Data()));
+      actor_id, &output, &actor_handle_id);
+  env->SetByteArrayRegion(actorHandleId, 0, ObjectID::kLength,
+                          reinterpret_cast<const jbyte *>(actor_handle_id.Data()));
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   return NativeStringToJavaByteArray(env, output);
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_actor_NativeActorHandle_nativeDeserialize(
-    JNIEnv *env,
-    jclass o,
-    jbyteArray data) {
+Java_io_ray_runtime_actor_NativeActorHandle_nativeDeserialize(JNIEnv *env, jclass o,
+                                                              jbyteArray data) {
   auto buffer = JavaByteArrayToNativeBuffer(env, data);
   RAY_CHECK(buffer->Size() > 0);
   auto binary = std::string(reinterpret_cast<char *>(buffer->Data()), buffer->Size());
@@ -87,10 +73,7 @@ Java_io_ray_runtime_actor_NativeActorHandle_nativeDeserialize(
 
 JNIEXPORT void JNICALL
 Java_io_ray_runtime_actor_NativeActorHandle_nativeRemoveActorHandleReference(
-    JNIEnv *env,
-    jclass clz,
-    jbyteArray workerId,
-    jbyteArray actorId) {
+    JNIEnv *env, jclass clz, jbyteArray workerId, jbyteArray actorId) {
   // We can't control the timing of Java GC, so it's normal that this method is called but
   // core worker is shutting down (or already shut down). If we can't get a core worker
   // instance here, skip calling the `RemoveLocalReference` method.

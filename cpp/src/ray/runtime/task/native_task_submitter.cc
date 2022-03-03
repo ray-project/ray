@@ -33,8 +33,7 @@ RayFunction BuildRayFunction(InvocationSpec &invocation) {
     auto function_descriptor = FunctionDescriptorBuilder::BuildPython(
         invocation.remote_function_holder.module_name,
         invocation.remote_function_holder.class_name,
-        invocation.remote_function_holder.function_name,
-        "");
+        invocation.remote_function_holder.function_name, "");
     return RayFunction(ray::Language::PYTHON, function_descriptor);
   } else {
     throw RayException("not supported yet");
@@ -51,9 +50,8 @@ static BundleID GetBundleID(const T &options) {
   return bundle_id;
 };
 
-ObjectID NativeTaskSubmitter::Submit(
-    InvocationSpec &invocation,
-    const CallOptions &call_options) {
+ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
+                                     const CallOptions &call_options) {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   TaskOptions options{};
   options.name = call_options.name;
@@ -61,10 +59,7 @@ ObjectID NativeTaskSubmitter::Submit(
   std::optional<std::vector<rpc::ObjectReference>> return_refs;
   if (invocation.task_type == TaskType::ACTOR_TASK) {
     return_refs = core_worker.SubmitActorTask(
-        invocation.actor_id,
-        BuildRayFunction(invocation),
-        invocation.args,
-        options);
+        invocation.actor_id, BuildRayFunction(invocation), invocation.args, options);
     if (!return_refs.has_value()) {
       return ObjectID::Nil();
     }
@@ -81,14 +76,8 @@ ObjectID NativeTaskSubmitter::Submit(
           bundle_id.second);
       placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
     }
-    return_refs = core_worker.SubmitTask(
-        BuildRayFunction(invocation),
-        invocation.args,
-        options,
-        1,
-        false,
-        scheduling_strategy,
-        "");
+    return_refs = core_worker.SubmitTask(BuildRayFunction(invocation), invocation.args,
+                                         options, 1, false, scheduling_strategy, "");
   }
   std::vector<ObjectID> return_ids;
   for (const auto &ref : return_refs.value()) {
@@ -97,15 +86,13 @@ ObjectID NativeTaskSubmitter::Submit(
   return return_ids[0];
 }
 
-ObjectID NativeTaskSubmitter::SubmitTask(
-    InvocationSpec &invocation,
-    const CallOptions &call_options) {
+ObjectID NativeTaskSubmitter::SubmitTask(InvocationSpec &invocation,
+                                         const CallOptions &call_options) {
   return Submit(invocation, call_options);
 }
 
-ActorID NativeTaskSubmitter::CreateActor(
-    InvocationSpec &invocation,
-    const ActorCreationOptions &create_options) {
+ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation,
+                                         const ActorCreationOptions &create_options) {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   std::unordered_map<std::string, double> resources;
   std::string name = create_options.name;
@@ -134,21 +121,16 @@ ActorID NativeTaskSubmitter::CreateActor(
       /*is_asyncio=*/false,
       scheduling_strategy};
   ActorID actor_id;
-  auto status = core_worker.CreateActor(
-      BuildRayFunction(invocation),
-      invocation.args,
-      actor_options,
-      "",
-      &actor_id);
+  auto status = core_worker.CreateActor(BuildRayFunction(invocation), invocation.args,
+                                        actor_options, "", &actor_id);
   if (!status.ok()) {
     throw RayException("Create actor error");
   }
   return actor_id;
 }
 
-ObjectID NativeTaskSubmitter::SubmitActorTask(
-    InvocationSpec &invocation,
-    const CallOptions &task_options) {
+ObjectID NativeTaskSubmitter::SubmitActorTask(InvocationSpec &invocation,
+                                              const CallOptions &task_options) {
   return Submit(invocation, task_options);
 }
 
@@ -168,14 +150,11 @@ ActorID NativeTaskSubmitter::GetActor(const std::string &actor_name) const {
 ray::PlacementGroup NativeTaskSubmitter::CreatePlacementGroup(
     const ray::PlacementGroupCreationOptions &create_options) {
   auto options = ray::core::PlacementGroupCreationOptions(
-      create_options.name,
-      (ray::core::PlacementStrategy)create_options.strategy,
-      create_options.bundles,
-      false);
+      create_options.name, (ray::core::PlacementStrategy)create_options.strategy,
+      create_options.bundles, false);
   ray::PlacementGroupID placement_group_id;
   auto status = CoreWorkerProcess::GetCoreWorker().CreatePlacementGroup(
-      options,
-      &placement_group_id);
+      options, &placement_group_id);
   if (!status.ok()) {
     throw RayException(status.message());
   }
@@ -197,13 +176,11 @@ void NativeTaskSubmitter::RemovePlacementGroup(const std::string &group_id) {
   }
 }
 
-bool NativeTaskSubmitter::WaitPlacementGroupReady(
-    const std::string &group_id,
-    int timeout_seconds) {
+bool NativeTaskSubmitter::WaitPlacementGroupReady(const std::string &group_id,
+                                                  int timeout_seconds) {
   auto placement_group_id = ray::PlacementGroupID::FromBinary(group_id);
   auto status = CoreWorkerProcess::GetCoreWorker().WaitPlacementGroupReady(
-      placement_group_id,
-      timeout_seconds);
+      placement_group_id, timeout_seconds);
 
   if (status.IsNotFound()) {
     throw RayException(status.message());

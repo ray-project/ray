@@ -87,9 +87,8 @@ TEST(OutofOrderActorSubmitQueueTest, PassThroughTest) {
   }
 
   queue.MarkDependencyResolved(2);
-  std::vector<TaskID> task_ids = {
-      queue.Get(0).first.TaskId(),
-      queue.Get(2).first.TaskId()};
+  std::vector<TaskID> task_ids = {queue.Get(0).first.TaskId(),
+                                  queue.Get(2).first.TaskId()};
   // clear all tasks.
   auto ret = queue.ClearAllTasks();
   EXPECT_EQ(ret, task_ids);

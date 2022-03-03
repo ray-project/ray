@@ -112,17 +112,15 @@ struct WorkerThreadContext {
   /// Number of tasks that have been submitted from current task.
   uint64_t task_index_;
 
-  static_assert(
-      sizeof(task_index_) == TaskID::Size() - ActorID::Size(),
-      "Size of task_index_ doesn't match the unique bytes of a TaskID.");
+  static_assert(sizeof(task_index_) == TaskID::Size() - ActorID::Size(),
+                "Size of task_index_ doesn't match the unique bytes of a TaskID.");
 
   /// A running counter for the number of object puts carried out in the current task.
   /// Used to calculate the object index for put object ObjectIDs.
   ObjectIDIndexType put_counter_;
 
-  static_assert(
-      sizeof(put_counter_) == ObjectID::Size() - TaskID::Size(),
-      "Size of put_counter_ doesn't match the unique bytes of an ObjectID.");
+  static_assert(sizeof(put_counter_) == ObjectID::Size() - TaskID::Size(),
+                "Size of put_counter_ doesn't match the unique bytes of an ObjectID.");
 
   /// Placement group id that the current task belongs to.
   /// NOTE: The top level `WorkerContext` will also have placement_group_id
@@ -138,10 +136,8 @@ struct WorkerThreadContext {
 thread_local std::unique_ptr<WorkerThreadContext> WorkerContext::thread_context_ =
     nullptr;
 
-WorkerContext::WorkerContext(
-    WorkerType worker_type,
-    const WorkerID &worker_id,
-    const JobID &job_id)
+WorkerContext::WorkerContext(WorkerType worker_type, const WorkerID &worker_id,
+                             const JobID &job_id)
     : worker_type_(worker_type),
       worker_id_(worker_id),
       current_job_id_(job_id),
@@ -153,10 +149,10 @@ WorkerContext::WorkerContext(
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
   // (For other threads it's set to random ID via GetThreadContext).
-  GetThreadContext().SetCurrentTaskId(
-      (worker_type_ == WorkerType::DRIVER) ? TaskID::ForDriverTask(job_id)
-                                           : TaskID::Nil(),
-      /*attempt_number=*/0);
+  GetThreadContext().SetCurrentTaskId((worker_type_ == WorkerType::DRIVER)
+                                          ? TaskID::ForDriverTask(job_id)
+                                          : TaskID::Nil(),
+                                      /*attempt_number=*/0);
 }
 
 const WorkerType WorkerContext::GetWorkerType() const { return worker_type_; }
@@ -262,8 +258,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     if (!IsRuntimeEnvEmpty(runtime_env_info_.serialized_runtime_env())) {
       runtime_env_.reset(new rpc::RuntimeEnv());
       RAY_CHECK(google::protobuf::util::JsonStringToMessage(
-                    runtime_env_info_.serialized_runtime_env(),
-                    runtime_env_.get())
+                    runtime_env_info_.serialized_runtime_env(), runtime_env_.get())
                     .ok());
     }
   }

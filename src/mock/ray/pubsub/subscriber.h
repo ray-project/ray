@@ -17,39 +17,28 @@ namespace pubsub {
 
 class MockSubscriberInterface : public SubscriberInterface {
  public:
-  MOCK_METHOD(
-      bool,
-      Subscribe,
-      (std::unique_ptr<rpc::SubMessage> sub_message,
-       const rpc::ChannelType channel_type,
-       const rpc::Address &publisher_address,
-       const std::string &key_id,
-       SubscribeDoneCallback subscribe_done_callback,
-       SubscriptionItemCallback subscription_callback,
-       SubscriptionFailureCallback subscription_failure_callback),
-      (override));
-  MOCK_METHOD(
-      bool,
-      SubscribeChannel,
-      (std::unique_ptr<rpc::SubMessage> sub_message,
-       const rpc::ChannelType channel_type,
-       const rpc::Address &publisher_address,
-       SubscribeDoneCallback subscribe_done_callback,
-       SubscriptionItemCallback subscription_callback,
-       SubscriptionFailureCallback subscription_failure_callback),
-      (override));
-  MOCK_METHOD(
-      bool,
-      Unsubscribe,
-      (const rpc::ChannelType channel_type,
-       const rpc::Address &publisher_address,
-       const std::string &key_id),
-      (override));
-  MOCK_METHOD(
-      bool,
-      UnsubscribeChannel,
-      (const rpc::ChannelType channel_type, const rpc::Address &publisher_address),
-      (override));
+  MOCK_METHOD(bool, Subscribe,
+              (std::unique_ptr<rpc::SubMessage> sub_message,
+               const rpc::ChannelType channel_type, const rpc::Address &publisher_address,
+               const std::string &key_id, SubscribeDoneCallback subscribe_done_callback,
+               SubscriptionItemCallback subscription_callback,
+               SubscriptionFailureCallback subscription_failure_callback),
+              (override));
+  MOCK_METHOD(bool, SubscribeChannel,
+              (std::unique_ptr<rpc::SubMessage> sub_message,
+               const rpc::ChannelType channel_type, const rpc::Address &publisher_address,
+               SubscribeDoneCallback subscribe_done_callback,
+               SubscriptionItemCallback subscription_callback,
+               SubscriptionFailureCallback subscription_failure_callback),
+              (override));
+  MOCK_METHOD(bool, Unsubscribe,
+              (const rpc::ChannelType channel_type, const rpc::Address &publisher_address,
+               const std::string &key_id),
+              (override));
+  MOCK_METHOD(bool, UnsubscribeChannel,
+              (const rpc::ChannelType channel_type,
+               const rpc::Address &publisher_address),
+              (override));
   MOCK_METHOD(std::string, DebugString, (), (const, override));
 };
 
@@ -61,18 +50,14 @@ namespace pubsub {
 
 class MockSubscriberClientInterface : public SubscriberClientInterface {
  public:
-  MOCK_METHOD(
-      void,
-      PubsubLongPolling,
-      (const rpc::PubsubLongPollingRequest &request,
-       const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback),
-      (override));
-  MOCK_METHOD(
-      void,
-      PubsubCommandBatch,
-      (const rpc::PubsubCommandBatchRequest &request,
-       const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback),
-      (override));
+  MOCK_METHOD(void, PubsubLongPolling,
+              (const rpc::PubsubLongPollingRequest &request,
+               const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback),
+              (override));
+  MOCK_METHOD(void, PubsubCommandBatch,
+              (const rpc::PubsubCommandBatchRequest &request,
+               const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback),
+              (override));
 };
 
 }  // namespace pubsub

@@ -26,9 +26,8 @@ class RuntimeEnvAgentClientInterface {
   virtual void CreateRuntimeEnv(
       const rpc::CreateRuntimeEnvRequest &request,
       const rpc::ClientCallback<rpc::CreateRuntimeEnvReply> &callback) = 0;
-  virtual void DeleteURIs(
-      const rpc::DeleteURIsRequest &request,
-      const rpc::ClientCallback<rpc::DeleteURIsReply> &callback) = 0;
+  virtual void DeleteURIs(const rpc::DeleteURIsRequest &request,
+                          const rpc::ClientCallback<rpc::DeleteURIsReply> &callback) = 0;
   virtual ~RuntimeEnvAgentClientInterface(){};
 };
 
@@ -40,35 +39,25 @@ class RuntimeEnvAgentClient : public RuntimeEnvAgentClientInterface {
   /// \param[in] address Address of the server.
   /// \param[in] port Port of the server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  RuntimeEnvAgentClient(
-      const std::string &address,
-      const int port,
-      ClientCallManager &client_call_manager) {
-    grpc_client_ = std::make_unique<GrpcClient<RuntimeEnvService>>(
-        address,
-        port,
-        client_call_manager);
+  RuntimeEnvAgentClient(const std::string &address, const int port,
+                        ClientCallManager &client_call_manager) {
+    grpc_client_ = std::make_unique<GrpcClient<RuntimeEnvService>>(address, port,
+                                                                   client_call_manager);
   };
 
   /// Create runtime env.
   ///
   /// \param request The request message
   /// \param callback  The callback function that handles reply
-  VOID_RPC_CLIENT_METHOD(
-      RuntimeEnvService,
-      CreateRuntimeEnv,
-      grpc_client_,
-      /*method_timeout_ms*/ -1, )
+  VOID_RPC_CLIENT_METHOD(RuntimeEnvService, CreateRuntimeEnv, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
 
   /// Delete URIs.
   ///
   /// \param request The request message
   /// \param callback  The callback function that handles reply
-  VOID_RPC_CLIENT_METHOD(
-      RuntimeEnvService,
-      DeleteURIs,
-      grpc_client_,
-      /*method_timeout_ms*/ -1, )
+  VOID_RPC_CLIENT_METHOD(RuntimeEnvService, DeleteURIs, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
 
  private:
   /// The RPC client.

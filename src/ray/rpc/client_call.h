@@ -66,10 +66,9 @@ class ClientCallImpl : public ClientCall {
   /// Constructor.
   ///
   /// \param[in] callback The callback function to handle the reply.
-  explicit ClientCallImpl(
-      const ClientCallback<Reply> &callback,
-      std::shared_ptr<StatsHandle> stats_handle,
-      int64_t timeout_ms = -1)
+  explicit ClientCallImpl(const ClientCallback<Reply> &callback,
+                          std::shared_ptr<StatsHandle> stats_handle,
+                          int64_t timeout_ms = -1)
       : callback_(std::move(const_cast<ClientCallback<Reply> &>(callback))),
         stats_handle_(std::move(stats_handle)) {
     if (timeout_ms != -1) {
@@ -167,11 +166,9 @@ class ClientCallTag {
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
 template <class GrpcService, class Request, class Reply>
-using PrepareAsyncFunction =
-    std::unique_ptr<grpc::ClientAsyncResponseReader<Reply>> (GrpcService::Stub::*)(
-        grpc::ClientContext *context,
-        const Request &request,
-        grpc::CompletionQueue *cq);
+using PrepareAsyncFunction = std::unique_ptr<grpc::ClientAsyncResponseReader<Reply>> (
+    GrpcService::Stub::*)(grpc::ClientContext *context, const Request &request,
+                          grpc::CompletionQueue *cq);
 
 /// `ClientCallManager` is used to manage outgoing gRPC requests and the lifecycles of
 /// `ClientCall` objects.
@@ -186,10 +183,8 @@ class ClientCallManager {
   ///
   /// \param[in] main_service The main event loop, to which the callback functions will be
   /// posted.
-  explicit ClientCallManager(
-      instrumented_io_context &main_service,
-      int num_threads = 1,
-      int64_t call_timeout_ms = -1)
+  explicit ClientCallManager(instrumented_io_context &main_service, int num_threads = 1,
+                             int64_t call_timeout_ms = -1)
       : main_service_(main_service),
         num_threads_(num_threads),
         shutdown_(false),
@@ -199,10 +194,8 @@ class ClientCallManager {
     cqs_.reserve(num_threads_);
     for (int i = 0; i < num_threads_; i++) {
       cqs_.push_back(std::make_unique<grpc::CompletionQueue>());
-      polling_threads_.emplace_back(
-          &ClientCallManager::PollEventsFromCompletionQueue,
-          this,
-          i);
+      polling_threads_.emplace_back(&ClientCallManager::PollEventsFromCompletionQueue,
+                                    this, i);
     }
   }
 
@@ -236,24 +229,18 @@ class ClientCallManager {
   std::shared_ptr<ClientCall> CreateCall(
       typename GrpcService::Stub &stub,
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
-      const Request &request,
-      const ClientCallback<Reply> &callback,
-      std::string call_name,
-      int64_t method_timeout_ms = -1) {
+      const Request &request, const ClientCallback<Reply> &callback,
+      std::string call_name, int64_t method_timeout_ms = -1) {
     auto stats_handle = main_service_.stats().RecordStart(call_name);
     if (method_timeout_ms == -1) {
       method_timeout_ms = call_timeout_ms_;
     }
-    auto call = std::make_shared<ClientCallImpl<Reply>>(
-        callback,
-        std::move(stats_handle),
-        method_timeout_ms);
+    auto call = std::make_shared<ClientCallImpl<Reply>>(callback, std::move(stats_handle),
+                                                        method_timeout_ms);
     // Send request.
     // Find the next completion queue to wait for response.
     call->response_reader_ = (stub.*prepare_async_function)(
-        &call->context_,
-        request,
-        cqs_[rr_index_++ % num_threads_].get());
+        &call->context_, request, cqs_[rr_index_++ % num_threads_].get());
     call->response_reader_->StartCall();
     // Create a new tag object. This object will eventually be deleted in the
     // `ClientCallManager::PollEventsFromCompletionQueue` when reply is received.
@@ -280,9 +267,8 @@ class ClientCallManager {
     // synchronous cq_.Next blocks indefinitely in the case that the process
     // received a SIGTERM.
     while (true) {
-      auto deadline = gpr_time_add(
-          gpr_now(GPR_CLOCK_REALTIME),
-          gpr_time_from_millis(250, GPR_TIMESPAN));
+      auto deadline = gpr_time_add(gpr_now(GPR_CLOCK_REALTIME),
+                                   gpr_time_from_millis(250, GPR_TIMESPAN));
       auto status = cqs_[index]->AsyncNext(&got_tag, &ok, deadline);
       if (status == grpc::CompletionQueue::SHUTDOWN) {
         break;

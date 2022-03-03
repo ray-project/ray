@@ -32,9 +32,8 @@ std::vector<std::string> string_vec_from_flatbuf(
 }
 
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
-string_vec_to_flatbuf(
-    flatbuffers::FlatBufferBuilder &fbb,
-    const std::vector<std::string> &string_vector) {
+string_vec_to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
+                      const std::vector<std::string> &string_vector) {
   std::vector<flatbuffers::Offset<flatbuffers::String>> flatbuf_str_vec;
   flatbuf_str_vec.reserve(flatbuf_str_vec.size());
   for (auto const &str : string_vector) {

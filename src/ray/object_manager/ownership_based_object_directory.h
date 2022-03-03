@@ -43,11 +43,9 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   /// \param gcs_client A Ray GCS client to request object and node
   /// information from.
   OwnershipBasedObjectDirectory(
-      instrumented_io_context &io_service,
-      std::shared_ptr<gcs::GcsClient> &gcs_client,
+      instrumented_io_context &io_service, std::shared_ptr<gcs::GcsClient> &gcs_client,
       pubsub::SubscriberInterface *object_location_subscriber,
-      rpc::CoreWorkerClientPool *owner_client_pool,
-      int64_t max_object_report_batch_size,
+      rpc::CoreWorkerClientPool *owner_client_pool, int64_t max_object_report_batch_size,
       std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed);
 
   virtual ~OwnershipBasedObjectDirectory() {}
@@ -58,33 +56,26 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
 
   void HandleNodeRemoved(const NodeID &node_id) override;
 
-  ray::Status LookupLocations(
-      const ObjectID &object_id,
-      const rpc::Address &owner_address,
-      const OnLocationsFound &callback) override;
+  ray::Status LookupLocations(const ObjectID &object_id,
+                              const rpc::Address &owner_address,
+                              const OnLocationsFound &callback) override;
 
-  ray::Status SubscribeObjectLocations(
-      const UniqueID &callback_id,
-      const ObjectID &object_id,
-      const rpc::Address &owner_address,
-      const OnLocationsFound &callback) override;
-  ray::Status UnsubscribeObjectLocations(
-      const UniqueID &callback_id,
-      const ObjectID &object_id) override;
+  ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
+                                       const ObjectID &object_id,
+                                       const rpc::Address &owner_address,
+                                       const OnLocationsFound &callback) override;
+  ray::Status UnsubscribeObjectLocations(const UniqueID &callback_id,
+                                         const ObjectID &object_id) override;
 
   /// Report to the owner that the given object is added to the current node.
   /// This method guarantees ordering and batches requests.
-  void ReportObjectAdded(
-      const ObjectID &object_id,
-      const NodeID &node_id,
-      const ObjectInfo &object_info) override;
+  void ReportObjectAdded(const ObjectID &object_id, const NodeID &node_id,
+                         const ObjectInfo &object_info) override;
 
   /// Report to the owner that the given object is removed to the current node.
   /// This method guarantees ordering and batches requests.
-  void ReportObjectRemoved(
-      const ObjectID &object_id,
-      const NodeID &node_id,
-      const ObjectInfo &object_info) override;
+  void ReportObjectRemoved(const ObjectID &object_id, const NodeID &node_id,
+                           const ObjectInfo &object_info) override;
 
   void RecordMetrics(uint64_t duration_ms) override;
 
@@ -148,18 +139,16 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   /// Internal callback function used by object location subscription.
   void ObjectLocationSubscriptionCallback(
       const rpc::WorkerObjectLocationsPubMessage &location_info,
-      const ObjectID &object_id,
-      bool location_lookup_failed);
+      const ObjectID &object_id, bool location_lookup_failed);
 
   /// Send object location update batch from the location_buffers_.
   /// We only allow 1 in-flight request per owner for the batch request
   /// for backpressure. If there's already the backpressure, this method
   /// just buffers the location update and batches it in the next
   /// request.
-  void SendObjectLocationUpdateBatchIfNeeded(
-      const WorkerID &worker_id,
-      const NodeID &node_id,
-      const rpc::Address &owner_address);
+  void SendObjectLocationUpdateBatchIfNeeded(const WorkerID &worker_id,
+                                             const NodeID &node_id,
+                                             const rpc::Address &owner_address);
 
   /// Metrics
 

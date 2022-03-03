@@ -108,8 +108,8 @@ class GcsTableStorageTestBase : public ::testing::Test {
 
   template <typename TABLE, typename KEY, typename VALUE>
   int Get(TABLE &table, const KEY &key, std::vector<VALUE> &values) {
-    auto on_done = [this,
-                    &values](const Status &status, const boost::optional<VALUE> &result) {
+    auto on_done = [this, &values](const Status &status,
+                                   const boost::optional<VALUE> &result) {
       RAY_CHECK_OK(status);
       values.clear();
       if (result) {
@@ -127,11 +127,8 @@ class GcsTableStorageTestBase : public ::testing::Test {
   }
 
   template <typename TABLE, typename KEY, typename VALUE>
-  int GetByJobId(
-      TABLE &table,
-      const JobID &job_id,
-      const KEY &key,
-      std::vector<VALUE> &values) {
+  int GetByJobId(TABLE &table, const JobID &job_id, const KEY &key,
+                 std::vector<VALUE> &values) {
     auto on_done = [this, &values](const std::unordered_map<KEY, VALUE> &result) {
       values.clear();
       if (!result.empty()) {

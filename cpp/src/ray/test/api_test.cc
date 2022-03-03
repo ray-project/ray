@@ -92,22 +92,14 @@ class Counter {
 
   // The dummy x is used to test a heterogeneous case: one is value arg, another is an
   // ObjectRef arg.
-  std::vector<std::shared_ptr<int>> GetList(
-      int x,
-      std::vector<ray::ObjectRef<int>> list) {
+  std::vector<std::shared_ptr<int>> GetList(int x,
+                                            std::vector<ray::ObjectRef<int>> list) {
     return ray::Get(list);
   }
 };
 
-RAY_REMOTE(
-    Counter::FactoryCreate,
-    &Counter::Plus1,
-    &Counter::Plus,
-    &Counter::Triple,
-    &Counter::Add,
-    &Counter::GetVal,
-    &Counter::GetIntVal,
-    &Counter::GetList);
+RAY_REMOTE(Counter::FactoryCreate, &Counter::Plus1, &Counter::Plus, &Counter::Triple,
+           &Counter::Add, &Counter::GetVal, &Counter::GetIntVal, &Counter::GetList);
 
 TEST(RayApiTest, LogTest) {
   auto log_path = boost::filesystem::current_path().string() + "/tmp/";
@@ -333,10 +325,8 @@ TEST(RayApiTest, CompareWithFuture) {
 
 TEST(RayApiTest, CreateAndRemovePlacementGroup) {
   std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 1}}};
-  ray::PlacementGroupCreationOptions options1{
-      "first_placement_group",
-      bundles,
-      ray::PlacementStrategy::PACK};
+  ray::PlacementGroupCreationOptions options1{"first_placement_group", bundles,
+                                              ray::PlacementStrategy::PACK};
   auto first_placement_group = ray::CreatePlacementGroup(options1);
   EXPECT_TRUE(first_placement_group.Wait(10));
 

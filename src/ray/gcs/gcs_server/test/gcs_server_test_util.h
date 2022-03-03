@@ -61,11 +61,8 @@ struct GcsServerMocker {
   class MockRayletClient : public RayletClientInterface {
    public:
     /// WorkerLeaseInterface
-    ray::Status ReturnWorker(
-        int worker_port,
-        const WorkerID &worker_id,
-        bool disconnect_worker,
-        bool worker_exiting) override {
+    ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
+                             bool disconnect_worker, bool worker_exiting) override {
       if (disconnect_worker) {
         num_workers_disconnected++;
       } else {
@@ -80,11 +77,9 @@ struct GcsServerMocker {
 
     /// WorkerLeaseInterface
     void RequestWorkerLease(
-        const rpc::TaskSpec &spec,
-        bool grant_or_reject,
+        const rpc::TaskSpec &spec, bool grant_or_reject,
         const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
-        const int64_t backlog_size,
-        const bool is_selected_based_on_locality) override {
+        const int64_t backlog_size, const bool is_selected_based_on_locality) override {
       num_workers_requested += 1;
       callbacks.push_back(callback);
     }
@@ -110,14 +105,9 @@ struct GcsServerMocker {
     }
 
     // Trigger reply to RequestWorkerLease.
-    bool GrantWorkerLease(
-        const std::string &address,
-        int port,
-        const WorkerID &worker_id,
-        const NodeID &raylet_id,
-        const NodeID &retry_at_raylet_id,
-        Status status = Status::OK(),
-        bool rejected = false) {
+    bool GrantWorkerLease(const std::string &address, int port, const WorkerID &worker_id,
+                          const NodeID &raylet_id, const NodeID &retry_at_raylet_id,
+                          Status status = Status::OK(), bool rejected = false) {
       rpc::RequestWorkerLeaseReply reply;
       if (!retry_at_raylet_id.IsNil()) {
         reply.mutable_retry_at_raylet_address()->set_ip_address(address);
@@ -253,14 +243,12 @@ struct GcsServerMocker {
 
     /// PinObjectsInterface
     void PinObjectIDs(
-        const rpc::Address &caller_address,
-        const std::vector<ObjectID> &object_ids,
+        const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
         const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override {}
 
     /// DependencyWaiterInterface
     ray::Status WaitForDirectActorCallArgs(
-        const std::vector<rpc::ObjectReference> &references,
-        int64_t tag) override {
+        const std::vector<rpc::ObjectReference> &references, int64_t tag) override {
       return ray::Status::OK();
     }
 
@@ -286,8 +274,7 @@ struct GcsServerMocker {
 
     /// ShutdownRaylet
     void ShutdownRaylet(
-        const NodeID &node_id,
-        bool graceful,
+        const NodeID &node_id, bool graceful,
         const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) override{};
 
     ~MockRayletClient() {}
@@ -315,25 +302,22 @@ struct GcsServerMocker {
    public:
     using gcs::RayletBasedActorScheduler::RayletBasedActorScheduler;
 
-    void TryLeaseWorkerFromNodeAgain(
-        std::shared_ptr<gcs::GcsActor> actor,
-        std::shared_ptr<rpc::GcsNodeInfo> node) {
+    void TryLeaseWorkerFromNodeAgain(std::shared_ptr<gcs::GcsActor> actor,
+                                     std::shared_ptr<rpc::GcsNodeInfo> node) {
       DoRetryLeasingWorkerFromNode(std::move(actor), std::move(node));
     }
 
    protected:
-    void RetryLeasingWorkerFromNode(
-        std::shared_ptr<gcs::GcsActor> actor,
-        std::shared_ptr<rpc::GcsNodeInfo> node) override {
+    void RetryLeasingWorkerFromNode(std::shared_ptr<gcs::GcsActor> actor,
+                                    std::shared_ptr<rpc::GcsNodeInfo> node) override {
       ++num_retry_leasing_count_;
       if (num_retry_leasing_count_ <= 1) {
         DoRetryLeasingWorkerFromNode(actor, node);
       }
     }
 
-    void RetryCreatingActorOnWorker(
-        std::shared_ptr<gcs::GcsActor> actor,
-        std::shared_ptr<GcsLeasedWorker> worker) override {
+    void RetryCreatingActorOnWorker(std::shared_ptr<gcs::GcsActor> actor,
+                                    std::shared_ptr<GcsLeasedWorker> worker) override {
       ++num_retry_creating_count_;
       DoRetryCreatingActorOnWorker(actor, worker);
     }
@@ -347,25 +331,22 @@ struct GcsServerMocker {
    public:
     using gcs::GcsBasedActorScheduler::GcsBasedActorScheduler;
 
-    void TryLeaseWorkerFromNodeAgain(
-        std::shared_ptr<gcs::GcsActor> actor,
-        std::shared_ptr<rpc::GcsNodeInfo> node) {
+    void TryLeaseWorkerFromNodeAgain(std::shared_ptr<gcs::GcsActor> actor,
+                                     std::shared_ptr<rpc::GcsNodeInfo> node) {
       DoRetryLeasingWorkerFromNode(std::move(actor), std::move(node));
     }
 
    protected:
-    void RetryLeasingWorkerFromNode(
-        std::shared_ptr<gcs::GcsActor> actor,
-        std::shared_ptr<rpc::GcsNodeInfo> node) override {
+    void RetryLeasingWorkerFromNode(std::shared_ptr<gcs::GcsActor> actor,
+                                    std::shared_ptr<rpc::GcsNodeInfo> node) override {
       ++num_retry_leasing_count_;
       if (num_retry_leasing_count_ <= 1) {
         DoRetryLeasingWorkerFromNode(actor, node);
       }
     }
 
-    void RetryCreatingActorOnWorker(
-        std::shared_ptr<gcs::GcsActor> actor,
-        std::shared_ptr<GcsLeasedWorker> worker) override {
+    void RetryCreatingActorOnWorker(std::shared_ptr<gcs::GcsActor> actor,
+                                    std::shared_ptr<GcsLeasedWorker> worker) override {
       ++num_retry_creating_count_;
       DoRetryCreatingActorOnWorker(actor, worker);
     }
@@ -384,10 +365,8 @@ struct GcsServerMocker {
     MockedGcsActorTable(std::shared_ptr<gcs::StoreClient> store_client)
         : GcsActorTable(store_client) {}
 
-    Status Put(
-        const ActorID &key,
-        const rpc::ActorTableData &value,
-        const gcs::StatusCallback &callback) override {
+    Status Put(const ActorID &key, const rpc::ActorTableData &value,
+               const gcs::StatusCallback &callback) override {
       auto status = Status::OK();
       callback(status);
       return status;
@@ -401,9 +380,8 @@ struct GcsServerMocker {
 
   class MockedNodeInfoAccessor : public gcs::NodeInfoAccessor {
    public:
-    Status RegisterSelf(
-        const rpc::GcsNodeInfo &local_node_info,
-        const gcs::StatusCallback &callback) override {
+    Status RegisterSelf(const rpc::GcsNodeInfo &local_node_info,
+                        const gcs::StatusCallback &callback) override {
       return Status::NotImplemented("");
     }
 
@@ -419,14 +397,13 @@ struct GcsServerMocker {
       return node_info;
     }
 
-    Status AsyncRegister(
-        const rpc::GcsNodeInfo &node_info,
-        const gcs::StatusCallback &callback) override {
+    Status AsyncRegister(const rpc::GcsNodeInfo &node_info,
+                         const gcs::StatusCallback &callback) override {
       return Status::NotImplemented("");
     }
 
-    Status AsyncDrainNode(const NodeID &node_id, const gcs::StatusCallback &callback)
-        override {
+    Status AsyncDrainNode(const NodeID &node_id,
+                          const gcs::StatusCallback &callback) override {
       if (callback) {
         callback(Status::OK());
       }
@@ -447,8 +424,8 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
-    const rpc::GcsNodeInfo *Get(const NodeID &node_id, bool filter_dead_nodes = true)
-        const override {
+    const rpc::GcsNodeInfo *Get(const NodeID &node_id,
+                                bool filter_dead_nodes = true) const override {
       return nullptr;
     }
 
@@ -459,9 +436,8 @@ struct GcsServerMocker {
 
     bool IsRemoved(const NodeID &node_id) const override { return false; }
 
-    Status AsyncReportHeartbeat(
-        const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
-        const gcs::StatusCallback &callback) override {
+    Status AsyncReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
+                                const gcs::StatusCallback &callback) override {
       return Status::NotImplemented("");
     }
 
@@ -473,11 +449,8 @@ struct GcsServerMocker {
     MockGcsPubSub(std::shared_ptr<gcs::RedisClient> redis_client)
         : GcsPubSub(redis_client) {}
 
-    Status Publish(
-        std::string_view channel,
-        const std::string &id,
-        const std::string &data,
-        const gcs::StatusCallback &done) override {
+    Status Publish(std::string_view channel, const std::string &id,
+                   const std::string &data, const gcs::StatusCallback &done) override {
       return Status::OK();
     }
   };

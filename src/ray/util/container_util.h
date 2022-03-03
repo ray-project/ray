@@ -85,9 +85,8 @@ std::string debug_string(const absl::flat_hash_map<Ts...> &c) {
 }
 
 template <typename C>
-const typename C::mapped_type &map_find_or_die(
-    const C &c,
-    const typename C::key_type &k) {
+const typename C::mapped_type &map_find_or_die(const C &c,
+                                               const typename C::key_type &k) {
   auto iter = c.find(k);
   if (iter == c.end()) {
     RAY_LOG(FATAL) << "Key " << k << " doesn't exist";

@@ -26,69 +26,50 @@ namespace mock_pubsub {
 
 class MockSubscriber : public pubsub::SubscriberInterface {
  public:
-  MOCK_METHOD7(
-      Subscribe,
-      bool(
-          std::unique_ptr<rpc::SubMessage> sub_message,
-          const rpc::ChannelType channel_type,
-          const rpc::Address &owner_address,
-          const std::string &key_id,
-          pubsub::SubscribeDoneCallback subscribe_done_callback,
-          pubsub::SubscriptionItemCallback subscription_callback,
-          pubsub::SubscriptionFailureCallback subscription_failure_callback));
+  MOCK_METHOD7(Subscribe,
+               bool(std::unique_ptr<rpc::SubMessage> sub_message,
+                    const rpc::ChannelType channel_type,
+                    const rpc::Address &owner_address, const std::string &key_id,
+                    pubsub::SubscribeDoneCallback subscribe_done_callback,
+                    pubsub::SubscriptionItemCallback subscription_callback,
+                    pubsub::SubscriptionFailureCallback subscription_failure_callback));
 
-  MOCK_METHOD6(
-      SubscribeChannel,
-      bool(
-          std::unique_ptr<rpc::SubMessage> sub_message,
-          const rpc::ChannelType channel_type,
-          const rpc::Address &owner_address,
-          pubsub::SubscribeDoneCallback subscribe_done_callback,
-          pubsub::SubscriptionItemCallback subscription_callback,
-          pubsub::SubscriptionFailureCallback subscription_failure_callback));
+  MOCK_METHOD6(SubscribeChannel,
+               bool(std::unique_ptr<rpc::SubMessage> sub_message,
+                    const rpc::ChannelType channel_type,
+                    const rpc::Address &owner_address,
+                    pubsub::SubscribeDoneCallback subscribe_done_callback,
+                    pubsub::SubscriptionItemCallback subscription_callback,
+                    pubsub::SubscriptionFailureCallback subscription_failure_callback));
 
-  MOCK_METHOD3(
-      Unsubscribe,
-      bool(
-          const rpc::ChannelType channel_type,
-          const rpc::Address &publisher_address,
-          const std::string &key_id));
+  MOCK_METHOD3(Unsubscribe,
+               bool(const rpc::ChannelType channel_type,
+                    const rpc::Address &publisher_address, const std::string &key_id));
 
-  MOCK_METHOD2(
-      UnsubscribeChannel,
-      bool(const rpc::ChannelType channel_type, const rpc::Address &publisher_address));
+  MOCK_METHOD2(UnsubscribeChannel, bool(const rpc::ChannelType channel_type,
+                                        const rpc::Address &publisher_address));
 
-  MOCK_CONST_METHOD3(
-      IsSubscribed,
-      bool(
-          const rpc::ChannelType channel_type,
-          const rpc::Address &publisher_address,
-          const std::string &key_id));
+  MOCK_CONST_METHOD3(IsSubscribed, bool(const rpc::ChannelType channel_type,
+                                        const rpc::Address &publisher_address,
+                                        const std::string &key_id));
 
   MOCK_CONST_METHOD0(DebugString, std::string());
 };
 
 class MockPublisher : public pubsub::PublisherInterface {
  public:
-  MOCK_METHOD3(
-      RegisterSubscription,
-      bool(
-          const rpc::ChannelType channel_type,
-          const pubsub::SubscriberID &subscriber_id,
-          const std::optional<std::string> &key_id));
+  MOCK_METHOD3(RegisterSubscription, bool(const rpc::ChannelType channel_type,
+                                          const pubsub::SubscriberID &subscriber_id,
+                                          const std::optional<std::string> &key_id));
 
   MOCK_METHOD1(Publish, void(const rpc::PubMessage &pub_message));
 
-  MOCK_METHOD3(
-      UnregisterSubscription,
-      bool(
-          const rpc::ChannelType channel_type,
-          const pubsub::SubscriberID &subscriber_id,
-          const std::optional<std::string> &key_id));
+  MOCK_METHOD3(UnregisterSubscription, bool(const rpc::ChannelType channel_type,
+                                            const pubsub::SubscriberID &subscriber_id,
+                                            const std::optional<std::string> &key_id));
 
-  MOCK_METHOD2(
-      PublishFailure,
-      void(const rpc::ChannelType channel_type, const std::string &key_id));
+  MOCK_METHOD2(PublishFailure,
+               void(const rpc::ChannelType channel_type, const std::string &key_id));
 };
 
 }  // namespace mock_pubsub

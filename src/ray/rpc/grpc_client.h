@@ -29,36 +29,24 @@ namespace rpc {
 
 // This macro wraps the logic to call a specific RPC method of a service,
 // to make it easier to implement a new RPC client.
-#define INVOKE_RPC_CALL(                                   \
-    SERVICE,                                               \
-    METHOD,                                                \
-    request,                                               \
-    callback,                                              \
-    rpc_client,                                            \
-    method_timeout_ms)                                     \
-  (rpc_client->CallMethod<METHOD##Request, METHOD##Reply>( \
-      &SERVICE::Stub::PrepareAsync##METHOD,                \
-      request,                                             \
-      callback,                                            \
-      #SERVICE ".grpc_client." #METHOD,                    \
-      method_timeout_ms))
+#define INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client, \
+                        method_timeout_ms)                              \
+  (rpc_client->CallMethod<METHOD##Request, METHOD##Reply>(              \
+      &SERVICE::Stub::PrepareAsync##METHOD, request, callback,          \
+      #SERVICE ".grpc_client." #METHOD, method_timeout_ms))
 
 // Define a void RPC client method.
 #define VOID_RPC_CLIENT_METHOD(SERVICE, METHOD, rpc_client, method_timeout_ms, SPECS)   \
-  void METHOD(                                                                          \
-      const METHOD##Request &request,                                                   \
-      const ClientCallback<METHOD##Reply> &callback) SPECS {                            \
+  void METHOD(const METHOD##Request &request,                                           \
+              const ClientCallback<METHOD##Reply> &callback) SPECS {                    \
     INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client, method_timeout_ms); \
   }
 
 template <class GrpcService>
 class GrpcClient {
  public:
-  GrpcClient(
-      const std::string &address,
-      const int port,
-      ClientCallManager &call_manager,
-      bool use_tls = false)
+  GrpcClient(const std::string &address, const int port, ClientCallManager &call_manager,
+             bool use_tls = false)
       : client_call_manager_(call_manager), use_tls_(use_tls) {
     grpc::ChannelArguments argument;
     // Disable http proxy since it disrupts local connections. TODO(ekl) we should make
@@ -72,12 +60,8 @@ class GrpcClient {
     stub_ = GrpcService::NewStub(channel);
   }
 
-  GrpcClient(
-      const std::string &address,
-      const int port,
-      ClientCallManager &call_manager,
-      int num_threads,
-      bool use_tls = false)
+  GrpcClient(const std::string &address, const int port, ClientCallManager &call_manager,
+             int num_threads, bool use_tls = false)
       : client_call_manager_(call_manager), use_tls_(use_tls) {
     grpc::ResourceQuota quota;
     quota.SetMaxThreads(num_threads);
@@ -109,16 +93,10 @@ class GrpcClient {
   template <class Request, class Reply>
   void CallMethod(
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
-      const Request &request,
-      const ClientCallback<Reply> &callback,
-      std::string call_name = "UNKNOWN_RPC",
-      int64_t method_timeout_ms = -1) {
+      const Request &request, const ClientCallback<Reply> &callback,
+      std::string call_name = "UNKNOWN_RPC", int64_t method_timeout_ms = -1) {
     auto call = client_call_manager_.CreateCall<GrpcService, Request, Reply>(
-        *stub_,
-        prepare_async_function,
-        request,
-        callback,
-        std::move(call_name),
+        *stub_, prepare_async_function, request, callback, std::move(call_name),
         method_timeout_ms);
     RAY_CHECK(call != nullptr);
   }
@@ -130,10 +108,8 @@ class GrpcClient {
   /// Whether to use TLS.
   bool use_tls_;
 
-  std::shared_ptr<grpc::Channel> BuildChannel(
-      const grpc::ChannelArguments &argument,
-      const std::string &address,
-      int port) {
+  std::shared_ptr<grpc::Channel> BuildChannel(const grpc::ChannelArguments &argument,
+                                              const std::string &address, int port) {
     std::shared_ptr<grpc::Channel> channel;
     if (::RayConfig::instance().USE_TLS()) {
       std::string server_cert_file =
@@ -149,15 +125,11 @@ class GrpcClient {
       ssl_opts.pem_private_key = private_key;
       ssl_opts.pem_cert_chain = server_cert_chain;
       auto ssl_creds = grpc::SslCredentials(ssl_opts);
-      channel = grpc::CreateCustomChannel(
-          address + ":" + std::to_string(port),
-          ssl_creds,
-          argument);
+      channel = grpc::CreateCustomChannel(address + ":" + std::to_string(port), ssl_creds,
+                                          argument);
     } else {
-      channel = grpc::CreateCustomChannel(
-          address + ":" + std::to_string(port),
-          grpc::InsecureChannelCredentials(),
-          argument);
+      channel = grpc::CreateCustomChannel(address + ":" + std::to_string(port),
+                                          grpc::InsecureChannelCredentials(), argument);
     }
     return channel;
   };
