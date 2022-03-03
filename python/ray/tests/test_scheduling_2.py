@@ -306,6 +306,9 @@ def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
         assert set(ray.get(locations)) == worker_node_ids
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="FakeAutoscaler doesn't work on Windows"
+)
 def test_demand_report_when_scale_up(shutdown_only):
     # https://github.com/ray-project/ray/issues/22122
     from ray.cluster_utils import AutoscalingCluster
