@@ -94,6 +94,8 @@ class ActorHandle {
 
   bool ExecuteOutOfOrder() const { return inner_.execute_out_of_order(); }
 
+  bool EnableTaskFastFail() const { return inner_.enable_task_fast_fail(); }
+
  private:
   // Protobuf-defined persistent state of the actor handle.
   const rpc::ActorHandle inner_;

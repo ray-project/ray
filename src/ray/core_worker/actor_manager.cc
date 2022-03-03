@@ -142,7 +142,8 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                   bool is_self) {
   reference_counter_->AddLocalReference(actor_creation_return_id, call_site);
   direct_actor_submitter_->AddActorQueueIfNotExists(
-      actor_id, actor_handle->MaxPendingCalls(), actor_handle->ExecuteOutOfOrder());
+      actor_id, actor_handle->MaxPendingCalls(), actor_handle->ExecuteOutOfOrder(),
+      actor_handle->EnableTaskFastFail());
   bool inserted;
   {
     absl::MutexLock lock(&mutex_);

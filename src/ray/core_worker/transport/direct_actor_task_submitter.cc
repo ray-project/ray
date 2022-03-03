@@ -26,14 +26,15 @@ namespace ray {
 namespace core {
 
 void CoreWorkerDirectActorTaskSubmitter::AddActorQueueIfNotExists(
-    const ActorID &actor_id, int32_t max_pending_calls, bool execute_out_of_order) {
+    const ActorID &actor_id, int32_t max_pending_calls, bool execute_out_of_order,
+    bool enable_task_fast_fail = false) {
   absl::MutexLock lock(&mu_);
   // No need to check whether the insert was successful, since it is possible
   // for this worker to have multiple references to the same actor.
   RAY_LOG(INFO) << "Set max pending calls to " << max_pending_calls << " for actor "
                 << actor_id;
-  client_queues_.emplace(actor_id,
-                         ClientQueue(actor_id, execute_out_of_order, max_pending_calls));
+  client_queues_.emplace(actor_id, ClientQueue(actor_id, execute_out_of_order,
+                                               max_pending_calls, enable_task_fast_fail));
 }
 
 void CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
@@ -326,14 +327,16 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
 void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
   auto it = client_queues_.find(actor_id);
   RAY_CHECK(it != client_queues_.end());
-  if (!it->second.rpc_client) {
+  auto &client_queue = it->second;
+  bool force_fail = client_queue.state == rpc::ActorTableData::RESTARTING &&
+                    client_queue.enable_task_fast_fail;
+  if (!client_queue.rpc_client && !force_fail) {
     return;
   }
-  auto &client_queue = it->second;
 
   // Check if there is a pending force kill. If there is, send it and disconnect the
   // client.
-  if (client_queue.pending_force_kill) {
+  if (client_queue.pending_force_kill && client_queue.rpc_client) {
     RAY_LOG(INFO) << "Sending KillActor request to actor " << actor_id;
     // It's okay if this fails because this means the worker is already dead.
     client_queue.rpc_client->KillActor(*client_queue.pending_force_kill, nullptr);
@@ -349,8 +352,6 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
       break;
     }
     RAY_CHECK(!client_queue.worker_id.empty());
-    bool force_fail = client_queue.state == rpc::ActorTableData::RESTARTING &&
-                      task.value().first.EnableTaskFastFail();
     PushActorTask(client_queue, task.value().first, task.value().second, force_fail);
   }
 }
@@ -377,6 +378,8 @@ void CoreWorkerDirectActorTaskSubmitter::ResendOutOfOrderTasks(const ActorID &ac
 void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
                                                        const TaskSpecification &task_spec,
                                                        bool skip_queue, bool force_fail) {
+  RAY_CHECK(queue.rpc_client || force_fail);
+
   auto request = std::make_unique<rpc::PushTaskRequest>();
   // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
   // fails, then the task data will be gone when the TaskManager attempts to
@@ -390,18 +393,23 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   const auto actor_id = task_spec.ActorId();
   const auto actor_counter = task_spec.ActorCounter();
   const auto task_skipped = task_spec.GetMessage().skip_execution();
-  const auto num_queued =
-      request->sequence_number() - queue.rpc_client->ClientProcessedUpToSeqno();
-  RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id
-                 << " actor counter " << actor_counter << " seq no "
-                 << request->sequence_number() << " num queued " << num_queued;
-  if (num_queued >= next_queueing_warn_threshold_) {
-    // TODO(ekl) add more debug info about the actor name, etc.
-    warn_excess_queueing_(actor_id, num_queued);
-    next_queueing_warn_threshold_ *= 2;
+  if (queue.rpc_client) {
+    const auto num_queued =
+        request->sequence_number() - queue.rpc_client->ClientProcessedUpToSeqno();
+    RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id
+                   << " actor counter " << actor_counter << " seq no "
+                   << request->sequence_number() << " num queued " << num_queued;
+    if (num_queued >= next_queueing_warn_threshold_) {
+      // TODO(ekl) add more debug info about the actor name, etc.
+      warn_excess_queueing_(actor_id, num_queued);
+      next_queueing_warn_threshold_ *= 2;
+    }
   }
 
-  rpc::Address addr(queue.rpc_client->Addr());
+  rpc::Address addr;
+  if (queue.rpc_client) {
+    addr.CopyFrom(queue.rpc_client->Addr());
+  }
   rpc::ClientCallback<rpc::PushTaskReply> reply_callback =
       [this, addr, task_id, actor_id, actor_counter, task_spec, task_skipped](
           const Status &status, const rpc::PushTaskReply &reply) {
@@ -487,6 +495,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
     return;
   }
 
+  RAY_CHECK(queue.rpc_client);
   queue.rpc_client->PushActorTask(std::move(request), skip_queue, wrapped_callback);
 }
 

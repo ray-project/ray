@@ -445,10 +445,6 @@ std::string TaskSpecification::CallSiteString() const {
   return stream.str();
 }
 
-bool TaskSpecification::EnableTaskFastFail() const {
-  return message_->actor_task_spec().enable_task_fast_fail();
-}
-
 WorkerCacheKey::WorkerCacheKey(
     const std::string serialized_runtime_env,
     const absl::flat_hash_map<std::string, double> &required_resources)

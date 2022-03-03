@@ -108,7 +108,7 @@ struct ActorCreationOptions {
         enable_task_fast_fail(enable_task_fast_fail),
         execute_out_of_order(execute_out_of_order),
         max_pending_calls(max_pending_calls),
-        scheduling_strategy(scheduling_strategy) {};
+        scheduling_strategy(scheduling_strategy){};
 
   /// Maximum number of times that the actor should be restarted if it dies
   /// unexpectedly. A value of -1 indicates infinite restarts. If it's 0, the
