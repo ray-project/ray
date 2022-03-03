@@ -180,8 +180,7 @@ void NewPlacementGroupResourceManager::ReturnBundle(
                      << "] is empty, Will delete it from local resource";
       // Delete local resource if available resource is empty when return bundle, or there
       // will be resource leak.
-      cluster_resource_scheduler_->GetLocalResourceManager().DeleteLocalResource(
-          resource.first);
+      cluster_resource_scheduler_->GetLocalResourceManager().DeleteLocalResource(resource_id);
     } else {
       RAY_LOG(DEBUG) << "Available bundle resource:[" << resource.first
                      << "] is not empty. Resources are not deleted from the local node.";
