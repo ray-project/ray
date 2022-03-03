@@ -32,6 +32,16 @@ def test_basic(ray_start_regular_shared, pandas):
     assert results == [None] + [expected(i) for i in range(10)] + [None]
 
 
+def test_errors(ray_start_regular_shared):
+    ds = ray.data.range(10)
+    with pytest.raises(ValueError):
+        ds.to_random_access_dataset("value")
+
+    ds = ray.data.range_arrow(10)
+    with pytest.raises(ValueError):
+        ds.to_random_access_dataset("invalid")
+
+
 def test_stats(ray_start_regular_shared):
     ds = ray.data.range_arrow(100, parallelism=10)
     rad = ds.to_random_access_dataset("value", num_workers=1)
