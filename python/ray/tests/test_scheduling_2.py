@@ -12,6 +12,7 @@ from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
 )
 from ray._private.test_utils import wait_for_condition, make_global_state_accessor
+from google.protobuf.json_format import MessageToDict
 
 
 @pytest.mark.skipif(
@@ -319,6 +320,7 @@ def test_demand_report_when_scale_up(shutdown_only):
                     "object_store_memory": 1024 * 1024 * 1024,
                 },
                 "node_config": {},
+                "min_workers": 10,
                 "max_workers": 10,
             },
         },
@@ -330,25 +332,23 @@ def test_demand_report_when_scale_up(shutdown_only):
 
     @ray.remote
     def foo():
-        import time
-
         time.sleep(999)
 
     tasks = [foo.remote() for _ in range(10000)]  # noqa: F841
     global_state_accessor = make_global_state_accessor(info)
 
-    def get_backlog_size():
+    def get_backlog_info():
         message = global_state_accessor.get_all_resource_usage()
         if message is None:
             return 0
 
         resource_usage = gcs_utils.ResourceUsageBatchData.FromString(message)
         aggregate_resource_load = resource_usage.resource_load_by_shape.resource_demands
-        if len(aggregate_resource_load) == 1:
-            return aggregate_resource_load[0].backlog_size
-        return 0
-
-    wait_for_condition(lambda: get_backlog_size() == 9990, 10)
+        print(aggregate_resource_load)
+        return aggregate_resource_load[0].backlog_size
+    time.sleep(5)
+    wait_for_condition(lambda: get_backlog_info() == 9990, 10000)
+    cluster.shutdown()
 
 
 if __name__ == "__main__":

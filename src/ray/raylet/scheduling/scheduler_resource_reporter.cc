@@ -17,6 +17,8 @@
 #include <google/protobuf/util/json_util.h>
 
 #include <boost/range/adaptor/transformed.hpp>
+#include <boost/range/adaptor/filtered.hpp>
+
 #include <boost/range/join.hpp>
 
 namespace ray {
@@ -78,25 +80,21 @@ void SchedulerResourceReporter::FillResourceUsage(
         break;
       }
 
-      if (visited.count(scheduling_class) != 0) {
-        continue;
-      }
-
       const auto &resources =
           TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
               .resource_set.GetResourceMap();
       auto by_shape_entry = resource_load_by_shape->Add();
 
-      if (count != 0) {
-        for (const auto &resource : resources) {
-          // Add to `resource_loads`.
-          const auto &label = resource.first;
-          const auto &quantity = resource.second;
-          (*resource_loads)[label] += quantity * count;
+      for (const auto &resource : resources) {
+        const auto &label = resource.first;
+        const auto &quantity = resource.second;
 
-          // Add to `resource_load_by_shape`.
-          (*by_shape_entry->mutable_shape())[label] = quantity;
+        if(count != 0) {
+          // Add to `resource_loads`.
+          (*resource_loads)[label] += quantity * count;
         }
+        // Add to `resource_load_by_shape`.
+        (*by_shape_entry->mutable_shape())[label] = quantity;
       }
 
       if (is_infeasible) {
@@ -104,28 +102,28 @@ void SchedulerResourceReporter::FillResourceUsage(
       } else {
         by_shape_entry->set_num_ready_requests_queued(count);
       }
-      by_shape_entry->set_backlog_size(TotalBacklogSize(scheduling_class));
-      visited.insert(scheduling_class);
+
+      // Backlog has already been set
+      if(visited.count(scheduling_class) == 0) {
+        by_shape_entry->set_backlog_size(TotalBacklogSize(scheduling_class));
+        visited.insert(scheduling_class);
+      }
     }
   };
 
   auto transform_func = [](const auto &pair) {
     return std::make_pair(pair.first, pair.second.size());
   };
-  auto tasks_to_schedule_range =
-      tasks_to_schedule_ | boost::adaptors::transformed(transform_func);
-  auto tasks_to_dispatch_range =
-      tasks_to_dispatch_ | boost::adaptors::transformed(transform_func);
-  auto infeasible_tasks_range =
-      infeasible_tasks_ | boost::adaptors::transformed(transform_func);
-  auto backlog_tracker_range =
-      backlog_tracker_ | boost::adaptors::transformed([](const auto &pair) {
-        return std::make_pair(pair.first, 0);
-      });
 
-  fill_resource_usage_helper(tasks_to_schedule_range, false);
-  fill_resource_usage_helper(tasks_to_dispatch_range, false);
-  fill_resource_usage_helper(infeasible_tasks_range, true);
+  fill_resource_usage_helper(tasks_to_schedule_ | boost::adaptors::transformed(transform_func), false);
+  fill_resource_usage_helper(tasks_to_dispatch_ | boost::adaptors::transformed(transform_func), false);
+  fill_resource_usage_helper(infeasible_tasks_ | boost::adaptors::transformed(transform_func), true);
+  auto backlog_tracker_range = backlog_tracker_ | boost::adaptors::transformed([](const auto &pair) {
+    return std::make_pair(pair.first, 0);
+  }) | boost::adaptors::filtered([&visited](const auto & pair) {
+    return visited.count(pair.first) == 0;
+  });
+
   fill_resource_usage_helper(backlog_tracker_range, false);
 
   if (skipped_requests > 0) {
