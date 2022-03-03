@@ -140,7 +140,7 @@ RAY_CONFIG(float, scheduler_spread_threshold, 0.5);
 /// Whether to only report the usage of pinned copies of objects in the
 /// object_store_memory resource. This means nodes holding secondary copies only
 /// will become eligible for removal in the autoscaler.
-RAY_CONFIG(bool, scheduler_report_pinned_bytes_only, false)
+RAY_CONFIG(bool, scheduler_report_pinned_bytes_only, true)
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
