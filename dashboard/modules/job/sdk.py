@@ -4,6 +4,7 @@ from typing import Any, Dict, Iterator, Optional
 
 try:
     import aiohttp
+    import requests
 except ImportError:
     aiohttp = None
     requests = None
@@ -25,6 +26,33 @@ logger.setLevel(logging.INFO)
 
 
 class JobSubmissionClient(SubmissionClient):
+    def __init__(
+        self,
+        address: str,
+        create_cluster_if_needed=False,
+        cookies: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, Any]] = None,
+    ):
+        if requests is None:
+            raise RuntimeError(
+                "The Ray jobs CLI & SDK require the ray[default] "
+                "installation: `pip install 'ray[default']``"
+            )
+        super().__init__(
+            address=address,
+            create_cluster_if_needed=create_cluster_if_needed,
+            cookies=cookies,
+            metadata=metadata,
+            headers=headers,
+        )
+        self._check_connection_and_version(
+            min_version="1.9",
+            version_error_message="Jobs API is not supported on the Ray "
+            "cluster. Please ensure the cluster is "
+            "running Ray 1.9 or higher.",
+        )
+
     @PublicAPI(stability="beta")
     def submit_job(
         self,

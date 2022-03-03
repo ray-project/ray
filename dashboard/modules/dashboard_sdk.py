@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 import tempfile
 from typing import Any, Dict, List, Optional
+from pkg_resources import packaging
 
 try:
     import aiohttp
@@ -135,11 +136,6 @@ class SubmissionClient:
         metadata: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None,
     ):
-        if requests is None:
-            raise RuntimeError(
-                "The Ray jobs CLI & SDK require the ray[default] "
-                "installation: `pip install 'ray[default']``"
-            )
 
         cluster_info = parse_cluster_info(
             address, create_cluster_if_needed, cookies, metadata, headers
@@ -151,20 +147,25 @@ class SubmissionClient:
         # needed for cases like authentication to remote cluster.
         self._headers = cluster_info.headers
 
-        self._check_connection_and_version()
+    def _check_connection_and_version(
+        self, min_version: str = "1.9", version_error_message: str = None
+    ):
+        if version_error_message is None:
+            version_error_message = (
+                f"Please ensure the cluster is running Ray {min_version} or higher."
+            )
 
-    def _check_connection_and_version(self):
         try:
             r = self._do_request("GET", "/api/version")
             if r.status_code == 404:
-                raise RuntimeError(
-                    "Jobs API and working_dir in the Serve CLI are not "
-                    "supported on the Ray cluster. "
-                    "Please ensure the cluster is running "
-                    "Ray 1.9 or higher."
-                )
-
+                raise RuntimeError(version_error_message)
             r.raise_for_status()
+
+            running_ray_version = r.json()["ray_version"]
+            if packaging.version.parse(running_ray_version) < packaging.version.parse(
+                min_version
+            ):
+                raise RuntimeError(version_error_message)
             # TODO(edoakes): check the version if/when we break compatibility.
         except requests.exceptions.ConnectionError:
             raise ConnectionError(
