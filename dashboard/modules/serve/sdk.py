@@ -1,4 +1,5 @@
 from typing import Any, Dict, Optional
+
 try:
     import aiohttp
     import requests
@@ -7,6 +8,7 @@ except ImportError:
     requests = None
 
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
+
 
 class ServeSubmissionClient(SubmissionClient):
     def __init__(
