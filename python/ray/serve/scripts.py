@@ -277,7 +277,7 @@ def run(
             )
             cli_logger.newline()
 
-        if not is_config:
+        else:
             cli_logger.print(
                 "Deploying function or class imported from " f"{config_or_import_path}."
             )
