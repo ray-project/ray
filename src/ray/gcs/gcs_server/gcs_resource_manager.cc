@@ -25,8 +25,7 @@ GcsResourceManager::GcsResourceManager(
     instrumented_io_context &main_io_service, std::shared_ptr<GcsPublisher> gcs_publisher,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     syncer::RaySyncer *ray_syncer)
-    : main_io_service_(main_io_service),
-      periodical_runner_(main_io_service),
+    : periodical_runner_(main_io_service),
       gcs_publisher_(gcs_publisher),
       gcs_table_storage_(gcs_table_storage),
       ray_syncer_(ray_syncer) {}

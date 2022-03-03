@@ -153,8 +153,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
       const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
 
  private:
-  /// main io service
-  instrumented_io_context &main_io_service_;
 
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;
