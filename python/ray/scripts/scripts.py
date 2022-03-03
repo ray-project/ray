@@ -1892,12 +1892,12 @@ def local_dump(
     help="The name of the log file.",
 )
 def logs(ip_address: str, node_id: str, actor_id: str, log_file: str, by_id: int):
-    def format_print(l):
+    def format_print(links):
         def print_section(name, key):
             print("-----------")
             print(name)
             print("-----------")
-            [print(log) for log in l[key]]
+            [print(log) for log in links[key]]
 
         print_section("Worker Logs (Core)", "core_worker_logs")
         print_section("Worker Errors (Core)", "worker_errors")

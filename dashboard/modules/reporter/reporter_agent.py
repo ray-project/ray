@@ -378,7 +378,7 @@ class ReporterAgent(
             "network_speed": network_speed_stats,
             # Deprecated field, should be removed with frontend.
             "cmdline": self._get_raylet().get("cmdline", []),
-            "top_10_proc_mem_usage": memory_monitor.get_top_n_memory_usage(10)
+            "top_10_proc_mem_usage": memory_monitor.get_top_n_memory_usage(10),
         }
 
     def _record_stats(self, stats, cluster_stats):
