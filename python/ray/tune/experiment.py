@@ -7,6 +7,8 @@ import os
 
 from pickle import PicklingError
 
+import grpc
+
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR
@@ -121,7 +123,20 @@ class Experiment:
                     "checkpointable function. You can specify checkpoints "
                     "within your trainable function."
                 )
-        self._run_identifier = Experiment.register_if_needed(run)
+        try:
+            self._run_identifier = Experiment.register_if_needed(run)
+        except grpc.RpcError as e:
+            if e.code() == grpc.StatusCode.RESOURCE_EXHAUSTED:
+                raise TuneError(
+                    "The Trainable/training function is too large for grpc resource "
+                    "limit. Check that its definition is not implicitly capturing a "
+                    "large array or other object in scope. "
+                    "Tip: use tune.with_parameters() to put large objects "
+                    "in the Ray object store."
+                )
+            else:
+                raise e
+
         self.name = name or self._run_identifier
 
         # If the name has been set explicitly, we don't want to create
