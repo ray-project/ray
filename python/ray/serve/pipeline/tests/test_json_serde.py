@@ -111,7 +111,7 @@ def test_non_json_serializable_args():
     # Original error message
     with pytest.raises(
         TypeError,
-        match="Object of type 'MyNonJSONClass' is not JSON serializable",
+        match=r"Object of type .* is not JSON serializable",
     ):
         _ = json.dumps(ray_dag, cls=DAGNodeEncoder)
 
