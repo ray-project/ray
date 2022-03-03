@@ -28,8 +28,9 @@ class AggregateResultsPreprocessor(ResultsPreprocessor):
         aggregation_fn (AggregateFn):
             An aggregation method that performs the aggregation on results.
         keys (Optional[List[str]]):
-            A list of keys reported in results to be aggregated. Keys should be saved
-            using ``train.report()``.
+            A list of keys reported in results to be aggregated. Keys should
+            be saved using ``train.report()``. If a key is invalid or not
+            reported, it will be ignored.
     """
 
     def __init__(self, aggregation_fn: AggregateFn, keys: Optional[List[str]] = None):
@@ -40,8 +41,8 @@ class AggregateResultsPreprocessor(ResultsPreprocessor):
         """Aggregate results before sending them to callbacks.
 
         Args:
-            results List[Dict]: A list of results from all workers. The metrics
-                specified in `keys` will be averaged according by `aggregation_fn`.
+            results (List[Dict]): A list of results from all workers. The metrics
+                specified in ``keys`` will be averaged according by ``aggregation_fn``.
                 Non-numerical values will be ignored.
         Returns:
             An updated results list with aggregated results.
@@ -104,12 +105,13 @@ class AverageResultsPreprocessor(AggregateResultsPreprocessor):
 
 
 class MaxResultsPreprocessor(AggregateResultsPreprocessor):
-    """A preprocessor that averages results with equal weight.
+    """A preprocessor that computes the maximum values.
 
     Args:
-        keys (Optional[List[str]]): A list of metrics upon which
-            the maximum value will be taken. If None is specified,
-            then no maximum value will be reported.
+        keys (Optional[List[str]]): A list of metrics upon which the
+            maximum value will be taken. If None is specified, then
+            the list will be populated by reported keys whose value type
+            is valid, that is, one of ``VALID_AGGREGATE_TYPES``.
 
     Returns:
         An updated results list with maximum values.
@@ -120,7 +122,14 @@ class MaxResultsPreprocessor(AggregateResultsPreprocessor):
 
 
 class WeightedAverageResultsPreprocessor(AggregateResultsPreprocessor):
-    """A preprocessor that averages results with equal weight.
+    """A preprocessor that performs weighted average over metrics.
+
+
+    .. code-block:: python
+
+        preprocessor = WeightedAverageResultsPreprocessor(keys=["loss", "accuracy"],
+                                                          weight_key="batch_size")
+        update_results = preprocessor.preprocess(results)
 
     Args:
         keys (Optional[List[str]]): A list of metrics to be averaged.
@@ -128,7 +137,7 @@ class WeightedAverageResultsPreprocessor(AggregateResultsPreprocessor):
             reported keys whose value type is valid, that is, one of
             ``VALID_AGGREGATE_TYPES``.
         weight_key (Optional[str]): A a key from reported metrics that
-            is used as the weight in averaging. If None is specified,
+            will be used as the weight in averaging. If None is specified,
             then equal weight will be used.
 
     Returns:

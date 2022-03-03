@@ -54,6 +54,7 @@ class PrintCallback(TrainingCallback):
 
     def handle_result(self, results: List[Dict], **info):
         """Prints results to STDOUT.
+
         Args:
             results (List[Dict]): List of results from the training
                 function. Each value in the list corresponds to the output of
