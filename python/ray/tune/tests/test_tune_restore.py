@@ -488,6 +488,17 @@ class SearcherTest(unittest.TestCase):
         assert searcher_2.data == original_data
 
 
+class WorkingDirectoryTest(unittest.TestCase):
+    def testWorkingDir(self):
+        """Trainables should know the original working dir on driver through env variable."""
+        working_dir = os.getcwd()
+
+        def f(config):
+            assert os.environ.get("TUNE_ORIG_WORKING_DIR") == working_dir
+
+        tune.run(f)
+
+
 if __name__ == "__main__":
     import pytest
     import sys

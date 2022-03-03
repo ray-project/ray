@@ -76,7 +76,7 @@ class Trainable:
     write to the same location and overstep each other.
 
     If you want to know the orginal working directory path on the driver node,
-    you can have know that through env variable "TUNE_ORIG_WORKING_DIR".
+    you can do so through env variable "TUNE_ORIG_WORKING_DIR".
     It is advised that you access this path for read only purposes and you
     need to make sure that the path exists on the remote nodes.
 
