@@ -327,41 +327,51 @@ class TrialCheckpoint(Checkpoint, _TrialCheckpoint):
         cloud_path: Optional[str] = None,
     ):
         _TrialCheckpoint.__init__(self)
-        data = None
+
+        # Checkpoint does not allow empty data, but TrialCheckpoint
+        # did. To keep backwards compatibility, we use a placeholder URI
+        # here, and manually set self._uri to empty later if it's not
+        # overwritten.
+        PLACEHOLDER = "s3://placeholder"
+        uri = PLACEHOLDER
+
         locations = set()
         if local_path:
-            self._local_path = local_path
+            # Add _tcp to not conflict with Checkpoint._local_path
+            self._local_path_tcp = local_path
             locations.add(local_path)
-            data = local_path
+            uri = f"file://{local_path}"
         if cloud_path:
             self._cloud_path = cloud_path
             locations.add(cloud_path)
-            data = cloud_path
-        Checkpoint.__init__(self, data, metadata={"locations": locations})
+            uri = cloud_path
+        Checkpoint.__init__(self, uri=uri)
+        if self._uri == PLACEHOLDER:
+            self._uri = None
+        self._locations = locations
 
     @property
     def local_path(self):
-        local_path = _get_local_path(self.data)
+        local_path = _get_local_path(self._local_path)
         if not local_path:
-            for candidate in self.metadata["locations"]:
+            for candidate in self._locations:
                 local_path = _get_local_path(candidate)
                 if local_path:
                     break
-        return local_path or self._local_path
+        return local_path or self._local_path_tcp
 
     @local_path.setter
     def local_path(self, path: str):
         self._local_path = path
         if not path or not os.path.exists(path):
             return
-        self.data = path
-        self.metadata["locations"].add(path)
+        self._locations.add(path)
 
     @property
     def cloud_path(self):
-        cloud_path = _get_external_path(self.data)
+        cloud_path = _get_external_path(self._uri)
         if not cloud_path:
-            for candidate in self.metadata["locations"]:
+            for candidate in self._locations:
                 cloud_path = _get_external_path(candidate)
                 if cloud_path:
                     break
@@ -370,9 +380,9 @@ class TrialCheckpoint(Checkpoint, _TrialCheckpoint):
     @cloud_path.setter
     def cloud_path(self, path: str):
         self._cloud_path = path
-        if not self.data:
-            self.data = path
-        self.metadata["locations"].add(path)
+        if not self._uri:
+            self._uri = path
+        self._locations.add(path)
 
     def download(
         self,
