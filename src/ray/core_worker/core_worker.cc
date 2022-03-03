@@ -216,10 +216,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       std::make_shared<rpc::CoreWorkerClientPool>(*client_call_manager_);
 
   object_info_publisher_ = std::make_unique<pubsub::Publisher>(
-      /*channels=*/
-      std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                    rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
-                                    rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
+      /*channels=*/std::vector<
+          rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                            rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+                            rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
       /*periodical_runner=*/&periodical_runner_,
       /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
       /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
@@ -895,10 +895,8 @@ Status CoreWorker::PutInLocalPlasmaStore(const RayObject &object,
                                          const ObjectID &object_id,
                                          bool pin_object) {
   bool object_exists;
-  RAY_RETURN_NOT_OK(plasma_store_provider_->Put(object,
-                                                object_id,
-                                                /* owner_address = */ rpc_address_,
-                                                &object_exists));
+  RAY_RETURN_NOT_OK(plasma_store_provider_->Put(
+      object, object_id, /* owner_address = */ rpc_address_, &object_exists));
   if (!object_exists) {
     if (pin_object) {
       // Tell the raylet to pin the object **after** it is created.

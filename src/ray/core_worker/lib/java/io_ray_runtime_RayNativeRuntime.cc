@@ -328,8 +328,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *env,
           ? CoreWorkerProcess::GetCoreWorker().GetJobConfig().ray_namespace().c_str()
           : env->GetStringUTFChars(ray_namespace, JNI_FALSE);
   const auto pair = CoreWorkerProcess::GetCoreWorker().GetNamedActorHandle(
-      native_actor_name,
-      /*ray_namespace=*/native_ray_namespace);
+      native_actor_name, /*ray_namespace=*/native_ray_namespace);
   const auto status = pair.second;
   if (status.IsNotFound()) {
     return IdToJavaByteArray<ActorID>(env, ActorID::Nil());

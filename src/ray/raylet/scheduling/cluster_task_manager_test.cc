@@ -52,8 +52,7 @@ class MockWorkerPool : public WorkerPoolInterface {
                  const PopWorkerCallback &callback,
                  const std::string &allocated_instances_serialized_json) {
     num_pops++;
-    const WorkerCacheKey env = {task_spec.SerializedRuntimeEnv(), {}};
-    const int runtime_env_hash = env.IntHash();
+    const int runtime_env_hash = task_spec.GetRuntimeEnvHash();
     callbacks[runtime_env_hash].push_back(callback);
   }
 
@@ -132,8 +131,8 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
   local_node_resources[ray::kGPU_ResourceLabel] = num_gpus;
   local_node_resources[ray::kMemory_ResourceLabel] = 128;
 
-  auto scheduler =
-      std::make_shared<ClusterResourceScheduler>(id, local_node_resources, gcs_client);
+  auto scheduler = std::make_shared<ClusterResourceScheduler>(
+      scheduling::NodeID(id), local_node_resources, gcs_client);
 
   return scheduler;
 }
@@ -307,7 +306,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
     node_resources[ray::kGPU_ResourceLabel] = num_gpus;
     node_resources[ray::kMemory_ResourceLabel] = memory;
     scheduler_->GetClusterResourceManager().AddOrUpdateNode(
-        id.Binary(), node_resources, node_resources);
+        scheduling::NodeID(id.Binary()), node_resources, node_resources);
 
     rpc::GcsNodeInfo info;
     node_info_[id] = info;
@@ -495,10 +494,8 @@ TEST_F(ClusterTaskManagerTest, DispatchQueueNonBlockingTest) {
       {ray::kCPU_ResourceLabel, 4}};
 
   std::string serialized_runtime_env_A = "mock_env_A";
-  RayTask task_A = CreateTask(required_resources,
-                              /*num_args=*/0,
-                              /*args=*/{},
-                              serialized_runtime_env_A);
+  RayTask task_A = CreateTask(
+      required_resources, /*num_args=*/0, /*args=*/{}, serialized_runtime_env_A);
   rpc::RequestWorkerLeaseReply reply_A;
   bool callback_occurred = false;
   bool *callback_occurred_ptr = &callback_occurred;
@@ -508,14 +505,10 @@ TEST_F(ClusterTaskManagerTest, DispatchQueueNonBlockingTest) {
   };
 
   std::string serialized_runtime_env_B = "mock_env_B";
-  RayTask task_B_1 = CreateTask(required_resources,
-                                /*num_args=*/0,
-                                /*args=*/{},
-                                serialized_runtime_env_B);
-  RayTask task_B_2 = CreateTask(required_resources,
-                                /*num_args=*/0,
-                                /*args=*/{},
-                                serialized_runtime_env_B);
+  RayTask task_B_1 = CreateTask(
+      required_resources, /*num_args=*/0, /*args=*/{}, serialized_runtime_env_B);
+  RayTask task_B_2 = CreateTask(
+      required_resources, /*num_args=*/0, /*args=*/{}, serialized_runtime_env_B);
   rpc::RequestWorkerLeaseReply reply_B_1;
   rpc::RequestWorkerLeaseReply reply_B_2;
   auto empty_callback = [](Status, std::function<void()>, std::function<void()>) {};
@@ -527,7 +520,7 @@ TEST_F(ClusterTaskManagerTest, DispatchQueueNonBlockingTest) {
   pool_.TriggerCallbacks();
 
   // Push a worker that can only run task A.
-  const WorkerCacheKey env_A = {serialized_runtime_env_A, {}};
+  const WorkerCacheKey env_A = {serialized_runtime_env_A, {}, false, false};
   const int runtime_env_hash_A = env_A.IntHash();
   std::shared_ptr<MockWorker> worker_A =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash_A);
@@ -763,11 +756,8 @@ TEST_F(ClusterTaskManagerTest, TestIsSelectedBasedOnLocality) {
 
   auto task1 = CreateTask({{ray::kCPU_ResourceLabel, 5}});
   rpc::RequestWorkerLeaseReply local_reply;
-  task_manager_.QueueAndScheduleTask(task1,
-                                     false,
-                                     /*is_selected_based_on_locality=*/false,
-                                     &local_reply,
-                                     callback);
+  task_manager_.QueueAndScheduleTask(
+      task1, false, /*is_selected_based_on_locality=*/false, &local_reply, callback);
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 1);
   // The first task was dispatched.
@@ -776,11 +766,8 @@ TEST_F(ClusterTaskManagerTest, TestIsSelectedBasedOnLocality) {
 
   auto task2 = CreateTask({{ray::kCPU_ResourceLabel, 1}});
   rpc::RequestWorkerLeaseReply spillback_reply;
-  task_manager_.QueueAndScheduleTask(task2,
-                                     false,
-                                     /*is_selected_based_on_locality=*/false,
-                                     &spillback_reply,
-                                     callback);
+  task_manager_.QueueAndScheduleTask(
+      task2, false, /*is_selected_based_on_locality=*/false, &spillback_reply, callback);
   pool_.TriggerCallbacks();
   // The second task was spilled.
   ASSERT_EQ(num_callbacks, 2);
@@ -790,11 +777,8 @@ TEST_F(ClusterTaskManagerTest, TestIsSelectedBasedOnLocality) {
   ASSERT_EQ(pool_.workers.size(), 1);
 
   auto task3 = CreateTask({{ray::kCPU_ResourceLabel, 1}});
-  task_manager_.QueueAndScheduleTask(task3,
-                                     false,
-                                     /*is_selected_based_on_locality=*/true,
-                                     &local_reply,
-                                     callback);
+  task_manager_.QueueAndScheduleTask(
+      task3, false, /*is_selected_based_on_locality=*/true, &local_reply, callback);
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 3);
   // The third task was dispatched.
@@ -827,11 +811,8 @@ TEST_F(ClusterTaskManagerTest, TestGrantOrReject) {
 
   auto task1 = CreateTask({{ray::kCPU_ResourceLabel, 5}});
   rpc::RequestWorkerLeaseReply local_reply;
-  task_manager_.QueueAndScheduleTask(task1,
-                                     /*grant_or_reject=*/false,
-                                     false,
-                                     &local_reply,
-                                     callback);
+  task_manager_.QueueAndScheduleTask(
+      task1, /*grant_or_reject=*/false, false, &local_reply, callback);
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 1);
   // The first task was dispatched.
@@ -840,11 +821,8 @@ TEST_F(ClusterTaskManagerTest, TestGrantOrReject) {
 
   auto task2 = CreateTask({{ray::kCPU_ResourceLabel, 1}});
   rpc::RequestWorkerLeaseReply spillback_reply;
-  task_manager_.QueueAndScheduleTask(task2,
-                                     /*grant_or_reject=*/false,
-                                     false,
-                                     &spillback_reply,
-                                     callback);
+  task_manager_.QueueAndScheduleTask(
+      task2, /*grant_or_reject=*/false, false, &spillback_reply, callback);
   pool_.TriggerCallbacks();
   // The second task was spilled.
   ASSERT_EQ(num_callbacks, 2);
@@ -854,11 +832,8 @@ TEST_F(ClusterTaskManagerTest, TestGrantOrReject) {
   ASSERT_EQ(pool_.workers.size(), 1);
 
   auto task3 = CreateTask({{ray::kCPU_ResourceLabel, 1}});
-  task_manager_.QueueAndScheduleTask(task3,
-                                     /*grant_or_reject=*/true,
-                                     false,
-                                     &local_reply,
-                                     callback);
+  task_manager_.QueueAndScheduleTask(
+      task3, /*grant_or_reject=*/true, false, &local_reply, callback);
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 3);
   // The third task was dispatched.
@@ -902,11 +877,8 @@ TEST_F(ClusterTaskManagerTest, TestSpillAfterAssigned) {
   // Resources are no longer available for the second.
   auto task2 = CreateTask({{ray::kCPU_ResourceLabel, 5}});
   rpc::RequestWorkerLeaseReply reject_reply;
-  task_manager_.QueueAndScheduleTask(task2,
-                                     /*grant_or_reject=*/true,
-                                     false,
-                                     &reject_reply,
-                                     callback);
+  task_manager_.QueueAndScheduleTask(
+      task2, /*grant_or_reject=*/true, false, &reject_reply, callback);
   pool_.TriggerCallbacks();
 
   // The second task was rejected.
@@ -1532,7 +1504,8 @@ TEST_F(ClusterTaskManagerTest, FeasibleToNonFeasible) {
 
   // Delete cpu resource of local node, then task 2 should be turned into
   // infeasible.
-  scheduler_->GetLocalResourceManager().DeleteLocalResource(ray::kCPU_ResourceLabel);
+  scheduler_->GetLocalResourceManager().DeleteLocalResource(
+      scheduling::ResourceID(ray::kCPU_ResourceLabel));
 
   RayTask task2 = CreateTask({{ray::kCPU_ResourceLabel, 4}});
   rpc::RequestWorkerLeaseReply reply2;
@@ -1561,7 +1534,8 @@ TEST_F(ClusterTaskManagerTest, FeasibleToNonFeasible) {
 
 TEST_F(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources) {
   const NodeResources &node_resources =
-      scheduler_->GetClusterResourceManager().GetNodeResources(id_.Binary());
+      scheduler_->GetClusterResourceManager().GetNodeResources(
+          scheduling::NodeID(id_.Binary()));
   ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::CPU].available, 8);
   ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::GPU].available, 4);
 
@@ -1888,8 +1862,8 @@ TEST_F(ClusterTaskManagerTest, PopWorkerExactlyOnce) {
 }
 
 TEST_F(ClusterTaskManagerTest, CapRunningOnDispatchQueue) {
-  scheduler_->GetLocalResourceManager().AddLocalResourceInstances(ray::kGPU_ResourceLabel,
-                                                                  {1, 1, 1});
+  scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
+      scheduling::ResourceID(ray::kGPU_ResourceLabel), {1, 1, 1});
   RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 4}, {ray::kGPU_ResourceLabel, 1}},
                             /*num_args=*/0,
                             /*args=*/{});
@@ -1943,8 +1917,8 @@ TEST_F(ClusterTaskManagerTest, CapRunningOnDispatchQueue) {
 }
 
 TEST_F(ClusterTaskManagerTest, ZeroCPUTasks) {
-  scheduler_->GetLocalResourceManager().AddLocalResourceInstances(ray::kGPU_ResourceLabel,
-                                                                  {1, 1, 1});
+  scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
+      scheduling::ResourceID(ray::kGPU_ResourceLabel), {1, 1, 1});
   RayTask task = CreateTask({{"GPU", 1}}, /*num_args=*/0, /*args=*/{});
   RayTask task2 = CreateTask({{"GPU", 1}}, /*num_args=*/0, /*args=*/{});
   RayTask task3 = CreateTask({{"GPU", 1}}, /*num_args=*/0, /*args=*/{});

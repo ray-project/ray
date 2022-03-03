@@ -55,6 +55,39 @@ def test_caching_actors(shutdown_only, set_enable_auto_connect):
     assert ray.get(f.get_val.remote()) == 3
 
 
+# https://github.com/ray-project/ray/issues/20554
+def test_not_reusing_task_workers(shutdown_only):
+    @ray.remote
+    def create_ref():
+        ref = ray.put(np.zeros(100_000_000))
+        return ref
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            return
+
+        def foo(self):
+            return
+
+    ray.init(num_cpus=1, object_store_memory=1000_000_000)
+    wrapped_ref = create_ref.remote()
+    print(ray.get(ray.get(wrapped_ref)))
+
+    # create_ref worker gets reused as an actor.
+    a = Actor.remote()
+    ray.get(a.foo.remote())
+    # Actor will get force-killed.
+    del a
+
+    # Flush the object store.
+    for _ in range(10):
+        ray.put(np.zeros(100_000_000))
+
+    # Object has been evicted and owner has died. Throws OwnerDiedError.
+    print(ray.get(ray.get(wrapped_ref)))
+
+
 def test_remote_function_within_actor(ray_start_10_cpus):
     # Make sure we can use remote funtions within actors.
 

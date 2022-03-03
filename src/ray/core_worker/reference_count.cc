@@ -331,9 +331,8 @@ void ReferenceCounter::UpdateSubmittedTaskReferences(
   }
   // Release the submitted task ref and the lineage ref for any argument IDs
   // whose values were inlined.
-  RemoveSubmittedTaskReferences(argument_ids_to_remove,
-                                /*release_lineage=*/true,
-                                deleted);
+  RemoveSubmittedTaskReferences(
+      argument_ids_to_remove, /*release_lineage=*/true, deleted);
 }
 
 void ReferenceCounter::UpdateResubmittedTaskReferences(

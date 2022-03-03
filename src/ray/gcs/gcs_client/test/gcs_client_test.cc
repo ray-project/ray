@@ -29,8 +29,8 @@ namespace ray {
 class GcsClientTest : public ::testing::TestWithParam<bool> {
  public:
   GcsClientTest() : enable_gcs_bootstrap_(GetParam()) {
-    RayConfig::instance().initialize(absl::Substitute(
-        R"(
+    RayConfig::instance().initialize(
+        absl::Substitute(R"(
 {
   "gcs_rpc_server_reconnect_timeout_s": 60,
   "maximum_gcs_destroyed_actor_cached_count": 10,
@@ -40,9 +40,9 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   "bootstrap_with_gcs": $2
 }
   )",
-        enable_gcs_bootstrap_ ? "true" : "false",
-        enable_gcs_bootstrap_ ? "\"memory\"" : "\"redis\"",
-        enable_gcs_bootstrap_ ? "true" : "false"));
+                         enable_gcs_bootstrap_ ? "true" : "false",
+                         enable_gcs_bootstrap_ ? "\"memory\"" : "\"redis\"",
+                         enable_gcs_bootstrap_ ? "true" : "false"));
     if (!enable_gcs_bootstrap_) {
       TestSetupUtil::StartUpRedisServers(std::vector<int>());
     }

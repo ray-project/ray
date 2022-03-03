@@ -209,9 +209,7 @@ Status ActorInfoAccessor::SyncGetByName(const std::string &name,
   request.set_name(name);
   request.set_ray_namespace(ray_namespace);
   auto status = client_impl_->GetGcsRpcClient().SyncGetNamedActorInfo(
-      request,
-      &reply,
-      /*timeout_ms*/ GetGcsTimeoutMs());
+      request, &reply, /*timeout_ms*/ GetGcsTimeoutMs());
   if (status.ok() && reply.has_actor_table_data()) {
     actor_table_data = reply.actor_table_data();
   }

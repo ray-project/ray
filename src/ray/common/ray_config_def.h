@@ -140,7 +140,7 @@ RAY_CONFIG(float, scheduler_spread_threshold, 0.5);
 /// Whether to only report the usage of pinned copies of objects in the
 /// object_store_memory resource. This means nodes holding secondary copies only
 /// will become eligible for removal in the autoscaler.
-RAY_CONFIG(bool, scheduler_report_pinned_bytes_only, false)
+RAY_CONFIG(bool, scheduler_report_pinned_bytes_only, true)
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
@@ -395,6 +395,10 @@ RAY_CONFIG(int64_t, max_placement_group_load_report_size, 1000)
 /// external storage.
 RAY_CONFIG(std::string, object_spilling_config, "")
 
+/// Log an ERROR-level message about spilling every time this amount of bytes has been
+/// spilled, with exponential increase in interval. This can be set to zero to disable.
+RAY_CONFIG(int64_t, verbose_spill_logs, 2L * 1024 * 1024 * 1024)
+
 /// Whether to enable automatic object spilling. If enabled, then
 /// Ray will choose objects to spill when the object store is out of
 /// memory.
@@ -498,6 +502,14 @@ RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512);
 // If enabled and worker stated in container, the container will add
 // resource limit.
 RAY_CONFIG(bool, worker_resource_limits_enabled, false)
+
+// When enabled, workers will not be re-used across tasks requesting different
+// resources (e.g., CPU vs GPU).
+RAY_CONFIG(bool, isolate_workers_across_resource_types, true)
+
+// When enabled, workers will not be re-used across tasks of different types
+// (i.e., Actor vs normal tasks).
+RAY_CONFIG(bool, isolate_workers_across_task_types, true)
 
 /// ServerCall instance number of each RPC service handler
 RAY_CONFIG(int64_t, gcs_max_active_rpcs_per_handler, 100)

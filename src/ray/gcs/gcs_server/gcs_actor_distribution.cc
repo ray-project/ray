@@ -75,9 +75,8 @@ GcsBasedActorScheduler::SelectOrAllocateActorWorkerAssignment(
   auto required_resources = task_spec.GetRequiredPlacementResources();
 
   // If the task needs a sole actor worker assignment then allocate a new one.
-  return AllocateNewActorWorkerAssignment(required_resources,
-                                          /*is_shared=*/false,
-                                          task_spec);
+  return AllocateNewActorWorkerAssignment(
+      required_resources, /*is_shared=*/false, task_spec);
 
   // TODO(Chong-Li): code path for actors that do not need a sole assignment.
 }

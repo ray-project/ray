@@ -59,9 +59,8 @@ class RayObject {
         creation_time_nanos_(absl::GetCurrentTimeNanos()) {
     if (has_data_copy_) {
       if (metadata_ && !metadata_->OwnsData()) {
-        metadata_ = std::make_shared<LocalMemoryBuffer>(metadata_->Data(),
-                                                        metadata_->Size(),
-                                                        /*copy_data=*/true);
+        metadata_ = std::make_shared<LocalMemoryBuffer>(
+            metadata_->Data(), metadata_->Size(), /*copy_data=*/true);
       }
     }
   }
@@ -147,9 +146,8 @@ class RayObject {
       }
 
       if (metadata_ && !metadata_->OwnsData()) {
-        metadata_ = std::make_shared<LocalMemoryBuffer>(metadata_->Data(),
-                                                        metadata_->Size(),
-                                                        /*copy_data=*/true);
+        metadata_ = std::make_shared<LocalMemoryBuffer>(
+            metadata_->Data(), metadata_->Size(), /*copy_data=*/true);
       }
     }
 

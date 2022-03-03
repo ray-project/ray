@@ -125,9 +125,8 @@ class SpdLogMessage final {
       *expose_osstream_ << "\n*** StackTrace Information ***\n" << ray::GetCallTrace();
     }
     // NOTE(lingxuan.zlx): See more fmt by visiting https://github.com/fmtlib/fmt.
-    logger->log(static_cast<spdlog::level::level_enum>(loglevel_),
-                /*fmt*/ "{}",
-                str_.str());
+    logger->log(
+        static_cast<spdlog::level::level_enum>(loglevel_), /*fmt*/ "{}", str_.str());
     logger->flush();
   }
 

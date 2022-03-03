@@ -154,10 +154,9 @@ void AgentManager::CreateRuntimeEnv(
     // and causing a segfault.
     delay_executor_(
         [callback = std::move(callback), error_message] {
-          callback(
-              /*successful=*/false,
-              /*serialized_runtime_env_context=*/"",
-              /*setup_error_message*/ error_message);
+          callback(/*successful=*/false,
+                   /*serialized_runtime_env_context=*/"",
+                   /*setup_error_message*/ error_message);
         },
         0);
     return;
@@ -175,10 +174,9 @@ void AgentManager::CreateRuntimeEnv(
           [callback = std::move(callback),
            serialized_runtime_env = std::move(serialized_runtime_env),
            error_message] {
-            callback(
-                /*successful=*/false,
-                /*serialized_runtime_env_context=*/serialized_runtime_env,
-                /*setup_error_message*/ error_message);
+            callback(/*successful=*/false,
+                     /*serialized_runtime_env_context=*/serialized_runtime_env,
+                     /*setup_error_message*/ error_message);
           },
           0);
       return;

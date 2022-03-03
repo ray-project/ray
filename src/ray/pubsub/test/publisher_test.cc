@@ -33,10 +33,10 @@ class PublisherTest : public ::testing::Test {
 
   void SetUp() {
     object_status_publisher_ = std::make_shared<Publisher>(
-        /*channels=*/
-        std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                      rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
-                                      rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
+        /*channels=*/std::vector<
+            rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                              rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+                              rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
         /*periodic_runner=*/periodic_runner_.get(),
         /*get_time_ms=*/[this]() { return current_time_; },
         /*subscriber_timeout_ms=*/subscriber_timeout_ms_,

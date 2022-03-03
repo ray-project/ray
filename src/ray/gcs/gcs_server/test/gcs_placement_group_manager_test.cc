@@ -713,9 +713,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestStats) {
     ASSERT_EQ(placement_group->GetStats().scheduling_attempt(), 1);
     ASSERT_EQ(placement_group->GetStats().scheduling_state(),
               rpc::PlacementGroupStats::QUEUED);
-    gcs_placement_group_manager_->OnPlacementGroupCreationFailed(placement_group,
-                                                                 GetExpBackOff(),
-                                                                 /*is_feasible*/ true);
+    gcs_placement_group_manager_->OnPlacementGroupCreationFailed(
+        placement_group, GetExpBackOff(), /*is_feasible*/ true);
     WaitForExpectedPgCount(1);
     auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
     mock_placement_group_scheduler_->placement_groups_.clear();
@@ -727,9 +726,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestStats) {
   /// Feasible, but failed to commit resources.
   {
     placement_group->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
-    gcs_placement_group_manager_->OnPlacementGroupCreationFailed(placement_group,
-                                                                 GetExpBackOff(),
-                                                                 /*is_feasible*/ true);
+    gcs_placement_group_manager_->OnPlacementGroupCreationFailed(
+        placement_group, GetExpBackOff(), /*is_feasible*/ true);
     WaitForExpectedPgCount(1);
     auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
     mock_placement_group_scheduler_->placement_groups_.clear();
@@ -760,9 +758,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestStatsCreationTime) {
   mock_placement_group_scheduler_->placement_groups_.clear();
 
   /// Failed to create a pg.
-  gcs_placement_group_manager_->OnPlacementGroupCreationFailed(placement_group,
-                                                               GetExpBackOff(),
-                                                               /*is_feasible*/ true);
+  gcs_placement_group_manager_->OnPlacementGroupCreationFailed(
+      placement_group, GetExpBackOff(), /*is_feasible*/ true);
   auto scheduling_started_ns = absl::GetCurrentTimeNanos();
   WaitForExpectedPgCount(1);
 

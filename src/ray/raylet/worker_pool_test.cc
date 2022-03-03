@@ -614,8 +614,7 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
   ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 0);
   for (const auto &worker : workers) {
     worker_pool_->DisconnectWorker(
-        worker,
-        /*disconnect_type=*/rpc::WorkerExitType::INTENDED_EXIT);
+        worker, /*disconnect_type=*/rpc::WorkerExitType::INTENDED_EXIT);
     // Check that we cannot lookup the worker after it's disconnected.
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), nullptr);
   }
@@ -743,7 +742,7 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   // Ray-defined per-process options
   expected_command.push_back(GetNumJavaWorkersPerProcessSystemProperty(1));
   expected_command.push_back("-Dray.raylet.startup-token=0");
-  expected_command.push_back("-Dray.internal.runtime-env-hash=0");
+  expected_command.push_back("-Dray.internal.runtime-env-hash=1");
   // User-defined per-process options
   expected_command.insert(
       expected_command.end(), actor_jvm_options.begin(), actor_jvm_options.end());
@@ -765,8 +764,19 @@ TEST_F(WorkerPoolTest, PopWorkerMultiTenancy) {
   // Register 2 workers for each job.
   for (auto job_id : job_ids) {
     for (int i = 0; i < 2; i++) {
-      auto worker =
-          worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_id);
+      int runtime_env_hash = 0;
+      // Make the first worker an actor worker.
+      if (i == 0) {
+        auto actor_creation_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1);
+        auto task_spec = ExampleTaskSpec(
+            /*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id, actor_creation_id);
+        runtime_env_hash = task_spec.GetRuntimeEnvHash();
+      }
+      auto worker = worker_pool_->CreateWorker(Process::CreateNewDummy(),
+                                               Language::PYTHON,
+                                               job_id,
+                                               rpc::WorkerType::WORKER,
+                                               runtime_env_hash);
       worker_pool_->PushWorker(worker);
     }
   }
@@ -1111,8 +1121,7 @@ TEST_F(WorkerPoolTest, NoPopOnCrashedWorkerProcess) {
   // 3. kill the worker process. Now let's assume that Raylet found that the connection
   // with worker 1 disconnected first.
   worker_pool_->DisconnectWorker(
-      worker1,
-      /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
+      worker1, /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
 
   // 4. but the RPC for announcing worker port for worker 2 is already in Raylet input
   // buffer. So now Raylet needs to handle worker 2.
@@ -1126,8 +1135,7 @@ TEST_F(WorkerPoolTest, NoPopOnCrashedWorkerProcess) {
 
   // 6. Now Raylet disconnects with worker 2.
   worker_pool_->DisconnectWorker(
-      worker2,
-      /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
+      worker2, /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
 }
 
 TEST_F(WorkerPoolTest, TestWorkerCapping) {
@@ -1155,15 +1163,13 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
     worker_pool_->PushWorker(worker);
   }
   ///
-  /// Pop 2 workers for a task and actor.
+  /// Pop 2 workers for tasks.
   ///
-  // Pop workers for actor.
   std::vector<std::shared_ptr<WorkerInterface>> popped_workers;
   for (int i = 0; i < 2; i++) {
-    auto actor_creation_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), i + 1);
     // Pop workers for actor creation tasks.
-    auto task_spec = ExampleTaskSpec(
-        /*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id, actor_creation_id);
+    auto task_spec =
+        ExampleTaskSpec(/*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id);
     auto worker = worker_pool_->PopWorkerSync(task_spec, false);
     popped_workers.push_back(worker);
     ASSERT_TRUE(worker);
@@ -1677,8 +1683,7 @@ TEST_F(WorkerPoolTest, CacheWorkersByRuntimeEnvHash) {
                       TaskID::FromRandom(JobID::Nil()),
                       ExampleRuntimeEnvInfoFromString("mock_runtime_env_2"));
 
-  const WorkerCacheKey env1 = {"mock_runtime_env_1", {}};
-  const int runtime_env_hash_1 = env1.IntHash();
+  const int runtime_env_hash_1 = actor_creation_task_spec_1.GetRuntimeEnvHash();
 
   // Push worker with runtime env 1.
   auto worker = worker_pool_->CreateWorker(Process::CreateNewDummy(),
@@ -1696,8 +1701,12 @@ TEST_F(WorkerPoolTest, CacheWorkersByRuntimeEnvHash) {
 
   // Try to pop the worker for task with runtime env 1.
   popped_worker = worker_pool_->PopWorkerSync(task_spec_1);
-  // Check that we got the pushed worker.
-  ASSERT_EQ(popped_worker, worker);
+  if (RayConfig::instance().isolate_workers_across_task_types()) {
+    ASSERT_NE(popped_worker, nullptr);
+    ASSERT_NE(popped_worker, worker);
+  } else {
+    ASSERT_EQ(popped_worker, worker);
+  }
 
   // Push another worker with runtime env 1.
   worker = worker_pool_->CreateWorker(Process::CreateNewDummy(),
