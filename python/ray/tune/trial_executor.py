@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 import warnings
 
 from ray.util.annotations import DeveloperAPI
-from ray.tune.trial import Trial, Checkpoint
+from ray.tune.trial import Trial, _TuneCheckpoint
 
 logger = logging.getLogger(__name__)
 
@@ -14,15 +14,11 @@ logger = logging.getLogger(__name__)
 # A warning is printed to inform users of TrialExecutor deprecation.
 class _WarnOnDirectInheritanceMeta(type):
     def __new__(mcls, name, bases, module, **kwargs):
-        if (
-            name
-            not in (
-                "RayTrialExecutor",
-                "_MockTrialExecutor",
-                "TrialExecutor",
-            )
-            and "TrialExecutor" in tuple(base.__name__ for base in bases)
-        ):
+        if name not in (
+            "RayTrialExecutor",
+            "_MockTrialExecutor",
+            "TrialExecutor",
+        ) and "TrialExecutor" in tuple(base.__name__ for base in bases):
             deprecation_msg = (
                 f"{name} inherits from TrialExecutor, which is being "
                 "deprecated. "
@@ -119,7 +115,7 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         """
         assert trial.status == Trial.RUNNING, trial.status
         try:
-            self.save(trial, Checkpoint.MEMORY)
+            self.save(trial, _TuneCheckpoint.MEMORY)
             self.stop_trial(trial)
             self.set_status(trial, Trial.PAUSED)
         except Exception:
@@ -187,8 +183,11 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
 
     @abstractmethod
     def save(
-        self, trial, storage: str = Checkpoint.PERSISTENT, result: Optional[Dict] = None
-    ) -> Checkpoint:
+        self,
+        trial,
+        storage: str = _TuneCheckpoint.PERSISTENT,
+        result: Optional[Dict] = None,
+    ) -> _TuneCheckpoint:
         """Saves training state of this trial to a checkpoint.
 
         If result is None, this trial's last result will be used.

@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 from abc import ABC
 import warnings
 
-from ray.tune.checkpoint_manager import Checkpoint
+from ray.tune.checkpoint_manager import _TuneCheckpoint
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -196,7 +196,7 @@ class Callback(ABC):
         iteration: int,
         trials: List["Trial"],
         trial: "Trial",
-        checkpoint: Checkpoint,
+        checkpoint: _TuneCheckpoint,
         **info,
     ):
         """Called after a trial saved a checkpoint with Tune.
@@ -205,7 +205,7 @@ class Callback(ABC):
             iteration (int): Number of iterations of the tuning loop.
             trials (List[Trial]): List of trials.
             trial (Trial): Trial that just has errored.
-            checkpoint (Checkpoint): Checkpoint object that has been saved
+            checkpoint (_TuneCheckpoint): Checkpoint object that has been saved
                 by the trial.
             **info: Kwargs dict for forward compatibility.
         """

@@ -14,7 +14,7 @@ import ray
 import yaml
 from ray.tune import TuneError
 from ray.tune.callback import Callback
-from ray.tune.checkpoint_manager import Checkpoint
+from ray.tune.checkpoint_manager import _TuneCheckpoint
 from ray.tune.result import NODE_IP
 from ray.util import get_node_ip_address
 from ray.util.debug import log_once
@@ -470,8 +470,8 @@ class SyncerCallback(Callback):
             trial.logdir, remote_dir=trial.logdir, sync_function=self._sync_function
         )
 
-    def _sync_trial_checkpoint(self, trial: "Trial", checkpoint: Checkpoint):
-        if checkpoint.storage == Checkpoint.MEMORY:
+    def _sync_trial_checkpoint(self, trial: "Trial", checkpoint: _TuneCheckpoint):
+        if checkpoint.storage == _TuneCheckpoint.MEMORY:
             return
 
         trial_syncer = self._get_trial_syncer(trial)
@@ -560,7 +560,7 @@ class SyncerCallback(Callback):
         iteration: int,
         trials: List["Trial"],
         trial: "Trial",
-        checkpoint: Checkpoint,
+        checkpoint: _TuneCheckpoint,
         **info,
     ):
         self._sync_trial_checkpoint(trial, checkpoint)

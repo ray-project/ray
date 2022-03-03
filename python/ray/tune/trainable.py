@@ -1,3 +1,4 @@
+import subprocess
 from contextlib import redirect_stdout, redirect_stderr
 import copy
 from datetime import datetime
@@ -13,6 +14,7 @@ import uuid
 
 import ray
 import ray.cloudpickle as pickle
+from ray.ml.checkpoint import Checkpoint
 from ray.tune.cloud import TrialCheckpoint
 from ray.tune.logger import Logger
 from ray.tune.resources import Resources
@@ -37,12 +39,16 @@ from ray.tune.result import (
     STDOUT_FILE,
     STDERR_FILE,
 )
-from ray.tune.sync_client import get_sync_client, get_cloud_sync_client
 from ray.tune.utils import UtilMonitor
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils.log import disable_ipython
-from ray.tune.utils.util import Tee
+from ray.tune.utils.util import (
+    Tee,
+    retry_fn,
+    get_checkpoint_from_remote_node,
+    delete_external_checkpoint,
+)
 from ray.util.debug import log_once
 from ray.util.annotations import PublicAPI
 
@@ -155,20 +161,10 @@ class Trainable:
 
         self.remote_checkpoint_dir = remote_checkpoint_dir
         self.sync_function_tpl = sync_function_tpl or self._sync_function_tpl
-        self.storage_client = None
-
-        if self.uses_cloud_checkpointing:
-            self.storage_client = self._create_storage_client()
 
     @property
     def uses_cloud_checkpointing(self):
         return bool(self.remote_checkpoint_dir)
-
-    def _create_storage_client(self):
-        """Returns a storage client."""
-        return get_sync_client(self.sync_function_tpl) or get_cloud_sync_client(
-            self.remote_checkpoint_dir
-        )
 
     def _storage_path(self, local_path):
         """Converts a `local_path` to be based off of
@@ -179,7 +175,7 @@ class Trainable:
     @classmethod
     def default_resource_request(
         cls, config: Dict[str, Any]
-    ) -> Union[Resources, PlacementGroupFactory]:
+    ) -> Optional[Union[Resources, PlacementGroupFactory]]:
         """Provides a static resource requirement for the given configuration.
 
         This can be overridden by sub-classes to set the correct trial resource
@@ -429,10 +425,12 @@ class Trainable:
         checkpoint_dir = TrainableUtil.make_checkpoint_dir(
             checkpoint_dir or self.logdir, index=self.iteration
         )
-        checkpoint = self.save_checkpoint(checkpoint_dir)
+        checkpoint_dict_or_path = self.save_checkpoint(checkpoint_dir)
         trainable_state = self.get_state()
         checkpoint_path = TrainableUtil.process_checkpoint(
-            checkpoint, parent_dir=checkpoint_dir, trainable_state=trainable_state
+            checkpoint_dict_or_path,
+            parent_dir=checkpoint_dir,
+            trainable_state=trainable_state,
         )
 
         # Maybe sync to cloud
@@ -440,13 +438,16 @@ class Trainable:
 
         return checkpoint_path
 
-    def _maybe_save_to_cloud(self, checkpoint_dir):
+    def _maybe_save_to_cloud(self, checkpoint_dir: str):
         # Derived classes like the FunctionRunner might call this
         if self.uses_cloud_checkpointing:
-            self.storage_client.sync_up(
-                checkpoint_dir, self._storage_path(checkpoint_dir)
+            checkpoint = Checkpoint.from_directory(checkpoint_dir)
+            retry_fn(
+                lambda: checkpoint.to_uri(self._storage_path(checkpoint_dir)),
+                subprocess.CalledProcessError,
+                num_retries=3,
+                sleep_time=1,
             )
-            self.storage_client.wait_or_retry()
 
     def save_to_object(self):
         """Saves the current model state to a Python object.
@@ -458,12 +459,11 @@ class Trainable:
         """
         tmpdir = tempfile.mkdtemp("save_to_object", dir=self.logdir)
         checkpoint_path = self.save(tmpdir)
-        # Save all files in subtree and delete the tmpdir.
-        obj = TrainableUtil.checkpoint_to_object(checkpoint_path)
-        shutil.rmtree(tmpdir)
-        return obj
 
-    def restore(self, checkpoint_path):
+        checkpoint = Checkpoint.from_directory(checkpoint_path)
+        return checkpoint.to_bytes()
+
+    def restore(self, checkpoint_path: str, checkpoint_node_ip: Optional[str] = None):
         """Restores training state from a given model checkpoint.
 
         These checkpoints are returned from calls to save().
@@ -484,20 +484,47 @@ class Trainable:
 
         `self.remote_checkpoint_dir` in this case, is something like,
         `REMOTE_CHECKPOINT_BUCKET/exp/MyTrainable_abc`
+
+        Args:
+            checkpoint_path (str): Path to restore checkpoint from. If this
+                path does not exist on the local node, it will be fetched
+                from external (cloud) storage if available, or restored
+                from a remote node.
+            checkpoint_node_ip (Optional[str]): If given, try to restore
+                checkpoint from this node if it doesn't exist locally or
+                on cloud storage.
+
         """
+        # Ensure TrialCheckpoints are converted
+        if isinstance(checkpoint_path, TrialCheckpoint):
+            checkpoint_path = checkpoint_path.local_path
+
         if self.uses_cloud_checkpointing:
             rel_checkpoint_dir = TrainableUtil.find_rel_checkpoint_dir(
                 self.logdir, checkpoint_path
             )
-            self.storage_client.sync_down(
-                os.path.join(self.remote_checkpoint_dir, rel_checkpoint_dir),
-                os.path.join(self.logdir, rel_checkpoint_dir),
+            external_uri = os.path.join(self.remote_checkpoint_dir, rel_checkpoint_dir)
+            local_dir = os.path.join(self.logdir, rel_checkpoint_dir)
+            checkpoint = Checkpoint.from_uri(external_uri)
+            retry_fn(
+                lambda: checkpoint.to_directory(local_dir),
+                subprocess.CalledProcessError,
+                num_retries=3,
+                sleep_time=1,
             )
-            self.storage_client.wait_or_retry()
-
-        # Ensure TrialCheckpoints are converted
-        if isinstance(checkpoint_path, TrialCheckpoint):
-            checkpoint_path = checkpoint_path.local_path
+        elif (
+            # If a checkpoint source IP is given
+            checkpoint_node_ip
+            # And the checkpoint does not currently exist on the local node
+            and not os.path.exists(checkpoint_node_ip)
+            # And the source IP is different to the current IP
+            and checkpoint_node_ip != ray.util.get_node_ip_address()
+        ):
+            checkpoint = get_checkpoint_from_remote_node(
+                checkpoint_path, checkpoint_node_ip
+            )
+            if checkpoint:
+                checkpoint.to_directory(checkpoint_path)
 
         with open(checkpoint_path + ".tune_metadata", "rb") as f:
             metadata = pickle.load(f)
@@ -561,8 +588,13 @@ class Trainable:
             return
         else:
             if self.uses_cloud_checkpointing:
-                self.storage_client.delete(self._storage_path(checkpoint_dir))
-                self.storage_client.wait_or_retry()
+                checkpoint_uri = self._storage_path(checkpoint_dir)
+                retry_fn(
+                    lambda: delete_external_checkpoint(checkpoint_uri),
+                    subprocess.CalledProcessError,
+                    num_retries=3,
+                    sleep_time=1,
+                )
 
         if os.path.exists(checkpoint_dir):
             shutil.rmtree(checkpoint_dir)
