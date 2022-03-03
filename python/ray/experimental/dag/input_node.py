@@ -1,4 +1,3 @@
-from calendar import c
 from typing import Any, Callable, Dict, List, Optional
 
 from ray.experimental.dag import DAGNode
@@ -10,13 +9,15 @@ from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 INPUT_SCHEMA_KEY = "__input_schema__"
 ADAPTER_FN_KEY = "__adapter_fn__"
 
-#TODO (jiaodong): Better interface without depending on pydantic
+
+# TODO (jiaodong): Better interface without depending on pydantic
 class InputSchema:
     def __init__(self, validator: Optional[Callable] = None):
         self.validator = validator
 
     def validate(self, input_data: Any):
         self.validator(input_data)
+
 
 class InputNode(DAGNode):
     """Ray dag node used in DAG building API to mark entrypoints of a DAG.
@@ -44,7 +45,10 @@ class InputNode(DAGNode):
     """
 
     """
-    1) Binding value to InputNode ? No, just schema
+    DONE - Binding value to InputNode ? No, just schema
+    - Take input data python object
+    - Globally unique InputNode
+    - Split attributes
     """
 
     def __init__(
@@ -52,7 +56,18 @@ class InputNode(DAGNode):
         input_schema: Optional[InputSchema] = None,
         adapter_fn: Optional[Callable] = None,
         other_args_to_resolve: Optional[Dict[str, Any]] = None,
+        **kwargs,
     ):
+        """InputNode should only take attributes of validating and converting
+        input data rather than the input data itself. User input should be
+        provided via `ray_dag.execute(user_input)`.
+        """
+        if len(kwargs) != 0:
+            raise ValueError(
+                "InputNode should not take any args or kwargs other than "
+                "{input_schema, adapter_fn, other_args_to_resolve}"
+            )
+
         self._input_schema = input_schema
         self._adapter_fn = adapter_fn
 
@@ -63,14 +78,20 @@ class InputNode(DAGNode):
                 ADAPTER_FN_KEY: adapter_fn,
             },
             {},
-            other_args_to_resolve=other_args_to_resolve
+            other_args_to_resolve=other_args_to_resolve,
         )
 
-    def _validate_input(self, input_data):
+    def _validate_input_if_needed(self, input_data):
         if self._input_schema:
             self._input_schema.validate(input_data)
         else:
             pass
+
+    def _adapt_input_if_needed(self, input_data):
+        if self._adapter_fn:
+            return self._adapter_fn(input_data)
+        else:
+            return input_data
 
     def _copy_impl(
         self,
@@ -85,11 +106,10 @@ class InputNode(DAGNode):
             other_args_to_resolve=new_other_args_to_resolve,
         )
 
-    def _execute_impl(self, input_data):
+    def _execute_impl(self, input_data: Any):
         """Executor of InputNode by ray.remote()"""
-        # TODO: (jiaodong) Maybe a contenxt manager ?
-        self._validate_input(input_data)
-        converted_data = self._adapter_fn(input_data)
+        self._validate_input_if_needed(input_data)
+        converted_data = self._adapt_input_if_needed(input_data)
         return converted_data
 
     def __str__(self) -> str:
