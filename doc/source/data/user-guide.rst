@@ -20,6 +20,7 @@ you will learn
     dataset-ml-preprocessing
     dataset-tensor-support
     advanced-pipelines
+    random-access
     dask-on-ray
     raydp
     mars-on-ray

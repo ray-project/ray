@@ -23,6 +23,7 @@ Check our :ref:`compatibility matrix<data-compatibility>` to see if your favorit
 ..
   https://docs.google.com/drawings/d/16AwJeBNR46_TsrkOmMbGaBK7u-OPsf_V8fHjU-d2PPQ/edit
 
+
 Ray Datasets simplifies general purpose parallel GPU and CPU compute in Ray; for instance, for `GPU batch inference <dataset.html#transforming-datasets>`__.
 It provides a higher level API for Ray tasks and actors in such embarrassingly parallel compute situations,
 internally handling operations like batching, pipelining, and memory management.

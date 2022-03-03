@@ -32,6 +32,14 @@ def test_basic(ray_start_regular_shared, pandas):
     assert results == [None] + [expected(i) for i in range(10)] + [None]
 
 
+def test_empty_blocks(ray_start_regular_shared):
+    ds = ray.data.range_arrow(10).repartition(20)
+    assert ds.num_blocks() == 20
+    rad = ds.to_random_access_dataset("value")
+    for i in range(10):
+        assert ray.get(rad.get_async(i)) == {"value": i}
+
+
 def test_errors(ray_start_regular_shared):
     ds = ray.data.range(10)
     with pytest.raises(ValueError):
