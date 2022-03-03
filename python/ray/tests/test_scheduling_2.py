@@ -12,7 +12,6 @@ from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
 )
 from ray._private.test_utils import wait_for_condition, make_global_state_accessor
-from google.protobuf.json_format import MessageToDict
 
 
 @pytest.mark.skipif(
@@ -331,10 +330,21 @@ def test_demand_report_when_scale_up(shutdown_only):
     info = ray.init("auto")
 
     @ray.remote
-    def foo():
-        time.sleep(999)
+    def f():
+        time.sleep(10000)
 
-    tasks = [foo.remote() for _ in range(10000)]  # noqa: F841
+    @ray.remote
+    def g():
+        ray.get(h.remote())
+
+    @ray.remote
+    def h():
+        time.sleep(10000)
+
+    tasks = [f.remote() for _ in range(5000)].extend(  # noqa: F841
+        [g.remote() for _ in range(5000)]
+    )
+
     global_state_accessor = make_global_state_accessor(info)
 
     def check_backlog_info():
@@ -345,15 +355,20 @@ def test_demand_report_when_scale_up(shutdown_only):
         resource_usage = gcs_utils.ResourceUsageBatchData.FromString(message)
         aggregate_resource_load = resource_usage.resource_load_by_shape.resource_demands
 
-        if len(aggregate_resource_load) == 1:
-            if aggregate_resource_load[0].backlog_size != 9980:
-                return False
-            if aggregate_resource_load[0].num_ready_requests_queued != 10:
-                return False
-            if aggregate_resource_load[0].shape != {"CPU": 1.0}:
-                return False
-            return True
-        return False
+        if len(aggregate_resource_load) != 1:
+            return False
+
+        (backlog_size, num_ready_requests_queued, shape) = (
+            aggregate_resource_load[0].backlog_size,
+            aggregate_resource_load[0].num_ready_requests_queued,
+            aggregate_resource_load[0].shape,
+        )
+        if backlog_size + num_ready_requests_queued != 9990:
+            return False
+
+        if shape != {"CPU": 1.0}:
+            return False
+        return True
 
     wait_for_condition(check_backlog_info, 10)
     cluster.shutdown()

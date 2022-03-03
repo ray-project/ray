@@ -16,9 +16,8 @@
 
 #include <google/protobuf/util/json_util.h>
 
-#include <boost/range/adaptor/transformed.hpp>
 #include <boost/range/adaptor/filtered.hpp>
-
+#include <boost/range/adaptor/transformed.hpp>
 #include <boost/range/join.hpp>
 
 namespace ray {
@@ -89,7 +88,7 @@ void SchedulerResourceReporter::FillResourceUsage(
         const auto &label = resource.first;
         const auto &quantity = resource.second;
 
-        if(count != 0) {
+        if (count != 0) {
           // Add to `resource_loads`.
           (*resource_loads)[label] += quantity * count;
         }
@@ -104,7 +103,7 @@ void SchedulerResourceReporter::FillResourceUsage(
       }
 
       // Backlog has already been set
-      if(visited.count(scheduling_class) == 0) {
+      if (visited.count(scheduling_class) == 0) {
         by_shape_entry->set_backlog_size(TotalBacklogSize(scheduling_class));
         visited.insert(scheduling_class);
       }
@@ -115,14 +114,19 @@ void SchedulerResourceReporter::FillResourceUsage(
     return std::make_pair(pair.first, pair.second.size());
   };
 
-  fill_resource_usage_helper(tasks_to_schedule_ | boost::adaptors::transformed(transform_func), false);
-  fill_resource_usage_helper(tasks_to_dispatch_ | boost::adaptors::transformed(transform_func), false);
-  fill_resource_usage_helper(infeasible_tasks_ | boost::adaptors::transformed(transform_func), true);
-  auto backlog_tracker_range = backlog_tracker_ | boost::adaptors::transformed([](const auto &pair) {
-    return std::make_pair(pair.first, 0);
-  }) | boost::adaptors::filtered([&visited](const auto & pair) {
-    return visited.count(pair.first) == 0;
-  });
+  fill_resource_usage_helper(
+      tasks_to_schedule_ | boost::adaptors::transformed(transform_func), false);
+  fill_resource_usage_helper(
+      tasks_to_dispatch_ | boost::adaptors::transformed(transform_func), false);
+  fill_resource_usage_helper(
+      infeasible_tasks_ | boost::adaptors::transformed(transform_func), true);
+  auto backlog_tracker_range = backlog_tracker_ |
+                               boost::adaptors::transformed([](const auto &pair) {
+                                 return std::make_pair(pair.first, 0);
+                               }) |
+                               boost::adaptors::filtered([&visited](const auto &pair) {
+                                 return visited.count(pair.first) == 0;
+                               });
 
   fill_resource_usage_helper(backlog_tracker_range, false);
 
