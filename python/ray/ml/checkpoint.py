@@ -16,6 +16,8 @@ from ray.util.ml_utils.cloud import (
 
 
 DICT_CHECKPOINT_FILE_NAME = "dict_checkpoint.pkl"
+FS_CHECKPOINT_KEY = "fs_checkpoint"
+BYTES_DATA_KEY = "bytes_data"
 
 
 class Checkpoint:
@@ -24,6 +26,10 @@ class Checkpoint:
     This implementation provides interfaces to translate between
     different checkpoint storage locations: Local FS storage, remote
     node FS storage, data object, and cloud storage location.
+
+    The constructor is a private API, instead the ``from_`` methods should
+    be used to create checkpoint objects
+    (e.g. ``Checkpoint.from_directory()``).
     """
 
     @DeveloperAPI
@@ -34,18 +40,44 @@ class Checkpoint:
         uri: Optional[str] = None,
         obj_ref: Optional[ray.ObjectRef] = None,
     ):
-        if local_path:
-            assert not data_dict and not uri and not obj_ref
-        elif data_dict:
-            assert not local_path and not uri and not obj_ref
-        elif uri:
-            assert not local_path and not data_dict and not obj_ref
-            # resolve file:// paths to local_path
+        # First, resolve file:// URIs to local paths
+        if uri:
             local_path = _get_local_path(uri)
             if local_path:
                 uri = None
+
+        # Only one data type can be set at any time
+        if local_path:
+            assert not data_dict and not uri and not obj_ref
+            if not isinstance(local_path, (str, os.PathLike)) or not os.path.exists(
+                local_path
+            ):
+                raise RuntimeError(
+                    f"Cannot create checkpoint from path as it does "
+                    f"not exist on local node: {local_path}"
+                )
+        elif data_dict:
+            assert not local_path and not uri and not obj_ref
+            if not isinstance(data_dict, dict):
+                raise RuntimeError(
+                    f"Cannot create checkpoint from dict as no "
+                    f"dict was passed: {data_dict}"
+                )
         elif obj_ref:
             assert not local_path and not data_dict and not uri
+            if not isinstance(obj_ref, ray.ObjectRef):
+                raise RuntimeError(
+                    f"Cannot create checkpoint from object ref as no "
+                    f"object ref was passed: {obj_ref}"
+                )
+        elif uri:
+            assert not local_path and not data_dict and not obj_ref
+            uri = _get_external_path(uri)
+            if not uri:
+                raise RuntimeError(
+                    f"Cannot create checkpoint from URI as it is not "
+                    f"supported: {uri}"
+                )
         else:
             raise ValueError("Cannot create checkpoint without data.")
 
@@ -72,14 +104,14 @@ class Checkpoint:
         if isinstance(bytes_data, dict):
             data_dict = bytes_data
         else:
-            data_dict = {"bytes_data": bytes_data}
+            data_dict = {BYTES_DATA_KEY: bytes_data}
         return cls.from_dict(data_dict)
 
     def to_bytes(self) -> bytes:
         """Return Checkpoint serialized as bytes object.
 
-        Will convert the checkpoint into a dict and return a pickled
-        bytes string.
+        Converts the checkpoint into a dict and returns a pickled
+        bytes string of that dict.
 
         Returns:
             bytes: Bytes object containing checkpoint data.
@@ -135,7 +167,7 @@ class Checkpoint:
                 data = _pack(local_path)
 
                 checkpoint_data = {
-                    "fs_checkpoint": data,
+                    FS_CHECKPOINT_KEY: data,
                 }
 
             if cleanup:
@@ -181,14 +213,7 @@ class Checkpoint:
         Returns:
             Checkpoint: checkpoint object.
         """
-        if not os.path.exists(path):
-            raise RuntimeError(
-                f"Cannot create checkpoint from directory, because path does "
-                f"not exist on local node: {path}"
-            )
-
-        local_checkpoint = Checkpoint(local_path=path)
-        return local_checkpoint
+        return Checkpoint(local_path=path)
 
     def to_directory(self, path: Optional[str] = None) -> str:
         """Write checkpoint data to directory.
@@ -209,9 +234,9 @@ class Checkpoint:
             # This is a object ref or dict
             data_dict = self.to_dict()
 
-            if "fs_checkpoint" in data_dict:
+            if FS_CHECKPOINT_KEY in data_dict:
                 # This used to be a true fs checkpoint, so restore
-                _unpack(data_dict["fs_checkpoint"], path)
+                _unpack(data_dict[FS_CHECKPOINT_KEY], path)
             else:
                 # This is a dict checkpoint. Dump data into checkpoint.pkl
                 checkpoint_data_path = os.path.join(path, DICT_CHECKPOINT_FILE_NAME)
@@ -241,15 +266,16 @@ class Checkpoint:
     def from_uri(cls, uri: str) -> "Checkpoint":
         """Create checkpoint object from location URI (e.g. cloud storage).
 
+        Valid locations currently include AWS S3 (``s3://``),
+        Google cloud storage (``gs://``), HDFS (``hdfs://``), and
+        local files (``file://``).
+
         Args:
             uri (str): Source location URI to read data from.
 
         Returns:
             Checkpoint: checkpoint object.
         """
-        local_path = _get_local_path(uri)
-        if local_path:
-            return Checkpoint.from_directory(local_path)
         return Checkpoint(uri=uri)
 
     def to_uri(self, uri: str) -> str:
@@ -283,6 +309,7 @@ class Checkpoint:
 
 
 def _get_local_path(path: Optional[str]) -> Optional[str]:
+    """Check if path is a local path. Otherwise return None."""
     if path is None or is_cloud_target(path):
         return None
     if path.startswith("file://"):
@@ -293,16 +320,19 @@ def _get_local_path(path: Optional[str]) -> Optional[str]:
 
 
 def _get_external_path(path: Optional[str]) -> Optional[str]:
-    if path is None or not is_cloud_target(path):
+    """Check if path is an external path. Otherwise return None."""
+    if not isinstance(path, str) or not is_cloud_target(path):
         return None
     return path
 
 
 def _temporary_checkpoint_dir() -> str:
+    """Create temporary checkpoint dir."""
     return tempfile.mkdtemp(prefix="checkpoint_tmp_", dir=os.getcwd())
 
 
 def _pack(path: str) -> bytes:
+    """Pack directory in ``path`` into an archive, return as bytes string."""
     _, tmpfile = tempfile.mkstemp()
     with tarfile.open(tmpfile, "w:gz") as tar:
         tar.add(path, arcname="")
@@ -315,6 +345,7 @@ def _pack(path: str) -> bytes:
 
 
 def _unpack(stream: bytes, path: str) -> str:
+    """Unpack archive in bytes string into directory in ``path``."""
     _, tmpfile = tempfile.mkstemp()
 
     with open(tmpfile, "wb") as f:
