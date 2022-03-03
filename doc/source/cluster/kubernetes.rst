@@ -50,6 +50,7 @@ Installing the Ray Operator with Helm
 Ray provides a `Helm`_ chart to simplify deployment of the Ray Operator and Ray clusters.
 
 The `Ray Helm chart`_ is available as part of the Ray GitHub repository.
+A URL to the packaged chart can be found under the `release assets`_.
 The chart will be published to a public Helm repository as part of a future Ray release.
 
 Preparation
@@ -57,7 +58,7 @@ Preparation
 
 - Configure `kubectl`_ to access your Kubernetes cluster.
 - Install `Helm 3`_.
-- Download the `Ray Helm chart`_.
+- Download the `Ray Helm chart`_, or find the URL to the packaged Helm chart under `release assets`_.
 
 To run the default example in this document, make sure your Kubernetes cluster can accomodate
 additional resource requests of 4 CPU and 2.5Gi memory.
@@ -66,6 +67,8 @@ Installation
 ~~~~~~~~~~~~
 
 You can install a small Ray cluster with a single ``helm`` command.
+You can either clone the project and point Helm to the local path,
+or point Helm to the packaged chart by passing the URL found under `release assets`_.
 The default cluster configuration consists of a Ray head pod and two worker pods,
 with scaling allowed up to three workers.
 
@@ -306,6 +309,7 @@ Questions or Issues?
 .. _`namespace`: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
 .. _`Deployment`: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
 .. _`Ray Helm chart`: https://github.com/ray-project/ray/tree/master/deploy/charts/ray/
+.. _`release assets`: https://github.com/ray-project/ray/releases/latest
 .. _`kubectl`: https://kubernetes.io/docs/tasks/tools/
 .. _`Helm 3`: https://helm.sh/
 .. _`Helm`: https://helm.sh/
