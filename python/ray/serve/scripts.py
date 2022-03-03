@@ -251,6 +251,7 @@ def run(
         args, kwargs = process_args_and_kwargs(args_and_kwargs)
 
         if is_config:
+            # Delay serve.start() to catch invalid inputs without waiting
             if len(args) + len(kwargs) > 0:
                 raise ValueError(
                     "ARGS_AND_KWARGS cannot be defined for a "
