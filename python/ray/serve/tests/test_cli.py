@@ -172,6 +172,8 @@ def test_deploy(ray_start_stop):
                 == deployment_config["response"]
             )
 
+    ray.shutdown()
+
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_info(ray_start_stop):
@@ -230,6 +232,48 @@ def test_info(ray_start_stop):
     )
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_status(ray_start_stop):
+    # Deploys a config file and checks its status
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "three_deployments.yaml"
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file_name])
+    status_response = subprocess.check_output(["serve", "status"])
+    statuses = json.loads(status_response)["statuses"]
+
+    expected_deployments = {"shallow", "deep", "one"}
+    for status in statuses:
+        expected_deployments.remove(status["name"])
+        assert status["status"] in {"HEALTHY", "UPDATING"}
+        assert "message" in status
+    assert len(expected_deployments) == 0
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_delete(ray_start_stop):
+    # Deploys a config file and deletes it
+
+    def get_num_deployments():
+        info_response = subprocess.check_output(["serve", "info"])
+        info = json.loads(info_response)
+        return len(info["deployments"])
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
+    )
+
+    # Check idempotence
+    for _ in range(2):
+        subprocess.check_output(["serve", "deploy", config_file_name])
+        wait_for_condition(lambda: get_num_deployments() == 2, timeout=35)
+
+        subprocess.check_output(["serve", "delete", "-y"])
+        wait_for_condition(lambda: get_num_deployments() == 0, timeout=35)
+
+
 def parrot(request):
     return request.query_params["sound"]
 
@@ -250,10 +294,9 @@ def test_run_basic(ray_start_stop):
     )
 
     p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
-    wait_for_condition(lambda: ping_endpoint("one") == "connection error", timeout=10)
-    wait_for_condition(
-        lambda: ping_endpoint("shallow") == "connection error", timeout=10
-    )
+    p.wait()
+    assert ping_endpoint("one") == "connection error"
+    assert ping_endpoint("shallow") == "connection error"
 
     # Deploy via import path
     p = subprocess.Popen(["serve", "run", "ray.serve.tests.test_cli.parrot"])
@@ -262,10 +305,8 @@ def test_run_basic(ray_start_stop):
     )
 
     p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
-    wait_for_condition(
-        lambda: ping_endpoint("run", params="?sound=squawk") == "connection error",
-        timeout=10,
-    )
+    p.wait()
+    assert ping_endpoint("parrot", params="?sound=squawk") == "connection error"
 
 
 class Macaw:
@@ -376,47 +417,6 @@ def test_run_working_dir(ray_start_stop):
     wait_for_condition(lambda: ping_endpoint("run") == "2", timeout=10)
     p.send_signal(signal.SIGINT)
     p.wait()
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_delete(ray_start_stop):
-    # Deploys a config file and deletes it
-
-    config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
-    )
-
-    # Check idempotence
-    for _ in range(2):
-        subprocess.check_output(["serve", "deploy", config_file_name])
-        info_response = subprocess.check_output(["serve", "info"])
-        info = json.loads(info_response)
-        len(info["deployments"]) == 2
-
-        subprocess.check_output(["serve", "delete", "-y"])
-        info_response = subprocess.check_output(["serve", "info"])
-        info = json.loads(info_response)
-        len(info["deployments"]) == 2
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_status(ray_start_stop):
-    # Deploys a config file and checks its status
-
-    config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "three_deployments.yaml"
-    )
-
-    subprocess.check_output(["serve", "deploy", config_file_name])
-    status_response = subprocess.check_output(["serve", "status"])
-    statuses = json.loads(status_response)["statuses"]
-
-    expected_deployments = {"shallow", "deep", "one"}
-    for status in statuses:
-        expected_deployments.remove(status["name"])
-        assert status["status"] in {"HEALTHY", "UPDATING"}
-        assert "message" in status
-    assert len(expected_deployments) == 0
 
 
 if __name__ == "__main__":
