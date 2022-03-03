@@ -157,8 +157,9 @@ class GroupedDataset(Generic[T]):
         """Apply the given function to each group of records of this dataset.
 
         While map_groups() is very flexible, note that it comes with downsides:
-            - It may be slower than using more specific methods such as min(), max().
-            - It requires that each group fits in memory on a single node.
+            * It may be slower than using more specific methods such as min(), max().
+            * It requires that each group fits in memory on a single node.
+
         In general, prefer to use aggregate() instead of map_groups().
 
         This is a blocking operation.
