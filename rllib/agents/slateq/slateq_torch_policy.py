@@ -41,7 +41,6 @@ def build_slateq_model_and_distribution(
     Returns:
         Tuple consisting of 1) Q-model and 2) an action distribution class.
     """
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model = SlateQTorchModel(
         obs_space,
         action_space,
@@ -49,7 +48,7 @@ def build_slateq_model_and_distribution(
         model_config=config["model"],
         name="slateq_model",
         fcnet_hiddens_per_candidate=config["fcnet_hiddens_per_candidate"],
-    ).to(device)
+    )
 
     policy.target_model = SlateQTorchModel(
         obs_space,
@@ -58,7 +57,7 @@ def build_slateq_model_and_distribution(
         model_config=config["model"],
         name="target_slateq_model",
         fcnet_hiddens_per_candidate=config["fcnet_hiddens_per_candidate"],
-    ).to(device)
+    )
 
     return model, TorchCategorical
 
@@ -126,15 +125,15 @@ def build_slateq_losses(
     # TODO: Find out, whether it's correct here to use obs, not next_obs!
     # Dopamine uses obs, then next_obs only for the score.
     # next_q_values = policy.target_model.get_q_values(user_next_obs, doc_next_obs)
-    next_q_values = policy.target_model.get_q_values(user_obs, doc_obs)
+    next_q_values = policy.target_models[model].get_q_values(user_obs, doc_obs)
     scores, score_no_click = score_documents(user_next_obs, doc_next_obs)
 
     # next_q_values_slate.shape: [B, A, S]
-    next_q_values_slate = torch.take_along_dim(
-        next_q_values, policy.slates_indices, dim=1
+    indices = policy.slates_indices.to(next_q_values.device)
+    next_q_values_slate = torch.take_along_dim(next_q_values, indices, dim=1
     ).reshape([-1, A, S])
     # scores_slate.shape [B, A, S]
-    scores_slate = torch.take_along_dim(scores, policy.slates_indices, dim=1).reshape(
+    scores_slate = torch.take_along_dim(scores, indices, dim=1).reshape(
         [-1, A, S]
     )
     # score_no_click_slate.shape: [B, A]
@@ -155,7 +154,7 @@ def build_slateq_losses(
 
     clicked = torch.sum(click_indicator, dim=1)
     mask_clicked_slates = clicked > 0
-    clicked_indices = torch.arange(batch_size).to(policy.device)
+    clicked_indices = torch.arange(batch_size).to(mask_clicked_slates.device)
     clicked_indices = torch.masked_select(clicked_indices, mask_clicked_slates)
     # Clicked_indices is a vector and torch.gather selects the batch dimension.
     q_clicked = torch.gather(replay_click_q, 0, clicked_indices)
@@ -290,15 +289,15 @@ def action_distribution_fn(
     q_values = model.get_q_values(user_obs, doc_obs)
 
     per_slate_q_values = get_per_slate_q_values(
-        policy, scores, score_no_click, q_values
+        policy, score_no_click, scores, q_values
     )
     if not hasattr(model, "slates"):
         model.slates = policy.slates
     return per_slate_q_values, TorchCategorical, []
 
 
-def get_per_slate_q_values(policy, scores, score_no_click, q_values):
-    indices = policy.slates_indices
+def get_per_slate_q_values(policy, score_no_click, scores, q_values):
+    indices = policy.slates_indices.to(scores.device)
     A, S = policy.slates.shape
     slate_q_values = torch.take_along_dim(scores * q_values, indices, dim=1).reshape(
         [-1, A, S]
@@ -321,7 +320,6 @@ def score_documents(
         torch.multiply(user_obs.unsqueeze(1), torch.stack(doc_obs, dim=1)), dim=2
     )
     # Compile a constant no-click score tensor.
-    # Make sure it lives on the same device as scores_per_candidate.
     score_no_click = torch.full(
         size=[user_obs.shape[0], 1], fill_value=no_click_score
     ).to(scores_per_candidate.device)
@@ -360,6 +358,8 @@ def setup_early(policy, obs_space, action_space, config):
 
     # Store all possible slates only once in policy object.
     policy.slates = slates.long()
+    # [1, AxS] Useful for torch.take_along_dim()
+    policy.slates_indices = policy.slates.reshape(-1).unsqueeze(0)
 
 
 def optimizer_fn(
@@ -394,33 +394,19 @@ def postprocess_fn_add_next_actions_for_sarsa(
     return batch
 
 
-def setup_late(
+def setup_late_mixins(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
     config: TrainerConfigDict,
 ) -> None:
-    """Late setup after init is done.
+    """Call all mixin classes' constructors before SlateQTorchPolicy initialization.
 
     Args:
         policy: The Policy object.
         obs_space: The Policy's observation space.
         action_space: The Policy's action space.
         config: The Policy's config.
-    """
-    # [1, AxS] Useful for torch.take_along_dim()
-    policy.slates_indices = policy.slates.reshape(-1).unsqueeze(0).to(policy.device)
-
-    setup_mixins(policy)
-
-
-def setup_late_mixins(
-    policy: Policy,
-) -> None:
-    """Call all mixin classes' constructors before SlateQTorchPolicy initialization.
-
-    Args:
-        policy: The Policy object.
     """
     TargetNetworkMixin.__init__(policy)
 
@@ -430,7 +416,7 @@ SlateQTorchPolicy = build_policy_class(
     framework="torch",
     get_default_config=lambda: ray.rllib.agents.slateq.slateq.DEFAULT_CONFIG,
     before_init=setup_early,
-    after_init=setup_late,
+    after_init=setup_late_mixins,
     loss_fn=build_slateq_losses,
     stats_fn=build_slateq_stats,
     # Build model, loss functions, and optimizers
