@@ -18,9 +18,9 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
+#include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
-#include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
@@ -128,7 +128,7 @@ class GcsScheduleStrategy {
   ///
   /// \param bundles Bundles to be scheduled.
   /// \return Required resources.
-  std::vector<ResourceSet> GetRequiredResourcesFromBundles(
+  std::vector<ResourceRequest> GetRequiredResourcesFromBundles(
       const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles);
 
   /// Generate `ScheduleResult` from bundles and nodes .
