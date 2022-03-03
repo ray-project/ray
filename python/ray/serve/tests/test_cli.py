@@ -274,6 +274,10 @@ def test_delete(ray_start_stop):
         wait_for_condition(lambda: get_num_deployments() == 0, timeout=35)
 
 
+def parrot(request):
+    return request.query_params["sound"]
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_run_basic(ray_start_stop):
     # Deploys valid config file and import path via serve run
