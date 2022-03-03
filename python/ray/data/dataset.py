@@ -2506,12 +2506,12 @@ Dict[str, List[str]]]): The names of the columns
             key: The key column over which records can be queried.
             num_workers: The number of actors to use to serve random access queries.
                 By default, this is determined by multiplying the number of Ray nodes
-                in the cluster by two. As a rule of thumb, you can expect each worker
+                in the cluster by four. As a rule of thumb, you can expect each worker
                 to provide ~3000 records / second via ``get_async()``, and
                 ~10000 records / second via ``multiget()``.
         """
         if num_workers is None:
-            num_workers = 2 * len(ray.nodes())
+            num_workers = 4 * len(ray.nodes())
         return RandomAccessDataset(self, key, num_workers=num_workers)
 
     def repeat(self, times: Optional[int] = None) -> "DatasetPipeline[T]":
