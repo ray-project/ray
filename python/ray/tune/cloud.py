@@ -335,6 +335,9 @@ class TrialCheckpoint(Checkpoint, _TrialCheckpoint):
         PLACEHOLDER = "s3://placeholder"
         uri = PLACEHOLDER
 
+        self._cloud_path = None
+        self._local_path_tcp = None
+
         locations = set()
         if local_path:
             # Add _tcp to not conflict with Checkpoint._local_path

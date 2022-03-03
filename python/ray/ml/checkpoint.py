@@ -2,11 +2,11 @@ import shutil
 import tarfile
 import tempfile
 
-import cloudpickle as pickle
 import os
 from typing import Optional
 
 import ray
+from ray import cloudpickle as pickle
 from ray.util.annotations import DeveloperAPI
 from ray.util.ml_utils.cloud import (
     upload_to_bucket,
