@@ -126,17 +126,16 @@ class FiberState {
     RAY_CHECK(op_status == boost::fibers::channel_op_status::success);
   }
 
-  ~FiberState() {
+  void Stop() {
     channel_.close();
     shutdown_worker_event_.Notify();
+  }
+
+  void Join() {
     if (fiber_runner_thread_.joinable()) {
       fiber_runner_thread_.join();
     }
   }
-
-  void Stop() {}
-
-  void Join() {}
 
  private:
   /// The fiber channel used to send task between the submitter thread
