@@ -351,7 +351,7 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
     if (!task.has_value()) {
       break;
     }
-    RAY_CHECK(!client_queue.worker_id.empty());
+    RAY_CHECK(!client_queue.worker_id.empty() || force_fail);
     PushActorTask(client_queue, task.value().first, task.value().second, force_fail);
   }
 }
@@ -411,7 +411,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
     addr.CopyFrom(queue.rpc_client->Addr());
   }
   rpc::ClientCallback<rpc::PushTaskReply> reply_callback =
-      [this, addr, task_id, actor_id, actor_counter, task_spec, task_skipped](
+      [this, addr, task_id, actor_id, actor_counter, task_spec, task_skipped, force_fail](
           const Status &status, const rpc::PushTaskReply &reply) {
         /// Whether or not we will retry this actor task.
         auto will_retry = false;
@@ -422,6 +422,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
           // because the tasks are pushed directly to the actor, not placed on any queues
           // in task_finisher_.
         } else if (status.ok()) {
+          RAY_CHECK(!force_fail);
           task_finisher_.CompletePendingTask(task_id, reply, addr);
         } else {
           // push task failed due to network error. For example, actor is dead
@@ -490,8 +491,13 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
       };
 
   if (force_fail) {
-    rpc::PushTaskReply reply;
-    wrapped_callback(Status::IOError("The actor is temporarily unavailable."), reply);
+    io_service_.post(
+        [wrapped_callback = std::move(wrapped_callback)] {
+          rpc::PushTaskReply reply;
+          wrapped_callback(Status::IOError("The actor is temporarily unavailable."),
+                           reply);
+        },
+        "CoreWorkerDirectActorTaskSubmitter::PushActorTask_ForceFail");
     return;
   }
 

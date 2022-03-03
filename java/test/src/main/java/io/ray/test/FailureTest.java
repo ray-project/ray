@@ -14,7 +14,6 @@ import io.ray.runtime.util.SystemUtil;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -74,12 +73,9 @@ public class FailureTest extends BaseTest {
   }
 
   public static class SlowActor {
-    public SlowActor() {
-      try {
-        // This is to slow down the restarting process and make the test case more stable.
-        TimeUnit.SECONDS.sleep(5);
-      } catch (InterruptedException e) {
-        throw new RuntimeException(e);
+    public SlowActor(ActorHandle<SignalActor> signalActor) {
+      if (Ray.getRuntimeContext().wasCurrentActorRestarted()) {
+        signalActor.task(SignalActor::waitSignal).remote().get();
       }
     }
 
@@ -159,48 +155,26 @@ public class FailureTest extends BaseTest {
     }
   }
 
-  public void testActorTaskFastFail() throws IOException {
+  public void testActorTaskFastFail() throws IOException, InterruptedException {
+    ActorHandle<SignalActor> signalActor = SignalActor.create();
     ActorHandle<SlowActor> actor =
-        Ray.actor(SlowActor::new).setMaxRestarts(1).setEnableTaskFastFail(true).remote();
+        Ray.actor(SlowActor::new, signalActor)
+            .setMaxRestarts(1)
+            .setEnableTaskFastFail(true)
+            .remote();
     int pid = actor.task(SlowActor::getPid).remote().get();
     Runtime.getRuntime().exec("kill -9 " + pid);
 
-    // Send tasks until the caller finds out that the actor is unavailable.
-    boolean[] exceptionOccurred = new boolean[] {false};
-    while (!exceptionOccurred[0]) {
-      // Make sure the task execution finishes or the exception throws quickly.
-      TestUtils.executeWithinTime(
-          () -> {
-            try {
-              actor.task(SlowActor::getPid).remote().get();
-            } catch (RayActorException e) {
-              exceptionOccurred[0] = true;
-            }
-          },
-          2000);
-    }
+    // Wait for a while so that now the driver knows the actor is in RESTARTING state.
+    Thread.sleep(1000);
+    // An actor task should fail quickly until the actor is restarted.
+    Assert.expectThrows(RayException.class, () -> actor.task(SlowActor::getPid).remote().get());
 
-    // The actor is still restarting. Send more tasks and all of them should fail quickly
-    // until the actor is restarted.
-    int failedCount = 0;
-    while (true) {
-      ObjectRef<Integer> newPidObject = actor.task(SlowActor::getPid).remote();
-      int newPid = 0;
-      long startTime = System.currentTimeMillis();
-      try {
-        newPid = newPidObject.get();
-      } catch (RayException e) {
-        failedCount++;
-      }
-      if (newPid != 0) {
-        Assert.assertNotEquals(pid, newPid);
-        break;
-      } else {
-        long endTime = System.currentTimeMillis();
-        Assert.assertTrue(endTime - startTime <= 500);
-      }
-    }
-    Assert.assertTrue(failedCount > 0);
+    signalActor.task(SignalActor::sendSignal).remote().get();
+    // Wait for a while so that now the driver knows the actor is in ALIVE state.
+    Thread.sleep(1000);
+    // An actor task should succeed.
+    actor.task(SlowActor::getPid).remote().get();
   }
 
   public void testGetThrowsQuicklyWhenFoundException() {
