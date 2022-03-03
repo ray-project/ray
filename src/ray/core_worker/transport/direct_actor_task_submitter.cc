@@ -27,7 +27,7 @@ namespace core {
 
 void CoreWorkerDirectActorTaskSubmitter::AddActorQueueIfNotExists(
     const ActorID &actor_id, int32_t max_pending_calls, bool execute_out_of_order,
-    bool enable_task_fast_fail = false) {
+    bool enable_task_fast_fail) {
   absl::MutexLock lock(&mu_);
   // No need to check whether the insert was successful, since it is possible
   // for this worker to have multiple references to the same actor.
