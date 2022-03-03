@@ -41,6 +41,7 @@ def test_stats(ray_start_regular_shared):
     stats = rad.stats()
     assert "Accesses per worker: 1 min, 1 max, 1 mean" in stats, stats
     rad.multiget([1, 2, 3])
+    stats = rad.stats()
     assert "Accesses per worker: 2 min, 2 max, 2 mean" in stats, stats
 
 
