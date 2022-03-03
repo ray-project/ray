@@ -14,6 +14,13 @@ from ray._private.test_utils import wait_for_condition
 from ray.dashboard.optional_utils import RAY_INTERNAL_DASHBOARD_NAMESPACE
 
 
+def ping_endpoint(endpoint: str, params: str = ""):
+    try:
+        return requests.get(f"http://localhost:8000/{endpoint}{params}").text
+    except requests.exceptions.ConnectionError:
+        return "connection error"
+
+
 @pytest.fixture
 def ray_start_stop():
     subprocess.check_output(["ray", "start", "--head"])
