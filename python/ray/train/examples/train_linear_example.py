@@ -5,12 +5,7 @@ import torch
 import torch.nn as nn
 import ray.train as train
 from ray.train import Trainer
-from ray.train.callbacks import JsonLoggerCallback, TBXLoggerCallback, PrintCallback
-from ray.train.callbacks.results_preprocessors.aggregate import (
-    AverageResultsPreprocessor,
-    MaxResultsPreprocessor,
-    WeightedAverageResultsPreprocessor,
-)
+from ray.train.callbacks import JsonLoggerCallback, TBXLoggerCallback
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -40,7 +35,7 @@ def train_epoch(dataloader, model, loss_fn, optimizer):
         optimizer.step()
 
 
-def validate_epoch(epoch, dataloader, model, loss_fn):
+def validate_epoch(dataloader, model, loss_fn):
     num_batches = len(dataloader)
     model.eval()
     loss = 0
@@ -49,13 +44,10 @@ def validate_epoch(epoch, dataloader, model, loss_fn):
             pred = model(X)
             loss += loss_fn(pred, y).item()
     loss /= num_batches
+    import copy
 
-    result = {
-        "worker_idx": train.world_rank(),
-        "epoch": epoch,
-        "loss": loss,
-        "batch_size": num_batches,
-    }
+    model_copy = copy.deepcopy(model)
+    result = {"model": model_copy.cpu().state_dict(), "loss": loss}
     return result
 
 
@@ -84,9 +76,9 @@ def train_func(config):
 
     results = []
 
-    for i in range(epochs):
+    for _ in range(epochs):
         train_epoch(train_loader, model, loss_fn, optimizer)
-        result = validate_epoch(i, validation_loader, model, loss_fn)
+        result = validate_epoch(validation_loader, model, loss_fn)
         train.report(**result)
         results.append(result)
 
@@ -98,19 +90,7 @@ def train_linear(num_workers=2, use_gpu=False, epochs=3):
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
     trainer.start()
     results = trainer.run(
-        train_func,
-        config,
-        callbacks=[
-            PrintCallback(
-                results_preprocessors=[
-                    AverageResultsPreprocessor(["loss", "batch_size"]),
-                    MaxResultsPreprocessor(["time", "loss"]),
-                    WeightedAverageResultsPreprocessor(["loss"], "batch_size"),
-                ]
-            ),
-            JsonLoggerCallback(),
-            TBXLoggerCallback(),
-        ],
+        train_func, config, callbacks=[JsonLoggerCallback(), TBXLoggerCallback()]
     )
     trainer.shutdown()
 

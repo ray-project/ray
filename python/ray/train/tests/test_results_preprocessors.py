@@ -2,6 +2,9 @@ from ray.train.callbacks.results_preprocessors import (
     ExcludedKeysResultsPreprocessor,
     IndexedResultsPreprocessor,
     SequentialResultsPreprocessor,
+    AverageResultsPreprocessor,
+    MaxResultsPreprocessor,
+    WeightedAverageResultsPreprocessor,
 )
 
 
@@ -34,6 +37,68 @@ def test_sequential_results_preprocessor():
     preprocessor_2 = IndexedResultsPreprocessor([0, 2])
 
     preprocessor = SequentialResultsPreprocessor([preprocessor_1, preprocessor_2])
+    preprocessed_results = preprocessor.preprocess(results)
+
+    assert preprocessed_results == expected
+
+
+def test_average_results_preprocessor():
+    from copy import deepcopy
+    import numpy as np
+
+    results = [{"a": 1, "b": 2}, {"a": 3, "b": 4}, {"a": 5, "b": 6}, {"a": 7, "b": 8}]
+    expected = deepcopy(results)
+    for res in expected:
+        res.update(
+            {
+                "Average(a)": np.mean([result["a"] for result in results]),
+                "Average(b)": np.mean([result["b"] for result in results]),
+            }
+        )
+
+    preprocessor = AverageResultsPreprocessor(["a", "b"])
+    preprocessed_results = preprocessor.preprocess(results)
+
+    assert preprocessed_results == expected
+
+
+def test_max_results_preprocessor():
+    from copy import deepcopy
+    import numpy as np
+
+    results = [{"a": 1, "b": 2}, {"a": 3, "b": 4}, {"a": 5, "b": 6}, {"a": 7, "b": 8}]
+    expected = deepcopy(results)
+    for res in expected:
+        res.update(
+            {
+                "Max(a)": np.max([result["a"] for result in results]),
+                "Max(b)": np.max([result["b"] for result in results]),
+            }
+        )
+
+    preprocessor = MaxResultsPreprocessor(["a", "b"])
+    preprocessed_results = preprocessor.preprocess(results)
+
+    assert preprocessed_results == expected
+
+
+def test_weighted_average_results_preprocessor():
+    from copy import deepcopy
+    import numpy as np
+
+    results = [{"a": 1, "b": 2}, {"a": 3, "b": 4}, {"a": 5, "b": 6}, {"a": 7, "b": 8}]
+    expected = deepcopy(results)
+    total_weight = np.sum([result["b"] for result in results])
+    for res in expected:
+        res.update(
+            {
+                "Weighted average [by b](a)": np.sum(
+                    [result["a"] * result["b"] / total_weight for result in results]
+                )
+            }
+        )
+
+    preprocessor = WeightedAverageResultsPreprocessor(["a"], "b")
     preprocessed_results = preprocessor.preprocess(results)
 
     assert preprocessed_results == expected

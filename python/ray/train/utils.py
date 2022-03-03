@@ -112,18 +112,3 @@ class Singleton(abc.ABCMeta):
         if cls not in cls._instances:
             cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
         return cls._instances[cls]
-
-
-class ResultsList(list):
-    """A list subclass that stores aggregated results"""
-
-    def __init__(self, *arg):
-        super().__init__(*arg)
-        self._aggregate_results = {}
-
-    def update_aggregated_results(self, s):
-        self._aggregate_results.update(s)
-
-    @property
-    def aggregated_results(self):
-        return self._aggregate_results
