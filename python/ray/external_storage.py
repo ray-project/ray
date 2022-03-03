@@ -383,7 +383,7 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
 
     def __init__(
         self,
-        uri: str,
+        uri: str or list,
         prefix: str = DEFAULT_OBJECT_PREFIX,
         override_transport_params: dict = None,
     ):
@@ -396,10 +396,24 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
                 f"is not downloaded. Original error: {e}"
             )
 
-        self.uri = uri.strip("/")
+        assert (
+            uri is not None
+        ), "uri should be provided to use object spilling."
+        if isinstance(uri, str):
+            uri = [uri]
+        assert isinstance(uri, list), "uri must be a single string or list of strings."
+        
+        self._uris = [u.strip("/") for u in uri]
+        assert len(self._uris) == len(uri)
+        
+        s3 = [uri.startswith("s3") for u in self._uris]
+        if (any(s3)):
+            assert ( all(s3) ), "all uri's must be s3 or none can be s3."
+        self.is_for_s3 = all(s3)
+        self._current_uri_index = random.randrange(0, len(self._uris))
+
         self.prefix = prefix
         self.override_transport_params = override_transport_params or {}
-        self.is_for_s3 = uri.startswith("s3")
 
         if self.is_for_s3:
             import boto3  # noqa
@@ -423,10 +437,14 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
             return []
         from smart_open import open
 
+        # Choose the current uri by round robin order.
+        self._current_uri_index = (self._current_uri_index + 1) % len(self._uris)
+        uri = self._uris[self._current_uri_index]
+
         # Always use the first object ref as a key when fusioning objects.
         first_ref = object_refs[0]
         key = f"{self.prefix}-{first_ref.hex()}-multi-{len(object_refs)}"
-        url = f"{self.uri}/{key}"
+        url = f"{uri}/{key}"
         with open(url, "wb", transport_params=self.transport_params) as file_like:
             return self._write_multiple_objects(
                 file_like, object_refs, owner_addresses, url
@@ -469,7 +487,6 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
 
     def destroy_external_storage(self):
         pass
-
 
 _external_storage = NullStorage()
 
