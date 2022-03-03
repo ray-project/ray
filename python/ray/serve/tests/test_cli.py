@@ -327,7 +327,7 @@ def test_run_init_args_kwargs(ray_start_stop):
 def test_run_working_dir(ray_start_stop):
     # Tests serve run with working_dirs specified
 
-    # Use local working_dir
+    # Use local working_dir with import path
     p = subprocess.Popen(
         [
             "serve",
@@ -342,6 +342,24 @@ def test_run_working_dir(ray_start_stop):
         ]
     )
     wait_for_condition(lambda: ping_endpoint("run") == "Molly is green!", timeout=10)
+    p.send_signal(signal.SIGINT)
+    p.wait()
+
+    # Use local working_dir with config file
+    p = subprocess.Popen(
+        [
+            "serve",
+            "run",
+            os.path.join(
+                os.path.dirname(__file__), "test_config_files", "scarlet.yaml"
+            ),
+            "--working_dir",
+            os.path.dirname(__file__),
+        ]
+    )
+    wait_for_condition(
+        lambda: ping_endpoint("Scarlet") == "Scarlet is red!", timeout=10
+    )
     p.send_signal(signal.SIGINT)
     p.wait()
 

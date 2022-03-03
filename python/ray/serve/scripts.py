@@ -85,6 +85,25 @@ def process_args_and_kwargs(
     return args, kwargs
 
 
+def configure_working_dir(
+    deployment: Deployment, working_dir: str, submission_client: SubmissionClient
+) -> None:
+    """
+    Sets the deployment's working_dir to working_dir. Uses the
+    submission_client to upload the working_dir if it's local.
+    Mutates the deployment.
+    """
+
+    runtime_env = {"working_dir": working_dir}
+    submission_client._upload_working_dir_if_needed(runtime_env)
+    if deployment.ray_actor_options is None:
+        deployment._ray_actor_options = {"runtime_env": runtime_env}
+    elif "runtime_env" in deployment.ray_actor_options:
+        deployment.ray_actor_options["runtime_env"].update(runtime_env)
+    else:
+        deployment.ray_actor_options["runtime_env"] = runtime_env
+
+
 @click.group(help="[EXPERIMENTAL] CLI for managing Serve instances on a Ray cluster.")
 @click.option(
     "--address",
@@ -241,8 +260,7 @@ def deploy(config_file_name: str, address: str):
     default=None,
     required=False,
     type=str,
-    help="Local path or remote URI of working directory for the deployment. "
-    "Only works with deployment accessed by import path.",
+    help="Local path or remote URI of working directory for the deployment(s).",
 )
 @click.option(
     "--address",
@@ -274,11 +292,6 @@ def run(
         args, kwargs = process_args_and_kwargs(args_and_kwargs)
 
         if is_config:
-            if working_dir is not None:
-                raise ValueError(
-                    "WORKING_DIR is not supported for config file deployment. "
-                    "Please specify the working_dir inside the config file."
-                )
             if len(args) + len(kwargs) > 0:
                 raise ValueError(
                     "ARGS_AND_KWARGS cannot be defined for a "
@@ -296,6 +309,11 @@ def run(
             deployments = schema_to_serve_application(schematized_config)
 
             serve.start()
+            if working_dir is not None:
+                submission_client = SubmissionClient(address)
+                for deployment in deployments:
+                    configure_working_dir(deployment, working_dir, submission_client)
+
             deploy_group(deployments)
 
             cli_logger.newline()
@@ -306,23 +324,20 @@ def run(
             cli_logger.newline()
 
         if not is_config:
-            serve.start()
-
-            runtime_env = {}
-            if working_dir is not None:
-                runtime_env = {"working_dir": working_dir}
-                submission_client = SubmissionClient(address)
-                submission_client._upload_working_dir_if_needed(runtime_env)
-
             cli_logger.print(
                 "Deploying function or class imported from " f"{config_or_import_path}."
             )
+
             deployment = serve.deployment(name="run")(config_or_import_path)
+
+            serve.start()
+            if working_dir is not None:
+                submission_client = SubmissionClient(address)
+                configure_working_dir(deployment, working_dir, submission_client)
 
             deployment.options(
                 init_args=args,
                 init_kwargs=kwargs,
-                ray_actor_options={"runtime_env": runtime_env},
             ).deploy()
 
             cli_logger.newline()
