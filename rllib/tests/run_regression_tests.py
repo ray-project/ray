@@ -132,10 +132,7 @@ if __name__ == "__main__":
                 ray.init()
             else:
                 try:
-                    import rayportal
-
-                    with rayportal.auto_attach():
-                        trials = run_experiments(experiments, resume=False, verbose=2)
+                    trials = run_experiments(experiments, resume=False, verbose=2)
                 finally:
                     ray.shutdown()
                     _register_all()
