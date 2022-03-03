@@ -7,6 +7,7 @@ import pathlib
 import requests
 import click
 import time
+from typing import Tuple
 
 import ray
 from ray.serve.api import Deployment, deploy_group, get_deployment_statuses
@@ -186,24 +187,11 @@ def deploy(config_file_name: str, address: str):
     hidden=True,
 )
 @click.argument("config_or_import_path")
-@click.option(
-    "--config_or_import_path",
-    default=None,
-    required=False,
-    type=str,
-    help="Either a Serve YAML configuration file path or an import path to "
-    "a class or function to deploy. Import paths must be of the form "
-    '"module.submodule_1...submodule_n.MyClassOrFunction".',
-)
-@click.option(
-    "--address",
-    "-a",
-    default=None,
-    required=False,
-    type=str,
-    help="Address of the running Ray cluster to connect to. " 'Defaults to "auto".',
-)
-def run(config_or_import_path: str, address: str):
+@click.argument("args_and_kwargs", required=False, nargs=-1)
+def run(
+    config_or_import_path: str,
+    args_and_kwargs: Tuple[str],
+):
     """
     Deploys deployment(s) from CONFIG_OR_IMPORT_PATH, which must be either a
     Serve YAML configuration file path or an import path to
@@ -214,12 +202,16 @@ def run(config_or_import_path: str, address: str):
     try:
         # Check if path provided is for config or import
         is_config = pathlib.Path(config_or_import_path).is_file()
-
-        if address is not None:
-            ray.init(address=address, namespace="serve")
-        serve.start()
+        args, kwargs = process_args_and_kwargs(args_and_kwargs)
 
         if is_config:
+            if len(args) + len(kwargs) > 0:
+                raise ValueError(
+                    "ARGS_AND_KWARGS cannot be defined for a "
+                    "config file deployment. Please specify the "
+                    "init_args and init_kwargs inside the config file."
+                )
+
             cli_logger.print(
                 "Deploying application in config file at " f"{config_or_import_path}."
             )
@@ -228,6 +220,8 @@ def run(config_or_import_path: str, address: str):
 
             schematized_config = ServeApplicationSchema.parse_obj(config)
             deployments = schema_to_serve_application(schematized_config)
+
+            serve.start()
             deploy_group(deployments)
 
             cli_logger.newline()
@@ -241,10 +235,15 @@ def run(config_or_import_path: str, address: str):
             cli_logger.print(
                 "Deploying function or class imported from " f"{config_or_import_path}."
             )
-            func_or_class = import_attr(config_or_import_path)
-            if not isinstance(func_or_class, Deployment):
-                func_or_class = serve.deployment(func_or_class)
-            func_or_class.deploy()
+
+            deployment = serve.deployment(name="run")(config_or_import_path)
+
+            serve.start()
+
+            deployment.options(
+                init_args=args,
+                init_kwargs=kwargs,
+            ).deploy()
 
             cli_logger.newline()
             cli_logger.print(
