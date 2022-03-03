@@ -1,0 +1,18 @@
+name: release
+
+on:
+  release:
+    types: [prereleased, released]
+
+jobs:
+  upload-helm-charts:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+      - uses: azure/setup-helm@v1
+      - name: Package helm charts
+        run: for dir in deploy/charts/*/; do helm package $dir -d deploy/charts/; done
+      - uses: softprops/action-gh-release@v1
+        with:
+          files: deploy/charts/*.tgz
