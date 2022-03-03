@@ -7,7 +7,7 @@ import os
 from typing import Optional
 
 import ray
-from ray.rllib.utils import DeveloperAPI
+from ray.util.annotations import DeveloperAPI
 from ray.util.ml_utils.cloud import (
     upload_to_bucket,
     is_cloud_target,
