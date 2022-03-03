@@ -91,7 +91,7 @@ class LocalResourceManager {
   /// the local node. This function also updates the local node resources at the instance
   /// granularity.
   ///
-  /// \param resource_request Task for which we allocate resources.
+  /// \param task_resources Task for which we allocate resources.
   /// \param task_allocation Resources allocated to the task at instance granularity.
   /// This is a return parameter.
   ///
@@ -149,7 +149,7 @@ class LocalResourceManager {
   /// \param resource_name: the specific resource name.
   ///
   /// \return true, if exist. otherwise, false.
-  bool ResourcesExist(scheduling::ResourceID resource_id);
+  bool ResourcesExist(scheduling::ResourceID resource_id) const;
 
  private:
   /// Create instances for each resource associated with the local node, given

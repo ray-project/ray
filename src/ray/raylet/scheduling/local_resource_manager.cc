@@ -614,7 +614,7 @@ void LocalResourceManager::ResetLastReportResourceUsage(
                                  replacement.GetAvailableResources().GetResourceMap()));
 }
 
-bool LocalResourceManager::ResourcesExist(scheduling::ResourceID resource_id) {
+bool LocalResourceManager::ResourcesExist(scheduling::ResourceID resource_id) const {
   int idx = GetPredefinedResourceIndex(resource_id);
   if (idx != -1) {
     // Return true directly for predefined resources as we always initialize this kind of
