@@ -273,7 +273,6 @@ class NodeInfoAccessor {
   /// Register local node to GCS asynchronously.
   ///
   /// \param node_info The information of node to register to GCS.
-  /// \param resources The resources of this node.
   /// \param callback Callback that will be called when registration is complete.
   /// \return Status
   virtual Status RegisterSelf(const rpc::GcsNodeInfo &local_node_info,
