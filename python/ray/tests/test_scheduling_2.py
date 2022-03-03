@@ -370,7 +370,9 @@ def test_demand_report_when_scale_up(shutdown_only):
             return False
         return True
 
-    wait_for_condition(check_backlog_info, 10)
+    # In ASAN test it's slow.
+    # Wait for 20s for the cluster to be up
+    wait_for_condition(check_backlog_info, 20)
     cluster.shutdown()
 
 
