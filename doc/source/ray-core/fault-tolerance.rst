@@ -1,3 +1,6 @@
+note that you can turn off lineage reconstruction by setting max retries=0.
+make sure that we're logging the right error message.
+
 Fault Tolerance
 ===============
 
@@ -8,9 +11,10 @@ Tasks
 
 When a worker is executing a task, if the worker dies unexpectedly, either
 because the process crashed or because the machine failed, Ray will rerun
-the task (after a delay of several seconds) until either the task succeeds
-or the maximum number of retries is exceeded. The default number of retries
-is 3.
+the task until either the task succeeds or the maximum number of retries is
+exceeded. The default number of retries is 3 and can be overridden by
+specifying ``max_retries`` in the ``@ray.remote`` decorator. Specifying -1
+allows infinite retries, and 0 disables retries.
 
 You can experiment with this behavior by running the following code.
 
@@ -40,6 +44,18 @@ You can experiment with this behavior by running the following code.
             print('SUCCESS')
         except ray.exceptions.WorkerCrashedError:
             print('FAILURE')
+
+Ray will also retry tasks whose outputs were lost from the distributed object
+store. This can occur during node failures.  Ray will first automatically
+attempt to recover the value by looking for copies of the same object on other
+nodes. If none are found, then Ray will automatically recover the value by
+re-executing the task that created the value. Arguments to the task are
+recursively reconstructed with the same method.
+
+To disable this behavior, set the environment variable
+``RAY_lineage_pinning_enabled=0`` during ``ray start`` or ``ray.init``.  With
+this setting, if there are no copies of an object left, an ``ObjectLostError``
+will be raised.
 
 .. _actor-fault-tolerance:
 
@@ -98,6 +114,8 @@ error with ``RayActorError``, a Python-level exception that is thrown when
 exception may be thrown even though the task did indeed execute successfully.
 For example, this can happen if the actor dies immediately after executing the
 task.
+
+.. _object-reconstruction:
 
 Ray also offers at-least-once execution semantics for actor tasks
 (``max_task_retries=-1`` or ``max_task_retries > 0``). This means that if an
@@ -169,25 +187,3 @@ checkpoint.
     be executed out of order. Upon actor restart, the system will only retry
     *incomplete* tasks. Previously completed tasks will not be
     re-executed.
-
-.. _object-reconstruction:
-
-Objects
--------
-
-Task outputs over a configurable threshold (default 100KB) may be stored in
-Ray's distributed object store. Thus, a node failure can cause the loss of a
-task output. If this occurs, Ray will automatically attempt to recover the
-value by looking for copies of the same object on other nodes. If there are no
-other copies left, an ``ObjectLostError`` will be raised.
-
-When there are no copies of an object left, Ray also provides an option to
-automatically recover the value by re-executing the task that created the
-value. Arguments to the task are recursively reconstructed with the same
-method. This option can be enabled with
-``ray.init(_enable_object_reconstruction=True)`` in standalone mode or ``ray
-start --enable-object-reconstruction`` in cluster mode.
-During reconstruction, each task will only be re-executed up to the specified
-number of times, using ``max_retries`` for normal tasks and
-``max_task_retries`` for actor tasks. Both limits can be set to infinity with
-the value -1.
