@@ -472,9 +472,7 @@ class RolloutWorker(ParallelIteratorWorker):
         if self.worker_index > 0:
             if seed is not None:
                 seed = seed + self.worker_index
-            update_global_seed_if_necessary(
-                policy_config.get("framework"), seed
-            )
+            update_global_seed_if_necessary(policy_config.get("framework"), seed)
 
         # A single environment provided by the user (via config.env). This may
         # also remain None.
