@@ -12,13 +12,20 @@ import io.ray.runtime.exception.RayTimeoutException;
 import io.ray.serve.AutoscalingConfig;
 import io.ray.serve.Constants;
 import io.ray.serve.DeploymentConfig;
+import io.ray.serve.DeploymentInfo;
 import io.ray.serve.ProxyActor;
 import io.ray.serve.RayServeException;
 import io.ray.serve.ReplicaContext;
+import io.ray.serve.generated.ActorSet;
+import io.ray.serve.poll.LongPollClientFactory;
+import io.ray.serve.poll.LongPollNamespace;
 import io.ray.serve.util.CommonUtil;
 import io.ray.serve.util.LogUtil;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -39,6 +46,7 @@ public class Serve {
 
   /**
    * Initialize a serve instance.
+   *
    * <p>By default, the instance will be scoped to the lifetime of the returned Client object (or
    * when the script exits). If detached is set to True, the instance will instead persist until
    * Serve.shutdown() is called. This is only relevant if connecting to a long-running Ray cluster.
@@ -51,6 +59,7 @@ public class Serve {
    * @param config Configuration options for Serve.
    * @return
    */
+  @SuppressWarnings("unchecked")
   public static Client start(
       boolean detached, boolean dedicatedCpu, String checkpointPath, Map<String, String> config) {
 
@@ -68,8 +77,6 @@ public class Serve {
       checkCheckpointPath(client, checkpointPath);
       return client;
     } catch (RayServeException e) {
-      // LOGGER.info("There is no instance running on this Ray cluster. Startup one.");
-      // TODO log or delete
     }
 
     String controllerName = null;
@@ -81,6 +88,8 @@ public class Serve {
               Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
     }
 
+    // TODO The namespace, max_task_retries and dispatching on head node is not supported in Java
+    // now.
     PyActorHandle controller =
         Ray.actor(
                 PyActorClass.of("serve.controller", "ServeController"),
@@ -95,20 +104,33 @@ public class Serve {
             .setMaxConcurrency(Constants.CONTROLLER_MAX_CONCURRENCY)
             .remote();
 
-    // TODO namespace is not supported in Java now.
-    // TODO max_task_retries is not supported in Java now.
-    // TODO resources @simon
+    List<String> proxyNames = null;
+    byte[] proxyActorSetBytes =
+        (byte[])
+            controller
+                .task(PyActorMethod.of("get_http_proxies"))
+                .remote()
+                .get(); // TODO define pb of the return value of get_http_proxies
 
-    Map<String, BaseActorHandle> proxyHandles =
-        (Map<String, BaseActorHandle>)
-            Ray.get(
-                controller
-                    .task(PyActorMethod.of("get_http_proxies"))
-                    .remote()); // TODO define pb of the return value of get_http_proxies
-    if (proxyHandles != null && proxyHandles.size() > 0) {
+    if (proxyActorSetBytes != null) {
+      // TODO abstract.
+      Function<byte[], Object> deserializer =
+          LongPollClientFactory.DESERIALIZERS.get(LongPollNamespace.REPLICA_HANDLES);
+      if (deserializer == null) {
+        throw new RayServeException(
+            "No deserializer for LongPollNamespace: " + LongPollNamespace.REPLICA_HANDLES);
+      }
+      ActorSet actorSet = (ActorSet) deserializer.apply(proxyActorSetBytes);
+      if (actorSet != null) {
+        proxyNames = actorSet.getNamesList();
+      }
+    }
+
+    if (proxyNames != null && proxyNames.size() > 0) {
       try {
-        for (BaseActorHandle handle : proxyHandles.values()) {
-          ActorHandle<ProxyActor> proxyActorHandle = (ActorHandle<ProxyActor>) handle;
+        for (String name : proxyNames) {
+          ActorHandle<ProxyActor> proxyActorHandle =
+              (ActorHandle<ProxyActor>) Ray.getActor(name).get();
           Ray.get(
               proxyActorHandle.task(ProxyActor::ready).remote(), Constants.PROXY_TIMEOUT * 1000);
         }
@@ -137,7 +159,7 @@ public class Serve {
     }
   }
 
-  private static String getControllerNamespace(boolean detached) {
+  public static String getControllerNamespace(boolean detached) {
     String controllerNamespace = Ray.getRuntimeContext().getNamespace();
 
     if (!detached) {
@@ -356,5 +378,61 @@ public class Serve {
     Client client = new Client(controller.get(), controllerName, true);
     setGlobalClient(client);
     return client;
+  }
+
+  /**
+   * Dynamically fetch a handle to a Deployment object.
+   *
+   * <p>This can be used to update and redeploy a deployment without access to the original
+   * definition.
+   *
+   * @param name name of the deployment. This must have already been deployed.
+   * @return Deployment
+   */
+  public static Deployment getDeployment(String name) {
+    DeploymentInfo deploymentInfo = getGlobalClient().getDeploymentInfo(name);
+    if (deploymentInfo == null) {
+      throw new RayServeException(
+          LogUtil.format("Deployment {} was not found. Did you call Deployment.deploy()?", name));
+    }
+
+    return new Deployment(
+        deploymentInfo.getDeploymentDef(),
+        name,
+        deploymentInfo.getDeploymentConfig(),
+        deploymentInfo.getDeploymentVersion().getCodeVersion(), // TODO version
+        null,
+        deploymentInfo.getReplicaConfig().getInitArgs(),
+        null, // TODO route
+        deploymentInfo.getReplicaConfig().getRayActorOptions());
+  }
+
+  /**
+   * Returns a dictionary of all active deployments.
+   *
+   * <p>Dictionary maps deployment name to Deployment objects.
+   *
+   * @return
+   */
+  public static Map<String, Deployment> listDeployments() {
+    Map<String, DeploymentInfo> infos = getGlobalClient().listDeployments();
+    Map<String, Deployment> deployments = new HashMap<>();
+    if (infos == null || infos.size() == 0) {
+      return deployments;
+    }
+    for (Map.Entry<String, DeploymentInfo> entry : infos.entrySet()) {
+      deployments.put(
+          entry.getKey(),
+          new Deployment(
+              entry.getValue().getDeploymentDef(),
+              entry.getKey(),
+              entry.getValue().getDeploymentConfig(),
+              entry.getValue().getDeploymentVersion().getCodeVersion(), // TODO version
+              null,
+              entry.getValue().getReplicaConfig().getInitArgs(),
+              null, // TODO route
+              entry.getValue().getReplicaConfig().getRayActorOptions()));
+    }
+    return deployments;
   }
 }

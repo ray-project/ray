@@ -15,6 +15,8 @@ public class DeploymentInfo implements Serializable {
 
   private DeploymentConfig deploymentConfig;
 
+  private ReplicaConfig replicaConfig; // TODO use it.
+
   private DeploymentVersion deploymentVersion;
 
   private Map<String, String> config;
@@ -53,6 +55,14 @@ public class DeploymentInfo implements Serializable {
   public DeploymentInfo setDeploymentConfig(DeploymentConfig deploymentConfig) {
     this.deploymentConfig = deploymentConfig;
     return this;
+  }
+
+  public ReplicaConfig getReplicaConfig() {
+    return replicaConfig;
+  }
+
+  public void setReplicaConfig(ReplicaConfig replicaConfig) {
+    this.replicaConfig = replicaConfig;
   }
 
   public DeploymentVersion getDeploymentVersion() {

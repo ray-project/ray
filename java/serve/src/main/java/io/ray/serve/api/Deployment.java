@@ -2,6 +2,7 @@ package io.ray.serve.api;
 
 import com.google.common.base.Preconditions;
 import io.ray.serve.DeploymentConfig;
+import io.ray.serve.RayServeHandle;
 import java.util.Map;
 import org.apache.commons.lang3.StringUtils;
 
@@ -59,7 +60,7 @@ public class Deployment {
     this.version = version;
     this.prevVersion = prevVersion;
     this.config = config;
-    this.initArgs = initArgs;
+    this.initArgs = initArgs != null ? initArgs : new Object[0];
     this.routePrefix = routePrefix;
     this.rayActorOptions = rayActorOptions;
 
@@ -86,6 +87,20 @@ public class Deployment {
             routePrefix,
             url,
             blocking);
+  }
+
+  /** Delete this deployment. */
+  public void delete() {
+    Serve.getGlobalClient().deleteDeployment(name);
+  }
+
+  /**
+   * Get a ServeHandle to this deployment to invoke it from Java.
+   *
+   * @return ServeHandle
+   */
+  public RayServeHandle getHandle() {
+    return Serve.getGlobalClient().getHandle(name, true);
   }
 
   public String getDeploymentDef() {

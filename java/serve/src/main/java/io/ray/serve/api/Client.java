@@ -7,6 +7,7 @@ import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.function.PyActorMethod;
 import io.ray.serve.DeploymentConfig;
+import io.ray.serve.DeploymentInfo;
 import io.ray.serve.RayServeException;
 import io.ray.serve.RayServeHandle;
 import io.ray.serve.ReplicaConfig;
@@ -15,7 +16,9 @@ import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ServeProtoUtil;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -25,9 +28,15 @@ public class Client {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(Client.class);
 
+  private static long CLIENT_POLLING_INTERVAL_S = 1;
+
   private BaseActorHandle controller; // TODO change to PyActorHandle
 
-  private boolean shutdown = false;
+  private String controllerName;
+
+  private boolean detached;
+
+  private boolean shutdown;
 
   private Map<String, RayServeHandle> handleCache = new ConcurrentHashMap<>();
 
@@ -37,6 +46,8 @@ public class Client {
 
   public Client(BaseActorHandle controller, String controllerName, boolean detached) {
     this.controller = controller;
+    this.controllerName = controllerName;
+    this.detached = detached;
     this.rootUrl =
         (String)
             ((PyActorHandle) controller)
@@ -107,9 +118,16 @@ public class Client {
     if (rayActorOptions == null) {
       rayActorOptions = new HashMap<>();
     }
-    // TODO set runtime_env to rayActorOptions. Not support now.
+    // TODO set runtime_env to rayActorOptions is not supported now.
     ReplicaConfig replicaConfig = new ReplicaConfig(deploymentDef, initArgs, rayActorOptions);
     // TODO ReplicaConfig's PB
+
+    if (deploymentConfig.getAutoscalingConfig() != null
+        && deploymentConfig.getMaxConcurrentQueries()
+            < deploymentConfig.getAutoscalingConfig().getTargetNumOngoingRequestsPerReplica()) {
+      LOGGER.warn(
+          "Autoscaling will never happen, because 'max_concurrent_queries' is less than 'target_num_ongoing_requests_per_replica' now.");
+    }
 
     boolean updating =
         (boolean)
@@ -140,7 +158,7 @@ public class Client {
     }
 
     if (blocking) {
-      waitForDeploymentHealthy(name);
+      waitForDeploymentHealthy(name, -1);
     } else {
       String urlPart = "";
       if (StringUtils.isNotBlank(url)) {
@@ -158,14 +176,45 @@ public class Client {
   /**
    * Waits for the named deployment to enter "HEALTHY" status.
    *
-   * <p>Raises RuntimeError if the deployment enters the "UNHEALTHY" status instead.
-   *
-   * <p>Raises TimeoutError if this doesn't happen before timeout_s.
+   * <p>Raises RayServeException if the deployment enters the "UNHEALTHY" status instead or this
+   * doesn't happen before timeoutS. // TODO
    *
    * @param name
    */
-  private void waitForDeploymentHealthy(String name) {
-    // TODO
+  @SuppressWarnings("unchecked")
+  private void waitForDeploymentHealthy(String name, long timeoutS) {
+    long start = System.currentTimeMillis();
+    while (System.currentTimeMillis() - start < timeoutS * 1000 || timeoutS < 0) {
+      List<String> statuses =
+          (List<String>)
+              ((PyActorHandle) controller)
+                  .task(PyActorMethod.of("get_deployment_statuses"))
+                  .remote()
+                  .get(); // TODO define PB of Dict[str, DeploymentStatusInfo]
+      if (!statuses.contains(name)) {
+        throw new RayServeException(
+            LogUtil.format(
+                "Waiting for deployment {} to be HEALTHY, but deployment doesn't exist.", name));
+      }
+
+      // TODO define DeploymentStatus
+      /*if (status.status == DeploymentStatus.HEALTHY) {
+        break;
+      } else if (status.status == DeploymentStatus.UNHEALTHY) {
+        throw new RayServeException(
+            LogUtil.format("Deployment {} is UNHEALTHY: {status.message}", name));
+      } else {
+        Preconditions.checkState(status.status == DeploymentStatus.UPDATING);
+      }
+
+      LOGGER.debug("Waiting for {} to be healthy, current status: {status.status}.", name);*/
+      try {
+        Thread.sleep(CLIENT_POLLING_INTERVAL_S * 1000);
+      } catch (InterruptedException e) {
+      }
+    }
+    throw new RayServeException(
+        LogUtil.format("Deployment {} did not become HEALTHY after {}s.", name, timeoutS));
   }
 
   /**
@@ -174,18 +223,62 @@ public class Client {
    */
   public void shutdown() {
     if (Ray.isInitialized() && !shutdown) {
-      ((PyActorHandle) controller)
-          .task(PyActorMethod.of("shutdown"))
-          .remote()
-          .get(); // TODO it has no return value?
-      waitForDeploymentsShutdown(null, -1);
+      ((PyActorHandle) controller).task(PyActorMethod.of("shutdown")).remote();
+      waitForDeploymentsShutdown(60);
 
-      // TODO
+      controller.kill();
+
+      long started = System.currentTimeMillis();
+      while (true) {
+        String controllerNamespace = Serve.getControllerNamespace(detached);
+        Optional<BaseActorHandle> controllerHandle =
+            Ray.getActor(controllerName, controllerNamespace);
+        if (!controllerHandle.isPresent()) {
+          // actor name is removed
+          break;
+        }
+        long currentTime = System.currentTimeMillis();
+        if (currentTime - started > 5000) {
+          LOGGER.warn(
+              "Waited 5s for Serve to shutdown gracefully but the controller is still not cleaned up. You can ignore this warning if you are shutting down the Ray cluster.");
+          break;
+        }
+      }
+
+      shutdown = true;
     }
   }
 
-  private void waitForDeploymentsShutdown(String name, int timeoutS) {
-    // TODO
+  /**
+   * Waits for all deployments to be shut down and deleted.
+   *
+   * <p>Throw RayServeException if this doesn't happen before timeoutS.
+   *
+   * @param timeoutS
+   */
+  @SuppressWarnings("unchecked")
+  private void waitForDeploymentsShutdown(long timeoutS) {
+    long start = System.currentTimeMillis();
+    List<String> statuses = null;
+    while (System.currentTimeMillis() - start < timeoutS * 1000) {
+      statuses =
+          (List<String>)
+              ((PyActorHandle) controller)
+                  .task(PyActorMethod.of("get_deployment_statuses"))
+                  .remote()
+                  .get(); // TODO define PB of Dict[str, DeploymentStatusInfo]
+
+      if (statuses == null || statuses.size() == 0) {
+        return;
+      } else {
+        LOGGER.debug("Waiting for shutdown, {} deployments still alive.", statuses.size());
+      }
+    }
+    throw new RayServeException(
+        LogUtil.format(
+            "Shutdown didn't complete after {}s. Deployments still alive: {}.",
+            timeoutS,
+            statuses));
   }
 
   public String getRootUrl() {
@@ -196,16 +289,57 @@ public class Client {
     return checkpointPath;
   }
 
-  public static void main(String[] args) {
-    String name = "a";
-    String version = "b";
-    String urlPart = "c";
-    String tag = "d";
-    LOGGER.info(
-        "Deployment '{}{':'{}}' is ready{}. {}",
-        name,
-        StringUtils.isNotBlank(version) ? version : null,
-        urlPart,
-        tag);
+  public DeploymentInfo getDeploymentInfo(String name) {
+    return (DeploymentInfo)
+        ((PyActorHandle) controller)
+            .task(PyActorMethod.of("get_deployment_info"), name)
+            .remote()
+            .get(); // TODO define protobuf of DeploymentInfo
+  }
+
+  @SuppressWarnings("unchecked")
+  public Map<String, DeploymentInfo> listDeployments() {
+    return (Map<String, DeploymentInfo>)
+        ((PyActorHandle) controller)
+            .task(PyActorMethod.of("list_deployments"))
+            .remote()
+            .get(); // TODO define protobuf of DeploymentInfo
+  }
+
+  public void deleteDeployment(String name) {
+    ((PyActorHandle) controller).task(PyActorMethod.of("delete_deployment")).remote();
+    waitForDeploymentDeleted(name, 60);
+  }
+
+  /**
+   * Waits for the named deployment to be shut down and deleted.
+   *
+   * <p>Raises TimeoutError if this doesn't happen before timeoutS. // TODO
+   *
+   * @param name
+   * @param timeoutS
+   */
+  @SuppressWarnings("unchecked")
+  private void waitForDeploymentDeleted(String name, long timeoutS) {
+    long start = System.currentTimeMillis();
+    while (System.currentTimeMillis() - start < timeoutS * 1000) {
+      List<String> statuses =
+          (List<String>)
+              ((PyActorHandle) controller)
+                  .task(PyActorMethod.of("get_deployment_statuses"))
+                  .remote()
+                  .get(); // TODO define PB of Dict[str, DeploymentStatusInfo]
+
+      if (!statuses.contains(name)) {
+        break;
+      }
+      LOGGER.debug("Waiting for {} to be deleted, current status: {}.", name, statuses);
+      try {
+        Thread.sleep(CLIENT_POLLING_INTERVAL_S * 1000);
+      } catch (InterruptedException e) {
+      }
+    }
+    throw new RayServeException(
+        LogUtil.format("Deployment {} wasn't deleted after {}s.", name, timeoutS));
   }
 }
