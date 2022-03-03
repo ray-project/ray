@@ -69,11 +69,7 @@ from ray.data.aggregate import AggregateFn, Sum, Max, Min, Mean, Std
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
 from ray.data.impl.plan import ExecutionPlan, OneToOneStage, AllToAllStage
-from ray.data.impl.stats import (
-    DatasetStats,
-    get_or_create_stats_actor,
-    _StatsActorWrapper,
-)
+from ray.data.impl.stats import DatasetStats
 from ray.data.impl.compute import cache_wrapper, CallableClass
 from ray.data.impl.output_buffer import BlockOutputBuffer
 from ray.data.impl.progress_bar import ProgressBar
@@ -110,10 +106,6 @@ class Dataset(Generic[T]):
     Dataset supports parallel transformations such as .map(), .map_batches(),
     and simple repartition, but currently not aggregations and joins.
     """
-    #
-    # def __deepcopy__(self, memo):
-    #     import copy
-    #     return copy.copy(self)
 
     def __init__(
         self,
@@ -2751,18 +2743,7 @@ Dict[str, List[str]]]): The names of the columns
         plan_copy.clear()
         ds = Dataset(plan_copy, self._get_epoch(), self._lazy)
         ds._set_uuid(self._get_uuid())
-        try:
-            # Register a custom serializer for the stats actor handle to ensure that we
-            # create a new stats actor upon deserializing in the new cluster.
-            ray.util.register_serializer(
-                _StatsActorWrapper,
-                serializer=lambda _: None,
-                deserializer=lambda _: _StatsActorWrapper(get_or_create_stats_actor()),
-            )
-            serialized = pickle.dumps(ds)
-        finally:
-            ray.util.deregister_serializer(_StatsActorWrapper)
-        return serialized
+        return pickle.dumps(ds)
 
     @DeveloperAPI
     @staticmethod
@@ -2779,18 +2760,7 @@ Dict[str, List[str]]]): The names of the columns
         Returns:
             A deserialized ``Dataset`` instance.
         """
-        try:
-            # Register a custom serializer for the stats actor handle to ensure that we
-            # create a new stats actor upon deserializing in the new cluster.
-            ray.util.register_serializer(
-                _StatsActorWrapper,
-                serializer=lambda _: None,
-                deserializer=lambda _: _StatsActorWrapper(get_or_create_stats_actor()),
-            )
-            deserialized = pickle.loads(serialized_ds)
-        finally:
-            ray.util.deregister_serializer(_StatsActorWrapper)
-        return deserialized
+        return pickle.loads(serialized_ds)
 
     def _split(
         self, index: int, return_right_half: bool

@@ -106,7 +106,9 @@ class ExecutionPlan:
                 return stage.num_blocks
         if self._snapshot_blocks is not None:
             return self._snapshot_blocks.initial_num_blocks()
-        return self._in_blocks.initial_num_blocks()
+        if self._in_blocks is not None:
+            return self._in_blocks.initial_num_blocks()
+        return None
 
     def schema(
         self, fetch_if_missing: bool = False
@@ -250,14 +252,16 @@ class ExecutionPlan:
     def _is_stage_before_snapshot(self, stage_idx: int) -> bool:
         """Whether the provided stage is before this plan's snapshot."""
         return (
-            self._snapshot_stage_idx is not None
+            self._snapshot_blocks is not None
+            and self._snapshot_stage_idx is not None
             and stage_idx < self._snapshot_stage_idx
         )
 
     def _has_snapshot_at_stage(self, stage_idx: int) -> bool:
         """Whether this plan has a snapshot for the provided stage."""
         return (
-            self._snapshot_stage_idx is not None
+            self._snapshot_blocks is not None
+            and self._snapshot_stage_idx is not None
             and stage_idx == self._snapshot_stage_idx
         )
 
