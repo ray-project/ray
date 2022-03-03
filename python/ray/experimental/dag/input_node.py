@@ -90,7 +90,6 @@ class InputNode(DAGNode):
         # TODO: (jiaodong) Maybe a contenxt manager ?
         self._validate_input(input_data)
         converted_data = self._adapter_fn(input_data)
-        print(f"Returned converted_data: {converted_data}")
         return converted_data
 
     def __str__(self) -> str:
