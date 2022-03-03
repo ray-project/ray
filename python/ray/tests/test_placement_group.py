@@ -238,44 +238,6 @@ class Actor(object):
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
-def test_placement_group_strict_spread(ray_start_cluster, connect_to_client):
-    cluster = ray_start_cluster
-    num_nodes = 3
-    for _ in range(num_nodes):
-        cluster.add_node(num_cpus=4)
-    ray.init(address=cluster.address)
-
-    with connect_to_client_or_not(connect_to_client):
-        placement_group = ray.util.placement_group(
-            name="name",
-            strategy="STRICT_SPREAD",
-            bundles=[{"CPU": 2}, {"CPU": 2}, {"CPU": 2}],
-        )
-        ray.get(placement_group.ready())
-        actors = [
-            Actor.options(
-                placement_group=placement_group,
-                placement_group_bundle_index=i,
-                num_cpus=2,
-            ).remote()
-            for i in range(num_nodes)
-        ]
-
-        [ray.get(actor.value.remote()) for actor in actors]
-
-        # Get all actors.
-        actor_infos = ray.state.actors()
-
-        # Make sure all actors in counter_list are located in separate nodes.
-        actor_info_objs = [actor_infos.get(actor._actor_id.hex()) for actor in actors]
-        assert are_pairwise_unique(
-            [info_obj["Address"]["NodeID"] for info_obj in actor_info_objs]
-        )
-
-        placement_group_assert_no_leak([placement_group])
-
-
-@pytest.mark.parametrize("connect_to_client", [False, True])
 def test_placement_group_spread(ray_start_cluster, connect_to_client):
     cluster = ray_start_cluster
     num_nodes = 2
@@ -313,91 +275,29 @@ def test_placement_group_spread(ray_start_cluster, connect_to_client):
         placement_group_assert_no_leak([placement_group])
 
 
-def index_to_actor(pg, index):
-    if index < 2:
-        return Actor.options(
-            placement_group=pg, placement_group_bundle_index=index, num_cpus=1
-        ).remote()
-    elif index < 4:
-        return Actor.options(
-            placement_group=pg, placement_group_bundle_index=index, num_gpus=1
-        ).remote()
-    else:
-        return Actor.options(
-            placement_group=pg,
-            placement_group_bundle_index=index,
-            object_store_memory=1024 * 1024 * 200,
-        ).remote()
-
-
-def add_nodes_to_cluster(cluster):
-    cluster.add_node(num_cpus=1)
-    cluster.add_node(num_cpus=2)
-    cluster.add_node(num_gpus=1)
-    cluster.add_node(num_gpus=2)
-    cluster.add_node(object_store_memory=1024 * 1024 * 200)
-    cluster.add_node(object_store_memory=1024 * 1024 * 300)
-
-
-default_bundles = [
-    {"CPU": 1},
-    {"CPU": 2},
-    {"CPU": 1, "GPU": 1},
-    {"CPU": 1, "GPU": 2},
-    {"CPU": 1, "object_store_memory": 1024 * 1024 * 200},
-    {"CPU": 1, "object_store_memory": 1024 * 1024 * 300},
-]
-
-default_num_nodes = 6
-
-
 @pytest.mark.parametrize("connect_to_client", [False, True])
-def test_placement_group_spread_bin_packing_priority(
-    ray_start_cluster, connect_to_client
-):
+def test_placement_group_strict_spread(ray_start_cluster, connect_to_client):
     cluster = ray_start_cluster
-    add_nodes_to_cluster(cluster)
-    ray.init(address=cluster.address)
-
-    with connect_to_client_or_not(connect_to_client):
-        placement_group = ray.util.placement_group(
-            name="name",
-            strategy="SPREAD",
-            bundles=default_bundles,
-        )
-        ray.get(placement_group.ready())
-
-        actors = [index_to_actor(placement_group, i) for i in range(default_num_nodes)]
-
-        [ray.get(actor.value.remote()) for actor in actors]
-
-        # Get all actors.
-        actor_infos = ray.state.actors()
-
-        # Make sure all actors in counter_list are located in separate nodes.
-        actor_info_objs = [actor_infos.get(actor._actor_id.hex()) for actor in actors]
-        assert are_pairwise_unique(
-            [info_obj["Address"]["NodeID"] for info_obj in actor_info_objs]
-        )
-
-
-@pytest.mark.parametrize("connect_to_client", [False, True])
-def test_placement_group_strict_spread_bin_packing_priority(
-    ray_start_cluster, connect_to_client
-):
-    cluster = ray_start_cluster
-    add_nodes_to_cluster(cluster)
+    num_nodes = 3
+    for _ in range(num_nodes):
+        cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
 
     with connect_to_client_or_not(connect_to_client):
         placement_group = ray.util.placement_group(
             name="name",
             strategy="STRICT_SPREAD",
-            bundles=default_bundles,
+            bundles=[{"CPU": 2}, {"CPU": 2}, {"CPU": 2}],
         )
         ray.get(placement_group.ready())
-
-        actors = [index_to_actor(placement_group, i) for i in range(default_num_nodes)]
+        actors = [
+            Actor.options(
+                placement_group=placement_group,
+                placement_group_bundle_index=i,
+                num_cpus=2,
+            ).remote()
+            for i in range(num_nodes)
+        ]
 
         [ray.get(actor.value.remote()) for actor in actors]
 
@@ -410,35 +310,7 @@ def test_placement_group_strict_spread_bin_packing_priority(
             [info_obj["Address"]["NodeID"] for info_obj in actor_info_objs]
         )
 
-
-@pytest.mark.parametrize("connect_to_client", [False, True])
-def test_placement_group_pack_bin_packing_priority(
-    ray_start_cluster, connect_to_client
-):
-    cluster = ray_start_cluster
-    add_nodes_to_cluster(cluster)
-    ray.init(address=cluster.address)
-
-    with connect_to_client_or_not(connect_to_client):
-        placement_group = ray.util.placement_group(
-            name="name",
-            strategy="PACK",
-            bundles=default_bundles,
-        )
-        ray.get(placement_group.ready())
-
-        actors = [index_to_actor(placement_group, i) for i in range(default_num_nodes)]
-
-        [ray.get(actor.value.remote()) for actor in actors]
-
-        # Get all actors.
-        actor_infos = ray.state.actors()
-
-        # Make sure all actors in counter_list are located in separate nodes.
-        actor_info_objs = [actor_infos.get(actor._actor_id.hex()) for actor in actors]
-        assert are_pairwise_unique(
-            [info_obj["Address"]["NodeID"] for info_obj in actor_info_objs]
-        )
+        placement_group_assert_no_leak([placement_group])
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
