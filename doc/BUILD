@@ -86,12 +86,28 @@ py_test(
 # Test all doc/source/ray-core/doc_code code included in rst/md files.
 # --------------------------------------------------------------------
 
-py_test_run_all_subdirectory(
+py_test(
+    name = "doc_code_tf_example",
     size = "small",
-    include = ["source/ray-core/doc_code/*.py"],
-    exclude = ["source/ray-core/doc_code/runtime_env_example.py"],
-    extra_srcs = [],
-    tags = ["exclusive", "team:ml"],
+    main = "source/ray-core/doc_code/tf_example.py",
+    srcs = ["source/ray-core/doc_code/tf_example.py"],
+    tags = ["exclusive", "tf", "team:ml"]
+)
+
+py_test(
+    name = "doc_code_torch_example",
+    size = "small",
+    main = "source/ray-core/doc_code/torch_example.py",
+    srcs = ["source/ray-core/doc_code/torch_example.py"],
+    tags = ["exclusive", "pytorch", "team:ml"]
+)
+
+py_test(
+    name = "doc_code_metrics_example",
+    size = "small",
+    main = "source/ray-core/doc_code/metrics_example.py",
+    srcs = ["source/ray-core/doc_code/metrics_example.py"],
+    tags = ["exclusive", "team:serve"]
 )
 
 py_test(
@@ -100,7 +116,6 @@ py_test(
     main = "source/ray-core/doc_code/runtime_env_example.py",
     srcs = ["source/ray-core/doc_code/runtime_env_example.py"],
     tags = ["exclusive", "post_wheel_build", "team:serve"]
-)
 
 # --------------------------------------------------------------------
 # Test all doc/source/tune/examples notebooks.
