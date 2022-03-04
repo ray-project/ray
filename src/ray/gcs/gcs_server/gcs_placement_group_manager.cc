@@ -133,7 +133,7 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     GcsResourceManager &gcs_resource_manager,
     std::function<std::string(const JobID &)> get_ray_namespace,
-    syncer::RaySyncer *ray_syncer = nullptr)
+    syncer::RaySyncer& ray_syncer)
     : ray_syncer_(ray_syncer),
       io_context_(io_context),
       gcs_placement_group_scheduler_(std::move(scheduler)),
@@ -304,17 +304,17 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
       placement_group_id, placement_group->GetPlacementGroupTableData(),
       [this, placement_group_id, placement_group](Status status) {
         RAY_CHECK_OK(status);
-        // Update the resource in gcs resource manager
+        // Push request to ray syncer.
+        // TODO (iycheng): This needs to be removed and reporting shouldn't
+        // involve placement group.
         for (auto &bundle : placement_group->GetBundles()) {
           auto &resources = bundle->GetFormattedResources();
           auto node_id = bundle->NodeId();
-        }
-        if (ray_syncer_ != nullptr) {
           rpc::NodeResourceChange node_resource_change;
           node_resource_change.set_node_id(node_id.Binary());
           node_resource_change.mutable_updated_resources()->insert(
               changed_resources.begin(), changed_resources.end());
-          ray_syncer_->Update(std::move(node_resource_change));
+          ray_syncer_.Update(std::move(node_resource_change));
         }
         // Invoke all callbacks for all `WaitPlacementGroupUntilReady` requests of this
         // placement group and remove all of them from
@@ -482,7 +482,14 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
       resource_names.push_back(iter.first);
     }
     auto node_id = bundle->NodeId();
+    rpc::NodeResourceChange node_resource_change;
+    node_resource_change.set_node_id(node_id.Binary());
+    for (const auto &resource_name : resource_names) {
+      node_resource_change.add_deleted_resources(resource_name);
+    }
+    ray_syncer_.Update(std::move(node_resource_change));
   }
+
 
   // Flush the status and respond to workers.
   placement_group->UpdateState(rpc::PlacementGroupTableData::REMOVED);
