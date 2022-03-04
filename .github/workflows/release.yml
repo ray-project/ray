@@ -18,7 +18,7 @@ jobs:
         working-directory: deploy/charts/
         
       - name: Rename helm chart archives
-        run: for filename in *.tgz; do mv "$filename" "helm-chart-$filename"; done;
+        run: for filename in *.tgz; do mv "$filename" "helm-chart-$filename"; done
         working-directory: deploy/charts/
 
       - uses: softprops/action-gh-release@v1
