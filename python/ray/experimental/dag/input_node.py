@@ -13,11 +13,11 @@ class InputNode(DAGNode):
     among all DAGNodes.
 
     Ex:
-                A.forward
-             /            \
-        input               ensemble -> output
-             \            /
-                B.forward
+                   A.forward
+                /            \
+        dag_input              ensemble -> dag_output
+                \            /
+                   B.forward
 
     In this pipeline, each user input is broadcasted to both A.forward and
     B.forward as first stop of the DAG, and authored like
@@ -28,13 +28,6 @@ class InputNode(DAGNode):
         dag = ensemble.bind(a, b)
 
     dag.execute(user_input) --> broadcast to a and b
-    """
-
-    """
-    DONE - Binding value to InputNode ? No, just schema
-    - Take input data python object
-    - Globally unique InputNode
-    - Split attributes
     """
 
     def __init__(self, *args, **kwargs):
@@ -82,15 +75,12 @@ class InputNode(DAGNode):
         pass
 
     def to_json(self, encoder_cls) -> Dict[str, Any]:
-        # TODO: (jiaodong) Support arbitrary InputNode args and pydantic
-        # input schema.
         json_dict = super().to_json_base(encoder_cls, InputNode.__name__)
         return json_dict
 
     @classmethod
     def from_json(cls, input_json):
         assert input_json[DAGNODE_TYPE_KEY] == InputNode.__name__
-        # TODO: (jiaodong) Support user passing inputs to InputNode in JSON
         return cls()
 
 
