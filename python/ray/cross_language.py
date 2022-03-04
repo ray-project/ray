@@ -104,7 +104,7 @@ def cpp_function(function_name):
     return RemoteFunction(
         Language.CPP,
         lambda *args, **kwargs: None,
-        CppFunctionDescriptor(function_name),
+        CppFunctionDescriptor(function_name, "PYTHON"),
         None,  # num_cpus,
         None,  # num_gpus,
         None,  # memory,

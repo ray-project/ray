@@ -332,19 +332,20 @@ cdef class CppFunctionDescriptor(FunctionDescriptor):
         CCppFunctionDescriptor *typed_descriptor
 
     def __cinit__(self,
-                  function_name):
-        self.descriptor = CFunctionDescriptorBuilder.BuildCpp(function_name)
+                  function_name, caller):
+        self.descriptor = CFunctionDescriptorBuilder.BuildCpp(function_name, caller)
         self.typed_descriptor = <CCppFunctionDescriptor*>(
             self.descriptor.get())
 
     def __reduce__(self):
-        return CppFunctionDescriptor, (self.typed_descriptor.FunctionName())
+        return CppFunctionDescriptor, (self.typed_descriptor.FunctionName(),
+                                        self.typed_descriptor.Caller())
 
     @staticmethod
     cdef from_cpp(const CFunctionDescriptor &c_function_descriptor):
         cdef CCppFunctionDescriptor *typed_descriptor = \
             <CCppFunctionDescriptor*>(c_function_descriptor.get())
-        return CppFunctionDescriptor(typed_descriptor.FunctionName())
+        return CppFunctionDescriptor(typed_descriptor.FunctionName(), typed_descriptor.Caller())
 
     @property
     def function_name(self):
@@ -354,3 +355,13 @@ cdef class CppFunctionDescriptor(FunctionDescriptor):
             The function name of the function descriptor.
         """
         return <str>self.typed_descriptor.FunctionName()
+
+    @property
+    def caller(self):
+        """Get the caller of current function descriptor.
+
+        Returns:
+            The caller of the function descriptor.
+        """
+        return <str>self.typed_descriptor.Caller()
+
