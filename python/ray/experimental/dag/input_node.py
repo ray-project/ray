@@ -22,10 +22,10 @@ class InputNode(DAGNode):
     In this pipeline, each user input is broadcasted to both A.forward and
     B.forward as first stop of the DAG, and authored like
 
-    input = ray.dag.InputNode()
-    a = A.forward.bind(input)
-    b = B.forward.bind(input)
-    dag = ensemble.bind(a, b)
+    with InputNode() as dag_input:
+        a = A.forward.bind(dag_input)
+        b = B.forward.bind(dag_input)
+        dag = ensemble.bind(a, b)
 
     dag.execute(user_input) --> broadcast to a and b
     """
@@ -98,9 +98,9 @@ class InputAtrributeNode(DAGNode):
     """Represents partial acces of user input based on an attribute key.
 
     Examples:
-        >>> input = InputNode()
-        >>> a = input[0]
-        >>> b = input.x
+        >>> with InputNode() as dag_input:
+        >>>     a = input[0]
+        >>>     b = input.x
 
         >>> # This makes a = 1 and b = 2
         >>> ray_dag.execute(1, x=2)
@@ -158,12 +158,12 @@ class DAGInputData:
         >>> def combine(a, b):
         ...     return a + b
 
-        >>> input = InputNode()
-        >>> m1 = Model.bind(1)
-        >>> m2 = Model.bind(2)
-        >>> m1_output = m1.forward.bind(input[0])
-        >>> m2_output = m2.forward.bind(input[1])
-        >>> ray_dag = combine.bind(m1_output, m2_output)
+        >>> with InputNode() as dag_input:
+        >>>     m1 = Model.bind(1)
+        >>>     m2 = Model.bind(2)
+        >>>     m1_output = m1.forward.bind(dag_input[0])
+        >>>     m2_output = m2.forward.bind(dag_input[1])
+        >>>     ray_dag = combine.bind(m1_output, m2_output)
 
         >>> # Pass mix of args and kwargs as input.
         >>> print(ray_dag.execute(1, 2)) # 1 sent to m1, 2 sent to m2
