@@ -28,6 +28,7 @@ def ray_start_4_cpus_2_gpus():
     # The code after the yield will run as teardown code.
     ray.shutdown()
 
+
 @pytest.fixture
 def ray_start_1_cpu_1_gpu():
     address_info = ray.init(num_cpus=1, num_gpus=1)
