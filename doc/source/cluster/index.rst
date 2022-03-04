@@ -1,3 +1,5 @@
+.. include:: /_includes/clusters/announcement.rst
+
 .. include:: we_are_hiring.rst
 
 .. _cluster-index:
@@ -39,3 +41,5 @@ configuration <cluster-config>`.
 
 To learn about best practices for deploying a Ray cluster, :ref:`check out the
 deployment guide <deployment-guide>`.
+
+.. include:: /_includes/clusters/announcement_bottom.rst
