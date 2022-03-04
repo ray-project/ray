@@ -93,9 +93,8 @@ In order to avoid synchronous execution in the ensemble model, you'll need to ma
 the function asynchronous by using an ``async def``. In contrast to a composition model,
 within an ensemble model, you want to call **all** sub models in parallel. This will be
 achieved by sending all prediction calls to the sub models via async by using
-``asyncio.wait()``. If you want to scale your ensemble model, make sure to spawn
-multiple sub model deployment replicas, so that every call to the higher level
-ensemble model can be run in parallel by using ``num_replicas=5``.
+``asyncio.wait()``. Each serve deployment used in an ensemble use case is independently
+scalable via changing ``num_replicas``.
 
 That's it. Let's take a look at an example:
 

@@ -55,3 +55,7 @@ EnsembleModel.deploy()
 st = time.time()
 send_concurrent_model_requests()
 print("duration", time.time() - st)
+
+# Output
+# [[1, 2], [1, 2], [1, 2], [1, 2], [1, 2]]
+# duration 4.015406847000122
