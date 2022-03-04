@@ -254,7 +254,9 @@ def run(
         is_config = pathlib.Path(config_or_import_path).is_file()
         args, kwargs = process_args_and_kwargs(args_and_kwargs)
 
+        deployments = []
         if is_config:
+            config_path = config_or_import_path
             # Delay serve.start() to catch invalid inputs without waiting
             if len(args) + len(kwargs) > 0:
                 raise ValueError(
@@ -264,32 +266,40 @@ def run(
                 )
 
             cli_logger.print(
-                "Deploying application in config file at " f"{config_or_import_path}."
+                "Deploying application in config file at " f"{config_path}."
             )
-            with open(config_or_import_path, "r") as config_file:
+            with open(config_path, "r") as config_file:
                 config = yaml.safe_load(config_file)
 
             schematized_config = ServeApplicationSchema.parse_obj(config)
             deployments = schema_to_serve_application(schematized_config)
 
-            serve.start()
+            serve.start(detached=True)
             deploy_group(deployments)
 
             cli_logger.newline()
             cli_logger.success(
-                f'\nDeployments from config file at "{config_or_import_path}" '
+                f'\nDeployments from config file at "{config_path}" '
                 "deployed successfully!\n"
             )
             cli_logger.newline()
 
         else:
+            import_path = config_or_import_path
             cli_logger.print(
-                "Deploying function or class imported from " f"{config_or_import_path}."
+                f'Deploying function or class imported from "{import_path}".'
             )
 
-            deployment = serve.deployment(name="run")(config_or_import_path)
+            if "." not in import_path:
+                raise ValueError(
+                    "Import paths must be of the form "
+                    '"module.submodule_1...submodule_n.MyClassOrFunction".'
+                )
+            deployment_name = import_path[import_path.rfind(".") + 1 :]
+            deployment = serve.deployment(name=deployment_name)(import_path)
+            deployments = [deployment]
 
-            serve.start()
+            serve.start(detached=True)
 
             deployment.options(
                 init_args=args,
@@ -297,9 +307,7 @@ def run(
             ).deploy()
 
             cli_logger.newline()
-            cli_logger.print(
-                f"\nDeployed import at {config_or_import_path} successfully!\n"
-            )
+            cli_logger.print(f"\nDeployed import at {import_path} successfully!\n")
             cli_logger.newline()
 
         while True:
@@ -312,8 +320,12 @@ def run(
             time.sleep(10)
 
     except KeyboardInterrupt:
-        cli_logger.print("Got SIGINT (KeyboardInterrupt). Shutting down Serve.")
-        serve.shutdown()
+        cli_logger.print("Got SIGINT (KeyboardInterrupt). Removing deployments.")
+        for deployment in deployments:
+            deployment.delete()
+        if len(serve.list_deployments()) == 0:
+            cli_logger.print("No deployments left. Shutting down Serve.")
+            serve.shutdown()
         sys.exit()
 
 

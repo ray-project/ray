@@ -55,6 +55,29 @@ class TestProcessArgsAndKwargs:
         with pytest.raises(ValueError):
             process_args_and_kwargs(args_and_kwargs)
 
+    def test_mixed_kwargs(self):
+        args_and_kwargs = (
+            "argval1",
+            "argval2",
+            "--kwarg1==kw==val1",
+            "--kwarg2",
+            "kwval2",
+            "--kwarg3",
+            "=kwval=3",
+            "--kwarg4=",
+            "--kwarg5",
+            "kwval5",
+        )
+        args, kwargs = process_args_and_kwargs(args_and_kwargs)
+        assert args == ["argval1", "argval2"]
+        assert kwargs == {
+            "kwarg1": "=kw==val1",
+            "kwarg2": "kwval2",
+            "kwarg3": "=kwval=3",
+            "kwarg4": "",
+            "kwarg5": "kwval5",
+        }
+
     def test_empty_kwarg(self):
         args_and_kwargs = (
             "argval1",
@@ -68,6 +91,24 @@ class TestProcessArgsAndKwargs:
         args_and_kwargs = ("--empty_kwarg_only",)
         with pytest.raises(ValueError):
             process_args_and_kwargs(args_and_kwargs)
+
+    def test_empty_equals_kwarg(self):
+        args_and_kwargs = (
+            "argval1",
+            "--kwarg1=--hello",
+            "--kwarg2=",
+        )
+        args, kwargs = process_args_and_kwargs(args_and_kwargs)
+        assert args == ["argval1"]
+        assert kwargs == {
+            "kwarg1": "--hello",
+            "kwarg2": "",
+        }
+
+        args_and_kwargs = ("--empty_kwarg_only=",)
+        args, kwargs = process_args_and_kwargs(args_and_kwargs)
+        assert args == []
+        assert kwargs == {"empty_kwarg_only": ""}
 
     def test_only_args(self):
         args_and_kwargs = ("argval1", "argval2", "argval3")
@@ -381,7 +422,7 @@ def test_run_basic(ray_start_stop):
     # Deploy via import path
     p = subprocess.Popen(["serve", "run", "ray.serve.tests.test_cli.parrot"])
     wait_for_condition(
-        lambda: ping_endpoint("run", params="?sound=squawk") == "squawk", timeout=10
+        lambda: ping_endpoint("parrot", params="?sound=squawk") == "squawk", timeout=10
     )
 
     p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
@@ -418,10 +459,10 @@ def test_run_init_args_kwargs(ray_start_stop):
             "Molly",
         ]
     )
-    wait_for_condition(lambda: ping_endpoint("run") == "Molly is green!", timeout=10)
+    wait_for_condition(lambda: ping_endpoint("Macaw") == "Molly is green!", timeout=10)
     p.send_signal(signal.SIGINT)
     p.wait()
-    ping_endpoint("run") == "connection error"
+    assert ping_endpoint("Macaw") == "connection error"
 
     # Mix and match keyword notation
     p = subprocess.Popen(
@@ -437,11 +478,11 @@ def test_run_init_args_kwargs(ray_start_stop):
         ]
     )
     wait_for_condition(
-        lambda: ping_endpoint("run") == "Molly =./u=6y is green!", timeout=10
+        lambda: ping_endpoint("Macaw") == "Molly =./u=6y is green!", timeout=10
     )
     p.send_signal(signal.SIGINT)
     p.wait()
-    ping_endpoint("run") == "connection error"
+    assert ping_endpoint("Macaw") == "connection error"
 
     # Incorrect args/kwargs ordering
     with pytest.raises(subprocess.CalledProcessError):
@@ -466,6 +507,43 @@ def test_run_init_args_kwargs(ray_start_stop):
         subprocess.check_output(
             ["serve", "run", config_file_name, "--", "green", "--name", "Molly"]
         )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run_simultaneous(ray_start_stop):
+    # Test that two serve run processes can run simultaneously
+
+    p1 = subprocess.Popen(["serve", "run", "ray.serve.tests.test_cli.parrot"])
+    p2 = subprocess.Popen(
+        [
+            "serve",
+            "run",
+            "ray.serve.tests.test_cli.Macaw",
+            "--",
+            "green",
+            "--name=Molly",
+            "--surname=Malarkey",
+        ]
+    )
+
+    wait_for_condition(
+        lambda: ping_endpoint("parrot", params="?sound=squawk") == "squawk", timeout=10
+    )
+    wait_for_condition(
+        lambda: ping_endpoint("Macaw") == "Molly Malarkey is green!", timeout=10
+    )
+
+    # Macaw should still be available after parrot is torn down
+    p1.send_signal(signal.SIGINT)
+    p1.wait()
+    assert "Path '/parrot' not found" in ping_endpoint("parrot")
+    assert ping_endpoint("Macaw") == "Molly Malarkey is green!"
+
+    # Serve should shut down after all deployments are torn down
+    p2.send_signal(signal.SIGINT)
+    p2.wait()
+    assert ping_endpoint("parrot") == "connection error"
+    assert ping_endpoint("Macaw") == "connection error"
 
 
 if __name__ == "__main__":
