@@ -21,40 +21,66 @@ class TestMultiAgentBatch(unittest.TestCase):
         ma_batch = MultiAgentBatch(policy_batches, 4)
         sliced_ma_batches = ma_batch.timeslices(1)
 
-        [check_same_batch(i, j) for i, j in zip(sliced_ma_batches, [
-            MultiAgentBatch({
-                "0": SampleBatch({
-                    SampleBatch.T: [0],
-                    SampleBatch.EPS_ID: [0],
-                    SampleBatch.AGENT_INDEX: [0],
-                    SampleBatch.SEQ_LENS: [1],
-                })
-            }, 1),
-            MultiAgentBatch({
-                "0": SampleBatch({
-                    SampleBatch.T: [1],
-                    SampleBatch.EPS_ID: [0],
-                    SampleBatch.AGENT_INDEX: [0],
-                    SampleBatch.SEQ_LENS: [1],
-                })
-            }, 1),
-            MultiAgentBatch({
-                "1": SampleBatch({
-                    SampleBatch.T: [0],
-                    SampleBatch.EPS_ID: [1],
-                    SampleBatch.AGENT_INDEX: [1],
-                    SampleBatch.SEQ_LENS: [1],
-                })
-            }, 1),
-            MultiAgentBatch({
-                "1": SampleBatch({
-                    SampleBatch.T: [1],
-                    SampleBatch.EPS_ID: [1],
-                    SampleBatch.AGENT_INDEX: [1],
-                    SampleBatch.SEQ_LENS: [1],
-                })
-            }, 1)
-        ])]
+        [
+            check_same_batch(i, j)
+            for i, j in zip(
+                sliced_ma_batches,
+                [
+                    MultiAgentBatch(
+                        {
+                            "0": SampleBatch(
+                                {
+                                    SampleBatch.T: [0],
+                                    SampleBatch.EPS_ID: [0],
+                                    SampleBatch.AGENT_INDEX: [0],
+                                    SampleBatch.SEQ_LENS: [1],
+                                }
+                            )
+                        },
+                        1,
+                    ),
+                    MultiAgentBatch(
+                        {
+                            "0": SampleBatch(
+                                {
+                                    SampleBatch.T: [1],
+                                    SampleBatch.EPS_ID: [0],
+                                    SampleBatch.AGENT_INDEX: [0],
+                                    SampleBatch.SEQ_LENS: [1],
+                                }
+                            )
+                        },
+                        1,
+                    ),
+                    MultiAgentBatch(
+                        {
+                            "1": SampleBatch(
+                                {
+                                    SampleBatch.T: [0],
+                                    SampleBatch.EPS_ID: [1],
+                                    SampleBatch.AGENT_INDEX: [1],
+                                    SampleBatch.SEQ_LENS: [1],
+                                }
+                            )
+                        },
+                        1,
+                    ),
+                    MultiAgentBatch(
+                        {
+                            "1": SampleBatch(
+                                {
+                                    SampleBatch.T: [1],
+                                    SampleBatch.EPS_ID: [1],
+                                    SampleBatch.AGENT_INDEX: [1],
+                                    SampleBatch.SEQ_LENS: [1],
+                                }
+                            )
+                        },
+                        1,
+                    ),
+                ],
+            )
+        ]
 
     def test_timeslices_partially_overlapping_experiences(self):
         def _generate_data(agent_idx, t_start):
@@ -68,43 +94,65 @@ class TestMultiAgentBatch(unittest.TestCase):
             )
             return batch
 
-        policy_batches = {str(idx): _generate_data(idx, idx) for idx in (range(
-            2))}
+        policy_batches = {str(idx): _generate_data(idx, idx) for idx in (range(2))}
         ma_batch = MultiAgentBatch(policy_batches, 4)
         sliced_ma_batches = ma_batch.timeslices(1)
 
-        [check_same_batch(i, j) for i, j in zip(sliced_ma_batches, [
-            MultiAgentBatch({
-                "0": SampleBatch({
-                    SampleBatch.T: [0],
-                    SampleBatch.EPS_ID: [0],
-                    SampleBatch.AGENT_INDEX: [0],
-                    SampleBatch.SEQ_LENS: [1],
-                })
-            }, 1),
-            MultiAgentBatch({
-                "0": SampleBatch({
-                    SampleBatch.T: [1],
-                    SampleBatch.EPS_ID: [0],
-                    SampleBatch.AGENT_INDEX: [0],
-                    SampleBatch.SEQ_LENS: [1],
-                }),
-                "1": SampleBatch({
-                    SampleBatch.T: [1],
-                    SampleBatch.EPS_ID: [0],
-                    SampleBatch.AGENT_INDEX: [1],
-                    SampleBatch.SEQ_LENS: [1],
-                })
-            }, 1),
-            MultiAgentBatch({
-                "1": SampleBatch({
-                    SampleBatch.T: [2],
-                    SampleBatch.EPS_ID: [0],
-                    SampleBatch.AGENT_INDEX: [1],
-                    SampleBatch.SEQ_LENS: [1],
-                })
-            }, 1)
-        ])]
+        [
+            check_same_batch(i, j)
+            for i, j in zip(
+                sliced_ma_batches,
+                [
+                    MultiAgentBatch(
+                        {
+                            "0": SampleBatch(
+                                {
+                                    SampleBatch.T: [0],
+                                    SampleBatch.EPS_ID: [0],
+                                    SampleBatch.AGENT_INDEX: [0],
+                                    SampleBatch.SEQ_LENS: [1],
+                                }
+                            )
+                        },
+                        1,
+                    ),
+                    MultiAgentBatch(
+                        {
+                            "0": SampleBatch(
+                                {
+                                    SampleBatch.T: [1],
+                                    SampleBatch.EPS_ID: [0],
+                                    SampleBatch.AGENT_INDEX: [0],
+                                    SampleBatch.SEQ_LENS: [1],
+                                }
+                            ),
+                            "1": SampleBatch(
+                                {
+                                    SampleBatch.T: [1],
+                                    SampleBatch.EPS_ID: [0],
+                                    SampleBatch.AGENT_INDEX: [1],
+                                    SampleBatch.SEQ_LENS: [1],
+                                }
+                            ),
+                        },
+                        1,
+                    ),
+                    MultiAgentBatch(
+                        {
+                            "1": SampleBatch(
+                                {
+                                    SampleBatch.T: [2],
+                                    SampleBatch.EPS_ID: [0],
+                                    SampleBatch.AGENT_INDEX: [1],
+                                    SampleBatch.SEQ_LENS: [1],
+                                }
+                            )
+                        },
+                        1,
+                    ),
+                ],
+            )
+        ]
 
     def test_timeslices_fully_overlapping_experiences(self):
         def _generate_data(agent_idx):
@@ -118,41 +166,60 @@ class TestMultiAgentBatch(unittest.TestCase):
             )
             return batch
 
-        policy_batches = {str(idx): _generate_data(idx) for idx in (range(
-            2))}
+        policy_batches = {str(idx): _generate_data(idx) for idx in (range(2))}
         ma_batch = MultiAgentBatch(policy_batches, 4)
         sliced_ma_batches = ma_batch.timeslices(1)
 
-        [check_same_batch(i, j) for i, j in zip(sliced_ma_batches, [
-            MultiAgentBatch({
-                "0": SampleBatch({
-                    SampleBatch.T: [0],
-                    SampleBatch.EPS_ID: [0],
-                    SampleBatch.AGENT_INDEX: [0],
-                    SampleBatch.SEQ_LENS: [1],
-                }),
-                "1": SampleBatch({
-                    SampleBatch.T: [0],
-                    SampleBatch.EPS_ID: [0],
-                    SampleBatch.AGENT_INDEX: [1],
-                    SampleBatch.SEQ_LENS: [1],
-                })
-            }, 1),
-            MultiAgentBatch({
-                "0": SampleBatch({
-                    SampleBatch.T: [1],
-                    SampleBatch.EPS_ID: [0],
-                    SampleBatch.AGENT_INDEX: [0],
-                    SampleBatch.SEQ_LENS: [1],
-                }),
-                "1": SampleBatch({
-                    SampleBatch.T: [1],
-                    SampleBatch.EPS_ID: [0],
-                    SampleBatch.AGENT_INDEX: [1],
-                    SampleBatch.SEQ_LENS: [1],
-                })
-            }, 1),
-        ])]
+        [
+            check_same_batch(i, j)
+            for i, j in zip(
+                sliced_ma_batches,
+                [
+                    MultiAgentBatch(
+                        {
+                            "0": SampleBatch(
+                                {
+                                    SampleBatch.T: [0],
+                                    SampleBatch.EPS_ID: [0],
+                                    SampleBatch.AGENT_INDEX: [0],
+                                    SampleBatch.SEQ_LENS: [1],
+                                }
+                            ),
+                            "1": SampleBatch(
+                                {
+                                    SampleBatch.T: [0],
+                                    SampleBatch.EPS_ID: [0],
+                                    SampleBatch.AGENT_INDEX: [1],
+                                    SampleBatch.SEQ_LENS: [1],
+                                }
+                            ),
+                        },
+                        1,
+                    ),
+                    MultiAgentBatch(
+                        {
+                            "0": SampleBatch(
+                                {
+                                    SampleBatch.T: [1],
+                                    SampleBatch.EPS_ID: [0],
+                                    SampleBatch.AGENT_INDEX: [0],
+                                    SampleBatch.SEQ_LENS: [1],
+                                }
+                            ),
+                            "1": SampleBatch(
+                                {
+                                    SampleBatch.T: [1],
+                                    SampleBatch.EPS_ID: [0],
+                                    SampleBatch.AGENT_INDEX: [1],
+                                    SampleBatch.SEQ_LENS: [1],
+                                }
+                            ),
+                        },
+                        1,
+                    ),
+                ],
+            )
+        ]
 
 
 if __name__ == "__main__":
