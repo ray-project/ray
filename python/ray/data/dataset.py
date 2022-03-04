@@ -69,7 +69,7 @@ from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
 from ray.data.impl.plan import ExecutionPlan, OneToOneStage, AllToAllStage
 from ray.data.impl.stats import DatasetStats
-from ray.data.impl.compute import cache_wrapper, CallableClass
+from ray.data.impl.compute import cache_wrapper, CallableClass, ComputeStrategy
 from ray.data.impl.output_buffer import BlockOutputBuffer
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.shuffle import simple_shuffle
@@ -195,7 +195,7 @@ class Dataset(Generic[T]):
         fn: Union[CallableClass, Callable[[BatchType], BatchType]],
         *,
         batch_size: Optional[int] = 4096,
-        compute: Optional[str] = None,
+        compute: Union[str, ComputeStrategy] = None,
         batch_format: str = "native",
         **ray_remote_args,
     ) -> "Dataset[Any]":
