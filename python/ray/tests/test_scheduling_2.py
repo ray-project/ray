@@ -310,8 +310,7 @@ def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="FakeAutoscaler doesn't work on Windows"
 )
-@pytest.mark.skipif(
-    os.environ.get("ASAN_OPTIONS") is not None, reason="ASAN is slow")
+@pytest.mark.skipif(os.environ.get("ASAN_OPTIONS") is not None, reason="ASAN is slow")
 def test_demand_report_when_scale_up(shutdown_only):
     # https://github.com/ray-project/ray/issues/22122
     from ray.cluster_utils import AutoscalingCluster
