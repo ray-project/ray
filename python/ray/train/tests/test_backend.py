@@ -405,9 +405,11 @@ def test_placement_group_parent(ray_4_node_4_cpu, placement_group_capture_child_
             assert worker_result != placement_group.id
 
 
-def test_auto_transfer_data_from_host_to_device(ray_2_node_2_gpu):
+def test_auto_transfer_data_from_host_to_device():
     import torch
     import numpy as np
+
+    ray.init(num_cpus=1, num_gpus=1)
 
     def compute_average_runtime(func):
         device = torch.device("cuda")
@@ -442,6 +444,8 @@ def test_auto_transfer_data_from_host_to_device(ray_2_node_2_gpu):
     assert compute_average_runtime(host_to_device) >= compute_average_runtime(
         host_to_device_autopipeline
     )
+
+    ray.shutdown()
 
 
 if __name__ == "__main__":
