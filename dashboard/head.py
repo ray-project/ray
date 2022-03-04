@@ -188,11 +188,8 @@ class DashboardHead:
         logger.info("Loaded %d modules.", len(modules))
         return modules
 
-    async def get_gcs_address(self):
-        return self.gcs_address
-
     async def run(self):
-        gcs_address = await self.get_gcs_address()
+        gcs_address = self.gcs_address
 
         # Dashboard will handle connection failure automatically
         self.gcs_client = GcsClient(address=gcs_address, nums_reconnect_retry=0)
