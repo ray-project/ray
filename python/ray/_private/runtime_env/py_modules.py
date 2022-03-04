@@ -1,20 +1,22 @@
 import logging
 import os
 from types import ModuleType
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from pathlib import Path
+import asyncio
 
 from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     download_and_unpack_package,
     delete_package,
+    get_local_dir_from_uri,
     get_uri_for_directory,
     parse_uri,
     Protocol,
     upload_package_if_needed,
 )
-from ray._private.runtime_env.utils import RuntimeEnv
+from ray._private.utils import get_directory_size_bytes
 from ray._private.utils import try_to_create_directory
 
 default_logger = logging.getLogger(__name__)
@@ -106,30 +108,60 @@ class PyModulesManager:
 
     def delete_uri(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
-    ) -> bool:
+    ) -> int:
+        """Delete URI and return the number of bytes deleted."""
+        local_dir = get_local_dir_from_uri(uri, self._resources_dir)
+        local_dir_size = get_directory_size_bytes(local_dir)
 
         deleted = delete_package(uri, self._resources_dir)
         if not deleted:
             logger.warning(f"Tried to delete nonexistent URI: {uri}.")
+            return 0
 
-        return deleted
+        return local_dir_size
 
-    def setup(
+    def get_uris(self, runtime_env: dict) -> Optional[List[str]]:
+        return runtime_env.py_modules()
+
+    async def create(
         self,
-        runtime_env: RuntimeEnv,
+        uri: str,
+        runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
-    ):
-        if not runtime_env.py_modules():
-            return
-
-        module_dirs = []
-        for uri in runtime_env.py_modules():
+    ) -> int:
+        # Currently create method is still a sync process, to avoid blocking
+        # the loop, need to run this function in another thread.
+        # TODO(Catch-Bull): Refactor method create into an async process, and
+        # make this method running in current loop.
+        def _create():
             module_dir = download_and_unpack_package(
                 uri, self._resources_dir, logger=logger
             )
-            module_dirs.append(module_dir)
+            return get_directory_size_bytes(module_dir)
 
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _create)
+
+    def modify_context(
+        self,
+        uris: Optional[List[str]],
+        runtime_env_dict: Dict,
+        context: RuntimeEnvContext,
+        logger: Optional[logging.Logger] = default_logger,
+    ):
+        if uris is None:
+            return
+        module_dirs = []
+        for uri in uris:
+            module_dir = get_local_dir_from_uri(uri, self._resources_dir)
+            if not module_dir.exists():
+                raise ValueError(
+                    f"Local directory {module_dir} for URI {uri} does "
+                    "not exist on the cluster. Something may have gone wrong while "
+                    "downloading or unpacking the py_modules files."
+                )
+            module_dirs.append(str(module_dir))
         # Insert the py_modules directories into the PYTHONPATH.
         python_path = os.pathsep.join(module_dirs)
         if "PYTHONPATH" in context.env_vars:

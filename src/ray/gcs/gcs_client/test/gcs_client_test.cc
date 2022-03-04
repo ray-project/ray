@@ -72,9 +72,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
 
     // Tests legacy code paths. The poller and broadcaster have their own dedicated unit
     // test targets.
-    config_.grpc_based_resource_broadcast = false;
     config_.grpc_pubsub_enabled = enable_gcs_bootstrap_;
-    ;
 
     client_io_service_ = std::make_unique<instrumented_io_context>();
     client_io_service_thread_ = std::make_unique<std::thread>([this] {
@@ -264,7 +262,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     std::vector<rpc::ActorTableData> actors;
     RAY_CHECK_OK(gcs_client_->Actors().AsyncGetAll(
         [filter_non_dead_actor, &actors, &promise](
-            Status status, const std::vector<rpc::ActorTableData> &result) {
+            Status status, std::vector<rpc::ActorTableData> &&result) {
           if (!result.empty()) {
             if (filter_non_dead_actor) {
               for (auto &iter : result) {
@@ -273,7 +271,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
                 }
               }
             } else {
-              actors.assign(result.begin(), result.end());
+              actors = std::move(result);
             }
           }
           promise.set_value(true);
@@ -311,9 +309,9 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     std::promise<bool> promise;
     std::vector<rpc::GcsNodeInfo> nodes;
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
-        [&nodes, &promise](Status status, const std::vector<rpc::GcsNodeInfo> &result) {
+        [&nodes, &promise](Status status, std::vector<rpc::GcsNodeInfo> &&result) {
           assert(!result.empty());
-          nodes.assign(result.begin(), result.end());
+          nodes = std::move(result);
           promise.set_value(status.ok());
         }));
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
@@ -577,37 +575,6 @@ TEST_P(GcsClientTest, TestNodeInfo) {
   ASSERT_TRUE(gcs_client_->Nodes().IsRemoved(node2_id));
 }
 
-TEST_P(GcsClientTest, TestNodeResources) {
-  // Subscribe to node resource changes.
-  std::atomic<int> add_count(0);
-  std::atomic<int> remove_count(0);
-  auto on_subscribe = [&add_count,
-                       &remove_count](const rpc::NodeResourceChange &notification) {
-    if (0 == notification.deleted_resources_size()) {
-      ++add_count;
-    } else {
-      ++remove_count;
-    }
-  };
-  ASSERT_TRUE(SubscribeToResources(on_subscribe));
-
-  // Register node.
-  auto node_info = Mocker::GenNodeInfo();
-  RAY_CHECK(RegisterNode(*node_info));
-
-  // Update resources of node in GCS.
-  NodeID node_id = NodeID::FromBinary(node_info->node_id());
-  std::string key = "CPU";
-  ASSERT_TRUE(UpdateResources(node_id, key));
-  WaitForExpectedCount(add_count, 1);
-  ASSERT_TRUE(GetResources(node_id).count(key));
-
-  // Delete resources of a node from GCS.
-  ASSERT_TRUE(DeleteResources(node_id, {key}));
-  WaitForExpectedCount(remove_count, 1);
-  ASSERT_TRUE(GetResources(node_id).empty());
-}
-
 TEST_P(GcsClientTest, TestNodeResourceUsage) {
   // Register node.
   auto node_info = Mocker::GenNodeInfo();
@@ -844,14 +811,6 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
   };
   ASSERT_TRUE(SubscribeToNodeChange(node_subscribe));
 
-  // Subscribe to node resource changes.
-  std::atomic<int> resource_change_count(0);
-  auto resource_subscribe =
-      [&resource_change_count](const rpc::NodeResourceChange &result) {
-        ++resource_change_count;
-      };
-  ASSERT_TRUE(SubscribeToResources(resource_subscribe));
-
   auto node_info = Mocker::GenNodeInfo(1);
   ASSERT_TRUE(RegisterNode(*node_info));
   NodeID node_id = NodeID::FromBinary(node_info->node_id());
@@ -873,7 +832,6 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
   ASSERT_TRUE(ReportResourceUsage(resources));
 
   WaitForExpectedCount(node_change_count, 2);
-  WaitForExpectedCount(resource_change_count, 2);
 }
 
 TEST_P(GcsClientTest, TestWorkerTableResubscribe) {

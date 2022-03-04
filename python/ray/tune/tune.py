@@ -1,3 +1,4 @@
+import threading
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, Union
 
 import datetime
@@ -29,7 +30,19 @@ from ray.tune.schedulers import PopulationBasedTraining, PopulationBasedTraining
 from ray.tune.stopper import Stopper
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm, SearchGenerator
 from ray.tune.suggest.suggestion import ConcurrencyLimiter, Searcher
-from ray.tune.suggest.util import set_search_properties_backwards_compatible
+
+# Turn off black here, as it will format the lines to be longer than 88 chars
+# fmt: off
+from ray.tune.suggest.util import (
+    set_search_properties_backwards_compatible
+    as searcher_set_search_properties_backwards_compatible,
+)
+from ray.tune.schedulers.util import (
+    set_search_properties_backwards_compatible
+    as scheduler_set_search_properties_backwards_compatible,
+)
+# fmt: on
+
 from ray.tune.suggest.variant_generator import has_unresolved_values
 from ray.tune.syncer import SyncConfig, set_sync_periods, wait_for_sync
 from ray.tune.trainable import Trainable
@@ -254,15 +267,18 @@ def run(
         restore (str): Path to checkpoint. Only makes sense to set if
             running 1 trial. Defaults to None.
         server_port (int): Port number for launching TuneServer.
-        resume (str|bool): One of "LOCAL", "REMOTE", "PROMPT", "ERRORED_ONLY",
-            or bool. LOCAL/True restores the checkpoint from the
+        resume (str|bool): One of "LOCAL", "REMOTE", "PROMPT", "ERRORED_ONLY", "AUTO",
+            or bool. "LOCAL"/True restores the checkpoint from the
             local experiment directory, determined
-            by ``name`` and ``local_dir``. REMOTE restores the checkpoint
+            by ``name`` and ``local_dir``. "REMOTE" restores the checkpoint
             from ``upload_dir`` (as passed to ``sync_config``).
-            PROMPT provides CLI feedback.
-            False forces a new experiment. ERRORED_ONLY resets and reruns
-            ERRORED trials upon resume - previous trial artifacts will
-            be left untouched.  If resume is set but checkpoint does not exist,
+            "PROMPT" provides the CLI feedback.
+            False forces a new experiment. "ERRORED_ONLY" resets and reruns
+            errored trials upon resume - previous trial artifacts will
+            be left untouched.
+            "AUTO" will attempt to resume from a checkpoint and otherwise
+            start a new experiment.
+            If resume is set but checkpoint does not exist,
             ValueError will be thrown.
         reuse_actors (bool): Whether to reuse actors between different trials
             when possible. This can drastically speed up experiments that start
@@ -302,6 +318,16 @@ def run(
             "so you likely don't need to change anything other than "
             "removing this argument from your call to `tune.run()`"
         )
+
+    # Starting deprecation in ray 1.10.
+    if os.environ.get("TUNE_TRIAL_RESULT_WAIT_TIME_S") is not None:
+        warnings.warn("`TUNE_TRIAL_RESULT_WAIT_TIME_S` is deprecated.")
+
+    if os.environ.get("TUNE_TRIAL_STARTUP_GRACE_PERIOD") is not None:
+        warnings.warn("`TUNE_TRIAL_STARTUP_GRACE_PERIOD` is deprecated.")
+
+    if os.environ.get("TUNE_PLACEMENT_GROUP_WAIT_S") is not None:
+        warnings.warn("`TUNE_PLACEMENT_GROUP_WAIT_S` is deprecated.")
 
     # NO CODE IS TO BE ADDED ABOVE THIS COMMENT
     # remote_run_kwargs must be defined before any other
@@ -519,7 +545,7 @@ def run(
     if isinstance(search_alg, Searcher):
         search_alg = SearchGenerator(search_alg)
 
-    if config and not set_search_properties_backwards_compatible(
+    if config and not searcher_set_search_properties_backwards_compatible(
         search_alg.set_search_properties,
         metric,
         mode,
@@ -535,7 +561,9 @@ def run(
                 "them in the search algorithm's search space if necessary."
             )
 
-    if not scheduler.set_search_properties(metric, mode):
+    if not scheduler_set_search_properties_backwards_compatible(
+        scheduler.set_search_properties, metric, mode, **experiments[0].public_spec
+    ):
         raise ValueError(
             "You passed a `metric` or `mode` argument to `tune.run()`, but "
             "the scheduler you are using was already instantiated with their "
@@ -625,6 +653,12 @@ def run(
         state[signal.SIGINT] = True
         # Restore original signal handler to react to future SIGINT signals
         signal.signal(signal.SIGINT, original_handler)
+
+    # We should only install the handler when it is safe to do so.
+    # When tune.run() is called from worker thread, singal.signal will
+    # fail.
+    if threading.current_thread() != threading.main_thread():
+        os.environ["TUNE_DISABLE_SIGINT_HANDLER"] = "1"
 
     if not int(os.getenv("TUNE_DISABLE_SIGINT_HANDLER", "0")):
         signal.signal(signal.SIGINT, sigint_handler)

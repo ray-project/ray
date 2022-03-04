@@ -47,6 +47,8 @@ parser.add_argument("--num-workers", type=int, default=16)
 parser.add_argument("--mock-train-step-time", type=float, default=1.0)
 parser.add_argument("--num-files", type=int, default=30)
 parser.add_argument("--num-windows", type=int, default=1)
+parser.add_argument("--manual-windows", type=bool, default=False)
+parser.add_argument("--parallelism", type=int, default=400)
 
 SIZE_50_G = 30  # 49.17GB
 SIZE_100_G = 62  # 101.62GB
@@ -218,10 +220,17 @@ def create_torch_iterator(split, batch_size, rank=None):
     return torch_iterator
 
 
-def create_dataset(files, num_workers=4, epochs=50, num_windows=1):
-    if num_windows > 1:
+def create_dataset(
+    files,
+    num_workers=4,
+    epochs=50,
+    num_windows=1,
+    manual_windowing=False,
+    parallelism=400,
+):
+    if num_windows > 1 and manual_windowing:
         num_rows = ray.data.read_parquet(
-            files, _spread_resource_prefix="node:"
+            files
         ).count()  # This should only read Parquet metadata.
         file_splits = np.array_split(files, num_windows)
 
@@ -238,20 +247,21 @@ def create_dataset(files, num_workers=4, epochs=50, num_windows=1):
                     raise StopIteration()
                 split = file_splits[self.i % num_windows]
                 self.i += 1
-                return lambda: ray.data.read_parquet(
-                    list(split), _spread_resource_prefix="node:"
-                )
+                return lambda: ray.data.read_parquet(list(split))
 
         pipe = DatasetPipeline.from_iterable(Windower())
         split_indices = [
             i * num_rows // num_windows // num_workers for i in range(1, num_workers)
         ]
-        pipe = pipe.random_shuffle_each_window(_spread_resource_prefix="node:")
+        pipe = pipe.random_shuffle_each_window()
         pipe_shards = pipe.split_at_indices(split_indices)
     else:
-        ds = ray.data.read_parquet(files, _spread_resource_prefix="node:")
+        ds = ray.data.read_parquet(files, parallelism=parallelism)
+        if num_windows > 1:
+            window_size = max(ds.num_blocks() // num_windows, 1)
+            ds = ds.window(blocks_per_window=window_size)
         pipe = ds.repeat(epochs)
-        pipe = pipe.random_shuffle_each_window(_spread_resource_prefix="node:")
+        pipe = pipe.random_shuffle_each_window()
         pipe_shards = pipe.split(num_workers, equal=True)
     return pipe_shards
 
@@ -287,6 +297,8 @@ if __name__ == "__main__":
         num_workers=args.num_workers,
         epochs=args.epochs,
         num_windows=args.num_windows,
+        manual_windowing=args.manual_windows,
+        parallelism=args.parallelism,
     )
 
     if args.debug:

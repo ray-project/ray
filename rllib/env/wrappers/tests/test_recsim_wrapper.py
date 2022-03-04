@@ -1,7 +1,7 @@
 import gym
 import unittest
 
-from ray.rllib.examples.env.recsim_recommender_system_envs import (
+from ray.rllib.examples.env.recommender_system_envs_with_recsim import (
     InterestEvolutionRecSimEnv,
 )
 from ray.rllib.env.wrappers.recsim import MultiDiscreteToDiscreteActionWrapper
@@ -27,6 +27,11 @@ class TestRecSimWrapper(unittest.TestCase):
         self.assertTrue(env.action_space.contains(action))
         new_obs, _, _, _ = env.step(action)
         self.assertTrue(env.observation_space.contains(new_obs))
+
+    def test_bandits_observation_space_conversion(self):
+        env = InterestEvolutionRecSimEnv({"wrap_for_bandits": True})
+        # "item" of observation space is a Box space.
+        self.assertIsInstance(env.observation_space["item"], gym.spaces.Box)
 
     def test_double_action_space_conversion_raises_exception(self):
         env = InterestEvolutionRecSimEnv({"convert_to_discrete_action_space": True})

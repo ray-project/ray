@@ -60,6 +60,7 @@ class LocalObjectManager {
         is_plasma_object_spillable_(is_plasma_object_spillable),
         is_external_storage_type_fs_(is_external_storage_type_fs),
         max_fused_object_count_(max_fused_object_count),
+        next_spill_error_log_bytes_(RayConfig::instance().verbose_spill_logs()),
         core_worker_subscriber_(core_worker_subscriber) {}
 
   /// Pin objects.
@@ -137,6 +138,9 @@ class LocalObjectManager {
   /// If the external storage is cloud, this will always return an empty string.
   /// In that case, the URL is supposed to be obtained by the object directory.
   std::string GetLocalSpilledObjectURL(const ObjectID &object_id);
+
+  /// Get the current pinned object store memory usage.
+  int64_t GetPinnedBytes() const { return pinned_objects_size_; }
 
   std::string DebugString() const;
 
@@ -274,6 +278,10 @@ class LocalObjectManager {
 
   /// Maximum number of objects that can be fused into a single file.
   int64_t max_fused_object_count_;
+
+  /// The next total bytes for an error-level spill log, or zero to disable.
+  /// This is doubled each time a message is logged.
+  int64_t next_spill_error_log_bytes_;
 
   /// The raylet client to initiate the pubsub to core workers (owners).
   /// It is used to subscribe objects to evict.

@@ -46,7 +46,16 @@ parser.add_argument(
     action="store_true",
     help="Run ray in local mode for easier debugging.",
 )
-
+parser.add_argument(
+    "--override-mean-reward",
+    type=float,
+    default=0.0,
+    help=(
+        "Override "
+        "the mean reward specified by the yaml file in the stopping criteria. This "
+        "is particularly useful for timed tests."
+    ),
+)
 # Obsoleted arg, use --framework=torch instead.
 parser.add_argument(
     "--torch", action="store_true", help="Runs all tests with PyTorch enabled."
@@ -92,13 +101,19 @@ if __name__ == "__main__":
         exp = list(experiments.values())[0]
         exp["config"]["framework"] = args.framework
 
+        # Override the mean reward if specified. This is used by the ray ci
+        # for overriding the episode reward mean for tf2 tests for off policy
+        # long learning tests such as sac and ddpg on the pendulum environment.
+        if args.override_mean_reward != 0.0:
+            exp["stop"]["episode_reward_mean"] = args.override_mean_reward
+
         # QMIX does not support tf yet -> skip.
         if exp["run"] == "QMIX" and args.framework != "torch":
             print(f"Skipping framework='{args.framework}' for QMIX.")
             continue
 
-        # Always run with eager-tracing when framework=tf2.
-        if args.framework in ["tf2", "tfe"]:
+        # Always run with eager-tracing when framework=tf2 if not in local-mode.
+        if args.framework in ["tf2", "tfe"] and not args.local_mode:
             exp["config"]["eager_tracing"] = True
 
         # Print out the actual config.

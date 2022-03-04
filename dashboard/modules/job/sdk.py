@@ -18,15 +18,17 @@ from ray._private.runtime_env.packaging import (
     parse_uri,
 )
 from ray.dashboard.modules.job.common import (
+    JobStatus,
     JobSubmitRequest,
     JobSubmitResponse,
     JobStopResponse,
-    JobStatusInfo,
-    JobStatusResponse,
+    JobInfo,
     JobLogsResponse,
     uri_to_http_components,
 )
 
+from ray.ray_constants import DEFAULT_DASHBOARD_PORT
+from ray.util.annotations import PublicAPI
 from ray.client_builder import _split_address
 
 logger = logging.getLogger(__name__)
@@ -51,8 +53,12 @@ def get_job_submission_client_cluster_info(
     cookies: Optional[Dict[str, Any]] = None,
     metadata: Optional[Dict[str, Any]] = None,
     headers: Optional[Dict[str, Any]] = None,
+    _use_tls: Optional[bool] = False,
 ) -> ClusterInfo:
     """Get address, cookies, and metadata used for JobSubmissionClient.
+
+    If no port is specified in `address`, the Ray dashboard default will be
+    inserted.
 
     Args:
         address (str): Address without the module prefix that is passed
@@ -66,8 +72,23 @@ def get_job_submission_client_cluster_info(
         ClusterInfo object consisting of address, cookies, and metadata
         for JobSubmissionClient to use.
     """
+
+    scheme = "https" if _use_tls else "http"
+
+    split = address.split(":")
+    host = split[0]
+    if len(split) == 1:
+        port = DEFAULT_DASHBOARD_PORT
+    elif len(split) == 2:
+        port = int(split[1])
+    else:
+        raise ValueError(f"Invalid address: {address}.")
+
     return ClusterInfo(
-        address="http://" + address, cookies=cookies, metadata=metadata, headers=headers
+        address=f"{scheme}://{host}:{port}",
+        cookies=cookies,
+        metadata=metadata,
+        headers=headers,
     )
 
 
@@ -78,21 +99,17 @@ def parse_cluster_info(
     metadata: Optional[Dict[str, Any]] = None,
     headers: Optional[Dict[str, Any]] = None,
 ) -> ClusterInfo:
-    module_string, inner_address = _split_address(address.rstrip("/"))
+    module_string, inner_address = _split_address(address)
 
-    # If user passes in a raw HTTP(S) address, just pass it through.
-    if module_string == "http" or module_string == "https":
-        return ClusterInfo(
-            address=address, cookies=cookies, metadata=metadata, headers=headers
-        )
-    # If user passes in a Ray address, convert it to HTTP.
-    elif module_string == "ray":
+    # If user passes http(s):// or ray://, go through normal parsing.
+    if module_string in {"http", "https", "ray"}:
         return get_job_submission_client_cluster_info(
             inner_address,
             create_cluster_if_needed=create_cluster_if_needed,
             cookies=cookies,
             metadata=metadata,
             headers=headers,
+            _use_tls=module_string == "https",
         )
     # Try to dynamically import the function to get cluster info.
     else:
@@ -173,7 +190,7 @@ class JobSubmissionClient:
         *,
         data: Optional[bytes] = None,
         json_data: Optional[dict] = None,
-    ) -> Optional[object]:
+    ) -> "requests.Response":
         url = self._address + endpoint
         logger.debug(f"Sending request to {url} with json data: {json_data or {}}.")
         return requests.request(
@@ -257,6 +274,7 @@ class JobSubmissionClient:
                 )
                 runtime_env["working_dir"] = package_uri
 
+    @PublicAPI(stability="beta")
     def get_version(self) -> str:
         r = self._do_request("GET", "/api/version")
         if r.status_code == 200:
@@ -264,6 +282,7 @@ class JobSubmissionClient:
         else:
             self._raise_error(r)
 
+    @PublicAPI(stability="beta")
     def submit_job(
         self,
         *,
@@ -292,6 +311,7 @@ class JobSubmissionClient:
         else:
             self._raise_error(r)
 
+    @PublicAPI(stability="beta")
     def stop_job(
         self,
         job_id: str,
@@ -304,18 +324,37 @@ class JobSubmissionClient:
         else:
             self._raise_error(r)
 
-    def get_job_status(
+    @PublicAPI(stability="beta")
+    def get_job_info(
         self,
         job_id: str,
-    ) -> JobStatusInfo:
+    ) -> JobInfo:
         r = self._do_request("GET", f"/api/jobs/{job_id}")
 
         if r.status_code == 200:
-            response = JobStatusResponse(**r.json())
-            return JobStatusInfo(status=response.status, message=response.message)
+            return JobInfo(**r.json())
         else:
             self._raise_error(r)
 
+    @PublicAPI(stability="beta")
+    def list_jobs(self) -> Dict[str, JobInfo]:
+        r = self._do_request("GET", "/api/jobs/")
+
+        if r.status_code == 200:
+            jobs_info_json = r.json()
+            jobs_info = {
+                job_id: JobInfo(**job_info_json)
+                for job_id, job_info_json in jobs_info_json.items()
+            }
+            return jobs_info
+        else:
+            self._raise_error(r)
+
+    @PublicAPI(stability="beta")
+    def get_job_status(self, job_id: str) -> JobStatus:
+        return self.get_job_info(job_id).status
+
+    @PublicAPI(stability="beta")
     def get_job_logs(self, job_id: str) -> str:
         r = self._do_request("GET", f"/api/jobs/{job_id}/logs")
 
@@ -324,6 +363,7 @@ class JobSubmissionClient:
         else:
             self._raise_error(r)
 
+    @PublicAPI(stability="beta")
     async def tail_job_logs(self, job_id: str) -> Iterator[str]:
         async with aiohttp.ClientSession(cookies=self._cookies) as session:
             ws = await session.ws_connect(

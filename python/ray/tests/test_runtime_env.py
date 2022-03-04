@@ -1,9 +1,11 @@
 import os
 import pytest
 import sys
+import subprocess
 import time
 import requests
 from pathlib import Path
+from unittest import mock
 
 import ray
 from ray.exceptions import RuntimeEnvSetupError
@@ -17,6 +19,14 @@ from ray._private.utils import (
     get_master_wheel_url,
     get_release_wheel_url,
 )
+from ray._private.runtime_env.utils import (
+    SubprocessCalledProcessError,
+    check_output_cmd,
+)
+from ray._private.runtime_env.uri_cache import URICache
+from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray.runtime_env import RuntimeEnv
 
 
 def test_get_wheel_filename():
@@ -49,22 +59,28 @@ def test_get_release_wheel_url():
                 assert requests.head(url).status_code == 200, url
 
 
-def test_decorator_task(start_cluster):
+@pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
+def test_decorator_task(start_cluster, runtime_env_class):
     cluster, address = start_cluster
     ray.init(address)
 
-    @ray.remote(runtime_env={"env_vars": {"foo": "bar"}})
+    runtime_env = runtime_env_class(env_vars={"foo": "bar"})
+
+    @ray.remote(runtime_env=runtime_env)
     def f():
         return os.environ.get("foo")
 
     assert ray.get(f.remote()) == "bar"
 
 
-def test_decorator_actor(start_cluster):
+@pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
+def test_decorator_actor(start_cluster, runtime_env_class):
     cluster, address = start_cluster
     ray.init(address)
 
-    @ray.remote(runtime_env={"env_vars": {"foo": "bar"}})
+    runtime_env = runtime_env_class(env_vars={"foo": "bar"})
+
+    @ray.remote(runtime_env=runtime_env)
     class A:
         def g(self):
             return os.environ.get("foo")
@@ -73,9 +89,11 @@ def test_decorator_actor(start_cluster):
     assert ray.get(a.g.remote()) == "bar"
 
 
-def test_decorator_complex(start_cluster):
+@pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
+def test_decorator_complex(start_cluster, runtime_env_class):
     cluster, address = start_cluster
-    ray.init(address, runtime_env={"env_vars": {"foo": "job"}})
+    runtime_env_for_init = runtime_env_class(env_vars={"foo": "job"})
+    ray.init(address, runtime_env=runtime_env_for_init)
 
     @ray.remote
     def env_from_job():
@@ -83,13 +101,17 @@ def test_decorator_complex(start_cluster):
 
     assert ray.get(env_from_job.remote()) == "job"
 
-    @ray.remote(runtime_env={"env_vars": {"foo": "task"}})
+    runtime_env_for_f = runtime_env_class(env_vars={"foo": "task"})
+
+    @ray.remote(runtime_env=runtime_env_for_f)
     def f():
         return os.environ.get("foo")
 
     assert ray.get(f.remote()) == "task"
 
-    @ray.remote(runtime_env={"env_vars": {"foo": "actor"}})
+    runtime_env_for_A = runtime_env_class(env_vars={"foo": "actor"})
+
+    @ray.remote(runtime_env=runtime_env_for_A)
     class A:
         def g(self):
             return os.environ.get("foo")
@@ -98,17 +120,19 @@ def test_decorator_complex(start_cluster):
     assert ray.get(a.g.remote()) == "actor"
 
     # Test that runtime_env can be overridden by specifying .options().
+    runtime_env_for_f_new = runtime_env_class(env_vars={"foo": "new"})
+    assert ray.get(f.options(runtime_env=runtime_env_for_f_new).remote()) == "new"
 
-    assert (
-        ray.get(f.options(runtime_env={"env_vars": {"foo": "new"}}).remote()) == "new"
-    )
-
-    a = A.options(runtime_env={"env_vars": {"foo": "new2"}}).remote()
+    runtime_env_for_A_new = runtime_env_class(env_vars={"foo": "new2"})
+    a = A.options(runtime_env=runtime_env_for_A_new).remote()
     assert ray.get(a.g.remote()) == "new2"
 
 
-def test_container_option_serialize():
-    runtime_env = {"container": {"image": "ray:latest", "run_options": ["--name=test"]}}
+@pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
+def test_container_option_serialize(runtime_env_class):
+    runtime_env = runtime_env_class(
+        container={"image": "ray:latest", "run_options": ["--name=test"]}
+    )
     job_config = ray.job_config.JobConfig(runtime_env=runtime_env)
     job_config_serialized = job_config.serialize()
     # job_config_serialized is JobConfig protobuf serialized string,
@@ -121,7 +145,8 @@ def test_container_option_serialize():
 @pytest.mark.skipif(
     sys.platform == "win32", reason="conda in runtime_env unsupported on Windows."
 )
-def test_invalid_conda_env(shutdown_only):
+@pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
+def test_invalid_conda_env(shutdown_only, runtime_env_class):
     ray.init()
 
     @ray.remote
@@ -134,8 +159,12 @@ def test_invalid_conda_env(shutdown_only):
             pass
 
     start = time.time()
-    bad_env = {"conda": {"dependencies": ["this_doesnt_exist"]}}
-    with pytest.raises(RuntimeEnvSetupError):
+    bad_env = runtime_env_class(conda={"dependencies": ["this_doesnt_exist"]})
+    with pytest.raises(
+        RuntimeEnvSetupError,
+        # The actual error message should be included in the exception.
+        match="ResolvePackageNotFound",
+    ):
         ray.get(f.options(runtime_env=bad_env).remote())
     first_time = time.time() - start
 
@@ -143,12 +172,14 @@ def test_invalid_conda_env(shutdown_only):
     ray.get(f.remote())
 
     a = A.options(runtime_env=bad_env).remote()
-    with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
+    with pytest.raises(
+        ray.exceptions.RuntimeEnvSetupError, match="ResolvePackageNotFound"
+    ):
         ray.get(a.f.remote())
 
     # The second time this runs it should be faster as the error is cached.
     start = time.time()
-    with pytest.raises(RuntimeEnvSetupError):
+    with pytest.raises(RuntimeEnvSetupError, match="ResolvePackageNotFound"):
         ray.get(f.options(runtime_env=bad_env).remote())
 
     assert (time.time() - start) < (first_time / 2.0)
@@ -157,7 +188,8 @@ def test_invalid_conda_env(shutdown_only):
 @pytest.mark.skipif(
     sys.platform == "win32", reason="runtime_env unsupported on Windows."
 )
-def test_no_spurious_worker_startup(shutdown_only):
+@pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
+def test_no_spurious_worker_startup(shutdown_only, runtime_env_class):
     """Test that no extra workers start up during a long env installation."""
 
     # Causes agent to sleep for 15 seconds to simulate creating a runtime env.
@@ -173,7 +205,7 @@ def test_no_spurious_worker_startup(shutdown_only):
             return self.value
 
     # Set a nonempty runtime env so that the runtime env setup hook is called.
-    runtime_env = {"env_vars": {"a": "b"}}
+    runtime_env = runtime_env_class(env_vars={"a": "b"})
 
     # Instantiate an actor that requires the long runtime env installation.
     a = Counter.options(runtime_env=runtime_env).remote()
@@ -224,12 +256,14 @@ def runtime_env_local_dev_env_var():
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="very slow on Windows.")
+@pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
 def test_runtime_env_no_spurious_resource_deadlock_msg(
-    runtime_env_local_dev_env_var, ray_start_regular, error_pubsub
+    runtime_env_local_dev_env_var, ray_start_regular, error_pubsub, runtime_env_class
 ):
     p = error_pubsub
+    runtime_env = runtime_env_class(pip=["tensorflow", "torch"])
 
-    @ray.remote(runtime_env={"pip": ["tensorflow", "torch"]})
+    @ray.remote(runtime_env=runtime_env)
     def f():
         pass
 
@@ -237,6 +271,27 @@ def test_runtime_env_no_spurious_resource_deadlock_msg(
     ray.get(f.remote())
     errors = get_error_message(p, 5, ray.ray_constants.RESOURCE_DEADLOCK_ERROR)
     assert len(errors) == 0
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="pip not supported on Windows.")
+@pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
+def test_failed_job_env_no_hang(shutdown_only, runtime_env_class):
+    """Test that after a failed job-level env, tasks can still be run."""
+    runtime_env_for_init = runtime_env_class(pip=["ray-doesnotexist-123"])
+    ray.init(runtime_env=runtime_env_for_init)
+
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa: F401
+
+        return True
+
+    runtime_env_for_f = runtime_env_class(pip=["pip-install-test==0.5"])
+    assert ray.get(f.options(runtime_env=runtime_env_for_f).remote())
+
+    # Task with no runtime env should inherit the bad job env.
+    with pytest.raises(RuntimeEnvSetupError):
+        ray.get(f.remote())
 
 
 @pytest.fixture
@@ -258,7 +313,10 @@ def set_agent_failure_env_var():
     ],
     indirect=True,
 )
-def test_runtime_env_broken(set_agent_failure_env_var, ray_start_cluster_head):
+@pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
+def test_runtime_env_broken(
+    set_agent_failure_env_var, runtime_env_class, ray_start_cluster_head
+):
     @ray.remote
     class A:
         def ready(self):
@@ -268,7 +326,7 @@ def test_runtime_env_broken(set_agent_failure_env_var, ray_start_cluster_head):
     def f():
         pass
 
-    runtime_env = {"env_vars": {"TF_WARNINGS": "none"}}
+    runtime_env = runtime_env_class(env_vars={"TF_WARNINGS": "none"})
     """
     Test task raises an exception.
     """
@@ -280,6 +338,119 @@ def test_runtime_env_broken(set_agent_failure_env_var, ray_start_cluster_head):
     a = A.options(runtime_env=runtime_env).remote()
     with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
         ray.get(a.ready.remote())
+
+
+class TestURICache:
+    def test_zero_cache_size(self):
+        uris_to_sizes = {"5": 5, "3": 3}
+
+        def delete_fn(uri, logger):
+            return uris_to_sizes[uri]
+
+        cache = URICache(delete_fn, max_total_size_bytes=0, debug_mode=True)
+        cache.add("5", 5)
+        assert cache.get_total_size_bytes() == 5
+        cache.mark_unused("5")
+        assert cache.get_total_size_bytes() == 0
+        cache.add("3", 3)
+        cache.add("5", 5)
+        assert cache.get_total_size_bytes() == 8
+        cache.mark_unused("3")
+        cache.mark_unused("5")
+        assert cache.get_total_size_bytes() == 0
+
+    def test_nonzero_cache_size(self):
+        uris_to_sizes = {"a": 4, "b": 4, "c": 4}
+
+        def delete_fn(uri, logger):
+            return uris_to_sizes[uri]
+
+        cache = URICache(delete_fn, max_total_size_bytes=10, debug_mode=True)
+        cache.add("a", 4)
+        cache.add("b", 4)
+        cache.mark_unused("a")
+        assert "a" in cache
+        cache.add("c", 4)
+        # Now we have total size 12, which exceeds the max size 10.
+        assert cache.get_total_size_bytes() == 8
+        # "a" was the only unused URI, so it must have been deleted.
+        assert "b" and "c" in cache and "a" not in cache
+
+    def test_mark_used_nonadded_uri_error(self):
+        cache = URICache(debug_mode=True)
+        with pytest.raises(ValueError):
+            cache.mark_used("nonadded_uri")
+
+    def test_mark_used(self):
+        uris_to_sizes = {"a": 3, "b": 3, "big": 300}
+
+        def delete_fn(uri, logger):
+            return uris_to_sizes[uri]
+
+        cache = URICache(delete_fn, max_total_size_bytes=10, debug_mode=True)
+        cache.add("a", 3)
+        cache.add("b", 3)
+        cache.mark_unused("a")
+        cache.mark_unused("b")
+        assert "a" in cache and "b" in cache
+        assert cache.get_total_size_bytes() == 6
+
+        cache.mark_used("a")
+        cache.add("big", 300)
+        # We are over capacity and the only unused URI is "b", so we delete it
+        assert "a" in cache and "big" in cache and "b" not in cache
+        assert cache.get_total_size_bytes() == 303
+
+        cache.mark_unused("big")
+        assert "big" not in cache
+        assert cache.get_total_size_bytes() == 3
+
+    def test_many_URIs(self):
+        uris_to_sizes = {str(i): i for i in range(1000)}
+
+        def delete_fn(uri, logger):
+            return uris_to_sizes[uri]
+
+        cache = URICache(delete_fn, debug_mode=True)
+        for i in range(1000):
+            cache.add(str(i), i)
+        for i in range(1000):
+            cache.mark_unused(str(i))
+        for i in range(1000):
+            assert str(i) in cache
+
+    def test_delete_fn_called(self):
+        num_delete_fn_calls = 0
+        uris_to_sizes = {"a": 8, "b": 6, "c": 4, "d": 20}
+
+        def delete_fn(uri, logger):
+            nonlocal num_delete_fn_calls
+            num_delete_fn_calls += 1
+            return uris_to_sizes[uri]
+
+        cache = URICache(delete_fn, max_total_size_bytes=10, debug_mode=True)
+        cache.add("a", 8)
+        cache.add("b", 6)
+        cache.mark_unused("b")
+        # Total size is 14 > 10, so we need to delete "b".
+        assert num_delete_fn_calls == 1
+
+        cache.add("c", 4)
+        cache.mark_unused("c")
+        # Total size is 12 > 10, so we delete "c".
+        assert num_delete_fn_calls == 2
+
+        cache.mark_unused("a")
+        # Total size is 8 <= 10, so we shouldn't delete anything.
+        assert num_delete_fn_calls == 2
+
+        cache.add("d", 20)
+        # Total size is 28 > 10, so we delete "a".
+        assert num_delete_fn_calls == 3
+
+        cache.mark_unused("d")
+        # Total size is 20 > 10, so we delete "d".
+        assert num_delete_fn_calls == 4
 
 
 @pytest.fixture
@@ -294,8 +465,13 @@ def enable_dev_mode(local_env_var_enabled):
     sys.platform == "win32", reason="conda in runtime_env unsupported on Windows."
 )
 @pytest.mark.parametrize("local_env_var_enabled", [False, True])
+@pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
 def test_runtime_env_log_msg(
-    local_env_var_enabled, enable_dev_mode, ray_start_cluster_head, log_pubsub
+    local_env_var_enabled,
+    enable_dev_mode,
+    ray_start_cluster_head,
+    log_pubsub,
+    runtime_env_class,
 ):
     p = log_pubsub
 
@@ -303,13 +479,213 @@ def test_runtime_env_log_msg(
     def f():
         pass
 
-    good_env = {"pip": ["requests"]}
+    good_env = runtime_env_class(pip=["requests"])
     ray.get(f.options(runtime_env=good_env).remote())
     sources = get_log_sources(p, 5)
     if local_env_var_enabled:
         assert "runtime_env" in sources
     else:
         assert "runtime_env" not in sources
+
+
+def test_subprocess_error():
+    ex = SubprocessCalledProcessError
+    with pytest.raises(subprocess.SubprocessError) as e:
+        raise ex(123, "abc")
+    assert "test_out" not in str(e.value)
+    assert "test_err" not in str(e.value)
+    with pytest.raises(subprocess.SubprocessError) as e:
+        raise ex(123, "abc", stderr="test_err")
+    assert "test_out" not in str(e.value)
+    assert "test_err" in str(e.value)
+    with pytest.raises(subprocess.SubprocessError) as e:
+        raise ex(123, "abc", output="test_out")
+    assert "test_out" in str(e.value)
+    assert "test_err" not in str(e.value)
+    with pytest.raises(subprocess.SubprocessError) as e:
+        raise ex(123, "abc", output="test_out", stderr="test_err")
+    assert "test_out" in str(e.value)
+    assert "test_err" in str(e.value)
+
+
+def test_subprocess_error_with_last_n_lines():
+    stdout = "1\n2\n3\n4\n5\n"
+    stderr = "5\n4\n3\n2\n1\n"
+    exception = SubprocessCalledProcessError(888, "abc", output=stdout, stderr=stderr)
+    exception.LAST_N_LINES = 3
+    exception_str = str(exception)
+    assert "cmd" not in exception_str
+    assert "Last 3 lines" in exception_str
+    s = "".join([s.strip() for s in exception_str.splitlines()])
+    assert "345" in s
+    assert "321" in s
+
+
+@pytest.mark.asyncio
+async def test_check_output_cmd():
+    cmd = "dir" if sys.platform.startswith("win") else "pwd"
+    logs = []
+
+    class _FakeLogger:
+        def __getattr__(self, item):
+            def _log(formatter, *args):
+                logs.append(formatter % args)
+
+            return _log
+
+    for _ in range(2):
+        output = await check_output_cmd([cmd], logger=_FakeLogger())
+        assert len(output) > 0
+
+    all_log_string = "\n".join(logs)
+
+    # Check the cmd index generator works.
+    assert "cmd[1]" in all_log_string
+    assert "cmd[2]" in all_log_string
+
+    # Test communicate fails.
+    with mock.patch(
+        "asyncio.subprocess.Process.communicate",
+        side_effect=Exception("fake exception"),
+    ):
+        with pytest.raises(RuntimeError) as e:
+            await check_output_cmd([cmd], logger=_FakeLogger())
+        # Make sure the exception has cmd trace info.
+        assert "cmd[3]" in str(e.value)
+
+    # Test asyncio.create_subprocess_exec fails.
+    with pytest.raises(RuntimeError) as e:
+        await check_output_cmd(["not_exist_cmd"], logger=_FakeLogger())
+    # Make sure the exception has cmd trace info.
+    assert "cmd[4]" in str(e.value)
+
+    # Test returncode != 0.
+    with pytest.raises(SubprocessCalledProcessError) as e:
+        await check_output_cmd([cmd, "--abc"], logger=_FakeLogger())
+    # Make sure the exception has cmd trace info.
+    assert "cmd[5]" in str(e.value)
+
+
+def test_to_make_ensure_runtime_env_api(start_cluster):
+    # make sure RuntimeEnv can be used in an be used interchangeably with
+    # an unstructured dictionary in the relevant API calls.
+    ENV_KEY = "TEST_RUNTIME_ENV"
+
+    @ray.remote(runtime_env=RuntimeEnv(env_vars={ENV_KEY: "f1"}))
+    def f1():
+        assert os.environ.get(ENV_KEY) == "f1"
+
+    ray.get(f1.remote())
+
+    @ray.remote
+    def f2():
+        assert os.environ.get(ENV_KEY) == "f2"
+
+    ray.get(f2.options(runtime_env=RuntimeEnv(env_vars={ENV_KEY: "f2"})).remote())
+
+    @ray.remote(runtime_env=RuntimeEnv(env_vars={ENV_KEY: "a1"}))
+    class A1:
+        def f(self):
+            assert os.environ.get(ENV_KEY) == "a1"
+
+    a1 = A1.remote()
+    ray.get(a1.f.remote())
+
+    @ray.remote
+    class A2:
+        def f(self):
+            assert os.environ.get(ENV_KEY) == "a2"
+
+    a2 = A2.options(runtime_env=RuntimeEnv(env_vars={ENV_KEY: "a2"})).remote()
+    ray.get(a2.f.remote())
+
+
+MY_PLUGIN_CLASS_PATH = "ray.tests.test_runtime_env.MyPlugin"
+success_retry_number = 3
+runtime_env_retry_times = 0
+
+
+# This plugin can make runtime env creation failed before the retry times
+# increased to `success_retry_number`.
+class MyPlugin(RuntimeEnvPlugin):
+    @staticmethod
+    def validate(runtime_env_dict: dict) -> str:
+        return runtime_env_dict["plugins"][MY_PLUGIN_CLASS_PATH]
+
+    @staticmethod
+    def modify_context(
+        uri: str, plugin_config_dict: dict, ctx: RuntimeEnvContext
+    ) -> None:
+        global runtime_env_retry_times
+        runtime_env_retry_times += 1
+        if runtime_env_retry_times != success_retry_number:
+            raise ValueError(f"Fault injection {runtime_env_retry_times}")
+        pass
+
+
+@pytest.mark.parametrize(
+    "set_runtime_env_retry_times",
+    [
+        str(success_retry_number - 1),
+        str(success_retry_number),
+    ],
+    indirect=True,
+)
+def test_runtime_env_retry(set_runtime_env_retry_times, ray_start_regular):
+    @ray.remote
+    def f():
+        return "ok"
+
+    runtime_env_retry_times = int(set_runtime_env_retry_times)
+    if runtime_env_retry_times >= success_retry_number:
+        # Enough retry times
+        output = ray.get(
+            f.options(
+                runtime_env={"plugins": {MY_PLUGIN_CLASS_PATH: {"key": "value"}}}
+            ).remote()
+        )
+        assert output == "ok"
+    else:
+        # No enough retry times
+        with pytest.raises(
+            RuntimeEnvSetupError, match=f"Fault injection {runtime_env_retry_times}"
+        ):
+            ray.get(
+                f.options(
+                    runtime_env={"plugins": {MY_PLUGIN_CLASS_PATH: {"key": "value"}}}
+                ).remote()
+            )
+
+
+@pytest.mark.parametrize(
+    "option",
+    ["pip_list", "conda_name", "conda_dict", "container", "plugins"],
+)
+def test_serialize_deserialize(option):
+    runtime_env = dict()
+    if option == "pip_list":
+        runtime_env["pip"] = ["pkg1", "pkg2"]
+    elif option == "conda_name":
+        runtime_env["conda"] = "env_name"
+    elif option == "conda_dict":
+        runtime_env["conda"] = {"dependencies": ["dep1", "dep2"]}
+    elif option == "container":
+        runtime_env["container"] = {
+            "image": "anyscale/ray-ml:nightly-py38-cpu",
+            "worker_path": "/root/python/ray/workers/default_worker.py",
+            "run_options": ["--cap-drop SYS_ADMIN", "--log-level=debug"],
+        }
+    elif option == "plugins":
+        runtime_env["plugins"] = {
+            "class_path1": {"config1": "val1"},
+            "class_path2": "string_config",
+        }
+    else:
+        raise ValueError("unexpected option " + str(option))
+
+    proto_runtime_env = RuntimeEnv(**runtime_env, _validate=False)._proto_runtime_env
+    cls_runtime_env = RuntimeEnv.from_proto(proto_runtime_env)
+    assert cls_runtime_env.to_dict() == runtime_env
 
 
 if __name__ == "__main__":

@@ -4,15 +4,15 @@
 User Guides
 ===========
 
-If you’re new to Ray Data, we recommend starting with the :ref:`Ray Data Quick Start <ray_data_quick_start>`.
-This user guide will help you navigate the Ray Data project and show you how achieve several tasks, for instance
+If you’re new to Ray Datasets, we recommend starting with the :ref:`Ray Datasets Quick Start <ray_datasets_quick_start>`.
+This user guide will help you navigate the Ray Datasets project and show you how achieve several tasks, for instance
 you will learn
 
 - how to load data and preprocess it for machine learning applications,
-- how to use Tensors with Ray Data,
+- how to use Tensors with Ray Datasets,
 - how to run Dataset Pipelines in common scenarios,
-- how to run Dask, Spark, Mars or Modin on Ray Data,
-- and how to tune your Ray Data applications for performance.
+- how to run Dask, Spark, Mars or Modin on Ray,
+- and how to tune your Ray Datasets applications for performance.
 
 .. toctree::
     :maxdepth: 2

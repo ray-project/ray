@@ -38,7 +38,7 @@ Ray Train is a library that aims to simplify distributed deep learning.
 
 * Callbacks for early stopping
 * Checkpointing
-* Integration with Tensorboard, Weights/Biases, and MLflow
+* Integration with TensorBoard, Weights/Biases, and MLflow
 * Jupyter notebooks
 
 **Integration with Ray Ecosystem**: Distributed deep learning often comes with a lot of complexity.
@@ -87,7 +87,7 @@ system. Let's take following simple examples:
     ``ray.train.torch.prepare_data_loader`` utility functions to
     easily setup your model & data for distributed training.
     This will automatically wrap your model with ``DistributedDataParallel``
-    and place it on the right device, and add ``DisributedSampler`` to your DataLoaders.
+    and place it on the right device, and add ``DistributedSampler`` to your DataLoaders.
 
     .. literalinclude:: /../../python/ray/train/examples/torch_quick_start.py
        :language: python

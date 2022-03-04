@@ -4,21 +4,25 @@
 # ---------------------
 # Atari
 autorom[accept-rom-license]
-gym[atari]>=0.21.0; python_version >= '3.7'
+gym[atari]>=0.21.0,<0.22.0; python_version >= '3.7'
 gym[atari]==0.19.0; python_version < '3.7'
 # Kaggle envs.
 kaggle_environments==1.7.11
 # Unity3D testing
-mlagents_envs==0.27.0
+#TODO(sven): Add this back to requirements_rllib.txt once mlagents no longer pins torch<1.9.0 version.
+#mlagents==0.28.0
+mlagents_envs==0.28.0
 # For tests on PettingZoo's multi-agent envs.
-pettingzoo==1.14.0; python_version >= '3.7'
+pettingzoo==1.15.0; python_version >= '3.7'
 pymunk==6.0.0
-supersuit==3.3.2; python_version >= '3.7'
+supersuit==3.3.3; python_version >= '3.7'
 # For testing in MuJoCo-like envs (in PyBullet).
 pybullet==3.2.0
 # For tests on RecSim and Kaggle envs.
 recsim==0.2.4
 tensorflow_estimator==2.6.0
+# DeepMind's OpenSpiel
+open-spiel==1.0.2
 
 # Other.
 # ------

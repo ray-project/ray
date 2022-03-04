@@ -141,6 +141,7 @@ test_python() {
       python/ray/serve/...
       python/ray/tests/...
       -python/ray/serve:conda_env # pip field in runtime_env not supported
+      -python/ray/serve:test_cross_langauge # Ray java not built on Windows yet.
       -python/ray/tests:test_actor_advanced  # crashes in shutdown
       -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
       -python/ray/tests:test_autoscaler_aws
@@ -152,8 +153,6 @@ test_python() {
       -python/ray/tests:test_global_gc
       -python/ray/tests:test_job
       -python/ray/tests:test_memstat
-      -python/ray/tests:test_multiprocessing  # flaky, causes subsequent tests to fail
-      -python/ray/tests:test_multiprocessing_client_mode
       -python/ray/tests:test_multi_node_3
       -python/ray/tests:test_object_manager # OOM on test_object_directory_basic
       -python/ray/tests:test_resource_demand_scheduler
