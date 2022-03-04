@@ -87,7 +87,7 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test_run_all_subdirectory(
-    size = "small",
+    size = "medium",
     include = ["source/ray-core/doc_code/*.py"],
     exclude = [],
     extra_srcs = [],
