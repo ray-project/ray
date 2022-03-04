@@ -410,7 +410,7 @@ def test_auto_transfer_data_from_host_to_device(ray_2_node_2_gpu):
     import numpy as np
 
     def compute_average_runtime(func):
-        device = ray.train.torch.get_device()
+        device = torch.device("cuda")
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
         runtime = []
