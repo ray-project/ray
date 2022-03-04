@@ -45,9 +45,10 @@ using SubscriptionFailureCallback =
 
 /// Subscription info stores metadata that is needed for subscriptions.
 struct SubscriptionInfo {
+  SubscriptionInfo(SubscriptionItemCallback i_cb, SubscriptionFailureCallback f_cb)
+      : item_cb(std::move(i_cb)), failure_cb(std::move(f_cb)) {}
   SubscriptionItemCallback item_cb;
   SubscriptionFailureCallback failure_cb;
-  int64_t processed_seq = -1;
 };
 
 /// All subscription info for the publisher.
@@ -183,7 +184,6 @@ class SubscriberChannel {
 
   const rpc::ChannelType channel_type_;
 
-  int64_t processed_seq_ = -1;
   /// Mapping of the publisher ID -> subscription info for the publisher.
   absl::flat_hash_map<PublisherID, PublisherSubscription> subscription_map_;
 
@@ -467,9 +467,9 @@ class Subscriber : public SubscriberInterface {
   using CommandQueue = std::queue<std::unique_ptr<CommandItem>>;
   absl::flat_hash_map<PublisherID, CommandQueue> commands_ GUARDED_BY(mutex_);
 
-  /// Processed sequence number for each publisher. Also acts as an indicator to which
-  /// publishers are being actively polling.
-  absl::flat_hash_map<PublisherID, int64_t> processed_seq_ GUARDED_BY(mutex_);
+  /// A set to cache the connected publisher ids. "Connected" means the long polling
+  /// request is in flight.
+  absl::flat_hash_set<PublisherID> publishers_connected_ GUARDED_BY(mutex_);
 
   /// A set to keep track of in-flight command batch requests
   absl::flat_hash_set<PublisherID> command_batch_sent_ GUARDED_BY(mutex_);

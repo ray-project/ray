@@ -138,10 +138,6 @@ bool SubscriptionIndex::CheckNoLeaks() const {
 bool SubscriberState::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request,
                                           rpc::PubsubLongPollingReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-  // Delete messages that are already processed by the subscriber.
-  while (!mailbox_.empty() && mailbox_.front()->seq() <= request.processed_seq()) {
-    mailbox_.pop();
-  }
   if (long_polling_connection_) {
     // Because of the new long polling request, flush the current polling request with an
     // empty reply.
@@ -158,12 +154,8 @@ bool SubscriberState::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &r
 }
 
 void SubscriberState::QueueMessage(const rpc::PubMessage &pub_message, bool try_publish) {
-  if (mailbox_.empty() || mailbox_.back()->pub_messages_size() >= publish_batch_size_ ||
-      // When existing batches have been replied to the subscriber, do not modify them.
-      // New messages should be added to a new batch.
-      mailbox_.back()->seq() == replied_seq_) {
+  if (mailbox_.empty() || mailbox_.back()->pub_messages_size() >= publish_batch_size_) {
     mailbox_.push(std::make_unique<rpc::PubsubLongPollingReply>());
-    mailbox_.back()->set_seq(next_seq_++);
   }
 
   // Update the long polling reply.
@@ -186,18 +178,10 @@ bool SubscriberState::PublishIfPossible(bool force_noop) {
 
   // No message should have been added to the reply.
   RAY_CHECK(long_polling_connection_->reply->pub_messages().empty());
-  if (force_noop) {
-    // Use -1 sequence number to mark a no-op message.
-    long_polling_connection_->reply->set_seq(-1);
-  } else {
-    // Mailbox must not be empty here.
-    RAY_CHECK(!mailbox_.empty() && !mailbox_.front()->pub_messages().empty());
-    // Reply to the long polling subscriber. Reply will be deleted later, after being
-    // acknowledged.
-    long_polling_connection_->reply->CopyFrom(*mailbox_.front());
-    if (replied_seq_ < mailbox_.front()->seq()) {
-      replied_seq_ = mailbox_.front()->seq();
-    }
+  if (!force_noop) {
+    // Reply to the long polling subscriber. Swap the reply here to avoid extra copy.
+    long_polling_connection_->reply->Swap(mailbox_.front().get());
+    mailbox_.pop();
   }
   long_polling_connection_->send_reply_callback(Status::OK(), nullptr, nullptr);
 
@@ -209,8 +193,7 @@ bool SubscriberState::PublishIfPossible(bool force_noop) {
 
 bool SubscriberState::CheckNoLeaks() const {
   // If all message in the mailbox has been replied, consider there is no leak.
-  return !long_polling_connection_ &&
-         (mailbox_.empty() || mailbox_.back()->seq() == replied_seq_);
+  return !long_polling_connection_ && mailbox_.empty();
 }
 
 bool SubscriberState::ConnectionExists() const {
@@ -239,9 +222,6 @@ void Publisher::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request
                                          subscriber_id, get_time_ms_,
                                          subscriber_timeout_ms_, publish_batch_size_))
              .first;
-    // Subscription is created along with this poll request. So this is either a new
-    // subscription or a reconnection. Ask the subscriber to reset their sequence number.
-    reply->set_type(rpc::PubsubLongPollingReply::RESET);
   }
   auto &subscriber = it->second;
 
