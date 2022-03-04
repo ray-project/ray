@@ -4,7 +4,6 @@ import yaml
 import os
 import sys
 import pathlib
-import requests
 import click
 import time
 
@@ -23,38 +22,8 @@ from ray.dashboard.modules.serve.schema import (
     schema_to_serve_application,
     serve_application_status_to_schema,
 )
-from ray.dashboard.modules.dashboard_sdk import SubmissionClient
+from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.autoscaler._private.cli_logger import cli_logger
-
-
-def log_failed_request(response: requests.models.Response, address: str):
-    error_message = (
-        f"\nRequest to address {address} failed. Got response status code "
-        f"{response.status_code} with the following message:"
-        f"\n\n{response.text}"
-    )
-    cli_logger.newline()
-    cli_logger.error(error_message)
-    cli_logger.newline()
-
-
-def configure_working_dir(
-    deployment: Deployment, working_dir: str, submission_client: SubmissionClient
-) -> None:
-    """
-    Sets the deployment's working_dir to working_dir. Uses the
-    submission_client to upload the working_dir if it's local.
-    Mutates the deployment.
-    """
-
-    runtime_env = {"working_dir": working_dir}
-    submission_client._upload_working_dir_if_needed(runtime_env)
-    if deployment.ray_actor_options is None:
-        deployment._ray_actor_options = {"runtime_env": runtime_env}
-    elif "runtime_env" in deployment.ray_actor_options:
-        deployment.ray_actor_options["runtime_env"].update(runtime_env)
-    else:
-        deployment.ray_actor_options["runtime_env"] = runtime_env
 
 
 @click.group(help="[EXPERIMENTAL] CLI for managing Serve instances on a Ray cluster.")
@@ -178,27 +147,13 @@ def create_deployment(deployment: str, options_json: str):
     help='Address of the Ray dashboard to query. For example, "http://localhost:8265".',
 )
 def deploy(config_file_name: str, address: str):
-    full_address_path = f"{address}/api/serve/deployments/"
-
     with open(config_file_name, "r") as config_file:
         config = yaml.safe_load(config_file)
 
-    # Generate a schema using the config to ensure its format is valid
+    # Schematize config to validate format
     ServeApplicationSchema.parse_obj(config)
 
-    response = requests.put(full_address_path, json=config)
-
-    if response.status_code == 200:
-        cli_logger.newline()
-        cli_logger.success(
-            "\nSent deploy request successfully!\n "
-            "* Use `serve status` to check your deployments' statuses.\n "
-            "* Use `serve info` to see your running Serve "
-            "application's configuration.\n"
-        )
-        cli_logger.newline()
-    else:
-        log_failed_request(response, address)
+    ServeSubmissionClient(address).deploy_application(config)
 
 
 @cli.command(
@@ -254,9 +209,9 @@ def run(
 
             serve.start()
             if working_dir is not None:
-                submission_client = SubmissionClient(address)
+                client = ServeSubmissionClient(address)
                 for deployment in deployments:
-                    configure_working_dir(deployment, working_dir, submission_client)
+                    client.configure_working_dir(deployment, working_dir)
 
             deploy_group(deployments)
 
@@ -276,8 +231,8 @@ def run(
 
             serve.start()
             if working_dir is not None:
-                submission_client = SubmissionClient(address)
-                configure_working_dir(deployment, working_dir, submission_client)
+                client = ServeSubmissionClient(address)
+                client.configure_working_dir(deployment, working_dir)
 
             deployment.deploy()
 
@@ -314,12 +269,9 @@ def run(
     help='Address of the Ray dashboard to query. For example, "http://localhost:8265".',
 )
 def info(address: str):
-    full_address_path = f"{address}/api/serve/deployments/"
-    response = requests.get(full_address_path)
-    if response.status_code == 200:
-        print(json.dumps(response.json(), indent=4))
-    else:
-        log_failed_request(response, address)
+    app_info = ServeSubmissionClient(address).get_info()
+    if app_info is not None:
+        print(json.dumps(app_info, indent=4))
 
 
 @cli.command(
@@ -335,12 +287,9 @@ def info(address: str):
     help='Address of the Ray dashboard to query. For example, "http://localhost:8265".',
 )
 def status(address: str):
-    full_address_path = f"{address}/api/serve/deployments/status"
-    response = requests.get(full_address_path)
-    if response.status_code == 200:
-        print(json.dumps(response.json(), indent=4))
-    else:
-        log_failed_request(response, address)
+    app_status = ServeSubmissionClient(address).get_status()
+    if app_status is not None:
+        print(json.dumps(app_status, indent=4))
 
 
 @cli.command(
@@ -365,11 +314,4 @@ def delete(address: str, yes: bool):
             abort=True,
         )
 
-    full_address_path = f"{address}/api/serve/deployments/"
-    response = requests.delete(full_address_path)
-    if response.status_code == 200:
-        cli_logger.newline()
-        cli_logger.success("\nSent delete request successfully!\n")
-        cli_logger.newline()
-    else:
-        log_failed_request(response, address)
+    ServeSubmissionClient(address).delete_application()
