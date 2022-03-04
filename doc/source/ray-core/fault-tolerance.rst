@@ -1,6 +1,3 @@
-note that you can turn off lineage reconstruction by setting max retries=0.
-make sure that we're logging the right error message.
-
 Fault Tolerance
 ===============
 
