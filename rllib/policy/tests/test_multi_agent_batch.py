@@ -6,6 +6,10 @@ from ray.rllib.utils.test_utils import check_same_batch
 
 class TestMultiAgentBatch(unittest.TestCase):
     def test_timeslices_non_overlapping_experiences(self):
+        """Tests if timeslices works as expected on a MultiAgentBatch
+        consisting of two non-overlapping SampleBatches.
+        """
+
         def _generate_data(agent_idx):
             batch = SampleBatch(
                 {
@@ -83,6 +87,10 @@ class TestMultiAgentBatch(unittest.TestCase):
         ]
 
     def test_timeslices_partially_overlapping_experiences(self):
+        """Tests if timeslices works as expected on a MultiAgentBatch
+        consisting of two partially overlapping SampleBatches.
+        """
+
         def _generate_data(agent_idx, t_start):
             batch = SampleBatch(
                 {
@@ -155,6 +163,10 @@ class TestMultiAgentBatch(unittest.TestCase):
         ]
 
     def test_timeslices_fully_overlapping_experiences(self):
+        """Tests if timeslices works as expected on a MultiAgentBatch
+        consisting of two fully overlapping SampleBatches.
+        """
+
         def _generate_data(agent_idx):
             batch = SampleBatch(
                 {
