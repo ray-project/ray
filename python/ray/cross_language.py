@@ -93,11 +93,10 @@ def java_function(class_name, function_name):
 
 @PublicAPI(stability="beta")
 def cpp_function(function_name):
-    """Define a Java function.
+    """Define a Cpp function.
 
     Args:
-        class_name (str): Java class name.
-        function_name (str): Java function name.
+        function_name (str): Cpp function name.
     """
     from ray.remote_function import RemoteFunction
 
