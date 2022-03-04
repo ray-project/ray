@@ -476,36 +476,5 @@ async def test_spill_during_get(object_spilling_config, shutdown_only, is_async)
     assert_no_thrashing(address["address"])
 
 
-def test_spill_deadlock(object_spilling_config, shutdown_only):
-    object_spilling_config, _ = object_spilling_config
-    # Limit our object store to 75 MiB of memory.
-    address = ray.init(
-        object_store_memory=75 * 1024 * 1024,
-        _system_config={
-            "max_io_workers": 1,
-            "automatic_object_spilling_enabled": True,
-            "object_store_full_delay_ms": 100,
-            "object_spilling_config": object_spilling_config,
-            "min_spilling_size": 0,
-        },
-    )
-    arr = np.random.rand(1024 * 1024)  # 8 MB data
-    replay_buffer = []
-
-    # Create objects of more than 400 MiB.
-    for _ in range(50):
-        ref = None
-        while ref is None:
-            ref = ray.put(arr)
-            replay_buffer.append(ref)
-        # This is doing random sampling with 50% prob.
-        if random.randint(0, 9) < 5:
-            for _ in range(5):
-                ref = random.choice(replay_buffer)
-                sample = ray.get(ref, timeout=0)
-                assert np.array_equal(sample, arr)
-    assert_no_thrashing(address["address"])
-
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
