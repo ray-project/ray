@@ -44,7 +44,8 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
     cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
         scheduling::NodeID("local"), unit_resource, *gcs_client_);
     new_placement_group_resource_manager_ =
-        std::make_unique<raylet::NewPlacementGroupResourceManager>(cluster_resource_scheduler_);
+        std::make_unique<raylet::NewPlacementGroupResourceManager>(
+            cluster_resource_scheduler_);
   }
 
   void CheckAvailableResoueceEmpty(const std::string &resource) {
@@ -68,7 +69,6 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
         std::make_shared<const BundleSpecification>(std::move(bundle_spec)));
     return bundle_specs;
   }
-
 };
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewPrepareBundleResource) {
