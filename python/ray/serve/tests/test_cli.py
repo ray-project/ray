@@ -514,6 +514,10 @@ def test_run_simultaneous(ray_start_stop):
     # Test that two serve run processes can run simultaneously
 
     p1 = subprocess.Popen(["serve", "run", "ray.serve.tests.test_cli.parrot"])
+    wait_for_condition(
+        lambda: ping_endpoint("parrot", params="?sound=squawk") == "squawk", timeout=10
+    )
+
     p2 = subprocess.Popen(
         [
             "serve",
@@ -525,7 +529,6 @@ def test_run_simultaneous(ray_start_stop):
             "--surname=Malarkey",
         ]
     )
-
     wait_for_condition(
         lambda: ping_endpoint("parrot", params="?sound=squawk") == "squawk", timeout=10
     )
