@@ -78,7 +78,7 @@ class Preprocessor(abc.ABC):
             DataBatchType: The transformed data batch.
         """
 
-        if self._is_fittable and not self.check_is_fitted:
+        if self._is_fittable and not self.check_is_fitted():
             raise PreprocessorNotFittedException(
                 "`fit` must be called before `transform_batch`."
             )
@@ -97,8 +97,5 @@ class Preprocessor(abc.ABC):
         raise NotImplementedError()
 
     def check_is_fitted(self) -> bool:
-        if getattr(self, "_is_fitted", False):
-            return True
-
         fitted_vars = [v for v in vars(self) if v.endswith("_")]
         return bool(fitted_vars)

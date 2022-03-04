@@ -23,7 +23,6 @@ class Chain(Preprocessor):
         for preprocessor in self.preprocessors[:-1]:
             ds = preprocessor.fit_transform(ds)
         self.preprocessors[-1].fit(ds)
-        self._is_fitted = True
         return self
 
     def fit_transform(self, ds: Dataset) -> Dataset:
@@ -40,6 +39,9 @@ class Chain(Preprocessor):
         for preprocessor in self.preprocessors:
             df = preprocessor.transform_batch(df)
         return df
+
+    def check_is_fitted(self) -> bool:
+        return all(p.check_is_fitted() for p in self.preprocessors)
 
     def __repr__(self):
         return f"<Chain preprocessors={self.preprocessors}>"
