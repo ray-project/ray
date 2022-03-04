@@ -251,13 +251,13 @@ def run(
 
     try:
         # Check if path provided is for config or import
+        serve.start(detached=True)
+        deployments = []
         is_config = pathlib.Path(config_or_import_path).is_file()
         args, kwargs = process_args_and_kwargs(args_and_kwargs)
 
-        deployments = []
         if is_config:
             config_path = config_or_import_path
-            # Delay serve.start() to catch invalid inputs without waiting
             if len(args) + len(kwargs) > 0:
                 raise ValueError(
                     "ARGS_AND_KWARGS cannot be defined for a "
@@ -274,7 +274,6 @@ def run(
             schematized_config = ServeApplicationSchema.parse_obj(config)
             deployments = schema_to_serve_application(schematized_config)
 
-            serve.start(detached=True)
             deploy_group(deployments)
 
             cli_logger.newline()
@@ -299,8 +298,6 @@ def run(
             deployment = serve.deployment(name=deployment_name)(import_path)
             deployments = [deployment]
 
-            serve.start(detached=True)
-
             deployment.options(
                 init_args=args,
                 init_kwargs=kwargs,
@@ -319,13 +316,18 @@ def run(
             cli_logger.newline()
             time.sleep(10)
 
-    except KeyboardInterrupt:
-        cli_logger.print("Got SIGINT (KeyboardInterrupt). Removing deployments.")
+    except (Exception, KeyboardInterrupt) as e:
+        if isinstance(e, KeyboardInterrupt):
+            cli_logger.print("Got SIGINT (KeyboardInterrupt). Removing deployments.")
+        else:
+            cli_logger.error(f"Got {type(e)}. Removing deployments.")
         for deployment in deployments:
             deployment.delete()
         if len(serve.list_deployments()) == 0:
             cli_logger.print("No deployments left. Shutting down Serve.")
             serve.shutdown()
+        if isinstance(e, Exception):
+            raise e
         sys.exit()
 
 

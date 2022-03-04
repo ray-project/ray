@@ -484,6 +484,16 @@ def test_run_init_args_kwargs(ray_start_stop):
     p.wait()
     assert ping_endpoint("Macaw") == "connection error"
 
+    # Args/kwargs with config file
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "macaw.yaml"
+    )
+
+    with pytest.raises(subprocess.CalledProcessError):
+        subprocess.check_output(
+            ["serve", "run", config_file_name, "--", "green", "--name", "Molly"]
+        )
+
     # Incorrect args/kwargs ordering
     with pytest.raises(subprocess.CalledProcessError):
         subprocess.check_output(
@@ -496,16 +506,6 @@ def test_run_init_args_kwargs(ray_start_stop):
                 "Molly",
                 "green",
             ]
-        )
-
-    # Args/kwargs with config file
-    config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "macaw.yaml"
-    )
-
-    with pytest.raises(subprocess.CalledProcessError):
-        subprocess.check_output(
-            ["serve", "run", config_file_name, "--", "green", "--name", "Molly"]
         )
 
 
