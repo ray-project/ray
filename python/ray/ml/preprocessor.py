@@ -97,7 +97,7 @@ class Preprocessor(abc.ABC):
         raise NotImplementedError()
 
     def check_is_fitted(self) -> bool:
-        if hasattr(self, "_is_fitted") and self._is_fitted:
+        if getattr(self, "_is_fitted", False):
             return True
 
         fitted_vars = [v for v in vars(self) if v.endswith("_")]

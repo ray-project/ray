@@ -20,7 +20,7 @@ class SimpleImputer(Preprocessor):
         fill_value: The value to use when `strategy` is "constant".
     """
 
-    valid_strategies = ["mean", "most_frequent", "constant"]
+    _valid_strategies = ["mean", "most_frequent", "constant"]
 
     def __init__(
         self,
@@ -33,10 +33,10 @@ class SimpleImputer(Preprocessor):
         self.strategy = strategy
         self.fill_value = fill_value
 
-        if strategy not in self.valid_strategies:
+        if strategy not in self._valid_strategies:
             raise ValueError(
                 f"Strategy {strategy} is not supported."
-                f"Supported values are: {self.valid_strategies}"
+                f"Supported values are: {self._valid_strategies}"
             )
 
         if strategy == "constant":

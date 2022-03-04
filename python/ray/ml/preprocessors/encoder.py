@@ -127,7 +127,7 @@ def _get_unique_value_indices(
     results = {}
     for column in columns:
         values = _get_unique_values(dataset, column)
-        if None in values:
+        if any(pd.isnull(v) for v in values):
             raise ValueError(
                 f"Unable to fit column '{column}' because it contains null values. "
                 f"Consider imputing missing values first."
