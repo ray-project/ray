@@ -174,12 +174,15 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param gcs_table_storage Used to flush placement group data to storage.
   /// \param gcs_resource_manager Reference of GcsResourceManager.
   /// \param get_ray_namespace A callback to get the ray namespace.
+  /// \param ray_syncer Syncer handler to pass information to all subscribed nodes
   explicit GcsPlacementGroupManager(
       instrumented_io_context &io_context,
       std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
       GcsResourceManager &gcs_resource_manager,
-      std::function<std::string(const JobID &)> get_ray_namespace);
+      std::function<std::string(const JobID &)> get_ray_namespace,
+      /* TODO (iycheng): Delete this once everything is moved to ray sycner*/
+      syncer::RaySyncer *ray_syncer = nullptr);
 
   ~GcsPlacementGroupManager() = default;
 
@@ -312,6 +315,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   void RecordMetrics() const;
 
  private:
+  syncer::RaySyncer *ray_syncer_;
   /// Push a placement group to pending queue.
   ///
   /// \param pg The placementgroup we are adding

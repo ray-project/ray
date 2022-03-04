@@ -45,9 +45,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// \param gcs_table_storage GCS table external storage accessor.
   explicit GcsResourceManager(instrumented_io_context &main_io_service,
                               std::shared_ptr<GcsPublisher> gcs_publisher,
-                              std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                              // TODO(iycheng): Remove sync from GcsResourceManager
-                              syncer::RaySyncer *ray_syncer = nullptr);
+                              std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
 
   virtual ~GcsResourceManager() {}
 
