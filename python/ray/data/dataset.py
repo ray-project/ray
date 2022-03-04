@@ -2743,7 +2743,21 @@ Dict[str, List[str]]]): The names of the columns
         plan_copy.clear()
         ds = Dataset(plan_copy, self._get_epoch(), self._lazy)
         ds._set_uuid(self._get_uuid())
-        return pickle.dumps(ds)
+
+        def _reduce(rf: ray.remote_function.RemoteFunction):
+            reconstructor, args, state = rf.__reduce__()
+            state["_last_export_session_and_job"] = None
+            return reconstructor, args, state
+
+        context = ray.worker.global_worker.get_serialization_context()
+        try:
+            context._register_cloudpickle_reducer(
+                ray.remote_function.RemoteFunction, _reduce
+            )
+            serialized = pickle.dumps(ds)
+        finally:
+            context._unregister_cloudpickle_reducer(ray.remote_function.RemoteFunction)
+        return serialized
 
     @DeveloperAPI
     @staticmethod
