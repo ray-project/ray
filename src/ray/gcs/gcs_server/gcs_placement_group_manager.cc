@@ -133,7 +133,7 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     GcsResourceManager &gcs_resource_manager,
     std::function<std::string(const JobID &)> get_ray_namespace,
-    syncer::RaySyncer& ray_syncer)
+    syncer::RaySyncer &ray_syncer)
     : ray_syncer_(ray_syncer),
       io_context_(io_context),
       gcs_placement_group_scheduler_(std::move(scheduler)),
@@ -312,8 +312,8 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
           auto node_id = bundle->NodeId();
           rpc::NodeResourceChange node_resource_change;
           node_resource_change.set_node_id(node_id.Binary());
-          node_resource_change.mutable_updated_resources()->insert(
-              changed_resources.begin(), changed_resources.end());
+          node_resource_change.mutable_updated_resources()->insert(resources.begin(),
+                                                                   resources.end());
           ray_syncer_.Update(std::move(node_resource_change));
         }
         // Invoke all callbacks for all `WaitPlacementGroupUntilReady` requests of this
@@ -489,7 +489,6 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
     }
     ray_syncer_.Update(std::move(node_resource_change));
   }
-
 
   // Flush the status and respond to workers.
   placement_group->UpdateState(rpc::PlacementGroupTableData::REMOVED);
