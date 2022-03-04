@@ -1,5 +1,4 @@
-from functools import partial
-from typing import List, Dict
+from typing import List, Dict, Set
 
 import pandas as pd
 
@@ -29,6 +28,7 @@ class OrdinalEncoder(Preprocessor):
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
+        _validate_df(df, *self.columns)
         df.loc[:, self.columns].isnull().values.any()
 
         def column_ordinal_encoder(s: pd.Series):
@@ -68,6 +68,7 @@ class OneHotEncoder(Preprocessor):
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
+        _validate_df(df, *self.columns)
         # Compute new columns
         new_columns = {}
         for column in self.columns:
@@ -107,6 +108,8 @@ class LabelEncoder(Preprocessor):
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
+        _validate_df(df, self.label_column)
+
         def column_label_encoder(s: pd.Series):
             s_values = self.stats_[f"unique_values({s.name})"]
             return s.map(s_values)
@@ -124,25 +127,38 @@ def _get_unique_value_indices(
     results = {}
     for column in columns:
         values = _get_unique_values(dataset, column)
+        if None in values:
+            raise ValueError(
+                f"Unable to fit column '{column}' because it contains null values. "
+                f"Consider imputing missing values first."
+            )
         value_to_index = _sorted_value_indices(values)
         results[f"unique_values({column})"] = value_to_index
     return results
 
 
-def _get_unique_values(dataset: Dataset, column: str) -> List[str]:
+def _get_unique_values(dataset: Dataset, column: str) -> Set[str]:
     agg_ds = dataset.groupby(column).count()
     # TODO: Support an upper limit by using `agg_ds.take(N)` instead.
-    return [row[column] for row in agg_ds.iter_rows()]
+    return {row[column] for row in agg_ds.iter_rows()}
 
 
-def _sorted_value_indices(values: List) -> Dict[str, int]:
+def _sorted_value_indices(values: Set) -> Dict[str, int]:
     """Converts values to a Dict mapping to unique indexes.
 
-    Values will be de-duped and sorted.
+    Values will be sorted.
 
     Example:
-        >>> _sorted_value_indices(["b", "a", "c", "a"])
+        >>> _sorted_value_indices({"b", "a", "c", "a"})
         {"a": 0, "b": 1, "c": 2}
     """
-    return {value: i for i, value in enumerate(sorted(set(values)))}
+    return {value: i for i, value in enumerate(sorted(values))}
 
+
+def _validate_df(df: pd.DataFrame, *columns: str) -> None:
+    null_columns = [column for column in columns if df[column].isnull().values.any()]
+    if null_columns:
+        raise ValueError(
+            f"Unable to transform columns {null_columns} because they contain "
+            f"null values. Consider imputing missing values first."
+        )

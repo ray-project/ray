@@ -165,8 +165,8 @@ def test_ordinal_encoder():
 
     # Transform batch.
     pred_col_a = ["blue", "yellow", None]
-    pred_col_b = ["cold", "unknown", None]
-    pred_col_c = [10, 20, None]
+    pred_col_b = ["cold", "warm", "other"]
+    pred_col_c = [10, 1, 20]
     pred_in_df = pd.DataFrame.from_dict(
         {"A": pred_col_a, "B": pred_col_b, "C": pred_col_c}
     )
@@ -174,8 +174,8 @@ def test_ordinal_encoder():
     pred_out_df = encoder.transform_batch(pred_in_df)
 
     pred_processed_col_a = pred_col_a
-    pred_processed_col_b = [0, None, None]
-    pred_processed_col_c = [2, None, None]
+    pred_processed_col_b = [0, 2, None]
+    pred_processed_col_c = [2, 0, None]
     pred_expected_df = pd.DataFrame.from_dict(
         {
             "A": pred_processed_col_a,
@@ -185,6 +185,30 @@ def test_ordinal_encoder():
     )
 
     assert pred_out_df.equals(pred_expected_df)
+
+    # Test null behavior.
+    null_col = [1, None]
+    nonnull_col = [1, 1]
+    null_df = pd.DataFrame.from_dict({"A": null_col})
+    null_ds = ray.data.from_pandas(null_df)
+    nonnull_df = pd.DataFrame.from_dict({"A": nonnull_col})
+    nonnull_ds = ray.data.from_pandas(nonnull_df)
+    null_encoder = OrdinalEncoder(["A"])
+
+    # Verify fit fails for null values.
+    with pytest.raises(ValueError):
+        null_encoder.fit(null_ds)
+    null_encoder.fit(nonnull_ds)
+
+    # Verify transform fails for null values.
+    with pytest.raises(ValueError):
+        null_encoder.transform(null_ds)
+    null_encoder.transform(nonnull_ds)
+
+    # Verify transform_batch fails for null values.
+    with pytest.raises(ValueError):
+        null_encoder.transform_batch(null_df)
+    null_encoder.transform_batch(nonnull_df)
 
 
 def test_one_hot_encoder():
@@ -236,8 +260,8 @@ def test_one_hot_encoder():
 
     # Transform batch.
     pred_col_a = ["blue", "yellow", None]
-    pred_col_b = ["cold", "unknown", None]
-    pred_col_c = [10, 20, None]
+    pred_col_b = ["cold", "warm", "other"]
+    pred_col_c = [10, 1, 20]
     pred_in_df = pd.DataFrame.from_dict(
         {"A": pred_col_a, "B": pred_col_b, "C": pred_col_c}
     )
@@ -247,8 +271,8 @@ def test_one_hot_encoder():
     pred_processed_col_a = ["blue", "yellow", None]
     pred_processed_col_b_cold = [1, 0, 0]
     pred_processed_col_b_hot = [0, 0, 0]
-    pred_processed_col_b_warm = [0, 0, 0]
-    pred_processed_col_c_1 = [0, 0, 0]
+    pred_processed_col_b_warm = [0, 1, 0]
+    pred_processed_col_c_1 = [0, 1, 0]
     pred_processed_col_c_5 = [0, 0, 0]
     pred_processed_col_c_10 = [1, 0, 0]
     pred_expected_df = pd.DataFrame.from_dict(
@@ -264,6 +288,30 @@ def test_one_hot_encoder():
     )
 
     assert pred_out_df.equals(pred_expected_df)
+
+    # Test null behavior.
+    null_col = [1, None]
+    nonnull_col = [1, 1]
+    null_df = pd.DataFrame.from_dict({"A": null_col})
+    null_ds = ray.data.from_pandas(null_df)
+    nonnull_df = pd.DataFrame.from_dict({"A": nonnull_col})
+    nonnull_ds = ray.data.from_pandas(nonnull_df)
+    null_encoder = OneHotEncoder(["A"])
+
+    # Verify fit fails for null values.
+    with pytest.raises(ValueError):
+        null_encoder.fit(null_ds)
+    null_encoder.fit(nonnull_ds)
+
+    # Verify transform fails for null values.
+    with pytest.raises(ValueError):
+        null_encoder.transform(null_ds)
+    null_encoder.transform(nonnull_ds)
+
+    # Verify transform_batch fails for null values.
+    with pytest.raises(ValueError):
+        null_encoder.transform_batch(null_df)
+    null_encoder.transform_batch(nonnull_df)
 
 
 def test_label_encoder():
@@ -298,7 +346,7 @@ def test_label_encoder():
     assert out_df.equals(expected_df)
 
     # Transform batch.
-    pred_col_a = ["blue", "yellow", None]
+    pred_col_a = ["blue", "red", "yellow"]
     pred_col_b = ["cold", "unknown", None]
     pred_col_c = [10, 20, None]
     pred_in_df = pd.DataFrame.from_dict(
@@ -307,7 +355,7 @@ def test_label_encoder():
 
     pred_out_df = encoder.transform_batch(pred_in_df)
 
-    pred_processed_col_a = [0, None, None]
+    pred_processed_col_a = [0, 2, None]
     pred_processed_col_b = pred_col_b
     pred_processed_col_c = pred_col_c
     pred_expected_df = pd.DataFrame.from_dict(
@@ -318,6 +366,30 @@ def test_label_encoder():
         }
     )
     assert pred_out_df.equals(pred_expected_df)
+
+    # Test null behavior.
+    null_col = [1, None]
+    nonnull_col = [1, 1]
+    null_df = pd.DataFrame.from_dict({"A": null_col})
+    null_ds = ray.data.from_pandas(null_df)
+    nonnull_df = pd.DataFrame.from_dict({"A": nonnull_col})
+    nonnull_ds = ray.data.from_pandas(nonnull_df)
+    null_encoder = LabelEncoder("A")
+
+    # Verify fit fails for null values.
+    with pytest.raises(ValueError):
+        null_encoder.fit(null_ds)
+    null_encoder.fit(nonnull_ds)
+
+    # Verify transform fails for null values.
+    with pytest.raises(ValueError):
+        null_encoder.transform(null_ds)
+    null_encoder.transform(nonnull_ds)
+
+    # Verify transform_batch fails for null values.
+    with pytest.raises(ValueError):
+        null_encoder.transform_batch(null_df)
+    null_encoder.transform_batch(nonnull_df)
 
 
 def test_simple_imputer():
@@ -383,21 +455,21 @@ def test_chain():
     in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
     ds = ray.data.from_pandas(in_df)
 
-    scaler = StandardScaler(["A", "B"])
     imputer = SimpleImputer(["B"])
+    scaler = StandardScaler(["A", "B"])
     encoder = LabelEncoder("C")
     chain = Chain(scaler, imputer, encoder)
 
     # Fit data.
     chain.fit(ds)
+    assert imputer.stats_ == {
+        "mean(B)": 0.0,
+    }
     assert scaler.stats_ == {
         "mean(A)": 0.0,
         "mean(B)": 1.0,
         "std(A)": 1.0,
         "std(B)": 0.0,
-    }
-    assert imputer.stats_ == {
-        "mean(B)": 0.0,
     }
     assert encoder.stats_ == {
         "unique_values(C)": {"monday": 0, "sunday": 1, "tuesday": 2}
