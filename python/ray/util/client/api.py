@@ -212,13 +212,16 @@ class ClientAPI:
 
         return self.worker.get_cluster_info(ray_client_pb2.ClusterInfoType.NODES)
 
-    def method(self, num_returns=1):
+    def method(self, *args, **kwargs):
         """Annotate an actor method
 
         Args:
             num_returns: The number of object refs that should be returned by
                 invocations of this actor method.
         """
+
+        assert len(args) == 0
+        assert len(kwargs) == 1
 
         # NOTE: So this follows the same logic as in ray/actor.py::method()
         # The reason to duplicate it here is to simplify the client mode
@@ -228,7 +231,10 @@ class ClientAPI:
         # pass anything else. It's inside the class definition that becomes an
         # actor. Similar annotations would follow the same way.
         def annotate_method(method):
-            method.__ray_num_returns__ = num_returns
+            if "num_returns" in kwargs:
+                method.__ray_num_returns__ = kwargs["num_returns"]
+            if "concurrency_group" in kwargs:
+                method.__ray_concurrency_group__ = kwargs["concurrency_group"]
             return method
 
         return annotate_method
