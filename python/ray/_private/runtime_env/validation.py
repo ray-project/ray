@@ -102,7 +102,7 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
     return result
 
 
-def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
+def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
     """Parses and validates a user-provided 'pip' option.
 
     The value of the input 'pip' field can be one of two cases:
@@ -116,7 +116,7 @@ def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
     """
     assert pip is not None
 
-    pip_list = None
+    result = None
     if sys.platform == "win32":
         raise NotImplementedError(
             "The 'pip' field in runtime_env "
@@ -129,8 +129,38 @@ def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
         if not pip_file.is_file():
             raise ValueError(f"{pip_file} is not a valid file")
         pip_list = pip_file.read_text().strip().split("\n")
+        result = dict(packages=pip_list)
     elif isinstance(pip, list) and all(isinstance(dep, str) for dep in pip):
-        pip_list = pip
+        result = dict(packages=pip)
+    elif isinstance(pip, dict):
+        if set(pip.keys()) - set(["packages", "pip_check_enable", "pip_version"]):
+            raise ValueError(
+                "runtime_env['pip'] can only have these fields: "
+                "packages, pip_check_enable and pip_check_enable, but got: "
+                f"{list(pip.keys())}"
+            )
+
+        if "packages" not in pip:
+            raise ValueError(
+                f"runtime_env['pip'] must include field 'packages', but got {pip}"
+            )
+        if "pip_check_enable" in pip and not isinstance(pip["pip_check_enable"], bool):
+            raise TypeError(
+                "runtime_env['pip']['pip_check_enable'] must be of type bool, "
+                f"got {type(pip['pip_check_enable'])}"
+            )
+        if "pip_version" in pip:
+            if not isinstance(pip["pip_version"], str):
+                raise TypeError(
+                    "runtime_env['pip']['pip_version'] must be of type bool, "
+                    f"got {type(pip['pip_version'])}"
+                )
+            if 0 == len(_rewrite_pip_list_ray_libraries([f"pip{pip['pip_version']}"])):
+                raise ValueError(
+                    "runtime_env['pip']['pip_version'] is an invalid version: "
+                    f"{pip['pip_version']}"
+                )
+        result = pip.copy()
     else:
         raise TypeError(
             "runtime_env['pip'] must be of type str or " f"List[str], got {type(pip)}"
@@ -140,9 +170,9 @@ def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
     # OrderedDict to preserve the order of the list.  This makes the output
     # deterministic and easier to debug, because pip install can have
     # different behavior depending on the order of the input.
-    result = list(OrderedDict.fromkeys(pip_list))
+    result["packages"] = list(OrderedDict.fromkeys(result["packages"]))
 
-    if len(result) == 0:
+    if len(result["packages"]) == 0:
         result = None
 
     logger.debug(f"Rewrote runtime_env `pip` field from {pip} to {result}.")
