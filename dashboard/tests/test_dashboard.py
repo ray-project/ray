@@ -13,7 +13,6 @@ import numpy as np
 import ray
 import psutil
 import pytest
-import redis
 import requests
 
 from ray import ray_constants
@@ -30,7 +29,6 @@ from ray.dashboard import dashboard
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.modules
-from ray._private.gcs_utils import use_gcs_for_bootstrap
 
 try:
     import aiohttp.web
@@ -44,19 +42,8 @@ logger = logging.getLogger(__name__)
 
 
 def make_gcs_client(address_info):
-    if not use_gcs_for_bootstrap():
-        address = address_info["redis_address"]
-        address = address.split(":")
-        assert len(address) == 2
-        client = redis.StrictRedis(
-            host=address[0],
-            port=int(address[1]),
-            password=ray_constants.REDIS_DEFAULT_PASSWORD,
-        )
-        gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(client)
-    else:
-        address = address_info["gcs_address"]
-        gcs_client = ray._private.gcs_utils.GcsClient(address=address)
+    address = address_info["gcs_address"]
+    gcs_client = ray._private.gcs_utils.GcsClient(address=address)
     return gcs_client
 
 
@@ -700,8 +687,6 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
         f"--port={port}",
         f"--temp-dir={temp_dir}",
         f"--log-dir={log_dir}",
-        f"--redis-address={address_info['redis_address']}",
-        f"--redis-password={ray_constants.REDIS_DEFAULT_PASSWORD}",
         f"--gcs-address={address_info['gcs_address']}",
         f"--session-dir={session_dir}",
     ]
