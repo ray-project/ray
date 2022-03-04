@@ -27,6 +27,7 @@ TEST(ConcurrencyGroupManagerTest, TestEmptyConcurrencyGroupManager) {
   ConcurrencyGroupManager<FiberState> manager;
   auto executor = manager.GetExecutor("", empty);
   ASSERT_EQ(manager.GetDefaultExecutor(), executor);
+  manager.Stop();
 }
 
 TEST(ConcurrencyGroupManagerTest, TestBasicConcurrencyGroupManager) {
@@ -62,6 +63,8 @@ TEST(ConcurrencyGroupManagerTest, TestBasicConcurrencyGroupManager) {
 
   ASSERT_EQ(manager.GetExecutor("", func_1_in_executing_group)->GetMaxConcurrency(), 4);
   ASSERT_EQ(manager.GetExecutor("", func_2_in_executing_group)->GetMaxConcurrency(), 4);
+
+  manager.Stop();
 }
 
 }  // namespace core
