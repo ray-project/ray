@@ -1,22 +1,8 @@
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Union
 
 from ray.experimental.dag import DAGNode
 from ray.experimental.dag.format_utils import get_dag_node_str
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
-
-# Internal keys used to keep track of key fields throughout Ray DAG execution,
-# copy and replacement.
-INPUT_SCHEMA_KEY = "__input_schema__"
-ADAPTER_FN_KEY = "__adapter_fn__"
-
-
-# TODO (jiaodong): Better interface without depending on pydantic
-class InputSchema:
-    def __init__(self, validator: Optional[Callable] = None):
-        self.validator = validator
-
-    def validate(self, input_data: Any):
-        self.validator(input_data)
 
 
 class InputNode(DAGNode):
@@ -51,47 +37,14 @@ class InputNode(DAGNode):
     - Split attributes
     """
 
-    def __init__(
-        self,
-        input_schema: Optional[InputSchema] = None,
-        adapter_fn: Optional[Callable] = None,
-        other_args_to_resolve: Optional[Dict[str, Any]] = None,
-        **kwargs,
-    ):
+    def __init__(self, *args, **kwargs):
         """InputNode should only take attributes of validating and converting
         input data rather than the input data itself. User input should be
         provided via `ray_dag.execute(user_input)`.
         """
-        if len(kwargs) != 0:
-            raise ValueError(
-                "InputNode should not take any args or kwargs other than "
-                "{input_schema, adapter_fn, other_args_to_resolve}"
-            )
-
-        self._input_schema = input_schema
-        self._adapter_fn = adapter_fn
-
-        super().__init__(
-            [],
-            {
-                INPUT_SCHEMA_KEY: input_schema,
-                ADAPTER_FN_KEY: adapter_fn,
-            },
-            {},
-            other_args_to_resolve=other_args_to_resolve,
-        )
-
-    def _validate_input_if_needed(self, input_data):
-        if self._input_schema:
-            self._input_schema.validate(input_data)
-        else:
-            pass
-
-    def _adapt_input_if_needed(self, input_data):
-        if self._adapter_fn:
-            return self._adapter_fn(input_data)
-        else:
-            return input_data
+        if len(args) != 0 or len(kwargs) != 0:
+            raise ValueError("InputNode should not take any args or kwargs.")
+        super().__init__([], {}, {}, {})
 
     def _copy_impl(
         self,
@@ -100,20 +53,24 @@ class InputNode(DAGNode):
         new_options: Dict[str, Any],
         new_other_args_to_resolve: Dict[str, Any],
     ):
-        return InputNode(
-            new_kwargs[INPUT_SCHEMA_KEY],
-            new_kwargs[ADAPTER_FN_KEY],
-            other_args_to_resolve=new_other_args_to_resolve,
-        )
+        return InputNode()
 
-    def _execute_impl(self, input_data: Any):
+    def _execute_impl(self, *args, **kwargs):
         """Executor of InputNode by ray.remote()"""
-        self._validate_input_if_needed(input_data)
-        converted_data = self._adapt_input_if_needed(input_data)
-        return converted_data
+        # If user only passed in one value, for simplicity we just return it.
+        if len(args) == 1 and len(kwargs) == 0:
+            return args[0]
+
+        return DAGInputData(*args, **kwargs)
 
     def __str__(self) -> str:
         return get_dag_node_str(self, "__InputNode__")
+
+    def __getattr__(self, key: str):
+        return InputAtrributeNode(self, key)
+
+    def __getitem__(self, key: Union[int, str]) -> Any:
+        return InputAtrributeNode(self, key)
 
     def to_json(self, encoder_cls) -> Dict[str, Any]:
         # TODO: (jiaodong) Support arbitrary InputNode args and pydantic
@@ -126,3 +83,85 @@ class InputNode(DAGNode):
         assert input_json[DAGNODE_TYPE_KEY] == InputNode.__name__
         # TODO: (jiaodong) Support user passing inputs to InputNode in JSON
         return cls()
+
+
+class InputAtrributeNode(DAGNode):
+    """Represents partial acces of user input based on an attribute key.
+
+    Examples:
+        >>> input = InputNode()
+        >>> a = input[0]
+        >>> b = input.x
+
+        >>> # This makes a = 1 and b = 2
+        >>> ray_dag.execute(1, x=2)
+    """
+
+    def __init__(self, dag_input_node: InputNode, key: str):
+        self._dag_input_node = dag_input_node
+        self._key = key
+        super().__init__([], {}, {}, {"dag_input_node": dag_input_node, "key": key})
+
+    def _copy_impl(
+        self,
+        new_args: List[Any],
+        new_kwargs: Dict[str, Any],
+        new_options: Dict[str, Any],
+        new_other_args_to_resolve: Dict[str, Any],
+    ):
+        return InputAtrributeNode(
+            new_other_args_to_resolve["dag_input_node"],
+            new_other_args_to_resolve["key"],
+        )
+
+    def _execute_impl(self, *args, **kwargs):
+        """Executor of InputNode by ray.remote()"""
+
+        if isinstance(self._dag_input_node, DAGInputData):
+            return self._dag_input_node[self._key]
+        else:
+            #
+            return self._dag_input_node
+
+    def __str__(self) -> str:
+        return get_dag_node_str(self, f"__InputNode__[{self._key}]")
+
+
+class DAGInputData:
+    """Wrapped all user inputs as one object, accessible via attribute key.
+
+    Example:
+        >>> @ray.remote
+        >>> class Model:
+        ...     def __init__(self, val):
+        ...         self.val = val
+        ...     def forward(self, input):
+        ...         return self.val * input
+
+        >>> @ray.remote
+        >>> def combine(a, b):
+        ...     return a + b
+
+        >>> input = InputNode()
+        >>> m1 = Model.bind(1)
+        >>> m2 = Model.bind(2)
+        >>> m1_output = m1.forward.bind(input[0])
+        >>> m2_output = m2.forward.bind(input[1])
+        >>> ray_dag = combine.bind(m1_output, m2_output)
+
+        >>> # Pass mix of args and kwargs as input.
+        >>> print(ray_dag.execute(1, 2)) # 1 sent to m1, 2 sent to m2
+        >>> 5
+
+    """
+
+    def __init__(self, *args, **kwargs):
+        self._args = list(args)
+        self._kwargs = kwargs
+
+    def __getitem__(self, key: Union[int, str]) -> Any:
+        if isinstance(key, int):
+            # Accessing list args,
+            return self._args[key]
+        else:
+            return self._kwargs[key]

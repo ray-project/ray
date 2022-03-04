@@ -4,7 +4,7 @@ request, for all DAGNode types.
 """
 
 import pytest
-from ray.experimental.dag.input_node import InputNode, InputSchema
+from ray.experimental.dag.input_node import InputNode
 from typing import TypeVar
 
 import ray
@@ -17,13 +17,13 @@ def test_no_args_to_input_node(shared_ray_instance):
     def f(input):
         return input
 
-    # TODO (jiaodong): handle random args without using kw
-    # with pytest.raises(
-    #     ValueError, match="InputNode should not take any args or kwargs other than"
-    # ):
-    #     f._bind(InputNode(0))
     with pytest.raises(
-        ValueError, match="InputNode should not take any args or kwargs other than"
+        ValueError, match="InputNode should not take any args or kwargs"
+    ):
+        f._bind(InputNode(0))
+    with pytest.raises(
+        ValueError,
+        match="InputNode should not take any args or kwargs",
     ):
         f._bind(InputNode(key=1))
 
@@ -152,6 +152,30 @@ def test_class_method_input(shared_ray_instance):
     assert ray.get(dag.execute(6)) == 12
 
 
+def test_access_partial_attributes(shared_ray_instance):
+    @ray.remote
+    class Model:
+        def __init__(self, val):
+            self.val = val
+
+        def forward(self, input):
+            return self.val * input
+
+    @ray.remote
+    def combine(a, b):
+        return a + b
+
+    input = InputNode()
+    m1 = Model._bind(1)
+    m2 = Model._bind(2)
+    m1_output = m1.forward._bind(input[0])
+    m2_output = m2.forward._bind(input[1])
+    ray_dag = combine._bind(m1_output, m2_output)
+
+    # Pass mix of args and kwargs as input.
+    print(ray_dag.execute(1, 2))
+
+
 def test_multi_class_method_input(shared_ray_instance):
     """
     Test a multiple class methods can all be used as inputs in a dag.
@@ -217,25 +241,37 @@ def test_func_class_mixed_input(shared_ray_instance):
     assert ray.get(dag.execute(3)) == 15
 
 
-def test_simple_full_input_adapt_and_validate(shared_ray_instance):
-    """str to int."""
+def test_input_attr_partial_access(shared_ray_instance):
+    @ray.remote
+    class Model:
+        def __init__(self, weight: int):
+            self.weight = weight
 
-    def validator(input):
-        assert isinstance(input, str)
+        def forward(self, input: int):
+            return self.weight * input
 
-    input_schema = InputSchema(validator=validator)
+    @ray.remote
+    def combine(a, b, c):
+        return a + b + c
 
-    def adapter_fn(input):
-        if isinstance(input, str):
-            return int(input)
-        else:
-            return input
+    dag_input = InputNode()
+    m1 = Model._bind(1)
+    m2 = Model._bind(2)
+    m1_output = m1.forward._bind(dag_input[0])
+    m2_output = m2.forward._bind(dag_input[1])
+    dag = combine._bind(m1_output, m2_output, dag_input[2])
+    # 1*1 + 2*2 + 3 = 8
+    assert ray.get(dag.execute(1, 2, 3)) == 8
 
-    input = InputNode(
-        input_schema=input_schema,
-        adapter_fn=adapter_fn,
-    )
-    assert input.execute("1") == 1
+    # Same DAG, but with attribute accessor and keyword input
+    dag_input = InputNode()
+    m1 = Model._bind(1)
+    m2 = Model._bind(2)
+    m1_output = m1.forward._bind(dag_input.m1)
+    m2_output = m2.forward._bind(dag_input.m2)
+    dag = combine._bind(m1_output, m2_output, dag_input.m3)
+    # 1*1 + 2*2 + 3 = 8
+    assert ray.get(dag.execute(m1=1, m2=2, m3=3)) == 8
 
 
 if __name__ == "__main__":

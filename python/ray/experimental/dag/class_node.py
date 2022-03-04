@@ -54,8 +54,13 @@ class ClassNode(DAGNode):
             other_args_to_resolve=new_other_args_to_resolve,
         )
 
-    def _execute_impl(self, *args):
-        """Executor of ClassNode by ray.remote()"""
+    def _execute_impl(self, *args, **kwargs):
+        """Executor of ClassNode by ray.remote()
+
+        args and kwargs are to match base class signature, but not in the
+        implementation. All args and kwargs should be resolved and replaced
+        with value via bottom-up recursion when current node is executed.
+        """
         return (
             ray.remote(self._body)
             .options(**self._bound_options)
@@ -180,8 +185,13 @@ class ClassMethodNode(DAGNode):
             other_args_to_resolve=new_other_args_to_resolve,
         )
 
-    def _execute_impl(self, *args):
-        """Executor of ClassMethodNode by ray.remote()"""
+    def _execute_impl(self, *args, **kwargs):
+        """Executor of ClassMethodNode by ray.remote()
+
+        args and kwargs are to match base class signature, but not in the
+        implementation. All args and kwargs should be resolved and replaced
+        with value via bottom-up recursion when current node is executed.
+        """
         method_body = getattr(self._parent_class_node, self._method_name)
         # Execute with bound args.
         return method_body.options(**self._bound_options).remote(

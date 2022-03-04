@@ -75,9 +75,9 @@ class DAGNode:
 
         return self._bound_other_args_to_resolve.copy()
 
-    def execute(self, *args) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
+    def execute(self, *args, **kwargs) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
         """Execute this DAG using the Ray default executor."""
-        return self._apply_recursive(lambda node: node._execute_impl(*args))
+        return self._apply_recursive(lambda node: node._execute_impl(*args, **kwargs))
 
     def _get_toplevel_child_nodes(self) -> Set["DAGNode"]:
         """Return the set of nodes specified as top-level args.
