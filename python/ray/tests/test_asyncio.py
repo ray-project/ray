@@ -250,16 +250,22 @@ async def test_asyncio_exit_actor(ray_start_regular_shared):
     wait_for_pid_to_exit(pid)
 
 
-def test_asyncio_exit_actor_no_process_leak(ray_start_regular_shared):
-    @ray.remote
+def test_asyncio_exit_actor_with_concurrency_group(ray_start_regular_shared):
+    @ray.remote(concurrency_groups={"async": 2})
     class Actor:
-        def getpid(self):
+        async def getpid(self):
             return os.getpid()
 
         async def exit(self):
             ray.actor.exit_actor()
 
+        @ray.method(concurrency_group="async")
+        async def loop_forever(self):
+            while True:
+                await asyncio.sleep(5)
+
     a = Actor.remote()
+    a.loop_forever.remote()
     pid = ray.get(a.getpid.remote())
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.exit.remote())
