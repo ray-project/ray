@@ -309,7 +309,7 @@ Questions or Issues?
 .. _`namespace`: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
 .. _`Deployment`: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
 .. _`Ray Helm chart`: https://github.com/ray-project/ray/tree/master/deploy/charts/ray/
-.. _`release assets`: https://github.com/ray-project/ray/releases/latest
+.. _`release assets`: https://github.com/ray-project/ray/releases/latest/
 .. _`kubectl`: https://kubernetes.io/docs/tasks/tools/
 .. _`Helm 3`: https://helm.sh/
 .. _`Helm`: https://helm.sh/
