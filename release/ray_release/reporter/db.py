@@ -43,5 +43,5 @@ class DBReporter(Reporter):
             )
         except Exception:
             logger.exception("Failed to persist result to the databricks delta lake")
-
-        logger.info("Result has been persisted to the databricks delta lake")
+        else:
+            logger.info("Result has been persisted to the databricks delta lake")
