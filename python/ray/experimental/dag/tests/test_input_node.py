@@ -152,30 +152,6 @@ def test_class_method_input(shared_ray_instance):
     assert ray.get(dag.execute(6)) == 12
 
 
-def test_access_partial_attributes(shared_ray_instance):
-    @ray.remote
-    class Model:
-        def __init__(self, val):
-            self.val = val
-
-        def forward(self, input):
-            return self.val * input
-
-    @ray.remote
-    def combine(a, b):
-        return a + b
-
-    input = InputNode()
-    m1 = Model._bind(1)
-    m2 = Model._bind(2)
-    m1_output = m1.forward._bind(input[0])
-    m2_output = m2.forward._bind(input[1])
-    ray_dag = combine._bind(m1_output, m2_output)
-
-    # Pass mix of args and kwargs as input.
-    print(ray_dag.execute(1, 2))
-
-
 def test_multi_class_method_input(shared_ray_instance):
     """
     Test a multiple class methods can all be used as inputs in a dag.

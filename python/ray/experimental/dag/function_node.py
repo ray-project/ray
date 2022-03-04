@@ -44,9 +44,10 @@ class FunctionNode(DAGNode):
     def _execute_impl(self, *args, **kwargs):
         """Executor of FunctionNode by ray.remote().
 
-        args and kwargs are to match base class signature, but not in the
+        Args and kwargs are to match base class signature, but not in the
         implementation. All args and kwargs should be resolved and replaced
-        with value via bottom-up recursion when current node is executed.
+        with value in bound_args and bound_kwargs via bottom-up recursion when
+        current node is executed.
         """
         return (
             ray.remote(self._body)

@@ -56,7 +56,7 @@ class InputNode(DAGNode):
         return InputNode()
 
     def _execute_impl(self, *args, **kwargs):
-        """Executor of InputNode by ray.remote()"""
+        """Executor of InputNode."""
         # If user only passed in one value, for simplicity we just return it.
         if len(args) == 1 and len(kwargs) == 0:
             return args[0]
@@ -115,12 +115,19 @@ class InputAtrributeNode(DAGNode):
         )
 
     def _execute_impl(self, *args, **kwargs):
-        """Executor of InputNode by ray.remote()"""
+        """Executor of InputAtrributeNode.
 
+        Args and kwargs are to match base class signature, but not in the
+        implementation. All args and kwargs should be resolved and replaced
+        with value in bound_args and bound_kwargs via bottom-up recursion when
+        current node is executed.
+        """
         if isinstance(self._dag_input_node, DAGInputData):
             return self._dag_input_node[self._key]
         else:
-            #
+            # dag.execute() is called with only one arg, thus when an
+            # InputAtrributeNode is executed, its dependent InputNode is
+            # resolved with original user input value.
             return self._dag_input_node
 
     def __str__(self) -> str:
@@ -161,7 +168,8 @@ class DAGInputData:
 
     def __getitem__(self, key: Union[int, str]) -> Any:
         if isinstance(key, int):
-            # Accessing list args,
+            # Access list args by index.
             return self._args[key]
         else:
+            # Access kwarg by key.
             return self._kwargs[key]
