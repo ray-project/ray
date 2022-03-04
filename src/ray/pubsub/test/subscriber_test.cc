@@ -59,7 +59,7 @@ class MockWorkerClient : public pubsub::SubscriberClientInterface {
     }
     auto callback = long_polling_callbacks.front();
     auto reply = rpc::PubsubLongPollingReply();
-
+    reply.set_seq(next_seq_++);
     for (const auto &object_id : object_ids) {
       auto *new_pub_message = reply.add_pub_messages();
       new_pub_message->set_key_id(object_id.Binary());
@@ -78,6 +78,7 @@ class MockWorkerClient : public pubsub::SubscriberClientInterface {
 
     auto callback = long_polling_callbacks.front();
     auto reply = rpc::PubsubLongPollingReply();
+    reply.set_seq(next_seq_++);
 
     for (const auto &object_id : object_ids) {
       auto new_pub_message = reply.add_pub_messages();
@@ -94,6 +95,7 @@ class MockWorkerClient : public pubsub::SubscriberClientInterface {
 
   ~MockWorkerClient(){};
 
+  int64_t next_seq_ = 0;
   std::deque<rpc::ClientCallback<rpc::PubsubLongPollingReply>> long_polling_callbacks;
   std::deque<rpc::ClientCallback<rpc::PubsubCommandBatchReply>> command_batch_callbacks;
   std::queue<rpc::PubsubCommandBatchRequest> requests_;
