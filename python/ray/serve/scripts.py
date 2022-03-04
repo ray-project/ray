@@ -320,7 +320,7 @@ def run(
         if isinstance(e, KeyboardInterrupt):
             cli_logger.print("Got SIGINT (KeyboardInterrupt). Removing deployments.")
         else:
-            cli_logger.error(f"Got {type(e)}. Removing deployments.")
+            cli_logger.error(f"Got {type(e).__name__}. Removing deployments.")
         for deployment in deployments:
             deployment.delete()
         if len(serve.list_deployments()) == 0:
