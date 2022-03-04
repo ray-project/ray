@@ -150,7 +150,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         self.service_discovery.daemon = True
         self.service_discovery.start()
         if gcs_pubsub_enabled():
-            gcs_addr = await self._dashboard_head.get_gcs_address()
+            gcs_addr = self._dashboard_head.gcs_address
             subscriber = GcsAioResourceUsageSubscriber(gcs_addr)
             await subscriber.subscribe()
 

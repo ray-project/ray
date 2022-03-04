@@ -167,7 +167,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             DataSource.job_actors[job_id] = job_actors
 
         # Receive actors from channel.
-        gcs_addr = await self._dashboard_head.get_gcs_address()
+        gcs_addr = self._dashboard_head.gcs_address
         subscriber = GcsAioActorSubscriber(address=gcs_addr)
         await subscriber.subscribe()
 
