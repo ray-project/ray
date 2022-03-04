@@ -580,7 +580,7 @@ class ReporterAgent(
         )
         return records_reported
 
-    async def _perform_iteration(self, publish):
+    async def _perform_iteration(self, publisher):
         """Get any changes to the log files and push updates to kv."""
         while True:
             try:
@@ -596,7 +596,7 @@ class ReporterAgent(
                 stats = self._get_all_stats()
                 records_reported = self._record_stats(stats, cluster_stats)
                 self._metrics_agent.record_reporter_stats(records_reported)
-                await publish(self._key, jsonify_asdict(stats))
+                await publisher.publish_resource_usage(self._key, jsonify_asdict(stats))
 
             except Exception:
                 logger.exception("Error publishing node physical stats.")
@@ -608,11 +608,7 @@ class ReporterAgent(
         gcs_addr = self._dashboard_agent.gcs_address
         assert gcs_addr is not None
         publisher = GcsAioPublisher(address=gcs_addr)
-
-        async def publish(key: str, data: str):
-            await publisher.publish_resource_usage(key, data)
-
-        await self._perform_iteration(publish)
+        await self._perform_iteration(publisher)
 
     @staticmethod
     def is_minimal_module():
