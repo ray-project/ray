@@ -218,13 +218,14 @@ async def test_asyncio_exit_actor(ray_start_regular_shared):
             ray.actor.exit_actor()
 
         async def ping(self):
-            return "pong"
+            return os.getpid()
 
         async def loop_forever(self):
             while True:
                 await asyncio.sleep(5)
 
     a = Actor.options(max_task_retries=0).remote()
+    pid = ray.get(a.ping.remote())
     a.loop_forever.remote()
     # Make sure exit_actor exits immediately, not once all tasks completed.
     with pytest.raises(ray.exceptions.RayError):
@@ -244,6 +245,9 @@ async def test_asyncio_exit_actor(ray_start_regular_shared):
         wait_for_condition(cond)
 
     ray.get(check_actor_gone_now.remote())
+
+    # Make sure there is no process leak
+    wait_for_pid_to_exit(pid)
 
 
 def test_asyncio_exit_actor_no_process_leak(ray_start_regular_shared):

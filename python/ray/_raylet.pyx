@@ -2059,15 +2059,9 @@ cdef class CoreWorker:
         self.cgname_to_eventloop_dict = {}
         self.fd_to_cgname_dict = {}
 
-        def asyncio_thread_target(event_loop):
-            event_loop.run_forever()
-            # Finish running the existing actor method calls and then exit.
-            remaining = asyncio.Task.all_tasks(event_loop)
-            event_loop.run_until_complete(asyncio.gather(*remaining))
-
         self.eventloop_for_default_cg = get_new_event_loop()
         self.thread_for_default_cg = threading.Thread(
-            target=lambda: asyncio_thread_target(self.eventloop_for_default_cg),
+            target=lambda: self.eventloop_for_default_cg.run_forever(),
             name="AsyncIO Thread: default"
             )
         self.thread_for_default_cg.start()
@@ -2080,7 +2074,7 @@ cdef class CoreWorker:
 
             async_eventloop = get_new_event_loop()
             async_thread = threading.Thread(
-                target=lambda: asyncio_thread_target(async_eventloop),
+                target=lambda: async_eventloop.run_forever(),
                 name="AsyncIO Thread: {}".format(cg_name)
             )
             async_thread.start()
@@ -2149,13 +2143,8 @@ cdef class CoreWorker:
         for event_loop in event_loops:
             event_loop.call_soon_threadsafe(
                 event_loop.stop)
-        logger.info("Async actor threads are joining."
-                    "If the 'Async actor threads are joined.' "
-                    "message is not printed after this, the worker is probably "
-                    "hanging because the actor task is running an infinite loop.")
         for thread in threads:
             thread.join()
-        logger.info("Async actor threads are joined.")
 
     def current_actor_is_asyncio(self):
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
