@@ -537,6 +537,9 @@ _lint() {
        bazel query 'kind("cc_test", //...)' --output=xml | python "${ROOT_DIR}"/check-bazel-team-owner.py
        bazel query 'kind("py_test", //...)' --output=xml | python "${ROOT_DIR}"/check-bazel-team-owner.py
     popd
+
+    # Make sure tests will be run by CI.
+    python "${ROOT_DIR}"/check-test-run.py
   fi
 }
 
