@@ -43,8 +43,8 @@ def process_args_and_kwargs(
 ) -> Tuple[List[str], Dict[str, str]]:
     """
     Takes in a Tuple of strings. Any string prepended with "--" is considered a
-    keyword and the string following it is considered its value. All other
-    strings are considered args. All args must come before kwargs.
+    keyword. Keywords must be formatted as --keyword=value or --keyword value.
+    All other strings are considered args. All args must come before kwargs.
 
     For example:
 
@@ -62,7 +62,11 @@ def process_args_and_kwargs(
     while args_and_kwargs is not None and token_idx < len(args_and_kwargs):
         token = args_and_kwargs[token_idx]
         if token[:2] == "--":
-            if token_idx + 1 < len(args_and_kwargs):
+            if "=" in token:
+                eq_idx = token.find("=")
+                kwargs[token[2:eq_idx]] = token[eq_idx + 1 :]
+                token_idx += 1
+            elif token_idx + 1 < len(args_and_kwargs):
                 kwargs[token[2:]] = args_and_kwargs[token_idx + 1]
                 token_idx += 2
             else:
@@ -309,6 +313,7 @@ def run(
 
     except KeyboardInterrupt:
         cli_logger.print("Got SIGINT (KeyboardInterrupt). Shutting down Serve.")
+        serve.shutdown()
         sys.exit()
 
 

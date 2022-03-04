@@ -390,12 +390,16 @@ def test_run_basic(ray_start_stop):
 
 
 class Macaw:
-    def __init__(self, color, name="Mulligan"):
+    def __init__(self, color, name="Mulligan", surname=None):
         self.color = color
         self.name = name
+        self.surname = surname
 
     def __call__(self):
-        return f"{self.name} is {self.color}!"
+        if self.surname is not None:
+            return f"{self.name} {self.surname} is {self.color}!"
+        else:
+            return f"{self.name} is {self.color}!"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -415,6 +419,26 @@ def test_run_init_args_kwargs(ray_start_stop):
         ]
     )
     wait_for_condition(lambda: ping_endpoint("run") == "Molly is green!", timeout=10)
+    p.send_signal(signal.SIGINT)
+    p.wait()
+    ping_endpoint("run") == "connection error"
+
+    # Mix and match keyword notation
+    p = subprocess.Popen(
+        [
+            "serve",
+            "run",
+            "ray.serve.tests.test_cli.Macaw",
+            "--",
+            "green",
+            "--name",
+            "Molly",
+            "--surname==./u=6y",
+        ]
+    )
+    wait_for_condition(
+        lambda: ping_endpoint("run") == "Molly =./u=6y is green!", timeout=10
+    )
     p.send_signal(signal.SIGINT)
     p.wait()
     ping_endpoint("run") == "connection error"
