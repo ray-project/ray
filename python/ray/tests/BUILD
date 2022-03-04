@@ -58,7 +58,7 @@ py_test_module_list(
   tags = ["exclusive", "client_tests", "team:serverless"],
   deps = ["//:ray_lib"],
 )
-    
+
 py_test_module_list(
   files = [
     "test_client_builder.py",
@@ -146,6 +146,21 @@ py_test_module_list(
     "test_list_actors_2.py",
     "test_list_actors_3.py",
     "test_list_actors_4.py",
+    "test_actor_lifetime.py",
+    "test_actor_out_of_order.py",
+    "test_cross_language.py",
+    "test_dashboard.py",
+    "test_environ.py",
+    "test_k8s_cluster_launcher.py",
+    "test_logging.py",
+    "test_namespace.py",
+    "test_ray_cluster_with_external_redis.py",
+    "test_raylet_output.py",
+    "test_runtime_context.py",
+    "test_runtime_env_working_dir_3.py",
+    "test_scheduling_performance.py",
+    "test_setup_worker.py",
+    "test_concurrency_group.py",
   ],
   size = "small",
   extra_srcs = SRCS,
