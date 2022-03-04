@@ -87,12 +87,21 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test_run_all_subdirectory(
-    size = "medium",
+    size = "small",
     include = ["source/ray-core/doc_code/*.py"],
-    exclude = [],
+    exclude = ["source/ray-core/doc_code/runtime_env_example.py"],
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
 )
+
+py_test(
+    name = "doc_code_runtime_env_example",
+    size = "small",
+    main = "source/ray-core/doc_code/runtime_env_example.py",
+    srcs = ["source/ray-core/doc_code/runtime_env_example.py"],
+    tags = ["exclusive", "post_wheel_build", "team:serve"]
+)
+
 # --------------------------------------------------------------------
 # Test all doc/source/tune/examples notebooks.
 # --------------------------------------------------------------------
