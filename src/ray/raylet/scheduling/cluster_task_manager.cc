@@ -77,21 +77,21 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
       RayTask task = work->task;
       RAY_LOG(DEBUG) << "Scheduling pending task "
                      << task.GetTaskSpecification().TaskId();
-      std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
+      auto scheduling_node_id = cluster_resource_scheduler_->GetBestSchedulableNode(
           task.GetTaskSpecification(), work->PrioritizeLocalNode(),
           /*exclude_local_node*/ false,
           /*requires_object_store_memory*/ false, &is_infeasible);
 
       // There is no node that has available resources to run the request.
       // Move on to the next shape.
-      if (node_id_string.empty()) {
+      if (scheduling_node_id.IsNil()) {
         RAY_LOG(DEBUG) << "No node found to schedule a task "
                        << task.GetTaskSpecification().TaskId() << " is infeasible?"
                        << is_infeasible;
         break;
       }
 
-      NodeID node_id = NodeID::FromBinary(node_id_string);
+      NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
       ScheduleOnNode(node_id, work);
       work_it = work_queue.erase(work_it);
     }
@@ -129,7 +129,7 @@ void ClusterTaskManager::TryScheduleInfeasibleTask() {
     RAY_LOG(DEBUG) << "Check if the infeasible task is schedulable in any node. task_id:"
                    << task.GetTaskSpecification().TaskId();
     bool is_infeasible;
-    std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
+    cluster_resource_scheduler_->GetBestSchedulableNode(
         task.GetTaskSpecification(), work->PrioritizeLocalNode(),
         /*exclude_local_node*/ false,
         /*requires_object_store_memory*/ false, &is_infeasible);
@@ -293,7 +293,8 @@ void ClusterTaskManager::ScheduleOnNode(const NodeID &spillback_to,
   RAY_LOG(DEBUG) << "Spilling task " << task_spec.TaskId() << " to node " << spillback_to;
 
   if (!cluster_resource_scheduler_->AllocateRemoteTaskResources(
-          spillback_to.Binary(), task_spec.GetRequiredResources().GetResourceMap())) {
+          scheduling::NodeID(spillback_to.Binary()),
+          task_spec.GetRequiredResources().GetResourceMap())) {
     RAY_LOG(DEBUG) << "Tried to allocate resources for request " << task_spec.TaskId()
                    << " on a remote node that are no longer available";
   }

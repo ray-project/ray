@@ -113,7 +113,7 @@ Now you may run the following CLI commands:
 
 .. code-block::
 
-    ❯ ray job submit --runtime-env-json='{"working_dir": "./", "pip": ["requests==2.26.0"]}' -- "python script.py"
+    ❯ ray job submit --runtime-env-json='{"working_dir": "./", "pip": ["requests==2.26.0"]}' -- python script.py
     2021-12-01 23:04:52,672	INFO cli.py:25 -- Creating JobSubmissionClient at address: http://127.0.0.1:8265
     2021-12-01 23:04:52,809	INFO sdk.py:144 -- Uploading package gcs://_ray_pkg_bbcc8ca7e83b4dc0.zip.
     2021-12-01 23:04:52,810	INFO packaging.py:352 -- Creating a file package for local directory './'.
@@ -142,6 +142,10 @@ Now you may run the following CLI commands:
     4
     5
     2.26.0
+
+    ❯ ray job list
+    {'raysubmit_AYhLMgDJ6XBQFvFP': JobInfo(status='SUCCEEDED', message='Job finished successfully.', error_type=None, start_time=1645908622, end_time=1645908623, metadata={}, runtime_env={}),
+    'raysubmit_su9UcdUviUZ86b1t': JobInfo(status='SUCCEEDED', message='Job finished successfully.', error_type=None, start_time=1645908669, end_time=1645908670, metadata={}, runtime_env={})}
 
 Using the CLI with the Ray Cluster Launcher
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -252,6 +256,8 @@ A submitted Job can be stopped by the user before it finishes executing.
     wait_until_finish(job_id)
     logs = client.get_job_logs(job_id)
 
+To get information about all jobs, call ``client.list_jobs()``.  This returns a `Dict[str, JobInfo]` object mapping Job IDs to their information.
+
 
 REST API
 ------------
@@ -299,6 +305,16 @@ Under the hood, both the Job Client and the CLI make HTTP calls to the job serve
     )
     rst = json.loads(resp.text)
     logs = rst["logs"]
+
+**List all jobs**
+
+.. code-block:: python
+
+    resp = requests.get(
+        "http://127.0.0.1:8265/api/jobs/"
+    )
+    print(resp.json())
+    # {"job_id": {"metadata": ..., "status": ..., "message": ...}, ...}
 
 
 Job Submission Architecture

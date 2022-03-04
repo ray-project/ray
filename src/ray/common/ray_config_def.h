@@ -501,6 +501,14 @@ RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512);
 // resource limit.
 RAY_CONFIG(bool, worker_resource_limits_enabled, false)
 
+// When enabled, workers will not be re-used across tasks requesting different
+// resources (e.g., CPU vs GPU).
+RAY_CONFIG(bool, isolate_workers_across_resource_types, true)
+
+// When enabled, workers will not be re-used across tasks of different types
+// (i.e., Actor vs normal tasks).
+RAY_CONFIG(bool, isolate_workers_across_task_types, true)
+
 /// ServerCall instance number of each RPC service handler
 RAY_CONFIG(int64_t, gcs_max_active_rpcs_per_handler, 100)
 

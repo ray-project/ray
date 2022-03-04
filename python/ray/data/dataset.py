@@ -69,7 +69,7 @@ from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
 from ray.data.impl.plan import ExecutionPlan, OneToOneStage, AllToAllStage
 from ray.data.impl.stats import DatasetStats
-from ray.data.impl.compute import cache_wrapper, CallableClass
+from ray.data.impl.compute import cache_wrapper, CallableClass, ComputeStrategy
 from ray.data.impl.output_buffer import BlockOutputBuffer
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.shuffle import simple_shuffle
@@ -195,7 +195,7 @@ class Dataset(Generic[T]):
         fn: Union[CallableClass, Callable[[BatchType], BatchType]],
         *,
         batch_size: Optional[int] = 4096,
-        compute: Optional[str] = None,
+        compute: Union[str, ComputeStrategy] = None,
         batch_format: str = "native",
         **ray_remote_args,
     ) -> "Dataset[Any]":
@@ -2575,7 +2575,12 @@ Dict[str, List[str]]]): The names of the columns
             "Use .window(blocks_per_window=n) instead of " ".pipeline(parallelism=n)"
         )
 
-    def window(self, *, blocks_per_window: int = 10) -> "DatasetPipeline[T]":
+    def window(
+        self,
+        *,
+        blocks_per_window: Optional[int] = None,
+        bytes_per_window: Optional[int] = None,
+    ) -> "DatasetPipeline[T]":
         """Convert this into a DatasetPipeline by windowing over data blocks.
 
         Transformations prior to the call to ``window()`` are evaluated in
@@ -2621,8 +2626,18 @@ Dict[str, List[str]]]): The names of the columns
                 increases the latency to initial output, since it decreases the
                 length of the pipeline. Setting this to infinity effectively
                 disables pipelining.
+            bytes_per_window: Specify the window size in bytes instead of blocks.
+                This will be treated as an upper bound for the window size, but each
+                window will still include at least one block. This is mutually
+                exclusive with ``blocks_per_window``.
         """
         from ray.data.dataset_pipeline import DatasetPipeline
+
+        if blocks_per_window is not None and bytes_per_window is not None:
+            raise ValueError("Only one windowing scheme can be specified.")
+
+        if blocks_per_window is None:
+            blocks_per_window = 10
 
         # If optimizations are enabled, rewrite the read stage into a OneToOneStage
         # to enable fusion with downstream map stages.
@@ -2656,7 +2671,37 @@ Dict[str, List[str]]]): The names of the columns
 
         class Iterable:
             def __init__(self, blocks, epoch):
-                self._splits = blocks.split(split_size=blocks_per_window)
+                if bytes_per_window:
+                    self._splits = blocks.split_by_bytes(bytes_per_window)
+                else:
+                    self._splits = blocks.split(split_size=blocks_per_window)
+                try:
+                    sizes = [s.size_bytes() for s in self._splits]
+                    assert [s > 0 for s in sizes], sizes
+
+                    def fmt(size_bytes):
+                        if size_bytes > 10 * 1024:
+                            return "{}MiB".format(round(size_bytes / (1024 * 1024), 2))
+                        else:
+                            return "{}b".format(size_bytes)
+
+                    logger.info(
+                        "Created DatasetPipeline with {} windows: "
+                        "{} min, {} max, {} mean".format(
+                            len(self._splits),
+                            fmt(min(sizes)),
+                            fmt(max(sizes)),
+                            fmt(int(np.mean(sizes))),
+                        )
+                    )
+                except Exception as e:
+                    logger.info(
+                        "Created DatasetPipeline with {} windows; "
+                        "error getting sizes: {}".format(
+                            len(self._splits),
+                            e,
+                        )
+                    )
                 self._epoch = epoch
 
             def __iter__(self):

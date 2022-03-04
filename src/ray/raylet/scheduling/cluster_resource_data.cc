@@ -18,6 +18,7 @@
 #include "ray/common/task/scheduling_resources.h"
 
 namespace ray {
+using namespace ::ray::scheduling;
 
 const std::string resource_labels[] = {
     ray::kCPU_ResourceLabel, ray::kMemory_ResourceLabel, ray::kGPU_ResourceLabel,
@@ -40,6 +41,10 @@ const PredefinedResources ResourceStringToEnum(const std::string &resource) {
   }
   // The resource is invalid.
   return PredefinedResources_MAX;
+}
+
+bool IsPredefinedResource(scheduling::ResourceID resource) {
+  return resource.ToInt() >= 0 && resource.ToInt() < PredefinedResources_MAX;
 }
 
 std::string VectorToString(const std::vector<FixedPoint> &vector) {
@@ -89,7 +94,6 @@ std::vector<double> VectorFixedPointToVectorDouble(
 
 /// Convert a map of resources to a ResourceRequest data structure.
 ResourceRequest ResourceMapToResourceRequest(
-    StringIdMap &string_to_int_map,
     const absl::flat_hash_map<std::string, double> &resource_map,
     bool requires_object_store_memory) {
   ResourceRequest resource_request;
@@ -107,8 +111,8 @@ ResourceRequest ResourceMapToResourceRequest(
     } else if (resource.first == ray::kMemory_ResourceLabel) {
       resource_request.predefined_resources[MEM] = resource.second;
     } else {
-      int64_t id = string_to_int_map.Insert(resource.first);
-      resource_request.custom_resources[id] = resource.second;
+      resource_request.custom_resources[ResourceID(resource.first).ToInt()] =
+          resource.second;
     }
   }
 
@@ -116,7 +120,7 @@ ResourceRequest ResourceMapToResourceRequest(
 }
 
 const std::vector<FixedPoint> &TaskResourceInstances::Get(
-    const std::string &resource_name, const StringIdMap &string_id_map) const {
+    const std::string &resource_name) const {
   if (ray::kCPU_ResourceLabel == resource_name) {
     return predefined_resources[CPU];
   } else if (ray::kGPU_ResourceLabel == resource_name) {
@@ -126,8 +130,7 @@ const std::vector<FixedPoint> &TaskResourceInstances::Get(
   } else if (ray::kMemory_ResourceLabel == resource_name) {
     return predefined_resources[MEM];
   } else {
-    int64_t resource_id = string_id_map.Get(resource_name);
-    auto it = custom_resources.find(resource_id);
+    auto it = custom_resources.find(ResourceID(resource_name).ToInt());
     RAY_CHECK(it != custom_resources.end());
     return it->second;
   }
@@ -162,7 +165,6 @@ ResourceRequest TaskResourceInstances::ToResourceRequest() const {
 ///
 /// \request Conversion result to a ResourceRequest data structure.
 NodeResources ResourceMapToNodeResources(
-    StringIdMap &string_to_int_map,
     const absl::flat_hash_map<std::string, double> &resource_map_total,
     const absl::flat_hash_map<std::string, double> &resource_map_available) {
   NodeResources node_resources;
@@ -191,7 +193,7 @@ NodeResources ResourceMapToNodeResources(
       node_resources.predefined_resources[MEM] = resource_capacity;
     } else {
       // This is a custom resource.
-      node_resources.custom_resources.emplace(string_to_int_map.Insert(resource.first),
+      node_resources.custom_resources.emplace(ResourceID(resource.first).ToInt(),
                                               resource_capacity);
     }
   }
@@ -325,7 +327,7 @@ bool NodeResources::operator==(const NodeResources &other) {
 
 bool NodeResources::operator!=(const NodeResources &other) { return !(*this == other); }
 
-std::string NodeResources::DebugString(StringIdMap string_to_in_map) const {
+std::string NodeResources::DebugString() const {
   std::stringstream buffer;
   buffer << " {\n";
   for (size_t i = 0; i < this->predefined_resources.size(); i++) {
@@ -352,14 +354,14 @@ std::string NodeResources::DebugString(StringIdMap string_to_in_map) const {
   }
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    buffer << "\t" << string_to_in_map.Get(it->first) << ":(" << it->second.total << ":"
+    buffer << "\t" << ResourceID(it->first).Binary() << ":(" << it->second.total << ":"
            << it->second.available << ")\n";
   }
   buffer << "}" << std::endl;
   return buffer.str();
 }
 
-std::string NodeResources::DictString(StringIdMap string_to_in_map) const {
+std::string NodeResources::DictString() const {
   std::stringstream buffer;
   bool first = true;
   buffer << "{";
@@ -397,7 +399,7 @@ std::string NodeResources::DictString(StringIdMap string_to_in_map) const {
   }
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    auto name = string_to_in_map.Get(it->first);
+    auto name = ResourceID(it->first).Binary();
     buffer << ", " << format_resource(name, it->second.available.Double()) << "/"
            << format_resource(name, it->second.total.Double());
     buffer << " " << name;
@@ -445,7 +447,7 @@ void TaskResourceInstances::ClearCPUInstances() {
   }
 }
 
-std::string NodeResourceInstances::DebugString(StringIdMap string_to_int_map) const {
+std::string NodeResourceInstances::DebugString() const {
   std::stringstream buffer;
   buffer << "{\n";
   for (size_t i = 0; i < this->predefined_resources.size(); i++) {
@@ -472,7 +474,7 @@ std::string NodeResourceInstances::DebugString(StringIdMap string_to_int_map) co
   }
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    buffer << "\t" << string_to_int_map.Get(it->first) << ":("
+    buffer << "\t" << ResourceID(it->first).Binary() << ":("
            << VectorToString(it->second.total) << ":"
            << VectorToString(it->second.available) << ")\n";
   }
@@ -493,6 +495,18 @@ TaskResourceInstances NodeResourceInstances::GetAvailableResourceInstances() {
   }
   return task_resources;
 };
+
+bool NodeResourceInstances::Contains(scheduling::ResourceID id) const {
+  return IsPredefinedResource(id) || custom_resources.contains(id.ToInt());
+}
+
+ResourceInstanceCapacities &NodeResourceInstances::GetMutable(scheduling::ResourceID id) {
+  RAY_CHECK(Contains(id));
+  if (IsPredefinedResource(id)) {
+    return predefined_resources.at(id.ToInt());
+  }
+  return custom_resources.at(id.ToInt());
+}
 
 bool ResourceRequest::IsEmpty() const {
   for (size_t i = 0; i < this->predefined_resources.size(); i++) {
@@ -545,7 +559,7 @@ bool TaskResourceInstances::IsEmpty() const {
   return true;
 }
 
-std::string TaskResourceInstances::DebugString(const StringIdMap &string_id_map) const {
+std::string TaskResourceInstances::DebugString() const {
   std::stringstream buffer;
   buffer << std::endl << "  Allocation: {";
   for (size_t i = 0; i < this->predefined_resources.size(); i++) {
@@ -556,7 +570,7 @@ std::string TaskResourceInstances::DebugString(const StringIdMap &string_id_map)
   buffer << "  [";
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    buffer << string_id_map.Get(it->first) << ":" << VectorToString(it->second) << ", ";
+    buffer << ResourceID(it->first).Binary() << ":" << VectorToString(it->second) << ", ";
   }
 
   buffer << "]" << std::endl;
