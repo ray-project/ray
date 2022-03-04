@@ -8,11 +8,11 @@ from ray.data import Dataset
 from ray.ml.predictor import DataBatchType
 
 
-class PreprocessorAlreadyFittedException(Exception):
+class PreprocessorAlreadyFittedException(RuntimeError):
     pass
 
 
-class PreprocessorNotFittedException(Exception):
+class PreprocessorNotFittedException(RuntimeError):
     pass
 
 
