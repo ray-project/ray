@@ -198,9 +198,8 @@ class _WrappedDataLoader(DataLoader):
         self._dataloader = base_dataloader
         self.dataloader_iter = None
         self.device = device
-        self._memcpy_stream = (
-            torch.cuda.Stream(device) if device.type == "cuda" else None
-        )
+        # create a new CUDA stream to move data from host to device concurrently
+        self._memcpy_stream = torch.cuda.Stream() if device.type == "cuda" else None
         self.curr_batch = None
         self._prepare()
 
@@ -217,6 +216,23 @@ class _WrappedDataLoader(DataLoader):
 
         with torch.cuda.stream(self._memcpy_stream):
             return tuple(try_move_device(i) for i in item)
+
+    def _wait_for_batch(self, item):
+        if self._memcpy_stream is None:
+            return
+        # Reference:
+        # https://pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html
+        # The training stream (current) needs to wait until
+        # the memory copy stream finishes.
+        torch.cuda.current_stream().wait_stream(self._memcpy_stream)
+        curr_stream = torch.cuda.current_stream()
+        # When a tensor is used by CUDA streams different from
+        # its original allocator, we need to call ``record_stream``
+        # to inform the allocator of all these streams. Otherwise,
+        # the tensor might be freed once it is no longer used by
+        # the creator stream.
+        for i in item:
+            i.record_stream(curr_stream)
 
     def __len__(self):
         return len(self._dataloader)
@@ -237,6 +253,7 @@ class _WrappedDataLoader(DataLoader):
         if ret_batch is None:
             self._prepare()
             raise StopIteration
+        self._wait_for_batch(ret_batch)
         self._get_next_batch()
         return ret_batch
 
