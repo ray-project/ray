@@ -200,8 +200,7 @@ class _WrappedDataLoader(DataLoader):
         self.device = device
         # create a new CUDA stream to move data from host to device concurrently
         self._memcpy_stream = torch.cuda.Stream() if device.type == "cuda" else None
-        self.curr_batch = None
-        self._prepare()
+        self.next_batch = None
 
     def _move_to_device(self, item):
         if item is None:
@@ -224,8 +223,8 @@ class _WrappedDataLoader(DataLoader):
         # https://pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html
         # The training stream (current) needs to wait until
         # the memory copy stream finishes.
-        torch.cuda.current_stream().wait_stream(self._memcpy_stream)
         curr_stream = torch.cuda.current_stream()
+        curr_stream.wait_stream(self._memcpy_stream)
         # When a tensor is used by CUDA streams different from
         # its original allocator, we need to call ``record_stream``
         # to inform the allocator of all these streams. Otherwise,
@@ -237,25 +236,22 @@ class _WrappedDataLoader(DataLoader):
     def __len__(self):
         return len(self._dataloader)
 
-    def _prepare(self):
-        self.dataloader_iter = iter(self._dataloader)
-        self._get_next_batch()
-
-    def _get_next_batch(self):
+    def _prefetch_next_batch(self):
         next_batch = next(self.dataloader_iter, None)
-        self.curr_batch = self._move_to_device(next_batch)
+        self.next_batch = self._move_to_device(next_batch)
 
     def __iter__(self):
+        self.dataloader_iter = iter(self._dataloader)
+        self._prefetch_next_batch()
         return self
 
     def __next__(self):
-        ret_batch = self.curr_batch
-        if ret_batch is None:
-            self._prepare()
+        next_batch = self.next_batch
+        if next_batch is None:
             raise StopIteration
-        self._wait_for_batch(ret_batch)
-        self._get_next_batch()
-        return ret_batch
+        self._wait_for_batch(next_batch)
+        self._prefetch_next_batch()
+        return next_batch
 
 
 @PublicAPI(stability="beta")

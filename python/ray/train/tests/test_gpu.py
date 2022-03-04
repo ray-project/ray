@@ -28,6 +28,12 @@ def ray_start_4_cpus_2_gpus():
     # The code after the yield will run as teardown code.
     ray.shutdown()
 
+@pytest.fixture
+def ray_start_1_cpu_1_gpu():
+    address_info = ray.init(num_cpus=1, num_gpus=1)
+    yield address_info
+    ray.shutdown()
+
 
 def test_torch_prepare_model(ray_start_4_cpus_2_gpus):
     """Tests if ``prepare_model`` correctly wraps in DDP."""
@@ -222,6 +228,45 @@ def test_tensorflow_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
     results = train_tensorflow_linear(num_workers=2, use_gpu=True)
     for result in results:
         assert result[-1]["loss"] < result[0]["loss"]
+
+
+def test_auto_transfer_data_from_host_to_device(ray_start_1_cpu_1_gpu):
+    import torch
+    import numpy as np
+
+    def compute_average_runtime(func):
+        device = torch.device("cuda")
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+        runtime = []
+        for _ in range(10):
+            torch.cuda.synchronize()
+            start.record()
+            func(device)
+            end.record()
+            torch.cuda.synchronize()
+        runtime.append(start.elapsed_time(end))
+        return np.mean(runtime)
+
+    small_dataloader = [
+        (torch.randn((1024 * 4, 1024 * 4), device="cpu"),) for _ in range(10)
+    ]
+
+    def host_to_device(device):
+        for (x,) in small_dataloader:
+            x = x.to(device)
+            torch.matmul(x, x)
+
+    def host_to_device_auto_pipeline(device):
+        wrapped_dataloader = ray.train.torch._WrappedDataLoader(
+            small_dataloader, device
+        )
+        for (x,) in wrapped_dataloader:
+            torch.matmul(x, x)
+
+    assert compute_average_runtime(host_to_device) >= compute_average_runtime(
+        host_to_device_auto_pipeline
+    )
 
 
 if __name__ == "__main__":

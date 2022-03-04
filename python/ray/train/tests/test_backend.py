@@ -405,49 +405,6 @@ def test_placement_group_parent(ray_4_node_4_cpu, placement_group_capture_child_
             assert worker_result != placement_group.id
 
 
-def test_auto_transfer_data_from_host_to_device():
-    import torch
-    import numpy as np
-
-    ray.init(num_cpus=1, num_gpus=1)
-
-    def compute_average_runtime(func):
-        device = torch.device("cuda")
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
-        runtime = []
-        for _ in range(10):
-            torch.cuda.synchronize()
-            start.record()
-            func(device)
-            end.record()
-            torch.cuda.synchronize()
-        runtime.append(start.elapsed_time(end))
-        return np.mean(runtime)
-
-    small_dataloader = [
-        (torch.randn((1024 * 4, 1024 * 4), device="cpu"),) for _ in range(10)
-    ]
-
-    def host_to_device(device):
-        for (x,) in small_dataloader:
-            x = x.to(device)
-            torch.matmul(x, x)
-
-    def host_to_device_autopipeline(device):
-        wrapped_dataloader = ray.train.torch._WrappedDataLoader(
-            small_dataloader, device
-        )
-        for (x,) in wrapped_dataloader:
-            torch.matmul(x, x)
-
-    assert compute_average_runtime(host_to_device) >= compute_average_runtime(
-        host_to_device_autopipeline
-    )
-
-    ray.shutdown()
-
-
 if __name__ == "__main__":
     import pytest
     import sys
