@@ -21,9 +21,9 @@ class MockAgentManager : public AgentManager {
               (const rpc::RegisterAgentRequest &request, rpc::RegisterAgentReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
-  MOCK_METHOD(void, CreateRuntimeEnv,
+  MOCK_METHOD(void, IncreaseRuntimeEnvReference,
               (const JobID &job_id, const std::string &serialized_runtime_env,
-               CreateRuntimeEnvCallback callback),
+               IncreaseRuntimeEnvReferenceCallback callback),
               (override));
   MOCK_METHOD(void, DeleteRuntimeEnv,
               (const std::string &serialized_runtime_env,

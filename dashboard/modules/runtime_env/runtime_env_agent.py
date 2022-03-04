@@ -7,6 +7,7 @@ import logging
 import os
 import time
 from typing import Dict, Set
+from enum import Enum
 from ray._private.utils import import_attr
 
 from ray.core.generated import runtime_env_agent_pb2
@@ -25,7 +26,6 @@ from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.py_modules import PyModulesManager
 from ray._private.runtime_env.working_dir import WorkingDirManager
 from ray._private.runtime_env.container import ContainerManager
-from ray._private.runtime_env.plugin import decode_plugin_uri
 from ray._private.runtime_env.uri_cache import URICache
 from ray.runtime_env import RuntimeEnv
 
@@ -84,6 +84,8 @@ class RuntimeEnvAgent(
         # invalidate the env cache when a URI is deleted.
         # This is a temporary mechanism until we have per-URI caching.
         self._uris_to_envs: Dict[str, Set[str]] = defaultdict(set)
+
+        self._uri_reference: Dict[str, int] = dict()
         # Initialize internal KV to be used by the working_dir setup code.
         _initialize_internal_kv(self._dashboard_agent.gcs_client)
         assert _internal_kv_initialized()
@@ -118,11 +120,65 @@ class RuntimeEnvAgent(
             self._per_job_logger_cache[job_id] = per_job_logger
         return self._per_job_logger_cache[job_id]
 
-    async def CreateRuntimeEnv(self, request, context):
+    class UriType(Enum):
+        WORKING_DIR = 1
+        PY_MODULES = 2
+        PIP = 3
+        CONDA = 4
+
+    def get_uris_from_runtime_env(self, runtime_env: RuntimeEnv):
+        result = list()
+        uri = self._working_dir_manager.get_uri(runtime_env)
+        if uri:
+            result.append((uri, self.UriType.WORKING_DIR))
+        uris = self._py_modules_manager.get_uris(runtime_env)
+        for uri in uris:
+            result.append((uri, self.UriType.PY_MODULES))
+        uri = self._pip_manager.get_uri(runtime_env)
+        if uri:
+            result.append((uri, self.UriType.PIP))
+        uri = self._conda_manager.get_uri(runtime_env)
+        if uri:
+            result.append((uri, self.UriType.CONDA))
+        return result
+
+    def increase_reference_for_uris(self, uris: list):
+        self._logger.info(f"Increase reference for uris {uris}.")
+        for uri, _ in uris:
+            if uri in self._uri_reference:
+                self._uri_reference[uri] += 1
+            else:
+                self._uri_reference[uri] = 1
+
+    def decrease_reference_for_uris(self, uris: list):
+        self._logger.info(f"Decrease reference for uris {uris}.")
+        unused_uris = list()
+        for uri, uri_type in uris:
+            if uri in self._uri_reference:
+                self._uri_reference[uri] -= 1
+                if self._uri_reference[uri] == 0:
+                    unused_uris.append((uri, uri_type))
+                    del self._uri_reference[uri]
+            else:
+                raise ValueError(f"URI {uri} not found.")
+        if unused_uris:
+            self._logger.info(f"Unused uris {unused_uris}.")
+        return unused_uris
+
+    reference_exclude_sources: Set[str] = {
+        "client_server",
+    }
+
+    async def IncreaseRuntimeEnvReference(self, request, context):
+        self._logger.info(
+            f"Got request from {request.source_process} to increase "
+            "reference for runtime env: "
+            f"{request.serialized_runtime_env}."
+        )
+
         async def _setup_runtime_env(
-            serialized_runtime_env, serialized_allocated_resource_instances
+            runtime_env, serialized_runtime_env, serialized_allocated_resource_instances
         ):
-            runtime_env = RuntimeEnv.deserialize(serialized_runtime_env)
             allocated_resource: dict = json.loads(
                 serialized_allocated_resource_instances or "{}"
             )
@@ -217,6 +273,10 @@ class RuntimeEnvAgent(
             return context
 
         serialized_env = request.serialized_runtime_env
+        runtime_env = RuntimeEnv.deserialize(serialized_env)
+        uris = self.get_uris_from_runtime_env(runtime_env)
+        if request.source_process not in self.reference_exclude_sources:
+            self.increase_reference_for_uris(uris)
 
         if serialized_env not in self._env_locks:
             # async lock to prevent the same env being concurrently installed
@@ -233,7 +293,7 @@ class RuntimeEnvAgent(
                         f"successfully. Env: {serialized_env}, "
                         f"context: {context}"
                     )
-                    return runtime_env_agent_pb2.CreateRuntimeEnvReply(
+                    return runtime_env_agent_pb2.IncreaseRuntimeEnvReferenceReply(
                         status=agent_manager_pb2.AGENT_RPC_STATUS_OK,
                         serialized_runtime_env_context=context,
                     )
@@ -243,7 +303,9 @@ class RuntimeEnvAgent(
                         "Runtime env already failed. "
                         f"Env: {serialized_env}, err: {error_message}"
                     )
-                    return runtime_env_agent_pb2.CreateRuntimeEnvReply(
+                    if request.source_process not in self.reference_exclude_sources:
+                        self.decrease_reference_for_uris(uris)
+                    return runtime_env_agent_pb2.IncreaseRuntimeEnvReferenceReply(
                         status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
                         error_message=error_message,
                     )
@@ -252,13 +314,14 @@ class RuntimeEnvAgent(
                 self._logger.info(f"Sleeping for {SLEEP_FOR_TESTING_S}s.")
                 time.sleep(int(SLEEP_FOR_TESTING_S))
 
-            self._logger.info(f"Creating runtime env: {serialized_env}")
             runtime_env_context: RuntimeEnvContext = None
             error_message = None
             for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
                 try:
                     runtime_env_context = await _setup_runtime_env(
-                        serialized_env, request.serialized_allocated_resource_instances
+                        runtime_env,
+                        serialized_env,
+                        request.serialized_allocated_resource_instances,
                     )
                     error_message = None
                     break
@@ -277,8 +340,10 @@ class RuntimeEnvAgent(
                     "don't retry any more.",
                     runtime_env_consts.RUNTIME_ENV_RETRY_TIMES,
                 )
+                if request.source_process not in self.reference_exclude_sources:
+                    self.decrease_reference_for_uris(uris)
                 self._env_cache[serialized_env] = CreatedEnvResult(False, error_message)
-                return runtime_env_agent_pb2.CreateRuntimeEnvReply(
+                return runtime_env_agent_pb2.IncreaseRuntimeEnvReferenceReply(
                     status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
                     error_message=error_message,
                 )
@@ -290,36 +355,38 @@ class RuntimeEnvAgent(
                 serialized_env,
                 serialized_context,
             )
-            return runtime_env_agent_pb2.CreateRuntimeEnvReply(
+            return runtime_env_agent_pb2.IncreaseRuntimeEnvReferenceReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_OK,
                 serialized_runtime_env_context=serialized_context,
             )
 
-    async def DeleteURIs(self, request, context):
-        self._logger.info(f"Got request to mark URIs unused: {request.uris}.")
+    async def DecreaseRuntimeEnvReference(self, request, context):
+        self._logger.info(
+            f"Got request from {request.source_process} to decrease "
+            "reference for runtime env: "
+            f"{request.serialized_runtime_env}."
+        )
 
-        for plugin_uri in request.uris:
-            plugin, uri = decode_plugin_uri(plugin_uri)
+        runtime_env = RuntimeEnv.deserialize(request.serialized_runtime_env)
+        uris = self.get_uris_from_runtime_env(runtime_env)
+        unused_uris = self.decrease_reference_for_uris(uris)
+
+        for uri, uri_type in unused_uris:
             # Invalidate the env cache for any envs that contain this URI.
             for env in self._uris_to_envs.get(uri, []):
                 if env in self._env_cache:
                     del self._env_cache[env]
 
-            if plugin == "working_dir":
+            if uri_type == self.UriType.WORKING_DIR:
                 self._working_dir_uri_cache.mark_unused(uri)
-            elif plugin == "py_modules":
+            elif uri_type == self.UriType.PY_MODULES:
                 self._py_modules_uri_cache.mark_unused(uri)
-            elif plugin == "conda":
+            elif uri_type == self.UriType.CONDA:
                 self._conda_uri_cache.mark_unused(uri)
-            elif plugin == "pip":
+            elif uri_type == self.UriType.PIP:
                 self._pip_uri_cache.mark_unused(uri)
-            else:
-                raise ValueError(
-                    "RuntimeEnvAgent received DeleteURI request "
-                    f"for unsupported plugin {plugin}. URI: {uri}"
-                )
 
-        return runtime_env_agent_pb2.DeleteURIsReply(
+        return runtime_env_agent_pb2.DecreaseRuntimeEnvReferenceReply(
             status=agent_manager_pb2.AGENT_RPC_STATUS_OK
         )
 

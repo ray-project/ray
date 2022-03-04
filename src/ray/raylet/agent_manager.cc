@@ -135,10 +135,10 @@ void AgentManager::StartAgent() {
   monitor_thread.detach();
 }
 
-void AgentManager::CreateRuntimeEnv(
+void AgentManager::IncreaseRuntimeEnvReference(
     const JobID &job_id, const std::string &serialized_runtime_env,
     const std::string &serialized_allocated_resource_instances,
-    CreateRuntimeEnvCallback callback) {
+    IncreaseRuntimeEnvReferenceCallback callback) {
   // If the agent cannot be started, fail the request.
   if (!should_start_agent_) {
     std::stringstream str_stream;
@@ -180,32 +180,36 @@ void AgentManager::CreateRuntimeEnv(
     }
 
     RAY_LOG_EVERY_MS(INFO, 3 * 10 * 1000)
-        << "Runtime env agent is not registered yet. Will retry CreateRuntimeEnv later: "
+        << "Runtime env agent is not registered yet. Will retry "
+           "IncreaseRuntimeEnvReference later: "
         << serialized_runtime_env;
     delay_executor_(
         [this, job_id, serialized_runtime_env, serialized_allocated_resource_instances,
          callback = std::move(callback)] {
-          CreateRuntimeEnv(job_id, serialized_runtime_env,
-                           serialized_allocated_resource_instances, callback);
+          IncreaseRuntimeEnvReference(job_id, serialized_runtime_env,
+                                      serialized_allocated_resource_instances, callback);
         },
         RayConfig::instance().agent_manager_retry_interval_ms());
     return;
   }
-  rpc::CreateRuntimeEnvRequest request;
+  rpc::IncreaseRuntimeEnvReferenceRequest request;
   request.set_job_id(job_id.Hex());
   request.set_serialized_runtime_env(serialized_runtime_env);
   request.set_serialized_allocated_resource_instances(
       serialized_allocated_resource_instances);
-  runtime_env_agent_client_->CreateRuntimeEnv(
-      request, [this, job_id, serialized_runtime_env,
-                serialized_allocated_resource_instances, callback = std::move(callback)](
-                   const Status &status, const rpc::CreateRuntimeEnvReply &reply) {
+  request.set_source_process("raylet");
+  runtime_env_agent_client_->IncreaseRuntimeEnvReference(
+      request,
+      [this, job_id, serialized_runtime_env, serialized_allocated_resource_instances,
+       callback = std::move(callback)](
+          const Status &status, const rpc::IncreaseRuntimeEnvReferenceReply &reply) {
         if (status.ok()) {
           if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
             callback(true, reply.serialized_runtime_env_context(),
                      /*setup_error_message*/ "");
           } else {
-            RAY_LOG(INFO) << "Failed to create runtime env: " << serialized_runtime_env
+            RAY_LOG(INFO) << "Failed to increase runtime env reference: "
+                          << serialized_runtime_env
                           << ", error message: " << reply.error_message();
             callback(false, reply.serialized_runtime_env_context(),
                      /*setup_error_message*/ reply.error_message());
@@ -214,54 +218,63 @@ void AgentManager::CreateRuntimeEnv(
         } else {
           // TODO(sang): Invoke a callback if it fails more than X times.
           RAY_LOG(INFO)
-              << "Failed to create the runtime env: " << serialized_runtime_env
+              << "Failed to increase runtime env reference: " << serialized_runtime_env
               << ", status = " << status
               << ", maybe there are some network problems, will retry it later.";
           delay_executor_(
               [this, job_id, serialized_runtime_env,
                serialized_allocated_resource_instances, callback = std::move(callback)] {
-                CreateRuntimeEnv(job_id, serialized_runtime_env,
-                                 serialized_allocated_resource_instances, callback);
+                IncreaseRuntimeEnvReference(job_id, serialized_runtime_env,
+                                            serialized_allocated_resource_instances,
+                                            callback);
               },
               RayConfig::instance().agent_manager_retry_interval_ms());
         }
       });
 }
 
-void AgentManager::DeleteURIs(const std::vector<std::string> &uris,
-                              DeleteURIsCallback callback) {
+void AgentManager::DecreaseRuntimeEnvReference(
+    const std::string &serialized_runtime_env,
+    DecreaseRuntimeEnvReferenceCallback callback) {
   if (runtime_env_agent_client_ == nullptr) {
-    RAY_LOG(INFO)
-        << "Runtime env agent is not registered yet. Will retry DeleteURIs later.";
-    delay_executor_([this, uris, callback] { DeleteURIs(uris, callback); },
-                    RayConfig::instance().agent_manager_retry_interval_ms());
+    RAY_LOG(INFO) << "Runtime env agent is not registered yet. Will retry "
+                     "DecreaseRuntimeEnvReference later.";
+    delay_executor_(
+        [this, serialized_runtime_env, callback] {
+          DecreaseRuntimeEnvReference(serialized_runtime_env, callback);
+        },
+        RayConfig::instance().agent_manager_retry_interval_ms());
     return;
   }
-  rpc::DeleteURIsRequest request;
-  for (const auto &uri : uris) {
-    request.add_uris(uri);
-  }
-  runtime_env_agent_client_->DeleteURIs(request, [this, uris, callback](
-                                                     Status status,
-                                                     const rpc::DeleteURIsReply &reply) {
-    if (status.ok()) {
-      if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
-        callback(true);
-      } else {
-        // TODO(sang): Find a better way to delivering error messages in this case.
-        RAY_LOG(ERROR) << "Failed to delete URIs"
-                       << ", error message: " << reply.error_message();
-        callback(false);
-      }
+  rpc::DecreaseRuntimeEnvReferenceRequest request;
+  request.set_serialized_runtime_env(serialized_runtime_env);
+  request.set_source_process("raylet");
+  runtime_env_agent_client_->DecreaseRuntimeEnvReference(
+      request, [this, serialized_runtime_env, callback](
+                   Status status, const rpc::DecreaseRuntimeEnvReferenceReply &reply) {
+        if (status.ok()) {
+          if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
+            callback(true);
+          } else {
+            // TODO(sang): Find a better way to delivering error messages in this case.
+            RAY_LOG(ERROR) << "Failed to decrease runtime env reference for "
+                           << serialized_runtime_env
+                           << ", error message: " << reply.error_message();
+            callback(false);
+          }
 
-    } else {
-      RAY_LOG(ERROR) << "Failed to delete URIs"
-                     << ", status = " << status
-                     << ", maybe there are some network problems, will retry it later.";
-      delay_executor_([this, uris, callback] { DeleteURIs(uris, callback); },
-                      RayConfig::instance().agent_manager_retry_interval_ms());
-    }
-  });
+        } else {
+          RAY_LOG(ERROR)
+              << "Failed to decrease runtime env reference for " << serialized_runtime_env
+              << ", status = " << status
+              << ", maybe there are some network problems, will retry it later.";
+          delay_executor_(
+              [this, serialized_runtime_env, callback] {
+                DecreaseRuntimeEnvReference(serialized_runtime_env, callback);
+              },
+              RayConfig::instance().agent_manager_retry_interval_ms());
+        }
+      });
 }
 
 }  // namespace raylet

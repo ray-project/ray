@@ -445,7 +445,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// Gloabl startup token variable. Incremented once assigned
   /// to a worker process and is added to
-  /// state.starting_worker_processes.
+  /// state.worker_processes.
   StartupToken worker_startup_token_counter_;
 
   struct IOWorkerState {
@@ -461,11 +461,13 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   };
 
   /// Some basic information about the starting worker process.
-  struct StartingWorkerProcessInfo {
+  struct WorkerProcessInfo {
     /// The number of workers in the worker process.
     int num_workers;
     /// The number of pending registration workers in the worker process.
     int num_starting_workers;
+    /// The number of registered workers in the worker process.
+    int num_registered_workers;
     /// The type of the worker.
     rpc::WorkerType worker_type;
     /// The worker process instance.
@@ -508,9 +510,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     std::unordered_set<std::shared_ptr<WorkerInterface>> pending_disconnection_workers;
     /// A map from the startup tokens of worker processes, assigned by the raylet, to
     /// the extra information of the process. Note that the shim process PID is the
-    /// same with worker process PID, except starting worker process in container.
-    absl::flat_hash_map<StartupToken, StartingWorkerProcessInfo>
-        starting_worker_processes;
+    /// same with worker process PID, except worker process in container.
+    absl::flat_hash_map<StartupToken, WorkerProcessInfo> worker_processes;
     /// A map for looking up the task by the startup token of starting worker process.
     absl::flat_hash_map<StartupToken, TaskWaitingForWorkerInfo> starting_workers_to_tasks;
     /// A map for looking up the task with dynamic options by the startup token of
@@ -543,7 +544,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///
   /// If any workers in this process don't register within the timeout
   /// (due to worker process crash or any other reasons), remove them
-  /// from `starting_worker_processes`. Otherwise if we'll mistakenly
+  /// from `worker_processes`. Otherwise if we'll mistakenly
   /// think there are unregistered workers, and won't start new workers.
   void MonitorStartingWorkerProcess(const Process &proc, StartupToken proc_startup_token,
                                     const Language &language,
@@ -626,17 +627,17 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       bool *worker_used /* output */, TaskID *task_id /* output */);
 
   /// Create runtime env asynchronously by runtime env agent.
-  void CreateRuntimeEnv(
+  void IncreaseRuntimeEnvReference(
       const std::string &serialized_runtime_env, const JobID &job_id,
-      const CreateRuntimeEnvCallback &callback,
+      const IncreaseRuntimeEnvReferenceCallback &callback,
       const std::string &serialized_allocated_resource_instances = "{}");
 
-  void AddStartingWorkerProcess(
-      State &state, const int workers_to_start, const rpc::WorkerType worker_type,
-      const Process &proc, const std::chrono::high_resolution_clock::time_point &start,
-      const rpc::RuntimeEnvInfo &runtime_env_info);
+  void AddWorkerProcess(State &state, const int workers_to_start,
+                        const rpc::WorkerType worker_type, const Process &proc,
+                        const std::chrono::high_resolution_clock::time_point &start,
+                        const rpc::RuntimeEnvInfo &runtime_env_info);
 
-  void RemoveStartingWorkerProcess(State &state, const StartupToken &proc_startup_token);
+  void RemoveWorkerProcess(State &state, const StartupToken &proc_startup_token);
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   instrumented_io_context *io_service_;
@@ -701,146 +702,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   const std::function<double()> get_time_;
   /// Agent manager.
   std::shared_ptr<AgentManager> agent_manager_;
-
-  /// Manage all runtime env resources locally by URI reference. We add or remove URI
-  /// reference in the cases below:
-  /// For the job with an eager installed runtime env:
-  /// - Add URI reference when job started.
-  /// - Remove URI reference when job finished.
-  /// For the worker process with a valid runtime env:
-  /// - Add URI reference when worker process started.
-  /// - Remove URI reference when all the worker instance registration completed or any
-  /// worker instance registration times out.
-  /// - Add URI reference when a worker instance registered.
-  /// - Remove URI reference when a worker instance disconnected.
-  ///
-  /// A normal state change flow is:
-  ///   job level:
-  ///       HandleJobStarted(ref + 1 = 1) -> HandleJobFinshed(ref - 1 = 0)
-  ///   worker level:
-  ///       StartWorkerProcess(ref + 1 = 1)
-  ///       -> OnWorkerStarted * 3 (ref + 3 = 4)
-  ///       -> All worker instances registered (ref - 1 = 3)
-  ///       -> DisconnectWorker * 3 (ref - 3 = 0)
-  ///
-  /// A state change flow for worker timeout case is:
-  ///       StartWorkerProcess(ref + 1 = 1)
-  ///       -> OnWorkerStarted * 2 (ref + 2 = 3)
-  ///       -> One worker registration times out, kill worker process (ref - 1 = 2)
-  ///       -> DisconnectWorker * 2 (ref - 2 = 0)
-  ///
-  /// Note: "OnWorkerStarted * 3" means that three workers are started. And we assume
-  /// that the worker process has tree worker instances totally.
-  ///
-  /// An example to show reference table changes:
-  ///
-  ///   Start a job with eager installed runtime env:
-  ///       ray.init(runtime_env=
-  ///       {
-  ///         "conda": {
-  ///           "dependencies": ["requests"]
-  ///         },
-  ///         "eager_install": True
-  ///       })
-  ///   Add URI reference and get the reference tables:
-  ///       +---------------------------------------------+
-  ///       |      id            |          URIs          |
-  ///       +--------------------+------------------------+
-  ///       | job-id-hex-A       | conda://{hash-A}       |
-  ///       +---------------------------------------------+
-  ///       +---------------------------------------------+
-  ///       |      URI           |          count         |
-  ///       +--------------------+------------------------+
-  ///       | conda://{hash-A}   |           1            |
-  ///       +---------------------------------------------+
-  ///
-  ///   Create actor with runtime env:
-  ///      @ray.remote
-  ///      class actor:
-  ///          def Foo():
-  ///              import my_module
-  ///              pass
-  ///      actor.options(runtime_env=
-  ///           {
-  ///              "conda": {
-  ///                  "dependencies": ["requests"]
-  ///              },
-  ///              "py_modules": [
-  ///                  "s3://bucket/my_module.zip"
-  ///              ]
-  ///              }).remote()
-  ///   First step when worker process started, add URI reference and get the reference
-  ///   tables:
-  ///       +-------------------------------------------------------------------+
-  ///       |      id              |          URIs                              |
-  ///       +----------------------+--------------------------------------------+
-  ///       | job-id-hex-A         | conda://{hash-A}                           |
-  ///       | worker-setup-token-A | conda://{hash-A},s3://bucket/my_module.zip |
-  ///       +-------------------------------------------------------------------+
-  ///       +------------------------------------------------------+
-  ///       |      URI                    |          count         |
-  ///       +-----------------------------+------------------------+
-  ///       | conda://{hash-A}            |           2            |
-  ///       | s3://bucket/my_module.zip   |           1            |
-  ///       +------------------------------------------------------+
-  ///   Second step when worker instance registers, add URI reference for worker
-  ///   instance and get the reference tables:
-  ///       +-------------------------------------------------------------------+
-  ///       |      id              |          URIs                              |
-  ///       +----------------------+--------------------------------------------+
-  ///       | job-id-hex-A         | conda://{hash-A}                           |
-  ///       | worker-setup-token-A | conda://{hash-A},s3://bucket/my_module.zip |
-  ///       | worker-id-hex-A      | conda://{hash-A},s3://bucket/my_module.zip |
-  ///       +-------------------------------------------------------------------+
-  ///       +------------------------------------------------------+
-  ///       |      URI                    |          count         |
-  ///       +-----------------------------+------------------------+
-  ///       | conda://{hash-A}            |           3            |
-  ///       | s3://bucket/my_module.zip   |           2            |
-  ///       +------------------------------------------------------+
-  ///   At the same time, we should remove URI reference for worker process because python
-  ///   worker only contains one worker instance:
-  ///       +-------------------------------------------------------------------+
-  ///       |      id              |          URIs                              |
-  ///       +----------------------+--------------------------------------------+
-  ///       | job-id-hex-A         | conda://{hash-A}                           |
-  ///       | worker-id-hex-A      | conda://{hash-A},s3://bucket/my_module.zip |
-  ///       +-------------------------------------------------------------------+
-  ///       +------------------------------------------------------+
-  ///       |      URI                    |          count         |
-  ///       +-----------------------------+------------------------+
-  ///       | conda://{hash-A}            |           2            |
-  ///       | s3://bucket/my_module.zip   |           1            |
-  ///       +------------------------------------------------------+
-  ///
-  ///   Next, when the actor is killed, remove URI reference for worker instance:
-  ///       +-------------------------------------------------------------------+
-  ///       |      id              |          URIs                              |
-  ///       +----------------------+--------------------------------------------+
-  ///       | job-id-hex-A         | conda://{hash-A}                           |
-  ///       +-------------------------------------------------------------------+
-  ///       +------------------------------------------------------+
-  ///       |      URI                    |          count         |
-  ///       +-----------------------------+------------------------+
-  ///       | conda://{hash-A}            |           1            |
-  ///       +------------------------------------------------------+
-
-  ///   Finally, when the job is finished, remove URI reference and got an empty reference
-  ///   table:
-  ///       +-------------------------------------------------------------------+
-  ///       |      id              |          URIs                              |
-  ///       +----------------------+--------------------------------------------+
-  ///       |                      |                                            |
-  ///       +-------------------------------------------------------------------+
-  ///       +------------------------------------------------------+
-  ///       |      URI                    |          count         |
-  ///       +-----------------------------+------------------------+
-  ///       |                             |                        |
-  ///       +------------------------------------------------------+
-  ///
-  ///  Now, we can delete the runtime env resources safely.
-
-  RuntimeEnvManager runtime_env_manager_;
 
   /// Stats
   int64_t process_failed_job_config_missing_ = 0;

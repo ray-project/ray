@@ -1,6 +1,5 @@
 from abc import ABC, abstractstaticmethod
 
-from typing import Tuple
 from ray.util.annotations import DeveloperAPI
 from ray._private.runtime_env.context import RuntimeEnvContext
 
@@ -9,14 +8,6 @@ from ray._private.runtime_env.context import RuntimeEnvContext
 # We should make this logic clearly.
 def encode_plugin_uri(plugin: str, uri: str) -> str:
     return plugin + "|" + uri
-
-
-def decode_plugin_uri(plugin_uri: str) -> Tuple[str, str]:
-    if "|" not in plugin_uri:
-        raise ValueError(
-            f"Plugin URI must be of the form 'plugin|uri', not {plugin_uri}"
-        )
-    return tuple(plugin_uri.split("|", 2))
 
 
 @DeveloperAPI

@@ -82,9 +82,10 @@ static std::unordered_set<std::string> valid_uris;
 
 class MockRuntimeEnvAgentClient : public rpc::RuntimeEnvAgentClientInterface {
  public:
-  void CreateRuntimeEnv(const rpc::CreateRuntimeEnvRequest &request,
-                        const rpc::ClientCallback<rpc::CreateRuntimeEnvReply> &callback) {
-    rpc::CreateRuntimeEnvReply reply;
+  void IncreaseRuntimeEnvReference(
+      const rpc::IncreaseRuntimeEnvReferenceRequest &request,
+      const rpc::ClientCallback<rpc::IncreaseRuntimeEnvReferenceReply> &callback) {
+    rpc::IncreaseRuntimeEnvReferenceReply reply;
     if (request.serialized_runtime_env() == BAD_RUNTIME_ENV) {
       reply.set_status(rpc::AGENT_RPC_STATUS_FAILED);
       reply.set_error_message(BAD_RUNTIME_ENV_ERROR_MSG);
@@ -103,12 +104,13 @@ class MockRuntimeEnvAgentClient : public rpc::RuntimeEnvAgentClientInterface {
     callback(Status::OK(), reply);
   };
 
-  void DeleteURIs(const rpc::DeleteURIsRequest &request,
-                  const rpc::ClientCallback<rpc::DeleteURIsReply> &callback) {
+  void DecreaseRuntimeEnvReference(
+      const rpc::DecreaseRuntimeEnvReferenceRequest &request,
+      const rpc::ClientCallback<rpc::DecreaseRuntimeEnvReferenceReply> &callback) {
     for (auto uri : request.uris()) {
       valid_uris.erase(uri);
     }
-    rpc::DeleteURIsReply reply;
+    rpc::DecreaseRuntimeEnvReferenceReply reply;
     reply.set_status(rpc::AGENT_RPC_STATUS_OK);
     callback(Status::OK(), reply);
   };
@@ -170,7 +172,7 @@ class WorkerPoolMock : public WorkerPool {
   int NumWorkersStarting() const {
     int total = 0;
     for (auto &state_entry : states_by_lang_) {
-      for (auto &process_entry : state_entry.second.starting_worker_processes) {
+      for (auto &process_entry : state_entry.second.worker_processes) {
         total += process_entry.second.num_starting_workers;
       }
     }
@@ -180,7 +182,7 @@ class WorkerPoolMock : public WorkerPool {
   int NumWorkerProcessesStarting() const {
     int total = 0;
     for (auto &entry : states_by_lang_) {
-      total += entry.second.starting_worker_processes.size();
+      total += entry.second.worker_processes.size();
     }
     return total;
   }

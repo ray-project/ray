@@ -57,6 +57,7 @@ class SpecificServer:
     port: int
     process_handle_future: futures.Future
     channel: "grpc._channel.Channel"
+    # serialized_runtime_env: str
 
     def is_ready(self) -> bool:
         """Check if the server is ready or not (doesn't block)."""
@@ -94,6 +95,10 @@ class SpecificServer:
         """Set the result of the internal future if it is currently unset."""
         if not self.is_ready():
             self.process_handle_future.set_result(proc)
+
+    # def set_serialized_runtime_env(self, serialized_runtime_env) -> None:
+    #     """Set serialized runtime env."""
+    #     self.serialized_runtime_env = serialized_runtime_env
 
 
 def _match_running_client_server(command: List[str]) -> bool:
@@ -219,17 +224,24 @@ class ProxyManager:
             self.servers[client_id] = server
             return server
 
-    def _create_runtime_env(
+    def _increase_runtime_env_reference(
         self, serialized_runtime_env: str, specific_server: SpecificServer
     ):
-        """Creates the runtime_env by sending an RPC to the agent.
+        """Increase the runtime_env reference by sending an RPC to the agent.
 
         Includes retry logic to handle the case when the agent is
         temporarily unreachable (e.g., hasn't been started up yet).
         """
-        create_env_request = runtime_env_agent_pb2.CreateRuntimeEnvRequest(
+        logger.info(
+            f"Increasing runtime env reference for "
+            f"ray_client_server_{specific_server.port}."
+            f"Serialized runtime env is {serialized_runtime_env}."
+        )
+
+        create_env_request = runtime_env_agent_pb2.IncreaseRuntimeEnvReferenceRequest(
             serialized_runtime_env=serialized_runtime_env,
             job_id=f"ray_client_server_{specific_server.port}".encode("utf-8"),
+            source_process="client_server",
         )
 
         retries = 0
@@ -237,8 +249,11 @@ class ProxyManager:
         wait_time_s = 0.5
         while retries <= max_retries:
             try:
-                r = self._runtime_env_stub.CreateRuntimeEnv(create_env_request)
+                r = self._runtime_env_stub.IncreaseRuntimeEnvReference(
+                    create_env_request
+                )
                 if r.status == agent_manager_pb2.AgentRpcStatus.AGENT_RPC_STATUS_OK:
+                    # specific_server.set_serialized_runtime_env(serialized_runtime_env)
                     return r.serialized_runtime_env_context
                 elif (
                     r.status == agent_manager_pb2.AgentRpcStatus.AGENT_RPC_STATUS_FAILED
@@ -261,7 +276,7 @@ class ProxyManager:
                     raise e
 
                 logger.warning(
-                    f"CreateRuntimeEnv request failed: {e}. "
+                    f"IncreaseRuntimeEnvReference request failed: {e}. "
                     f"Retrying after {wait_time_s}s. "
                     f"{max_retries-retries} retries remaining."
                 )
@@ -272,8 +287,32 @@ class ProxyManager:
             wait_time_s *= 2
 
         raise TimeoutError(
-            f"CreateRuntimeEnv request failed after {max_retries} attempts."
+            f"IncreaseRuntimeEnvReference request failed after {max_retries} attempts."
         )
+
+    def _decrease_runtime_env_reference(
+        self, serialized_runtime_env: str, specific_server: SpecificServer
+    ):
+        """Decrease the runtime_env reference by sending an RPC to the agent."""
+        logger.info(
+            f"Decreasing runtime env reference for "
+            f"ray_client_server_{specific_server.port}."
+            f"Serialized runtime env is {serialized_runtime_env}."
+        )
+        decrease_request = runtime_env_agent_pb2.DecreaseRuntimeEnvReferenceRequest(
+            serialized_runtime_env=serialized_runtime_env
+        )
+
+        r = self._runtime_env_stub.DecreaseRuntimeEnvReferenceRequest(decrease_request)
+        if r.status == agent_manager_pb2.AgentRpcStatus.AGENT_RPC_STATUS_OK:
+            return
+        elif r.status == agent_manager_pb2.AgentRpcStatus.AGENT_RPC_STATUS_FAILED:
+            raise RuntimeError(
+                "Failed to decrease runtime_env reference for Ray client "
+                f"server, it is caused by:\n{r.error_message}"
+            )
+        else:
+            assert False, f"Unknown status: {r.status}."
 
     def start_specific_server(self, client_id: str, job_config: JobConfig) -> bool:
         """
@@ -293,7 +332,7 @@ class ProxyManager:
             # to the agent?
             serialized_runtime_env_context = RuntimeEnvContext().serialize()
         else:
-            serialized_runtime_env_context = self._create_runtime_env(
+            serialized_runtime_env_context = self._increase_runtime_env_reference(
                 serialized_runtime_env=serialized_runtime_env,
                 specific_server=specific_server,
             )
@@ -382,6 +421,12 @@ class ProxyManager:
                             f"Specific server {client_id} is no longer running"
                             f", freeing its port {specific_server.port}"
                         )
+                        # logger.info(f"serialized_env {specific_server}")
+                        # serialized_env = specific_server.serialized_runtime_env
+                        # if serialized_env is not None:
+                        #     self._decrease_runtime_env_reference(
+                        #         specific_server.serialized_runtime_env,
+                        #         specific_server)
                         del self.servers[client_id]
                         # Port is available to use again.
                         self._free_ports.append(specific_server.port)
@@ -394,6 +439,10 @@ class ProxyManager:
         for platforms where fate sharing is not supported.
         """
         for server in self.servers.values():
+            # if server.serialized_runtime_env:
+            #     self._decrease_runtime_env_reference(
+            #         server.serialized_runtime_env,
+            #         server)
             server.kill()
 
 

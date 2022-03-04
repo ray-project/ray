@@ -43,8 +43,8 @@ typedef std::function<std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
 typedef std::function<void(bool successful,
                            const std::string &serialized_runtime_env_context,
                            const std::string &setup_error_message)>
-    CreateRuntimeEnvCallback;
-typedef std::function<void(bool successful)> DeleteURIsCallback;
+    IncreaseRuntimeEnvReferenceCallback;
+typedef std::function<void(bool successful)> DecreaseRuntimeEnvReferenceCallback;
 
 class AgentManager : public rpc::AgentManagerServiceHandler {
  public:
@@ -68,17 +68,21 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
                            rpc::RegisterAgentReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Request agent to create a runtime env.
-  /// \param[in] runtime_env The runtime env.
-  virtual void CreateRuntimeEnv(
+  /// Request agent to increase the runtime env reference. This API is not idempotent.
+  /// \param[in] job_id The job id which the runtime env belongs to.
+  /// \param[in] serialized_runtime_env The serialized runtime environment.
+  /// \param[in] serialized_allocated_resource_instances The serialized allocated resource
+  /// instances. \param[in] callback The callback function.
+  virtual void IncreaseRuntimeEnvReference(
       const JobID &job_id, const std::string &serialized_runtime_env,
       const std::string &serialized_allocated_resource_instances,
-      CreateRuntimeEnvCallback callback);
+      IncreaseRuntimeEnvReferenceCallback callback);
 
-  /// Request agent to delete a list of URIs.
-  /// \param[in] URIs The list of URIs to delete.
-  virtual void DeleteURIs(const std::vector<std::string> &uris,
-                          DeleteURIsCallback callback);
+  /// Request agent to decrease the runtime env reference. This API is not idempotent.
+  /// \param[in] serialized_runtime_env The serialized runtime environment.
+  /// \param[in] callback The callback function.
+  virtual void DecreaseRuntimeEnvReference(const std::string &serialized_runtime_env,
+                                           DecreaseRuntimeEnvReferenceCallback callback);
 
  private:
   void StartAgent();
