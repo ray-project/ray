@@ -294,6 +294,7 @@
       timeout: 3600
       prepare: python wait_cluster.py 5 600
       script: python stress_tests/test_threaded_actors.py --test-runtime 1800 --kill-interval_s 30
+  stable: false
 
 - name: k8s_threaded_actors_stress_test
   team: core

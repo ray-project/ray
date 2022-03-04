@@ -1,5 +1,6 @@
 import ray
 from ray.experimental.dag.py_obj_scanner import _PyObjScanner
+from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 
 from typing import (
     Optional,
@@ -13,6 +14,7 @@ from typing import (
     Set,
 )
 import uuid
+import json
 
 T = TypeVar("T")
 
@@ -190,6 +192,41 @@ class DAGNode:
             )
         )
 
+    def _apply_functional(
+        self,
+        source_input_list: Any,
+        predictate_fn: Callable,
+        apply_fn: Callable,
+    ):
+        """
+        Apply a given function to DAGNodes in source_input_list, and return
+        the replaced inputs without mutating or coping any DAGNode.
+
+        Args:
+            source_input_list: Source inputs to extract and apply function on
+                all children DAGNode instances.
+            predictate_fn: Applied on each DAGNode instance found and determine
+                if we should apply function to it. Can be used to filter node
+                types.
+            apply_fn: Function to appy on the node on bound attributes. Example:
+                apply_fn = lambda node: node._get_serve_deployment_handle(
+                    node._deployment, node._bound_other_args_to_resolve
+                )
+
+        Returns:
+            replaced_inputs: Outputs of apply_fn on DAGNodes in
+                source_input_list that passes predictate_fn.
+        """
+        replace_table = {}
+        scanner = _PyObjScanner()
+        for node in scanner.find_nodes(source_input_list):
+            if predictate_fn(node) and node not in replace_table:
+                replace_table[node] = apply_fn(node)
+
+        replaced_inputs = scanner.replace_nodes(replace_table)
+
+        return replaced_inputs
+
     def _execute_impl(self) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
         """Execute this node, assuming args have been transformed already."""
         raise NotImplementedError
@@ -225,3 +262,56 @@ class DAGNode:
         serializable form.
         """
         raise ValueError(f"DAGNode cannot be serialized. DAGNode: {str(self)}")
+
+    def to_json_base(
+        self, encoder_cls: json.JSONEncoder, dag_node_type: str
+    ) -> Dict[str, Any]:
+        """
+        Base JSON serializer for DAGNode types with base info. Each DAGNode
+        subclass needs to update with its own fields.
+
+        JSON serialization is not hard requirement for functionalities of a
+        DAG authored at Ray level, therefore implementations here meant to
+        facilitate JSON encoder implemenation in other libraries such as Ray
+        Serve.
+
+        Args:
+            encoder_cls (json.JSONEncoder): JSON encoder class used to handle
+                DAGNode nested in any args or options, created and passed from
+                caller, and is expected to be the same across all DAGNode types.
+
+        Returns:
+            json_dict (Dict[str, Any]): JSON serialized DAGNode.
+        """
+        # stable_uuid will be re-generated upon new constructor execution
+        # except for ClassNode used as parent of ClassMethodNode
+        return {
+            DAGNODE_TYPE_KEY: dag_node_type,
+            # Will be overriden by build()
+            "import_path": "",
+            "args": json.dumps(self.get_args(), cls=encoder_cls),
+            "kwargs": json.dumps(self.get_kwargs(), cls=encoder_cls),
+            # .options() should not contain any DAGNode type
+            "options": json.dumps(self.get_options()),
+            "other_args_to_resolve": json.dumps(
+                self.get_other_args_to_resolve(), cls=encoder_cls
+            ),
+        }
+
+    @staticmethod
+    def from_json_base(input_json, object_hook=None):
+        # Post-order JSON deserialization
+        args = json.loads(input_json["args"], object_hook=object_hook)
+        kwargs = json.loads(input_json["kwargs"], object_hook=object_hook)
+        # .options() should not contain any DAGNode type
+        options = json.loads(input_json["options"])
+        other_args_to_resolve = json.loads(
+            input_json["other_args_to_resolve"], object_hook=object_hook
+        )
+
+        return {
+            "args": args,
+            "kwargs": kwargs,
+            "options": options,
+            "other_args_to_resolve": other_args_to_resolve,
+        }

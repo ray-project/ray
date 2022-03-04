@@ -242,7 +242,7 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
         ),  # Path contains space.
     ],
 )
-def test_parquet_read(ray_start_regular_shared, fs, data_path):
+def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     table = pa.Table.from_pandas(df1)
     setup_data_path = _unwrap_protocol(data_path)

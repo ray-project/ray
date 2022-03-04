@@ -4,7 +4,7 @@ This document will explain Ray's logging system and its best practices.
 
 Driver logs
 ~~~~~~~~~~~
-An entry point of Ray applications that calls `ray.init(address='auto')` or `ray.init()` is called a driver.
+An entry point of Ray applications that calls ``ray.init(address='auto')`` or ``ray.init()`` is called a driver.
 All the driver logs are handled in the same way as normal Python programs. 
 
 Worker logs
@@ -127,6 +127,8 @@ Here's a Ray log directory structure. Note that ``.out`` is logs from stdout/std
 - ``redis.[out|err]``: Redis log files.
 - ``worker-[worker_id]-[job_id]-[pid].[out|err]``: Python/Java part of Ray drivers and workers. All of stdout and stderr from tasks/actors are streamed here. Note that job_id is an id of the driver.
 - ``io-worker-[worker_id]-[pid].[out|err]``: Ray creates IO workers to spill/restore objects to external storage by default from Ray 1.3+. This is a log file of IO workers.
+- ``runtime_env_setup-[job_id].log``: Logs from installing :ref:`runtime environments<runtime-environments>` for a task, actor or job.  This file will only be present if a runtime environment is installed.
+- ``runtime_env_setup-ray_client_server_[port].log``: Logs from installing :ref:`runtime environments<runtime-environments>` for a job when connecting via :ref:`Ray Client<ray-client>`.
 
 Log rotation
 ------------

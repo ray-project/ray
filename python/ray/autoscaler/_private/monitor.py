@@ -146,6 +146,7 @@ class Monitor:
         prefix_cluster_info: bool = False,
         monitor_ip: Optional[str] = None,
         stop_event: Optional[Event] = None,
+        retry_on_failure: bool = True,
     ):
         if not use_gcs_for_bootstrap():
             # Initialize the Redis clients.
@@ -209,6 +210,7 @@ class Monitor:
         self.prefix_cluster_info = prefix_cluster_info
         # Can be used to signal graceful exit from monitor loop.
         self.stop_event = stop_event  # type: Optional[Event]
+        self.retry_on_failure = retry_on_failure
         self.autoscaling_config = autoscaling_config
         self.autoscaler = None
         # If set, we are in a manually created cluster (non-autoscaling) and
@@ -372,11 +374,21 @@ class Monitor:
                     "monitor_pid": os.getpid(),
                 }
 
-                # Process autoscaling actions
-                if self.autoscaler:
-                    # Only used to update the load metrics for the autoscaler.
+                if self.autoscaler and not self.load_metrics:
+                    # load_metrics is Falsey iff we haven't collected any
+                    # resource messages from the GCS, which can happen at startup if
+                    # the GCS hasn't yet received data from the Raylets.
+                    # In this case, do not do an autoscaler update.
+                    # Wait to get load metrics.
+                    logger.info(
+                        "Autoscaler has not yet received load metrics. Waiting."
+                    )
+                elif self.autoscaler:
+                    # Process autoscaling actions
                     self.autoscaler.update()
-                    status["autoscaler_report"] = asdict(self.autoscaler.summary())
+                    autoscaler_summary = self.autoscaler.summary()
+                    if autoscaler_summary:
+                        status["autoscaler_report"] = asdict(autoscaler_summary)
 
                     for msg in self.event_summarizer.summary():
                         # Need to prefix each line of the message for the lines to
@@ -395,7 +407,11 @@ class Monitor:
                         ray_constants.DEBUG_AUTOSCALING_STATUS, as_json, overwrite=True
                     )
             except Exception:
-                logger.exception("Monitor: Execution exception. Trying again...")
+                # By default, do not exit the monitor on failure.
+                if self.retry_on_failure:
+                    logger.exception("Monitor: Execution exception. Trying again...")
+                else:
+                    raise
 
             # Wait for a autoscaler update interval before processing the next
             # round of messages.
