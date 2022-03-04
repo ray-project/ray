@@ -72,6 +72,15 @@ class InputNode(DAGNode):
     def __getitem__(self, key: Union[int, str]) -> Any:
         return InputAtrributeNode(self, key)
 
+    def __enter__(self):
+        # TODO (jiaodong): Supporting input node as context manager is easy.
+        # real question is we need to decide if we want to enforce that's the
+        # only way of creating input node.
+        return self
+
+    def __exit__(self, *args):
+        pass
+
     def to_json(self, encoder_cls) -> Dict[str, Any]:
         # TODO: (jiaodong) Support arbitrary InputNode args and pydantic
         # input schema.
