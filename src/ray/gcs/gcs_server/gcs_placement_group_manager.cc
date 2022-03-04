@@ -58,7 +58,7 @@ std::vector<std::shared_ptr<const BundleSpecification>> &GcsPlacementGroup::GetB
 }
 
 std::vector<std::shared_ptr<const BundleSpecification>>
-GcsPlacementGroup::GetUnplacedBundles() const o {
+GcsPlacementGroup::GetUnplacedBundles() const {
   const auto &bundle_specs = GetBundles();
 
   std::vector<std::shared_ptr<const BundleSpecification>> unplaced_bundles;
@@ -309,7 +309,13 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
           auto &resources = bundle->GetFormattedResources();
           auto node_id = bundle->NodeId();
         }
-
+        if (ray_syncer_ != nullptr) {
+          rpc::NodeResourceChange node_resource_change;
+          node_resource_change.set_node_id(node_id.Binary());
+          node_resource_change.mutable_updated_resources()->insert(
+              changed_resources.begin(), changed_resources.end());
+          ray_syncer_->Update(std::move(node_resource_change));
+        }
         // Invoke all callbacks for all `WaitPlacementGroupUntilReady` requests of this
         // placement group and remove all of them from
         // placement_group_to_create_callbacks_.

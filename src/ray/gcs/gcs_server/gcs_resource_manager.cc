@@ -73,10 +73,6 @@ void GcsResourceManager::UpdateResources(
           absl::Nanoseconds(end - start) / absl::Milliseconds(1));
       RAY_CHECK_OK(status);
       RAY_LOG(DEBUG) << "Finished updating resources, node id = " << node_id;
-      rpc::NodeResourceChange node_resource_change;
-      node_resource_change.set_node_id(node_id.Binary());
-      node_resource_change.mutable_updated_resources()->insert(changed_resources.begin(),
-                                                               changed_resources.end());
     };
 
     RAY_CHECK_OK(
@@ -107,15 +103,8 @@ void GcsResourceManager::DeleteResources(const NodeID &node_id,
       (*resource_map.mutable_items())[entry.first].set_resource_capacity(entry.second);
     }
 
-    auto on_done = [this, node_id,
-                    resource_names = std::move(resource_names)](const Status &status) {
-      RAY_CHECK_OK(status);
-      rpc::NodeResourceChange node_resource_change;
-      node_resource_change.set_node_id(node_id.Binary());
-      for (const auto &resource_name : resource_names) {
-        node_resource_change.add_deleted_resources(resource_name);
-      }
-    };
+    auto on_done = [this, node_id, resource_names = std::move(resource_names)](
+                       const Status &status) { RAY_CHECK_OK(status); };
     RAY_CHECK_OK(
         gcs_table_storage_->NodeResourceTable().Put(node_id, resource_map, on_done));
   } else {
