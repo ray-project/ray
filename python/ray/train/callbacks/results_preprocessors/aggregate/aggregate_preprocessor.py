@@ -40,13 +40,13 @@ class AggregateResultsPreprocessor(ResultsPreprocessor):
         1. No worker reports it.
         2. The values returned from all workers are invalid.
         The aggregation WILL be performed even if some but not all
-        workers report the key. The aggregation will only applied
-        to those that report the key.
+        workers report the key with valid values. The aggregation
+        will only applied to those that report the key.
 
         Args:
             results (Optional[List[Dict]]): A list of results
                 from all workers. The metrics specified in ``keys``
-                will be averaged according by ``aggregation_fn``.
+                will be averaged according to ``aggregation_fn``.
 
         Returns:
             An updated results list that has aggregated results and
@@ -67,11 +67,10 @@ class AggregateResultsPreprocessor(ResultsPreprocessor):
 
         for key in keys_to_aggregate:
             values = _get_metrics_from_results(key, results)
-            if values is None:
-                continue
-            aggregated_results[self.aggregate_fn.wrap_key(key)] = self.aggregate_fn(
-                values
-            )
+            if values:
+                aggregated_results[self.aggregate_fn.wrap_key(key)] = self.aggregate_fn(
+                    values
+                )
 
         # Currently we directly update each result dict with aggregated results.
         for result in results:
@@ -104,7 +103,7 @@ class AverageResultsPreprocessor(AggregateResultsPreprocessor):
 
 
 class MaxResultsPreprocessor(AggregateResultsPreprocessor):
-    """A preprocessor that computes the maximum values.
+    """A preprocessor that computes maximum values of specified keys.
 
     .. code-block:: python
 

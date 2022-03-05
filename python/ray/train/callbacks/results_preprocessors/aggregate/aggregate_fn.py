@@ -49,6 +49,8 @@ class Average(AggregateFn):
     def __call__(
         self, values: List[Union[VALID_AGGREGATE_TYPES]]
     ) -> Union[VALID_AGGREGATE_TYPES]:
+        # A numpy runtime warning will be thrown if values
+        # is a list of all ``np.nan``.
         return np.nanmean(values)
 
     def __repr__(self) -> str:
@@ -61,6 +63,8 @@ class Max(AggregateFn):
     def __call__(
         self, values: List[Union[VALID_AGGREGATE_TYPES]]
     ) -> Union[VALID_AGGREGATE_TYPES]:
+        # A numpy runtime warning will be thrown if values
+        # is a list of all ``np.nan``.
         return np.nanmax(values)
 
     def __repr__(self) -> str:
@@ -71,7 +75,7 @@ class WeightedAverage(AggregateFn):
     """Weighted average aggregation class.
 
     Args:
-        weight_key (Optional[str]): A string that specifies
+        weight_key (Optional[str]): A key string that specifies
             the average weight to be used. If it is None, then
             equal weight will be used.
     """

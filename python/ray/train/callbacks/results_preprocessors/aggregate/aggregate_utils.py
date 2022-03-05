@@ -31,36 +31,61 @@ def _check_if_key_is_reported(key: str, results: List[Dict]) -> bool:
     return key in {key for result in results for key in result.keys()}
 
 
-def _check_if_value_is_valid(key: str, results: List[Dict]) -> bool:
-    """Check if the values of ``key`` are valid types.
+def _check_if_any_value_is_valid(key: str, results: List[Dict]) -> bool:
+    """Check if some values of ``key`` are valid types.
 
     Args:
         key (str): A key string.
         results (List[Dict]): The results list returned from workers.
 
     Returns:
-        A boolean value. True if the values of ``key`` are one of
+        A boolean value. True if some values of ``key`` are one of
         ``VALID_AGGREGATE_TYPES``. Otherwise, False.
     """
     values = [result.get(key, np.nan) for result in results]
-    return all(isinstance(value, VALID_AGGREGATE_TYPES) for value in values)
+    return any(isinstance(value, VALID_AGGREGATE_TYPES) for value in values)
+
+
+def _get_valid_values_from_results(
+    key: str, results: List[Dict]
+) -> List[Union[VALID_AGGREGATE_TYPES]]:
+    """Get the list of values specified by ``key``.
+
+    Args:
+        key (str): A key string.
+        results (List[Dict]): The results list returned from workers.
+
+    Returns:
+        A list of values specified by ``key``. Invalid values are
+        replaced by ``np.nan``. This should be called after
+        ``_check_if_any_value_is_valid()`` returns True.
+    """
+    return [
+        (
+            result.get(key, np.nan)
+            if isinstance(result.get(key, np.nan), VALID_AGGREGATE_TYPES)
+            else np.nan
+        )
+        for result in results
+    ]
 
 
 def _get_metrics_from_results(
     key: str, results: List[Dict]
 ) -> Optional[List[Union[VALID_AGGREGATE_TYPES]]]:
-    """Return the metric specified by ``key`` from each worker's result dict.
+    """Return the metric values specified by ``key`` from each worker's result dict.
 
     Args:
-        key (str): A key string. If it doesn't exist in every worker's result dict,
-            i.e. it is not reported by all workers, the None will be returned.
+        key (str): A key string specifies the metric.
         results (List[Dict]): The results list returned from workers.
 
     Returns:
-        A list of values for ``key`` from each worker, if key exists
-        in every single result dict. If ``key`` is not in every result
-        dict, or if ``key`` is not a valid type in each result dict,
-        then will return None.
+        A list of values for ``key`` from each worker. If ``key`` is
+        missing in every result dict, or if ``key`` is not a valid
+        type in each result dict, then it will return None. If some
+        workers report valid ``key`` values but other don't, a list
+        of values will still be returned and invalid values are
+        replaced by ``np.nan``.
     """
     warning_message = None
     if not _check_if_key_is_reported(key, results):
@@ -68,7 +93,7 @@ def _get_metrics_from_results(
             f"`{key}` is not reported from workers, so it is ignored. "
             "Please make sure that it is saved using `train.report()`."
         )
-    elif not _check_if_value_is_valid(key, results):
+    elif not _check_if_any_value_is_valid(key, results):
         warning_message = (
             f"`{key}` value type is not valid, so it is ignored. "
             f"Make sure that its type is one of {VALID_AGGREGATE_TYPES}. "
@@ -79,23 +104,25 @@ def _get_metrics_from_results(
             logger.warning(warning_message)
         return None
 
-    return [result.get(key, np.nan) for result in results]
+    return _get_valid_values_from_results(key, results)
 
 
 def _get_weights_from_results(
     key: str, results: List[Dict]
 ) -> List[Union[VALID_AGGREGATE_TYPES]]:
-    """Return weight values in the results list from all workers.
+    """Return weight values specified by ``key`` from all workers.
 
     Args:
         key (str): A key string specifies the weight metric.
-            If it doesn't exist in every single result, then
-            equal weight will be used.
         results (List[Dict]): The results list returned from workers.
 
     Returns:
         A list of valid weight values from each worker, if key exists.
-        Otherwise, a list of all ones, that is, equal weight.
+        Invalid values are replaced by ``np.nan`` and will be ignored
+        in the subsequent weighted average aggregation. If ``key``
+        doesn't exist in every single result or its value from every
+        single worker is invalid, then equal weight will be used.
+        That is, a list of all ones.
     """
     warning_message = None
     if not _check_if_key_is_reported(key, results):
@@ -103,7 +130,7 @@ def _get_weights_from_results(
             f"Averaging weight `{key}` is not reported "
             "by all workers in `train.report()`. "
         )
-    elif not _check_if_value_is_valid(key, results):
+    elif not _check_if_any_value_is_valid(key, results):
         warning_message = (
             f"Averaging weight `{key}` value type is not valid. "
             f"Make sure that its type is one of {VALID_AGGREGATE_TYPES}. "
@@ -114,4 +141,4 @@ def _get_weights_from_results(
             logger.warning(warning_message + "Use equal weight instead.")
         return [1] * len(results)
 
-    return [result.get(key, np.nan) for result in results]
+    return _get_valid_values_from_results(key, results)
