@@ -495,15 +495,6 @@ class RolloutWorker(ParallelIteratorWorker):
         if self.env is not None:
             # Validate environment (general validation function).
             if not self._disable_env_checking:
-                logger.warning(
-                    "We've added a module for checking environments that "
-                    "are used in experiments. It will cause your "
-                    "environment to fail if your environment is not set up"
-                    "correctly. You can disable check env by setting "
-                    "`disable_env_checking` to True in your experiment config "
-                    "dictionary. You can run the environment checking module "
-                    "standalone by calling ray.rllib.utils.check_env(env)."
-                )
                 check_env(self.env)
             # Custom validation function given, typically a function attribute of the
             # algorithm trainer.
