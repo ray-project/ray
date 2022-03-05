@@ -33,7 +33,9 @@ class BanditPolicyOverrides:
             postprocessed_batch.set_get_interceptor(None)
 
             unflattened_obs = restore_original_dimensions(
-                postprocessed_batch[SampleBatch.CUR_OBS], self.observation_space, self.framework
+                postprocessed_batch[SampleBatch.CUR_OBS],
+                self.observation_space,
+                self.framework,
             )
 
             info = {}
@@ -47,7 +49,9 @@ class BanditPolicyOverrides:
 
             infos = postprocessed_batch[SampleBatch.INFOS]
             if "regret" in infos[0]:
-                regret = sum(row["infos"]["regret"] for row in postprocessed_batch.rows())
+                regret = sum(
+                    row["infos"]["regret"] for row in postprocessed_batch.rows()
+                )
                 self.regrets.append(regret)
                 info["cumulative_regret"] = sum(self.regrets)
             else:
@@ -99,7 +103,7 @@ def make_model(policy, obs_space, action_space, config):
     model = model_cls(
         obs_space, action_space, logit_dim, config["model"], name="LinearModel"
     )
-    return  model
+    return model
 
 
 def after_init(policy, *args):

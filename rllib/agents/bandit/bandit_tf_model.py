@@ -19,10 +19,16 @@ class OnlineLinearRegression(tf.Module):
         self.update_schedule = 1
         self.time = 0
         self.alpha = alpha
-        self.precision = tf.Variable(initial_value=lambda_ * tf.eye(self.d), name="precision")
+        self.precision = tf.Variable(
+            initial_value=lambda_ * tf.eye(self.d), name="precision"
+        )
         self.f = tf.Variable(initial_value=tf.zeros(self.d), name="f")
-        self.covariance = tf.Variable(initial_value=tf.linalg.inv(self.precision), name="covariance")
-        self.theta = tf.Variable(initial_value=tf.linalg.matvec(self.covariance, self.f), name="theta")
+        self.covariance = tf.Variable(
+            initial_value=tf.linalg.inv(self.precision), name="covariance"
+        )
+        self.theta = tf.Variable(
+            initial_value=tf.linalg.matvec(self.covariance, self.f), name="theta"
+        )
 
         self._init_params()
 
@@ -71,9 +77,12 @@ class OnlineLinearRegression(tf.Module):
         else:
             x_folded_batch = x
 
-        projections = tf.linalg.matmul(a=self.covariance, b=x_folded_batch, transpose_b=True)
+        projections = tf.linalg.matmul(
+            a=self.covariance, b=x_folded_batch, transpose_b=True
+        )
         batch_dots = tf.math.reduce_sum(
-            x_folded_batch * tf.transpose(projections), axis=-1)
+            x_folded_batch * tf.transpose(projections), axis=-1
+        )
         batch_dots = tf.math.sqrt(batch_dots)
 
         # Restore original B and C dimensions.
@@ -152,9 +161,7 @@ class DiscreteLinearModel(TFModelV2):
         for i, arm in enumerate(arms):
             assert (
                 0 <= arm < len(self.arms)
-            ), "Invalid arm: {}. It should be 0 <= arm < {}".format(
-                arm, len(self.arms)
-            )
+            ), "Invalid arm: {}. It should be 0 <= arm < {}".format(arm, len(self.arms))
             xi = tf.expand_dims(x[i], axis=0)
             yi = tf.expand_dims(y[i], axis=0)
             self.arms[arm].partial_fit(xi, yi)

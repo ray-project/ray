@@ -10,6 +10,7 @@ from ray.rllib.utils.framework import (
 
 tf1, tf, tfv = try_import_tf()
 
+
 class ThompsonSampling(Exploration):
     @override(Exploration)
     def get_exploration_action(

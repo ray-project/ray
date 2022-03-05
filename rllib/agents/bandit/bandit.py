@@ -75,4 +75,3 @@ class BanditLinUCBTrainer(Trainer):
             return BanditTFPolicy
         else:
             raise NotImplementedError()
-
