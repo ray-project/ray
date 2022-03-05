@@ -80,7 +80,7 @@ class InputNode(DAGNode):
         else:
             return self._bound_other_args_to_resolve[IN_CONTEXT_MANAGER]
 
-    def _set_context(self, key: str, val: Any):
+    def set_context(self, key: str, val: Any):
         """Set field in parent DAGNode attribute that can be resolved in both
         pickle and JSON serialization
         """
@@ -93,17 +93,17 @@ class InputNode(DAGNode):
         assert isinstance(
             key, str
         ), "Please only access dag input attributes with str key."
-        return InputAtrributeNode(self, key)
+        return InputAtrributeNode(self, key, "__getattr__")
 
     def __getitem__(self, key: Union[int, str]) -> Any:
         assert isinstance(key, (str, int)), (
             "Please only use int index or str as first-level key to "
             "access fields of dag input."
         )
-        return InputAtrributeNode(self, key)
+        return InputAtrributeNode(self, key, "__getitem__")
 
     def __enter__(self):
-        self._set_context(IN_CONTEXT_MANAGER, True)
+        self.set_context(IN_CONTEXT_MANAGER, True)
         return self
 
     def __exit__(self, *args):
@@ -135,10 +135,20 @@ class InputAtrributeNode(DAGNode):
         >>> ray_dag.execute(1, x=2)
     """
 
-    def __init__(self, dag_input_node: InputNode, key: str):
+    def __init__(self, dag_input_node: InputNode, key: str, accessor_method: str):
         self._dag_input_node = dag_input_node
         self._key = key
-        super().__init__([], {}, {}, {"dag_input_node": dag_input_node, "key": key})
+        self._accessor_method = accessor_method
+        super().__init__(
+            [],
+            {},
+            {},
+            {
+                "dag_input_node": dag_input_node,
+                "key": key,
+                "accessor_method": accessor_method,
+            },
+        )
 
     def _copy_impl(
         self,
@@ -150,6 +160,7 @@ class InputAtrributeNode(DAGNode):
         return InputAtrributeNode(
             new_other_args_to_resolve["dag_input_node"],
             new_other_args_to_resolve["key"],
+            new_other_args_to_resolve["accessor_method"],
         )
 
     def _execute_impl(self, *args, **kwargs):
@@ -160,13 +171,26 @@ class InputAtrributeNode(DAGNode):
         with value in bound_args and bound_kwargs via bottom-up recursion when
         current node is executed.
         """
+
         if isinstance(self._dag_input_node, DAGInputData):
             return self._dag_input_node[self._key]
         else:
             # dag.execute() is called with only one arg, thus when an
             # InputAtrributeNode is executed, its dependent InputNode is
-            # resolved with original user input value.
-            return self._dag_input_node
+            # resolved with original user input python object.
+            user_input_python_object = self._dag_input_node
+            if isinstance(self._key, str):
+                if self._accessor_method == "__getitem__":
+                    return user_input_python_object[self._key]
+                elif self._accessor_method == "__getattr__":
+                    return getattr(user_input_python_object, self._key)
+            elif isinstance(self._key, int):
+                return user_input_python_object[self._key]
+            else:
+                raise ValueError(
+                    "Please only use int index or str as first-level key to "
+                    "access fields of dag input."
+                )
 
     def __str__(self) -> str:
         return get_dag_node_str(self, f"__InputNode__[{self._key}]")

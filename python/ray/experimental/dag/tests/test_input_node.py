@@ -5,7 +5,7 @@ request, for all DAGNode types.
 
 import pytest
 from ray.experimental.dag.input_node import InputNode
-from typing import TypeVar
+from typing import Any, TypeVar
 
 import ray
 
@@ -238,7 +238,7 @@ def test_input_attr_partial_access(shared_ray_instance):
         else:
             return a + b + c + d["deep"]["nested"]
 
-    # Same DAG, but with attribute accessor and keyword input
+    # 1) Test default wrapping of args and kwargs into internal python object
     with InputNode() as dag_input:
         m1 = Model._bind(1)
         m2 = Model._bind(2)
@@ -247,6 +247,49 @@ def test_input_attr_partial_access(shared_ray_instance):
         dag = combine._bind(m1_output, m2_output, dag_input.m3, dag_input.m4)
     # 1*1 + 2*2 + 3 + 4 = 12
     assert ray.get(dag.execute(1, 2, m3=3, m4={"deep": {"nested": 4}})) == 12
+
+    # 2) Test user passed data object as only input to the dag.execute()
+    class UserDataObj:
+        user_object_field_0: Any
+        user_object_field_1: Any
+        field_3: Any
+
+        def __init__(
+            self, user_object_field_0: Any, user_object_field_1: Any, field_3: Any
+        ) -> None:
+            self.user_object_field_0 = user_object_field_0
+            self.user_object_field_1 = user_object_field_1
+            self.field_3 = field_3
+
+    with InputNode() as dag_input:
+        m1 = Model._bind(1)
+        m2 = Model._bind(2)
+        m1_output = m1.forward._bind(dag_input.user_object_field_0)
+        m2_output = m2.forward._bind(dag_input.user_object_field_1)
+        dag = combine._bind(m1_output, m2_output, dag_input.field_3)
+
+    # 1*1 + 2*2 + 3
+    assert ray.get(dag.execute(UserDataObj(1, 2, 3))) == 8
+
+    # 3) Test user passed only one list object with regular list index accessor
+    with InputNode() as dag_input:
+        m1 = Model._bind(1)
+        m2 = Model._bind(2)
+        m1_output = m1.forward._bind(dag_input[0])
+        m2_output = m2.forward._bind(dag_input[1])
+        dag = combine._bind(m1_output, m2_output, dag_input[2])
+    # 1*1 + 2*2 + 3 + 4 = 12
+    assert ray.get(dag.execute([1, 2, 3])) == 8
+
+    # 4) Test user passed only one dict object with key str accessor
+    with InputNode() as dag_input:
+        m1 = Model._bind(1)
+        m2 = Model._bind(2)
+        m1_output = m1.forward._bind(dag_input["m1"])
+        m2_output = m2.forward._bind(dag_input["m2"])
+        dag = combine._bind(m1_output, m2_output, dag_input["m3"])
+    # 1*1 + 2*2 + 3 + 4 = 12
+    assert ray.get(dag.execute({"m1": 1, "m2": 2, "m3": 3})) == 8
 
     with pytest.raises(
         AssertionError,
