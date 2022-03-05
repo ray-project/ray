@@ -12,7 +12,7 @@ from typing import Optional, List, Union, Tuple
 # will default to running "conda" if unset.
 RAY_CONDA_HOME = "RAY_CONDA_HOME"
 
-_WIN32 = os.name == 'nt'
+_WIN32 = os.name == "nt"
 
 
 def get_conda_activate_commands(conda_env_name: str) -> List[str]:
@@ -200,7 +200,7 @@ def exec_cmd_stream_to_logger(
     The last n_lines lines of output are also returned (stdout and stderr).
     """
     if "env" in kwargs and _WIN32 and "PATH" not in [x.upper() for x in kwargs.keys]:
-        raise ValueError("On windows, Popen requires 'PATH' in 'env'") 
+        raise ValueError("On windows, Popen requires 'PATH' in 'env'")
     child = subprocess.Popen(
         cmd,
         universal_newlines=True,

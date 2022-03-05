@@ -38,9 +38,11 @@ if not os.environ.get("CI"):
 
 REQUEST_VERSIONS = ["2.2.0", "2.3.0"]
 
+_WIN32 = os.name == "nt"
+
 
 @pytest.fixture(scope="session")
-def conda_envs():
+def conda_envs(tmp_path_factory):
     """Creates two conda env with different requests versions."""
     conda_path = get_conda_bin_executable("conda")
     init_cmd = f". {os.path.dirname(conda_path)}" f"/../etc/profile.d/conda.sh"
@@ -50,34 +52,58 @@ def conda_envs():
 
     def create_package_env(env_name, package_version: str):
         delete_env(env_name)
-        subprocess.run(
-            ["conda", "create", "-n", env_name, "-y", f"python={_current_py_version()}"]
+        proc = subprocess.run(
+            [
+                "conda",
+                "create",
+                "-n",
+                env_name,
+                "-y",
+                f"python={_current_py_version()}",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
+        if proc.returncode != 0:
+            print("conda create failed, returned %d" % proc.returncode)
+            print(proc.stdout.decode())
+            print(proc.stderr.decode())
+            assert False
 
         _inject_ray_to_conda_site(get_conda_env_dir(env_name))
         ray_deps: List[str] = _resolve_install_from_source_ray_dependencies()
         ray_deps.append(f"requests=={package_version}")
-        with tempfile.NamedTemporaryFile("w") as f:
-            f.writelines([line + "\n" for line in ray_deps])
-            f.flush()
 
-            commands = [
-                init_cmd,
-                f"conda activate {env_name}",
-                f"python -m pip install -r {f.name}",
-                "conda deactivate",
-            ]
-            proc = subprocess.run(
-                [" && ".join(commands)],
-                shell=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            )
-            if proc.returncode != 0:
-                print("conda/pip install failed")
-                print(proc.stdout.decode())
-                print(proc.stderr.decode())
-                assert False
+        reqs = tmp_path_factory.mktemp("reqs") / "requirements.txt"
+        with reqs.open("wt") as fid:
+            for line in ray_deps:
+                fid.write(line)
+                fid.write("\n")
+
+        commands = [
+            f"conda activate {env_name}",
+            f"python -m pip install -r {str(reqs)}",
+            "conda deactivate",
+        ]
+        if _WIN32:
+            # as a string
+            command = " && ".join(commands)
+        else:
+            commands.insert(0, init_cmd)
+            # as a list
+            command = [" && ".join(commands)]
+        proc = subprocess.run(
+            command,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        if proc.returncode != 0:
+            print("conda/pip install failed, returned %d" % proc.returncode)
+            print("command", command)
+            print(proc.stdout.decode())
+            print(proc.stderr.decode())
+            assert False
 
     for package_version in REQUEST_VERSIONS:
         create_package_env(

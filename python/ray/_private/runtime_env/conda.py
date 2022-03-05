@@ -33,7 +33,7 @@ from ray._private.runtime_env.packaging import Protocol, parse_uri
 
 default_logger = logging.getLogger(__name__)
 
-_WIN32 = os.name == 'nt'
+_WIN32 = os.name == "nt"
 
 
 def _resolve_current_ray_path() -> str:

@@ -18,7 +18,7 @@ from ray._private.utils import (
 
 default_logger = logging.getLogger(__name__)
 
-_WIN32 = os.name == 'nt'
+_WIN32 = os.name == "nt"
 
 
 def _get_pip_hash(pip_dict: Dict) -> str:
@@ -267,9 +267,9 @@ class PipProcessor:
                 "Creating virtualenv at %s, current python dir %s",
                 virtualenv_path,
                 virtualenv_path,
-                
             )
         await check_output_cmd(create_venv_cmd, logger=logger, cwd=cwd, env=env)
+
     @classmethod
     async def _install_pip_packages(
         cls,
@@ -312,10 +312,6 @@ class PipProcessor:
             "-r",
             pip_requirements_file,
         ]
-        if _WIN32:
-            env = os.environ.copy()
-        else:
-            env = {}
         logger.info("Installing python requirements to %s", virtualenv_path)
 
         await check_output_cmd(pip_install_cmd, logger=logger, cwd=cwd, env=pip_env)
