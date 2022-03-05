@@ -760,6 +760,7 @@ class Worker:
                 "resources": md.resources,
                 "accelerator_type": md.accelerator_type,
                 "runtime_env": md.runtime_env,
+                "concurrency_groups": md.concurrency_groups,
                 "scheduling_strategy": md.scheduling_strategy,
             },
         )
