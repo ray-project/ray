@@ -1,3 +1,5 @@
+import pytest
+
 from ray.train.callbacks.results_preprocessors import (
     ExcludedKeysResultsPreprocessor,
     IndexedResultsPreprocessor,
@@ -51,8 +53,8 @@ def test_average_results_preprocessor():
     for res in expected:
         res.update(
             {
-                "Average(a)": np.mean([result["a"] for result in results]),
-                "Average(b)": np.mean([result["b"] for result in results]),
+                "avg(a)": np.mean([result["a"] for result in results]),
+                "avg(b)": np.mean([result["b"] for result in results]),
             }
         )
 
@@ -71,8 +73,8 @@ def test_max_results_preprocessor():
     for res in expected:
         res.update(
             {
-                "Max(a)": np.max([result["a"] for result in results]),
-                "Max(b)": np.max([result["b"] for result in results]),
+                "max(a)": np.max([result["a"] for result in results]),
+                "max(b)": np.max([result["b"] for result in results]),
             }
         )
 
@@ -92,7 +94,7 @@ def test_weighted_average_results_preprocessor():
     for res in expected:
         res.update(
             {
-                "Weighted average [by b](a)": np.sum(
+                "weight_avg_b(a)": np.sum(
                     [result["a"] * result["b"] / total_weight for result in results]
                 )
             }
@@ -102,6 +104,73 @@ def test_weighted_average_results_preprocessor():
     preprocessed_results = preprocessor.preprocess(results)
 
     assert preprocessed_results == expected
+
+
+@pytest.mark.parametrize(
+    "results_preprocessor",
+    [
+        AverageResultsPreprocessor,
+        MaxResultsPreprocessor,
+    ],
+)
+def test_metrics_warning_in_aggregate_results_preprocessors(
+    caplog, results_preprocessor
+):
+    import logging
+    from ray.util import debug
+
+    caplog.at_level(logging.WARNING)
+
+    results1 = [{"a": 1}, {"a": 2}, {"a": 3}, {"a": 4}]
+    results2 = [{"a": 1}, {"a": "invalid"}, {"a": 3}, {"a": "invalid"}]
+
+    results_preprocessor1 = results_preprocessor(["b"])
+    results_preprocessor1.preprocess(results1)
+
+    results_preprocessor2 = results_preprocessor(["a"])
+    results_preprocessor2.preprocess(results2)
+
+    for record in caplog.records:
+        assert record.levelname == "WARNING"
+
+    assert "`b` is not reported from workers, so it is ignored." in caplog.text
+    assert "`a` value type is not valid, so it is ignored." in caplog.text
+
+    debug.reset_log_once("b")
+    debug.reset_log_once("a")
+
+
+def test_warning_in_weighted_average_results_preprocessors(caplog):
+    import logging
+
+    caplog.at_level(logging.WARNING)
+
+    results1 = [{"a": 1}, {"a": 2}, {"a": 3}, {"a": 4}]
+    results2 = [{"b": 1}, {"b": 2}, {"b": 3}, {"b": 4}]
+    results3 = [
+        {"a": 1, "c": 1},
+        {"a": 2, "c": "invalid"},
+        {"a": 3, "c": 2},
+        {"a": 4, "c": "invalid"},
+    ]
+
+    results_preprocessor1 = WeightedAverageResultsPreprocessor(["a"], "b")
+    results_preprocessor1.preprocess(results1)
+    results_preprocessor1.preprocess(results2)
+
+    results_preprocessor2 = WeightedAverageResultsPreprocessor(["a"], "c")
+    results_preprocessor2.preprocess(results3)
+
+    for record in caplog.records:
+        assert record.levelname == "WARNING"
+
+    assert (
+        "Averaging weight `b` is not reported by all workers in `train.report()`."
+        in caplog.text
+    )
+    assert "`a` is not reported from workers, so it is ignored." in caplog.text
+    assert "Averaging weight `c` value type is not valid." in caplog.text
+    assert "Use equal weight instead." in caplog.text
 
 
 if __name__ == "__main__":

@@ -1,9 +1,6 @@
 import logging
 from typing import Dict, List, Optional
 
-import numpy as np
-
-from ray.util.debug import log_once
 from ray.util.annotations import DeveloperAPI
 from ray.train.callbacks.results_preprocessors.preprocessor import ResultsPreprocessor
 from ray.train.callbacks.results_preprocessors.aggregate.aggregate_fn import (
@@ -13,7 +10,6 @@ from ray.train.callbacks.results_preprocessors.aggregate.aggregate_fn import (
     WeightedAverage,
 )
 from ray.train.callbacks.results_preprocessors.aggregate.aggregate_utils import (
-    VALID_AGGREGATE_TYPES,
     _get_metrics_from_results,
 )
 
@@ -37,42 +33,39 @@ class AggregateResultsPreprocessor(ResultsPreprocessor):
         self.aggregate_fn = aggregation_fn
         self.keys = keys
 
-    def preprocess(self, results: List[Dict]) -> List[Dict]:
+    def preprocess(self, results: Optional[List[Dict]] = None) -> Optional[List[Dict]]:
         """Aggregate results before sending them to callbacks.
 
+        A key will be ignored if one of the following occurs:
+        1. No worker reports it.
+        2. The values returned from all workers are invalid.
+        The aggregation WILL be performed even if some but not all
+        workers report the key. The aggregation will only applied
+        to those that report the key.
+
         Args:
-            results (List[Dict]): A list of results from all workers. The metrics
-                specified in ``keys`` will be averaged according by ``aggregation_fn``.
-                Non-numerical values will be ignored.
+            results (Optional[List[Dict]]): A list of results
+                from all workers. The metrics specified in ``keys``
+                will be averaged according by ``aggregation_fn``.
+
         Returns:
-            An updated results list with aggregated results.
+            An updated results list that has aggregated results and
+            is of the same length as the input list.
         """
-        results = [] if results is None else results
-        if len(results) == 0:
+        if results is None or len(results) == 0:
             return results
 
         self.aggregate_fn.prepare(results)
-        reported_metrics = {key for result in results for key in result.keys()}
 
-        if self.keys is None:
-            valid_keys = []
-            for metric in reported_metrics:
-                if all(
-                    isinstance(result.get(metric, np.nan), VALID_AGGREGATE_TYPES)
-                    for result in results
-                ):
-                    valid_keys.append(metric)
-                elif log_once(metric):
-                    logger.warning(
-                        f"`{metric}` value type is not "
-                        f"one of {VALID_AGGREGATE_TYPES}, so it is ignored. "
-                    )
-
-            self.keys = valid_keys
+        keys_to_aggregate = (
+            self.keys
+            if self.keys
+            else {key for result in results for key in result.keys()}
+        )
 
         aggregated_results = {}
 
-        for key in self.keys:
+        for key in keys_to_aggregate:
             values = _get_metrics_from_results(key, results)
             if values is None:
                 continue
@@ -90,6 +83,12 @@ class AggregateResultsPreprocessor(ResultsPreprocessor):
 class AverageResultsPreprocessor(AggregateResultsPreprocessor):
     """A preprocessor that averages results with equal weight.
 
+    .. code-block:: python
+
+        preprocessor = AverageResultsPreprocessor(keys=["loss", "accuracy"])
+        update_results = preprocessor.preprocess(results)
+
+
     Args:
         keys (Optional[List[str]]): A list of metrics to be averaged.
             If None is specified, then the list will be populated by
@@ -106,6 +105,12 @@ class AverageResultsPreprocessor(AggregateResultsPreprocessor):
 
 class MaxResultsPreprocessor(AggregateResultsPreprocessor):
     """A preprocessor that computes the maximum values.
+
+    .. code-block:: python
+
+        preprocessor = MaxResultsPreprocessor(keys=["loss", "accuracy"])
+        update_results = preprocessor.preprocess(results)
+
 
     Args:
         keys (Optional[List[str]]): A list of metrics upon which the
