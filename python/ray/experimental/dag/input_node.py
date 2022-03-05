@@ -14,22 +14,44 @@ class InputNode(DAGNode):
     entrypoints, but only one instance of InputNode exists per DAG, shared
     among all DAGNodes.
 
-    Ex:
-                   A.forward
+    Example:
+                   m1.forward
                 /            \
         dag_input              ensemble -> dag_output
                 \            /
-                   B.forward
+                   m2.forward
 
-    In this pipeline, each user input is broadcasted to both A.forward and
-    B.forward as first stop of the DAG, and authored like
+    In this pipeline, each user input is broadcasted to both m1.forward and
+    m2.forward as first stop of the DAG, and authored like
+    >>> @ray.remote
+    >>> class Model:
+    ...     def __init__(self, val):
+    ...         self.val = val
+    ...     def forward(self, input):
+    ...         return self.val * input
 
-    with InputNode() as dag_input:
-        a = A.forward.bind(dag_input)
-        b = B.forward.bind(dag_input)
-        dag = ensemble.bind(a, b)
+    >>> @ray.remote
+    >>> def combine(a, b):
+    ...     return a + b
 
-    dag.execute(user_input) --> broadcast to a and b
+    >>> with InputNode() as dag_input:
+    >>>     m1 = Model.bind(1)
+    >>>     m2 = Model.bind(2)
+    >>>     m1_output = m1.forward.bind(dag_input[0])
+    >>>     m2_output = m2.forward.bind(dag_input.x)
+    >>>     ray_dag = combine.bind(m1_output, m2_output)
+
+    >>> # Pass mix of args and kwargs as input.
+    >>> ray_dag.execute(1, x=2) # 1 sent to m1, 2 sent to m2
+
+    >>> # Alternatively user can also pass single data object, list or dict
+    >>> # and access them via list index, object attribute or dict key str.
+    >>> ray_dag.execute(UserDataObject(m1=1, m2=2))
+    ...     # dag_input.m1, dag_input.m2
+    >>> ray_dag.execute([1, 2]))
+    ...     # dag_input[0], dag_input[1]
+    >>> ray_dag.execute({"m1": 1, "m2": 2})
+    ...     # dag_input["m1"], dag_input["m2"]
     """
 
     def __init__(self, *args, _other_args_to_resolve=None, **kwargs):
@@ -123,7 +145,8 @@ class InputNode(DAGNode):
 
 
 class InputAtrributeNode(DAGNode):
-    """Represents partial access of user input based on an attribute key.
+    """Represents partial access of user input based on an index (int),
+     object attribute or dict key (str).
 
     Examples:
         >>> with InputNode() as dag_input:
@@ -133,6 +156,14 @@ class InputAtrributeNode(DAGNode):
 
         >>> # This makes a = 1 and b = 2
         >>> ray_dag.execute(1, x=2)
+
+        >>> with InputNode() as dag_input:
+        >>>     a = input[0]
+        >>>     b = input[1]
+        >>>     ray_dag = add.bind(a, b)
+
+        >>> # This makes a = 2 and b = 3
+        >>> ray_dag.execute([2, 3])
     """
 
     def __init__(self, dag_input_node: InputNode, key: str, accessor_method: str):
@@ -197,31 +228,9 @@ class InputAtrributeNode(DAGNode):
 
 
 class DAGInputData:
-    """Wrapped all user inputs as one object, accessible via attribute key.
-
-    Example:
-        >>> @ray.remote
-        >>> class Model:
-        ...     def __init__(self, val):
-        ...         self.val = val
-        ...     def forward(self, input):
-        ...         return self.val * input
-
-        >>> @ray.remote
-        >>> def combine(a, b):
-        ...     return a + b
-
-        >>> with InputNode() as dag_input:
-        >>>     m1 = Model.bind(1)
-        >>>     m2 = Model.bind(2)
-        >>>     m1_output = m1.forward.bind(dag_input[0])
-        >>>     m2_output = m2.forward.bind(dag_input.x)
-        >>>     ray_dag = combine.bind(m1_output, m2_output)
-
-        >>> # Pass mix of args and kwargs as input.
-        >>> print(ray_dag.execute(1, x=2)) # 1 sent to m1, 2 sent to m2
-        >>> 5
-
+    """If user passed multiple args and kwargs directly to dag.execute(), we
+    generate this wrapper for all user inputs as one object, accessible via
+    list index or object attribute key.
     """
 
     def __init__(self, *args, **kwargs):
