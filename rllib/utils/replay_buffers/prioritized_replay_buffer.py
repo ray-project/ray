@@ -22,6 +22,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
     Experience Replay". See https://arxiv.org/pdf/1511.05952.pdf for
     the full paper.
     """
+
     @ExperimentalAPI
     def __init__(
         self,
@@ -70,7 +71,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             item: The item to be added.
             **kwargs: Forward compatibility kwargs.
         """
-        weight = kwargs.get('weight', None)
+        weight = kwargs.get("weight", None)
 
         if weight is None:
             weight = self._max_priority
@@ -91,7 +92,9 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
     @ExperimentalAPI
     @override(ReplayBuffer)
-    def sample(self, num_items: int, beta: float, **kwargs) -> Optional[SampleBatchType]:
+    def sample(
+        self, num_items: int, beta: float, **kwargs
+    ) -> Optional[SampleBatchType]:
         """Sample `num_items` items from this buffer, including prio. weights.
 
         Samples in the results may be repeated.
@@ -155,8 +158,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         return batch
 
     @ExperimentalAPI
-    def update_priorities(self, idxes: List[int],
-                          priorities: List[float]) -> None:
+    def update_priorities(self, idxes: List[int], priorities: List[float]) -> None:
         """Update priorities of items at given indices.
 
         Sets priority of item at index idxes[i] in buffer

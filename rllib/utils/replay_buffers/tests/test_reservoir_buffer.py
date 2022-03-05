@@ -8,11 +8,10 @@ from ray.rllib.utils.replay_buffers.reservoir_buffer import ReservoirBuffer
 class TestReservoirBuffer(unittest.TestCase):
     def test_timesteps_unit(self):
         """Tests adding, sampling, get-/set state, and eviction with
-            experiences stored by timesteps."""
+        experiences stored by timesteps."""
         self.batch_id = 0
 
-        def _add_data_to_buffer(_buffer, batch_size, num_batches=5,
-                                **kwargs):
+        def _add_data_to_buffer(_buffer, batch_size, num_batches=5, **kwargs):
             def _generate_data():
                 return SampleBatch(
                     {
@@ -37,9 +36,7 @@ class TestReservoirBuffer(unittest.TestCase):
 
         buffer = ReservoirBuffer(capacity=buffer_size)
         # Put 1000 batches in a buffer with capacity 100
-        _add_data_to_buffer(buffer,
-                            batch_size=batch_size,
-                            num_batches=1000)
+        _add_data_to_buffer(buffer, batch_size=batch_size, num_batches=1000)
 
         # Expect the batch id to be ~500 on average
         batch_id_sum = 0
@@ -52,11 +49,10 @@ class TestReservoirBuffer(unittest.TestCase):
 
     def test_episodes_unit(self):
         """Tests adding, sampling, get-/set state, and eviction with
-            experiences stored by timesteps."""
+        experiences stored by timesteps."""
         self.batch_id = 0
 
-        def _add_data_to_buffer(_buffer, batch_size, num_batches=5,
-                                **kwargs):
+        def _add_data_to_buffer(_buffer, batch_size, num_batches=5, **kwargs):
             def _generate_data():
                 return SampleBatch(
                     {
@@ -82,9 +78,7 @@ class TestReservoirBuffer(unittest.TestCase):
 
         buffer = ReservoirBuffer(capacity=buffer_size)
         # Put 1000 batches in a buffer with capacity 100
-        _add_data_to_buffer(buffer,
-                            batch_size=batch_size,
-                            num_batches=1000)
+        _add_data_to_buffer(buffer, batch_size=batch_size, num_batches=1000)
 
         # Expect the batch id to be ~500 on average
         batch_id_sum = 0

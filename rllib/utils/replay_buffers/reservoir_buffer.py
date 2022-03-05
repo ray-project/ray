@@ -1,6 +1,5 @@
 from typing import Any, Dict
 import random
-import numpy as np
 
 # Import ray before psutil will make sure we use psutil's bundled version
 import ray  # noqa F401
@@ -20,8 +19,10 @@ class ReservoirBuffer(ReplayBuffer):
     with a reservoir". See https://www.cs.umd.edu/~samir/498/vitter.pdf for
     the full paper.
     """
-    def __init__(self, capacity: int = 10000, storage_unit: str =
-            "timesteps", **kwargs):
+
+    def __init__(
+        self, capacity: int = 10000, storage_unit: str = "timesteps", **kwargs
+    ):
         """Initializes a ReservoirBuffer instance.
 
         Args:
@@ -74,8 +75,7 @@ class ReservoirBuffer(ReplayBuffer):
                 self._storage[idx] = item
 
                 assert item.count > 0, item
-                warn_replay_capacity(item=item,
-                                     num_items=self.capacity / item.count)
+                warn_replay_capacity(item=item, num_items=self.capacity / item.count)
 
     @ExperimentalAPI
     @override(ReplayBuffer)

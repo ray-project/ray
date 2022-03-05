@@ -4,16 +4,22 @@ import numpy as np
 import logging
 from typing import Optional, Dict, Any
 
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, \
-    MultiAgentBatch
+from ray.rllib.policy.sample_batch import (
+    DEFAULT_POLICY_ID,
+    SampleBatch,
+    MultiAgentBatch,
+)
 from ray.rllib.utils.annotations import override, ExperimentalAPI
-from ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer import \
-    MultiAgentPrioritizedReplayBuffer
-from ray.rllib.policy.rnn_sequencing import \
-    timeslice_along_seq_lens_with_overlap
+from ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer import (
+    MultiAgentPrioritizedReplayBuffer,
+)
+from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
 from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
-from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import \
-    merge_dicts_with_warning, MultiAgentReplayBuffer, ReplayMode
+from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
+    merge_dicts_with_warning,
+    MultiAgentReplayBuffer,
+    ReplayMode,
+)
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
 from ray.rllib.execution.buffers.replay_buffer import _ALL_POLICIES
 from ray.util.debug import log_once
@@ -131,27 +137,30 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
 
         if "replay_mode" in kwargs and kwargs["replay_mode"] == "lockstep":
             if log_once("lockstep_mode_not_supported"):
-                logger.error("Replay mode `lockstep` is not supported for "
-                             "MultiAgentMixInReplayBuffer."
-                             "This buffer will run in `independent` mode.")
+                logger.error(
+                    "Replay mode `lockstep` is not supported for "
+                    "MultiAgentMixInReplayBuffer."
+                    "This buffer will run in `independent` mode."
+                )
             del kwargs["replay_mode"]
 
-        MultiAgentPrioritizedReplayBuffer.__init__(self,
-                                                   capacity=capacity,
-                                                   storage_unit=storage_unit,
-                                                   prioritized_replay_alpha=prioritized_replay_alpha,
-                                                   prioritized_replay_beta=prioritized_replay_beta,
-                                                   prioritized_replay_eps=prioritized_replay_eps,
-                                                   num_shards=num_shards,
-                                                   replay_mode="independent",
-                                                   learning_starts=learning_starts,
-                                                   replay_batch_size=replay_batch_size,
-                                                   replay_sequence_length=replay_sequence_length,
-                                                   replay_burn_in=replay_burn_in,
-                                                   replay_zero_init_states=replay_zero_init_states,
-                                                   underlying_buffer_config=underlying_buffer_config,
-                                                   **kwargs
-                                                   )
+        MultiAgentPrioritizedReplayBuffer.__init__(
+            self,
+            capacity=capacity,
+            storage_unit=storage_unit,
+            prioritized_replay_alpha=prioritized_replay_alpha,
+            prioritized_replay_beta=prioritized_replay_beta,
+            prioritized_replay_eps=prioritized_replay_eps,
+            num_shards=num_shards,
+            replay_mode="independent",
+            learning_starts=learning_starts,
+            replay_batch_size=replay_batch_size,
+            replay_sequence_length=replay_sequence_length,
+            replay_burn_in=replay_burn_in,
+            replay_zero_init_states=replay_zero_init_states,
+            underlying_buffer_config=underlying_buffer_config,
+            **kwargs
+        )
 
         self.replay_ratio = replay_ratio
 
@@ -175,8 +184,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         # Handle everything as if multi-agent.
         batch = batch.as_multi_agent()
 
-        kwargs = merge_dicts_with_warning(self.underlying_buffer_call_args,
-                                          kwargs)
+        kwargs = merge_dicts_with_warning(self.underlying_buffer_call_args, kwargs)
 
         # We need to split batches into timesteps, sequences or episodes
         # here already to properly keep track of self.last_added_batches
@@ -194,8 +202,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
                             zero_init_states=self.replay_zero_init_states,
                         )
                     for time_slice in timeslices:
-                        self.replay_buffers[policy_id].add(time_slice,
-                                                           **kwargs)
+                        self.replay_buffers[policy_id].add(time_slice, **kwargs)
                         self.last_added_batches[policy_id].append(time_slice)
             elif self._storage_unit == StorageUnit.SEQUENCES:
                 timestep_count = 0
@@ -203,38 +210,39 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
                     for seq_len in sample_batch.get(SampleBatch.SEQ_LENS):
                         start_seq = timestep_count
                         end_seq = timestep_count + seq_len
-                        self.replay_buffers[policy_id].add(sample_batch[
-                                                           start_seq:end_seq],
-                                                           **kwargs)
+                        self.replay_buffers[policy_id].add(
+                            sample_batch[start_seq:end_seq], **kwargs
+                        )
                         self.last_added_batches[policy_id].append(
-                            sample_batch[start_seq:end_seq])
+                            sample_batch[start_seq:end_seq]
+                        )
                         timestep_count = end_seq
             elif self._storage_unit == StorageUnit.EPISODES:
                 for policy_id, sample_batch in batch.policy_batches.items():
                     for eps in sample_batch.split_by_episode():
                         # Only add full episodes to the buffer
-                        if eps.get(SampleBatch.T)[0] == 0 and \
-                            eps.get(SampleBatch.DONES)[-1] == True:
-                            self.replay_buffers[policy_id].add(sample_batch,
-                                                               **kwargs)
-                            self.last_added_batches[policy_id].append(
-                                sample_batch)
+                        if (
+                            eps.get(SampleBatch.T)[0] == 0
+                            and eps.get(SampleBatch.DONES)[-1] == True  # noqa E712
+                        ):
+                            self.replay_buffers[policy_id].add(eps, **kwargs)
+                            self.last_added_batches[policy_id].append(eps)
                         else:
                             if log_once("only_full_episodes"):
                                 logger.info(
                                     "This buffer uses episodes as a storage "
                                     "unit and thus allows only full episodes "
                                     "to be added to it. Some samples may be "
-                                    "dropped.")
+                                    "dropped."
+                                )
 
         self._num_added += batch.count
 
     @ExperimentalAPI
     @override(MultiAgentReplayBuffer)
-    def sample(self, num_items: int,
-               policy_id: PolicyID = DEFAULT_POLICY_ID,
-               **kwargs
-               ) -> Optional[SampleBatchType]:
+    def sample(
+        self, num_items: int, policy_id: PolicyID = DEFAULT_POLICY_ID, **kwargs
+    ) -> Optional[SampleBatchType]:
         """Samples a batch of size `num_items` from a specified buffer.
 
         Concatenates old samples to new ones according to
@@ -252,8 +260,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
             Concatenated MultiAgentBatch of items.
         """
         # Merge kwargs, overwriting standard call arguments
-        kwargs = merge_dicts_with_warning(self.underlying_buffer_call_args,
-                                          kwargs)
+        kwargs = merge_dicts_with_warning(self.underlying_buffer_call_args, kwargs)
 
         def mix_batches(_policy_id):
             """Mixes old with new samples.
@@ -279,8 +286,9 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
 
             _buffer = self.replay_buffers[_policy_id]
             output_batches = self.last_added_batches[_policy_id][:max_num_new]
-            self.last_added_batches[_policy_id] = self.last_added_batches[
-                                                      _policy_id][max_num_new:]
+            self.last_added_batches[_policy_id] = self.last_added_batches[_policy_id][
+                max_num_new:
+            ]
 
             # No replay desired
             if self.replay_ratio == 0.0:
@@ -289,30 +297,34 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
             elif self.replay_ratio == 1.0:
                 return _buffer.sample(num_items, **kwargs)
 
-            if np.isclose(max_num_new, num_items * (1 - self.replay_ratio)):
+            num_new = len(output_batches)
+
+            if np.isclose(num_new, num_items * (1 - self.replay_ratio)):
                 # The optimal case, we can mix in a round number of old
                 # samples on average
                 num_old = num_items - max_num_new
             else:
-                num_new = len(output_batches)
                 # We never want to return more elements than num_items
-                num_old = min(num_items - max_num_new,
-                              round_up_or_down(num_new,
-                                               self.replay_ratio
-                                               / (1 - self.replay_ratio)))
+                num_old = min(
+                    num_items - max_num_new,
+                    round_up_or_down(
+                        num_new, self.replay_ratio / (1 - self.replay_ratio)
+                    ),
+                )
 
             output_batches.append(_buffer.sample(num_old, **kwargs))
             # Depending on the implementation of underlying buffers, samples
             # might be SampleBatches
-            output_batches = [batch.as_multi_agent() for batch in
-                              output_batches]
+            output_batches = [batch.as_multi_agent() for batch in output_batches]
             return MultiAgentBatch.concat_samples(output_batches)
 
         def check_buffer_is_ready(_policy_id):
-            if ((len(self.replay_buffers[policy_id]) == 0) and \
-                self.replay_ratio > 0.0) or \
-                (len(self.last_added_batches[_policy_id]) == 0 and
-                 self.replay_ratio < 1.0):
+            if (
+                (len(self.replay_buffers[policy_id]) == 0) and self.replay_ratio > 0.0
+            ) or (
+                len(self.last_added_batches[_policy_id]) == 0
+                and self.replay_ratio < 1.0
+            ):
                 return False
             return True
 

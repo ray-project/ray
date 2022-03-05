@@ -14,8 +14,7 @@ class TestReplayBuffer(unittest.TestCase):
         """
         self.batch_id = 0
 
-        def _add_data_to_buffer(_buffer, batch_size, num_batches=5,
-                                **kwargs):
+        def _add_data_to_buffer(_buffer, batch_size, num_batches=5, **kwargs):
             def _generate_data():
                 return SampleBatch(
                     {
@@ -41,9 +40,7 @@ class TestReplayBuffer(unittest.TestCase):
         buffer = ReplayBuffer(capacity=buffer_size)
 
         # Test add/sample
-        _add_data_to_buffer(buffer,
-                            batch_size=batch_size,
-                            num_batches=1)
+        _add_data_to_buffer(buffer, batch_size=batch_size, num_batches=1)
 
         # After adding a single batch to a buffer, it should not be full
         assert len(buffer) == 1
@@ -68,14 +65,12 @@ class TestReplayBuffer(unittest.TestCase):
         assert buffer._eviction_started is True
 
     def test_multi_agent_batches(self):
-        """Tests buffer with storage of MultiAgentBatches.
-        """
+        """Tests buffer with storage of MultiAgentBatches."""
         self.batch_id = 0
 
-        def _add_multi_agent_batch_to_buffer(buffer, num_policies,
-                                             num_batches=5, seq_lens=False,
-                                             **kwargs):
-
+        def _add_multi_agent_batch_to_buffer(
+            buffer, num_policies, num_batches=5, seq_lens=False, **kwargs
+        ):
             def _generate_data(policy_id):
                 batch = SampleBatch(
                     {
@@ -89,7 +84,7 @@ class TestReplayBuffer(unittest.TestCase):
                         SampleBatch.AGENT_INDEX: 2 * [0],
                         SampleBatch.SEQ_LENS: [2],
                         "batch_id": 2 * [self.batch_id],
-                        "policy_id": 2 * [policy_id]
+                        "policy_id": 2 * [policy_id],
                     }
                 )
                 if not seq_lens:
@@ -99,10 +94,10 @@ class TestReplayBuffer(unittest.TestCase):
 
             for i in range(num_batches):
                 # genera a few policy batches
-                policy_batches = {idx: _generate_data(idx) for idx,
-                                                               _ in
-                                  enumerate(range(
-                                      num_policies))}
+                policy_batches = {
+                    idx: _generate_data(idx)
+                    for idx, _ in enumerate(range(num_policies))
+                }
                 batch = MultiAgentBatch(policy_batches, num_batches * 2)
                 buffer.add(batch, **kwargs)
 
@@ -122,10 +117,9 @@ class TestReplayBuffer(unittest.TestCase):
         buffer.sample(3)
         assert buffer._num_timesteps_sampled == 12
 
-        _add_multi_agent_batch_to_buffer(buffer,
-                                         batch_size=100,
-                                         num_policies=3,
-                                         num_batches=3)
+        _add_multi_agent_batch_to_buffer(
+            buffer, batch_size=100, num_policies=3, num_batches=3
+        )
 
         # After adding two more batches, the buffer should be full
         assert len(buffer) == 5
@@ -135,12 +129,11 @@ class TestReplayBuffer(unittest.TestCase):
 
     def test_timesteps_unit(self):
         """Tests adding, sampling, get-/set state, and eviction with
-            experiences stored by timesteps.
+        experiences stored by timesteps.
         """
         self.batch_id = 0
 
-        def _add_data_to_buffer(_buffer, batch_size, num_batches=5,
-                                **kwargs):
+        def _add_data_to_buffer(_buffer, batch_size, num_batches=5, **kwargs):
             def _generate_data():
                 return SampleBatch(
                     {
@@ -166,9 +159,7 @@ class TestReplayBuffer(unittest.TestCase):
         buffer = ReplayBuffer(capacity=buffer_size)
 
         # Test add/sample
-        _add_data_to_buffer(buffer,
-                            batch_size=batch_size,
-                            num_batches=1)
+        _add_data_to_buffer(buffer, batch_size=batch_size, num_batches=1)
 
         _add_data_to_buffer(buffer, batch_size=batch_size, num_batches=2)
 
@@ -181,7 +172,8 @@ class TestReplayBuffer(unittest.TestCase):
         assert np.allclose(
             np.array(list(num_sampled_dict.values())) / num_samples,
             len(num_sampled_dict) * [1 / 3],
-            atol=0.1)
+            atol=0.1,
+        )
 
         # Test set/get state
         state = buffer.get_state()
@@ -192,39 +184,44 @@ class TestReplayBuffer(unittest.TestCase):
         assert other_buffer._storage == buffer._storage
         assert other_buffer._next_idx == buffer._next_idx
         assert other_buffer._num_timesteps_added == buffer._num_timesteps_added
-        assert other_buffer._num_timesteps_added_wrap == \
-               buffer._num_timesteps_added_wrap
-        assert other_buffer._num_timesteps_sampled == \
-               buffer._num_timesteps_sampled
+        assert (
+            other_buffer._num_timesteps_added_wrap == buffer._num_timesteps_added_wrap
+        )
+        assert other_buffer._num_timesteps_sampled == buffer._num_timesteps_sampled
         assert other_buffer._eviction_started == buffer._eviction_started
         assert other_buffer._est_size_bytes == buffer._est_size_bytes
         assert len(other_buffer) == len(other_buffer)
 
     def test_sequences_unit(self):
-        """Tests adding, sampling and eviction of sequences.
-        """
+        """Tests adding, sampling and eviction of sequences."""
         buffer = ReplayBuffer(capacity=10, storage_unit="sequences")
 
-        batches = [SampleBatch(
-            {
-                SampleBatch.T: i * [np.random.random((4,))],
-                SampleBatch.ACTIONS: i * [np.random.choice([0, 1])],
-                SampleBatch.REWARDS: i * [np.random.rand()],
-                SampleBatch.DONES: i * [np.random.choice([False, True])],
-                SampleBatch.SEQ_LENS: [i],
-                "batch_id": i * [i],
-            }
-        ) for i in range(1, 4)]
+        batches = [
+            SampleBatch(
+                {
+                    SampleBatch.T: i * [np.random.random((4,))],
+                    SampleBatch.ACTIONS: i * [np.random.choice([0, 1])],
+                    SampleBatch.REWARDS: i * [np.random.rand()],
+                    SampleBatch.DONES: i * [np.random.choice([False, True])],
+                    SampleBatch.SEQ_LENS: [i],
+                    "batch_id": i * [i],
+                }
+            )
+            for i in range(1, 4)
+        ]
 
-        batches.append(SampleBatch(
-            {
-                SampleBatch.T: 4 * [np.random.random((4,))],
-                SampleBatch.ACTIONS: 4 * [np.random.choice([0, 1])],
-                SampleBatch.REWARDS: 4 * [np.random.rand()],
-                SampleBatch.DONES: 4 * [np.random.choice([False, True])],
-                SampleBatch.SEQ_LENS: [2, 2],
-                "batch_id": 4 * [4],
-            }))
+        batches.append(
+            SampleBatch(
+                {
+                    SampleBatch.T: 4 * [np.random.random((4,))],
+                    SampleBatch.ACTIONS: 4 * [np.random.choice([0, 1])],
+                    SampleBatch.REWARDS: 4 * [np.random.rand()],
+                    SampleBatch.DONES: 4 * [np.random.choice([False, True])],
+                    SampleBatch.SEQ_LENS: [2, 2],
+                    "batch_id": 4 * [4],
+                }
+            )
+        )
 
         for batch in batches:
             buffer.add(batch)
@@ -242,18 +239,22 @@ class TestReplayBuffer(unittest.TestCase):
         assert np.allclose(
             np.array(list(num_sampled_dict.values())) / num_samples,
             [1 / 5, 1 / 5, 1 / 5, 2 / 5],
-            atol=0.1)
+            atol=0.1,
+        )
 
         # Add another batch to evict
-        buffer.add(SampleBatch(
-            {
-                SampleBatch.T: 5 * [np.random.random((4,))],
-                SampleBatch.ACTIONS: 5 * [np.random.choice([0, 1])],
-                SampleBatch.REWARDS: 5 * [np.random.rand()],
-                SampleBatch.DONES: 5 * [np.random.choice([False, True])],
-                SampleBatch.SEQ_LENS: [5],
-                "batch_id": 5 * [5],
-            }))
+        buffer.add(
+            SampleBatch(
+                {
+                    SampleBatch.T: 5 * [np.random.random((4,))],
+                    SampleBatch.ACTIONS: 5 * [np.random.choice([0, 1])],
+                    SampleBatch.REWARDS: 5 * [np.random.rand()],
+                    SampleBatch.DONES: 5 * [np.random.choice([False, True])],
+                    SampleBatch.SEQ_LENS: [5],
+                    "batch_id": 5 * [5],
+                }
+            )
+        )
 
         # After adding 1 more batch, eviction has started with 15
         # timesteps added in total
@@ -276,33 +277,39 @@ class TestReplayBuffer(unittest.TestCase):
         assert np.allclose(
             np.array(list(num_sampled_dict.values())) / num_samples,
             [1 / 5, 1 / 5, 2 / 5, 1 / 5],
-            atol=0.1)
+            atol=0.1,
+        )
 
     def test_episodes_unit(self):
-        """Tests adding, sampling, and eviction of episodes.
-        """
+        """Tests adding, sampling, and eviction of episodes."""
         buffer = ReplayBuffer(capacity=18, storage_unit="episodes")
 
-        batches = [SampleBatch(
-            {
-                SampleBatch.T: [0, 1, 2, 3],
-                SampleBatch.ACTIONS: 4 * [np.random.choice([0, 1])],
-                SampleBatch.REWARDS: 4 * [np.random.rand()],
-                SampleBatch.DONES: [False, False, False, True],
-                SampleBatch.SEQ_LENS: [4],
-                SampleBatch.EPS_ID: 4 * [i]
-            }
-        ) for i in range(3)]
+        batches = [
+            SampleBatch(
+                {
+                    SampleBatch.T: [0, 1, 2, 3],
+                    SampleBatch.ACTIONS: 4 * [np.random.choice([0, 1])],
+                    SampleBatch.REWARDS: 4 * [np.random.rand()],
+                    SampleBatch.DONES: [False, False, False, True],
+                    SampleBatch.SEQ_LENS: [4],
+                    SampleBatch.EPS_ID: 4 * [i],
+                }
+            )
+            for i in range(3)
+        ]
 
-        batches.append(SampleBatch(
-            {
-                SampleBatch.T: [0, 1, 0, 1],
-                SampleBatch.ACTIONS: 4 * [np.random.choice([0, 1])],
-                SampleBatch.REWARDS: 4 * [np.random.rand()],
-                SampleBatch.DONES: [False, True, False, True],
-                SampleBatch.SEQ_LENS: [2, 2],
-                SampleBatch.EPS_ID: [3, 3, 4, 4],
-            }))
+        batches.append(
+            SampleBatch(
+                {
+                    SampleBatch.T: [0, 1, 0, 1],
+                    SampleBatch.ACTIONS: 4 * [np.random.choice([0, 1])],
+                    SampleBatch.REWARDS: 4 * [np.random.rand()],
+                    SampleBatch.DONES: [False, True, False, True],
+                    SampleBatch.SEQ_LENS: [2, 2],
+                    SampleBatch.EPS_ID: [3, 3, 4, 4],
+                }
+            )
+        )
 
         for batch in batches:
             buffer.add(batch)
@@ -320,19 +327,23 @@ class TestReplayBuffer(unittest.TestCase):
         assert np.allclose(
             np.array(list(num_sampled_dict.values())) / num_samples,
             [1 / 5, 1 / 5, 1 / 5, 1 / 5, 1 / 5],
-            atol=0.1)
+            atol=0.1,
+        )
 
         # Episode 6 is not entirely inside this batch, it should not be added
         # to the buffer
-        buffer.add(SampleBatch(
-            {
-                SampleBatch.T: [0, 1, 0, 1],
-                SampleBatch.ACTIONS: 4 * [np.random.choice([0, 1])],
-                SampleBatch.REWARDS: 4 * [np.random.rand()],
-                SampleBatch.DONES: [False, True, False, False],
-                SampleBatch.SEQ_LENS: [2, 2],
-                SampleBatch.EPS_ID: [5, 5, 6, 6],
-            }))
+        buffer.add(
+            SampleBatch(
+                {
+                    SampleBatch.T: [0, 1, 0, 1],
+                    SampleBatch.ACTIONS: 4 * [np.random.choice([0, 1])],
+                    SampleBatch.REWARDS: 4 * [np.random.rand()],
+                    SampleBatch.DONES: [False, True, False, False],
+                    SampleBatch.SEQ_LENS: [2, 2],
+                    SampleBatch.EPS_ID: [5, 5, 6, 6],
+                }
+            )
+        )
 
         num_sampled_dict = {_id: 0 for _id in range(7)}
         num_samples = 200
@@ -346,19 +357,22 @@ class TestReplayBuffer(unittest.TestCase):
         assert np.allclose(
             np.array(list(num_sampled_dict.values())) / num_samples,
             [1 / 6, 1 / 6, 1 / 6, 1 / 6, 1 / 6, 1 / 6, 0],
-            atol=0.1)
+            atol=0.1,
+        )
 
         # Add another batch to evict the first batch
-        buffer.add(SampleBatch(
-            {
-                SampleBatch.T: [0, 1, 2, 3],
-                SampleBatch.ACTIONS: 4 * [np.random.choice([0, 1])],
-                SampleBatch.REWARDS: 4 * [np.random.rand()],
-                SampleBatch.DONES: [False, False, False, True],
-                SampleBatch.SEQ_LENS: [4],
-                SampleBatch.EPS_ID: 4 * [7]
-            }
-        ))
+        buffer.add(
+            SampleBatch(
+                {
+                    SampleBatch.T: [0, 1, 2, 3],
+                    SampleBatch.ACTIONS: 4 * [np.random.choice([0, 1])],
+                    SampleBatch.REWARDS: 4 * [np.random.rand()],
+                    SampleBatch.DONES: [False, False, False, True],
+                    SampleBatch.SEQ_LENS: [4],
+                    SampleBatch.EPS_ID: 4 * [7],
+                }
+            )
+        )
 
         # After adding 1 more batch, eviction has started with 24
         # timesteps added in total, 2 of which were discarded
@@ -379,7 +393,8 @@ class TestReplayBuffer(unittest.TestCase):
         assert np.allclose(
             np.array(list(num_sampled_dict.values())) / num_samples,
             [0, 1 / 6, 1 / 6, 1 / 6, 1 / 6, 1 / 6, 0, 1 / 6],
-            atol=0.1)
+            atol=0.1,
+        )
 
 
 if __name__ == "__main__":

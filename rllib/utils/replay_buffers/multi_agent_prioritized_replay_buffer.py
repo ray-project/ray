@@ -3,19 +3,22 @@ import logging
 import numpy as np
 
 import ray
-from ray.rllib.policy.rnn_sequencing import \
-    timeslice_along_seq_lens_with_overlap
+from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
 from ray.rllib.utils.annotations import override, ExperimentalAPI
-from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import \
-    MultiAgentReplayBuffer, ReplayMode
-from ray.rllib.utils.replay_buffers.prioritized_replay_buffer import \
-    PrioritizedReplayBuffer
+from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
+    MultiAgentReplayBuffer,
+    ReplayMode,
+)
+from ray.rllib.utils.replay_buffers.prioritized_replay_buffer import (
+    PrioritizedReplayBuffer,
+)
 from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
 from ray.rllib.utils.timer import TimerStat
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
+
 
 @ExperimentalAPI
 class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
@@ -92,55 +95,65 @@ class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
                 prioritized_replay_eps: 0.5}
             **kwargs: Forward compatibility kwargs.
         """
-        if "replay_mode" in kwargs and (kwargs["replay_mode"] == "lockstep" \
-                or kwargs["replay_mode"] == ReplayMode.LOCKSTEP):
+        if "replay_mode" in kwargs and (
+            kwargs["replay_mode"] == "lockstep"
+            or kwargs["replay_mode"] == ReplayMode.LOCKSTEP
+        ):
             if log_once("lockstep_mode_not_supported"):
-                logger.error("Replay mode `lockstep` is not supported for "
-                             "MultiAgentPrioritizedReplayBuffer. "
-                             "This buffer will run in `independent` mode.")
+                logger.error(
+                    "Replay mode `lockstep` is not supported for "
+                    "MultiAgentPrioritizedReplayBuffer. "
+                    "This buffer will run in `independent` mode."
+                )
             kwargs["replay_mode"] = "independent"
 
         if underlying_buffer_config is not None:
             if log_once("underlying_buffer_config_not_supported"):
-                logger.info("PrioritizedMultiAgentReplayBuffer instantiated "
-                            "with underlying_buffer_config. This will "
-                            "overwrite the standard behaviour of the "
-                            "underlying PrioritizedReplayBuffer.")
+                logger.info(
+                    "PrioritizedMultiAgentReplayBuffer instantiated "
+                    "with underlying_buffer_config. This will "
+                    "overwrite the standard behaviour of the "
+                    "underlying PrioritizedReplayBuffer."
+                )
             prioritized_replay_buffer_config = underlying_buffer_config
         else:
             prioritized_replay_buffer_config = {
                 "type": PrioritizedReplayBuffer,
                 "alpha": prioritized_replay_alpha,
-                "beta": prioritized_replay_beta
+                "beta": prioritized_replay_beta,
             }
 
         shard_capacity = capacity // num_shards
-        MultiAgentReplayBuffer.__init__(self, shard_capacity, storage_unit,
-                                        **kwargs,
-                                        underlying_buffer_config=prioritized_replay_buffer_config,
-                                        replay_batch_size=replay_batch_size,
-                                        learning_starts=learning_starts,
-                                        replay_mode=replay_mode,
-                                        replay_sequence_length=replay_sequence_length,
-                                        replay_burn_in=replay_burn_in,
-                                        replay_zero_init_states=replay_zero_init_states,
-                                        )
+        MultiAgentReplayBuffer.__init__(
+            self,
+            shard_capacity,
+            storage_unit,
+            **kwargs,
+            underlying_buffer_config=prioritized_replay_buffer_config,
+            replay_batch_size=replay_batch_size,
+            learning_starts=learning_starts,
+            replay_mode=replay_mode,
+            replay_sequence_length=replay_sequence_length,
+            replay_burn_in=replay_burn_in,
+            replay_zero_init_states=replay_zero_init_states,
+        )
 
         self.prioritized_replay_eps = prioritized_replay_eps
         self.update_priorities_timer = TimerStat()
 
     @ExperimentalAPI
     @override(MultiAgentReplayBuffer)
-    def _add_to_underlying_buffer(self, policy_id: PolicyID, batch:
-            SampleBatchType, **kwargs) -> None:
+    def _add_to_underlying_buffer(
+        self, policy_id: PolicyID, batch: SampleBatchType, **kwargs
+    ) -> None:
         """Add a batch of experiences to the underlying buffer of a policy.
 
-        If the storage unit is `timesteps`, cut the batch into timeslices 
-        before adding them to the appropriate buffer. Otherwise, let the 
+        If the storage unit is `timesteps`, cut the batch into timeslices
+        before adding them to the appropriate buffer. Otherwise, let the
         underlying buffer decide how slice batches.
 
         Args:
-            policy_id: ID of the policy that corresponds to the underlying 
+            policy_id: ID of the policy that corresponds to the underlying
             buffer
             batch: SampleBatch to add to the underlying buffer
             **kwargs: Forward compatibility kwargs.
@@ -170,20 +183,23 @@ class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
 
                     if "weight" in kwargs and weight is not None:
                         if log_once("overwrite_weight"):
-                            logger.warning("Adding batches with column "
-                                            "`weights` to this buffer while "
-                                           "providing weights as a call argument "
-                                           "to the add method results in the "
-                                           "column being overwritten."
+                            logger.warning(
+                                "Adding batches with column "
+                                "`weights` to this buffer while "
+                                "providing weights as a call argument "
+                                "to the add method results in the "
+                                "column being overwritten."
                             )
 
                     kwargs = {"weight": weight, **kwargs}
                 else:
                     if "weight" in kwargs:
                         if log_once("lockstep_no_weight_allowed"):
-                            logger.warning("Settings weights for batches in "
-                                           "lockstep mode is not allowed."
-                                           "Weights are being ignored.")
+                            logger.warning(
+                                "Settings weights for batches in "
+                                "lockstep mode is not allowed."
+                                "Weights are being ignored."
+                            )
 
                     kwargs = {**kwargs, "weight": None}
                 self.replay_buffers[policy_id].add(time_slice, **kwargs)
@@ -204,8 +220,7 @@ class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
         """
         with self.update_priorities_timer:
             for policy_id, (batch_indexes, td_errors) in prio_dict.items():
-                new_priorities = np.abs(
-                    td_errors) + self.prioritized_replay_eps
+                new_priorities = np.abs(td_errors) + self.prioritized_replay_eps
                 self.replay_buffers[policy_id].update_priorities(
                     batch_indexes, new_priorities
                 )
@@ -231,8 +246,7 @@ class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
         }
         for policy_id, replay_buffer in self.replay_buffers.items():
             stat.update(
-                {"policy_{}".format(policy_id): replay_buffer.stats(
-                    debug=debug)}
+                {"policy_{}".format(policy_id): replay_buffer.stats(debug=debug)}
             )
         return stat
 

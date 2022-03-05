@@ -1,10 +1,14 @@
 import numpy as np
 import unittest
 
-from ray.rllib.utils.replay_buffers.multi_agent_mixin_replay_buffer import \
-    MultiAgentMixInReplayBuffer
-from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
-    MultiAgentBatch
+from ray.rllib.utils.replay_buffers.multi_agent_mixin_replay_buffer import (
+    MultiAgentMixInReplayBuffer,
+)
+from ray.rllib.policy.sample_batch import (
+    SampleBatch,
+    DEFAULT_POLICY_ID,
+    MultiAgentBatch,
+)
 
 
 class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
@@ -14,15 +18,15 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
     def _generate_episodes(self):
         return SampleBatch(
             {
-                SampleBatch.T: [0, 1],
-                SampleBatch.ACTIONS: 2 * [np.random.choice([0, 1])],
-                SampleBatch.REWARDS: 2 * [np.random.rand()],
-                SampleBatch.OBS: 2 * [np.random.random((4,))],
-                SampleBatch.NEXT_OBS: 2 * [np.random.random((4,))],
-                SampleBatch.DONES: [False, True],
-                SampleBatch.SEQ_LENS: [1, 1],
-                SampleBatch.EPS_ID: 2 * [self.batch_id],
-                SampleBatch.AGENT_INDEX: 2 * [0]
+                SampleBatch.T: [1, 0, 1],
+                SampleBatch.ACTIONS: 3 * [np.random.choice([0, 1])],
+                SampleBatch.REWARDS: 3 * [np.random.rand()],
+                SampleBatch.OBS: 3 * [np.random.random((4,))],
+                SampleBatch.NEXT_OBS: 3 * [np.random.random((4,))],
+                SampleBatch.DONES: [True, False, True],
+                SampleBatch.SEQ_LENS: [1, 2],
+                SampleBatch.EPS_ID: [-1, self.batch_id, self.batch_id],
+                SampleBatch.AGENT_INDEX: 3 * [0],
             }
         )
 
@@ -36,20 +40,19 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
                 SampleBatch.NEXT_OBS: [np.random.random((4,))],
                 SampleBatch.DONES: [True],
                 SampleBatch.EPS_ID: [self.batch_id],
-                SampleBatch.AGENT_INDEX: [0]
+                SampleBatch.AGENT_INDEX: [0],
             }
         )
 
     def test_mixin_sampling_episodes(self):
-        """Test sampling of episodes.
-        """
+        """Test sampling of episodes."""
         # 50% replay ratio.
-        buffer = MultiAgentMixInReplayBuffer(capacity=self.capacity,
-                                             storage_unit="episodes",
-                                             replay_ratio=0.5)
+        buffer = MultiAgentMixInReplayBuffer(
+            capacity=self.capacity, storage_unit="episodes", replay_ratio=0.5
+        )
 
         # If we insert and replay n times, expect roughly return batches of
-        # len 4 (replay_ratio=0.5 -> 50% replayed samples -> 1 new and 1
+        # len 5 (replay_ratio=0.5 -> 50% replayed samples -> 1 new and 1
         # old sample, each of length two on average in each returned value).
         results = []
         batch = self._generate_episodes()
@@ -58,35 +61,35 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
             sample = buffer.sample(2)
             assert type(sample) == MultiAgentBatch
             results.append(len(sample.policy_batches[DEFAULT_POLICY_ID]))
-        self.assertAlmostEqual(np.mean(results), 2 * len(batch))
+        # One sample in the episode does not belong the the episode on thus
+        # gets dropped. Full episodes are of length two.
+        self.assertAlmostEqual(np.mean(results), 2 * (len(batch) - 1))
 
     def test_mixin_sampling_sequences(self):
-        """Test sampling of sequences.
-        """
+        """Test sampling of sequences."""
         # 50% replay ratio.
-        buffer = MultiAgentMixInReplayBuffer(capacity=self.capacity,
-                                             storage_unit="sequences",
-                                             replay_ratio=0.5)
+        buffer = MultiAgentMixInReplayBuffer(
+            capacity=100, storage_unit="sequences", replay_ratio=0.5
+        )
 
         # If we insert and replay n times, expect roughly return batches of
-        # len 2 (replay_ratio=0.5 -> 50% replayed samples -> 1 new and 1
-        # old sample, each of length one due to the sequence length of 1
+        # len 6 (replay_ratio=0.5 -> 50% replayed samples -> 2 new and 2
+        # old sequences with an average length of 1.5 each.
         results = []
         batch = self._generate_episodes()
-        for _ in range(20):
+        for _ in range(200):
             buffer.add(batch)
-            sample = buffer.sample(2)
+            sample = buffer.sample(10)
             assert type(sample) == MultiAgentBatch
             results.append(len(sample.policy_batches[DEFAULT_POLICY_ID]))
-        self.assertAlmostEqual(np.mean(results), len(batch))
+        self.assertAlmostEqual(np.mean(results), 2 * len(batch), delta=0.1)
 
     def test_mixin_sampling_timesteps(self):
-        """Test different mixin ratios with timesteps.
-        """
+        """Test different mixin ratios with timesteps."""
         # 33% replay ratio.
-        buffer = MultiAgentMixInReplayBuffer(capacity=self.capacity,
-                                             storage_unit="timesteps",
-                                             replay_ratio=0.333)
+        buffer = MultiAgentMixInReplayBuffer(
+            capacity=self.capacity, storage_unit="timesteps", replay_ratio=0.333
+        )
         # Expect exactly 0 samples to be returned (buffer empty).
         sample = buffer.sample(10)
         assert len(sample.policy_batches) == 0
@@ -117,8 +120,7 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
         self.assertAlmostEqual(np.mean(results), 1.5, delta=0.2)
 
         # 90% replay ratio.
-        buffer = MultiAgentMixInReplayBuffer(capacity=self.capacity,
-                                             replay_ratio=0.9)
+        buffer = MultiAgentMixInReplayBuffer(capacity=self.capacity, replay_ratio=0.9)
 
         # If we insert and replay n times, expect roughly return batches of
         # len 10 (replay_ratio=0.9 -> 90% replayed samples -> 1 new and 9 old
@@ -132,8 +134,7 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
         self.assertAlmostEqual(np.mean(results), 10.0, delta=0.2)
 
         # 0% replay ratio -> Only new samples.
-        buffer = MultiAgentMixInReplayBuffer(capacity=self.capacity,
-                                             replay_ratio=0.0)
+        buffer = MultiAgentMixInReplayBuffer(capacity=self.capacity, replay_ratio=0.0)
         # Add a new batch.
         batch = self._generate_single_timesteps()
         buffer.add(batch)

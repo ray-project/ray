@@ -5,9 +5,8 @@ from enum import Enum
 
 import ray
 from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
-from ray.rllib.policy.rnn_sequencing import \
-    timeslice_along_seq_lens_with_overlap
-from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override, ExperimentalAPI
 from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
 from ray.rllib.utils.timer import TimerStat
@@ -36,12 +35,17 @@ def merge_dicts_with_warning(args_on_init, args_on_call):
     for arg_name, arg_value in args_on_call.items():
         if arg_name in args_on_init:
             if log_once("overwrite_argument_{}".format((str(arg_name)))):
-                logger.warning("Replay Buffer was initialized to have "
-                               "underlying buffers methods called with "
-                               "argument `{}={}`, but was subsequently called "
-                               "with `{}={}`.".format(
-                    arg_name, args_on_init[arg_name], arg_name, arg_value,
-                ))
+                logger.warning(
+                    "Replay Buffer was initialized to have "
+                    "underlying buffers methods called with "
+                    "argument `{}={}`, but was subsequently called "
+                    "with `{}={}`.".format(
+                        arg_name,
+                        args_on_init[arg_name],
+                        arg_name,
+                        arg_value,
+                    )
+                )
     return {**args_on_init, **args_on_call}
 
 
@@ -126,24 +130,26 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
         if replay_mode in ["lockstep", ReplayMode.LOCKSTEP]:
             self.replay_mode = ReplayMode.LOCKSTEP
-            if self._storage_unit in [StorageUnit.EPISODES,
-                                      StorageUnit.SEQUENCES]:
-                raise ValueError("MultiAgentReplayBuffer does not support "
-                                 "lockstep mode with storage unit `episodes`"
-                                 "or `sequences`.")
+            if self._storage_unit in [StorageUnit.EPISODES, StorageUnit.SEQUENCES]:
+                raise ValueError(
+                    "MultiAgentReplayBuffer does not support "
+                    "lockstep mode with storage unit `episodes`"
+                    "or `sequences`."
+                )
         elif replay_mode in ["independent", ReplayMode.INDEPENDENT]:
             self.replay_mode = ReplayMode.INDEPENDENT
         else:
             raise ValueError("Unsupported replay mode: {}".format(replay_mode))
 
         if self.underlying_buffer_config:
-            ctor_args = {**{"capacity": shard_capacity,
-                            "storage_unit": storage_unit},
-                         **self.underlying_buffer_config}
+            ctor_args = {
+                **{"capacity": shard_capacity, "storage_unit": storage_unit},
+                **self.underlying_buffer_config,
+            }
 
             def new_buffer():
-                return from_config(self.underlying_buffer_config["type"],
-                                   ctor_args)
+                return from_config(self.underlying_buffer_config["type"], ctor_args)
+
         else:
             # Default case
             def new_buffer():
@@ -162,8 +168,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
     def __len__(self) -> int:
         """Returns the number of items currently stored in this buffer."""
-        return sum([len(buffer._storage) for buffer in
-                    self.replay_buffers.values()])
+        return sum([len(buffer._storage) for buffer in self.replay_buffers.values()])
 
     @ExperimentalAPI
     @override(ReplayBuffer)
@@ -192,28 +197,27 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             else:
                 # Store independent SampleBatches
                 for policy_id, sample_batch in batch.policy_batches.items():
-                    self._add_to_underlying_buffer(policy_id, sample_batch,
-                                                   **kwargs)
+                    self._add_to_underlying_buffer(policy_id, sample_batch, **kwargs)
         self._num_added += batch.count
 
     @ExperimentalAPI
-    def _add_to_underlying_buffer(self, policy_id: PolicyID, batch:
-    SampleBatchType, **kwargs) -> None:
+    def _add_to_underlying_buffer(
+        self, policy_id: PolicyID, batch: SampleBatchType, **kwargs
+    ) -> None:
         """Add a batch of experiences to the underlying buffer of a policy.
-        
-        If the storage unit is `timesteps`, cut the batch into timeslices 
-        before adding them to the appropriate buffer. Otherwise, let the 
+
+        If the storage unit is `timesteps`, cut the batch into timeslices
+        before adding them to the appropriate buffer. Otherwise, let the
         underlying buffer decide how slice batches.
-        
+
         Args:
-            policy_id: ID of the policy that corresponds to the underlying 
+            policy_id: ID of the policy that corresponds to the underlying
             buffer
             batch: SampleBatch to add to the underlying buffer
             **kwargs: Forward compatibility kwargs.
         """
         # Merge kwargs, overwriting standard call arguments
-        kwargs = merge_dicts_with_warning(self.underlying_buffer_call_args,
-                                          kwargs)
+        kwargs = merge_dicts_with_warning(self.underlying_buffer_call_args, kwargs)
 
         # For the storage unit `timesteps`, the underlying buffer will
         # simply store the samples how they arrive. For sequences and
@@ -235,8 +239,9 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
     @ExperimentalAPI
     @override(ReplayBuffer)
-    def sample(self, num_items: int, policy_id: Optional[PolicyID] = None,
-               **kwargs) -> Optional[SampleBatchType]:
+    def sample(
+        self, num_items: int, policy_id: Optional[PolicyID] = None, **kwargs
+    ) -> Optional[SampleBatchType]:
         """Samples a MultiAgentBatch of `num_items` per one policy's buffer.
 
         If less than `num_items` records are in the policy's buffer,
@@ -254,8 +259,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             **kwargs: Forward compatibility kwargs.
         """
         # Merge kwargs, overwriting standard call arguments
-        kwargs = merge_dicts_with_warning(self.underlying_buffer_call_args,
-                                          kwargs)
+        kwargs = merge_dicts_with_warning(self.underlying_buffer_call_args, kwargs)
 
         if self._num_added < self.replay_starts:
             return None
@@ -267,19 +271,17 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                     policy_id is None
                 ), "`policy_id` specifier not allowed in `lockstep` mode!"
                 # In lockstep mode we sample MultiAgentBatches
-                return self.replay_buffers[_ALL_POLICIES].sample(num_items,
-                                                                   **kwargs)
+                return self.replay_buffers[_ALL_POLICIES].sample(num_items, **kwargs)
             elif policy_id is not None:
-                sample = self.replay_buffers[policy_id].sample(num_items,
-                                                               **kwargs)
+                sample = self.replay_buffers[policy_id].sample(num_items, **kwargs)
                 return MultiAgentBatch({policy_id: sample}, sample.count)
             else:
                 samples = {}
                 for policy_id, replay_buffer in self.replay_buffers.items():
-                    samples[policy_id] = replay_buffer.sample(num_items,
-                                                              **kwargs)
-                return MultiAgentBatch(samples, sum([s.count for s in
-                                                     samples.values()]))
+                    samples[policy_id] = replay_buffer.sample(num_items, **kwargs)
+                return MultiAgentBatch(
+                    samples, sum([s.count for s in samples.values()])
+                )
 
     @ExperimentalAPI
     @override(ReplayBuffer)
@@ -299,8 +301,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         }
         for policy_id, replay_buffer in self.replay_buffers.items():
             stat.update(
-                {"policy_{}".format(policy_id): replay_buffer.stats(
-                    debug=debug)}
+                {"policy_{}".format(policy_id): replay_buffer.stats(debug=debug)}
             )
         return stat
 

@@ -31,8 +31,9 @@ class StorageUnit(Enum):
 
 @ExperimentalAPI
 class ReplayBuffer:
-    def __init__(self, capacity: int = 10000,
-                 storage_unit: str = "timesteps", **kwargs):
+    def __init__(
+        self, capacity: int = 10000, storage_unit: str = "timesteps", **kwargs
+    ):
         """Initializes a (FIFO) ReplayBuffer instance.
 
         Args:
@@ -52,8 +53,7 @@ class ReplayBuffer:
             self._storage_unit = StorageUnit.EPISODES
         else:
             raise ValueError(
-                "storage_unit must be either 'timesteps', `sequences` or "
-                "`episodes`."
+                "storage_unit must be either 'timesteps', `sequences` or " "`episodes`."
             )
 
         # The actual storage (list of SampleBatches or MultiAgentBatches).
@@ -104,11 +104,15 @@ class ReplayBuffer:
         assert batch.count > 0, batch
         warn_replay_capacity(item=batch, num_items=self.capacity / batch.count)
 
-        if type(batch) == MultiAgentBatch and \
-                self._storage_unit != StorageUnit.TIMESTEPS:
-            raise ValueError("Can not add MultiAgentBatch to ReplayBuffer "
-                             "with storage_unit {}"
-                             "".format(str(self._storage_unit)))
+        if (
+            type(batch) == MultiAgentBatch
+            and self._storage_unit != StorageUnit.TIMESTEPS
+        ):
+            raise ValueError(
+                "Can not add MultiAgentBatch to ReplayBuffer "
+                "with storage_unit {}"
+                "".format(str(self._storage_unit))
+            )
 
         if self._storage_unit == StorageUnit.TIMESTEPS:
             self._add_single_batch(batch, **kwargs)
@@ -123,16 +127,20 @@ class ReplayBuffer:
 
         elif self._storage_unit == StorageUnit.EPISODES:
             for eps in batch.split_by_episode():
-                if eps.get(SampleBatch.T)[0] == 0 and \
-                        eps.get(SampleBatch.DONES)[-1] == True:
+                if (
+                    eps.get(SampleBatch.T)[0] == 0
+                    and eps.get(SampleBatch.DONES)[-1] == True  # noqa E712
+                ):
                     # Only add full episodes to the buffer
                     self._add_single_batch(eps, **kwargs)
                 else:
                     if log_once("only_full_episodes"):
-                        logger.info("This buffer uses episodes as a storage "
-                                    "unit and thus allows only full episodes "
-                                    "to be added to it. Some samples may be "
-                                    "dropped.")
+                        logger.info(
+                            "This buffer uses episodes as a storage "
+                            "unit and thus allows only full episodes "
+                            "to be added to it. Some samples may be "
+                            "dropped."
+                        )
 
     @ExperimentalAPI
     def _add_single_batch(self, item: SampleBatchType, **kwargs) -> None:
@@ -252,8 +260,7 @@ class ReplayBuffer:
         self._est_size_bytes = state["est_size_bytes"]
 
     def _encode_sample(self, idxes: List[int]) -> SampleBatchType:
-        """Fetches concatenated samples at given indeces from the storage.
-        """
+        """Fetches concatenated samples at given indeces from the storage."""
         samples = [self._storage[i] for i in idxes]
 
         if samples:
