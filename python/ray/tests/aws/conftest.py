@@ -7,16 +7,18 @@ from botocore.stub import Stubber
 
 
 @pytest.fixture()
-def iam_client_stub():
-    resource = resource_cache("iam", "us-west-2")
+def iam_client_stub(request):
+    region = getattr(request, "param", "us-west-2")
+    resource = resource_cache("iam", region)
     with Stubber(resource.meta.client) as stubber:
         yield stubber
         stubber.assert_no_pending_responses()
 
 
 @pytest.fixture()
-def ec2_client_stub():
-    resource = resource_cache("ec2", "us-west-2")
+def ec2_client_stub(request):
+    region = getattr(request, "param", "us-west-2")
+    resource = resource_cache("ec2", region)
     with Stubber(resource.meta.client) as stubber:
         yield stubber
         stubber.assert_no_pending_responses()

@@ -3,15 +3,13 @@ import logging
 import aiohttp.web
 import ray._private.utils
 from ray.dashboard.modules.actor import actor_utils
-from aioredis.pubsub import Receiver
 
 try:
     from grpc import aio as aiogrpc
 except ImportError:
     from grpc.experimental import aio as aiogrpc
 
-from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsAioActorSubscriber
-import ray._private.gcs_utils as gcs_utils
+from ray._private.gcs_pubsub import GcsAioActorSubscriber
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.optional_utils import rest_response
@@ -169,44 +167,19 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             DataSource.job_actors[job_id] = job_actors
 
         # Receive actors from channel.
-        if gcs_pubsub_enabled():
-            gcs_addr = await self._dashboard_head.get_gcs_address()
-            subscriber = GcsAioActorSubscriber(address=gcs_addr)
-            await subscriber.subscribe()
+        gcs_addr = self._dashboard_head.gcs_address
+        subscriber = GcsAioActorSubscriber(address=gcs_addr)
+        await subscriber.subscribe()
 
-            while True:
-                try:
-                    actor_id, actor_table_data = await subscriber.poll()
-                    if actor_id is not None:
-                        # Convert to lower case hex ID.
-                        actor_id = actor_id.hex()
-                        process_actor_data_from_pubsub(actor_id, actor_table_data)
-                except Exception:
-                    logger.exception("Error processing actor info from GCS.")
-
-        else:
-            aioredis_client = self._dashboard_head.aioredis_client
-            receiver = Receiver()
-            key = "{}:*".format(actor_consts.ACTOR_CHANNEL)
-            pattern = receiver.pattern(key)
-            await aioredis_client.psubscribe(pattern)
-            logger.info("Subscribed to %s", key)
-
-            async for sender, msg in receiver.iter():
-                try:
-                    actor_id, actor_table_data = msg
-                    actor_id = actor_id.decode("UTF-8")[
-                        len(gcs_utils.TablePrefix_ACTOR_string + ":") :
-                    ]
-                    pubsub_message = gcs_utils.PubSubMessage.FromString(
-                        actor_table_data
-                    )
-                    actor_table_data = gcs_utils.ActorTableData.FromString(
-                        pubsub_message.data
-                    )
+        while True:
+            try:
+                actor_id, actor_table_data = await subscriber.poll()
+                if actor_id is not None:
+                    # Convert to lower case hex ID.
+                    actor_id = actor_id.hex()
                     process_actor_data_from_pubsub(actor_id, actor_table_data)
-                except Exception:
-                    logger.exception("Error processing actor info from Redis.")
+            except Exception:
+                logger.exception("Error processing actor info from GCS.")
 
     @routes.get("/logical/actor_groups")
     async def get_actor_groups(self, req) -> aiohttp.web.Response:

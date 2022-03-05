@@ -23,8 +23,7 @@ from opencensus.tags import tag_map as tag_map_module
 from opencensus.tags import tag_value as tag_value_module
 
 import ray
-from ray._private.gcs_utils import use_gcs_for_bootstrap, GcsClient
-from ray._private import services
+from ray._private.gcs_utils import GcsClient
 
 import ray._private.prometheus_exporter as prometheus_exporter
 from ray.core.generated.metrics_pb2 import Metric
@@ -189,25 +188,14 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
     https://prometheus.io/docs/guides/file-sd/ for more details.
 
     Args:
-        redis_address(str): Ray's redis address.
-        redis_password(str): Ray's redis password.
         gcs_address(str): Gcs address for this cluster.
         temp_dir(str): Temporary directory used by
             Ray to store logs and metadata.
     """
 
-    def __init__(self, redis_address, redis_password, gcs_address, temp_dir):
-        if use_gcs_for_bootstrap():
-            gcs_client_options = ray._raylet.GcsClientOptions.from_gcs_address(
-                gcs_address
-            )
-            self.gcs_address = gcs_address
-        else:
-            gcs_client_options = ray._raylet.GcsClientOptions.from_redis_address(
-                redis_address, redis_password
-            )
-            self.redis_address = redis_address
-            self.redis_password = redis_password
+    def __init__(self, gcs_address, temp_dir):
+        gcs_client_options = ray._raylet.GcsClientOptions.from_gcs_address(gcs_address)
+        self.gcs_address = gcs_address
 
         ray.state.state._initialize_global_state(gcs_client_options)
         self.temp_dir = temp_dir
@@ -222,16 +210,8 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
             for node in nodes
             if node["alive"] is True
         ]
-        if not use_gcs_for_bootstrap():
-            redis_client = services.create_redis_client(
-                self.redis_address, self.redis_password
-            )
-            autoscaler_addr = redis_client.get("AutoscalerMetricsAddress")
-        else:
-            gcs_client = GcsClient(address=self.gcs_address)
-            autoscaler_addr = gcs_client.internal_kv_get(
-                b"AutoscalerMetricsAddress", None
-            )
+        gcs_client = GcsClient(address=self.gcs_address)
+        autoscaler_addr = gcs_client.internal_kv_get(b"AutoscalerMetricsAddress", None)
         if autoscaler_addr:
             metrics_export_addresses.append(autoscaler_addr.decode("utf-8"))
         return json.dumps(

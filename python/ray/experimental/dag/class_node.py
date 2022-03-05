@@ -2,6 +2,11 @@ import ray
 from ray.experimental.dag.dag_node import DAGNode
 from ray.experimental.dag.input_node import InputNode
 from ray.experimental.dag.format_utils import get_dag_node_str
+from ray.experimental.dag.constants import (
+    PARENT_CLASS_NODE_KEY,
+    PREV_CLASS_METHOD_CALL_KEY,
+    DAGNODE_TYPE_KEY,
+)
 
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -76,6 +81,27 @@ class ClassNode(DAGNode):
     def __str__(self) -> str:
         return get_dag_node_str(self, str(self._body))
 
+    def get_import_path(self) -> str:
+        body = self._body.__ray_actor_class__
+        return f"{body.__module__}.{body.__qualname__}"
+
+    def to_json(self, encoder_cls) -> Dict[str, Any]:
+        json_dict = super().to_json_base(encoder_cls, ClassNode.__name__)
+        json_dict["import_path"] = self.get_import_path()
+        return json_dict
+
+    @classmethod
+    def from_json(cls, input_json, module, object_hook=None):
+        assert input_json[DAGNODE_TYPE_KEY] == ClassNode.__name__
+        args_dict = super().from_json_base(input_json, object_hook=object_hook)
+        return cls(
+            module.__ray_metadata__.modified_class,
+            args_dict["args"],
+            args_dict["kwargs"],
+            args_dict["options"],
+            other_args_to_resolve=args_dict["other_args_to_resolve"],
+        )
+
 
 class _UnboundClassMethodNode(object):
     def __init__(self, actor: ClassNode, method_name: str):
@@ -85,8 +111,8 @@ class _UnboundClassMethodNode(object):
 
     def _bind(self, *args, **kwargs):
         other_args_to_resolve = {
-            "parent_class_node": self._actor,
-            "prev_class_method_call": self._actor._last_call,
+            PARENT_CLASS_NODE_KEY: self._actor,
+            PREV_CLASS_METHOD_CALL_KEY: self._actor._last_call,
         }
 
         node = ClassMethodNode(
@@ -122,13 +148,13 @@ class ClassMethodNode(DAGNode):
         self._method_name: str = method_name
         # Parse other_args_to_resolve and assign to variables
         self._parent_class_node: ClassNode = other_args_to_resolve.get(
-            "parent_class_node"
+            PARENT_CLASS_NODE_KEY
         )
         # Used to track lineage of ClassMethodCall to preserve deterministic
         # submission and execution order.
         self._prev_class_method_call: Optional[
             ClassMethodNode
-        ] = other_args_to_resolve.get("prev_class_method_call", None)
+        ] = other_args_to_resolve.get(PREV_CLASS_METHOD_CALL_KEY, None)
         # The actor creation task dependency is encoded as the first argument,
         # and the ordering dependency as the second, which ensures they are
         # executed prior to this node.
@@ -165,3 +191,28 @@ class ClassMethodNode(DAGNode):
 
     def __str__(self) -> str:
         return get_dag_node_str(self, f"{self._method_name}()")
+
+    def get_method_name(self) -> str:
+        return self._method_name
+
+    def get_import_path(self) -> str:
+        body = self._parent_class_node._body.__ray_actor_class__
+        return f"{body.__module__}.{body.__qualname__}"
+
+    def to_json(self, encoder_cls) -> Dict[str, Any]:
+        json_dict = super().to_json_base(encoder_cls, ClassMethodNode.__name__)
+        json_dict["method_name"] = self.get_method_name()
+        json_dict["import_path"] = self.get_import_path()
+        return json_dict
+
+    @classmethod
+    def from_json(cls, input_json, object_hook=None):
+        assert input_json[DAGNODE_TYPE_KEY] == ClassMethodNode.__name__
+        args_dict = super().from_json_base(input_json, object_hook=object_hook)
+        return cls(
+            input_json["method_name"],
+            args_dict["args"],
+            args_dict["kwargs"],
+            args_dict["options"],
+            other_args_to_resolve=args_dict["other_args_to_resolve"],
+        )

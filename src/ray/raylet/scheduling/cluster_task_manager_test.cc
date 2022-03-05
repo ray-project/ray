@@ -51,8 +51,7 @@ class MockWorkerPool : public WorkerPoolInterface {
   void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback &callback,
                  const std::string &allocated_instances_serialized_json) {
     num_pops++;
-    const WorkerCacheKey env = {task_spec.SerializedRuntimeEnv(), {}};
-    const int runtime_env_hash = env.IntHash();
+    const int runtime_env_hash = task_spec.GetRuntimeEnvHash();
     callbacks[runtime_env_hash].push_back(callback);
   }
 
@@ -130,8 +129,8 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
   local_node_resources[ray::kGPU_ResourceLabel] = num_gpus;
   local_node_resources[ray::kMemory_ResourceLabel] = 128;
 
-  auto scheduler =
-      std::make_shared<ClusterResourceScheduler>(id, local_node_resources, gcs_client);
+  auto scheduler = std::make_shared<ClusterResourceScheduler>(
+      scheduling::NodeID(id), local_node_resources, gcs_client);
 
   return scheduler;
 }
@@ -286,8 +285,8 @@ class ClusterTaskManagerTest : public ::testing::Test {
     node_resources[ray::kCPU_ResourceLabel] = num_cpus;
     node_resources[ray::kGPU_ResourceLabel] = num_gpus;
     node_resources[ray::kMemory_ResourceLabel] = memory;
-    scheduler_->GetClusterResourceManager().AddOrUpdateNode(id.Binary(), node_resources,
-                                                            node_resources);
+    scheduler_->GetClusterResourceManager().AddOrUpdateNode(
+        scheduling::NodeID(id.Binary()), node_resources, node_resources);
 
     rpc::GcsNodeInfo info;
     node_info_[id] = info;
@@ -501,7 +500,7 @@ TEST_F(ClusterTaskManagerTest, DispatchQueueNonBlockingTest) {
   pool_.TriggerCallbacks();
 
   // Push a worker that can only run task A.
-  const WorkerCacheKey env_A = {serialized_runtime_env_A, {}};
+  const WorkerCacheKey env_A = {serialized_runtime_env_A, {}, false, false};
   const int runtime_env_hash_A = env_A.IntHash();
   std::shared_ptr<MockWorker> worker_A =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash_A);
@@ -1169,25 +1168,18 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
   };
 
   std::vector<TaskID> to_cancel;
-
-  const WorkerID worker_id_submitting_first_task = WorkerID::FromRandom();
-  // Don't add the fist task to `to_cancel`.
-  for (int i = 0; i < 1; i++) {
+  std::vector<WorkerID> worker_ids;
+  for (int i = 0; i < 10; i++) {
     RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}});
     task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
+    worker_ids.push_back(WorkerID::FromRandom());
     local_task_manager_->SetWorkerBacklog(
-        task.GetTaskSpecification().GetSchedulingClass(), worker_id_submitting_first_task,
-        10 - i);
+        task.GetTaskSpecification().GetSchedulingClass(), worker_ids.back(), 10 - i);
     pool_.TriggerCallbacks();
-  }
-
-  for (int i = 1; i < 10; i++) {
-    RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}});
-    task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
-    local_task_manager_->SetWorkerBacklog(
-        task.GetTaskSpecification().GetSchedulingClass(), WorkerID::FromRandom(), 10 - i);
-    pool_.TriggerCallbacks();
-    to_cancel.push_back(task.GetTaskSpecification().TaskId());
+    // Don't add the fist task to `to_cancel`.
+    if (i != 0) {
+      to_cancel.push_back(task.GetTaskSpecification().TaskId());
+    }
   }
 
   ASSERT_FALSE(callback_occurred);
@@ -1211,7 +1203,7 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
   pool_.PushWorker(worker);
   task_manager_.ScheduleAndDispatchTasks();
-  local_task_manager_->ClearWorkerBacklog(worker_id_submitting_first_task);
+  local_task_manager_->ClearWorkerBacklog(worker_ids[0]);
   pool_.TriggerCallbacks();
 
   {
@@ -1229,6 +1221,10 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
   // Cancel the rest.
   for (auto &task_id : to_cancel) {
     ASSERT_TRUE(task_manager_.CancelTask(task_id));
+  }
+
+  for (size_t i = 1; i < worker_ids.size(); ++i) {
+    local_task_manager_->ClearWorkerBacklog(worker_ids[i]);
   }
 
   {
@@ -1481,7 +1477,8 @@ TEST_F(ClusterTaskManagerTest, FeasibleToNonFeasible) {
 
   // Delete cpu resource of local node, then task 2 should be turned into
   // infeasible.
-  scheduler_->GetLocalResourceManager().DeleteLocalResource(ray::kCPU_ResourceLabel);
+  scheduler_->GetLocalResourceManager().DeleteLocalResource(
+      scheduling::ResourceID(ray::kCPU_ResourceLabel));
 
   RayTask task2 = CreateTask({{ray::kCPU_ResourceLabel, 4}});
   rpc::RequestWorkerLeaseReply reply2;
@@ -1507,7 +1504,8 @@ TEST_F(ClusterTaskManagerTest, FeasibleToNonFeasible) {
 
 TEST_F(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources) {
   const NodeResources &node_resources =
-      scheduler_->GetClusterResourceManager().GetNodeResources(id_.Binary());
+      scheduler_->GetClusterResourceManager().GetNodeResources(
+          scheduling::NodeID(id_.Binary()));
   ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::CPU].available, 8);
   ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::GPU].available, 4);
 
@@ -1832,8 +1830,8 @@ TEST_F(ClusterTaskManagerTest, PopWorkerExactlyOnce) {
 }
 
 TEST_F(ClusterTaskManagerTest, CapRunningOnDispatchQueue) {
-  scheduler_->GetLocalResourceManager().AddLocalResourceInstances(ray::kGPU_ResourceLabel,
-                                                                  {1, 1, 1});
+  scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
+      scheduling::ResourceID(ray::kGPU_ResourceLabel), {1, 1, 1});
   RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 4}, {ray::kGPU_ResourceLabel, 1}},
                             /*num_args=*/0, /*args=*/{});
   RayTask task2 = CreateTask({{ray::kCPU_ResourceLabel, 4}, {ray::kGPU_ResourceLabel, 1}},
@@ -1884,8 +1882,8 @@ TEST_F(ClusterTaskManagerTest, CapRunningOnDispatchQueue) {
 }
 
 TEST_F(ClusterTaskManagerTest, ZeroCPUTasks) {
-  scheduler_->GetLocalResourceManager().AddLocalResourceInstances(ray::kGPU_ResourceLabel,
-                                                                  {1, 1, 1});
+  scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
+      scheduling::ResourceID(ray::kGPU_ResourceLabel), {1, 1, 1});
   RayTask task = CreateTask({{"GPU", 1}}, /*num_args=*/0, /*args=*/{});
   RayTask task2 = CreateTask({{"GPU", 1}}, /*num_args=*/0, /*args=*/{});
   RayTask task3 = CreateTask({{"GPU", 1}}, /*num_args=*/0, /*args=*/{});

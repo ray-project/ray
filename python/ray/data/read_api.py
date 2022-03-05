@@ -542,7 +542,7 @@ def read_numpy(
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     **numpy_load_args,
 ) -> Dataset[ArrowRow]:
-    """Create an Arrow dataset from csv files.
+    """Create an Arrow dataset from numpy files.
 
     Examples:
         >>> # Read a directory of files in remote storage.

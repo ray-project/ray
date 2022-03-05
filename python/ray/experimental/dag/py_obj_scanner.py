@@ -2,7 +2,17 @@ import ray
 
 import uuid
 import io
-import pickle
+import sys
+
+# For python < 3.8 we need to explicitly use pickle5 to support protocol 5
+if sys.version_info < (3, 8):
+    try:
+        import pickle5 as pickle  # noqa: F401
+    except ImportError:
+        import pickle  # noqa: F401
+else:
+    import pickle  # noqa: F401
+
 from typing import List, Dict, Any, TypeVar, TYPE_CHECKING
 
 if TYPE_CHECKING:
