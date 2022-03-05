@@ -2,6 +2,7 @@ from typing import Any, Dict, List
 
 from ray.experimental.dag import DAGNode
 from ray.experimental.dag.format_utils import get_dag_node_str
+from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 
 
 class InputNode(DAGNode):
@@ -49,3 +50,15 @@ class InputNode(DAGNode):
 
     def __str__(self) -> str:
         return get_dag_node_str(self, "__InputNode__")
+
+    def to_json(self, encoder_cls) -> Dict[str, Any]:
+        # TODO: (jiaodong) Support arbitrary InputNode args and pydantic
+        # input schema.
+        json_dict = super().to_json_base(encoder_cls, InputNode.__name__)
+        return json_dict
+
+    @classmethod
+    def from_json(cls, input_json):
+        assert input_json[DAGNODE_TYPE_KEY] == InputNode.__name__
+        # TODO: (jiaodong) Support user passing inputs to InputNode in JSON
+        return cls()

@@ -7,6 +7,7 @@ import ray
 from typing import TypeVar
 
 RayHandleLike = TypeVar("RayHandleLike")
+NESTED_HANDLE_KEY = "nested_handle"
 
 
 @ray.remote
@@ -36,9 +37,14 @@ class Model:
 
 @ray.remote
 class Combine:
-    def __init__(self, m1: "RayHandleLike", m2: "RayHandleLike" = None):
+    def __init__(
+        self,
+        m1: "RayHandleLike",
+        m2: "RayHandleLike" = None,
+        m2_nested: bool = False,
+    ):
         self.m1 = m1
-        self.m2 = m2
+        self.m2 = m2.get(NESTED_HANDLE_KEY) if m2_nested else m2
 
     def __call__(self, req):
         r1_ref = self.m1.forward.remote(req)
@@ -47,10 +53,22 @@ class Combine:
 
 
 @ray.remote
+class Counter:
+    def __init__(self, val):
+        self.val = val
+
+    def get(self):
+        return self.val
+
+    def inc(self, inc):
+        self.val += inc
+
+
+@ray.remote
 def fn_hello():
     return "hello"
 
 
 @ray.remote
-def combine(m1_output, m2_output):
-    return m1_output + m2_output
+def combine(m1_output, m2_output, kwargs_output=0):
+    return m1_output + m2_output + kwargs_output

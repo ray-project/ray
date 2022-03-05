@@ -16,7 +16,12 @@ from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
 from ray.actor import ActorHandle
-from ray.serve.common import DeploymentInfo, DeploymentStatus, ReplicaTag
+from ray.serve.common import (
+    DeploymentInfo,
+    DeploymentStatus,
+    DeploymentStatusInfo,
+    ReplicaTag,
+)
 from ray.serve.config import (
     AutoscalingConfig,
     DeploymentConfig,
@@ -53,6 +58,9 @@ _global_client = None
 _UUID_RE = re.compile(
     "[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89aAbB][a-f0-9]{3}-[a-f0-9]{12}"
 )
+
+# The polling interval for serve client to wait to deployment state
+_CLIENT_POLLING_INTERVAL_S: float = 1
 
 
 def _get_controller_namespace(detached):
@@ -209,7 +217,7 @@ class Client:
                 logger.debug(
                     f"Waiting for shutdown, {len(statuses)} deployments still alive."
                 )
-            time.sleep(1)
+            time.sleep(_CLIENT_POLLING_INTERVAL_S)
         else:
             live_names = list(statuses.keys())
             raise TimeoutError(
@@ -247,7 +255,7 @@ class Client:
             logger.debug(
                 f"Waiting for {name} to be healthy, current status: {status.status}."
             )
-            time.sleep(1)
+            time.sleep(_CLIENT_POLLING_INTERVAL_S)
         else:
             raise TimeoutError(
                 f"Deployment {name} did not become HEALTHY after {timeout_s}s."
@@ -268,7 +276,7 @@ class Client:
                 logger.debug(
                     f"Waiting for {name} to be deleted, current status: {curr_status}."
                 )
-            time.sleep(1)
+            time.sleep(_CLIENT_POLLING_INTERVAL_S)
         else:
             raise TimeoutError(f"Deployment {name} wasn't deleted after {timeout_s}s.")
 
@@ -357,6 +365,10 @@ class Client:
     @_ensure_connected
     def list_deployments(self) -> Dict[str, Tuple[DeploymentInfo, str]]:
         return ray.get(self._controller.list_deployments.remote())
+
+    @_ensure_connected
+    def get_deployment_statuses(self) -> Dict[str, DeploymentStatusInfo]:
+        return ray.get(self._controller.get_deployment_statuses.remote())
 
     @_ensure_connected
     def get_handle(
@@ -1400,6 +1412,12 @@ def list_deployments() -> Dict[str, Deployment]:
         )
 
     return deployments
+
+
+def get_deployment_statuses() -> Dict[str, DeploymentStatusInfo]:
+    # Returns a dictionary of deployment names and their health statuses
+
+    return _get_global_client().get_deployment_statuses()
 
 
 def deploy_group(deployments: List[Deployment], _blocking: bool = True):
