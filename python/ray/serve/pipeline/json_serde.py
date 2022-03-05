@@ -88,7 +88,7 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
             return input_json
     # Deserialize DAGNode type
     elif input_json[DAGNODE_TYPE_KEY] == InputNode.__name__:
-        return InputNode.from_json(input_json)
+        return InputNode.from_json(input_json, object_hook=dagnode_from_json)
     elif input_json[DAGNODE_TYPE_KEY] == ClassMethodNode.__name__:
         return ClassMethodNode.from_json(input_json, object_hook=dagnode_from_json)
     elif input_json[DAGNODE_TYPE_KEY] == DeploymentNode.__name__:

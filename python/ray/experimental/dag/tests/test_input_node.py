@@ -255,6 +255,76 @@ def test_input_attr_partial_access(shared_ray_instance):
     assert ray.get(dag.execute(m1=1, m2=2, m3=3)) == 8
 
 
+def test_ensure_in_context_manager(shared_ray_instance):
+    # No enforcement on creation given __enter__ executes after __init__
+    input = InputNode()
+    with pytest.raises(
+        AssertionError,
+        match=(
+            "InputNode is a singleton instance that should be only used "
+            "in context manager"
+        ),
+    ):
+        input.execute()
+
+    @ray.remote
+    def f(input):
+        return input
+
+    # No enforcement on creation given __enter__ executes after __init__
+    dag = f._bind(InputNode())
+    with pytest.raises(
+        AssertionError,
+        match=(
+            "InputNode is a singleton instance that should be only used "
+            "in context manager"
+        ),
+    ):
+        dag.execute()
+
+
+def test_ensure_input_node_singleton(shared_ray_instance):
+    """Ensure user cannot use context manager to create multiple InputNode
+    instances in the same DAG.
+    """
+
+    @ray.remote
+    def f(input):
+        return input
+
+    # @ray.remote
+    # def combine(a, b):
+    #     return a + b
+
+    # with InputNode() as input_1:
+    #     a = f._bind(input_1)
+    # with InputNode() as input_2:
+    #     b = f._bind(input_2)
+    #     dag = combine._bind(a, b)
+    #     print(dag)
+
+    # with pytest.raises(
+    #     AssertionError,
+    #     match=(
+    #         "InputNode is a singleton instance that should be only used "
+    #         "in context manager"
+    #     ),
+    # ):
+    #     assert ray.get(dag.execute(2)) == 4
+
+    with InputNode() as input:
+        dag = f._bind(input)
+        ray.get(dag.execute())
+
+
+def test_todo():
+    # User pass data object
+    # only one context manager input
+    # enforce int, str, no other immutable key
+    # nested execute input with complex keys
+    pass
+
+
 if __name__ == "__main__":
     import sys
 
