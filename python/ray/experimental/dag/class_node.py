@@ -100,13 +100,15 @@ class ClassNode(DAGNode):
     def from_json(cls, input_json, module, object_hook=None):
         assert input_json[DAGNODE_TYPE_KEY] == ClassNode.__name__
         args_dict = super().from_json_base(input_json, object_hook=object_hook)
-        return cls(
+        node = cls(
             module.__ray_metadata__.modified_class,
             args_dict["args"],
             args_dict["kwargs"],
             args_dict["options"],
             other_args_to_resolve=args_dict["other_args_to_resolve"],
         )
+        node._stable_uuid = args_dict["uuid"]
+        return node
 
 
 class _UnboundClassMethodNode(object):
@@ -221,10 +223,12 @@ class ClassMethodNode(DAGNode):
     def from_json(cls, input_json, object_hook=None):
         assert input_json[DAGNODE_TYPE_KEY] == ClassMethodNode.__name__
         args_dict = super().from_json_base(input_json, object_hook=object_hook)
-        return cls(
+        node = cls(
             input_json["method_name"],
             args_dict["args"],
             args_dict["kwargs"],
             args_dict["options"],
             other_args_to_resolve=args_dict["other_args_to_resolve"],
         )
+        node._stable_uuid = args_dict["uuid"]
+        return node

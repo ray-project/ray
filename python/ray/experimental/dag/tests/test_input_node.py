@@ -232,27 +232,29 @@ def test_input_attr_partial_access(shared_ray_instance):
             return self.weight * input
 
     @ray.remote
-    def combine(a, b, c):
-        return a + b + c
-
-    with InputNode() as dag_input:
-        m1 = Model._bind(1)
-        m2 = Model._bind(2)
-        m1_output = m1.forward._bind(dag_input[0])
-        m2_output = m2.forward._bind(dag_input[1])
-        dag = combine._bind(m1_output, m2_output, dag_input[2])
-        # 1*1 + 2*2 + 3 = 8
-    assert ray.get(dag.execute(1, 2, 3)) == 8
+    def combine(a, b, c, d=None):
+        if not d:
+            return a + b + c
+        else:
+            return a + b + c + d["deep"]["nested"]
 
     # Same DAG, but with attribute accessor and keyword input
     with InputNode() as dag_input:
         m1 = Model._bind(1)
         m2 = Model._bind(2)
-        m1_output = m1.forward._bind(dag_input.m1)
-        m2_output = m2.forward._bind(dag_input.m2)
-        dag = combine._bind(m1_output, m2_output, dag_input.m3)
-        # 1*1 + 2*2 + 3 = 8
-    assert ray.get(dag.execute(m1=1, m2=2, m3=3)) == 8
+        m1_output = m1.forward._bind(dag_input[0])
+        m2_output = m2.forward._bind(dag_input[1])
+        dag = combine._bind(m1_output, m2_output, dag_input.m3, dag_input.m4)
+    # 1*1 + 2*2 + 3 + 4 = 12
+    assert ray.get(dag.execute(1, 2, m3=3, m4={"deep": {"nested": 4}})) == 12
+
+    with pytest.raises(
+        AssertionError,
+        match="Please only use int index or str as first-level key",
+    ):
+        with InputNode() as dag_input:
+            m1 = Model._bind(1)
+            dag = m1.forward._bind(dag_input[(1, 2)])
 
 
 def test_ensure_in_context_manager(shared_ray_instance):
@@ -284,45 +286,24 @@ def test_ensure_in_context_manager(shared_ray_instance):
 
 
 def test_ensure_input_node_singleton(shared_ray_instance):
-    """Ensure user cannot use context manager to create multiple InputNode
-    instances in the same DAG.
-    """
-
     @ray.remote
     def f(input):
         return input
 
-    # @ray.remote
-    # def combine(a, b):
-    #     return a + b
+    @ray.remote
+    def combine(a, b):
+        return a + b
 
-    # with InputNode() as input_1:
-    #     a = f._bind(input_1)
-    # with InputNode() as input_2:
-    #     b = f._bind(input_2)
-    #     dag = combine._bind(a, b)
-    #     print(dag)
+    with InputNode() as input_1:
+        a = f._bind(input_1)
+    with InputNode() as input_2:
+        b = f._bind(input_2)
+        dag = combine._bind(a, b)
 
-    # with pytest.raises(
-    #     AssertionError,
-    #     match=(
-    #         "InputNode is a singleton instance that should be only used "
-    #         "in context manager"
-    #     ),
-    # ):
-    #     assert ray.get(dag.execute(2)) == 4
-
-    with InputNode() as input:
-        dag = f._bind(input)
-        ray.get(dag.execute())
-
-
-def test_todo():
-    # User pass data object
-    # only one context manager input
-    # enforce int, str, no other immutable key
-    # nested execute input with complex keys
-    pass
+    with pytest.raises(
+        AssertionError, match="Each DAG should only have one unique InputNode"
+    ):
+        _ = ray.get(dag.execute(2))
 
 
 if __name__ == "__main__":

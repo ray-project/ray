@@ -139,6 +139,7 @@ def test_simple_function_node_json_serde(serve_instance):
             "kwargs": "{}",
             "options": "{}",
             "other_args_to_resolve": "{}",
+            "uuid": original_dag_node.get_stable_uuid(),
         },
     )
 
@@ -153,6 +154,7 @@ def test_simple_function_node_json_serde(serve_instance):
             "kwargs": '{"kwargs_output": 3}',
             "options": "{}",
             "other_args_to_resolve": "{}",
+            "uuid": original_dag_node.get_stable_uuid(),
         },
     )
 
@@ -167,6 +169,7 @@ def test_simple_function_node_json_serde(serve_instance):
             "kwargs": "{}",
             "options": "{}",
             "other_args_to_resolve": "{}",
+            "uuid": original_dag_node.get_stable_uuid(),
         },
     )
 
@@ -196,6 +199,7 @@ def test_simple_class_node_json_serde(serve_instance):
             "kwargs": "{}",
             "options": "{}",
             "other_args_to_resolve": "{}",
+            "uuid": original_dag_node.get_stable_uuid(),
         },
     )
 
@@ -210,6 +214,7 @@ def test_simple_class_node_json_serde(serve_instance):
             "kwargs": "{}",
             "options": "{}",
             "other_args_to_resolve": "{}",
+            "uuid": original_dag_node.get_stable_uuid(),
         },
     )
 
@@ -224,6 +229,7 @@ def test_simple_class_node_json_serde(serve_instance):
             "kwargs": '{"ratio": 0.5}',
             "options": "{}",
             "other_args_to_resolve": "{}",
+            "uuid": original_dag_node.get_stable_uuid(),
         },
     )
 

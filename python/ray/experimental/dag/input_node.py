@@ -90,9 +90,16 @@ class InputNode(DAGNode):
         return get_dag_node_str(self, "__InputNode__")
 
     def __getattr__(self, key: str):
+        assert isinstance(
+            key, str
+        ), "Please only access dag input attributes with str key."
         return InputAtrributeNode(self, key)
 
     def __getitem__(self, key: Union[int, str]) -> Any:
+        assert isinstance(key, (str, int)), (
+            "Please only use int index or str as first-level key to "
+            "access fields of dag input."
+        )
         return InputAtrributeNode(self, key)
 
     def __enter__(self):
@@ -103,17 +110,20 @@ class InputNode(DAGNode):
         pass
 
     def to_json(self, encoder_cls) -> Dict[str, Any]:
-        return super().to_json_base(encoder_cls, InputNode.__name__)
+        json_dict = super().to_json_base(encoder_cls, InputNode.__name__)
+        return json_dict
 
     @classmethod
     def from_json(cls, input_json, object_hook=None):
         assert input_json[DAGNODE_TYPE_KEY] == InputNode.__name__
         args_dict = super().from_json_base(input_json, object_hook=object_hook)
-        return cls(_other_args_to_resolve=args_dict["other_args_to_resolve"])
+        node = cls(_other_args_to_resolve=args_dict["other_args_to_resolve"])
+        node._stable_uuid = input_json["uuid"]
+        return node
 
 
 class InputAtrributeNode(DAGNode):
-    """Represents partial acces of user input based on an attribute key.
+    """Represents partial access of user input based on an attribute key.
 
     Examples:
         >>> with InputNode() as dag_input:
@@ -181,11 +191,11 @@ class DAGInputData:
         >>>     m1 = Model.bind(1)
         >>>     m2 = Model.bind(2)
         >>>     m1_output = m1.forward.bind(dag_input[0])
-        >>>     m2_output = m2.forward.bind(dag_input[1])
+        >>>     m2_output = m2.forward.bind(dag_input.x)
         >>>     ray_dag = combine.bind(m1_output, m2_output)
 
         >>> # Pass mix of args and kwargs as input.
-        >>> print(ray_dag.execute(1, 2)) # 1 sent to m1, 2 sent to m2
+        >>> print(ray_dag.execute(1, x=2)) # 1 sent to m1, 2 sent to m2
         >>> 5
 
     """
@@ -198,6 +208,11 @@ class DAGInputData:
         if isinstance(key, int):
             # Access list args by index.
             return self._args[key]
-        else:
+        elif isinstance(key, str):
             # Access kwarg by key.
             return self._kwargs[key]
+        else:
+            raise ValueError(
+                "Please only use int index or str as first-level key to "
+                "access fields of dag input."
+            )
