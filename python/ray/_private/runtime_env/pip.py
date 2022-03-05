@@ -172,8 +172,12 @@ class PipProcessor:
                 "-c",
                 "import ray; print(ray.__version__, ray.__path__[0])",
             ]
+            if _WIN32:
+                env = os.environ.copy()
+            else:
+                env = {}
             output = await check_output_cmd(
-                check_ray_cmd, logger=logger, cwd=cwd, env={}
+                check_ray_cmd, logger=logger, cwd=cwd, env=env
             )
             # print after import ray may have [0m endings, so we strip them by *_
             ray_version, ray_path, *_ = [s.strip() for s in output.split()]
@@ -204,10 +208,12 @@ class PipProcessor:
 
         if _WIN32:
             current_python_dir = sys.prefix
+            env = os.environ.copy()
         else:
             current_python_dir = os.path.abspath(
-            os.path.join(os.path.dirname(python), "..")
-        )
+                os.path.join(os.path.dirname(python), "..")
+            )
+            env = {}
 
         if cls._is_in_virtualenv():
             # virtualenv-clone homepage:
@@ -263,7 +269,7 @@ class PipProcessor:
                 virtualenv_path,
                 
             )
-        await check_output_cmd(create_venv_cmd, logger=logger, cwd=cwd, env={})
+        await check_output_cmd(create_venv_cmd, logger=logger, cwd=cwd, env=env)
     @classmethod
     async def _install_pip_packages(
         cls,
@@ -306,6 +312,10 @@ class PipProcessor:
             "-r",
             pip_requirements_file,
         ]
+        if _WIN32:
+            env = os.environ.copy()
+        else:
+            env = {}
         logger.info("Installing python requirements to %s", virtualenv_path)
 
         await check_output_cmd(pip_install_cmd, logger=logger, cwd=cwd, env=pip_env)
