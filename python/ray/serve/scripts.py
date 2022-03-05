@@ -8,6 +8,7 @@ import requests
 import click
 import time
 from typing import Tuple, List, Dict
+import argparse
 
 import ray
 from ray.serve.api import Deployment, deploy_group, get_deployment_statuses
@@ -56,36 +57,77 @@ def process_args_and_kwargs(
     kwargs = {"kwarg1": "kwval1", "kwarg2": "kwval2"}
     """
 
-    args, kwargs = [], {}
+    if args_and_kwargs is None:
+        return [], {}
 
-    token_idx = 0
-    while args_and_kwargs is not None and token_idx < len(args_and_kwargs):
-        token = args_and_kwargs[token_idx]
-        if token[:2] == "--":
-            if "=" in token:
-                eq_idx = token.find("=")
-                kwargs[token[2:eq_idx]] = token[eq_idx + 1 :]
-                token_idx += 1
-            elif token_idx + 1 < len(args_and_kwargs):
-                kwargs[token[2:]] = args_and_kwargs[token_idx + 1]
-                token_idx += 2
-            else:
+    class ErroringArgumentParser(argparse.ArgumentParser):
+        """
+        ArgumentParser prints and exits upon error. This subclass raises a
+        ValueError instead.
+        """
+
+        def error(self, message):
+            if message.find("unrecognized arguments") == 0:
+                # Give clear message when args come between or after kwargs
+                arg = message[message.find(":") + 2 :]
                 raise ValueError(
-                    f"Got no value for keyword {token[:2]}. All "
+                    f'Got argument "{arg}" after some keyword arguments '
+                    "were already specified. All args must come before "
+                    f"kwargs. \nMessage from parser: {message}"
+                )
+            elif message.endswith("expected one argument"):
+                # Give clear message when kwargs are undefined
+                kwarg = message[message.find("--") : message.rfind(":")]
+                raise ValueError(
+                    f'Got no value for argument "{kwarg}". All '
                     "keyword arguments specified must have a value."
-                )
-        else:
-            if len(kwargs) > 0:
-                raise ValueError(
-                    f"Got argument {token} after some keyword "
-                    "arguments were already specified. All args "
-                    "must come before kwargs."
+                    f"\nMessage from parser: {message}"
                 )
             else:
-                args.append(token)
-                token_idx += 1
+                # Raise argparse's error otherwise
+                raise ValueError(message)
 
-    return args, kwargs
+    parser = ErroringArgumentParser()
+    parser.add_argument("args", nargs="*")
+    for arg_or_kwarg in args_and_kwargs:
+        if arg_or_kwarg[:2] == "--":
+            parser.add_argument(arg_or_kwarg.split("=")[0])
+
+    args_and_kwargs = vars(parser.parse_args(args_and_kwargs))
+    args = args_and_kwargs["args"]
+    del args_and_kwargs["args"]
+    return args, args_and_kwargs
+
+    # args, kwargs = [], {}
+
+    # token_idx = 0
+    # while args_and_kwargs is not None and token_idx < len(args_and_kwargs):
+    #     token = args_and_kwargs[token_idx]
+    #     if token[:2] == "--":
+    #         if "=" in token:
+    #             eq_idx = token.find("=")
+    #             kwargs[token[2:eq_idx]] = token[eq_idx + 1 :]
+    #             token_idx += 1
+    #         elif token_idx + 1 < len(args_and_kwargs):
+    #             kwargs[token[2:]] = args_and_kwargs[token_idx + 1]
+    #             token_idx += 2
+    #         else:
+    #             raise ValueError(
+    #                 f"Got no value for keyword {token[:2]}. All "
+    #                 "keyword arguments specified must have a value."
+    #             )
+    #     else:
+    #         if len(kwargs) > 0:
+    #             raise ValueError(
+    #                 f"Got argument {token} after some keyword "
+    #                 "arguments were already specified. All args "
+    #                 "must come before kwargs."
+    #             )
+    #         else:
+    #             args.append(token)
+    #             token_idx += 1
+
+    # return args, kwargs
 
 
 @click.group(help="[EXPERIMENTAL] CLI for managing Serve instances on a Ray cluster.")
