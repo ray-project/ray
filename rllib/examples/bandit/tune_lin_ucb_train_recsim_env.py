@@ -26,6 +26,9 @@ if __name__ == "__main__":
             "convert_to_discrete_action_space": True,
             "wrap_for_bandits": True,
         },
+        # Uncomment to use TF2 framework.
+        # "framework": "tf2",
+        # "eager_tracing": True,
     }
 
     # Actual training_iterations will be 10 * timesteps_per_iteration

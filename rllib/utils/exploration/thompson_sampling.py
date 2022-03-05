@@ -3,8 +3,12 @@ from typing import Union
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
-from ray.rllib.utils.framework import TensorType
+from ray.rllib.utils.framework import (
+    TensorType,
+    try_import_tf,
+)
 
+tf1, tf, tfv = try_import_tf()
 
 class ThompsonSampling(Exploration):
     @override(Exploration)
@@ -16,6 +20,8 @@ class ThompsonSampling(Exploration):
     ):
         if self.framework == "torch":
             return self._get_torch_exploration_action(action_distribution, explore)
+        elif self.framework == "tf2":
+            return self._get_tf_exploration_action(action_distribution, explore)
         else:
             raise NotImplementedError
 
@@ -25,3 +31,12 @@ class ThompsonSampling(Exploration):
         else:
             scores = self.model.predict(self.model.current_obs())
             return scores.argmax(dim=-1), None
+
+    @tf.function
+    def _get_tf_exploration_action(self, action_dist, explore):
+        if explore:
+            action = tf.argmax(action_dist.inputs, axis=-1)
+        else:
+            scores = self.model.predict(self.model.current_obs())
+            action = tf.argmax(scores, axis=-1)
+        return action, None

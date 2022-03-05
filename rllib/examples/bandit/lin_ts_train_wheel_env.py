@@ -32,7 +32,12 @@ def plot_model_weights(means, covs):
 if __name__ == "__main__":
     num_iter = 10
     print("Running training for %s time steps" % num_iter)
-    trainer = BanditLinTSTrainer(env=WheelBanditEnv)
+    config = {
+        # Uncomment to use TF2 framework.
+        # "framework": "tf2",
+        # "eager_tracing": True,
+    }
+    trainer = BanditLinTSTrainer(env=WheelBanditEnv, config=config)
 
     policy = trainer.get_policy()
     model = policy.model

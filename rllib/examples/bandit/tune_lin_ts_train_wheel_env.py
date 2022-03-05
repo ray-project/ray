@@ -35,6 +35,9 @@ if __name__ == "__main__":
 
     config = {
         "env": WheelBanditEnv,
+        # Uncomment to use TF2 framework.
+        # "framework": "tf2",
+        # "eager_tracing": True,
     }
 
     # Actual training_iterations will be 10 * timesteps_per_iteration
@@ -48,7 +51,7 @@ if __name__ == "__main__":
         "BanditLinTS",
         config=config,
         stop={"training_iteration": training_iterations},
-        num_samples=2,
+        num_samples=1,
         checkpoint_at_end=True,
     )
 
