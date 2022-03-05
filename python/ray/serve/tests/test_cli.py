@@ -494,20 +494,6 @@ def test_run_init_args_kwargs(ray_start_stop):
             ["serve", "run", config_file_name, "--", "green", "--name", "Molly"]
         )
 
-    # Incorrect args/kwargs ordering
-    with pytest.raises(subprocess.CalledProcessError):
-        subprocess.check_output(
-            [
-                "serve",
-                "run",
-                "ray.serve.tests.test_cli.Macaw",
-                "--",
-                "--name",
-                "Molly",
-                "green",
-            ]
-        )
-
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_run_simultaneous(ray_start_stop):

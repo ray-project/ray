@@ -71,9 +71,9 @@ def process_args_and_kwargs(
                 # Give clear message when args come between or after kwargs
                 arg = message[message.find(":") + 2 :]
                 raise ValueError(
-                    f'Got argument "{arg}" after some keyword arguments '
-                    "were already specified. All args must come before "
-                    f"kwargs. \nMessage from parser: {message}"
+                    f'Argument "{arg}" was separated from other args by '
+                    "keyword arguments. Args cannot be separated by "
+                    f"kwargs.\nMessage from parser: {message}"
                 )
             elif message.endswith("expected one argument"):
                 # Give clear message when kwargs are undefined
