@@ -77,7 +77,7 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
         # old sequences with an average length of 1.5 each.
         results = []
         batch = self._generate_episodes()
-        for _ in range(200):
+        for _ in range(400):
             buffer.add(batch)
             sample = buffer.sample(10)
             assert type(sample) == MultiAgentBatch
