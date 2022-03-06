@@ -5,6 +5,8 @@ from pathlib import Path
 import tempfile
 from typing import Any, Dict, Iterator, List, Optional
 
+from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
+
 try:
     import aiohttp
     import requests
@@ -26,7 +28,6 @@ from ray.dashboard.modules.job.common import (
     JobLogsResponse,
     uri_to_http_components,
 )
-
 from ray.ray_constants import DEFAULT_DASHBOARD_PORT
 from ray.util.annotations import PublicAPI
 from ray.client_builder import _split_address
@@ -247,11 +248,22 @@ class JobSubmissionClient:
                 package_file.unlink()
 
     def _upload_package_if_needed(
-        self, package_path: str, excludes: Optional[List[str]] = None
+        self,
+        package_path: str,
+        include_parent_dir: Optional[bool] = False,
+        excludes: Optional[List[str]] = None,
+        package_uri: Optional[List[str]] = None,
     ) -> str:
-        package_uri = get_uri_for_directory(package_path, excludes=excludes)
+        if package_uri is None:
+            package_uri = get_uri_for_directory(package_path, excludes=excludes)
+
         if not self._package_exists(package_uri):
-            self._upload_package(package_uri, package_path, excludes=excludes)
+            self._upload_package(
+                package_uri,
+                package_path,
+                include_parent_dir=include_parent_dir,
+                excludes=excludes,
+            )
         else:
             logger.info(f"Package {package_uri} already exists, skipping upload.")
 
@@ -270,9 +282,19 @@ class JobSubmissionClient:
             if not is_uri:
                 logger.debug("working_dir is not a URI, attempting to upload.")
                 package_uri = self._upload_package_if_needed(
-                    working_dir, excludes=runtime_env.get("excludes", None)
+                    working_dir,
+                    include_parent_dir=False,
+                    excludes=runtime_env.get("excludes", None),
                 )
                 runtime_env["working_dir"] = package_uri
+
+    def _upload_py_modules_if_needed(self, runtime_env: Dict[str, Any]):
+        def _upload_fn(module_path, excludes):
+            self._upload_package_if_needed(
+                module_path, include_parent_dir=True, excludes=excludes
+            )
+
+        upload_py_modules_if_needed(runtime_env, "", upload_fn=_upload_fn)
 
     @PublicAPI(stability="beta")
     def get_version(self) -> str:
@@ -296,6 +318,7 @@ class JobSubmissionClient:
         metadata.update(self._default_metadata)
 
         self._upload_working_dir_if_needed(runtime_env)
+        self._upload_py_modules_if_needed(runtime_env)
         req = JobSubmitRequest(
             entrypoint=entrypoint,
             job_id=job_id,
