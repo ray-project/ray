@@ -10,10 +10,26 @@ SRCS = [] + select({
 
 py_test_module_list(
   files = [
+    "test_dashboard.py",
+    "test_logging.py",
+    "test_ray_cluster_with_external_redis.py",
+    "test_k8s_cluster_launcher.py",
+    "test_runtime_env_working_dir_3.py",
+    "test_setup_worker.py",
+  ],
+  size = "large",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "manual_tests", "team:serverless"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
     "test_actor_pool.py",
     "test_async.py",
     "test_actor_failures.py",
     "test_actor_resources.py",
+    "test_actor_lifetime.py",
     "test_advanced.py",
     "test_advanced_2.py",
     "test_advanced_3.py",
@@ -97,6 +113,7 @@ py_test_module_list(
     "test_ray_init.py",
     "test_reference_counting.py",
     "test_resource_demand_scheduler.py",
+    "test_runtime_context.py",
     "test_runtime_env_env_vars.py",
     "test_runtime_env_packaging.py",
     "test_runtime_env_plugin.py",
@@ -115,6 +132,7 @@ py_test_module_list(
     "test_object_spilling_3.py",
     "test_object_manager.py",
     "test_multi_tenancy.py",
+    "test_namespace.py",
     "test_scheduling.py",
     "test_scheduling_2.py",
     "test_traceback.py",
@@ -146,20 +164,11 @@ py_test_module_list(
     "test_list_actors_2.py",
     "test_list_actors_3.py",
     "test_list_actors_4.py",
-    "test_actor_lifetime.py",
     "test_actor_out_of_order.py",
     "test_cross_language.py",
-    "test_dashboard.py",
     "test_environ.py",
-    "test_k8s_cluster_launcher.py",
-    "test_logging.py",
-    "test_namespace.py",
-    "test_ray_cluster_with_external_redis.py",
     "test_raylet_output.py",
-    "test_runtime_context.py",
-    "test_runtime_env_working_dir_3.py",
     "test_scheduling_performance.py",
-    "test_setup_worker.py",
     "test_concurrency_group.py",
   ],
   size = "small",
@@ -342,7 +351,7 @@ py_test(
     name = "test_serve_ray_minimal",
     size = "small",
     srcs = SRCS + ["test_serve_ray_minimal.py"],
-    tags = ["exclusive", "python_tests", "team:serve"],
+    tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:serve"],
     deps = ["//:ray_lib"],
 )
 
