@@ -15,13 +15,15 @@ from typing import (
 
 import ray
 from ray.data.context import DatasetContext
-from ray.data.dataset import Dataset, T, U, BatchType
+from ray.data.dataset import Dataset, T, U
 from ray.data.impl.pipeline_executor import (
     PipelineExecutor,
     PipelineSplitExecutorCoordinator,
 )
+from ray.data.block import Block
 from ray.data.row import TableRow
 from ray.data.impl import progress_bar
+from ray.data.impl.block_batching import batch_blocks, BatchType
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.plan import ExecutionPlan
 from ray.data.impl.stats import DatasetPipelineStats, DatasetStats
@@ -158,28 +160,25 @@ class DatasetPipeline(Generic[T]):
             drop_last: Whether to drop the last batch if it's incomplete.
 
         Returns:
-            A list of iterators over record batches.
+            An iterator over record batches.
         """
+        time_start = time.perf_counter()
+        yield from batch_blocks(
+            self._iter_blocks(),
+            self._stats,
+            prefetch_blocks=prefetch_blocks,
+            batch_size=batch_size,
+            batch_format=batch_format,
+            drop_last=drop_last,
+        )
+        self._stats.iter_total_s.add(time.perf_counter() - time_start)
 
-        def gen_batches() -> Iterator[BatchType]:
-            time_start = time.perf_counter()
-
-            for ds in self.iter_datasets():
-                wait_start = time.perf_counter()
-                for batch in ds.iter_batches(
-                    prefetch_blocks=prefetch_blocks,
-                    batch_size=batch_size,
-                    batch_format=batch_format,
-                    drop_last=drop_last,
-                ):
-                    self._stats.iter_wait_s.add(time.perf_counter() - wait_start)
-                    with self._stats.iter_user_s.timer():
-                        yield batch
-                    wait_start = time.perf_counter()
-
-            self._stats.iter_total_s.add(time.perf_counter() - time_start)
-
-        return gen_batches()
+    def _iter_blocks(self) -> Iterator[Block]:
+        ds_wait_start = time.perf_counter()
+        for ds in self.iter_datasets():
+            self._stats.iter_ds_wait_s.add(time.perf_counter() - ds_wait_start)
+            yield from ds._plan.execute().iter_blocks()
+            ds_wait_start = time.perf_counter()
 
     def split(
         self, n: int, *, equal: bool = False, locality_hints: List[Any] = None

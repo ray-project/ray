@@ -61,6 +61,7 @@ def _recover_workflow_step(
 
 def _reconstruct_wait_step(
     reader: workflow_storage.WorkflowStorage,
+    step_id: StepID,
     result: workflow_storage.StepInspectResult,
     input_map: Dict[StepID, Any],
 ):
@@ -89,7 +90,10 @@ def _reconstruct_wait_step(
 
     from ray import workflow
 
-    return workflow.wait(input_workflows, **wait_options)
+    wait_step = workflow.wait(input_workflows, **wait_options)
+    # override step id
+    wait_step._step_id = step_id
+    return wait_step
 
 
 def _construct_resume_workflow_from_step(
@@ -126,7 +130,7 @@ def _construct_resume_workflow_from_step(
     step_options = result.step_options
     # Process the wait step as a special case.
     if step_options.step_type == StepType.WAIT:
-        return _reconstruct_wait_step(reader, result, input_map)
+        return _reconstruct_wait_step(reader, step_id, result, input_map)
 
     with serialization.objectref_cache():
         input_workflows = []
