@@ -74,6 +74,7 @@ def check_memory_leaks(
         action_space = env.action_space
 
         def code():
+            env.reset()
             while True:
                 action = action_space.sample()
                 # If masking is used, try something like this:
@@ -81,12 +82,11 @@ def check_memory_leaks(
                 #    action_space.n, p=(obs["action_mask"] / sum(obs["action_mask"])))
                 _, _, done, _ = env.step(action)
                 if done:
-                    env.reset()
                     break
 
         test = _test_some_code_for_memory_leaks(
             desc="Looking for leaks in env, running through episodes.",
-            init=lambda: env.reset(),
+            init=None,
             code=code,
             # How many times to repeat the function call?
             repeats=repeats or 200,
