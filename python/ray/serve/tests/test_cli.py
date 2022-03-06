@@ -101,7 +101,7 @@ def test_create_deployment(ray_start_stop, tmp_working_dir, class_name):  # noqa
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_deploy(ray_start_stop):
-    # Deploys two valid config files and checks that the deployments work
+    # Deploys some valid config files and checks that the deployments work
 
     # Initialize serve in test to enable calling serve.list_deployments()
     ray.init(address="auto", namespace=RAY_INTERNAL_DASHBOARD_NAMESPACE)
@@ -164,6 +164,18 @@ def test_deploy(ray_start_stop):
                 requests.get(f"{request_url}{name}").text
                 == deployment_config["response"]
             )
+
+    # Deploy a deployment without HTTP access
+    deny_deployment = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "deny_access.yaml"
+    )
+    deploy_response = subprocess.check_output(["serve", "deploy", deny_deployment])
+    assert success_message_fragment in deploy_response
+    assert requests.get(f"{request_url}shallow").status_code == 404
+    assert (
+        ray.get(serve.get_deployment("shallow").get_handle().remote())
+        == "Hello shallow world!"
+    )
 
     ray.shutdown()
 

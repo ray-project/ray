@@ -113,7 +113,7 @@ class DeploymentSchema(BaseModel, extra=Extra.forbid):
         ),
         gt=0,
     )
-    route_prefix: Union[str, DEFAULT] = Field(
+    route_prefix: Union[str, None, DEFAULT] = Field(
         default=DEFAULT.VALUE,
         description=(
             "Requests to paths under this HTTP path "
