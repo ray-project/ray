@@ -172,6 +172,27 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
     @ExperimentalAPI
     @override(ReplayBuffer)
+    def replay(self, num_items: int = None, **kwargs) -> Optional[
+        SampleBatchType]:
+        """Deprecated in favor of new ReplayBuffer API.
+
+        This replay method overrides the ordinary
+        MultiAgentReplayBuffer.replay() method to stay compatible with
+        legacy style usage of this class.
+        """
+        if log_once("deprecated_replay_method"):
+            logger.info(
+                "ReplayBuffer method MultiAgentReplayBuffer.replay() is "
+                "deprecated in favor of the new ReplayBuffer API. Use "
+                "MultiAgentReplayBuffer.sample() instead."
+            )
+
+        if num_items is None:
+            num_items = self.replay_batch_size
+        return self.sample(num_items, **kwargs)
+
+    @ExperimentalAPI
+    @override(ReplayBuffer)
     def add(self, batch: SampleBatchType, **kwargs) -> None:
         """Adds a batch to the appropriate policy's replay buffer.
 

@@ -65,8 +65,11 @@ DEFAULT_CONFIG = with_common_config({
     # each worker will have a replay buffer of this size.
     "buffer_size": DEPRECATED_VALUE,
     "replay_buffer_config": {
-        "type": "MultiAgentReplayBuffer",
+        # Until the new ReplayBuffer API is fully integrated, we specify
+        # new-style buffers by their full path.
+        "type": "ray.rllib.utils.replay_buffers.MultiAgentPrioritizedReplayBuffer",
         "capacity": 50000,
+        "replay_batch_size": 32
     },
     # Set this to True, if you want the contents of your buffer(s) to be
     # stored in any saved checkpoints as well.
@@ -155,6 +158,10 @@ class SimpleQTrainer(Trainer):
                     "Worker side prioritization is not supported when "
                     "prioritized_replay=False."
                 )
+
+        if config.get("replay_buffer_config").get("replay_batch_size") < \
+                config.get("train_batch_size"):
+            raise ValueError("Choose replay_batch_size >= train_batch_size.")
 
         # Multi-agent mode and multi-GPU optimizer.
         if config["multiagent"]["policies"] and not config["simple_optimizer"]:

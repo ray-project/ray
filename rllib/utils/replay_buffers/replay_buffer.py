@@ -1,15 +1,17 @@
 import logging
 import platform
 from typing import Any, Dict, List, Optional
+
 import numpy as np
 import random
 from enum import Enum
-from ray.util.debug import log_once
 
 # Import ray before psutil will make sure we use psutil's bundled version
 import ray  # noqa F401
 import psutil  # noqa E402
 
+from ray.util.debug import log_once
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.metrics.window_stat import WindowStat
@@ -88,6 +90,29 @@ class ReplayBuffer:
     def __len__(self) -> int:
         """Returns the number of items currently stored in this buffer."""
         return len(self._storage)
+
+    @ExperimentalAPI
+    def add_batch(self, batch: SampleBatchType, **kwargs) -> None:
+        """Deprecated in favor of new ReplayBuffer API."""
+        if log_once("deprecated_add_batch_method"):
+            logger.info(
+                "ReplayBuffer method ReplayBuffer.add_batch() is deprecated "
+                "in favor of the new ReplayBuffer API. Use ReplayBuffer.add("
+                ") instead."
+            )
+        return self.add(batch, **kwargs)
+
+    @ExperimentalAPI
+    def replay(self, num_items: int = 1, **kwargs) -> Optional[
+        SampleBatchType]:
+        """Deprecated in favor of new ReplayBuffer API."""
+        if log_once("deprecated_replay_method"):
+            logger.info(
+                "ReplayBuffer method ReplayBuffer.replay() is deprecated "
+                "in favor of the new ReplayBuffer API. Use "
+                "ReplayBuffer.sample() instead."
+            )
+        return self.sample(num_items, **kwargs)
 
     @ExperimentalAPI
     def add(self, batch: SampleBatchType, **kwargs) -> None:

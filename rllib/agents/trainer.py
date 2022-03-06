@@ -31,7 +31,8 @@ from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.utils import gym_env_creator
-from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
+from ray.rllib.evaluation.collectors.simple_list_collector import \
+    SimpleListCollector
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.metrics import (
     collect_episodes,
@@ -41,7 +42,8 @@ from ray.rllib.evaluation.metrics import (
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.execution.buffers.multi_agent_replay_buffer import MultiAgentReplayBuffer
+from ray.rllib.execution.buffers.multi_agent_replay_buffer import \
+    MultiAgentReplayBuffer
 from ray.rllib.execution.common import WORKER_UPDATE_TIMER
 from ray.rllib.execution.rollout_ops import (
     ConcatBatches,
@@ -670,12 +672,15 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Use `metrics_episode_collection_timeout_s` instead.
     "collect_metrics_timeout": DEPRECATED_VALUE,
 }
+
+
 # __sphinx_doc_end__
 # fmt: on
 
 
 @DeveloperAPI
-def with_common_config(extra_config: PartialTrainerConfigDict) -> TrainerConfigDict:
+def with_common_config(
+    extra_config: PartialTrainerConfigDict) -> TrainerConfigDict:
     """Returns the given config dict merged with common agent confs.
 
     Args:
@@ -803,11 +808,13 @@ class Trainer(Trainable):
             logdir_prefix = "{}_{}_{}".format(str(self), self._env_id, timestr)
             if not os.path.exists(DEFAULT_RESULTS_DIR):
                 os.makedirs(DEFAULT_RESULTS_DIR)
-            logdir = tempfile.mkdtemp(prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
+            logdir = tempfile.mkdtemp(prefix=logdir_prefix,
+                                      dir=DEFAULT_RESULTS_DIR)
 
             # Allow users to more precisely configure the created logger
             # via "logger_config.type".
-            if config.get("logger_config") and "type" in config["logger_config"]:
+            if config.get("logger_config") and "type" in config[
+                "logger_config"]:
 
                 def default_logger_creator(config):
                     """Creates a custom logger with the default prefix."""
@@ -875,7 +882,8 @@ class Trainer(Trainable):
 
         # Set Trainer's seed after we have - if necessary - enabled
         # tf eager-execution.
-        update_global_seed_if_necessary(self.config["framework"], self.config["seed"])
+        update_global_seed_if_necessary(self.config["framework"],
+                                        self.config["seed"])
 
         self.validate_config(self.config)
         self.callbacks = self.config["callbacks"]()
@@ -950,7 +958,8 @@ class Trainer(Trainable):
             # on each training iteration.
             else:
                 self.train_exec_impl = self.execution_plan(
-                    self.workers, self.config, **self._kwargs_for_execution_plan()
+                    self.workers, self.config,
+                    **self._kwargs_for_execution_plan()
                 )
 
             # Now that workers have been created, update our policies
@@ -1025,7 +1034,8 @@ class Trainer(Trainable):
 
             self.config["evaluation_config"] = eval_config
 
-            env_id = self._register_if_needed(eval_config.get("env"), eval_config)
+            env_id = self._register_if_needed(eval_config.get("env"),
+                                              eval_config)
             env_creator = self._get_env_creator_from_env_id(env_id)
 
             # Create a separate evaluation worker set for evaluation.
@@ -1051,11 +1061,13 @@ class Trainer(Trainable):
     #  default setup behavior plus some own setup logic.
     #  If you don't need the env/workers/config/etc.. setup for you by super,
     #  simply do not call super().setup() from your overridden method.
-    def _init(self, config: TrainerConfigDict, env_creator: EnvCreator) -> None:
+    def _init(self, config: TrainerConfigDict,
+              env_creator: EnvCreator) -> None:
         raise NotImplementedError
 
     @ExperimentalAPI
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[
+        Policy]:
         """Returns a default Policy class to use, given a config.
 
         This class will be used inside RolloutWorkers' PolicyMaps in case
@@ -1096,7 +1108,8 @@ class Trainer(Trainable):
                 except RayError as e:
                     # Try to recover w/o the failed worker.
                     if self.config["ignore_worker_failures"]:
-                        logger.exception("Error in train call, attempting to recover")
+                        logger.exception(
+                            "Error in train call, attempting to recover")
                         self.try_recover_from_step_attempt()
                     # Error out.
                     else:
@@ -1210,7 +1223,8 @@ class Trainer(Trainable):
 
         # Attach latest available evaluation results to train results,
         # if necessary.
-        if not evaluate_this_iter and self.config["always_attach_evaluation_results"]:
+        if not evaluate_this_iter and self.config[
+            "always_attach_evaluation_results"]:
             assert isinstance(
                 self.evaluation_metrics, dict
             ), "Trainer.evaluate() needs to return a dict."
@@ -1285,7 +1299,8 @@ class Trainer(Trainable):
                     self.config["custom_eval_function"]
                 )
             )
-            metrics = self.config["custom_eval_function"](self, self.evaluation_workers)
+            metrics = self.config["custom_eval_function"](self,
+                                                          self.evaluation_workers)
             if not metrics or not isinstance(metrics, dict):
                 raise ValueError(
                     "Custom eval function must return "
@@ -1318,14 +1333,13 @@ class Trainer(Trainable):
                 self.config["evaluation_duration"]
                 if self.config["evaluation_duration"] != "auto"
                 else (self.config["evaluation_num_workers"] or 1)
-                * (1 if unit == "episodes" else rollout)
+                     * (1 if unit == "episodes" else rollout)
             )
             num_ts_run = 0
 
             # Default done-function returns True, whenever num episodes
             # have been completed.
             if duration_fn is None:
-
                 def duration_fn(num_units_done):
                     return duration - num_units_done
 
@@ -1345,7 +1359,8 @@ class Trainer(Trainable):
                     num_ts_run += len(self.workers.local_worker().sample())
                 metrics = collect_metrics(
                     self.workers.local_worker(),
-                    keep_custom_metrics=self.config["keep_per_episode_custom_metrics"],
+                    keep_custom_metrics=self.config[
+                        "keep_per_episode_custom_metrics"],
                 )
 
             # Evaluation worker set only has local worker.
@@ -1356,7 +1371,8 @@ class Trainer(Trainable):
                 # `rollout_fragment_length` is exactly the desired ts.
                 iters = duration if unit == "episodes" else 1
                 for _ in range(iters):
-                    num_ts_run += len(self.evaluation_workers.local_worker().sample())
+                    num_ts_run += len(
+                        self.evaluation_workers.local_worker().sample())
 
             # Evaluation worker set has n remote workers.
             else:
@@ -1373,10 +1389,11 @@ class Trainer(Trainable):
                         [
                             w.sample.remote()
                             for i, w in enumerate(
-                                self.evaluation_workers.remote_workers()
-                            )
-                            if i * (1 if unit == "episodes" else rollout * num_envs)
-                            < units_left_to_do
+                            self.evaluation_workers.remote_workers()
+                        )
+                            if i * (
+                            1 if unit == "episodes" else rollout * num_envs)
+                               < units_left_to_do
                         ]
                     )
                     # 1 episode per returned batch.
@@ -1397,7 +1414,8 @@ class Trainer(Trainable):
                 metrics = collect_metrics(
                     self.evaluation_workers.local_worker(),
                     self.evaluation_workers.remote_workers(),
-                    keep_custom_metrics=self.config["keep_per_episode_custom_metrics"],
+                    keep_custom_metrics=self.config[
+                        "keep_per_episode_custom_metrics"],
                 )
             metrics["timesteps_this_iter"] = num_ts_run
 
@@ -1628,7 +1646,8 @@ class Trainer(Trainable):
         pp = local_worker.preprocessors[policy_id]
         if pp and type(pp).__name__ != "NoPreprocessor":
             observation = pp.transform(observation)
-        observation = local_worker.filters[policy_id](observation, update=False)
+        observation = local_worker.filters[policy_id](observation,
+                                                      update=False)
 
         # Input-dict.
         if input_dict is not None:
@@ -1655,10 +1674,12 @@ class Trainer(Trainable):
         # If we work in normalized action space (normalize_actions=True),
         # we re-translate here into the env's action space.
         if unsquash_action:
-            action = space_utils.unsquash_action(action, policy.action_space_struct)
+            action = space_utils.unsquash_action(action,
+                                                 policy.action_space_struct)
         # Clip, according to env's action space.
         elif clip_action:
-            action = space_utils.clip_action(action, policy.action_space_struct)
+            action = space_utils.clip_action(action,
+                                             policy.action_space_struct)
 
         # Return 3-Tuple: Action, states, and extra-action fetches.
         if state or full_fetch:
@@ -1850,7 +1871,8 @@ class Trainer(Trainable):
         action_space: Optional[gym.spaces.Space] = None,
         config: Optional[PartialTrainerConfigDict] = None,
         policy_state: Optional[PolicyState] = None,
-        policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
+        policy_mapping_fn: Optional[
+            Callable[[AgentID, EpisodeID], PolicyID]] = None,
         policies_to_train: Optional[
             Union[
                 Container[PolicyID],
@@ -1902,7 +1924,8 @@ class Trainer(Trainable):
             config=config,
             policy_state=policy_state,
             policy_mapping_fn=policy_mapping_fn,
-            policies_to_train=list(policies_to_train) if policies_to_train else None,
+            policies_to_train=list(
+                policies_to_train) if policies_to_train else None,
         )
 
         def fn(worker: RolloutWorker):
@@ -1936,7 +1959,8 @@ class Trainer(Trainable):
         *,
         policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
         policies_to_train: Optional[
-            Union[Set[PolicyID], Callable[[PolicyID, Optional[SampleBatchType]], bool]]
+            Union[Set[PolicyID], Callable[
+                [PolicyID, Optional[SampleBatchType]], bool]]
         ] = None,
         evaluation_workers: bool = True,
     ) -> None:
@@ -2014,7 +2038,8 @@ class Trainer(Trainable):
             >>>     trainer.train()
             >>> trainer.export_policy_checkpoint("/tmp/export_dir")
         """
-        self.get_policy(policy_id).export_checkpoint(export_dir, filename_prefix)
+        self.get_policy(policy_id).export_checkpoint(export_dir,
+                                                     filename_prefix)
 
     @DeveloperAPI
     def import_policy_model_from_h5(
@@ -2087,40 +2112,42 @@ class Trainer(Trainable):
         # (already properly defined as device bundles).
         return PlacementGroupFactory(
             bundles=[
-                {
-                    # Local worker.
-                    "CPU": cf["num_cpus_for_driver"],
-                    "GPU": 0 if cf["_fake_gpus"] else cf["num_gpus"],
-                }
-            ]
-            + [
-                {
-                    # RolloutWorkers.
-                    "CPU": cf["num_cpus_per_worker"],
-                    "GPU": cf["num_gpus_per_worker"],
-                }
-                for _ in range(cf["num_workers"])
-            ]
-            + (
-                [
-                    {
-                        # Evaluation workers.
-                        # Note: The local eval worker is located on the driver CPU.
-                        "CPU": eval_cf.get(
-                            "num_cpus_per_worker", cf["num_cpus_per_worker"]
-                        ),
-                        "GPU": eval_cf.get(
-                            "num_gpus_per_worker", cf["num_gpus_per_worker"]
-                        ),
-                    }
-                    for _ in range(cf["evaluation_num_workers"])
-                ]
-                if cf["evaluation_interval"]
-                else []
-            )
-            +
-            # In case our I/O reader/writer requires conmpute resources.
-            get_offline_io_resource_bundles(cf),
+                        {
+                            # Local worker.
+                            "CPU": cf["num_cpus_for_driver"],
+                            "GPU": 0 if cf["_fake_gpus"] else cf["num_gpus"],
+                        }
+                    ]
+                    + [
+                        {
+                            # RolloutWorkers.
+                            "CPU": cf["num_cpus_per_worker"],
+                            "GPU": cf["num_gpus_per_worker"],
+                        }
+                        for _ in range(cf["num_workers"])
+                    ]
+                    + (
+                        [
+                            {
+                                # Evaluation workers.
+                                # Note: The local eval worker is located on the driver CPU.
+                                "CPU": eval_cf.get(
+                                    "num_cpus_per_worker",
+                                    cf["num_cpus_per_worker"]
+                                ),
+                                "GPU": eval_cf.get(
+                                    "num_gpus_per_worker",
+                                    cf["num_gpus_per_worker"]
+                                ),
+                            }
+                            for _ in range(cf["evaluation_num_workers"])
+                        ]
+                        if cf["evaluation_interval"]
+                        else []
+                    )
+                    +
+                    # In case our I/O reader/writer requires conmpute resources.
+                    get_offline_io_resource_bundles(cf),
             strategy=config.get("placement_strategy", "PACK"),
         )
 
@@ -2129,7 +2156,8 @@ class Trainer(Trainable):
         """Pre-evaluation callback."""
         pass
 
-    def _get_env_creator_from_env_id(self, env_id: Optional[str] = None) -> EnvCreator:
+    def _get_env_creator_from_env_id(self, env_id: Optional[
+        str] = None) -> EnvCreator:
         """Returns an env creator callable, given an `env_id` (e.g. "CartPole-v0").
 
         Args:
@@ -2150,13 +2178,15 @@ class Trainer(Trainable):
                     try:
                         env_obj = from_config(env_id, env_context)
                     except ValueError:
-                        raise EnvError(ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env_id))
+                        raise EnvError(
+                            ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env_id))
                     return env_obj
 
                 return env_creator_from_classpath
             # Try gym/PyBullet/Vizdoom.
             else:
-                return functools.partial(gym_env_creator, env_descriptor=env_id)
+                return functools.partial(gym_env_creator,
+                                         env_descriptor=env_id)
         # No env -> Env creator always returns None.
         else:
             return lambda env_config: None
@@ -2169,7 +2199,8 @@ class Trainer(Trainable):
                 update_remote=self.config["synchronize_filters"],
             )
             logger.debug(
-                "synchronized filters: {}".format(workers.local_worker().filters)
+                "synchronized filters: {}".format(
+                    workers.local_worker().filters)
             )
 
     @DeveloperAPI
@@ -2233,7 +2264,8 @@ class Trainer(Trainable):
 
             def make_callbacks():
                 # Deprecation warning will be logged by DefaultCallbacks.
-                return DefaultCallbacks(legacy_callbacks_dict=legacy_callbacks_dict)
+                return DefaultCallbacks(
+                    legacy_callbacks_dict=legacy_callbacks_dict)
 
             config2["callbacks"] = make_callbacks
         if _allow_unknown_configs is None:
@@ -2402,7 +2434,8 @@ class Trainer(Trainable):
                 if any(
                     (p[0] or default_policy_cls) is None
                     or not issubclass(
-                        p[0] or default_policy_cls, (DynamicTFPolicy, TorchPolicy)
+                        p[0] or default_policy_cls,
+                        (DynamicTFPolicy, TorchPolicy)
                     )
                     for p in config["multiagent"]["policies"].values()
                 ):
@@ -2442,7 +2475,8 @@ class Trainer(Trainable):
             model_config["_disable_action_flattening"] = True
 
         # Prev_a/r settings.
-        prev_a_r = model_config.get("lstm_use_prev_action_reward", DEPRECATED_VALUE)
+        prev_a_r = model_config.get("lstm_use_prev_action_reward",
+                                    DEPRECATED_VALUE)
         if prev_a_r != DEPRECATED_VALUE:
             deprecation_warning(
                 "model.lstm_use_prev_action_reward",
@@ -2453,7 +2487,8 @@ class Trainer(Trainable):
             model_config["lstm_use_prev_reward"] = prev_a_r
 
         # Check batching/sample collection settings.
-        if config["batch_mode"] not in ["truncate_episodes", "complete_episodes"]:
+        if config["batch_mode"] not in ["truncate_episodes",
+                                        "complete_episodes"]:
             raise ValueError(
                 "`batch_mode` must be one of [truncate_episodes|"
                 "complete_episodes]! Got {}".format(config["batch_mode"])
@@ -2530,7 +2565,8 @@ class Trainer(Trainable):
 
         # If `evaluation_num_workers` > 0, warn if `evaluation_interval` is
         # None (also set `evaluation_interval` to 1).
-        if config["evaluation_num_workers"] > 0 and not config["evaluation_interval"]:
+        if config["evaluation_num_workers"] > 0 and not config[
+            "evaluation_interval"]:
             logger.warning(
                 f"You have specified {config['evaluation_num_workers']} "
                 "evaluation workers, but your `evaluation_interval` is None! "
@@ -2626,7 +2662,8 @@ class Trainer(Trainable):
                     logger.exception("Error terminating unhealthy worker")
 
         if len(healthy_workers) < 1:
-            raise RuntimeError("Not enough healthy workers remain to continue.")
+            raise RuntimeError(
+                "Not enough healthy workers remain to continue.")
 
         logger.warning("Recreating execution plan after failure.")
         workers.reset(healthy_workers)
@@ -2654,7 +2691,8 @@ class Trainer(Trainable):
             exported[ExportFormat.MODEL] = path
         if ExportFormat.ONNX in export_formats:
             path = os.path.join(export_dir, ExportFormat.ONNX)
-            self.export_policy_model(path, onnx=int(os.getenv("ONNX_OPSET", "11")))
+            self.export_policy_model(path,
+                                     onnx=int(os.getenv("ONNX_OPSET", "11")))
             exported[ExportFormat.ONNX] = path
         return exported
 
@@ -2697,7 +2735,8 @@ class Trainer(Trainable):
             state["local_replay_buffer"] = self.local_replay_buffer.get_state()
 
         if self.train_exec_impl is not None:
-            state["train_exec_impl"] = self.train_exec_impl.shared_metrics.get().save()
+            state[
+                "train_exec_impl"] = self.train_exec_impl.shared_metrics.get().save()
 
         return state
 
@@ -2718,7 +2757,8 @@ class Trainer(Trainable):
             #  buffer from checkpoint, only if user has configured this.
             if self.config.get("store_buffer_in_checkpoints"):
                 if "local_replay_buffer" in state:
-                    self.local_replay_buffer.set_state(state["local_replay_buffer"])
+                    self.local_replay_buffer.set_state(
+                        state["local_replay_buffer"])
                 else:
                     logger.warning(
                         "`store_buffer_in_checkpoints` is True, but no replay "
@@ -2733,7 +2773,8 @@ class Trainer(Trainable):
                 )
 
         if self.train_exec_impl is not None:
-            self.train_exec_impl.shared_metrics.get().restore(state["train_exec_impl"])
+            self.train_exec_impl.shared_metrics.get().restore(
+                state["train_exec_impl"])
 
     # TODO: Deprecate this method (`build_trainer` should no longer be used).
     @staticmethod
@@ -2758,17 +2799,15 @@ class Trainer(Trainable):
             None, if local replay buffer is not needed.
         """
         # These are the agents that utilizes a local replay buffer.
-        if "replay_buffer_config" not in config or not config["replay_buffer_config"]:
+        if "replay_buffer_config" not in config or not config[
+            "replay_buffer_config"]:
             # Does not need a replay buffer.
             return None
 
         replay_buffer_config = config["replay_buffer_config"]
-        if (
-            "type" not in replay_buffer_config
-            or replay_buffer_config["type"] != "MultiAgentReplayBuffer"
-        ):
-            # DistributedReplayBuffer coming soon.
-            return None
+        assert "type" in replay_buffer_config, "Can not instantiate " \
+                                               "ReplayBuffer from config " \
+                                               "without 'type' key."
 
         capacity = config.get("buffer_size", DEPRECATED_VALUE)
         if capacity != DEPRECATED_VALUE:
@@ -2778,37 +2817,33 @@ class Trainer(Trainable):
                 new="config['replay_buffer_config']['capacity']",
                 error=False,
             )
-        else:
-            # Get capacity out of replay_buffer_config.
-            capacity = replay_buffer_config["capacity"]
 
-        # Configure prio. replay parameters.
-        if config.get("prioritized_replay"):
-            prio_args = {
-                "prioritized_replay_alpha": config["prioritized_replay_alpha"],
-                "prioritized_replay_beta": config["prioritized_replay_beta"],
-                "prioritized_replay_eps": config["prioritized_replay_eps"],
-            }
-        # Switch off prioritization (alpha=0.0).
-        else:
-            prio_args = {"prioritized_replay_alpha": 0.0}
+        deprecated_replay_buffer_keys = ["prioritized_replay_alpha",
+                                         "prioritized_replay_beta",
+                                         "prioritized_replay_eps",
+                                         "prioritized_replay",
+                                         "prioritized_replay_beta_annealing_timesteps",
+                                         "burn_in"
+                                         ]
+        for k in deprecated_replay_buffer_keys:
+            if config.get(k):
+                # Print a deprecation warning.
+                deprecation_warning(
+                    old="config[{}]".format(k),
+                    new="config['replay_buffer_config'][{}]".format(k),
+                    error=False,
+                )
+                # Copy values over to new location in config to support new
+                # and old configuration
+                config["replay_buffer_config"][k] = config["k"]
 
-        return MultiAgentReplayBuffer(
-            num_shards=1,
-            learning_starts=config["learning_starts"],
-            capacity=capacity,
-            replay_batch_size=config["train_batch_size"],
-            replay_mode=config["multiagent"]["replay_mode"],
-            replay_sequence_length=config.get("replay_sequence_length", 1),
-            replay_burn_in=config.get("burn_in", 0),
-            replay_zero_init_states=config.get("zero_init_states", True),
-            **prio_args,
-        )
+        return from_config(config["replay_buffer_config"]["type"],
+                           config["replay_buffer_config"])
 
     @DeveloperAPI
     def _kwargs_for_execution_plan(self):
         kwargs = {}
-        if self.local_replay_buffer:
+        if self.local_replay_buffer is not None:
             kwargs["local_replay_buffer"] = self.local_replay_buffer
         return kwargs
 
@@ -2841,7 +2876,7 @@ class Trainer(Trainable):
         raise ValueError(
             "{} is an invalid env specification. ".format(env_object)
             + "You can specify a custom env as either a class "
-            '(e.g., YourEnvCls) or a registered env id (e.g., "your_env").'
+              '(e.g., YourEnvCls) or a registered env id (e.g., "your_env").'
         )
 
     def _step_context(trainer):
@@ -2855,8 +2890,10 @@ class Trainer(Trainable):
                 self.time_start = time.time()
                 self.sampled = 0
                 self.trained = 0
-                self.init_env_steps_sampled = trainer._counters[NUM_ENV_STEPS_SAMPLED]
-                self.init_env_steps_trained = trainer._counters[NUM_ENV_STEPS_TRAINED]
+                self.init_env_steps_sampled = trainer._counters[
+                    NUM_ENV_STEPS_SAMPLED]
+                self.init_env_steps_trained = trainer._counters[
+                    NUM_ENV_STEPS_TRAINED]
                 self.init_agent_steps_sampled = trainer._counters[
                     NUM_AGENT_STEPS_SAMPLED
                 ]
@@ -2876,7 +2913,8 @@ class Trainer(Trainable):
                     # Fail after n retries.
                     self.failures += 1
                     if self.failures > MAX_WORKER_FAILURE_RETRIES:
-                        raise RuntimeError("Failed to recover from worker crash.")
+                        raise RuntimeError(
+                            "Failed to recover from worker crash.")
 
                 # Stopping criteria: Only when using the `training_iteration`
                 # API, b/c for the `exec_plan` API, the logic to stop is
@@ -2903,15 +2941,19 @@ class Trainer(Trainable):
                         )
 
                     min_t = trainer.config["min_time_s_per_reporting"]
-                    min_sample_ts = trainer.config["min_sample_timesteps_per_reporting"]
-                    min_train_ts = trainer.config["min_train_timesteps_per_reporting"]
+                    min_sample_ts = trainer.config[
+                        "min_sample_timesteps_per_reporting"]
+                    min_train_ts = trainer.config[
+                        "min_train_timesteps_per_reporting"]
                     # Repeat if not enough time has passed or if not enough
                     # env|train timesteps have been processed (or these min
                     # values are not provided by the user).
                     if (
                         result is not None
-                        and (not min_t or time.time() - self.time_start >= min_t)
-                        and (not min_sample_ts or self.sampled >= min_sample_ts)
+                        and (
+                        not min_t or time.time() - self.time_start >= min_t)
+                        and (
+                        not min_sample_ts or self.sampled >= min_sample_ts)
                         and (not min_train_ts or self.trained >= min_train_ts)
                     ):
                         return True
@@ -2933,8 +2975,10 @@ class Trainer(Trainable):
             results["evaluation"] = step_attempt_results.pop("evaluation")
 
         # Custom metrics and episode media.
-        results["custom_metrics"] = step_attempt_results.pop("custom_metrics", {})
-        results["episode_media"] = step_attempt_results.pop("episode_media", {})
+        results["custom_metrics"] = step_attempt_results.pop("custom_metrics",
+                                                             {})
+        results["episode_media"] = step_attempt_results.pop("episode_media",
+                                                            {})
 
         # Learner info.
         results["info"] = {LEARNER_INFO: step_attempt_results}
@@ -2944,19 +2988,24 @@ class Trainer(Trainable):
             self.workers.local_worker(),
             self.workers.remote_workers(),
             self._episodes_to_be_collected,
-            timeout_seconds=self.config["metrics_episode_collection_timeout_s"],
+            timeout_seconds=self.config[
+                "metrics_episode_collection_timeout_s"],
         )
         orig_episodes = list(episodes)
-        missing = self.config["metrics_num_episodes_for_smoothing"] - len(episodes)
+        missing = self.config["metrics_num_episodes_for_smoothing"] - len(
+            episodes)
         if missing > 0:
             episodes = self._episode_history[-missing:] + episodes
-            assert len(episodes) <= self.config["metrics_num_episodes_for_smoothing"]
+            assert len(episodes) <= self.config[
+                "metrics_num_episodes_for_smoothing"]
         self._episode_history.extend(orig_episodes)
         self._episode_history = self._episode_history[
-            -self.config["metrics_num_episodes_for_smoothing"] :
-        ]
+                                -self.config[
+                                    "metrics_num_episodes_for_smoothing"]:
+                                ]
         results["sampler_results"] = summarize_episodes(
-            episodes, orig_episodes, self.config["keep_per_episode_custom_metrics"]
+            episodes, orig_episodes,
+            self.config["keep_per_episode_custom_metrics"]
         )
         # TODO: Don't dump sampler results into top-level.
         results.update(results["sampler_results"])
@@ -2975,21 +3024,24 @@ class Trainer(Trainable):
             results[NUM_AGENT_STEPS_SAMPLED + "_this_iter"] = step_ctx.sampled
             results[NUM_AGENT_STEPS_TRAINED + "_this_iter"] = step_ctx.trained
             # TODO: For CQL and other algos, count by trained steps.
-            results["timesteps_total"] = self._counters[NUM_AGENT_STEPS_SAMPLED]
+            results["timesteps_total"] = self._counters[
+                NUM_AGENT_STEPS_SAMPLED]
         else:
             results[NUM_ENV_STEPS_SAMPLED + "_this_iter"] = step_ctx.sampled
             results[NUM_ENV_STEPS_TRAINED + "_this_iter"] = step_ctx.trained
             # TODO: For CQL and other algos, count by trained steps.
             results["timesteps_total"] = self._counters[NUM_ENV_STEPS_SAMPLED]
         # TODO: Backward compatibility.
-        results["agent_timesteps_total"] = self._counters[NUM_AGENT_STEPS_SAMPLED]
+        results["agent_timesteps_total"] = self._counters[
+            NUM_AGENT_STEPS_SAMPLED]
 
         # Process timer results.
         timers = {}
         for k, timer in self._timers.items():
             timers["{}_time_ms".format(k)] = round(timer.mean * 1000, 3)
             if timer.has_units_processed():
-                timers["{}_throughput".format(k)] = round(timer.mean_throughput, 3)
+                timers["{}_throughput".format(k)] = round(
+                    timer.mean_throughput, 3)
         results["timers"] = timers
 
         # Process counter results.
