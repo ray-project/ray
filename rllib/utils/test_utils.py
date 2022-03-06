@@ -828,7 +828,8 @@ def check_same_batch(batch1, batch2) -> None:
     For MultiAgentBatches, the step count and individual policy's
     SampleBatches are checked for identity. For SampleBatches, identity is
     checked as the almost numerical key-value-pair identity between batches
-    with ray.rllib.utils.test_utils.check().
+    with ray.rllib.utils.test_utils.check(). unroll_id is compared only if
+    both batches have an unroll_id.
 
     Args:
         batch1: Batch to compare against batch2
@@ -844,20 +845,26 @@ def check_same_batch(batch1, batch2) -> None:
     )
 
     def check_sample_batches(_batch1, _batch2, _policy_id=None):
+        unroll_id_1 = _batch1.get("unroll_id", None)
+        unroll_id_2 = _batch2.get("unroll_id", None)
         # unroll IDs only have to fit if both batches have them
-        unroll_id_1 = _batch1.pop("unroll_id", None)
-        unroll_id_2 = _batch2.pop("unroll_id", None)
         if unroll_id_1 is not None and unroll_id_2 is not None:
             assert unroll_id_1 == unroll_id_2
 
         batch1_keys = set()
         for k, v in _batch1.items():
+            # unroll_id is compared above already
+            if k == "unroll_id":
+                continue
             check(v, _batch2[k])
             batch1_keys.add(k)
 
-        # Case where one batch has info and the other has not
         batch2_keys = set(_batch2.keys())
+        # unroll_id is compared above already
+        batch2_keys.discard("unroll_id")
         _difference = batch1_keys.symmetric_difference(batch2_keys)
+
+        # Cases where one batch has info and the other has not
         if _policy_id:
             assert not _difference, (
                 "SampleBatches for policy with ID {} "
