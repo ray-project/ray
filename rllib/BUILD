@@ -575,7 +575,7 @@ py_test(
 
 py_test(
     name = "test_memory_leaks_generic",
-    main = "test_memory_leaks",
+    main = "agents/tests/test_memory_leaks.py",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
     srcs = ["agents/tests/test_memory_leaks.py"]
