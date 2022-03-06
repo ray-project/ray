@@ -351,7 +351,7 @@ py_test(
     name = "test_serve_ray_minimal",
     size = "small",
     srcs = SRCS + ["test_serve_ray_minimal.py"],
-    tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:serve"],
+    tags = ["exclusive", "small_size_python_tests", "team:serve"],
     deps = ["//:ray_lib"],
 )
 
