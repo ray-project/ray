@@ -1443,8 +1443,7 @@ py_test(
     name = "test_multi_agent_mixin_replay_buffer",
     tags = ["team:ml", "utils"],
     size = "small",
-    srcs = ["utils/replay_buffers/tests/test_multi_agent_mixin_replay_buffer
-    .py"]
+    srcs = ["utils/replay_buffers/tests/test_multi_agent_mixin_replay_buffer.py"]
 )
 
 py_test(
