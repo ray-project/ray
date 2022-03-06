@@ -228,14 +228,14 @@ SchedulingResult GcsResourceScheduler::StrictPackSchedule(
     }
   }
 
-  const auto &resource_view = GetResourceView();
+  const auto &cluster_resource = GetResourceView();
   const auto &right_node_it = std::find_if(
-      resource_view.begin(), resource_view.end(),
+      cluster_resource.begin(), cluster_resource.end(),
       [&aggregated_resource_request](const auto &entry) {
         return entry.second->GetLocalView().IsAvailable(aggregated_resource_request);
       });
 
-  if (right_node_it == resource_view.end()) {
+  if (right_node_it == cluster_resource.end()) {
     RAY_LOG(DEBUG) << "The required resource is bigger than the maximum resource in the "
                       "whole cluster, schedule failed.";
     return std::make_pair(SchedulingResultStatus::INFEASIBLE, std::vector<NodeID>());

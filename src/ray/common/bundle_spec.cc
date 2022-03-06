@@ -39,6 +39,9 @@ void BundleSpecification::ComputeBundleResourceLabels() {
   for (size_t i = 0; i < unit_resource_->predefined_resources.size(); ++i) {
     auto resource_name = scheduling::ResourceID(i).Binary();
     const auto &resource_value = unit_resource_->predefined_resources[i];
+    if (resource_value <= 0.) {
+      continue;
+    }
 
     /// With bundle index (e.g., CPU_group_i_zzz).
     const std::string &resource_label =
@@ -54,6 +57,9 @@ void BundleSpecification::ComputeBundleResourceLabels() {
   for (const auto &resource_pair : unit_resource_->custom_resources) {
     auto resource_name = scheduling::ResourceID(resource_pair.first).Binary();
     const auto &resource_value = resource_pair.second;
+    if (resource_value <= 0.) {
+      continue;
+    }
 
     /// With bundle index (e.g., CPU_group_i_zzz).
     const std::string &resource_label =
