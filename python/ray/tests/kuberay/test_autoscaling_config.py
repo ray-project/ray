@@ -6,7 +6,7 @@ import pytest
 import yaml
 
 from ray.autoscaler._private.kuberay.autoscaling_config import (
-    _derive_autoscaling_config_from_ray_cr
+    _derive_autoscaling_config_from_ray_cr,
 )
 
 AUTOSCALING_CONFIG_MODULE_PATH = "ray.autoscaler._private.kuberay.autoscaling_config"
