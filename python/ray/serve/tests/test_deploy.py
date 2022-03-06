@@ -1107,6 +1107,21 @@ def test_deploy_change_route_prefix(serve_instance):
     wait_for_condition(check_switched)
 
 
+@pytest.mark.parametrize("prefixes", [[None, "/f", None], ["/f", None, "/f"]])
+def test_deploy_nullify_route_prefix(serve_instance, prefixes):
+    @serve.deployment
+    def f(*args):
+        return "got me"
+
+    for prefix in prefixes:
+        f.options(route_prefix=prefix).deploy()
+        if prefix is None:
+            assert requests.get("http://localhost:8000/f").status_code == 404
+        else:
+            assert requests.get("http://localhost:8000/f").text == "got me"
+        assert ray.get(f.get_handle().remote()) == "got me"
+
+
 @pytest.mark.timeout(10, method="thread")
 def test_deploy_empty_bundle(serve_instance):
     @serve.deployment(ray_actor_options={"num_cpus": 0})
