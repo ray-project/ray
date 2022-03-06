@@ -24,6 +24,9 @@ class TestParseRuntimeEnvArgs:
             "working_dir": "wd",
         }
 
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="File path incorrect on Windows."
+    )
     def test_runtime_env_and_json(self):
         config_file_name = os.path.join(
             os.path.dirname(__file__), "test_config_files", "basic_runtime_env.yaml"
@@ -37,6 +40,9 @@ class TestParseRuntimeEnvArgs:
     def test_working_dir_valid(self):
         assert parse_runtime_env_args(working_dir="wd") == {"working_dir": "wd"}
 
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="File path incorrect on Windows."
+    )
     def test_working_dir_override(self):
         config_file_name = os.path.join(
             os.path.dirname(__file__), "test_config_files", "basic_runtime_env.yaml"
