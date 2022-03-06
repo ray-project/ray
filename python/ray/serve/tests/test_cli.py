@@ -319,8 +319,8 @@ class Macaw:
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_working_dir(ray_start_stop):
-    # Tests serve run with working_dirs specified
+def test_run_runtime_env(ray_start_stop):
+    # Tests serve run with runtime_envs specified
 
     # Use local working_dir with import path
     p = subprocess.Popen(
@@ -365,6 +365,28 @@ def test_run_working_dir(ray_start_stop):
         ]
     )
     wait_for_condition(lambda: ping_endpoint("run") == "2", timeout=10)
+    p.send_signal(signal.SIGINT)
+    p.wait()
+
+    # Use runtime env
+    p = subprocess.Popen(
+        [
+            "serve",
+            "run",
+            os.path.join(
+                os.path.dirname(__file__), "test_config_files", "fake_runtime_env.yaml"
+            ),
+            "--runtime-env-json",
+            (
+                '{"py_modules": ["https://github.com/shrekris-anyscale/'
+                'test_deploy_group/archive/HEAD.zip"],'
+                '"working_dir": "http://nonexistentlink-q490123950ni34t"}'
+            ),
+            "--working-dir",
+            "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip",
+        ]
+    )
+    wait_for_condition(lambda: ping_endpoint("one") == "2", timeout=10)
     p.send_signal(signal.SIGINT)
     p.wait()
 
