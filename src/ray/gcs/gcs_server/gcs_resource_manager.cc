@@ -138,18 +138,32 @@ void GcsResourceManager::HandleDeleteResources(
     // Update gcs storage.
     rpc::ResourceMap resource_map;
     for (size_t i = 0; i < node_resources->predefined_resources.size(); ++i) {
+      const auto &resource_name = scheduling::ResourceID(i).Binary();
+      if (std::find(resource_names.begin(), resource_names.end(), resource_name) !=
+          resource_names.end()) {
+        continue;
+      }
+
       const auto &resource_value = node_resources->predefined_resources[i].total;
       if (resource_value <= 0) {
         continue;
       }
 
-      const auto &resource_name = scheduling::ResourceID(i).Binary();
       (*resource_map.mutable_items())[resource_name].set_resource_capacity(
           resource_value.Double());
     }
     for (const auto &entry : node_resources->custom_resources) {
       const auto &resource_name = scheduling::ResourceID(entry.first).Binary();
+      if (std::find(resource_names.begin(), resource_names.end(), resource_name) !=
+          resource_names.end()) {
+        continue;
+      }
+
       const auto &resource_value = entry.second.total;
+      if (resource_value <= 0) {
+        continue;
+      }
+
       (*resource_map.mutable_items())[resource_name].set_resource_capacity(
           resource_value.Double());
     }
@@ -345,8 +359,6 @@ void GcsResourceManager::SetAvailableResources(
     auto resources = ResourceMapToResourceRequest(resource_map,
                                                   /*requires_object_store_memory=*/false);
     auto node_resources = iter->second->GetMutableLocalView();
-    RAY_CHECK(resources.predefined_resources.size() <=
-              node_resources->predefined_resources.size());
     for (size_t i = 0; i < node_resources->predefined_resources.size(); ++i) {
       node_resources->predefined_resources[i].available =
           resources.predefined_resources[i];
@@ -439,11 +451,11 @@ bool GcsResourceManager::ReleaseResources(const NodeID &node_id,
                    node_resources->predefined_resources[i].total);
     }
     for (auto &entry : acquired_resources.custom_resources) {
-      auto iter = node_resources->custom_resources.find(entry.first);
-      RAY_CHECK(iter != node_resources->custom_resources.end());
-
-      iter->second.available += entry.second;
-      RAY_CHECK(iter->second.available <= iter->second.total);
+      auto it = node_resources->custom_resources.find(entry.first);
+      if (it != node_resources->custom_resources.end()) {
+        it->second.available += entry.second;
+        it->second.available = std::min(it->second.available, it->second.total);
+      }
     }
   }
   // If node dead, we will not find the node. This is a normal scenario, so it returns
