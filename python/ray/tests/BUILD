@@ -19,7 +19,7 @@ py_test_module_list(
   ],
   size = "large",
   extra_srcs = SRCS,
-  tags = ["exclusive", "manual_tests", "team:serverless"],
+  tags = ["exclusive", "manual", "team:serverless"],
   deps = ["//:ray_lib"],
 )
 
