@@ -82,19 +82,33 @@ class ServeSubmissionClient(SubmissionClient):
         else:
             self._log_failed_request(response)
 
-    def configure_working_dir(self, deployment: Deployment, working_dir: str) -> None:
+    def set_up_runtime_env(
+        self,
+        deployment: Deployment,
+        new_runtime_env: Optional[dict] = None,
+        new_working_dir: Optional[str] = None,
+    ) -> None:
         """
-        Sets the deployment's working_dir to working_dir. Uses the
-        submission_client to upload the working_dir if it's local.
+        1. If not None, new_runtime_env overwrites deployment's runtime_env.
+        2. Then, if not None, new_working_dir overwrites deployment's working_dir.
+        3. Then, uploads the deployment's working_dir if it's local.
+
         Mutates the deployment.
         """
 
-        runtime_env = {"working_dir": working_dir}
+        runtime_env = {}
+
+        if deployment.ray_actor_options is not None:
+            runtime_env = deployment.ray_actor_options.get("runtime_env", {})
+        if new_runtime_env is not None:
+            runtime_env = new_runtime_env
+        if new_working_dir is not None:
+            runtime_env["working_dir"] = new_working_dir
+
         self._upload_working_dir_if_needed(runtime_env)
+
         if deployment.ray_actor_options is None:
             deployment._ray_actor_options = {"runtime_env": runtime_env}
-        elif "runtime_env" in deployment.ray_actor_options:
-            deployment.ray_actor_options["runtime_env"].update(runtime_env)
         else:
             deployment.ray_actor_options["runtime_env"] = runtime_env
 

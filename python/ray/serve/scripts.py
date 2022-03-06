@@ -22,6 +22,7 @@ from ray.dashboard.modules.serve.schema import (
     schema_to_serve_application,
     serve_application_status_to_schema,
 )
+from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.autoscaler._private.cli_logger import cli_logger
 
@@ -162,12 +163,32 @@ def deploy(config_file_name: str, address: str):
 )
 @click.argument("config_or_import_path")
 @click.option(
-    "--working_dir",
-    "-w",
+    "--runtime-env",
+    type=str,
     default=None,
     required=False,
+    help="Path to a local YAML file containing a runtime_env definition. "
+    "Overrides all runtime_envs specified in a config file.",
+)
+@click.option(
+    "--runtime-env-json",
     type=str,
-    help="Local path or remote URI of working directory for the deployment(s).",
+    default=None,
+    required=False,
+    help="JSON-serialized runtime_env dictionary. Overrides all runtime_envs "
+    "specified in a config file.",
+)
+@click.option(
+    "--working-dir",
+    type=str,
+    default=None,
+    required=False,
+    help=(
+        "Directory containing files that your job will run in. Can be a "
+        "local directory or a remote URI to a .zip file (S3, GS, HTTP). "
+        "This overrides the working_dir in --runtime-env if both are "
+        "specified. Overrides all working_dirs specified in a config file."
+    ),
 )
 @click.option(
     "--address",
@@ -182,6 +203,8 @@ def deploy(config_file_name: str, address: str):
 )
 def run(
     config_or_import_path: str,
+    runtime_env: str,
+    runtime_env_json: str,
     working_dir: str,
     address: str,
 ):
@@ -195,6 +218,13 @@ def run(
     try:
         # Check if path provided is for config or import
         is_config = pathlib.Path(config_or_import_path).is_file()
+        final_runtime_env, final_working_dir = None, working_dir
+        if runtime_env is not None or runtime_env_json is not None:
+            final_runtime_env = parse_runtime_env_args(
+                runtime_env=runtime_env,
+                runtime_env_json=runtime_env_json,
+                working_dir=working_dir,
+            )
 
         if is_config:
 
@@ -208,10 +238,14 @@ def run(
             deployments = schema_to_serve_application(schematized_config)
 
             serve.start()
-            if working_dir is not None:
-                client = ServeSubmissionClient(address)
-                for deployment in deployments:
-                    client.configure_working_dir(deployment, working_dir)
+
+            client = ServeSubmissionClient(address)
+            for deployment in deployments:
+                client.set_up_runtime_env(
+                    deployment,
+                    new_runtime_env=final_runtime_env,
+                    new_working_dir=final_working_dir,
+                )
 
             deploy_group(deployments)
 
@@ -232,7 +266,11 @@ def run(
             serve.start()
             if working_dir is not None:
                 client = ServeSubmissionClient(address)
-                client.configure_working_dir(deployment, working_dir)
+                client.set_up_runtime_env(
+                    deployment,
+                    new_runtime_env=final_runtime_env,
+                    new_working_dir=final_working_dir,
+                )
 
             deployment.deploy()
 

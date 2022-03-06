@@ -328,7 +328,7 @@ def test_run_working_dir(ray_start_stop):
             "serve",
             "run",
             "test_cli.Macaw",
-            "--working_dir",
+            "--working-dir",
             os.path.dirname(__file__),
         ]
     )
@@ -344,7 +344,7 @@ def test_run_working_dir(ray_start_stop):
             os.path.join(
                 os.path.dirname(__file__), "test_config_files", "scarlet.yaml"
             ),
-            "--working_dir",
+            "--working-dir",
             os.path.dirname(__file__),
         ]
     )
@@ -360,7 +360,7 @@ def test_run_working_dir(ray_start_stop):
             "serve",
             "run",
             "test_module.test.one",
-            "--working_dir",
+            "--working-dir",
             "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip",
         ]
     )
