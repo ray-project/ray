@@ -192,14 +192,22 @@ class TorchBackend(Backend):
 
 
 class _WrappedDataLoader(DataLoader):
-    def __init__(self, base_dataloader: DataLoader, device: torch.device):
+    def __init__(
+        self, base_dataloader: DataLoader, device: torch.device, auto_transfer: bool
+    ):
 
         self.__dict__.update(getattr(base_dataloader, "__dict__", {}))
         self._dataloader = base_dataloader
         self.dataloader_iter = None
         self.device = device
+        # disable auto transfer (host->device) if cpu is used
+        self._auto_transfer = auto_transfer if device.type == "cuda" else False
         # create a new CUDA stream to move data from host to device concurrently
-        self._memcpy_stream = torch.cuda.Stream() if device.type == "cuda" else None
+        self._memcpy_stream = (
+            torch.cuda.Stream()
+            if device.type == "cuda" and self._auto_transfer
+            else None
+        )
         self.next_batch = None
 
     def _move_to_device(self, item):
@@ -208,7 +216,7 @@ class _WrappedDataLoader(DataLoader):
 
         def try_move_device(i):
             try:
-                i = i.to(self.device, non_blocking=True)
+                i = i.to(self.device, non_blocking=self._auto_transfer)
             except AttributeError:
                 logger.debug(f"Item {i} cannot be moved to device " f"{self.device}.")
             return i
@@ -318,6 +326,7 @@ def prepare_data_loader(
     data_loader: torch.utils.data.DataLoader,
     add_dist_sampler: bool = True,
     move_to_device: bool = True,
+    auto_transfer: bool = True,
 ) -> torch.utils.data.DataLoader:
     """
     Prepares DataLoader for distributed execution.
@@ -332,6 +341,11 @@ def prepare_data_loader(
             the provided DataLoader.
         move_to_device (bool): If set, automatically move the data
             returned by the data loader to the correct device.
+        auto_transfer (bool): If set and device is GPU, another CUDA stream
+            is created to automatically copy data from host (CPU) memory
+            to device (GPU) memory (the default CUDA stream still runs the
+            training procedure). If device is CPU, it will be disabled
+            regardless of the setting.
     """
 
     # Only add Distributed Sampler if the following conditions hold:
@@ -379,7 +393,7 @@ def prepare_data_loader(
 
     if move_to_device:
         device = get_device()
-        data_loader = _WrappedDataLoader(data_loader, device)
+        data_loader = _WrappedDataLoader(data_loader, device, auto_transfer)
 
     return data_loader
 
