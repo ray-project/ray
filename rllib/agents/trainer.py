@@ -361,6 +361,24 @@ COMMON_CONFIG: TrainerConfigDict = {
         # "env_config": {...},
         # "explore": False
     },
+    # === Replay Buffer Settings ===
+    # Provide a dict specifying the ReplayBuffer's config.
+    "replay_buffer_config": {
+        # The ReplayBuffer class to use. Any class that obeys the
+        # ReplayBuffer API can be used here. In the simplest case, this is the
+        # name (str) of any class present in the `rllib.utils.replay_buffers`
+        # package. You can also provide the python class directly or the
+        # full location of your class (e.g.
+        # "ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer").
+        "type": "ReplayBuffer",
+        # The capacity of units that can be stored in one ReplayBuffer
+        # instance before eviction.
+        "capacity": 10000,
+        # Specifies how experiences are stored. Either 'sequences' or
+        # 'timesteps'.
+        "storage_unit": "timesteps",
+        # Add constructor kwargs here (if any).
+    },
     # Number of parallel workers to use for evaluation. Note that this is set
     # to zero by default, which means evaluation will be run in the trainer
     # process (only if evaluation_interval is not None). If you increase this,
@@ -719,6 +737,7 @@ class Trainer(Trainable):
         "custom_resources_per_worker",
         "evaluation_config",
         "exploration_config",
+        "replay_buffer_config"
         "extra_python_environs_for_driver",
         "extra_python_environs_for_worker",
         "input_config",
@@ -727,7 +746,8 @@ class Trainer(Trainable):
 
     # List of top level keys with value=dict, for which we always override the
     # entire value (dict), iff the "type" key in that value dict changes.
-    _override_all_subkeys_if_type_changes = ["exploration_config"]
+    _override_all_subkeys_if_type_changes = ["exploration_config",
+                                             "replay_buffer_config"]
 
     # TODO: Deprecate. Instead, override `Trainer.get_default_config()`.
     _default_config = COMMON_CONFIG
