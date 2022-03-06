@@ -345,7 +345,8 @@ def prepare_data_loader(
             is created to automatically copy data from host (CPU) memory
             to device (GPU) memory (the default CUDA stream still runs the
             training procedure). If device is CPU, it will be disabled
-            regardless of the setting.
+            regardless of the setting. This configuration will be ignored
+            if ``move_to_device`` is False.
     """
 
     # Only add Distributed Sampler if the following conditions hold:
