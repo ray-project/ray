@@ -246,8 +246,6 @@ def execute_workflow(workflow: Workflow) -> "WorkflowExecutionResult":
             break
         workflow = result.persisted_output.workflow
         context = result.persisted_output.context
-        # prevent leaking of workflow refcount
-        del result
 
     # Convert the outputs into ObjectRefs.
     if not isinstance(result.persisted_output, WorkflowOutputType):
