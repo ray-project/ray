@@ -1,73 +1,33 @@
-from typing import Any, Dict, List, Union
+from typing import Any, Type, Callable, Dict, List, Union, Optional
 
-from ray.experimental.dag import DAGNode
+from ray.experimental.dag import InputNode, InputAtrributeNode, DAGInputData
 from ray.experimental.dag.format_utils import get_dag_node_str
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 
-IN_CONTEXT_MANAGER = "__in_context_manager__"
 
+class PipelineInputNode(InputNode):
+    """Node used in DAG building API to mark entrypoints of a Serve Pipeline.
+    The extension of Ray DAG level InputNode with additional abilities such
+    as input schema validation and input conversion for HTTP.
 
-class InputNode(DAGNode):
-    """Ray dag node used in DAG building API to mark entrypoints of a DAG.
-
-    Should only be function or class method. A DAG can have multiple
-    entrypoints, but only one instance of InputNode exists per DAG, shared
-    among all DAGNodes.
-
-    Example:
-                   m1.forward
-                /            \
-        dag_input              ensemble -> dag_output
-                \            /
-                   m2.forward
-
-    In this pipeline, each user input is broadcasted to both m1.forward and
-    m2.forward as first stop of the DAG, and authored like
-    >>> @ray.remote
-    >>> class Model:
-    ...     def __init__(self, val):
-    ...         self.val = val
-    ...     def forward(self, input):
-    ...         return self.val * input
-
-    >>> @ray.remote
-    >>> def combine(a, b):
-    ...     return a + b
-
-    >>> with InputNode() as dag_input:
-    >>>     m1 = Model.bind(1)
-    >>>     m2 = Model.bind(2)
-    >>>     m1_output = m1.forward.bind(dag_input[0])
-    >>>     m2_output = m2.forward.bind(dag_input.x)
-    >>>     ray_dag = combine.bind(m1_output, m2_output)
-
-    >>> # Pass mix of args and kwargs as input.
-    >>> ray_dag.execute(1, x=2) # 1 sent to m1, 2 sent to m2
-
-    >>> # Alternatively user can also pass single data object, list or dict
-    >>> # and access them via list index, object attribute or dict key str.
-    >>> ray_dag.execute(UserDataObject(m1=1, m2=2))
-    ...     # dag_input.m1, dag_input.m2
-    >>> ray_dag.execute([1, 2]))
-    ...     # dag_input[0], dag_input[1]
-    >>> ray_dag.execute({"m1": 1, "m2": 2})
-    ...     # dag_input["m1"], dag_input["m2"]
+    # TODO (jiaodong): Add a concrete example here
     """
 
-    def __init__(self, *args, _other_args_to_resolve=None, **kwargs):
+    def __init__(self, input_schema: Optional[Union[Type, Callable]] = None, _other_args_to_resolve=None):
         """InputNode should only take attributes of validating and converting
         input data rather than the input data itself. User input should be
         provided via `ray_dag.execute(user_input)`.
 
         Args:
+            input_schema: User class that
+
             _other_args_to_resolve: Internal only to keep InputNode's execution
                 context throughput pickling, replacement and serialization.
                 User should not use or pass this field.
         """
-        if len(args) != 0 or len(kwargs) != 0:
-            raise ValueError("InputNode should not take any args or kwargs.")
+        self._input_schema = input_schema
 
-        super().__init__([], {}, {}, other_args_to_resolve=_other_args_to_resolve)
+        super().__init__(_other_args_to_resolve=_other_args_to_resolve)
 
     def _copy_impl(
         self,
@@ -76,7 +36,7 @@ class InputNode(DAGNode):
         new_options: Dict[str, Any],
         new_other_args_to_resolve: Dict[str, Any],
     ):
-        return InputNode(_other_args_to_resolve=new_other_args_to_resolve)
+        return PipelineInputNode(_other_args_to_resolve=new_other_args_to_resolve)
 
     def _execute_impl(self, *args, **kwargs):
         """Executor of InputNode."""
@@ -92,59 +52,25 @@ class InputNode(DAGNode):
 
         return DAGInputData(*args, **kwargs)
 
-    def _in_context_manager(self) -> bool:
-        """Return if InputNode is created in context manager."""
-        if (
-            not self._bound_other_args_to_resolve
-            or IN_CONTEXT_MANAGER not in self._bound_other_args_to_resolve
-        ):
-            return False
-        else:
-            return self._bound_other_args_to_resolve[IN_CONTEXT_MANAGER]
-
-    def set_context(self, key: str, val: Any):
-        """Set field in parent DAGNode attribute that can be resolved in both
-        pickle and JSON serialization
-        """
-        self._bound_other_args_to_resolve[key] = val
 
     def __str__(self) -> str:
-        return get_dag_node_str(self, "__InputNode__")
+        return get_dag_node_str(self, "__PipelineInputNode__")
 
-    def __getattr__(self, key: str):
-        assert isinstance(
-            key, str
-        ), "Please only access dag input attributes with str key."
-        return InputAtrributeNode(self, key, "__getattr__")
-
-    def __getitem__(self, key: Union[int, str]) -> Any:
-        assert isinstance(key, (str, int)), (
-            "Please only use int index or str as first-level key to "
-            "access fields of dag input."
-        )
-        return InputAtrributeNode(self, key, "__getitem__")
-
-    def __enter__(self):
-        self.set_context(IN_CONTEXT_MANAGER, True)
-        return self
-
-    def __exit__(self, *args):
-        pass
 
     def to_json(self, encoder_cls) -> Dict[str, Any]:
-        json_dict = super().to_json_base(encoder_cls, InputNode.__name__)
+        json_dict = super().to_json_base(encoder_cls, PipelineInputNode.__name__)
         return json_dict
 
     @classmethod
     def from_json(cls, input_json, object_hook=None):
-        assert input_json[DAGNODE_TYPE_KEY] == InputNode.__name__
+        assert input_json[DAGNODE_TYPE_KEY] == PipelineInputNode.__name__
         args_dict = super().from_json_base(input_json, object_hook=object_hook)
         node = cls(_other_args_to_resolve=args_dict["other_args_to_resolve"])
         node._stable_uuid = input_json["uuid"]
         return node
 
 
-class InputAtrributeNode(DAGNode):
+class PipelineInputAtrributeNode(InputAtrributeNode):
     """Represents partial access of user input based on an index (int),
      object attribute or dict key (str).
 
@@ -225,27 +151,3 @@ class InputAtrributeNode(DAGNode):
 
     def __str__(self) -> str:
         return get_dag_node_str(self, f"[\"{self._key}\"]")
-
-
-class DAGInputData:
-    """If user passed multiple args and kwargs directly to dag.execute(), we
-    generate this wrapper for all user inputs as one object, accessible via
-    list index or object attribute key.
-    """
-
-    def __init__(self, *args, **kwargs):
-        self._args = list(args)
-        self._kwargs = kwargs
-
-    def __getitem__(self, key: Union[int, str]) -> Any:
-        if isinstance(key, int):
-            # Access list args by index.
-            return self._args[key]
-        elif isinstance(key, str):
-            # Access kwarg by key.
-            return self._kwargs[key]
-        else:
-            raise ValueError(
-                "Please only use int index or str as first-level key to "
-                "access fields of dag input."
-            )
