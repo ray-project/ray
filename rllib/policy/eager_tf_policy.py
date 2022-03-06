@@ -485,7 +485,7 @@ def build_eager_tf_policy(
                 timestep,
             )
             # Update our global timestep by the batch size.
-            self.global_timestep += tree.flatten(ret[0])[0].shape[0]
+            self.global_timestep += tree.flatten(ret[0])[0].shape.as_list()[0]
             return convert_to_numpy(ret)
 
         @override(Policy)

@@ -69,9 +69,10 @@ def check_env(env: EnvType) -> None:
         else:
             logger.warning(
                 "Env checking isn't implemented for VectorEnvs, RemoteBaseEnvs, "
-                "ExternalMultiAgentEnv,or ExternalEnvs or Environments that are Ray actors"
+                "ExternalMultiAgentEnv,or ExternalEnvs or Environments that are "
+                "Ray actors"
             )
-    except Exception as e:
+    except Exception:
         actual_error = traceback.format_exc()
         raise ValueError(
             f"{actual_error}\n"
@@ -204,17 +205,22 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
 
     if not isinstance(env, MultiAgentEnv):
         raise ValueError("The passed env is not a MultiAgentEnv.")
-    elif not (hasattr(env, "observation_space") and hasattr(env, "action_space") and
-              hasattr(env, "_agent_ids") and
-              hasattr(env, "_spaces_in_preferred_format")):
+    elif not (
+        hasattr(env, "observation_space")
+        and hasattr(env, "action_space")
+        and hasattr(env, "_agent_ids")
+        and hasattr(env, "_spaces_in_preferred_format")
+    ):
         if log_once("ma_env_super_ctor_called"):
             logger.warning(
                 f"Your MultiAgentEnv {env} does not have some or all of the needed "
                 "base-class attributes! Make sure you call `super().__init__` from "
                 "within your MutiAgentEnv's constructor. "
-                "This will raise an error in the future.")
-        env.observation_space = env.action_space = \
-            env._spaces_in_preferred_format = None
+                "This will raise an error in the future."
+            )
+        env.observation_space = (
+            env.action_space
+        ) = env._spaces_in_preferred_format = None
         env._agent_ids = set()
 
     reset_obs = env.reset()
@@ -360,12 +366,17 @@ def _check_reward(reward, base_env=False, agent_ids=None):
         for _, multi_agent_dict in reward.items():
             for agent_id, rew in multi_agent_dict.items():
                 if not (
-                    np.isreal(rew) and not isinstance(rew, bool) and np.isscalar(rew)
+                    np.isreal(rew)
+                    and not isinstance(rew, bool)
+                    and (
+                        np.isscalar(rew)
+                        or (isinstance(rew, np.ndarray) and rew.shape == ())
+                    )
                 ):
                     error = (
                         "Your step function must return rewards that are"
                         f" integer or float. reward: {rew}. Instead it was a "
-                        f"{type(reward)}"
+                        f"{type(rew)}"
                     )
                     raise ValueError(error)
                 if not (agent_id in agent_ids or agent_id == "__all__"):
