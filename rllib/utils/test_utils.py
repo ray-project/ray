@@ -558,9 +558,10 @@ def check_train_results(train_results):
                     configured_b
                     / (
                         train_results["config"]["model"]["max_seq_len"]
-                        + train_results["config"].get("burn_in",
-                                                      train_results["config"]["replay_buffer_config"]["burn_in"])
-
+                        + train_results["config"].get(
+                            "burn_in",
+                            train_results["config"]["replay_buffer_config"]["burn_in"],
+                        )
                     )
                     == actual_b
                 )

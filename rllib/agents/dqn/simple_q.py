@@ -159,8 +159,9 @@ class SimpleQTrainer(Trainer):
                     "prioritized_replay=False."
                 )
 
-        if config.get("replay_buffer_config").get("replay_batch_size") < \
-                config.get("train_batch_size"):
+        if config.get("replay_buffer_config").get("replay_batch_size") < config.get(
+            "train_batch_size"
+        ):
             raise ValueError("Choose replay_batch_size >= train_batch_size.")
 
         # Multi-agent mode and multi-GPU optimizer.

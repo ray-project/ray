@@ -11,7 +11,6 @@ import ray  # noqa F401
 import psutil  # noqa E402
 
 from ray.util.debug import log_once
-from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.metrics.window_stat import WindowStat
@@ -103,8 +102,7 @@ class ReplayBuffer:
         return self.add(batch, **kwargs)
 
     @ExperimentalAPI
-    def replay(self, num_items: int = 1, **kwargs) -> Optional[
-        SampleBatchType]:
+    def replay(self, num_items: int = 1, **kwargs) -> Optional[SampleBatchType]:
         """Deprecated in favor of new ReplayBuffer API."""
         if log_once("deprecated_replay_method"):
             logger.info(

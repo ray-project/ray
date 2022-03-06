@@ -172,8 +172,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
     @ExperimentalAPI
     @override(ReplayBuffer)
-    def replay(self, num_items: int = None, **kwargs) -> Optional[
-        SampleBatchType]:
+    def replay(self, num_items: int = None, **kwargs) -> Optional[SampleBatchType]:
         """Deprecated in favor of new ReplayBuffer API.
 
         This replay method overrides the ordinary
