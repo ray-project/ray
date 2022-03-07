@@ -1,6 +1,8 @@
 import argparse
 import logging
+import multiprocessing as mp
 import os
+import time
 
 import ray
 from ray import ray_constants
@@ -10,8 +12,57 @@ from ray.autoscaler._private.monitor import Monitor
 
 from autoscaling_config import AutoscalingConfigProducer
 
+BACKOFF_S = 5
 
-def setup_logging() -> None:
+
+def run_autoscaler_with_retries(cluster_name: str,
+                                cluster_namespace: str,
+                                redis_password: str = ""):
+    """Keep trying to start the autoscaler until it runs.
+    We need to retry until the Ray head is running.
+
+    This script also has the effect of restarting the autoscaler if it fails.
+
+    Autoscaler-starting attempts are run in subprocesses out of fear that a
+    failed Monitor.run() attempt could leave dangling half-initialized global
+    Python state.
+    """
+    while True:
+        autoscaler_process = mp.Process(
+            target=_run_autoscaler,
+            args=(cluster_name, cluster_namespace, redis_password)
+        )
+        autoscaler_process.start()
+        autoscaler_process.join()
+        print(
+            "WARNING: The autoscaler stopped with exit code "
+            f"{autoscaler_process.exitcode}.\n"
+            f"Restarting in {BACKOFF_S} seconds."
+        )
+        # The error will be logged by the subprocess.
+        time.sleep(BACKOFF_S)
+
+
+def _run_autoscaler(cluster_name: str, cluster_namespace: str,
+                    redis_password: str = ""):
+    _setup_logging()
+    head_ip = get_node_ip_address()
+
+    autoscaling_config_producer = AutoscalingConfigProducer(
+        cluster_name, cluster_namespace
+    )
+
+    Monitor(
+        address=f"{head_ip}:6379",
+        redis_password=redis_password,
+        # The `autoscaling_config` arg can be a dict or a `Callable: () -> dict`.
+        # In this case, it's a callable.
+        autoscaling_config=autoscaling_config_producer,
+        monitor_ip=head_ip,
+    ).run()
+
+
+def _setup_logging() -> None:
     """Log to autoscaler log file
     (typically, /tmp/ray/session_latest/logs/monitor.*)
 
@@ -38,46 +89,3 @@ def setup_logging() -> None:
     root_handler.setFormatter(logging.Formatter(ray_constants.LOGGER_FORMAT))
 
     root_logger.addHandler(root_handler)
-
-
-if __name__ == "__main__":
-    setup_logging()
-
-    parser = argparse.ArgumentParser(description="Kuberay Autoscaler")
-    parser.add_argument(
-        "--cluster-name",
-        required=True,
-        type=str,
-        help="The name of the Ray Cluster.\n"
-        "Should coincide with the `metadata.name` of the RayCluster CR.",
-    )
-    parser.add_argument(
-        "--cluster-namespace",
-        required=True,
-        type=str,
-        help="The Kubernetes namespace the Ray Cluster lives in.\n"
-        "Should coincide with the `metadata.namespace` of the RayCluster CR.",
-    )
-    parser.add_argument(
-        "--redis-password",
-        required=False,
-        type=str,
-        default=None,
-        help="The password to use for Redis",
-    )
-    args = parser.parse_args()
-
-    head_ip = get_node_ip_address()
-
-    autoscaling_config_producer = AutoscalingConfigProducer(
-        args.cluster_name, args.cluster_namespace
-    )
-
-    Monitor(
-        address=f"{head_ip}:6379",
-        redis_password=args.redis_password,
-        # The `autoscaling_config` arg can be a dict or a `Callable: () -> dict`.
-        # In this case, it's a callable.
-        autoscaling_config=autoscaling_config_producer,
-        monitor_ip=head_ip,
-    ).run()

@@ -38,6 +38,9 @@ from ray.autoscaler._private.commands import (
 )
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
+from ray.autoscaler._private.kuberay.run_autoscaler import (
+    run_autoscaler_with_retries
+)
 
 from ray.internal.internal_api import memory_summary
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
@@ -2001,6 +2004,39 @@ def global_gc(address):
     ray.init(address=address)
     ray.internal.internal_api.global_gc()
     print("Triggered gc.collect() on all workers.")
+
+
+@cli.command(name="kuberay-autoscaler", hidden=True)
+@click.option(
+    "--cluster-name",
+    required=True,
+    type=str,
+    help="The name of the Ray Cluster.\n"
+    "Should coincide with the `metadata.name` of the RayCluster CR.",
+)
+@click.option(
+    "--cluster-namespace",
+    required=True,
+    type=str,
+    help="The Kubernetes namespace the Ray Cluster lives in.\n"
+    "Should coincide with the `metadata.namespace` of the RayCluster CR.",
+
+)
+@click.option(
+    "--redis-password",
+    required=False,
+    type=str,
+    default=None,
+    help="The password to use for Redis",
+)
+def kuberay_autoscaler(cluster_name: str,
+                       cluster_namespace: str,
+                       redis_password: str) -> None:
+    """Entry-point for the autoscaler when run as a component of a Ray cluster
+    managed by the KubeRay operator.
+    """
+    run_autoscaler_with_retries(cluster_name, cluster_namespace, redis_password)
+
 
 
 @cli.command(name="health-check", hidden=True)
