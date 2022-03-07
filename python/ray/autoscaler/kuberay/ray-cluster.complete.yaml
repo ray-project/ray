@@ -20,7 +20,7 @@ spec:
     # logical group name, for this called head-group, also can be functional
     # pod type head or worker
     # rayNodeType: head # Not needed since it is under the headgroup
-    # the following params are used to complete the ray start: ray start --head --block --redis-port=6379 ...
+    # the following params are used to complete the ray start: ray start --head --block --port=6379 ...
     rayStartParams:
       # Flag "no-monitor" must be set when running the autoscaler in
       # a sidecar container.
@@ -29,7 +29,6 @@ spec:
       object-manager-port: '9999'
       node-manager-port: '9998'
       object-store-memory: '100000000'
-      redis-password: '5241590000000000'
       dashboard-host: '0.0.0.0'
       node-ip-address: $MY_POD_IP # auto-completed as the head pod IP
       block: 'true'
@@ -124,8 +123,6 @@ spec:
           - "$(RAY_CLUSTER_NAME)"
           - "--cluster-namespace"
           - "$(RAY_CLUSTER_NAMESPACE)"
-          - "--redis-password"
-          - "5241590000000000"
           resources:
             limits:
               cpu: 500m
@@ -158,7 +155,6 @@ spec:
     #  - raycluster-complete-worker-small-group-k8tj7 
     # the following params are used to complete the ray start: ray start --block --node-ip-address= ...
     rayStartParams:
-      redis-password: '5241590000000000'
       node-ip-address: $MY_POD_IP
       block: 'true'
     #pod template
