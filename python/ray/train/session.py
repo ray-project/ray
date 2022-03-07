@@ -89,7 +89,7 @@ class Session:
         self.ignore_report = False
         self.training_started = False
 
-        self._accelerator = None
+        self.accelerator = None
 
     def get_current_ip(self):
         self.local_ip = ray.util.get_node_ip_address()
@@ -235,31 +235,6 @@ class Session:
         # checkpoint has been processed.
         self.continue_lock.acquire()
 
-    def get_accelerator(
-        self, default_accelerator_cls: Type[Accelerator]
-    ) -> Accelerator:
-        """The accelerator for this training session.
-
-        If an accelerator has not been set, then this method will construct an
-        accelerator using the provided accelerator class.
-        """
-        if not self._accelerator:
-            self._accelerator = default_accelerator_cls()
-        return self._accelerator
-
-    def set_accelerator(self, accelerator: Accelerator) -> None:
-        """Sets the accelerator for this training session.
-
-        Args:
-            accelerator (Accelerator): The accelerator to use for training.
-
-        Raises:
-            RuntimeError: if the accelerator has already been set.
-        """
-        if self._accelerator:
-            raise RuntimeError("Cannot change accelerator once set.")
-        self._accelerator = accelerator
-
 
 _session = None
 
@@ -278,6 +253,18 @@ def _warn_session_misuse(fn_name: str):
             "inside a training function that is executed by "
             "`Trainer.run`. Returning None."
         )
+
+
+def _raise_session_misuse(fn_name: str):
+    """Raises RuntimeError on provided fn being used outside of session.
+
+    Args:
+        fn_name (str): The name of the function used outside of session.
+    """
+    raise RuntimeError(
+        f"`train.{fn_name}()` is meant to only be called inside a training function "
+        "that is executed by `Trainer.run`."
+    )
 
 
 def init_session(*args, **kwargs) -> None:
@@ -542,11 +529,8 @@ def get_accelerator(default_accelerator_cls: Type[Accelerator]) -> Accelerator:
     """
     session = get_session()
     if session is None:
-        raise RuntimeError(
-            "The function you called is meant to be used inside a training function "
-            "that is executed by `Trainer.run`."
-        )
-    return session.get_accelerator(default_accelerator_cls)
+        _raise_session_misuse(get_accelerator.__name__)
+    return session.accelerator
 
 
 def set_accelerator(accelerator: Accelerator) -> None:
@@ -561,8 +545,7 @@ def set_accelerator(accelerator: Accelerator) -> None:
     """
     session = get_session()
     if session is None:
-        raise RuntimeError(
-            "The function you called is meant to be used inside a training function "
-            "that is executed by `Trainer.run`."
-        )
-    session.set_accelerator(accelerator)
+        _raise_session_misuse(set_accelerator.__name__)
+    if session.accelerator is not None:
+        raise RuntimeError("Cannot change accelerator once set.")
+    session.accelerator = accelerator

@@ -36,9 +36,6 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-print("YEET")
-
-
 class TorchAccelerator(Accelerator):
     """An object that implements methods to accelerate PyTorch training."""
 
