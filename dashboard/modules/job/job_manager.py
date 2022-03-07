@@ -452,8 +452,6 @@ class JobManager:
         # returns immediately and we can catch errors with the actor starting
         # up.
         try:
-            logger.error("RUNTIME ENV FROM MANAGER: " + str(runtime_env))
-            print("RUNTIME ENV FROM MANAGER: " + str(runtime_env))
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
                 name=self.JOB_ACTOR_NAME.format(job_id=job_id),
