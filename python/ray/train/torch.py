@@ -316,9 +316,9 @@ def prepare_data_loader(
         def with_sampler(loader):
             # Automatically set the DistributedSampler
 
-            # If you're using sampler, the DataLoader shuffle attribute must be set to
-            # False. Shuffling is instead determined by the shuffle argument passed to
-            # the DistributedSampler constructor.
+            # If you're using a sampler, the DataLoader shuffle attribute must be set
+            # to False. Shuffling is instead determined by the shuffle argument passed
+            # to the DistributedSampler constructor.
 
             # If no sampler is passed to the DataLoader constructor, Torch constructs a
             # default sampler. The default sampler is a RandomSampler if shuffling is
