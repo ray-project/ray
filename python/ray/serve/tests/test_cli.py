@@ -229,7 +229,7 @@ def test_create_deployment(ray_start_stop, tmp_working_dir, class_name):  # noqa
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_deploy(ray_start_stop):
-    # Deploys two valid config files and checks that the deployments work
+    # Deploys some valid config files and checks that the deployments work
 
     # Initialize serve in test to enable calling serve.list_deployments()
     ray.init(address="auto", namespace=RAY_INTERNAL_DASHBOARD_NAMESPACE)
@@ -241,6 +241,9 @@ def test_deploy(ray_start_stop):
     )
     two_deployments = os.path.join(
         os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
+    )
+    deny_deployment = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "deny_access.yaml"
     )
 
     # Dictionary mapping test config file names to expected deployment names
@@ -275,23 +278,46 @@ def test_deploy(ray_start_stop):
 
     request_url = "http://localhost:8000/"
     success_message_fragment = b"Sent deploy request successfully!"
-    for config_file_name, expected_deployments in configs.items():
-        deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
+
+    # Check idempotence:
+    for _ in range(2):
+        for config_file_name, expected_deployments in configs.items():
+            deploy_response = subprocess.check_output(
+                ["serve", "deploy", config_file_name]
+            )
+            assert success_message_fragment in deploy_response
+
+            for name, deployment_config in expected_deployments.items():
+                wait_for_condition(
+                    lambda: (
+                        requests.get(f"{request_url}{name}").text
+                        == deployment_config["response"]
+                    ),
+                    timeout=15,
+                )
+
+            running_deployments = serve.list_deployments()
+
+            # Check that running deployment names match expected deployment names
+            assert set(running_deployments.keys()) == expected_deployments.keys()
+
+            for name, deployment in running_deployments.items():
+                assert (
+                    deployment.num_replicas
+                    == expected_deployments[name]["num_replicas"]
+                )
+
+        # Deploy a deployment without HTTP access
+        deploy_response = subprocess.check_output(["serve", "deploy", deny_deployment])
         assert success_message_fragment in deploy_response
 
-        running_deployments = serve.list_deployments()
-
-        # Check that running deployment names match expected deployment names
-        assert set(running_deployments.keys()) == expected_deployments.keys()
-
-        for name, deployment in running_deployments.items():
-            assert deployment.num_replicas == expected_deployments[name]["num_replicas"]
-
-        for name, deployment_config in expected_deployments.items():
-            assert (
-                requests.get(f"{request_url}{name}").text
-                == deployment_config["response"]
-            )
+        wait_for_condition(
+            lambda: requests.get(f"{request_url}shallow").status_code == 404, timeout=15
+        )
+        assert (
+            ray.get(serve.get_deployment("shallow").get_handle().remote())
+            == "Hello shallow world!"
+        )
 
     ray.shutdown()
 
