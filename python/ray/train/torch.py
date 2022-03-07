@@ -13,7 +13,7 @@ from ray import train
 from ray.train.accelerator import Accelerator
 from ray.train.backend import BackendConfig, Backend, EncodedData
 from ray.train.constants import PYTORCH_PROFILER_KEY
-from ray.train.session import get_session
+from ray.train.session import get_accelerator, set_accelerator
 from ray.train.worker_group import WorkerGroup
 from ray.train.utils import get_address_and_port
 from ray.util import PublicAPI
@@ -352,7 +352,7 @@ class _WrappedDataLoader(DataLoader):
 @PublicAPI(stability="beta")
 def get_device() -> torch.device:
     """Gets the correct torch device to use for training."""
-    return get_session().get_accelerator(TorchAccelerator).get_device()
+    return get_accelerator(TorchAccelerator).get_device()
 
 
 @PublicAPI(stability="beta")
@@ -378,15 +378,11 @@ def prepare_model(
             ``DistributedDataParallel`` initialization if ``wrap_ddp`` is
             set to True.
     """
-    return (
-        get_session()
-        .get_accelerator(TorchAccelerator)
-        .prepare_model(
-            model,
-            move_to_device=move_to_device,
-            wrap_ddp=wrap_ddp,
-            ddp_kwargs=ddp_kwargs,
-        )
+    return get_accelerator(TorchAccelerator).prepare_model(
+        model,
+        move_to_device=move_to_device,
+        wrap_ddp=wrap_ddp,
+        ddp_kwargs=ddp_kwargs,
     )
 
 
@@ -409,21 +405,17 @@ def prepare_data_loader(
         move_to_device (bool): If set, automatically move the data
             returned by the data loader to the correct device.
     """
-    return (
-        get_session()
-        .get_accelerator(TorchAccelerator)
-        .prepare_data_loader(
-            data_loader,
-            add_dist_sampler=add_dist_sampler,
-            move_to_device=move_to_device,
-        )
+    return get_accelerator(TorchAccelerator).prepare_data_loader(
+        data_loader,
+        add_dist_sampler=add_dist_sampler,
+        move_to_device=move_to_device,
     )
 
 
 @PublicAPI(stability="beta")
 def accelerate() -> None:
     """Enables training optimizations."""
-    get_session().set_accelerator(TorchAccelerator())
+    set_accelerator(TorchAccelerator())
 
 
 WORKER_TRACE_DIR_NAME = "pytorch_profiler_worker_traces"
