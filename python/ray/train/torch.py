@@ -334,7 +334,7 @@ def prepare_data_loader(
             if not using_default_sampler:
                 logger.warn(
                     f"The {loader.sampler.__class__.__name__} will be overwritten with a DistributedSampler."
-                    f"You can disable this by setting with_sampler to False in prepare_data_loader"
+                    f"You can disable this by setting `with_sampler` to False in `prepare_data_loader`"
                 )
 
             data_loader_args = {
