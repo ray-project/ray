@@ -379,7 +379,6 @@ py_test(
 py_test_module_list(
   files = [
       "tests/test_trial_executor_inheritance.py",
-      "tests/test_trial_runner_utils.py",
   ],
   size = "large",
   extra_srcs = [],
