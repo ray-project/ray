@@ -1388,6 +1388,37 @@ class TestDeployGroup:
 
         self.deploy_and_check_responses(deployments, responses)
 
+    def test_import_path_deployment_decorated(self, serve_instance):
+        func = serve.deployment(
+            name="decorated_func",
+        )("ray.serve.tests.test_deploy.decorated_func")
+
+        clss = serve.deployment(
+            name="decorated_clss",
+        )("ray.serve.tests.test_deploy.DecoratedClass")
+
+        deployments = [func, clss]
+        responses = ["got decorated func", "got decorated class"]
+
+        self.deploy_and_check_responses(deployments, responses)
+
+        # Check that non-default decorated values were overwritten
+        assert serve.get_deployment("decorated_func").max_concurrent_queries != 17
+        assert serve.get_deployment("decorated_clss").max_concurrent_queries != 17
+
+
+# Decorated function with non-default max_concurrent queries
+@serve.deployment(max_concurrent_queries=17)
+def decorated_func(req=None):
+    return "got decorated func"
+
+
+# Decorated class with non-default max_concurrent queries
+@serve.deployment(max_concurrent_queries=17)
+class DecoratedClass:
+    def __call__(self, req=None):
+        return "got decorated class"
+
 
 if __name__ == "__main__":
     import sys
