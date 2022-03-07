@@ -92,13 +92,13 @@ def process_args_and_kwargs(
 def configure_runtime_env(deployment: Deployment, updates: Dict):
     """
     Overwrites deployment's runtime_env with fields in updates. Any fields in
-    deployment's runtime_env that aren't in udpates stay the same.
+    deployment's runtime_env that aren't in updates stay the same.
     """
 
     if deployment.ray_actor_options is None:
         deployment._ray_actor_options = {"runtime_env": updates}
     elif "runtime_env" in deployment.ray_actor_options:
-        deployment.ray_actor_options["runtime_env"].udpate(updates)
+        deployment.ray_actor_options["runtime_env"].update(updates)
     else:
         deployment.ray_actor_options["runtime_env"] = updates
 
@@ -453,7 +453,7 @@ def run(
             ray.init(address=cluster_address, namespace="serve")
             serve.start()
             ServeSubmissionClient(dashboard_address)._upload_working_dir_if_needed(
-                runtime_env
+                runtime_env_updates
             )
 
             configure_runtime_env(deployment, runtime_env_updates)
