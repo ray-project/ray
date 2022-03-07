@@ -59,6 +59,7 @@
 # Our .buildkite/pipeline.yml and .buildkite/pipeline.gpu.yml files execute all
 # these tests in n different jobs.
 
+load("//bazel:python.bzl", "py_test_module_list")
 
 # --------------------------------------------------------------------
 # Agents learning regression tests.
@@ -1214,6 +1215,13 @@ py_test(
     tags = ["team:ml", "env"],
     size = "small",
     srcs = ["env/wrappers/tests/test_group_agents_wrapper.py"]
+)
+
+py_test(
+    name = "env/wrappers/tests/test_kaggle_wrapper",
+    tags = ["team:ml", "env"],
+    size = "small",
+    srcs = ["env/wrappers/tests/test_kaggle_wrapper.py"]
 )
 
 # --------------------------------------------------------------------
@@ -2885,4 +2893,29 @@ py_test(
     tags = ["team:ml", "documentation"],
     size = "medium",
     srcs = ["examples/documentation/rllib_on_rllib_readme.py"],
+)
+
+# --------------------------------------------------------------------
+# Manual/disabled tests
+# --------------------------------------------------------------------
+py_test_module_list(
+  files = [
+    "tests/test_dnc.py",
+    "tests/test_perf.py",
+    "tests/test_vector_env.py",
+    "env/tests/test_multi_agent_env.py",
+    "examples/env/tests/test_coin_game_non_vectorized_env.py",
+    "examples/env/tests/test_coin_game_vectorized_env.py",
+    "examples/env/tests/test_matrix_sequential_social_dilemma.py",
+    "examples/env/tests/test_wrappers.py",
+    "execution/tests/test_mixin_multi_agent_replay_buffer.py",
+    "utils/tests/test_check_env.py",
+    "utils/tests/test_check_multi_agent.py",
+    "utils/tests/test_errors.py",
+    "utils/tests/test_utils.py",
+  ],
+  size = "large",
+  extra_srcs = [],
+  deps = [],
+  tags = ["manual", "team:ml"],
 )
