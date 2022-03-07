@@ -226,6 +226,15 @@ def deploy(config_file_name: str, address: str):
 
     ServeSubmissionClient(address).deploy_application(config)
 
+    cli_logger.newline()
+    cli_logger.success(
+        "\nSent deploy request successfully!\n "
+        "* Use `serve status` to check your deployments' statuses.\n "
+        "* Use `serve info` to see your running Serve "
+        "application's configuration.\n"
+    )
+    cli_logger.newline()
+
 
 @cli.command(
     short_help="[Experimental] Run deployments via Serve's Python API.",
@@ -460,3 +469,7 @@ def delete(address: str, yes: bool):
         )
 
     ServeSubmissionClient(address).delete_application()
+
+    cli_logger.newline()
+    cli_logger.success("\nSent delete request successfully!\n")
+    cli_logger.newline()

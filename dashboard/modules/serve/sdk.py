@@ -7,7 +7,6 @@ except ImportError:
     aiohttp = None
     requests = None
 
-from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 from ray.serve.api import Deployment
 
@@ -49,16 +48,7 @@ class ServeSubmissionClient(SubmissionClient):
     def deploy_application(self, app_config: Dict) -> None:
         response = self._do_request("PUT", DEPLOY_PATH, json_data=app_config)
 
-        if response.status_code == 200:
-            cli_logger.newline()
-            cli_logger.success(
-                "\nSent deploy request successfully!\n "
-                "* Use `serve status` to check your deployments' statuses.\n "
-                "* Use `serve info` to see your running Serve "
-                "application's configuration.\n"
-            )
-            cli_logger.newline()
-        else:
+        if response.status_code != 200:
             self._raise_error(response)
 
     def get_info(self) -> Union[Dict, None]:
@@ -77,11 +67,7 @@ class ServeSubmissionClient(SubmissionClient):
 
     def delete_application(self) -> None:
         response = self._do_request("DELETE", DELETE_PATH)
-        if response.status_code == 200:
-            cli_logger.newline()
-            cli_logger.success("\nSent delete request successfully!\n")
-            cli_logger.newline()
-        else:
+        if response.status_code != 200:
             self._raise_error(response)
 
     def set_up_runtime_env(
