@@ -2740,8 +2740,8 @@ Dict[str, List[str]]]): The names of the columns
         # Copy Dataset and clear the execution plan so the Dataset is out-of-band
         # serializable.
         plan_copy = self._plan.deep_copy(preserve_uuid=True)
-        plan_copy.clear()
         ds = Dataset(plan_copy, self._get_epoch(), self._lazy)
+        ds._plan.clear()
         ds._set_uuid(self._get_uuid())
 
         def _reduce(rf: ray.remote_function.RemoteFunction):
