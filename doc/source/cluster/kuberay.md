@@ -88,9 +88,16 @@ Then in the `ray/docker/kuberay-autoscaler` directory run:
 
 ```shell
 cp ../../python/dist/ray-2.0.0.dev0-cp37-cp37m-linux_x86_64.whl ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
-docker build --build-arg WHEEL_PATH="ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl" -t rayproject/kuberay-autoscaler --no-cache .
+docker build --build-arg WHEEL_PATH="ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl" -t rayproject/kuberay-autoscaler -f Dockerfile.dev --no-cache .
 docker push rayproject/kuberay-autoscaler
 ```
 
 where you replace `rayproject/kuberay-autoscaler` with the desired image path in your own docker account (normally
 `<username>/kuberay-autoscaler`). Please also make sure to update the image in `ray-cluster.complete.yaml`.
+
+If you don't make any changes to Ray autoscaler but only touch files under `docker/kuberay-autoscaler` or just want to catch up latest ray, you can skip building the wheel and build autoscaler directly.
+
+```
+docker build -t rayproject/kuberay-autoscaler --no-cache .
+docker push rayproject/kuberay-autoscaler
+```

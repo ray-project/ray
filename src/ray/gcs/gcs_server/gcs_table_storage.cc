@@ -50,9 +50,7 @@ Status GcsTable<Key, Data>::GetAll(const MapCallback<Key, Data> &callback) {
     std::unordered_map<Key, Data> values;
     for (auto &item : result) {
       if (!item.second.empty()) {
-        Data data;
-        data.ParseFromString(item.second);
-        values[Key::FromBinary(item.first)] = data;
+        values[Key::FromBinary(item.first)].ParseFromString(item.second);
       }
     }
     callback(std::move(values));
@@ -92,9 +90,7 @@ Status GcsTableWithJobId<Key, Data>::GetByJobId(const JobID &job_id,
     std::unordered_map<Key, Data> values;
     for (auto &item : result) {
       if (!item.second.empty()) {
-        Data data;
-        data.ParseFromString(item.second);
-        values[Key::FromBinary(item.first)] = std::move(data);
+        values[Key::FromBinary(item.first)].ParseFromString(item.second);
       }
     }
     callback(std::move(values));

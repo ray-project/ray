@@ -247,13 +247,15 @@ class FileSystemStorage(ExternalStorage):
             spill objects doesn't exist.
     """
 
-    def __init__(self, directory_path):
+    def __init__(self, directory_path, buffer_size=None):
         # -- sub directory name --
         self._spill_dir_name = DEFAULT_OBJECT_PREFIX
         # -- A list of directory paths to spill objects --
         self._directory_paths = []
         # -- Current directory to spill objects --
         self._current_directory_index = 0
+        # -- File buffer size to spill objects --
+        self._buffer_size = -1
 
         # Validation.
         assert (
@@ -264,6 +266,9 @@ class FileSystemStorage(ExternalStorage):
         assert isinstance(directory_path, list), (
             "Directory_path must be either a single " "string or a list of strings"
         )
+        if buffer_size is not None:
+            assert isinstance(buffer_size, int), "buffer_size must be an integer."
+            self._buffer_size = buffer_size
 
         # Create directories.
         for path in directory_path:
@@ -294,7 +299,7 @@ class FileSystemStorage(ExternalStorage):
         first_ref = object_refs[0]
         filename = f"{first_ref.hex()}-multi-{len(object_refs)}"
         url = f"{os.path.join(directory_path, filename)}"
-        with open(url, "wb") as f:
+        with open(url, "wb", buffering=self._buffer_size) as f:
             return self._write_multiple_objects(f, object_refs, owner_addresses, url)
 
     def restore_spilled_objects(

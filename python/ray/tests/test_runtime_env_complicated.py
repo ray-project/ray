@@ -24,7 +24,11 @@ from ray._private.test_utils import (
     wait_for_condition,
     chdir,
 )
-from ray._private.utils import get_conda_env_dir, get_conda_bin_executable
+from ray._private.utils import (
+    get_conda_env_dir,
+    get_conda_bin_executable,
+    try_to_create_directory,
+)
 
 if not os.environ.get("CI"):
     # This flags turns on the local development that link against current ray
@@ -841,16 +845,16 @@ def test_e2e_complex(call_ray_start, tmp_path):
 
                 return Path("./test").read_text()
 
-        a = TestActor.remote()
+        a = TestActor.options(runtime_env={"pip": str(requirement_path)}).remote()
         assert ray.get(a.test.remote()) == "Hello"
 
         # Check that per-task pip specification works and that the job's
-        # working_dir is not inherited.
+        # working_dir is still inherited.
         @ray.remote
         def test_pip():
             import pip_install_test  # noqa
 
-            return "Hello"
+            return Path("./test").read_text()
 
         assert (
             ray.get(
@@ -859,44 +863,22 @@ def test_e2e_complex(call_ray_start, tmp_path):
             == "Hello"
         )
 
-        @ray.remote
-        def test_working_dir():
-            import pip_install_test  # noqa
-
-            return Path("./test").read_text()
-
-        with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
-            ray.get(
-                test_working_dir.options(
-                    runtime_env={"pip": ["pip-install-test"]}
-                ).remote()
-            )
-        assert "FileNotFoundError" in str(excinfo.value)
-
         # Check that pip_install_test is not in the job's pip requirements.
         with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
             ray.get(test_pip.remote())
         assert "ModuleNotFoundError" in str(excinfo.value)
 
         # Check that per-actor pip specification works and that the job's
-        # working_dir is not inherited.
+        # working_dir is still inherited.
         @ray.remote
         class TestActor:
             def test(self):
-                import pip_install_test  # noqa
-
-                return "Hello"
-
-            def test_working_dir(self):
                 import pip_install_test  # noqa
 
                 return Path("./test").read_text()
 
         a = TestActor.options(runtime_env={"pip": ["pip-install-test"]}).remote()
         assert ray.get(a.test.remote()) == "Hello"
-        with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
-            ray.get(a.test_working_dir.remote())
-        assert "FileNotFoundError" in str(excinfo.value)
 
 
 @pytest.mark.skipif(
@@ -954,6 +936,76 @@ def test_runtime_env_override(call_ray_start):
         assert ray.get(child.read.remote("hello")) == "world"
 
         ray.shutdown()
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform != "linux",
+    reason="This test is only run on linux CI machines.",
+)
+def test_pip_with_env_vars(start_cluster):
+
+    with tempfile.TemporaryDirectory() as tmpdir, chdir(tmpdir):
+        TEST_ENV_NAME = "TEST_ENV_VARS"
+        TEST_ENV_VALUE = "TEST"
+        package_name = "test_package"
+        package_dir = os.path.join(tmpdir, package_name)
+        try_to_create_directory(package_dir)
+
+        setup_filename = os.path.join(package_dir, "setup.py")
+        setup_code = """import os
+from setuptools import setup, find_packages
+from setuptools.command.install import install
+
+class InstallTestPackage(install):
+    # this function will be called when pip install this package
+    def run(self):
+        assert os.environ.get('{TEST_ENV_NAME}') == '{TEST_ENV_VALUE}'
+
+setup(
+    name='test_package',
+    version='0.0.1',
+    packages=find_packages(),
+    cmdclass=dict(install=InstallTestPackage),
+    license="MIT",
+    zip_safe=False,
+)
+""".format(
+            TEST_ENV_NAME=TEST_ENV_NAME, TEST_ENV_VALUE=TEST_ENV_VALUE
+        )
+        with open(setup_filename, "wt") as f:
+            f.writelines(setup_code)
+
+        python_filename = os.path.join(package_dir, "test.py")
+        python_code = "import os; print(os.environ)"
+        with open(python_filename, "wt") as f:
+            f.writelines(python_code)
+
+        gz_filename = os.path.join(tmpdir, package_name + ".tar.gz")
+        subprocess.check_call(["tar", "-zcvf", gz_filename, package_name])
+
+        with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
+
+            @ray.remote(
+                runtime_env={
+                    "env_vars": {TEST_ENV_NAME: "failed"},
+                    "pip": [gz_filename],
+                }
+            )
+            def f1():
+                return True
+
+            ray.get(f1.remote())
+
+        @ray.remote(
+            runtime_env={
+                "env_vars": {TEST_ENV_NAME: TEST_ENV_VALUE},
+                "pip": [gz_filename],
+            }
+        )
+        def f2():
+            return True
+
+        assert ray.get(f2.remote())
 
 
 if __name__ == "__main__":

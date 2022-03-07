@@ -867,6 +867,10 @@ class SimpleListCollector(SampleCollector):
             # setting (used by our PolicyClients).
             last_info = episode.last_info_for(agent_id)
             if last_info and not last_info.get("training_enabled", True):
+                if is_done:
+                    agent_key = (episode_id, agent_id)
+                    del self.agent_key_to_policy_id[agent_key]
+                    del self.agent_collectors[agent_key]
                 continue
 
             if len(pre_batches) > 1:
@@ -946,6 +950,7 @@ class SimpleListCollector(SampleCollector):
             del self.episode_steps[episode_id]
             del self.agent_steps[episode_id]
             del self.episodes[episode_id]
+
             # Make PolicyCollectorGroup available for more agent batches in
             # other episodes. Do not reset count to 0.
             if policy_collector_group:

@@ -244,6 +244,9 @@ LOG_MONITOR_MAX_OPEN_FILES = 200
 
 # Autoscaler events are denoted by the ":event_summary:" magic token.
 LOG_PREFIX_EVENT_SUMMARY = ":event_summary:"
+# Cluster-level info events are denoted by the ":info_message:" magic token. These may
+# be emitted in the stderr of Ray components.
+LOG_PREFIX_INFO_MESSAGE = ":info_message:"
 # Actor names are recorded in the logs with this magic token as a prefix.
 LOG_PREFIX_ACTOR_NAME = ":actor_name:"
 # Task names are recorded in the logs with this magic token as a prefix.

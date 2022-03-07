@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 import sys
+import json
 import tempfile
 from typing import Optional
 
@@ -9,7 +10,7 @@ from unittest.mock import patch
 
 import ray
 from ray.job_submission import JobSubmissionClient, JobStatus
-from ray.dashboard.modules.job.common import CURRENT_VERSION
+from ray.dashboard.modules.job.common import CURRENT_VERSION, JobInfo
 from ray.dashboard.modules.job.sdk import (
     ClusterInfo,
     parse_cluster_info,
@@ -33,10 +34,59 @@ def headers():
 
 @pytest.fixture(scope="module")
 def job_sdk_client(headers):
-    with _ray_start(include_dashboard=True, num_cpus=1) as address_info:
-        address = address_info["webui_url"]
+    with _ray_start(include_dashboard=True, num_cpus=1) as ctx:
+        address = ctx.address_info["webui_url"]
         assert wait_until_server_available(address)
         yield JobSubmissionClient(format_web_url(address), headers=headers)
+
+
+# NOTE(architkulkarni): This test must be run first in order for the job
+# submission history of the shared Ray runtime to be empty.
+@pytest.mark.parametrize("use_sdk", [True, False])
+def test_list_jobs_empty(job_sdk_client: JobSubmissionClient, use_sdk: bool):
+    client = job_sdk_client
+
+    if use_sdk:
+        assert client.list_jobs() == dict()
+    else:
+        r = client._do_request(
+            "GET",
+            "/api/jobs/",
+        )
+
+        assert r.status_code == 200
+        assert json.loads(r.text) == dict()
+
+
+@pytest.mark.parametrize("use_sdk", [True, False])
+def test_list_jobs(job_sdk_client: JobSubmissionClient, use_sdk: bool):
+    client = job_sdk_client
+
+    runtime_env = {"env_vars": {"TEST": "123"}}
+    metadata = {"foo": "bar"}
+    job_id = client.submit_job(
+        entrypoint="echo hello", runtime_env=runtime_env, metadata=metadata
+    )
+
+    wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
+    if use_sdk:
+        info: JobInfo = client.list_jobs()[job_id]
+    else:
+        r = client._do_request(
+            "GET",
+            "/api/jobs/",
+        )
+
+        assert r.status_code == 200
+        jobs_info_json = json.loads(r.text)
+        info_json = jobs_info_json[job_id]
+        info = JobInfo(**info_json)
+
+    assert info.status == JobStatus.SUCCEEDED
+    assert info.message is not None
+    assert info.end_time >= info.start_time
+    assert info.runtime_env == runtime_env
+    assert info.metadata == metadata
 
 
 def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:
