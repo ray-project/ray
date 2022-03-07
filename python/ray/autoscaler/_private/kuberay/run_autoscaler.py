@@ -1,4 +1,3 @@
-import argparse
 import logging
 import multiprocessing as mp
 import os
@@ -15,9 +14,9 @@ from autoscaling_config import AutoscalingConfigProducer
 BACKOFF_S = 5
 
 
-def run_autoscaler_with_retries(cluster_name: str,
-                                cluster_namespace: str,
-                                redis_password: str = ""):
+def run_autoscaler_with_retries(
+    cluster_name: str, cluster_namespace: str, redis_password: str = ""
+):
     """Keep trying to start the autoscaler until it runs.
     We need to retry until the Ray head is running.
 
@@ -30,7 +29,7 @@ def run_autoscaler_with_retries(cluster_name: str,
     while True:
         autoscaler_process = mp.Process(
             target=_run_autoscaler,
-            args=(cluster_name, cluster_namespace, redis_password)
+            args=(cluster_name, cluster_namespace, redis_password),
         )
         autoscaler_process.start()
         autoscaler_process.join()
@@ -43,8 +42,9 @@ def run_autoscaler_with_retries(cluster_name: str,
         time.sleep(BACKOFF_S)
 
 
-def _run_autoscaler(cluster_name: str, cluster_namespace: str,
-                    redis_password: str = ""):
+def _run_autoscaler(
+    cluster_name: str, cluster_namespace: str, redis_password: str = ""
+):
     _setup_logging()
     head_ip = get_node_ip_address()
 
