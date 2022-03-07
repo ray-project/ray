@@ -147,7 +147,13 @@ Status TaskExecutor::ExecuteTask(
   for (size_t i = 0; i < args_buffer.size(); i++) {
     auto &arg = args_buffer.at(i);
     msgpack::sbuffer sbuf;
-    sbuf.write((const char *)(arg->GetData()->Data()), arg->GetData()->Size());
+    if (cross_lang) {
+      sbuf.write((const char *)(arg->GetData()->Data()) + XLANG_HEADER_LEN,
+                 arg->GetData()->Size() - XLANG_HEADER_LEN);
+    } else {
+      sbuf.write((const char *)(arg->GetData()->Data()), arg->GetData()->Size());
+    }
+
     ray_args_buffer.push_back(std::move(sbuf));
   }
   if (task_type == ray::TaskType::ACTOR_CREATION_TASK) {
@@ -177,8 +183,16 @@ Status TaskExecutor::ExecuteTask(
         reinterpret_cast<uint8_t *>(&meta_str[0]), meta_str.size(), true);
 
     msgpack::sbuffer buf;
-    std::string msg = status.ToString();
-    buf.write(msg.data(), msg.size());
+    if (cross_lang) {
+      ray::rpc::RayException ray_exception{};
+      ray_exception.set_language(ray::rpc::Language::CPP);
+      ray_exception.set_formatted_exception_string(status.ToString());
+      auto msg = ray_exception.SerializeAsString();
+      buf = Serializer::Serialize(msg.data(), msg.size());
+    } else {
+      std::string msg = status.ToString();
+      buf.write(msg.data(), msg.size());
+    }
     data = std::make_shared<msgpack::sbuffer>(std::move(buf));
   }
 
@@ -189,7 +203,7 @@ Status TaskExecutor::ExecuteTask(
     auto result_ptr = &(*results)[0];
     int64_t task_output_inlined_bytes = 0;
 
-    if (cross_lang) {
+    if (cross_lang && meta_buffer == nullptr) {
       meta_buffer = std::make_shared<ray::LocalMemoryBuffer>(
           (uint8_t *)(&METADATA_STR_XLANG[0]), METADATA_STR_XLANG.size(), true);
     }
