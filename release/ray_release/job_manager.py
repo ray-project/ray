@@ -9,7 +9,6 @@ from ray_release.util import ANYSCALE_HOST
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import CommandTimeout
 from ray.job_submission import JobSubmissionClient, JobStatus
-from ray.dashboard.modules.job.job_manager import generate_job_id
 
 
 class JobManager:
@@ -41,7 +40,6 @@ class JobManager:
         job_id = self.job_client.submit_job(
             # Entrypoint shell command to execute
             entrypoint=full_cmd,
-            job_id=f"{full_cmd.replace(' ', '_')}_{generate_job_id()}",
         )
         self.last_job_id = job_id
         self.subprocess_pool[command_id] = job_id

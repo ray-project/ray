@@ -827,3 +827,49 @@
   
     type: job
     file_manager: job
+
+- name: dask_on_ray_1tb_sort
+  group: Core nightly tests
+  team: core
+  working_dir: nightly_tests
+
+  legacy:
+    test_name: dask_on_ray_1tb_sort
+    test_suite: nightly_tests
+
+  cluster:
+    cluster_env: dask_on_ray/dask_on_ray_app_config.yaml
+    cluster_compute: dask_on_ray/1tb_sort_compute.yaml
+
+  run:
+    timeout: 7200
+    script: python dask_on_ray/dask_on_ray_sort.py --nbytes 1_000_000_000_000 --npartitions 1000 --num-nodes 31 --ray --data-dir /tmp/ray --s3-bucket core-nightly-test
+    wait_for_nodes:
+      # Number of nodes
+      num_nodes: 32
+      # Timeout for waiting for nodes. If nodes are not up by then, the
+      # test will fail.
+      timeout: 1000
+
+    type: job
+    file_manager: job
+
+- name: dask_on_ray_large_scale_test_no_spilling
+  group: Core nightly tests
+  team: core
+  working_dir: nightly_tests
+
+  cluster:
+    cluster_env: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
+    cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
+    autosuspend_mins: 120
+
+  run:
+    timeout: 7200
+    wait_for_nodes:
+      # Number of nodes
+      num_nodes: 21
+      # Timeout for waiting for nodes. If nodes are not up by then, the
+      # test will fail.
+      timeout: 600
+    script: python dask_on_ray/large_scale_test.py --num_workers 20 --worker_obj_store_size_in_gb 20 --error_rate 0  --data_save_path /tmp/ray
