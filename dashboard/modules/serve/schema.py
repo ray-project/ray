@@ -3,6 +3,7 @@ from typing import Union, Tuple, List, Dict
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve.api import Deployment, deployment
 from ray.serve.common import DeploymentStatus, DeploymentStatusInfo
+from ray.serve.utils import DEFAULT
 
 
 class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
@@ -112,12 +113,13 @@ class DeploymentSchema(BaseModel, extra=Extra.forbid):
         ),
         gt=0,
     )
-    route_prefix: str = Field(
-        default=None,
+    route_prefix: Union[str, None, DEFAULT] = Field(
+        default=DEFAULT.VALUE,
         description=(
             "Requests to paths under this HTTP path "
             "prefix will be routed to this deployment. When null, no HTTP "
-            "endpoint will be created. Routing is done based on "
+            "endpoint will be created. When omitted, defaults to "
+            "the deployment's name. Routing is done based on "
             "longest-prefix match, so if you have deployment A with "
             'a prefix of "/a" and deployment B with a prefix of "/a/b", '
             'requests to "/a", "/a/", and "/a/c" go to A and requests '
@@ -270,7 +272,7 @@ class DeploymentSchema(BaseModel, extra=Extra.forbid):
 
         # route_prefix of None means the deployment is not exposed
         # over HTTP.
-        if v is None:
+        if v is None or v == DEFAULT.VALUE:
             return v
 
         if len(v) < 1 or v[0] != "/":
