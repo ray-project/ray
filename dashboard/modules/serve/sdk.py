@@ -12,6 +12,12 @@ from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 from ray.serve.api import Deployment
 
 
+DEPLOY_PATH = "/api/serve/deployments/"
+INFO_PATH = "/api/serve/deployments/"
+STATUS_PATH = "/api/serve/deployments/status"
+DELETE_PATH = "/api/serve/deployments/"
+
+
 class ServeSubmissionClient(SubmissionClient):
     def __init__(
         self,
@@ -41,7 +47,7 @@ class ServeSubmissionClient(SubmissionClient):
         )
 
     def deploy_application(self, app_config: Dict) -> None:
-        deploy_address = f"{self._address}/api/serve/deployments/"
+        deploy_address = f"{self._address}{DEPLOY_PATH}"
         response = requests.put(deploy_address, json=app_config)
 
         if response.status_code == 200:
@@ -57,7 +63,7 @@ class ServeSubmissionClient(SubmissionClient):
             self._log_failed_request(response)
 
     def get_info(self) -> Union[Dict, None]:
-        info_address = f"{self._address}/api/serve/deployments/"
+        info_address = f"{self._address}{INFO_PATH}"
         response = requests.get(info_address)
         if response.status_code == 200:
             return response.json()
@@ -65,7 +71,7 @@ class ServeSubmissionClient(SubmissionClient):
             self._log_failed_request(response)
 
     def get_status(self) -> Union[Dict, None]:
-        status_address = f"{self._address}/api/serve/deployments/status"
+        status_address = f"{self._address}{STATUS_PATH}"
         response = requests.get(status_address)
         if response.status_code == 200:
             return response.json()
@@ -73,7 +79,7 @@ class ServeSubmissionClient(SubmissionClient):
             self._log_failed_request(response)
 
     def delete_application(self) -> None:
-        delete_address = f"{self._address}/api/serve/deployments/"
+        delete_address = f"{self._address}{DELETE_PATH}"
         response = requests.delete(delete_address)
         if response.status_code == 200:
             cli_logger.newline()
