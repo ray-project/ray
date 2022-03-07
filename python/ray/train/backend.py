@@ -6,7 +6,6 @@ from typing import Callable, TypeVar, List, Optional, Dict, Union, Type, Tuple
 import ray
 from ray.exceptions import RayActorError
 from ray.ray_constants import env_integer
-from ray.train.accelerators import Accelerator
 from ray.train.constants import (
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,

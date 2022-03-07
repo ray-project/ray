@@ -11,7 +11,7 @@ from typing import Optional, Dict, Type
 import warnings
 
 import ray
-from ray.train.accelerators import Accelerator
+from ray.train.accelerator import Accelerator
 from ray.train.constants import (
     DETAILED_AUTOFILLED_KEYS,
     TIME_THIS_ITER_S,
