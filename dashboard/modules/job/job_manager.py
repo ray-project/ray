@@ -1,6 +1,7 @@
 import asyncio
 from asyncio.tasks import FIRST_COMPLETED
 import os
+import sys
 import json
 import logging
 import time
@@ -137,12 +138,24 @@ class JobSupervisor:
                 terminated or killed upon user calling stop().
         """
         with open(logs_path, "w") as logs_file:
+            if self._runtime_env.get("pip") is not None:
+                # Replace "python" in the user's entrypoint script with the
+                # Python executable for the present runtime env.
+                cmd = (
+                    f'python() {{ "{sys.executable}" "$@" ; }} && '
+                    + self._entrypoint
+                )
+                executable = "/bin/bash"
+            else:
+                cmd = self._entrypoint
+                executable = None
             child_process = subprocess.Popen(
-                self._entrypoint,
+                cmd,
                 shell=True,
                 start_new_session=True,
                 stdout=logs_file,
                 stderr=subprocess.STDOUT,
+                executable=executable,
             )
             parent_pid = os.getpid()
             # Create new pgid with new subprocess to execute driver command
@@ -442,6 +455,8 @@ class JobManager:
         # returns immediately and we can catch errors with the actor starting
         # up.
         try:
+            logger.error("RUNTIME ENV FROM MANAGER: " + str(runtime_env))
+            print("RUNTIME ENV FROM MANAGER: " + str(runtime_env))
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
                 name=self.JOB_ACTOR_NAME.format(job_id=job_id),
