@@ -1866,25 +1866,25 @@ def local_dump(
     required=False,
     type=str,
     default=None,
-    help="The ip address of the log",
+    help="Retrieves the logs from the node with this ip address.",
 )
 @click.option(
     "--node-id",
     required=False,
     type=str,
     default=None,
-    help="The unique id of the node.",
+    help="Retrieves the logs from the node with this NodeID.",
 )
 @click.option(
     "--actor-id",
     required=False,
     type=str,
     default=None,
-    help="The unique id of the node.",
+    help="Retrieves the logs corresponding to this ActorID.",
 )
 def logs(filters, ip_address: str, node_id: str, actor_id: str):
     """
-    FILTERS: the worker ids, or strings to filter the logs by title.
+    FILTERS: keywords to filter the logs by.
     """
 
     def format_print(links):
