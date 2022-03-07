@@ -220,9 +220,6 @@ class ClientAPI:
                 invocations of this actor method.
         """
 
-        assert len(args) == 0
-        assert len(kwargs) == 1
-
         # NOTE: So this follows the same logic as in ray/actor.py::method()
         # The reason to duplicate it here is to simplify the client mode
         # redirection logic. As the annotated method gets pickled and sent to
@@ -230,6 +227,11 @@ class ClientAPI:
         # activates the same logic on the server side; so there's no need to
         # pass anything else. It's inside the class definition that becomes an
         # actor. Similar annotations would follow the same way.
+        assert len(args) == 0
+        assert len(kwargs) == 1
+
+        assert "num_returns" in kwargs or "concurrency_group" in kwargs
+
         def annotate_method(method):
             if "num_returns" in kwargs:
                 method.__ray_num_returns__ = kwargs["num_returns"]
