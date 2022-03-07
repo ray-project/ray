@@ -21,13 +21,26 @@ from ray.util.annotations import PublicAPI
 logger = logging.getLogger(__name__)
 
 
+def _parse_proto_pip_runtime_env_config(runtime_env: ProtoRuntimeEnv):
+    pip_runtime_env_dict = {}
+    pip_runtime_env_dict["packages"] = list(
+        runtime_env.python_runtime_env.pip_runtime_env.config.packages
+    )
+    pip_runtime_env_dict[
+        "pip_check"
+    ] = runtime_env.python_runtime_env.pip_runtime_env.config.pip_check
+    if runtime_env.python_runtime_env.pip_runtime_env.config.pip_version:
+        pip_runtime_env_dict[
+            "pip_version"
+        ] = runtime_env.python_runtime_env.pip_runtime_env.config.pip_version
+    return pip_runtime_env_dict
+
+
 def _parse_proto_pip_runtime_env(runtime_env: ProtoRuntimeEnv, runtime_env_dict: dict):
     """Parse pip runtime env protobuf to runtime env dict."""
     if runtime_env.python_runtime_env.HasField("pip_runtime_env"):
         if runtime_env.python_runtime_env.pip_runtime_env.HasField("config"):
-            runtime_env_dict["pip"] = json.loads(
-                runtime_env.python_runtime_env.pip_runtime_env.config
-            )
+            runtime_env_dict["pip"] = _parse_proto_pip_runtime_env_config(runtime_env)
         else:
             runtime_env_dict[
                 "pip"
@@ -473,22 +486,17 @@ class RuntimeEnv(dict):
             return True
         return False
 
-    def pip_packages(self) -> List:
-        if not self.has_pip() or not isinstance(self["pip"], list):
-            return []
-        return self["pip"]
-
     def virtualenv_name(self) -> Optional[str]:
         if not self.has_pip() or not isinstance(self["pip"], str):
             return None
         return self["pip"]
-	
-    def pip_config(self) -> List:
-        if not self.has_pip():
+
+    def pip_config(self) -> Dict:
+        if not self.has_pip() or isinstance(self["pip"], str):
             return {}
-        return json.loads(
-            self._proto_runtime_env.python_runtime_env.pip_runtime_env.config
-        )
+        # Parse and validate field pip on method `__setitem__`
+        self["pip"] = self["pip"]
+        return self["pip"]
 
     def get_extension(self, key) -> Optional[str]:
         if key not in RuntimeEnv.extensions_fields:
@@ -533,16 +541,22 @@ class RuntimeEnv(dict):
     def _build_proto_pip_runtime_env(self, runtime_env: ProtoRuntimeEnv):
         """Construct pip runtime env protobuf from runtime env dict."""
         if self.has_pip():
-            pip_packages = self.pip_packages()
+            pip_config = self.pip_config()
             virtualenv_name = self.virtualenv_name()
-            # It is impossible for pip_packages and virtualenv_name
-            # to be non-null at the same time
-            if pip_packages:
+            # It is impossible for pip_config is a non-empty dict and
+            # virtualenv_name is non-none at the same time
+            if pip_config:
                 runtime_env.python_runtime_env.pip_runtime_env.config.packages.extend(
-                    pip_packages
+                    pip_config["packages"]
                 )
+                runtime_env.python_runtime_env.pip_runtime_env.config.pip_check = (
+                    pip_config["pip_check"]
+                )
+                if "pip_version" in pip_config:
+                    runtime_env.python_runtime_env.pip_runtime_env.config.pip_version = (
+                        pip_config["pip_version"]
+                    )
             else:
-                # It is impossible for virtualenv_name is None
                 runtime_env.python_runtime_env.pip_runtime_env.virtual_env_name = (
                     virtualenv_name
                 )

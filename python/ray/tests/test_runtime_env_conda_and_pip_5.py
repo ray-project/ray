@@ -75,7 +75,7 @@ def test_runtime_env_cache_with_pip_check(start_cluster):
         "pip": {
             "packages": conflict_packages,
             "pip_version": "==20.2.3",
-            "pip_check_enable": False,
+            "pip_check": False,
         }
     }
 
@@ -85,7 +85,7 @@ def test_runtime_env_cache_with_pip_check(start_cluster):
 
     assert ray.get(f.options(runtime_env=runtime_env).remote())
 
-    runtime_env["pip"]["pip_version"] = "==22.0.2"
+    runtime_env["pip"]["pip_version"] = "==21.3.1"
     # Just modify filed pip_version, but this time,
     # not hit cache and raise an exception
     with pytest.raises(ray.exceptions.RuntimeEnvSetupError) as error:
@@ -95,9 +95,9 @@ def test_runtime_env_cache_with_pip_check(start_cluster):
     assert "The user requested requests==2.4.0" in str(error.value)
     assert "moto 3.0.5 depends on requests>=2.5" in str(error.value)
 
-    runtime_env["pip"]["pip_check_enable"] = True
+    runtime_env["pip"]["pip_check"] = True
     runtime_env["pip"]["pip_version"] = "==20.2.3"
-    # Just modify filed pip_check_enable, but this time,
+    # Just modify filed pip_check, but this time,
     # not hit cache and raise an exception
     with pytest.raises(ray.exceptions.RuntimeEnvSetupError) as error:
         ray.get(f.options(runtime_env=runtime_env).remote())

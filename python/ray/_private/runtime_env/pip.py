@@ -120,19 +120,19 @@ class PipProcessor:
             "--disable-pip-version-check",
             f"pip{pip_version}",
         ]
-        logger.info("Installing pip version to %s", pip_version)
+        logger.info("Installing pip with version %s", pip_version)
 
         await check_output_cmd(pip_reinstall_cmd, logger=logger, cwd=cwd, env=pip_env)
 
     async def _pip_check(
         self,
         path: str,
-        pip_check_enable: bool,
+        pip_check: bool,
         cwd: str,
         pip_env: Dict,
         logger: logging.Logger,
     ):
-        if not pip_check_enable:
+        if not pip_check:
             logger.info("Skip pip check.")
             return
         python = _PathHelper.get_virtualenv_python(path)
@@ -145,9 +145,9 @@ class PipProcessor:
         )
         output = output.strip()
         if output and "no broken" not in output.lower():
-            raise RuntimeError(f"pip check on {path} failed:\n{output}")
+            raise RuntimeError(f"Pip check on {path} failed:\n{output}")
         else:
-            logger.info("Pip check on %s success.", path)
+            logger.info("Pip check on %s successfully.", path)
 
     @staticmethod
     @asynccontextmanager
@@ -332,7 +332,7 @@ class PipProcessor:
                 # Check python environment for conflicts.
                 await self._pip_check(
                     path,
-                    self._pip_config.get("pip_check_enable", True),
+                    self._pip_config.get("pip_check", True),
                     exec_cwd,
                     self._pip_env,
                     logger,
