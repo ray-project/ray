@@ -23,6 +23,7 @@ from torch.utils.data import (
     DistributedSampler,
     DataLoader,
     IterableDataset,
+    SequentialSampler,
     RandomSampler,
 )
 
@@ -325,7 +326,16 @@ def prepare_data_loader(
             # enabled and a SequentialSampler otherwise. DataLoader does not have a
             # shuffle attribute, so we instead identify whether shuffling is enabled by 
             # checking the default sampler type.
-            shuffle = isinstance(loader.sampler, RandomSampler)
+            shuffle = not isinstance(loader.sampler, SequentialSampler)
+
+            using_default_sampler = isinstance(
+                loader.sampler, (SequentialSampler, RandomSampler)
+            )
+            if not using_default_sampler:
+                logger.warn(
+                    f"The {loader.sampler.__class__.__name__} will be overwritten with a DistributedSampler."
+                    f"You can disable this by setting with_sampler to False in prepare_data_loader"
+                )
 
             data_loader_args = {
                 "dataset": loader.dataset,
