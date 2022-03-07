@@ -350,6 +350,12 @@ class _WrappedDataLoader(DataLoader):
 
 
 @PublicAPI(stability="beta")
+def get_device() -> torch.device:
+    """Gets the correct torch device to use for training."""
+    return get_session().get_accelerator(TorchAccelerator).get_device()
+
+
+@PublicAPI(stability="beta")
 def prepare_model(
     model: torch.nn.Module,
     move_to_device: bool = True,
@@ -412,12 +418,6 @@ def prepare_data_loader(
             move_to_device=move_to_device,
         )
     )
-
-
-@PublicAPI(stability="beta")
-def get_device() -> torch.device:
-    """Gets the correct torch device to use for training."""
-    return get_session().get_accelerator(TorchAccelerator).get_device()
 
 
 @PublicAPI(stability="beta")
