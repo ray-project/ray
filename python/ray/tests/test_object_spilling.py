@@ -3,8 +3,6 @@ import json
 import platform
 import random
 import sys
-import shutil
-import zlib
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -18,7 +16,6 @@ from ray.tests.conftest import (
 from ray.external_storage import create_url_with_offset, parse_url_with_offset
 from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray._private.test_utils import wait_for_condition
-from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.internal.internal_api import memory_summary
 from ray._raylet import GcsClientOptions
 
