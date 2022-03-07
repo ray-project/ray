@@ -493,9 +493,32 @@ void GcsResourceManager::AddResourcesChangedListener(std::function<void()> liste
 
 void GcsResourceManager::UpdateNodeNormalTaskResources(
     const NodeID &node_id, const rpc::ResourcesData &heartbeat) {
-  // TODO(Shanly): To be implemented.
-  // This method is breaked by the refactoring of new resource structure, just remove the
-  // implementation for the time being.
+  auto iter = cluster_scheduling_resources_.find(node_id);
+  if (iter == cluster_scheduling_resources_.end()) {
+    return;
+  }
+
+  auto normal_task_resources =
+      ResourceMapToResourceRequest(MapFromProtobuf(heartbeat.resources_normal_task()),
+                                   /*requires_object_store_memory=*/false);
+  auto &local_normal_task_resources =
+      iter->second->GetMutableLocalView()->normal_task_resources;
+  if (heartbeat.resources_normal_task_changed() &&
+      heartbeat.resources_normal_task_timestamp() >
+          latest_resources_normal_task_timestamp_[node_id] &&
+      !local_normal_task_resources.IsEqual(normal_task_resources)) {
+    local_normal_task_resources.predefined_resources.resize(PredefinedResources_MAX);
+    for (size_t i = 0; i < PredefinedResources_MAX; ++i) {
+      local_normal_task_resources.predefined_resources[i] =
+          normal_task_resources.predefined_resources[i];
+    }
+    local_normal_task_resources.custom_resources = normal_task_resources.custom_resources;
+    latest_resources_normal_task_timestamp_[node_id] =
+        heartbeat.resources_normal_task_timestamp();
+    for (const auto &listener : resources_changed_listeners_) {
+      listener();
+    }
+  }
 }
 
 std::string GcsResourceManager::ToString() const {

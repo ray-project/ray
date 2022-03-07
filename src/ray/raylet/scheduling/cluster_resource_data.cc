@@ -524,6 +524,25 @@ bool ResourceRequest::IsEmpty() const {
   return true;
 }
 
+bool ResourceRequest::IsEqual(const ResourceRequest &other) const {
+  if (predefined_resources.size() != other.predefined_resources.size() ||
+      custom_resources.size() != other.custom_resources.size()) {
+    return false;
+  }
+  for (size_t i = 0; i < predefined_resources.size(); i++) {
+    if (predefined_resources[i] != other.predefined_resources[i]) {
+      return false;
+    }
+  }
+  for (const auto &entry : custom_resources) {
+    auto iter = other.custom_resources.find(entry.first);
+    if (iter == other.custom_resources.end() || entry.second != iter->second) {
+      return false;
+    }
+  }
+  return true;
+}
+
 std::string ResourceRequest::DebugString() const {
   std::stringstream buffer;
   buffer << " {";
