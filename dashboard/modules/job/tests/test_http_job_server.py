@@ -167,11 +167,13 @@ def working_dir_option(request):
             pip_file = Path(relative_filepath)
             pip_file.write_text("\n".join(pip_list))
             runtime_env = {"pip": relative_filepath}
-            print("FIXTURE CWD: " + os.getcwd())
             yield {
                 "runtime_env": runtime_env,
                 "entrypoint": "python -c 'import pip_install_test'",
-                "expected_logs": "Good job!  You installed a pip module.\n\nNow get back to work!\n",
+                "expected_logs": (
+                    "Good job!  You installed a pip module.\n\n"
+                    "Now get back to work!\n"
+                ),
             }
     elif request.param == "conda_yaml":
         with tempfile.TemporaryDirectory() as tmpdir, chdir(tmpdir):
@@ -184,7 +186,10 @@ def working_dir_option(request):
             yield {
                 "runtime_env": runtime_env,
                 "entrypoint": "python -c 'import pip_install_test'",
-                "expected_logs": "Good job!  You installed a pip module.\n\nNow get back to work!\n",
+                "expected_logs": (
+                    "Good job!  You installed a pip module.\n\n"
+                    "Now get back to work!\n"
+                ),
             }
     else:
         assert False, f"Unrecognized option: {request.param}."

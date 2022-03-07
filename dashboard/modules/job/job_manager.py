@@ -141,10 +141,7 @@ class JobSupervisor:
             if self._runtime_env.get("pip") is not None:
                 # Replace "python" in the user's entrypoint script with the
                 # Python executable for the present runtime env.
-                cmd = (
-                    f'python() {{ "{sys.executable}" "$@" ; }} && '
-                    + self._entrypoint
-                )
+                cmd = f'python() {{ "{sys.executable}" "$@" ; }} && ' + self._entrypoint
                 executable = "/bin/bash"
             else:
                 cmd = self._entrypoint
