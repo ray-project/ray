@@ -89,6 +89,20 @@ def process_args_and_kwargs(
     return args, args_and_kwargs
 
 
+def configure_runtime_env(deployment: Deployment, updates: Dict):
+    """
+    Overwrites deployment's runtime_env with fields in updates. Any fields in
+    deployment's runtime_env that aren't in udpates stay the same.
+    """
+
+    if deployment.ray_actor_options is None:
+        deployment._ray_actor_options = {"runtime_env": updates}
+    elif "runtime_env" in deployment.ray_actor_options:
+        deployment.ray_actor_options["runtime_env"].udpate(updates)
+    else:
+        deployment.ray_actor_options["runtime_env"] = updates
+
+
 @click.group(help="[EXPERIMENTAL] CLI for managing Serve instances on a Ray cluster.")
 def cli():
     pass
@@ -379,13 +393,11 @@ def run(
         deployments = []
         is_config = pathlib.Path(config_or_import_path).is_file()
         args, kwargs = process_args_and_kwargs(args_and_kwargs)
-        final_runtime_env, final_working_dir = None, working_dir
-        if runtime_env is not None or runtime_env_json is not None:
-            final_runtime_env = parse_runtime_env_args(
-                runtime_env=runtime_env,
-                runtime_env_json=runtime_env_json,
-                working_dir=working_dir,
-            )
+        runtime_env_updates = parse_runtime_env_args(
+            runtime_env=runtime_env,
+            runtime_env_json=runtime_env_json,
+            working_dir=working_dir,
+        )
 
         if is_config:
             config_path = config_or_import_path
@@ -408,14 +420,12 @@ def run(
 
             ray.init(address=cluster_address, namespace="serve")
             serve.start()
+            ServeSubmissionClient(dashboard_address)._upload_working_dir_if_needed(
+                runtime_env_updates
+            )
 
-            client = ServeSubmissionClient(dashboard_address)
             for deployment in deployments:
-                client.set_up_runtime_env(
-                    deployment,
-                    new_runtime_env=final_runtime_env,
-                    new_working_dir=final_working_dir,
-                )
+                configure_runtime_env(deployment, runtime_env_updates)
             deploy_group(deployments)
 
             cli_logger.newline()
@@ -442,14 +452,11 @@ def run(
 
             ray.init(address=cluster_address, namespace="serve")
             serve.start()
-
-            client = ServeSubmissionClient(dashboard_address)
-            client.set_up_runtime_env(
-                deployment,
-                new_runtime_env=final_runtime_env,
-                new_working_dir=final_working_dir,
+            ServeSubmissionClient(dashboard_address)._upload_working_dir_if_needed(
+                runtime_env
             )
 
+            configure_runtime_env(deployment, runtime_env_updates)
             deployment.options(
                 init_args=args,
                 init_kwargs=kwargs,
