@@ -211,6 +211,17 @@ def create_deployment(
     help='Address of the Ray dashboard to query. For example, "http://localhost:8265".',
 )
 def deploy(config_file_name: str, address: str):
+    """
+    Deploys deployment(s) from CONFIG_OR_IMPORT_PATH, which must be either a
+    Serve YAML configuration file path or an import path to
+    a class or function to deploy. Import paths must be of the form
+    "module.submodule_1...submodule_n.MyClassOrFunction".
+    
+    Sends a nonblocking request. A successful response only indicates that the
+    request was received successfully. It does not mean the deployment are live.
+    Use `serve info` and `serve status` to check on them.
+    """
+
     with open(config_file_name, "r") as config_file:
         config = yaml.safe_load(config_file)
 
@@ -284,6 +295,10 @@ def run(
     Serve YAML configuration file path or an import path to
     a class or function to deploy. Import paths must be of the form
     "module.submodule_1...submodule_n.MyClassOrFunction".
+
+    Blocks after deploying, and logs status periodically. After being killed,
+    this command tears down all deployment it deployed. If there are no
+    deployments left, it also tears down the Serve application.
     """
 
     try:
@@ -380,6 +395,11 @@ def run(
     help='Address of the Ray dashboard to query. For example, "http://localhost:8265".',
 )
 def info(address: str):
+    """
+    Prints information about the configuration of all running deployments in
+    the Serve application.
+    """
+
     app_info = ServeSubmissionClient(address).get_info()
     if app_info is not None:
         print(json.dumps(app_info, indent=4))
@@ -398,6 +418,16 @@ def info(address: str):
     help='Address of the Ray dashboard to query. For example, "http://localhost:8265".',
 )
 def status(address: str):
+    """
+    Prints status information about all deployments in the Serve application.
+    Deployments may be:
+
+    - HEALTHY: all replicas are acting normally and passing their health checks.
+    - UNHEALTHY: at least one replica is not acting normally and may not be
+      passing its health check.
+    - UPDATING: the deployment is updating.
+    """
+
     app_status = ServeSubmissionClient(address).get_status()
     if app_status is not None:
         print(json.dumps(app_status, indent=4))
@@ -417,6 +447,10 @@ def status(address: str):
 )
 @click.option("--yes", "-y", is_flag=True, help="Bypass confirmation prompt.")
 def delete(address: str, yes: bool):
+    """
+    Deletes all running deployments in the Serve application.
+    """
+
     if not yes:
         click.confirm(
             f"\nThis will shutdown the Serve application at address "
