@@ -10,26 +10,32 @@ torch, nn = try_import_torch()
 
 
 class ExpMovingAvg(torch.nn.Module):
-    def __init__(self, start, freq):
+    """Exponential moving average"""
+
+    def __init__(self, start, freq, old_weight=0.9):
         super().__init__()
         self.start = start
         self.freq = freq
+        assert 0 < old_weight < 1
+        self.old_weight = old_weight
 
     def forward(self, averaged_param, model_param, num_averaged):
-        if not (num_averaged > self.start or num_averaged % self.freq == 0):
+        if not (num_averaged > self.start and num_averaged % self.freq == 0):
             return model_param
 
-        return 2 / (num_averaged + 1) * (model_param - averaged_param) + averaged_param
+        return self.old_weight * averaged_param + (1 - self.old_weight) * model_param
 
 
 class MovingAvg(torch.nn.Module):
+    """Linear moving average"""
+
     def __init__(self, start, freq):
         super().__init__()
         self.start = start
         self.freq = freq
 
     def forward(self, averaged_param, model_param, num_averaged):
-        if not (num_averaged > self.start or num_averaged % self.freq == 0):
+        if not (num_averaged > self.start and num_averaged % self.freq == 0):
             return model_param
         return averaged_param + (model_param - averaged_param) / (num_averaged + 1)
 

@@ -689,10 +689,6 @@ class TorchPolicy(Policy):
         if gradients == _directStepOptimizerSingleton:
             for i, opt in enumerate(self._optimizers):
                 opt.step()
-                if self.config["swa"]:
-                    for module in self.model.children():
-                        if isinstance(module, torch.optim.swa_utils.AveragedModel):
-                            module.update_parameters(module.module)
         else:
             # TODO(sven): Not supported for multiple optimizers yet.
             assert len(self._optimizers) == 1
@@ -704,6 +700,11 @@ class TorchPolicy(Policy):
                         p.grad = torch.from_numpy(g).to(self.device)
 
             self._optimizers[0].step()
+
+        if self.config["swa"]:
+            for module in self.model.children():
+                if isinstance(module, torch.optim.swa_utils.AveragedModel):
+                    module.update_parameters(module.module)
 
     @DeveloperAPI
     def get_tower_stats(self, stats_name: str) -> List[TensorStructType]:
