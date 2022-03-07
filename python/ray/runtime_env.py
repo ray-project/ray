@@ -6,7 +6,10 @@ from google.protobuf import json_format
 from copy import deepcopy
 
 import ray
-from ray.core.generated.runtime_env_common_pb2 import RuntimeEnv as ProtoRuntimeEnv
+from ray.core.generated.runtime_env_common_pb2 import (
+    RuntimeEnv as ProtoRuntimeEnv,
+    RuntimeEnvInfo as ProtoRuntimeEnvInfo,
+)
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin, encode_plugin_uri
 from ray._private.runtime_env.validation import OPTION_TO_VALIDATION_FN
 from ray._private.utils import import_attr
@@ -575,3 +578,37 @@ class RuntimeEnv(dict):
                 plugin = runtime_env.python_runtime_env.plugin_runtime_env.plugins.add()
                 plugin.class_path = class_path
                 plugin.config = plugin_field
+
+
+def get_runtime_env_info(
+    runtime_env: RuntimeEnv,
+    *,
+    is_job_runtime_env: bool = False,
+    serialize: bool = False,
+):
+    """Create runtime env info from runtime env.
+
+    In the user interface, the argument `runtime_env` contains some fields
+    which not contained in `ProtoRuntimeEnv` but in `ProtoRuntimeEnvInfo`,
+    such as `eager_install`. This function will extract those fields from
+    `RuntimeEnv` and create a new `ProtoRuntimeEnvInfo`, and serialize it.
+    """
+    proto_runtime_env_info = ProtoRuntimeEnvInfo()
+
+    proto_runtime_env_info.uris[:] = runtime_env.get_uris()
+
+    eager_install = runtime_env.get("eager_install")
+    if is_job_runtime_env or eager_install is not None:
+        if not isinstance(eager_install, bool):
+            raise TypeError("eager_install must be a boolean.")
+        proto_runtime_env_info.runtime_env_eager_install = eager_install
+
+    proto_runtime_env_info.serialized_runtime_env = runtime_env.serialize()
+
+    if not serialize:
+        return proto_runtime_env_info
+
+    return json.dumps(
+        json.loads(json_format.MessageToJson(proto_runtime_env_info)),
+        sort_keys=True,
+    )

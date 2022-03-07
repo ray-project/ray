@@ -1,11 +1,12 @@
 import inspect
 import logging
 import weakref
+from typing import Union, Optional
 
 import ray.ray_constants as ray_constants
 import ray._raylet
 import ray._private.signature as signature
-from ray.runtime_env import RuntimeEnv
+from ray.runtime_env import RuntimeEnv, get_runtime_env_info
 import ray.worker
 from ray.util.annotations import PublicAPI
 from ray.util.placement_group import configure_placement_group_based_on_context
@@ -405,6 +406,25 @@ class ActorClass:
             f"use '{self.__ray_metadata__.class_name}.remote()'."
         )
 
+    def _parse_runtime_env(runtime_env: Optional[Union[dict, RuntimeEnv]]):
+        # Parse local pip/conda config files here. If we instead did it in
+        # .remote(), it would get run in the Ray Client server, which runs on
+        # a remote node where the files aren't available.
+        if runtime_env:
+            if isinstance(runtime_env, RuntimeEnv):
+                return runtime_env
+            elif isinstance(runtime_env, dict):
+                return RuntimeEnv(**(runtime_env or {}))
+            raise TypeError(
+                "runtime_env must be dict or RuntimeEnv, ",
+                f"but got: {type(runtime_env)}",
+            )
+        else:
+            # Keep the new_runtime_env as None.  In .remote(), we need to know
+            # if runtime_env is None to know whether or not to fall back to the
+            # runtime_env specified in the @ray.remote decorator.
+            return None
+
     @classmethod
     def _ray_from_modified_class(
         cls,
@@ -464,16 +484,7 @@ class ActorClass:
             modified_class.__ray_actor_class__
         )
 
-        # Parse local pip/conda config files here. If we instead did it in
-        # .remote(), it would get run in the Ray Client server, which runs on
-        # a remote node where the files aren't available.
-        if runtime_env:
-            if isinstance(runtime_env, str):
-                new_runtime_env = runtime_env
-            else:
-                new_runtime_env = RuntimeEnv(**runtime_env).serialize()
-        else:
-            new_runtime_env = None
+        new_runtime_env = self._parse_runtime_env(runtime_env)
 
         self.__ray_metadata__ = ActorClassMetadata(
             Language.PYTHON,
@@ -512,16 +523,7 @@ class ActorClass:
     ):
         self = ActorClass.__new__(ActorClass)
 
-        # Parse local pip/conda config files here. If we instead did it in
-        # .remote(), it would get run in the Ray Client server, which runs on
-        # a remote node where the files aren't available.
-        if runtime_env:
-            if isinstance(runtime_env, str):
-                new_runtime_env = runtime_env
-            else:
-                new_runtime_env = RuntimeEnv(**runtime_env).serialize()
-        else:
-            new_runtime_env = None
+        new_runtime_env = self._parse_runtime_env(runtime_env)
 
         self.__ray_metadata__ = ActorClassMetadata(
             language,
@@ -600,19 +602,7 @@ class ActorClass:
 
         actor_cls = self
 
-        # Parse local pip/conda config files here. If we instead did it in
-        # .remote(), it would get run in the Ray Client server, which runs on
-        # a remote node where the files aren't available.
-        if runtime_env:
-            if isinstance(runtime_env, str):
-                new_runtime_env = runtime_env
-            else:
-                new_runtime_env = RuntimeEnv(**(runtime_env or {})).serialize()
-        else:
-            # Keep the new_runtime_env as None.  In .remote(), we need to know
-            # if runtime_env is None to know whether or not to fall back to the
-            # runtime_env specified in the @ray.remote decorator.
-            new_runtime_env = None
+        new_runtime_env = self._parse_runtime_env(runtime_env)
 
         cls_options = dict(
             num_cpus=num_cpus,
@@ -966,15 +956,16 @@ class ActorClass:
                 scheduling_strategy = "DEFAULT"
 
         if runtime_env:
-            if isinstance(runtime_env, str):
-                # Serialzed protobuf runtime env from Ray client.
-                new_runtime_env = runtime_env
-            elif isinstance(runtime_env, RuntimeEnv):
-                new_runtime_env = runtime_env.serialize()
-            else:
-                raise TypeError(f"Error runtime env type {type(runtime_env)}")
+            new_runtime_env = self._parse_runtime_env(runtime_env)
         else:
             new_runtime_env = meta.runtime_env
+        serialized_runtime_env_info = None
+        if new_runtime_env is not None:
+            serialized_runtime_env_info = get_runtime_env_info(
+                new_runtime_env,
+                is_job_runtime_env=False,
+                serialize=True,
+            )
 
         concurrency_groups_dict = {}
         for cg_name in meta.concurrency_groups:
@@ -1021,7 +1012,7 @@ class ActorClass:
             is_asyncio,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu),
-            serialized_runtime_env=new_runtime_env or "{}",
+            serialized_runtime_env_info=serialized_runtime_env_info or "{}",
             concurrency_groups_dict=concurrency_groups_dict or dict(),
             max_pending_calls=max_pending_calls,
             scheduling_strategy=scheduling_strategy,
