@@ -1,7 +1,7 @@
 from typing import TypeVar, Any, Union, Callable, List, Tuple, Optional
 
 import ray
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -219,7 +219,8 @@ class ActorPoolStrategy(ComputeStrategy):
 
 
 def cache_wrapper(
-    fn: Union[CallableClass, Callable[[Any], Any]]
+    fn: Union[CallableClass, Callable[[Any], Any]],
+    compute: Optional[Union[str, ComputeStrategy]],
 ) -> Callable[[Any], Any]:
     """Implements caching of stateful callables.
 
@@ -230,6 +231,13 @@ def cache_wrapper(
         A plain function with per-process initialization cached as needed.
     """
     if isinstance(fn, CallableClass):
+
+        if compute is None:
+            raise ValueError(
+                "``compute`` must be specified using a callable class. For example, "
+                'use ``compute="actors"`` or '
+                "``compute=ActorPoolStrategy(min, max)``."
+            )
 
         def _fn(item: Any) -> Any:
             if ray.data._cached_fn is None or ray.data._cached_cls != fn:

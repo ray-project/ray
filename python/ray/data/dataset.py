@@ -170,7 +170,7 @@ class Dataset(Generic[T]):
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
-        fn = cache_wrapper(fn)
+        fn = cache_wrapper(fn, compute)
         context = DatasetContext.get_current()
 
         def transform(block: Block) -> Iterable[Block]:
@@ -243,7 +243,7 @@ class Dataset(Generic[T]):
         import pyarrow as pa
         import pandas as pd
 
-        fn = cache_wrapper(fn)
+        fn = cache_wrapper(fn, compute)
         context = DatasetContext.get_current()
 
         def transform(block: Block) -> Iterable[Block]:
@@ -373,7 +373,7 @@ class Dataset(Generic[T]):
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
-        fn = cache_wrapper(fn)
+        fn = cache_wrapper(fn, compute)
         context = DatasetContext.get_current()
 
         def transform(block: Block) -> Iterable[Block]:
@@ -420,7 +420,7 @@ class Dataset(Generic[T]):
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
-        fn = cache_wrapper(fn)
+        fn = cache_wrapper(fn, compute)
         context = DatasetContext.get_current()
 
         def transform(block: Block) -> Iterable[Block]:
