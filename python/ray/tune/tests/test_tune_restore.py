@@ -13,6 +13,7 @@ import ray
 from ray import tune
 from ray._private.test_utils import recursive_fnmatch
 from ray.rllib import _register_all
+from ray.tune import TuneError
 from ray.tune.callback import Callback
 from ray.tune.suggest.basic_variant import BasicVariantGenerator
 from ray.tune.suggest import Searcher
@@ -486,6 +487,30 @@ class SearcherTest(unittest.TestCase):
         searcher_2 = self.MockSearcher("no-its-not-me")
         searcher_2.restore_from_dir(tmpdir)
         assert searcher_2.data == original_data
+
+
+class ResourceExhaustedTest(unittest.TestCase):
+    def test_resource_exhausted_info(self):
+        """This is to test if helpful information is displayed when
+        the objects captured in trainable/training function are too
+        large and RESOURCES_EXHAUSTED error of gRPC is triggered."""
+
+        # generate some random data to be captured implicitly in training func.
+        from sklearn.datasets import fetch_olivetti_faces
+
+        a_large_array = []
+        for i in range(10):
+            a_large_array.append(fetch_olivetti_faces())
+
+        def training_func(config):
+            for item in a_large_array:
+                assert item
+
+        with self.assertRaisesRegex(
+            TuneError,
+            "The Trainable/training function is too large for grpc resource limit.",
+        ):
+            tune.run(training_func)
 
 
 if __name__ == "__main__":
