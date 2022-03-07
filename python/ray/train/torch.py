@@ -193,33 +193,6 @@ class TorchConfig(BackendConfig):
         return TorchBackend
 
 
-class _WrappedDataLoader(DataLoader):
-    def __init__(self, base_dataloader: DataLoader, device: torch.device):
-
-        self.__dict__.update(getattr(base_dataloader, "__dict__", {}))
-        self.dataloader = base_dataloader
-        self.device = device
-
-    def _move_to_device(self, item):
-        def try_move_device(i):
-            try:
-                i = i.to(self.device)
-            except AttributeError:
-                logger.debug(f"Item {i} cannot be moved to device " f"{self.device}.")
-            return i
-
-        return tuple(try_move_device(i) for i in item)
-
-    def __len__(self):
-        return len(self.dataloader)
-
-    def __iter__(self):
-        iterator = iter(self.dataloader)
-
-        for item in iterator:
-            yield self._move_to_device(item)
-
-
 def setup_torch_process_group(
     backend: str,
     world_rank: int,
@@ -347,6 +320,33 @@ class TorchBackend(Backend):
         _buffer = io.BytesIO(encoded_data)
         checkpoint_dict = torch.load(_buffer, map_location="cpu")
         return checkpoint_dict
+
+
+class _WrappedDataLoader(DataLoader):
+    def __init__(self, base_dataloader: DataLoader, device: torch.device):
+
+        self.__dict__.update(getattr(base_dataloader, "__dict__", {}))
+        self.dataloader = base_dataloader
+        self.device = device
+
+    def _move_to_device(self, item):
+        def try_move_device(i):
+            try:
+                i = i.to(self.device)
+            except AttributeError:
+                logger.debug(f"Item {i} cannot be moved to device " f"{self.device}.")
+            return i
+
+        return tuple(try_move_device(i) for i in item)
+
+    def __len__(self):
+        return len(self.dataloader)
+
+    def __iter__(self):
+        iterator = iter(self.dataloader)
+
+        for item in iterator:
+            yield self._move_to_device(item)
 
 
 @PublicAPI(stability="beta")
