@@ -233,13 +233,13 @@ def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.0):
             args = list(args)
             self = extract_self_if_method_call(args, _func)
 
-            # if len(args) != 1:
-            #     raise ValueError(
-            #         "@serve.batch functions can only take a single argument as input"
-            #     )
+            if len(args) != 1:
+                raise ValueError(
+                    "@serve.batch functions can only take a " "single argument as input"
+                )
 
-            # if len(kwargs) != 0:
-            #     raise ValueError("@serve.batch functions do not support kwargs")
+            if len(kwargs) != 0:
+                raise ValueError("@serve.batch functions do not support kwargs")
 
             if self is None:
                 # For functions, inject the batch queue as an
@@ -261,7 +261,7 @@ def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.0):
                 batch_queue = getattr(batch_queue_object, batch_queue_attr)
 
             future = asyncio.get_event_loop().create_future()
-            batch_queue.put((self, list(kwargs.values())[0], future))
+            batch_queue.put((self, args[0], future))
 
             # This will raise if the underlying call raised an exception.
             return await future
