@@ -225,11 +225,21 @@ def test_repartition(ray_start_regular_shared):
     assert pipe.repartition_each_window(100).sum() == 450
 
 
-def test_iter_batches(ray_start_regular_shared):
+def test_iter_batches_basic(ray_start_regular_shared):
     pipe = ray.data.range(10).window(blocks_per_window=2)
     batches = list(pipe.iter_batches())
     assert len(batches) == 10
     assert all(len(e) == 1 for e in batches)
+
+
+def test_iter_batches_batch_across_windows(ray_start_regular_shared):
+    # 3 windows, each containing 3 blocks, each containing 3 rows.
+    pipe = ray.data.range(27, parallelism=9).window(blocks_per_window=3)
+    # 4-row batches, with batches spanning both blocks and windows.
+    batches = list(pipe.iter_batches(batch_size=4))
+    assert len(batches) == 7, batches
+    assert all(len(e) == 4 for e in batches[:-1])
+    assert len(batches[-1]) == 3
 
 
 def test_iter_datasets(ray_start_regular_shared):

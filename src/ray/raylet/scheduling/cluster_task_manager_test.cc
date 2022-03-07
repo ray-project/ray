@@ -1168,25 +1168,18 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
   };
 
   std::vector<TaskID> to_cancel;
-
-  const WorkerID worker_id_submitting_first_task = WorkerID::FromRandom();
-  // Don't add the fist task to `to_cancel`.
-  for (int i = 0; i < 1; i++) {
+  std::vector<WorkerID> worker_ids;
+  for (int i = 0; i < 10; i++) {
     RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}});
     task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
+    worker_ids.push_back(WorkerID::FromRandom());
     local_task_manager_->SetWorkerBacklog(
-        task.GetTaskSpecification().GetSchedulingClass(), worker_id_submitting_first_task,
-        10 - i);
+        task.GetTaskSpecification().GetSchedulingClass(), worker_ids.back(), 10 - i);
     pool_.TriggerCallbacks();
-  }
-
-  for (int i = 1; i < 10; i++) {
-    RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}});
-    task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
-    local_task_manager_->SetWorkerBacklog(
-        task.GetTaskSpecification().GetSchedulingClass(), WorkerID::FromRandom(), 10 - i);
-    pool_.TriggerCallbacks();
-    to_cancel.push_back(task.GetTaskSpecification().TaskId());
+    // Don't add the fist task to `to_cancel`.
+    if (i != 0) {
+      to_cancel.push_back(task.GetTaskSpecification().TaskId());
+    }
   }
 
   ASSERT_FALSE(callback_occurred);
@@ -1210,7 +1203,7 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
   pool_.PushWorker(worker);
   task_manager_.ScheduleAndDispatchTasks();
-  local_task_manager_->ClearWorkerBacklog(worker_id_submitting_first_task);
+  local_task_manager_->ClearWorkerBacklog(worker_ids[0]);
   pool_.TriggerCallbacks();
 
   {
@@ -1228,6 +1221,10 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
   // Cancel the rest.
   for (auto &task_id : to_cancel) {
     ASSERT_TRUE(task_manager_.CancelTask(task_id));
+  }
+
+  for (size_t i = 1; i < worker_ids.size(); ++i) {
+    local_task_manager_->ClearWorkerBacklog(worker_ids[i]);
   }
 
   {

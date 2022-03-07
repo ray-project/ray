@@ -139,6 +139,7 @@ def test_simple_function_node_json_serde(serve_instance):
             "kwargs": "{}",
             "options": "{}",
             "other_args_to_resolve": "{}",
+            "uuid": original_dag_node.get_stable_uuid(),
         },
     )
 
@@ -153,6 +154,7 @@ def test_simple_function_node_json_serde(serve_instance):
             "kwargs": '{"kwargs_output": 3}',
             "options": "{}",
             "other_args_to_resolve": "{}",
+            "uuid": original_dag_node.get_stable_uuid(),
         },
     )
 
@@ -167,6 +169,7 @@ def test_simple_function_node_json_serde(serve_instance):
             "kwargs": "{}",
             "options": "{}",
             "other_args_to_resolve": "{}",
+            "uuid": original_dag_node.get_stable_uuid(),
         },
     )
 
@@ -196,6 +199,7 @@ def test_simple_class_node_json_serde(serve_instance):
             "kwargs": "{}",
             "options": "{}",
             "other_args_to_resolve": "{}",
+            "uuid": original_dag_node.get_stable_uuid(),
         },
     )
 
@@ -210,6 +214,7 @@ def test_simple_class_node_json_serde(serve_instance):
             "kwargs": "{}",
             "options": "{}",
             "other_args_to_resolve": "{}",
+            "uuid": original_dag_node.get_stable_uuid(),
         },
     )
 
@@ -224,6 +229,7 @@ def test_simple_class_node_json_serde(serve_instance):
             "kwargs": '{"ratio": 0.5}',
             "options": "{}",
             "other_args_to_resolve": "{}",
+            "uuid": original_dag_node.get_stable_uuid(),
         },
     )
 
@@ -283,10 +289,11 @@ def test_simple_deployment_method_call_chain(serve_instance):
 
 
 def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
-    m1 = Model._bind(2)
-    m2 = Model._bind(3)
-    combine = Combine._bind(m1, m2={NESTED_HANDLE_KEY: m2}, m2_nested=True)
-    ray_dag = combine.__call__._bind(InputNode())
+    with InputNode() as dag_input:
+        m1 = Model._bind(2)
+        m2 = Model._bind(3)
+        combine = Combine._bind(m1, m2={NESTED_HANDLE_KEY: m2}, m2_nested=True)
+        ray_dag = combine.__call__._bind(dag_input)
 
     (
         serve_root_dag,
@@ -298,13 +305,14 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
 
 
 def test_nested_deployment_node_json_serde(serve_instance):
-    m1 = Model._bind(2)
-    m2 = Model._bind(3)
+    with InputNode() as dag_input:
+        m1 = Model._bind(2)
+        m2 = Model._bind(3)
 
-    m1_output = m1.forward._bind(InputNode())
-    m2_output = m2.forward._bind(InputNode())
+        m1_output = m1.forward._bind(dag_input)
+        m2_output = m2.forward._bind(dag_input)
 
-    ray_dag = combine._bind(m1_output, m2_output)
+        ray_dag = combine._bind(m1_output, m2_output)
     (
         serve_root_dag,
         deserialized_serve_root_dag_node,
