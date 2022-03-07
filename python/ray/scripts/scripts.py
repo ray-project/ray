@@ -1897,7 +1897,7 @@ def local_dump(
 )
 def logs(filters, ip_address: str, node_id: str, actor_id: str):
     """
-    FILTERS: keywords to filter the logs by.
+    FILTERS: keywords to filter the logs by (e.g. worker, <worker-id>, raylet, gcs).
     """
 
     def format_print(links):
