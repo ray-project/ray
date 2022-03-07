@@ -23,6 +23,9 @@ if __name__ == "__main__":
             "python/ray/thirdparty_files/"
         ):
             continue
+        # TODO(jiaodong) Remove this once experimental module is tested
+        if f.startswith("python/ray/experimental"):
+            continue
         if f not in src_files:
             missing_bazel_targets.append(f)
 

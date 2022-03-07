@@ -3,6 +3,7 @@ import os
 import signal
 import time
 import sys
+import pytest
 
 from ray._private.test_utils import SignalActor
 
