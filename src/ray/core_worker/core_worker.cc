@@ -283,8 +283,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           absl::MutexLock lock(&mutex_);
           to_resubmit_.push_back(std::make_pair(current_time_ms() + delay, spec));
         } else {
-          RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object: "
-                        << spec.DebugString();
+          RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object, attempt #"
+                        << spec.AttemptNumber() + 1 << ": " << spec.DebugString();
           if (spec.IsActorTask()) {
             auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
             actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
@@ -454,17 +454,23 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   periodical_runner_.RunFnPeriodically(
       [this] {
         const auto lost_objects = reference_counter_->FlushObjectsToRecover();
-        // Delete the objects from the in-memory store to indicate that they are not
-        // available. The object recovery manager will guarantee that a new value
-        // will eventually be stored for the objects (either an
-        // UnreconstructableError or a value reconstructed from lineage).
-        memory_store_->Delete(lost_objects);
-        for (const auto &object_id : lost_objects) {
-          // NOTE(swang): There is a race condition where this can return false if
-          // the reference went out of scope since the call to the ref counter to get
-          // the lost objects. It's okay to not mark the object as failed or recover
-          // the object since there are no reference holders.
-          RAY_UNUSED(object_recovery_manager_->RecoverObject(object_id));
+        if (!lost_objects.empty()) {
+          // Keep :info_message: in sync with LOG_PREFIX_INFO_MESSAGE in ray_constants.py.
+          RAY_LOG(ERROR) << ":info_message: Attempting to recover " << lost_objects.size()
+                         << " lost objects by resubmitting their tasks. To disable "
+                         << "object reconstruction, set @ray.remote(max_tries=0).";
+          // Delete the objects from the in-memory store to indicate that they are not
+          // available. The object recovery manager will guarantee that a new value
+          // will eventually be stored for the objects (either an
+          // UnreconstructableError or a value reconstructed from lineage).
+          memory_store_->Delete(lost_objects);
+          for (const auto &object_id : lost_objects) {
+            // NOTE(swang): There is a race condition where this can return false if
+            // the reference went out of scope since the call to the ref counter to get
+            // the lost objects. It's okay to not mark the object as failed or recover
+            // the object since there are no reference holders.
+            RAY_UNUSED(object_recovery_manager_->RecoverObject(object_id));
+          }
         }
       },
       100);
