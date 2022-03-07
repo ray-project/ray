@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import io
 import logging
 import os
+import random
 
 from datetime import timedelta
 from pathlib import Path
@@ -10,6 +11,7 @@ from typing import Any, Dict, Optional
 
 import ray
 from ray import train
+from sqlalchemy import false
 from ray.train.accelerator import Accelerator
 from ray.train.backend import BackendConfig, Backend, EncodedData
 from ray.train.constants import PYTORCH_PROFILER_KEY
@@ -18,6 +20,7 @@ from ray.train.worker_group import WorkerGroup
 from ray.train.utils import get_address_and_port
 from ray.util import PublicAPI
 
+import numpy as np
 import torch
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
@@ -38,6 +41,9 @@ logger = logging.getLogger(__name__)
 
 class TorchAccelerator(Accelerator):
     """An object that implements methods to accelerate PyTorch training."""
+
+    def __init__(self):
+        self._is_seeded = False
 
     def prepare_model(
         self,
@@ -104,6 +110,18 @@ class TorchAccelerator(Accelerator):
             move_to_device (bool): If set, automatically move the data
                 returned by the data loader to the correct device.
         """
+        data_loader_args = {
+            "dataset": data_loader.dataset,
+            "batch_size": data_loader.batch_size,
+            "shuffle": data_loader.shuffle,
+            "num_workers": data_loader.num_workers,
+            "collate_fn": data_loader.collate_fn,
+            "pin_memory": data_loader.pin_memory,
+            "drop_last": data_loader.drop_last,
+            "timeout": data_loader.timeout,
+            "worker_init_fn": data_loader.worker_init_fn,
+            "sampler": data_loader.sampler,
+        }
 
         # Only add Distributed Sampler if the following conditions hold:
         # 1. More than one training worker is being used.
@@ -119,34 +137,44 @@ class TorchAccelerator(Accelerator):
             )
             and add_dist_sampler
         ):
+            # Automatically set the DistributedSampler
 
-            def with_sampler(loader):
-                # Automatically set the DistributedSampler
+            # If using a sampler, the shuffle attribute in the
+            # DataLoader must be set to False.
+            # Instead the shuffling is determined by the shuffle attribute
+            # in the DistributedSampler.
+            # We identify if shuffling is enabled in the passed in
+            # DataLoader by seeing if the sampler for the DataLoader is a
+            # SequentialSampler.
+            data_loader_args["shuffle"] = False
+            data_loader_args["sampler"] = (
+                DistributedSampler(
+                    data_loader.dataset,
+                    shuffle=(not isinstance(data_loader.sampler, SequentialSampler)),
+                ),
+            )
 
-                # If using a sampler, the shuffle attribute in the
-                # DataLoader must be set to False.
-                # Instead the shuffling is determined by the shuffle attribute
-                # in the DistributedSampler.
-                # We identify if shuffling is enabled in the passed in
-                # DataLoader by seeing if the sampler for the DataLoader is a
-                # SequentialSampler.
-                shuffle = not isinstance(loader.sampler, SequentialSampler)
+        def seed_worker(worker_id):
+            worker_seed = torch.initial_seed() % 2 ** 32
+            np.random.seed(worker_seed)
+            random.seed(worker_seed)
 
-                data_loader_args = {
-                    "dataset": loader.dataset,
-                    "batch_size": loader.batch_size,
-                    "shuffle": False,
-                    "num_workers": loader.num_workers,
-                    "collate_fn": loader.collate_fn,
-                    "pin_memory": loader.pin_memory,
-                    "drop_last": loader.drop_last,
-                    "timeout": loader.timeout,
-                    "worker_init_fn": loader.worker_init_fn,
-                    "sampler": DistributedSampler(loader.dataset, shuffle=shuffle),
-                }
-                return DataLoader(**data_loader_args)
+        def seeded_worker_init_fn(worker_init_fn):
+            def wrapper(worker_id):
+                worker_init_fn(worker_id)
+                seed_worker(worker_id)
 
-            data_loader = with_sampler(data_loader)
+            return wrapper
+
+        if self._is_seeded:
+            generator = torch.Generator()
+            generator.manual_seed(0)
+            data_loader_args["worker_init_fn"] = seeded_worker_init_fn(
+                data_loader.worker_init_fn
+            )
+            data_loader_args["generator"] = generator
+
+        data_loader = DataLoader(**data_loader_args)
 
         if move_to_device:
             device = self.get_device()
@@ -163,6 +191,24 @@ class TorchAccelerator(Accelerator):
             device = torch.device("cpu")
 
         return device
+
+    def make_reproducible(self, seed: int = 0) -> None:
+        """Seeds random number generators and disables nondeterministic algorithms.
+
+        This function:
+        * Seeds PyTorch, Python, and NumPy using the specified seed.
+        * Disables CUDA convolution benchmarking.
+        * Configures PyTorch to use determinstic algorithms.
+        * Seeds workers spawned for multi-process data loading.
+        """
+        torch.manual_seed(seed)
+        random.seed(seed)
+        np.random.seed(0)
+
+        torch.backends.cudnn.benchmark = False
+        torch.use_deterministic_algorithms(True)
+
+        self._is_seeded = True
 
 
 @PublicAPI(stability="beta")
@@ -424,6 +470,19 @@ def prepare_data_loader(
 def accelerate() -> None:
     """Enables training optimizations."""
     get_session().set_accelerator(TorchAccelerator())
+
+
+@PublicAPI(stability="beta")
+def make_reproducible(seed: int = 0) -> None:
+    """Limits sources of nondeterministic behavior.
+
+    This function:
+    * Seeds PyTorch, Python, and NumPy using the specified seed.
+    * Disables CUDA convolution benchmarking.
+    * Configures PyTorch to use determinstic algorithms.
+    * Seeds workers spawned for multi-process data loading.
+    """
+    get_session().get_accelerator(TorchAccelerator()).make_reproducible(seed)
 
 
 WORKER_TRACE_DIR_NAME = "pytorch_profiler_worker_traces"
