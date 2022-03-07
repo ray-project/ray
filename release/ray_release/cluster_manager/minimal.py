@@ -289,3 +289,6 @@ class MinimalClusterManager(ClusterManager):
 
     def get_cluster_address(self) -> str:
         return f"anyscale://{self.cluster_name}"
+
+    def get_session_name(self) -> str:
+        return f"anyscale://{self.cluster_name}"

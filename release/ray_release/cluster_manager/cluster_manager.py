@@ -74,3 +74,6 @@ class ClusterManager(abc.ABC):
         if not self.project_id or not self.cluster_id:
             return None
         return anyscale_cluster_url(self.project_id, self.cluster_id)
+
+    def get_session_name(self) -> str:
+        raise NotImplementedError

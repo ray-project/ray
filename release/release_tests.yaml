@@ -784,3 +784,46 @@
     
     type: sdk_command
     file_manager: sdk
+
+- name: k8s_shuffle_10gb
+  group: Core nightly tests
+  team: core
+  working_dir: nightly_tests
+
+  legacy:
+    test_name: shuffle_10gb
+    test_suite: nightly_tests
+
+  cluster:
+    cluster_env: shuffle/shuffle_app_config.yaml
+    cluster_compute: shuffle/shuffle_compute_single.yaml
+    # cloud_id: cld_HSrCZdMCYDe1NmMCJhYRgQ4p
+    autosuspend_mins: 120
+
+  run:
+    timeout: 3000
+    script: python shuffle/shuffle_test.py --num-partitions=50 --partition-size=200e6
+    
+    type: job
+    file_manager: job
+
+- name: k8s_threaded_actors_stress_test
+  group: Core nightly tests
+  team: core
+  working_dir: nightly_tests
+
+  legacy:
+    test_name: threaded_actors_stress_test
+    test_suite: nightly_tests
+
+  cluster:
+    cluster_env: stress_tests/stress_tests_app_config.yaml
+    cluster_compute: stress_tests/stress_test_threaded_actor_compute.yaml
+
+  run:
+    timeout: 7200
+    prepare: python wait_cluster.py 201 600
+    script: python stress_tests/test_threaded_actors.py --test-runtime 3600 --kill-interval_s 60
+  
+    type: job
+    file_manager: job

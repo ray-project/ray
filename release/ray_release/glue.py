@@ -49,7 +49,7 @@ type_str_to_command_runner = {
 command_runner_to_cluster_manager = {
     SDKRunner: FullClusterManager,
     ClientRunner: FullClusterManager,
-    JobRunner: MinimalClusterManager,
+    JobRunner: FullClusterManager,
 }
 
 file_manager_str_to_file_manager = {
@@ -178,7 +178,7 @@ def run_release_test(
                 "session_timeout", DEFAULT_CLUSTER_TIMEOUT
             )
 
-            autosuspend_mins = test["run"].get("autosuspend_mins", None)
+            autosuspend_mins = test["cluster"].get("autosuspend_mins", None)
             if autosuspend_mins:
                 cluster_manager.autosuspend_minutes = autosuspend_mins
 
@@ -230,6 +230,7 @@ def run_release_test(
         try:
             command_results = command_runner.fetch_results()
         except Exception as e:
+            logger.exception(e)
             logger.error(f"Could not fetch results for test command: {e}")
             command_results = {}
 
@@ -245,6 +246,7 @@ def run_release_test(
         result.status = "finished"
 
     except Exception as e:
+        logger.exception(e)
         pipeline_exception = e
 
     try:
