@@ -272,11 +272,22 @@ class RuntimeEnvAgent(
 
             return context
 
-        serialized_env = request.serialized_runtime_env
-        runtime_env = RuntimeEnv.deserialize(serialized_env)
-        uris = self.get_uris_from_runtime_env(runtime_env)
-        if request.source_process not in self.reference_exclude_sources:
-            self.increase_reference_for_uris(uris)
+        try:
+            serialized_env = request.serialized_runtime_env
+            runtime_env = RuntimeEnv.deserialize(serialized_env)
+            uris = self.get_uris_from_runtime_env(runtime_env)
+            if request.source_process not in self.reference_exclude_sources:
+                self.increase_reference_for_uris(uris)
+        except Exception as e:
+            self._logger.exception(
+                "[Increase] Failed to parse runtime env: " f"{serialized_env}"
+            )
+            return runtime_env_agent_pb2.IncreaseRuntimeEnvReferenceReply(
+                status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+                error_message="".join(
+                    traceback.format_exception(type(e), e, e.__traceback__)
+                ),
+            )
 
         if serialized_env not in self._env_locks:
             # async lock to prevent the same env being concurrently installed
@@ -367,9 +378,21 @@ class RuntimeEnvAgent(
             f"{request.serialized_runtime_env}."
         )
 
-        runtime_env = RuntimeEnv.deserialize(request.serialized_runtime_env)
-        uris = self.get_uris_from_runtime_env(runtime_env)
-        unused_uris = self.decrease_reference_for_uris(uris)
+        try:
+            runtime_env = RuntimeEnv.deserialize(request.serialized_runtime_env)
+            uris = self.get_uris_from_runtime_env(runtime_env)
+            unused_uris = self.decrease_reference_for_uris(uris)
+        except Exception as e:
+            self._logger.exception(
+                "[Decrease] Failed to parse runtime env: "
+                f"{request.serialized_runtime_env}"
+            )
+            return runtime_env_agent_pb2.IncreaseRuntimeEnvReferenceReply(
+                status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+                error_message="".join(
+                    traceback.format_exception(type(e), e, e.__traceback__)
+                ),
+            )
 
         for uri, uri_type in unused_uris:
             # Invalidate the env cache for any envs that contain this URI.

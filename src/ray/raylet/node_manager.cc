@@ -477,18 +477,16 @@ ray::Status NodeManager::RegisterGcs() {
   // Subscribe to job updates.
   const auto job_subscribe_handler = [this](const JobID &job_id,
                                             const JobTableData &job_data) {
-    // // HandleJobStarted is idempotent so it's ok to call it again when the job
-    // // finishes. We always need to call `HandleJobStarted` even when a job has
-    // // finished, because we may have missed the started event (for example,
-    // // because the node wasn't up when the job started). JobStarted +
-    // // JobFinished events both need to be processed because we need to persist
-    // // the job config of dead jobs in order for detached actors to function
-    // // properly.
-    // HandleJobStarted(job_id, job_data);
+    // HandleJobStarted is idempotent so it's ok to call it again when the job
+    // finishes. We always need to call `HandleJobStarted` even when a job has
+    // finished, because we may have missed the started event (for example,
+    // because the node wasn't up when the job started). JobStarted +
+    // JobFinished events both need to be processed because we need to persist
+    // the job config of dead jobs in order for detached actors to function
+    // properly.
+    HandleJobStarted(job_id, job_data);
     if (job_data.is_dead()) {
       HandleJobFinished(job_id, job_data);
-    } else {
-      HandleJobStarted(job_id, job_data);
     }
   };
   RAY_RETURN_NOT_OK(

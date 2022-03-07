@@ -592,6 +592,10 @@ static bool NeedToEagerInstallRuntimeEnv(const rpc::JobConfig &job_config) {
 }
 
 void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job_config) {
+  if (all_jobs_.find(job_id) != all_jobs_.end()) {
+    RAY_LOG(INFO) << "Job " << job_id << " already started in worker pool.";
+    return;
+  }
   all_jobs_[job_id] = job_config;
   if (NeedToEagerInstallRuntimeEnv(job_config)) {
     auto const &runtime_env = job_config.runtime_env_info().serialized_runtime_env();
@@ -728,7 +732,7 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   auto &state = GetStateForLanguage(driver->GetLanguage());
   state.registered_drivers.insert(std::move(driver));
   const auto job_id = driver->GetAssignedJobId();
-  all_jobs_[job_id] = job_config;
+  HandleJobStarted(job_id, job_config);
 
   // This is a workaround to start initial workers on this node if and only if Raylet is
   // started by a Python driver and the job config is not set in `ray.init(...)`.
