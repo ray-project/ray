@@ -1,5 +1,3 @@
-load("//bazel:python.bzl", "py_test_module_list")
-
 # --------------------------------------------------------------------
 # Tests from the python/ray/util/sgd/tests directory.
 # Please keep these sorted alphabetically.
@@ -93,15 +91,6 @@ py_test(
     deps = [":sgd_lib"],
 )
 
-py_test_module_list(
-  files = [
-    "tests/test_ptl.py",
-  ],
-  size = "large",
-  extra_srcs = [],
-  tags = ["exclusive", "manual", "team:ml"],
-  deps = [":sgd_lib"],
-)
 # --------------------------------------------------------------------
 # Tests from the python/ray/util/sgd/tf/examples directory.
 # Please keep these sorted alphabetically.
