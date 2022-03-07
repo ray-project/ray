@@ -8,7 +8,7 @@ metadata:
     # An unique identifier for the head node and workers of this cluster.
   name: raycluster-complete
 spec:
-  rayVersion: '1.9.2'
+  rayVersion: '1.11.0'
   enableInTreeAutoscaling: false
   ######################headGroupSpecs#################################
   # head group template and specs, (perhaps 'group' is not needed in the name)
@@ -102,7 +102,9 @@ spec:
               name: ray-logs
         # The Ray autoscaler sidecar to the head pod
         - name: autoscaler
-          image: rayproject/kuberay-autoscaler
+          # TODO (short term): Pin the image to a particular Ray commit.
+          # TODO (longer term): This should be selected based on Ray version.
+          image: rayproject/ray:nightly
           imagePullPolicy: Always
           env:
           - name: RAY_CLUSTER_NAMESPACE
@@ -114,9 +116,9 @@ spec:
             # The autoscaler uses this env variable to determine which Ray CR to interact with.
             # TODO: Match with CR name automatically via operator, Helm, and/or Kustomize.
             value: raycluster-complete
-          command: ["/home/ray/anaconda3/bin/python"]
+          command: ["ray"]
           args:
-          - "/home/ray/run_autoscaler_with_retries.py"
+          - "kuberay-autoscaler"
           - "--cluster-name"
           - "$(RAY_CLUSTER_NAME)"
           - "--cluster-namespace"
