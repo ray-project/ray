@@ -8,6 +8,7 @@ import ray._private.utils as utils
 from ray import ray_constants
 from ray.state import GlobalState
 from ray._raylet import GcsClientOptions
+from typing import List
 
 __all__ = ["free", "global_gc"]
 MAX_MESSAGE_LENGTH = ray._config.max_grpc_message_size()
@@ -266,16 +267,17 @@ def ray_nodes(node_id: str, node_ip: str, debug=False):
     state._initialize_global_state(options)
     resources = state._available_resources_per_node()
     for node in nodes:
-        info = {
-            "id": node["raylet"]["nodeId"],
-            "ip": node["ip"],
-            "state": node["raylet"]["state"],
-            "available_resources": resources[node["raylet"]["nodeId"]],
-            "top_10_process_mem_usage": node["top10ProcMemUsage"],
-        }
-        if debug:
-            info["logUrl"] = node["logUrl"]
-        parsed_node_info.append(info)
+        if node["raylet"] != {}:
+            info = {
+                "id": node["raylet"]["nodeId"],
+                "ip": node["ip"],
+                "state": node["raylet"]["state"],
+                "available_resources": resources[node["raylet"]["nodeId"]],
+                "top_10_process_mem_usage": node["top10ProcMemUsage"],
+            }
+            if debug:
+                info["logUrl"] = node["logUrl"]
+            parsed_node_info.append(info)
     results = []
     # Filtering.
     if node_ip:
@@ -316,20 +318,21 @@ def ray_actors(actor_id: str):
 def ray_log(
     ip_address: str,
     node_id: str,
-    component: str,
+    filters: List[str],
     limit: int = 100,
-    log_id: int = 4294967296,  # 2^32
 ):
     """Return the `limit` number of lines of logs."""
     import requests
 
-    log_url = ray_nodes(node_id, ip_address, debug=True)[0]["logUrl"]
     dashboard_url = _get_dashboard_url()
-    if not ip_address:
-        ip_address = dashboard_url
-    if not component:
-        component = ""
-    log_html = requests.get(f"{dashboard_url}/log_proxy?url={log_url}/{component}").text
+    nodes = ray_nodes(node_id, ip_address, debug=True)
+    if len(nodes) > 0:
+        log_url = nodes[0]["logUrl"]
+    else:
+        node_id_str = f"Input Node ID: {node_id}. " if node_id else ""
+        addr_str = f"Input IP Address: {ip_address}. " if ip_address else ""
+        raise Exception(f"Could not find node. {node_id_str}{addr_str}")
+    log_html = requests.get(f"{dashboard_url}/log_proxy?url={log_url}").text
 
     def get_link(s):
         s = s[len('<li><a href="/logs/') :]
@@ -338,19 +341,30 @@ def ray_log(
         return s
 
     logs = {}
-    filtered = list(filter(lambda s: '<li><a href="/logs/' in s, log_html.splitlines()))
+    filtered = list(
+        filter(
+            lambda s: '<li><a href="/logs/' in s
+            and (len(filters) == 0 or any([f in s for f in filters])),
+            log_html.splitlines(),
+        )
+    )
     links = list(map(get_link, filtered))
     logs["worker_errors"] = list(
         filter(lambda s: "worker" in s and s.endswith(".err"), links)
     )
-    logs["core_worker_logs"] = list(
+    logs["worker_outs"] = list(
         filter(lambda s: "worker" in s and s.endswith(".out"), links)
     )
-    logs["python_worker_logs"] = list(
-        filter(lambda s: "python" in s and s.endswith(".log"), links)
-    )
+    for lang in ray_constants.LANGUAGE_WORKER_TYPES:
+        logs[f"{lang}_core_worker_logs"] = list(
+            filter(lambda s: f"{lang}-core-worker" in s and s.endswith(".log"), links)
+        )
+        logs[f"{lang}_driver_logs"] = list(
+            filter(lambda s: f"{lang}-core-driver" in s and s.endswith(".log"), links)
+        )
     logs["raylet_logs"] = list(filter(lambda s: "raylet" in s, links))
-    # print(logs)
+    logs["gcs_logs"] = list(filter(lambda s: "gcs" in s, links))
+    logs["misc"] = list(filter(lambda s: all([s not in logs[k] for k in logs]), links))
     return logs
 
 
@@ -358,22 +372,4 @@ def ray_actor_log(actor_id):
     actor_info = ray_actors(actor_id)[actor_id]
     node_id = actor_info["node_id"]
     pid = actor_info["pid"]
-    index = ray_log(None, node_id, None).split("\n")
-    for file_name in index:
-        if f"{pid}." in file_name:
-            if file_name.endswith(".out"):
-                output_log = file_name
-            elif file_name.endswith(".err"):
-                error_log = file_name
-            elif file_name.endswith(".log"):
-                system_log = file_name
-    out_log = ray_log(None, node_id, output_log)
-    err_log = ray_log(None, node_id, error_log)
-    system_log = ray_log(None, node_id, system_log)
-    return f"stdout\n {out_log}\n\nstderr\n{err_log}"
-    system_log = ray_log(None, node_id, system_log)
-    return f"stdout\n {out_log}\n\nstderr\n{err_log}"
-    system_log = ray_log(None, node_id, system_log)
-    return f"stdout\n {out_log}\n\nstderr\n{err_log}"
-    system_log = ray_log(None, node_id, system_log)
-    return f"stdout\n {out_log}\n\nstderr\n{err_log}"
+    return ray_log(None, node_id, [str(pid)])

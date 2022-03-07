@@ -1855,6 +1855,12 @@ def local_dump(
 
 
 @cli.command(hidden=True)
+@click.argument(
+    "filters",
+    nargs=-1,
+    required=False,
+    default=None,
+)
 @click.option(
     "--ip-address",
     required=False,
@@ -1876,38 +1882,36 @@ def local_dump(
     default=None,
     help="The unique id of the node.",
 )
-@click.option(
-    "--log-file",
-    "-f",
-    required=False,
-    type=str,
-    default=None,
-    help="The name of the log file.",
-)
-@click.option(
-    "--by-id",
-    required=False,
-    type=int,
-    default=4294967296,  # 2^32
-    help="The name of the log file.",
-)
-def logs(ip_address: str, node_id: str, actor_id: str, log_file: str, by_id: int):
+def logs(filters, ip_address: str, node_id: str, actor_id: str):
+    """
+    FILTERS: the worker ids, or strings to filter the logs by title.
+    """
+
     def format_print(links):
         def print_section(name, key):
-            print("-----------")
-            print(name)
-            print("-----------")
-            [print(log) for log in links[key]]
+            if len(links[key]) > 0:
+                print("-----------")
+                print(name)
+                print("-----------")
+                [print(log) for log in links[key]]
 
-        print_section("Worker Logs (Core)", "core_worker_logs")
-        print_section("Worker Errors (Core)", "worker_errors")
-        print_section("Python Worker Logs", "python_worker_logs")
+        for lang in ray_constants.LANGUAGE_WORKER_TYPES:
+            print_section(
+                f"{lang.capitalize()} Core Driver Logs", f"{lang}_driver_logs"
+            )
+            print_section(
+                f"{lang.capitalize()} Core Worker Logs", f"{lang}_core_worker_logs"
+            )
+        print_section("Worker Errors", "worker_errors")
+        print_section("Worker Stdout", "worker_outs")
         print_section("Raylet Logs", "raylet_logs")
+        print_section("GCS Logs", "gcs_logs")
+        print_section("Miscellaneous Logs", "misc")
 
     if actor_id:
-        print(ray_actor_log(actor_id))
+        format_print(ray_actor_log(actor_id))
     else:
-        format_print(ray_log(ip_address, node_id, log_file))
+        format_print(ray_log(ip_address, node_id, list(filters)))
 
 
 @cli.command(hidden=True)
@@ -2374,4 +2378,5 @@ def main():
 
 
 if __name__ == "__main__":
+    main()
     main()
