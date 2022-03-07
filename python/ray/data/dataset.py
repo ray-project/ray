@@ -507,8 +507,6 @@ class Dataset(Generic[T]):
         *,
         seed: Optional[int] = None,
         num_blocks: Optional[int] = None,
-        _spread_resource_prefix: Optional[str] = None,
-        _move: bool = False,  # TODO: deprecate.
     ) -> "Dataset[T]":
         """Randomly shuffle the elements of this dataset.
 
@@ -537,7 +535,7 @@ class Dataset(Generic[T]):
             num_blocks = block_list.executed_num_blocks()  # Blocking.
             if num_blocks == 0:
                 return block_list, {}
-            if _move or clear_input_blocks:
+            if clear_input_blocks:
                 blocks = block_list.copy()
                 block_list.clear()
             else:
@@ -548,7 +546,6 @@ class Dataset(Generic[T]):
                 num_blocks,
                 random_shuffle=True,
                 random_seed=seed,
-                _spread_resource_prefix=_spread_resource_prefix,
                 map_ray_remote_args=remote_args,
                 reduce_ray_remote_args=remote_args,
             )

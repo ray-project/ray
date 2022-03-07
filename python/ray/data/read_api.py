@@ -1,4 +1,3 @@
-import itertools
 import os
 import logging
 from typing import (
@@ -58,7 +57,7 @@ from ray.data.impl.lazy_block_list import LazyBlockList
 from ray.data.impl.plan import ExecutionPlan
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.stats import DatasetStats, get_or_create_stats_actor
-from ray.data.impl.util import _get_spread_resources_iter, _lazy_import_pyarrow_dataset
+from ray.data.impl.util import _lazy_import_pyarrow_dataset
 
 T = TypeVar("T")
 
@@ -190,7 +189,6 @@ def read_datasource(
     *,
     parallelism: int = 200,
     ray_remote_args: Dict[str, Any] = None,
-    _spread_resource_prefix: Optional[str] = None,
     **read_args,
 ) -> Dataset[T]:
     """Read a dataset from a custom data source.
@@ -263,30 +261,14 @@ def read_datasource(
         ray_remote_args["scheduling_strategy"] = "SPREAD"
     remote_read = cached_remote_fn(remote_read)
 
-    if _spread_resource_prefix is not None:
-        if context.optimize_fuse_stages:
-            logger.warning(
-                "_spread_resource_prefix has no effect when optimize_fuse_stages "
-                "is enabled. Tasks are spread by default."
-            )
-        # Use given spread resource prefix for round-robin resource-based
-        # scheduling.
-        nodes = ray.nodes()
-        resource_iter = _get_spread_resources_iter(
-            nodes, _spread_resource_prefix, ray_remote_args
-        )
-    else:
-        # If no spread resource prefix given, yield an empty dictionary.
-        resource_iter = itertools.repeat({})
-
     calls: List[Callable[[], ObjectRef[MaybeBlockPartition]]] = []
     metadata: List[BlockPartitionMetadata] = []
 
     for i, task in enumerate(read_tasks):
         calls.append(
-            lambda i=i, task=task, resources=next(resource_iter): remote_read.options(
-                **ray_remote_args, resources=resources
-            ).remote(i, task, stats_actor)
+            lambda i=i, task=task: remote_read.options(**ray_remote_args).remote(
+                i, task, stats_actor
+            )
         )
         metadata.append(task.get_metadata())
 
