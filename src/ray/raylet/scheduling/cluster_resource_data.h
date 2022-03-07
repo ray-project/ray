@@ -57,13 +57,125 @@ struct ResourceInstanceCapacities {
   std::vector<FixedPoint> available;
 };
 
+class PredefinedResources {
+ public:
+  PredefinedResources() { values_.resize(PredefinedResources_MAX); }
+
+  const bool HasResource(size_t resource_id) const {
+    return this.values_[resource_id] != 0;
+  }
+
+  const FixedPoint &Get(size_t resource_id) const {
+    return this->values_[resource_id];
+  }
+
+  const FixedPoint &CPU() const { return this->values_[CPU]; }
+
+  const FixedPoint &Memory() const { return this->values_[MEM]; }
+
+  const FixedPoint &GPU() const { return this->values_[GPU]; }
+
+  const FixedPoint &ObjectStoreMemory() const { return this->values_[OBJECT_STORE_MEM]; }
+
+  size_t Size() const {
+    size_t size = 0;
+    for (auto value : values_) {
+      if (value != 0) {
+        size += 1;
+      }
+    }
+    return size;
+  }
+
+  bool IsEmpty() const {
+    for (auto value : values_) {
+      if (value != 0) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool IsSubsetOf(const PredefinedResources &other) const {
+    for (int i = 0; i < PredefinedResources_MAX; i++) {
+      if (this.values_[i] > other.values_[i]) {
+        return false;
+      }
+      return true;
+    }
+  }
+
+  bool operator==(const PredefinedResources &other) const {
+    return std::equal(std::begin(this->values_), std::end(this.values_), std::begin(other.values_));
+  }
+
+ std::string DebugString() const {
+    buffer << "{";
+    for (size_t i = 0; i < this->values_.size(); i++) {
+      buffer << "(" << this->values_[i] << ") ";
+    }
+    buffer << "}";
+    return buffer.str();
+  }
+
+ private:
+  std::vector<FixedPoint> values_;
+}
+
+class CustomResources {
+ public:
+  const std::optional<FixedPoint &> Get(const int64_t resource_id) {
+    auto it = this->values_.find(resource_id);
+    if (it != this->values_.end()) {
+      return *it;
+    } else {
+      return std::nullopt;
+    }
+  }
+
+  size_t Size() const { return values_.size(); }
+
+  bool IsEmty() const { return values_.size() == 0; }
+
+  bool IsSubsetOf(const CustomResources &other) const {
+    for (auto entry: values_) {
+      auto it = other.values_.find(entry.first);
+      if (it == other.values_.end()) {
+        return false;
+      }
+      if (entry.second > it->second) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool operator==(const CustomResources &other) const {
+    return this->values_ == other.values;
+  }
+
+  std::string DebugString() const {
+    std::stringstream buffer;
+    buffer << "[";
+    for (auto &it : this->values_) {
+      buffer << it.first << ":"
+             << "(" << it.second << ") ";
+    }
+    buffer << "]" << std::endl;
+    return buffer.str();
+  }
+
+ private:
+  absl::flat_hash_map<int64_t, FixedPoint> values_;
+}
+
 // Data structure specifying the capacity of each resource requested by a task.
 class ResourceRequest {
  public:
   /// List of predefined resources required by the task.
-  std::vector<FixedPoint> predefined_resources;
+  PredefinedResources predefined_resources;
   /// List of custom resources required by the task.
-  absl::flat_hash_map<int64_t, FixedPoint> custom_resources;
+  CustomResources custom_resources;
   /// Whether this task requires object store memory.
   /// TODO(swang): This should be a quantity instead of a flag.
   bool requires_object_store_memory = false;
@@ -71,7 +183,16 @@ class ResourceRequest {
   bool IsEmpty() const;
   /// Returns human-readable string for this task request.
   std::string DebugString() const;
+
+  bool IsSubsetOf(const ResourceRequest &other) {
+    return predefined_resources.IsSubsetOf(other.predefined_resources) && custom_resources.IsSubsetOf(other.custom_resources);
+  }
+
+  bool operator==(const ResourceRequest &other) const {
+    return this->predefined_resources == other.predefined_resources && this->custom_resources == other.predefined_resources;
+  }
 };
+
 
 // Data structure specifying the capacity of each instance of each resource
 // allocated to a task.
@@ -144,9 +265,11 @@ class NodeResources {
  public:
   NodeResources() {}
   NodeResources(const NodeResources &other)
-      : predefined_resources(other.predefined_resources),
-        custom_resources(other.custom_resources),
+      : total(other.total),
+        available(other.available),
         object_pulls_queued(other.object_pulls_queued) {}
+  ResourceRequest total;
+  ResourceRequest available;
   /// Available and total capacities for predefined resources.
   std::vector<ResourceCapacity> predefined_resources;
   /// Map containing custom resources. The key of each entry represents the

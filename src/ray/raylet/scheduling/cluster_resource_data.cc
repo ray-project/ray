@@ -203,15 +203,13 @@ NodeResources ResourceMapToNodeResources(
 float NodeResources::CalculateCriticalResourceUtilization() const {
   float highest = 0;
   for (const auto &i : {CPU, MEM, OBJECT_STORE_MEM}) {
-    if (i >= this->predefined_resources.size()) {
+    const auto &total = this->total.Get(i);
+    if (total == 0) {
       continue;
     }
-    const auto &capacity = this->predefined_resources[i];
-    if (capacity.total == 0) {
-      continue;
-    }
+    const auto &available = this->available.Get(i);
 
-    float utilization = 1 - (capacity.available.Double() / capacity.total.Double());
+    float utilization = 1 - (available.Double() / total.Double());
     if (utilization > highest) {
       highest = utilization;
     }
@@ -227,102 +225,15 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
     return false;
   }
 
-  if (resource_request.IsEmpty()) {
-    return true;
-  }
-
-  // First, check predefined resources.
-  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
-    if (i >= this->predefined_resources.size()) {
-      if (resource_request.predefined_resources[i] != 0) {
-        return false;
-      }
-      continue;
-    }
-
-    const auto &resource = this->predefined_resources[i].available;
-    const auto &demand = resource_request.predefined_resources[i];
-
-    if (resource < demand) {
-      RAY_LOG(DEBUG) << "At resource capacity";
-      return false;
-    }
-  }
-
-  // Now check custom resources.
-  for (const auto &resource_req_custom_resource : resource_request.custom_resources) {
-    auto it = this->custom_resources.find(resource_req_custom_resource.first);
-    if (it == this->custom_resources.end()) {
-      return false;
-    } else if (resource_req_custom_resource.second > it->second.available) {
-      return false;
-    }
-  }
-
-  return true;
+  return resource_request.IsSubsetOf(this->available);
 }
 
 bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
-  if (resource_request.IsEmpty()) {
-    return true;
-  }
-  // First, check predefined resources.
-  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
-    if (i >= this->predefined_resources.size()) {
-      if (resource_request.predefined_resources[i] != 0) {
-        return false;
-      }
-      continue;
-    }
-    const auto &resource = this->predefined_resources[i].total;
-    const auto &demand = resource_request.predefined_resources[i];
-
-    if (resource < demand) {
-      return false;
-    }
-  }
-
-  // Now check custom resources.
-  for (const auto &resource_req_custom_resource : resource_request.custom_resources) {
-    auto it = this->custom_resources.find(resource_req_custom_resource.first);
-    if (it == this->custom_resources.end()) {
-      return false;
-    } else if (resource_req_custom_resource.second > it->second.total) {
-      return false;
-    }
-  }
-  return true;
+  return resource_request.IsSubsetOf(this->total);
 }
 
 bool NodeResources::operator==(const NodeResources &other) {
-  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
-    if (this->predefined_resources[i].total != other.predefined_resources[i].total) {
-      return false;
-    }
-    if (this->predefined_resources[i].available !=
-        other.predefined_resources[i].available) {
-      return false;
-    }
-  }
-
-  if (this->custom_resources.size() != other.custom_resources.size()) {
-    return false;
-  }
-
-  for (auto it1 = this->custom_resources.begin(); it1 != this->custom_resources.end();
-       ++it1) {
-    auto it2 = other.custom_resources.find(it1->first);
-    if (it2 == other.custom_resources.end()) {
-      return false;
-    }
-    if (it1->second.total != it2->second.total) {
-      return false;
-    }
-    if (it1->second.available != it2->second.available) {
-      return false;
-    }
-  }
-  return true;
+  return this->available == other.available && this->total == other.total;
 }
 
 bool NodeResources::operator!=(const NodeResources &other) { return !(*this == other); }
@@ -349,13 +260,16 @@ std::string NodeResources::DebugString() const {
       RAY_CHECK(false) << "This should never happen.";
       break;
     }
-    buffer << "(" << this->predefined_resources[i].total << ":"
-           << this->predefined_resources[i].available << ")\n";
+    buffer << "(" << this->total.predefined_resources.Get(i) << ":"
+           << this->available.predefined_resources.Get(i) << ")\n";
   }
-  for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
+  for (auto it = this->total.custom_resources.begin(); it != this->total.custom_resources.end();
        ++it) {
-    buffer << "\t" << ResourceID(it->first).Binary() << ":(" << it->second.total << ":"
-           << it->second.available << ")\n";
+    auto name = ResourceID(it->first).Binary();
+    auto total = it->second;
+    auto available = this->available.custom_resources.Get(it->first);
+    buffer << "\t" << << ":(" << total << ":"
+           << available << ")\n";
   }
   buffer << "}" << std::endl;
   return buffer.str();
@@ -509,34 +423,11 @@ ResourceInstanceCapacities &NodeResourceInstances::GetMutable(scheduling::Resour
 }
 
 bool ResourceRequest::IsEmpty() const {
-  for (size_t i = 0; i < this->predefined_resources.size(); i++) {
-    if (this->predefined_resources[i] != 0) {
-      return false;
-    }
-  }
-  for (auto &it : custom_resources) {
-    if (it.second != 0) {
-      return false;
-    }
-  }
-  return true;
+  return this->predefined_resources.IsEmpty() && this->custom_resources.IsEmpty();
 }
 
 std::string ResourceRequest::DebugString() const {
-  std::stringstream buffer;
-  buffer << " {";
-  for (size_t i = 0; i < this->predefined_resources.size(); i++) {
-    buffer << "(" << this->predefined_resources[i] << ") ";
-  }
-  buffer << "}";
-
-  buffer << "  [";
-  for (auto &it : this->custom_resources) {
-    buffer << it.first << ":"
-           << "(" << it.second << ") ";
-  }
-  buffer << "]" << std::endl;
-  return buffer.str();
+  return this->predefined_resources.DebugString() + " " + this->custom_resources.DebugString();
 }
 
 bool TaskResourceInstances::IsEmpty() const {
