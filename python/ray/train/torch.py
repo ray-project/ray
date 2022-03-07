@@ -23,7 +23,7 @@ from torch.utils.data import (
     DistributedSampler,
     DataLoader,
     IterableDataset,
-    SequentialSampler,
+    RandomSampler,
 )
 
 try:
@@ -316,14 +316,16 @@ def prepare_data_loader(
         def with_sampler(loader):
             # Automatically set the DistributedSampler
 
-            # If using a sampler, the shuffle attribute in the
-            # DataLoader must be set to False.
-            # Instead the shuffling is determined by the shuffle attribute
-            # in the DistributedSampler.
-            # We identify if shuffling is enabled in the passed in
-            # DataLoader by seeing if the sampler for the DataLoader is a
-            # SequentialSampler.
-            shuffle = not isinstance(loader.sampler, SequentialSampler)
+            # If you're using sampler, the DataLoader shuffle attribute must be set to
+            # False. Shuffling is instead determined by the shuffle argument passed to
+            # the DistributedSampler constructor.
+
+            # If no sampler is passed to the DataLoader constructor, Torch constructs a
+            # default sampler. The default sampler is a RandomSampler if shuffling is
+            # enabled and a SequentialSampler otherwise. There is no DataLoader.shuffle
+            # attribute. So, we identify whether shuffling is enabled by seeing if the
+            # DataLoader sampler is a RandomSampler.
+            shuffle = isinstance(loader.sampler, RandomSampler)
 
             data_loader_args = {
                 "dataset": loader.dataset,
