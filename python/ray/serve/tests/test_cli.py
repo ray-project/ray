@@ -38,10 +38,10 @@ def test_start_shutdown(ray_start_stop):
 
 def test_start_shutdown_in_namespace(ray_start_stop):
     with pytest.raises(subprocess.CalledProcessError):
-        subprocess.check_output(["serve", "-n", "test", "shutdown"])
+        subprocess.check_output(["serve", "shutdown", "-n", "test"])
 
-    subprocess.check_output(["serve", "-n", "test", "start"])
-    subprocess.check_output(["serve", "-n", "test", "shutdown"])
+    subprocess.check_output(["serve", "start", "-n", "test"])
+    subprocess.check_output(["serve", "shutdown", "-n", "test"])
 
 
 class A:
@@ -74,14 +74,14 @@ def test_create_deployment(ray_start_stop, tmp_working_dir, class_name):  # noqa
     subprocess.check_output(
         [
             "serve",
+            "create-deployment",
+            f"ray.serve.tests.test_cli.{class_name}",
             "--runtime-env-json",
             json.dumps(
                 {
                     "working_dir": tmp_working_dir,
                 }
             ),
-            "create-deployment",
-            f"ray.serve.tests.test_cli.{class_name}",
             "--options-json",
             json.dumps(
                 {

@@ -28,13 +28,18 @@ from ray.autoscaler._private.cli_logger import cli_logger
 
 
 @click.group(help="[EXPERIMENTAL] CLI for managing Serve instances on a Ray cluster.")
+def cli():
+    pass
+
+
+@cli.command(help="Start a detached Serve instance on the Ray cluster.")
 @click.option(
     "--address",
     "-a",
     default=os.environ.get("RAY_ADDRESS", "auto"),
     required=False,
     type=str,
-    help="Address of the running Ray cluster to connect to. " 'Defaults to "auto".',
+    help='Address of the running Ray cluster to connect to. Defaults to "auto".',
 )
 @click.option(
     "--namespace",
@@ -51,15 +56,6 @@ from ray.autoscaler._private.cli_logger import cli_logger
     type=str,
     help=("Runtime environment dictionary to pass into ray.init. Defaults to empty."),
 )
-def cli(address, namespace, runtime_env_json):
-    ray.init(
-        address=address,
-        namespace=namespace,
-        runtime_env=json.loads(runtime_env_json),
-    )
-
-
-@cli.command(help="Start a detached Serve instance on the Ray cluster.")
 @click.option(
     "--http-host",
     default=DEFAULT_HTTP_HOST,
@@ -88,7 +84,20 @@ def cli(address, namespace, runtime_env_json):
     type=str,
     hidden=True,
 )
-def start(http_host, http_port, http_location, checkpoint_path):
+def start(
+    address,
+    namespace,
+    runtime_env_json,
+    http_host,
+    http_port,
+    http_location,
+    checkpoint_path,
+):
+    ray.init(
+        address=address,
+        namespace=namespace,
+        runtime_env=json.loads(runtime_env_json),
+    )
     serve.start(
         detached=True,
         http_options=dict(
@@ -101,7 +110,27 @@ def start(http_host, http_port, http_location, checkpoint_path):
 
 
 @cli.command(help="Shutdown the running Serve instance on the Ray cluster.")
-def shutdown():
+@click.option(
+    "--address",
+    "-a",
+    default=os.environ.get("RAY_ADDRESS", "auto"),
+    required=False,
+    type=str,
+    help='Address of the running Ray cluster to connect to. Defaults to "auto".',
+)
+@click.option(
+    "--namespace",
+    "-n",
+    default="serve",
+    required=False,
+    type=str,
+    help='Ray namespace to connect to. Defaults to "serve".',
+)
+def shutdown(address: str, namespace: str):
+    ray.init(
+        address=address,
+        namespace=namespace,
+    )
     serve.api._connect()
     serve.shutdown()
 
@@ -117,13 +146,47 @@ class may or may not be decorated with ``@serve.deployment``.
 )
 @click.argument("deployment")
 @click.option(
+    "--address",
+    "-a",
+    default=os.environ.get("RAY_ADDRESS", "auto"),
+    required=False,
+    type=str,
+    help='Address of the running Ray cluster to connect to. Defaults to "auto".',
+)
+@click.option(
+    "--namespace",
+    "-n",
+    default="serve",
+    required=False,
+    type=str,
+    help='Ray namespace to connect to. Defaults to "serve".',
+)
+@click.option(
+    "--runtime-env-json",
+    default=r"{}",
+    required=False,
+    type=str,
+    help=("Runtime environment dictionary to pass into ray.init. Defaults to empty."),
+)
+@click.option(
     "--options-json",
     default=r"{}",
     required=False,
     type=str,
     help="JSON string for the deployments options",
 )
-def create_deployment(deployment: str, options_json: str):
+def create_deployment(
+    address: str,
+    namespace: str,
+    runtime_env_json: str,
+    deployment: str,
+    options_json: str,
+):
+    ray.init(
+        address=address,
+        namespace=namespace,
+        runtime_env=json.loads(runtime_env_json),
+    )
     deployment_cls = import_attr(deployment)
     if not isinstance(deployment_cls, Deployment):
         deployment_cls = serve.deployment(deployment_cls)
@@ -191,14 +254,21 @@ def deploy(config_file_name: str, address: str):
     ),
 )
 @click.option(
-    "--address",
+    "--cluster-address",
     "-a",
-    default=os.environ.get("RAY_ADDRESS", "http://localhost:8265"),
+    default="auto",
+    required=False,
+    type=str,
+    help=('Address of the Ray cluster to query. Defaults to "auto".'),
+)
+@click.option(
+    "--dashboard-address",
+    "-a",
+    default="http://localhost:8265",
     required=False,
     type=str,
     help=(
-        "Address of the Ray dashboard to query. Only necessary if a "
-        "working_dir is specified."
+        'Address of the Ray dashboard to query. Defaults to "http://localhost:8265".'
     ),
 )
 def run(
@@ -206,7 +276,8 @@ def run(
     runtime_env: str,
     runtime_env_json: str,
     working_dir: str,
-    address: str,
+    cluster_address: str,
+    dashboard_address: str,
 ):
     """
     Deploys deployment(s) from CONFIG_OR_IMPORT_PATH, which must be either a
@@ -237,9 +308,10 @@ def run(
             schematized_config = ServeApplicationSchema.parse_obj(config)
             deployments = schema_to_serve_application(schematized_config)
 
+            ray.init(address=cluster_address, namespace="serve")
             serve.start()
 
-            client = ServeSubmissionClient(address)
+            client = ServeSubmissionClient(dashboard_address)
             for deployment in deployments:
                 client.set_up_runtime_env(
                     deployment,
@@ -263,14 +335,15 @@ def run(
 
             deployment = serve.deployment(name="run")(config_or_import_path)
 
+            ray.init(address=cluster_address, namespace="serve")
             serve.start()
-            if working_dir is not None:
-                client = ServeSubmissionClient(address)
-                client.set_up_runtime_env(
-                    deployment,
-                    new_runtime_env=final_runtime_env,
-                    new_working_dir=final_working_dir,
-                )
+
+            client = ServeSubmissionClient(dashboard_address)
+            client.set_up_runtime_env(
+                deployment,
+                new_runtime_env=final_runtime_env,
+                new_working_dir=final_working_dir,
+            )
 
             deployment.deploy()
 
