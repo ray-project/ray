@@ -3,6 +3,7 @@ import time
 import pytest
 
 import ray
+from ray.train.accelerator import Accelerator
 from ray.train.constants import SESSION_MISUSE_LOG_ONCE_KEY
 from ray.train.session import (
     init_session,
@@ -16,6 +17,8 @@ from ray.train.session import (
     load_checkpoint,
     get_dataset_shard,
     world_size,
+    get_accelerator,
+    set_accelerator,
 )
 
 
@@ -270,6 +273,38 @@ def test_warn_once():
 
     # Should only warn once.
     assert len(record) == 4
+
+
+class FakeAccelerator(Accelerator):
+    pass
+
+
+def test_set_and_get_accelerator(session):
+    accelerator = FakeAccelerator()
+    set_accelerator(accelerator)
+    assert get_accelerator(FakeAccelerator) is accelerator
+
+
+def test_get_accelerator_constructs_default_accelerator(session):
+    assert isinstance(get_accelerator(FakeAccelerator), FakeAccelerator)
+
+
+def test_get_accelerator_raises_error_outside_session():
+    with pytest.raises(RuntimeError):
+        get_accelerator(FakeAccelerator)
+
+
+def test_set_accelerator_raises_error_if_accelerator_already_set(session):
+    accelerator1, accelerator2 = FakeAccelerator(), FakeAccelerator()
+    set_accelerator(accelerator1)
+    with pytest.raises(RuntimeError):
+        set_accelerator(accelerator2)
+
+
+def test_set_accelerator_raises_error_outside_session():
+    accelerator = FakeAccelerator()
+    with pytest.raises(RuntimeError):
+        set_accelerator(accelerator)
 
 
 if __name__ == "__main__":

@@ -529,3 +529,40 @@ def world_size() -> int:
     if session is None:
         return 1
     return session.world_size
+
+
+def get_accelerator(default_accelerator_cls: Type[Accelerator]) -> Accelerator:
+    """The accelerator for this training session.
+
+    If an accelerator has not been set, then this method will construct an
+    accelerator using the provided accelerator class.
+
+    Raises:
+        RuntimeError: if the session is uninitialized.
+    """
+    session = get_session()
+    if session is None:
+        raise RuntimeError(
+            "The function you called is meant to be used inside a training function "
+            "that is executed by `Trainer.run`."
+        )
+    return session.get_accelerator(default_accelerator_cls)
+
+
+def set_accelerator(accelerator: Accelerator) -> None:
+    """Sets the accelerator for this training session.
+
+    Args:
+        accelerator (Accelerator): The accelerator to use for training.
+
+    Raises:
+        RuntimeError: if the session is uninitialized, or if the accelerator has
+            already been set.
+    """
+    session = get_session()
+    if session is None:
+        raise RuntimeError(
+            "The function you called is meant to be used inside a training function "
+            "that is executed by `Trainer.run`."
+        )
+    session.set_accelerator(accelerator)
