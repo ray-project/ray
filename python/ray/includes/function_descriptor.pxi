@@ -339,13 +339,14 @@ cdef class CppFunctionDescriptor(FunctionDescriptor):
 
     def __reduce__(self):
         return CppFunctionDescriptor, (self.typed_descriptor.FunctionName(),
-                                        self.typed_descriptor.Caller())
+                                       self.typed_descriptor.Caller())
 
     @staticmethod
     cdef from_cpp(const CFunctionDescriptor &c_function_descriptor):
         cdef CCppFunctionDescriptor *typed_descriptor = \
             <CCppFunctionDescriptor*>(c_function_descriptor.get())
-        return CppFunctionDescriptor(typed_descriptor.FunctionName(), typed_descriptor.Caller())
+        return CppFunctionDescriptor(typed_descriptor.FunctionName(),
+                                     typed_descriptor.Caller())
 
     @property
     def function_name(self):
@@ -364,4 +365,3 @@ cdef class CppFunctionDescriptor(FunctionDescriptor):
             The caller of the function descriptor.
         """
         return <str>self.typed_descriptor.Caller()
-

@@ -138,9 +138,9 @@ ray.available_resources
 ray.cross_language
 ~~~~~~~~~~~~~~~~~~
 
-.. autofunction:: ray.java_function
+.. autofunction:: ray.cross_language.java_function
 
-.. autofunction:: ray.java_actor_class
+.. autofunction:: ray.cross_language.java_actor_class
 
 .. _ray-placement-group-ref:
 
