@@ -7,6 +7,7 @@ import sys
 from ray._private.test_utils import SignalActor
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_was_current_actor_reconstructed(shutdown_only):
     ray.init()
 
