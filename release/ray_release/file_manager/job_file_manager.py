@@ -1,13 +1,10 @@
 import os
 import random
-import shlex
 import shutil
 import string
-import subprocess
 import sys
 import tempfile
-import time
-from typing import Optional, Dict, Tuple
+from typing import Optional
 
 import anyscale
 import boto3
@@ -122,6 +119,7 @@ class JobFileManager(FileManager):
         assert isinstance(target, str)
 
         remote_upload_to = self._generate_tmp_s3_path()
+
         # local source -> s3
         def upload():
             self.s3_client.upload_file(

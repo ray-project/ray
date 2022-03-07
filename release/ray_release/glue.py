@@ -5,7 +5,6 @@ from typing import Optional, List
 from ray_release.alerts.handle import handle_result
 from ray_release.anyscale_util import get_cluster_name
 from ray_release.cluster_manager.full import FullClusterManager
-from ray_release.cluster_manager.minimal import MinimalClusterManager
 from ray_release.command_runner.client_runner import ClientRunner
 from ray_release.command_runner.job_runner import JobRunner
 from ray_release.command_runner.sdk_runner import SDKRunner

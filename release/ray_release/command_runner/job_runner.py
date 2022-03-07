@@ -1,11 +1,9 @@
 import json
 import os
 import tempfile
-import time
 from typing import Optional, Dict, Any
 
 from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
-from ray_release.anyscale_util import LAST_LOGS_LENGTH
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.command_runner.command_runner import CommandRunner
@@ -103,7 +101,10 @@ class JobRunner(CommandRunner):
         return time_taken
 
     def get_last_logs(self, scd_id: Optional[str] = None):
-        return self.job_manager.get_last_logs()
+        try:
+            return self.job_manager.get_last_logs()
+        except Exception as e:
+            raise LogsError(f"Could not get last logs: {e}") from e
 
     def fetch_results(self) -> Dict[str, Any]:
         try:
