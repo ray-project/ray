@@ -53,7 +53,6 @@ class Session:
         checkpoint: Optional[Dict] = None,
         encode_data_fn: Callable = None,
         detailed_autofilled_metrics: bool = False,
-        accelerator_cls: Optional[Type[Accelerator]] = None,
     ):
 
         self.dataset_shard = dataset_shard
@@ -91,7 +90,6 @@ class Session:
         self.training_started = False
 
         self._accelerator = None
-        self._accelerator_cls = accelerator_cls
 
     def get_current_ip(self):
         self.local_ip = ray.util.get_node_ip_address()
@@ -237,20 +235,19 @@ class Session:
         # checkpoint has been processed.
         self.continue_lock.acquire()
 
-    @property
-    def accelerator(self) -> Optional[Accelerator]:
-        """The accelerator for this training session, if any.
+    def get_accelerator(
+        self, default_accelerator_cls: Type[Accelerator]
+    ) -> Accelerator:
+        """The accelerator for this training session.
 
-        If the accelerator has not been set and an accelerator class has been provided,
-        then this method will construct an accelerator using the provided accelerator
-        class.
+        If an accelerator has not been set, then this method will construct an
+        accelerator using the provided accelerator class.
         """
-        if not self._accelerator and self._accelerator_cls:
-            self._accelerator = self._accelerator_cls()
+        if not self._accelerator:
+            self._accelerator = default_accelerator_cls()
         return self._accelerator
 
-    @accelerator.setter
-    def accelerator(self, accelerator: Accelerator) -> None:
+    def set_accelerator(self, accelerator: Accelerator) -> None:
         """Sets the accelerator for this training session.
 
         Args:

@@ -35,11 +35,6 @@ class BackendConfig:
     def backend_cls(self):
         raise NotImplementedError
 
-    @property
-    def accelerator_cls(self) -> Optional[Type[Accelerator]]:
-        """The ``Accelerator`` type for this backend, if any."""
-        return None
-
 
 @DeveloperAPI
 class Backend(metaclass=Singleton):
@@ -391,7 +386,6 @@ class BackendExecutor:
             checkpoint,
             dataset_shard,
             encode_data_fn,
-            accelerator_cls,
         ):
             try:
                 init_session(
@@ -403,7 +397,6 @@ class BackendExecutor:
                     checkpoint=checkpoint,
                     encode_data_fn=encode_data_fn,
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics,
-                    accelerator_cls=accelerator_cls,
                 )
             except ValueError:
                 raise TrainBackendError(
@@ -431,7 +424,6 @@ class BackendExecutor:
                     dataset_shard=self.dataset_shards[index],
                     checkpoint=checkpoint,
                     encode_data_fn=self._backend.encode_data,
-                    accelerator_cls=self._backend_config.accelerator_cls,
                 )
             )
 
