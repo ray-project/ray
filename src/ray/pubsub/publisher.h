@@ -113,8 +113,7 @@ class SubscriberState {
   ///
   /// \param reply pubsub long polling reply.
   /// \param send_reply_callback A callback to reply to the long polling subscriber.
-  /// \return True if connection is new. False if there were already connections cached.
-  bool ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request,
+  void ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request,
                            rpc::PubsubLongPollingReply *reply,
                            rpc::SendReplyCallback send_reply_callback);
 

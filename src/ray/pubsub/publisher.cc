@@ -135,7 +135,7 @@ bool SubscriptionIndex::CheckNoLeaks() const {
   return key_id_to_subscribers_.size() == 0 && subscribers_to_key_id_.size() == 0;
 }
 
-bool SubscriberState::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request,
+void SubscriberState::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request,
                                           rpc::PubsubLongPollingReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   if (long_polling_connection_) {
@@ -150,7 +150,6 @@ bool SubscriberState::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &r
       std::make_unique<LongPollConnection>(reply, std::move(send_reply_callback));
   last_connection_update_time_ms_ = get_time_ms_();
   PublishIfPossible();
-  return true;
 }
 
 void SubscriberState::QueueMessage(const rpc::PubMessage &pub_message, bool try_publish) {
@@ -226,8 +225,7 @@ void Publisher::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request
   auto &subscriber = it->second;
 
   // May flush the current long poll with an empty message, if a poll request exists.
-  RAY_CHECK(
-      subscriber->ConnectToSubscriber(request, reply, std::move(send_reply_callback)));
+  subscriber->ConnectToSubscriber(request, reply, std::move(send_reply_callback));
 }
 
 bool Publisher::RegisterSubscription(const rpc::ChannelType channel_type,

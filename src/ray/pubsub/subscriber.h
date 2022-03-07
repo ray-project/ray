@@ -47,12 +47,16 @@ using SubscriptionFailureCallback =
 struct SubscriptionInfo {
   SubscriptionInfo(SubscriptionItemCallback i_cb, SubscriptionFailureCallback f_cb)
       : item_cb(std::move(i_cb)), failure_cb(std::move(f_cb)) {}
+
+  // Callback that runs on each received rpc::PubMessage.
   SubscriptionItemCallback item_cb;
+
+  // Callback that runs after a polling request fails. The input is the failure status.
   SubscriptionFailureCallback failure_cb;
 };
 
 /// All subscription info for the publisher.
-struct PublisherSubscription {
+struct Subscriptions {
   // Subscriptions for all entities.
   std::unique_ptr<SubscriptionInfo> all_entities_subscription;
 
@@ -185,7 +189,7 @@ class SubscriberChannel {
   const rpc::ChannelType channel_type_;
 
   /// Mapping of the publisher ID -> subscription info for the publisher.
-  absl::flat_hash_map<PublisherID, PublisherSubscription> subscription_map_;
+  absl::flat_hash_map<PublisherID, Subscriptions> subscription_map_;
 
   /// An event loop to execute RPC callbacks. This should be equivalent to the client
   /// pool's io service.

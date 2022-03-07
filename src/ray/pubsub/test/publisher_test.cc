@@ -305,10 +305,10 @@ TEST_F(PublisherTest, TestSubscriber) {
       subscriber_id_, [this]() { return current_time_; }, subscriber_timeout_ms_, 10);
   // If there's no connection, it will return false.
   ASSERT_FALSE(subscriber->PublishIfPossible());
-  // Try connecting it. Should return true.
-  ASSERT_TRUE(subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback));
+  // Try connecting.
+  subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
   // Reconnection should still succeed.
-  ASSERT_TRUE(subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback));
+  subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
   // No result should have been returned.
   ASSERT_TRUE(object_ids_published.empty());
   // Since there's no objects pending to be published, it should return false.
@@ -333,7 +333,7 @@ TEST_F(PublisherTest, TestSubscriber) {
   }
   // Since there's no connection, objects won't be published.
   ASSERT_FALSE(subscriber->PublishIfPossible());
-  ASSERT_TRUE(subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback));
+  subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
   for (auto oid : published_objects) {
     ASSERT_TRUE(object_ids_published.contains(oid));
   }
@@ -359,7 +359,7 @@ TEST_F(PublisherTest, TestSubscriberBatchSize) {
   auto subscriber = std::make_shared<SubscriberState>(
       subscriber_id_, [this]() { return current_time_; }, subscriber_timeout_ms_,
       max_publish_size);
-  ASSERT_TRUE(subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback));
+  subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
 
   absl::flat_hash_set<ObjectID> published_objects;
   std::vector<ObjectID> oids;
@@ -382,7 +382,7 @@ TEST_F(PublisherTest, TestSubscriberBatchSize) {
   }
 
   // Remaining messages are published upon polling.
-  ASSERT_TRUE(subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback));
+  subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
   for (int i = 0; i < 10; i++) {
     ASSERT_TRUE(object_ids_published.contains(oids[i]));
   }
@@ -402,7 +402,7 @@ TEST_F(PublisherTest, TestSubscriberActiveTimeout) {
   auto subscriber = std::make_shared<SubscriberState>(
       subscriber_id_, [this]() { return current_time_; }, subscriber_timeout_ms_, 10);
 
-  ASSERT_TRUE(subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback));
+  subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
 
   // Connection is not timed out yet.
   ASSERT_TRUE(subscriber->IsActive());
@@ -423,7 +423,7 @@ TEST_F(PublisherTest, TestSubscriberActiveTimeout) {
   ASSERT_EQ(reply_cnt, 1);
 
   // New connection is established.
-  ASSERT_TRUE(subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback));
+  subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
   ASSERT_TRUE(subscriber->IsActive());
   ASSERT_TRUE(subscriber->ConnectionExists());
 
@@ -463,7 +463,7 @@ TEST_F(PublisherTest, TestSubscriberDisconnected) {
       subscriber_id_, [this]() { return current_time_; }, subscriber_timeout_ms_, 10);
 
   // Suppose the new connection is removed.
-  ASSERT_TRUE(subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback));
+  subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
   subscriber->PublishIfPossible(/*force*/ true);
   ASSERT_EQ(reply_cnt, 1);
   ASSERT_TRUE(subscriber->IsActive());
@@ -481,7 +481,7 @@ TEST_F(PublisherTest, TestSubscriberDisconnected) {
   ASSERT_FALSE(subscriber->ConnectionExists());
 
   // New connection is coming in.
-  ASSERT_TRUE(subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback));
+  subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
   subscriber->PublishIfPossible(/*force*/ true);
   ASSERT_EQ(reply_cnt, 2);
 
@@ -492,7 +492,7 @@ TEST_F(PublisherTest, TestSubscriberDisconnected) {
 
   // Another connection is made, so it shouldn't timeout until the next timeout is
   // reached.
-  ASSERT_TRUE(subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback));
+  subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
   subscriber->PublishIfPossible(/*force*/ true);
   ASSERT_EQ(reply_cnt, 3);
   current_time_ += subscriber_timeout_ms_ / 2;
@@ -522,7 +522,7 @@ TEST_F(PublisherTest, TestSubscriberTimeoutComplicated) {
       subscriber_id_, [this]() { return current_time_; }, subscriber_timeout_ms_, 10);
 
   // Suppose the new connection is removed.
-  ASSERT_TRUE(subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback));
+  subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
   subscriber->PublishIfPossible(/*force*/ true);
   ASSERT_EQ(reply_cnt, 1);
   ASSERT_TRUE(subscriber->IsActive());
@@ -530,7 +530,7 @@ TEST_F(PublisherTest, TestSubscriberTimeoutComplicated) {
 
   // Some time has passed, and the connection is removed.
   current_time_ += subscriber_timeout_ms_ - 1;
-  ASSERT_TRUE(subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback));
+  subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
   current_time_ += 2;
   // Timeout shouldn't happen because the connection has been refreshed.
   ASSERT_TRUE(subscriber->IsActive());
