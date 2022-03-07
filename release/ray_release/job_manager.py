@@ -1,5 +1,4 @@
 import os
-import subprocess
 import time
 
 from typing import Dict, Tuple
@@ -13,7 +12,7 @@ from ray.job_submission import JobSubmissionClient, JobStatus
 
 class JobManager:
     def __init__(self, cluster_manager: ClusterManager):
-        self.subprocess_pool: Dict[int, subprocess.Popen] = dict()
+        self.job_id_pool: Dict[int, str] = dict()
         self.start_time: Dict[int, float] = dict()
         self.counter = 0
         self.cluster_manager = cluster_manager
@@ -30,20 +29,12 @@ class JobManager:
         full_cmd = " ".join(f"{k}={v}" for k, v in env_vars.items()) + " " + cmd_to_run
         logger.info(f"Executing {cmd_to_run} with {env_vars} via ray job submit")
 
-        # proc = subprocess.Popen(
-        #     f"ray job submit -- bash -c {shlex.quote(full_cmd)}",
-        #     shell=True,
-        #     stdout=sys.stdout,
-        #     stderr=sys.stderr,
-        #     env=env,
-        # )
         job_id = self.job_client.submit_job(
             # Entrypoint shell command to execute
             entrypoint=full_cmd,
         )
         self.last_job_id = job_id
-        self.subprocess_pool[command_id] = job_id
-        # self.subprocess_pool[command_id] = proc
+        self.job_id_pool[command_id] = job_id
         self.start_time[command_id] = time.time()
         return command_id
 
@@ -65,21 +56,15 @@ class JobManager:
                     f"({int(now - start_time)} seconds) ..."
                 )
                 next_status += 30
-            status = self.job_client.get_job_status(self.subprocess_pool[command_id])
+            status = self.job_client.get_job_status(self.job_id_pool[command_id])
             if status in {JobStatus.SUCCEEDED, JobStatus.STOPPED, JobStatus.FAILED}:
                 break
             time.sleep(1)
-            # try:
-            #     retcode = self.subprocess_pool[command_id].wait(timeout=1)
-            # except subprocess.TimeoutExpired:
-            #     continue
-            # break
-        status = self.job_client.get_job_status(self.subprocess_pool[command_id])
+        status = self.job_client.get_job_status(self.job_id_pool[command_id])
         if status == JobStatus.SUCCEEDED:
             retcode = 0
         else:
             retcode = -1
-        # retcode = self.subprocess_pool[command_id].poll()
         duration = time.time() - self.start_time[command_id]
         return retcode, duration
 

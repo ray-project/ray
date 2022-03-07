@@ -72,12 +72,19 @@ class DAGNode:
         return self._bound_options.copy()
 
     def get_other_args_to_resolve(self) -> Dict[str, Any]:
-
+        """Return the dict of other args to resolve arguments for this node."""
         return self._bound_other_args_to_resolve.copy()
 
-    def execute(self, *args) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
+    def get_stable_uuid(self) -> str:
+        """Return stable uuid for this node.
+        1) Generated only once at first instance creation
+        2) Stable across pickling, replacement and JSON serialization.
+        """
+        return self._stable_uuid
+
+    def execute(self, *args, **kwargs) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
         """Execute this DAG using the Ray default executor."""
-        return self._apply_recursive(lambda node: node._execute_impl(*args))
+        return self._apply_recursive(lambda node: node._execute_impl(*args, **kwargs))
 
     def _get_toplevel_child_nodes(self) -> Set["DAGNode"]:
         """Return the set of nodes specified as top-level args.
@@ -177,10 +184,18 @@ class DAGNode:
             def __init__(self, fn):
                 self.cache = {}
                 self.fn = fn
+                self.input_node_uuid = None
 
             def __call__(self, node):
                 if node._stable_uuid not in self.cache:
                     self.cache[node._stable_uuid] = self.fn(node)
+                if type(node).__name__ == "InputNode":
+                    if not self.input_node_uuid:
+                        self.input_node_uuid = node._stable_uuid
+                    elif self.input_node_uuid != node._stable_uuid:
+                        raise AssertionError(
+                            "Each DAG should only have one unique InputNode."
+                        )
                 return self.cache[node._stable_uuid]
 
         if not type(fn).__name__ == "_CachingFn":
@@ -283,8 +298,6 @@ class DAGNode:
         Returns:
             json_dict (Dict[str, Any]): JSON serialized DAGNode.
         """
-        # stable_uuid will be re-generated upon new constructor execution
-        # except for ClassNode used as parent of ClassMethodNode
         return {
             DAGNODE_TYPE_KEY: dag_node_type,
             # Will be overriden by build()
@@ -296,6 +309,7 @@ class DAGNode:
             "other_args_to_resolve": json.dumps(
                 self.get_other_args_to_resolve(), cls=encoder_cls
             ),
+            "uuid": self.get_stable_uuid(),
         }
 
     @staticmethod
@@ -308,10 +322,12 @@ class DAGNode:
         other_args_to_resolve = json.loads(
             input_json["other_args_to_resolve"], object_hook=object_hook
         )
+        uuid = input_json["uuid"]
 
         return {
             "args": args,
             "kwargs": kwargs,
             "options": options,
             "other_args_to_resolve": other_args_to_resolve,
+            "uuid": uuid,
         }

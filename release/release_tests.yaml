@@ -785,79 +785,11 @@
     type: sdk_command
     file_manager: sdk
 
-- name: k8s_shuffle_10gb
-  group: Core nightly tests
-  team: core
-  working_dir: nightly_tests
-
-  legacy:
-    test_name: shuffle_10gb
-    test_suite: nightly_tests
-
-  cluster:
-    cluster_env: shuffle/shuffle_app_config.yaml
-    cluster_compute: shuffle/shuffle_compute_single.yaml
-    # cloud_id: cld_HSrCZdMCYDe1NmMCJhYRgQ4p
-    autosuspend_mins: 120
-
-  run:
-    timeout: 3000
-    script: python shuffle/shuffle_test.py --num-partitions=50 --partition-size=200e6
-    
-    type: job
-    file_manager: job
-
-- name: k8s_threaded_actors_stress_test
-  group: Core nightly tests
-  team: core
-  working_dir: nightly_tests
-
-  legacy:
-    test_name: threaded_actors_stress_test
-    test_suite: nightly_tests
-
-  cluster:
-    cluster_env: stress_tests/stress_tests_app_config.yaml
-    cluster_compute: stress_tests/stress_test_threaded_actor_compute.yaml
-
-  run:
-    timeout: 7200
-    prepare: python wait_cluster.py 201 600
-    script: python stress_tests/test_threaded_actors.py --test-runtime 3600 --kill-interval_s 60
-  
-    type: job
-    file_manager: job
-
-- name: dask_on_ray_1tb_sort
-  group: Core nightly tests
-  team: core
-  working_dir: nightly_tests
-
-  legacy:
-    test_name: dask_on_ray_1tb_sort
-    test_suite: nightly_tests
-
-  cluster:
-    cluster_env: dask_on_ray/dask_on_ray_app_config.yaml
-    cluster_compute: dask_on_ray/1tb_sort_compute.yaml
-
-  run:
-    timeout: 7200
-    script: python dask_on_ray/dask_on_ray_sort.py --nbytes 1_000_000_000_000 --npartitions 1000 --num-nodes 31 --ray --data-dir /tmp/ray --s3-bucket core-nightly-test
-    wait_for_nodes:
-      # Number of nodes
-      num_nodes: 32
-      # Timeout for waiting for nodes. If nodes are not up by then, the
-      # test will fail.
-      timeout: 1000
-
-    type: job
-    file_manager: job
-
 - name: dask_on_ray_large_scale_test_no_spilling
   group: Core nightly tests
   team: core
   working_dir: nightly_tests
+  frequency: nightly
 
   cluster:
     cluster_env: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
@@ -873,3 +805,25 @@
       # test will fail.
       timeout: 600
     script: python dask_on_ray/large_scale_test.py --num_workers 20 --worker_obj_store_size_in_gb 20 --error_rate 0  --data_save_path /tmp/ray
+    type: job
+    file_manager: job
+
+  smoke_test:
+    frequency: nightly
+
+    cluster:
+      cluster_env: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
+      cluster_compute: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
+      autosuspend_mins: 120
+
+    run:
+      timeout: 7200
+      wait_for_nodes:
+        # Number of nodes
+        num_nodes: 5
+        # Timeout for waiting for nodes. If nodes are not up by then, the
+        # test will fail.
+        timeout: 600
+      script: python dask_on_ray/large_scale_test.py --num_workers 4 --worker_obj_store_size_in_gb 20 --error_rate 0  --data_save_path /tmp/ray
+      type: job
+      file_manager: job
