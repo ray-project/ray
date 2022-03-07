@@ -1,11 +1,11 @@
 import logging
 
-import ray._private.utils
+from ray._private.utils import get_num_cpus
 
 logger = logging.getLogger(__name__)
 
-CPU_SHARES_PATH = "/sys/fs/cgroup/cpu/cpu.shares"
 CPU_USAGE_PATH = "/sys/fs/cgroup/cpuacct/cpuacct.usage"
+CPU_USAGE_PATH_V2 = "/sys/fs/cgroup/cpu.stat"
 PROC_STAT_PATH = "/proc/stat"
 
 container_num_cpus = None
@@ -27,7 +27,7 @@ def cpu_percent():
            rather than 200%.
 
     Step (1) above works by
-        dividing delta in cgroup's cpuacct.usage by
+        dividing delta in cpu usage by
         delta in total host cpu usage, averaged over host's cpus.
 
     Since deltas are not initially available, return 0.0 on first call.
@@ -46,20 +46,32 @@ def cpu_percent():
             system_delta = (system_usage - last_system_usage) / _host_num_cpus()
 
             quotient = cpu_delta / system_delta
-            cpu_percent = round(quotient * 100 / ray._private.utils.get_k8s_cpus(), 1)
+            cpu_percent = round(quotient * 100 / get_num_cpus(), 1)
         last_system_usage = system_usage
         last_cpu_usage = cpu_usage
         # Computed percentage might be slightly above 100%.
         return min(cpu_percent, 100.0)
-    except Exception as e:
-        logger.exception("Error computing CPU usage of Ray Kubernetes pod.", e)
+    except Exception:
+        logger.exception("Error computing CPU usage of Ray Kubernetes pod.")
         return 0.0
 
 
 def _cpu_usage():
     """Compute total cpu usage of the container in nanoseconds
-    by reading from cgroup/cpuacct."""
-    return int(open(CPU_USAGE_PATH).read())
+    by reading from cpuacct in cgroups v1 or cpu.stat in cgroups v2."""
+    try:
+        # cgroups v1
+        return int(open(CPU_USAGE_PATH).read())
+    except FileNotFoundError:
+        # cgroups v2
+        cpu_stat_text = open(CPU_USAGE_PATH_V2).read()
+        # e.g. "usage_usec 16089294616"
+        cpu_stat_first_line = cpu_stat_text.split("\n")[0]
+        # get the second word of the first line, cast as an integer
+        # this is the CPU usage is microseconds
+        cpu_usec = int(cpu_stat_first_line.split()[1])
+        # Convert to nanoseconds and return.
+        return cpu_usec * 1000
 
 
 def _system_usage():

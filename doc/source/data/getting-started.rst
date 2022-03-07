@@ -152,10 +152,13 @@ since your map function can return an output batch of any size.
     # -> [{'value': 0}, {'value': 2}, ...]
 
 By default, transformations are executed using Ray tasks.
-For transformations that require setup, specify ``compute="actors"`` and Ray will use an autoscaling actor pool to execute your transforms instead.
+For transformations that require setup, specify ``compute=ray.data.ActorPoolStrategy(min, max)`` and Ray will use an autoscaling actor pool of ``min`` to ``max`` actors to execute your transforms.
+For a fixed-size actor pool, specify ``ActorPoolStrategy(n, n)``.
 The following is an end-to-end example of reading, transforming, and saving batch inference results using Ray Data:
 
 .. code-block:: python
+
+    from ray.data import ActorPoolStrategy
 
     # Example of GPU batch inference on an ImageNet model.
     def preprocess(image: bytes) -> bytes:
@@ -175,7 +178,9 @@ The following is an end-to-end example of reading, transforming, and saving batc
 
     # Apply GPU batch inference with actors, and assign each actor a GPU using
     # ``num_gpus=1`` (any Ray remote decorator argument can be used here).
-    ds = ds.map_batches(BatchInferModel, compute="actors", batch_size=256, num_gpus=1)
+    ds = ds.map_batches(
+        BatchInferModel, compute=ActorPoolStrategy(10, 20),
+        batch_size=256, num_gpus=1)
     # -> Map Progress (16 actors 4 pending): 100%|██████| 200/200 [00:07, 27.60it/s]
 
     # Save the results.

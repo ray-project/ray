@@ -1,0 +1,19 @@
+deployments:
+
+  - name: shallow
+    import_path: "test_env.shallow_import.ShallowClass"
+    route_prefix: null
+    init_args: null
+    init_kwargs: null
+    num_replicas: null
+    max_concurrent_queries: null
+    user_config: null
+    autoscaling_config: null
+    graceful_shutdown_wait_loop_s: null
+    graceful_shutdown_timeout_s: null
+    health_check_period_s: null
+    health_check_timeout_s: null
+    ray_actor_options: 
+      runtime_env:
+        py_modules:
+          - "https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip"
