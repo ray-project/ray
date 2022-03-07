@@ -137,17 +137,14 @@ class PipProcessor:
             return
         python = _PathHelper.get_virtualenv_python(path)
 
-        output = await check_output_cmd(
+        await check_output_cmd(
             [python, "-m", "pip", "check", "--disable-pip-version-check"],
             logger=logger,
             cwd=cwd,
             env=pip_env,
         )
-        output = output.strip()
-        if output and "no broken" not in output.lower():
-            raise RuntimeError(f"Pip check on {path} failed:\n{output}")
-        else:
-            logger.info("Pip check on %s successfully.", path)
+
+        logger.info("Pip check on %s successfully.", path)
 
     @staticmethod
     @asynccontextmanager
