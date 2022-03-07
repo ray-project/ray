@@ -90,7 +90,6 @@ py_test(
     tags = ["team:ml", "exclusive", "pytorch"],
     deps = [":sgd_lib"],
 )
-
 # --------------------------------------------------------------------
 # Tests from the python/ray/util/sgd/tf/examples directory.
 # Please keep these sorted alphabetically.
