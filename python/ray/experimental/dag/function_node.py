@@ -4,6 +4,7 @@ from typing import Any, Dict, List
 import ray
 from ray.experimental.dag.dag_node import DAGNode
 from ray.experimental.dag.format_utils import get_dag_node_str
+from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 
 
 class FunctionNode(DAGNode):
@@ -50,3 +51,23 @@ class FunctionNode(DAGNode):
 
     def __str__(self) -> str:
         return get_dag_node_str(self, str(self._body))
+
+    def get_import_path(self):
+        return f"{self._body.__module__}.{self._body.__qualname__}"
+
+    def to_json(self, encoder_cls) -> Dict[str, Any]:
+        json_dict = super().to_json_base(encoder_cls, FunctionNode.__name__)
+        json_dict["import_path"] = self.get_import_path()
+        return json_dict
+
+    @classmethod
+    def from_json(cls, input_json, module, object_hook=None):
+        assert input_json[DAGNODE_TYPE_KEY] == FunctionNode.__name__
+        args_dict = super().from_json_base(input_json, object_hook=object_hook)
+        return cls(
+            module._function,
+            args_dict["args"],
+            args_dict["kwargs"],
+            args_dict["options"],
+            other_args_to_resolve=args_dict["other_args_to_resolve"],
+        )
