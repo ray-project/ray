@@ -1443,16 +1443,14 @@ py_test(
     name = "test_multi_agent_mixin_replay_buffer",
     tags = ["team:ml", "utils"],
     size = "small",
-    srcs = ["utils/replay_buffers/tests/test_multi_agent_mixin_replay_buffer
-    .py"]
+    srcs = ["utils/replay_buffers/tests/test_multi_agent_mixin_replay_buffer.py"]
 )
 
 py_test(
     name = "test_multi_agent_prioritized_replay_buffer",
     tags = ["team:ml", "utils"],
     size = "small",
-    srcs = ["utils/replay_buffers/tests
-    /test_multi_agent_prioritized_replay_buffer.py"]
+    srcs = ["utils/replay_buffers/tests/test_multi_agent_prioritized_replay_buffer.py"]
 )
 
 py_test(
@@ -1463,10 +1461,10 @@ py_test(
 )
 
 py_test(
-    name = "test_prioritized_replay_buffer",
+    name = "test_prioritized_replay_buffer_replay_buffer_api",
     tags = ["team:ml", "utils"],
     size = "small",
-    srcs = ["utils/replay_buffers/tests/test_prioritized_replay_buffer.py"]
+    srcs = ["utils/replay_buffers/tests/test_prioritized_replay_buffer_replay_buffer_api.py"]
 )
 
 py_test(
@@ -1484,10 +1482,10 @@ py_test(
 )
 
 py_test(
-    name = "test_segment_tree",
+    name = "test_segment_tree_replay_buffer_api",
     tags = ["team:ml", "utils"],
     size = "small",
-    srcs = ["utils/replay_buffers/tests/test_segment_tree.py"]
+    srcs = ["utils/replay_buffers/tests/test_segment_tree_replay_buffer_api.py"]
 )
 
 # --------------------------------------------------------------------
