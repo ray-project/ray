@@ -530,6 +530,8 @@ def get_accelerator(default_accelerator_cls: Type[Accelerator]) -> Accelerator:
     session = get_session()
     if session is None:
         _raise_session_misuse(get_accelerator.__name__)
+    if session.accelerator is None:
+        session.accelerator = default_accelerator_cls()
     return session.accelerator
 
 
