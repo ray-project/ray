@@ -302,7 +302,7 @@ def read_parquet(
     columns: Optional[List[str]] = None,
     parallelism: int = 200,
     ray_remote_args: Dict[str, Any] = None,
-    _tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
+    tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
     **arrow_parquet_args,
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from parquet files.
@@ -321,7 +321,7 @@ def read_parquet(
         parallelism: The requested parallelism of the read. Parallelism may be
             limited by the number of files of the dataset.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
-        _tensor_column_schema: A dict of column name --> tensor dtype and shape
+        tensor_column_schema: A dict of column name --> tensor dtype and shape
             mappings for converting a Parquet column containing serialized
             tensors (ndarrays) as their elements to our tensor column extension
             type. This assumes that the tensors were serialized in the raw
@@ -332,13 +332,13 @@ def read_parquet(
     Returns:
         Dataset holding Arrow records read from the specified paths.
     """
-    if _tensor_column_schema is not None:
+    if tensor_column_schema is not None:
         existing_block_udf = arrow_parquet_args.pop("_block_udf", None)
 
         def _block_udf(block: "pyarrow.Table") -> "pyarrow.Table":
             from ray.data.extensions import ArrowTensorArray
 
-            for tensor_col_name, (dtype, shape) in _tensor_column_schema.items():
+            for tensor_col_name, (dtype, shape) in tensor_column_schema.items():
                 # NOTE(Clark): We use NumPy to consolidate these potentially
                 # non-contiguous buffers, and to do buffer bookkeeping in
                 # general.

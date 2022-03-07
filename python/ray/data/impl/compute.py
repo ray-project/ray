@@ -22,43 +22,13 @@ U = TypeVar("U")
 CallableClass = type
 
 
+@DeveloperAPI
 class ComputeStrategy:
     def _apply(self, fn: Any, blocks: BlockList, clear_input_blocks: bool) -> BlockList:
         raise NotImplementedError
 
 
-def _map_block_split(block: Block, fn: Any, input_files: List[str]) -> BlockPartition:
-    output = []
-    stats = BlockExecStats.builder()
-    for new_block in fn(block):
-        accessor = BlockAccessor.for_block(new_block)
-        new_meta = BlockMetadata(
-            num_rows=accessor.num_rows(),
-            size_bytes=accessor.size_bytes(),
-            schema=accessor.schema(),
-            input_files=input_files,
-            exec_stats=stats.build(),
-        )
-        owner = DatasetContext.get_current().block_owner
-        output.append((ray.put(new_block, _owner=owner), new_meta))
-        stats = BlockExecStats.builder()
-    return output
-
-
-def _map_block_nosplit(
-    block: Block, fn: Any, input_files: List[str]
-) -> Tuple[Block, BlockMetadata]:
-    stats = BlockExecStats.builder()
-    builder = DelegatingBlockBuilder()
-    for new_block in fn(block):
-        builder.add_block(new_block)
-    new_block = builder.build()
-    accessor = BlockAccessor.for_block(new_block)
-    return new_block, accessor.get_metadata(
-        input_files=input_files, exec_stats=stats.build()
-    )
-
-
+@DeveloperAPI
 class TaskPoolStrategy(ComputeStrategy):
     def _apply(
         self,
@@ -281,3 +251,35 @@ def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
         return compute_spec
     else:
         raise ValueError("compute must be one of [`tasks`, `actors`, ComputeStrategy]")
+
+
+def _map_block_split(block: Block, fn: Any, input_files: List[str]) -> BlockPartition:
+    output = []
+    stats = BlockExecStats.builder()
+    for new_block in fn(block):
+        accessor = BlockAccessor.for_block(new_block)
+        new_meta = BlockMetadata(
+            num_rows=accessor.num_rows(),
+            size_bytes=accessor.size_bytes(),
+            schema=accessor.schema(),
+            input_files=input_files,
+            exec_stats=stats.build(),
+        )
+        owner = DatasetContext.get_current().block_owner
+        output.append((ray.put(new_block, _owner=owner), new_meta))
+        stats = BlockExecStats.builder()
+    return output
+
+
+def _map_block_nosplit(
+    block: Block, fn: Any, input_files: List[str]
+) -> Tuple[Block, BlockMetadata]:
+    stats = BlockExecStats.builder()
+    builder = DelegatingBlockBuilder()
+    for new_block in fn(block):
+        builder.add_block(new_block)
+    new_block = builder.build()
+    accessor = BlockAccessor.for_block(new_block)
+    return new_block, accessor.get_metadata(
+        input_files=input_files, exec_stats=stats.build()
+    )

@@ -770,8 +770,8 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_col_schema(
 
     ds = ray.data.read_parquet(
         str(tmp_path),
+        tensor_column_schema={tensor_col_name: (arr.dtype, inner_shape)},
         _block_udf=_block_udf,
-        _tensor_column_schema={tensor_col_name: (arr.dtype, inner_shape)},
     )
 
     assert isinstance(ds.schema().field_by_name(tensor_col_name).type, ArrowTensorType)
