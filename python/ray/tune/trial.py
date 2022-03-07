@@ -793,8 +793,6 @@ class Trial:
     def __getstate__(self):
         """Memento generator for Trial.
 
-        This is called multiple times when trial is checkpointed during tuning.
-
         Sets RUNNING trials to PENDING.
         Note this can only occur if the trial holds a PERSISTENT checkpoint.
         """
@@ -816,7 +814,6 @@ class Trial:
         return copy.deepcopy(state)
 
     def __setstate__(self, state):
-        """This is called only once when trials are being resumed."""
 
         if state["status"] == Trial.RUNNING:
             state["status"] = Trial.PENDING
