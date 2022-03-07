@@ -144,8 +144,10 @@ namespace scheduling {
 /// The actual scheduling id definitions which are used in scheduler.
 using ResourceID = BaseSchedulingID<SchedulingIDTag::Resource>;
 using NodeID = BaseSchedulingID<SchedulingIDTag::Node>;
-}  // namespace scheduling
 
+const ResourceID kCPUResource{CPU};
+const ResourceID kGPUResource{GPU};
+}  // namespace scheduling
 }  // namespace ray
 
 /// implements hash function for BaseSchedulingID<T>

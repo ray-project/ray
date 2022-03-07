@@ -43,6 +43,10 @@ const PredefinedResources ResourceStringToEnum(const std::string &resource) {
   return PredefinedResources_MAX;
 }
 
+bool IsPredefinedResource(scheduling::ResourceID resource) {
+  return resource.ToInt() >= 0 && resource.ToInt() < PredefinedResources_MAX;
+}
+
 std::string VectorToString(const std::vector<FixedPoint> &vector) {
   std::stringstream buffer;
 
@@ -491,6 +495,18 @@ TaskResourceInstances NodeResourceInstances::GetAvailableResourceInstances() {
   }
   return task_resources;
 };
+
+bool NodeResourceInstances::Contains(scheduling::ResourceID id) const {
+  return IsPredefinedResource(id) || custom_resources.contains(id.ToInt());
+}
+
+ResourceInstanceCapacities &NodeResourceInstances::GetMutable(scheduling::ResourceID id) {
+  RAY_CHECK(Contains(id));
+  if (IsPredefinedResource(id)) {
+    return predefined_resources.at(id.ToInt());
+  }
+  return custom_resources.at(id.ToInt());
+}
 
 bool ResourceRequest::IsEmpty() const {
   for (size_t i = 0; i < this->predefined_resources.size(); i++) {
