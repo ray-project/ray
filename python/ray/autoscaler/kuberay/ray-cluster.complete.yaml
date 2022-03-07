@@ -102,9 +102,10 @@ spec:
               name: ray-logs
         # The Ray autoscaler sidecar to the head pod
         - name: autoscaler
-          # TODO (short term): Pin the image to a particular Ray commit.
+          # TODO (short term): Pin the image to a particular Ray commit after
+          #   nightly image with changes from https://github.com/ray-project/ray/pull/22847 is built. 
           # TODO (longer term): This should be selected based on Ray version.
-          image: gekho/ray
+          image: rayproject/ray:nightly
           imagePullPolicy: Always
           env:
           - name: RAY_CLUSTER_NAMESPACE
