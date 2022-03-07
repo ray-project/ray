@@ -406,7 +406,7 @@ class ActorClass:
             f"use '{self.__ray_metadata__.class_name}.remote()'."
         )
 
-    def _parse_runtime_env(runtime_env: Optional[Union[dict, RuntimeEnv]]):
+    def _parse_runtime_env(self, runtime_env: Optional[Union[dict, RuntimeEnv]]):
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
