@@ -21,12 +21,9 @@ void BundleSpecification::ComputeResources() {
 
   if (unit_resource.empty()) {
     // A static nil object is used here to avoid allocating the empty object every time.
-    static std::shared_ptr<ResourceRequest> nil_unit_resource =
-        std::make_shared<ResourceRequest>();
-    unit_resource_ = nil_unit_resource;
+    unit_resource_ = ResourceSet::Nil();
   } else {
-    unit_resource_ = std::make_shared<ResourceRequest>(ResourceMapToResourceRequest(
-        unit_resource, /*requires_object_store_memory=*/false));
+    unit_resource_.reset(new ResourceSet(unit_resource));
   }
 
   // Generate placement group bundle labels.
@@ -36,40 +33,18 @@ void BundleSpecification::ComputeResources() {
 void BundleSpecification::ComputeBundleResourceLabels() {
   RAY_CHECK(unit_resource_);
 
-  for (size_t i = 0; i < unit_resource_->predefined_resources.size(); ++i) {
-    auto resource_name = scheduling::ResourceID(i).Binary();
-    const auto &resource_value = unit_resource_->predefined_resources[i];
-    if (resource_value <= 0.) {
-      continue;
-    }
+  for (const auto &resource_pair : unit_resource_->GetResourceMap()) {
+    double resource_value = resource_pair.second;
 
     /// With bundle index (e.g., CPU_group_i_zzz).
     const std::string &resource_label =
-        FormatPlacementGroupResource(resource_name, PlacementGroupId(), Index());
-    bundle_resource_labels_[resource_label] = resource_value.Double();
+        FormatPlacementGroupResource(resource_pair.first, PlacementGroupId(), Index());
+    bundle_resource_labels_[resource_label] = resource_value;
 
     /// Without bundle index (e.g., CPU_group_zzz).
     const std::string &wildcard_label =
-        FormatPlacementGroupResource(resource_name, PlacementGroupId(), -1);
-    bundle_resource_labels_[wildcard_label] = resource_value.Double();
-  }
-
-  for (const auto &resource_pair : unit_resource_->custom_resources) {
-    auto resource_name = scheduling::ResourceID(resource_pair.first).Binary();
-    const auto &resource_value = resource_pair.second;
-    if (resource_value <= 0.) {
-      continue;
-    }
-
-    /// With bundle index (e.g., CPU_group_i_zzz).
-    const std::string &resource_label =
-        FormatPlacementGroupResource(resource_name, PlacementGroupId(), Index());
-    bundle_resource_labels_[resource_label] = resource_value.Double();
-
-    /// Without bundle index (e.g., CPU_group_zzz).
-    const std::string &wildcard_label =
-        FormatPlacementGroupResource(resource_name, PlacementGroupId(), -1);
-    bundle_resource_labels_[wildcard_label] = resource_value.Double();
+        FormatPlacementGroupResource(resource_pair.first, PlacementGroupId(), -1);
+    bundle_resource_labels_[wildcard_label] = resource_value;
   }
   auto bundle_label =
       FormatPlacementGroupResource(kBundle_ResourceLabel, PlacementGroupId(), -1);
@@ -79,7 +54,7 @@ void BundleSpecification::ComputeBundleResourceLabels() {
       1000;
 }
 
-const ResourceRequest &BundleSpecification::GetRequiredResources() const {
+const ResourceSet &BundleSpecification::GetRequiredResources() const {
   return *unit_resource_;
 }
 
