@@ -2767,9 +2767,8 @@ class Trainer(Trainable):
             # Does not need a replay buffer.
             return None
 
-        replay_buffer_config = config["replay_buffer_config"]
-        assert "type" in replay_buffer_config, (
-            "Can not instantiate " "ReplayBuffer from config " "without 'type' key."
+        assert "type" in config["replay_buffer_config"], (
+            "Can not instantiate " "ReplayBuffer from config without 'type' key."
         )
 
         capacity = config.get("buffer_size", DEPRECATED_VALUE)
@@ -2786,11 +2785,10 @@ class Trainer(Trainable):
             "prioritized_replay_alpha",
             "prioritized_replay_beta",
             "prioritized_replay_eps",
-            "prioritized_replay",
-            "burn_in",
+            "learning_starts",
         ]
         for k in deprecated_replay_buffer_keys:
-            if config.get(k):
+            if config.get(k) is not None:
                 # Print a deprecation warning.
                 deprecation_warning(
                     old="config[{}]".format(k),
@@ -2822,28 +2820,67 @@ class Trainer(Trainable):
                 )
 
             config["replay_buffer_config"]["type"] = buffer_type
-            config["replay_buffer_config"]["learning_starts"] = config[
-                "learning_starts"
-            ]
+
+            # We need to deprecate the old-style location of the following
+            # buffer arguments and make users put them into the
+            # "replay_buffer_config" field of their config.
             config["replay_buffer_config"]["replay_batch_size"] = config[
                 "train_batch_size"
             ]
             config["replay_buffer_config"]["replay_mode"] = config["multiagent"][
                 "replay_mode"
             ]
+            deprecation_warning(
+                old="config['multiagent']['replay_mode']",
+                new="config['replay_buffer_config']['replay_mode']",
+                error=False,
+            )
+
             config["replay_buffer_config"]["replay_sequence_length"] = config.get(
                 "replay_sequence_length", 1
             )
+            if config.get("replay_sequence_length"):
+                deprecation_warning(
+                    old="config['replay_sequence_length']",
+                    new="config['replay_buffer_config']['replay_sequence_length']",
+                    error=False,
+                )
+
             config["replay_buffer_config"]["replay_burn_in"] = config.get(
                 "replay_burn_in", 0
             )
+            if config.get("replay_burn_in"):
+                deprecation_warning(
+                    old="config['replay_burn_in']",
+                    new="config['replay_buffer_config']['replay_burn_in']",
+                    error=False,
+                )
+
             config["replay_buffer_config"]["replay_zero_init_states"] = config.get(
                 "replay_zero_init_states", True
             )
+            if config.get("replay_zero_init_states"):
+                deprecation_warning(
+                    old="config['replay_zero_init_states']",
+                    new="config['replay_buffer_config']['replay_zero_init_states']",
+                    error=False,
+                )
+
+            # If no prioritized replay, old-style replay buffer should
+            # not be handed the following parameters:
+            if not config.get("prioritized_replay"):
+                for p in [
+                    "prioritized_replay_alpha",
+                    "prioritized_replay_beta",
+                    "prioritized_replay_eps",
+                ]:
+                    del config["replay_buffer_config"][p]
+
         else:
             if isinstance(buffer_type, str) and buffer_type.find(".") == -1:
                 # Create valid full [module].[class] string for from_config
-                buffer_type = "ray.rllib.utils.replay_buffers" + buffer_type
+                buffer_type = "ray.rllib.utils.replay_buffers." + buffer_type
+                config["replay_buffer_config"]["type"] = buffer_type
 
         return from_config(buffer_type, config["replay_buffer_config"])
 
