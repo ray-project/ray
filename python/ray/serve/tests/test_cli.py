@@ -522,6 +522,46 @@ def test_run_init_args_kwargs(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run_simultaneous(ray_start_stop):
+    # Test that two serve run processes can run simultaneously
+
+    p1 = subprocess.Popen(["serve", "run", "ray.serve.tests.test_cli.parrot"])
+    wait_for_condition(
+        lambda: ping_endpoint("parrot", params="?sound=squawk") == "squawk", timeout=10
+    )
+
+    p2 = subprocess.Popen(
+        [
+            "serve",
+            "run",
+            "ray.serve.tests.test_cli.Macaw",
+            "--",
+            "green",
+            "--name=Molly",
+            "--surname=Malarkey",
+        ]
+    )
+    wait_for_condition(
+        lambda: ping_endpoint("parrot", params="?sound=squawk") == "squawk", timeout=10
+    )
+    wait_for_condition(
+        lambda: ping_endpoint("Macaw") == "Molly Malarkey is green!", timeout=10
+    )
+
+    # Macaw should still be available after parrot is torn down
+    p1.send_signal(signal.SIGINT)
+    p1.wait()
+    assert "Path '/parrot' not found" in ping_endpoint("parrot")
+    assert ping_endpoint("Macaw") == "Molly Malarkey is green!"
+
+    # Serve should shut down after all deployments are torn down
+    p2.send_signal(signal.SIGINT)
+    p2.wait()
+    assert ping_endpoint("parrot") == "connection error"
+    assert ping_endpoint("Macaw") == "connection error"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_run_runtime_env(ray_start_stop):
     # Tests serve run with runtime_envs specified
 
