@@ -322,9 +322,9 @@ def prepare_data_loader(
 
             # If no sampler is passed to the DataLoader constructor, Torch constructs a
             # default sampler. The default sampler is a RandomSampler if shuffling is
-            # enabled and a SequentialSampler otherwise. There is no DataLoader.shuffle
-            # attribute. So, we identify whether shuffling is enabled by checking the
-            # default sampler type.
+            # enabled and a SequentialSampler otherwise. DataLoader does not have a
+            # shuffle attribute, so we instead identify whether shuffling is enabled by 
+            # checking the default sampler type.
             shuffle = isinstance(loader.sampler, RandomSampler)
 
             data_loader_args = {
