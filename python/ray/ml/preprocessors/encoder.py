@@ -29,7 +29,6 @@ class OrdinalEncoder(Preprocessor):
 
     def _transform_pandas(self, df: pd.DataFrame):
         _validate_df(df, *self.columns)
-        df.loc[:, self.columns].isnull().values.any()
 
         def column_ordinal_encoder(s: pd.Series):
             s_values = self.stats_[f"unique_values({s.name})"]
