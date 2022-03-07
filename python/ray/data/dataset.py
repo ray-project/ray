@@ -2567,11 +2567,6 @@ Dict[str, List[str]]]): The names of the columns
             )
         return pipe
 
-    def pipeline(self, *, parallelism: int = 10) -> "DatasetPipeline[T]":
-        raise DeprecationWarning(
-            "Use .window(blocks_per_window=n) instead of " ".pipeline(parallelism=n)"
-        )
-
     def window(
         self,
         *,
@@ -2714,21 +2709,6 @@ Dict[str, List[str]]]): The names of the columns
             )
         return pipe
 
-    @DeveloperAPI
-    def get_internal_block_refs(self) -> List[ObjectRef[Block]]:
-        """Get a list of references to the underlying blocks of this dataset.
-
-        This function can be used for zero-copy access to the data. It blocks
-        until the underlying blocks are computed.
-
-        Time complexity: O(1)
-
-        Returns:
-            A list of references to this dataset's blocks.
-        """
-        return self._plan.execute().get_blocks()
-
-    @DeveloperAPI
     def fully_executed(self) -> "Dataset[T]":
         """Force full evaluation of the blocks of this dataset.
 
@@ -2753,10 +2733,23 @@ Dict[str, List[str]]]): The names of the columns
         ds._set_uuid(self._get_uuid())
         return ds
 
-    @DeveloperAPI
     def stats(self) -> str:
         """Returns a string containing execution timing information."""
         return self._plan.stats().summary_string()
+
+    @DeveloperAPI
+    def get_internal_block_refs(self) -> List[ObjectRef[Block]]:
+        """Get a list of references to the underlying blocks of this dataset.
+
+        This function can be used for zero-copy access to the data. It blocks
+        until the underlying blocks are computed.
+
+        Time complexity: O(1)
+
+        Returns:
+            A list of references to this dataset's blocks.
+        """
+        return self._plan.execute().get_blocks()
 
     def _experimental_lazy(self) -> "Dataset[T]":
         """Enable lazy evaluation (experimental)."""

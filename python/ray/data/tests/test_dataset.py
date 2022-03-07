@@ -2948,13 +2948,13 @@ def test_random_shuffle(shutdown_only, pipelined):
 
     # Test move.
     ds = range(100, parallelism=2)
-    r1 = ds.random_shuffle(_move=True).take(999)
+    r1 = ds.random_shuffle().take(999)
     if pipelined:
         with pytest.raises(RuntimeError):
             ds = ds.map(lambda x: x).take(999)
     else:
         ds = ds.map(lambda x: x).take(999)
-    r2 = range(100).random_shuffle(_move=True).take(999)
+    r2 = range(100).random_shuffle().take(999)
     assert r1 != r2, (r1, r2)
 
     # Test empty dataset.
