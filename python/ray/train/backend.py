@@ -234,9 +234,9 @@ class BackendExecutor:
                     "Placement group creation timed out. Make sure your "
                     "cluster either has enough resources or use an "
                     "autoscaling cluster. If you are running on a cluster, "
-                    "make sure you are specifying an address in ray.init(). "
-                    "Current resources available: {}, resources requested by "
-                    "the placement group: {}".format(
+                    "make sure you specify an address in ray.init(). Current "
+                    "resources available: {}, resources requested by the "
+                    "placement group: {}".format(
                         ray.available_resources(), placement_group.bundle_specs
                     )
                 )
