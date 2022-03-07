@@ -427,3 +427,11 @@ py_test(
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
+
+py_test(
+    name = "snippet_model_ensemble",
+    size = "small",
+    srcs = glob(["examples/doc/*.py"]),
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"]
+)
