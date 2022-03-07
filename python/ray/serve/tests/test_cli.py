@@ -213,7 +213,7 @@ def test_info(ray_start_stop):
     deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
     assert success_message_fragment in deploy_response
 
-    info_response = subprocess.check_output(["serve", "info"]).decode("utf-8")
+    info_response = subprocess.check_output(["serve", "info", "-j"]).decode("utf-8")
     info = json.loads(info_response)
 
     assert "deployments" in info
@@ -283,7 +283,7 @@ def test_delete(ray_start_stop):
     # Deploys a config file and deletes it
 
     def get_num_deployments():
-        info_response = subprocess.check_output(["serve", "info"])
+        info_response = subprocess.check_output(["serve", "info", "-j"])
         info = json.loads(info_response)
         return len(info["deployments"])
 

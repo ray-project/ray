@@ -392,11 +392,20 @@ def run(
     type=str,
     help='Address of the Ray dashboard to query. For example, "http://localhost:8265".',
 )
-def info(address: str):
+@click.option(
+    "--json_format",
+    "-j",
+    is_flag=True,
+    help="Print info as json. If omitted, info is printed as YAML.",
+)
+def info(address: str, json_format=bool):
 
     app_info = ServeSubmissionClient(address).get_info()
     if app_info is not None:
-        print(json.dumps(app_info, indent=4))
+        if json_format:
+            print(json.dumps(app_info, indent=4))
+        else:
+            print(yaml.dump(app_info))
 
 
 @cli.command(
