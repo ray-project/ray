@@ -543,12 +543,13 @@ def get_accelerator(default_accelerator_cls: Type[Accelerator]) -> Accelerator:
     session = get_session()
     if session is None:
         raise RuntimeError(
-            "The function you called is meant to be called inside a training function that is executed by `Trainer.run`."
+            "The function you called is meant to be used inside a training function "
+            "that is executed by `Trainer.run`."
         )
-    session.get_accelerator(default_accelerator_cls)
+    return session.get_accelerator(default_accelerator_cls)
 
 
-def set_accelerator(self, accelerator: Accelerator) -> None:
+def set_accelerator(accelerator: Accelerator) -> None:
     """Sets the accelerator for this training session.
 
     Args:
@@ -561,6 +562,7 @@ def set_accelerator(self, accelerator: Accelerator) -> None:
     session = get_session()
     if session is None:
         raise RuntimeError(
-            "The function you called is meant to be called inside a training function that is executed by `Trainer.run`."
+            "The function you called is meant to be used inside a training function "
+            "that is executed by `Trainer.run`."
         )
     session.set_accelerator(accelerator)
