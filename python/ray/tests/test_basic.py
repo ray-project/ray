@@ -58,6 +58,23 @@ def test_release_resources_race(shutdown_only):
     assert len(pids) <= 2, pids
 
 
+# https://github.com/ray-project/ray/issues/22504
+def test_worker_isolation_by_resources(shutdown_only):
+    ray.init(num_cpus=1, num_gpus=1)
+
+    @ray.remote(num_gpus=1)
+    def gpu():
+        return os.getpid()
+
+    @ray.remote
+    def cpu():
+        return os.getpid()
+
+    pid1 = ray.get(cpu.remote())
+    pid2 = ray.get(gpu.remote())
+    assert pid1 != pid2, (pid1, pid2)
+
+
 # https://github.com/ray-project/ray/issues/10960
 def test_max_calls_releases_resources(shutdown_only):
     ray.init(num_cpus=2, num_gpus=1)

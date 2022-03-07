@@ -28,8 +28,10 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
+namespace syncer {
+class RaySyncer;
+}
 namespace gcs {
-
 /// Gcs resource manager interface.
 /// It is responsible for handing node resource related rpc requests and it is used for
 /// actor and placement group scheduling. It obtains the available resources of nodes
@@ -44,7 +46,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   explicit GcsResourceManager(instrumented_io_context &main_io_service,
                               std::shared_ptr<GcsPublisher> gcs_publisher,
                               std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                              bool redis_broadcast_enabled);
+                              // TODO(iycheng): Remove sync from GcsResourceManager
+                              syncer::RaySyncer *ray_syncer = nullptr);
 
   virtual ~GcsResourceManager() {}
 
@@ -127,14 +130,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
 
   std::string DebugString() const;
 
-  /// Update the total resources and available resources of the specified node.
-  ///
-  /// \param node_id Id of a node.
-  /// \param changed_resources Changed resources of a node.
-  void UpdateResourceCapacity(
-      const NodeID &node_id,
-      const absl::flat_hash_map<std::string, double> &changed_resources);
-
   /// Add resources changed listener.
   void AddResourcesChangedListener(std::function<void()> listener);
 
@@ -160,13 +155,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   void UpdatePlacementGroupLoad(
       const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
 
-  /// Move the lightweight heartbeat information for broadcast into the buffer. This
-  /// method MOVES the information, clearing an internal buffer, so it is NOT idempotent.
-  ///
-  /// \param buffer return parameter
-  void GetResourceUsageBatchForBroadcast(rpc::ResourceUsageBroadcastData &buffer)
-      LOCKS_EXCLUDED(resource_buffer_mutex_);
-
  private:
   /// Delete the scheduling resources of the specified node.
   ///
@@ -175,35 +163,15 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   void DeleteResources(const NodeID &node_id,
                        const std::vector<std::string> &deleted_resources);
 
-  /// Send any buffered resource usage as a single publish.
-  void SendBatchedResourceUsage();
-
-  /// Prelocked version of GetResourceUsageBatchForBroadcast. This is necessary for need
-  /// the functionality as part of a larger transaction.
-  void GetResourceUsageBatchForBroadcast_Locked(rpc::ResourceUsageBatchData &buffer)
-      EXCLUSIVE_LOCKS_REQUIRED(resource_buffer_mutex_);
-
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;
   /// Newest resource usage of all nodes.
   absl::flat_hash_map<NodeID, rpc::ResourcesData> node_resource_usages_;
 
-  /// Protect the lightweight heartbeat deltas which are accessed by different threads.
-  absl::Mutex resource_buffer_mutex_;
-  // TODO (Alex): This buffer is only needed for the legacy redis based broadcast.
-  /// A buffer containing the lightweight heartbeats since the last broadcast.
-  absl::flat_hash_map<NodeID, rpc::ResourcesData> resources_buffer_
-      GUARDED_BY(resource_buffer_mutex_);
-  /// A buffer containing the lightweight heartbeats since the last broadcast.
-  rpc::ResourceUsageBroadcastData resources_buffer_proto_
-      GUARDED_BY(resource_buffer_mutex_);
-
   /// A publisher for publishing gcs messages.
   std::shared_ptr<GcsPublisher> gcs_publisher_;
   /// Storage for GCS tables.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  /// Whether or not to broadcast resource usage via redis.
-  const bool redis_broadcast_enabled_;
   /// Map from node id to the scheduling resources of the node.
   absl::flat_hash_map<NodeID, std::shared_ptr<SchedulingResources>>
       cluster_scheduling_resources_;
@@ -215,8 +183,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   absl::flat_hash_map<NodeID, int64_t> latest_resources_normal_task_timestamp_;
   /// The resources changed listeners.
   std::vector<std::function<void()>> resources_changed_listeners_;
-  /// Max batch size for broadcasting
-  size_t max_broadcasting_batch_size_;
 
   /// Debug info.
   enum CountType {
@@ -229,6 +195,11 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
     CountType_MAX = 6,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
+
+  // For the updates from placement group, it needs to report to the syncer
+  // so it can be broadcasted to other nodes.
+  // TODO (iycheng): remove this one once we change how pg is reported.
+  syncer::RaySyncer *ray_syncer_;
 };
 
 }  // namespace gcs

@@ -1,7 +1,7 @@
 import copy
 import json
-import random
 import platform
+import random
 import sys
 import shutil
 import zlib
@@ -12,6 +12,7 @@ import pytest
 import ray
 from ray.tests.conftest import (
     file_system_object_spilling_config,
+    buffer_object_spilling_config,
     mock_distributed_fs_object_spilling_config,
 )
 from ray.external_storage import create_url_with_offset, parse_url_with_offset
@@ -86,6 +87,16 @@ def test_invalid_config_raises_exception(shutdown_only):
             }
         )
 
+    with pytest.raises(Exception):
+        copied_config = copy.deepcopy(file_system_object_spilling_config)
+        # Add invalid value type to the config.
+        copied_config["params"].update({"buffer_size": "abc"})
+        ray.init(
+            _system_config={
+                "object_spilling_config": json.dumps(copied_config),
+            }
+        )
+
 
 def test_url_generation_and_parse():
     url = "s3://abc/def/ray_good"
@@ -98,7 +109,6 @@ def test_url_generation_and_parse():
     assert parsed_result.size == size
 
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
 def test_default_config(shutdown_only):
     ray.init(num_cpus=0, object_store_memory=75 * 1024 * 1024)
     # Make sure the object spilling configuration is properly set.
@@ -135,9 +145,23 @@ def test_default_config(shutdown_only):
     assert config["type"] == "mock_distributed_fs"
 
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
-def test_default_config_cluster(ray_start_cluster):
-    cluster = ray_start_cluster
+def test_default_config_buffering(shutdown_only):
+    ray.init(
+        num_cpus=0,
+        _system_config={
+            "object_spilling_config": (json.dumps(buffer_object_spilling_config))
+        },
+    )
+    config = json.loads(ray.worker._global_node._config["object_spilling_config"])
+    assert config["type"] == buffer_object_spilling_config["type"]
+    assert (
+        config["params"]["buffer_size"]
+        == buffer_object_spilling_config["params"]["buffer_size"]
+    )
+
+
+def test_default_config_cluster(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
     cluster.add_node(num_cpus=0)
     ray.init(cluster.address)
     worker_nodes = []
@@ -158,7 +182,7 @@ def test_default_config_cluster(ray_start_cluster):
     ray.get([task.remote() for _ in range(2)])
 
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
+@pytest.mark.skipif(platform.system() == "Windows", reason="Hangs on Windows.")
 def test_spilling_not_done_for_pinned_object(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, temp_folder = object_spilling_config
@@ -180,9 +204,10 @@ def test_spilling_not_done_for_pinned_object(object_spilling_config, shutdown_on
     assert_no_thrashing(address["address"])
 
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
-def test_spill_remote_object(ray_start_cluster, multi_node_object_spilling_config):
-    cluster = ray_start_cluster
+def test_spill_remote_object(
+    ray_start_cluster_enabled, multi_node_object_spilling_config
+):
+    cluster = ray_start_cluster_enabled
     object_spilling_config, _ = multi_node_object_spilling_config
     cluster.add_node(
         num_cpus=0,
@@ -226,7 +251,6 @@ def test_spill_remote_object(ray_start_cluster, multi_node_object_spilling_confi
     assert_no_thrashing(cluster.address)
 
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
 def test_spill_objects_automatically(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, _ = object_spilling_config
@@ -266,8 +290,8 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
 
 
 @pytest.mark.skipif(
-    platform.system() in ["Darwin", "Windows"],
-    reason="Failing on Windows, very flaky on OSX.",
+    platform.system() in ["Darwin"],
+    reason="Very flaky on OSX.",
 )
 def test_unstable_spill_objects_automatically(unstable_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
@@ -305,7 +329,6 @@ def test_unstable_spill_objects_automatically(unstable_spilling_config, shutdown
     assert_no_thrashing(address["address"])
 
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
 def test_slow_spill_objects_automatically(slow_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, _ = slow_spilling_config
@@ -344,7 +367,6 @@ def test_slow_spill_objects_automatically(slow_spilling_config, shutdown_only):
     assert_no_thrashing(address["address"])
 
 
-@pytest.mark.skipif(platform.system() in ["Windows"], reason="Failing on Windows.")
 def test_spill_stats(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, _ = object_spilling_config
@@ -393,7 +415,7 @@ def test_spill_stats(object_spilling_config, shutdown_only):
     assert_no_thrashing(address["address"])
 
 
-@pytest.mark.skipif(platform.system() != "Linux", reason="Failing on Windows/macOS.")
+@pytest.mark.skipif(platform.system() == "Darwin", reason="Failing on macOS.")
 @pytest.mark.asyncio
 @pytest.mark.parametrize("is_async", [False, True])
 async def test_spill_during_get(object_spilling_config, shutdown_only, is_async):
@@ -454,7 +476,6 @@ async def test_spill_during_get(object_spilling_config, shutdown_only, is_async)
     assert_no_thrashing(address["address"])
 
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
 def test_spill_deadlock(object_spilling_config, shutdown_only):
     object_spilling_config, _ = object_spilling_config
     # Limit our object store to 75 MiB of memory.
@@ -486,9 +507,8 @@ def test_spill_deadlock(object_spilling_config, shutdown_only):
     assert_no_thrashing(address["address"])
 
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
-def test_partial_retval_allocation(ray_start_cluster):
-    cluster = ray_start_cluster
+def test_partial_retval_allocation(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
     cluster.add_node(object_store_memory=100 * 1024 * 1024)
     ray.init(cluster.address)
 
@@ -502,11 +522,10 @@ def test_partial_retval_allocation(ray_start_cluster):
         print(obj.size)
 
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
 def test_pull_spilled_object(
-    ray_start_cluster, multi_node_object_spilling_config, shutdown_only
+    ray_start_cluster_enabled, multi_node_object_spilling_config, shutdown_only
 ):
-    cluster = ray_start_cluster
+    cluster = ray_start_cluster_enabled
     object_spilling_config, _ = multi_node_object_spilling_config
 
     # Head node.

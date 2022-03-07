@@ -13,7 +13,6 @@ import numpy as np
 import ray
 import psutil
 import pytest
-import redis
 import requests
 
 from ray import ray_constants
@@ -30,7 +29,6 @@ from ray.dashboard import dashboard
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.modules
-from ray._private.gcs_utils import use_gcs_for_bootstrap
 
 try:
     import aiohttp.web
@@ -44,19 +42,8 @@ logger = logging.getLogger(__name__)
 
 
 def make_gcs_client(address_info):
-    if not use_gcs_for_bootstrap():
-        address = address_info["redis_address"]
-        address = address.split(":")
-        assert len(address) == 2
-        client = redis.StrictRedis(
-            host=address[0],
-            port=int(address[1]),
-            password=ray_constants.REDIS_DEFAULT_PASSWORD,
-        )
-        gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(client)
-    else:
-        address = address_info["gcs_address"]
-        gcs_client = ray._private.gcs_utils.GcsClient(address=address)
+    address = address_info["gcs_address"]
+    gcs_client = ray._private.gcs_utils.GcsClient(address=address)
     return gcs_client
 
 
@@ -79,6 +66,25 @@ def prepare_test_files():
 
 
 cleanup_test_files()
+
+
+def search_agent(processes):
+    for p in processes:
+        try:
+            for c in p.cmdline():
+                if os.path.join("dashboard", "agent.py") in c:
+                    return p
+        except Exception:
+            pass
+
+
+def check_agent_register(raylet_proc, agent_pid):
+    # Check if agent register is OK.
+    for x in range(5):
+        logger.info("Check agent is alive.")
+        agent_proc = search_agent(raylet_proc.children())
+        assert agent_proc.pid == agent_pid
+        time.sleep(1)
 
 
 @pytest.mark.parametrize(
@@ -107,18 +113,9 @@ def test_basic(ray_start_with_dashboard):
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
-    def _search_agent(processes):
-        for p in processes:
-            try:
-                for c in p.cmdline():
-                    if os.path.join("dashboard", "agent.py") in c:
-                        return p
-            except Exception:
-                pass
-
     # Test for bad imports, the agent should be restarted.
     logger.info("Test for bad imports.")
-    agent_proc = _search_agent(raylet_proc.children())
+    agent_proc = search_agent(raylet_proc.children())
     prepare_test_files()
     agent_pids = set()
     try:
@@ -127,7 +124,7 @@ def test_basic(ray_start_with_dashboard):
         agent_proc.wait()
         # The agent will be restarted for imports failure.
         for _ in range(300):
-            agent_proc = _search_agent(raylet_proc.children())
+            agent_proc = search_agent(raylet_proc.children())
             if agent_proc:
                 agent_pids.add(agent_proc.pid)
             # The agent should be restarted,
@@ -139,23 +136,18 @@ def test_basic(ray_start_with_dashboard):
         cleanup_test_files()
     assert len(agent_pids) > 1, agent_pids
 
-    agent_proc = _search_agent(raylet_proc.children())
+    agent_proc = search_agent(raylet_proc.children())
     if agent_proc:
         agent_proc.kill()
         agent_proc.wait()
 
     logger.info("Test agent register is OK.")
-    wait_for_condition(lambda: _search_agent(raylet_proc.children()))
+    wait_for_condition(lambda: search_agent(raylet_proc.children()))
     assert dashboard_proc.status() in [psutil.STATUS_RUNNING, psutil.STATUS_SLEEPING]
-    agent_proc = _search_agent(raylet_proc.children())
+    agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
 
-    # Check if agent register is OK.
-    for x in range(5):
-        logger.info("Check agent is alive.")
-        agent_proc = _search_agent(raylet_proc.children())
-        assert agent_proc.pid == agent_pid
-        time.sleep(1)
+    check_agent_register(raylet_proc, agent_pid)
 
     # The agent should be dead if raylet exits.
     raylet_proc.kill()
@@ -178,6 +170,48 @@ def test_basic(ray_start_with_dashboard):
         key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
     )
     assert agent_ports is not None
+
+
+def test_raylet_and_agent_share_fate(shutdown_only):
+    """Test raylet and agent share fate."""
+
+    system_config = {
+        "raylet_shares_fate_with_agent": True,
+        "agent_max_restart_count": 0,
+    }
+    ray.init(include_dashboard=True, _system_config=system_config)
+
+    all_processes = ray.worker._global_node.all_processes
+    raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
+    raylet_proc = psutil.Process(raylet_proc_info.process.pid)
+
+    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    agent_proc = search_agent(raylet_proc.children())
+    agent_pid = agent_proc.pid
+
+    check_agent_register(raylet_proc, agent_pid)
+
+    # The agent should be dead if raylet exits.
+    raylet_proc.kill()
+    raylet_proc.wait()
+    agent_proc.wait(5)
+
+    ray.shutdown()
+
+    ray.init(include_dashboard=True, _system_config=system_config)
+    all_processes = ray.worker._global_node.all_processes
+    raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
+    raylet_proc = psutil.Process(raylet_proc_info.process.pid)
+    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    agent_proc = search_agent(raylet_proc.children())
+    agent_pid = agent_proc.pid
+
+    check_agent_register(raylet_proc, agent_pid)
+
+    # The raylet should be dead if agent exits.
+    agent_proc.kill()
+    agent_proc.wait()
+    raylet_proc.wait(5)
 
 
 @pytest.mark.parametrize(
@@ -653,8 +687,6 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
         f"--port={port}",
         f"--temp-dir={temp_dir}",
         f"--log-dir={log_dir}",
-        f"--redis-address={address_info['redis_address']}",
-        f"--redis-password={ray_constants.REDIS_DEFAULT_PASSWORD}",
         f"--gcs-address={address_info['gcs_address']}",
         f"--session-dir={session_dir}",
     ]

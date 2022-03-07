@@ -6,13 +6,11 @@ import importlib
 import json
 import logging
 import pkgutil
-import socket
 from abc import ABCMeta, abstractmethod
 from base64 import b64decode
 from collections import namedtuple
 from collections.abc import MutableMapping, Mapping, Sequence
 
-import aioredis  # noqa: F401
 import aiosignal  # noqa: F401
 
 from google.protobuf.json_format import MessageToDict
@@ -503,20 +501,3 @@ def async_loop_forever(interval_seconds, cancellable=False):
         return _looper
 
     return _wrapper
-
-
-async def get_aioredis_client(
-    redis_address, redis_password, retry_interval_seconds, retry_times
-):
-    for x in range(retry_times):
-        try:
-            return await aioredis.create_redis_pool(
-                address=redis_address, password=redis_password
-            )
-        except (socket.gaierror, ConnectionError) as ex:
-            logger.error("Connect to Redis failed: %s, retry...", ex)
-            await asyncio.sleep(retry_interval_seconds)
-    # Raise exception from create_redis_pool
-    return await aioredis.create_redis_pool(
-        address=redis_address, password=redis_password
-    )

@@ -79,6 +79,12 @@ class LoadMetrics:
         self.resource_requests = []
         self.cluster_full_of_actors_detected = False
 
+    def __bool__(self):
+        """A load metrics instance is Falsey iff the autoscaler process
+        has not received a resource message from the GCS.
+        """
+        return bool(self.raylet_id_by_ip)
+
     def update(
         self,
         ip: str,

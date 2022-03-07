@@ -20,6 +20,11 @@ namespace ray {
 namespace core {
 
 bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
+  if (object_id.TaskId().IsForActorCreationTask()) {
+    // The GCS manages all actor restarts, so we should never try to
+    // reconstruct an actor here.
+    return true;
+  }
   // Check the ReferenceCounter to see if there is a location for the object.
   bool owned_by_us = false;
   NodeID pinned_at;

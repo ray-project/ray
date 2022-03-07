@@ -5,7 +5,6 @@ import grpc
 import base64
 from collections import defaultdict
 import functools
-import math
 import queue
 import pickle
 
@@ -15,6 +14,7 @@ from typing import Dict
 from typing import Set
 from typing import Optional
 from typing import Callable
+from typing import Union
 from ray import cloudpickle
 from ray.job_config import JobConfig
 import ray
@@ -28,7 +28,6 @@ from ray.util.client.common import (
     ClientServerHandle,
     GRPC_OPTIONS,
     CLIENT_SERVER_MAX_THREADS,
-    OBJECT_TRANSFER_CHUNK_SIZE,
     ResponseCache,
 )
 from ray import ray_constants
@@ -380,38 +379,20 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             with disable_client_hook():
 
                 def send_get_response(result: Any) -> None:
-                    """Pushes GetResponses to the main DataPath loop to send
+                    """Pushes a GetResponse to the main DataPath loop to send
                     to the client. This is called when the object is ready
                     on the server side."""
                     try:
                         serialized = dumps_from_server(result, client_id, self)
-                        total_size = len(serialized)
-                        assert total_size > 0, "Serialized object cannot be zero bytes"
-                        total_chunks = math.ceil(
-                            total_size / OBJECT_TRANSFER_CHUNK_SIZE
+                        get_resp = ray_client_pb2.GetResponse(
+                            valid=True, data=serialized
                         )
-                        for chunk_id in range(request.start_chunk_id, total_chunks):
-                            start = chunk_id * OBJECT_TRANSFER_CHUNK_SIZE
-                            end = min(
-                                total_size, (chunk_id + 1) * OBJECT_TRANSFER_CHUNK_SIZE
-                            )
-                            get_resp = ray_client_pb2.GetResponse(
-                                valid=True,
-                                data=serialized[start:end],
-                                chunk_id=chunk_id,
-                                total_chunks=total_chunks,
-                                total_size=total_size,
-                            )
-                            chunk_resp = ray_client_pb2.DataResponse(
-                                get=get_resp, req_id=req_id
-                            )
-                            result_queue.put(chunk_resp)
                     except Exception as exc:
                         get_resp = ray_client_pb2.GetResponse(
                             valid=False, error=cloudpickle.dumps(exc)
                         )
-                        resp = ray_client_pb2.DataResponse(get=get_resp, req_id=req_id)
-                        result_queue.put(resp)
+                    resp = ray_client_pb2.DataResponse(get=get_resp, req_id=req_id)
+                    result_queue.put(resp)
 
                 ref._on_completed(send_get_response)
                 return None
@@ -423,14 +404,13 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         metadata = {k: v for k, v in context.invocation_metadata()}
         client_id = metadata.get("client_id")
         if client_id is None:
-            yield ray_client_pb2.GetResponse(
+            return ray_client_pb2.GetResponse(
                 valid=False,
                 error=cloudpickle.dumps(
                     ValueError("client_id is not specified in request metadata")
                 ),
             )
-        else:
-            yield from self._get_object(request, client_id)
+        return self._get_object(request, client_id)
 
     def _get_object(self, request: ray_client_pb2.GetRequest, client_id: str):
         objectrefs = []
@@ -439,7 +419,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             if ref:
                 objectrefs.append(ref)
             else:
-                yield ray_client_pb2.GetResponse(
+                return ray_client_pb2.GetResponse(
                     valid=False,
                     error=cloudpickle.dumps(
                         ValueError(
@@ -448,48 +428,40 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                         )
                     ),
                 )
-                return
         try:
             logger.debug("get: %s" % objectrefs)
             with disable_client_hook():
                 items = ray.get(objectrefs, timeout=request.timeout)
         except Exception as e:
-            yield ray_client_pb2.GetResponse(valid=False, error=cloudpickle.dumps(e))
-            return
+            return ray_client_pb2.GetResponse(valid=False, error=cloudpickle.dumps(e))
         serialized = dumps_from_server(items, client_id, self)
-        total_size = len(serialized)
-        assert total_size > 0, "Serialized object cannot be zero bytes"
-        total_chunks = math.ceil(total_size / OBJECT_TRANSFER_CHUNK_SIZE)
-        for chunk_id in range(request.start_chunk_id, total_chunks):
-            start = chunk_id * OBJECT_TRANSFER_CHUNK_SIZE
-            end = min(total_size, (chunk_id + 1) * OBJECT_TRANSFER_CHUNK_SIZE)
-            yield ray_client_pb2.GetResponse(
-                valid=True,
-                data=serialized[start:end],
-                chunk_id=chunk_id,
-                total_chunks=total_chunks,
-                total_size=total_size,
-            )
+        return ray_client_pb2.GetResponse(valid=True, data=serialized)
 
     def PutObject(
         self, request: ray_client_pb2.PutRequest, context=None
     ) -> ray_client_pb2.PutResponse:
         """gRPC entrypoint for unary PutObject"""
-        return self._put_object(request, "", context)
+        return self._put_object(request.data, request.client_ref_id, "", context)
 
     def _put_object(
-        self, request: ray_client_pb2.PutRequest, client_id: str, context=None
+        self,
+        data: Union[bytes, bytearray],
+        client_ref_id: bytes,
+        client_id: str,
+        context=None,
     ):
         """Put an object in the cluster with ray.put() via gRPC.
 
         Args:
-            request: PutRequest with pickled data.
+            data: Pickled data. Can either be bytearray if this is called
+              from the dataservicer, or bytes if called from PutObject.
+            client_ref_id: The id associated with this object on the client.
             client_id: The client who owns this data, for tracking when to
               delete this reference.
             context: gRPC context.
         """
         try:
-            obj = loads_from_client(request.data, self)
+            obj = loads_from_client(data, self)
             with disable_client_hook():
                 objectref = ray.put(obj)
         except Exception as e:
@@ -499,10 +471,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             )
 
         self.object_refs[client_id][objectref.binary()] = objectref
-        if len(request.client_ref_id) > 0:
-            self.client_side_ref_map[client_id][
-                request.client_ref_id
-            ] = objectref.binary()
+        if len(client_ref_id) > 0:
+            self.client_side_ref_map[client_id][client_ref_id] = objectref.binary()
         logger.debug("put: %s" % objectref)
         return ray_client_pb2.PutResponse(id=objectref.binary(), valid=True)
 

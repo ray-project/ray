@@ -24,6 +24,8 @@
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
+#include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/gcs/gcs_server/gcs_resource_report_poller.h"
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/stats_handler_impl.h"
 #include "ray/pubsub/publisher.h"
@@ -119,6 +121,9 @@ void GcsServer::Start() {
 }
 
 void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
+  // Init synchronization service
+  InitRaySyncer(gcs_init_data);
+
   // Init gcs resource manager.
   InitGcsResourceManager(gcs_init_data);
 
@@ -157,12 +162,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 
   // Init stats handler.
   InitStatsHandler();
-
-  // Init resource report polling.
-  InitResourceReportPolling(gcs_init_data);
-
-  // Init resource report broadcasting.
-  InitResourceReportBroadcasting(gcs_init_data);
 
   // Install event listeners.
   InstallEventListeners();
@@ -209,11 +208,7 @@ void GcsServer::Stop() {
     // time, causing many nodes die after GCS's failure.
     gcs_heartbeat_manager_->Stop();
 
-    gcs_resource_report_poller_->Stop();
-
-    if (config_.grpc_based_resource_broadcast) {
-      grpc_based_resource_broadcaster_->Stop();
-    }
+    ray_syncer_->Stop();
 
     // Shutdown the rpc server
     rpc_server_.Shutdown();
@@ -258,8 +253,8 @@ void GcsServer::InitGcsHeartbeatManager(const GcsInitData &gcs_init_data) {
 void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
   gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
-      main_service_, gcs_publisher_, gcs_table_storage_,
-      !config_.grpc_based_resource_broadcast);
+      main_service_, gcs_publisher_, gcs_table_storage_, ray_syncer_.get());
+
   // Initialize by gcs tables data.
   gcs_resource_manager_->Initialize(gcs_init_data);
   // Register service.
@@ -405,29 +400,38 @@ void GcsServer::StoreGcsServerAddressInRedis() {
   RAY_LOG(INFO) << "Finished setting gcs server address: " << address;
 }
 
-void GcsServer::InitResourceReportPolling(const GcsInitData &gcs_init_data) {
-  gcs_resource_report_poller_.reset(new GcsResourceReportPoller(
-      raylet_client_pool_, [this](const rpc::ResourcesData &report) {
-        gcs_resource_manager_->UpdateFromResourceReport(report);
-      }));
+void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
+  /*
+    The current synchronization flow is:
+        syncer::poller -> gcs_resource_manager -> syncer::buffer -> syncer::broadcast
 
-  gcs_resource_report_poller_->Initialize(gcs_init_data);
-  gcs_resource_report_poller_->Start();
-}
+    Ideally, we should make it:
+        syncer::poller --> gcs_resource_manager
+                       |-> syncer::buffer -> syncer::broadcast
+    But right now, placement group resource update is preventing us from doing this.
+    TODO (iycheng): Update placement group resource reporting and update it to the
+    right flow.
+  */
+  auto on_update = [this](const rpc::ResourcesData &report) {
+    main_service_.dispatch(
+        [this, report]() mutable {
+          gcs_resource_manager_->UpdateFromResourceReport(std::move(report));
+        },
+        "UpdateResourceReport");
+  };
 
-void GcsServer::InitResourceReportBroadcasting(const GcsInitData &gcs_init_data) {
-  if (config_.grpc_based_resource_broadcast) {
-    grpc_based_resource_broadcaster_.reset(new GrpcBasedResourceBroadcaster(
-        raylet_client_pool_,
-        [this](rpc::ResourceUsageBroadcastData &buffer) {
-          gcs_resource_manager_->GetResourceUsageBatchForBroadcast(buffer);
-        }
+  auto gcs_resource_report_poller = std::make_unique<GcsResourceReportPoller>(
+      raylet_client_pool_, std::move(on_update));
 
-        ));
+  gcs_resource_report_poller->Initialize(gcs_init_data);
 
-    grpc_based_resource_broadcaster_->Initialize(gcs_init_data);
-    grpc_based_resource_broadcaster_->Start();
-  }
+  auto grpc_based_resource_broadcaster =
+      std::make_unique<GrpcBasedResourceBroadcaster>(raylet_client_pool_);
+  grpc_based_resource_broadcaster->Initialize(gcs_init_data);
+  ray_syncer_ = std::make_unique<syncer::RaySyncer>(
+      main_service_, std::move(grpc_based_resource_broadcaster),
+      std::move(gcs_resource_report_poller));
+  ray_syncer_->Start();
 }
 
 void GcsServer::InitStatsHandler() {
@@ -484,7 +488,8 @@ void GcsServer::InitRuntimeEnvManager() {
           int protocol_len = protocol_end_pos - protocol_pos;
           auto protocol = plugin_uri.substr(protocol_pos, protocol_len);
           if (protocol != "gcs") {
-            // Some URIs do not correspond to files in the GCS.  Skip deletion for these.
+            // Some URIs do not correspond to files in the GCS.  Skip deletion for
+            // these.
             callback(true);
           } else {
             auto uri = plugin_uri.substr(protocol_pos);
@@ -514,10 +519,7 @@ void GcsServer::InstallEventListeners() {
     gcs_placement_group_manager_->OnNodeAdd(NodeID::FromBinary(node->node_id()));
     gcs_actor_manager_->SchedulePendingActors();
     gcs_heartbeat_manager_->AddNode(NodeID::FromBinary(node->node_id()));
-    gcs_resource_report_poller_->HandleNodeAdded(*node);
-    if (config_.grpc_based_resource_broadcast) {
-      grpc_based_resource_broadcaster_->HandleNodeAdded(*node);
-    }
+    ray_syncer_->AddNode(*node);
   });
   gcs_node_manager_->AddNodeRemovedListener(
       [this](std::shared_ptr<rpc::GcsNodeInfo> node) {
@@ -529,10 +531,7 @@ void GcsServer::InstallEventListeners() {
         gcs_placement_group_manager_->OnNodeDead(node_id);
         gcs_actor_manager_->OnNodeDead(node_id, node_ip_address);
         raylet_client_pool_->Disconnect(NodeID::FromBinary(node->node_id()));
-        gcs_resource_report_poller_->HandleNodeRemoved(*node);
-        if (config_.grpc_based_resource_broadcast) {
-          grpc_based_resource_broadcaster_->HandleNodeRemoved(*node);
-        }
+        ray_syncer_->RemoveNode(*node);
       });
 
   // Install worker event listener.
@@ -562,8 +561,8 @@ void GcsServer::InstallEventListeners() {
     gcs_resource_manager_->AddResourcesChangedListener([this] {
       main_service_.post(
           [this] {
-            // Because resources have been changed, we need to try to schedule the pending
-            // actors.
+            // Because resources have been changed, we need to try to schedule the
+            // pending actors.
             gcs_actor_manager_->SchedulePendingActors();
           },
           "GcsServer.SchedulePendingActors");
@@ -597,9 +596,7 @@ std::string GcsServer::GetDebugState() const {
          << gcs_publisher_->DebugString() << "\n\n"
          << runtime_env_manager_->DebugString() << "\n\n";
 
-  if (config_.grpc_based_resource_broadcast) {
-    stream << grpc_based_resource_broadcaster_->DebugString();
-  }
+  stream << ray_syncer_->DebugString();
   return stream.str();
 }
 

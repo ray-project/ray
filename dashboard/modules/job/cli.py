@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import pprint
 from subprocess import list2cmdline
 import time
 from typing import Optional, Tuple
@@ -10,6 +11,7 @@ import click
 
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
 from ray.job_submission import JobStatus, JobSubmissionClient
+from ray.util.annotations import PublicAPI
 
 
 def _get_sdk_client(
@@ -45,20 +47,20 @@ def _log_big_error_msg(success_msg):
 
 
 def _log_job_status(client: JobSubmissionClient, job_id: str):
-    status = client.get_job_status(job_id)
-    if status.status == JobStatus.SUCCEEDED:
+    info = client.get_job_info(job_id)
+    if info.status == JobStatus.SUCCEEDED:
         _log_big_success_msg(f"Job '{job_id}' succeeded")
-    elif status.status == JobStatus.STOPPED:
+    elif info.status == JobStatus.STOPPED:
         cli_logger.warning(f"Job '{job_id}' was stopped")
-    elif status.status == JobStatus.FAILED:
+    elif info.status == JobStatus.FAILED:
         _log_big_error_msg(f"Job '{job_id}' failed")
-        if status.message is not None:
-            cli_logger.print(f"Status message: {status.message}")
+        if info.message is not None:
+            cli_logger.print(f"Status message: {info.message}")
     else:
         # Catch-all.
-        cli_logger.print(f"Status for job '{job_id}': {status.status}")
-        if status.message is not None:
-            cli_logger.print(f"Status message: {status.message}")
+        cli_logger.print(f"Status for job '{job_id}': {info.status}")
+        if info.message is not None:
+            cli_logger.print(f"Status message: {info.message}")
 
 
 async def _tail_logs(client: JobSubmissionClient, job_id: str):
@@ -73,7 +75,7 @@ def job_cli_group():
     pass
 
 
-@job_cli_group.command("submit", help="Submit a job to be executed on the cluster.")
+@job_cli_group.command()
 @click.option(
     "--address",
     type=str,
@@ -125,7 +127,8 @@ def job_cli_group():
 )
 @add_click_logging_options
 @click.argument("entrypoint", nargs=-1, required=True, type=click.UNPROCESSED)
-def job_submit(
+@PublicAPI
+def submit(
     address: Optional[str],
     job_id: Optional[str],
     runtime_env: Optional[str],
@@ -134,7 +137,7 @@ def job_submit(
     entrypoint: Tuple[str],
     no_wait: bool,
 ):
-    """Submits a job to be run on the cluster.
+    """Submits a job to be run on the cluster docstring
 
     Example:
         >>> ray job submit -- python my_script.py --arg=val
@@ -199,7 +202,7 @@ def job_submit(
             )
 
 
-@job_cli_group.command("status", help="Get the status of a running job.")
+@job_cli_group.command()
 @click.option(
     "--address",
     type=str,
@@ -212,7 +215,8 @@ def job_submit(
 )
 @click.argument("job-id", type=str)
 @add_click_logging_options
-def job_status(address: Optional[str], job_id: str):
+@PublicAPI(stability="beta")
+def status(address: Optional[str], job_id: str):
     """Queries for the current status of a job.
 
     Example:
@@ -222,7 +226,7 @@ def job_status(address: Optional[str], job_id: str):
     _log_job_status(client, job_id)
 
 
-@job_cli_group.command("stop", help="Attempt to stop a running job.")
+@job_cli_group.command()
 @click.option(
     "--address",
     type=str,
@@ -242,7 +246,8 @@ def job_status(address: Optional[str], job_id: str):
 )
 @click.argument("job-id", type=str)
 @add_click_logging_options
-def job_stop(address: Optional[str], no_wait: bool, job_id: str):
+@PublicAPI(stability="beta")
+def stop(address: Optional[str], no_wait: bool, job_id: str):
     """Attempts to stop a job.
 
     Example:
@@ -261,7 +266,7 @@ def job_stop(address: Optional[str], no_wait: bool, job_id: str):
 
     while True:
         status = client.get_job_status(job_id)
-        if status.status in {JobStatus.STOPPED, JobStatus.SUCCEEDED, JobStatus.FAILED}:
+        if status in {JobStatus.STOPPED, JobStatus.SUCCEEDED, JobStatus.FAILED}:
             _log_job_status(client, job_id)
             break
         else:
@@ -269,7 +274,7 @@ def job_stop(address: Optional[str], no_wait: bool, job_id: str):
             time.sleep(1)
 
 
-@job_cli_group.command("logs", help="Get the logs of a running job.")
+@job_cli_group.command()
 @click.option(
     "--address",
     type=str,
@@ -290,7 +295,8 @@ def job_stop(address: Optional[str], no_wait: bool, job_id: str):
     help="If set, follow the logs (like `tail -f`).",
 )
 @add_click_logging_options
-def job_logs(address: Optional[str], job_id: str, follow: bool):
+@PublicAPI(stability="beta")
+def logs(address: Optional[str], job_id: str, follow: bool):
     """Gets the logs of a job.
 
     Example:
@@ -309,4 +315,31 @@ def job_logs(address: Optional[str], job_id: str, follow: bool):
                 "for this feature."
             )
     else:
-        print(client.get_job_logs(job_id), end="")
+        # Set no_format to True because the logs may have unescaped "{" and "}"
+        # and the CLILogger calls str.format().
+        cli_logger.print(client.get_job_logs(job_id), end="", no_format=True)
+
+
+@job_cli_group.command()
+@click.option(
+    "--address",
+    type=str,
+    default=None,
+    required=False,
+    help=(
+        "Address of the Ray cluster to connect to. Can also be specified "
+        "using the RAY_ADDRESS environment variable."
+    ),
+)
+@add_click_logging_options
+@PublicAPI(stability="beta")
+def list(address: Optional[str]):
+    """Lists all running jobs and their information.
+
+    Example:
+        >>> ray job list
+    """
+    client = _get_sdk_client(address)
+    # Set no_format to True because the logs may have unescaped "{" and "}"
+    # and the CLILogger calls str.format().
+    cli_logger.print(pprint.pformat(client.list_jobs()), no_format=True)

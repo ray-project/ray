@@ -94,8 +94,10 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
           // We must release the lock before resolving the task dependencies since
           // the callback may get called in the same call stack.
           auto actor_id = task_spec.ActorId();
+          auto task_id = task_spec.TaskId();
           resolver_.ResolveDependencies(
-              task_spec, [this, send_pos, actor_id](Status status) {
+              task_spec, [this, send_pos, actor_id, task_id](Status status) {
+                task_finisher_.MarkDependenciesResolved(task_id);
                 absl::MutexLock lock(&mu_);
                 auto queue = client_queues_.find(actor_id);
                 RAY_CHECK(queue != client_queues_.end());
@@ -391,7 +393,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id
                  << " actor counter " << actor_counter << " seq no "
                  << request->sequence_number() << " num queued " << num_queued;
-  if (num_queued >= next_queueing_warn_threshold_) {
+  if (num_queued >= next_queueing_warn_threshold_ && !skip_queue) {
     // TODO(ekl) add more debug info about the actor name, etc.
     warn_excess_queueing_(actor_id, num_queued);
     next_queueing_warn_threshold_ *= 2;
