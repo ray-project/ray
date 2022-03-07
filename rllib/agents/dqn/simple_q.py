@@ -11,7 +11,6 @@ See `simple_q_[tf|torch]_policy.py` for the definition of the policy loss.
 
 import logging
 from typing import Optional, Type
-import numpy as np
 
 from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
 from ray.rllib.agents.dqn.simple_q_torch_policy import SimpleQTorchPolicy
@@ -160,11 +159,6 @@ class SimpleQTrainer(Trainer):
                     "Worker side prioritization is not supported when "
                     "prioritized_replay=False."
                 )
-
-        if config.get("replay_buffer_config").get(
-            "replay_batch_size", np.inf
-        ) < config.get("train_batch_size"):
-            raise ValueError("Choose replay_batch_size >= train_batch_size.")
 
         # Multi-agent mode and multi-GPU optimizer.
         if config["multiagent"]["policies"] and not config["simple_optimizer"]:

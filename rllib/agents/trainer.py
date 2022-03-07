@@ -2874,7 +2874,7 @@ class Trainer(Trainable):
                     "prioritized_replay_beta",
                     "prioritized_replay_eps",
                 ]:
-                    del config["replay_buffer_config"][p]
+                    config["replay_buffer_config"].pop(p, None)
 
         else:
             if isinstance(buffer_type, str) and buffer_type.find(".") == -1:
