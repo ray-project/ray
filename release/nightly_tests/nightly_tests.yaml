@@ -3,15 +3,15 @@
 #
 # Test basic single node 10GB shuffle with a small number of partitions.
 # This doesn't require object spilling.
-- name: shuffle_10gb
-  team: core
-  cluster:
-    app_config: shuffle/shuffle_app_config.yaml
-    compute_template: shuffle/shuffle_compute_single.yaml
+# - name: shuffle_10gb
+#   team: core
+#   cluster:
+#     app_config: shuffle/shuffle_app_config.yaml
+#     compute_template: shuffle/shuffle_compute_single.yaml
 
-  run:
-    timeout: 3000
-    script: python shuffle/shuffle_test.py --num-partitions=50 --partition-size=200e6
+#   run:
+#     timeout: 3000
+#     script: python shuffle/shuffle_test.py --num-partitions=50 --partition-size=200e6
 
 # Test single node 50GB shuffle with a large number of partitions.
 - name: shuffle_50gb
@@ -294,6 +294,7 @@
       timeout: 3600
       prepare: python wait_cluster.py 5 600
       script: python stress_tests/test_threaded_actors.py --test-runtime 1800 --kill-interval_s 30
+  stable: false
 
 - name: k8s_threaded_actors_stress_test
   team: core
@@ -333,53 +334,6 @@
   run:
     timeout: 9600
     script: python decision_tree/cart_with_tree.py --concurrency=20
-
-# Stress test shuffle_data_loader.
-- name: shuffle_data_loader
-  team: core
-  cluster:
-    app_config: shuffle_data_loader/shuffle_data_loader_app_config.yaml
-    compute_template: shuffle_data_loader/shuffle_data_loader_compute.yaml
-
-  run:
-    timeout: 7200
-    script: >
-      python shuffle_data_loader/benchmark.py
-      --num-rows 100_000_000
-      --num-files 50
-      --num-row-groups-per-file 5
-      --num-reducers 32 --num-trainers 16
-      --batch-size 250000
-      --cluster
-      --num-trials 1
-      --num-epochs 10
-      --max-concurrent-epochs 2
-      --data-dir s3://core-nightly-test/shuffle-data/
-      --no-stats
-
-# Stress test shuffle_data_loader.
-- name: shuffle_data_loader_4_nodes
-  team: core
-  cluster:
-    app_config: shuffle_data_loader/shuffle_data_loader_app_config.yaml
-    compute_template: shuffle_data_loader/shuffle_data_loader_compute_4_nodes.yaml
-
-  run:
-    timeout: 7200
-    prepare: python wait_cluster.py 4 600
-    script: >
-      python shuffle_data_loader/benchmark.py
-      --num-rows 400_000_000
-      --num-files 50
-      --num-row-groups-per-file 5
-      --num-reducers 32 --num-trainers 16
-      --batch-size 250000
-      --cluster
-      --num-trials 1
-      --num-epochs 10
-      --max-concurrent-epochs 2
-      --data-dir s3://core-nightly-test/shuffle-data/
-      --no-stats
 
 - name: dask_on_ray_1tb_sort
   team: core

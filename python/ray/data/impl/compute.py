@@ -1,6 +1,7 @@
-from typing import TypeVar, Any, Union, Callable, List, Tuple
+from typing import TypeVar, Any, Union, Callable, List, Tuple, Optional
 
 import ray
+from ray.util.annotations import PublicAPI
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -22,7 +23,7 @@ CallableClass = type
 
 
 class ComputeStrategy:
-    def apply(self, fn: Any, blocks: BlockList) -> BlockList:
+    def _apply(self, fn: Any, blocks: BlockList, clear_input_blocks: bool) -> BlockList:
         raise NotImplementedError
 
 
@@ -58,15 +59,21 @@ def _map_block_nosplit(
     )
 
 
-class TaskPool(ComputeStrategy):
-    def apply(self, fn: Any, remote_args: dict, blocks: BlockList) -> BlockList:
+class TaskPoolStrategy(ComputeStrategy):
+    def _apply(
+        self,
+        fn: Any,
+        remote_args: dict,
+        block_list: BlockList,
+        clear_input_blocks: bool,
+    ) -> BlockList:
         context = DatasetContext.get_current()
 
         # Handle empty datasets.
-        if blocks.initial_num_blocks() == 0:
-            return blocks
+        if block_list.initial_num_blocks() == 0:
+            return block_list
 
-        blocks = blocks.get_blocks_with_metadata()
+        blocks = block_list.get_blocks_with_metadata()
         map_bar = ProgressBar("Map Progress", total=len(blocks))
 
         if context.block_splitting_enabled:
@@ -79,6 +86,11 @@ class TaskPool(ComputeStrategy):
             all_refs = [map_block.remote(b, fn, m.input_files) for b, m in blocks]
             data_refs = [r[0] for r in all_refs]
             refs = [r[1] for r in all_refs]
+
+        # Release input block references.
+        if clear_input_blocks:
+            del blocks
+            block_list.clear()
 
         # Common wait for non-data refs.
         try:
@@ -110,18 +122,41 @@ class TaskPool(ComputeStrategy):
         return BlockList(list(new_blocks), list(new_metadata))
 
 
-class ActorPool(ComputeStrategy):
-    def __init__(self):
-        self.workers = []
+@PublicAPI
+class ActorPoolStrategy(ComputeStrategy):
+    """Specify the compute strategy for a Dataset transform.
 
-    def __del__(self):
-        for w in self.workers:
-            w.__ray_terminate__.remote()
+    ActorPool specifies that an autoscaling pool of actors should be used for a given
+    Dataset transform. This is useful for stateful setup of callable classes.
 
-    def apply(self, fn: Any, remote_args: dict, blocks: BlockList) -> BlockList:
+    To autoscale from ``m`` to ``n`` actors, specify ``compute=ActorPool(m, n)``.
+    For a fixed-sized pool of size ``n``, specify ``compute=ActorPool(n, n)``.
+    """
+
+    def __init__(self, min_size: int = 1, max_size: Optional[int] = None):
+        if min_size < 1:
+            raise ValueError("min_size must be > 1", min_size)
+        if max_size is not None and min_size > max_size:
+            raise ValueError("min_size must be <= max_size", min_size, max_size)
+        self.min_size = min_size
+        self.max_size = max_size or float("inf")
+
+    def _apply(
+        self,
+        fn: Any,
+        remote_args: dict,
+        block_list: BlockList,
+        clear_input_blocks: bool,
+    ) -> BlockList:
+        """Note: this is not part of the Dataset public API."""
         context = DatasetContext.get_current()
 
-        blocks_in = blocks.get_blocks_with_metadata()
+        blocks_in = block_list.get_blocks_with_metadata()
+
+        # Early release block references.
+        if clear_input_blocks:
+            block_list.clear()
+
         orig_num_blocks = len(blocks_in)
         results = []
         map_bar = ProgressBar("Map Progress", total=orig_num_blocks)
@@ -146,8 +181,8 @@ class ActorPool(ComputeStrategy):
 
         BlockWorker = ray.remote(**remote_args)(BlockWorker)
 
-        self.workers = [BlockWorker.remote()]
-        tasks = {w.ready.remote(): w for w in self.workers}
+        workers = [BlockWorker.remote() for _ in range(self.min_size)]
+        tasks = {w.ready.remote(): w for w in workers}
         metadata_mapping = {}
         ready_workers = set()
 
@@ -156,13 +191,16 @@ class ActorPool(ComputeStrategy):
                 list(tasks), timeout=0.01, num_returns=1, fetch_local=False
             )
             if not ready:
-                if len(ready_workers) / len(self.workers) > 0.8:
+                if (
+                    len(workers) < self.max_size
+                    and len(ready_workers) / len(workers) > 0.8
+                ):
                     w = BlockWorker.remote()
-                    self.workers.append(w)
+                    workers.append(w)
                     tasks[w.ready.remote()] = w
                     map_bar.set_description(
                         "Map Progress ({} actors {} pending)".format(
-                            len(ready_workers), len(self.workers) - len(ready_workers)
+                            len(ready_workers), len(workers) - len(ready_workers)
                         )
                     )
                 continue
@@ -177,6 +215,11 @@ class ActorPool(ComputeStrategy):
                 map_bar.update(1)
             else:
                 ready_workers.add(worker)
+                map_bar.set_description(
+                    "Map Progress ({} actors {} pending)".format(
+                        len(ready_workers), len(workers) - len(ready_workers)
+                    )
+                )
 
             # Schedule a new task.
             if blocks_in:
@@ -201,6 +244,7 @@ class ActorPool(ComputeStrategy):
             for block in results:
                 new_blocks.append(block)
                 new_metadata.append(metadata_mapping[block])
+            new_metadata = ray.get(new_metadata)
         return BlockList(new_blocks, new_metadata)
 
 
@@ -230,10 +274,10 @@ def cache_wrapper(
 
 def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
     if not compute_spec or compute_spec == "tasks":
-        return TaskPool()
+        return TaskPoolStrategy()
     elif compute_spec == "actors":
-        return ActorPool()
+        return ActorPoolStrategy()
     elif isinstance(compute_spec, ComputeStrategy):
         return compute_spec
     else:
-        raise ValueError("compute must be one of [`tasks`, `actors`]")
+        raise ValueError("compute must be one of [`tasks`, `actors`, ComputeStrategy]")

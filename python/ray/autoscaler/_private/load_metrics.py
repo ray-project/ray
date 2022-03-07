@@ -1,10 +1,8 @@
 from collections import Counter
-from dataclasses import dataclass
 from functools import reduce
 import logging
-from numbers import Number
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List
 
 import numpy as np
 import ray.ray_constants
@@ -14,29 +12,10 @@ from ray.autoscaler._private.constants import (
 )
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.resource_demand_scheduler import NodeIP, ResourceDict
+from ray.autoscaler._private.util import DictCount, LoadMetricsSummary
 from ray.core.generated.common_pb2 import PlacementStrategy
 
 logger = logging.getLogger(__name__)
-
-# A Dict and the count of how many times it occurred.
-# Refer to freq_of_dicts() below.
-DictCount = Tuple[Dict, Number]
-
-
-@dataclass
-class LoadMetricsSummary:
-    # Map of resource name (e.g. "memory") to pair of (Used, Available) numbers
-    usage: Dict[str, Tuple[Number, Number]]
-    # Counts of demand bundles from task/actor demand.
-    # e.g. [({"CPU": 1}, 5), ({"GPU":1}, 2)]
-    resource_demand: List[DictCount]
-    # Counts of pending placement groups
-    pg_demand: List[DictCount]
-    # Counts of demand bundles requested by autoscaler.sdk.request_resources
-    request_demand: List[DictCount]
-    node_types: List[DictCount]
-    # Optionally included for backwards compatibility: IP of the head node.
-    head_ip: Optional[NodeIP] = None
 
 
 def add_resources(dict1: Dict[str, float], dict2: Dict[str, float]) -> Dict[str, float]:
@@ -99,6 +78,12 @@ class LoadMetrics:
         self.pending_placement_groups = []
         self.resource_requests = []
         self.cluster_full_of_actors_detected = False
+
+    def __bool__(self):
+        """A load metrics instance is Falsey iff the autoscaler process
+        has not received a resource message from the GCS.
+        """
+        return bool(self.raylet_id_by_ip)
 
     def update(
         self,

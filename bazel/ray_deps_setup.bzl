@@ -236,12 +236,10 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_grpc_grpc",
         # NOTE: If you update this, also update @boringssl's hash.
-        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.42.0.tar.gz",
-        sha256 = "b2f2620c762427bfeeef96a68c1924319f384e877bc0e084487601e4cc6e434c",
+        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.44.0.tar.gz",
+        sha256 = "8c05641b9f91cbc92f51cc4a5b3a226788d7a63f20af4ca7aaca50d92cc94a0d",
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:grpc-cython-copts.patch",
-            # Delete after upgrading from 1.42.0
-            "@com_github_ray_project_ray//thirdparty/patches:grpc-default-initialization.patch",
             "@com_github_ray_project_ray//thirdparty/patches:grpc-python.patch",
         ],
     )

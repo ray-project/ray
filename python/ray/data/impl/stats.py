@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from typing import List, Optional, Dict, Set, Tuple, Union
+from typing import List, Optional, Set, Dict, Tuple, Union
 import time
 import collections
 import numpy as np
@@ -54,8 +54,14 @@ class _DatasetStatsBuilder:
     def build_multistage(
         self, stages: Dict[str, List[BlockMetadata]]
     ) -> "DatasetStats":
+        stage_infos = {}
+        for i, (k, v) in enumerate(stages.items()):
+            if i == 0:
+                stage_infos[self.stage_name + "_" + k] = v
+            else:
+                stage_infos[self.stage_name.split("->")[-1] + "_" + k] = v
         stats = DatasetStats(
-            stages={self.stage_name + "_" + k: v for k, v in stages.items()},
+            stages=stage_infos,
             parent=self.parent,
         )
         stats.time_total_s = time.perf_counter() - self.start_time
@@ -63,7 +69,8 @@ class _DatasetStatsBuilder:
 
     def build(self, final_blocks: BlockList) -> "DatasetStats":
         stats = DatasetStats(
-            stages={self.stage_name: final_blocks.get_metadata()}, parent=self.parent
+            stages={self.stage_name: final_blocks.get_metadata()},
+            parent=self.parent,
         )
         stats.time_total_s = time.perf_counter() - self.start_time
         return stats
@@ -202,10 +209,12 @@ class DatasetStats:
         out = ""
         if self.parents:
             for p in self.parents:
-                out += p.summary_string(already_printed)
-                out += "\n"
+                parent_sum = p.summary_string(already_printed)
+                if parent_sum:
+                    out += parent_sum
+                    out += "\n"
         first = True
-        for stage_name, metadata in sorted(self.stages.items()):
+        for stage_name, metadata in self.stages.items():
             stage_uuid = self.dataset_uuid + stage_name
             if first:
                 first = False
@@ -306,7 +315,10 @@ class DatasetPipelineStats:
         self.wait_time_s = []
 
         # Iteration stats, filled out if the user iterates over the pipeline.
+        self.iter_ds_wait_s: Timer = Timer()
         self.iter_wait_s: Timer = Timer()
+        self.iter_get_s: Timer = Timer()
+        self.iter_format_batch_s: Timer = Timer()
         self.iter_user_s: Timer = Timer()
         self.iter_total_s: Timer = Timer()
 
@@ -316,6 +328,28 @@ class DatasetPipelineStats:
         if len(self.history_buffer) > self.max_history:
             self.history_buffer.pop(0)
         self.count += 1
+
+    def _summarize_iter(self) -> str:
+        out = ""
+        if (
+            self.iter_total_s.get()
+            or self.iter_wait_s.get()
+            or self.iter_format_batch_s.get()
+            or self.iter_get_s.get()
+        ):
+            out += "\nDatasetPipeline iterator time breakdown:\n"
+            out += "* Waiting for next dataset: {}\n".format(
+                fmt(self.iter_ds_wait_s.get())
+            )
+            out += "* In ray.wait(): {}\n".format(fmt(self.iter_wait_s.get()))
+            out += "* In ray.get(): {}\n".format(fmt(self.iter_get_s.get()))
+            out += "* In format_batch(): {}\n".format(
+                fmt(self.iter_format_batch_s.get())
+            )
+            out += "* In user code: {}\n".format(fmt(self.iter_user_s.get()))
+            out += "* Total time: {}\n".format(fmt(self.iter_total_s.get()))
+
+        return out
 
     def summary_string(self, exclude_first_window: bool = True) -> str:
         """Return a human-readable summary of this pipeline's stats."""
@@ -338,7 +372,5 @@ class DatasetPipelineStats:
                     fmt(sum(wait_time_s)),
                 )
             )
-        out += "* Time in dataset iterator: {}\n".format(fmt(self.iter_wait_s.get()))
-        out += "* Time in user code: {}\n".format(fmt(self.iter_user_s.get()))
-        out += "* Total time: {}\n".format(fmt(self.iter_total_s.get()))
+        out += self._summarize_iter()
         return out

@@ -38,7 +38,7 @@ def get_dataset_and_shards(
             " when using Ray dataset input."
         )
 
-    parallelism = input_config.get("parallelism", num_workers)
+    parallelism = input_config.get("parallelism", num_workers or 1)
     cpus_per_task = input_config.get(
         "num_cpus_per_read_task", DEFAULT_NUM_CPUS_PER_TASK
     )
@@ -76,18 +76,19 @@ class DatasetReader(InputReader):
 
     Examples:
         config = {
-            "input"="dataset",
-            "input_config"={
+            "input": "dataset",
+            "input_config": {
                 "format": "json",
+                # A single data file, a directory, or anything
+                # that ray.data.dataset recognizes.
                 "path": "/tmp/sample_batches/",
                 # By default, parallelism=num_workers.
                 "parallelism": 3,
+                # Dataset allocates 0.5 CPU for each reader by default.
+                # Adjust this value based on the size of your offline dataset.
                 "num_cpus_per_read_task": 0.5,
             }
         }
-
-    `path` may be a single data file, a directory, or anything
-        that ray.data.dataset recognizes.
     """
 
     @PublicAPI

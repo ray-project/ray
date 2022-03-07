@@ -13,7 +13,7 @@ cloudpickle
 filelock
 frozenlist
 gpustat >= 1.0.0b1
-grpcio >= 1.28.1
+grpcio >= 1.28.1, <= 1.43.0
 jsonschema
 msgpack >= 1.0.0, < 2.0.0
 numpy >= 1.16
@@ -26,15 +26,15 @@ pyyaml
 redis >= 3.5.0, < 4.0.0
 requests
 smart_open
+virtualenv
 
 ## setup.py extras
 dm_tree
 flask
-gym>=0.21.0; python_version >= '3.7'
+gym>=0.21.0,<0.22.0; python_version >= '3.7'
 gym==0.19.0; python_version < '3.7'
 lz4
 scikit-image
-opencv-python-headless==4.3.0.36
 pandas>=1.0.5; python_version < '3.7'
 pandas>=1.2.0; python_version >= '3.7'
 scipy==1.4.1
@@ -46,7 +46,7 @@ starlette
 aiorwlock
 
 # Requirements for running tests
-pyarrow==4.0.1
+pyarrow >= 4.0.1, < 7.0.0
 blist; platform_system != "Windows"
 azure-cli-core==2.29.1
 azure-identity==1.7.0
@@ -83,6 +83,7 @@ pytest-rerunfailures
 pytest-sugar
 pytest-lazy-fixture
 pytest-timeout
+pytest-virtualenv
 scikit-learn==0.22.2
 tensorflow==2.5.1
 testfixtures

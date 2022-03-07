@@ -17,6 +17,7 @@
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
+#include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
 namespace raylet {
@@ -90,6 +91,10 @@ class Work {
   WorkStatus GetState() const { return status_; }
 
   UnscheduledWorkCause GetUnscheduledCause() const { return unscheduled_work_cause_; }
+
+  bool PrioritizeLocalNode() const {
+    return grant_or_reject || is_selected_based_on_locality;
+  }
 
  private:
   WorkStatus status_ = WorkStatus::WAITING;

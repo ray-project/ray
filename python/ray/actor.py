@@ -5,12 +5,11 @@ import weakref
 import ray.ray_constants as ray_constants
 import ray._raylet
 import ray._private.signature as signature
-from ray._private.runtime_env.validation import ParsedRuntimeEnv
+from ray.runtime_env import RuntimeEnv
 import ray.worker
 from ray.util.annotations import PublicAPI
 from ray.util.placement_group import configure_placement_group_based_on_context
 from ray.util.scheduling_strategies import (
-    DEFAULT_SCHEDULING_STRATEGY,
     PlacementGroupSchedulingStrategy,
     SchedulingStrategyT,
 )
@@ -451,7 +450,7 @@ class ActorClass:
             if isinstance(runtime_env, str):
                 new_runtime_env = runtime_env
             else:
-                new_runtime_env = ParsedRuntimeEnv(runtime_env).serialize()
+                new_runtime_env = RuntimeEnv(**runtime_env).serialize()
         else:
             new_runtime_env = None
 
@@ -499,7 +498,7 @@ class ActorClass:
             if isinstance(runtime_env, str):
                 new_runtime_env = runtime_env
             else:
-                new_runtime_env = ParsedRuntimeEnv(runtime_env).serialize()
+                new_runtime_env = RuntimeEnv(**runtime_env).serialize()
         else:
             new_runtime_env = None
 
@@ -587,7 +586,7 @@ class ActorClass:
             if isinstance(runtime_env, str):
                 new_runtime_env = runtime_env
             else:
-                new_runtime_env = ParsedRuntimeEnv(runtime_env or {}).serialize()
+                new_runtime_env = RuntimeEnv(**(runtime_env or {})).serialize()
         else:
             # Keep the new_runtime_env as None.  In .remote(), we need to know
             # if runtime_env is None to know whether or not to fall back to the
@@ -715,8 +714,7 @@ class ActorClass:
                 as its parent. It is False by default.
             runtime_env (Dict[str, Any]): Specifies the runtime environment for
                 this actor or task and its children (see
-                :ref:`runtime-environments` for details).  This API is in beta
-                and may change before becoming stable.
+                :ref:`runtime-environments` for details).
             max_pending_calls (int): Set the max number of pending calls
                 allowed on the actor handle. When this value is exceeded,
                 PendingCallsLimitExceeded will be raised for further tasks.
@@ -944,13 +942,13 @@ class ActorClass:
                     placement_group_capture_child_tasks,
                 )
             else:
-                scheduling_strategy = DEFAULT_SCHEDULING_STRATEGY
+                scheduling_strategy = "DEFAULT"
 
         if runtime_env:
             if isinstance(runtime_env, str):
                 # Serialzed protobuf runtime env from Ray client.
                 new_runtime_env = runtime_env
-            elif isinstance(runtime_env, ParsedRuntimeEnv):
+            elif isinstance(runtime_env, RuntimeEnv):
                 new_runtime_env = runtime_env.serialize()
             else:
                 raise TypeError(f"Error runtime env type {type(runtime_env)}")
@@ -974,6 +972,17 @@ class ActorClass:
             class_name = meta.actor_creation_function_descriptor.class_name
             concurrency_groups_dict[cg_name]["function_descriptors"].append(
                 PythonFunctionDescriptor(module_name, method_name, class_name)
+            )
+
+        # Update the creation descriptor based on number of arguments
+        if meta.is_cross_language:
+            meta.actor_creation_function_descriptor = (
+                cross_language.get_function_descriptor_for_actor_method(
+                    meta.language,
+                    meta.actor_creation_function_descriptor,
+                    "<init>",
+                    str(len(args) + len(kwargs)),
+                )
             )
 
         actor_id = worker.core_worker.create_actor(
@@ -1139,12 +1148,13 @@ class ActorHandle:
         kwargs = kwargs or {}
         if self._ray_is_cross_language:
             list_args = cross_language.format_args(worker, args, kwargs)
-            function_descriptor = (
-                cross_language.get_function_descriptor_for_actor_method(
-                    self._ray_actor_language,
-                    self._ray_actor_creation_function_descriptor,
-                    method_name,
-                )
+            function_descriptor = cross_language.get_function_descriptor_for_actor_method(  # noqa: E501
+                self._ray_actor_language,
+                self._ray_actor_creation_function_descriptor,
+                method_name,
+                # The signature for xlang should be "{length_of_arguments}" to handle
+                # overloaded methods.
+                signature=str(len(args) + len(kwargs)),
             )
         else:
             function_signature = self._ray_method_signatures[method_name]

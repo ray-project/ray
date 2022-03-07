@@ -2,6 +2,7 @@
 Optional utils module contains utility methods
 that require optional dependencies.
 """
+from aiohttp.web import Response
 import asyncio
 import collections
 import functools
@@ -12,10 +13,13 @@ import os
 import time
 import traceback
 from collections import namedtuple
-from typing import Any
+from typing import Any, Callable
 
+import ray
 import ray.dashboard.consts as dashboard_consts
 from ray.ray_constants import env_bool
+from ray._private.gcs_utils import use_gcs_for_bootstrap
+from ray import serve
 
 try:
     create_task = asyncio.create_task
@@ -29,6 +33,8 @@ from ray.dashboard.optional_deps import aiohttp, hdrs, PathLike, RouteDef
 from ray.dashboard.utils import to_google_style, CustomEncoder
 
 logger = logging.getLogger(__name__)
+
+RAY_INTERNAL_DASHBOARD_NAMESPACE = "_ray_internal_dashboard"
 
 
 class ClassMethodRouteTable:
@@ -242,3 +248,50 @@ def aiohttp_cache(
         return _wrapper(target_func)
     else:
         return _wrapper
+
+
+def init_ray_and_catch_exceptions(connect_to_serve: bool = False) -> Callable:
+    """Decorator to be used on methods that require being connected to Ray."""
+
+    def decorator_factory(f: Callable) -> Callable:
+        @functools.wraps(f)
+        async def decorator(self, *args, **kwargs):
+            try:
+                if not ray.is_initialized():
+                    try:
+                        if use_gcs_for_bootstrap():
+                            address = self._dashboard_head.gcs_address
+                            redis_pw = None
+                            logger.info(f"Connecting to ray with address={address}")
+                        else:
+                            ip, port = self._dashboard_head.redis_address
+                            redis_pw = self._dashboard_head.redis_password
+                            address = f"{ip}:{port}"
+                            logger.info(
+                                f"Connecting to ray with address={address}, "
+                                f"redis_pw={redis_pw}"
+                            )
+                        ray.init(
+                            address=address,
+                            namespace=RAY_INTERNAL_DASHBOARD_NAMESPACE,
+                            _redis_password=redis_pw,
+                        )
+                    except Exception as e:
+                        ray.shutdown()
+                        raise e from None
+
+                if connect_to_serve:
+                    # TODO(edoakes): this should probably run in the `serve`
+                    # namespace.
+                    serve.start(detached=True)
+                return await f(self, *args, **kwargs)
+            except Exception as e:
+                logger.exception(f"Unexpected error in handler: {e}")
+                return Response(
+                    text=traceback.format_exc(),
+                    status=aiohttp.web.HTTPInternalServerError.status_code,
+                )
+
+        return decorator
+
+    return decorator_factory

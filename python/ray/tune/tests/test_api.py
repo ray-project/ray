@@ -150,6 +150,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             "time_since_restore",
             "experiment_id",
             "date",
+            "warmup_time",
         }
 
         self.assertEqual(len(class_output), len(results))
@@ -780,7 +781,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 return [0, 1, True, {}]
 
         class FailureInjectionCallback(Callback):
-            def on_trial_start(self, trials, **info):
+            def on_step_end(self, **info):
                 raise RuntimeError
 
         with self.assertRaises(Exception):
@@ -870,7 +871,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
             trial.last_result.get("trial_resources"), trial.placement_group_factory
         )
 
-    @patch("ray.tune.ray_trial_executor.TRIAL_CLEANUP_THRESHOLD", 3)
     def testLotsOfStops(self):
         class TestTrainable(Trainable):
             def step(self):

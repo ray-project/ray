@@ -127,7 +127,7 @@ NodeID GcsBasedActorScheduler::GetHighestScoreNodeResource(
   double highest_score = std::numeric_limits<double>::lowest();
   auto highest_score_node = NodeID::Nil();
   for (const auto &pair : cluster_map) {
-    double least_resource_val = scorer.Score(required_resources, pair.second);
+    double least_resource_val = scorer.Score(required_resources, *pair.second);
     if (least_resource_val > highest_score) {
       highest_score = least_resource_val;
       highest_score_node = pair.first;
@@ -143,7 +143,7 @@ void GcsBasedActorScheduler::WarnResourceAllocationFailure(
   const SchedulingResources *scheduling_resource = nullptr;
   auto iter = gcs_resource_manager_->GetClusterResources().find(scheduling_node_id);
   if (iter != gcs_resource_manager_->GetClusterResources().end()) {
-    scheduling_resource = &iter->second;
+    scheduling_resource = iter->second.get();
   }
   std::string scheduling_resource_str =
       scheduling_resource ? scheduling_resource->DebugString() : "None";

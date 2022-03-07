@@ -1,7 +1,5 @@
-FROM nvidia/cuda:11.2.0-cudnn8-devel-ubuntu18.04
+FROM nvidia/cuda:11.2.0-cudnn8-devel-ubuntu20.04
 
-# This is a copy of the regular Dockerfile
-# adjusted for ubuntu 18 (removed python-is-python3)
 ARG REMOTE_CACHE_URL
 ARG BUILDKITE_PULL_REQUEST
 ARG BUILDKITE_COMMIT
@@ -31,16 +29,19 @@ ENV BUILDKITE_BAZEL_CACHE_URL=${REMOTE_CACHE_URL}
 
 RUN apt-get update -qq && apt-get upgrade -qq
 RUN apt-get install -y -qq \
-    software-properties-common curl git build-essential \
+    curl python-is-python3 git build-essential \
     sudo unzip unrar apt-utils dialog tzdata wget rsync \
     language-pack-en tmux cmake gdb vim htop \
     libgtk2.0-dev zlib1g-dev libgl1-mesa-dev maven \
-    openjdk-8-jre openjdk-8-jdk
-# add-apt-repository is available after installing software-properties-common
-RUN add-apt-repository ppa:ubuntu-toolchain-r/test && apt-get update -qq && \
-    apt-get install -y -qq gcc-9 g++-9
+    openjdk-8-jre openjdk-8-jdk clang-format-12 jq \
+    clang-tidy-12 clang-12
+# Make using GCC 9 explicit.
 RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 90 --slave /usr/bin/g++ g++ /usr/bin/g++-9 \
     --slave /usr/bin/gcov gcov /usr/bin/gcov-9
+RUN ln -s /usr/bin/clang-format-12 /usr/bin/clang-format && \
+    ln -s /usr/bin/clang-tidy-12 /usr/bin/clang-tidy && \
+    ln -s /usr/bin/clang-12 /usr/bin/clang
+
 RUN curl -o- https://get.docker.com | sh
 
 # System conf for tests

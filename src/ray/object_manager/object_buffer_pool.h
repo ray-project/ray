@@ -56,10 +56,10 @@ class ObjectBufferPool {
 
   /// Constructor.
   ///
-  /// \param store_socket_name The socket name of the store to which plasma clients
-  /// connect.
+  /// \param store_client Plasma store client. Used for testing purposes only.
   /// \param chunk_size The chunk size into which objects are to be split.
-  ObjectBufferPool(const std::string &store_socket_name, const uint64_t chunk_size);
+  ObjectBufferPool(std::shared_ptr<plasma::PlasmaClientInterface> store_client,
+                   const uint64_t chunk_size);
 
   ~ObjectBufferPool();
 
@@ -120,8 +120,9 @@ class ObjectBufferPool {
   /// \param object_id The ObjectID.
   /// \param chunk_index The index of the chunk.
   /// \param data The data to write into the chunk.
-  void WriteChunk(const ObjectID &object_id, uint64_t chunk_index,
-                  const std::string &data) LOCKS_EXCLUDED(pool_mutex_);
+  void WriteChunk(const ObjectID &object_id, uint64_t data_size, uint64_t metadata_size,
+                  uint64_t chunk_index, const std::string &data)
+      LOCKS_EXCLUDED(pool_mutex_);
 
   /// Free a list of objects from object store.
   ///
@@ -155,16 +156,25 @@ class ObjectBufferPool {
                                  uint64_t metadata_size, uint64_t chunk_index)
       EXCLUSIVE_LOCKS_REQUIRED(pool_mutex_);
 
+  void AbortCreateInternal(const ObjectID &object_id)
+      EXCLUSIVE_LOCKS_REQUIRED(pool_mutex_);
+
   /// The state of a chunk associated with a create operation.
   enum class CreateChunkState : unsigned int { AVAILABLE = 0, REFERENCED, SEALED };
 
   /// Holds the state of creating chunks. Members are protected by pool_mutex_.
   struct CreateBufferState {
-    CreateBufferState() {}
-    CreateBufferState(std::vector<ChunkInfo> chunk_info)
-        : chunk_info(chunk_info),
+    CreateBufferState(uint64_t metadata_size, uint64_t data_size,
+                      std::vector<ChunkInfo> chunk_info)
+        : metadata_size(metadata_size),
+          data_size(data_size),
+          chunk_info(chunk_info),
           chunk_state(chunk_info.size(), CreateChunkState::AVAILABLE),
           num_seals_remaining(chunk_info.size()) {}
+    /// Total size of the object metadata.
+    uint64_t metadata_size;
+    /// Total size of the object data.
+    uint64_t data_size;
     /// A vector maintaining information about the chunks which comprise
     /// an object.
     std::vector<ChunkInfo> chunk_info;
@@ -177,12 +187,6 @@ class ObjectBufferPool {
 
   /// Returned when GetChunk or CreateChunk fails.
   const ChunkInfo errored_chunk_ = {0, nullptr, 0, nullptr};
-
-  /// Socket name of plasma store.
-  const std::string store_socket_name_;
-
-  /// Determines the maximum chunk size to be transferred by a single thread.
-  const uint64_t default_chunk_size_;
 
   /// Mutex to protect create_buffer_ops_, create_buffer_state_ and following invariants:
   /// - create_buffer_ops_ contains an object_id iff there is an inflight operation to
@@ -200,7 +204,12 @@ class ObjectBufferPool {
       GUARDED_BY(pool_mutex_);
 
   /// Plasma client pool.
-  plasma::PlasmaClient store_client_;
+  std::shared_ptr<plasma::PlasmaClientInterface> store_client_;
+
+  /// Determines the maximum chunk size to be transferred by a single thread.
+  const uint64_t default_chunk_size_;
+
+  friend class ObjectBufferPoolTest;
 };
 
 }  // namespace ray

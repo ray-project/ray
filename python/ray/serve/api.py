@@ -16,7 +16,12 @@ from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
 from ray.actor import ActorHandle
-from ray.serve.common import DeploymentInfo, GoalId, ReplicaTag
+from ray.serve.common import (
+    DeploymentInfo,
+    DeploymentStatus,
+    DeploymentStatusInfo,
+    ReplicaTag,
+)
 from ray.serve.config import (
     AutoscalingConfig,
     DeploymentConfig,
@@ -54,6 +59,9 @@ _UUID_RE = re.compile(
     "[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89aAbB][a-f0-9]{3}-[a-f0-9]{12}"
 )
 
+# The polling interval for serve client to wait to deployment state
+_CLIENT_POLLING_INTERVAL_S: float = 1
+
 
 def _get_controller_namespace(detached):
     controller_namespace = ray.get_runtime_context().namespace
@@ -87,6 +95,7 @@ class ReplicaContext:
     deployment: str
     replica_tag: ReplicaTag
     _internal_controller_name: str
+    _internal_controller_namespace: str
     servable_object: Callable
 
 
@@ -94,11 +103,12 @@ def _set_internal_replica_context(
     deployment: str,
     replica_tag: ReplicaTag,
     controller_name: str,
+    controller_namespace: str,
     servable_object: Callable,
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
-        deployment, replica_tag, controller_name, servable_object
+        deployment, replica_tag, controller_name, controller_namespace, servable_object
     )
 
 
@@ -168,9 +178,9 @@ class Client:
         Shuts down all processes and deletes all state associated with the
         instance.
         """
-        if (not self._shutdown) and ray.is_initialized():
-            for goal_id in ray.get(self._controller.shutdown.remote()):
-                self._wait_for_goal(goal_id)
+        if ray.is_initialized() and not self._shutdown:
+            ray.get(self._controller.shutdown.remote())
+            self._wait_for_deployments_shutdown()
 
             ray.kill(self._controller, no_restart=True)
 
@@ -193,24 +203,82 @@ class Client:
 
             self._shutdown = True
 
-    def _wait_for_goal(
-        self, goal_id: Optional[GoalId], timeout: Optional[float] = None
-    ) -> bool:
-        if goal_id is None:
-            return True
+    def _wait_for_deployments_shutdown(self, timeout_s: int = 60):
+        """Waits for all deployments to be shut down and deleted.
 
-        ready, _ = ray.wait(
-            [self._controller.wait_for_goal.remote(goal_id)], timeout=timeout
-        )
-        # AsyncGoal could return exception if set, ray.get()
-        # retrieves and throws it to user code explicitly.
-        if len(ready) == 1:
-            async_goal_exception = ray.get(ready)[0]
-            if async_goal_exception is not None:
-                raise async_goal_exception
-            return True
+        Raises TimeoutError if this doesn't happen before timeout_s.
+        """
+        start = time.time()
+        while time.time() - start < timeout_s:
+            statuses = ray.get(self._controller.get_deployment_statuses.remote())
+            if len(statuses) == 0:
+                break
+            else:
+                logger.debug(
+                    f"Waiting for shutdown, {len(statuses)} deployments still alive."
+                )
+            time.sleep(_CLIENT_POLLING_INTERVAL_S)
         else:
-            return False
+            live_names = list(statuses.keys())
+            raise TimeoutError(
+                f"Shutdown didn't complete after {timeout_s}s. "
+                f"Deployments still alive: {live_names}."
+            )
+
+    def _wait_for_deployment_healthy(self, name: str, timeout_s: int = -1):
+        """Waits for the named deployment to enter "HEALTHY" status.
+
+        Raises RuntimeError if the deployment enters the "UNHEALTHY" status
+        instead.
+
+        Raises TimeoutError if this doesn't happen before timeout_s.
+        """
+        start = time.time()
+        while time.time() - start < timeout_s or timeout_s < 0:
+            statuses = ray.get(self._controller.get_deployment_statuses.remote())
+            try:
+                status = statuses[name]
+            except KeyError:
+                raise RuntimeError(
+                    f"Waiting for deployment {name} to be HEALTHY, "
+                    "but deployment doesn't exist."
+                ) from None
+
+            if status.status == DeploymentStatus.HEALTHY:
+                break
+            elif status.status == DeploymentStatus.UNHEALTHY:
+                raise RuntimeError(f"Deployment {name} is UNHEALTHY: {status.message}")
+            else:
+                # Guard against new unhandled statuses being added.
+                assert status.status == DeploymentStatus.UPDATING
+
+            logger.debug(
+                f"Waiting for {name} to be healthy, current status: {status.status}."
+            )
+            time.sleep(_CLIENT_POLLING_INTERVAL_S)
+        else:
+            raise TimeoutError(
+                f"Deployment {name} did not become HEALTHY after {timeout_s}s."
+            )
+
+    def _wait_for_deployment_deleted(self, name: str, timeout_s: int = 60):
+        """Waits for the named deployment to be shut down and deleted.
+
+        Raises TimeoutError if this doesn't happen before timeout_s.
+        """
+        start = time.time()
+        while time.time() - start < timeout_s:
+            statuses = ray.get(self._controller.get_deployment_statuses.remote())
+            if name not in statuses:
+                break
+            else:
+                curr_status = statuses[name].status
+                logger.debug(
+                    f"Waiting for {name} to be deleted, current status: {curr_status}."
+                )
+            time.sleep(_CLIENT_POLLING_INTERVAL_S)
+        else:
+            raise TimeoutError(f"Deployment {name} wasn't deleted after {timeout_s}s.")
 
     @_ensure_connected
     def deploy(
@@ -226,7 +294,7 @@ class Client:
         route_prefix: Optional[str] = None,
         url: Optional[str] = None,
         _blocking: Optional[bool] = True,
-    ) -> Optional[GoalId]:
+    ):
 
         controller_deploy_args = self.get_deploy_args(
             name=name,
@@ -240,22 +308,16 @@ class Client:
             route_prefix=route_prefix,
         )
 
-        goal_id, updating = ray.get(
-            self._controller.deploy.remote(**controller_deploy_args)
-        )
+        updating = ray.get(self._controller.deploy.remote(**controller_deploy_args))
 
         tag = self.log_deployment_update_status(name, version, updating)
 
         if _blocking:
-            self._wait_for_goal(goal_id)
+            self._wait_for_deployment_healthy(name)
             self.log_deployment_ready(name, version, url, tag)
-        else:
-            return goal_id
 
     @_ensure_connected
-    def deploy_group(
-        self, deployments: List[Dict], _blocking: bool = True
-    ) -> List[GoalId]:
+    def deploy_group(self, deployments: List[Dict], _blocking: bool = True):
         deployment_args_list = []
         for deployment in deployments:
             deployment_args_list.append(
@@ -272,35 +334,29 @@ class Client:
                 )
             )
 
-        update_goals = ray.get(
+        updating_list = ray.get(
             self._controller.deploy_group.remote(deployment_args_list)
         )
 
         tags = []
-        for i in range(len(deployments)):
+        for i, updating in enumerate(updating_list):
             deployment = deployments[i]
             name, version = deployment["name"], deployment["version"]
-            updating = update_goals[i][1]
 
             tags.append(self.log_deployment_update_status(name, version, updating))
 
-        nonblocking_goal_ids = []
-        for i in range(len(deployments)):
-            deployment = deployments[i]
+        for i, deployment in enumerate(deployments):
+            name = deployment["name"]
             url = deployment["url"]
-            goal_id = update_goals[i][0]
 
             if _blocking:
-                self._wait_for_goal(goal_id)
+                self._wait_for_deployment_healthy(name)
                 self.log_deployment_ready(name, version, url, tags[i])
-            else:
-                nonblocking_goal_ids.append(goal_id)
-
-        return nonblocking_goal_ids
 
     @_ensure_connected
     def delete_deployment(self, name: str) -> None:
-        self._wait_for_goal(ray.get(self._controller.delete_deployment.remote(name)))
+        ray.get(self._controller.delete_deployment.remote(name))
+        self._wait_for_deployment_deleted(name)
 
     @_ensure_connected
     def get_deployment_info(self, name: str) -> Tuple[DeploymentInfo, str]:
@@ -309,6 +365,10 @@ class Client:
     @_ensure_connected
     def list_deployments(self) -> Dict[str, Tuple[DeploymentInfo, str]]:
         return ray.get(self._controller.list_deployments.remote())
+
+    @_ensure_connected
+    def get_deployment_statuses(self) -> Dict[str, DeploymentStatusInfo]:
+        return ray.get(self._controller.get_deployment_statuses.remote())
 
     @_ensure_connected
     def get_handle(
@@ -600,7 +660,6 @@ def start(
         )
 
         _check_http_and_checkpoint_options(client, http_options, _checkpoint_path)
-
         return client
     except RayServeException:
         pass
@@ -616,7 +675,7 @@ def start(
         http_options = HTTPOptions()
 
     controller = ServeController.options(
-        num_cpus=(1 if dedicated_cpu else 0),
+        num_cpus=1 if dedicated_cpu else 0,
         name=controller_name,
         lifetime="detached" if detached else None,
         max_restarts=-1,
@@ -675,7 +734,7 @@ def _connect() -> Client:
         controller_namespace = _get_controller_namespace(detached=True)
     else:
         controller_name = _INTERNAL_REPLICA_CONTEXT._internal_controller_name
-        controller_namespace = _get_controller_namespace(detached=False)
+        controller_namespace = _INTERNAL_REPLICA_CONTEXT._internal_controller_namespace
 
     # Try to get serve controller if it exists
     try:
@@ -822,7 +881,7 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
 class Deployment:
     def __init__(
         self,
-        func_or_class: Callable,
+        func_or_class: Union[Callable, str],
         name: str,
         config: DeploymentConfig,
         version: Optional[str] = None,
@@ -845,7 +904,7 @@ class Deployment:
                 "The Deployment constructor should not be called "
                 "directly. Use `@serve.deployment` instead."
             )
-        if not callable(func_or_class):
+        if not callable(func_or_class) and not isinstance(func_or_class, str):
             raise TypeError("@serve.deployment must be called on a class or function.")
         if not isinstance(name, str):
             raise TypeError("name must be a string.")
@@ -918,7 +977,7 @@ class Deployment:
         return self._prev_version
 
     @property
-    def func_or_class(self) -> Callable:
+    def func_or_class(self) -> Union[Callable, str]:
         """Underlying class or function that this deployment wraps."""
         return self._func_or_class
 
@@ -1042,6 +1101,8 @@ class Deployment:
         _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
         _graceful_shutdown_wait_loop_s: Optional[float] = None,
         _graceful_shutdown_timeout_s: Optional[float] = None,
+        _health_check_period_s: Optional[float] = None,
+        _health_check_timeout_s: Optional[float] = None,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
@@ -1087,6 +1148,12 @@ class Deployment:
         if _graceful_shutdown_timeout_s is not None:
             new_config.graceful_shutdown_timeout_s = _graceful_shutdown_timeout_s
 
+        if _health_check_period_s is not None:
+            new_config.health_check_period_s = _health_check_period_s
+
+        if _health_check_timeout_s is not None:
+            new_config.health_check_timeout_s = _health_check_timeout_s
+
         return Deployment(
             func_or_class,
             name,
@@ -1098,6 +1165,13 @@ class Deployment:
             route_prefix=route_prefix,
             ray_actor_options=ray_actor_options,
             _internal=True,
+        )
+
+    def _bind(self, *args, **kwargs):
+        raise AttributeError(
+            "DAG building API should only be used for @ray.remote decorated "
+            "class or function, not in serve deployment or library "
+            "specific API."
         )
 
     def __eq__(self, other):
@@ -1145,6 +1219,8 @@ def deployment(
     _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
     _graceful_shutdown_wait_loop_s: Optional[float] = None,
     _graceful_shutdown_timeout_s: Optional[float] = None,
+    _health_check_period_s: Optional[float] = None,
+    _health_check_timeout_s: Optional[float] = None,
 ) -> Callable[[Callable], Deployment]:
     pass
 
@@ -1165,6 +1241,8 @@ def deployment(
     _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
     _graceful_shutdown_wait_loop_s: Optional[float] = None,
     _graceful_shutdown_timeout_s: Optional[float] = None,
+    _health_check_period_s: Optional[float] = None,
+    _health_check_timeout_s: Optional[float] = None,
 ) -> Callable[[Callable], Deployment]:
     """Define a Serve deployment.
 
@@ -1248,6 +1326,12 @@ def deployment(
     if _graceful_shutdown_timeout_s is not None:
         config.graceful_shutdown_timeout_s = _graceful_shutdown_timeout_s
 
+    if _health_check_period_s is not None:
+        config.health_check_period_s = _health_check_period_s
+
+    if _health_check_timeout_s is not None:
+        config.health_check_timeout_s = _health_check_timeout_s
+
     def decorator(_func_or_class):
         return Deployment(
             _func_or_class,
@@ -1330,7 +1414,13 @@ def list_deployments() -> Dict[str, Deployment]:
     return deployments
 
 
-def deploy_group(deployments: List[Deployment], _blocking: bool = True) -> List[GoalId]:
+def get_deployment_statuses() -> Dict[str, DeploymentStatusInfo]:
+    # Returns a dictionary of deployment names and their health statuses
+
+    return _get_global_client().get_deployment_statuses()
+
+
+def deploy_group(deployments: List[Deployment], _blocking: bool = True):
     """
     EXPERIMENTAL API
 
@@ -1369,4 +1459,4 @@ def deploy_group(deployments: List[Deployment], _blocking: bool = True) -> List[
 
         parameter_group.append(deployment_parameters)
 
-    return _get_global_client().deploy_group(parameter_group, _blocking=_blocking)
+    _get_global_client().deploy_group(parameter_group, _blocking=_blocking)

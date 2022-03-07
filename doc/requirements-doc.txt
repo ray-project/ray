@@ -39,7 +39,6 @@ sphinx==4.3.2
 sphinx-click==3.0.2
 sphinx-copybutton==0.4.0
 sphinxemoji==0.2.0
-sphinx-gallery==0.10.0
 sphinx-jsonschema==1.17.2
 sphinx-panels==0.6.0
 sphinx-version-warning==1.1.2
@@ -47,6 +46,7 @@ sphinx-book-theme==0.1.7
 sphinx-external-toc==0.2.3
 sphinxcontrib.yt==0.2.2
 sphinx-sitemap==2.2.0
+sphinx-thebe==0.1.1
 
 # MyST
 myst-parser==0.15.2

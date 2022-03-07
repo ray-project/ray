@@ -36,6 +36,8 @@ These are the environment variables Ray Tune currently considers:
   letting them finish the current training step and any user-defined cleanup.
   Setting this variable to a non-zero, positive integer will cause trials to be forcefully
   terminated after a grace period of that many seconds. Defaults to ``0``.
+* **TUNE_GET_EXECUTOR_EVENT_WAIT_S**: The time that TrialRunner waits for the
+  next ExecutorEvent in a blocking fashion. Defaults to ``5``.
 * **TUNE_FUNCTION_THREAD_TIMEOUT_S**: Time in seconds the function API waits
   for threads to finish after instructing them to complete. Defaults to ``2``.
 * **TUNE_GLOBAL_CHECKPOINT_S**: Time in seconds that limits how often Tune's
@@ -43,7 +45,8 @@ These are the environment variables Ray Tune currently considers:
 * **TUNE_MAX_LEN_IDENTIFIER**: Maximum length of trial subdirectory names (those
   with the parameter values in them)
 * **TUNE_MAX_PENDING_TRIALS_PG**: Maximum number of pending trials when placement groups are used. Defaults
-  to ``auto``, which will be updated to ``max(16, cluster_cpus * 1.1)`` for random/grid search and ``1`` for any other search algorithms.
+  to ``auto``, which will be updated to ``max(16, cluster_cpus * 1.1)`` for random/grid search and ``1``
+  for any other search algorithms.
 * **TUNE_PLACEMENT_GROUP_CLEANUP_DISABLED**: Ray Tune cleans up existing placement groups
   with the ``_tune__`` prefix in their name before starting a run. This is used to make sure
   that scheduled placement groups are removed when multiple calls to ``tune.run()`` are
@@ -57,10 +60,6 @@ These are the environment variables Ray Tune currently considers:
   In normal circumstances these shouldn't differ anyway, but reconcilation makes sure to capture cases when
   placement groups are manually destroyed. Reconcilation doesn't take much time, but it can add up when
   running a large number of short trials. Defaults to every ``5`` (seconds).
-* **TUNE_PLACEMENT_GROUP_WAIT_S**: Default time the trial executor waits for placement
-  groups to be placed before continuing the tuning loop. Setting this to a float
-  will block for that many seconds. This is mostly used for testing purposes. Defaults
-  to -1, which disables blocking.
 * **TUNE_RESULT_DIR**: Directory where Ray Tune trial results are stored. If this
   is not set, ``~/ray_results`` will be used.
 * **TUNE_RESULT_BUFFER_LENGTH**: Ray Tune can buffer results from trainables before they are passed
@@ -74,11 +73,6 @@ These are the environment variables Ray Tune currently considers:
   but never longer than this value. Defaults to 100 (seconds).
 * **TUNE_RESULT_BUFFER_MIN_TIME_S**: Additionally, you can specify a minimum time to buffer results. Defaults to 0.
 * **TUNE_SYNCER_VERBOSITY**: Amount of command output when using Tune with Docker Syncer. Defaults to 0.
-* **TUNE_TRIAL_RESULT_WAIT_TIME_S**: Amount of time Ray Tune will block until a result from a running trial is received.
-  Defaults to 1 (second).
-* **TUNE_TRIAL_STARTUP_GRACE_PERIOD**: Amount of time after starting a trial that Ray Tune checks for successful
-  trial startups. After the grace period, Tune will block for up to ``TUNE_TRIAL_RESULT_WAIT_TIME_S`` seconds
-  until a result from a running trial is received. Can be disabled by setting this to lower or equal to 0.
 * **TUNE_WARN_THRESHOLD_S**: Threshold for logging if an Tune event loop operation takes too long. Defaults to 0.5 (seconds).
 * **TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S**: Threshold for throwing a warning if no active trials are in ``RUNNING`` state
   for this amount of seconds. If the Ray Tune job is stuck in this state (most likely due to insufficient resources),

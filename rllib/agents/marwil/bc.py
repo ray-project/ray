@@ -5,7 +5,7 @@ from ray.rllib.agents.marwil.marwil import (
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 BC_DEFAULT_CONFIG = MARWILTrainer.merge_trainer_configs(
     MARWIL_CONFIG, {
@@ -19,7 +19,7 @@ BC_DEFAULT_CONFIG = MARWILTrainer.merge_trainer_configs(
         "input_evaluation": [],
     })
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 class BCTrainer(MARWILTrainer):
