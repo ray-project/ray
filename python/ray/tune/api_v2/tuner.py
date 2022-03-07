@@ -12,6 +12,7 @@ from ray.tune.callback import Callback
 from ray.tune.trainable import Trainable
 from ray.tune.tune import run
 from ray.util.client.common import ClientActorHandle
+from ray.util.ml_utils.node import force_on_current_node
 
 TUNER_INTERNAL = "tuner_internal"
 DATASETS = "datasets"
@@ -208,9 +209,9 @@ class Tuner:
             if not self._is_ray_client:
                 self._local_tuner = TunerInternal(**kwargs)
             else:
-                self._remote_tuner = ray.remote(num_cpus=0)(TunerInternal).remote(
-                    **kwargs
-                )
+                self._remote_tuner = force_on_current_node(
+                    ray.remote(num_cpus=0)(TunerInternal)
+                ).remote(**kwargs)
 
     @classmethod
     def restore(cls, path):
@@ -218,9 +219,9 @@ class Tuner:
             tuner_internal = TunerInternal(restore_path=path)
             return Tuner(tuner_internal=tuner_internal)
         else:
-            tuner_internal = ray.remote(num_cpus=0)(TunerInternal).remote(
-                restore_path=path
-            )
+            tuner_internal = force_on_current_node(
+                ray.remote(num_cpus=0)(TunerInternal)
+            ).remote(restore_path=path)
             return Tuner(tuner_internal=tuner_internal)
 
     def fit(self):

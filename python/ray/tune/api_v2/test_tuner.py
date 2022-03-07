@@ -479,11 +479,15 @@ class XGBoostTrainer(FunctionTrainer):
         **kwargs,
     ):
         train_dataset = datasets["train_dataset"]
+        # #####################################################
+        # ############### CHANGE THIS BACK ###################
         # train_dataset = gen_dataset_func()
-        prep_v1 = Chain(
-            Scaler(["worst radius", "worst area"]), Repartitioner(num_partitions=4)
-        )
-        train_dataset = prep_v1.fit_transform(train_dataset)
+        # prep_v1 = Chain(
+        #     Scaler(["worst radius", "worst area"]), Repartitioner(num_partitions=4)
+        # )
+        # train_dataset = prep_v1.fit_transform(train_dataset)
+        # #####################################################
+        train_dataset.show()
 
         dmatrix = xgboost_ray.RayDMatrix(train_dataset, label=label)
         evals_result = {}
@@ -494,7 +498,7 @@ class XGBoostTrainer(FunctionTrainer):
 
         xgb_model = None
         if checkpoint_dir:
-            xgb_model = mlflow.xgboost.load_model(checkpoint_dir)
+            assert False
 
         xgboost_ray.train(
             dtrain=dmatrix,
@@ -587,7 +591,13 @@ class TestDatasource(Datasource):
             dataset_df["target"] = data_raw["target"]
             return [pa.Table.from_pandas(dataset_df)]
 
-        meta = BlockMetadata(num_rows=None, size_bytes=None, schema=None, input_files=None, exec_stats=None)
+        meta = BlockMetadata(
+            num_rows=None,
+            size_bytes=None,
+            schema=None,
+            input_files=None,
+            exec_stats=None,
+        )
         return [ReadTask(load_data, meta)]
 
 
@@ -603,7 +613,16 @@ def gen_dataset_func() -> Dataset:
 #     dataset = ray.data.from_pandas(dataset_df)
 #     return dataset
 
-def test_xgboost_tuner(fail_after_finished: int = 0):
+
+def test_xgboost_tuner():
+    # def _reduce(ds: ray.data.Dataset):
+    #     import ipdb;
+    #     ipdb.set_trace()
+    #     return ds.__reduce__()
+    #
+    # context = ray.worker.global_worker.get_serialization_context()
+    # context._register_cloudpickle_reducer(ray.data.Dataset, _reduce)
+
     shutil.rmtree("/Users/xwjiang/ray_results/tuner_resume", ignore_errors=True)
 
     # Tune datasets
@@ -628,17 +647,16 @@ def test_xgboost_tuner(fail_after_finished: int = 0):
 
     param_space = {
         "scaling_config": {
-            "num_actors": tune.grid_search([2, 4]),
+            # "num_actors": tune.grid_search([2, 4]),
+            "num_actors": 2,
             "cpus_per_actor": 2,
             "gpus_per_actor": 0,
         },
         "preprocessor": tune.grid_search([prep_v1, prep_v2]),
         # "preprocessor": prep_v1,
-        # "datasets": {
-        #     "train_dataset": tune.grid_search([DatasetWrapper(gen_dataset_func(), gen_dataset_func), DatasetWrapper(gen_dataset_func(), gen_dataset_func)]),
-        # },
         "datasets": {
             "train_dataset": tune.grid_search([gen_dataset_func(), gen_dataset_func()]),
+            # "train_dataset": gen_dataset_func(),
         },
         "params": {
             "objective": "binary:logistic",
@@ -650,23 +668,16 @@ def test_xgboost_tuner(fail_after_finished: int = 0):
         },
     }
 
-    if fail_after_finished > 0:
-        callbacks = [StopperCallback(fail_after_finished=fail_after_finished)]
-    else:
-        callbacks = None
-
     tuner = Tuner(
         trainable=XGBoostTrainer(
             run_config={"max_actor_restarts": 1},
             scaling_config=None,
-            # datasets={"train_dataset": gen_dataset_func()},
             resume_from_checkpoint=None,
             label="target",
         ),
         run_config={},
         param_space=param_space,
         name="tuner_resume",
-        callbacks=callbacks,
     )
 
     results = tuner.fit()
@@ -674,9 +685,6 @@ def test_xgboost_tuner(fail_after_finished: int = 0):
 
 
 def test_xgboost_resume():
-    # Dataset pickling/unpickling currentyl does not work
-    # thus we have to set this again
-
     tuner = Tuner.restore("/Users/xwjiang/ray_results/tuner_resume")
 
     results = tuner.fit()
@@ -694,6 +702,7 @@ def test_xgboost_resume():
 
 if __name__ == "__main__":
     # ray.init("ray://127.0.0.1:10001")
+    # os.environ["RAY_record_ref_creation_sites"] = "1"
 
     ray.init()
     # test_xgboost_tuner()

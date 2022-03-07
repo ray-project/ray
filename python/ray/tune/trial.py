@@ -13,10 +13,8 @@ import uuid
 
 import ray
 import ray.cloudpickle as cloudpickle
-from ray.data import Dataset
 from ray.exceptions import RayActorError
 from ray.tune import TuneError
-from ray.tune.api_v2.dataset_registry import dataset_registry
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
@@ -45,55 +43,6 @@ from ray._private.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
 logger = logging.getLogger(__name__)
-
-
-def _serialize_dataset(dataset_input) -> Union[bytes, Dict]:
-    """Before checkpointing a trial to disk."""
-
-    def _helper(dataset_dict: dict):
-        for k, v in dataset_dict.items():
-            if isinstance(v, Dataset):
-                dataset_dict[k] = v.serialize_out_of_band()
-            elif isinstance(v, int):
-                pass
-            elif isinstance(v, dict):
-                _helper(v)
-            else:
-                raise TuneError("Unexpected dataset config before serialization!!")
-
-    _dataset = copy.deepcopy(dataset_input)
-    if isinstance(_dataset, Dataset):
-        return _dataset.serialize_out_of_band()
-    elif isinstance(_dataset, dict):
-        _helper(_dataset)
-        return _dataset
-    else:
-        raise TuneError("Unexpected dataset config before serialization!!")
-
-
-def _deserialize_dataset(dataset_input) -> Union[Dataset, Dict]:
-    def _helper(dataset_dict: dict):
-        for k, v in dataset_dict.items():
-            if isinstance(v, bytes):
-                dataset_dict[k] = dataset_registry.execute_if_needed(
-                    Dataset.deserialize_out_of_band(v)
-                )
-            elif isinstance(v, int):
-                pass
-            elif isinstance(v, dict):
-                _helper(v)
-            else:
-                raise TuneError("Unexpected dataset config upon restoring!!")
-
-    if isinstance(dataset_input, bytes):
-        return dataset_registry.execute_if_needed(
-            Dataset.deserialize_out_of_band(dataset_input)
-        )
-    elif isinstance(dataset_input, dict):
-        _helper(dataset_input)
-        return dataset_input
-    else:
-        raise TuneError("Unexpected dataset config upon restoring!!")
 
 
 class Location:
@@ -849,18 +798,7 @@ class Trial:
         Sets RUNNING trials to PENDING.
         Note this can only occur if the trial holds a PERSISTENT checkpoint.
         """
-        _dataset = (
-            _serialize_dataset(self.config["datasets"])
-            if "datasets" in self.config
-            else None
-        )
         state = self.__dict__.copy()
-
-        # Have to do one more layer of copy.
-        state["config"] = state["config"].copy()
-        # swap out state["config"]["datasets"].
-        if _dataset:
-            state["config"]["datasets"] = _dataset
 
         for key in self._nonjson_fields:
             state[key] = binary_to_hex(cloudpickle.dumps(state.get(key)))
@@ -879,10 +817,6 @@ class Trial:
 
     def __setstate__(self, state):
         """This is called only once when trials are being resumed."""
-        if "datasets" in state["config"].keys():
-            state["config"]["datasets"] = _deserialize_dataset(
-                state["config"]["datasets"]
-            )
 
         if state["status"] == Trial.RUNNING:
             state["status"] = Trial.PENDING
