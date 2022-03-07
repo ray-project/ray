@@ -7,10 +7,11 @@ from datetime import datetime
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Callable
-from typing import Optional, Dict
+from typing import Optional, Dict, Type
 import warnings
 
 import ray
+from ray.train.accelerator import Accelerator
 from ray.train.constants import (
     DETAILED_AUTOFILLED_KEYS,
     TIME_THIS_ITER_S,
@@ -87,6 +88,8 @@ class Session:
 
         self.ignore_report = False
         self.training_started = False
+
+        self._accelerator = None
 
     def get_current_ip(self):
         self.local_ip = ray.util.get_node_ip_address()
@@ -231,6 +234,31 @@ class Session:
         # Acquire lock to stop the training thread until
         # checkpoint has been processed.
         self.continue_lock.acquire()
+
+    def get_accelerator(
+        self, default_accelerator_cls: Type[Accelerator]
+    ) -> Accelerator:
+        """The accelerator for this training session.
+
+        If an accelerator has not been set, then this method will construct an
+        accelerator using the provided accelerator class.
+        """
+        if not self._accelerator:
+            self._accelerator = default_accelerator_cls()
+        return self._accelerator
+
+    def set_accelerator(self, accelerator: Accelerator) -> None:
+        """Sets the accelerator for this training session.
+
+        Args:
+            accelerator (Accelerator): The accelerator to use for training.
+
+        Raises:
+            RuntimeError: if the accelerator has already been set.
+        """
+        if self._accelerator:
+            raise RuntimeError("Cannot change accelerator once set.")
+        self._accelerator = accelerator
 
 
 _session = None
