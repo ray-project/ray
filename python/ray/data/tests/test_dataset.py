@@ -128,6 +128,10 @@ def test_callable_classes(shutdown_only):
             self.num_reuses += 1
             return r
 
+    # Need to specify compute explicitly.
+    with pytest.raises(ValueError):
+        ds.map(StatefulFn).take()
+
     # map
     task_reuse = ds.map(StatefulFn, compute="tasks").take()
     assert sorted(task_reuse) == list(range(10)), task_reuse

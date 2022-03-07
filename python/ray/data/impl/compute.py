@@ -234,8 +234,8 @@ def cache_wrapper(
 
         if compute is None:
             raise ValueError(
-                "``compute`` must be specified using a callable class. For example, "
-                'use ``compute="actors"`` or '
+                "``compute`` must be specified when using a callable class. "
+                "For example, use ``compute=\"actors\"`` or "
                 "``compute=ActorPoolStrategy(min, max)``."
             )
 
