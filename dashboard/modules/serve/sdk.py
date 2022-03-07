@@ -47,8 +47,7 @@ class ServeSubmissionClient(SubmissionClient):
         )
 
     def deploy_application(self, app_config: Dict) -> None:
-        deploy_address = f"{self._address}{DEPLOY_PATH}"
-        response = requests.put(deploy_address, json=app_config)
+        response = self._do_request("PUT", DEPLOY_PATH, json_data=app_config)
 
         if response.status_code == 200:
             cli_logger.newline()
@@ -60,33 +59,30 @@ class ServeSubmissionClient(SubmissionClient):
             )
             cli_logger.newline()
         else:
-            self._log_failed_request(response)
+            self._raise_error(response)
 
     def get_info(self) -> Union[Dict, None]:
-        info_address = f"{self._address}{INFO_PATH}"
-        response = requests.get(info_address)
+        response = self._do_request("GET", INFO_PATH)
         if response.status_code == 200:
             return response.json()
         else:
-            self._log_failed_request(response)
+            self._raise_error(response)
 
     def get_status(self) -> Union[Dict, None]:
-        status_address = f"{self._address}{STATUS_PATH}"
-        response = requests.get(status_address)
+        response = self._do_request("GET", STATUS_PATH)
         if response.status_code == 200:
             return response.json()
         else:
-            self._log_failed_request(response)
+            self._raise_error(response)
 
     def delete_application(self) -> None:
-        delete_address = f"{self._address}{DELETE_PATH}"
-        response = requests.delete(delete_address)
+        response = self._do_request("DELETE", DELETE_PATH)
         if response.status_code == 200:
             cli_logger.newline()
             cli_logger.success("\nSent delete request successfully!\n")
             cli_logger.newline()
         else:
-            self._log_failed_request(response)
+            self._raise_error(response)
 
     def set_up_runtime_env(
         self,
@@ -117,16 +113,3 @@ class ServeSubmissionClient(SubmissionClient):
             deployment._ray_actor_options = {"runtime_env": runtime_env}
         else:
             deployment.ray_actor_options["runtime_env"] = runtime_env
-
-    def _log_failed_request(
-        self, response: requests.models.Response, address: str = None
-    ):
-        address = address or self._address
-        error_message = (
-            f"\nRequest to address {address} failed. Got response status code "
-            f"{response.status_code} with the following message:"
-            f"\n\n{response.text}"
-        )
-        cli_logger.newline()
-        cli_logger.error(error_message)
-        cli_logger.newline()
