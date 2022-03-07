@@ -2029,9 +2029,7 @@ def global_gc(address):
 def kuberay_autoscaler(
     cluster_name: str, cluster_namespace: str, redis_password: str
 ) -> None:
-    """Entry-point for the autoscaler when run as a component of a Ray cluster
-    managed by the KubeRay operator.
-    """
+    """Runs the autoscaler for a Ray cluster managed by the KubeRay operator."""
     run_autoscaler_with_retries(cluster_name, cluster_namespace, redis_password)
 
 
