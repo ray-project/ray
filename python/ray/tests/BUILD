@@ -58,7 +58,7 @@ py_test_module_list(
   tags = ["exclusive", "client_tests", "team:serverless"],
   deps = ["//:ray_lib"],
 )
-    
+
 py_test_module_list(
   files = [
     "test_client_builder.py",
@@ -131,6 +131,7 @@ py_test_module_list(
     "test_args.py",
     "test_asyncio_cluster.py",
     "test_asyncio.py",
+    "test_concurrency_group.py",
     "test_component_failures.py",
     "test_debug_tools.py",
     "test_distributed_sort.py",
