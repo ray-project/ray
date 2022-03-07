@@ -64,7 +64,7 @@ bool NewPlacementGroupResourceManager::PrepareBundle(
   auto resource_instances = std::make_shared<TaskResourceInstances>();
   bool allocated =
       cluster_resource_scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
-          bundle_spec.GetRequiredResources(), resource_instances);
+          bundle_spec.GetRequiredResources().GetResourceMap(), resource_instances);
 
   if (!allocated) {
     return false;

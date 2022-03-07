@@ -16,9 +16,8 @@
 #include <optional>
 
 #include "absl/container/flat_hash_set.h"
-#include "ray/common/id.h"
+#include "ray/common/task/scheduling_resources.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
-#include "ray/raylet/scheduling/cluster_resource_data.h"
 
 namespace ray {
 namespace gcs {
@@ -62,16 +61,16 @@ class NodeScorer {
   /// \param node_resources The node resources which contains available and total
   /// resources.
   /// \return Score of the node.
-  virtual double Score(const ResourceRequest &required_resources,
-                       const NodeResources &node_resources) = 0;
+  virtual double Score(const ResourceSet &required_resources,
+                       const SchedulingResources &node_resources) = 0;
 };
 
 /// LeastResourceScorer is a score plugin that favors nodes with fewer allocation
 /// requested resources based on requested resources.
 class LeastResourceScorer : public NodeScorer {
  public:
-  double Score(const ResourceRequest &required_resources,
-               const NodeResources &node_resources) override;
+  double Score(const ResourceSet &required_resources,
+               const SchedulingResources &node_resources) override;
 
  private:
   /// \brief Calculate one of the resource scores.
@@ -103,7 +102,7 @@ class GcsResourceScheduler {
   /// otherwise, it will return an empty vector and a flag to indicate whether this
   /// request can be retry or not.
   SchedulingResult Schedule(
-      const std::vector<ResourceRequest> &required_resources_list,
+      const std::vector<ResourceSet> &required_resources_list,
       const SchedulingType &scheduling_type,
       const std::function<bool(const NodeID &)> &node_filter_func = nullptr);
 
@@ -116,6 +115,8 @@ class GcsResourceScheduler {
   /// can be used for scheduling.
   /// \return The candidate nodes which can be used for scheduling.
   absl::flat_hash_set<NodeID> FilterCandidateNodes(
+      const absl::flat_hash_map<NodeID, std::shared_ptr<SchedulingResources>>
+          &cluster_resources,
       const std::function<bool(const NodeID &)> &node_filter_func);
 
   /// Sort required resources according to the scarcity and capacity of resources.
@@ -124,8 +125,8 @@ class GcsResourceScheduler {
   ///
   /// \param required_resources The resources to be scheduled.
   /// \return The Sorted resources.
-  const std::vector<ResourceRequest> &SortRequiredResources(
-      const std::vector<ResourceRequest> &required_resources);
+  const std::vector<ResourceSet> &SortRequiredResources(
+      const std::vector<ResourceSet> &required_resources);
 
   /// Schedule resources according to `STRICT_SPREAD` strategy.
   ///
@@ -135,7 +136,7 @@ class GcsResourceScheduler {
   /// otherwise, it will return an empty vector and a flag to indicate whether this
   /// request can be retry or not.
   SchedulingResult StrictSpreadSchedule(
-      const std::vector<ResourceRequest> &required_resources_list,
+      const std::vector<ResourceSet> &required_resources_list,
       const absl::flat_hash_set<NodeID> &candidate_nodes);
 
   /// Schedule resources according to `SPREAD` strategy.
@@ -145,9 +146,8 @@ class GcsResourceScheduler {
   /// \return `SchedulingResult`, including the selected nodes if schedule successful,
   /// otherwise, it will return an empty vector and a flag to indicate whether this
   /// request can be retry or not.
-  SchedulingResult SpreadSchedule(
-      const std::vector<ResourceRequest> &required_resources_list,
-      const absl::flat_hash_set<NodeID> &candidate_nodes);
+  SchedulingResult SpreadSchedule(const std::vector<ResourceSet> &required_resources_list,
+                                  const absl::flat_hash_set<NodeID> &candidate_nodes);
 
   /// Schedule resources according to `STRICT_PACK` strategy.
   ///
@@ -157,7 +157,7 @@ class GcsResourceScheduler {
   /// otherwise, it will return an empty vector and a flag to indicate whether this
   /// request can be retry or not.
   SchedulingResult StrictPackSchedule(
-      const std::vector<ResourceRequest> &required_resources_list,
+      const std::vector<ResourceSet> &required_resources_list,
       const absl::flat_hash_set<NodeID> &candidate_nodes);
 
   /// Schedule resources according to `PACK` strategy.
@@ -167,20 +167,16 @@ class GcsResourceScheduler {
   /// \return `SchedulingResult`, including the selected nodes if schedule successful,
   /// otherwise, it will return an empty vector and a flag to indicate whether this
   /// request can be retry or not.
-  SchedulingResult PackSchedule(
-      const std::vector<ResourceRequest> &required_resources_list,
-      const absl::flat_hash_set<NodeID> &candidate_nodes);
+  SchedulingResult PackSchedule(const std::vector<ResourceSet> &required_resources_list,
+                                const absl::flat_hash_set<NodeID> &candidate_nodes);
 
   /// Score all nodes according to the specified resources.
   ///
   /// \param required_resources The resources to be scheduled.
   /// \param candidate_nodes The nodes can be used for scheduling.
   /// \return Score of all nodes.
-  std::optional<NodeID> GetBestNode(const ResourceRequest &required_resources,
+  std::optional<NodeID> GetBestNode(const ResourceSet &required_resources,
                                     const absl::flat_hash_set<NodeID> &candidate_nodes);
-
-  /// Get node resources.
-  const NodeResources &GetNodeResources(const NodeID &node_id) const;
 
   /// Return the resources temporarily deducted from gcs resource manager.
   ///
@@ -188,23 +184,8 @@ class GcsResourceScheduler {
   /// \param nodes Scheduling selected nodes, it corresponds to `required_resources_list`
   /// one by one.
   void ReleaseTemporarilyDeductedResources(
-      const std::vector<ResourceRequest> &required_resources_list,
+      const std::vector<ResourceSet> &required_resources_list,
       const std::vector<NodeID> &nodes);
-
-  /// Subtract the resources required by a given resource request (resource_request) from
-  /// a given remote node.
-  ///
-  /// \param node_id Remote node whose resources we allocate.
-  /// \param resource_request Task for which we allocate resources.
-  /// \return True if remote node has enough resources to satisfy the resource request.
-  /// False otherwise.
-  bool AllocateRemoteTaskResources(const NodeID &node_id,
-                                   const ResourceRequest &resource_request);
-
-  bool ReleaseRemoteTaskResources(const NodeID &node_id,
-                                  const ResourceRequest &resource_request);
-
-  const absl::flat_hash_map<NodeID, std::shared_ptr<Node>> &GetResourceView() const;
 
   /// Reference of GcsResourceManager.
   GcsResourceManager &gcs_resource_manager_;
