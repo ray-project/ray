@@ -196,7 +196,7 @@ class TorchAccelerator(Accelerator):
         return device
 
     def make_reproducible(self, seed: int = 0) -> None:
-        """Seeds random number generators and disables nondeterministic algorithms.
+        """Limits sources of nondeterministic behavior.
 
         This function:
         * Seeds PyTorch, Python, and NumPy using the specified seed.
@@ -208,8 +208,9 @@ class TorchAccelerator(Accelerator):
         random.seed(seed)
         np.random.seed(0)
 
-        torch.backends.cudnn.benchmark = False
         torch.use_deterministic_algorithms(True)
+        if torch.cuda.is_available():
+            torch.backends.cudnn.benchmark = False
 
         self._is_seeded = True
 
@@ -477,7 +478,7 @@ def make_reproducible(seed: int = 0) -> None:
     * Configures PyTorch to use determinstic algorithms.
     * Seeds workers spawned for multi-process data loading.
     """
-    get_session().get_accelerator(TorchAccelerator()).make_reproducible(seed)
+    get_accelerator(TorchAccelerator).make_reproducible(seed)
 
 
 WORKER_TRACE_DIR_NAME = "pytorch_profiler_worker_traces"

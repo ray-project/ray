@@ -4,6 +4,7 @@ import pytest
 import torch
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, DistributedSampler
+import torchvision
 
 import ray
 import ray.train as train
@@ -70,6 +71,20 @@ def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus):
     trainer = Trainer("torch", num_workers=2, use_gpu=True)
     trainer.start()
     trainer.run(train_fn)
+    trainer.shutdown()
+
+
+@pytest.mark.parametrize("use_gpu", [False, True])
+def test_make_reproducible(ray_start_4_cpus_2_gpus, use_gpu):
+    def train_func():
+        train.torch.make_reproducible()
+        model = torchvision.models.resnet101()
+        model = train.torch.prepare_model(model)
+        model(torch.randn(2, 3, 224, 224))  # Check for no errors
+
+    trainer = Trainer("torch", num_workers=1, use_gpu=use_gpu)
+    trainer.start()
+    trainer.run(train_func)
     trainer.shutdown()
 
 
