@@ -195,11 +195,17 @@ def create_deployment(
 
 
 @cli.command(
-    help="""
-    [Experimental] Deploy a YAML configuration file via REST API to
-    your Serve cluster.
-    """,
-    hidden=True,
+    short_help="[Experimental] Deploy deployments from a YAML config file.",
+    help=(
+        "Deploys deployment(s) from CONFIG_OR_IMPORT_PATH, which must be either a "
+        "Serve YAML configuration file path or an import path to "
+        "a class or function to deploy.\n\n"
+        "Import paths must be of the form "
+        '"module.submodule_1...submodule_n.MyClassOrFunction".\n\n'
+        "Sends a nonblocking request. A successful response only indicates that the "
+        "request was received successfully. It does not mean the deployments are "
+        "live. Use `serve info` and `serve status` to check on them. "
+    ),
 )
 @click.argument("config_file_name")
 @click.option(
@@ -211,16 +217,6 @@ def create_deployment(
     help='Address of the Ray dashboard to query. For example, "http://localhost:8265".',
 )
 def deploy(config_file_name: str, address: str):
-    """
-    Deploys deployment(s) from CONFIG_OR_IMPORT_PATH, which must be either a
-    Serve YAML configuration file path or an import path to
-    a class or function to deploy. Import paths must be of the form
-    "module.submodule_1...submodule_n.MyClassOrFunction".
-    
-    Sends a nonblocking request. A successful response only indicates that the
-    request was received successfully. It does not mean the deployment are live.
-    Use `serve info` and `serve status` to check on them.
-    """
 
     with open(config_file_name, "r") as config_file:
         config = yaml.safe_load(config_file)
@@ -232,8 +228,17 @@ def deploy(config_file_name: str, address: str):
 
 
 @cli.command(
-    help="[Experimental] Run deployments via Serve's Python API.",
-    hidden=True,
+    short_help="[Experimental] Run deployments via Serve's Python API.",
+    help=(
+        "Deploys deployment(s) from CONFIG_OR_IMPORT_PATH, which must be either a "
+        "Serve YAML configuration file path or an import path to "
+        "a class or function to deploy.\n\n"
+        "Import paths must be of the form "
+        '"module.submodule_1...submodule_n.MyClassOrFunction".\n\n'
+        "Blocks after deploying, and logs status periodically. After being killed, "
+        "this command tears down all deployments it deployed. If there are no "
+        "deployments left, it also tears down the Serve application."
+    ),
 )
 @click.argument("config_or_import_path")
 @click.option(
@@ -266,7 +271,7 @@ def deploy(config_file_name: str, address: str):
 )
 @click.option(
     "--cluster-address",
-    "-a",
+    "-c",
     default="auto",
     required=False,
     type=str,
@@ -274,7 +279,7 @@ def deploy(config_file_name: str, address: str):
 )
 @click.option(
     "--dashboard-address",
-    "-a",
+    "-d",
     default="http://localhost:8265",
     required=False,
     type=str,
@@ -290,16 +295,6 @@ def run(
     cluster_address: str,
     dashboard_address: str,
 ):
-    """
-    Deploys deployment(s) from CONFIG_OR_IMPORT_PATH, which must be either a
-    Serve YAML configuration file path or an import path to
-    a class or function to deploy. Import paths must be of the form
-    "module.submodule_1...submodule_n.MyClassOrFunction".
-
-    Blocks after deploying, and logs status periodically. After being killed,
-    this command tears down all deployment it deployed. If there are no
-    deployments left, it also tears down the Serve application.
-    """
 
     try:
         # Check if path provided is for config or import
@@ -383,8 +378,11 @@ def run(
 
 
 @cli.command(
-    help="[Experimental] Get info about your Serve application's config.",
-    hidden=True,
+    short_help="[Experimental] Get info about your Serve application's config.",
+    help=(
+        "Prints the configurations of all running deployments in the Serve "
+        "application."
+    ),
 )
 @click.option(
     "--address",
@@ -395,10 +393,6 @@ def run(
     help='Address of the Ray dashboard to query. For example, "http://localhost:8265".',
 )
 def info(address: str):
-    """
-    Prints information about the configuration of all running deployments in
-    the Serve application.
-    """
 
     app_info = ServeSubmissionClient(address).get_info()
     if app_info is not None:
@@ -406,8 +400,15 @@ def info(address: str):
 
 
 @cli.command(
-    help="[Experimental] Get your Serve application's status.",
-    hidden=True,
+    short_help="[Experimental] Get your Serve application's status.",
+    help=(
+        "Prints status information about all deployments in the Serve application.\n\n"
+        "Deployments may be:\n\n"
+        "- HEALTHY: all replicas are acting normally and passing their health checks.\n"
+        "- UNHEALTHY: at least one replica is not acting normally and may not be "
+        "passing its health check.\n"
+        "- UPDATING: the deployment is updating."
+    ),
 )
 @click.option(
     "--address",
@@ -418,15 +419,6 @@ def info(address: str):
     help='Address of the Ray dashboard to query. For example, "http://localhost:8265".',
 )
 def status(address: str):
-    """
-    Prints status information about all deployments in the Serve application.
-    Deployments may be:
-
-    - HEALTHY: all replicas are acting normally and passing their health checks.
-    - UNHEALTHY: at least one replica is not acting normally and may not be
-      passing its health check.
-    - UPDATING: the deployment is updating.
-    """
 
     app_status = ServeSubmissionClient(address).get_status()
     if app_status is not None:
@@ -434,8 +426,10 @@ def status(address: str):
 
 
 @cli.command(
-    help="[Experimental] Get info about your Serve application's config.",
-    hidden=True,
+    short_help=(
+        "[EXPERIMENTAL] Deletes all running deployments in the Serve application."
+    ),
+    help="Deletes all running deployments in the Serve application.",
 )
 @click.option(
     "--address",
@@ -447,9 +441,6 @@ def status(address: str):
 )
 @click.option("--yes", "-y", is_flag=True, help="Bypass confirmation prompt.")
 def delete(address: str, yes: bool):
-    """
-    Deletes all running deployments in the Serve application.
-    """
 
     if not yes:
         click.confirm(
