@@ -316,7 +316,7 @@ def prepare_data_loader(
         def with_sampler(loader):
             # Automatically set the DistributedSampler
 
-            # If you're using a sampler, the DataLoader shuffle attribute must be set
+            # If you're using a sampler, the DataLoader shuffle argument must be set
             # to False. Shuffling is instead determined by the shuffle argument passed
             # to the DistributedSampler constructor.
 
