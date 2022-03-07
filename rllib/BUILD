@@ -1461,7 +1461,7 @@ py_test(
 )
 
 py_test(
-    name = "test_prioritized_replay_buffer",
+    name = "test_prioritized_replay_buffer_new_api",
     tags = ["team:ml", "utils"],
     size = "small",
     srcs = ["utils/replay_buffers/tests/test_prioritized_replay_buffer.py"]
@@ -1482,7 +1482,7 @@ py_test(
 )
 
 py_test(
-    name = "test_segment_tree",
+    name = "test_segment_tree_new_api",
     tags = ["team:ml", "utils"],
     size = "small",
     srcs = ["utils/replay_buffers/tests/test_segment_tree.py"]
