@@ -489,6 +489,13 @@ void CoreWorker::Shutdown() {
   is_shutdown_ = true;
   if (options_.worker_type == WorkerType::WORKER) {
     // Running in a main thread.
+    // Asyncio coroutines could still run after CoreWorker is removed because it is
+    // running in a different thread. This can cause segfault because coroutines try to
+    // access CoreWorker methods that are already garbage collected. We should complete
+    // all coroutines before shutting down in order to prevent this.
+    if (worker_context_.CurrentActorIsAsync()) {
+      options_.terminate_asyncio_thread();
+    }
     direct_task_receiver_->Stop();
     task_execution_service_.stop();
   }
@@ -515,15 +522,6 @@ void CoreWorker::Shutdown() {
   // it up.
   gcs_client_.reset();
 
-  if (options_.worker_type == WorkerType::WORKER) {
-    // Asyncio coroutines could still run after CoreWorker is removed because it is
-    // running in a different thread. This can cause segfault because coroutines try to
-    // access CoreWorker methods that are already garbage collected. We should complete
-    // all coroutines before shutting down in order to prevent this.
-    if (worker_context_.CurrentActorIsAsync()) {
-      options_.terminate_asyncio_thread();
-    }
-  }
   RAY_LOG(INFO) << "Core worker ready to be deallocated.";
 }
 
