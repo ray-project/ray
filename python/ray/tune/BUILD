@@ -603,6 +603,15 @@ py_test(
 )
 
 py_test(
+    name = "lightgbm_example_cv",
+    size = "small",
+    srcs = ["examples/lightgbm_example.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "example"],
+    args = ["--use-cv"]
+)
+
+py_test(
     name = "logging_example",
     size = "small",
     srcs = ["examples/logging_example.py"],
@@ -903,6 +912,15 @@ py_test(
     srcs = ["examples/xgboost_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"]
+)
+
+py_test(
+    name = "xgboost_example_cv",
+    size = "small",
+    srcs = ["examples/xgboost_example.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "example"],
+    args = ["--use-cv"]
 )
 
 py_test(
