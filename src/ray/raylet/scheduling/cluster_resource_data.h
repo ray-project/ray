@@ -165,8 +165,8 @@ class NodeResources {
   /// Note: This doesn't account for the binpacking of unit resources.
   bool IsFeasible(const ResourceRequest &resource_request) const;
   /// Returns if this equals another node resources.
-  bool operator==(const NodeResources &other);
-  bool operator!=(const NodeResources &other);
+  bool operator==(const NodeResources &other) const;
+  bool operator!=(const NodeResources &other) const;
   /// Returns human-readable string for these resources.
   std::string DebugString() const;
   /// Returns compact dict-like string.
