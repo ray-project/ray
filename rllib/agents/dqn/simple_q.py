@@ -11,6 +11,7 @@ See `simple_q_[tf|torch]_policy.py` for the definition of the policy loss.
 
 import logging
 from typing import Optional, Type
+import numpy as np
 
 from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
 from ray.rllib.agents.dqn.simple_q_torch_policy import SimpleQTorchPolicy
@@ -67,9 +68,10 @@ DEFAULT_CONFIG = with_common_config({
     "replay_buffer_config": {
         # Until the new ReplayBuffer API is fully integrated, we specify
         # new-style buffers by their full path.
-        "type": "ray.rllib.utils.replay_buffers.MultiAgentPrioritizedReplayBuffer",
+        "type": "MultiAgentPrioritizedReplayBuffer",
         "capacity": 50000,
-        "replay_batch_size": 32
+        "replay_batch_size": 32,
+        "replay_buffer_api": True,
     },
     # Set this to True, if you want the contents of your buffer(s) to be
     # stored in any saved checkpoints as well.
@@ -159,9 +161,9 @@ class SimpleQTrainer(Trainer):
                     "prioritized_replay=False."
                 )
 
-        if config.get("replay_buffer_config").get("replay_batch_size") < config.get(
-            "train_batch_size"
-        ):
+        if config.get("replay_buffer_config").get(
+            "replay_batch_size", np.inf
+        ) < config.get("train_batch_size"):
             raise ValueError("Choose replay_batch_size >= train_batch_size.")
 
         # Multi-agent mode and multi-GPU optimizer.

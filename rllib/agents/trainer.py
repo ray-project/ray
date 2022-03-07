@@ -361,6 +361,7 @@ COMMON_CONFIG: TrainerConfigDict = {
         # "env_config": {...},
         # "explore": False
     },
+
     # === Replay Buffer Settings ===
     # Provide a dict specifying the ReplayBuffer's config.
     "replay_buffer_config": {
@@ -370,15 +371,16 @@ COMMON_CONFIG: TrainerConfigDict = {
         # package. You can also provide the python class directly or the
         # full location of your class (e.g.
         # "ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer").
-        "type": "ReplayBuffer",
+        # "type": "ReplayBuffer",
         # The capacity of units that can be stored in one ReplayBuffer
         # instance before eviction.
-        "capacity": 10000,
+        # "capacity": 10000,
         # Specifies how experiences are stored. Either 'sequences' or
         # 'timesteps'.
-        "storage_unit": "timesteps",
+        # "storage_unit": "timesteps",
         # Add constructor kwargs here (if any).
     },
+
     # Number of parallel workers to use for evaluation. Note that this is set
     # to zero by default, which means evaluation will be run in the trainer
     # process (only if evaluation_interval is not None). If you increase this,
@@ -2779,12 +2781,12 @@ class Trainer(Trainable):
                 error=False,
             )
 
+        # Deprecation of old-style replay buffer args
         deprecated_replay_buffer_keys = [
             "prioritized_replay_alpha",
             "prioritized_replay_beta",
             "prioritized_replay_eps",
             "prioritized_replay",
-            "prioritized_replay_beta_annealing_timesteps",
             "burn_in",
         ]
         for k in deprecated_replay_buffer_keys:
@@ -2796,12 +2798,54 @@ class Trainer(Trainable):
                     error=False,
                 )
                 # Copy values over to new location in config to support new
-                # and old configuration
-                config["replay_buffer_config"][k] = config["k"]
+                # and old configuration style
+                config["replay_buffer_config"][k] = config[k]
 
-        return from_config(
-            config["replay_buffer_config"]["type"], config["replay_buffer_config"]
-        )
+        # Check if old replay buffer should be instantiated
+        buffer_type = config["replay_buffer_config"]["type"]
+        if not config["replay_buffer_config"].get("replay_buffer_api", False):
+            if isinstance(buffer_type, str) and buffer_type.find(".") == -1:
+                # Prepend old-style buffers' path
+                assert buffer_type == "MultiAgentReplayBuffer", (
+                    "Without "
+                    "ReplayBuffer "
+                    "API, only "
+                    "MultiAgentReplayBuffer "
+                    "is supported!"
+                )
+                # Create valid full [module].[class] string for from_config
+                buffer_type = "ray.rllib.execution.MultiAgentReplayBuffer"
+            else:
+                assert buffer_type == "ray.rllib.execution.MultiAgentReplayBuffer", (
+                    "Without ReplayBuffer API, only "
+                    "MultiAgentReplayBuffer is supported!"
+                )
+
+            config["replay_buffer_config"]["type"] = buffer_type
+            config["replay_buffer_config"]["learning_starts"] = config[
+                "learning_starts"
+            ]
+            config["replay_buffer_config"]["replay_batch_size"] = config[
+                "train_batch_size"
+            ]
+            config["replay_buffer_config"]["replay_mode"] = config["multiagent"][
+                "replay_mode"
+            ]
+            config["replay_buffer_config"]["replay_sequence_length"] = config.get(
+                "replay_sequence_length", 1
+            )
+            config["replay_buffer_config"]["replay_burn_in"] = config.get(
+                "replay_burn_in", 0
+            )
+            config["replay_buffer_config"]["replay_zero_init_states"] = config.get(
+                "replay_zero_init_states", True
+            )
+        else:
+            if isinstance(buffer_type, str) and buffer_type.find(".") == -1:
+                # Create valid full [module].[class] string for from_config
+                buffer_type = "ray.rllib.utils.replay_buffers" + buffer_type
+
+        return from_config(buffer_type, config["replay_buffer_config"])
 
     @DeveloperAPI
     def _kwargs_for_execution_plan(self):
