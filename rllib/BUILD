@@ -1217,13 +1217,6 @@ py_test(
     srcs = ["env/wrappers/tests/test_group_agents_wrapper.py"]
 )
 
-py_test(
-    name = "env/wrappers/tests/test_kaggle_wrapper",
-    tags = ["team:ml", "env"],
-    size = "small",
-    srcs = ["env/wrappers/tests/test_kaggle_wrapper.py"]
-)
-
 # --------------------------------------------------------------------
 # Evaluation components
 # rllib/evaluation/
@@ -2904,6 +2897,7 @@ py_test_module_list(
     "tests/test_perf.py",
     "tests/test_vector_env.py",
     "env/tests/test_multi_agent_env.py",
+    "env/wrappers/tests/test_kaggle_wrapper.py",
     "examples/env/tests/test_coin_game_non_vectorized_env.py",
     "examples/env/tests/test_coin_game_vectorized_env.py",
     "examples/env/tests/test_matrix_sequential_social_dilemma.py",
