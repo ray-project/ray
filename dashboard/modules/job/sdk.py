@@ -27,6 +27,7 @@ from ray.dashboard.modules.job.common import (
     uri_to_http_components,
 )
 
+from ray.runtime_env import RuntimeEnv
 from ray.ray_constants import DEFAULT_DASHBOARD_PORT
 from ray.util.annotations import PublicAPI
 from ray.client_builder import _split_address
@@ -296,6 +297,8 @@ class JobSubmissionClient:
         metadata.update(self._default_metadata)
 
         self._upload_working_dir_if_needed(runtime_env)
+        # Run the RuntimeEnv constructor to parse local pip/conda requirements files.
+        runtime_env = RuntimeEnv(**runtime_env).to_dict()
         req = JobSubmitRequest(
             entrypoint=entrypoint,
             job_id=job_id,
