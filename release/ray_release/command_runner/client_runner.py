@@ -18,6 +18,7 @@ from ray_release.exception import (
     ClusterNodesWaitTimeout,
     CommandTimeout,
     ClusterStartupError,
+    CommandError,
 )
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.logger import logger
@@ -181,6 +182,8 @@ class ClientRunner(CommandRunner):
         if return_code == -15 or return_code == 15:
             # Process has been terminated
             raise CommandTimeout(f"Cluster command timed out after {timeout} seconds.")
+        if return_code != 0:
+            raise CommandError(f"Command returned non-success status: {return_code}")
 
         logger.warning(f"WE GOT RETURN CODE {return_code} AFTER {time_taken}")
 
