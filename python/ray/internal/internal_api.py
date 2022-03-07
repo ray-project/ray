@@ -334,7 +334,7 @@ def ray_log(
     def get_link(s):
         s = s[len('<li><a href="/logs/') :]
         path = s[: s.find('"')]
-        s = f"{log_url}/{path}"
+        s = f"{dashboard_url}/log_proxy?url={log_url}/{path}"
         return s
 
     logs = {}
