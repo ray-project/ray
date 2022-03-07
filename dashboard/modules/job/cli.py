@@ -55,12 +55,12 @@ def _log_job_status(client: JobSubmissionClient, job_id: str):
     elif info.status == JobStatus.FAILED:
         _log_big_error_msg(f"Job '{job_id}' failed")
         if info.message is not None:
-            cli_logger.print(f"Status message: {info.message}")
+            cli_logger.print(f"Status message: {info.message}", no_format=True)
     else:
         # Catch-all.
         cli_logger.print(f"Status for job '{job_id}': {info.status}")
         if info.message is not None:
-            cli_logger.print(f"Status message: {info.message}")
+            cli_logger.print(f"Status message: {info.message}", no_format=True)
 
 
 async def _tail_logs(client: JobSubmissionClient, job_id: str):
