@@ -331,10 +331,11 @@ def prepare_data_loader(
             using_default_sampler = isinstance(
                 loader.sampler, (SequentialSampler, RandomSampler)
             )
-            if not using_default_sampler:
+            if not using_default_sampler and train.world_rank() == 0:
                 logger.warn(
-                    f"The {loader.sampler.__class__.__name__} will be overwritten with a DistributedSampler."
-                    f"You can disable this by setting `with_sampler` to False in `prepare_data_loader`"
+                    f"The {loader.sampler.__class__.__name__} will be overwritten "
+                    "with a DistributedSampler. You can disable this by setting "
+                    "`with_sampler` to False in `prepare_data_loader`."
                 )
 
             data_loader_args = {
