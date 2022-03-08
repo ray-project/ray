@@ -1,3 +1,4 @@
+from collections import defaultdict
 import os
 import sys
 import time
@@ -168,6 +169,36 @@ def test_replica_startup_status_transitions(ray_cluster):
     # send signal to complete replica intialization
     signal.send.remote()
     wait_for_condition(lambda: replica.check_started() == SUCCEEDED)
+
+
+def test_intelligent_scale_down(ray_cluster):
+    cluster = ray_cluster
+    cluster.add_node(num_cpus=2)
+    cluster.add_node(num_cpus=2)
+    cluster.connect(namespace="serve")
+    serve.start()
+
+    @serve.deployment(version="1")
+    def f():
+        pass
+
+    def get_actor_distributions():
+        actors = ray.state.actors()
+        node_to_actors = defaultdict(list)
+        for actor in actors.values():
+            if "RayServeWrappedReplica" not in actor["ActorClassName"]:
+                continue
+            if actor["State"] != "ALIVE":
+                continue
+            node_to_actors[actor["Address"]["NodeID"]].append(actor)
+
+        return set(map(len, node_to_actors.values()))
+
+    f.options(num_replicas=3).deploy()
+    assert get_actor_distributions() == {2, 1}
+
+    f.options(num_replicas=2).deploy()
+    assert get_actor_distributions() == {2}
 
 
 if __name__ == "__main__":

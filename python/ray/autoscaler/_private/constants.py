@@ -90,7 +90,12 @@ RAY_PROCESSES = [
     ["redis-server", False],
     ["default_worker.py", False],  # Python worker.
     ["setup_worker.py", False],  # Python environment setup worker.
-    ["ray::", True],  # Python worker. TODO(mehrdadn): Fix for Windows
+    # For mac osx, setproctitle doesn't change the process name returned
+    # by psutil but only cmdline.
+    [
+        "ray::",
+        sys.platform != "darwin",
+    ],  # Python worker. TODO(mehrdadn): Fix for Windows
     ["io.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
     ["log_monitor.py", False],
     ["reporter.py", False],
