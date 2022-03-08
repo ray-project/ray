@@ -2513,6 +2513,23 @@ def test_groupby_simple_sum(ray_start_regular_shared, num_parts):
     assert nan_ds.sum() is None
 
 
+def test_map_batches_combine_empty_blocks(ray_start_regular_shared):
+    xs = [x % 3 for x in list(range(100))]
+
+    # ds1 has 1 block which contains 100 rows.
+    ds1 = ray.data.from_items(xs).repartition(1).sort().map_batches(lambda x: x)
+    assert ds1._block_num_rows() == [100]
+
+    # ds2 has 30 blocks, but only 3 of them are non-empty
+    ds2 = ray.data.from_items(xs).repartition(30).sort().map_batches(lambda x: x)
+    assert len(ds2._block_num_rows()) == 30
+    count = sum(1 for x in ds2._block_num_rows() if x > 0)
+    assert count == 3
+
+    # The number of partitions should not affect the map_batches() result.
+    assert ds1.take_all() == ds2.take_all()
+
+
 def test_groupby_map_groups_for_empty_dataset(ray_start_regular_shared):
     ds = ray.data.from_items([])
     mapped = ds.groupby(lambda x: x % 3).map_groups(lambda x: [min(x) * min(x)])
@@ -2543,8 +2560,7 @@ def test_groupby_map_groups_returning_empty_result(ray_start_regular_shared, num
     assert mapped.take_all() == []
 
 
-# TODO(jian): after fix issue #22673, add more num_parts values.
-@pytest.mark.parametrize("num_parts", [1])
+@pytest.mark.parametrize("num_parts", [1, 2, 3, 30])
 def test_groupby_map_groups_for_list(ray_start_regular_shared, num_parts):
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_simple_count with: {seed}")
