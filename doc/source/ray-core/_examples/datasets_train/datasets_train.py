@@ -121,9 +121,7 @@ def make_and_upload_dataset(dir_path):
 
 def read_dataset(path: str) -> ray.data.Dataset:
     print(f"reading data from {path}")
-    return ray.data.read_parquet(path, _spread_resource_prefix="node:").random_shuffle(
-        _spread_resource_prefix="node:"
-    )
+    return ray.data.read_parquet(path).random_shuffle()
 
 
 class DataPreprocessor:
@@ -596,9 +594,7 @@ if __name__ == "__main__":
     DROPOUT_PROB = 0.2
 
     # Random global shuffle
-    train_dataset_pipeline = train_dataset.repeat().random_shuffle_each_window(
-        _spread_resource_prefix="node:"
-    )
+    train_dataset_pipeline = train_dataset.repeat().random_shuffle_each_window()
     del train_dataset
 
     datasets = {"train_dataset": train_dataset_pipeline, "test_dataset": test_dataset}
