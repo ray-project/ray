@@ -82,7 +82,7 @@ class DataParallelScalingConfig:
 
     def get_placement_group_factory(self) -> PlacementGroupFactory:
         """Returns a PlacementGroupFactory to specify resources for Tune."""
-        trainer_bundle = [{"CPU": 1}]
+        trainer_bundle = [{"CPU": 0}]
         worker_resources = {
             "CPU": self.num_cpus_per_worker,
             "GPU": self.num_gpus_per_worker,
