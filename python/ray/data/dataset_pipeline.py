@@ -50,7 +50,7 @@ _PER_DATASET_OUTPUT_OPS = [
 _OUTPUT_ITER_OPS = ["take", "take_all", "show", "to_tf", "to_torch"]
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 class DatasetPipeline(Generic[T]):
     """Implements a pipeline of Datasets.
 

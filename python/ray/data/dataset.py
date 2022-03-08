@@ -88,7 +88,7 @@ logger = logging.getLogger(__name__)
 _epoch_warned = False
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 class Dataset(Generic[T]):
     """Implements a distributed Arrow dataset.
 
