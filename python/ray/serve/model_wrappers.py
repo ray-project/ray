@@ -38,9 +38,7 @@ class ModelWrapper:
         self.app = FastAPI()
 
         input_schema = _load_input_schema(input_schema)
-        batching_params = batching_params or dict(
-            max_batch_size=8, batch_wait_timeout_s=0.01
-        )
+        batching_params = batching_params or dict()
 
         @self.app.post("/predict")
         @serve.batch(**batching_params)
