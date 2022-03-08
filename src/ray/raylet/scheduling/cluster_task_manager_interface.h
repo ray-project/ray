@@ -83,9 +83,6 @@ class ClusterTaskManagerInterface {
 
   /// Record the internal metrics.
   virtual void RecordMetrics() const = 0;
-
-  /// Check if there are enough available resources for the given input.
-  virtual bool IsLocallySchedulable(const RayTask &task) const = 0;
 };
 }  // namespace raylet
 }  // namespace ray

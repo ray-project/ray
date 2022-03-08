@@ -85,10 +85,10 @@ py_test(
 )
 
 py_test(
-    name = "test_repeat",
+    name = "test_run_script",
     tags = ["team:ml", "release_unit"],
     size = "small",
-    srcs = ["ray_release/tests/test_repeat.py"]
+    srcs = ["ray_release/tests/test_run_script.py"]
 )
 
 py_test(

@@ -341,8 +341,13 @@ class WorkerCacheKey {
   ///
   /// worker. \param serialized_runtime_env The JSON-serialized runtime env for this
   /// worker. \param required_resources The required resouce.
+  /// worker. \param is_actor Whether the worker will be an actor. This is set when
+  ///         task type isolation between workers is enabled.
+  /// worker. \param iis_gpu Whether the worker will be using GPUs. This is set when
+  ///         resource type isolation between workers is enabled.
   WorkerCacheKey(const std::string serialized_runtime_env,
-                 const absl::flat_hash_map<std::string, double> &required_resources);
+                 const absl::flat_hash_map<std::string, double> &required_resources,
+                 bool is_actor, bool is_gpu);
 
   bool operator==(const WorkerCacheKey &k) const;
 
@@ -368,6 +373,10 @@ class WorkerCacheKey {
   const std::string serialized_runtime_env;
   /// The required resources for this worker.
   const absl::flat_hash_map<std::string, double> required_resources;
+  /// Whether the worker is for an actor.
+  const bool is_actor;
+  /// Whether the worker is to use a GPU.
+  const bool is_gpu;
   /// The cached hash of the worker's environment.  This is set to 0
   /// for unspecified or empty environments.
   mutable std::size_t hash_ = 0;
