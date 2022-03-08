@@ -120,7 +120,9 @@ class TunerInternal:
         return trainable
 
     def _get_experiment_checkpoint_dir(self):
-        path = Experiment.get_experiment_checkpoint_dir(self.trainable, None, self.name)
+        path = Experiment.get_experiment_checkpoint_dir(
+            self._convert_trainable(self.trainable), None, self.name
+        )
         os.makedirs(path)
         return path
 

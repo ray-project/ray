@@ -128,7 +128,7 @@ class Experiment:
         if experiment_checkpoint_dir:
             experiment_checkpoint_dir_path = Path(experiment_checkpoint_dir)
             local_dir_path = Path(local_dir)
-            assert experiment_checkpoint_dir_path in local_dir_path.parents
+            assert local_dir_path in experiment_checkpoint_dir_path.parents
             self.experiment_checkpoint_dir = experiment_checkpoint_dir
             # `dir_name` is set by `experiment_checkpoint_dir` indirectly.
             self.dir_name = os.path.relpath(experiment_checkpoint_dir, local_dir)
@@ -324,7 +324,7 @@ class Experiment:
             raise TuneError("Improper 'run' - not string nor trainable.")
 
     @classmethod
-    def get_experiment_checkpoint_dir(cls, run, local_dir=None, name=None):
+    def get_experiment_checkpoint_dir(cls, run_obj, local_dir=None, name=None):
         """Get experiment checkpoint dir without setting up an experiment.
 
         This is only used internally for better support of Tuner API.
@@ -337,12 +337,12 @@ class Experiment:
         Returns:
             A string representing the trainable identifier.
         """
-        assert run
+        assert run_obj
         local_dir = _get_local_dir_with_expand_user(local_dir)
-        run_identifier = cls.register_if_needed(run, dry_run=True)
+        run_identifier = cls.register_if_needed(run_obj, dry_run=True)
         name = name or run_identifier
 
-        dir_name = _get_dir_name(run, name)
+        dir_name = _get_dir_name(run_obj, name)
 
         return os.path.join(local_dir, dir_name)
 
