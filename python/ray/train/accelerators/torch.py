@@ -3,15 +3,7 @@ import logging
 from typing import Any, Dict, Optional
 
 import torch
-from torch.cuda.amp import autocast, GradScaler
 from torch.nn.parallel import DistributedDataParallel
-from torch.optim import Optimizer
-from torch.utils.data import (
-    DistributedSampler,
-    DataLoader,
-    IterableDataset,
-    SequentialSampler,
-)
 
 from ray import train
 
@@ -169,29 +161,6 @@ class TorchAccelerator(Accelerator):
 
         return device
 
-    def prepare_optimizer(self, optimizer: Optimizer) -> Optimizer:
-        """Wraps optimizer to support automatic mixed precision.
-
-        Args:
-            optimizer (torch.optim.Optimizer): The DataLoader to prepare.
-
-        Returns:
-            A wrapped optimizer.
-        """
-        return _WrappedOptimizer(optimizer, scaler=self.scaler)
-
-    def backward(self, tensor: torch.Tensor) -> None:
-        """Computes the gradient of the specified tensor w.r.t. graph leaves.
-
-        Args:
-            tensor (torch.Tensor): Tensor of which the derivative will be computed.
-        """
-        if self.amp:
-            assert self.scaler is not None
-            self.scaler.scale(tensor).backward()
-        else:
-            tensor.backward()
-
 
 class _WrappedDataLoader(DataLoader):
     def __init__(self, base_dataloader: DataLoader, device: torch.device):
@@ -218,52 +187,3 @@ class _WrappedDataLoader(DataLoader):
 
         for item in iterator:
             yield self._move_to_device(item)
-
-
-class _WrappedOptimizer(Optimizer):
-    def __init__(self, optimizer: Optimizer, scaler: Optional[GradScaler] = None):
-        self.optimizer = optimizer
-        self.scaler = scaler
-
-    @property
-    def state(self):
-        return self.optimizer.state
-
-    @state.setter
-    def state(self, state):
-        self.optimizer.state = state
-
-    @property
-    def param_groups(self):
-        return self.optimizer.param_groups
-
-    @param_groups.setter
-    def param_groups(self, param_groups):
-        self.optimizer.param_groups = param_groups
-
-    @property
-    def defaults(self):
-        return self.optimizer.defaults
-
-    @defaults.setter
-    def defaults(self, defaults):
-        self.optimizer.defaults = defaults
-
-    def add_param_group(self, param_group):
-        self.optimizer.add_param_group(param_group)
-
-    def load_state_dict(self, state_dict):
-        self.optimizer.load_state_dict(state_dict)
-
-    def state_dict(self):
-        return self.optimizer.state_dict()
-
-    def zero_grad(self):
-        self.optimizer.zero_grad()
-
-    def step(self, closure=None):
-        if self.scaler is not None:
-            self.scaler.step(self.optimizer, closure)
-            self.scaler.update()
-        else:
-            self.optimizer.step(closure)

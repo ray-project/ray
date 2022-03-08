@@ -10,21 +10,26 @@ from typing import Optional, Dict, Any, Type
 
 import ray
 from ray import train
+
 from ray.train.accelerator import Accelerator
 from ray.train.backend import BackendConfig, Backend, EncodedData
 from ray.train.constants import PYTORCH_PROFILER_KEY
+from torch.optim import Optimizer
 from ray.train.session import get_accelerator, set_accelerator
 from ray.train.worker_group import WorkerGroup
 from ray.train.utils import get_address_and_port
 from ray.util import PublicAPI
 
 import torch
+from torch.cuda.amp import autocast, GradScaler
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
-from ray.util import PublicAPI
-
-from .session import get_session
-from .accelerators import Accelerator, TorchAccelerator
+from torch.utils.data import (
+    DistributedSampler,
+    DataLoader,
+    IterableDataset,
+    SequentialSampler,
+)
 
 try:
     from torch.profiler import profile
@@ -35,7 +40,16 @@ logger = logging.getLogger(__name__)
 
 
 class TorchAccelerator(Accelerator):
-    """A utility that implements methods to accelerate PyTorch training."""
+    """A utility that implements methods to accelerate PyTorch training.
+
+    Arguments:
+        amp (bool): If true, perform training with automatic mixed precision.
+            Otherwise, use full precision.
+    """
+
+    def __init__(self, amp: bool = False):
+        self.amp = amp
+        self.scaler = GradScaler() if amp else None
 
     def prepare_model(
         self,
@@ -80,6 +94,18 @@ class TorchAccelerator(Accelerator):
                 )
             else:
                 model = DistributedDataParallel(model, **ddp_kwargs)
+
+        def wrap_forward(forward):
+            @functools.wraps(forward)
+            def wrapper(*args, **kwargs):
+                with autocast(enabled=self.amp):
+                    outputs = forward(*args, **kwargs)
+                assert isinstance(outputs, torch.Tensor)
+                return outputs.float()
+
+            return wrapper
+
+        model.forward = wrap_forward(model.forward)
 
         return model
 
@@ -161,6 +187,29 @@ class TorchAccelerator(Accelerator):
             device = torch.device("cpu")
 
         return device
+
+    def prepare_optimizer(self, optimizer: Optimizer) -> Optimizer:
+        """Wraps optimizer to support automatic mixed precision.
+
+        Args:
+            optimizer (torch.optim.Optimizer): The DataLoader to prepare.
+
+        Returns:
+            A wrapped optimizer.
+        """
+        return _WrappedOptimizer(optimizer, scaler=self.scaler)
+
+    def backward(self, tensor: torch.Tensor) -> None:
+        """Computes the gradient of the specified tensor w.r.t. graph leaves.
+
+        Args:
+            tensor (torch.Tensor): Tensor of which the derivative will be computed.
+        """
+        if self.amp:
+            assert self.scaler is not None
+            self.scaler.scale(tensor).backward()
+        else:
+            tensor.backward()
 
 
 @PublicAPI(stability="beta")
@@ -352,6 +401,55 @@ class _WrappedDataLoader(DataLoader):
             yield self._move_to_device(item)
 
 
+class _WrappedOptimizer(Optimizer):
+    def __init__(self, optimizer: Optimizer, scaler: Optional[GradScaler] = None):
+        self.optimizer = optimizer
+        self.scaler = scaler
+
+    @property
+    def state(self):
+        return self.optimizer.state
+
+    @state.setter
+    def state(self, state):
+        self.optimizer.state = state
+
+    @property
+    def param_groups(self):
+        return self.optimizer.param_groups
+
+    @param_groups.setter
+    def param_groups(self, param_groups):
+        self.optimizer.param_groups = param_groups
+
+    @property
+    def defaults(self):
+        return self.optimizer.defaults
+
+    @defaults.setter
+    def defaults(self, defaults):
+        self.optimizer.defaults = defaults
+
+    def add_param_group(self, param_group):
+        self.optimizer.add_param_group(param_group)
+
+    def load_state_dict(self, state_dict):
+        self.optimizer.load_state_dict(state_dict)
+
+    def state_dict(self):
+        return self.optimizer.state_dict()
+
+    def zero_grad(self):
+        self.optimizer.zero_grad()
+
+    def step(self, closure=None):
+        if self.scaler is not None:
+            self.scaler.step(self.optimizer, closure)
+            self.scaler.update()
+        else:
+            self.optimizer.step(closure)
+
+
 @PublicAPI(stability="beta")
 def get_device() -> torch.device:
     """Gets the correct torch device to use for training."""
@@ -425,7 +523,7 @@ def prepare_optimizer(optimizer: torch.optim.Optimizer) -> torch.optim.Optimizer
     Returns:
         A wrapped optimizer.
     """
-    return get_session().accelerator.prepare_optimizer(optimizer)
+    return get_accelerator(TorchAccelerator).prepare_optimizer(optimizer)
 
 
 @PublicAPI(stability="beta")
@@ -435,14 +533,19 @@ def backward(tensor: torch.Tensor) -> None:
     Args:
         tensor (torch.Tensor): Tensor of which the derivative will be computed.
     """
-    get_session().accelerator.backward(tensor)
+    get_accelerator(TorchAccelerator).backward(tensor)
 
 
 @PublicAPI(stability="beta")
-def accelerate() -> None:
-    """Enables training optimizations."""
+def accelerate(amp: bool = False) -> None:
+    """Enables training optimizations.
+
+    Arguments:
+        amp (bool): If true, perform training with automatic mixed precision.
+            Otherwise, use full precision.
+    """
     try:
-        set_accelerator(TorchAccelerator())
+        set_accelerator(TorchAccelerator(amp=amp))
     except RuntimeError:
         raise RuntimeError(
             "An accelerator has already been set. Make sure "
