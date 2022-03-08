@@ -115,10 +115,12 @@ class JobConfig:
                 pb.metadata[k] = v
 
             parsed_env = self._validate_runtime_env()
-            pb.runtime_env_info = get_runtime_env_info(
-                parsed_env,
-                is_job_runtime_env=True,
-                serialize=False,
+            pb.runtime_env_info.CopyFrom(
+                get_runtime_env_info(
+                    parsed_env,
+                    is_job_runtime_env=True,
+                    serialize=False,
+                )
             )
 
             if self._default_actor_lifetime is not None:

@@ -1459,9 +1459,9 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
     return runtime_env_info;
   }
 
-  RAY_CHECK(!google::protobuf::util::JsonStringToMessage(serialized_runtime_env_info,
-                                                         runtime_env_info.get())
-                 .ok());
+  RAY_CHECK(google::protobuf::util::JsonStringToMessage(serialized_runtime_env_info,
+                                                        runtime_env_info.get())
+                .ok());
 
   if (options_.worker_type == WorkerType::DRIVER) {
     if (IsRuntimeEnvEmpty(runtime_env_info->serialized_runtime_env())) {

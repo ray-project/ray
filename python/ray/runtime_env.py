@@ -579,6 +579,14 @@ class RuntimeEnv(dict):
                 plugin.class_path = class_path
                 plugin.config = plugin_field
 
+    def __getstate__(self):
+        return dict(**self)
+
+    def __setstate__(self, state):
+        for k, v in state.items():
+            self[k] = v
+        self.__proto_runtime_env = None
+
 
 def get_runtime_env_info(
     runtime_env: RuntimeEnv,
@@ -599,8 +607,12 @@ def get_runtime_env_info(
 
     eager_install = runtime_env.get("eager_install")
     if is_job_runtime_env or eager_install is not None:
-        if not isinstance(eager_install, bool):
-            raise TypeError("eager_install must be a boolean.")
+        if eager_install is None:
+            eager_install = True
+        elif not isinstance(eager_install, bool):
+            raise TypeError(
+                f"eager_install must be a boolean. got {type(eager_install)}"
+            )
         proto_runtime_env_info.runtime_env_eager_install = eager_install
 
     proto_runtime_env_info.serialized_runtime_env = runtime_env.serialize()
