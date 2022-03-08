@@ -14,11 +14,11 @@ def save_objects(
     namespace: str,
     objects: Dict[str, Union[Any, ObjectRef]],
     overwrite_if_exists: bool = True,
-):
+) -> None:
     raise NotImplementedError
 
 
-def delete_objects(namespace: str, paths: List[str]):
+def delete_objects(namespace: str, paths: List[str]) -> None:
     raise NotImplementedError
 
 
