@@ -767,6 +767,8 @@
 
 - name: shuffle_10gb
   group: Core nightly tests
+
+  frequency: nightly
   team: core
   working_dir: nightly_tests
 
