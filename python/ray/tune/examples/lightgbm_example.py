@@ -26,6 +26,9 @@ def train_breast_cancer(config):
             verbose_eval=False,
             stratified=True,
             # Checkpointing is not supported for CV
+            # LightGBM aggregates metrics over folds automatically
+            # with the cv_agg key. Both mean and standard deviation
+            # are provided.
             callbacks=[
                 TuneReportCallback(
                     {
