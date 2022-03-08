@@ -4,7 +4,7 @@ import re
 import scipy
 import tracemalloc
 import tree  # pip install dm_tree
-from typing import Callable, List, Optional, Set
+from typing import Callable, DefaultDict, List, Optional, Set
 
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 
@@ -35,7 +35,7 @@ def check_memory_leaks(
     to_check: Optional[Set[str]] = None,
     repeats: Optional[int] = None,
     max_num_trials: int = 3,
-) -> List[Suspect]:
+) -> DefaultDict[str, List[Suspect]]:
     """Diagnoses the given trainer for possible memory leaks.
 
     Isolates single components inside the trainer's local worker, e.g. the env,
@@ -54,8 +54,8 @@ def check_memory_leaks(
         max_num_trials: The maximum number of trials to run each check for.
 
     Raises:
-        The list of Suspect instances that were found. Returns an empty list if no
-        suspicious leaks were found.
+        A defaultdict(list) with keys being the `to_check` strings and values being
+        lists of Suspect instances that were found.
     """
     local_worker = trainer.workers.local_worker()
 
@@ -188,6 +188,8 @@ def check_memory_leaks(
         if test:
             results_per_category["rollout_worker"].extend(test)
 
+    return results_per_category
+
 
 def _test_some_code_for_memory_leaks(
     desc: str,
@@ -262,7 +264,7 @@ def _test_some_code_for_memory_leaks(
         # Some suspicious memory allocations found.
         if len(suspicious) > 0:
             print(f"{len(suspicious)} suspects found. Top-ten:")
-            for i, s in suspicious_stats:
+            for i, s in enumerate(suspicious_stats):
                 if i > 10:
                     break
                 print(

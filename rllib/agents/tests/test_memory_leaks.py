@@ -30,14 +30,14 @@ class TestMemoryLeaks(unittest.TestCase):
         config["env"] = MemoryLeakingEnv
         trainer = ppo.PPOTrainer(config=config)
         results = check_memory_leaks(trainer, to_check={"env"}, repeats=150)
-        assert results is not None
+        assert results["env"]
         trainer.stop()
 
         # Test non-leaky env.
         config["env"] = RandomEnv
         trainer = ppo.PPOTrainer(config=config)
         results = check_memory_leaks(trainer, to_check={"env"}, repeats=150)
-        assert results is None
+        assert not results["env"]
         trainer.stop()
 
     def test_leaky_policy(self):
@@ -52,7 +52,7 @@ class TestMemoryLeaks(unittest.TestCase):
         }
         trainer = dqn.DQNTrainer(config=config)
         results = check_memory_leaks(trainer, to_check={"policy"}, repeats=300)
-        assert results is not None
+        assert results["policy"]
         trainer.stop()
 
         # Test non-leaky policy.
@@ -61,7 +61,7 @@ class TestMemoryLeaks(unittest.TestCase):
         }
         trainer = dqn.DQNTrainer(config=config)
         results = check_memory_leaks(trainer, to_check={"policy"}, repeats=300)
-        assert results is None
+        assert not results["policy"]
         trainer.stop()
 
 
