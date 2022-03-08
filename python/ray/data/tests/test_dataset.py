@@ -3038,29 +3038,6 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path):
     assert set(locations) == {node1_id, node2_id}
 
 
-def test_parquet_read_spread_no_cpus(ray_start_cluster, tmp_path):
-    cluster = ray_start_cluster
-    cluster.add_node(
-        resources={"foo": 100}, _system_config={"max_direct_call_object_size": 0}
-    )
-    cluster.add_node(resources={"bar:1": 100})
-    cluster.add_node(resources={"bar:2": 100}, num_cpus=0)
-
-    ray.init(cluster.address)
-
-    @ray.remote(num_cpus=0)
-    def get_node_id():
-        return ray.get_runtime_context().node_id.hex()
-
-    data_path = str(tmp_path)
-    df1 = pd.DataFrame({"one": list(range(100)), "two": list(range(100, 200))})
-    path1 = os.path.join(data_path, "test1.parquet")
-    df1.to_parquet(path1)
-    df2 = pd.DataFrame({"one": list(range(300, 400)), "two": list(range(400, 500))})
-    path2 = os.path.join(data_path, "test2.parquet")
-    df2.to_parquet(path2)
-
-
 @pytest.mark.parametrize("num_items,parallelism", [(100, 1), (1000, 4)])
 def test_sort_arrow(ray_start_regular, num_items, parallelism):
     a = list(reversed(range(num_items)))
