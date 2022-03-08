@@ -40,24 +40,35 @@ def get_conda_activate_commands(conda_env_name: str) -> List[str]:
 def get_conda_bin_executable(executable_name: str) -> str:
     """
     Return path to the specified executable, assumed to be discoverable within
-    the 'bin' subdirectory of a conda installation.
+    a conda installation.
 
-    The conda home directory (expected to contain a 'bin' subdirectory) is
-    configurable via the ``RAY_CONDA_HOME`` environment variable. If
-    ``RAY_CONDA_HOME`` is unspecified, this method simply returns the passed-in
-    executable name.
+    The conda home directory (expected to contain a 'bin' subdirectory on
+    linux) is configurable via the ``RAY_CONDA_HOME`` environment variable. If
+    ``RAY_CONDA_HOME`` is unspecified, try the ``CONDA_EXE`` environment
+    variable set by activating conda. If neither is specified, this method
+    returns `executable_name`.
     """
     conda_home = os.environ.get(RAY_CONDA_HOME)
     if conda_home:
         if _WIN32:
-            return os.path.join(conda_home, "%s.exe" % executable_name)
+            candidate = os.path.join(conda_home, "%s.exe" % executable_name)
+            if os.path.exists(candidate):
+                return candidate
+            candidate = os.path.join(conda_home, "%s.bat" % executable_name)
+            if os.path.exists(candidate):
+                return candidate
         else:
             return os.path.join(conda_home, "bin/%s" % executable_name)
     # Use CONDA_EXE as per https://github.com/conda/conda/issues/7126
     if "CONDA_EXE" in os.environ:
         conda_bin_dir = os.path.dirname(os.environ["CONDA_EXE"])
         if _WIN32:
-            return os.path.join(conda_bin_dir, "%s.exe" % executable_name)
+            candidate = os.path.join(conda_home, "%s.exe" % executable_name)
+            if os.path.exists(candidate):
+                return candidate
+            candidate = os.path.join(conda_home, "%s.bat" % executable_name)
+            if os.path.exists(candidate):
+                return candidate
         else:
             return os.path.join(conda_bin_dir, executable_name)
     return executable_name
