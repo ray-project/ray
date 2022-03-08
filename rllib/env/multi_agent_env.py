@@ -342,7 +342,7 @@ class MultiAgentEnv(gym.Env):
         obs_space_check = (
             hasattr(self, "observation_space")
             and isinstance(self.observation_space, gym.spaces.Dict)
-            and set(self.observation_space.keys()) == self.get_agent_ids()
+            and set(self.observation_space.spaces.keys()) == self.get_agent_ids()
         )
         action_space_check = (
             hasattr(self, "action_space")

@@ -84,7 +84,6 @@ def test_worker_stats(shutdown_only):
     for stats in reply.core_workers_stats:
         if stats.webui_display[""] == '{"message": "test", "dtype": "text"}':
             target_worker_present = True
-            assert stats.pid == worker_pid
         else:
             assert stats.webui_display[""] == ""  # Empty proto
     assert target_worker_present
@@ -98,13 +97,13 @@ def test_worker_stats(shutdown_only):
             )
 
         # Wait for the workers to start.
-        if len(reply.core_workers_stats) < num_cpus + 1:
+        if len(reply.core_workers_stats) < num_cpus + 2:
             time.sleep(1)
             reply = try_get_node_stats()
             continue
 
         # Check that the rest of the processes are workers, 1 for each CPU.
-        assert len(reply.core_workers_stats) == num_cpus + 1
+        assert len(reply.core_workers_stats) == num_cpus + 2
         # Check that all processes are Python.
         pids = [worker.pid for worker in reply.core_workers_stats]
         processes = [
@@ -120,8 +119,9 @@ def test_worker_stats(shutdown_only):
                 or "conda" in process
                 or "travis" in process
                 or "runner" in process
+                or "pytest" in process
                 or "ray" in process
-            )
+            ), process
         break
 
 

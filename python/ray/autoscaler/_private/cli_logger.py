@@ -158,9 +158,9 @@ def _external_caller_info():
 def _format_msg(
     msg: str,
     *args: Any,
+    no_format: bool = None,
     _tags: Dict[str, Any] = None,
     _numbered: Tuple[str, int, int] = None,
-    _no_format: bool = None,
     **kwargs: Any
 ):
     """Formats a message for printing.
@@ -170,6 +170,12 @@ def _format_msg(
 
     Args:
         *args (Any): `.format` arguments for `msg`.
+        no_format (bool):
+            If `no_format` is `True`,
+            `.format` will not be called on the message.
+
+            Useful if the output is user-provided or may otherwise
+            contain an unexpected formatting string (e.g. "{}").
         _tags (Dict[str, Any]):
             key-value pairs to display at the end of
             the message in square brackets.
@@ -193,12 +199,6 @@ def _format_msg(
 
             E.g. `_format_msg("hello", _numbered=("[]", 0, 5))`
                  `[0/5] hello`
-        _no_format (bool):
-            If `_no_format` is `True`,
-            `.format` will not be called on the message.
-
-            Useful if the output is user-provided or may otherwise
-            contain an unexpected formatting string (e.g. "{}").
 
     Returns:
         The formatted message.
@@ -224,7 +224,7 @@ def _format_msg(
             chars, i, n = _numbered
             numbering_str = cf.dimmed(chars[0] + str(i) + "/" + str(n) + chars[1]) + " "
 
-        if _no_format:
+        if no_format:
             # todo: throw if given args/kwargs?
             return numbering_str + msg + tags_str
         return numbering_str + msg.format(*args, **kwargs) + tags_str

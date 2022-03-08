@@ -657,6 +657,37 @@ def test_runtime_env_retry(set_runtime_env_retry_times, ray_start_regular):
             )
 
 
+@pytest.mark.parametrize(
+    "option",
+    ["pip_list", "conda_name", "conda_dict", "container", "plugins"],
+)
+def test_serialize_deserialize(option):
+    runtime_env = dict()
+    if option == "pip_list":
+        runtime_env["pip"] = ["pkg1", "pkg2"]
+    elif option == "conda_name":
+        runtime_env["conda"] = "env_name"
+    elif option == "conda_dict":
+        runtime_env["conda"] = {"dependencies": ["dep1", "dep2"]}
+    elif option == "container":
+        runtime_env["container"] = {
+            "image": "anyscale/ray-ml:nightly-py38-cpu",
+            "worker_path": "/root/python/ray/workers/default_worker.py",
+            "run_options": ["--cap-drop SYS_ADMIN", "--log-level=debug"],
+        }
+    elif option == "plugins":
+        runtime_env["plugins"] = {
+            "class_path1": {"config1": "val1"},
+            "class_path2": "string_config",
+        }
+    else:
+        raise ValueError("unexpected option " + str(option))
+
+    proto_runtime_env = RuntimeEnv(**runtime_env, _validate=False)._proto_runtime_env
+    cls_runtime_env = RuntimeEnv.from_proto(proto_runtime_env)
+    assert cls_runtime_env.to_dict() == runtime_env
+
+
 if __name__ == "__main__":
     import sys
 
