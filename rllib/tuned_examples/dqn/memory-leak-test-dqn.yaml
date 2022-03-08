@@ -5,4 +5,7 @@ memory-leak-test-dqn:
     config:
         # Works for both torch and tf.
         framework: tf
+        # Switch off np.random, which is known to have memory leaks.
+        env_config:
+            static_samples: true
         buffer_size: 500  # use small buffer to catch memory leaks

@@ -62,6 +62,8 @@ def check_memory_leaks(
     # Which components should we test?
     to_check = to_check or {"env", "model", "policy", "rollout_worker"}
 
+    results_per_category = defaultdict(list)
+
     # Test a single sub-env (first in the VectorEnv)?
     if "env" in to_check:
         assert local_worker.async_env is not None, (
@@ -93,7 +95,7 @@ def check_memory_leaks(
             max_num_trials=max_num_trials,
         )
         if test:
-            return test
+            results_per_category["env"].extend(test)
 
     # Test the policy (single-agent case only so far).
     if "policy" in to_check:
@@ -125,7 +127,7 @@ def check_memory_leaks(
             max_num_trials=max_num_trials,
         )
         if test:
-            return test
+            results_per_category["policy"].extend(test)
 
         # Call `learn_on_batch()` n times.
         dummy_batch = policy._get_dummy_batch_from_view_requirements(batch_size=16)
@@ -139,7 +141,7 @@ def check_memory_leaks(
             max_num_trials=max_num_trials,
         )
         if test:
-            return test
+            results_per_category["policy"].extend(test)
 
     # Test only the model.
     if "model" in to_check:
@@ -162,7 +164,7 @@ def check_memory_leaks(
             max_num_trials=max_num_trials,
         )
         if test:
-            return test
+            results_per_category["model"].extend(test)
 
     # Test the RolloutWorker.
     if "rollout_worker" in to_check:
@@ -184,7 +186,7 @@ def check_memory_leaks(
             max_num_trials=max_num_trials,
         )
         if test:
-            return test
+            results_per_category["rollout_worker"].extend(test)
 
 
 def _test_some_code_for_memory_leaks(
@@ -241,7 +243,8 @@ def _test_some_code_for_memory_leaks(
             _take_snapshot(table, suspicious)
         print("\n")
 
-        # Check, which traces have moved up constantly over time.
+        # Check, which traces have moved up in their memory consumption
+        # constantly over time.
         suspicious.clear()
         suspicious_stats.clear()
         # Suspicious memory allocation found?
@@ -259,9 +262,7 @@ def _test_some_code_for_memory_leaks(
         # Some suspicious memory allocations found.
         if len(suspicious) > 0:
             print(f"{len(suspicious)} suspects found. Top-ten:")
-            for i, s in enumerate(
-                sorted(suspicious_stats, key=lambda s: s.memory_increase, reverse=True)
-            ):
+            for i, s in suspicious_stats:
                 if i > 10:
                     break
                 print(
