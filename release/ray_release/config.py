@@ -100,7 +100,7 @@ def validate_release_test_collection(test_collection: List[Test]):
         error = validate_test(test, schema)
         if error:
             logger.error(
-                f"Failed to validate test {test.get('name', '(unnamed)')}: " f"{error}"
+                f"Failed to validate test {test.get('name', '(unnamed)')}: {error}"
             )
             num_errors += 1
 
