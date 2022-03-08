@@ -370,7 +370,7 @@ def require_packages(packages: List[str]):
                         importlib.import_module(package)
                     except ModuleNotFoundError:
                         missing_packages.append(package)
-                if len(missing_packages) == 0:
+                if len(missing_packages) > 0:
                     raise ImportError(
                         f"{func} requires {packages} to run but "
                         f"{missing_packages} are missing. Please "
