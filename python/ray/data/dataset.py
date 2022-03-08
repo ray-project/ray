@@ -482,9 +482,7 @@ class Dataset(Generic[T]):
                     block_list.clear()
                 else:
                     blocks = block_list
-                return simple_shuffle(
-                    blocks, block_udf, num_blocks, signal=self._signal
-                )
+                return simple_shuffle(blocks, block_udf, num_blocks)
 
             plan = self._plan.with_stage(
                 AllToAllStage(
@@ -555,7 +553,6 @@ class Dataset(Generic[T]):
                 random_shuffle=True,
                 random_seed=seed,
                 _spread_resource_prefix=_spread_resource_prefix,
-                signal=self._signal,
             )
             return new_blocks, stage_info
 
@@ -1415,7 +1412,7 @@ class Dataset(Generic[T]):
                     _validate_key_fn(self, subkey)
             else:
                 _validate_key_fn(self, key)
-            return sort_impl(blocks, key, descending, signal=self._signal)
+            return sort_impl(blocks, key, descending)
 
         plan = self._plan.with_stage(AllToAllStage("sort", None, do_sort))
         return Dataset(plan, self._epoch, self._lazy, self._signal)
@@ -1898,9 +1895,7 @@ class Dataset(Generic[T]):
                 )
             )
 
-        progress = ProgressBar(
-            "Write Progress", len(write_results), signal=self._signal
-        )
+        progress = ProgressBar("Write Progress", len(write_results), self._signal)
         try:
             progress.block_until_complete(write_results)
             datasource.on_write_complete(ray.get(write_results))
@@ -2711,7 +2706,7 @@ Dict[str, List[str]]]): The names of the columns
         doesn't read blocks from the datasource until the first transform.
         """
         blocks = self.get_internal_block_refs()
-        bar = ProgressBar("Force reads", len(blocks), signal=self._signal)
+        bar = ProgressBar("Force reads", len(blocks), self._signal)
         bar.block_until_complete(blocks)
         return self
 

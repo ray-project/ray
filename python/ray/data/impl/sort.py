@@ -16,7 +16,7 @@ Merging: a merge task would receive a block from every worker that consists
 of items in a certain range. It then merges the sorted blocks into one sorted
 block and becomes part of the new, sorted dataset.
 """
-from typing import List, Any, Callable, TypeVar, Tuple, Union, Optional
+from typing import List, Any, Callable, TypeVar, Tuple, Union
 
 import numpy as np
 import ray
@@ -24,7 +24,7 @@ from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata, BlockAccessor, BlockExecStats
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.block_list import BlockList
-from ray.data.impl.progress_bar import ProgressBar, Signal
+from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.remote_fn import cached_remote_fn
 
 T = TypeVar("T")
@@ -36,10 +36,7 @@ SortKeyT = Union[None, List[Tuple[str, str]], Callable[[T], Any]]
 
 
 def sample_boundaries(
-    blocks: List[ObjectRef[Block]],
-    key: SortKeyT,
-    num_reducers: int,
-    signal: Optional[Signal] = None,
+    blocks: List[ObjectRef[Block]], key: SortKeyT, num_reducers: int
 ) -> List[T]:
     """
     Return (num_reducers - 1) items in ascending order from the blocks that
@@ -54,7 +51,7 @@ def sample_boundaries(
     sample_block = cached_remote_fn(_sample_block)
 
     sample_results = [sample_block.remote(block, n_samples, key) for block in blocks]
-    sample_bar = ProgressBar("Sort Sample", len(sample_results), signal=signal)
+    sample_bar = ProgressBar("Sort Sample", len(sample_results))
     sample_bar.block_until_complete(sample_results)
     sample_bar.close()
 
@@ -78,10 +75,7 @@ def sample_boundaries(
 
 
 def sort_impl(
-    blocks: BlockList,
-    key: SortKeyT,
-    descending: bool = False,
-    signal: Optional[Signal] = None,
+    blocks: BlockList, key: SortKeyT, descending: bool = False
 ) -> Tuple[BlockList, dict]:
     stage_info = {}
     blocks = blocks.get_blocks()
@@ -96,7 +90,7 @@ def sort_impl(
 
     num_mappers = len(blocks)
     num_reducers = num_mappers
-    boundaries = sample_boundaries(blocks, key, num_reducers, signal)
+    boundaries = sample_boundaries(blocks, key, num_reducers)
     if descending:
         boundaries.reverse()
 
@@ -113,7 +107,7 @@ def sort_impl(
     # Early release memory.
     del blocks
 
-    map_bar = ProgressBar("Sort Map", len(map_results), signal)
+    map_bar = ProgressBar("Sort Map", len(map_results))
     map_bar.block_until_complete(map_meta)
     map_bar.close()
     stage_info["map"] = ray.get(map_meta)
@@ -126,7 +120,7 @@ def sort_impl(
     # Early release memory.
     del map_results
 
-    merge_bar = ProgressBar("Sort Merge", len(reduce_results), signal=signal)
+    merge_bar = ProgressBar("Sort Merge", len(reduce_results))
     merge_bar.block_until_complete([ret[0] for ret in reduce_results])
     merge_bar.close()
 

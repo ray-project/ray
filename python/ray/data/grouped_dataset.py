@@ -79,7 +79,6 @@ class GroupedDataset(Generic[T]):
                     if isinstance(self._key, str)
                     else self._key,
                     num_reducers,
-                    self._dataset._signal,
                 )
 
             partition_and_combine_block = cached_remote_fn(
@@ -97,9 +96,7 @@ class GroupedDataset(Generic[T]):
                 )
                 map_results[i, :] = results[:-1]
                 map_meta.append(results[-1])
-            map_bar = ProgressBar(
-                "GroupBy Map", len(map_results), signal=self._dataset._signal
-            )
+            map_bar = ProgressBar("GroupBy Map", len(map_results))
             map_bar.block_until_complete(map_meta)
             stage_info["map"] = ray.get(map_meta)
             map_bar.close()
@@ -112,9 +109,7 @@ class GroupedDataset(Generic[T]):
                 )
                 blocks.append(block)
                 metadata.append(meta)
-            reduce_bar = ProgressBar(
-                "GroupBy Reduce", len(blocks), signal=self._dataset._signal
-            )
+            reduce_bar = ProgressBar("GroupBy Reduce", len(blocks))
             reduce_bar.block_until_complete(blocks)
             reduce_bar.close()
 
