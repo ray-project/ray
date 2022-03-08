@@ -259,7 +259,7 @@ class TestReplayBuffer(unittest.TestCase):
         # After adding 1 more batch, eviction has started with 15
         # timesteps added in total
         assert len(buffer) == 5
-        assert buffer._num_timesteps_added == sum([i for i in range(1, 6)])
+        assert buffer._num_timesteps_added == sum(range(1, 6))
         assert buffer._num_timesteps_added_wrap == 5
         assert buffer._next_idx == 1
         assert buffer._eviction_started is True
