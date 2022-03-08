@@ -25,6 +25,21 @@ frequency_str_to_enum = {
 }
 
 
+class Priority(enum.Enum):
+    DEFAULT = 0
+    MANUAL = 10
+    HIGH = 50
+    HIGHEST = 100
+
+
+priority_str_to_enum = {
+    "default": Priority.DEFAULT,
+    "manual": Priority.MANUAL,
+    "high": Priority.HIGH,
+    "highest": Priority.HIGHEST,
+}
+
+
 def get_frequency(frequency_str: str) -> Frequency:
     frequency_str = frequency_str.lower()
     if frequency_str not in frequency_str_to_enum:
@@ -33,6 +48,16 @@ def get_frequency(frequency_str: str) -> Frequency:
             f"{list(frequency_str_to_enum.keys())}."
         )
     return frequency_str_to_enum[frequency_str]
+
+
+def get_priority(priority_str: str) -> Priority:
+    priority_str = priority_str.lower()
+    if priority_str not in priority_str_to_enum:
+        raise ReleaseTestConfigError(
+            f"Priority not found: {priority_str}. Must be one of "
+            f"{list(priority_str_to_enum.keys())}."
+        )
+    return priority_str_to_enum[priority_str]
 
 
 def split_ray_repo_str(repo_str: str) -> Tuple[str, str]:
@@ -83,6 +108,8 @@ def get_default_settings() -> Dict:
         "ray_wheels": None,
         "ray_test_repo": None,
         "ray_test_branch": None,
+        "priority": Priority.DEFAULT,
+        "no_concurrency_limit": False,
     }
     return settings
 
@@ -103,6 +130,12 @@ def update_settings_from_environment(settings: Dict) -> Dict:
 
     if "TEST_NAME" in os.environ:
         settings["test_name_filter"] = os.environ["TEST_NAME"]
+
+    if "RELEASE_PRIORITY" in os.environ:
+        settings["priority"] = get_priority(os.environ["RELEASE_PRIORITY"])
+
+    if "NO_CONCURRENCY_LIMIT" in os.environ:
+        settings["no_concurrency_limit"] = bool(int(os.environ["NO_CONCURRENCY_LIMIT"]))
 
     return settings
 
@@ -125,5 +158,13 @@ def update_settings_from_buildkite(settings: Dict):
     test_name_filter = get_buildkite_prompt_value("release-test-name")
     if ray_wheels:
         settings["test_name_filter"] = test_name_filter
+
+    test_priority = get_buildkite_prompt_value("release-priority")
+    if test_priority:
+        settings["priority"] = get_priority(test_priority)
+
+    no_concurrency_limit = get_buildkite_prompt_value("release-no-concurrency-limit")
+    if no_concurrency_limit == "yes":
+        settings["no_concurrency_limit"] = True
 
     return settings

@@ -5,7 +5,7 @@ import weakref
 import ray.ray_constants as ray_constants
 import ray._raylet
 import ray._private.signature as signature
-from ray._private.runtime_env.validation import ParsedRuntimeEnv
+from ray.runtime_env import RuntimeEnv
 import ray.worker
 from ray.util.annotations import PublicAPI
 from ray.util.placement_group import configure_placement_group_based_on_context
@@ -343,6 +343,10 @@ class ActorClassMetadata:
         )
 
 
+class ActorClassInheritanceException(TypeError):
+    pass
+
+
 class ActorClass:
     """An actor class.
 
@@ -360,11 +364,15 @@ class ActorClass:
         use the '_ray_from_modified_class' classmethod.
 
         Raises:
-            TypeError: Always.
+            ActorClassInheritanceException: When ActorClass is inherited.
+            AssertionError: If ActorClassInheritanceException is not raised i.e.,
+                            conditions for raising it are not met in any
+                            iteration of the loop.
+            TypeError: In all other cases.
         """
         for base in bases:
             if isinstance(base, ActorClass):
-                raise TypeError(
+                raise ActorClassInheritanceException(
                     f"Attempted to define subclass '{name}' of actor "
                     f"class '{base.__ray_metadata__.class_name}'. "
                     "Inheriting from actor classes is "
@@ -430,7 +438,20 @@ class ActorClass:
         # Make sure the actor class we are constructing inherits from the
         # original class so it retains all class properties.
         class DerivedActorClass(cls, modified_class):
-            pass
+            def __init__(self, *args, **kwargs):
+                try:
+                    cls.__init__(self, *args, **kwargs)
+                except Exception as e:
+                    # Delegate call to modified_class.__init__ only
+                    # if the exception raised by cls.__init__ is
+                    # TypeError and not ActorClassInheritanceException(TypeError).
+                    # In all other cases proceed with raise e.
+                    if isinstance(e, TypeError) and not isinstance(
+                        e, ActorClassInheritanceException
+                    ):
+                        modified_class.__init__(self, *args, **kwargs)
+                    else:
+                        raise e
 
         name = f"ActorClass({modified_class.__name__})"
         DerivedActorClass.__module__ = modified_class.__module__
@@ -450,7 +471,7 @@ class ActorClass:
             if isinstance(runtime_env, str):
                 new_runtime_env = runtime_env
             else:
-                new_runtime_env = ParsedRuntimeEnv(runtime_env).serialize()
+                new_runtime_env = RuntimeEnv(**runtime_env).serialize()
         else:
             new_runtime_env = None
 
@@ -498,7 +519,7 @@ class ActorClass:
             if isinstance(runtime_env, str):
                 new_runtime_env = runtime_env
             else:
-                new_runtime_env = ParsedRuntimeEnv(runtime_env).serialize()
+                new_runtime_env = RuntimeEnv(**runtime_env).serialize()
         else:
             new_runtime_env = None
 
@@ -586,7 +607,7 @@ class ActorClass:
             if isinstance(runtime_env, str):
                 new_runtime_env = runtime_env
             else:
-                new_runtime_env = ParsedRuntimeEnv(runtime_env or {}).serialize()
+                new_runtime_env = RuntimeEnv(**(runtime_env or {})).serialize()
         else:
             # Keep the new_runtime_env as None.  In .remote(), we need to know
             # if runtime_env is None to know whether or not to fall back to the
@@ -948,7 +969,7 @@ class ActorClass:
             if isinstance(runtime_env, str):
                 # Serialzed protobuf runtime env from Ray client.
                 new_runtime_env = runtime_env
-            elif isinstance(runtime_env, ParsedRuntimeEnv):
+            elif isinstance(runtime_env, RuntimeEnv):
                 new_runtime_env = runtime_env.serialize()
             else:
                 raise TypeError(f"Error runtime env type {type(runtime_env)}")
@@ -972,6 +993,17 @@ class ActorClass:
             class_name = meta.actor_creation_function_descriptor.class_name
             concurrency_groups_dict[cg_name]["function_descriptors"].append(
                 PythonFunctionDescriptor(module_name, method_name, class_name)
+            )
+
+        # Update the creation descriptor based on number of arguments
+        if meta.is_cross_language:
+            meta.actor_creation_function_descriptor = (
+                cross_language.get_function_descriptor_for_actor_method(
+                    meta.language,
+                    meta.actor_creation_function_descriptor,
+                    "<init>",
+                    str(len(args) + len(kwargs)),
+                )
             )
 
         actor_id = worker.core_worker.create_actor(
@@ -1137,12 +1169,13 @@ class ActorHandle:
         kwargs = kwargs or {}
         if self._ray_is_cross_language:
             list_args = cross_language.format_args(worker, args, kwargs)
-            function_descriptor = (
-                cross_language.get_function_descriptor_for_actor_method(
-                    self._ray_actor_language,
-                    self._ray_actor_creation_function_descriptor,
-                    method_name,
-                )
+            function_descriptor = cross_language.get_function_descriptor_for_actor_method(  # noqa: E501
+                self._ray_actor_language,
+                self._ray_actor_creation_function_descriptor,
+                method_name,
+                # The signature for xlang should be "{length_of_arguments}" to handle
+                # overloaded methods.
+                signature=str(len(args) + len(kwargs)),
             )
         else:
             function_signature = self._ray_method_signatures[method_name]
