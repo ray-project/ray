@@ -27,6 +27,8 @@ class Preprocessor(abc.ABC):
 
         Fitted state attributes will be directly set in the Preprocessor.
 
+        Args:
+            dataset (Dataset): Input dataset.
         Returns:
             Preprocessor: The fitted Preprocessor with state attributes.
         """
@@ -67,6 +69,8 @@ class Preprocessor(abc.ABC):
         return self._transform(dataset)
 
     def _transform(self, dataset: Dataset) -> Dataset:
+        # TODO(matt): Expose `batch_size` or similar configurability.
+        # The default may be too small for some datasets and too large for others.
         return dataset.map_batches(self._transform_pandas, batch_format="pandas")
 
     def transform_batch(self, df: DataBatchType) -> DataBatchType:
@@ -87,6 +91,8 @@ class Preprocessor(abc.ABC):
     def _transform_batch(self, df: DataBatchType) -> DataBatchType:
         import pandas as pd
 
+        # TODO(matt): Add `_transform_arrow` to use based on input type.
+        # Reduce conversion cost if input is in Arrow:  Arrow -> Pandas -> Arrow.
         if not isinstance(df, pd.DataFrame):
             raise NotImplementedError(
                 "`transform_batch` is currently only implemented for Pandas DataFrames."

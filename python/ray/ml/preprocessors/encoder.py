@@ -51,7 +51,7 @@ class OneHotEncoder(Preprocessor):
     be set to 1 if the value matches, otherwise 0.
 
     Transforming values not included in the fitted dataset will result in all
-    of the encoded column values to be 0.
+    of the encoded column values being 0.
 
     Args:
         columns: The columns that will individually be encoded.
@@ -68,18 +68,15 @@ class OneHotEncoder(Preprocessor):
 
     def _transform_pandas(self, df: pd.DataFrame):
         _validate_df(df, *self.columns)
-        # Compute new columns
-        new_columns = {}
+        # Compute new one-hot encoded columns
         for column in self.columns:
             column_values = self.stats_[f"unique_values({column})"]
             for column_value in column_values:
-                new_columns[f"{column}_{column_value}"] = (
-                    df[column] == column_value
-                ).astype(int)
+                df[f"{column}_{column_value}"] = (df[column] == column_value).astype(
+                    int
+                )
         # Drop original unencoded columns.
         df = df.drop(columns=self.columns)
-        # Add new columns.
-        df = pd.concat([df, pd.DataFrame(new_columns)], axis=1)
         return df
 
     def __repr__(self):

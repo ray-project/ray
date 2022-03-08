@@ -79,6 +79,7 @@ class SimpleImputer(Preprocessor):
 def _get_most_frequent_values(
     dataset: Dataset, *columns: str
 ) -> Dict[str, Union[str, Number]]:
+    # TODO(matt): Optimize this.
     results = {}
     for column in columns:
         # Remove nulls.

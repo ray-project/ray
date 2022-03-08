@@ -7,7 +7,7 @@ class Chain(Preprocessor):
 
     Calling ``fit`` will invoke ``fit_transform`` on the input preprocessors,
     so that one preprocessor can ``fit`` based on columns/values produced by
-    ``transform`` of a preceding preprocessor.
+    the ``transform`` of a preceding preprocessor.
 
     Args:
         preprocessors: The preprocessors that should be executed sequentially.
