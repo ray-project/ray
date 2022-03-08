@@ -69,10 +69,10 @@ double LeastResourceScorer::Calculate(const FixedPoint &requested,
 /////////////////////////////////////////////////////////////////////////////////////////
 
 SchedulingResult SortSchedulingResult(const SchedulingResult &result,
-                                      const std::vector<size_t> &sorted_index) {
+                                      const std::vector<int> &sorted_index) {
   if (result.first == SchedulingResultStatus::SUCCESS) {
     std::vector<NodeID> sorted_nodes(result.second.size());
-    for (size_t i = 0; i < sorted_index.size(); i++) {
+    for (int i = 0; i < sorted_index.size(); i++) {
       sorted_nodes[sorted_index[i]] = result.second[i];
     }
     return std::make_pair(result.first, sorted_nodes);
@@ -106,7 +106,7 @@ SchedulingResult GcsResourceScheduler::Schedule(
   const auto &sorted_index = SortRequiredResources(required_resources_list);
 
   std::vector<ResourceSet> sorted_resources(required_resources_list);
-  for (size_t i = 0; i < sorted_index.size(); i++) {
+  for (int i = 0; i < sorted_index.size(); i++) {
     sorted_resources[i] = required_resources_list[sorted_index[i]];
   }
 
@@ -167,9 +167,9 @@ std::tuple<bool, bool> cmp_resource(
   return std::make_tuple(finished, a_less_than_b);
 }
 
-std::vector<size_t> GcsResourceScheduler::SortRequiredResources(
+std::vector<int> GcsResourceScheduler::SortRequiredResources(
     const std::vector<ResourceSet> &required_resources) {
-  std::vector<size_t> sorted_index(required_resources.size());
+  std::vector<int> sorted_index(required_resources.size());
   std::iota(sorted_index.begin(), sorted_index.end(), 0);
   std::sort(sorted_index.begin(), sorted_index.end(), [required_resources](int b, int a) {
     auto a_map = required_resources[a].GetResourceAmountMap();
