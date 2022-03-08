@@ -62,7 +62,7 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
         self.scaling_config = scaling_config
-        self.run_config = run_config
+        self.run_config = run_config if run_config else {}
         self.train_dataset = train_dataset
         self.additional_datasets = additional_datasets
         self.preprocessor = preprocessor
@@ -85,7 +85,9 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
         trial = analysis.trials[0]
 
         result = Result(metrics=trial.last_result,
-                        checkpoint=trial.checkpoint.value)
+                        checkpoint=Checkpoint.from_directory(
+                            trial.checkpoint.value) if
+                        trial.checkpoint.value else None)
 
         return result
 
@@ -100,7 +102,7 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
         Args:
             config (Dict): A dictionary to update attributes with.
         """
-        for key in config.keys():
+        for key in list(config.keys()):
             if hasattr(self, key):
                 current_attribute = getattr(self, key)
                 if isinstance(current_attribute, dict):
@@ -115,22 +117,23 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
                     elif isinstance(config[key], dict):
                         # If the hyperparam is passed in as a dict, then update
                         # each attribute of the dataclass directly.
-                        for key, value in config[key].items():
-                            if hasattr(current_attribute, key):
+                        for inner_key, inner_value in config[key].items():
+                            if hasattr(current_attribute, inner_key):
                                 dataclass_field = getattr(current_attribute,
-                                                          key)
+                                                          inner_key)
                                 if isinstance(dataclass_field, dict):
                                     # Do a deep update.
-                                    deep_update(dataclass_field, value,
+                                    deep_update(dataclass_field, inner_value,
                                                 new_keys_allowed=True)
                                 else:
-                                    setattr(current_attribute, key, value)
+                                    setattr(current_attribute, inner_key,
+                                            inner_value)
                 else:
                     # Don't do a deep update and directly set the attribute
                     # to the value in config.
                     setattr(self, key, config[key])
-            # Remove the key from the dict.
-            del config[key]
+                # Remove the key from the dict.
+                del config[key]
 
 
 @DeveloperAPI
@@ -241,7 +244,7 @@ class DataParallelFunctionTrainer(Trainer):
             )
 
             checkpoint_manager = TuneCheckpointManagerV2()
-            checkpoint_manager.on_init()
+            checkpoint_manager.on_init(preprocessor=self.preprocessor)
 
             # Start the remote actors.
             ray.get(
@@ -264,30 +267,34 @@ class DataParallelFunctionTrainer(Trainer):
 
             # Transform all the other datasets concurrently in remote tasks.
             task_dict = {}
-            for key, dataset in dataset_dict.items():
-                if key != TRAIN_DATASET_KEY:
-                    remote_transform = ray.remote(num_cpus=0)(lambda:
-                                                              self.preprocessor.transform(
-                                                                  dataset))
-                    task_dict[key] = remote_transform
+            if dataset_dict and self.preprocessor:
+                for key, dataset in dataset_dict.items():
+                    if key != TRAIN_DATASET_KEY:
+                        remote_transform = ray.remote(num_cpus=0)(lambda:
+                                                                  self.preprocessor.transform(
+                                                                      dataset)).remote()
+                        task_dict[key] = remote_transform
 
-            ray.get(task_dict.values())
+            ray.get(list(task_dict.values()))
 
             for key, transformed_dataset in task_dict.items():
-                dataset_dict[key] = transformed_dataset
+                dataset_dict[key] = ray.get(transformed_dataset)
 
             if checkpoint_dir:
                 checkpoint = Checkpoint.from_directory(checkpoint_dir)
             else:
                 checkpoint = self.checkpoint_to_resume_from
 
+            if checkpoint:
+                checkpoint = checkpoint.to_dict()
+
             training_iterator = TrainingIterator(
-                backend_executor_actor=self._backend_executor_actor,
-                backend_config=self._backend_config,
+                backend_executor_actor=backend_executor_actor,
+                backend_config=self.backend_config,
                 train_func=train_func,
                 dataset=dataset_dict,
                 checkpoint_manager=checkpoint_manager,
-                checkpoint=checkpoint.to_dict(),
+                checkpoint=checkpoint,
                 checkpoint_strategy=None,
             )
 

@@ -3,6 +3,7 @@ from ray.train.callbacks import TrainingCallback
 from ray.train.checkpoint import CheckpointStrategy
 from ray.train.session import (
     get_dataset_shard,
+    get_train_dataset_shard,
     local_rank,
     load_checkpoint,
     report,
@@ -16,6 +17,7 @@ __all__ = [
     "BackendConfig",
     "CheckpointStrategy",
     "get_dataset_shard",
+    "get_train_dataset_shard",
     "load_checkpoint",
     "local_rank",
     "report",

@@ -665,8 +665,6 @@ class TrainingIterator:
             checkpoint_strategy=checkpoint_strategy,
         )
 
-        self._apply_preprocessor()
-
         self._final_results = None
         self._finished_training = False
 

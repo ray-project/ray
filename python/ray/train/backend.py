@@ -32,7 +32,7 @@ class BackendConfig:
 
     @property
     def backend_cls(self):
-        raise NotImplementedError
+        return Backend
 
 
 @DeveloperAPI

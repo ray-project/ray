@@ -1,13 +1,13 @@
 from typing import Callable, Optional, Dict
 
 from ray.train.torch import TorchConfig
-from ray.train.v2.trainer import DataParallelTrainer, GenDataset
+from ray.train.v2.trainer import DataParallelFunctionTrainer, GenDataset
 from ray.ml.config import DataParallelScalingConfig, RunConfig
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 
 
-class TorchTrainer(DataParallelTrainer):
+class TorchTrainer(DataParallelFunctionTrainer):
     """
     A Trainer for data parallel PyTorch training.
 
