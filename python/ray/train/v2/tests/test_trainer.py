@@ -3,11 +3,11 @@ import pytest
 import ray
 from ray import tune
 from ray import train
+from ray.ml.constants import PREPROCESSOR_KEY, MODEL_KEY
 from ray.ml.config import DataParallelScalingConfig
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.predictors.torch import TorchPredictor
 from ray.train.v2.trainer import Trainer, DataParallelFunctionTrainer
-from ray.train.constants import PREPROCESSOR_KEY, MODEL_KEY
 from ray.train.v2.trainers.torch import TorchTrainer
 from ray.tune.function_runner import wrap_function
 

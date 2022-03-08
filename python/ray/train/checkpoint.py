@@ -11,13 +11,13 @@ from ray.train.constants import TIMESTAMP, TUNE_INSTALLED, TRAIN_CHECKPOINT_SUBD
 from ray.train.constants import (
     TUNE_CHECKPOINT_FILE_NAME,
     TUNE_CHECKPOINT_ID,
-    PREPROCESSOR_KEY,
 )
 from ray.train.session import TrainingResult
 from ray.train.utils import construct_path
 from ray.util import PublicAPI
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.preprocessor import Preprocessor
+from ray.ml.constants import PREPROCESSOR_KEY
 
 if TUNE_INSTALLED:
     from ray import tune

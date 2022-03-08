@@ -11,9 +11,11 @@ from typing import Optional, Dict, Any
 import ray
 from ray import train
 from ray.train.backend import BackendConfig, Backend, EncodedData
-from ray.train.constants import PYTORCH_PROFILER_KEY, MODEL_KEY
+from ray.train.constants import PYTORCH_PROFILER_KEY
 from ray.train.worker_group import WorkerGroup
 from ray.train.utils import get_address_and_port
+
+from ray.ml.constants import MODEL_KEY
 
 import torch
 import torch.distributed as dist
