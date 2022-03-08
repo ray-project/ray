@@ -10,7 +10,11 @@ class ObjectEntry:
     size: int
 
 
-def save_objects(namespace: str, objects: Dict[str, Union[Any, ObjectRef]]):
+def save_objects(
+    namespace: str,
+    objects: Dict[str, Union[Any, ObjectRef]],
+    overwrite_if_exists: bool = True,
+):
     raise NotImplementedError
 
 
@@ -18,7 +22,7 @@ def delete_objects(namespace: str, paths: List[str]):
     raise NotImplementedError
 
 
-def get_object_info(namespace: str, paths: List[str]) -> List[ObjectEntry]:
+def get_object_info(namespace: str, paths: List[str]) -> List[Optional[ObjectEntry]]:
     raise NotImplementedError
 
 
