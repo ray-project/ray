@@ -59,7 +59,7 @@ if __name__ == "__main__":
 
     # Bazel regression test mode: Get path to look for yaml files.
     # Get the path or single file to use.
-    rllib_dir = Path(__file__).parent.parent
+    rllib_dir = Path(__file__).parent.parent.parent
     print("rllib dir={}".format(rllib_dir))
 
     abs_yaml_path = os.path.join(rllib_dir, args.yaml_dir)
