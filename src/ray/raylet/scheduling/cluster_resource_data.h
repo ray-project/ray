@@ -61,17 +61,17 @@ class PredefinedResources {
  public:
   PredefinedResources() { values_.resize(PredefinedResources_MAX); }
 
-  const bool HasResource(size_t resource_id) const {
-    return this.values_[resource_id] != 0;
-  }
-
-  const FixedPoint &Get(size_t resource_id) const {
+  const FixedPoint &Get(int64_t resource_id) const {
     return this->values_[resource_id];
   }
 
-  PredefinedResources &Set(size_t resource_id, const FixedPoint & value) {
+  PredefinedResources &Set(int64_t resource_id, const FixedPoint & value) {
     this->values_[resource_id] = value;
     return *this;
+  }
+
+  const bool Has(int64_t resource_id) const {
+    return this.values_[resource_id] != 0;
   }
 
   const FixedPoint &GetCPU() const { return this->values_[CPU]; }
@@ -117,15 +117,6 @@ class PredefinedResources {
     return true;
   }
 
-  bool IsSubsetOf(const PredefinedResources &other) const {
-    for (int i = 0; i < this->values_.size(); i++) {
-      if (this.values_[i] > other.values_[i]) {
-        return false;
-      }
-      return true;
-    }
-  }
-
   PredefinedResources operator+(const PredefinedResources &other) {
     PredefinedResources res;
     for (int i = 0; i < this->values_.size(); i++) {
@@ -167,6 +158,19 @@ class PredefinedResources {
     return std::equal(std::begin(this->values_), std::end(this.values_), std::begin(other.values_));
   }
 
+  bool operator<=(const PredefinedResources &other) const {
+    for (int i = 0; i < this->values_.size(); i++) {
+      if (this.values_[i] > other.values_[i]) {
+        return false;
+      }
+      return true;
+    }
+  }
+
+  bool operator>=(const PredefinedResources &other) const {
+    return other <= *this;
+  }
+
   void Normalize() {
     for (size_t i = 0; i < this->values_.size(); i++) {
       if (this->values_[i] < 0) {
@@ -184,7 +188,7 @@ class PredefinedResources {
     return buffer.str();
   }
 
-  static int NumPredefinedResources() {
+  static size_t NumAllPredefinedResources() {
     return PredefinedResourcesEnum_MAX;
   }
 
@@ -203,11 +207,91 @@ class CustomResources {
     }
   }
 
+  const FixedPoint &Get(int64_t resource_id) const {
+    return this->values_[resource_id];
+  }
+
+  const FixedPoint &GetOrZero(int64_t resource_id) const {
+    auto it = this->values_.find(resource_id);
+    if (it == this->values_.end()) {
+      return 0;
+    }
+    return it->second;
+  }
+
+  PredefinedResources &Set(int64_t resource_id, const FixedPoint & value) {
+    this->values_[resource_id] = value;
+    return *this;
+  }
+
+  const bool Has(int64_t resource_id) const {
+    return this->values_.find(resource_id) != this->values_.end();
+  }
+
   size_t Size() const { return values_.size(); }
 
   bool IsEmty() const { return values_.size() == 0; }
 
-  bool IsSubsetOf(const CustomResources &other) const {
+  CustomResources operator+(const CustomResources &other) {
+    CustomResources res;
+    for (auto entry: values_) {
+      res.values_[entry.first] = entry.second + other.GetOrZero(entry.first);
+    }
+    for (auto entry: other.values) {
+      if (!Has(entry.first)) {
+        res.values_[entry.first] = entry.second;
+      }
+    }
+    return res;
+  }
+
+  CustomResources operator-(const CustomResources &other) {
+    CustomResources res;
+    for (auto entry: values_) {
+      res.values_[entry.first] = entry.second - other.GetOrZero(entry.first);
+    }
+    for (auto entry: other.values) {
+      if (!Has(entry.first)) {
+        res.values_[entry.first] = -entry.second;
+      }
+    }
+    return res;
+  }
+
+  CustomResources &operator=(const CustomResources &other) {
+    this.values_ = other.values_;
+    return *this;
+  }
+
+  CustomResources &operator+=(const CustomResources &other) {
+    for (auto entry: values_) {
+      entry.second += other.GetOrZero(entry.first);
+    }
+    for (auto entry: other.values) {
+      if (!Has(entry.first)) {
+        values_[entry.first] = entry.second;
+      }
+    }
+    return *this;
+  }
+
+  CustomResources &operator-=(const CustomResources &other) {
+    for (auto entry: values_) {
+      entry.second -= other.GetOrZero(entry.first);
+    }
+    for (auto entry: other.values) {
+      if (!Has(entry.first)) {
+        values_[entry.first] = -entry.second;
+      }
+    }
+    return *this;
+  }
+
+  bool operator==(const CustomResources &other) const {
+    return this->values_ == other.values;
+  }
+
+  bool operator<=(const CustomResources &other) const {
     for (auto entry: values_) {
       auto it = other.values_.find(entry.first);
       if (it == other.values_.end()) {
@@ -220,8 +304,8 @@ class CustomResources {
     return true;
   }
 
-  bool operator==(const CustomResources &other) const {
-    return this->values_ == other.values;
+  bool operator>=(const PredefinedResources &other) const {
+    return other <= *this;
   }
 
   std::string DebugString() const {
@@ -254,12 +338,80 @@ class ResourceRequest {
   /// Returns human-readable string for this task request.
   std::string DebugString() const;
 
-  bool IsSubsetOf(const ResourceRequest &other) {
-    return predefined_resources.IsSubsetOf(other.predefined_resources) && custom_resources.IsSubsetOf(other.custom_resources);
+  const FixedPoint &Get(int64_t resource_id) const {
+    if (IsPredefinedResource(resource_id)) {
+      return this->predefined_resources.Get(resource_id);
+    } else {
+      return this->custom_resources.Get(resource_id);
+    }
+  }
+
+  const FixedPoint &GetOrZero(int64_t resource_id) const {
+    if (IsPredefinedResource(resource_id)) {
+      return this->predefined_resources.Get(resource_id);
+    } else {
+      return this->custom_resources.GetOrZero(resource_id);
+    }
+  }
+
+  PredefinedResources &Set(int64_t resource_id, const FixedPoint & value) {
+    if (IsPredefinedResource(resource_id)) {
+      return this->predefined_resources.Set(resource_id, value);
+    } else {
+      return this->custom_resources.Set(resource_id, value);
+    }
+  }
+
+  const bool Has(int64_t resource_id) const {
+    if (IsPredefinedResource(resource_id)) {
+      return this->predefined_resources.Has(resource_id);
+    } else {
+      return this->custom_resources.Has(resource_id);
+    }
+  }
+
+  ResourceRequest operator+(const ResourceRequest &other) {
+    ResourceRequest res;
+    res.predefined_resources = this->predefined_resources + other.predefined_resources;
+    res.custom_resources = this->custom_resources + other.custom_resources;
+    return res;
+  }
+
+  ResourceRequest operator-(const ResourceRequest &other) {
+    ResourceRequest res;
+    res.predefined_resources = this->predefined_resources - other.predefined_resources;
+    res.custom_resources = this->custom_resources - other.custom_resources;
+    return res;
+ }
+
+  ResourceRequest &operator=(const ResourceRequest &other) {
+    this->predefined_resources = other.predefined_resources;
+    this->custom_resources = other.custom_resources;
+    return *this;
+  }
+
+  ResourceRequest &operator+=(const ResourceRequest &other) {
+    this->predefined_resources += other.predefined_resources;
+    this->custom_resources += other.custom_resources;
+    return *this;
+  }
+
+  ResourceRequest &operator-=(const ResourceRequest &other) {
+    this->predefined_resources -= other.predefined_resources;
+    this->custom_resources -= other.custom_resources;
+    return *this;
   }
 
   bool operator==(const ResourceRequest &other) const {
     return this->predefined_resources == other.predefined_resources && this->custom_resources == other.predefined_resources;
+  }
+
+  bool operator<=(const ResourceRequest &other) {
+    return predefined_resources.IsSubsetOf(other.predefined_resources) && custom_resources.IsSubsetOf(other.custom_resources);
+  }
+
+  bool operator>=(const PredefinedResources &other) const {
+    return other <= *this;
   }
 };
 
