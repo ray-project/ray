@@ -84,7 +84,9 @@ class RuntimeEnvAgent(
         # invalidate the env cache when a URI is deleted.
         # This is a temporary mechanism until we have per-URI caching.
         self._uris_to_envs: Dict[str, Set[str]] = defaultdict(set)
-
+        # The URI reference table which is used for GC. When the reference count is
+        # decreased to zero, the URI should be removed from this table and added to
+        # cache if needed.
         self._uri_reference: Dict[str, int] = dict()
         # Initialize internal KV to be used by the working_dir setup code.
         _initialize_internal_kv(self._dashboard_agent.gcs_client)
@@ -165,6 +167,8 @@ class RuntimeEnvAgent(
             self._logger.info(f"Unused uris {unused_uris}.")
         return unused_uris
 
+    # Don't change URI reference for `client_server` because `client_server` doesn't
+    # send the `DecreaseRuntimeEnvReference` RPC when the client exits.
     reference_exclude_sources: Set[str] = {
         "client_server",
     }
@@ -325,6 +329,7 @@ class RuntimeEnvAgent(
                 self._logger.info(f"Sleeping for {SLEEP_FOR_TESTING_S}s.")
                 time.sleep(int(SLEEP_FOR_TESTING_S))
 
+            self._logger.info(f"Creating runtime env: {serialized_env}")
             runtime_env_context: RuntimeEnvContext = None
             error_message = None
             for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):

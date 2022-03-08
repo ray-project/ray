@@ -1134,7 +1134,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
 
       if (task_spec.HasRuntimeEnv()) {
         // create runtime env.
-        RAY_LOG(DEBUG) << "[dedicated] IncreaseRuntimeEnvReference for task "
+        RAY_LOG(DEBUG) << "[dedicated] Creating runtime env for task "
                        << task_spec.TaskId();
         IncreaseRuntimeEnvReference(
             task_spec.SerializedRuntimeEnv(), task_spec.JobId(),
@@ -1197,7 +1197,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
       // Start a new worker process.
       if (task_spec.HasRuntimeEnv()) {
         // create runtime env.
-        RAY_LOG(DEBUG) << "IncreaseRuntimeEnvReference for task " << task_spec.TaskId();
+        RAY_LOG(DEBUG) << "Creating runtime env for task " << task_spec.TaskId();
         IncreaseRuntimeEnvReference(
             task_spec.SerializedRuntimeEnv(), task_spec.JobId(),
             [this, start_worker_process_fn, callback, &state, task_spec](
@@ -1510,7 +1510,7 @@ void WorkerPool::IncreaseRuntimeEnvReference(
     const std::string &serialized_runtime_env, const JobID &job_id,
     const IncreaseRuntimeEnvReferenceCallback &callback,
     const std::string &serialized_allocated_resource_instances) {
-  // create runtime env.
+  RAY_LOG(DEBUG) << "IncreaseRuntimeEnvReference " << serialized_runtime_env;
   agent_manager_->IncreaseRuntimeEnvReference(
       job_id, serialized_runtime_env, serialized_allocated_resource_instances,
       [job_id, serialized_runtime_env = std::move(serialized_runtime_env), callback](
@@ -1528,6 +1528,7 @@ void WorkerPool::IncreaseRuntimeEnvReference(
 }
 
 void WorkerPool::DecreaseRuntimeEnvReference(const std::string &serialized_runtime_env) {
+  RAY_LOG(DEBUG) << "DecreaseRuntimeEnvReference " << serialized_runtime_env;
   if (RuntimeEnvNotEmpty(serialized_runtime_env)) {
     agent_manager_->DecreaseRuntimeEnvReference(
         serialized_runtime_env, [serialized_runtime_env](bool success) {

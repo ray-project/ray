@@ -72,7 +72,8 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   /// \param[in] job_id The job id which the runtime env belongs to.
   /// \param[in] serialized_runtime_env The serialized runtime environment.
   /// \param[in] serialized_allocated_resource_instances The serialized allocated resource
-  /// instances. \param[in] callback The callback function.
+  /// instances.
+  /// \param[in] callback The callback function.
   virtual void IncreaseRuntimeEnvReference(
       const JobID &job_id, const std::string &serialized_runtime_env,
       const std::string &serialized_allocated_resource_instances,

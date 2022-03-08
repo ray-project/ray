@@ -57,7 +57,6 @@ class SpecificServer:
     port: int
     process_handle_future: futures.Future
     channel: "grpc._channel.Channel"
-    # serialized_runtime_env: str
 
     def is_ready(self) -> bool:
         """Check if the server is ready or not (doesn't block)."""
@@ -95,10 +94,6 @@ class SpecificServer:
         """Set the result of the internal future if it is currently unset."""
         if not self.is_ready():
             self.process_handle_future.set_result(proc)
-
-    # def set_serialized_runtime_env(self, serialized_runtime_env) -> None:
-    #     """Set serialized runtime env."""
-    #     self.serialized_runtime_env = serialized_runtime_env
 
 
 def _match_running_client_server(command: List[str]) -> bool:
@@ -290,30 +285,6 @@ class ProxyManager:
             f"IncreaseRuntimeEnvReference request failed after {max_retries} attempts."
         )
 
-    def _decrease_runtime_env_reference(
-        self, serialized_runtime_env: str, specific_server: SpecificServer
-    ):
-        """Decrease the runtime_env reference by sending an RPC to the agent."""
-        logger.info(
-            f"Decreasing runtime env reference for "
-            f"ray_client_server_{specific_server.port}."
-            f"Serialized runtime env is {serialized_runtime_env}."
-        )
-        decrease_request = runtime_env_agent_pb2.DecreaseRuntimeEnvReferenceRequest(
-            serialized_runtime_env=serialized_runtime_env
-        )
-
-        r = self._runtime_env_stub.DecreaseRuntimeEnvReferenceRequest(decrease_request)
-        if r.status == agent_manager_pb2.AgentRpcStatus.AGENT_RPC_STATUS_OK:
-            return
-        elif r.status == agent_manager_pb2.AgentRpcStatus.AGENT_RPC_STATUS_FAILED:
-            raise RuntimeError(
-                "Failed to decrease runtime_env reference for Ray client "
-                f"server, it is caused by:\n{r.error_message}"
-            )
-        else:
-            assert False, f"Unknown status: {r.status}."
-
     def start_specific_server(self, client_id: str, job_config: JobConfig) -> bool:
         """
         Start up a RayClient Server for an incoming client to
@@ -421,12 +392,6 @@ class ProxyManager:
                             f"Specific server {client_id} is no longer running"
                             f", freeing its port {specific_server.port}"
                         )
-                        # logger.info(f"serialized_env {specific_server}")
-                        # serialized_env = specific_server.serialized_runtime_env
-                        # if serialized_env is not None:
-                        #     self._decrease_runtime_env_reference(
-                        #         specific_server.serialized_runtime_env,
-                        #         specific_server)
                         del self.servers[client_id]
                         # Port is available to use again.
                         self._free_ports.append(specific_server.port)
@@ -439,10 +404,6 @@ class ProxyManager:
         for platforms where fate sharing is not supported.
         """
         for server in self.servers.values():
-            # if server.serialized_runtime_env:
-            #     self._decrease_runtime_env_reference(
-            #         server.serialized_runtime_env,
-            #         server)
             server.kill()
 
 
