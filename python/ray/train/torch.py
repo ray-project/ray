@@ -419,7 +419,9 @@ def accelerate() -> None:
         set_accelerator(TorchAccelerator())
     except RuntimeError:
         raise RuntimeError(
-            "An accelerator has already been set. Try moving the `accelerate` call to the top of your training function."
+            "An accelerator has already been set. Make sure "
+            "`train.torch.accelerate()` is not called multiple times, and is called "
+            "before any of the prepare methods."
         )
 
 
