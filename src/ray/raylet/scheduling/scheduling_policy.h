@@ -64,12 +64,10 @@ class SchedulingPolicy {
   /// will act like a traditional weighted round robin.
   ///
   /// \param resource_request: The resource request we're attempting to schedule.
-  /// \param scheduler_avoid_gpu_nodes: if set, we would try scheduling
-  /// CPU-only requests on CPU-only nodes, and will fallback to scheduling on GPU nodes if
-  /// needed.
+  /// \param scheduling_options: scheduling options.
   ///
-  /// \return -1 if the task is unfeasible, otherwise the node id (key in `nodes`) to
-  /// schedule on.
+  /// \return NodeID::Nil() if the task is unfeasible, otherwise the node id
+  /// to schedule on.
   scheduling::NodeID HybridPolicy(const ResourceRequest &resource_request,
                                   SchedulingOptions options);
 

@@ -58,8 +58,9 @@ scheduling::NodeID SchedulingPolicy::Schedule(const ResourceRequest &resource_re
 
 scheduling::NodeID SchedulingPolicy::SpreadPolicy(const ResourceRequest &resource_request,
                                                   SchedulingOptions options) {
-  RAY_CHECK(options.spread_threshold == 0)
-      << "SpreadPolicy policy requires spread_threshold = 0";
+  RAY_CHECK(options.spread_threshold == 0 &&
+            options.scheduling_type == SchedulingType::SPREAD)
+      << "SpreadPolicy policy requires spread_threshold = 0 and type = SPREAD";
   std::vector<scheduling::NodeID> round;
   round.reserve(nodes_.size());
   for (const auto &pair : nodes_) {
@@ -83,7 +84,7 @@ scheduling::NodeID SchedulingPolicy::SpreadPolicy(const ResourceRequest &resourc
     spread_scheduling_next_index_ = ((round_index + 1) % round.size());
     return node_id;
   }
-
+  options.scheduling_type = SchedulingType::HYBRID;
   return HybridPolicy(resource_request, options);
 }
 
@@ -199,6 +200,8 @@ scheduling::NodeID SchedulingPolicy::HybridPolicyWithFilter(
 
 scheduling::NodeID SchedulingPolicy::HybridPolicy(const ResourceRequest &resource_request,
                                                   SchedulingOptions options) {
+  RAY_CHECK(options.scheduling_type == SchedulingType::HYBRID)
+      << "HybridPolicy policy requires type = HYBRID";
   if (!options.avoid_gpu_nodes || IsGPURequest(resource_request)) {
     return HybridPolicyWithFilter(resource_request, options.spread_threshold,
                                   options.avoid_local_node,
@@ -221,6 +224,8 @@ scheduling::NodeID SchedulingPolicy::HybridPolicy(const ResourceRequest &resourc
 
 scheduling::NodeID SchedulingPolicy::RandomPolicy(const ResourceRequest &resource_request,
                                                   SchedulingOptions options) {
+  RAY_CHECK(options.scheduling_type == SchedulingType::RANDOM)
+      << "HybridPolicy policy requires type = RANDOM";
   scheduling::NodeID best_node = scheduling::NodeID::Nil();
   if (nodes_.empty()) {
     return best_node;
