@@ -129,6 +129,8 @@ void Metric::Record(double value,
   Record(value, tags_pair_vec);
 }
 
+Metric::~Metric() { opencensus::stats::StatsExporter::RemoveView(name_); }
+
 void Gauge::RegisterView() {
   opencensus::stats::ViewDescriptor view_descriptor =
       opencensus::stats::ViewDescriptor()

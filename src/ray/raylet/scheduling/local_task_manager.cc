@@ -315,12 +315,14 @@ void LocalTaskManager::SpillWaitingTasks() {
     // TODO(swang): The policy currently does not account for the amount of
     // object store memory availability. Ideally, we should pick the node with
     // the most memory availability.
-    std::string node_id_string =
-        GetBestSchedulableNode(*(*it),
-                               /*spill_waiting_task=*/true,
-                               /*force_spillback=*/force_spillback, &is_infeasible);
-    if (!node_id_string.empty() && node_id_string != self_node_id_.Binary()) {
-      NodeID node_id = NodeID::FromBinary(node_id_string);
+    auto scheduling_node_id = cluster_resource_scheduler_->GetBestSchedulableNode(
+        (*it)->task.GetTaskSpecification(),
+        /*prioritize_local_node*/ true,
+        /*exclude_local_node*/ force_spillback,
+        /*requires_object_store_memory*/ true, &is_infeasible);
+    if (!scheduling_node_id.IsNil() &&
+        scheduling_node_id.Binary() != self_node_id_.Binary()) {
+      NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
       Spillback(node_id, *it);
       if (!task.GetTaskSpecification().GetDependencies().empty()) {
         task_dependency_manager_.RemoveTaskDependencies(
@@ -329,7 +331,7 @@ void LocalTaskManager::SpillWaitingTasks() {
       waiting_tasks_index_.erase(task_id);
       it = waiting_task_queue_.erase(it);
     } else {
-      if (node_id_string.empty()) {
+      if (scheduling_node_id.IsNil()) {
         RAY_LOG(DEBUG) << "RayTask " << task_id
                        << " has blocked dependencies, but no other node has resources, "
                           "keeping the task local";
@@ -346,17 +348,17 @@ void LocalTaskManager::SpillWaitingTasks() {
 
 bool LocalTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
                                     bool &is_infeasible) {
-  std::string node_id_string =
-      GetBestSchedulableNode(*work,
-                             /*spill_waiting_task=*/false,
-                             /*force_spillback=*/false, &is_infeasible);
+  auto scheduling_node_id = cluster_resource_scheduler_->GetBestSchedulableNode(
+      work->task.GetTaskSpecification(), work->PrioritizeLocalNode(),
+      /*exclude_local_node*/ false,
+      /*requires_object_store_memory*/ false, &is_infeasible);
 
-  if (is_infeasible || node_id_string == self_node_id_.Binary() ||
-      node_id_string.empty()) {
+  if (is_infeasible || scheduling_node_id.IsNil() ||
+      scheduling_node_id.Binary() == self_node_id_.Binary()) {
     return false;
   }
 
-  NodeID node_id = NodeID::FromBinary(node_id_string);
+  NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
   Spillback(node_id, work);
   return true;
 }
@@ -386,7 +388,7 @@ bool LocalTaskManager::PoppedWorkerHandler(
       task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
   for (auto &entry : required_resource) {
     if (!cluster_resource_scheduler_->GetLocalResourceManager().ResourcesExist(
-            entry.first)) {
+            scheduling::ResourceID(entry.first))) {
       RAY_CHECK(task.GetTaskSpecification().PlacementGroupBundleId().first !=
                 PlacementGroupID::Nil());
       RAY_LOG(DEBUG) << "The placement group: "
@@ -521,7 +523,8 @@ void LocalTaskManager::Spillback(const NodeID &spillback_to,
   RAY_LOG(DEBUG) << "Spilling task " << task_spec.TaskId() << " to node " << spillback_to;
 
   if (!cluster_resource_scheduler_->AllocateRemoteTaskResources(
-          spillback_to.Binary(), task_spec.GetRequiredResources().GetResourceMap())) {
+          scheduling::NodeID(spillback_to.Binary()),
+          task_spec.GetRequiredResources().GetResourceMap())) {
     RAY_LOG(DEBUG) << "Tried to allocate resources for request " << task_spec.TaskId()
                    << " on a remote node that are no longer available";
   }
@@ -948,8 +951,8 @@ bool LocalTaskManager::ReleaseCpuResourcesFromUnblockedWorker(
     auto cpu_instances = worker->GetAllocatedInstances()->GetCPUInstancesDouble();
     if (cpu_instances.size() > 0) {
       std::vector<double> overflow_cpu_instances =
-          cluster_resource_scheduler_->GetLocalResourceManager().AddCPUResourceInstances(
-              cpu_instances);
+          cluster_resource_scheduler_->GetLocalResourceManager().AddResourceInstances(
+              scheduling::kCPUResource, cpu_instances);
       for (unsigned int i = 0; i < overflow_cpu_instances.size(); i++) {
         RAY_CHECK(overflow_cpu_instances[i] == 0) << "Should not be overflow";
       }
@@ -972,8 +975,8 @@ bool LocalTaskManager::ReturnCpuResourcesToBlockedWorker(
       // Important: we allow going negative here, since otherwise you can use infinite
       // CPU resources by repeatedly blocking / unblocking a task. By allowing it to go
       // negative, at most one task can "borrow" this worker's resources.
-      cluster_resource_scheduler_->GetLocalResourceManager().SubtractCPUResourceInstances(
-          cpu_instances, /*allow_going_negative=*/true);
+      cluster_resource_scheduler_->GetLocalResourceManager().SubtractResourceInstances(
+          scheduling::kCPUResource, cpu_instances, /*allow_going_negative=*/true);
       worker->MarkUnblocked();
       return true;
     }
@@ -981,15 +984,8 @@ bool LocalTaskManager::ReturnCpuResourcesToBlockedWorker(
   return false;
 }
 
-bool LocalTaskManager::IsLocallySchedulable(const RayTask &task) const {
-  const auto &spec = task.GetTaskSpecification();
-  return cluster_resource_scheduler_->IsSchedulableOnNode(
-      self_node_id_.Binary(), spec.GetRequiredResources().GetResourceMap());
-}
-
 ResourceSet LocalTaskManager::CalcNormalTaskResources() const {
   absl::flat_hash_map<std::string, FixedPoint> total_normal_task_resources;
-  const auto &string_id_map = cluster_resource_scheduler_->GetStringIdMap();
   for (auto &entry : leased_workers_) {
     std::shared_ptr<WorkerInterface> worker = entry.second;
     auto &task_spec = worker->GetAssignedTask().GetTaskSpecification();
@@ -1014,7 +1010,8 @@ ResourceSet LocalTaskManager::CalcNormalTaskResources() const {
       }
       for (auto &entry : resource_request.custom_resources) {
         if (entry.second > 0) {
-          total_normal_task_resources[string_id_map.Get(entry.first)] += entry.second;
+          total_normal_task_resources[scheduling::ResourceID(entry.first).Binary()] +=
+              entry.second;
         }
       }
     }
@@ -1033,29 +1030,6 @@ uint64_t LocalTaskManager::MaxRunningTasksPerSchedulingClass(
     return std::numeric_limits<uint64_t>::max();
   }
   return static_cast<uint64_t>(std::round(total_cpus / cpu_req));
-}
-
-std::string LocalTaskManager::GetBestSchedulableNode(const internal::Work &work,
-                                                     bool spill_waiting_task,
-                                                     bool force_spillback,
-                                                     bool *is_infeasible) {
-  // If the local node is available, we should directly return it instead of
-  // going through the full hybrid policy since we don't want spillback.
-  if ((work.grant_or_reject || work.is_selected_based_on_locality ||
-       spill_waiting_task) &&
-      !force_spillback && IsLocallySchedulable(work.task)) {
-    *is_infeasible = false;
-    return self_node_id_.Binary();
-  }
-
-  // This argument is used to set violation, which is an unsupported feature now.
-  int64_t _unused;
-  return cluster_resource_scheduler_->GetBestSchedulableNode(
-      work.task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap(),
-      work.task.GetTaskSpecification().GetMessage().scheduling_strategy(),
-      /*requires_object_store_memory=*/spill_waiting_task,
-      work.task.GetTaskSpecification().IsActorCreationTask(), force_spillback, &_unused,
-      is_infeasible);
 }
 
 }  // namespace raylet

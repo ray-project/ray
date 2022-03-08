@@ -86,7 +86,8 @@ ObjectManager::ObjectManager(
                 },
                 "ObjectManager.ObjectDeleted");
           }),
-      buffer_pool_(config_.store_socket_name, config_.object_chunk_size),
+      buffer_pool_store_client_(std::make_shared<plasma::PlasmaClient>()),
+      buffer_pool_(buffer_pool_store_client_, config_.object_chunk_size),
       rpc_work_(rpc_service_),
       object_manager_server_("ObjectManager", config_.object_manager_port,
                              config_.object_manager_address == "127.0.0.1",
@@ -127,6 +128,10 @@ ObjectManager::ObjectManager(
       self_node_id_, object_is_local, send_pull_request, cancel_pull_request,
       fail_pull_request, restore_spilled_object_, get_time, config.pull_timeout_ms,
       available_memory, pin_object, get_spilled_object_url));
+
+  RAY_CHECK_OK(
+      buffer_pool_store_client_->Connect(config_.store_socket_name.c_str(), "", 0, 300));
+
   // Start object manager rpc server and send & receive request threads
   StartRpcService();
 }
@@ -368,23 +373,16 @@ void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &nod
 
   if (object_reader->GetDataSize() != data_size ||
       object_reader->GetMetadataSize() != metadata_size) {
-    if (object_reader->GetDataSize() == 0) {
-      // TODO(scv119): handle object size changes in a more graceful way.
-      RAY_LOG(WARNING) << object_id
-                       << " is marked as failed but object_manager has stale info "
-                       << " with data size: " << data_size
-                       << ", metadata size: " << metadata_size
-                       << ". This is likely due to race condition."
-                       << " Update the info and proceed sending failed object.";
-      local_objects_[object_id].object_info.data_size = 0;
-      local_objects_[object_id].object_info.metadata_size = 1;
-    } else {
-      RAY_LOG(FATAL) << "Object id:" << object_id
+    // TODO(scv119): handle object size changes in a more graceful way.
+    RAY_LOG(WARNING) << "Object id:" << object_id
                      << "'s size mismatches our record. Expected data size: " << data_size
                      << ", expected metadata size: " << metadata_size
                      << ", actual data size: " << object_reader->GetDataSize()
-                     << ", actual metadata size: " << object_reader->GetMetadataSize();
-    }
+                     << ", actual metadata size: " << object_reader->GetMetadataSize()
+                     << ". This is likely due to a race condition."
+                     << " We will update the object size and proceed sending the object.";
+    local_objects_[object_id].object_info.data_size = 0;
+    local_objects_[object_id].object_info.metadata_size = 1;
   }
 
   PushObjectInternal(object_id, node_id,
@@ -560,7 +558,7 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id, const ObjectID &ob
 
   if (chunk_status.ok()) {
     // Avoid handling this chunk if it's already being handled by another process.
-    buffer_pool_.WriteChunk(object_id, chunk_index, data);
+    buffer_pool_.WriteChunk(object_id, data_size, metadata_size, chunk_index, data);
     return true;
   } else {
     num_chunks_received_failed_due_to_plasma_++;

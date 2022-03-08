@@ -71,7 +71,14 @@ class Trainable:
 
     When using Tune, Tune will convert this class into a Ray actor, which
     runs on a separate process. Tune will also change the current working
-    directory of this process to ``self.logdir``.
+    directory of this process to ``self.logdir``. This is designed so that
+    different trials that run on the same physical node won't accidently
+    write to the same location and overstep each other.
+
+    If you want to know the orginal working directory path on the driver node,
+    you can do so through env variable "TUNE_ORIG_WORKING_DIR".
+    It is advised that you access this path for read only purposes and you
+    need to make sure that the path exists on the remote nodes.
 
     This class supports checkpointing to and restoring from remote storage.
 
@@ -149,6 +156,8 @@ class Trainable:
                 "overheads.".format(setup_time)
             )
         log_sys_usage = self.config.get("log_sys_usage", False)
+        self._start_time = start_time
+        self._warmup_time = None
         self._monitor = UtilMonitor(start=log_sys_usage)
 
         self.remote_checkpoint_dir = remote_checkpoint_dir
@@ -240,6 +249,7 @@ class Trainable:
             "time_since_restore": self._time_since_restore,
             "timesteps_since_restore": self._timesteps_since_restore,
             "iterations_since_restore": self._iterations_since_restore,
+            "warmup_time": self._warmup_time,
         }
         if debug_metrics_only:
             autofilled = {k: v for k, v in autofilled.items() if k in DEBUG_METRICS}
@@ -333,6 +343,8 @@ class Trainable:
         Returns:
             A dict that describes training progress.
         """
+        if self._warmup_time is None:
+            self._warmup_time = time.time() - self._start_time
         start = time.time()
         result = self.step()
         assert isinstance(result, dict), "step() needs to return a dict."
@@ -643,26 +655,6 @@ class Trainable:
             True if reset was successful else False.
         """
         return False
-
-    def _update_resources(self, new_resources: Union[PlacementGroupFactory, Resources]):
-        """Internal version of ``update_resources``."""
-        self._trial_info.trial_resources = new_resources
-        return self.update_resources(new_resources)
-
-    def update_resources(self, new_resources: Union[PlacementGroupFactory, Resources]):
-        """Fires whenever Trainable resources are changed.
-
-        This method will be called before the checkpoint is loaded.
-
-        The current trial resources can also be obtained through
-        ``self.trial_resources``.
-
-        Args:
-            new_resources (PlacementGroupFactory|Resources):
-                Updated resources. Will be a PlacementGroupFactory if
-                trial uses placement groups and Resources otherwise.
-        """
-        return
 
     def _create_logger(
         self,

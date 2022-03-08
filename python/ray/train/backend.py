@@ -231,10 +231,13 @@ class BackendExecutor:
                 logger.debug("Placement group has started.")
             else:
                 raise TimeoutError(
-                    "Placement group creation timed out. Make sure "
-                    "your cluster either has enough resources or use "
-                    "an autoscaling cluster. Current resources "
-                    "available: {}, resources requested by the "
+                    "Placement group creation timed out. Make sure your "
+                    "cluster either has enough resources or use an "
+                    "autoscaling cluster. If you are running on a cluster, "
+                    "make sure you specify an address in `ray.init()`, for example, "
+                    '`ray.init("auto")`. You can also increase the timeout by setting '
+                    "the TRAIN_PLACEMENT_GROUP_TIMEOUT_S environment variable. "
+                    "Current resources available: {}, resources requested by the "
                     "placement group: {}".format(
                         ray.available_resources(), placement_group.bundle_specs
                     )
