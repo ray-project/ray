@@ -43,11 +43,12 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
             :ref:`Dataset <dataset-api>` or :ref:`DatasetPipeline
             <dataset-pipeline-api>`, or a Callbable that returns a Dataset, to
             use for training. If a ``preprocessor`` is also provided,
-            it will be fit on this dataset.
+            it will be fit on this dataset and this dataset will be
+            transfor,ed..
         additional_datasets (Optional[GenDataset]): Any additional Ray
             Datasets (such as validation or test datasets) to use for
-            training. If a ``preprocessor`` is provided, it will only
-            transform these datasets.
+            training. If a ``preprocessor`` is provided, the datasets
+            specified here will only be transformed, and not fit on.
         preprocessor (Optional[Preprocessor]): A preprocessor to preprocess
             the provided datasets.
         resume_from_checkpoint (Optional[Checkpoint]): A checkpoint to
