@@ -22,7 +22,7 @@ class TorchPredictor(Predictor):
     @classmethod
     def from_checkpoint(
         cls, checkpoint: Checkpoint, model_definition: Optional[torch.nn.Module] = None
-    ) -> Predictor:
+    ) -> "TorchPredictor":
         """Instantiate the predictor from a Checkpoint.
 
         The checkpoint is expected to be a result of ``TorchTrainer``.
