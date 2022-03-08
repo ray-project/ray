@@ -320,6 +320,7 @@ class Dataset(Generic[T]):
         batch_size: Optional[int] = 4096,
         compute: Optional[Union[str, ComputeStrategy]] = None,
         batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
+        zero_copy_batch: bool = True,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -340,6 +341,10 @@ class Dataset(Generic[T]):
             If you're using :ref:`Ray AIR <air>` for training or batch inference,
             consider using :class:`~ray.data.preprocessors.BatchMapper`. It's more
             performant and easier to use.
+
+        .. note::
+            If fn mutates its input, you may need to copy the batch first. See the
+            zero_copy_batch parameter.
 
         Examples:
 
@@ -428,6 +433,10 @@ class Dataset(Generic[T]):
                 ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
                 ``"numpy"`` to select ``numpy.ndarray`` for tensor datasets and
                 ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "default".
+            zero_copy_batch: Whether to pass a zero-copy read-only batch to fn. If fn
+                mutates its input, this will need to be disabled in order to avoid
+                "assignment destination is read-only" or "buffer source array is
+                read-only" errors. Default is True.
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
                 These arguments are top-level arguments to the underlying Ray task.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
@@ -514,13 +523,29 @@ class Dataset(Generic[T]):
             for start in range(0, total_rows, max_batch_size):
                 # Build a block for each batch.
                 end = min(total_rows, start + max_batch_size)
-                # Make sure to copy if slicing to avoid the Arrow serialization
-                # bug where we include the entire base view on serialization.
-                view = block.slice(start, end, copy=batch_size is not None)
+                view = block.slice(start, end, copy=not zero_copy_batch)
                 # Convert to batch format.
                 view = BlockAccessor.for_block(view).to_batch_format(batch_format)
 
-                applied = batch_fn(view, *fn_args, **fn_kwargs)
+                try:
+                    applied = batch_fn(view, *fn_args, **fn_kwargs)
+                except ValueError as e:
+                    read_only_msgs = [
+                        "assignment destination is read-only",
+                        "buffer source array is read-only",
+                    ]
+                    err_msg = str(e)
+                    if any(msg in err_msg for msg in read_only_msgs):
+                        raise ValueError(
+                            f"Batch mapper function {fn.__name__} tried to mutate a "
+                            "zero-copy read-only batch. To be able to mutate the "
+                            "batch, pass zero_copy_batch=False to map_batches(); this "
+                            "will copy the batch before giving it to fn. To elide this "
+                            "copy, modify your mapper function so it doesn't try to "
+                            "mutate its input."
+                        ) from e
+                    else:
+                        raise e from None
                 if not (
                     isinstance(applied, list)
                     or isinstance(applied, pa.Table)
@@ -604,7 +629,11 @@ class Dataset(Generic[T]):
             raise ValueError("`fn` must be callable, got {}".format(fn))
 
         return self.map_batches(
-            process_batch, batch_format="pandas", compute=compute, **ray_remote_args
+            process_batch,
+            batch_format="pandas",
+            compute=compute,
+            zero_copy_batch=False,
+            **ray_remote_args,
         )
 
     def drop_columns(

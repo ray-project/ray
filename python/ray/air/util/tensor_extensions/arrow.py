@@ -6,6 +6,7 @@ import pyarrow as pa
 
 from ray.air.util.tensor_extensions.utils import _is_ndarray_variable_shaped_tensor
 from ray.util.annotations import PublicAPI
+from ray.data._internal.arrow_serialization import _copy_bitpacked_buffer_if_needed
 
 
 @PublicAPI(stability="beta")
@@ -631,3 +632,55 @@ def _pairwise(iterable):
     a, b = itertools.tee(iterable)
     next(b, None)
     return zip(a, b)
+
+
+def _copy_tensor_array_if_needed(a: "ArrowTensorArray"):
+    """Copy tensor array if it's a zero-copy slice. This is to circumvent an Arrow
+    serialization bug, where a zero-copy slice serializes the entire underlying array
+    buffer.
+    """
+    shape = a.type.shape
+    # Number of items per inner ndarray.
+    num_items_per_element = np.prod(shape) if shape else 1
+    outer_len = len(a)
+    total_items = outer_len * num_items_per_element
+    value_type = a.storage.type.value_type
+    # Buffers schema:
+    # [None, offset_buffer, None, data_buffer]
+    buffers = a.buffers()
+    # Copy bitmap buffer, if needed.
+    bitmap = buffers[0]
+    if bitmap is not None:
+        item_offset = a.offset * num_items_per_element
+        bitmap = _copy_bitpacked_buffer_if_needed(bitmap, item_offset, total_items)
+    # Copy the data buffer.
+    data_buf = buffers[3]
+    if pa.types.is_boolean(value_type):
+        # Arrow boolean array buffers are bit-packed, with 8 entries per byte,
+        # and are accessed via bit offsets.
+        item_offset = a.offset * num_items_per_element
+        data_buf = _copy_bitpacked_buffer_if_needed(data_buf, item_offset, total_items)
+    else:
+        # We assume all other array types are accessed via byte array
+        # offsets.
+        type_bytewidth = value_type.bit_width // 8
+        byte_offset = a.offset * type_bytewidth * num_items_per_element
+        byte_length = total_items * type_bytewidth
+        if a.offset > 0 or byte_length < data_buf.size:
+            data_buf = data_buf.slice(byte_offset, byte_length)
+    data_array = pa.Array.from_buffers(value_type, total_items, [bitmap, data_buf])
+    # Copy the offset buffer.
+    offset_buffer = buffers[1]
+    offset_type_bytewidth = pa.from_numpy_dtype(a.OFFSET_DTYPE).bit_width // 8
+    offset_buf_size = (outer_len + 1) * offset_type_bytewidth
+    copied_offset_buf = offset_buffer.slice(0, offset_buf_size)
+
+    # New storage array on copied buffer.
+    storage = pa.Array.from_buffers(
+        pa.list_(value_type),
+        outer_len,
+        [None, copied_offset_buf],
+        children=[data_array],
+    )
+    type_ = ArrowTensorType(shape, value_type)
+    return pa.ExtensionArray.from_storage(type_, storage)
