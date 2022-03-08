@@ -147,7 +147,7 @@ class TorchAccelerator(Accelerator):
                 # Automatically set the DistributedSampler
 
                 # If using a sampler, the shuffle attribute in the
-                # DataLoader must be sept to False.
+                # DataLoader must be set to False.
                 # Instead the shuffling is determined by the shuffle attribute
                 # in the DistributedSampler.
                 # We identify if shuffling is enabled in the passed in
@@ -205,7 +205,6 @@ class TorchAccelerator(Accelerator):
             tensor (torch.Tensor): Tensor of which the derivative will be computed.
         """
         if self.amp:
-            assert self.scaler is not None
             self.scaler.scale(tensor).backward()
         else:
             tensor.backward()
