@@ -72,7 +72,7 @@ SchedulingResult SortSchedulingResult(const SchedulingResult &result,
                                       const std::vector<int> &sorted_index) {
   if (result.first == SchedulingResultStatus::SUCCESS) {
     std::vector<NodeID> sorted_nodes(result.second.size());
-    for (int i = 0; i < sorted_index.size(); i++) {
+    for (int i = 0; i < (int)sorted_index.size(); i++) {
       sorted_nodes[sorted_index[i]] = result.second[i];
     }
     return std::make_pair(result.first, sorted_nodes);
@@ -106,7 +106,7 @@ SchedulingResult GcsResourceScheduler::Schedule(
   const auto &sorted_index = SortRequiredResources(required_resources_list);
 
   std::vector<ResourceSet> sorted_resources(required_resources_list);
-  for (int i = 0; i < sorted_index.size(); i++) {
+  for (int i = 0; i < (int)sorted_index.size(); i++) {
     sorted_resources[i] = required_resources_list[sorted_index[i]];
   }
 
@@ -123,8 +123,8 @@ SchedulingResult GcsResourceScheduler::Schedule(
                                 sorted_index);
   default:
     RAY_LOG(FATAL) << "Unsupported scheduling type: " << scheduling_type;
-    return SchedulingResult();
   }
+  UNREACHABLE;
 }
 
 absl::flat_hash_set<NodeID> GcsResourceScheduler::FilterCandidateNodes(
@@ -175,11 +175,7 @@ std::vector<int> GcsResourceScheduler::SortRequiredResources(
     auto a_map = required_resources[a].GetResourceAmountMap();
     auto b_map = required_resources[b].GetResourceAmountMap();
     bool finished, cmp_res;
-    // TODO (jon-chuang): the exact resource priority defined here needs to be revisted.
-    std::tie(finished, cmp_res) = cmp_resource("GPU", a_map, b_map);
-    if (finished) {
-      return cmp_res;
-    }
+
     // Make sure that resources are always sorted in the same order
     std::set<std::string> extra_resources_set;
     for (auto r : a_map) {
@@ -191,6 +187,22 @@ std::vector<int> GcsResourceScheduler::SortRequiredResources(
       if (r.first != "CPU" && r.first != "GPU") {
         extra_resources_set.insert(r.first);
       }
+    }
+
+    // TODO (jon-chuang): the exact resource priority defined here needs to be revisted.
+
+    // Notes: This is a comparator for sorting in c++. We return true if a < b.
+    //
+    // Here we are comparing two maps to see if a_map < b_map, based on the given resource
+    // e.g. "GPU". If we can resolve the predicate, we return finished = true.
+    //
+    // Else, we rely on the resource of the next priority level to try to
+    // resolve the comparison, all the way until "CPU", after which we return false,
+    // since the a_map's and b_map's resources are tied by priority.
+
+    std::tie(finished, cmp_res) = cmp_resource("GPU", a_map, b_map);
+    if (finished) {
+      return cmp_res;
     }
     for (auto r : extra_resources_set) {
       std::tie(finished, cmp_res) = cmp_resource(r, a_map, b_map);

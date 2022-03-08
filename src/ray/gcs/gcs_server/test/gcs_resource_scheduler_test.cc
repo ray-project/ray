@@ -110,6 +110,7 @@ class GcsResourceSchedulerTest : public ::testing::Test {
 
     resources_list.emplace_back(std::vector({std::make_pair(cpu_resource, 1.0)}));
     resources_list.emplace_back(std::vector({std::make_pair(cpu_resource, 2.0)}));
+    resources_list.emplace_back(std::vector({std::make_pair(cpu_resource, 3.0)}));
     resources_list.emplace_back(std::vector(
         {std::make_pair(cpu_resource, 1.0), std::make_pair(gpu_resource, 1.0)}));
     resources_list.emplace_back(std::vector(
@@ -120,9 +121,9 @@ class GcsResourceSchedulerTest : public ::testing::Test {
         {std::make_pair(cpu_resource, 1.0), std::make_pair(mem_resource, 2.0)}));
 
     std::vector<NodeID> node_ids;
-    for (int i = 0; i < 6; i++) {
+    for (auto r : resources_list) {
       node_ids.emplace_back(NodeID::FromRandom());
-      AddClusterResources(node_ids.back(), resources_list[i]);
+      AddClusterResources(node_ids.back(), r);
     }
 
     // Scheduling succeeded and node resources are used up.
@@ -138,7 +139,7 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     const auto &result1 =
         gcs_resource_scheduler_->Schedule(required_resources_list, scheduling_type);
     ASSERT_TRUE(result1.first == gcs::SchedulingResultStatus::SUCCESS);
-    ASSERT_EQ(result1.second.size(), 6);
+    ASSERT_EQ(result1.second.size(), resources_list.size());
   }
 
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
