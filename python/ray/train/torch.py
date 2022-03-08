@@ -1,12 +1,13 @@
 import tempfile
 from dataclasses import dataclass
+import functools
 import io
 import logging
 import os
 
 from datetime import timedelta
 from pathlib import Path
-from typing import Any, Dict, Optional, Type
+from typing import Any, Dict, Optional
 
 import ray
 from ray import train
@@ -149,7 +150,7 @@ class TorchAccelerator(Accelerator):
                 # If using a sampler, the shuffle attribute in the
                 # DataLoader must be set to False.
                 # Instead the shuffling is determined by the shuffle attribute
-                # in the DistributedSampler.
+                # in the DistributedSampler.∆
                 # We identify if shuffling is enabled in the passed in
                 # DataLoader by seeing if the sampler for the DataLoader is a
                 # SequentialSampler.
