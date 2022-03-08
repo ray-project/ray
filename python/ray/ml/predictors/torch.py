@@ -45,7 +45,7 @@ class TorchPredictor(Predictor):
 
     def predict(
         self, preprocessed_data: ray.data.Dataset, **to_torch_kwargs
-    ) -> ray.data.Dataset:
+    ) -> pd.DataFrame:
         predictions = []
         for batch in preprocessed_data.to_torch(**to_torch_kwargs):
             features = batch[0]
