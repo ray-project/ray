@@ -46,6 +46,8 @@ message DecreaseRuntimeEnvReferenceReply {
 }
 
 service RuntimeEnvService {
-  rpc IncreaseRuntimeEnvReference(IncreaseRuntimeEnvReferenceRequest) returns (IncreaseRuntimeEnvReferenceReply);
-  rpc DecreaseRuntimeEnvReference(DecreaseRuntimeEnvReferenceRequest) returns (DecreaseRuntimeEnvReferenceReply);
+  rpc IncreaseRuntimeEnvReference(IncreaseRuntimeEnvReferenceRequest)
+      returns (IncreaseRuntimeEnvReferenceReply);
+  rpc DecreaseRuntimeEnvReference(DecreaseRuntimeEnvReferenceRequest)
+      returns (DecreaseRuntimeEnvReferenceReply);
 }
