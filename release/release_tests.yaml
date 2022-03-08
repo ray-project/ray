@@ -761,3 +761,26 @@
 
   alert: tune_tests
 
+########################
+# Core Nightly Tests
+########################
+
+- name: shuffle_10gb
+  group: Core nightly tests
+  team: core
+  working_dir: nightly_tests
+
+  legacy:
+    test_name: shuffle_10gb
+    test_suite: nightly_tests
+
+  cluster:
+    cluster_env: shuffle/shuffle_app_config.yaml
+    cluster_compute: shuffle/shuffle_compute_single.yaml
+
+  run:
+    timeout: 3000
+    script: python shuffle/shuffle_test.py --num-partitions=50 --partition-size=200e6
+    
+    type: sdk_command
+    file_manager: sdk
