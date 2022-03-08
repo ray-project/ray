@@ -162,7 +162,7 @@ class TorchAccelerator(Accelerator):
             data_loader = with_sampler(data_loader)
 
         if move_to_device:
-            device = get_device()
+            device = self.get_device()
             data_loader = _WrappedDataLoader(data_loader, device)
 
         return data_loader
