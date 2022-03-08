@@ -1,10 +1,11 @@
+import abc
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from ray.tune import PlacementGroupFactory
 
 
-class ScalingConfig:
+class ScalingConfig(abc.ABC):
     """Configuration for scaling training."""
 
     pass
