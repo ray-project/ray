@@ -419,7 +419,7 @@ def run(
             deployments = schema_to_serve_application(schematized_config)
 
             ray.init(address=cluster_address, namespace="serve")
-            serve.start()
+            serve.start(detached=True)
             ServeSubmissionClient(dashboard_address)._upload_working_dir_if_needed(
                 runtime_env_updates
             )
@@ -451,7 +451,7 @@ def run(
             deployments = [deployment]
 
             ray.init(address=cluster_address, namespace="serve")
-            serve.start()
+            serve.start(detached=True)
             ServeSubmissionClient(dashboard_address)._upload_working_dir_if_needed(
                 runtime_env_updates
             )
