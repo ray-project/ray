@@ -803,3 +803,313 @@
   run:
     timeout: 1800
     script: OMP_NUM_THREADS=64 RAY_ADDRESS= python run_microbenchmark.py
+
+#########################
+# Core Scalability Tests
+#########################
+
+- name: single_node
+  group: core-scalability-test
+  working_dir: benchmarks
+  legacy:
+    test_name: single_node
+    test_suite: benchmark_tests
+
+  frequency: multi
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: single_node.yaml
+
+  run:
+    timeout: 12000
+    prepare: sleep 0
+    script: python single_node/test_single_node.py
+    type: sdk_command
+    file_manager: sdk
+
+- name: object_store
+  group: core-scalability-test
+  working_dir: benchmarks
+  legacy:
+    test_name: object_store
+    test_suite: benchmark_tests
+
+  frequency: multi
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: object_store.yaml
+
+  run:
+    timeout: 3600
+    script: python object_store/test_object_store.py
+    wait_for_nodes:
+      num_nodes: 50
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: many_actors
+  group: core-scalability-test
+  working_dir: benchmarks
+  legacy:
+    test_name: many_actors
+    test_suite: benchmark_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: distributed.yaml
+
+  run:
+    timeout: 3600
+    script: python distributed/test_many_actors.py
+    wait_for_nodes:
+      num_nodes: 65
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: many_actors_smoke_test
+  group: core-scalability-test
+  working_dir: benchmarks
+  legacy:
+    test_name: many_actors_smoke_test
+    test_suite: benchmark_tests
+
+  frequency: multi
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: distributed_smoke_test.yaml
+
+  run:
+    timeout: 3600
+    script: SMOKE_TEST=1 python distributed/test_many_actors.py
+    wait_for_nodes:
+      num_nodes: 2
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: many_tasks
+  group: core-scalability-test
+  working_dir: benchmarks
+  legacy:
+    test_name: many_tasks
+    test_suite: benchmark_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: distributed.yaml
+
+  run:
+    timeout: 3600
+    script: python distributed/test_many_tasks.py --num-tasks=10000
+    wait_for_nodes:
+      num_nodes: 65
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: many_tasks_smoke_test
+  group: core-scalability-test
+  working_dir: benchmarks
+  legacy:
+    test_name: many_tasks_smoke_test
+    test_suite: benchmark_tests
+
+  frequency: multi
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: distributed_smoke_test.yaml
+
+  run:
+    timeout: 3600
+    script: python distributed/test_many_tasks.py --num-tasks=100
+    wait_for_nodes:
+      num_nodes: 2
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: many_pgs
+  group: core-scalability-test
+  working_dir: benchmarks
+  legacy:
+    test_name: many_pgs
+    test_suite: benchmark_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: distributed.yaml
+
+  run:
+    timeout: 3600
+    script: python distributed/test_many_pgs.py
+    wait_for_nodes:
+      num_nodes: 65
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: many_pgs_smoke_test
+  group: core-scalability-test
+  working_dir: benchmarks
+  legacy:
+    test_name: many_pgs_smoke_test
+    test_suite: benchmark_tests
+
+  frequency: multi
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: distributed_smoke_test.yaml
+
+  run:
+    timeout: 3600
+    script: SMOKE_TEST=1 python distributed/test_many_pgs.py
+    wait_for_nodes:
+      num_nodes: 2
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: many_nodes
+  group: core-scalability-test
+  working_dir: benchmarks
+  legacy:
+    test_name: many_nodes
+    test_suite: benchmark_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: many_nodes.yaml
+
+  run:
+    timeout: 3600
+    script: python distributed/test_many_tasks.py --num-tasks=1000
+    wait_for_nodes:
+      num_nodes: 250
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: scheduling_test_many_0s_tasks_single_node
+  group: core-scalability-test
+  working_dir: benchmarks
+  legacy:
+    test_name: scheduling_test_many_0s_tasks_single_node
+    test_suite: benchmark_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: scheduling.yaml
+
+  run:
+    timeout: 3600
+    script: python distributed/test_scheduling.py --total-num-task=1984000 --num-cpu-per-task=1
+      --task-duration-s=0 --total-num-actors=1 --num-actors-per-nodes=1
+
+    wait_for_nodes:
+      num_nodes: 32
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: scheduling_test_many_0s_tasks_many_nodes
+  group: core-scalability-test
+  working_dir: benchmarks
+  legacy:
+    test_name: scheduling_test_many_0s_tasks_many_nodes
+    test_suite: benchmark_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: scheduling.yaml
+
+  run:
+    timeout: 3600
+    script: python distributed/test_scheduling.py --total-num-task=1984000 --num-cpu-per-task=1
+      --task-duration-s=0 --total-num-actors=32 --num-actors-per-nodes=1
+
+    wait_for_nodes:
+      num_nodes: 32
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: scheduling_test_many_5s_tasks_single_node
+  group: core-scalability-test
+  working_dir: benchmarks
+  legacy:
+    test_name: scheduling_test_many_5s_tasks_single_node
+    test_suite: benchmark_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: scheduling.yaml
+
+  run:
+    timeout: 3600
+    script: python distributed/test_scheduling.py --total-num-task=1984000 --num-cpu-per-task=1
+      --task-duration-s=5 --total-num-actors=1 --num-actors-per-nodes=1
+
+    wait_for_nodes:
+      num_nodes: 32
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+  stable: false
+
+- name: scheduling_test_many_5s_tasks_many_nodes
+  group: core-scalability-test
+  working_dir: benchmarks
+  legacy:
+    test_name: scheduling_test_many_5s_tasks_many_nodes
+    test_suite: benchmark_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: scheduling.yaml
+
+  run:
+    timeout: 3600
+    script: python distributed/test_scheduling.py --total-num-task=1984000 --num-cpu-per-task=1
+      --task-duration-s=5 --total-num-actors=32 --num-actors-per-nodes=1
+
+    wait_for_nodes:
+      num_nodes: 32
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+  stable: false
