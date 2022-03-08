@@ -6,11 +6,10 @@ import os
 
 from datetime import timedelta
 from pathlib import Path
-from typing import Optional, Dict, Any, Type
+from typing import Any, Dict, Optional, Type
 
 import ray
 from ray import train
-
 from ray.train.accelerator import Accelerator
 from ray.train.backend import BackendConfig, Backend, EncodedData
 from ray.train.constants import PYTORCH_PROFILER_KEY
@@ -148,7 +147,7 @@ class TorchAccelerator(Accelerator):
                 # Automatically set the DistributedSampler
 
                 # If using a sampler, the shuffle attribute in the
-                # DataLoader must be set to False.
+                # DataLoader must be sept to False.
                 # Instead the shuffling is determined by the shuffle attribute
                 # in the DistributedSampler.
                 # We identify if shuffling is enabled in the passed in
@@ -238,11 +237,6 @@ class TorchConfig(BackendConfig):
     @property
     def backend_cls(self):
         return TorchBackend
-
-    @property
-    def accelerator_cls(self) -> Optional[Type[Accelerator]]:
-        """Returns the ``TorchAccelerator`` type."""
-        return TorchAccelerator
 
 
 def setup_torch_process_group(
@@ -514,6 +508,24 @@ def prepare_data_loader(
 
 
 @PublicAPI(stability="beta")
+def accelerate(amp: bool = False) -> None:
+    """Enables training optimizations.
+
+    Arguments:
+        amp (bool): If true, perform training with automatic mixed precision.
+            Otherwise, use full precision.
+    """
+    try:
+        set_accelerator(TorchAccelerator(amp=amp))
+    except RuntimeError:
+        raise RuntimeError(
+            "An accelerator has already been set. Make sure "
+            "`train.torch.accelerate()` is not called multiple times, and is called "
+            "before any of the prepare methods."
+        )
+
+
+@PublicAPI(stability="beta")
 def prepare_optimizer(optimizer: torch.optim.Optimizer) -> torch.optim.Optimizer:
     """Wraps optimizer to support automatic mixed precision.
 
@@ -534,24 +546,6 @@ def backward(tensor: torch.Tensor) -> None:
         tensor (torch.Tensor): Tensor of which the derivative will be computed.
     """
     get_accelerator(TorchAccelerator).backward(tensor)
-
-
-@PublicAPI(stability="beta")
-def accelerate(amp: bool = False) -> None:
-    """Enables training optimizations.
-
-    Arguments:
-        amp (bool): If true, perform training with automatic mixed precision.
-            Otherwise, use full precision.
-    """
-    try:
-        set_accelerator(TorchAccelerator(amp=amp))
-    except RuntimeError:
-        raise RuntimeError(
-            "An accelerator has already been set. Make sure "
-            "`train.torch.accelerate()` is not called multiple times, and is called "
-            "before any of the prepare methods."
-        )
 
 
 WORKER_TRACE_DIR_NAME = "pytorch_profiler_worker_traces"

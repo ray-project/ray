@@ -53,7 +53,6 @@ class Session:
         checkpoint: Optional[Dict] = None,
         encode_data_fn: Callable = None,
         detailed_autofilled_metrics: bool = False,
-        accelerator_cls: Optional[Type[Accelerator]] = None,
     ):
 
         self.dataset_shard = dataset_shard
@@ -235,32 +234,6 @@ class Session:
         # Acquire lock to stop the training thread until
         # checkpoint has been processed.
         self.continue_lock.acquire()
-
-    @property
-    def accelerator(self) -> Optional[Accelerator]:
-        """The accelerator for this training session, if any.
-
-        If the accelerator has not been set and an accelerator class has been provided,
-        then this method will construct an accelerator using the provided accelerator
-        class.
-        """
-        if not self._accelerator and self._accelerator_cls:
-            self._accelerator = self._accelerator_cls()
-        return self._accelerator
-
-    @accelerator.setter
-    def accelerator(self, accelerator: Accelerator) -> None:
-        """Sets the accelerator for this training session.
-
-        Args:
-            accelerator (Accelerator): The accelerator to use for training.
-
-        Raises:
-            RuntimeError: if the accelerator has already been set.
-        """
-        if self._accelerator:
-            raise RuntimeError("Cannot change accelerator once set.")
-        self._accelerator = accelerator
 
 
 _session = None
