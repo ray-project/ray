@@ -1,15 +1,17 @@
-from typing import Optional, Union, Dict
+from typing import Optional, Union, Dict, List
 
+import numpy as np
 import pandas as pd
 import torch
 
-import ray
 from ray.ml.checkpoint import Checkpoint
-from ray.ml.predictor import Predictor
+from ray.ml.predictor import Predictor, DataBatchType
 from ray.ml.preprocessor import Preprocessor
 
 from ray.ml.constants import PREPROCESSOR_KEY
 from ray.ml.constants import MODEL_KEY
+
+from ray.data.impl.torch import convert_pandas_to_torch_tensor
 
 
 class TorchPredictor(Predictor):
@@ -17,6 +19,7 @@ class TorchPredictor(Predictor):
 
     def __init__(self, model: torch.nn.Module, preprocessor: Preprocessor):
         self.model = model
+        self.model.eval()
         self.preprocessor = preprocessor
 
     @classmethod
@@ -44,16 +47,43 @@ class TorchPredictor(Predictor):
         return TorchPredictor(model=model, preprocessor=preprocessor)
 
     def predict(
-        self, preprocessed_data: ray.data.Dataset, **to_torch_kwargs
-    ) -> pd.DataFrame:
-        predictions = []
-        for batch in preprocessed_data.to_torch(**to_torch_kwargs):
-            features = batch[0]
-            predictions.append(self.score_fn(features))
-        return pd.DataFrame({"predictions": predictions})
+        self,
+        data: DataBatchType,
+        column_names: Optional[List[str]] = None,
+        feature_columns: Optional[Union[List[str], List[List[str]]]] = None,
+        dtype: Optional[Union[torch.dtype, List[torch.dtype]]] = None,
+    ) -> DataBatchType:
+        """Run inference on data batch.
 
-    def score_fn(self, data):
-        return self.model(data)
+        Args:
+            data (DataBatchType): Input data.
+            columns_names (Optional[List[str]]): If provided, the column
+                names to set for the data batch.
+            feature_columns (Optional[Union[List[str], List[List[str]]]]):
+                The names of the columns in the dataframe to use as
+                features to predict on. If this arg is a List[List[str]],
+                then the data batch will be converted into a list of tensors.
+                This is useful for multi-input
+                models. If None, then use all columns in the ``data_batch``.
+            dtype (Optional[Union[torch.dtype, List[torch.dtype]]]): The
+                torch dtype to use for the tensor. If set to None,
+                then automatically infer the dtype.
+
+        Returns:
+            DataBatchType: Prediction result.
+
+        """
+        if isinstance(data, np.ndarray):
+            # If numpy array, then convert to pandas dataframe.
+            data = pd.DataFrame(data)
+
+        if column_names:
+            data.columns = column_names
+        tensor = convert_pandas_to_torch_tensor(
+            data, columns=feature_columns, column_dtypes=dtype
+        )
+        prediction = self.model(tensor).cpu().detach().numpy()
+        return pd.DataFrame(prediction, columns=["predictions"])
 
 
 # TODO: Find a better place for this.

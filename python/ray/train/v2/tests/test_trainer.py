@@ -299,10 +299,13 @@ class TestTorchTrainer:
         predictor = TorchPredictor.from_checkpoint(
             result.checkpoint, model_definition=torch.nn.Linear(1, 1)
         )
-        predictions = predictor.predict(
-            ray.data.range(3), feature_column_dtypes=torch.float
+
+        predict_dataset = ray.data.range(3)
+        predictions = predict_dataset.map_batches(
+            lambda batch: predictor.predict(batch, dtype=torch.float),
+            batch_format="pandas",
         )
-        assert len(predictions) == 3
+        assert predictions.count() == 3
 
 
 if __name__ == "__main__":
