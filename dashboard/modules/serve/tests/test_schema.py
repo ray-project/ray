@@ -580,9 +580,7 @@ def test_serve_application_to_schema_to_serve_application():
     assert requests.get("http://localhost:8000/hi").text == "Hello world!"
 
     # Check statuses
-    statuses = serve_application_status_to_schema(
-        Application.get_deployment_statuses()
-    ).statuses
+    statuses = serve_application_status_to_schema(Application.get_statuses()).statuses
     deployment_names = {"f1", "f2"}
     for deployment_status in statuses:
         assert deployment_status.status in {"UPDATING", "HEALTHY"}
