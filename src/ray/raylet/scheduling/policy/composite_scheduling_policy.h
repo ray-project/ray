@@ -23,6 +23,8 @@
 namespace ray {
 namespace raylet_scheduling_policy {
 
+/// A composite scheduling policy that routes the request to the underlining
+/// scheduling_policy according to the scheduling_type.
 class CompositeSchedulingPolicy : public ISchedulingPolicy {
  public:
   CompositeSchedulingPolicy(scheduling::NodeID local_node_id,
