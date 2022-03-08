@@ -19,6 +19,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/util/logging.h"
+#include "ray/util/util.h"
 
 /// Limit the ID range to test for collisions.
 #define MAX_ID_TEST 8
@@ -85,13 +86,13 @@ enum class SchedulingIDTag { Node, Resource };
 template <SchedulingIDTag T>
 class BaseSchedulingID {
  public:
-  explicit BaseSchedulingID(const std::string &name) : id_{GetMap().Insert(name)} {}
+  explicit BaseSchedulingID(const std::string &name) : id_{GetMap()->Insert(name)} {}
 
   explicit BaseSchedulingID(int64_t id) : id_{id} {}
 
   int64_t ToInt() const { return id_; }
 
-  std::string Binary() const { return GetMap().Get(id_); }
+  std::string Binary() const { return GetMap()->Get(id_); }
 
   bool operator==(const BaseSchedulingID &rhs) const { return id_ == rhs.id_; }
 
@@ -105,8 +106,8 @@ class BaseSchedulingID {
 
  private:
   /// Meyer's singleton to store the StringIdMap.
-  static StringIdMap &GetMap() {
-    static StringIdMap map;
+  static ThreadPrivate<StringIdMap> &GetMap() {
+    static ThreadPrivate<StringIdMap> map;
     return map;
   }
   int64_t id_ = -1;
@@ -128,14 +129,14 @@ inline std::ostream &operator<<(
 /// Specialization for SchedulingIDTag. Specifically, we populate
 /// the singleton map with PredefinedResources.
 template <>
-inline StringIdMap &BaseSchedulingID<SchedulingIDTag::Resource>::GetMap() {
-  static StringIdMap map = []() {
+inline ThreadPrivate<StringIdMap> &BaseSchedulingID<SchedulingIDTag::Resource>::GetMap() {
+  static ThreadPrivate<StringIdMap> map{[]() {
     StringIdMap map;
     return map.InsertOrDie(kCPU_ResourceLabel, CPU)
         .InsertOrDie(kGPU_ResourceLabel, GPU)
         .InsertOrDie(kObjectStoreMemory_ResourceLabel, OBJECT_STORE_MEM)
         .InsertOrDie(kMemory_ResourceLabel, MEM);
-  }();
+  }()};
   return map;
 }
 
@@ -143,8 +144,10 @@ namespace scheduling {
 /// The actual scheduling id definitions which are used in scheduler.
 using ResourceID = BaseSchedulingID<SchedulingIDTag::Resource>;
 using NodeID = BaseSchedulingID<SchedulingIDTag::Node>;
-}  // namespace scheduling
 
+const ResourceID kCPUResource{CPU};
+const ResourceID kGPUResource{GPU};
+}  // namespace scheduling
 }  // namespace ray
 
 /// implements hash function for BaseSchedulingID<T>

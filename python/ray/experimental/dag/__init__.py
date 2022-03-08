@@ -5,6 +5,7 @@ from ray.experimental.dag.input_node import InputNode
 from ray.experimental.dag.constants import (
     PARENT_CLASS_NODE_KEY,
     PREV_CLASS_METHOD_CALL_KEY,
+    DAGNODE_TYPE_KEY,
 )
 
 __all__ = [
@@ -15,4 +16,5 @@ __all__ = [
     "InputNode",
     "PARENT_CLASS_NODE_KEY",
     "PREV_CLASS_METHOD_CALL_KEY",
+    "DAGNODE_TYPE_KEY",
 ]
