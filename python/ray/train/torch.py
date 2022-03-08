@@ -11,7 +11,6 @@ from typing import Any, Dict, Optional
 
 import ray
 from ray import train
-from sqlalchemy import false
 from ray.train.accelerator import Accelerator
 from ray.train.backend import BackendConfig, Backend, EncodedData
 from ray.train.constants import PYTORCH_PROFILER_KEY
@@ -39,11 +38,8 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-print("YEET")
-
-
 class TorchAccelerator(Accelerator):
-    """An object that implements methods to accelerate PyTorch training."""
+    """A utility that implements methods to accelerate PyTorch training."""
 
     def __init__(self):
         self._is_seeded = False
@@ -113,18 +109,6 @@ class TorchAccelerator(Accelerator):
             move_to_device (bool): If set, automatically move the data
                 returned by the data loader to the correct device.
         """
-        data_loader_args = {
-            "dataset": data_loader.dataset,
-            "batch_size": data_loader.batch_size,
-            "shuffle": data_loader.shuffle,
-            "num_workers": data_loader.num_workers,
-            "collate_fn": data_loader.collate_fn,
-            "pin_memory": data_loader.pin_memory,
-            "drop_last": data_loader.drop_last,
-            "timeout": data_loader.timeout,
-            "worker_init_fn": data_loader.worker_init_fn,
-            "sampler": data_loader.sampler,
-        }
 
         # Only add Distributed Sampler if the following conditions hold:
         # 1. More than one training worker is being used.
@@ -140,44 +124,54 @@ class TorchAccelerator(Accelerator):
             )
             and add_dist_sampler
         ):
-            # Automatically set the DistributedSampler
 
-            # If using a sampler, the shuffle attribute in the
-            # DataLoader must be set to False.
-            # Instead the shuffling is determined by the shuffle attribute
-            # in the DistributedSampler.
-            # We identify if shuffling is enabled in the passed in
-            # DataLoader by seeing if the sampler for the DataLoader is a
-            # SequentialSampler.
-            data_loader_args["shuffle"] = False
-            data_loader_args["sampler"] = (
-                DistributedSampler(
-                    data_loader.dataset,
-                    shuffle=(not isinstance(data_loader.sampler, SequentialSampler)),
-                ),
-            )
+            def with_sampler(loader):
+                # Automatically set the DistributedSampler
 
-        def seed_worker(worker_id):
-            worker_seed = torch.initial_seed() % 2 ** 32
-            np.random.seed(worker_seed)
-            random.seed(worker_seed)
+                # If using a sampler, the shuffle attribute in the
+                # DataLoader must be set to False.
+                # Instead the shuffling is determined by the shuffle attribute
+                # in the DistributedSampler.
+                # We identify if shuffling is enabled in the passed in
+                # DataLoader by seeing if the sampler for the DataLoader is a
+                # SequentialSampler.
+                shuffle = not isinstance(loader.sampler, SequentialSampler)
 
-        def seeded_worker_init_fn(worker_init_fn):
-            def wrapper(worker_id):
-                worker_init_fn(worker_id)
-                seed_worker(worker_id)
+                def seed_worker(worker_id):
+                    worker_seed = torch.initial_seed() % 2 ** 32
+                    np.random.seed(worker_seed)
+                    random.seed(worker_seed)
 
-            return wrapper
+                def seeded_worker_init_fn(worker_init_fn):
+                    def wrapper(worker_id):
+                        seed_worker(worker_id)
+                        worker_init_fn(worker_id)
 
-        if self._is_seeded:
-            generator = torch.Generator()
-            generator.manual_seed(0)
-            data_loader_args["worker_init_fn"] = seeded_worker_init_fn(
-                data_loader.worker_init_fn
-            )
-            data_loader_args["generator"] = generator
+                    return wrapper
 
-        data_loader = DataLoader(**data_loader_args)
+                worker_init_fn = loader.worker_init_fn
+                generator = loader.generator
+                if self._is_seeded:
+                    worker_init_fn = seeded_worker_init_fn(loader.worker_init_fn)
+                    generator = torch.Generator()
+                    generator.manual_seed(0)
+
+                data_loader_args = {
+                    "dataset": loader.dataset,
+                    "batch_size": loader.batch_size,
+                    "shuffle": False,
+                    "num_workers": loader.num_workers,
+                    "collate_fn": loader.collate_fn,
+                    "pin_memory": loader.pin_memory,
+                    "drop_last": loader.drop_last,
+                    "timeout": loader.timeout,
+                    "worker_init_fn": worker_init_fn,
+                    "generator": generator,
+                    "sampler": DistributedSampler(loader.dataset, shuffle=shuffle),
+                }
+                return DataLoader(**data_loader_args)
+
+            data_loader = with_sampler(data_loader)
 
         if move_to_device:
             device = self.get_device()
@@ -206,11 +200,10 @@ class TorchAccelerator(Accelerator):
         """
         torch.manual_seed(seed)
         random.seed(seed)
-        np.random.seed(0)
+        np.random.seed(seed)
 
         torch.use_deterministic_algorithms(True)
-        if torch.cuda.is_available():
-            torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.benchmark = False
 
         self._is_seeded = True
 
@@ -465,7 +458,14 @@ def prepare_data_loader(
 @PublicAPI(stability="beta")
 def accelerate() -> None:
     """Enables training optimizations."""
-    set_accelerator(TorchAccelerator())
+    try:
+        set_accelerator(TorchAccelerator())
+    except RuntimeError:
+        raise RuntimeError(
+            "An accelerator has already been set. Make sure "
+            "`train.torch.accelerate()` is not called multiple times, and is called "
+            "before any of the prepare methods."
+        )
 
 
 @PublicAPI(stability="beta")

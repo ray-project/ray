@@ -767,7 +767,10 @@
 
 - name: shuffle_10gb
   group: Core nightly tests
+
+  frequency: nightly
   team: core
+  frequency: multi
   working_dir: nightly_tests
 
   legacy:
@@ -784,3 +787,21 @@
     
     type: sdk_command
     file_manager: sdk
+
+- name: microbenchmark
+  group: Core nightly tests
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+
+  legacy:
+    test_name: microbenchmark
+    test_suite: microbenchmark
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_64.yaml
+
+  run:
+    timeout: 1800
+    script: OMP_NUM_THREADS=64 RAY_ADDRESS= python run_microbenchmark.py

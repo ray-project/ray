@@ -157,3 +157,15 @@ py_test_run_all_subdirectory(
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
 )
+
+# --------------------------------------------------------------------
+# Test all doc/source/ray-overview/doc_code snippets, used on ray.io
+# --------------------------------------------------------------------
+
+py_test_run_all_subdirectory(
+    size = "small",
+    include = ["source/ray-overview/doc_code/*.py"],
+    exclude = ["source/ray-overview/doc_code/ray_data.py"],
+    extra_srcs = [],
+    tags = ["exclusive", "team:ml"],
+)
