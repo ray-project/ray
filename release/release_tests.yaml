@@ -768,6 +768,7 @@
 - name: shuffle_10gb
   group: Core nightly tests
   team: core
+  frequency: multi
   working_dir: nightly_tests
 
   legacy:
@@ -827,3 +828,21 @@
       script: python dask_on_ray/large_scale_test.py --num_workers 4 --worker_obj_store_size_in_gb 20 --error_rate 0  --data_save_path /tmp/ray
       type: job
       file_manager: job
+
+- name: microbenchmark
+  group: Core nightly tests
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+
+  legacy:
+    test_name: microbenchmark
+    test_suite: microbenchmark
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_64.yaml
+
+  run:
+    timeout: 1800
+    script: OMP_NUM_THREADS=64 RAY_ADDRESS= python run_microbenchmark.py
