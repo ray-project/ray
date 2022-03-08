@@ -8,9 +8,21 @@ from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 class PipelineInputNode(InputNode):
     """Node used in DAG building API to mark entrypoints of a Serve Pipeline.
     The extension of Ray DAG level InputNode with additional abilities such
-    as input schema validation and input conversion for HTTP.
+    as input conversion from HTTP.
 
-    # TODO (jiaodong): Add a concrete example here
+    Example:
+        >>> # Provide your own async http to python data convert function
+        >>> async def request_to_data_int(request: starlette.requests.Request):
+        ...    data = await request.body()
+        ...    return int(data)
+
+        >>> # Change your Ray DAG InputNode to PipelineInputNode with
+        >>> # preprocessor passed in
+        >>> with PipelineInputNode(
+        ...     preprocessor=request_to_data_int
+        ... ) as dag_input:
+        ...    model = Model._bind(2, ratio=0.3)
+        ...    ray_dag = model.forward._bind(dag_input)
     """
 
     def __init__(
@@ -56,9 +68,9 @@ class PipelineInputNode(InputNode):
         """Executor of InputNode."""
         # Catch and assert singleton context at dag execution time.
         assert self._in_context_manager(), (
-            "InputNode is a singleton instance that should be only used in "
-            "context manager for dag building and execution. See the docstring "
-            "of class InputNode for examples."
+            "ServeInputNode is a singleton instance that should be only used "
+            "in context manager for dag building and execution. See the "
+            "docstring of class InputNode and ServeInputNode for examples."
         )
         # If user only passed in one value, for simplicity we just return it.
         if len(args) == 1 and len(kwargs) == 0:

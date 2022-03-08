@@ -28,11 +28,9 @@ class Model:
         self.ratio = ratio or 1
 
     def forward(self, input: int):
-        print(f"forward() recevied input: {input}")
         return self.ratio * self.weight * input
 
     def __call__(self, request):
-        print(f"__call__() recevied request: {request}")
         input_data = request
         return self.ratio * self.weight * input_data
 

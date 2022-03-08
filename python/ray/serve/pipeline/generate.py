@@ -136,18 +136,25 @@ def extract_deployments_from_serve_dag(
 
 def get_ingress_deployment(
     serve_dag_root_node: DAGNode, pipeline_input_node: PipelineInputNode
-):
-    """Given a transformed serve dag node as root, return an Ingress deployment
-    to handle user HTTP inputs.
+) -> Deployment:
+    """Return an Ingress deployment to handle user HTTP inputs.
+
+    Args:
+        serve_dag_root_node (DAGNode): Transformed  as serve DAG's root. User
+            inputs are translated to serve_dag_root_node.execute().
+        pipeline_input_node (DAGNode): Singleton PipelineInputNode instance that
+            contains input preprocessor info.
+    Returns:
+        ingress (Deployment): Generated pipeline ingress deployment to serve
+            user HTTP requests.
     """
-    pipeline_root_name = f"serve_pipeline_root_{serve_dag_root_node.get_stable_uuid()}"
     serve_dag_root_json = json.dumps(serve_dag_root_node, cls=DAGNodeEncoder)
     preprocessor_import_path = pipeline_input_node.get_preprocessor_import_path()
-    serve_dag_root_deployment = Ingress
-    serve_dag_root_deployment._name = pipeline_root_name
-    serve_dag_root_deployment._init_args = (
-        serve_dag_root_json,
-        preprocessor_import_path,
+    serve_dag_root_deployment = Ingress.options(
+        init_args=(
+            serve_dag_root_json,
+            preprocessor_import_path,
+        )
     )
 
     return serve_dag_root_deployment

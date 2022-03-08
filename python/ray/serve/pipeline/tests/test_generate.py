@@ -50,11 +50,10 @@ def test_simple_single_class(serve_instance):
         deployments[0], ray_dag, "Model", input=1, output=0.6
     )
 
-    for _ in range(10):
+    for _ in range(5):
         resp = requests.get(
             f"http://127.0.0.1:8000/{ingress_deployment.name}", data="1"
         )
-        print(f"Response: {resp.text}")
         assert resp.text == "0.6"
 
 
@@ -97,7 +96,7 @@ def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
     multiple times for the same class, and we can still correctly replace
     args with deployment handle and parse correct deployment instances.
     """
-    with InputNode() as dag_input:
+    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
         m1 = Model._bind(2)
         m2 = Model._bind(3)
         combine = Combine._bind(m1, m2=m2)
@@ -111,9 +110,17 @@ def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
     for deployment in deployments:
         deployment.deploy()
 
+    ingress_deployment = get_ingress_deployment(serve_root_dag, dag_input)
+    ingress_deployment.deploy()
+
     _validate_consistent_python_output(
         deployments[2], ray_dag, "Combine", input=1, output=5
     )
+    for _ in range(5):
+        resp = requests.get(
+            f"http://127.0.0.1:8000/{ingress_deployment.name}", data="1"
+        )
+        assert resp.text == "5"
 
 
 def test_shared_deployment_handle(serve_instance):
@@ -121,7 +128,7 @@ def test_shared_deployment_handle(serve_instance):
     Test we can re-use the same deployment handle multiple times or in
     multiple places, without incorrectly parsing duplicated deployments.
     """
-    with InputNode() as dag_input:
+    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
         m = Model._bind(2)
         combine = Combine._bind(m, m2=m)
         ray_dag = combine.__call__._bind(dag_input)
@@ -134,9 +141,17 @@ def test_shared_deployment_handle(serve_instance):
     for deployment in deployments:
         deployment.deploy()
 
+    ingress_deployment = get_ingress_deployment(serve_root_dag, dag_input)
+    ingress_deployment.deploy()
+
     _validate_consistent_python_output(
         deployments[1], ray_dag, "Combine", input=1, output=4
     )
+    for _ in range(5):
+        resp = requests.get(
+            f"http://127.0.0.1:8000/{ingress_deployment.name}", data="1"
+        )
+        assert resp.text == "4"
 
 
 def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
@@ -145,7 +160,7 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
     instantiated multiple times for the same class, and we can still correctly
     replace args with deployment handle and parse correct deployment instances.
     """
-    with InputNode() as dag_input:
+    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
         m1 = Model._bind(2)
         m2 = Model._bind(3)
         combine = Combine._bind(m1, m2={NESTED_HANDLE_KEY: m2}, m2_nested=True)
@@ -169,24 +184,17 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
     for deployment in deployments:
         deployment.deploy()
 
+    ingress_deployment = get_ingress_deployment(serve_root_dag, dag_input)
+    ingress_deployment.deploy()
+
     _validate_consistent_python_output(
         deployments[2], ray_dag, "Combine", input=1, output=5
     )
-
-
-# def test_simple_function(serve_instance):
-#     # TODO: (jiaodong) Support function deployment node
-#     pass
-
-
-# def test_multiple_functions(serve_instance):
-#     # TODO: (jiaodong) Support function deployment node
-#     pass
-
-
-# def test_mix_class_and_function(serve_instance):
-#     # TODO: (jiaodong) Support function deployment node
-#     pass
+    for _ in range(5):
+        resp = requests.get(
+            f"http://127.0.0.1:8000/{ingress_deployment.name}", data="1"
+        )
+        assert resp.text == "5"
 
 
 if __name__ == "__main__":
