@@ -122,7 +122,6 @@ void ClusterResourceManager::UpdateResourceCapacity(scheduling::NodeID node_id,
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     NodeResources node_resources;
-    node_resources.predefined_resources.resize(PredefinedResources_MAX);
     it = nodes_.emplace(node_id, node_resources).first;
   }
 

@@ -27,7 +27,7 @@
 namespace ray {
 
 /// List of predefined resources.
-enum PredefinedResources { CPU, MEM, GPU, OBJECT_STORE_MEM, PredefinedResources_MAX };
+enum PredefinedResourcesEnum { CPU, MEM, GPU, OBJECT_STORE_MEM, PredefinedResourcesEnum_MAX };
 
 const std::string kCPU_ResourceLabel = "CPU";
 const std::string kGPU_ResourceLabel = "GPU";

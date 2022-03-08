@@ -27,9 +27,9 @@
 
 namespace ray {
 
-const std::string ResourceEnumToString(PredefinedResources resource);
+const std::string ResourceEnumToString(PredefinedResourcesEnum resource);
 
-const PredefinedResources ResourceStringToEnum(const std::string &resource);
+const PredefinedResourcesEnum ResourceStringToEnum(const std::string &resource);
 
 bool IsPredefinedResource(scheduling::ResourceID resource_id);
 
@@ -69,13 +69,34 @@ class PredefinedResources {
     return this->values_[resource_id];
   }
 
-  const FixedPoint &CPU() const { return this->values_[CPU]; }
+  PredefinedResources &Set(size_t resource_id, const FixedPoint & value) {
+    this->values_[resource_id] = value;
+    return *this;
+  }
 
-  const FixedPoint &Memory() const { return this->values_[MEM]; }
+  const FixedPoint &GetCPU() const { return this->values_[CPU]; }
 
-  const FixedPoint &GPU() const { return this->values_[GPU]; }
+  const FixedPoint &GetMemory() const { return this->values_[MEM]; }
 
-  const FixedPoint &ObjectStoreMemory() const { return this->values_[OBJECT_STORE_MEM]; }
+  const FixedPoint &GetGPU() const { return this->values_[GPU]; }
+
+  const FixedPoint &GetObjectStoreMemory() const { return this->values_[OBJECT_STORE_MEM]; }
+
+  PredefinedResources &SetCPU(const FixedPoint &value) { this->values_[CPU] = value; return *this; }
+
+  PredefinedResources &SetMemory(const FixedPoint &value) { this->values_[MEM] = value; return *this; }
+
+  PredefinedResources &SetGPU(const FixedPoint &value) { this->values_[GPU] = value; return *this; }
+
+  PredefinedResources &SetObjectStoreMemory(const FixedPoint &value) { this->values_[OBJECT_STORE_MEM] = value; return *this; }
+
+  bool HasCPU() const { return this->GetCPU() > 0; }
+
+  bool HasMemory() const { return this->GetMemory() > 0; }
+
+  bool HasGPU() const { return this->GetGPU() > 0; }
+
+  bool HasObjectStoreMemory() const { return this->GetObjectStoreMemory() > 0; }
 
   size_t Size() const {
     size_t size = 0;
@@ -97,7 +118,7 @@ class PredefinedResources {
   }
 
   bool IsSubsetOf(const PredefinedResources &other) const {
-    for (int i = 0; i < PredefinedResources_MAX; i++) {
+    for (int i = 0; i < this->values_.size(); i++) {
       if (this.values_[i] > other.values_[i]) {
         return false;
       }
@@ -105,8 +126,53 @@ class PredefinedResources {
     }
   }
 
+  PredefinedResources operator+(const PredefinedResources &other) {
+    PredefinedResources res;
+    for (int i = 0; i < this->values_.size(); i++) {
+      res[i] = this->values_[i] + other.values_[i];
+    }
+    return res;
+  }
+
+  PredefinedResources operator-(const PredefinedResources &other) {
+    PredefinedResources res;
+    for (int i = 0; i < this->values_.size(); i++) {
+      res[i] = this->values_[i] - other.values_[i];
+    }
+    return res;
+  }
+
+  PredefinedResources &operator=(const PredefinedResources &other) {
+    for (int i = 0; i < this->values_.size(); i++) {
+      this->values_[i] = other.values_[i];
+    }
+    return *this;
+  }
+
+  PredefinedResources &operator+=(const PredefinedResources &other) {
+    for (int i = 0; i < this->values_.size(); i++) {
+      this->values_[i] += other.values_[i];
+    }
+    return *this;
+  }
+
+  PredefinedResources &operator-=(const PredefinedResources &other) {
+    for (int i = 0; i < this->values_.size(); i++) {
+      this->values_[i] -= other.values_[i];
+    }
+    return *this;
+  }
+
   bool operator==(const PredefinedResources &other) const {
     return std::equal(std::begin(this->values_), std::end(this.values_), std::begin(other.values_));
+  }
+
+  void Normalize() {
+    for (size_t i = 0; i < this->values_.size(); i++) {
+      if (this->values_[i] < 0) {
+        this->values_[i] = 0;
+      }
+    }
   }
 
  std::string DebugString() const {
@@ -116,6 +182,10 @@ class PredefinedResources {
     }
     buffer << "}";
     return buffer.str();
+  }
+
+  static int NumPredefinedResources() {
+    return PredefinedResourcesEnum_MAX;
   }
 
  private:
