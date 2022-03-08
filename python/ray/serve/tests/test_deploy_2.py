@@ -486,11 +486,11 @@ class TestDeployGroup:
     def test_import_path_deployment_decorated(self, serve_instance):
         func = serve.deployment(
             name="decorated_func",
-        )("ray.serve.tests.test_deploy.decorated_func")
+        )("ray.serve.tests.test_deploy_2.decorated_func")
 
         clss = serve.deployment(
             name="decorated_clss",
-        )("ray.serve.tests.test_deploy.DecoratedClass")
+        )("ray.serve.tests.test_deploy_2.DecoratedClass")
 
         deployments = [func, clss]
         responses = ["got decorated func", "got decorated class"]
