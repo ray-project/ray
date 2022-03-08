@@ -2211,7 +2211,7 @@ Dict[str, List[str]]]): The names of the columns
         Time complexity: O(1)
 
         Args:
-            output_signature (Union["tf.TypeSpec", Tuple["tf.TypeSpec", "tf.TypeSpec"]]):
+            output_signature (Union[tf.TypeSpec, Tuple[tf.TypeSpec, tf.TypeSpec]]):
                 If ``label_column`` is specified, a 2-element
                 tuple of ``tf.TypeSpec`` objects corresponding to
                 (features, label). Otherwise, a single ``tf.TypeSpec``
