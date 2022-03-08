@@ -14,6 +14,8 @@
 
 #include "ray/raylet/scheduling/scheduling_ids.h"
 
+namespace ray {
+
 int64_t StringIdMap::Get(const std::string &string_id) const {
   auto it = string_to_int_.find(string_id);
   if (it == string_to_int_.end()) {
@@ -60,4 +62,13 @@ int64_t StringIdMap::Insert(const std::string &string_id, uint8_t max_id) {
   }
 };
 
+StringIdMap &StringIdMap::InsertOrDie(const std::string &string_id, int64_t value) {
+  RAY_CHECK(Get(string_id) == -1) << string_id << " or " << value << " already exist!";
+  string_to_int_.emplace(string_id, value);
+  int_to_string_.emplace(value, string_id);
+  return *this;
+}
+
 int64_t StringIdMap::Count() { return string_to_int_.size(); }
+
+}  // namespace ray

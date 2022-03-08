@@ -10,7 +10,6 @@ SRCS = [] + select({
 
 py_test_module_list(
   files = [
-    "test_actor.py",
     "test_actor_pool.py",
     "test_async.py",
     "test_actor_failures.py",
@@ -23,7 +22,6 @@ py_test_module_list(
     "test_autoscaling_policy.py",
     "test_basic.py",
     "test_basic_2.py",
-    "test_basic_3.py",
     "test_basic_4.py",
     "test_basic_5.py",
     "test_cancel.py",
@@ -60,7 +58,7 @@ py_test_module_list(
   tags = ["exclusive", "client_tests", "team:serverless"],
   deps = ["//:ray_lib"],
 )
-    
+
 py_test_module_list(
   files = [
     "test_client_builder.py",
@@ -133,6 +131,7 @@ py_test_module_list(
     "test_args.py",
     "test_asyncio_cluster.py",
     "test_asyncio.py",
+    "test_concurrency_group.py",
     "test_component_failures.py",
     "test_debug_tools.py",
     "test_distributed_sort.py",
@@ -188,6 +187,7 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_actor.py",
     "test_cli.py",
     "test_failure.py",
     "test_actor_advanced.py",
@@ -205,6 +205,7 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_basic_3.py",
     "test_output.py",
     "test_failure_2.py",
     "test_failure_4.py",
@@ -349,7 +350,7 @@ py_test_module_list(
     "test_list_actors_3.py",
     "test_list_actors_4.py",
   ],
-  size = "medium",
+  size = "large",
   extra_srcs = SRCS,
   name_suffix = "_client_mode",
   env = {"RAY_CLIENT_MODE": "1", "RAY_PROFILING": "1"},

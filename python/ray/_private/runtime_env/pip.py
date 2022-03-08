@@ -10,7 +10,7 @@ from typing import Optional, List, Dict, Tuple
 from ray._private.async_compat import asynccontextmanager, create_task, get_running_loop
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import Protocol, parse_uri
-from ray._private.runtime_env.utils import RuntimeEnv, check_output_cmd
+from ray._private.runtime_env.utils import check_output_cmd
 from ray._private.utils import (
     get_directory_size_bytes,
     try_to_create_directory,
@@ -60,7 +60,7 @@ class PipProcessor:
     def __init__(
         self,
         target_dir: str,
-        runtime_env: RuntimeEnv,
+        runtime_env: "RuntimeEnv",  # noqa: F821
         logger: Optional[logging.Logger] = default_logger,
     ):
         try:
@@ -198,6 +198,7 @@ class PipProcessor:
         path: str,
         pip_packages: List[str],
         cwd: str,
+        env_vars: Dict,
         logger: logging.Logger,
     ):
         virtualenv_path = _PathHelper.get_virtualenv_path(path)
@@ -234,7 +235,9 @@ class PipProcessor:
             pip_requirements_file,
         ]
         logger.info("Installing python requirements to %s", virtualenv_path)
-        await check_output_cmd(pip_install_cmd, logger=logger, cwd=cwd, env={})
+        pip_env = os.environ.copy()
+        pip_env.update(env_vars)
+        await check_output_cmd(pip_install_cmd, logger=logger, cwd=cwd, env=pip_env)
 
     async def _run(self):
         path = self._target_dir
@@ -249,7 +252,9 @@ class PipProcessor:
             await self._create_or_get_virtualenv(path, exec_cwd, logger)
             python = _PathHelper.get_virtualenv_python(path)
             async with self._check_ray(python, exec_cwd, logger):
-                await self._install_pip_packages(path, pip_packages, exec_cwd, logger)
+                await self._install_pip_packages(
+                    path, pip_packages, exec_cwd, self._runtime_env.env_vars(), logger
+                )
             # TODO(fyrestone): pip check.
         except Exception:
             logger.info("Delete incomplete virtualenv: %s", path)
@@ -276,7 +281,7 @@ class PipManager:
         """
         return os.path.join(self._pip_resources_dir, hash)
 
-    def get_uri(self, runtime_env: RuntimeEnv) -> Optional[str]:
+    def get_uri(self, runtime_env: "RuntimeEnv") -> Optional[str]:  # noqa: F821
         """Return the pip URI from the RuntimeEnv if it exists, else None."""
         pip_uri = runtime_env.pip_uri()
         if pip_uri != "":
@@ -313,7 +318,7 @@ class PipManager:
     async def create(
         self,
         uri: str,
-        runtime_env: RuntimeEnv,
+        runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
@@ -338,7 +343,7 @@ class PipManager:
     def modify_context(
         self,
         uri: str,
-        runtime_env: RuntimeEnv,
+        runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ):
