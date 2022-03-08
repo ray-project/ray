@@ -19,6 +19,7 @@ from ray.dashboard.modules.serve.schema import (
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve.utils import logger
 
+
 class Application:
     def __init__(self, deployments: List[Deployment]):
         self._deployments = dict()
@@ -26,9 +27,11 @@ class Application:
             if isinstance(d, Deployment):
                 self._deployments[d.name] = d
             else:
-                raise TypeError(f"Got object of type {type(d)} at index "
-                                f"{idx}. Expected only Deployment objects to "
-                                "be passed in.")
+                raise TypeError(
+                    f"Got object of type {type(d)} at index "
+                    f"{idx}. Expected only Deployment objects to "
+                    "be passed in."
+                )
 
     def add_deployment(self, deployment: Deployment):
         """Add deployment to the list. Validate name uniqueness."""
@@ -78,12 +81,14 @@ class Application:
 
     def run(
         self,
-        runtime_env_updates={},
+        runtime_env_updates=None,
         cluster_address="auto",
         dashboard_address="http://localhost:8265",
-        logger=logger
+        logger=logger,
     ):
         """Blocking run."""
+
+        runtime_env_updates = runtime_env_updates or {}
 
         ray.init(address=cluster_address, namespace="serve")
         serve.start(detached=True)
@@ -98,9 +103,9 @@ class Application:
         logger.info("\nDeployed successfully!\n")
 
         while True:
-            statuses = serve_application_status_to_schema(
-                self.get_statuses()
-            ).json(indent=4)
+            statuses = serve_application_status_to_schema(self.get_statuses()).json(
+                indent=4
+            )
             logger.info(f"{statuses}")
             time.sleep(10)
 
@@ -155,7 +160,7 @@ class Application:
             deployment.ray_actor_options["runtime_env"].update(updates)
         else:
             deployment.ray_actor_options["runtime_env"] = updates
-    
+
     def __getitem__(self, key: str):
         """Fetch deployment by name using dict syntax: app["name"]"""
 
@@ -175,7 +180,7 @@ class Application:
             raise AttributeError(
                 "Serve application does not contain a " f'"{name}" deployment.'
             )
-    
+
     def __iter__(self):
         """
         Iterator over Application's deployments.
