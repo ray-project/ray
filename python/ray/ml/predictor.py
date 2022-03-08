@@ -32,7 +32,7 @@ class Predictor(abc.ABC):
         self, preprocessed_dataset: ray.data.Dataset, **iter_batches_kwargs
     ) -> "pd.DataFrame":
 
-        """Run inference on data batch.
+        """Run inference on dataset.
 
         Args:
             preprocessed_dataset (Dataset): A Ray dataset that has been

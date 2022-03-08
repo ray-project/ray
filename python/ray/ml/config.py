@@ -11,7 +11,7 @@ class ScalingConfig:
 
 
 @dataclass
-class DataParallelScalingConfig:
+class DataParallelScalingConfig(ScalingConfig):
     """Configuration for scaling data parallel training.
 
     num_workers (int): The number of workers (Ray actors) to launch.
