@@ -2,6 +2,7 @@ from typing import Any, Dict, List
 import threading
 import json
 
+from ray import serve
 from ray.experimental.dag import (
     DAGNode,
     ClassNode,
@@ -150,7 +151,7 @@ def get_ingress_deployment(
     """
     serve_dag_root_json = json.dumps(serve_dag_root_node, cls=DAGNodeEncoder)
     preprocessor_import_path = pipeline_input_node.get_preprocessor_import_path()
-    serve_dag_root_deployment = Ingress.options(
+    serve_dag_root_deployment = serve.deployment(Ingress).options(
         init_args=(
             serve_dag_root_json,
             preprocessor_import_path,
