@@ -1,5 +1,5 @@
+import tempfile
 from datetime import datetime
-import inspect
 import logging
 import os
 from pathlib import Path
@@ -16,7 +16,7 @@ from ray.train.backend import (
 )
 from ray.train.callbacks.callback import TrainingCallback
 from ray.train.session import TrainingResultType
-from ray.train.utils import RayDataset
+from ray.train.utils import RayDataset, construct_train_func
 from ray.train.checkpoint import (
     CheckpointStrategy,
     TuneCheckpointManager,
@@ -31,6 +31,7 @@ from ray.train.constants import (
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
+    TRAIN_DATASET_KEY,
 )
 
 # Ray Train should be usable even if Tune is not installed.
@@ -61,6 +62,12 @@ BACKEND_NAME_TO_CONFIG_CLS_NAME = {
     "horovod": "HorovodConfig",
     "tensorflow": "TensorflowConfig",
     "torch": "TorchConfig",
+}
+
+
+BACKEND_ENV_VARS_WITH_TUNE = {
+    ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
+    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV
 }
 
 # The environment variables that need to be propagated from the driver to the
@@ -318,7 +325,7 @@ class Trainer:
                 logdir=str(self.latest_run_dir), config=config or {}
             )
 
-        train_func = self._get_train_func(train_func, config)
+        train_func = construct_train_func(train_func, config)
 
         try:
             iterator = TrainingIterator(
@@ -395,7 +402,7 @@ class Trainer:
         self._run_id += 1
         self.create_run_dir()
 
-        train_func = self._get_train_func(train_func, config)
+        train_func = construct_train_func(train_func, config)
 
         return TrainingIterator(
             backend_executor_actor=self._backend_executor_actor,
@@ -407,35 +414,6 @@ class Trainer:
             checkpoint=checkpoint,
             checkpoint_strategy=checkpoint_strategy,
         )
-
-    def _get_train_func(
-        self,
-        train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
-        config: Optional[Dict[str, Any]],
-    ) -> Callable[[], T]:
-        """Validates and constructs the training function to execute.
-
-        Args:
-            train_func (Callable): The training function to execute.
-                This can either take in no arguments or a ``config`` dict.
-            config (Optional[Dict]): Configurations to pass into
-                ``train_func``. If None then an empty Dict will be created.
-
-        Returns:
-            A valid training function.
-
-        Raises:
-            ValueError: if the input ``train_func`` is invalid.
-        """
-        signature = inspect.signature(train_func)
-        num_params = len(signature.parameters)
-        if num_params > 1:
-            raise ValueError("train_func should take in a 0 or 1 arguments.")
-        elif num_params == 1:
-            config = {} if config is None else config
-            return lambda: train_func(config)
-        else:  # num_params == 0
-            return train_func
 
     @property
     def latest_run_dir(self) -> Optional[Path]:
@@ -665,17 +643,18 @@ class TrainingIterator:
         backend_executor_actor: ActorHandle,
         backend_config: BackendConfig,
         train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
-        run_dir: Path,
         dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]],
         checkpoint_manager: CheckpointManager,
         checkpoint: Optional[Union[Dict, str, Path]],
         checkpoint_strategy: Optional[CheckpointStrategy],
+        run_dir: Optional[Path] = None
     ):
         self._backend_executor_actor = backend_executor_actor
         self._backend = backend_config.backend_cls()
         self._train_func = train_func
         self._dataset = dataset
-        self._run_dir = run_dir
+        self._run_dir = run_dir if run_dir else tempfile.mkdtemp(
+            prefix="run_tmp_", dir=os.getcwd())
         self._checkpoint_manager = checkpoint_manager
         self._checkpoint_strategy = checkpoint_strategy
         self._start_training(
@@ -685,6 +664,8 @@ class TrainingIterator:
             checkpoint=checkpoint,
             checkpoint_strategy=checkpoint_strategy,
         )
+
+        self._apply_preprocessor()
 
         self._final_results = None
         self._finished_training = False

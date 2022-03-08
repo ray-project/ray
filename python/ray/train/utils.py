@@ -1,10 +1,12 @@
 import abc
+import inspect
 import os
 import logging
 from pathlib import Path
 from threading import Thread
 
-from typing import Tuple, Dict, List, Any, TYPE_CHECKING, Union
+from typing import Tuple, Dict, List, Any, TYPE_CHECKING, Union, Callable, \
+    Optional, TypeVar
 
 import ray
 from ray.exceptions import RayActorError
@@ -16,6 +18,7 @@ if TYPE_CHECKING:
     from ray.data.dataset_pipeline import DatasetPipeline
 
 RayDataset = Union["Dataset", "DatasetPipeline"]
+T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
@@ -112,3 +115,32 @@ class Singleton(abc.ABCMeta):
         if cls not in cls._instances:
             cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
         return cls._instances[cls]
+
+
+def construct_train_func(
+    train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
+    config: Optional[Dict[str, Any]],
+) -> Callable[[], T]:
+    """Validates and constructs the training function to execute.
+
+    Args:
+        train_func (Callable): The training function to execute.
+            This can either take in no arguments or a ``config`` dict.
+        config (Optional[Dict]): Configurations to pass into
+            ``train_func``. If None then an empty Dict will be created.
+
+    Returns:
+        A valid training function.
+
+    Raises:
+        ValueError: if the input ``train_func`` is invalid.
+    """
+    signature = inspect.signature(train_func)
+    num_params = len(signature.parameters)
+    if num_params > 1:
+        raise ValueError("train_func should take in 0 or 1 arguments.")
+    elif num_params == 1:
+        config = {} if config is None else config
+        return lambda: train_func(config)
+    else:  # num_params == 0
+        return train_func

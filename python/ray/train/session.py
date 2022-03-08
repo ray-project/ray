@@ -23,6 +23,7 @@ from ray.train.constants import (
     DATE,
     RESULT_FETCH_TIMEOUT,
     SESSION_MISUSE_LOG_ONCE_KEY,
+    TRAIN_DATASET_KEY
 )
 from ray.train.utils import PropagatingThread, RayDataset
 from ray.util import PublicAPI, log_once
@@ -331,6 +332,10 @@ def get_dataset_shard(dataset_name: Optional[str] = None) -> Optional[RayDataset
             )
         return shard[dataset_name]
     return shard
+
+
+def get_train_dataset_shard() -> Optional[RayDataset]:
+    return get_dataset_shard(TRAIN_DATASET_KEY)
 
 
 @PublicAPI(stability="beta")

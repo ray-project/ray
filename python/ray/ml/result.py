@@ -9,6 +9,10 @@ class Result:
     checkpoint: Optional[Checkpoint]
     metrics: Any
 
+    def __init__(self, metrics: Any, checkpoint: Optional[Checkpoint]):
+        self.metrics = metrics
+        self.checkpoint = checkpoint
+
     def __getstate__(self) -> dict:
         return self.__dict__
 

@@ -74,3 +74,9 @@ PYTORCH_PROFILER_KEY = "_train_torch_profiler"
 # By default these will be filtered out from ``train.report()``.
 # See ``TrainingCallback._preprocess_results`` for more details.
 ALL_RESERVED_KEYS = {PYTORCH_PROFILER_KEY}
+
+# Key to differentiate the `train_dataset` from other datasets
+TRAIN_DATASET_KEY = "_train_dataset"
+
+# Key to denote the preprocessor in the checkpoint dict.
+PREPROCESSOR_KEY = "_preprocessor"
