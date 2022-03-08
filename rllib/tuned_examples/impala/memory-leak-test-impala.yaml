@@ -9,7 +9,8 @@ memory-leak-test-impala:
         framework: tf
         # Switch off np.random, which is known to have memory leaks.
         env_config:
-            static_samples: true
+            config:
+                static_samples: true
         num_gpus: 0
         num_workers: 3
         num_aggregation_workers: 1
