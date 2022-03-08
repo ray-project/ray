@@ -461,6 +461,10 @@ smart_open_object_spilling_config = {
     "type": "smart_open",
     "params": {"uri": f"s3://{bucket_name}/"},
 }
+multi_smart_open_object_spilling_config = {
+    "type": "smart_open",
+    "params": {"uri": [f"s3://{bucket_name}/{i}" for i in range(3)]},
+}
 
 unstable_object_spilling_config = {
     "type": "unstable_fs",
