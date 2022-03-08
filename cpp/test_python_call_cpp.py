@@ -15,6 +15,18 @@ def test_cross_language_cpp():
     with pytest.raises(CrossLanguageError):
         ray.get(obj1)
 
+    obj = ray.cross_language.cpp_function("Plus1").remote("invalid arg")
+    with pytest.raises(CrossLanguageError):
+        ray.get(obj)
+
+    obj = ray.cross_language.cpp_function("Plus1").remote(1, 2)
+    with pytest.raises(CrossLanguageError):
+        ray.get(obj)
+
+    obj = ray.cross_language.cpp_function("Plus1").remote()
+    with pytest.raises(CrossLanguageError):
+        ray.get(obj)
+
     obj2 = ray.cross_language.cpp_function("NotExsitTask").remote()
     with pytest.raises(CrossLanguageError):
         ray.get(obj2)
