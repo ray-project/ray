@@ -3,16 +3,16 @@
 # Please keep these sorted alphabetically.
 # --------------------------------------------------------------------
 py_test(
-    name = "test_mlflow",
-    size = "medium",
-    srcs = ["tests/test_mlflow.py"],
+    name = "test_checkpoints",
+    size = "small",
+    srcs = ["tests/test_checkpoints.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":ml_util_lib"]
+    deps = [":ml_lib"]
 )
 
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.
 py_library(
-    name = "ml_util_lib",
+    name = "ml_lib",
     srcs = glob(["**/*.py"], exclude=["tests/*.py"]),
 )
