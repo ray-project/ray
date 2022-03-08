@@ -54,8 +54,14 @@ class ClassNode(DAGNode):
             other_args_to_resolve=new_other_args_to_resolve,
         )
 
-    def _execute_impl(self, *args):
-        """Executor of ClassNode by ray.remote()"""
+    def _execute_impl(self, *args, **kwargs):
+        """Executor of ClassNode by ray.remote()
+
+        Args and kwargs are to match base class signature, but not in the
+        implementation. All args and kwargs should be resolved and replaced
+        with value in bound_args and bound_kwargs via bottom-up recursion when
+        current node is executed.
+        """
         return (
             ray.remote(self._body)
             .options(**self._bound_options)
@@ -94,13 +100,15 @@ class ClassNode(DAGNode):
     def from_json(cls, input_json, module, object_hook=None):
         assert input_json[DAGNODE_TYPE_KEY] == ClassNode.__name__
         args_dict = super().from_json_base(input_json, object_hook=object_hook)
-        return cls(
+        node = cls(
             module.__ray_metadata__.modified_class,
             args_dict["args"],
             args_dict["kwargs"],
             args_dict["options"],
             other_args_to_resolve=args_dict["other_args_to_resolve"],
         )
+        node._stable_uuid = args_dict["uuid"]
+        return node
 
 
 class _UnboundClassMethodNode(object):
@@ -180,8 +188,14 @@ class ClassMethodNode(DAGNode):
             other_args_to_resolve=new_other_args_to_resolve,
         )
 
-    def _execute_impl(self, *args):
-        """Executor of ClassMethodNode by ray.remote()"""
+    def _execute_impl(self, *args, **kwargs):
+        """Executor of ClassMethodNode by ray.remote()
+
+        Args and kwargs are to match base class signature, but not in the
+        implementation. All args and kwargs should be resolved and replaced
+        with value in bound_args and bound_kwargs via bottom-up recursion when
+        current node is executed.
+        """
         method_body = getattr(self._parent_class_node, self._method_name)
         # Execute with bound args.
         return method_body.options(**self._bound_options).remote(
@@ -209,10 +223,12 @@ class ClassMethodNode(DAGNode):
     def from_json(cls, input_json, object_hook=None):
         assert input_json[DAGNODE_TYPE_KEY] == ClassMethodNode.__name__
         args_dict = super().from_json_base(input_json, object_hook=object_hook)
-        return cls(
+        node = cls(
             input_json["method_name"],
             args_dict["args"],
             args_dict["kwargs"],
             args_dict["options"],
             other_args_to_resolve=args_dict["other_args_to_resolve"],
         )
+        node._stable_uuid = args_dict["uuid"]
+        return node
