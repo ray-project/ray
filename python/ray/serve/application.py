@@ -22,7 +22,9 @@ from ray.serve.utils import logger
 
 
 class Application:
-    def __init__(self, deployments: List[Deployment]):
+    def __init__(self, deployments: List[Deployment] = None):
+        deployments = deployments or []
+
         self._deployments = dict()
         for idx, d in enumerate(deployments):
             if isinstance(d, Deployment):
