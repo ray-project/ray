@@ -35,18 +35,10 @@ def set_progress_bars(enabled: bool) -> bool:
     return old_value
 
 
-class Signal:
-    def __init__(self):
-        self._should_exit = False
-
-    def set(self):
-        self._should_exit = True
-
-
 class ProgressBar:
     """Thin wrapper around tqdm to handle soft imports."""
 
-    def __init__(self, name: str, total: int, signal: Signal, position: int = 0):
+    def __init__(self, name: str, total: int, position: int = 0):
         if not _enabled:
             self._bar = None
         elif tqdm:
@@ -60,23 +52,17 @@ class ProgressBar:
                 )
                 needs_warning = False
             self._bar = None
-        self._signal = signal
-
-    def should_exit(self) -> bool:
-        if self._signal is None:
-            return False
-        return self._signal._should_exit
 
     def block_until_complete(self, remaining: List[ObjectRef]) -> None:
-        while remaining and not self.should_exit():
-            done, remaining = ray.wait(remaining, fetch_local=False, timeout=1)
+        while remaining:
+            done, remaining = ray.wait(remaining, fetch_local=False)
             self.update(len(done))
 
     def fetch_until_complete(self, refs: List[ObjectRef]) -> List[Any]:
         ref_to_result = {}
         remaining = refs
-        while remaining and not self.should_exit():
-            done, remaining = ray.wait(remaining, fetch_local=True, timeout=1)
+        while remaining:
+            done, remaining = ray.wait(remaining, fetch_local=True)
             for ref, result in zip(done, ray.get(done)):
                 ref_to_result[ref] = result
             self.update(len(done))

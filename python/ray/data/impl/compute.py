@@ -1,4 +1,4 @@
-from typing import TypeVar, Any, Union, Callable, List, Tuple, Optional
+from typing import TypeVar, Any, Union, Callable, List, Tuple
 
 import ray
 from ray.data.block import (
@@ -11,7 +11,7 @@ from ray.data.block import (
 from ray.data.context import DatasetContext
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.block_list import BlockList
-from ray.data.impl.progress_bar import ProgressBar, Signal
+from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.remote_fn import cached_remote_fn
 
 T = TypeVar("T")
@@ -65,7 +65,6 @@ class TaskPool(ComputeStrategy):
         remote_args: dict,
         block_list: BlockList,
         clear_input_blocks: bool,
-        signal: Optional[Signal] = None,
     ) -> BlockList:
         context = DatasetContext.get_current()
 
@@ -74,7 +73,7 @@ class TaskPool(ComputeStrategy):
             return block_list
 
         blocks = block_list.get_blocks_with_metadata()
-        map_bar = ProgressBar("Map Progress", total=len(blocks), signal=signal)
+        map_bar = ProgressBar("Map Progress", total=len(blocks))
 
         if context.block_splitting_enabled:
             map_block = cached_remote_fn(_map_block_split).options(**remote_args)
@@ -136,7 +135,6 @@ class ActorPool(ComputeStrategy):
         remote_args: dict,
         block_list: BlockList,
         clear_input_blocks: bool,
-        signal: Optional[Signal] = None,
     ) -> BlockList:
         context = DatasetContext.get_current()
 
@@ -148,7 +146,7 @@ class ActorPool(ComputeStrategy):
 
         orig_num_blocks = len(blocks_in)
         results = []
-        map_bar = ProgressBar("Map Progress", total=orig_num_blocks, signal=signal)
+        map_bar = ProgressBar("Map Progress", total=orig_num_blocks)
 
         class BlockWorker:
             def ready(self):
@@ -175,9 +173,7 @@ class ActorPool(ComputeStrategy):
         metadata_mapping = {}
         ready_workers = set()
 
-        while len(results) < orig_num_blocks and (
-            signal is None or not signal._should_exit
-        ):
+        while len(results) < orig_num_blocks:
             ready, _ = ray.wait(
                 list(tasks), timeout=0.01, num_returns=1, fetch_local=False
             )

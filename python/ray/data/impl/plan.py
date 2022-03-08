@@ -10,7 +10,6 @@ from ray.data.block import Block
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.compute import get_compute
 from ray.data.impl.stats import DatasetStats
-from ray.data.impl.progress_bar import Signal
 from ray.data.impl.lazy_block_list import LazyBlockList
 
 
@@ -106,15 +105,12 @@ class ExecutionPlan:
         else:
             return None
 
-    def execute(self, clear_input_blocks: bool = True,
-        signal: Optional[Signal] = None,
-            ) -> BlockList:
+    def execute(self, clear_input_blocks: bool = True) -> BlockList:
         """Execute this plan.
 
         Args:
             clear_input_blocks: Whether to assume ownership of the input blocks,
                 allowing them to be dropped from memory during execution.
-            signal: A signal to interrupt execution if set.
 
         Returns:
             The blocks of the output dataset.
@@ -129,7 +125,7 @@ class ExecutionPlan:
             stats = self._in_stats
             for stage in self._stages:
                 stats_builder = stats.child_builder(stage.name)
-                blocks, stage_info = stage(blocks, clear_input_blocks, signal=signal)
+                blocks, stage_info = stage(blocks, clear_input_blocks)
                 if stage_info:
                     stats = stats_builder.build_multistage(stage_info)
                 else:
@@ -282,18 +278,11 @@ class OneToOneStage(Stage):
         return OneToOneStage(name, block_fn, self.compute, self.ray_remote_args)
 
     def __call__(
-        self,
-        blocks: BlockList,
-        clear_input_blocks: bool,
-        signal: Optional[Signal] = None,
+        self, blocks: BlockList, clear_input_blocks: bool
     ) -> Tuple[BlockList, dict]:
         compute = get_compute(self.compute)
         blocks = compute.apply(
-            self.block_fn,
-            self.ray_remote_args,
-            blocks,
-            clear_input_blocks,
-            signal=signal,
+            self.block_fn, self.ray_remote_args, blocks, clear_input_blocks
         )
         assert isinstance(blocks, BlockList), blocks
         return blocks, {}
@@ -336,12 +325,8 @@ class AllToAllStage(Stage):
         return AllToAllStage(name, self.num_blocks, self.fn, True, prev.block_fn)
 
     def __call__(
-        self,
-        blocks: BlockList,
-        clear_input_blocks: bool,
-        signal: Optional[Signal] = None,
+        self, blocks: BlockList, clear_input_blocks: bool
     ) -> Tuple[BlockList, dict]:
-        # TODO(swang): Use the signal to interrupt execution if needed.
         blocks, stage_info = self.fn(blocks, clear_input_blocks, self.block_udf)
         assert isinstance(blocks, BlockList), blocks
         return blocks, stage_info
