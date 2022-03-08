@@ -323,9 +323,7 @@ def _wrap_run(
     if runtime_options.max_retries != -1:
         for i in range(runtime_options.max_retries + 1):
             if i == 0:
-                logger.info(
-                    f"{get_step_status_info(WorkflowStatus.RUNNING)}"
-                )
+                logger.info(f"{get_step_status_info(WorkflowStatus.RUNNING)}")
             else:
                 logger.info(
                     f"{get_step_status_info(WorkflowStatus.RUNNING)}"
@@ -349,9 +347,7 @@ def _wrap_run(
         i = 0
         while True:
             if i == 0:
-                logger.info(
-                    f"{get_step_status_info(WorkflowStatus.RUNNING)}"
-                )
+                logger.info(f"{get_step_status_info(WorkflowStatus.RUNNING)}")
             else:
                 logger.info(
                     f"{get_step_status_info(WorkflowStatus.RUNNING)}"
