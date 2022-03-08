@@ -26,10 +26,12 @@ namespace raylet_scheduling_policy {
 class SchedulingPolicy {
  public:
   SchedulingPolicy(scheduling::NodeID local_node_id,
-                   const absl::flat_hash_map<scheduling::NodeID, Node> &nodes)
+                   const absl::flat_hash_map<scheduling::NodeID, Node> &nodes,
+                   std::function<bool(scheduling::NodeID)> is_node_available)
       : local_node_id_(local_node_id),
         nodes_(nodes),
-        gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
+        gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
+        is_node_available_(is_node_available) {}
 
   /// This scheduling policy was designed with the following assumptions in mind:
   ///   1. Scheduling a task on a new node incurs a cold start penalty (warming the worker
@@ -66,21 +68,17 @@ class SchedulingPolicy {
   scheduling::NodeID HybridPolicy(
       const ResourceRequest &resource_request, float spread_threshold,
       bool force_spillback, bool require_available,
-      std::function<bool(scheduling::NodeID)> is_node_available,
       bool scheduler_avoid_gpu_nodes = RayConfig::instance().scheduler_avoid_gpu_nodes());
 
   /// Round robin among available nodes.
   /// If there are no available nodes, fallback to hybrid policy.
-  scheduling::NodeID SpreadPolicy(
-      const ResourceRequest &resource_request, bool force_spillback,
-      bool require_available, std::function<bool(scheduling::NodeID)> is_node_available);
+  scheduling::NodeID SpreadPolicy(const ResourceRequest &resource_request,
+                                  bool force_spillback, bool require_available);
 
   /// Policy that "randomly" picks a node that could fulfil the request.
   /// TODO(scv119): if there are a lot of nodes died or can't fulfill the resource
   /// requirement, the distribution might not be even.
-  scheduling::NodeID RandomPolicy(
-      const ResourceRequest &resource_request,
-      std::function<bool(scheduling::NodeID)> is_node_available);
+  scheduling::NodeID RandomPolicy(const ResourceRequest &resource_request);
 
  private:
   /// Identifier of local node.
@@ -94,6 +92,8 @@ class SchedulingPolicy {
   size_t spread_scheduling_next_index_ = 0;
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;
+  /// Function Checks if node is alive.
+  std::function<bool(scheduling::NodeID)> is_node_available_;
 
   enum class NodeFilter {
     /// Default scheduling.
@@ -113,11 +113,10 @@ class SchedulingPolicy {
   ///
   /// \return -1 if the task is unfeasible, otherwise the node id (key in `nodes`) to
   /// schedule on.
-  scheduling::NodeID HybridPolicyWithFilter(
-      const ResourceRequest &resource_request, float spread_threshold,
-      bool force_spillback, bool require_available,
-      std::function<bool(scheduling::NodeID)> is_node_available,
-      NodeFilter node_filter = NodeFilter::kAny);
+  scheduling::NodeID HybridPolicyWithFilter(const ResourceRequest &resource_request,
+                                            float spread_threshold, bool force_spillback,
+                                            bool require_available,
+                                            NodeFilter node_filter = NodeFilter::kAny);
 };
 }  // namespace raylet_scheduling_policy
 }  // namespace ray

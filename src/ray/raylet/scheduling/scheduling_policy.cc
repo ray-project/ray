@@ -38,9 +38,9 @@ bool DoesNodeHaveGPUs(const NodeResources &resources) {
 }
 }  // namespace
 
-scheduling::NodeID SchedulingPolicy::SpreadPolicy(
-    const ResourceRequest &resource_request, bool force_spillback, bool require_available,
-    std::function<bool(scheduling::NodeID)> is_node_available) {
+scheduling::NodeID SchedulingPolicy::SpreadPolicy(const ResourceRequest &resource_request,
+                                                  bool force_spillback,
+                                                  bool require_available) {
   std::vector<scheduling::NodeID> round;
   round.reserve(nodes_.size());
   for (const auto &pair : nodes_) {
@@ -55,7 +55,7 @@ scheduling::NodeID SchedulingPolicy::SpreadPolicy(
     if (node_id == local_node_id_ && force_spillback) {
       continue;
     }
-    if (!is_node_available(node_id) ||
+    if (!is_node_available_(node_id) ||
         !node.GetLocalView().IsFeasible(resource_request) ||
         !node.GetLocalView().IsAvailable(resource_request, true)) {
       continue;
@@ -65,14 +65,12 @@ scheduling::NodeID SchedulingPolicy::SpreadPolicy(
     return node_id;
   }
 
-  return HybridPolicy(resource_request, 0, force_spillback, require_available,
-                      is_node_available);
+  return HybridPolicy(resource_request, 0, force_spillback, require_available);
 }
 
 scheduling::NodeID SchedulingPolicy::HybridPolicyWithFilter(
     const ResourceRequest &resource_request, float spread_threshold, bool force_spillback,
-    bool require_available, std::function<bool(scheduling::NodeID)> is_node_available,
-    NodeFilter node_filter) {
+    bool require_available, NodeFilter node_filter) {
   // Step 1: Generate the traversal order. We guarantee that the first node is local, to
   // encourage local scheduling. The rest of the traversal order should be globally
   // consistent, to encourage using "warm" workers.
@@ -80,9 +78,9 @@ scheduling::NodeID SchedulingPolicy::HybridPolicyWithFilter(
   round.reserve(nodes_.size());
   const auto local_it = nodes_.find(local_node_id_);
   RAY_CHECK(local_it != nodes_.end());
-  auto predicate = [node_filter, &is_node_available](
-                       scheduling::NodeID node_id, const NodeResources &node_resources) {
-    if (!is_node_available(node_id)) {
+  auto predicate = [this, node_filter](scheduling::NodeID node_id,
+                                       const NodeResources &node_resources) {
+    if (!is_node_available_(node_id)) {
       return false;
     }
     if (node_filter == NodeFilter::kAny) {
@@ -180,19 +178,20 @@ scheduling::NodeID SchedulingPolicy::HybridPolicyWithFilter(
   return best_node_id;
 }
 
-scheduling::NodeID SchedulingPolicy::HybridPolicy(
-    const ResourceRequest &resource_request, float spread_threshold, bool force_spillback,
-    bool require_available, std::function<bool(scheduling::NodeID)> is_node_available,
-    bool scheduler_avoid_gpu_nodes) {
+scheduling::NodeID SchedulingPolicy::HybridPolicy(const ResourceRequest &resource_request,
+                                                  float spread_threshold,
+                                                  bool force_spillback,
+                                                  bool require_available,
+                                                  bool scheduler_avoid_gpu_nodes) {
   if (!scheduler_avoid_gpu_nodes || IsGPURequest(resource_request)) {
     return HybridPolicyWithFilter(resource_request, spread_threshold, force_spillback,
-                                  require_available, std::move(is_node_available));
+                                  require_available);
   }
 
   // Try schedule on non-GPU nodes.
-  auto best_node_id = HybridPolicyWithFilter(
-      resource_request, spread_threshold, force_spillback,
-      /*require_available*/ true, is_node_available, NodeFilter::kNonGpu);
+  auto best_node_id =
+      HybridPolicyWithFilter(resource_request, spread_threshold, force_spillback,
+                             /*require_available*/ true, NodeFilter::kNonGpu);
   if (!best_node_id.IsNil()) {
     return best_node_id;
   }
@@ -200,12 +199,11 @@ scheduling::NodeID SchedulingPolicy::HybridPolicy(
   // If we cannot find any available node from non-gpu nodes, fallback to the original
   // scheduling
   return HybridPolicyWithFilter(resource_request, spread_threshold, force_spillback,
-                                require_available, is_node_available);
+                                require_available);
 }
 
 scheduling::NodeID SchedulingPolicy::RandomPolicy(
-    const ResourceRequest &resource_request,
-    std::function<bool(scheduling::NodeID)> is_node_available) {
+    const ResourceRequest &resource_request) {
   scheduling::NodeID best_node = scheduling::NodeID::Nil();
   if (nodes_.empty()) {
     return best_node;
@@ -219,7 +217,7 @@ scheduling::NodeID SchedulingPolicy::RandomPolicy(
     // requirement, the distribution might not be even.
     const auto &node_id = iter->first;
     const auto &node = iter->second;
-    if (is_node_available(node_id) && node.GetLocalView().IsFeasible(resource_request) &&
+    if (is_node_available_(node_id) && node.GetLocalView().IsFeasible(resource_request) &&
         node.GetLocalView().IsAvailable(resource_request,
                                         /*ignore_pull_manager_at_capacity*/ true)) {
       best_node = iter->first;
