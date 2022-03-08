@@ -489,8 +489,7 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
                                           proc_startup_token, nullptr, status, &found,
                                           &used, &task_id);
       }
-      agent_manager_->DecreaseRuntimeEnvReference(
-          it->second.runtime_env_info.serialized_runtime_env(), [](bool success) {});
+      DecreaseRuntimeEnvReference(it->second.runtime_env_info.serialized_runtime_env());
       RemoveWorkerProcess(state, proc_startup_token);
       if (IsIOWorkerType(worker_type)) {
         // Mark the I/O worker as failed.
@@ -580,11 +579,15 @@ void WorkerPool::MarkPortAsFree(int port) {
   }
 }
 
+static bool RuntimeEnvNotEmpty(const std::string &serialized_runtime_env) {
+  return serialized_runtime_env != "{}" && serialized_runtime_env != "";
+}
+
 static bool NeedToEagerInstallRuntimeEnv(const rpc::JobConfig &job_config) {
   if (job_config.has_runtime_env_info() &&
       job_config.runtime_env_info().runtime_env_eager_install()) {
     auto const &runtime_env = job_config.runtime_env_info().serialized_runtime_env();
-    if (runtime_env != "{}" && runtime_env != "") {
+    if (RuntimeEnvNotEmpty(runtime_env)) {
       return true;
     }
   }
@@ -629,8 +632,7 @@ void WorkerPool::HandleJobFinished(const JobID &job_id) {
   // Check eager install here because we only add URI reference when runtime
   // env install really happens.
   if (NeedToEagerInstallRuntimeEnv(*job_config)) {
-    agent_manager_->DecreaseRuntimeEnvReference(
-        job_config->runtime_env_info().serialized_runtime_env(), [](bool success) {});
+    DecreaseRuntimeEnvReference(job_config->runtime_env_info().serialized_runtime_env());
   }
   finished_jobs_.insert(job_id);
 }
@@ -1101,10 +1103,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
         state.starting_workers_to_tasks[startup_token] = std::move(task_info);
       }
     } else {
-      if (task_spec.HasRuntimeEnv()) {
-        agent_manager_->DecreaseRuntimeEnvReference(serialized_runtime_env,
-                                                    [](bool success) {});
-      }
+      DecreaseRuntimeEnvReference(serialized_runtime_env);
       // TODO(SongGuyang): Wait until a worker is pushed or a worker can be started If
       // startup concurrency maxed out or job not started.
       PopWorkerCallbackAsync(callback, nullptr, status);
@@ -1269,8 +1268,7 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
   if (it != state.worker_processes.end()) {
     it->second.num_registered_workers--;
     if (it->second.num_registered_workers == 0 && it->second.num_starting_workers == 0) {
-      agent_manager_->DecreaseRuntimeEnvReference(
-          it->second.runtime_env_info.serialized_runtime_env(), [](bool success) {});
+      DecreaseRuntimeEnvReference(it->second.runtime_env_info.serialized_runtime_env());
       RemoveWorkerProcess(state, worker->GetStartupToken());
     }
   }
@@ -1527,6 +1525,16 @@ void WorkerPool::IncreaseRuntimeEnvReference(
           callback(false, "", setup_error_message);
         }
       });
+}
+
+void WorkerPool::DecreaseRuntimeEnvReference(const std::string &serialized_runtime_env) {
+  if (RuntimeEnvNotEmpty(serialized_runtime_env)) {
+    agent_manager_->DecreaseRuntimeEnvReference(
+        serialized_runtime_env, [serialized_runtime_env](bool success) {
+          RAY_LOG(ERROR) << "Decrease runtime env reference failed for "
+                         << serialized_runtime_env << ".";
+        });
+  }
 }
 
 }  // namespace raylet

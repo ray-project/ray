@@ -626,11 +626,14 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       const PopWorkerStatus &status, bool *found /* output */,
       bool *worker_used /* output */, TaskID *task_id /* output */);
 
-  /// Create runtime env asynchronously by runtime env agent.
+  /// Increase runtime env reference asynchronously by runtime env agent.
   void IncreaseRuntimeEnvReference(
       const std::string &serialized_runtime_env, const JobID &job_id,
       const IncreaseRuntimeEnvReferenceCallback &callback,
       const std::string &serialized_allocated_resource_instances = "{}");
+
+  /// Decrease runtime env reference asynchronously by runtime env agent.
+  void DecreaseRuntimeEnvReference(const std::string &serialized_runtime_env);
 
   void AddWorkerProcess(State &state, const int workers_to_start,
                         const rpc::WorkerType worker_type, const Process &proc,
