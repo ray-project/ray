@@ -83,6 +83,7 @@ def deploy_replicas(num_replicas, max_batch_size):
         try:
             # Raises RuntimeError if deployment enters the "UNHEALTHY" state.
             client._wait_for_deployment_healthy(name)
+            break
         except RuntimeError:
             time.sleep(1)
             pass
