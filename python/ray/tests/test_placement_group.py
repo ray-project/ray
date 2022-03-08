@@ -403,4 +403,4 @@ def test_placement_group_hang(ray_start_cluster, connect_to_client):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", f"{__file__}"]))
+    sys.exit(pytest.main(["-sv", __file__]))

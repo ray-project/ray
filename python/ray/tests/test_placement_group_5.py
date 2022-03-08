@@ -24,7 +24,7 @@ def test_placement_group_bin_packing_priority(
             return Actor.options(
                 placement_group=pg, placement_group_bundle_index=index, num_cpus=1
             ).remote()
-        elif index < 4:
+        elif index < 3:
             return Actor.options(
                 placement_group=pg, placement_group_bundle_index=index, num_gpus=1
             ).remote()
@@ -39,20 +39,16 @@ def test_placement_group_bin_packing_priority(
         cluster.add_node(num_cpus=1)
         cluster.add_node(num_cpus=2)
         cluster.add_node(num_gpus=1)
-        cluster.add_node(num_gpus=2)
         cluster.add_node(object_store_memory=1024 * 1024 * 200)
-        cluster.add_node(object_store_memory=1024 * 1024 * 300)
 
     default_bundles = [
         {"CPU": 1},
         {"CPU": 2},
         {"CPU": 1, "GPU": 1},
-        {"CPU": 1, "GPU": 2},
         {"CPU": 1, "object_store_memory": 1024 * 1024 * 200},
-        {"CPU": 1, "object_store_memory": 1024 * 1024 * 300},
     ]
 
-    default_num_nodes = 6
+    default_num_nodes = len(default_bundles)
     cluster = ray_start_cluster
     add_nodes_to_cluster(cluster)
     ray.init(address=cluster.address)
