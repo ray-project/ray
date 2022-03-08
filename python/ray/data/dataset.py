@@ -2211,14 +2211,14 @@ Dict[str, List[str]]]): The names of the columns
         Time complexity: O(1)
 
         Args:
-            output_signature (Tuple[tf.TypeSpec, tf.TypeSpec]): If
-                ``label_column`` is specified, a 2-element
+            output_signature (Union["tf.TypeSpec", Tuple["tf.TypeSpec", "tf.TypeSpec"]]):
+                If ``label_column`` is specified, a 2-element
                 tuple of ``tf.TypeSpec`` objects corresponding to
                 (features, label). Otherwise, a single ``tf.TypeSpec``
                 corresponding to features tensor.
             label_column (Optional[str]): The name of the column used as the label
                 (second element of the output tuple). If not specified, output
-                will be just one tensor.
+                will be just one tensor instead of a tuple.
             feature_columns (Optional[List[str]]): List of columns in datasets
                 to use. If None, all columns will be used.
             prefetch_blocks: The number of blocks to prefetch ahead of the
