@@ -6,6 +6,7 @@ import tempfile
 from typing import Any, Dict, Iterator, List, Optional
 
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
+from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 
 try:
     import aiohttp
@@ -17,7 +18,6 @@ except ImportError:
 from ray._private.runtime_env.packaging import (
     create_package,
     get_uri_for_directory,
-    parse_uri,
 )
 from ray.dashboard.modules.job.common import (
     JobStatus,
@@ -270,23 +270,12 @@ class JobSubmissionClient:
         return package_uri
 
     def _upload_working_dir_if_needed(self, runtime_env: Dict[str, Any]):
-        if "working_dir" in runtime_env:
-            working_dir = runtime_env["working_dir"]
-            try:
-                parse_uri(working_dir)
-                is_uri = True
-                logger.debug("working_dir is already a valid URI.")
-            except ValueError:
-                is_uri = False
+        def _upload_fn(working_dir, excludes):
+            self._upload_package_if_needed(
+                working_dir, include_parent_dir=False, excludes=excludes
+            )
 
-            if not is_uri:
-                logger.debug("working_dir is not a URI, attempting to upload.")
-                package_uri = self._upload_package_if_needed(
-                    working_dir,
-                    include_parent_dir=False,
-                    excludes=runtime_env.get("excludes", None),
-                )
-                runtime_env["working_dir"] = package_uri
+        upload_working_dir_if_needed(runtime_env, upload_fn=_upload_fn)
 
     def _upload_py_modules_if_needed(self, runtime_env: Dict[str, Any]):
         def _upload_fn(module_path, excludes):
