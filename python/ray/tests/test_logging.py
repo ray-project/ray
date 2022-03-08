@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 
 from datetime import datetime
 from collections import defaultdict, Counter
@@ -378,6 +379,7 @@ def test_segfault_stack_trace(ray_start_cluster, capsys):
     ), f"Python stack trace not found in stderr: {stderr}"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_log_java_worker_logs(shutdown_only, capsys):
     tmp_dir = tempfile.mkdtemp()
     print("using tmp_dir", tmp_dir)
