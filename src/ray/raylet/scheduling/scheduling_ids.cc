@@ -39,42 +39,30 @@ std::string StringIdMap::Get(uint64_t id) const {
 };
 
 int64_t StringIdMap::Insert(const std::string &string_id, uint8_t max_id) {
-  auto id = Get(string_id);
-  if (id != -1) {
-    return id;
-  }
-
-  id = hasher_(string_id);
-  if (max_id != 0) {
-    id = id % MAX_ID_TEST;
-  }
-  for (size_t i = 0; true; i++) {
-    bool hash_collision = false;
-    {
-      absl::ReaderMutexLock lock(&mutex_);
-      hash_collision = int_to_string_.contains(id);
-    }
-
-    if (!hash_collision) {
-      absl::WriterMutexLock lock(&mutex_);
-      auto pair = string_to_int_.emplace(string_id, id);
-      if (pair.second) {
-        /// No hash collision, so associate string_id with id.
-        RAY_CHECK(int_to_string_.emplace(id, string_id).second);
-      } else {
-        // The `string_id` is inserted in another thread, just return the one that
-        // exists.
-        id = pair.first->second;
-      }
-      break;
-    }
-
-    id = hasher_(string_id + std::to_string(i));
+  absl::WriterMutexLock lock(&mutex_);
+  auto sit = string_to_int_.find(string_id);
+  if (sit == string_to_int_.end()) {
+    int64_t id = hasher_(string_id);
     if (max_id != 0) {
-      id = id % max_id;
+      id = id % MAX_ID_TEST;
     }
+    for (size_t i = 0; true; i++) {
+      auto it = int_to_string_.find(id);
+      if (it == int_to_string_.end()) {
+        /// No hash collision, so associate string_id with id.
+        string_to_int_.emplace(string_id, id);
+        int_to_string_.emplace(id, string_id);
+        break;
+      }
+      id = hasher_(string_id + std::to_string(i));
+      if (max_id != 0) {
+        id = id % max_id;
+      }
+    }
+    return id;
+  } else {
+    return sit->second;
   }
-  return id;
 };
 
 StringIdMap &StringIdMap::InsertOrDie(const std::string &string_id, int64_t value) {
