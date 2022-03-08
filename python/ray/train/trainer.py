@@ -31,7 +31,6 @@ from ray.train.constants import (
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
-    TRAIN_DATASET_KEY,
 )
 
 # Ray Train should be usable even if Tune is not installed.
@@ -67,7 +66,7 @@ BACKEND_NAME_TO_CONFIG_CLS_NAME = {
 
 BACKEND_ENV_VARS_WITH_TUNE = {
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
-    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV
+    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
 }
 
 # The environment variables that need to be propagated from the driver to the
@@ -647,14 +646,15 @@ class TrainingIterator:
         checkpoint_manager: CheckpointManager,
         checkpoint: Optional[Union[Dict, str, Path]],
         checkpoint_strategy: Optional[CheckpointStrategy],
-        run_dir: Optional[Path] = None
+        run_dir: Optional[Path] = None,
     ):
         self._backend_executor_actor = backend_executor_actor
         self._backend = backend_config.backend_cls()
         self._train_func = train_func
         self._dataset = dataset
-        self._run_dir = run_dir if run_dir else tempfile.mkdtemp(
-            prefix="run_tmp_", dir=os.getcwd())
+        self._run_dir = (
+            run_dir if run_dir else tempfile.mkdtemp(prefix="run_tmp_", dir=os.getcwd())
+        )
         self._checkpoint_manager = checkpoint_manager
         self._checkpoint_strategy = checkpoint_strategy
         self._start_training(

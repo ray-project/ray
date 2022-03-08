@@ -6,7 +6,9 @@ from ray.tune import PlacementGroupFactory
 
 class ScalingConfig:
     """Configuration for scaling training."""
+
     pass
+
 
 @dataclass
 class DataParallelScalingConfig:
@@ -37,8 +39,9 @@ class DataParallelScalingConfig:
     placement_strategy: str = "PACK"
 
     def __post_init__(self):
-        self.resources_per_worker = self.resources_per_worker if \
-            self.resources_per_worker else {}
+        self.resources_per_worker = (
+            self.resources_per_worker if self.resources_per_worker else {}
+        )
 
         if self.num_workers < 0:
             raise ValueError("`num_workers` must be a positive integer.")
@@ -71,16 +74,21 @@ class DataParallelScalingConfig:
     @property
     def additional_resources_per_worker(self):
         """Resources per worker, not including CPU or GPU resources."""
-        return {k: v for k, v in self.resources_per_worker.items() if k not
-                in ["CPU", "GPU"]}
+        return {
+            k: v
+            for k, v in self.resources_per_worker.items()
+            if k not in ["CPU", "GPU"]
+        }
 
     def get_placement_group_factory(self) -> PlacementGroupFactory:
         """Returns a PlacementGroupFactory to specify resources for Tune."""
         trainer_bundle = [{"CPU": 1}]
-        worker_resources = {"CPU": self.num_cpus_per_worker, "GPU": self.num_gpus_per_worker}
+        worker_resources = {
+            "CPU": self.num_cpus_per_worker,
+            "GPU": self.num_gpus_per_worker,
+        }
         worker_resources_extra = (
-            {} if self.resources_per_worker is None else
-            self.resources_per_worker
+            {} if self.resources_per_worker is None else self.resources_per_worker
         )
         worker_bundles = [
             {**worker_resources, **worker_resources_extra}
@@ -94,6 +102,3 @@ class DataParallelScalingConfig:
 # kwargs.
 # TODO: After Tuner is implemented, make this into an actual dataclass
 RunConfig = Dict[str, Any]
-
-
-

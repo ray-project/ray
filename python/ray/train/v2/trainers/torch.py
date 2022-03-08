@@ -41,7 +41,7 @@ class TorchTrainer(DataParallelFunctionTrainer):
         resume_from_checkpoint (Optional[Checkpoint]): A checkpoint to
             resume training from.
 
-        """
+    """
 
     def __init__(
         self,

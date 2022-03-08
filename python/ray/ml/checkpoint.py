@@ -161,8 +161,7 @@ class Checkpoint:
                 _unpack(data_dict[FS_CHECKPOINT_KEY], path)
             else:
                 # This is a dict checkpoint. Dump data into checkpoint.pkl
-                checkpoint_data_path = os.path.join(path,
-                                                    DICT_CHECKPOINT_FILE_NAME)
+                checkpoint_data_path = os.path.join(path, DICT_CHECKPOINT_FILE_NAME)
                 with open(checkpoint_data_path, "wb") as f:
                     pickle.dump(data_dict, f)
         else:
@@ -180,6 +179,7 @@ class Checkpoint:
                 )
 
         return path
+
 
 def _get_local_path(path: Optional[str]) -> Optional[str]:
     """Check if path is a local path. Otherwise return None."""
@@ -204,9 +204,11 @@ def _pack(path: str) -> bytes:
     os.remove(tmpfile)
     return stream
 
+
 def _temporary_checkpoint_dir() -> str:
     """Create temporary checkpoint dir."""
     return tempfile.mkdtemp(prefix="checkpoint_tmp_", dir=os.getcwd())
+
 
 def _unpack(stream: bytes, path: str) -> str:
     """Unpack archive in bytes string into directory in ``path``."""

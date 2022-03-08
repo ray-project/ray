@@ -8,8 +8,11 @@ from typing import List, Optional, Dict, Union, Callable
 
 from ray import cloudpickle
 from ray.train.constants import TIMESTAMP, TUNE_INSTALLED, TRAIN_CHECKPOINT_SUBDIR
-from ray.train.constants import TUNE_CHECKPOINT_FILE_NAME, \
-    TUNE_CHECKPOINT_ID, PREPROCESSOR_KEY
+from ray.train.constants import (
+    TUNE_CHECKPOINT_FILE_NAME,
+    TUNE_CHECKPOINT_ID,
+    PREPROCESSOR_KEY,
+)
 from ray.train.session import TrainingResult
 from ray.train.utils import construct_path
 from ray.util import PublicAPI
@@ -335,9 +338,9 @@ class TuneCheckpointManager(CheckpointManager):
             with file_path.open("wb") as f:
                 cloudpickle.dump(checkpoint, f)
 
+
 # TODO: Refactor checkpoint management along with Tune.
 class TuneCheckpointManagerV2(TuneCheckpointManager):
-
     def on_init(self, preprocessor: Preprocessor):
         self.preprocessor = preprocessor
         super(TuneCheckpointManagerV2, self).on_init()
@@ -352,8 +355,7 @@ class TuneCheckpointManagerV2(TuneCheckpointManager):
 
         checkpoint_obj = Checkpoint.from_dict(checkpoint)
         # If inside a Tune Trainable, then checkpoint with Tune.
-        with tune.checkpoint_dir(
-            step=self._latest_checkpoint_id) as checkpoint_dir:
+        with tune.checkpoint_dir(step=self._latest_checkpoint_id) as checkpoint_dir:
             checkpoint_obj.to_directory(path=checkpoint_dir)
 
 

@@ -28,6 +28,7 @@ GenDataset = Union[RayDataset, Callable[[], RayDataset]]
 
 logger = logging.getLogger(__name__)
 
+
 # TODO: support conditional hyperparameter tuning of Trainer __init__ args.
 class Trainer(ConvertibleToTrainable, abc.ABC):
     """
@@ -52,6 +53,7 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
         resume_from_checkpoint (Optional[Checkpoint]): A checkpoint to
             resume training from.
     """
+
     def __init__(
         self,
         scaling_config: Optional[ScalingConfig] = None,
@@ -84,10 +86,12 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
 
         trial = analysis.trials[0]
 
-        result = Result(metrics=trial.last_result,
-                        checkpoint=Checkpoint.from_directory(
-                            trial.checkpoint.value) if
-                        trial.checkpoint.value else None)
+        result = Result(
+            metrics=trial.last_result,
+            checkpoint=Checkpoint.from_directory(trial.checkpoint.value)
+            if trial.checkpoint.value
+            else None,
+        )
 
         return result
 
@@ -107,8 +111,7 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
                 current_attribute = getattr(self, key)
                 if isinstance(current_attribute, dict):
                     # Do a deep update of the dictionary.
-                    deep_update(current_attribute, config[key],
-                                new_keys_allowed=True)
+                    deep_update(current_attribute, config[key], new_keys_allowed=True)
                 elif dataclasses.is_dataclass(current_attribute):
                     if type(config[key]) == type(current_attribute):
                         # If the hyperparam is already passed in as a dataclass
@@ -119,15 +122,16 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
                         # each attribute of the dataclass directly.
                         for inner_key, inner_value in config[key].items():
                             if hasattr(current_attribute, inner_key):
-                                dataclass_field = getattr(current_attribute,
-                                                          inner_key)
+                                dataclass_field = getattr(current_attribute, inner_key)
                                 if isinstance(dataclass_field, dict):
                                     # Do a deep update.
-                                    deep_update(dataclass_field, inner_value,
-                                                new_keys_allowed=True)
+                                    deep_update(
+                                        dataclass_field,
+                                        inner_value,
+                                        new_keys_allowed=True,
+                                    )
                                 else:
-                                    setattr(current_attribute, inner_key,
-                                            inner_value)
+                                    setattr(current_attribute, inner_key, inner_value)
                 else:
                     # Don't do a deep update and directly set the attribute
                     # to the value in config.
@@ -189,8 +193,10 @@ class DataParallelFunctionTrainer(Trainer):
         if not ray.is_initialized():
             ray.init()
 
-        if "GPU" in ray.available_resources() and \
-            scaling_config.num_gpus_per_worker <= 0:
+        if (
+            "GPU" in ray.available_resources()
+            and scaling_config.num_gpus_per_worker <= 0
+        ):
             logger.info(
                 "GPUs are detected in your Ray cluster, but GPU "
                 "training is not enabled for Ray Train. To enable "
@@ -202,10 +208,13 @@ class DataParallelFunctionTrainer(Trainer):
         self.train_func_config = train_func_config
 
         super(DataParallelFunctionTrainer, self).__init__(
-            scaling_config=scaling_config, run_config=run_config,
+            scaling_config=scaling_config,
+            run_config=run_config,
             train_dataset=train_dataset,
             additional_datasets=additional_datasets,
-            preprocessor=preprocessor, resume_from_checkpoint=resume_from_checkpoint)
+            preprocessor=preprocessor,
+            resume_from_checkpoint=resume_from_checkpoint,
+        )
 
         backend_config = backend_config if backend_config else BackendConfig()
         self.backend_config = backend_config
@@ -213,10 +222,10 @@ class DataParallelFunctionTrainer(Trainer):
     def as_trainable(self) -> Type[Trainable]:
 
         train_env_var_values = {
-                var_name: os.environ[var_name]
-                for var_name in BACKEND_ENV_VARS
-                if var_name in os.environ
-            }
+            var_name: os.environ[var_name]
+            for var_name in BACKEND_ENV_VARS
+            if var_name in os.environ
+        }
 
         def tune_function(config, checkpoint_dir=None):
             self._override_attributes_with_config(config)
@@ -226,39 +235,38 @@ class DataParallelFunctionTrainer(Trainer):
             if self.train_func_config and config:
                 self.train_func_config.update(config)
 
-            train_func = construct_train_func(self.train_func,
-                                              self.train_func_config)
+            train_func = construct_train_func(self.train_func, self.train_func_config)
 
             runtime_env = {"env_vars": train_env_var_values}
 
             remote_executor = ray.remote(num_cpus=0)(BackendExecutor)
+            additional_resources_per_worker = (
+                self.scaling_config.additional_resources_per_worker
+            )
             backend_executor_actor = remote_executor.options(
-                runtime_env=runtime_env).remote(
+                runtime_env=runtime_env
+            ).remote(
                 backend_config=self.backend_config,
                 num_workers=self.scaling_config.num_workers,
                 num_cpus_per_worker=self.scaling_config.num_cpus_per_worker,
                 num_gpus_per_worker=self.scaling_config.num_gpus_per_worker,
-                additional_resources_per_worker=self.scaling_config
-                    .additional_resources_per_worker,
-                max_retries=self.scaling_config.max_retries
+                additional_resources_per_worker=additional_resources_per_worker,
+                max_retries=self.scaling_config.max_retries,
             )
 
             checkpoint_manager = TuneCheckpointManagerV2()
             checkpoint_manager.on_init(preprocessor=self.preprocessor)
 
             # Start the remote actors.
-            ray.get(
-                backend_executor_actor.start.remote(
-                    initialization_hook=None))
+            ray.get(backend_executor_actor.start.remote(initialization_hook=None))
 
             if self.train_dataset:
                 if self.preprocessor:
                     self.train_dataset = self.preprocessor.fit_transform(
-                        self.train_dataset)
+                        self.train_dataset
+                    )
                 # Combine datasets into a single dict.
-                dataset_dict = {
-                    TRAIN_DATASET_KEY: self.train_dataset
-                }
+                dataset_dict = {TRAIN_DATASET_KEY: self.train_dataset}
             else:
                 dataset_dict = None
 
@@ -270,9 +278,9 @@ class DataParallelFunctionTrainer(Trainer):
             if dataset_dict and self.preprocessor:
                 for key, dataset in dataset_dict.items():
                     if key != TRAIN_DATASET_KEY:
-                        remote_transform = ray.remote(num_cpus=0)(lambda:
-                                                                  self.preprocessor.transform(
-                                                                      dataset)).remote()
+                        remote_transform = ray.remote(num_cpus=0)(
+                            lambda: self.preprocessor.transform(dataset)
+                        ).remote()
                         task_dict[key] = remote_transform
 
             ray.get(list(task_dict.values()))
@@ -312,8 +320,7 @@ class DataParallelFunctionTrainer(Trainer):
             """Add default resources to the Trainable."""
 
             @classmethod
-            def default_resource_request(cls,
-                                         config: Dict) -> PlacementGroupFactory:
+            def default_resource_request(cls, config: Dict) -> PlacementGroupFactory:
                 self._override_attributes_with_config(config)
                 return self.scaling_config.get_placement_group_factory()
 

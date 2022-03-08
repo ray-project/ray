@@ -5,8 +5,17 @@ import logging
 from pathlib import Path
 from threading import Thread
 
-from typing import Tuple, Dict, List, Any, TYPE_CHECKING, Union, Callable, \
-    Optional, TypeVar
+from typing import (
+    Tuple,
+    Dict,
+    List,
+    Any,
+    TYPE_CHECKING,
+    Union,
+    Callable,
+    Optional,
+    TypeVar,
+)
 
 import ray
 from ray.exceptions import RayActorError

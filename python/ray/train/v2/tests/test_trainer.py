@@ -5,12 +5,14 @@ from ray import tune
 from ray import train
 from ray.ml.config import DataParallelScalingConfig
 from ray.ml.preprocessor import Preprocessor
+from ray.ml.predictors.torch import TorchPredictor
 from ray.train.v2.trainer import Trainer, DataParallelFunctionTrainer
-from ray.train.constants import PREPROCESSOR_KEY
+from ray.train.constants import PREPROCESSOR_KEY, MODEL_KEY
 from ray.train.v2.trainers.torch import TorchTrainer
 from ray.tune.function_runner import wrap_function
 
 from ray.train.examples.train_linear_example import train_func as linear_train_func
+
 
 @pytest.fixture
 def ray_start_4_cpus():
@@ -19,12 +21,13 @@ def ray_start_4_cpus():
     # The code after the yield will run as teardown code.
     ray.shutdown()
 
+
 class DummyPreprocessor(Preprocessor):
     def fit_transform(self, ds):
-        return ds.map(lambda x: x*2)
+        return ds.map(lambda x: x * 2)
 
     def transform(self, ds):
-        return ds.map(lambda x: x+2)
+        return ds.map(lambda x: x + 2)
 
 
 class DummyTrainer(Trainer):
@@ -34,7 +37,9 @@ class DummyTrainer(Trainer):
 
         return wrap_function(train_func)
 
+
 scale_config = DataParallelScalingConfig(num_workers=2)
+
 
 class TestTrainer:
     def test_trainer_fit(self, ray_start_4_cpus):
@@ -45,10 +50,16 @@ class TestTrainer:
     def test_override(self):
         preprocessor = DummyPreprocessor()
         scale_config = DataParallelScalingConfig(num_workers=2)
-        trainer = DummyTrainer(run_config={"outer": {"inner": 1}},
-                               preprocessor=preprocessor, scaling_config=scale_config)
-        new_config = {"run_config": {"outer": {"inner": 2}}, "preprocessor":
-            DummyPreprocessor(), "scaling_config": {"use_gpu": True}}
+        trainer = DummyTrainer(
+            run_config={"outer": {"inner": 1}},
+            preprocessor=preprocessor,
+            scaling_config=scale_config,
+        )
+        new_config = {
+            "run_config": {"outer": {"inner": 2}},
+            "preprocessor": DummyPreprocessor(),
+            "scaling_config": {"use_gpu": True},
+        }
 
         trainer._override_attributes_with_config(new_config)
         assert trainer.preprocessor is not preprocessor
@@ -60,14 +71,15 @@ class TestTrainer:
         assert trainer.scaling_config == scale_config
         assert trainer.scaling_config.use_gpu
 
-class TestDataParallelTrainer:
 
+class TestDataParallelTrainer:
     def test_fit_train_func(self, ray_start_4_cpus):
         def train_func():
             train.report(loss=1)
 
-        trainer = DataParallelFunctionTrainer(train_func=train_func,
-                                              scaling_config=scale_config)
+        trainer = DataParallelFunctionTrainer(
+            train_func=train_func, scaling_config=scale_config
+        )
         assert trainer.fit().metrics["loss"] == 1
 
     def test_scale(self, ray_start_4_cpus):
@@ -76,17 +88,20 @@ class TestDataParallelTrainer:
             train.report(loss=1)
 
         assert ray.available_resources()["CPU"] == 4
-        trainer = DataParallelFunctionTrainer(train_func=train_func,
-                                              scaling_config=scale_config)
+        trainer = DataParallelFunctionTrainer(
+            train_func=train_func, scaling_config=scale_config
+        )
         trainer.fit()
 
     def test_fit_train_func_config(self, ray_start_4_cpus):
         def train_func(config):
             train.report(loss=config["x"])
 
-        trainer = DataParallelFunctionTrainer(train_func=train_func,
-                                              train_func_config={"x": 100},
-                                              scaling_config=scale_config)
+        trainer = DataParallelFunctionTrainer(
+            train_func=train_func,
+            train_func_config={"x": 100},
+            scaling_config=scale_config,
+        )
         assert trainer.fit().metrics["loss"] == 100
 
     def test_datasets(self, ray_start_4_cpus):
@@ -106,14 +121,13 @@ class TestDataParallelTrainer:
                 data_all_epochs.append(data_this_epoch)
             train.report(data=data_all_epochs)
 
-        trainer = DataParallelFunctionTrainer(train_func=get_dataset,
-                                              scaling_config=scale_config,
-                                              train_dataset=dataset)
+        trainer = DataParallelFunctionTrainer(
+            train_func=get_dataset, scaling_config=scale_config, train_dataset=dataset
+        )
         result = trainer.fit()
         rank_zero_shards = result.metrics["data"]
         for epoch_shard in rank_zero_shards:
             assert len(epoch_shard) == num_data / scale_config.num_workers
-
 
     def test_multiple_datasets(self, ray_start_4_cpus):
         num_train_data = 10
@@ -128,12 +142,13 @@ class TestDataParallelTrainer:
             val_dataset = train.get_dataset_shard("val")
             assert val_dataset.count() == num_val_data / scale_config.num_workers
 
-        trainer = DataParallelFunctionTrainer(train_func=get_dataset,
-                                              scaling_config=scale_config,
-                                              train_dataset=train_dataset,
-                                              additional_datasets={"val": val_dataset})
+        trainer = DataParallelFunctionTrainer(
+            train_func=get_dataset,
+            scaling_config=scale_config,
+            train_dataset=train_dataset,
+            additional_datasets={"val": val_dataset},
+        )
         trainer.fit()
-
 
     def test_preprocessor(self, ray_start_4_cpus):
         train_dataset = ray.data.from_items([1, 2, 3])
@@ -147,17 +162,18 @@ class TestDataParallelTrainer:
         def get_dataset():
             train_dataset = train.get_train_dataset_shard()
             assert train_dataset.count() == 3
-            assert set(train_dataset.take(3)) == set([2, 4, 6])
+            assert set(train_dataset.take(3)) == {2, 4, 6}
             val_dataset = train.get_dataset_shard("val")
             assert val_dataset.count() == 3
-            assert set(val_dataset.take(3)) == set([3, 4, 5])
+            assert set(val_dataset.take(3)) == {3, 4, 5}
 
-        trainer = DataParallelFunctionTrainer(train_func=get_dataset,
-                                              scaling_config=scale_config,
-                                              train_dataset=train_dataset,
-                                              additional_datasets={
-                                                  "val": val_dataset},
-                                              preprocessor=preprocessor)
+        trainer = DataParallelFunctionTrainer(
+            train_func=get_dataset,
+            scaling_config=scale_config,
+            train_dataset=train_dataset,
+            additional_datasets={"val": val_dataset},
+            preprocessor=preprocessor,
+        )
         trainer.fit()
 
     def test_checkpoint(self, ray_start_4_cpus):
@@ -165,8 +181,9 @@ class TestDataParallelTrainer:
             for i in range(3):
                 train.save_checkpoint(model=i)
 
-        trainer = DataParallelFunctionTrainer(train_func=train_func,
-                                              scaling_config=scale_config)
+        trainer = DataParallelFunctionTrainer(
+            train_func=train_func, scaling_config=scale_config
+        )
         result = trainer.fit()
         assert result.checkpoint.to_dict()["model"] == 2
 
@@ -177,9 +194,11 @@ class TestDataParallelTrainer:
 
         preprocessor = DummyPreprocessor()
 
-        trainer = DataParallelFunctionTrainer(train_func=train_func,
-                                              scaling_config=scale_config,
-                                              preprocessor=preprocessor)
+        trainer = DataParallelFunctionTrainer(
+            train_func=train_func,
+            scaling_config=scale_config,
+            preprocessor=preprocessor,
+        )
         result = trainer.fit()
         assert result.checkpoint.to_dict()["model"] == 2
         assert type(result.checkpoint.to_dict()[PREPROCESSOR_KEY]) == DummyPreprocessor
@@ -191,17 +210,20 @@ class TestDataParallelTrainer:
                 epoch = checkpoint["epoch"]
             else:
                 epoch = 0
-            for i in range(epoch, epoch+2):
+            for i in range(epoch, epoch + 2):
                 train.save_checkpoint(epoch=i)
 
-        trainer = DataParallelFunctionTrainer(train_func=train_func,
-                                              scaling_config=scale_config)
+        trainer = DataParallelFunctionTrainer(
+            train_func=train_func, scaling_config=scale_config
+        )
         result = trainer.fit()
         assert result.checkpoint.to_dict()["epoch"] == 1
 
-        trainer = DataParallelFunctionTrainer(train_func=train_func,
-                                              scaling_config=scale_config,
-                                              resume_from_checkpoint=result.checkpoint)
+        trainer = DataParallelFunctionTrainer(
+            train_func=train_func,
+            scaling_config=scale_config,
+            resume_from_checkpoint=result.checkpoint,
+        )
         result = trainer.fit()
         assert result.checkpoint.to_dict()["epoch"] == 2
 
@@ -209,20 +231,21 @@ class TestDataParallelTrainer:
         def train_func(config):
             train.report(loss=config["x"])
 
-        trainer = DataParallelFunctionTrainer(train_func=train_func,
-                                              train_func_config={"x": 100},
-                                              scaling_config=scale_config)
-        analysis = tune.run(trainer.as_trainable(), config={"x": tune.choice([
-            200,
-                                                                   300])},
-                                                      num_samples=2)
+        trainer = DataParallelFunctionTrainer(
+            train_func=train_func,
+            train_func_config={"x": 100},
+            scaling_config=scale_config,
+        )
+        analysis = tune.run(
+            trainer.as_trainable(), config={"x": tune.choice([200, 300])}, num_samples=2
+        )
         assert analysis.trials[0].last_result["loss"] in [200, 300]
 
         # Make sure original Trainer is not affected.
         assert trainer.train_func_config["x"] == 100
 
-class TestTorchTrainer:
 
+class TestTorchTrainer:
     @pytest.mark.parametrize("num_workers", [1, 2])
     def test_torch_linear(self, ray_start_4_cpus, num_workers):
         def train_func(config):
@@ -233,15 +256,57 @@ class TestTorchTrainer:
         num_workers = num_workers
         epochs = 3
         scaling_config = DataParallelScalingConfig(num_workers=num_workers)
-        config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4,
-                  "epochs": epochs}
-        trainer = TorchTrainer(train_func=train_func,
-                               train_func_config=config, scaling_config=scaling_config)
+        config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
+        trainer = TorchTrainer(
+            train_func=train_func,
+            train_func_config=config,
+            scaling_config=scaling_config,
+        )
         trainer.fit()
+
+    def test_torch_predict(self, ray_start_4_cpus):
+        import torch
+
+        def train_func():
+            model = torch.nn.Linear(1, 1)
+            train.save_checkpoint({MODEL_KEY: model})
+
+        scaling_config = DataParallelScalingConfig(num_workers=2)
+        trainer = TorchTrainer(train_func=train_func, scaling_config=scaling_config)
+        result = trainer.fit()
+
+        predictor = TorchPredictor.from_checkpoint(result.checkpoint)
+        predictions = predictor.predict(
+            ray.data.range(3), feature_column_dtypes=torch.float
+        )
+        assert len(predictions) == 3
+
+    def test_torch_predict_state_dict(self, ray_start_4_cpus):
+        import torch
+
+        def train_func():
+            model = torch.nn.Linear(1, 1).state_dict()
+            train.save_checkpoint({MODEL_KEY: model})
+
+        scaling_config = DataParallelScalingConfig(num_workers=2)
+        trainer = TorchTrainer(train_func=train_func, scaling_config=scaling_config)
+        result = trainer.fit()
+
+        # If loading from a state dict, a model definition must be passed in.
+        with pytest.raises(RuntimeError):
+            TorchPredictor.from_checkpoint(result.checkpoint)
+
+        predictor = TorchPredictor.from_checkpoint(
+            result.checkpoint, model_definition=torch.nn.Linear(1, 1)
+        )
+        predictions = predictor.predict(
+            ray.data.range(3), feature_column_dtypes=torch.float
+        )
+        assert len(predictions) == 3
+
 
 if __name__ == "__main__":
     import pytest
     import sys
 
     sys.exit(pytest.main(["-v", "-x", __file__]))
-

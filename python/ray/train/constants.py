@@ -1,5 +1,8 @@
 from pathlib import Path
 
+from ray.ml.constants import PREPROCESSOR_KEY
+from ray.ml.constants import MODEL_KEY
+
 try:
     TUNE_INSTALLED = True
     from ray import tune  # noqa: F401
@@ -79,4 +82,7 @@ ALL_RESERVED_KEYS = {PYTORCH_PROFILER_KEY}
 TRAIN_DATASET_KEY = "_train_dataset"
 
 # Key to denote the preprocessor in the checkpoint dict.
-PREPROCESSOR_KEY = "_preprocessor"
+PREPROCESSOR_KEY = PREPROCESSOR_KEY
+
+# Key to denote the model in the checkpoint dict.
+MODEL_KEY = MODEL_KEY

@@ -8,19 +8,20 @@ from ray.ml.config import DataParallelScalingConfig
 from torch_linear_dataset_example import train_func, get_datasets
 
 
-
 def tune_linear(num_workers, num_samples, use_gpu):
     train_dataset, val_dataset = get_datasets()
 
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": 3}
 
-    scaling_config = DataParallelScalingConfig(num_workers=num_workers,
-                                               use_gpu=use_gpu)
+    scaling_config = DataParallelScalingConfig(num_workers=num_workers, use_gpu=use_gpu)
 
-    trainer = TorchTrainer(train_func=train_func, train_func_config=config,
-                           scaling_config=scaling_config,
-                           train_dataset=train_dataset,
-                           additional_datasets={"validation": val_dataset})
+    trainer = TorchTrainer(
+        train_func=train_func,
+        train_func_config=config,
+        scaling_config=scaling_config,
+        train_dataset=train_dataset,
+        additional_datasets={"validation": val_dataset},
+    )
     analysis = tune.run(
         trainer.as_trainable(),
         num_samples=num_samples,

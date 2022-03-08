@@ -118,13 +118,15 @@ def train_linear(num_workers=2, use_gpu=False):
     train_dataset, val_dataset = get_datasets()
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": 3}
 
-    scaling_config = DataParallelScalingConfig(num_workers=num_workers,
-                                               use_gpu=use_gpu)
+    scaling_config = DataParallelScalingConfig(num_workers=num_workers, use_gpu=use_gpu)
 
-    trainer = TorchTrainer(train_func=train_func, train_func_config=config,
-                           scaling_config=scaling_config,
-                           train_dataset=train_dataset,
-                           additional_datasets={"validation": val_dataset})
+    trainer = TorchTrainer(
+        train_func=train_func,
+        train_func_config=config,
+        scaling_config=scaling_config,
+        train_dataset=train_dataset,
+        additional_datasets={"validation": val_dataset},
+    )
 
     result = trainer.fit()
     print(result.metrics)
