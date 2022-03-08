@@ -4,6 +4,7 @@ import io.ray.api.Ray;
 import io.ray.api.concurrencygroup.ConcurrencyGroup;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.runtimeenv.RuntimeEnv;
+import io.ray.api.runtimeenv.RuntimeEnvInfo;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -183,6 +184,10 @@ public class ActorCreationOptions extends BaseTaskOptions {
     }
 
     public ActorCreationOptions build() {
+      RuntimeEnvInfo runtimeEnvInfo =
+          new RuntimeEnvInfo.Builder()
+              .setSerializedRuntimeEnv(runtimeEnv != null ? runtimeEnv.toJsonBytes() : "{}")
+              .build();
       return new ActorCreationOptions(
           name,
           lifetime,
@@ -193,7 +198,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
           group,
           bundleIndex,
           concurrencyGroups,
-          runtimeEnv != null ? runtimeEnv.toJsonBytes() : "",
+          runtimeEnvInfo.toJsonBytes(),
           maxPendingCalls);
     }
 

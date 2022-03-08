@@ -137,8 +137,7 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
 
 RayTask CreateTask(const std::unordered_map<std::string, double> &required_resources,
                    int num_args = 0, std::vector<ObjectID> args = {},
-                   const std::string &serialized_runtime_env = "{}",
-                   const std::vector<std::string> &runtime_env_uris = {}) {
+                   std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr) {
   TaskSpecBuilder spec_builder;
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
@@ -146,8 +145,7 @@ RayTask CreateTask(const std::unordered_map<std::string, double> &required_resou
   spec_builder.SetCommonTaskSpec(id, "dummy_task", Language::PYTHON,
                                  FunctionDescriptorBuilder::BuildPython("", "", "", ""),
                                  job_id, TaskID::Nil(), 0, TaskID::Nil(), address, 0,
-                                 required_resources, {}, "", 0, serialized_runtime_env,
-                                 runtime_env_uris);
+                                 required_resources, {}, "", 0, runtime_env_info);
 
   if (!args.empty()) {
     for (auto &arg : args) {
@@ -474,8 +472,12 @@ TEST_F(ClusterTaskManagerTest, DispatchQueueNonBlockingTest) {
       {ray::kCPU_ResourceLabel, 4}};
 
   std::string serialized_runtime_env_A = "mock_env_A";
-  RayTask task_A = CreateTask(required_resources, /*num_args=*/0, /*args=*/{},
-                              serialized_runtime_env_A);
+  std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info_A = nullptr;
+  runtime_env_info_A.reset(new rpc::RuntimeEnvInfo());
+  runtime_env_info_A->set_serialized_runtime_env(serialized_runtime_env_A);
+
+  RayTask task_A =
+      CreateTask(required_resources, /*num_args=*/0, /*args=*/{}, runtime_env_info_A);
   rpc::RequestWorkerLeaseReply reply_A;
   bool callback_occurred = false;
   bool *callback_occurred_ptr = &callback_occurred;
@@ -485,10 +487,14 @@ TEST_F(ClusterTaskManagerTest, DispatchQueueNonBlockingTest) {
   };
 
   std::string serialized_runtime_env_B = "mock_env_B";
-  RayTask task_B_1 = CreateTask(required_resources, /*num_args=*/0, /*args=*/{},
-                                serialized_runtime_env_B);
-  RayTask task_B_2 = CreateTask(required_resources, /*num_args=*/0, /*args=*/{},
-                                serialized_runtime_env_B);
+  std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info_B = nullptr;
+  runtime_env_info_B.reset(new rpc::RuntimeEnvInfo());
+  runtime_env_info_B->set_serialized_runtime_env(serialized_runtime_env_B);
+
+  RayTask task_B_1 =
+      CreateTask(required_resources, /*num_args=*/0, /*args=*/{}, runtime_env_info_B);
+  RayTask task_B_2 =
+      CreateTask(required_resources, /*num_args=*/0, /*args=*/{}, runtime_env_info_B);
   rpc::RequestWorkerLeaseReply reply_B_1;
   rpc::RequestWorkerLeaseReply reply_B_2;
   auto empty_callback = [](Status, std::function<void()>, std::function<void()>) {};
@@ -1785,8 +1791,12 @@ TEST_F(ClusterTaskManagerTest, TestResourceDiff) {
 TEST_F(ClusterTaskManagerTest, PopWorkerExactlyOnce) {
   // Create and queue one task.
   std::string serialized_runtime_env = "mock_env";
+  std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr;
+  runtime_env_info.reset(new rpc::RuntimeEnvInfo());
+  runtime_env_info->set_serialized_runtime_env(serialized_runtime_env);
+
   RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 4}}, /*num_args=*/0, /*args=*/{},
-                            serialized_runtime_env);
+                            runtime_env_info);
   auto runtime_env_hash = task.GetTaskSpecification().GetRuntimeEnvHash();
   rpc::RequestWorkerLeaseReply reply;
   bool callback_occurred = false;

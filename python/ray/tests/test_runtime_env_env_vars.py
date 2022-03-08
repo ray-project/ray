@@ -48,10 +48,12 @@ def test_environment_variables_actor(ray_start_regular):
 def test_environment_variables_nested_task(ray_start_regular):
     @ray.remote
     def get_env(key):
+        print(os.environ)
         return os.environ.get(key)
 
     @ray.remote
     def get_env_wrapper(key):
+        assert os.environ.get(key) == "b"
         return ray.get(get_env.remote(key))
 
     assert (

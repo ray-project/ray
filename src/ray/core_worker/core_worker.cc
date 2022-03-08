@@ -1448,20 +1448,11 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
   std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr;
   runtime_env_info.reset(new rpc::RuntimeEnvInfo());
 
-  if (IsRuntimeEnvInfoEmpty(serialized_runtime_env_info)) {
-    runtime_env_info->set_serialized_runtime_env(
-        job_config_->runtime_env_info().serialized_runtime_env());
-    runtime_env_info->clear_uris();
-    for (const std::string &uri : GetUrisFromRuntimeEnv(job_runtime_env_.get())) {
-      runtime_env_info->add_uris(uri);
-    }
-
-    return runtime_env_info;
+  if (!IsRuntimeEnvInfoEmpty(serialized_runtime_env_info)) {
+    RAY_CHECK(google::protobuf::util::JsonStringToMessage(serialized_runtime_env_info,
+                                                          runtime_env_info.get())
+                  .ok());
   }
-
-  RAY_CHECK(google::protobuf::util::JsonStringToMessage(serialized_runtime_env_info,
-                                                        runtime_env_info.get())
-                .ok());
 
   if (options_.worker_type == WorkerType::DRIVER) {
     if (IsRuntimeEnvEmpty(runtime_env_info->serialized_runtime_env())) {
@@ -1507,13 +1498,11 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
     RAY_CHECK(google::protobuf::util::MessageToJsonString(
                   override_runtime_env, &serialized_override_runtime_env)
                   .ok());
-
     runtime_env_info->set_serialized_runtime_env(serialized_override_runtime_env);
     runtime_env_info->clear_uris();
     for (const std::string &uri : GetUrisFromRuntimeEnv(&override_runtime_env)) {
       runtime_env_info->add_uris(uri);
     }
-
     return runtime_env_info;
   } else {
     return runtime_env_info;
