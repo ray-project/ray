@@ -34,7 +34,7 @@ class ModelWrapper:
         input_schema: Optional[Union[str, InputSchemaFn]] = None,
         batching_params: Optional[Dict[str, int]] = None,
     ):
-        self.model = predictor_cls.load_from_checkpoint(checkpoint)
+        self.model = predictor_cls.from_checkpoint(checkpoint)
         self.app = FastAPI()
 
         input_schema = _load_input_schema(input_schema)

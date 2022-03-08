@@ -19,15 +19,20 @@ class NdArray(BaseModel):
 
     array: Union[_1DArray, _2DArray, _3DArray, _4DArray] = Field(
         ...,
-        description="The array content as a list or nested list. You can pass in 1D to 4D array in its original form.",
+        description=(
+            "The array content as a list or nested list. "
+            "You can pass in 1D to 4D array in its original form or the flatten verion."
+        ),
     )
     shape: Optional[List[int]] = Field(
-        ...,
-        description="The shape of the array. If present, the array will be reshaped via `reshape`.",
+        default=None,
+        description=("The shape of the array. If present, the array will be reshaped."),
     )
     dtype: Optional[str] = Field(
-        ...,
-        description="The dtype of the array. If present, the array will be cast by `astype`.",
+        default=None,
+        description=(
+            "The dtype of the array. If present, the array will be cast by `astype`."
+        ),
     )
 
 

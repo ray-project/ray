@@ -23,7 +23,7 @@ def _batch_args_kwargs(
     # Ray's flatten arg format is a list with alternating key and values
     # e.g. args=(1, 2), kwargs={"key": "val"} got turned into
     #      [None, 1, None, 2, "key", "val"]
-    arg_lengths = set(len(args) for args in list_of_flatten_args)
+    arg_lengths = {len(args) for args in list_of_flatten_args}
     assert (
         len(arg_lengths) == 1
     ), "All batch requests should have the same number of parameters."

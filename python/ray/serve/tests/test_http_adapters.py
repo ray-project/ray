@@ -1,10 +1,10 @@
 import io
-import tempfile
+
+import numpy as np
 import pytest
+from PIL import Image
 from ray.serve.http_adapters import NdArray, array_to_databatch, image_to_databatch
 from ray.serve.utils import require_packages
-import numpy as np
-from PIL import Image
 
 
 def test_require_packages():
