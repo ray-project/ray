@@ -125,14 +125,14 @@ class TorchAccelerator(Accelerator):
                 # Automatically set the DistributedSampler
 
                 # If you're using a sampler, the DataLoader shuffle flag must be set to
-                # False. Shuffling is instead determined by the shuffle argument passed to
-                # the DistributedSampler constructor.
+                # False. Shuffling is instead determined by the shuffle argument passed
+                # to the DistributedSampler constructor.
 
-                # If no sampler is passed to the DataLoader constructor, Torch constructs a
-                # default sampler. The default sampler is a RandomSampler if shuffling is
-                # enabled and a SequentialSampler otherwise. DataLoader does not have a
-                # shuffle attribute, so we instead identify whether shuffling is enabled by
-                # checking the default sampler type.
+                # If no sampler is passed to the DataLoader constructor, Torch
+                # constructs a default sampler. The default sampler is a RandomSampler
+                # if shuffling is enabled and a SequentialSampler otherwise. DataLoader
+                # does not have a shuffle attribute, so we instead identify whether
+                # shuffling is enabled by checking the default sampler type.
                 shuffle = not isinstance(loader.sampler, SequentialSampler)
 
                 using_default_sampler = isinstance(
