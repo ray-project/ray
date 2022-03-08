@@ -29,11 +29,11 @@ class JobFileManager(FileManager):
 
         sys.path.insert(0, f"{anyscale.ANYSCALE_RAY_DIR}/bin")
 
-    def _run_with_retry(self, f):
+    def _run_with_retry(self, f, initial_retry_delay_s: int = 10):
         return exponential_backoff_retry(
             f,
             retry_exceptions=Exception,
-            initial_retry_delay_s=10,
+            initial_retry_delay_s=initial_retry_delay_s,
             max_retries=3,
         )
 
@@ -105,7 +105,8 @@ class JobFileManager(FileManager):
             self._run_with_retry(
                 lambda: self.s3_client.delete_object(
                     Bucket=self.bucket, Key=remote_upload_to
-                )
+                ),
+                initial_retry_delay_s=2,
             )
         except Exception as e:
             logger.warning(f"Could not remove temporary S3 object: {e}")

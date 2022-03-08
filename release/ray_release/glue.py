@@ -60,6 +60,7 @@ file_manager_str_to_file_manager = {
 command_runner_to_file_manager = {
     SDKRunner: SessionControllerFileManager,
     ClientRunner: RemoteTaskFileManager,
+    JobFileManager: JobFileManager,
 }
 
 uploader_str_to_uploader = {"client": None, "s3": None, "command_runner": None}
@@ -229,8 +230,8 @@ def run_release_test(
         try:
             command_results = command_runner.fetch_results()
         except Exception as e:
+            logger.error("Could not fetch results for test command")
             logger.exception(e)
-            logger.error(f"Could not fetch results for test command: {e}")
             command_results = {}
 
         # Postprocess result:

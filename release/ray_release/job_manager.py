@@ -61,6 +61,7 @@ class JobManager:
                 break
             time.sleep(1)
         status = self.job_client.get_job_status(self.job_id_pool[command_id])
+        # TODO(sang): Propagate JobInfo.error_type
         if status == JobStatus.SUCCEEDED:
             retcode = 0
         else:
