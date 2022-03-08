@@ -229,8 +229,7 @@ def _test_some_code_for_memory_leaks(
         # solid each time (avoiding false positives).
         actual_repeats = repeats * (trial + 1)
 
-        print(desc, end="")
-        print(f" {actual_repeats} times.")
+        print(f"{desc} {actual_repeats} times.")
 
         # Initialize if necessary.
         if init is not None:
