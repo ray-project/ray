@@ -2,10 +2,12 @@ import os
 import pytest
 import subprocess
 import sys
+import asyncio
 
 from pathlib import Path
 
 import ray
+import psutil
 import ray.ray_constants as ray_constants
 from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray._private.services import REDIS_EXECUTABLE, _start_redis_instance
@@ -555,6 +557,30 @@ def test_ray_stop_should_not_kill_external_redis(redis_proc):
     check_call_ray(["start", "--head"])
     subprocess.check_call(["ray", "stop"])
     assert redis_proc.poll() is None
+
+
+def test_ray_stop_kill_workers():
+    check_call_ray(["start", "--head"])
+
+    ray.init(address="auto")
+
+    @ray.remote
+    class Actor:
+        async def ping(self):
+            return os.getpid()
+
+        async def run_forever(self):
+            while True:
+                await asyncio.sleep(5)
+
+    actor = Actor.options(lifetime="detached", name="A").remote()
+    actor.run_forever.remote()
+    actor_pid = ray.get(actor.ping.remote())
+    ray.shutdown()
+
+    check_call_ray(["stop", "--force"])
+
+    assert not psutil.pid_exists(actor_pid)
 
 
 if __name__ == "__main__":

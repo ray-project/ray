@@ -223,10 +223,24 @@ def test_subnet_given_head_and_worker_sg(iam_client_stub, ec2_client_stub):
     ec2_client_stub.assert_no_pending_responses()
 
 
-def test_fills_out_amis_and_iam(iam_client_stub, ec2_client_stub):
+# Parametrize across multiple regions, since default AMI is different in each
+@pytest.mark.parametrize(
+    "iam_client_stub,ec2_client_stub,region",
+    [3 * (region,) for region in DEFAULT_AMI],
+    indirect=["iam_client_stub", "ec2_client_stub"],
+)
+def test_fills_out_amis_and_iam(iam_client_stub, ec2_client_stub, region):
+    # Set up expected key pair for specific region
+    region_key_pair = DEFAULT_KEY_PAIR.copy()
+    region_key_pair["KeyName"] = DEFAULT_KEY_PAIR["KeyName"].replace(
+        "us-west-2", region
+    )
+
     # Setup stubs to mock out boto3
     stubs.configure_iam_role_default(iam_client_stub)
-    stubs.configure_key_pair_default(ec2_client_stub)
+    stubs.configure_key_pair_default(
+        ec2_client_stub, region=region, expected_key_pair=region_key_pair
+    )
     stubs.describe_a_security_group(ec2_client_stub, DEFAULT_SG)
     stubs.configure_subnet_default(ec2_client_stub)
 
@@ -242,6 +256,8 @@ def test_fills_out_amis_and_iam(iam_client_stub, ec2_client_stub):
     # Pass in SG for stub to work
     head_node_config["SecurityGroupIds"] = ["sg-1234abcd"]
     worker_node_config["SecurityGroupIds"] = ["sg-1234abcd"]
+
+    config["provider"]["region"] = region
 
     defaults_filled = bootstrap_aws(config)
 

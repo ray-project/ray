@@ -15,13 +15,15 @@ from typing import (
 
 import ray
 from ray.data.context import DatasetContext
-from ray.data.dataset import Dataset, T, U, BatchType
+from ray.data.dataset import Dataset, T, U
 from ray.data.impl.pipeline_executor import (
     PipelineExecutor,
     PipelineSplitExecutorCoordinator,
 )
+from ray.data.block import Block
 from ray.data.row import TableRow
 from ray.data.impl import progress_bar
+from ray.data.impl.block_batching import batch_blocks, BatchType
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.plan import ExecutionPlan
 from ray.data.impl.stats import DatasetPipelineStats, DatasetStats
@@ -33,13 +35,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Operations that can be naively applied per dataset row in the pipeline.
-PER_DATASET_OPS = ["map", "map_batches", "add_column", "flat_map", "filter"]
+_PER_DATASET_OPS = ["map", "map_batches", "add_column", "flat_map", "filter"]
 
 # Operations that apply to each dataset holistically in the pipeline.
-HOLISTIC_PER_DATASET_OPS = ["repartition", "random_shuffle", "sort"]
+_HOLISTIC_PER_DATASET_OPS = ["repartition", "random_shuffle", "sort"]
 
 # Similar to above but we should force evaluation immediately.
-PER_DATASET_OUTPUT_OPS = [
+_PER_DATASET_OUTPUT_OPS = [
     "write_json",
     "write_csv",
     "write_parquet",
@@ -47,10 +49,10 @@ PER_DATASET_OUTPUT_OPS = [
 ]
 
 # Operations that operate over the stream of output batches from the pipeline.
-OUTPUT_ITER_OPS = ["take", "take_all", "show", "to_tf", "to_torch"]
+_OUTPUT_ITER_OPS = ["take", "take_all", "show", "to_tf", "to_torch"]
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 class DatasetPipeline(Generic[T]):
     """Implements a pipeline of Datasets.
 
@@ -158,28 +160,25 @@ class DatasetPipeline(Generic[T]):
             drop_last: Whether to drop the last batch if it's incomplete.
 
         Returns:
-            A list of iterators over record batches.
+            An iterator over record batches.
         """
+        time_start = time.perf_counter()
+        yield from batch_blocks(
+            self._iter_blocks(),
+            self._stats,
+            prefetch_blocks=prefetch_blocks,
+            batch_size=batch_size,
+            batch_format=batch_format,
+            drop_last=drop_last,
+        )
+        self._stats.iter_total_s.add(time.perf_counter() - time_start)
 
-        def gen_batches() -> Iterator[BatchType]:
-            time_start = time.perf_counter()
-
-            for ds in self.iter_datasets():
-                wait_start = time.perf_counter()
-                for batch in ds.iter_batches(
-                    prefetch_blocks=prefetch_blocks,
-                    batch_size=batch_size,
-                    batch_format=batch_format,
-                    drop_last=drop_last,
-                ):
-                    self._stats.iter_wait_s.add(time.perf_counter() - wait_start)
-                    with self._stats.iter_user_s.timer():
-                        yield batch
-                    wait_start = time.perf_counter()
-
-            self._stats.iter_total_s.add(time.perf_counter() - time_start)
-
-        return gen_batches()
+    def _iter_blocks(self) -> Iterator[Block]:
+        ds_wait_start = time.perf_counter()
+        for ds in self.iter_datasets():
+            self._stats.iter_ds_wait_s.add(time.perf_counter() - ds_wait_start)
+            yield from ds._plan.execute().iter_blocks()
+            ds_wait_start = time.perf_counter()
 
     def split(
         self, n: int, *, equal: bool = False, locality_hints: List[Any] = None
@@ -267,9 +266,14 @@ class DatasetPipeline(Generic[T]):
 
     def _split(self, n: int, splitter: Callable[[Dataset], "DatasetPipeline[T]"]):
 
-        coordinator = PipelineSplitExecutorCoordinator.remote(
-            self, n, splitter, DatasetContext.get_current()
-        )
+        # Pin the coordinator (and any child actors) to the local node to avoid
+        # errors during node failures. If the local node dies, then the driver
+        # will fate-share with the coordinator anyway.
+        local_node_resource = "node:{}".format(ray.util.get_node_ip_address())
+        coordinator = PipelineSplitExecutorCoordinator.options(
+            resources={local_node_resource: 0.0001},
+            placement_group=None,
+        ).remote(self, n, splitter, DatasetContext.get_current())
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
         self._executed[0] = True
@@ -471,7 +475,9 @@ class DatasetPipeline(Generic[T]):
             length=length,
         )
 
-    def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
+    def schema(
+        self, fetch_if_missing: bool = False
+    ) -> Union[type, "pyarrow.lib.Schema"]:
         """Return the schema of the dataset pipeline.
 
         For datasets of Arrow records, this will return the Arrow schema.
@@ -479,11 +485,16 @@ class DatasetPipeline(Generic[T]):
 
         Time complexity: O(1)
 
+        Args:
+            fetch_if_missing: If True, synchronously fetch the schema if it's
+                not known. Default is False, where None is returned if the
+                schema is not known.
+
         Returns:
             The Python type or Arrow schema of the records, or None if the
             schema is not known.
         """
-        return next(self.iter_datasets()).schema()
+        return next(self.iter_datasets()).schema(fetch_if_missing=fetch_if_missing)
 
     def count(self) -> int:
         """Count the number of records in the dataset pipeline.
@@ -666,12 +677,6 @@ class DatasetPipeline(Generic[T]):
             _executed=self._executed,
         )
 
-    def foreach_dataset(self, *a, **kw) -> None:
-        raise DeprecationWarning(
-            "`foreach_dataset` has been renamed to `foreach_window`."
-        )
-
-    @DeveloperAPI
     def stats(self, exclude_first_window: bool = True) -> str:
         """Returns a string containing execution timing information.
 
@@ -739,7 +744,7 @@ class DatasetPipeline(Generic[T]):
         self._optimized_stages = optimized_stages
 
 
-for method in PER_DATASET_OPS:
+for method in _PER_DATASET_OPS:
 
     def make_impl(method):
         delegate = getattr(Dataset, method)
@@ -762,7 +767,7 @@ Apply ``Dataset.{method}`` to each dataset/window in this pipeline.
 
     setattr(DatasetPipeline, method, make_impl(method))
 
-for method in HOLISTIC_PER_DATASET_OPS:
+for method in _HOLISTIC_PER_DATASET_OPS:
 
     def make_impl(method):
         delegate = getattr(Dataset, method)
@@ -794,7 +799,7 @@ Apply ``Dataset.{method}`` to each dataset/window in this pipeline.
     setattr(DatasetPipeline, method, deprecation_warning(method))
     setattr(DatasetPipeline, method + "_each_window", make_impl(method))
 
-for method in PER_DATASET_OUTPUT_OPS:
+for method in _PER_DATASET_OUTPUT_OPS:
 
     def make_impl(method):
         delegate = getattr(Dataset, method)
@@ -818,7 +823,7 @@ Call ``Dataset.{method}`` on each output dataset of this pipeline.
 
     setattr(DatasetPipeline, method, make_impl(method))
 
-for method in OUTPUT_ITER_OPS:
+for method in _OUTPUT_ITER_OPS:
 
     def make_impl(method):
         delegate = getattr(Dataset, method)
