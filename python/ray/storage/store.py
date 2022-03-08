@@ -27,7 +27,7 @@ def get_object_info(namespace: str, paths: List[str]) -> List[Optional[ObjectEnt
 
 
 def list_objects(
-    namespace: str, prefix: str, limit: Optional[int] = None
+    namespace: str, path: str, limit: Optional[int] = None
 ) -> List[ObjectEntry]:
     raise NotImplementedError
 
