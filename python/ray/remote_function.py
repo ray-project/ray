@@ -165,9 +165,7 @@ class RemoteFunction:
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
         if runtime_env:
-            if isinstance(runtime_env, RuntimeEnv):
-                return runtime_env
-            elif isinstance(runtime_env, dict):
+            if isinstance(runtime_env, dict):
                 return RuntimeEnv(**(runtime_env or {}))
             raise TypeError(
                 "runtime_env must be dict or RuntimeEnv, ",
