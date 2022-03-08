@@ -3,7 +3,6 @@ import requests
 
 import ray
 from ray import serve
-from ray.experimental.dag import InputNode
 from ray.serve.handle import RayServeSyncHandle
 from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,
@@ -58,7 +57,7 @@ def test_simple_single_class(serve_instance):
 
 
 def test_single_class_with_valid_ray_options(serve_instance):
-    with InputNode() as dag_input:
+    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
         model = Model.options(num_cpus=1, memory=1000)._bind(2, ratio=0.3)
         ray_dag = model.forward._bind(dag_input)
 
@@ -77,7 +76,7 @@ def test_single_class_with_valid_ray_options(serve_instance):
 
 
 def test_single_class_with_invalid_deployment_options(serve_instance):
-    with InputNode() as dag_input:
+    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
         model = Model.options(name="my_deployment")._bind(2, ratio=0.3)
         ray_dag = model.forward._bind(dag_input)
 

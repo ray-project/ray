@@ -1,6 +1,6 @@
 from typing import Any, Callable, Dict, List, Union, Optional
 
-from ray.experimental.dag import InputNode, DAGInputData
+from ray.experimental.dag import InputNode
 from ray.experimental.dag.format_utils import get_dag_node_str
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 
@@ -9,6 +9,9 @@ class PipelineInputNode(InputNode):
     """Node used in DAG building API to mark entrypoints of a Serve Pipeline.
     The extension of Ray DAG level InputNode with additional abilities such
     as input conversion from HTTP.
+
+    The execution of PipelineInputNode is the same as its parent InputNode,
+    therefore no divergence from Ray DAG execution.
 
     Example:
         >>> # Provide your own async http to python data convert function
@@ -43,6 +46,7 @@ class PipelineInputNode(InputNode):
                 context throughput pickling, replacement and serialization.
                 User should not use or pass this field.
         """
+        # TODO (jiaodong, simonmo): Integrate with ModelWrapper
         self._preprocessor = preprocessor
         # Create InputNode instance
         super().__init__(_other_args_to_resolve=_other_args_to_resolve)
@@ -64,22 +68,8 @@ class PipelineInputNode(InputNode):
             _other_args_to_resolve=new_other_args_to_resolve,
         )
 
-    def _execute_impl(self, *args, **kwargs):
-        """Executor of InputNode."""
-        # Catch and assert singleton context at dag execution time.
-        assert self._in_context_manager(), (
-            "ServeInputNode is a singleton instance that should be only used "
-            "in context manager for dag building and execution. See the "
-            "docstring of class InputNode and ServeInputNode for examples."
-        )
-        # If user only passed in one value, for simplicity we just return it.
-        if len(args) == 1 and len(kwargs) == 0:
-            return args[0]
-
-        return DAGInputData(*args, **kwargs)
-
     def __str__(self) -> str:
-        return get_dag_node_str(self, "__PipelineInputNode__")
+        return get_dag_node_str(self, f"Preprocessor: {str(self._preprocessor)}")
 
     def get_preprocessor_import_path(self) -> Optional[str]:
         if isinstance(self._preprocessor, str):

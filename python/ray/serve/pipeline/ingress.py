@@ -27,5 +27,6 @@ class Ingress:
         self.preprocessor = getattr(import_module(module_name), attr_name)
 
     async def __call__(self, request: starlette.requests.Request):
+        # TODO (jiaodong, simonmo): Integrate with ModelWrapper
         user_input_python = await self.preprocessor(request)
         return await self.dag.execute(user_input_python)
