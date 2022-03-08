@@ -45,10 +45,14 @@ from ray.data.datasource import (
     BinaryDatasource,
     NumpyDatasource,
     ReadTask,
+    ParquetBlockMetadataProvider,
+    DefaultParquetBlockMetadataProvider,
 )
 from ray.data.datasource.file_based_datasource import (
     _wrap_arrow_serialization_workaround,
     _unwrap_arrow_serialization_workaround,
+    BlockMetadataProvider,
+    DefaultBlockMetadataProvider,
 )
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.arrow_block import ArrowRow
@@ -303,6 +307,7 @@ def read_parquet(
     parallelism: int = 200,
     ray_remote_args: Dict[str, Any] = None,
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
+    meta_provider: ParquetBlockMetadataProvider = DefaultParquetBlockMetadataProvider(),
     **arrow_parquet_args,
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from parquet files.
@@ -327,6 +332,8 @@ def read_parquet(
             type. This assumes that the tensors were serialized in the raw
             NumPy array format in C-contiguous order (e.g. via
             `arr.tobytes()`).
+        meta_provider: Block metadata provider. Custom metadata providers may
+            be able to resolve file metadata more quickly and/or accurately.
         arrow_parquet_args: Other parquet read options to pass to pyarrow.
 
     Returns:
@@ -368,6 +375,7 @@ def read_parquet(
         filesystem=filesystem,
         columns=columns,
         ray_remote_args=ray_remote_args,
+        meta_provider=meta_provider,
         **arrow_parquet_args,
     )
 
@@ -380,6 +388,8 @@ def read_json(
     parallelism: int = 200,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    meta_provider: BlockMetadataProvider = DefaultBlockMetadataProvider(),
+    skip_path_expansion: bool = False,
     **arrow_json_args,
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from json files.
@@ -403,6 +413,12 @@ def read_json(
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
         arrow_open_stream_args: kwargs passed to
             pyarrow.fs.FileSystem.open_input_stream
+        meta_provider: Block metadata provider. Custom metadata providers may
+            be able to resolve file metadata more quickly and/or accurately.
+        skip_path_expansion: If True, assumes that all paths point to files
+            (i.e. no directories) readable by pyarrow and skips file size
+            collection for each input file. Typically only recommended if a
+            custom block metadata provider is given to return file sizes.
         arrow_json_args: Other json read options to pass to pyarrow.
 
     Returns:
@@ -415,6 +431,8 @@ def read_json(
         filesystem=filesystem,
         ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
+        meta_provider=meta_provider,
+        skip_path_expansion=skip_path_expansion,
         **arrow_json_args,
     )
 
@@ -427,6 +445,8 @@ def read_csv(
     parallelism: int = 200,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    meta_provider: BlockMetadataProvider = DefaultBlockMetadataProvider(),
+    skip_path_expansion: bool = False,
     **arrow_csv_args,
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from csv files.
@@ -450,6 +470,12 @@ def read_csv(
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
         arrow_open_stream_args: kwargs passed to
             pyarrow.fs.FileSystem.open_input_stream
+        meta_provider: Block metadata provider. Custom metadata providers may
+            be able to resolve file metadata more quickly and/or accurately.
+        skip_path_expansion: If True, assumes that all paths point to files
+            (i.e. no directories) readable by pyarrow and skips file size
+            collection for each input file. Typically only recommended if a
+            custom block metadata provider is given to return file sizes.
         arrow_csv_args: Other csv read options to pass to pyarrow.
 
     Returns:
@@ -462,6 +488,8 @@ def read_csv(
         filesystem=filesystem,
         ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
+        meta_provider=meta_provider,
+        skip_path_expansion=skip_path_expansion,
         **arrow_csv_args,
     )
 
@@ -476,6 +504,8 @@ def read_text(
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = 200,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    meta_provider: BlockMetadataProvider = DefaultBlockMetadataProvider(),
+    skip_path_expansion: bool = False,
 ) -> Dataset[str]:
     """Create a dataset from lines stored in text files.
 
@@ -496,6 +526,12 @@ def read_text(
             limited by the number of files of the dataset.
         arrow_open_stream_args: kwargs passed to
             pyarrow.fs.FileSystem.open_input_stream
+        meta_provider: Block metadata provider. Custom metadata providers may
+            be able to resolve file metadata more quickly and/or accurately.
+        skip_path_expansion: If True, assumes that all paths point to files
+            (i.e. no directories) readable by pyarrow and skips file size
+            collection for each input file. Typically only recommended if a
+            custom block metadata provider is given to return file sizes.
 
     Returns:
         Dataset holding lines of text read from the specified paths.
@@ -512,6 +548,8 @@ def read_text(
         filesystem=filesystem,
         parallelism=parallelism,
         arrow_open_stream_args=arrow_open_stream_args,
+        meta_provider=meta_provider,
+        skip_path_expansion=skip_path_expansion,
     ).flat_map(to_text)
 
 
@@ -522,6 +560,8 @@ def read_numpy(
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = 200,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    meta_provider: BlockMetadataProvider = DefaultBlockMetadataProvider(),
+    skip_path_expansion: bool = False,
     **numpy_load_args,
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from numpy files.
@@ -545,7 +585,12 @@ def read_numpy(
         arrow_open_stream_args: kwargs passed to
             pyarrow.fs.FileSystem.open_input_stream
         numpy_load_args: Other options to pass to np.load.
-
+        meta_provider: Block metadata provider. Custom metadata providers may
+            be able to resolve file metadata more quickly and/or accurately.
+        skip_path_expansion: If True, assumes that all paths point to files
+            (i.e. no directories) readable by pyarrow and skips file size
+            collection for each input file. Typically only recommended if a
+            custom block metadata provider is given to return file sizes.
     Returns:
         Dataset holding Tensor records read from the specified paths.
     """
@@ -555,6 +600,8 @@ def read_numpy(
         paths=paths,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
+        meta_provider=meta_provider,
+        skip_path_expansion=skip_path_expansion,
         **numpy_load_args,
     )
 
@@ -568,6 +615,8 @@ def read_binary_files(
     parallelism: int = 200,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    meta_provider: BlockMetadataProvider = DefaultBlockMetadataProvider(),
+    skip_path_expansion: bool = False,
 ) -> Dataset[Union[Tuple[str, bytes], bytes]]:
     """Create a dataset from binary files of arbitrary contents.
 
@@ -589,6 +638,12 @@ def read_binary_files(
             limited by the number of files of the dataset.
         arrow_open_stream_args: kwargs passed to
             pyarrow.fs.FileSystem.open_input_stream
+        meta_provider: Block metadata provider. Custom metadata providers may
+            be able to resolve file metadata more quickly and/or accurately.
+        skip_path_expansion: If True, assumes that all paths point to files
+            (i.e. no directories) readable by pyarrow and skips file size
+            collection for each input file. Typically only recommended if a
+            custom block metadata provider is given to return file sizes.
 
     Returns:
         Dataset holding Arrow records read from the specified paths.
@@ -602,6 +657,8 @@ def read_binary_files(
         ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
         schema=bytes,
+        meta_provider=meta_provider,
+        skip_path_expansion=skip_path_expansion,
     )
 
 

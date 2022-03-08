@@ -67,6 +67,9 @@ class BlockWritePathProvider:
                 dataset.
             file_format: File format string for the block that can be used as
                 the file extension in the write path returned.
+
+        Returns:
+            The dataset block write path.
         """
         raise NotImplementedError
 
@@ -114,6 +117,90 @@ class DefaultBlockWritePathProvider(BlockWritePathProvider):
 
 
 @DeveloperAPI
+class BlockMetadataProvider:
+    """Abstract callable that provides block metadata for one or more input
+    file paths.
+
+    Current subclasses:
+        BaseBlockMetadataProvider
+        ParquetBlockMetadataProvider
+    """
+
+    def _get_block_metadata(
+        self,
+        paths: List[str],
+        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
+        **kwargs,
+    ) -> BlockMetadata:
+        """Resolves and returns block metadata for the given file paths.
+
+        Args:
+            paths: The file paths to aggregate block metadata across.
+            schema: The user-provided or inferred schema for the given file
+                paths, if any.
+
+        Returns:
+            BlockMetadata aggregated across the given file paths.
+        """
+        raise NotImplementedError
+
+    def __call__(
+        self,
+        paths: List[str],
+        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
+        **kwargs,
+    ) -> BlockMetadata:
+        return self._get_block_metadata(paths, schema, **kwargs)
+
+
+@DeveloperAPI
+class BaseBlockMetadataProvider(BlockMetadataProvider):
+    """Abstract callable that provides block metadata for FileBasedDatasource
+    implementations that reuses the base `prepare_read` method.
+
+    Current subclasses:
+        DefaultBlockMetadataProvider
+    """
+
+    def _get_block_metadata(
+        self,
+        paths: List[str],
+        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
+        *,
+        rows_per_file: Optional[int],
+        file_sizes: List[Optional[int]],
+    ) -> BlockMetadata:
+        raise NotImplementedError
+
+
+class DefaultBlockMetadataProvider(BaseBlockMetadataProvider):
+    """Default block metadata provider for FileBasedDatasource implementations
+    that reuse the base `prepare_read` method. Calculates block size in bytes
+    as the sum of its constituent file sizes, and assumes a fixed number of
+    rows per file."""
+
+    def _get_block_metadata(
+        self,
+        paths: List[str],
+        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
+        *,
+        rows_per_file: Optional[int],
+        file_sizes: List[Optional[int]],
+    ) -> BlockMetadata:
+        if rows_per_file is None:
+            num_rows = None
+        else:
+            num_rows = len(paths) * rows_per_file
+        return BlockMetadata(
+            num_rows=num_rows,
+            size_bytes=None if None in file_sizes else sum(file_sizes),
+            schema=schema,
+            input_files=paths,
+            exec_stats=None,
+        )  # Exec stats filled in later.
+
+
+@DeveloperAPI
 class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
     """File-based datasource, for reading and writing files.
 
@@ -132,6 +219,8 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
         open_stream_args: Optional[Dict[str, Any]] = None,
+        meta_provider: Optional[BlockMetadataProvider] = DefaultBlockMetadataProvider(),
+        skip_path_expansion: bool = False,
         # TODO(ekl) deprecate this once read fusion is available.
         _block_udf: Optional[Callable[[Block], Block]] = None,
         **reader_args,
@@ -141,8 +230,11 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         import numpy as np
 
         paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
-        paths, file_infos = _expand_paths(paths, filesystem)
-        file_sizes = [file_info.size for file_info in file_infos]
+        if not skip_path_expansion:
+            paths, file_infos = _expand_paths(paths, filesystem)
+            file_sizes = [file_info.size for file_info in file_infos]
+        else:
+            file_sizes = np.empty(len(paths), dtype=object)
 
         read_stream = self._read_stream
 
@@ -179,17 +271,12 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             if len(read_paths) <= 0:
                 continue
 
-            if self._rows_per_file() is None:
-                num_rows = None
-            else:
-                num_rows = len(read_paths) * self._rows_per_file()
-            meta = BlockMetadata(
-                num_rows=num_rows,
-                size_bytes=sum(file_sizes),
-                schema=schema,
-                input_files=read_paths,
-                exec_stats=None,
-            )  # Exec stats filled in later.
+            meta = meta_provider(
+                read_paths,
+                schema,
+                rows_per_file=self._rows_per_file(),
+                file_sizes=file_sizes,
+            )
             read_task = ReadTask(
                 lambda read_paths=read_paths: read_files(read_paths, filesystem), meta
             )
