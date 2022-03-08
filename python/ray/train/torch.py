@@ -415,7 +415,12 @@ def prepare_data_loader(
 @PublicAPI(stability="beta")
 def accelerate() -> None:
     """Enables training optimizations."""
-    set_accelerator(TorchAccelerator())
+    try:
+        set_accelerator(TorchAccelerator())
+    except RuntimeError:
+        raise RuntimeError(
+            "An accelerator has already been set. Try moving the `accelerate` call to the top of your training function."
+        )
 
 
 WORKER_TRACE_DIR_NAME = "pytorch_profiler_worker_traces"

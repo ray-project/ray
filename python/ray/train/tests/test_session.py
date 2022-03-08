@@ -19,6 +19,7 @@ from ray.train.session import (
     world_size,
     get_accelerator,
     set_accelerator,
+    SessionMisuseError,
 )
 
 
@@ -290,7 +291,7 @@ def test_get_accelerator_constructs_default_accelerator(session):
 
 
 def test_get_accelerator_raises_error_outside_session():
-    with pytest.raises(RuntimeError):
+    with pytest.raises(SessionMisuseError):
         get_accelerator(FakeAccelerator)
 
 
@@ -303,7 +304,7 @@ def test_set_accelerator_raises_error_if_accelerator_already_set(session):
 
 def test_set_accelerator_raises_error_outside_session():
     accelerator = FakeAccelerator()
-    with pytest.raises(RuntimeError):
+    with pytest.raises(SessionMisuseError):
         set_accelerator(accelerator)
 
 

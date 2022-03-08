@@ -255,18 +255,6 @@ def _warn_session_misuse(fn_name: str):
         )
 
 
-def _raise_session_misuse(fn_name: str):
-    """Raises RuntimeError on provided fn being used outside of session.
-
-    Args:
-        fn_name (str): The name of the function used outside of session.
-    """
-    raise RuntimeError(
-        f"`train.{fn_name}()` is meant to only be called inside a training function "
-        "that is executed by `Trainer.run`."
-    )
-
-
 def init_session(*args, **kwargs) -> None:
     global _session
     if _session:
@@ -518,6 +506,18 @@ def world_size() -> int:
     return session.world_size
 
 
+class SessionMisuseError(Exception):
+    """Method or function was used outside of a session."""
+
+
+def _raise_accelerator_session_misuse():
+    """Raises a SessionMisuseError because a utility function was used improperly."""
+    raise SessionMisuseError(
+        "Utility functions should be called inside a training function executed by "
+        "`Trainer.run`"
+    )
+
+
 def get_accelerator(default_accelerator_cls: Type[Accelerator]) -> Accelerator:
     """The accelerator for this training session.
 
@@ -525,11 +525,11 @@ def get_accelerator(default_accelerator_cls: Type[Accelerator]) -> Accelerator:
     accelerator using the provided accelerator class.
 
     Raises:
-        RuntimeError: if the session is uninitialized.
+        SessionMisuseError: if the session is uninitialized.
     """
     session = get_session()
     if session is None:
-        _raise_session_misuse(get_accelerator.__name__)
+        _raise_accelerator_session_misuse()
     if session.accelerator is None:
         session.accelerator = default_accelerator_cls()
     return session.accelerator
@@ -542,12 +542,12 @@ def set_accelerator(accelerator: Accelerator) -> None:
         accelerator (Accelerator): The accelerator to use for training.
 
     Raises:
-        RuntimeError: if the session is uninitialized, or if the accelerator has
-            already been set.
+        SessionMisuseError: if the session is unitialized.
+        RuntimeError: if the accelerator has already been set.
     """
     session = get_session()
     if session is None:
-        _raise_session_misuse(set_accelerator.__name__)
+        _raise_accelerator_session_misuse()
     if session.accelerator is not None:
         raise RuntimeError("Cannot change accelerator once set.")
     session.accelerator = accelerator
