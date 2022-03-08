@@ -68,7 +68,6 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
     /// Note that registerObjectRefImpl() must be invoked before addLocalReference().
     /// Because addLocalReference() may take a long time.
     registerObjectRefImpl(id, this);
-    this.rawData = rawData;
   }
 
   private void setRawData(byte[] rawData) {
