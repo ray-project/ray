@@ -524,7 +524,7 @@ bool ResourceRequest::IsEmpty() const {
   return true;
 }
 
-bool ResourceRequest::IsEqual(const ResourceRequest &other) const {
+bool ResourceRequest::operator==(const ResourceRequest &other) const {
   if (predefined_resources.size() != other.predefined_resources.size() ||
       custom_resources.size() != other.custom_resources.size()) {
     return false;
@@ -541,6 +541,10 @@ bool ResourceRequest::IsEqual(const ResourceRequest &other) const {
     }
   }
   return true;
+}
+
+bool ResourceRequest::operator!=(const ResourceRequest &other) const {
+  return !(*this == other);
 }
 
 std::string ResourceRequest::DebugString() const {

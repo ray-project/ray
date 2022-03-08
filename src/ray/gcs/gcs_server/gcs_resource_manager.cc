@@ -506,7 +506,7 @@ void GcsResourceManager::UpdateNodeNormalTaskResources(
   if (heartbeat.resources_normal_task_changed() &&
       heartbeat.resources_normal_task_timestamp() >
           latest_resources_normal_task_timestamp_[node_id] &&
-      !local_normal_task_resources.IsEqual(normal_task_resources)) {
+      local_normal_task_resources != normal_task_resources) {
     local_normal_task_resources.predefined_resources.resize(PredefinedResources_MAX);
     for (size_t i = 0; i < PredefinedResources_MAX; ++i) {
       local_normal_task_resources.predefined_resources[i] =

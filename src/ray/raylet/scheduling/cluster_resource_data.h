@@ -70,7 +70,8 @@ class ResourceRequest {
   /// Check whether the request contains no resources.
   bool IsEmpty() const;
   /// Test equality with the other ResourceRequest object.
-  bool IsEqual(const ResourceRequest &other) const;
+  bool operator==(const ResourceRequest &other) const;
+  bool operator!=(const ResourceRequest &other) const;
   /// Returns human-readable string for this task request.
   std::string DebugString() const;
 };
