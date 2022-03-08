@@ -43,6 +43,9 @@ void OutOfOrderActorSchedulingQueue::Stop() {
   if (pool_manager_) {
     pool_manager_->Stop();
   }
+  if (fiber_state_manager_) {
+    fiber_state_manager_->Stop();
+  }
 }
 
 bool OutOfOrderActorSchedulingQueue::TaskQueueEmpty() const {
