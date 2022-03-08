@@ -178,12 +178,32 @@ train.torch.prepare_data_loader
 
 .. autofunction:: ray.train.torch.prepare_data_loader
 
+train.torch.prepare_optimizer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.torch.prepare_optimizer
+
+
+train.torch.backward
+~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.torch.backward
+
+
 train.torch.get_device
 ~~~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.train.torch.get_device
 
 .. _train-api-torch-worker-profiler:
+
+train.torch.accelerate
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.torch.accelerate
+
+.. warning:: ``train.torch.accelerate`` cannot be called more than once, and it
+   must be called before any other ``train.torch`` utility function.
 
 train.torch.TorchWorkerProfiler
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
