@@ -1107,6 +1107,21 @@ def test_deploy_change_route_prefix(serve_instance):
     wait_for_condition(check_switched)
 
 
+@pytest.mark.parametrize("prefixes", [[None, "/f", None], ["/f", None, "/f"]])
+def test_deploy_nullify_route_prefix(serve_instance, prefixes):
+    @serve.deployment
+    def f(*args):
+        return "got me"
+
+    for prefix in prefixes:
+        f.options(route_prefix=prefix).deploy()
+        if prefix is None:
+            assert requests.get("http://localhost:8000/f").status_code == 404
+        else:
+            assert requests.get("http://localhost:8000/f").text == "got me"
+        assert ray.get(f.get_handle().remote()) == "got me"
+
+
 @pytest.mark.timeout(10, method="thread")
 def test_deploy_empty_bundle(serve_instance):
     @serve.deployment(ray_actor_options={"num_cpus": 0})
@@ -1372,6 +1387,37 @@ class TestDeployGroup:
         responses = ["Hello shallow world!", 2]
 
         self.deploy_and_check_responses(deployments, responses)
+
+    def test_import_path_deployment_decorated(self, serve_instance):
+        func = serve.deployment(
+            name="decorated_func",
+        )("ray.serve.tests.test_deploy.decorated_func")
+
+        clss = serve.deployment(
+            name="decorated_clss",
+        )("ray.serve.tests.test_deploy.DecoratedClass")
+
+        deployments = [func, clss]
+        responses = ["got decorated func", "got decorated class"]
+
+        self.deploy_and_check_responses(deployments, responses)
+
+        # Check that non-default decorated values were overwritten
+        assert serve.get_deployment("decorated_func").max_concurrent_queries != 17
+        assert serve.get_deployment("decorated_clss").max_concurrent_queries != 17
+
+
+# Decorated function with non-default max_concurrent queries
+@serve.deployment(max_concurrent_queries=17)
+def decorated_func(req=None):
+    return "got decorated func"
+
+
+# Decorated class with non-default max_concurrent queries
+@serve.deployment(max_concurrent_queries=17)
+class DecoratedClass:
+    def __call__(self, req=None):
+        return "got decorated class"
 
 
 if __name__ == "__main__":
