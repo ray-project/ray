@@ -171,7 +171,7 @@ std::vector<int> GcsResourceScheduler::SortRequiredResources(
     const std::vector<ResourceSet> &required_resources) {
   std::vector<int> sorted_index(required_resources.size());
   std::iota(sorted_index.begin(), sorted_index.end(), 0);
-  std::sort(sorted_index.begin(), sorted_index.end(), [required_resources](int b, int a) {
+  std::sort(sorted_index.begin(), sorted_index.end(), [&](int b, int a) {
     auto a_map = required_resources[a].GetResourceAmountMap();
     auto b_map = required_resources[b].GetResourceAmountMap();
     bool finished, cmp_res;
