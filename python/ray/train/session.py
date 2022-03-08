@@ -513,8 +513,8 @@ class SessionMisuseError(Exception):
 def _raise_accelerator_session_misuse():
     """Raises a SessionMisuseError because a utility function was used improperly."""
     raise SessionMisuseError(
-        "prepare/accelerate utility functions should be called inside a training function executed by "
-        "`Trainer.run`"
+        "prepare/accelerate utility functions should be called inside a training "
+        "function executed by `Trainer.run`"
     )
 
 
