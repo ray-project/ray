@@ -467,6 +467,7 @@ def prepare_data_loader(
         data_loader,
         add_dist_sampler=add_dist_sampler,
         move_to_device=move_to_device,
+        auto_transfer=auto_transfer,
     )
 
 
