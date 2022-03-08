@@ -2968,6 +2968,76 @@ def test_random_shuffle(shutdown_only, pipelined):
     assert r1.take() == ds.take()
 
 
+def test_random_shuffle_spread(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(
+        resources={"bar:1": 100},
+        num_cpus=10,
+        _system_config={"max_direct_call_object_size": 0},
+    )
+    cluster.add_node(resources={"bar:2": 100}, num_cpus=10)
+    cluster.add_node(resources={"bar:3": 100}, num_cpus=0)
+
+    ray.init(cluster.address)
+
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().node_id.hex()
+
+    node1_id = ray.get(get_node_id.options(resources={"bar:1": 1}).remote())
+    node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
+
+    ds = ray.data.range(100, parallelism=2).random_shuffle()
+    blocks = ds.get_internal_block_refs()
+    ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
+    location_data = ray.experimental.get_object_locations(blocks)
+    locations = []
+    for block in blocks:
+        locations.extend(location_data[block]["node_ids"])
+    assert set(locations) == {node1_id, node2_id}
+
+
+def test_parquet_read_spread(ray_start_cluster, tmp_path):
+    cluster = ray_start_cluster
+    cluster.add_node(
+        resources={"bar:1": 100},
+        num_cpus=10,
+        _system_config={"max_direct_call_object_size": 0},
+    )
+    cluster.add_node(resources={"bar:2": 100}, num_cpus=10)
+    cluster.add_node(resources={"bar:3": 100}, num_cpus=0)
+
+    ray.init(cluster.address)
+
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().node_id.hex()
+
+    node1_id = ray.get(get_node_id.options(resources={"bar:1": 1}).remote())
+    node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
+
+    data_path = str(tmp_path)
+    df1 = pd.DataFrame({"one": list(range(100)), "two": list(range(100, 200))})
+    path1 = os.path.join(data_path, "test1.parquet")
+    df1.to_parquet(path1)
+    df2 = pd.DataFrame({"one": list(range(300, 400)), "two": list(range(400, 500))})
+    path2 = os.path.join(data_path, "test2.parquet")
+    df2.to_parquet(path2)
+
+    ds = ray.data.read_parquet(data_path)
+
+    # Force reads.
+    blocks = ds.get_internal_block_refs()
+    assert len(blocks) == 2
+
+    ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
+    location_data = ray.experimental.get_object_locations(blocks)
+    locations = []
+    for block in blocks:
+        locations.extend(location_data[block]["node_ids"])
+    assert set(locations) == {node1_id, node2_id}
+
+
 def test_parquet_read_spread_no_cpus(ray_start_cluster, tmp_path):
     cluster = ray_start_cluster
     cluster.add_node(
