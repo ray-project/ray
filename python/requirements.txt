@@ -108,5 +108,6 @@ jupytext==1.13.6
 pytest-docker-tools
 pytest-forked
 
-# For dataset tests
+# For Datasets tests
+pyarrow >= 6.0.1
 polars

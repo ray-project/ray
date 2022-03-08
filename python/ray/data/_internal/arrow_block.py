@@ -50,6 +50,7 @@ if TYPE_CHECKING:
 
     from ray.data._internal.sort import SortKeyT
 
+
 T = TypeVar("T")
 
 
@@ -175,7 +176,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         # Getting an item in a tensor column automatically does a NumPy conversion.
         return row[VALUE_COL_NAME][0]
 
-    def slice(self, start: int, end: int, copy: bool) -> "pyarrow.Table":
+    def slice(self, start: int, end: int, copy: bool = False) -> "pyarrow.Table":
         view = self._table.slice(start, end - start)
         if copy:
             view = _copy_table(view)
@@ -396,9 +397,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
         for idx in bounds:
             # Slices need to be copied to avoid including the base table
             # during serialization.
-            partitions.append(_copy_table(table.slice(last_idx, idx - last_idx)))
+            partitions.append(table.slice(last_idx, idx - last_idx))
             last_idx = idx
-        partitions.append(_copy_table(table.slice(last_idx)))
+        partitions.append(table.slice(last_idx))
         return partitions
 
     def combine(self, key: KeyFn, aggs: Tuple[AggregateFn]) -> Block[ArrowRow]:
@@ -444,7 +445,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
                         except StopIteration:
                             next_row = None
                             break
-                    yield next_key, self.slice(start, end, copy=False)
+                    yield next_key, self.slice(start, end)
                     start = end
                 except StopIteration:
                     break
