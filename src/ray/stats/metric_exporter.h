@@ -14,6 +14,7 @@
 
 #pragma once
 #include <boost/asio.hpp>
+
 #include "absl/memory/memory.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/tags/tag_key.h"
@@ -65,7 +66,7 @@ class MetricPointExporter final : public opencensus::stats::StatsExporter::Handl
                       std::vector<std::string> &keys, std::vector<MetricPoint> &points) {
     const auto &metric_name = measure_descriptor.name();
     for (const auto &row : view_data) {
-      std::unordered_map<std::string, std::string> tags;
+      absl::flat_hash_map<std::string, std::string> tags;
       for (size_t i = 0; i < keys.size(); ++i) {
         tags[keys[i]] = row.first[i];
       }
