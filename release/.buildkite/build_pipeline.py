@@ -58,7 +58,7 @@ class SmokeTest(ReleaseTest):
 
 CORE_NIGHTLY_TESTS = {
     "~/ray/release/nightly_tests/nightly_tests.yaml": [
-        "shuffle_10gb",
+        # "shuffle_10gb",
         "shuffle_50gb",
         "shuffle_50gb_large_partition",
         "shuffle_100gb",
@@ -104,9 +104,9 @@ CORE_NIGHTLY_TESTS = {
         "chaos_many_tasks_no_object_store",
         "chaos_pipelined_ingestion_1500_gb_15_windows",
     ],
-    "~/ray/release/microbenchmark/microbenchmark.yaml": [
-        "microbenchmark",
-    ],
+    # "~/ray/release/microbenchmark/microbenchmark.yaml": [
+    #     "microbenchmark",
+    # ],
 }
 
 SERVE_NIGHTLY_TESTS = {
