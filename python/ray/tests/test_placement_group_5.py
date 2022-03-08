@@ -5,6 +5,7 @@ import ray
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from test_placement_group import are_pairwise_unique
 
+
 @pytest.mark.parametrize("connect_to_client", [False, True])
 @pytest.mark.parametrize("scheduling_strategy", ["SPREAD", "STRICT_SPREAD", "PACK"])
 def test_placement_group_bin_packing_priority(

@@ -8,6 +8,7 @@ from ray._private.test_utils import (
 )
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 
+
 def are_pairwise_unique(g):
     s = set()
     for x in g:
