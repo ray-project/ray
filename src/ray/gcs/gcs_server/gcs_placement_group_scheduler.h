@@ -128,7 +128,7 @@ class GcsScheduleStrategy {
   ///
   /// \param bundles Bundles to be scheduled.
   /// \return Required resources.
-  std::vector<ResourceRequest> GetRequiredResourcesFromBundles(
+  std::vector<ResourceSet> GetRequiredResourcesFromBundles(
       const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles);
 
   /// Generate `ScheduleResult` from bundles and nodes .

@@ -50,18 +50,17 @@ TEST_F(GcsResourceManagerTest, TestBasic) {
   ASSERT_EQ(1, cluster_resource.size());
 
   const auto &node_id = NodeID::FromBinary(node->node_id());
-  auto resource_request =
-      ResourceMapToResourceRequest(resource_map, /*requires_object_store_memory=*/false);
+  ResourceSet resource_set(resource_map);
 
   // Test `AcquireResources`.
-  ASSERT_TRUE(gcs_resource_manager_->AcquireResources(node_id, resource_request));
-  ASSERT_FALSE(gcs_resource_manager_->AcquireResources(node_id, resource_request));
+  ASSERT_TRUE(gcs_resource_manager_->AcquireResources(node_id, resource_set));
+  ASSERT_FALSE(gcs_resource_manager_->AcquireResources(node_id, resource_set));
 
   // Test `ReleaseResources`.
   ASSERT_TRUE(
-      gcs_resource_manager_->ReleaseResources(NodeID::FromRandom(), resource_request));
-  ASSERT_TRUE(gcs_resource_manager_->ReleaseResources(node_id, resource_request));
-  ASSERT_TRUE(gcs_resource_manager_->AcquireResources(node_id, resource_request));
+      gcs_resource_manager_->ReleaseResources(NodeID::FromRandom(), resource_set));
+  ASSERT_TRUE(gcs_resource_manager_->ReleaseResources(node_id, resource_set));
+  ASSERT_TRUE(gcs_resource_manager_->AcquireResources(node_id, resource_set));
 }
 
 TEST_F(GcsResourceManagerTest, TestResourceUsageAPI) {

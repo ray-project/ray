@@ -1,4 +1,4 @@
-import datetime
+import time
 import json
 import boto3
 from botocore.config import Config
@@ -16,10 +16,9 @@ class DBReporter(Reporter):
     def report_result(self, test: Test, result: Result):
         logger.info("Persisting result to the databricks delta lake...")
 
-        now = datetime.datetime.utcnow()
         result_json = {
             "_table": "release_test_result",
-            "report_time": now.strftime("%Y-%m-%d %H:%M:%S"),
+            "report_timestamp_ms": int(time.time() * 1000),
             "status": result.status or "",
             "results": result.results or {},
             "name": test.get("name", ""),
