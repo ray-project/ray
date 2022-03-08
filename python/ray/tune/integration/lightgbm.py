@@ -27,8 +27,7 @@ class TuneReportCallback(TuneCallback):
             obtained from LightGBM.
         results_postprocessing_fn (Callable): An optional Callable that takes in
             the dict that will be reported to Tune (after it has been flattened)
-            and returns a modified dict that will be reported instead. Can be used
-            to eg. average results across CV fold when using ``lightgbm.cv``.
+            and returns a modified dict that will be reported instead.
 
     Example:
 
@@ -161,8 +160,7 @@ class TuneReportCheckpointCallback(TuneCallback):
             checkpoint is saved every five iterations.
         results_postprocessing_fn (Callable): An optional Callable that takes in
             the dict that will be reported to Tune (after it has been flattened)
-            and returns a modified dict that will be reported instead. Can be used
-            to eg. average results across CV fold when using ``lightgbm.cv``.
+            and returns a modified dict that will be reported instead.
 
     Example:
 
