@@ -33,7 +33,8 @@ ClusterResourceScheduler::ClusterResourceScheduler()
         cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_resource_update);
       });
   scheduling_policy_ = std::make_unique<raylet_scheduling_policy::SchedulingPolicy>(
-      local_node_id_, cluster_resource_manager_->GetResourceView());
+      local_node_id_, cluster_resource_manager_->GetResourceView(),
+      [this](auto node_id) { return this->NodeAlive(node_id); });
 }
 
 ClusterResourceScheduler::ClusterResourceScheduler(
@@ -49,7 +50,8 @@ ClusterResourceScheduler::ClusterResourceScheduler(
       });
   cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_node_resources);
   scheduling_policy_ = std::make_unique<raylet_scheduling_policy::SchedulingPolicy>(
-      local_node_id_, cluster_resource_manager_->GetResourceView());
+      local_node_id_, cluster_resource_manager_->GetResourceView(),
+      [this](auto node_id) { return this->NodeAlive(node_id); });
 }
 
 ClusterResourceScheduler::ClusterResourceScheduler(
@@ -68,7 +70,8 @@ ClusterResourceScheduler::ClusterResourceScheduler(
       });
   cluster_resource_manager_->AddOrUpdateNode(local_node_id_, node_resources);
   scheduling_policy_ = std::make_unique<raylet_scheduling_policy::SchedulingPolicy>(
-      local_node_id_, cluster_resource_manager_->GetResourceView());
+      local_node_id_, cluster_resource_manager_->GetResourceView(),
+      [this](auto node_id) { return this->NodeAlive(node_id); });
 }
 
 bool ClusterResourceScheduler::NodeAlive(scheduling::NodeID node_id) const {
@@ -98,23 +101,20 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
   // The zero cpu actor is a special case that must be handled the same way by all
   // scheduling policies.
   if (actor_creation && resource_request.IsEmpty()) {
-    return scheduling_policy_->RandomPolicy(
-        resource_request, [this](auto node_id) { return this->NodeAlive(node_id); });
+    return scheduling_policy_->RandomPolicy(resource_request);
   }
 
   auto best_node_id = scheduling::NodeID::Nil();
   if (scheduling_strategy.scheduling_strategy_case() ==
       rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy) {
-    best_node_id = scheduling_policy_->SpreadPolicy(
-        resource_request, force_spillback, force_spillback,
-        [this](auto node_id) { return this->NodeAlive(node_id); });
+    best_node_id = scheduling_policy_->SpreadPolicy(resource_request, force_spillback,
+                                                    force_spillback);
   } else {
     // TODO (Alex): Setting require_available == force_spillback is a hack in order to
     // remain bug compatible with the legacy scheduling algorithms.
     best_node_id = scheduling_policy_->HybridPolicy(
         resource_request, RayConfig::instance().scheduler_spread_threshold(),
-        force_spillback, force_spillback,
-        [this](auto node_id) { return this->NodeAlive(node_id); });
+        force_spillback, force_spillback);
   }
 
   *is_infeasible = best_node_id.IsNil();
