@@ -386,6 +386,7 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
         uri: str or list,
         prefix: str = DEFAULT_OBJECT_PREFIX,
         override_transport_params: dict = None,
+        buffer_size=1024*1024 # For remote spilling, at least 1MB is recommended.
     ):
         try:
             from smart_open import open  # noqa
@@ -396,12 +397,15 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
                 f"is not downloaded. Original error: {e}"
             )
 
+        # Validation
         assert (
             uri is not None
         ), "uri should be provided to use object spilling."
         if isinstance(uri, str):
             uri = [uri]
         assert isinstance(uri, list), "uri must be a single string or list of strings."
+        assert isinstance(buffer_size, int), "buffer_size must be an integer."
+        self._buffer_size = buffer_size
         
         self._uris = [u.strip("/") for u in uri]
         assert len(self._uris) == len(uri)
@@ -426,7 +430,7 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
             # smart_open always seek to 0 if we don't set this argument.
             # This will lead us to call a Object.get when it is not necessary,
             # so defer seek and call seek before reading objects instead.
-            self.transport_params = {"defer_seek": True, "resource": self.s3}
+            self.transport_params = {"defer_seek": True, "resource": self.s3, "buffer_size": self._buffer_size}
         else:
             self.transport_params = {}
 
@@ -445,7 +449,8 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
         first_ref = object_refs[0]
         key = f"{self.prefix}-{first_ref.hex()}-multi-{len(object_refs)}"
         url = f"{uri}/{key}"
-        with open(url, "wb", transport_params=self.transport_params) as file_like:
+        
+        with open(url, mode="wb", buffering=self._buffer_size, transport_params=self.transport_params) as file_like:
             return self._write_multiple_objects(
                 file_like, object_refs, owner_addresses, url
             )
@@ -590,3 +595,4 @@ def delete_spilled_objects(urls: List[str]):
         urls: URLs that store spilled object files.
     """
     _external_storage.delete_spilled_objects(urls)
+
