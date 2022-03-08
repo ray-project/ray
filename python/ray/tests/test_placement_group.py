@@ -8,6 +8,14 @@ from ray._private.test_utils import (
 )
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 
+def are_pairwise_unique(g):
+    s = set()
+    for x in g:
+        if x in s:
+            return False
+        s.add(x)
+    return True
+
 
 @pytest.mark.parametrize("connect_to_client", [True, False])
 def test_placement_ready(ray_start_regular, connect_to_client):
@@ -219,15 +227,6 @@ def test_placement_group_strict_pack(ray_start_cluster, connect_to_client):
         placement_group_assert_no_leak([placement_group])
 
 
-def are_pairwise_unique(g):
-    s = set()
-    for x in g:
-        if x in s:
-            return False
-        s.add(x)
-    return True
-
-
 @pytest.mark.parametrize("connect_to_client", [False, True])
 def test_placement_group_spread(ray_start_cluster, connect_to_client):
     @ray.remote
@@ -283,7 +282,7 @@ def test_placement_group_strict_spread(ray_start_cluster, connect_to_client):
 
         def value(self):
             return self.n
-            
+
     cluster = ray_start_cluster
     num_nodes = 3
     for _ in range(num_nodes):

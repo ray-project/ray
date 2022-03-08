@@ -3,21 +3,13 @@ import sys
 import ray
 
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
-
+from test_placement_group import are_pairwise_unique
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
 @pytest.mark.parametrize("scheduling_strategy", ["SPREAD", "STRICT_SPREAD", "PACK"])
 def test_placement_group_bin_packing_priority(
     ray_start_cluster, connect_to_client, scheduling_strategy
 ):
-    def are_pairwise_unique(g):
-        s = set()
-        for x in g:
-            if x in s:
-                return False
-            s.add(x)
-        return True
-
     @ray.remote
     class Actor(object):
         def __init__(self):
