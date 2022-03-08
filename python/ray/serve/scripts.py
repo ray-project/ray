@@ -5,12 +5,10 @@ import os
 import sys
 import pathlib
 import click
-import time
 from typing import Tuple, List, Dict
 import argparse
 
 import ray
-from ray.serve.api import Deployment, deploy_group, get_deployment_statuses
 from ray.serve.config import DeploymentMode
 from ray._private.utils import import_attr
 from ray import serve
@@ -19,14 +17,11 @@ from ray.serve.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
 )
-from ray.dashboard.modules.serve.schema import (
-    ServeApplicationSchema,
-    schema_to_serve_application,
-    serve_application_status_to_schema,
-)
+from ray.dashboard.modules.serve.schema import ServeApplicationSchema
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.autoscaler._private.cli_logger import cli_logger
+from ray.serve.application import Application
 
 
 def process_args_and_kwargs(
@@ -87,20 +82,6 @@ def process_args_and_kwargs(
     args = args_and_kwargs["args"]
     del args_and_kwargs["args"]
     return args, args_and_kwargs
-
-
-def configure_runtime_env(deployment: Deployment, updates: Dict):
-    """
-    Overwrites deployment's runtime_env with fields in updates. Any fields in
-    deployment's runtime_env that aren't in updates stay the same.
-    """
-
-    if deployment.ray_actor_options is None:
-        deployment._ray_actor_options = {"runtime_env": updates}
-    elif "runtime_env" in deployment.ray_actor_options:
-        deployment.ray_actor_options["runtime_env"].update(updates)
-    else:
-        deployment.ray_actor_options["runtime_env"] = updates
 
 
 @click.group(help="[EXPERIMENTAL] CLI for managing Serve instances on a Ray cluster.")
@@ -413,27 +394,7 @@ def run(
                 "Deploying application in config file at " f"{config_path}."
             )
             with open(config_path, "r") as config_file:
-                config = yaml.safe_load(config_file)
-
-            schematized_config = ServeApplicationSchema.parse_obj(config)
-            deployments = schema_to_serve_application(schematized_config)
-
-            ray.init(address=cluster_address, namespace="serve")
-            serve.start(detached=True)
-            ServeSubmissionClient(dashboard_address)._upload_working_dir_if_needed(
-                runtime_env_updates
-            )
-
-            for deployment in deployments:
-                configure_runtime_env(deployment, runtime_env_updates)
-            deploy_group(deployments)
-
-            cli_logger.newline()
-            cli_logger.success(
-                f'\nDeployments from config file at "{config_path}" '
-                "deployed successfully!\n"
-            )
-            cli_logger.newline()
+                app = Application.from_yaml(config_file)
 
         else:
             import_path = config_or_import_path
@@ -448,32 +409,15 @@ def run(
                 )
             deployment_name = import_path[import_path.rfind(".") + 1 :]
             deployment = serve.deployment(name=deployment_name)(import_path)
-            deployments = [deployment]
 
-            ray.init(address=cluster_address, namespace="serve")
-            serve.start(detached=True)
-            ServeSubmissionClient(dashboard_address)._upload_working_dir_if_needed(
-                runtime_env_updates
-            )
+            app = Application([deployment])
 
-            configure_runtime_env(deployment, runtime_env_updates)
-            deployment.options(
-                init_args=args,
-                init_kwargs=kwargs,
-            ).deploy()
-
-            cli_logger.newline()
-            cli_logger.print(f"\nDeployed import at {import_path} successfully!\n")
-            cli_logger.newline()
-
-        while True:
-            statuses = serve_application_status_to_schema(
-                get_deployment_statuses()
-            ).json(indent=4)
-            cli_logger.newline()
-            cli_logger.print(f"\n{statuses}", no_format=True)
-            cli_logger.newline()
-            time.sleep(10)
+        app.run(
+            runtime_env_updates=runtime_env_updates,
+            cluster_address=cluster_address,
+            dashboard_address=dashboard_address,
+            logger=cli_logger,
+        )
 
     except KeyboardInterrupt:
         cli_logger.print("Got SIGINT (KeyboardInterrupt). Removing deployments.")

@@ -15,7 +15,7 @@ from ray import serve
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import get_random_letters
 
-from ray.serve.api import deploy_group
+from ray.serve.application import Application
 
 
 @pytest.mark.parametrize("use_handle", [True, False])
@@ -1221,7 +1221,7 @@ class TestDeployGroup:
         the client to wait until the deployments finish deploying.
         """
 
-        deploy_group(deployments, _blocking=blocking)
+        Application(deployments).deploy(blocking=blocking)
 
         def check_all_deployed():
             try:
@@ -1252,7 +1252,7 @@ class TestDeployGroup:
         self.deploy_and_check_responses(deployments, responses)
 
     def test_non_blocking_deploy_group(self, serve_instance):
-        """Checks deploy_group's behavior when _blocking=False."""
+        """Checks Application's deploy() behavior when blocking=False."""
 
         deployments = [self.f, self.g, self.C, self.D]
         responses = ["f reached", "g reached", "C reached", "D reached"]
@@ -1294,15 +1294,15 @@ class TestDeployGroup:
                 MutualHandles.options(name=deployment_name, init_args=(handle_name,))
             )
 
-        deploy_group(deployments)
+        Application(deployments).deploy(blocking=True)
 
         for deployment in deployments:
             assert (ray.get(deployment.get_handle().remote("hello"))) == "hello"
 
     def test_decorated_deployments(self, serve_instance):
         """
-        Checks deploy_group's behavior when deployments have options set in
-        their @serve.deployment decorator.
+        Checks Application's deploy behavior when deployments have options set
+        in their @serve.deployment decorator.
         """
 
         @serve.deployment(num_replicas=2, max_concurrent_queries=5)
@@ -1320,18 +1320,20 @@ class TestDeployGroup:
         self.deploy_and_check_responses(deployments, responses)
 
     def test_empty_list(self, serve_instance):
-        """Checks deploy_group's behavior when deployment group is empty."""
+        """Checks Application's deploy behavior when deployment group is empty."""
 
         self.deploy_and_check_responses([], [])
 
     def test_invalid_input(self, serve_instance):
         """
-        Checks deploy_group's behavior when deployment group contains
+        Checks Application's deploy behavior when deployment group contains
         non-Deployment objects.
         """
 
         with pytest.raises(TypeError):
-            deploy_group([self.f, self.C, "not a Deployment object"])
+            Application([self.f, self.C, "not a Deployment object"]).deploy(
+                blocking=True
+            )
 
     def test_import_path_deployment(self, serve_instance):
         test_env_uri = (
