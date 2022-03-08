@@ -1,14 +1,16 @@
 .. _jobs-overview:
 
-===========================================================
-Ray Job Submission: Going from your laptop to production
-===========================================================
+==================
+Ray Job Submission
+==================
 
 .. note::
 
     This component is in **beta**.
 
-Ray Job submission is a mechanism to submit locally developed and tested applications to a running remote Ray cluster. It simplifies the user experience of packaging, deploying, and manage their Ray application as a "job". Jobs can be submitted by a "job manager", like Airflow or Kubernetes Jobs.
+Ray Job submission is a mechanism to submit locally developed and tested applications to a running remote Ray cluster. It simplifies the experience of packaging, deploying, and managing a Ray application.  Jobs can be submitted by a "job manager", like Airflow or Kubernetes Jobs.
+
+Jump to the :ref:`API Reference<ray-job-submission-api-ref>`, or continue reading for an overview with examples.
 
 Concepts
 --------
@@ -58,7 +60,7 @@ We can put this file in a local directory of your choice, with filename "script.
     print(requests.__version__)
 
 
-| Ensure we have a local Ray cluster with a running head node and the dashboard installed with :code:`pip install "ray[default]"`. The address and port shown in terminal should be where we submit Job requests to.
+Ensure we have a local Ray cluster with a running head node and the dashboard installed with :code:`pip install "ray[default]"`. The address and port shown in terminal should be where we submit Job requests to.
 
 .. code-block:: bash
 
@@ -104,11 +106,14 @@ Next, set the :code:`RAY_ADDRESS` environment variable:
 
     export RAY_ADDRESS="http://127.0.0.1:8265"
 
+This tells Job Submission how to find our Ray cluster.  Here we are specifying port ``8265`` on the head node, the port that the Ray Dashboard listens on.  
+(Note that this is different from port ``10001``, which you would use to connect to the cluster via :ref:`Ray Client <ray-client>`.)
+
 Now you may run the following CLI commands:
 
 .. code-block::
 
-    ❯ ray job submit --runtime-env-json='{"working_dir": "./", "pip": ["requests==2.26.0"]}' -- "python script.py"
+    ❯ ray job submit --runtime-env-json='{"working_dir": "./", "pip": ["requests==2.26.0"]}' -- python script.py
     2021-12-01 23:04:52,672	INFO cli.py:25 -- Creating JobSubmissionClient at address: http://127.0.0.1:8265
     2021-12-01 23:04:52,809	INFO sdk.py:144 -- Uploading package gcs://_ray_pkg_bbcc8ca7e83b4dc0.zip.
     2021-12-01 23:04:52,810	INFO packaging.py:352 -- Creating a file package for local directory './'.
@@ -137,6 +142,10 @@ Now you may run the following CLI commands:
     4
     5
     2.26.0
+
+    ❯ ray job list
+    {'raysubmit_AYhLMgDJ6XBQFvFP': JobInfo(status='SUCCEEDED', message='Job finished successfully.', error_type=None, start_time=1645908622, end_time=1645908623, metadata={}, runtime_env={}),
+    'raysubmit_su9UcdUviUZ86b1t': JobInfo(status='SUCCEEDED', message='Job finished successfully.', error_type=None, start_time=1645908669, end_time=1645908670, metadata={}, runtime_env={})}
 
 Using the CLI with the Ray Cluster Launcher
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -247,6 +256,8 @@ A submitted Job can be stopped by the user before it finishes executing.
     wait_until_finish(job_id)
     logs = client.get_job_logs(job_id)
 
+To get information about all jobs, call ``client.list_jobs()``.  This returns a `Dict[str, JobInfo]` object mapping Job IDs to their information.
+
 
 REST API
 ------------
@@ -294,6 +305,16 @@ Under the hood, both the Job Client and the CLI make HTTP calls to the job serve
     )
     rst = json.loads(resp.text)
     logs = rst["logs"]
+
+**List all jobs**
+
+.. code-block:: python
+
+    resp = requests.get(
+        "http://127.0.0.1:8265/api/jobs/"
+    )
+    print(resp.json())
+    # {"job_id": {"metadata": ..., "status": ..., "message": ...}, ...}
 
 
 Job Submission Architecture

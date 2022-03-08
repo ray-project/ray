@@ -29,9 +29,6 @@ class SlateSoftQ(SoftQ):
         action_distribution = cls(
             action_distribution.inputs, self.model, temperature=self.temperature
         )
-        # per_slate_q_values = dist.inputs
-        all_slates = self.model.slates
-
         batch_size = action_distribution.inputs.size()[0]
         action_logp = torch.zeros(batch_size, dtype=torch.float)
 
@@ -40,14 +37,9 @@ class SlateSoftQ(SoftQ):
         # Explore.
         if explore:
             # Return stochastic sample over (q-value) logits.
-            explore_indices = action_distribution.sample()
-            explore_action = all_slates[explore_indices]
-
-            return explore_action, action_logp
-
+            action = action_distribution.sample()
         # Return the deterministic "sample" (argmax) over (q-value) logits.
         else:
-            exploit_indices = action_distribution.deterministic_sample()
-            exploit_action = all_slates[exploit_indices]
+            action = action_distribution.deterministic_sample()
 
-            return exploit_action, action_logp
+        return action, action_logp

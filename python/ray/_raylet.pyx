@@ -125,8 +125,6 @@ from ray.exceptions import (
 )
 from ray import external_storage
 from ray.util.scheduling_strategies import (
-    DEFAULT_SCHEDULING_STRATEGY,
-    SPREAD_SCHEDULING_STRATEGY,
     PlacementGroupSchedulingStrategy,
 )
 import ray.ray_constants as ray_constants
@@ -1055,7 +1053,7 @@ cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
 cdef void terminate_asyncio_thread() nogil:
     with gil:
         core_worker = ray.worker.global_worker.core_worker
-        core_worker.destroy_event_loop_if_exists()
+        core_worker.stop_and_join_asyncio_threads_if_exist()
 
 
 # An empty profile event context to be used when the timeline is disabled.
@@ -1459,9 +1457,9 @@ cdef class CoreWorker:
             CPlacementGroupSchedulingStrategy \
                 *c_placement_group_scheduling_strategy
         assert python_scheduling_strategy is not None
-        if python_scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY:
+        if python_scheduling_strategy == "DEFAULT":
             c_scheduling_strategy[0].mutable_default_scheduling_strategy()
-        elif python_scheduling_strategy == SPREAD_SCHEDULING_STRATEGY:
+        elif python_scheduling_strategy == "SPREAD":
             c_scheduling_strategy[0].mutable_spread_scheduling_strategy()
         elif isinstance(python_scheduling_strategy,
                         PlacementGroupSchedulingStrategy):
@@ -2066,9 +2064,6 @@ cdef class CoreWorker:
             target=lambda: self.eventloop_for_default_cg.run_forever(),
             name="AsyncIO Thread: default"
             )
-        # Making the thread as daemon to let it exit
-        # when the main thread exits.
-        self.thread_for_default_cg.daemon = True
         self.thread_for_default_cg.start()
 
         for i in range(c_defined_concurrency_groups.size()):
@@ -2082,9 +2077,6 @@ cdef class CoreWorker:
                 target=lambda: async_eventloop.run_forever(),
                 name="AsyncIO Thread: {}".format(cg_name)
             )
-            # Making the thread a daemon causes it to exit
-            # when the main thread exits.
-            async_thread.daemon = True
             async_thread.start()
 
             self.cgname_to_eventloop_dict[cg_name] = {
@@ -2137,12 +2129,22 @@ cdef class CoreWorker:
                 .YieldCurrentFiber(event))
         return future.result()
 
-    def destroy_event_loop_if_exists(self):
-        if self.async_event_loop is not None:
-            self.async_event_loop.call_soon_threadsafe(
-                self.async_event_loop.stop)
-        if self.async_thread is not None:
-            self.async_thread.join()
+    def stop_and_join_asyncio_threads_if_exist(self):
+        event_loops = []
+        threads = []
+        if self.eventloop_for_default_cg is not None:
+            event_loops.append(self.eventloop_for_default_cg)
+        if self.thread_for_default_cg is not None:
+            threads.append(self.thread_for_default_cg)
+        if self.cgname_to_eventloop_dict:
+            for event_loop_and_thread in self.cgname_to_eventloop_dict.values():
+                event_loops.append(event_loop_and_thread["eventloop"])
+                threads.append(event_loop_and_thread["thread"])
+        for event_loop in event_loops:
+            event_loop.call_soon_threadsafe(
+                event_loop.stop)
+        for thread in threads:
+            thread.join()
 
     def current_actor_is_asyncio(self):
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()

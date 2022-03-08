@@ -1239,7 +1239,7 @@ class StandardAutoscaler:
                 self.prom_metrics.stopped_nodes.inc()
         logger.error("StandardAutoscaler: terminated {} node(s)".format(len(nodes)))
 
-    def summary(self):
+    def summary(self) -> Optional[AutoscalerSummary]:
         """Summarizes the active, pending, and failed node launches.
 
         An active node is a node whose raylet is actively reporting heartbeats.
@@ -1250,6 +1250,8 @@ class StandardAutoscaler:
         Returns:
             AutoscalerSummary: The summary.
         """
+        if not self.non_terminated_nodes:
+            return None
         active_nodes = Counter()
         pending_nodes = []
         failed_nodes = []
@@ -1309,4 +1311,5 @@ class StandardAutoscaler:
     def info_string(self):
         lm_summary = self.load_metrics.summary()
         autoscaler_summary = self.summary()
+        assert autoscaler_summary
         return "\n" + format_info_string(lm_summary, autoscaler_summary)

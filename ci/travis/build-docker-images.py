@@ -348,11 +348,6 @@ def prep_ray_ml():
     )
     for fl in requirement_files:
         shutil.copy(fl, os.path.join(root_dir, "docker/ray-ml/"))
-    # Install atari roms script
-    shutil.copy(
-        f"{_get_root_dir()}/rllib/utils/install_atari_roms.sh",
-        os.path.join(root_dir, "docker/ray-ml/"),
-    )
 
 
 def _get_docker_creds() -> Tuple[str, str]:
