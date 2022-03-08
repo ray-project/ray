@@ -1,4 +1,5 @@
 from functools import partial
+from pathlib import Path
 from typing import Dict, Sequence, Any
 import copy
 import inspect
@@ -48,6 +49,24 @@ def _validate_log_to_file(log_to_file):
     return stdout_file, stderr_file
 
 
+def _get_local_dir_with_expand_user(local_dir: None):
+    return os.path.abspath(os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR))
+
+
+def _get_dir_name(run, name):
+    # If the name has been set explicitly, we don't want to create
+    # dated directories. The same is true for string run identifiers.
+    if (
+        int(os.environ.get("TUNE_DISABLE_DATED_SUBDIR", 0)) == 1
+        or name
+        or isinstance(run, str)
+    ):
+        dir_name = name
+    else:
+        dir_name = "{}_{}".format(name, date_str())
+    return dir_name
+
+
 @DeveloperAPI
 class Experiment:
     """Tracks experiment specifications.
@@ -88,6 +107,7 @@ class Experiment:
         resources_per_trial=None,
         num_samples=1,
         local_dir=None,
+        experiment_checkpoint_dir=None,
         sync_config=None,
         trial_name_creator=None,
         trial_dirname_creator=None,
@@ -100,6 +120,18 @@ class Experiment:
         max_failures=0,
         restore=None,
     ):
+
+        local_dir = _get_local_dir_with_expand_user(local_dir)
+        # `experiment_checkpoint_dir` is for internal use only for better
+        # support of Tuner API.
+        # If set, it should be a subpath under `local_dir`. Also deduce `dir_name`.
+        if experiment_checkpoint_dir:
+            experiment_checkpoint_dir_path = Path(experiment_checkpoint_dir)
+            local_dir_path = Path(local_dir)
+            assert experiment_checkpoint_dir_path in local_dir_path.parents
+            self.experiment_checkpoint_dir = experiment_checkpoint_dir
+            # `dir_name` is set by `experiment_checkpoint_dir` indirectly.
+            self.dir_name = os.path.relpath(experiment_checkpoint_dir, local_dir)
 
         config = config or {}
         sync_config = sync_config or SyncConfig()
@@ -124,16 +156,8 @@ class Experiment:
         self._run_identifier = Experiment.register_if_needed(run)
         self.name = name or self._run_identifier
 
-        # If the name has been set explicitly, we don't want to create
-        # dated directories. The same is true for string run identifiers.
-        if (
-            int(os.environ.get("TUNE_DISABLE_DATED_SUBDIR", 0)) == 1
-            or name
-            or isinstance(run, str)
-        ):
-            self.dir_name = self.name
-        else:
-            self.dir_name = "{}_{}".format(self.name, date_str())
+        if not self.dir_name:
+            self.dir_name = _get_dir_name(run, self.name)
 
         if sync_config.upload_dir:
             self.remote_checkpoint_dir = os.path.join(
@@ -192,9 +216,7 @@ class Experiment:
             "config": config,
             "resources_per_trial": resources_per_trial,
             "num_samples": num_samples,
-            "local_dir": os.path.abspath(
-                os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR)
-            ),
+            "local_dir": local_dir,
             "sync_config": sync_config,
             "remote_checkpoint_dir": self.remote_checkpoint_dir,
             "trial_name_creator": trial_name_creator,
@@ -243,7 +265,7 @@ class Experiment:
         return exp
 
     @classmethod
-    def register_if_needed(cls, run_object):
+    def register_if_needed(cls, run_object, dry_run: bool = False):
         """Registers Trainable or Function at runtime.
 
         Assumes already registered if run_object is a string.
@@ -253,6 +275,8 @@ class Experiment:
             run_object (str|function|class): Trainable to run. If string,
                 assumes it is an ID and does not modify it. Otherwise,
                 returns a string corresponding to the run_object name.
+            dry_run (bool): True means only going through this method to get
+                experiment name without registering any run_object.
 
         Returns:
             A string representing the trainable identifier.
@@ -283,20 +307,44 @@ class Experiment:
                 name = run_object.func.__name__
             else:
                 logger.warning("No name detected on trainable. Using {}.".format(name))
-            try:
-                register_trainable(name, run_object)
-            except (TypeError, PicklingError) as e:
-                extra_msg = (
-                    "Other options: "
-                    "\n-Try reproducing the issue by calling "
-                    "`pickle.dumps(trainable)`. "
-                    "\n-If the error is typing-related, try removing "
-                    "the type annotations and try again."
-                )
-                raise type(e)(str(e) + " " + extra_msg) from None
+            if not dry_run:
+                try:
+                    register_trainable(name, run_object)
+                except (TypeError, PicklingError) as e:
+                    extra_msg = (
+                        "Other options: "
+                        "\n-Try reproducing the issue by calling "
+                        "`pickle.dumps(trainable)`. "
+                        "\n-If the error is typing-related, try removing "
+                        "the type annotations and try again."
+                    )
+                    raise type(e)(str(e) + " " + extra_msg) from None
             return name
         else:
             raise TuneError("Improper 'run' - not string nor trainable.")
+
+    @classmethod
+    def get_experiment_checkpoint_dir(cls, run, local_dir=None, name=None):
+        """Get experiment checkpoint dir without setting up an experiment.
+
+        This is only used internally for better support of Tuner API.
+
+        Arguments:
+            run (str|function|class): Trainable to run.
+            name (str): The name of the experiment specified by user.
+            local_dir (str): The local_dir path.
+
+        Returns:
+            A string representing the trainable identifier.
+        """
+        assert run
+        local_dir = _get_local_dir_with_expand_user(local_dir)
+        run_identifier = cls.register_if_needed(run, dry_run=True)
+        name = name or run_identifier
+
+        dir_name = _get_dir_name(run, name)
+
+        return os.path.join(local_dir, dir_name)
 
     @property
     def stopper(self):
@@ -308,8 +356,11 @@ class Experiment:
 
     @property
     def checkpoint_dir(self):
-        if self.local_dir:
-            return os.path.join(self.local_dir, self.dir_name)
+        # Provided when initializing Experiment, if so, return directly.
+        if self.experiment_checkpoint_dir:
+            return self.experiment_checkpoint_dir
+        assert self.local_dir
+        return os.path.join(self.local_dir, self.dir_name)
 
     @property
     def run_identifier(self):

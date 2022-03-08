@@ -6,7 +6,7 @@ import ray
 import ray.cloudpickle as pickle
 from ray.data import Dataset
 
-from ray.tune import TuneError
+from ray.tune import TuneError, Experiment
 from ray.tune.api_v2.convertible_to_trainable import ConvertibleToTrainable
 from ray.tune.callback import Callback
 from ray.tune.trainable import Trainable
@@ -120,8 +120,7 @@ class TunerInternal:
         return trainable
 
     def _get_experiment_checkpoint_dir(self):
-        # TODO: This needs to be generalized.
-        path = "/Users/xwjiang/ray_results/tuner_resume"
+        path = Experiment.get_experiment_checkpoint_dir(self.trainable, None, self.name)
         os.makedirs(path)
         return path
 
@@ -136,31 +135,24 @@ class TunerInternal:
         return analysis
 
     def _fit_internal(self, trainable, param_space):
-        """Fitting for a fresh Tuner.
-
-        `Tuner.experiment_path` is assigned from `analysis.experiment_dir`."""
+        """Fitting for a fresh Tuner."""
+        assert self.experiment_path
         analysis = run(
             trainable,
             config={"run_config": self.run_config, **param_space},
             name=self.name,
             callbacks=self.callbacks,
+            _experiment_checkpoint_dir=self.experiment_path,
         )
         return analysis
 
     def _fit_resume(self, trainable):
-        """Fitting for a restored Tuner.
-
-        `Tuner.experiment_path` is already set in this case."""
+        """Fitting for a restored Tuner."""
         assert self.experiment_path
-        # E.g. /home/ray/ray_results/experiment_name
-        experiment_dir = os.path.dirname(self.experiment_path + os.sep)
-        # E.g. experiment_name
-        experiment_name = os.path.basename(experiment_dir)
-        # E.g. /home/ray/ray_results
-        local_dir = os.path.dirname(experiment_dir)
-
         analysis = run(
-            trainable, name=experiment_name, local_dir=local_dir, resume=True
+            trainable,
+            resume=True,
+            _experiment_checkpoint_dir=self.experiment_path,
         )
 
         return analysis
