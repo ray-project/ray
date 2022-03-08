@@ -119,6 +119,10 @@ RAY_CONFIG(bool, preallocate_plasma_memory, false)
 // `worker_cap_initial_backoff_delay_ms`.
 RAY_CONFIG(bool, worker_cap_enabled, true)
 
+// Flag to determine if forking in Ray actors / tasks are supported.
+// Currently, this determines whether forking is supported in GRPC.
+RAY_CONFIG(bool, support_fork, true)
+
 /// We place a soft cap on the number of tasks of a given scheduling class that
 /// can run at once to limit the total nubmer of worker processes. After the
 /// specified interval, the new task above that cap is allowed to run. The time
