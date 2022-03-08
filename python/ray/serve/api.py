@@ -6,9 +6,22 @@ import logging
 import random
 import re
 import time
+import json
+import yaml
 from dataclasses import dataclass
 from functools import wraps
-from typing import Any, Callable, Dict, Optional, Tuple, Type, Union, List, overload
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+    List,
+    TextIO,
+    overload,
+)
 
 from fastapi import APIRouter, FastAPI
 from starlette.requests import Request
@@ -51,6 +64,11 @@ from ray.serve.utils import (
 from ray.util.annotations import PublicAPI
 import ray
 from ray import cloudpickle
+from ray.dashboard.modules.serve.schema import (
+    ServeApplicationSchema,
+    serve_application_to_schema,
+    schema_to_serve_application,
+)
 
 _INTERNAL_REPLICA_CONTEXT = None
 _global_client = None
@@ -1460,3 +1478,86 @@ def deploy_group(deployments: List[Deployment], _blocking: bool = True):
         parameter_group.append(deployment_parameters)
 
     _get_global_client().deploy_group(parameter_group, _blocking=_blocking)
+
+
+class Application:
+    def __init__(self, deployments: List[Deployment]):
+        self._deployments = {d.name: d for d in deployments}
+
+    def add_deployment(self, deployment: Deployment):
+        """Add deployment to the list. Validate name uniqueness."""
+
+        self._deployments[deployment.name] = deployment
+
+    def deploy(self, _blocking: bool = True):
+        """Async deploy (replace deploy_group())."""
+
+        return deploy_group(self._deployments, _blocking=_blocking)
+
+    def get_status(self) -> Dict[str, DeploymentStatus]:
+        """Get current status of all deployments."""
+
+        return get_deployment_statuses()
+
+    def run(self):
+        """Blocking run."""
+        pass
+
+    def __getitem__(self, key: str):
+        """Fetch deployment by name using dict syntax: app["name"]"""
+
+        if key in self._deployments:
+            return self._deployments[key]
+        else:
+            raise KeyError(
+                "Serve application does not contain a " f'"{key}" deployment.'
+            )
+
+    def __getattr__(self, name: str):
+        """Fetch deployment by name using attributes: app.name"""
+
+        if name in self._deployments:
+            return self._deployments[name]
+        else:
+            raise AttributeError(
+                "Serve application does not contain a " f'"{name}" deployment.'
+            )
+
+    def to_json(self, f: Optional[TextIO] = None) -> str:
+        """Write list of deployments to json str or file."""
+
+        json_str = serve_application_to_schema(self._deployments).json(indent=4)
+
+        if f:
+            f.write(json_str)
+        return json_str
+
+    @classmethod
+    def from_json(cls, str_or_file: Union[str, TextIO]) -> "Application":
+        """Load list of deployments from json str or file."""
+
+        if isinstance(str_or_file, str):
+            schema = ServeApplicationSchema.parse_raw(
+                str_or_file, content_type="application/json"
+            )
+        else:
+            schema = ServeApplicationSchema.parse_obj(json.load(str_or_file))
+
+        return Application(schema_to_serve_application(schema))
+
+    def to_yaml(self, f: Optional[TextIO]) -> Optional[str]:
+        """Write list of deployments to yaml str or file."""
+
+        json_str = serve_application_to_schema(self._deployments).json(indent=4)
+
+        if f:
+            yaml.safe_dump(json_str, f)
+        return yaml.safe_dump(json_str)
+
+    @classmethod
+    def from_yaml(cls, str_or_file: Union[str, TextIO]) -> "Application":
+        """Load list of deployments from yaml str or file."""
+
+        deployments_json = yaml.safe_load(str_or_file)
+        schema = ServeApplicationSchema.parse_obj(deployments_json)
+        return Application(schema_to_serve_application(schema))
