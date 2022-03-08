@@ -86,14 +86,6 @@ class TorchAccelerator(Accelerator):
         if move_to_device:
             logger.info(f"Moving model to device: {device}")
             model = model.to(device)
-        if wrap_ddp and train.world_size() > 1:
-            logger.info("Wrapping provided model in DDP.")
-            if torch.cuda.is_available():
-                model = DistributedDataParallel(
-                    model, device_ids=[rank], output_device=rank, **ddp_kwargs
-                )
-            else:
-                model = DistributedDataParallel(model, **ddp_kwargs)
 
         def wrap_forward(forward):
             @functools.wraps(forward)
@@ -106,6 +98,15 @@ class TorchAccelerator(Accelerator):
             return wrapper
 
         model.forward = wrap_forward(model.forward)
+
+        if wrap_ddp and train.world_size() > 1:
+            logger.info("Wrapping provided model in DDP.")
+            if torch.cuda.is_available():
+                model = DistributedDataParallel(
+                    model, device_ids=[rank], output_device=rank, **ddp_kwargs
+                )
+            else:
+                model = DistributedDataParallel(model, **ddp_kwargs)
 
         return model
 
