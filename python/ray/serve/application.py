@@ -2,6 +2,7 @@ from typing import List, Dict, TextIO, Optional, Union
 import json
 import yaml
 import time
+import sys
 
 import ray
 from ray import serve
@@ -49,7 +50,7 @@ class Application:
 
         parameter_group = []
 
-        for deployment in self._deployments:
+        for deployment in self._deployments.values():
             if not isinstance(deployment, Deployment):
                 raise TypeError(
                     f"deploy_group only accepts Deployments, but got unexpected "
@@ -88,26 +89,36 @@ class Application:
     ):
         """Blocking run."""
 
-        runtime_env_updates = runtime_env_updates or {}
+        try:
+            runtime_env_updates = runtime_env_updates or {}
 
-        ray.init(address=cluster_address, namespace="serve")
-        serve.start(detached=True)
-        ServeSubmissionClient(dashboard_address)._upload_working_dir_if_needed(
-            runtime_env_updates
-        )
-
-        for deployment in self._deployments:
-            self._configure_runtime_env(deployment, runtime_env_updates)
-        self.deploy()
-
-        logger.info("\nDeployed successfully!\n")
-
-        while True:
-            statuses = serve_application_status_to_schema(self.get_statuses()).json(
-                indent=4
+            ray.init(address=cluster_address, namespace="serve")
+            serve.start(detached=True)
+            ServeSubmissionClient(dashboard_address)._upload_working_dir_if_needed(
+                runtime_env_updates
             )
-            logger.info(f"{statuses}")
-            time.sleep(10)
+
+            for deployment in self._deployments.values():
+                self._configure_runtime_env(deployment, runtime_env_updates)
+            self.deploy()
+
+            logger.info("\nDeployed successfully!\n")
+
+            while True:
+                statuses = serve_application_status_to_schema(self.get_statuses()).json(
+                    indent=4
+                )
+                logger.info(f"{statuses}")
+                time.sleep(10)
+
+        except KeyboardInterrupt:
+            logger.info("Got SIGINT (KeyboardInterrupt). Removing deployments.")
+            for deployment in self._deployments.values():
+                deployment.delete()
+            if len(serve.list_deployments()) == 0:
+                logger.info("No deployments left. Shutting down Serve.")
+                serve.shutdown()
+            sys.exit()
 
     def to_json(self, f: Optional[TextIO] = None) -> str:
         """Write list of deployments to json str or file."""

@@ -2,7 +2,6 @@
 import json
 import yaml
 import os
-import sys
 import pathlib
 import click
 from typing import Tuple, List, Dict
@@ -370,64 +369,50 @@ def run(
     dashboard_address: str,
 ):
 
-    try:
-        # Check if path provided is for config or import
-        deployments = []
-        is_config = pathlib.Path(config_or_import_path).is_file()
-        args, kwargs = process_args_and_kwargs(args_and_kwargs)
-        runtime_env_updates = parse_runtime_env_args(
-            runtime_env=runtime_env,
-            runtime_env_json=runtime_env_json,
-            working_dir=working_dir,
-        )
+    # Check if path provided is for config or import
+    is_config = pathlib.Path(config_or_import_path).is_file()
+    args, kwargs = process_args_and_kwargs(args_and_kwargs)
+    runtime_env_updates = parse_runtime_env_args(
+        runtime_env=runtime_env,
+        runtime_env_json=runtime_env_json,
+        working_dir=working_dir,
+    )
 
-        if is_config:
-            config_path = config_or_import_path
-            # Delay serve.start() to catch invalid inputs without waiting
-            if len(args) + len(kwargs) > 0:
-                raise ValueError(
-                    "ARGS_AND_KWARGS cannot be defined for a "
-                    "config file deployment. Please specify the "
-                    "init_args and init_kwargs inside the config file."
-                )
-
-            cli_logger.print(
-                "Deploying application in config file at " f"{config_path}."
-            )
-            with open(config_path, "r") as config_file:
-                app = Application.from_yaml(config_file)
-
-        else:
-            import_path = config_or_import_path
-            cli_logger.print(
-                f'Deploying function or class imported from "{import_path}".'
+    if is_config:
+        config_path = config_or_import_path
+        # Delay serve.start() to catch invalid inputs without waiting
+        if len(args) + len(kwargs) > 0:
+            raise ValueError(
+                "ARGS_AND_KWARGS cannot be defined for a "
+                "config file deployment. Please specify the "
+                "init_args and init_kwargs inside the config file."
             )
 
-            if "." not in import_path:
-                raise ValueError(
-                    "Import paths must be of the form "
-                    '"module.submodule_1...submodule_n.MyClassOrFunction".'
-                )
-            deployment_name = import_path[import_path.rfind(".") + 1 :]
-            deployment = serve.deployment(name=deployment_name)(import_path)
+        cli_logger.print("Deploying application in config file at " f"{config_path}.")
+        with open(config_path, "r") as config_file:
+            app = Application.from_yaml(config_file)
 
-            app = Application([deployment])
+    else:
+        import_path = config_or_import_path
+        if "." not in import_path:
+            raise ValueError(
+                "Import paths must be of the form "
+                '"module.submodule_1...submodule_n.MyClassOrFunction".'
+            )
 
-        app.run(
-            runtime_env_updates=runtime_env_updates,
-            cluster_address=cluster_address,
-            dashboard_address=dashboard_address,
-            logger=cli_logger,
-        )
+        cli_logger.print(f'Deploying function or class imported from "{import_path}".')
 
-    except KeyboardInterrupt:
-        cli_logger.print("Got SIGINT (KeyboardInterrupt). Removing deployments.")
-        for deployment in deployments:
-            deployment.delete()
-        if len(serve.list_deployments()) == 0:
-            cli_logger.print("No deployments left. Shutting down Serve.")
-            serve.shutdown()
-        sys.exit()
+        deployment_name = import_path[import_path.rfind(".") + 1 :]
+        deployment = serve.deployment(name=deployment_name)(import_path)
+
+        app = Application([deployment.options(init_args=args, init_kwargs=kwargs)])
+
+    app.run(
+        runtime_env_updates=runtime_env_updates,
+        cluster_address=cluster_address,
+        dashboard_address=dashboard_address,
+        logger=cli_logger,
+    )
 
 
 @cli.command(
