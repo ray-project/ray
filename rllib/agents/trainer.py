@@ -741,7 +741,7 @@ class Trainer(Trainable):
         "custom_resources_per_worker",
         "evaluation_config",
         "exploration_config",
-        "replay_buffer_config" "extra_python_environs_for_driver",
+        "replay_buffer_config",
         "extra_python_environs_for_worker",
         "input_config",
         "output_config",
@@ -2762,18 +2762,17 @@ class Trainer(Trainable):
             MultiAgentReplayBuffer instance based on trainer config.
             None, if local replay buffer is not needed.
         """
-        # These are the agents that utilizes a local replay buffer.
+        # Some agents do not need a replay buffer
         if "replay_buffer_config" not in config or not config["replay_buffer_config"]:
-            # Does not need a replay buffer.
             return None
 
-        assert "type" in config["replay_buffer_config"], (
-            "Can not instantiate " "ReplayBuffer from config without 'type' key."
-        )
+        replay_buffer_config = config["replay_buffer_config"]
+        assert (
+            "type" in replay_buffer_config
+        ), "Can not instantiate ReplayBuffer from config without 'type' key."
 
         capacity = config.get("buffer_size", DEPRECATED_VALUE)
         if capacity != DEPRECATED_VALUE:
-            # Print a deprecation warning.
             deprecation_warning(
                 old="config['buffer_size']",
                 new="config['replay_buffer_config']['capacity']",
@@ -2789,7 +2788,6 @@ class Trainer(Trainable):
         ]
         for k in deprecated_replay_buffer_keys:
             if config.get(k) is not None:
-                # Print a deprecation warning.
                 deprecation_warning(
                     old="config[{}]".format(k),
                     new="config['replay_buffer_config'][{}]".format(k),
@@ -2855,6 +2853,8 @@ class Trainer(Trainable):
                     new="config['replay_buffer_config']['replay_burn_in']",
                     error=False,
                 )
+                # and old configs
+                config["replay_buffer_config"][k] = config["k"]
 
             config["replay_buffer_config"]["replay_zero_init_states"] = config.get(
                 "replay_zero_init_states", True

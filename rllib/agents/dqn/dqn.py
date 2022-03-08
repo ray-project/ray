@@ -35,6 +35,7 @@ from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 logger = logging.getLogger(__name__)
 
@@ -64,19 +65,38 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # N-step Q learning
         "n_step": 1,
 
-        # === Prioritized replay buffer ===
-        # If True prioritized replay buffer will be used.
-        "prioritized_replay": True,
-        # Alpha parameter for prioritized replay buffer.
-        "prioritized_replay_alpha": 0.6,
-        # Beta parameter for sampling from prioritized replay buffer.
-        "prioritized_replay_beta": 0.4,
-        # Final value of beta (by default, we use constant beta=0.4).
-        "final_prioritized_replay_beta": 0.4,
-        # Time steps over which the beta parameter is annealed.
-        "prioritized_replay_beta_annealing_timesteps": 20000,
-        # Epsilon to add to the TD errors when updating priorities.
-        "prioritized_replay_eps": 1e-6,
+        # === Replay buffer ===
+        # Size of the replay buffer. Note that if async_updates is set, then
+        # each worker will have a replay buffer of this size.
+        "buffer_size": DEPRECATED_VALUE,
+        "replay_buffer_config": {
+            # Until the new ReplayBuffer API is fully integrated, we specify
+            # new-style buffers by their full path.
+            "type": "ray.rllib.utils.replay_buffers.MultiAgentPrioritizedReplayBuffer",
+            "capacity": 50000,
+            "replay_batch_size": 32,
+            "prioritized_replay_alpha": 0.6,
+            # Beta parameter for sampling from prioritized replay buffer.
+            "prioritized_replay_beta": 0.4,
+            # Final value of beta (by default, we use constant beta=0.4).
+            "final_prioritized_replay_beta": 0.4,
+            # Time steps over which the beta parameter is annealed.
+            "prioritized_replay_beta_annealing_timesteps": 20000,
+            # Epsilon to add to the TD errors when updating priorities.
+            "prioritized_replay_eps": 1e-6,
+        },
+        # Set this to True, if you want the contents of your buffer(s) to be
+        # stored in any saved checkpoints as well.
+        # Warnings will be created if:
+        # - This is True AND restoring from a checkpoint that contains no buffer
+        #   data.
+        # - This is False AND restoring from a checkpoint that does contain
+        #   buffer data.
+        "store_buffer_in_checkpoints": False,
+        # The number of contiguous environment steps to replay at once. This may
+        # be set to greater than 1 to support recurrent models.
+        "replay_sequence_length": 1,
+
 
         # Callback to run before learning on a multi-agent batch of
         # experiences.
