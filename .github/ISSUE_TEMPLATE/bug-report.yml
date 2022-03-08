@@ -42,7 +42,7 @@ body:
     validations:
       required: true
       
-   - type: dropdown
+  - type: dropdown
     attributes:
       label: Issue Severity
       description: |
