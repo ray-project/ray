@@ -62,50 +62,36 @@ class LocalResourceManager {
   /// Check whether the available resources are empty.
   ///
   /// \param resource_name: Resource which we want to check.
-  bool IsAvailableResourceEmpty(scheduling::ResourceID resource_id);
+  bool IsAvailableResourceEmpty(scheduling::ResourceID resource_id) const;
 
   /// Return local resources.
   NodeResourceInstances GetLocalResources() const { return local_resources_; }
 
-  /// Increase the available CPU instances of this node.
+  /// Increase the available resource instances of this node.
   ///
-  /// \param cpu_instances CPU instances to be added to available cpus.
+  /// \param resource_id id of the resource.
+  /// \param instances instances to be added to available resources.
   ///
-  /// \return Overflow capacities of CPU instances after adding CPU
-  /// capacities in cpu_instances.
-  std::vector<double> AddCPUResourceInstances(std::vector<double> &cpu_instances);
+  /// \return Overflow capacities of resource instances after adding the resources.
+  std::vector<double> AddResourceInstances(scheduling::ResourceID resource_id,
+                                           const std::vector<double> &cpu_instances);
 
-  /// Decrease the available CPU instances of this node.
+  /// Decrease the available resource instances of this node.
   ///
-  /// \param cpu_instances CPU instances to be removed from available cpus.
+  /// \param resource_id id of the resource.
+  /// \param instances instances to be removed from available resources.
   /// \param allow_going_negative Allow the values to go negative (disable underflow).
   ///
-  /// \return Underflow capacities of CPU instances after subtracting CPU
-  /// capacities in cpu_instances.
-  std::vector<double> SubtractCPUResourceInstances(std::vector<double> &cpu_instances,
-                                                   bool allow_going_negative = false);
-
-  /// Increase the available GPU instances of this node.
-  ///
-  /// \param gpu_instances GPU instances to be added to available gpus.
-  ///
-  /// \return Overflow capacities of GPU instances after adding GPU
-  /// capacities in gpu_instances.
-  std::vector<double> AddGPUResourceInstances(std::vector<double> &gpu_instances);
-
-  /// Decrease the available GPU instances of this node.
-  ///
-  /// \param gpu_instances GPU instances to be removed from available gpus.
-  ///
-  /// \return Underflow capacities of GPU instances after subtracting GPU
-  /// capacities in gpu_instances.
-  std::vector<double> SubtractGPUResourceInstances(std::vector<double> &gpu_instances);
+  /// \return Underflow capacities of reousrce instances after subtracting the resources.
+  std::vector<double> SubtractResourceInstances(scheduling::ResourceID resource_id,
+                                                const std::vector<double> &cpu_instances,
+                                                bool allow_going_negative = false);
 
   /// Subtract the resources required by a given resource request (resource_request) from
   /// the local node. This function also updates the local node resources at the instance
   /// granularity.
   ///
-  /// \param resource_request Task for which we allocate resources.
+  /// \param task_resources Task for which we allocate resources.
   /// \param task_allocation Resources allocated to the task at instance granularity.
   /// This is a return parameter.
   ///
@@ -163,7 +149,7 @@ class LocalResourceManager {
   /// \param resource_name: the specific resource name.
   ///
   /// \return true, if exist. otherwise, false.
-  bool ResourcesExist(scheduling::ResourceID resource_id);
+  bool ResourcesExist(scheduling::ResourceID resource_id) const;
 
  private:
   /// Create instances for each resource associated with the local node, given

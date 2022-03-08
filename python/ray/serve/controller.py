@@ -341,6 +341,8 @@ class ServeController:
         if route_prefix is not None:
             endpoint_info = EndpointInfo(route=route_prefix)
             self.endpoint_state.update_endpoint(name, endpoint_info)
+        else:
+            self.endpoint_state.delete_endpoint(name)
 
         return updating
 

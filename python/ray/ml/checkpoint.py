@@ -15,21 +15,91 @@ from ray.util.ml_utils.cloud import (
 )
 
 
-DICT_CHECKPOINT_FILE_NAME = "dict_checkpoint.pkl"
-FS_CHECKPOINT_KEY = "fs_checkpoint"
-BYTES_DATA_KEY = "bytes_data"
+_DICT_CHECKPOINT_FILE_NAME = "dict_checkpoint.pkl"
+_FS_CHECKPOINT_KEY = "fs_checkpoint"
+_BYTES_DATA_KEY = "bytes_data"
 
 
 class Checkpoint:
     """Ray ML Checkpoint.
 
-    This implementation provides interfaces to translate between
-    different checkpoint storage locations: Local FS storage, remote
-    node FS storage, data object, and cloud storage location.
+    This implementation provides methods to translate between
+    different checkpoint storage locations: Local storage, external storage
+    (e.g. cloud storage), and data dict representations.
 
     The constructor is a private API, instead the ``from_`` methods should
     be used to create checkpoint objects
     (e.g. ``Checkpoint.from_directory()``).
+
+    When converting between different checkpoint formats, it is guaranteed
+    that a full round trip of conversions (e.g. directory --> dict -->
+    obj ref --> directory) will recover the original checkpoint data.
+    There are no guarantees made about compatibility of intermediate
+    representations.
+
+    Examples:
+
+        Example for an arbitrary data checkpoint:
+
+        .. code-block:: python
+
+            from ray.ml.checkpoint import Checkpoint
+
+            # Create checkpoint data dict
+            checkpoint_data = {"data": 123}
+
+            # Create checkpoint object from data
+            checkpoint = Checkpoint.from_dict(checkpoint_data)
+
+            # Save checkpoint to temporary location
+            path = checkpoint.to_directory()
+
+            # This path can then be passed around, e.g. to a different function
+
+            # At some other location, recover Checkpoint object from path
+            checkpoint = Checkpoint.from_directory(path)
+
+            # Convert into dictionary again
+            recovered_data = checkpoint.to_dict()
+
+            # It is guaranteed that the original data has been recovered
+            assert recovered_data == checkpoint_data
+
+        Example using MLflow for saving and loading a classifier:
+
+        .. code-block:: python
+
+            from ray.ml.checkpoint import Checkpoint
+            from sklearn.ensemble import RandomForestClassifier
+            import mlflow.sklearn
+
+            # Create an sklearn classifier
+            clf = RandomForestClassifier(max_depth=7, random_state=0)
+            # ... e.g. train model with clf.fit()
+            # Save model using MLflow
+            mlflow.sklearn.save_model(clf, "model_directory")
+
+            # Create checkpoint object from path
+            checkpoint = Checkpoint.from_directory("model_directory")
+
+            # Convert into dictionary
+            checkpoint_dict = checkpoint.to_dict()
+
+            # This dict can then be passed around, e.g. to a different function
+
+            # At some other location, recover checkpoint object from dict
+            checkpoint = Checkpoint.from_dict(checkpoint_dict)
+
+            # Convert into a directory again
+            checkpoint.to_directory("other_directory")
+
+            # We can now use MLflow to re-load the model
+            clf = mlflow.sklearn.load_model("other_directory")
+
+            # It is guaranteed that the original data was recovered
+            assert isinstance(clf, RandomForestClassifier)
+
+
     """
 
     @DeveloperAPI
@@ -86,8 +156,66 @@ class Checkpoint:
         self._uri = uri
         self._obj_ref = obj_ref
 
-    def __eq__(self, other):
-        return isinstance(other, Checkpoint) and self.__dict__ == other.__dict__
+    def get_local_path(self) -> Optional[str]:
+        """Return local path to checkpoint directory.
+
+        This function will return None if the checkpoint is stored in a
+        different format (e.g. as a dict). It will not convert the checkpoint
+        into a local storage checkpoint (for this, use
+        :func:`to_directory() <ray.ml.checkpoint.Checkpoint.to_directory>`
+        instead).
+
+        Returns:
+            String containing local checkpoint path or None.
+        """
+        return self._local_path
+
+    def get_data_dict(self) -> Optional[dict]:
+        """Return data dict containing the checkpoint data.
+
+        This function will return None if the checkpoint is stored in a
+        different format (e.g. in a local directory). It will not convert
+        the checkpoint into a dictionary checkpoint (for this, use
+        :func:`to_dict() <ray.ml.checkpoint.Checkpoint.to_dict>`
+        instead).
+
+        Returns:
+            Dict containing checkpoint data or None.
+        """
+        return self._data_dict
+
+    def get_uri(self, convert_local_path: bool = True) -> Optional[str]:
+        """Return URI pointing to checkpoint data location.
+
+        This function will return None if the checkpoint is stored in a
+        different format (e.g. as a dict). It will not convert the checkpoint
+        to a local or external storage checkpoint (for this, use
+        :func:`to_uri() <ray.ml.checkpoint.Checkpoint.to_uri>`
+        instead).
+
+        Args:
+            convert_local_path (bool): If ``True`` (default), local paths
+                will be converted into ``file://...`` URIs. If ``False``,
+                local paths will return ``None``.
+
+        Returns:
+            URI to checkpoint location or None.
+
+        """
+        if self._local_path and convert_local_path:
+            return f"file://{self._local_path}"
+        return self._uri
+
+    def get_obj_ref(self) -> Optional[ray.ObjectRef]:
+        """Return Ray object reference to checkpoint data.
+
+        This function will return None if the checkpoint is stored in a
+        different format (e.g. as a dict). It will not convert the checkpoint
+        to an object reference checkpoint (for this, use
+        :func:`to_object_ref( <ray.ml.checkpoint.Checkpoint.to_object_ref>`
+        instead).
+        """
+        return self._obj_ref
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "Checkpoint":
@@ -95,7 +223,6 @@ class Checkpoint:
 
         Args:
             data (bytes): Data object containing pickled checkpoint data.
-                The checkpoint data is assumed to be a pickled dict.
 
         Returns:
             Checkpoint: checkpoint object.
@@ -104,14 +231,11 @@ class Checkpoint:
         if isinstance(bytes_data, dict):
             data_dict = bytes_data
         else:
-            data_dict = {BYTES_DATA_KEY: bytes_data}
+            data_dict = {_BYTES_DATA_KEY: bytes_data}
         return cls.from_dict(data_dict)
 
     def to_bytes(self) -> bytes:
         """Return Checkpoint serialized as bytes object.
-
-        Converts the checkpoint into a dict and returns a pickled
-        bytes string of that dict.
 
         Returns:
             bytes: Bytes object containing checkpoint data.
@@ -157,7 +281,7 @@ class Checkpoint:
                 local_path = self.to_directory()
                 cleanup = True
 
-            checkpoint_data_path = os.path.join(local_path, DICT_CHECKPOINT_FILE_NAME)
+            checkpoint_data_path = os.path.join(local_path, _DICT_CHECKPOINT_FILE_NAME)
             if os.path.exists(checkpoint_data_path):
                 # If we are restoring a dict checkpoint, load the dict
                 # from the checkpoint file.
@@ -167,7 +291,7 @@ class Checkpoint:
                 data = _pack(local_path)
 
                 checkpoint_data = {
-                    FS_CHECKPOINT_KEY: data,
+                    _FS_CHECKPOINT_KEY: data,
                 }
 
             if cleanup:
@@ -180,9 +304,6 @@ class Checkpoint:
     @classmethod
     def from_object_ref(cls, obj_ref: ray.ObjectRef) -> "Checkpoint":
         """Create checkpoint object from object reference.
-
-        The object reference is assumed to point to a dictionary containing
-        the checkpoint data.
 
         Args:
             obj_ref (ray.ObjectRef): ObjectRef pointing to checkpoint data.
@@ -234,12 +355,12 @@ class Checkpoint:
             # This is a object ref or dict
             data_dict = self.to_dict()
 
-            if FS_CHECKPOINT_KEY in data_dict:
+            if _FS_CHECKPOINT_KEY in data_dict:
                 # This used to be a true fs checkpoint, so restore
-                _unpack(data_dict[FS_CHECKPOINT_KEY], path)
+                _unpack(data_dict[_FS_CHECKPOINT_KEY], path)
             else:
                 # This is a dict checkpoint. Dump data into checkpoint.pkl
-                checkpoint_data_path = os.path.join(path, DICT_CHECKPOINT_FILE_NAME)
+                checkpoint_data_path = os.path.join(path, _DICT_CHECKPOINT_FILE_NAME)
                 with open(checkpoint_data_path, "wb") as f:
                     pickle.dump(data_dict, f)
         else:

@@ -2513,6 +2513,117 @@ def test_groupby_simple_sum(ray_start_regular_shared, num_parts):
     assert nan_ds.sum() is None
 
 
+def test_map_batches_combine_empty_blocks(ray_start_regular_shared):
+    xs = [x % 3 for x in list(range(100))]
+
+    # ds1 has 1 block which contains 100 rows.
+    ds1 = ray.data.from_items(xs).repartition(1).sort().map_batches(lambda x: x)
+    assert ds1._block_num_rows() == [100]
+
+    # ds2 has 30 blocks, but only 3 of them are non-empty
+    ds2 = ray.data.from_items(xs).repartition(30).sort().map_batches(lambda x: x)
+    assert len(ds2._block_num_rows()) == 30
+    count = sum(1 for x in ds2._block_num_rows() if x > 0)
+    assert count == 3
+
+    # The number of partitions should not affect the map_batches() result.
+    assert ds1.take_all() == ds2.take_all()
+
+
+def test_groupby_map_groups_for_empty_dataset(ray_start_regular_shared):
+    ds = ray.data.from_items([])
+    mapped = ds.groupby(lambda x: x % 3).map_groups(lambda x: [min(x) * min(x)])
+    assert mapped.count() == 0
+    assert mapped.take_all() == []
+
+
+@pytest.mark.parametrize("num_parts", [1, 2, 30])
+def test_groupby_map_groups_for_none_groupkey(ray_start_regular_shared, num_parts):
+    ds = ray.data.from_items(list(range(100)))
+    mapped = (
+        ds.repartition(num_parts).groupby(None).map_groups(lambda x: [min(x) + max(x)])
+    )
+    assert mapped.count() == 1
+    assert mapped.take_all() == [99]
+
+
+@pytest.mark.parametrize("num_parts", [1, 2, 30])
+def test_groupby_map_groups_returning_empty_result(ray_start_regular_shared, num_parts):
+    xs = list(range(100))
+    mapped = (
+        ray.data.from_items(xs)
+        .repartition(num_parts)
+        .groupby(lambda x: x % 3)
+        .map_groups(lambda x: [])
+    )
+    assert mapped.count() == 0
+    assert mapped.take_all() == []
+
+
+@pytest.mark.parametrize("num_parts", [1, 2, 3, 30])
+def test_groupby_map_groups_for_list(ray_start_regular_shared, num_parts):
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_simple_count with: {seed}")
+    random.seed(seed)
+    xs = list(range(100))
+    random.shuffle(xs)
+    mapped = (
+        ray.data.from_items(xs)
+        .repartition(num_parts)
+        .groupby(lambda x: x % 3)
+        .map_groups(lambda x: [min(x) * min(x)])
+    )
+    assert mapped.count() == 3
+    assert mapped.take_all() == [0, 1, 4]
+
+
+@pytest.mark.parametrize("num_parts", [1, 2, 3, 30])
+def test_groupby_map_groups_for_pandas(ray_start_regular_shared, num_parts):
+    df = pd.DataFrame({"A": "a a b".split(), "B": [1, 1, 3], "C": [4, 6, 5]})
+    grouped = ray.data.from_pandas(df).repartition(num_parts).groupby("A")
+
+    # Normalize the numeric columns (i.e. B and C) for each group.
+    mapped = grouped.map_groups(
+        lambda g: g.apply(
+            lambda col: col / g[col.name].sum() if col.name in ["B", "C"] else col
+        )
+    )
+
+    # The function (i.e. the normalization) performed on each group doesn't
+    # aggregate rows, so we still have 3 rows.
+    assert mapped.count() == 3
+    expected = pd.DataFrame(
+        {"A": ["a", "a", "b"], "B": [0.5, 0.5, 1.000000], "C": [0.4, 0.6, 1.0]}
+    )
+    assert mapped.to_pandas().equals(expected)
+
+
+@pytest.mark.parametrize("num_parts", [1, 2, 3, 30])
+def test_groupby_map_groups_for_arrow(ray_start_regular_shared, num_parts):
+    at = pa.Table.from_pydict({"A": "a a b".split(), "B": [1, 1, 3], "C": [4, 6, 5]})
+    grouped = ray.data.from_arrow(at).repartition(num_parts).groupby("A")
+
+    # Normalize the numeric columns (i.e. B and C) for each group.
+    def normalize(at: pa.Table):
+        r = at.select("A")
+        sb = pa.compute.sum(at.column("B")).cast(pa.float64())
+        r = r.append_column("B", pa.compute.divide(at.column("B"), sb))
+        sc = pa.compute.sum(at.column("C")).cast(pa.float64())
+        r = r.append_column("C", pa.compute.divide(at.column("C"), sc))
+        return r
+
+    mapped = grouped.map_groups(normalize, batch_format="pyarrow")
+
+    # The function (i.e. the normalization) performed on each group doesn't
+    # aggregate rows, so we still have 3 rows.
+    assert mapped.count() == 3
+    expected = pa.Table.from_pydict(
+        {"A": ["a", "a", "b"], "B": [0.5, 0.5, 1], "C": [0.4, 0.6, 1]}
+    )
+    result = pa.Table.from_pandas(mapped.to_pandas())
+    assert result.equals(expected)
+
+
 @pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_simple_min(ray_start_regular_shared, num_parts):
     # Test built-in min aggregation
@@ -2895,6 +3006,22 @@ def test_sort_simple(ray_start_regular_shared):
     assert s1.take() == ds.take()
     ds = ray.data.range(10).filter(lambda r: r > 10).sort()
     assert ds.count() == 0
+
+
+def test_sort_partition_same_key_to_same_block(ray_start_regular_shared):
+    num_items = 100
+    xs = [1] * num_items
+    ds = ray.data.from_items(xs)
+    sorted_ds = ds.repartition(num_items).sort()
+
+    # We still have 100 blocks
+    assert len(sorted_ds._block_num_rows()) == num_items
+    # Only one of them is non-empty
+    count = sum(1 for x in sorted_ds._block_num_rows() if x > 0)
+    assert count == 1
+    # That non-empty block contains all rows
+    total = sum(x for x in sorted_ds._block_num_rows() if x > 0)
+    assert total == num_items
 
 
 def test_column_name_type_check(ray_start_regular_shared):
