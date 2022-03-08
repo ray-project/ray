@@ -92,7 +92,7 @@ class ActorMethod(ActorMethodBase):
     def options(
         self,
         *,
-        max_retries: int = 1,
+        max_retries: int = 0,
         catch_exceptions: bool = False,
         name: str = None,
         metadata: Dict[str, Any] = None,
@@ -262,7 +262,7 @@ class _VirtualActorMethodHelper:
     def options(
         self,
         *,
-        max_retries=1,
+        max_retries=0,
         catch_exceptions=False,
         name=None,
         metadata=None,
