@@ -32,8 +32,9 @@ def _validate_consistent_output(
 
 def test_simple_single_class(serve_instance):
     # Assert converting both arg and kwarg
-    model = Model._bind(2, ratio=0.3)
-    ray_dag = model.forward._bind(InputNode())
+    with InputNode() as dag_input:
+        model = Model._bind(2, ratio=0.3)
+        ray_dag = model.forward._bind(dag_input)
 
     serve_root_dag = ray_dag._apply_recursive(transform_ray_dag_to_serve_dag)
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
@@ -43,8 +44,9 @@ def test_simple_single_class(serve_instance):
 
 
 def test_single_class_with_valid_ray_options(serve_instance):
-    model = Model.options(num_cpus=1, memory=1000)._bind(2, ratio=0.3)
-    ray_dag = model.forward._bind(InputNode())
+    with InputNode() as dag_input:
+        model = Model.options(num_cpus=1, memory=1000)._bind(2, ratio=0.3)
+        ray_dag = model.forward._bind(dag_input)
 
     serve_root_dag = ray_dag._apply_recursive(transform_ray_dag_to_serve_dag)
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
@@ -61,8 +63,9 @@ def test_single_class_with_valid_ray_options(serve_instance):
 
 
 def test_single_class_with_invalid_deployment_options(serve_instance):
-    model = Model.options(name="my_deployment")._bind(2, ratio=0.3)
-    ray_dag = model.forward._bind(InputNode())
+    with InputNode() as dag_input:
+        model = Model.options(name="my_deployment")._bind(2, ratio=0.3)
+        ray_dag = model.forward._bind(dag_input)
 
     serve_root_dag = ray_dag._apply_recursive(transform_ray_dag_to_serve_dag)
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
@@ -79,11 +82,12 @@ def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
     multiple times for the same class, and we can still correctly replace
     args with deployment handle and parse correct deployment instances.
     """
-    m1 = Model._bind(2)
-    m2 = Model._bind(3)
-    combine = Combine._bind(m1, m2=m2)
-    ray_dag = combine.__call__._bind(InputNode())
-    print(f"Ray DAG: \n{ray_dag}")
+    with InputNode() as dag_input:
+        m1 = Model._bind(2)
+        m2 = Model._bind(3)
+        combine = Combine._bind(m1, m2=m2)
+        ray_dag = combine.__call__._bind(dag_input)
+        print(f"Ray DAG: \n{ray_dag}")
 
     serve_root_dag = ray_dag._apply_recursive(transform_ray_dag_to_serve_dag)
     print(f"Serve DAG: \n{serve_root_dag}")
@@ -100,10 +104,11 @@ def test_shared_deployment_handle(serve_instance):
     Test we can re-use the same deployment handle multiple times or in
     multiple places, without incorrectly parsing duplicated deployments.
     """
-    m = Model._bind(2)
-    combine = Combine._bind(m, m2=m)
-    ray_dag = combine.__call__._bind(InputNode())
-    print(f"Ray DAG: \n{ray_dag}")
+    with InputNode() as dag_input:
+        m = Model._bind(2)
+        combine = Combine._bind(m, m2=m)
+        ray_dag = combine.__call__._bind(dag_input)
+        print(f"Ray DAG: \n{ray_dag}")
 
     serve_root_dag = ray_dag._apply_recursive(transform_ray_dag_to_serve_dag)
     print(f"Serve DAG: \n{serve_root_dag}")
@@ -121,11 +126,12 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
     instantiated multiple times for the same class, and we can still correctly
     replace args with deployment handle and parse correct deployment instances.
     """
-    m1 = Model._bind(2)
-    m2 = Model._bind(3)
-    combine = Combine._bind(m1, m2={NESTED_HANDLE_KEY: m2}, m2_nested=True)
-    ray_dag = combine.__call__._bind(InputNode())
-    print(f"Ray DAG: \n{ray_dag}")
+    with InputNode() as dag_input:
+        m1 = Model._bind(2)
+        m2 = Model._bind(3)
+        combine = Combine._bind(m1, m2={NESTED_HANDLE_KEY: m2}, m2_nested=True)
+        ray_dag = combine.__call__._bind(dag_input)
+        print(f"Ray DAG: \n{ray_dag}")
 
     serve_root_dag = ray_dag._apply_recursive(transform_ray_dag_to_serve_dag)
     print(f"Serve DAG: \n{serve_root_dag}")

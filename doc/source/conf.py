@@ -38,6 +38,7 @@ extensions = [
     "sphinx.ext.doctest",
     "sphinx.ext.coverage",
     "sphinx_external_toc",
+    "sphinx_thebe",
 ]
 
 myst_enable_extensions = [
@@ -50,6 +51,13 @@ myst_enable_extensions = [
     "smartquotes",
     "replacements",
 ]
+
+# Thebe configuration for launching notebook cells within the docs.
+thebe_config = {
+    "selector": "div.highlight",
+    "repository_url": "https://github.com/ray-project/ray",
+    "repository_branch": "master",
+}
 
 # Cache notebook outputs in _build/.jupyter_cache
 # To prevent notebook execution, set this to "off". To force re-execution, set this to "force".

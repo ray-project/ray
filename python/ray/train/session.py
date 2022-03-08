@@ -11,7 +11,7 @@ from typing import Optional, Dict, Type
 import warnings
 
 import ray
-from ray.train.accelerators import Accelerator
+from ray.train.accelerator import Accelerator
 from ray.train.constants import (
     DETAILED_AUTOFILLED_KEYS,
     TIME_THIS_ITER_S,
@@ -90,8 +90,7 @@ class Session:
         self.ignore_report = False
         self.training_started = False
 
-        self._accelerator = None
-        self._accelerator_cls = accelerator_cls
+        self.accelerator = None
 
     def get_current_ip(self):
         self.local_ip = ray.util.get_node_ip_address()
@@ -532,3 +531,50 @@ def world_size() -> int:
     if session is None:
         return 1
     return session.world_size
+
+
+class SessionMisuseError(Exception):
+    """Method or function was used outside of a session."""
+
+
+def _raise_accelerator_session_misuse():
+    """Raises a SessionMisuseError because a utility function was used improperly."""
+    raise SessionMisuseError(
+        "prepare/accelerate utility functions should be called inside a training "
+        "function executed by `Trainer.run`"
+    )
+
+
+def get_accelerator(default_accelerator_cls: Type[Accelerator]) -> Accelerator:
+    """The accelerator for this training session.
+
+    If an accelerator has not been set, then this method will construct an
+    accelerator using the provided accelerator class.
+
+    Raises:
+        SessionMisuseError: if the session is uninitialized.
+    """
+    session = get_session()
+    if session is None:
+        _raise_accelerator_session_misuse()
+    if session.accelerator is None:
+        session.accelerator = default_accelerator_cls()
+    return session.accelerator
+
+
+def set_accelerator(accelerator: Accelerator) -> None:
+    """Sets the accelerator for this training session.
+
+    Args:
+        accelerator (Accelerator): The accelerator to use for training.
+
+    Raises:
+        SessionMisuseError: if the session is unitialized.
+        RuntimeError: if the accelerator has already been set.
+    """
+    session = get_session()
+    if session is None:
+        _raise_accelerator_session_misuse()
+    if session.accelerator is not None:
+        raise RuntimeError("Cannot change accelerator once set.")
+    session.accelerator = accelerator
