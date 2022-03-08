@@ -29,9 +29,8 @@ class Application:
                 self._deployments[d.name] = d
             else:
                 raise TypeError(
-                    f"Got object of type {type(d)} at index "
-                    f"{idx}. Expected only Deployment objects to "
-                    "be passed in."
+                    f"Got object of type {type(d)} at index {idx}. "
+                    "Expected only Deployment objects to be passed in."
                 )
 
     def add_deployment(self, deployment: Deployment):
@@ -178,9 +177,7 @@ class Application:
         if key in self._deployments:
             return self._deployments[key]
         else:
-            raise KeyError(
-                "Serve application does not contain a " f'"{key}" deployment.'
-            )
+            raise KeyError(f'Serve application does not contain a "{key}" deployment.')
 
     def __getattr__(self, name: str):
         """Fetch deployment by name using attributes: app.name"""
@@ -189,7 +186,7 @@ class Application:
             return self._deployments[name]
         else:
             raise AttributeError(
-                "Serve application does not contain a " f'"{name}" deployment.'
+                f'Serve application does not contain a "{name}" deployment.'
             )
 
     def __iter__(self):
