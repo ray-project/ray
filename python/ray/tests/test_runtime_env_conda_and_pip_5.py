@@ -1,4 +1,3 @@
-import os
 import sys
 import pytest
 from pkg_resources import Requirement
@@ -7,8 +6,8 @@ import ray
 
 
 @pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="Requires PR wheels built in CI, so only run on linux CI machines.",
+    sys.platform == "win32",
+    reason="Pip option not supported on Windows.",
 )
 def test_runtime_env_with_pip_config(start_cluster):
 
@@ -41,8 +40,8 @@ def test_runtime_env_with_pip_config(start_cluster):
 
 
 @pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="Requires PR wheels built in CI, so only run on linux CI machines.",
+    sys.platform == "win32",
+    reason="Pip option not supported on Windows.",
 )
 def test_runtime_env_with_conflict_pip_version(start_cluster):
     pip_version = "<19,>19"
@@ -64,8 +63,8 @@ def test_runtime_env_with_conflict_pip_version(start_cluster):
 
 
 @pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="Requires PR wheels built in CI, so only run on linux CI machines.",
+    sys.platform == "win32",
+    reason="Pip option not supported on Windows.",
 )
 def test_runtime_env_cache_with_pip_check(start_cluster):
 

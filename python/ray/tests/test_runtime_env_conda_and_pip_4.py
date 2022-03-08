@@ -113,8 +113,8 @@ def test_run_in_virtualenv(cloned_virtualenv):
 
 
 @pytest.mark.skipif(
-    "IN_VIRTUALENV" in os.environ or sys.platform != "linux",
-    reason="Requires PR wheels built in CI, so only run on linux CI machines.",
+    "IN_VIRTUALENV" in os.environ or sys.platform == "win32",
+    reason="Pip option not supported on Windows.",
 )
 def test_runtime_env_with_pip_config(start_cluster):
     @ray.remote(

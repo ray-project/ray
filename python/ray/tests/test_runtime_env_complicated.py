@@ -728,14 +728,14 @@ def test_simultaneous_install(shutdown_only):
     # https://github.com/ray-project/ray/issues/17086
     # Now we use a global lock, so the envs are installed sequentially.
     worker_1 = VersionWorker.options(
-        runtime_env={"pip": {"packages": ["requests==2.22.0"], "pip_check": False}}
+        runtime_env={"pip": {"packages": ["requests==2.2.0"], "pip_check": False}}
     ).remote(key=1)
     worker_2 = VersionWorker.options(
-        runtime_env={"pip": {"packages": ["requests==2.23.0"], "pip_check": False}}
+        runtime_env={"pip": {"packages": ["requests==2.3.0"], "pip_check": False}}
     ).remote(key=2)
 
-    assert ray.get(worker_1.get.remote()) == (1, "2.22.0")
-    assert ray.get(worker_2.get.remote()) == (2, "2.23.0")
+    assert ray.get(worker_1.get.remote()) == (1, "2.2.0")
+    assert ray.get(worker_2.get.remote()) == (2, "2.3.0")
 
 
 CLIENT_SERVER_PORT = 24001

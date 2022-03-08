@@ -665,12 +665,18 @@ def test_runtime_env_retry(set_runtime_env_retry_times, ray_start_regular):
 )
 @pytest.mark.parametrize(
     "option",
-    ["pip_list", "conda_name", "conda_dict", "container", "plugins"],
+    ["pip_list", "pip_dict", "conda_name", "conda_dict", "container", "plugins"],
 )
 def test_serialize_deserialize(option):
     runtime_env = dict()
     if option == "pip_list":
         runtime_env["pip"] = ["pkg1", "pkg2"]
+    elif option == "pip_dict":
+        runtime_env["pip"] = {
+            "packages": ["pkg1", "pkg2"],
+            "pip_check": False,
+            "pip_version": "<22,>20",
+        }
     elif option == "conda_name":
         runtime_env["conda"] = "env_name"
     elif option == "conda_dict":
@@ -695,7 +701,7 @@ def test_serialize_deserialize(option):
     cls_runtime_env = RuntimeEnv.from_proto(proto_runtime_env)
     cls_runtime_env_dict = cls_runtime_env.to_dict()
 
-    if "pip" in runtime_env:
+    if "pip" in runtime_env and isinstance(runtime_env["pip"], list):
         pip_config_in_cls_runtime_env = cls_runtime_env_dict.pop("pip")
         pip_config_in_runtime_env = runtime_env.pop("pip")
         assert {

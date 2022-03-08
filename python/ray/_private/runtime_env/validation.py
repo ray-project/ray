@@ -133,7 +133,7 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
     elif isinstance(pip, list) and all(isinstance(dep, str) for dep in pip):
         result = dict(packages=pip, pip_check=True)
     elif isinstance(pip, dict):
-        if set(pip.keys()) - set(["packages", "pip_check", "pip_version"]):
+        if set(pip.keys()) - {"packages", "pip_check", "pip_version"}:
             raise ValueError(
                 "runtime_env['pip'] can only have these fields: "
                 "packages, pip_check and pip_check, but got: "
@@ -152,7 +152,7 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
         if "pip_version" in pip:
             if not isinstance(pip["pip_version"], str):
                 raise TypeError(
-                    "runtime_env['pip']['pip_version'] must be of type bool, "
+                    "runtime_env['pip']['pip_version'] must be of type str, "
                     f"got {type(pip['pip_version'])}"
                 )
         result = pip.copy()
