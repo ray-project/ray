@@ -2,7 +2,6 @@ from typing import Any, Dict, List
 import threading
 import json
 
-from ray import serve
 from ray.experimental.dag import (
     DAGNode,
     ClassNode,
@@ -14,6 +13,8 @@ from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_node import DeploymentNode
 from ray.serve.pipeline.json_serde import DAGNodeEncoder
 from ray.serve.pipeline.ingress import Ingress
+from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
+
 
 class DeploymentNameGenerator(object):
     """
@@ -132,18 +133,21 @@ def extract_deployments_from_serve_dag(
 
     return list(deployments.values())
 
-def get_ingress_deployment(serve_dag_root_node: DAGNode, input_schema=None):
+
+def get_ingress_deployment(
+    serve_dag_root_node: DAGNode, pipeline_input_node: PipelineInputNode
+):
     """Given a transformed serve dag node as root, return an Ingress deployment
     to handle user HTTP inputs.
     """
     pipeline_root_name = f"serve_pipeline_root_{serve_dag_root_node.get_stable_uuid()}"
     serve_dag_root_json = json.dumps(serve_dag_root_node, cls=DAGNodeEncoder)
-
-    input_schema_import_path = f"{input_schema.__module__}.{input_schema.__qualname__}"
-    print(f">>>> input_schema_import_path: {input_schema_import_path}")
-    serve_dag_root_deployment = serve.deployment(
-        name=pipeline_root_name,
-    )(Ingress)
-    serve_dag_root_deployment._init_args = (serve_dag_root_json, input_schema_import_path)
+    preprocessor_import_path = pipeline_input_node.get_preprocessor_import_path()
+    serve_dag_root_deployment = Ingress
+    serve_dag_root_deployment._name = pipeline_root_name
+    serve_dag_root_deployment._init_args = (
+        serve_dag_root_json,
+        preprocessor_import_path,
+    )
 
     return serve_dag_root_deployment

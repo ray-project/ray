@@ -1,6 +1,6 @@
-from typing import Any, Type, Callable, Dict, List, Union, Optional
+from typing import Any, Callable, Dict, List, Union, Optional
 
-from ray.experimental.dag import InputNode, InputAtrributeNode, DAGInputData
+from ray.experimental.dag import InputNode, DAGInputData
 from ray.experimental.dag.format_utils import get_dag_node_str
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 
@@ -13,21 +13,32 @@ class PipelineInputNode(InputNode):
     # TODO (jiaodong): Add a concrete example here
     """
 
-    def __init__(self, input_schema: Optional[Union[Type, Callable]] = None, _other_args_to_resolve=None):
+    def __init__(
+        self,
+        preprocessor: Union[Callable, str],
+        _other_args_to_resolve=None,
+    ):
         """InputNode should only take attributes of validating and converting
         input data rather than the input data itself. User input should be
         provided via `ray_dag.execute(user_input)`.
 
         Args:
-            input_schema: User class that
+            preprocessor: User function that handles input http conversion to
+                python objects. Not on critical path of DAG execution, only used
+                to pass its import path to generate Ingress deployment.
 
             _other_args_to_resolve: Internal only to keep InputNode's execution
                 context throughput pickling, replacement and serialization.
                 User should not use or pass this field.
         """
-        self._input_schema = input_schema
-
+        self._preprocessor = preprocessor
+        # Create InputNode instance
         super().__init__(_other_args_to_resolve=_other_args_to_resolve)
+        # Need to set in other args to resolve in order to carry the context
+        # throughout dag node replacement and json serde
+        self._bound_other_args_to_resolve[
+            "preprocessor_import_path"
+        ] = self.get_preprocessor_import_path()
 
     def _copy_impl(
         self,
@@ -36,7 +47,10 @@ class PipelineInputNode(InputNode):
         new_options: Dict[str, Any],
         new_other_args_to_resolve: Dict[str, Any],
     ):
-        return PipelineInputNode(_other_args_to_resolve=new_other_args_to_resolve)
+        return PipelineInputNode(
+            self._preprocessor,
+            _other_args_to_resolve=new_other_args_to_resolve,
+        )
 
     def _execute_impl(self, *args, **kwargs):
         """Executor of InputNode."""
@@ -52,10 +66,16 @@ class PipelineInputNode(InputNode):
 
         return DAGInputData(*args, **kwargs)
 
-
     def __str__(self) -> str:
         return get_dag_node_str(self, "__PipelineInputNode__")
 
+    def get_preprocessor_import_path(self) -> Optional[str]:
+        if isinstance(self._preprocessor, str):
+            # We're processing a deserilized JSON node where preprocessor value
+            # is the resolved import path.
+            return self._preprocessor
+        else:
+            return f"{self._preprocessor.__module__}.{self._preprocessor.__qualname__}"
 
     def to_json(self, encoder_cls) -> Dict[str, Any]:
         json_dict = super().to_json_base(encoder_cls, PipelineInputNode.__name__)
@@ -65,89 +85,9 @@ class PipelineInputNode(InputNode):
     def from_json(cls, input_json, object_hook=None):
         assert input_json[DAGNODE_TYPE_KEY] == PipelineInputNode.__name__
         args_dict = super().from_json_base(input_json, object_hook=object_hook)
-        node = cls(_other_args_to_resolve=args_dict["other_args_to_resolve"])
+        node = cls(
+            args_dict["other_args_to_resolve"]["preprocessor_import_path"],
+            _other_args_to_resolve=args_dict["other_args_to_resolve"],
+        )
         node._stable_uuid = input_json["uuid"]
         return node
-
-
-class PipelineInputAtrributeNode(InputAtrributeNode):
-    """Represents partial access of user input based on an index (int),
-     object attribute or dict key (str).
-
-    Examples:
-        >>> with InputNode() as dag_input:
-        >>>     a = input[0]
-        >>>     b = input.x
-        >>>     ray_dag = add.bind(a, b)
-
-        >>> # This makes a = 1 and b = 2
-        >>> ray_dag.execute(1, x=2)
-
-        >>> with InputNode() as dag_input:
-        >>>     a = input[0]
-        >>>     b = input[1]
-        >>>     ray_dag = add.bind(a, b)
-
-        >>> # This makes a = 2 and b = 3
-        >>> ray_dag.execute([2, 3])
-    """
-
-    def __init__(self, dag_input_node: InputNode, key: str, accessor_method: str):
-        self._dag_input_node = dag_input_node
-        self._key = key
-        self._accessor_method = accessor_method
-        super().__init__(
-            [],
-            {},
-            {},
-            {
-                "dag_input_node": dag_input_node,
-                "key": key,
-                "accessor_method": accessor_method,
-            },
-        )
-
-    def _copy_impl(
-        self,
-        new_args: List[Any],
-        new_kwargs: Dict[str, Any],
-        new_options: Dict[str, Any],
-        new_other_args_to_resolve: Dict[str, Any],
-    ):
-        return InputAtrributeNode(
-            new_other_args_to_resolve["dag_input_node"],
-            new_other_args_to_resolve["key"],
-            new_other_args_to_resolve["accessor_method"],
-        )
-
-    def _execute_impl(self, *args, **kwargs):
-        """Executor of InputAtrributeNode.
-
-        Args and kwargs are to match base class signature, but not in the
-        implementation. All args and kwargs should be resolved and replaced
-        with value in bound_args and bound_kwargs via bottom-up recursion when
-        current node is executed.
-        """
-
-        if isinstance(self._dag_input_node, DAGInputData):
-            return self._dag_input_node[self._key]
-        else:
-            # dag.execute() is called with only one arg, thus when an
-            # InputAtrributeNode is executed, its dependent InputNode is
-            # resolved with original user input python object.
-            user_input_python_object = self._dag_input_node
-            if isinstance(self._key, str):
-                if self._accessor_method == "__getitem__":
-                    return user_input_python_object[self._key]
-                elif self._accessor_method == "__getattr__":
-                    return getattr(user_input_python_object, self._key)
-            elif isinstance(self._key, int):
-                return user_input_python_object[self._key]
-            else:
-                raise ValueError(
-                    "Please only use int index or str as first-level key to "
-                    "access fields of dag input."
-                )
-
-    def __str__(self) -> str:
-        return get_dag_node_str(self, f"[\"{self._key}\"]")

@@ -3,8 +3,10 @@ Ray decorated classes and functions defined at top of file, importable with
 fully qualified name as import_path to test DAG building, artifact generation
 and structured deployment.
 """
-import ray
+import starlette
 from typing import TypeVar
+
+import ray
 
 RayHandleLike = TypeVar("RayHandleLike")
 NESTED_HANDLE_KEY = "nested_handle"
@@ -72,3 +74,8 @@ def fn_hello():
 @ray.remote
 def combine(m1_output, m2_output, kwargs_output=0):
     return m1_output + m2_output + kwargs_output
+
+
+async def request_to_data_int(request: starlette.requests.Request):
+    data = await request.body()
+    return int(data)

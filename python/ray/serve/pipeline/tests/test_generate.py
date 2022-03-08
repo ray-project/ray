@@ -14,9 +14,9 @@ from ray.serve.pipeline.tests.test_modules import (
     Model,
     Combine,
     NESTED_HANDLE_KEY,
+    request_to_data_int,
 )
 from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
-from ray.serve.pipeline.input_schema import PayloadToNumpy
 
 
 def _validate_consistent_python_output(
@@ -36,24 +36,26 @@ def _validate_consistent_python_output(
 
 def test_simple_single_class(serve_instance):
     # Assert converting both arg and kwarg
-    with PipelineInputNode(input_schema=PayloadToNumpy) as dag_input:
+    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
         model = Model._bind(2, ratio=0.3)
         ray_dag = model.forward._bind(dag_input)
 
     serve_root_dag = ray_dag._apply_recursive(transform_ray_dag_to_serve_dag)
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
-    ingress_deployment = get_ingress_deployment(serve_root_dag, input_schema=PayloadToNumpy)
+    ingress_deployment = get_ingress_deployment(serve_root_dag, dag_input)
     assert len(deployments) == 1
     deployments[0].deploy()
     ingress_deployment.deploy()
-    # _validate_consistent_python_output(deployments[0], ray_dag, "Model", input=1, output=0.6)
+    _validate_consistent_python_output(
+        deployments[0], ray_dag, "Model", input=1, output=0.6
+    )
 
     for _ in range(10):
         resp = requests.get(
-            f"http://127.0.0.1:8000/{ingress_deployment.name}", params={"input": "1"}
+            f"http://127.0.0.1:8000/{ingress_deployment.name}", data="1"
         )
         print(f"Response: {resp.text}")
-        assert resp.text == "5"
+        assert resp.text == "0.6"
 
 
 def test_single_class_with_valid_ray_options(serve_instance):
@@ -109,7 +111,9 @@ def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
     for deployment in deployments:
         deployment.deploy()
 
-    _validate_consistent_python_output(deployments[2], ray_dag, "Combine", input=1, output=5)
+    _validate_consistent_python_output(
+        deployments[2], ray_dag, "Combine", input=1, output=5
+    )
 
 
 def test_shared_deployment_handle(serve_instance):
@@ -130,7 +134,9 @@ def test_shared_deployment_handle(serve_instance):
     for deployment in deployments:
         deployment.deploy()
 
-    _validate_consistent_python_output(deployments[1], ray_dag, "Combine", input=1, output=4)
+    _validate_consistent_python_output(
+        deployments[1], ray_dag, "Combine", input=1, output=4
+    )
 
 
 def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
@@ -163,22 +169,24 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
     for deployment in deployments:
         deployment.deploy()
 
-    _validate_consistent_python_output(deployments[2], ray_dag, "Combine", input=1, output=5)
+    _validate_consistent_python_output(
+        deployments[2], ray_dag, "Combine", input=1, output=5
+    )
 
 
-def test_simple_function(serve_instance):
-    # TODO: (jiaodong) Support function deployment node
-    pass
+# def test_simple_function(serve_instance):
+#     # TODO: (jiaodong) Support function deployment node
+#     pass
 
 
-def test_multiple_functions(serve_instance):
-    # TODO: (jiaodong) Support function deployment node
-    pass
+# def test_multiple_functions(serve_instance):
+#     # TODO: (jiaodong) Support function deployment node
+#     pass
 
 
-def test_mix_class_and_function(serve_instance):
-    # TODO: (jiaodong) Support function deployment node
-    pass
+# def test_mix_class_and_function(serve_instance):
+#     # TODO: (jiaodong) Support function deployment node
+#     pass
 
 
 if __name__ == "__main__":
