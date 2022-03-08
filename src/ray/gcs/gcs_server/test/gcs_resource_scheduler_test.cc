@@ -112,13 +112,13 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     resources_list.emplace_back(std::vector({std::make_pair(cpu_resource, 2.0)}));
     resources_list.emplace_back(std::vector({std::make_pair(cpu_resource, 3.0)}));
     resources_list.emplace_back(std::vector(
-        {std::make_pair(cpu_resource, 1.0), std::make_pair(gpu_resource, 1.0)}));
-    resources_list.emplace_back(std::vector(
-        {std::make_pair(cpu_resource, 1.0), std::make_pair(gpu_resource, 2.0)}));
-    resources_list.emplace_back(std::vector(
         {std::make_pair(cpu_resource, 1.0), std::make_pair(mem_resource, 1.0)}));
     resources_list.emplace_back(std::vector(
         {std::make_pair(cpu_resource, 1.0), std::make_pair(mem_resource, 2.0)}));
+    resources_list.emplace_back(std::vector(
+        {std::make_pair(cpu_resource, 1.0), std::make_pair(gpu_resource, 1.0)}));
+    resources_list.emplace_back(std::vector(
+        {std::make_pair(cpu_resource, 1.0), std::make_pair(gpu_resource, 2.0)}));
 
     std::vector<NodeID> node_ids;
     for (auto r : resources_list) {

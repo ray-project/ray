@@ -432,4 +432,4 @@ def test_infeasible_pg(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", f"{__file__}"]))
+    sys.exit(pytest.main(["-sv", __file__]))

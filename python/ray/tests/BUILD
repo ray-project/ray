@@ -60,7 +60,7 @@ py_test_module_list(
   tags = ["exclusive", "client_tests", "team:serverless"],
   deps = ["//:ray_lib"],
 )
-    
+
 py_test_module_list(
   files = [
     "test_client_builder.py",
@@ -96,6 +96,7 @@ py_test_module_list(
     "test_placement_group_2.py",
     "test_placement_group_3.py",
     "test_placement_group_4.py",
+    "test_placement_group_5.py",
     "test_ray_init.py",
     "test_reference_counting.py",
     "test_resource_demand_scheduler.py",

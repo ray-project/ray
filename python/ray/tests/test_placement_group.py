@@ -228,17 +228,16 @@ def are_pairwise_unique(g):
     return True
 
 
-@ray.remote
-class Actor(object):
-    def __init__(self):
-        self.n = 0
-
-    def value(self):
-        return self.n
-
-
 @pytest.mark.parametrize("connect_to_client", [False, True])
 def test_placement_group_spread(ray_start_cluster, connect_to_client):
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            self.n = 0
+
+        def value(self):
+            return self.n
+
     cluster = ray_start_cluster
     num_nodes = 2
     for _ in range(num_nodes):
@@ -277,6 +276,14 @@ def test_placement_group_spread(ray_start_cluster, connect_to_client):
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
 def test_placement_group_strict_spread(ray_start_cluster, connect_to_client):
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            self.n = 0
+
+        def value(self):
+            return self.n
+            
     cluster = ray_start_cluster
     num_nodes = 3
     for _ in range(num_nodes):
