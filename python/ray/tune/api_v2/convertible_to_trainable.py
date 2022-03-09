@@ -1,4 +1,4 @@
-# dataset / dataset factory
+# ONLY PLACEHOLDER TO BE REMOVED!!
 import abc
 from typing import Type
 

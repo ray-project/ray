@@ -14,6 +14,7 @@ def _reduce(ds: ray.data.Dataset):
     tb_list = traceback.format_list(traceback.extract_stack())
     _already_in_out_of_band_serialization = False
     for tb in tb_list:
+        # TODO(xwjiang): Let's make this less hacky.
         if "serialize_out_of_band" in tb:
             _already_in_out_of_band_serialization = True
             break
