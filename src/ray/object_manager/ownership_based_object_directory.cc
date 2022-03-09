@@ -260,9 +260,9 @@ void OwnershipBasedObjectDirectory::ObjectLocationSubscriptionCallback(
       // We can call the callback directly without worrying about invalidating caller
       // iterators since this is already running in the subscription callback stack.
       // See https://github.com/ray-project/ray/issues/2959.
-      func(object_id, it->second.current_object_locations,
-                           it->second.spilled_url, it->second.spilled_node_id,
-                           it->second.pending_creation, it->second.object_size);
+      func(object_id, it->second.current_object_locations, it->second.spilled_url,
+           it->second.spilled_node_id, it->second.pending_creation,
+           it->second.object_size);
     }
   }
 }
@@ -502,10 +502,8 @@ void OwnershipBasedObjectDirectory::HandleNodeRemoved(const NodeID &node_id) {
       for (const auto &[_, func] : listener.callbacks) {
         // It is safe to call the callback directly since this is already running
         // in the subscription callback stack.
-        func(object_id, listener.current_object_locations,
-                             listener.spilled_url, listener.spilled_node_id,
-                             listener.pending_creation,
-                             listener.object_size);
+        func(object_id, listener.current_object_locations, listener.spilled_url,
+             listener.spilled_node_id, listener.pending_creation, listener.object_size);
       }
     }
   }

@@ -848,9 +848,7 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   ASSERT_TRUE(results[1]->IsException());
 }
 
-TEST_F(SingleNodeTest, TestNormalTaskLocal) {
-  TestNormalTask();
-}
+TEST_F(SingleNodeTest, TestNormalTaskLocal) { TestNormalTask(); }
 
 TEST_F(SingleNodeTest, TestCancelTasks) {
   auto &driver = CoreWorkerProcess::GetCoreWorker();
@@ -894,9 +892,7 @@ TEST_F(SingleNodeTest, TestCancelTasks) {
   TestNormalTask();
 }
 
-TEST_F(TwoNodeTest, TestNormalTaskCrossNodes) {
-  TestNormalTask();
-}
+TEST_F(TwoNodeTest, TestNormalTaskCrossNodes) { TestNormalTask(); }
 
 TEST_F(SingleNodeTest, TestActorTaskLocal) {
   std::unordered_map<std::string, double> resources;
