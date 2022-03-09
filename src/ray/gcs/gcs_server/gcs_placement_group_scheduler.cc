@@ -551,7 +551,7 @@ void GcsPlacementGroupScheduler::ReleaseUnusedBundles(
 
 void GcsPlacementGroupScheduler::Initialize(
     const absl::flat_hash_map<PlacementGroupID,
-                             std::vector<std::shared_ptr<BundleSpecification>>>
+                              std::vector<std::shared_ptr<BundleSpecification>>>
         &group_to_bundles) {
   // We need to reinitialize the `committed_bundle_location_index_`, otherwise,
   // it will get an empty bundle set when raylet fo occurred after GCS server restart.

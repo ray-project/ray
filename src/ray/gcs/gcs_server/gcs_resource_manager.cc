@@ -61,7 +61,7 @@ void GcsResourceManager::HandleUpdateResources(
   if (iter != cluster_scheduling_resources_.end()) {
     // Update `cluster_scheduling_resources_`.
     SchedulingResources &scheduling_resources = *iter->second;
-    for (const auto& [name, capacity] : *changed_resources) {
+    for (const auto &[name, capacity] : *changed_resources) {
       scheduling_resources.UpdateResourceCapacity(name, capacity);
     }
 
@@ -70,7 +70,7 @@ void GcsResourceManager::HandleUpdateResources(
     for (const auto &entry : scheduling_resources.GetTotalResources().GetResourceMap()) {
       (*resource_map.mutable_items())[entry.first].set_resource_capacity(entry.second);
     }
-    for (const auto& [name, capacity] : *changed_resources) {
+    for (const auto &[name, capacity] : *changed_resources) {
       (*resource_map.mutable_items())[name].set_resource_capacity(capacity);
     }
 

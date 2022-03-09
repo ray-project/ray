@@ -134,9 +134,10 @@ class RayEventContext final {
 
   RayEventContext() {}
 
-  void SetEventContext(rpc::Event_SourceType source_type,
-                       const absl::flat_hash_map<std::string, std::string> &custom_fields =
-                           absl::flat_hash_map<std::string, std::string>());
+  void SetEventContext(
+      rpc::Event_SourceType source_type,
+      const absl::flat_hash_map<std::string, std::string> &custom_fields =
+          absl::flat_hash_map<std::string, std::string>());
 
   // Only for test, isn't thread-safe with SetEventContext.
   void ResetEventContext();

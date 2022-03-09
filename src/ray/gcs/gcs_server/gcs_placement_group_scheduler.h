@@ -95,7 +95,7 @@ class GcsPlacementGroupSchedulerInterface {
   /// \param node_to_bundles Bundles used by each node.
   virtual void Initialize(
       const absl::flat_hash_map<PlacementGroupID,
-                               std::vector<std::shared_ptr<BundleSpecification>>>
+                                std::vector<std::shared_ptr<BundleSpecification>>>
           &group_to_bundles) = 0;
 
   virtual ~GcsPlacementGroupSchedulerInterface() {}
