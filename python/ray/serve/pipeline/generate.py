@@ -9,13 +9,13 @@ from ray.experimental.dag import (
     ClassMethodNode,
     PARENT_CLASS_NODE_KEY,
 )
+from ray.experimental.dag.input_node import InputNode
 from ray.serve.api import Deployment
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_node import DeploymentNode
 from ray.serve.pipeline.json_serde import DAGNodeEncoder
 from ray.serve.pipeline.ingress import Ingress
 from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
-from ray.util.annotations import PublicAPI
 
 DEFAULT_INGRESS_DEPLOYMENT_NAME = "ingress"
 
@@ -133,9 +133,41 @@ def extract_deployments_from_serve_dag(
             deployments[deployment.name] = deployment
         return dag_node
 
-    serve_dag_root._apply_recursive(extractor)
+    serve_dag_root.apply_recursive(extractor)
 
     return list(deployments.values())
+
+
+def get_pipeline_input_node(serve_dag_root_node: DAGNode):
+    """Return the PipelineInputNode singleton node from serve dag, and throw
+    exceptions if we didn't find any, or found more than one.
+
+    Args:
+        ray_dag_root_node: DAGNode acting as root of a Ray authored DAG. It
+            should be executable via `ray_dag_root_node.execute(user_input)`
+            and should have `PipelineInputNode` in it.
+    Returns
+        pipeline_input_node: Singleton input node for the serve pipeline.
+    """
+
+    input_nodes = []
+
+    def extractor(dag_node):
+        if isinstance(dag_node, PipelineInputNode):
+            input_nodes.append(dag_node)
+        elif isinstance(dag_node, InputNode):
+            raise ValueError(
+                "Please change Ray DAG InputNode to PipelineInputNode in order "
+                "to build serve application. See docstring of "
+                "PipelineInputNode for examples."
+            )
+
+    serve_dag_root_node.apply_recursive(extractor)
+    assert (
+        len(input_nodes) == 1
+    ), "There should be one and only one PipelineInputNode in the DAG."
+
+    return input_nodes[0]
 
 
 def get_ingress_deployment(
@@ -163,21 +195,3 @@ def get_ingress_deployment(
     )
 
     return serve_dag_root_deployment
-
-@PublicAPI
-def build(ray_dag_root_node: DAGNode):
-    """
-
-    Examples:
-        with ServeInputNode(preprocessor=request_to_data_int) as dag_input:
-            m1 = Model.bind(1)
-            m2 = Model.bind(2)
-            m1_output = m1.forward.bind(dag_input[0])
-            m2_output = m2.forward.bind(dag_input[1])
-            ray_dag = ensemble.bind(m1_output, m2_output)
-
-        app = serve.pipeline.build(ray_dag)
-        app.m1.set_options(num_replicas=3)
-        app.m2.set_options(num_replicas=5)
-    """
-    pass

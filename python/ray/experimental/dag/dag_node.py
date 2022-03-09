@@ -84,7 +84,7 @@ class DAGNode:
 
     def execute(self, *args, **kwargs) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
         """Execute this DAG using the Ray default executor."""
-        return self._apply_recursive(lambda node: node._execute_impl(*args, **kwargs))
+        return self.apply_recursive(lambda node: node._execute_impl(*args, **kwargs))
 
     def _get_toplevel_child_nodes(self) -> Set["DAGNode"]:
         """Return the set of nodes specified as top-level args.
@@ -135,7 +135,7 @@ class DAGNode:
         """Apply and replace all immediate child nodes using a given function.
 
         This is a shallow replacement only. To recursively transform nodes in
-        the DAG, use ``_apply_recursive()``.
+        the DAG, use ``apply_recursive()``.
 
         Args:
             fn: Callable that will be applied once to each child of this node.
@@ -168,7 +168,7 @@ class DAGNode:
             new_args, new_kwargs, self.get_options(), new_other_args_to_resolve
         )
 
-    def _apply_recursive(self, fn: "Callable[[DAGNode], T]") -> T:
+    def apply_recursive(self, fn: "Callable[[DAGNode], T]") -> T:
         """Apply callable on each node in this DAG in a bottom-up tree walk.
 
         Args:
@@ -203,7 +203,7 @@ class DAGNode:
 
         return fn(
             self._apply_and_replace_all_child_nodes(
-                lambda node: node._apply_recursive(fn)
+                lambda node: node.apply_recursive(fn)
             )
         )
 

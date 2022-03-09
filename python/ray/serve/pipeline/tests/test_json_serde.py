@@ -246,7 +246,7 @@ def _test_deployment_json_serde_helper(
         3) Deserialized serve dag can extract correct number and definition of
             serve deployments.
     """
-    serve_root_dag = ray_dag._apply_recursive(transform_ray_dag_to_serve_dag)
+    serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
     json_serialized = json.dumps(serve_root_dag, cls=DAGNodeEncoder)
     deserialized_serve_root_dag_node = json.loads(
         json_serialized, object_hook=dagnode_from_json

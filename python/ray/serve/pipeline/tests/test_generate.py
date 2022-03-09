@@ -4,15 +4,18 @@ import requests
 import ray
 from ray import serve
 from ray.serve.handle import RayServeSyncHandle
+from ray.experimental.dag import InputNode
 from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
+    get_pipeline_input_node,
     get_ingress_deployment,
 )
 from ray.serve.pipeline.tests.test_modules import (
     Model,
     Combine,
     NESTED_HANDLE_KEY,
+    combine,
     request_to_data_int,
 )
 from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
@@ -39,7 +42,7 @@ def test_simple_single_class(serve_instance):
         model = Model._bind(2, ratio=0.3)
         ray_dag = model.forward._bind(dag_input)
 
-    serve_root_dag = ray_dag._apply_recursive(transform_ray_dag_to_serve_dag)
+    serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
     ingress_deployment = get_ingress_deployment(serve_root_dag, dag_input)
     assert len(deployments) == 1
@@ -61,7 +64,7 @@ def test_single_class_with_valid_ray_options(serve_instance):
         model = Model.options(num_cpus=1, memory=1000)._bind(2, ratio=0.3)
         ray_dag = model.forward._bind(dag_input)
 
-    serve_root_dag = ray_dag._apply_recursive(transform_ray_dag_to_serve_dag)
+    serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert len(deployments) == 1
     deployments[0].deploy()
@@ -80,7 +83,7 @@ def test_single_class_with_invalid_deployment_options(serve_instance):
         model = Model.options(name="my_deployment")._bind(2, ratio=0.3)
         ray_dag = model.forward._bind(dag_input)
 
-    serve_root_dag = ray_dag._apply_recursive(transform_ray_dag_to_serve_dag)
+    serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert len(deployments) == 1
     with pytest.raises(
@@ -102,7 +105,7 @@ def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
         ray_dag = combine.__call__._bind(dag_input)
         print(f"Ray DAG: \n{ray_dag}")
 
-    serve_root_dag = ray_dag._apply_recursive(transform_ray_dag_to_serve_dag)
+    serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
     print(f"Serve DAG: \n{serve_root_dag}")
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert len(deployments) == 3
@@ -133,7 +136,7 @@ def test_shared_deployment_handle(serve_instance):
         ray_dag = combine.__call__._bind(dag_input)
         print(f"Ray DAG: \n{ray_dag}")
 
-    serve_root_dag = ray_dag._apply_recursive(transform_ray_dag_to_serve_dag)
+    serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
     print(f"Serve DAG: \n{serve_root_dag}")
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert len(deployments) == 2
@@ -166,7 +169,7 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
         ray_dag = combine.__call__._bind(dag_input)
         print(f"Ray DAG: \n{ray_dag}")
 
-    serve_root_dag = ray_dag._apply_recursive(transform_ray_dag_to_serve_dag)
+    serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
     print(f"Serve DAG: \n{serve_root_dag}")
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert len(deployments) == 3
@@ -194,6 +197,37 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
             f"http://127.0.0.1:8000/{ingress_deployment.name}", data="1"
         )
         assert resp.text == "5"
+
+
+def test_get_pipeline_input_node(serve_instance):
+    # 1) No PipelineInputNode found
+    ray_dag = combine._bind(1, 2)
+    serve_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
+    with pytest.raises(
+        AssertionError, match="There should be one and only one PipelineInputNode"
+    ):
+        get_pipeline_input_node(serve_dag)
+
+    # 2) More than one PipelineInputNode found
+    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
+        a = combine._bind(dag_input[0], dag_input[1])
+    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input_2:
+        b = combine._bind(dag_input_2[0], dag_input_2[1])
+        ray_dag = combine._bind(a, b)
+    serve_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
+    with pytest.raises(
+        AssertionError, match="There should be one and only one PipelineInputNode"
+    ):
+        get_pipeline_input_node(serve_dag)
+
+    # 3) User forgot to change InputNode to PipelineInputNode
+    with InputNode() as dag_input:
+        ray_dag = combine._bind(dag_input[0], dag_input[1])
+    serve_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
+    with pytest.raises(
+        ValueError, match="Please change Ray DAG InputNode to PipelineInputNode"
+    ):
+        get_pipeline_input_node(serve_dag)
 
 
 if __name__ == "__main__":
