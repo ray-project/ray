@@ -2,7 +2,7 @@ from ray.data import Dataset
 
 
 class DatasetExecutionRegistry:
-    """A class that makes sure  each dataset is executed only once.
+    """A class that makes sure each dataset is executed only once.
 
     Tune's driver process needs to make sure that dataset is fully executed
     before sent to trials. Multiple trials can all use the same dataset.

@@ -2,7 +2,7 @@ import contextlib
 import traceback
 
 import ray
-from ray.tune.api_v2.dataset_execution_registry import dataset_execution_registry
+from ray.tune.impl.dataset_execution_registry import dataset_execution_registry
 
 
 def _deserialize_and_fully_execute_if_needed(serialized_ds: bytes):

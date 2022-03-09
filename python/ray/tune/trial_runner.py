@@ -10,7 +10,7 @@ import traceback
 import warnings
 
 import ray
-from ray.tune.api_v2.out_of_band_serialize_dataset import out_of_band_serialize_dataset
+from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
 from ray.util import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.callback import CallbackList
