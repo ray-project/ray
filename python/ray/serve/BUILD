@@ -269,7 +269,7 @@ py_test(
 
 py_test(
     name = "test_cli",
-    size = "medium",
+    size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -422,6 +422,14 @@ py_test(
 
 py_test(
     name = "test_generate",
+    size = "medium",
+    srcs = pipeline_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_json_serde",
     size = "medium",
     srcs = pipeline_tests_srcs,
     tags = ["exclusive", "team:serve"],

@@ -18,7 +18,9 @@
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
 #include "ray/util/logging.h"
+#include "ray/util/util.h"
 
 /// Limit the ID range to test for collisions.
 #define MAX_ID_TEST 8
@@ -39,6 +41,7 @@ class StringIdMap {
   absl::flat_hash_map<std::string, int64_t> string_to_int_;
   absl::flat_hash_map<int64_t, std::string> int_to_string_;
   std::hash<std::string> hasher_;
+  mutable absl::Mutex mutex_;
 
  public:
   StringIdMap(){};
@@ -129,22 +132,25 @@ inline std::ostream &operator<<(
 /// the singleton map with PredefinedResources.
 template <>
 inline StringIdMap &BaseSchedulingID<SchedulingIDTag::Resource>::GetMap() {
-  static StringIdMap map = []() {
-    StringIdMap map;
-    return map.InsertOrDie(kCPU_ResourceLabel, CPU)
+  static std::unique_ptr<StringIdMap> map{[]() {
+    std::unique_ptr<StringIdMap> map(new StringIdMap());
+    map->InsertOrDie(kCPU_ResourceLabel, CPU)
         .InsertOrDie(kGPU_ResourceLabel, GPU)
         .InsertOrDie(kObjectStoreMemory_ResourceLabel, OBJECT_STORE_MEM)
         .InsertOrDie(kMemory_ResourceLabel, MEM);
-  }();
-  return map;
+    return map;
+  }()};
+  return *map;
 }
 
 namespace scheduling {
 /// The actual scheduling id definitions which are used in scheduler.
 using ResourceID = BaseSchedulingID<SchedulingIDTag::Resource>;
 using NodeID = BaseSchedulingID<SchedulingIDTag::Node>;
-}  // namespace scheduling
 
+const ResourceID kCPUResource{CPU};
+const ResourceID kGPUResource{GPU};
+}  // namespace scheduling
 }  // namespace ray
 
 /// implements hash function for BaseSchedulingID<T>

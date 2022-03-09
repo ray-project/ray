@@ -1510,16 +1510,12 @@ def run_test_config(
     if state_json is None:
         state_json = "/tmp/release_test_state.json"
 
-    custom_env_vars = {
-        "RAY_lineage_pinning_enabled": "1",
-    }
     env_vars = {
         "RAY_ADDRESS": os.environ.get("RAY_ADDRESS", "auto"),
         "TEST_OUTPUT_JSON": results_json,
         "TEST_STATE_JSON": state_json,
         "IS_SMOKE_TEST": "1" if smoke_test else "0",
     }
-    env_vars.update(custom_env_vars)
 
     with open(os.path.join(local_dir, ".anyscale.yaml"), "wt") as f:
         f.write(f"project_id: {project_id}")
