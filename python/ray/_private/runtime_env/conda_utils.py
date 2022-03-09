@@ -59,6 +59,8 @@ def get_conda_bin_executable(executable_name: str) -> str:
                 return candidate
         else:
             return os.path.join(conda_home, "bin/%s" % executable_name)
+    else:
+        conda_home = '.'
     # Use CONDA_EXE as per https://github.com/conda/conda/issues/7126
     if "CONDA_EXE" in os.environ:
         conda_bin_dir = os.path.dirname(os.environ["CONDA_EXE"])
@@ -71,6 +73,8 @@ def get_conda_bin_executable(executable_name: str) -> str:
                 return candidate
         else:
             return os.path.join(conda_bin_dir, executable_name)
+    if _WIN32:
+        return executable_name + '.bat'
     return executable_name
 
 
@@ -99,7 +103,7 @@ def create_conda_env_if_needed(
         exec_cmd([conda_path, "--help"], throw_on_error=False)
     except EnvironmentError:
         raise ValueError(
-            f"Could not find Conda executable at {conda_path}. "
+            f"Could not find Conda executable at '{conda_path}'. "
             "Ensure Conda is installed as per the instructions at "
             "https://conda.io/projects/conda/en/latest/"
             "user-guide/install/index.html. "
