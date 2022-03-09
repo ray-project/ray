@@ -120,6 +120,16 @@ def _check_job_stopped(client: JobSubmissionClient, job_id: str) -> bool:
     ],
 )
 def working_dir_option(request):
+    driver_script = """
+import ray
+ray.init(address="auto")
+
+@ray.remote
+def f():
+    import pip_install_test
+
+ray.get(f.remote())
+"""
     if request.param == "no_working_dir":
         yield {
             "runtime_env": {},
@@ -169,11 +179,10 @@ def working_dir_option(request):
             runtime_env = {"pip": relative_filepath}
             yield {
                 "runtime_env": runtime_env,
-                "entrypoint": "python -c 'import pip_install_test'",
-                "expected_logs": (
-                    "Good job!  You installed a pip module.\n\n"
-                    "Now get back to work!\n"
-                ),
+                "entrypoint": f"python -c '{driver_script}'",
+                # TODO(architkulkarni): Uncomment after #22968 is fixed.
+                # "entrypoint": "python -c 'import pip_install_test'",
+                "expected_logs": "Good job!  You installed a pip module.",
             }
     elif request.param == "conda_yaml":
         with tempfile.TemporaryDirectory() as tmpdir, chdir(tmpdir):
@@ -185,11 +194,10 @@ def working_dir_option(request):
 
             yield {
                 "runtime_env": runtime_env,
-                "entrypoint": "python -c 'import pip_install_test'",
-                "expected_logs": (
-                    "Good job!  You installed a pip module.\n\n"
-                    "Now get back to work!\n"
-                ),
+                "entrypoint": f"python -c '{driver_script}'",
+                # TODO(architkulkarni): Uncomment after #22968 is fixed.
+                # "entrypoint": "python -c 'import pip_install_test'",
+                "expected_logs": "Good job!  You installed a pip module.",
             }
     else:
         assert False, f"Unrecognized option: {request.param}."
@@ -211,7 +219,7 @@ def test_submit_job(job_sdk_client, working_dir_option, monkeypatch):
     wait_for_condition(_check_job_succeeded, client=client, job_id=job_id, timeout=120)
 
     logs = client.get_job_logs(job_id)
-    assert logs == working_dir_option["expected_logs"]
+    assert working_dir_option["expected_logs"] in logs
 
 
 def test_http_bad_request(job_sdk_client):
