@@ -1,8 +1,8 @@
 import abc
+import copy
 import logging
-from typing import Dict, Union, Callable, Optional
+from typing import Dict, Union, Callable, Optional, TYPE_CHECKING
 
-from ray.data import Dataset
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.config import ScalingConfig, RunConfig
@@ -11,34 +11,35 @@ from ray import tune
 from ray.tune.trainable import ConvertibleToTrainable
 from ray.tune.utils import deep_update
 
-GenDataset = Union[Dataset, Callable[[], Dataset]]
+if TYPE_CHECKING:
+    from ray.data import Dataset
+
+GenDataset = Union["Dataset", Callable[[], "Dataset"]]
 
 
 logger = logging.getLogger(__name__)
 
 
-# TODO: support conditional hyperparameter tuning of Trainer __init__ args.
 class Trainer(ConvertibleToTrainable, abc.ABC):
-    """
-    Defines interface for distributed training on Ray.
+    """Defines interface for distributed training on Ray.
 
     Args:
-        scaling_config (Optional[ScalingConfig]): Configuration for how to
+        scaling_config: Configuration for how to
             scale training.
-        run_config (Optional[RunConfig]): Configuration for the execution of
+        run_config: Configuration for the execution of
             the training run.
-        train_dataset (Optional[GenDataset]): Either a distributed Ray
-            :ref:`Dataset <dataset-api>` or a Callbable that returns a Dataset,
+        train_dataset: Either a distributed Ray
+            :ref:`Dataset <dataset-api>` or a Callable that returns a Dataset,
             to use for training. If a ``preprocessor`` is also provided,
             it will be fit on this dataset and this dataset will be
             transformed.
-        additional_datasets (Optional[GenDataset]): Any additional
+        extra_datasets: Any extra
             Datasets (such as validation or test datasets) to use for
             training. If a ``preprocessor`` is provided, the datasets
             specified here will only be transformed, and not fit on.
-        preprocessor (Optional[Preprocessor]): A preprocessor to preprocess
+        preprocessor: A preprocessor to preprocess
             the provided datasets.
-        resume_from_checkpoint (Optional[Checkpoint]): A checkpoint to
+        resume_from_checkpoint: A checkpoint to
             resume training from.
     """
 
@@ -47,14 +48,14 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
         train_dataset: Optional[GenDataset] = None,
-        additional_datasets: Optional[Dict[str, GenDataset]] = None,
+        extra_datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
         self.scaling_config = scaling_config
         self.run_config = run_config if run_config else {}
         self.train_dataset = train_dataset
-        self.additional_datasets = additional_datasets
+        self.extra_datasets = extra_datasets
         self.preprocessor = preprocessor
         self.checkpoint_to_resume_from = resume_from_checkpoint
 
@@ -67,7 +68,7 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
         trainable = self.as_trainable()
 
         # Copied from initial prototyping.
-        # TODO: Replace with Tuner.
+        # TODO(amog): Replace with Tuner.
         analysis = tune.run(run_or_experiment=trainable, **self.run_config)
 
         assert len(analysis.trials) == 1
@@ -83,17 +84,24 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
 
         return result
 
-    def _override_attributes_with_config(self, config: Dict):
+    def _override_attributes_with_config(self, config: Dict) -> Dict:
         """Overrides attributes of the Trainer with values in ``config``.
 
         This is needed to allow attributes of Trainer to be tuned as
         hyperparameters.
 
-        This method does a deep update of dictionaries.
+        This method does a deep update of class attributes that are dicts.
 
         Args:
-            config (Dict): A dictionary to update attributes with.
+            config: A dictionary to update attributes with.
+
+        Returns:
+            A dict containing any remaining key-value pairs from ``config``
+            that don't override any attributes. This leftover config can be
+            used for any downstream tasks (such as as passing to a training
+            function).
         """
+        config = copy.deepcopy(config)
         for key in list(config.keys()):
             if hasattr(self, key):
                 current_attribute = getattr(self, key)
@@ -104,5 +112,8 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
                     # Don't do a deep update and directly set the attribute
                     # to the value in config.
                     setattr(self, key, config[key])
-                # Remove the key from the dict.
+                # Remove the key from the dict if it's been set to an
+                # attribute.
                 del config[key]
+        # Return whatever is leftover in config.
+        return config

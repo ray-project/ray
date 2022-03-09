@@ -6,7 +6,7 @@ from ray.tune import PlacementGroupFactory
 
 # Right now, RunConfig is just an arbitrary dict that specifies tune.run
 # kwargs.
-# TODO: After Tuner is implemented, make this into an actual dataclass
+# TODO(xwjiang): After Tuner is implemented, make this into an actual dataclass
 RunConfig = Dict[str, Any]
 
 ScalingConfig = Dict[str, Any]

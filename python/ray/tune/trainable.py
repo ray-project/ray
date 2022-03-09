@@ -1025,7 +1025,7 @@ class DistributedTrainable(Trainable):
 
 
 class ConvertibleToTrainable(abc.ABC):
-    """Denotes that this class be converted to a ``tune.Trainable``."""
+    """A class that can be converted to a ``tune.Trainable``."""
 
     @abc.abstractmethod
     def as_trainable(self) -> Type[Trainable]:
