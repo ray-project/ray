@@ -119,7 +119,7 @@ class TorchPredictor(Predictor):
         """
         checkpoint_dict = checkpoint.to_dict()
         preprocessor = checkpoint_dict[PREPROCESSOR_KEY]
-        model = load_torch_model(
+        model = _load_torch_model(
             saved_model=checkpoint_dict[MODEL_KEY], model_definition=model_definition
         )
         return TorchPredictor(model=model, preprocessor=preprocessor)
@@ -164,7 +164,7 @@ class TorchPredictor(Predictor):
         return pd.DataFrame(prediction, columns=["predictions"])
 
 
-def load_torch_model(
+def _load_torch_model(
     saved_model: Union[torch.nn.Module, Dict],
     model_definition: Optional[torch.nn.Module] = None,
 ) -> torch.nn.Module:
