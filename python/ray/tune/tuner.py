@@ -8,7 +8,7 @@ from ray.tune.api_v2.convertible_to_trainable import ConvertibleToTrainable
 from ray.tune.callback import Callback
 from ray.tune.trainable import Trainable
 from ray.tune.impl.tuner_internal import TunerInternal
-from ray.tune.tuner_config import TuneAlgoConfig
+from ray.tune.tune_config import TuneConfig
 from ray.util import PublicAPI
 from ray.util.client.common import ClientActorHandle
 from ray.util.ml_utils.node import force_on_current_node
@@ -44,8 +44,8 @@ class Tuner:
             ]): The trainable to be tune.
         param_space (Optional[Dict[str, Any]]): Search space to run tuning on.
             One thing to note is that both preprocessor and dataset can be tuned here.
-        tune_algo_config (Optional[TuneAlgoConfig]): tune algo specific configs.
-            Refer to ray.tune.tuner_config.TunerAlgoConfig for more info.
+        tune_config (Optional[TuneConfig]): tune algo specific configs.
+            Refer to ray.tune.tune_config.TuneConfig for more info.
         name (Optional[str]): Name of the run.
         local_dir (Optional[str]): Local dir to save training results to.
             Defaults to ``~/ray_results``.
@@ -110,7 +110,7 @@ class Tuner:
             ]
         ] = None,
         param_space: Optional[Dict[str, Any]] = None,
-        tune_algo_config: Optional[TuneAlgoConfig] = None,
+        tune_algo_config: Optional[TuneConfig] = None,
         name: Optional[str] = None,
         local_dir: Optional[str] = None,
         callbacks: Optional[List[Callback]] = None,

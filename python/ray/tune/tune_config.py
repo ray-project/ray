@@ -8,7 +8,7 @@ from ray.util import PublicAPI
 
 @dataclass
 @PublicAPI(stability="beta")
-class TuneAlgoConfig:
+class TuneConfig:
     """Tune specific config, related to how hyperparameter tuning algorithms
     are set up.
 
@@ -19,7 +19,8 @@ class TuneAlgoConfig:
         mode (str): Must be one of [min, max]. Determines whether objective is
             minimizing or maximizing the metric attribute. If set, will be
             passed to the search algorithm and scheduler.
-        search_alg (Searcher): Search algorithm for optimization.
+        search_alg (Searcher): Search algorithm for optimization. Default to
+            random search.
         scheduler (TrialScheduler): Scheduler for executing
             the experiment. Choose among FIFO (default), MedianStopping,
             AsyncHyperBand, HyperBand and PopulationBasedTraining. Refer to

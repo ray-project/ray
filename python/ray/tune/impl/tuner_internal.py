@@ -10,7 +10,7 @@ from ray.tune.api_v2.convertible_to_trainable import ConvertibleToTrainable
 from ray.tune.callback import Callback
 from ray.tune.trainable import Trainable
 from ray.tune.tune import run
-from ray.tune.tuner_config import TuneAlgoConfig
+from ray.tune.tune_config import TuneConfig
 
 
 # The key that denotes the dataset config in param space.
@@ -40,7 +40,7 @@ class TunerInternal:
             ]
         ] = None,
         param_space: Optional[Dict[str, Any]] = None,
-        tune_algo_config: Optional[TuneAlgoConfig] = None,
+        tune_config: Optional[TuneConfig] = None,
         name: Optional[str] = None,
         local_dir: Optional[str] = None,
         callbacks: Optional[List[Callback]] = None,
@@ -111,7 +111,6 @@ class TunerInternal:
             "train_dataset": tune.grid_search([ds1, ds2]),
         },
         """
-        print("===============================================================")
 
         def _helper(dataset_dict: dict):
             for k, v in dataset_dict.items():
@@ -171,6 +170,7 @@ class TunerInternal:
         if not self.is_restored:
             param_space = copy.deepcopy(self.param_space)
             analysis = self._fit_internal(trainable, param_space)
+            assert self.experiment_checkpoint_dir
         else:
             analysis = self._fit_resume(trainable)
 
@@ -178,7 +178,6 @@ class TunerInternal:
 
     def _fit_internal(self, trainable, param_space):
         """Fitting for a fresh Tuner."""
-        assert self.experiment_checkpoint_dir
         analysis = run(
             trainable,
             config={**param_space},
@@ -190,7 +189,6 @@ class TunerInternal:
 
     def _fit_resume(self, trainable):
         """Fitting for a restored Tuner."""
-        assert self.experiment_checkpoint_dir
         analysis = run(
             trainable,
             resume=True,
