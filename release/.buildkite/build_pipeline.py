@@ -173,11 +173,11 @@ NIGHTLY_TESTS = {
     # "~/ray/release/horovod_tests/horovod_tests.yaml": [
     #     SmokeTest("horovod_test"),
     # ],  # Should we enable this?
-    "~/ray/release/golden_notebook_tests/golden_notebook_tests.yaml": [
-        "dask_xgboost_test",
-        "modin_xgboost_test",
-        "torch_tune_serve_test",
-    ],
+    # "~/ray/release/golden_notebook_tests/golden_notebook_tests.yaml": [
+    #     "dask_xgboost_test",
+    #     "modin_xgboost_test",
+    #     "torch_tune_serve_test",
+    # ],
     "~/ray/release/long_running_tests/long_running_tests.yaml": [
         SmokeTest("actor_deaths"),
         SmokeTest("apex"),
