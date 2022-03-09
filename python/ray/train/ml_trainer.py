@@ -89,7 +89,7 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
         This is needed to allow attributes of Trainer to be tuned as
         hyperparameters.
 
-        This method does a deep update of dictionaries.
+        This method does a deep update of class attributes that are dicts.
 
         Args:
             config (Dict): A dictionary to update attributes with.
