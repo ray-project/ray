@@ -171,6 +171,15 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     }
   }
 
+  void WaitUntilSyncMessage(int n) {
+    for (int i = 0; i < 20; ++i) {
+      if (ray_syncer_->resources_buffer_proto_.batch().size() == n) {
+        break;
+      }
+      sleep(1);
+    }
+  }
+
   void SchedulePlacementGroupSuccessTest(rpc::PlacementStrategy strategy) {
     auto node = Mocker::GenNodeInfo();
     AddNode(node);
@@ -201,6 +210,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     WaitPlacementGroupPendingDone(0, GcsPlacementGroupStatus::FAILURE);
     WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
     CheckEqWithPlacementGroupFront(placement_group, GcsPlacementGroupStatus::SUCCESS);
+    WaitUntilSyncMessage(2);
     {
       absl::MutexLock lock(&placement_group_requests_mutex_);
       CheckResourceUpdateMatch(success_placement_groups_, true);
@@ -495,6 +505,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, DestroyPlacementGroup) {
   scheduler_->DestroyPlacementGroupBundleResourcesIfExists(placement_group_id);
   ASSERT_TRUE(raylet_clients_[0]->GrantCancelResourceReserve());
   ASSERT_TRUE(raylet_clients_[0]->GrantCancelResourceReserve());
+  WaitUntilSyncMessage(4);
   {
     absl::MutexLock lock(&placement_group_requests_mutex_);
     CheckResourceUpdateMatch(success_placement_groups_, false);
