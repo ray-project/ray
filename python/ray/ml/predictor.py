@@ -11,7 +11,7 @@ DataBatchType = Union["pd.DataFrame", "np.ndarray"]
 
 
 class Predictor(abc.ABC):
-    """Predictors perform inference on a model loaded from a checkpoint."""
+    """Predictors load models from checkpoints to perform inference."""
 
     @classmethod
     def from_checkpoint(cls, checkpoint: Checkpoint, **kwargs) -> "Predictor":
