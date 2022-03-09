@@ -1,21 +1,24 @@
 import pytest
+import requests
 
 import ray
 from ray import serve
-from ray.experimental.dag import InputNode
 from ray.serve.handle import RayServeSyncHandle
 from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
+    get_ingress_deployment,
 )
 from ray.serve.pipeline.tests.test_modules import (
     Model,
     Combine,
     NESTED_HANDLE_KEY,
+    request_to_data_int,
 )
+from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
 
 
-def _validate_consistent_output(
+def _validate_consistent_python_output(
     deployment, dag, handle_by_name, input=None, output=None
 ):
     """Assert same input lead to same outputs across the following:
@@ -32,19 +35,29 @@ def _validate_consistent_output(
 
 def test_simple_single_class(serve_instance):
     # Assert converting both arg and kwarg
-    with InputNode() as dag_input:
+    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
         model = Model._bind(2, ratio=0.3)
         ray_dag = model.forward._bind(dag_input)
 
     serve_root_dag = ray_dag._apply_recursive(transform_ray_dag_to_serve_dag)
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
+    ingress_deployment = get_ingress_deployment(serve_root_dag, dag_input)
     assert len(deployments) == 1
     deployments[0].deploy()
-    _validate_consistent_output(deployments[0], ray_dag, "Model", input=1, output=0.6)
+    ingress_deployment.deploy()
+    _validate_consistent_python_output(
+        deployments[0], ray_dag, "Model", input=1, output=0.6
+    )
+
+    for _ in range(5):
+        resp = requests.get(
+            f"http://127.0.0.1:8000/{ingress_deployment.name}", data="1"
+        )
+        assert resp.text == "0.6"
 
 
 def test_single_class_with_valid_ray_options(serve_instance):
-    with InputNode() as dag_input:
+    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
         model = Model.options(num_cpus=1, memory=1000)._bind(2, ratio=0.3)
         ray_dag = model.forward._bind(dag_input)
 
@@ -52,7 +65,7 @@ def test_single_class_with_valid_ray_options(serve_instance):
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert len(deployments) == 1
     deployments[0].deploy()
-    _validate_consistent_output(
+    _validate_consistent_python_output(
         deployments[0], ray_dag, deployments[0].name, input=1, output=0.6
     )
 
@@ -63,7 +76,7 @@ def test_single_class_with_valid_ray_options(serve_instance):
 
 
 def test_single_class_with_invalid_deployment_options(serve_instance):
-    with InputNode() as dag_input:
+    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
         model = Model.options(name="my_deployment")._bind(2, ratio=0.3)
         ray_dag = model.forward._bind(dag_input)
 
@@ -82,7 +95,7 @@ def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
     multiple times for the same class, and we can still correctly replace
     args with deployment handle and parse correct deployment instances.
     """
-    with InputNode() as dag_input:
+    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
         m1 = Model._bind(2)
         m2 = Model._bind(3)
         combine = Combine._bind(m1, m2=m2)
@@ -96,7 +109,17 @@ def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
     for deployment in deployments:
         deployment.deploy()
 
-    _validate_consistent_output(deployments[2], ray_dag, "Combine", input=1, output=5)
+    ingress_deployment = get_ingress_deployment(serve_root_dag, dag_input)
+    ingress_deployment.deploy()
+
+    _validate_consistent_python_output(
+        deployments[2], ray_dag, "Combine", input=1, output=5
+    )
+    for _ in range(5):
+        resp = requests.get(
+            f"http://127.0.0.1:8000/{ingress_deployment.name}", data="1"
+        )
+        assert resp.text == "5"
 
 
 def test_shared_deployment_handle(serve_instance):
@@ -104,7 +127,7 @@ def test_shared_deployment_handle(serve_instance):
     Test we can re-use the same deployment handle multiple times or in
     multiple places, without incorrectly parsing duplicated deployments.
     """
-    with InputNode() as dag_input:
+    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
         m = Model._bind(2)
         combine = Combine._bind(m, m2=m)
         ray_dag = combine.__call__._bind(dag_input)
@@ -117,7 +140,17 @@ def test_shared_deployment_handle(serve_instance):
     for deployment in deployments:
         deployment.deploy()
 
-    _validate_consistent_output(deployments[1], ray_dag, "Combine", input=1, output=4)
+    ingress_deployment = get_ingress_deployment(serve_root_dag, dag_input)
+    ingress_deployment.deploy()
+
+    _validate_consistent_python_output(
+        deployments[1], ray_dag, "Combine", input=1, output=4
+    )
+    for _ in range(5):
+        resp = requests.get(
+            f"http://127.0.0.1:8000/{ingress_deployment.name}", data="1"
+        )
+        assert resp.text == "4"
 
 
 def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
@@ -126,7 +159,7 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
     instantiated multiple times for the same class, and we can still correctly
     replace args with deployment handle and parse correct deployment instances.
     """
-    with InputNode() as dag_input:
+    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
         m1 = Model._bind(2)
         m2 = Model._bind(3)
         combine = Combine._bind(m1, m2={NESTED_HANDLE_KEY: m2}, m2_nested=True)
@@ -150,22 +183,17 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
     for deployment in deployments:
         deployment.deploy()
 
-    _validate_consistent_output(deployments[2], ray_dag, "Combine", input=1, output=5)
+    ingress_deployment = get_ingress_deployment(serve_root_dag, dag_input)
+    ingress_deployment.deploy()
 
-
-def test_simple_function(serve_instance):
-    # TODO: (jiaodong) Support function deployment node
-    pass
-
-
-def test_multiple_functions(serve_instance):
-    # TODO: (jiaodong) Support function deployment node
-    pass
-
-
-def test_mix_class_and_function(serve_instance):
-    # TODO: (jiaodong) Support function deployment node
-    pass
+    _validate_consistent_python_output(
+        deployments[2], ray_dag, "Combine", input=1, output=5
+    )
+    for _ in range(5):
+        resp = requests.get(
+            f"http://127.0.0.1:8000/{ingress_deployment.name}", data="1"
+        )
+        assert resp.text == "5"
 
 
 if __name__ == "__main__":

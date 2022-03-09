@@ -229,7 +229,7 @@ class InputAtrributeNode(DAGNode):
                 )
 
     def __str__(self) -> str:
-        return get_dag_node_str(self, f"__InputNode__[{self._key}]")
+        return get_dag_node_str(self, f'["{self._key}"]')
 
 
 class DAGInputData:

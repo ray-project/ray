@@ -11,7 +11,6 @@ SRCS = [] + select({
 py_test_module_list(
   files = [
     "test_dashboard.py",
-    "test_logging.py",
     "test_ray_cluster_with_external_redis.py",
     "test_k8s_cluster_launcher.py",
     "test_runtime_env_working_dir_3.py",
@@ -97,6 +96,7 @@ py_test_module_list(
   files = [
     "test_usage_stats.py",
     "test_autoscaler_fake_scaledown.py",  # Temporarily owned by core.
+    "test_logging.py",
     "test_memory_scheduling.py",
     "test_metrics.py",
     "test_multi_node.py",
