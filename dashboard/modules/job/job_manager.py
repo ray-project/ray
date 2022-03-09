@@ -138,21 +138,12 @@ class JobSupervisor:
                 terminated or killed upon user calling stop().
         """
         with open(logs_path, "w") as logs_file:
-            if self._runtime_env.get("pip") is not None:
-                # Replace "python" in the user's entrypoint script with the
-                # Python executable for the present runtime env.
-                cmd = f'python() {{ "{sys.executable}" "$@" ; }} && ' + self._entrypoint
-                executable = "/bin/bash"
-            else:
-                cmd = self._entrypoint
-                executable = None
             child_process = subprocess.Popen(
-                cmd,
+                self._entrypoint,
                 shell=True,
                 start_new_session=True,
                 stdout=logs_file,
                 stderr=subprocess.STDOUT,
-                executable=executable,
             )
             parent_pid = os.getpid()
             # Create new pgid with new subprocess to execute driver command
