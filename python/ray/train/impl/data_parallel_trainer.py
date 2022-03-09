@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any, Dict, Callable, Optional, Type, TYPE_CHECKING
+from typing import Dict, Callable, Optional, Type, TYPE_CHECKING
 
 import ray
 from ray.ml.preprocessor import Preprocessor
@@ -20,9 +20,7 @@ from ray.tune.trainable import Trainable
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
-    from ray.data import Dataset
-else:
-    Dataset = Any
+    import ray.data.Dataset
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +70,8 @@ class DataParallelFunctionTrainer(Trainer):
         backend_config: Optional[BackendConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
-        train_dataset: Optional[Dataset] = None,
-        additional_datasets: Optional[Dict[str, Dataset]] = None,
+        train_dataset: Optional["ray.data.Dataset"] = None,
+        additional_datasets: Optional[Dict[str, "ray.data.Dataset"]] = None,
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):

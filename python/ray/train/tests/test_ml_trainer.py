@@ -39,9 +39,6 @@ scale_config = {"num_workers": 2}
 
 class TestTrainer:
     def test_trainer_fit(self, ray_start_4_cpus):
-        import pdb
-
-        pdb.set_trace()
         trainer = DummyTrainer()
         result = trainer.fit()
         assert result.metrics["my_metric"] == 1
@@ -81,7 +78,7 @@ class TestDataParallelTrainer:
 
     def test_scale(self, ray_start_4_cpus):
         def train_func():
-            assert ray.available_resources()["CPU"] == 1
+            assert ray.available_resources()["CPU"] == 2
             train.report(loss=1)
 
         assert ray.available_resources()["CPU"] == 4
@@ -124,7 +121,7 @@ class TestDataParallelTrainer:
         result = trainer.fit()
         rank_zero_shards = result.metrics["data"]
         for epoch_shard in rank_zero_shards:
-            assert len(epoch_shard) == num_data / scale_config.num_workers
+            assert len(epoch_shard) == num_data / scale_config["num_workers"]
 
     def test_multiple_datasets(self, ray_start_4_cpus):
         num_train_data = 10
@@ -135,9 +132,9 @@ class TestDataParallelTrainer:
 
         def get_dataset():
             train_dataset = train.get_train_dataset_shard()
-            assert train_dataset.count() == num_train_data / scale_config.num_workers
+            assert train_dataset.count() == num_train_data / scale_config["num_workers"]
             val_dataset = train.get_dataset_shard("val")
-            assert val_dataset.count() == num_val_data / scale_config.num_workers
+            assert val_dataset.count() == num_val_data / scale_config["num_workers"]
 
         trainer = DataParallelFunctionTrainer(
             train_func=get_dataset,

@@ -32,7 +32,7 @@ class BackendConfig:
 
     @property
     def backend_cls(self):
-        return Backend()
+        return Backend
 
 
 @DeveloperAPI
