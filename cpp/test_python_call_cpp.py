@@ -6,7 +6,7 @@ import pytest
 
 def test_cross_language_cpp():
     ray.init(
-        job_config=ray.job_config.JobConfig(code_search_path=["bazel-bin/cpp/plus.so"])
+        job_config=ray.job_config.JobConfig(code_search_path=["../../plus.so"])
     )
     obj = ray.cross_language.cpp_function("Plus1").remote(1)
     assert 2 == ray.get(obj)
@@ -60,3 +60,10 @@ def test_cross_language_cpp():
     students = {0: ["tom", 20], 1: ["jerry", 10]}
     obj9 = ray.cross_language.cpp_function("GetStudents").remote(students)
     assert students == ray.get(obj9)
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
