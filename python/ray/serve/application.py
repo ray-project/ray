@@ -112,16 +112,6 @@ class Application:
         This is meant to help interactive development.
 
         Args:
-            runtime_env_updates (Dict): This is a runtime_env dictionary that
-                overwrites all the runtime_envs of the deployments in this
-                Application. Only the fields defined in runtime_env_updates
-                are overwritten. Everything else is left alone.
-            cluster_address (String): The Ray cluster head node's address.
-                ray.init(address=cluster_address, namespace="serve") is called
-                to attach to the cluster.
-            dashboard_address (String): The cluster's dashboard address. This
-                is used to upload any local working_dir passed in with
-                runtime_env_updates.
             logger: Any Python object that implements the standard logger
                 interface.
         """
