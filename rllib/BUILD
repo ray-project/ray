@@ -1345,6 +1345,13 @@ py_test(
 )
 
 py_test(
+    name = "policy/tests/test_multi_agent_batch",
+    tags = ["team:ml", "policy"],
+    size = "small",
+    srcs = ["policy/tests/test_multi_agent_batch.py"]
+)
+
+py_test(
     name = "policy/tests/test_policy",
     tags = ["team:ml", "policy"],
     size = "medium",
@@ -1424,13 +1431,62 @@ py_test(
     srcs = ["utils/spaces/tests/test_space_utils.py"]
 )
 
-
 # TaskPool
 py_test(
     name = "test_taskpool",
     tags = ["team:ml", "utils"],
     size = "small",
     srcs = ["utils/tests/test_taskpool.py"]
+)
+
+# ReplayBuffers
+py_test(
+    name = "test_multi_agent_mixin_replay_buffer",
+    tags = ["team:ml", "utils"],
+    size = "small",
+    srcs = ["utils/replay_buffers/tests/test_multi_agent_mixin_replay_buffer.py"]
+)
+
+py_test(
+    name = "test_multi_agent_prioritized_replay_buffer",
+    tags = ["team:ml", "utils"],
+    size = "small",
+    srcs = ["utils/replay_buffers/tests/test_multi_agent_prioritized_replay_buffer.py"]
+)
+
+py_test(
+    name = "test_multi_agent_replay_buffer",
+    tags = ["team:ml", "utils"],
+    size = "small",
+    srcs = ["utils/replay_buffers/tests/test_multi_agent_replay_buffer.py"]
+)
+
+py_test(
+    name = "test_prioritized_replay_buffer_replay_buffer_api",
+    tags = ["team:ml", "utils"],
+    size = "small",
+    srcs = ["utils/replay_buffers/tests/test_prioritized_replay_buffer_replay_buffer_api.py"]
+)
+
+py_test(
+    name = "test_replay_buffer",
+    tags = ["team:ml", "utils"],
+    size = "small",
+    srcs = ["utils/replay_buffers/tests/test_replay_buffer.py"]
+)
+
+py_test(
+    name = "test_reservoir_buffer",
+    tags = ["team:ml", "utils"],
+    size = "small",
+    srcs = ["utils/replay_buffers/tests/test_reservoir_buffer.py"]
+)
+
+py_test(
+    name = "test_segment_tree_replay_buffer_api",
+    tags = ["team:ml", "utils"],
+    size = "small",
+    srcs = ["utils/replay_buffers/tests/test_segment_tree_replay_buffer_api.py"]
 )
 
 # --------------------------------------------------------------------
