@@ -166,7 +166,7 @@ class TestConfigureRuntimeEnv:
         configure_runtime_env(deployment, runtime_env)
         assert deployment.ray_actor_options["runtime_env"] == runtime_env
 
-    def test_overwrite_all_options(self):
+    def test_no_overwrite_all_options(self):
         old_runtime_env = {
             "working_dir": "http://test.com",
             "pip": ["requests", "pendulum==2.1.2"],
@@ -176,13 +176,18 @@ class TestConfigureRuntimeEnv:
             "pip": [],
             "env_vars": {"test_var": "test"},
         }
+        updated_env = {
+            "working_dir": "http://test.com",
+            "pip": ["requests", "pendulum==2.1.2"],
+            "env_vars": {"test_var": "test"},
+        }
         deployment = TestConfigureRuntimeEnv.f.options(
             ray_actor_options={"runtime_env": old_runtime_env}
         )
         configure_runtime_env(deployment, new_runtime_env)
-        assert deployment.ray_actor_options["runtime_env"] == new_runtime_env
+        assert deployment.ray_actor_options["runtime_env"] == updated_env
 
-    def test_overwrite_some_options(self):
+    def test_no_overwrite_some_options(self):
         old_runtime_env = {
             "working_dir": "http://new.com",
             "pip": [],
@@ -192,16 +197,11 @@ class TestConfigureRuntimeEnv:
             "working_dir": "http://test.com",
             "pip": ["requests", "pendulum==2.1.2"],
         }
-        merged_env = {
-            "working_dir": "http://test.com",
-            "pip": ["requests", "pendulum==2.1.2"],
-            "env_vars": {"test_var": "test"},
-        }
         deployment = TestConfigureRuntimeEnv.f.options(
             ray_actor_options={"runtime_env": old_runtime_env}
         )
         configure_runtime_env(deployment, new_runtime_env)
-        assert deployment.ray_actor_options["runtime_env"] == merged_env
+        assert deployment.ray_actor_options["runtime_env"] == old_runtime_env
 
     def test_overwrite_no_options(self):
         runtime_env = {
@@ -686,7 +686,9 @@ def test_run_runtime_env(ray_start_stop):
             "serve",
             "run",
             os.path.join(
-                os.path.dirname(__file__), "test_config_files", "fake_runtime_env.yaml"
+                os.path.dirname(__file__),
+                "test_config_files",
+                "missing_runtime_env.yaml",
             ),
             "--runtime-env-json",
             (

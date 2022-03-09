@@ -91,15 +91,15 @@ def process_args_and_kwargs(
 
 def configure_runtime_env(deployment: Deployment, updates: Dict):
     """
-    Overwrites deployment's runtime_env with fields in updates. Any fields in
-    deployment's runtime_env that aren't in updates stay the same.
+    Adds to deployment's runtime_env with fields in updates. Any fields in
+    deployment's runtime_env are not overwritten.
     """
 
     if deployment.ray_actor_options is None:
         deployment._ray_actor_options = {"runtime_env": updates}
-    elif "runtime_env" in deployment.ray_actor_options:
-        deployment.ray_actor_options["runtime_env"].update(updates)
     else:
+        current_env = deployment.ray_actor_options.get("runtime_env", {})
+        updates.update(current_env)
         deployment.ray_actor_options["runtime_env"] = updates
 
 
@@ -389,18 +389,20 @@ def run(
         runtime_env_updates = parse_runtime_env_args(
             runtime_env=runtime_env,
             runtime_env_json=runtime_env_json,
-            working_dir=working_dir,
         )
 
+        # Get final working_dir
+        working_dir = working_dir or runtime_env_updates.get("working_dir")
+        if "working_dir" in runtime_env_updates:
+            del runtime_env_updates["working_dir"]
+
         # Create ray.init()'s runtime_env
-        remove_working_dirs = False
         if working_dir is None:
             ray_runtime_env = {}
         else:
             ray_runtime_env = {"working_dir": working_dir}
-
-            # Ensure local working_dir isn't propagated to deployments
-            remove_working_dirs = True
+            if "working_dir" in runtime_env_updates:
+                del runtime_env_updates["working_dir"]
 
         if is_config:
             config_path = config_or_import_path
@@ -426,8 +428,6 @@ def run(
 
             for deployment in deployments:
                 configure_runtime_env(deployment, runtime_env_updates)
-                if remove_working_dirs:
-                    del deployment._ray_actor_options["runtime_env"]["working_dir"]
             deploy_group(deployments)
 
             cli_logger.newline()
@@ -456,8 +456,6 @@ def run(
             serve.start(detached=True)
 
             configure_runtime_env(deployment, runtime_env_updates)
-            if remove_working_dirs:
-                del deployment._ray_actor_options["runtime_env"]["working_dir"]
             deployment.options(
                 init_args=args,
                 init_kwargs=kwargs,
