@@ -81,6 +81,17 @@ class PipelineInputNode(InputNode):
 
     def to_json(self, encoder_cls) -> Dict[str, Any]:
         json_dict = super().to_json_base(encoder_cls, PipelineInputNode.__name__)
+        preprocessor_import_path = self.get_preprocessor_import_path()
+        error_message = (
+            "Preprocessor used in DAG should not be in-line defined when "
+            "exporting import path for deployment. Please ensure it has fully "
+            "qualified name with valid __module__ and __qualname__ for "
+            "import path, with no __main__ or <locals>. \n"
+            f"Current import path: {preprocessor_import_path}"
+        )
+        assert "__main__" not in preprocessor_import_path, error_message
+        assert "<locals>" not in preprocessor_import_path, error_message
+
         return json_dict
 
     @classmethod

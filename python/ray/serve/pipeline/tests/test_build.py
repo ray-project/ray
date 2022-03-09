@@ -22,9 +22,7 @@ def test_build_simple_func_dag(serve_instance):
         deployment.deploy()
 
     for _ in range(5):
-        resp = requests.get(
-            "http://127.0.0.1:8000/ingress", data=json.dumps([1, 2])
-        )
+        resp = requests.get("http://127.0.0.1:8000/ingress", data=json.dumps([1, 2]))
         assert resp.text == "4"
 
 
@@ -47,9 +45,7 @@ def test_build_func_class_with_class_method_dag(serve_instance):
         deployment.deploy()
 
     for _ in range(5):
-        resp = requests.get(
-            "http://127.0.0.1:8000/ingress", data=json.dumps([1, 2, 3])
-        )
+        resp = requests.get("http://127.0.0.1:8000/ingress", data=json.dumps([1, 2, 3]))
         assert resp.text == "8"
 
 

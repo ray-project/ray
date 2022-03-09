@@ -1,4 +1,3 @@
-
 from ray.serve.pipeline.tests.resources.test_modules import (
     Model,
     Combine,
@@ -9,11 +8,13 @@ from ray.serve.pipeline.tests.resources.test_modules import (
 )
 from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
 
+
 def get_simple_func_dag():
     with PipelineInputNode(preprocessor=request_to_data_obj) as dag_input:
         ray_dag = combine.bind(dag_input[0], dag_input[1], kwargs_output=1)
 
     return ray_dag, dag_input
+
 
 def get_simple_class_with_class_method_dag():
     with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
@@ -21,6 +22,7 @@ def get_simple_class_with_class_method_dag():
         ray_dag = model.forward.bind(dag_input)
 
     return ray_dag, dag_input
+
 
 def get_func_class_with_class_method_dag():
     with PipelineInputNode(preprocessor=request_to_data_obj) as dag_input:
@@ -31,6 +33,7 @@ def get_func_class_with_class_method_dag():
         ray_dag = combine.bind(m1_output, m2_output, kwargs_output=dag_input[2])
     return ray_dag, dag_input
 
+
 def get_multi_instantiation_class_deployment_in_init_args_dag():
     with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
         m1 = Model.bind(2)
@@ -40,6 +43,7 @@ def get_multi_instantiation_class_deployment_in_init_args_dag():
 
     return ray_dag, dag_input
 
+
 def get_shared_deployment_handle_dag():
     with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
         m = Model.bind(2)
@@ -47,6 +51,7 @@ def get_shared_deployment_handle_dag():
         ray_dag = combine.__call__.bind(dag_input)
 
     return ray_dag, dag_input
+
 
 def get_multi_instantiation_class_nested_deployment_arg_dag():
     with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:

@@ -28,9 +28,7 @@ from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
 RayHandleLike = TypeVar("RayHandleLike")
 
 
-def _test_execution_class_node_ClassHello(
-    original_dag_node, deserialized_dag_node
-):
+def _test_execution_class_node_ClassHello(original_dag_node, deserialized_dag_node):
     # Creates actor of ClassHello
     original_actor = original_dag_node.execute()
     deserialized_actor = deserialized_dag_node.execute()
@@ -67,9 +65,7 @@ def _test_json_serde_helper(
     """
     json_serialized = json.dumps(original_dag_node, cls=DAGNodeEncoder)
     assert json_serialized == json.dumps(expected_json_dict)
-    deserialized_dag_node = json.loads(
-        json_serialized, object_hook=dagnode_from_json
-    )
+    deserialized_dag_node = json.loads(json_serialized, object_hook=dagnode_from_json)
 
     executor_fn(original_dag_node, deserialized_dag_node)
 
@@ -153,6 +149,18 @@ def test_no_inline_class_or_func(serve_instance):
     with pytest.raises(
         AssertionError,
         match="Class used in DAG should not be in-line defined",
+    ):
+        _ = json.dumps(ray_dag, cls=DAGNodeEncoder)
+
+    def inline_preprocessor_fn(input):
+        return input
+
+    with PipelineInputNode(preprocessor=inline_preprocessor_fn) as dag_input:
+        ray_dag = combine.bind(dag_input[0], 2)
+
+    with pytest.raises(
+        AssertionError,
+        match="Preprocessor used in DAG should not be in-line defined",
     ):
         _ = json.dumps(ray_dag, cls=DAGNodeEncoder)
 
@@ -301,9 +309,7 @@ def _test_deployment_json_serde_helper(
     if input is None:
         assert ray.get(ray_dag.execute()) == ray.get(serve_root_dag.execute())
     else:
-        assert ray.get(ray_dag.execute(input)) == ray.get(
-            serve_root_dag.execute(input)
-        )
+        assert ray.get(ray_dag.execute(input)) == ray.get(serve_root_dag.execute(input))
     return serve_root_dag, deserialized_serve_root_dag_node
 
 
@@ -326,9 +332,9 @@ def test_simple_deployment_method_call_chain(serve_instance):
     # Deployment to Deployment, possible DeploymentMethodNode call chain
     # Both serve dags uses the same underlying deployments, thus the rhs value
     # went through two execute()
-    assert ray.get(serve_root_dag.execute()) + ray.get(
-        ray_dag.execute()
-    ) == ray.get(deserialized_serve_root_dag_node.execute())
+    assert ray.get(serve_root_dag.execute()) + ray.get(ray_dag.execute()) == ray.get(
+        deserialized_serve_root_dag_node.execute()
+    )
 
 
 def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
@@ -341,9 +347,7 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
     (
         serve_root_dag,
         deserialized_serve_root_dag_node,
-    ) = _test_deployment_json_serde_helper(
-        ray_dag, input=1, expected_num_deployments=3
-    )
+    ) = _test_deployment_json_serde_helper(ray_dag, input=1, expected_num_deployments=3)
     assert ray.get(serve_root_dag.execute(1)) == ray.get(
         deserialized_serve_root_dag_node.execute(1)
     )
@@ -361,9 +365,7 @@ def test_nested_deployment_node_json_serde(serve_instance):
     (
         serve_root_dag,
         deserialized_serve_root_dag_node,
-    ) = _test_deployment_json_serde_helper(
-        ray_dag, input=1, expected_num_deployments=2
-    )
+    ) = _test_deployment_json_serde_helper(ray_dag, input=1, expected_num_deployments=2)
     assert ray.get(serve_root_dag.execute(1)) == ray.get(
         deserialized_serve_root_dag_node.execute(1)
     )

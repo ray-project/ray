@@ -79,6 +79,7 @@ async def request_to_data_int(request: starlette.requests.Request):
     data = await request.body()
     return int(data)
 
+
 async def request_to_data_obj(request: starlette.requests.Request):
     data = await request.body()
     return json.loads(data)

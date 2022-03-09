@@ -93,6 +93,7 @@ def test_single_class_with_invalid_deployment_options(serve_instance):
     ):
         deployments[0].deploy()
 
+
 def test_func_class_with_class_method_dag(serve_instance):
     ray_dag, dag_input = get_func_class_with_class_method_dag()
 
@@ -107,10 +108,9 @@ def test_func_class_with_class_method_dag(serve_instance):
     assert ray.get(ray_dag.execute(1, 2, 3)) == 8
     assert ray.get(serve_root_dag.execute(1, 2, 3)) == 8
     for _ in range(5):
-        resp = requests.get(
-            "http://127.0.0.1:8000/ingress", data=json.dumps([1, 2, 3])
-        )
+        resp = requests.get("http://127.0.0.1:8000/ingress", data=json.dumps([1, 2, 3]))
         assert resp.text == "8"
+
 
 def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
     """
