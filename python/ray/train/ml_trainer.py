@@ -1,4 +1,5 @@
 import abc
+import copy
 import logging
 from typing import Dict, Union, Callable, Optional, TYPE_CHECKING
 
@@ -83,7 +84,7 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
 
         return result
 
-    def _override_attributes_with_config(self, config: Dict):
+    def _override_attributes_with_config(self, config: Dict) -> Dict:
         """Overrides attributes of the Trainer with values in ``config``.
 
         This is needed to allow attributes of Trainer to be tuned as
@@ -93,7 +94,14 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
 
         Args:
             config: A dictionary to update attributes with.
+
+        Returns:
+            A dict containing any remaining key-value pairs from ``config``
+            that don't override any attributes. This leftover config can be
+            used for any downstream tasks (such as as passing to a training
+            function).
         """
+        config = copy.deepcopy(config)
         for key in list(config.keys()):
             if hasattr(self, key):
                 current_attribute = getattr(self, key)
@@ -104,5 +112,8 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
                     # Don't do a deep update and directly set the attribute
                     # to the value in config.
                     setattr(self, key, config[key])
-                # Remove the key from the dict.
+                # Remove the key from the dict if it's been set to an
+                # attribute.
                 del config[key]
+        # Return whatever is leftover in config.
+        return config
