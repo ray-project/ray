@@ -100,6 +100,8 @@ def setup_multi_deployment_replicas(num_replicas, num_deployments) -> List[str]:
     for deployment in all_deployment_names:
         Echo.options(name=deployment).deploy()
 
+    return all_deployment_names
+
 
 @click.command()
 @click.option("--num-replicas", type=int)
