@@ -55,7 +55,7 @@ def _virtualenv_sys(venv_path):
     if _WIN32:
         env = os.environ.copy()
     else:
-        env = {}    
+        env = {}
     # Must use "executable" as the first argument rather than as the
     # keyword argument "executable" to get correct value from sys.path
     p = subprocess.Popen(

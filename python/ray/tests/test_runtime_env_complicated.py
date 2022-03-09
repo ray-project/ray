@@ -571,6 +571,7 @@ def test_experimental_package_github(shutdown_only):
     assert ray.get(pkg.my_func.remote()) == "hello world"
 
 
+@pytest.mark.skipif(_WIN32, reason="Fails on windows")
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform != "linux",
     reason="This test is only run on linux CI machines.",
@@ -619,6 +620,7 @@ def test_client_working_dir_filepath(call_ray_start, tmp_path):
             assert ray.get(f.remote())
 
 
+@pytest.mark.skipif(_WIN32, reason="Hangs on windows")
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform != "linux",
     reason="This test is only run on linux CI machines.",
@@ -773,6 +775,7 @@ def test_simultaneous_install(shutdown_only):
 CLIENT_SERVER_PORT = 24001
 
 
+@pytest.mark.skipif(_WIN32, reason="Fails on windows")
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform != "linux",
     reason="This test is only run on linux CI machines.",
@@ -915,6 +918,7 @@ def test_e2e_complex(call_ray_start, tmp_path):
         assert ray.get(a.test.remote()) == "Hello"
 
 
+@pytest.mark.skipif(_WIN32, reason="Fails on windows")
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform != "linux",
     reason="This test is only run on linux CI machines.",
@@ -972,6 +976,7 @@ def test_runtime_env_override(call_ray_start):
         ray.shutdown()
 
 
+@pytest.mark.skipif(_WIN32, reason="RecursionError on windows")
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform != "linux",
     reason="This test is only run on linux CI machines.",

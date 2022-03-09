@@ -60,7 +60,7 @@ def get_conda_bin_executable(executable_name: str) -> str:
         else:
             return os.path.join(conda_home, "bin/%s" % executable_name)
     else:
-        conda_home = '.'
+        conda_home = "."
     # Use CONDA_EXE as per https://github.com/conda/conda/issues/7126
     if "CONDA_EXE" in os.environ:
         conda_bin_dir = os.path.dirname(os.environ["CONDA_EXE"])
@@ -74,7 +74,7 @@ def get_conda_bin_executable(executable_name: str) -> str:
         else:
             return os.path.join(conda_bin_dir, executable_name)
     if _WIN32:
-        return executable_name + '.bat'
+        return executable_name + ".bat"
     return executable_name
 
 
