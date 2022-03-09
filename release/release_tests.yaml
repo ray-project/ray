@@ -761,6 +761,389 @@
 
   alert: tune_tests
 
+#######################
+# Long running tests
+#######################
+
+- name: long_running_actor_deaths
+  group: Long running tests
+  working_dir: long_running_tests
+  legacy:
+    test_name: actor_deaths
+    test_suite: long_running_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_1.yaml
+
+  run:
+    timeout: 86400
+    prepare: ray stop
+    script: python workloads/actor_deaths.py
+    long_running: true
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 3600
+
+  alert: long_running
+
+- name: long_running_apex
+  group: Long running tests
+  working_dir: long_running_tests
+  legacy:
+    test_name: apex
+    test_suite: long_running_tests
+
+  frequency: nightly
+  team: ml
+  cluster:
+    cluster_env: ../rllib_tests/app_config.yaml
+    cluster_compute: tpl_cpu_3.yaml
+
+  run:
+    timeout: 86400
+    script: python workloads/apex.py
+    long_running: true
+    wait_for_nodes:
+      num_nodes: 3
+      timeout: 600
+
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 3600
+
+  alert: long_running
+
+- name: long_running_impala
+  group: Long running tests
+  working_dir: long_running_tests
+  legacy:
+    test_name: impala
+    test_suite: long_running_tests
+
+  frequency: nightly
+  team: ml
+  cluster:
+    cluster_env: app_config_np.yaml
+    cluster_compute: tpl_cpu_1_large.yaml
+
+  run:
+    timeout: 86400
+    script: python workloads/impala.py
+    long_running: true
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 3600
+
+  alert: long_running
+
+- name: long_running_many_actor_tasks
+  group: Long running tests
+  working_dir: long_running_tests
+  legacy:
+    test_name: many_actor_tasks
+    test_suite: long_running_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_1.yaml
+
+  run:
+    timeout: 86400
+    prepare: ray stop
+    script: python workloads/many_actor_tasks.py
+    long_running: true
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 3600
+
+  alert: long_running
+
+- name: long_running_many_drivers
+  group: Long running tests
+  working_dir: long_running_tests
+  legacy:
+    test_name: many_drivers
+    test_suite: long_running_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_1.yaml
+
+  run:
+    timeout: 86400
+    prepare: ray stop
+    script: python workloads/many_drivers.py --iteration-num=4000
+    long_running: true
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 3600
+
+  alert: long_running
+
+- name: long_running_many_ppo
+  group: Long running tests
+  working_dir: long_running_tests
+  legacy:
+    test_name: many_ppo
+    test_suite: long_running_tests
+
+  frequency: nightly
+  team: ml
+  cluster:
+    cluster_env: ../rllib_tests/app_config.yaml
+    cluster_compute: many_ppo.yaml
+
+  run:
+    timeout: 86400
+    script: python workloads/many_ppo.py
+    long_running: true
+    wait_for_nodes:
+      num_nodes: 1
+      timeout: 600
+
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 3600
+
+  alert: long_running
+
+- name: long_running_many_tasks
+  group: Long running tests
+  working_dir: long_running_tests
+  legacy:
+    test_name: many_tasks
+    test_suite: long_running_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_1.yaml
+
+  run:
+    timeout: 86400
+    prepare: ray stop
+    script: python workloads/many_tasks.py
+    long_running: true
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 3600
+
+  alert: long_running
+
+- name: long_running_many_tasks_serialized_ids
+  group: Long running tests
+  working_dir: long_running_tests
+  legacy:
+    test_name: many_tasks_serialized_ids
+    test_suite: long_running_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_1.yaml
+
+  run:
+    timeout: 86400
+    prepare: ray stop
+    script: python workloads/many_tasks_serialized_ids.py
+    long_running: true
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 3600
+
+  alert: long_running
+
+- name: long_running_node_failures
+  group: Long running tests
+  working_dir: long_running_tests
+  legacy:
+    test_name: node_failures
+    test_suite: long_running_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_1.yaml
+
+  run:
+    timeout: 86400
+    prepare: ray stop
+    script: python workloads/node_failures.py
+    long_running: true
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 3600
+
+  alert: long_running
+
+- name: long_running_pbt
+  group: Long running tests
+  working_dir: long_running_tests
+  legacy:
+    test_name: pbt
+    test_suite: long_running_tests
+
+  frequency: nightly
+  team: ml
+  cluster:
+    cluster_env: ../rllib_tests/app_config.yaml
+    cluster_compute: tpl_cpu_1.yaml
+
+  run:
+    timeout: 86400
+    prepare: ray stop
+    script: python workloads/pbt.py
+    long_running: true
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 3600
+
+  alert: long_running
+
+- name: long_running_serve
+  group: Long running tests
+  working_dir: long_running_tests
+  legacy:
+    test_name: serve
+    test_suite: long_running_tests
+
+  frequency: nightly
+  team: serve
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_1.yaml
+
+  run:
+    timeout: 86400
+    prepare: ray stop
+    script: python workloads/serve.py
+    long_running: true
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 3600
+
+  alert: long_running
+
+- name: long_running_serve_failure
+  group: Long running tests
+  working_dir: long_running_tests
+  legacy:
+    test_name: serve_failure
+    test_suite: long_running_tests
+
+  frequency: nightly
+  team: serve
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_1.yaml
+
+  run:
+    timeout: 86400
+    prepare: ray stop
+    script: python workloads/serve_failure.py
+    long_running: true
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    run:
+      timeout: 600
+
+  alert: long_running
+
+- name: long_running_distributed_pytorch_pbt_failure
+  group: Long running tests
+  working_dir: long_running_distributed_tests
+
+  legacy:
+    test_name: pytorch_pbt_failure
+    test_suite: long_running_distributed
+
+  frequency: weekly
+  team: ml
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl.yaml
+
+  run:
+    timeout: 86400
+    script: python workloads/pytorch_pbt_failure.py
+    long_running: true
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+    run:
+      timeout: 3600
+
+  alert: long_running
+
 ########################
 # Core Nightly Tests
 ########################
@@ -1115,3 +1498,4 @@
     type: sdk_command
     file_manager: sdk
   stable: false
+    
