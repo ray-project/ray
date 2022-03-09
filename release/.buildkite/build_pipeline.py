@@ -205,9 +205,9 @@ NIGHTLY_TESTS = {
         "serve",
         "serve_failure",
     ],
-    "~/ray/release/sgd_tests/sgd_tests.yaml": [
-        "sgd_gpu",
-    ],
+    # "~/ray/release/sgd_tests/sgd_tests.yaml": [
+    #     "sgd_gpu",
+    # ],
     # "~/ray/release/tune_tests/cloud_tests/tune_cloud_tests.yaml": [
     #     "aws_no_sync_down",
     #     "aws_ssh_sync",
