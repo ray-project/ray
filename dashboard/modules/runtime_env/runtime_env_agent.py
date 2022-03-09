@@ -174,7 +174,6 @@ class RuntimeEnvAgent(
     }
 
     async def CreateRuntimeEnvIfNeeded(self, request, context):
-        raise Exception("_perform_iteration")
         self._logger.info(
             f"Got request from {request.source_process} to increase "
             "reference for runtime env: "
