@@ -22,7 +22,6 @@ import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.runtimecontext.RuntimeContext;
 import io.ray.api.runtimeenv.RuntimeEnv;
-import io.ray.api.runtimeenv.RuntimeEnvInfo;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.config.RunMode;
 import io.ray.runtime.context.RuntimeContextImpl;
@@ -36,7 +35,6 @@ import io.ray.runtime.generated.Common.Language;
 import io.ray.runtime.object.ObjectRefImpl;
 import io.ray.runtime.object.ObjectStore;
 import io.ray.runtime.runtimeenv.RuntimeEnvImpl;
-import io.ray.runtime.runtimeenv.RuntimeEnvInfoImpl;
 import io.ray.runtime.task.ArgumentsBuilder;
 import io.ray.runtime.task.FunctionArg;
 import io.ray.runtime.task.TaskExecutor;
@@ -293,11 +291,6 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   @Override
   public RuntimeEnv createRuntimeEnv(Map<String, String> envVars) {
     return new RuntimeEnvImpl(envVars);
-  }
-
-  @Override
-  public RuntimeEnvInfo createRuntimeEnvInfo(String serializedRuntimeEnv) {
-    return new RuntimeEnvInfoImpl(serializedRuntimeEnv);
   }
 
   private ObjectRef callNormalFunction(
