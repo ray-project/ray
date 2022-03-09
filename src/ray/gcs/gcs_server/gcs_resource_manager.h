@@ -79,10 +79,15 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
       &GetClusterResources() const;
 
   /// Update resources of a node
+  /// \param node_id Id of a node.
+  /// \param changed_resources The newly added resources for the node. Usually it's
+  /// placement group resources.
   void UpdateResources(const NodeID &node_id,
                        absl::flat_hash_map<std::string, double> changed_resources);
 
   /// Delete resource of a node
+  /// \param node_id Id of a node.
+  /// \param resource_names The resources to be deleted from the node.
   void DeleteResources(const NodeID &node_id, std::vector<std::string> resource_names);
 
   /// Handle a node registration.
