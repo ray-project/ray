@@ -9,7 +9,11 @@ from ray.ml.constants import PREPROCESSOR_KEY
 from ray.ml.constants import MODEL_KEY
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
-from ray.ml.integrations.torch.torch_utils import load_torch_model, convert_pandas_to_torch_tensor
+from ray.ml.integrations.torch.torch_utils import (
+    load_torch_model,
+    convert_pandas_to_torch_tensor,
+)
+
 
 class TorchPredictor(Predictor):
     """A predictor for PyTorch models."""

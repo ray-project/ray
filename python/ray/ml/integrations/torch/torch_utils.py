@@ -3,6 +3,7 @@ from typing import Optional, Union, Dict, List
 import pandas as pd
 import torch
 
+
 def convert_pandas_to_torch_tensor(
     data_batch: pd.DataFrame,
     columns: Optional[Union[List[str], List[List[str]]]] = None,
