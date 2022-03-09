@@ -17,7 +17,6 @@ GenDataset = Union[Dataset, Callable[[], Dataset]]
 logger = logging.getLogger(__name__)
 
 
-# TODO: support conditional hyperparameter tuning of Trainer __init__ args.
 class Trainer(ConvertibleToTrainable, abc.ABC):
     """Defines interface for distributed training on Ray.
 
@@ -66,7 +65,7 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
         trainable = self.as_trainable()
 
         # Copied from initial prototyping.
-        # TODO: Replace with Tuner.
+        # TODO(amog): Replace with Tuner.
         analysis = tune.run(run_or_experiment=trainable, **self.run_config)
 
         assert len(analysis.trials) == 1
