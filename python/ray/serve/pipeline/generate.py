@@ -16,6 +16,7 @@ from ray.serve.pipeline.json_serde import DAGNodeEncoder
 from ray.serve.pipeline.ingress import Ingress
 from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
 
+DEFAULT_INGRESS_DEPLOYMENT_NAME = "ingress"
 
 class DeploymentNameGenerator(object):
     """
@@ -152,6 +153,7 @@ def get_ingress_deployment(
     serve_dag_root_json = json.dumps(serve_dag_root_node, cls=DAGNodeEncoder)
     preprocessor_import_path = pipeline_input_node.get_preprocessor_import_path()
     serve_dag_root_deployment = serve.deployment(Ingress).options(
+        name=DEFAULT_INGRESS_DEPLOYMENT_NAME,
         init_args=(
             serve_dag_root_json,
             preprocessor_import_path,
