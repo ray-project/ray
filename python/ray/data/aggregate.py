@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from ray.data import Dataset
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 class AggregateFn(object):
     def __init__(
         self,
@@ -64,7 +64,7 @@ class _AggregateOnKeyBase(AggregateFn):
         _validate_key_fn(ds, self._key_fn)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 class Count(AggregateFn):
     """Defines count aggregation."""
 
@@ -77,7 +77,7 @@ class Count(AggregateFn):
         )
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 class Sum(_AggregateOnKeyBase):
     """Defines sum aggregation."""
 
@@ -94,7 +94,7 @@ class Sum(_AggregateOnKeyBase):
         )
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 class Min(_AggregateOnKeyBase):
     """Defines min aggregation."""
 
@@ -111,7 +111,7 @@ class Min(_AggregateOnKeyBase):
         )
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 class Max(_AggregateOnKeyBase):
     """Defines max aggregation."""
 
@@ -128,7 +128,7 @@ class Max(_AggregateOnKeyBase):
         )
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 class Mean(_AggregateOnKeyBase):
     """Defines mean aggregation."""
 
@@ -149,7 +149,7 @@ class Mean(_AggregateOnKeyBase):
         )
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 class Std(_AggregateOnKeyBase):
     """Defines standard deviation aggregation.
 
