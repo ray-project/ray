@@ -304,7 +304,8 @@ class TestGC:
         # For a local directory, the package should be in the GCS.
         # For an S3 URI, there should be nothing in the GCS because
         # it will be downloaded from S3 directly on each node.
-        if source == S3_PACKAGE_URI:
+        # In the "py_modules" case, a local wheel file will be in the GCS.
+        if source == S3_PACKAGE_URI and option != "py_modules":
             assert check_internal_kv_gced()
         else:
             assert not check_internal_kv_gced()
@@ -322,7 +323,7 @@ class TestGC:
         actors = [A.remote() for _ in range(num_cpus)]
         ray.get([a.test_import.remote() for a in actors])
 
-        if source == S3_PACKAGE_URI:
+        if source == S3_PACKAGE_URI and option != "py_modules":
             assert check_internal_kv_gced()
         else:
             assert not check_internal_kv_gced()
@@ -355,8 +356,6 @@ class TestGC:
             def check(self):
                 import test_module
 
-                if option == "py_modules":
-                    import pip_install_test  # noqa: F401
                 test_module.one()
 
         if option == "working_dir":
@@ -366,8 +365,6 @@ class TestGC:
                 runtime_env={
                     "py_modules": [
                         S3_PACKAGE_URI,
-                        Path(os.path.dirname(__file__))
-                        / "pip_install_test-0.5-py3-none-any.whl",
                     ]
                 }
             )
@@ -411,7 +408,8 @@ class TestGC:
         # For a local directory, the package should be in the GCS.
         # For an S3 URI, there should be nothing in the GCS because
         # it will be downloaded from S3 directly on each node.
-        if source == S3_PACKAGE_URI:
+        # In the "py_modules" case, a local wheel file will be in the GCS.
+        if source == S3_PACKAGE_URI and option != "py_modules":
             assert check_internal_kv_gced()
         else:
             assert not check_internal_kv_gced()
@@ -428,7 +426,7 @@ class TestGC:
         a = A.options(name="test", lifetime="detached").remote()
         ray.get(a.test_import.remote())
 
-        if source == S3_PACKAGE_URI:
+        if source == S3_PACKAGE_URI and option != "py_modules":
             assert check_internal_kv_gced()
         else:
             assert not check_internal_kv_gced()
@@ -438,7 +436,7 @@ class TestGC:
 
         ray.init(address, namespace="test")
 
-        if source == S3_PACKAGE_URI:
+        if source == S3_PACKAGE_URI and option != "py_modules":
             assert check_internal_kv_gced()
         else:
             assert not check_internal_kv_gced()
