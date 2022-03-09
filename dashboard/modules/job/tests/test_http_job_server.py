@@ -11,7 +11,7 @@ from unittest.mock import patch
 import ray
 from ray.job_submission import JobSubmissionClient, JobStatus
 from ray.dashboard.modules.job.common import CURRENT_VERSION, JobInfo
-from ray.dashboard.modules.dashboard_sdk import (
+from ray.dashboard.modules.job.sdk import (
     ClusterInfo,
     parse_cluster_info,
 )
