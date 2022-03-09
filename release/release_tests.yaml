@@ -761,6 +761,92 @@
 
   alert: tune_tests
 
+
+########################
+# Runtime env tests
+########################
+- name: runtime_env_rte_many_tasks_actors
+  group: Runtime env tests
+  working_dir: runtime_env_tests
+
+  legacy:
+    test_name: rte_many_tasks_actors
+    test_suite: runtime_env_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: rte_small.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/rte_many_tasks_actors.py
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: runtime_env_wheel_urls
+  group: Runtime env tests
+  working_dir: runtime_env_tests
+
+  legacy:
+    test_name: wheel_urls
+    test_suite: runtime_env_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: rte_minimal.yaml
+
+  run:
+    timeout: 9000
+    script: python workloads/wheel_urls.py
+    wait_for_nodes:
+      num_nodes: 1
+      timeout: 600
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: runtime_env_rte_ray_client
+  group: Runtime env tests
+  working_dir: runtime_env_tests
+
+  legacy:
+    test_name: rte_ray_client
+    test_suite: runtime_env_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: rte_minimal.yaml
+    autosuspend_mins: 10
+
+  run:
+    timeout: 600
+    script: python workloads/rte_ray_client.py
+    wait_for_nodes:
+      num_nodes: 1
+      timeout: 600
+
+    type: client
+
+  alert: default
+
+
 ########################
 # Core Nightly Tests
 ########################
