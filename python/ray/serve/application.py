@@ -196,13 +196,16 @@ class Application:
         writes the JSON string to a file as well. To write to a file, use this
         pattern:
 
-        with open("file_name.txt", "w"):
-            app.to_json()
-        
+        with open("file_name.txt", "w") as f:
+            app.to_json(f=f)
+
+        This JSON adheres to the Serve REST API schema. It can be deployed
+        via the Serve REST API.
+
         Args:
             f (Optional[TextIO]): A pointer to the file where the JSON should
                 be written.
-        
+
         Returns:
             String: The deployments' JSON string. The output is similar to
                 json.dumps().
@@ -228,7 +231,25 @@ class Application:
         return cls(schema_to_serve_application(schema))
 
     def to_yaml(self, f: Optional[TextIO]) -> Optional[str]:
-        """Write list of deployments to yaml str or file."""
+        """
+        Returns this Application's deployments as a YAML string. Optionally
+        writes the YAML string to a file as well. To write to a file, use this
+        pattern:
+
+        with open("file_name.txt", "w") as f:
+            app.to_yaml(f=f)
+
+        This file is formatted as a Serve YAML config file. It can be deployed
+        via the Serve CLI.
+
+        Args:
+            f (Optional[TextIO]): A pointer to the file where the YAML should
+                be written.
+
+        Returns:
+            String: The deployments' YAML string. The output is from
+                yaml.safe_dump().
+        """
 
         json_str = serve_application_to_schema(self._deployments).json(indent=4)
 
