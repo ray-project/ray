@@ -199,6 +199,14 @@ class Application:
                 f'Serve application does not contain a "{name}" deployment.'
             )
 
+    def __setattr__(self, key: str, value: Deployment):
+        if not isinstance(key):
+            raise TypeError(f"key should be a string, but got object of type {key}.")
+        elif not isinstance(value, Deployment):
+            raise TypeError(f"Got {type(Deployment)} for value. Expected deployment.")
+
+        self._deployments[key] = value
+
     def __iter__(self):
         """
         Iterator over Application's deployments.
