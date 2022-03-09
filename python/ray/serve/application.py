@@ -307,3 +307,13 @@ class Application:
         """
 
         return iter(self._deployments.values())
+
+    def __len__(self):
+        """Number of deployments in this Application."""
+
+        return len(self._deployments)
+
+    def __contains__(self, key: str):
+        """Checks if the key exists in self._deployments."""
+
+        return key in self._deployments
