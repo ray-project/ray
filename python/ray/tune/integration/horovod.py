@@ -82,7 +82,7 @@ class _HorovodTrainable(DistributedTrainable):
     # Number of workers to allocate per trial.
     _num_workers: Optional[int] = (None,)
     # Number of hosts (nodes) to allocate per trial
-    _num_hosts: Optional[int] = (None,)
+    _num_hosts: Optional[int] = (None,)    
     # Number of CPU resources to reserve for each worker.
     _num_cpus_per_worker: int = 1
     # Whether to reserve and pass GPU resources through.
@@ -163,7 +163,7 @@ def DistributedTrainableCreator(
     func: Callable,
     use_gpu: bool = False,
     num_hosts: Optional[int] = None,
-    num_workers: Optional[int] = None,
+    num_workers: int = 1,
     num_cpus_per_worker: int = 1,
     timeout_s: int = 30,
     replicate_pem: bool = False,
