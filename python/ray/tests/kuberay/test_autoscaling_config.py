@@ -139,7 +139,7 @@ PARAM_ARGS = ",".join(
 )
 
 TEST_DATA = (
-    None
+    []
     if platform.system() == "Windows"
     else [
         pytest.param(
