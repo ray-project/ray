@@ -31,6 +31,26 @@ py_test(
 )
 
 py_test(
+    name = "torch_trainer_linear_dataset_example",
+    size = "medium",
+    main = "examples/torch_trainer_linear_dataset_example.py",
+    srcs = ["examples/torch_trainer_linear_dataset_example.py"],
+    tags = ["team:ml", "exclusive", "v2"],
+    deps = [":train_lib"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "torch_trainer_tune_linear_dataset_example",
+    size = "medium",
+    main = "examples/torch_trainer_tune_linear_dataset_example.py",
+    srcs = ["examples/torch_trainer_tune_linear_dataset_example.py"],
+    tags = ["team:ml", "exclusive", "v2"],
+    deps = [":train_lib"],
+    args = ["--smoke-test"]
+)
+
+py_test(
     name = "torch_quick_start",
     size = "medium",
     main = "examples/torch_quick_start.py",
@@ -131,7 +151,7 @@ py_test(
     name = "test_ml_trainer",
     size = "large",
     srcs = ["tests/test_ml_trainer.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "v2"],
     deps = [":train_lib"]
 )
 
@@ -156,6 +176,14 @@ py_test(
     size = "small",
     srcs = ["tests/test_results_preprocessors.py"],
     tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_torch_trainer",
+    size = "large",
+    srcs = ["tests/test_torch_trainer.py"],
+    tags = ["team:ml", "exclusive", "v2"],
     deps = [":train_lib"]
 )
 

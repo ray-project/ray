@@ -18,6 +18,8 @@ from ray.train.worker_group import WorkerGroup
 from ray.train.utils import get_address_and_port
 from ray.util import PublicAPI
 
+from ray.ml.constants import MODEL_KEY
+
 import torch
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
@@ -27,6 +29,7 @@ from torch.utils.data import (
     IterableDataset,
     SequentialSampler,
 )
+from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
 
 try:
     from torch.profiler import profile
@@ -306,6 +309,12 @@ class TorchBackend(Backend):
         for k, v in data_dict.items():
             if isinstance(v, DistributedDataParallel) and hasattr(v, "module"):
                 data_dict[k] = v.module
+
+        # If user passes in a state dict under the MODEL_KEY, then consume the
+        # module. prefix, so the state dict can be loaded in for non-DDP
+        # models.
+        if MODEL_KEY in data_dict and isinstance(data_dict[MODEL_KEY], dict):
+            consume_prefix_in_state_dict_if_present(data_dict[MODEL_KEY], "module.")
 
         # Convert the checkpoint dict to bytes, so that any GPU tensors that
         # are in the checkpoint dict can be properly deserialized on the
