@@ -402,33 +402,6 @@
 
   alert: default
 
-- name: lightgbm_train_gpu
-  group: LightGBM tests
-  working_dir: lightgbm_tests
-
-  legacy:
-    test_name: train_gpu
-    test_suite: lightgbm_tests
-
-  frequency: nightly
-  team: ml
-
-  cluster:
-    cluster_env: app_config_gpu.yaml
-    cluster_compute: tpl_gpu_small.yaml
-
-  run:
-    timeout: 600
-    script: python workloads/train_gpu.py
-    wait_for_nodes:
-      num_nodes: 5
-      timeout: 600
-
-    type: sdk_command
-    file_manager: job
-
-  alert: default
-
 - name: lightgbm_distributed_api_test
   group: LightGBM tests
   working_dir: lightgbm_tests

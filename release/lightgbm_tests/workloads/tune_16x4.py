@@ -47,7 +47,7 @@ if __name__ == "__main__":
     ray_params = RayParams(
         elastic_training=False,
         max_actor_restarts=2,
-        num_actors=2,
+        num_actors=4,
         cpus_per_actor=2,
         gpus_per_actor=0,
     )
@@ -65,7 +65,7 @@ if __name__ == "__main__":
         "time_taken": taken,
         "trial_states": dict(Counter([trial.status for trial in analysis.trials])),
     }
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/tune_32x4.json")
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/tune_16x4.json")
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
 
