@@ -40,6 +40,7 @@ def test_build_simple_class_with_class_method_dag(serve_instance):
 
 def test_build_func_class_with_class_method_dag(serve_instance):
     ray_dag, _ = get_func_class_with_class_method_dag()
+
     deployments = build(ray_dag)
     for deployment in deployments:
         deployment.deploy()

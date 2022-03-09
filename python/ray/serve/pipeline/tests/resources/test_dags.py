@@ -31,6 +31,7 @@ def get_func_class_with_class_method_dag():
         m1_output = m1.forward.bind(dag_input[0])
         m2_output = m2.forward.bind(dag_input[1])
         ray_dag = combine.bind(m1_output, m2_output, kwargs_output=dag_input[2])
+
     return ray_dag, dag_input
 
 
