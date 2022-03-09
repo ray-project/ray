@@ -137,7 +137,27 @@ class Application:
         dashboard_address="http://localhost:8265",
         logger=logger,
     ):
-        """Blocking run."""
+        """
+        Deploys all deployments in this Application and then keeps looping.
+        This function must be manually killed (e.g. using ctrl-C). When it
+        recieves a kill signal, it tears down all deployments that it deployed.
+        If there are no deployments left, it also shuts down the rest of Serve,
+        including the controller. This is meant to help interactive development.
+
+        Args:
+            runtime_env_updates (Dict): This is a runtime_env dictionary that
+                overwrites all the runtime_envs of the deployments in this
+                Application. Only the fields defined in runtime_env_updates
+                are overwritten. Everything else is left alone.
+            cluster_address (String): The Ray cluster head node's address.
+                ray.init(address=cluster_address, namespace="serve") is called
+                to attach to the cluster.
+            dashboard_address (String): The cluster's dashboard address. This
+                is used to upload any local working_dir passed in with
+                runtime_env_updates.
+            logger: Any Python object that implements the standard logger
+                interface.
+        """
 
         try:
             runtime_env_updates = runtime_env_updates or {}
