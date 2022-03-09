@@ -4,7 +4,7 @@ import ray
 from ray import tune
 
 from ray.ml.preprocessor import Preprocessor
-from ray.train.ml_trainer import Trainer
+from ray.train.ml_trainer import FunctionTrainer
 from ray.tune.function_runner import wrap_function
 
 
@@ -24,12 +24,9 @@ class DummyPreprocessor(Preprocessor):
         return ds.map(lambda x: x + 2)
 
 
-class DummyTrainer(Trainer):
-    def as_trainable(self):
-        def train_func(config):
-            tune.report(my_metric=1)
-
-        return wrap_function(train_func)
+class DummyTrainer(FunctionTrainer):
+    def training_function(self, config, checkpoint):
+        tune.report(my_metric=1)
 
 
 class TestTrainer:

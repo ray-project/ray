@@ -1,13 +1,16 @@
 import abc
 import copy
 import logging
-from typing import Dict, Union, Callable, Optional, TYPE_CHECKING
+from typing import Dict, Union, Callable, Optional, TYPE_CHECKING, Any
 
+import ray
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.config import ScalingConfig, RunConfig
 from ray.ml.result import Result
 from ray import tune
+from ray.tune import PlacementGroupFactory
+from ray.tune.function_runner import wrap_function
 from ray.tune.trainable import ConvertibleToTrainable
 from ray.tune.utils import deep_update
 
@@ -115,3 +118,91 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
                 del config[key]
         # Return whatever is leftover in config.
         return config
+
+
+class FunctionTrainer(Trainer):
+    def __init__(self, *args, **kwargs):
+        super(FunctionTrainer, self).__init__(*args, **kwargs)
+
+    def training_function(
+        self,
+        config: Dict[str, Any],
+        checkpoint: Optional[Checkpoint] = None
+    ):
+        """Function to define the training logic.
+
+        Implement this the same way you would implement a training function
+        for Tune.
+
+        Dataset attributes have already been preprocessed.
+
+        Args:
+            config: Configurations for training logic specific implementation.
+            checkpoint: A checkpoint to resume from, if applicable.
+        """
+        raise NotImplementedError
+
+    def resource_func(
+        self,
+        scaling_config: Dict,
+    ) -> PlacementGroupFactory:
+        """Converts `scaling_config` to `PlacementGroupFactory`.
+
+        Args:
+            scaling_config: The scaling config to convert.
+        """
+        raise NotImplementedError
+
+    def as_trainable(self):
+        def tune_function(config, checkpoint_dir=None):
+            leftover_config = self._override_attributes_with_config(config)
+
+            if self.train_dataset:
+                if self.preprocessor:
+                    self.train_dataset = self.preprocessor.fit_transform(
+                        self.train_dataset
+                    )
+
+            # Transform all the other datasets concurrently in remote tasks.
+            task_dict = {}
+            if self.extra_datasets and self.preprocessor:
+                for key, dataset in self.extra_datasets.items():
+                    remote_transform = ray.remote(num_cpus=0)(
+                        lambda: self.preprocessor.transform(dataset)
+                    ).remote()
+                    task_dict[key] = remote_transform
+
+            ray.get(list(task_dict.values()))
+
+            for key, transformed_dataset in task_dict.items():
+                self.extra_datasets[key] = ray.get(transformed_dataset)
+
+            if checkpoint_dir:
+                checkpoint = Checkpoint.from_directory(checkpoint_dir)
+            else:
+                checkpoint = self.checkpoint_to_resume_from
+
+            self.training_function(
+                config=leftover_config,
+                checkpoint=checkpoint
+            )
+
+        trainable_cls = wrap_function(tune_function)
+
+        class TrainTrainable(trainable_cls):
+            """Add default resources to the Trainable."""
+
+            @classmethod
+            def default_resource_request(cls,
+                                         config: Dict) -> PlacementGroupFactory:
+                self._override_attributes_with_config(config)
+                try:
+                    placement_group_factory = self.resource_func(self.scaling_config)
+                except NotImplementedError:
+                    # resource_fn is not implemented. Default to super class
+                    # resource request.
+                    placement_group_factory = \
+                        trainable_cls.default_resource_request(config)
+                return placement_group_factory
+
+        return TrainTrainable
