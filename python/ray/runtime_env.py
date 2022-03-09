@@ -158,14 +158,26 @@ class RuntimeEnv(dict):
         # Example for set env_vars
         RuntimeEnv(env_vars={"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"})
 
+        # Example for set pip
+        RuntimeEnv(
+            pip={"packages":["tensorflow", "requests"], "pip_check": False,
+            "pip_version": "==22.0.2;python_version=='3.8.11'"})
+
     Args:
         py_modules (List[URI]): List of URIs (either in the GCS or external
             storage), each of which is a zip file that will be unpacked and
             inserted into the PYTHONPATH of the workers.
         working_dir (URI): URI (either in the GCS or external storage) of a zip
             file that will be unpacked in the directory of each task/actor.
-        pip (List[str] | str): Either a list of pip packages, or a string
-            containing the path to a pip requirements.txt file.
+        pip (dict | List[str] | str): Either a list of pip packages, a string
+            containing the path to a pip requirements.txt file, or a python
+            dictionary that has three fields: 1) ``packages`` (require, List[str]): a
+            list of pip packages, 2) ``pip_check`` (optional, bool): whether enable
+            pip check at the end of pip install, default True.
+            3) ``pip_version`` (optional, str): the version of pip, ray will spell
+            the package name "pip" in front of the ``pip_version`` to form the final
+            requirement string, the syntax of a requirement specifier is defined in
+            full in PEP 508.
         conda (dict | str): Either the conda YAML config, the name of a
             local conda env (e.g., "pytorch_p36"), or the path to a conda
             environment.yaml file.
