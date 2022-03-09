@@ -10,6 +10,7 @@ import pytest
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.tests.test_object_spilling import is_dir_empty, assert_no_thrashing
+from ray.cluster_utils import Cluster, cluster_not_supported
 
 
 @pytest.mark.skipif(platform.system() in ["Windows"], reason="Failing on " "Windows.")
@@ -123,6 +124,48 @@ def test_object_spilling_threshold_1_0():
 @pytest.mark.skipif(platform.system() != "Linux", reason="Failing on Windows/macOS.")
 def test_object_spilling_threshold_0_1():
     _test_object_spilling_threshold(0.1, 10, 5)
+
+
+@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
+def test_spill_dir_cleanup_on_raylet_start(object_spilling_config):
+    object_spilling_config, temp_folder = object_spilling_config
+    cluster = Cluster()
+    cluster.add_node(
+        num_cpus=0,
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={"object_spilling_config": object_spilling_config},
+    )
+    ray.init(address=cluster.address)
+    node2 = cluster.add_node(num_cpus=1, object_store_memory=75 * 1024 * 1024)
+
+    # This task will run on node 2 because node 1 has no CPU resource
+    @ray.remote(num_cpus=1)
+    def run_workload():
+        ids = []
+        for _ in range(2):
+            arr = np.random.rand(5 * 1024 * 1024)  # 40 MB
+            ids.append(ray.put(arr))
+        return ids
+
+    ids = ray.get(run_workload.remote())
+    assert not is_dir_empty(temp_folder)
+
+    # Kill node 2
+    cluster.remove_node(node2)
+
+    # Verify that the spill folder is not empty
+    assert not is_dir_empty(temp_folder)
+
+    # Start a new node
+    cluster.add_node(num_cpus=1, object_store_memory=75 * 1024 * 1024)
+
+    # Verify that the spill folder is now cleaned up
+    assert is_dir_empty(temp_folder)
+
+    # We hold the object refs to prevent them from being deleted
+    del ids
+    ray.shutdown()
+    cluster.shutdown()
 
 
 if __name__ == "__main__":
