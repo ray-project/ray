@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from unittest import mock
 
+import platform
 import pytest
 import yaml
 
@@ -173,6 +174,7 @@ TEST_DATA = [
 ]
 
 
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
 @pytest.mark.parametrize(PARAM_ARGS, TEST_DATA)
 def test_autoscaling_config(
     ray_cr_in: Dict[str, Any],
