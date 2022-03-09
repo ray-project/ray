@@ -1,5 +1,4 @@
-from typing import List, TextIO, Optional, Union
-import json
+from typing import List, TextIO, Optional, Union, Dict
 import yaml
 import time
 import sys
@@ -143,64 +142,34 @@ class Application:
                 serve.shutdown()
             sys.exit()
 
-    def to_json(self, f: Optional[TextIO] = None) -> str:
-        """Returns this Application's deployments as a JSON string.
+    def to_dict(self) -> Dict:
+        """Returns this Application's deployments as a dictionary.
 
-        Optionally writes the JSON string to a file as well. To write to a
-        file, use this pattern:
-
-        with open("file_name.txt", "w") as f:
-            app.to_json(f=f)
-
-        This JSON adheres to the Serve REST API schema. It can be deployed
+        This dictionary adheres to the Serve REST API schema. It can be deployed
         via the Serve REST API.
 
-        Args:
-            f (Optional[TextIO]): A pointer to the file where the JSON should
-                be written.
-
         Returns:
-            String: The deployments' JSON string. The output is similar to
-                json.dumps().
+            Dict: The Application's deployments formatted in a dictionary.
         """
 
-        json_str = serve_application_to_schema(self._deployments).json(indent=4)
-
-        if f:
-            f.write(json_str)
-        return json_str
+        return serve_application_to_schema(self._deployments).dict()
 
     @classmethod
-    def from_json(cls, str_or_file: Union[str, TextIO]) -> "Application":
-        """Converts JSON data to deployments for an Application.
+    def from_dict(cls, d: Dict) -> "Application":
+        """Converts a dictionary of deployment data to an Application.
 
-        Takes in a string or a file pointer to a file containing deployment
-        definitions in JSON. The definitions are converted to a new
-        Application object containing the deployments.
-
-        To read from a file, use the following pattern:
-
-        with open("file_name.txt", "w") as f:
-            app = app.from_json(str_or_file)
+        Takes in a dictionary matching the Serve REST API schema and converts
+        it to an Application containing those deployments.
 
         Args:
-            str_or_file (Union[String, TextIO]): Either a string containing
-                JSON deployment definitions or a pointer to a file containing
-                JSON deployment definitions. The JSON format must adhere to the
-                ServeApplicationSchema JSON Schema defined in
-                ray.dashboard.modules.serve.schema.
+            d (Dict): A dictionary containing the deployments' data that matches
+                the Serve REST API schema.
 
         Returns:
             Application: a new Application object containing the deployments.
         """
 
-        if isinstance(str_or_file, str):
-            schema = ServeApplicationSchema.parse_raw(
-                str_or_file, content_type="application/json"
-            )
-        else:
-            schema = ServeApplicationSchema.parse_obj(json.load(str_or_file))
-
+        schema = ServeApplicationSchema.parse_obj(d)
         return cls(schema_to_serve_application(schema))
 
     def to_yaml(self, f: Optional[TextIO]) -> Optional[str]:
@@ -220,8 +189,8 @@ class Application:
                 be written.
 
         Returns:
-            String: The deployments' YAML string. The output is from
-                yaml.safe_dump().
+            Optional[String]: The deployments' YAML string. The output is from
+                yaml.safe_dump(). Returned only if no file pointer is passed in.
         """
 
         json_str = serve_application_to_schema(self._deployments).json(indent=4)
