@@ -1023,6 +1023,7 @@ class DistributedTrainable(Trainable):
         new_config[STDERR_FILE] = self._stderr_file
         return new_config
 
+
 class ConvertibleToTrainable(abc.ABC):
     """Denotes that this class be converted to a ``tune.Trainable``."""
 

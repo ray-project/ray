@@ -1,5 +1,4 @@
 import abc
-import dataclasses
 import logging
 from typing import Dict, Union, Callable, Optional
 
@@ -90,7 +89,7 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
         This is needed to allow attributes of Trainer to be tuned as
         hyperparameters.
 
-        This method does a deep update of dictionaries and dataclasses
+        This method does a deep update of dictionaries.
 
         Args:
             config (Dict): A dictionary to update attributes with.
@@ -101,26 +100,6 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
                 if isinstance(current_attribute, dict):
                     # Do a deep update of the dictionary.
                     deep_update(current_attribute, config[key], new_keys_allowed=True)
-                elif dataclasses.is_dataclass(current_attribute):
-                    if type(config[key]) == type(current_attribute):
-                        # If the hyperparam is already passed in as a dataclass
-                        # Then just directly set it.
-                        setattr(self, key, config[key])
-                    elif isinstance(config[key], dict):
-                        # If the hyperparam is passed in as a dict, then update
-                        # each attribute of the dataclass directly.
-                        for inner_key, inner_value in config[key].items():
-                            if hasattr(current_attribute, inner_key):
-                                dataclass_field = getattr(current_attribute, inner_key)
-                                if isinstance(dataclass_field, dict):
-                                    # Do a deep update.
-                                    deep_update(
-                                        dataclass_field,
-                                        inner_value,
-                                        new_keys_allowed=True,
-                                    )
-                                else:
-                                    setattr(current_attribute, inner_key, inner_value)
                 else:
                     # Don't do a deep update and directly set the attribute
                     # to the value in config.
