@@ -3,9 +3,10 @@ from functools import wraps
 from inspect import iscoroutinefunction
 import time
 from typing import Any, Callable, Dict, List, Optional, overload, Tuple, TypeVar
-from attr import dataclass
-from ray._private.signature import extract_signature, flatten_args, recover_args
+from dataclasses import dataclass
 
+
+from ray._private.signature import extract_signature, flatten_args, recover_args
 from ray.serve.exceptions import RayServeException
 
 
