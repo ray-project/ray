@@ -370,7 +370,6 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
         lease_status_tracker->MarkCommitRequestReturned(node_id, bundle, status);
         // Update the resource in gcs resource manager
         auto &resources = bundle->GetFormattedResources();
-        auto node_id = bundle->NodeId();
         gcs_resource_manager_.UpdateResources(node_id, resources);
       }
       if (lease_status_tracker->AllCommitRequestReturned()) {
