@@ -1,3 +1,4 @@
+import os.path
 from pathlib import Path
 import importlib.util
 import ray
@@ -7,8 +8,8 @@ import time
 def import_and_execute_test_script(relative_path_to_test_script: str):
     """Imports and executes a module from a path relative to Ray repo root."""
     # get the ray folder
-    ray_path = next(
-        x for x in Path(__file__).resolve().parents if str(x).endswith("/ray")
+    ray_path = Path(
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
     )
     notebook_path = ray_path.joinpath(relative_path_to_test_script)
     assert notebook_path.exists()
