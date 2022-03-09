@@ -34,6 +34,10 @@ def transform_ray_dag_to_workflow(dag_node: DAGNode, input_context: DAGInputData
     """
     Transform a Ray DAG to a workflow. Map FunctionNode to workflow step with
     the workflow decorator.
+
+    Args:
+        dag_node: The DAG to be converted to a workflow.
+        input_context: The input data that wraps varibles for the input node of the DAG.
     """
     if not isinstance(dag_node, FunctionNode):
         raise TypeError("Currently workflow does not support classes as DAG inputs.")
