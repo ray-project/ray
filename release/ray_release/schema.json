@@ -18,6 +18,9 @@
 				"legacy": {
 					"$ref": "#/definitions/Legacy"
 				},
+                "stable": {
+                    "type": "boolean"
+                },
 				"frequency": {
 					"type": "string",
 					"enum": [
