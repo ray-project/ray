@@ -60,5 +60,12 @@ class TestParseRuntimeEnvArgs:
         assert parse_runtime_env_args() == {}
 
 
+def test_get_job_submission_client_cluster_info():
+    # Test that the name for get_job_submission_client_cluster_info stays the
+    # same
+
+    from ray.dashboard.modules.dashboard_sdk import get_job_submission_client_cluster_info
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

@@ -28,9 +28,9 @@ def test_parse_cluster_info(
     Test ray.dashboard.modules.dashboard_sdk.parse_cluster_info for different
     format of addresses.
     """
-    mock_get_submission_client_cluster = Mock(return_value="Ray ClusterInfo")
+    mock_get_job_submission_client_cluster = Mock(return_value="Ray ClusterInfo")
     mock_module = Mock()
-    mock_module.get_submission_client_cluster_info = Mock(
+    mock_module.get_job_submission_client_cluster_info = Mock(
         return_value="Other module ClusterInfo"
     )
     mock_import_module = Mock(return_value=mock_module)
@@ -39,7 +39,7 @@ def test_parse_cluster_info(
 
     with patch.multiple(
         "ray.dashboard.modules.dashboard_sdk",
-        get_submission_client_cluster_info=mock_get_submission_client_cluster,
+        get_job_submission_client_cluster_info=mock_get_job_submission_client_cluster,
     ), patch.multiple("importlib", import_module=mock_import_module):
         if module_string == "ray":
             assert (
@@ -52,7 +52,7 @@ def test_parse_cluster_info(
                 )
                 == "Ray ClusterInfo"
             )
-            mock_get_submission_client_cluster.assert_called_once_with(
+            mock_get_job_submission_client_cluster.assert_called_once_with(
                 inner_address,
                 create_cluster_if_needed=create_cluster_if_needed,
                 cookies=cookies,
@@ -71,7 +71,7 @@ def test_parse_cluster_info(
                 == "Other module ClusterInfo"
             )
             mock_import_module.assert_called_once_with(module_string)
-            mock_module.get_submission_client_cluster_info.assert_called_once_with(
+            mock_module.get_job_submission_client_cluster_info.assert_called_once_with(
                 inner_address,
                 create_cluster_if_needed=create_cluster_if_needed,
                 cookies=cookies,
