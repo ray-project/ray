@@ -7,7 +7,7 @@ from datetime import datetime
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Callable
-from typing import Optional, Dict, Type
+from typing import Optional, Dict, Type, Any
 import warnings
 
 import ray
@@ -24,6 +24,7 @@ from ray.train.constants import (
     DATE,
     RESULT_FETCH_TIMEOUT,
     SESSION_MISUSE_LOG_ONCE_KEY,
+    TRAIN_DATASET_KEY,
 )
 from ray.train.utils import PropagatingThread, RayDataset
 from ray.util import PublicAPI, log_once
@@ -336,6 +337,19 @@ def get_dataset_shard(dataset_name: Optional[str] = None) -> Optional[RayDataset
     return shard
 
 
+def get_train_dataset_shard() -> Optional[RayDataset]:
+    """Returns the train_dataset shard for this worker.
+
+    You should call ``to_torch()`` or ``to_tf()`` on this shard to convert
+    it to the appropriate framework-specific Dataset.
+
+    Returns:
+        The ``Dataset`` shard of ``train_dataset`` to use for this worker.
+        If no dataset is passed into the Trainer, then return None.
+    """
+    return get_dataset_shard(TRAIN_DATASET_KEY)
+
+
 @PublicAPI(stability="beta")
 def report(**kwargs) -> None:
     """Reports all keyword arguments to Train as intermediate results.
@@ -455,7 +469,7 @@ def load_checkpoint() -> Optional[Dict]:
 
 
 @PublicAPI(stability="beta")
-def save_checkpoint(**kwargs) -> None:
+def save_checkpoint(checkpoint_dict: Optional[Dict[str, Any]] = None, **kwargs) -> None:
     """Checkpoints all keyword arguments to Train as restorable state.
 
     .. code-block:: python
@@ -474,13 +488,17 @@ def save_checkpoint(**kwargs) -> None:
         trainer.shutdown()
 
     Args:
-        **kwargs: Any key value pair to be checkpointed by Train.
+        checkpoint_dict (Dict): A dictionary to be checkpointed by Train.
+        **kwargs: Any key value pair to be checkpointed by Train. These are
+            merged with ``checkpoint_dict`` if both are passed in.
     """
     session = get_session()
     if session is None:
         _warn_session_misuse(save_checkpoint.__name__)
         return
-    session.checkpoint(**kwargs)
+    checkpoint_dict = checkpoint_dict if checkpoint_dict else {}
+    merged_dicts = {**checkpoint_dict, **kwargs}
+    session.checkpoint(**merged_dicts)
 
 
 @PublicAPI(stability="beta")
