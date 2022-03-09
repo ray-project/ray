@@ -278,7 +278,27 @@ class Application:
 
     @classmethod
     def from_yaml(cls, str_or_file: Union[str, TextIO]) -> "Application":
-        """Load list of deployments from yaml str or file."""
+        """
+        Takes in a string or a file pointer to a file containing deployment
+        definitions in YAML. These definitions are converted to a new
+        Application object containing the deployments.
+
+        To read from a file, use the following pattern:
+
+        with open("file_name.txt", "w") as f:
+            app = app.from_yaml(str_or_file)
+
+        Args:
+            str_or_file (Union[String, TextIO]): Either a string containing
+                YAML deployment definitions or a pointer to a file containing
+                YAML deployment definitions. The YAML format must adhere to the
+                ServeApplicationSchema JSON Schema defined in
+                ray.dashboard.modules.serve.schema. This function works with
+                Serve YAML config files.
+        
+        Returns:
+            Application: a new Application object containing the deployments.
+        """
 
         deployments_json = yaml.safe_load(str_or_file)
         schema = ServeApplicationSchema.parse_obj(deployments_json)
