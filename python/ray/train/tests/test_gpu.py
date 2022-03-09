@@ -74,18 +74,44 @@ def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus):
     trainer.shutdown()
 
 
-@pytest.mark.parametrize("use_gpu", [False, True])
+@pytest.mark.parametrize("use_gpu", (False, True))
 def test_make_reproducible(ray_start_4_cpus_2_gpus, use_gpu):
     def train_func():
         train.torch.make_reproducible()
-        model = torchvision.models.resnet101()
-        model = train.torch.prepare_model(model)
-        model(torch.randn(2, 3, 224, 224))  # Check for no errors
 
-    trainer = Trainer("torch", num_workers=1, use_gpu=use_gpu)
+        model = torchvision.models.resnet18()
+        model = train.torch.prepare_model(model)
+
+        dataset_length = 128
+        dataset = torch.utils.data.TensorDataset(
+            torch.randn(dataset_length, 3, 32, 32),
+            torch.randint(low=0, high=1000, size=(dataset_length,)),
+        )
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size=64)
+        dataloader = train.torch.prepare_data_loader(dataloader)
+
+        optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
+
+        model.train()
+        for epoch in range(2):
+            for images, targets in dataloader:
+                optimizer.zero_grad()
+
+                outputs = model(images)
+                loss = torch.nn.functional.cross_entropy(outputs, targets)
+
+                loss.backward()
+                optimizer.step()
+
+        return loss
+
+    trainer = Trainer("torch", num_workers=2, use_gpu=use_gpu)
     trainer.start()
-    trainer.run(train_func)
+    result1 = trainer.run(train_func)
+    result2 = trainer.run(train_func)
     trainer.shutdown()
+
+    assert result1 == result2
 
 
 def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
