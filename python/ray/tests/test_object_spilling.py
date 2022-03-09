@@ -667,13 +667,15 @@ def test_spill_dir_cleanup_on_raylet_start(object_spilling_config):
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "object_store_memory": 75 * 1024 * 1024,
-        "_system_config": {
-            "max_io_workers": 1
+    "ray_start_regular",
+    [
+        {
+            "object_store_memory": 75 * 1024 * 1024,
+            "_system_config": {"max_io_workers": 1},
         }
-    }],
-    indirect=True)
+    ],
+    indirect=True,
+)
 def test_spill_worker_failure(ray_start_regular):
     def run_workload():
         @ray.remote
@@ -692,6 +694,7 @@ def test_spill_worker_failure(ray_start_regular):
 
     def get_spill_worker():
         import psutil
+
         for proc in psutil.process_iter():
             try:
                 name = ray.ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE
