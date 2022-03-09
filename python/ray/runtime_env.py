@@ -188,6 +188,12 @@ class RuntimeEnv(dict):
         "eager_install",
     }
 
+    extensions_fields: Set[str] = {
+        "_ray_release",
+        "_ray_commit",
+        "_inject_current_ray",
+    }
+
     def __init__(
         self,
         *,
@@ -532,9 +538,7 @@ class RuntimeEnv(dict):
                 )
             else:
                 # It is impossible for conda_config is None
-                runtime_env.python_runtime_env.conda_runtime_env.config = json.dumps(
-                    conda_config, sort_keys=True
-                )
+                runtime_env.python_runtime_env.conda_runtime_env.config = conda_config
 
     def _build_proto_container_runtime_env(self, runtime_env: ProtoRuntimeEnv):
         """Construct container runtime env protobuf from runtime env dict."""
