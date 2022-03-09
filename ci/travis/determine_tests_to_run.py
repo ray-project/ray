@@ -263,7 +263,6 @@ if __name__ == "__main__":
             "RAY_CI_TRAIN_AFFECTED={}".format(RAY_CI_TRAIN_AFFECTED),
             "RAY_CI_RLLIB_AFFECTED={}".format(RAY_CI_RLLIB_AFFECTED),
             "RAY_CI_RLLIB_DIRECTLY_AFFECTED={}".format(RAY_CI_RLLIB_DIRECTLY_AFFECTED),
-            "RAY_CI_ML_AFFECTED={}".format(RAY_CI_ML_AFFECTED),
             "RAY_CI_SERVE_AFFECTED={}".format(RAY_CI_SERVE_AFFECTED),
             "RAY_CI_DASHBOARD_AFFECTED={}".format(RAY_CI_DASHBOARD_AFFECTED),
             "RAY_CI_DOC_AFFECTED={}".format(RAY_CI_DOC_AFFECTED),
