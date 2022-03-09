@@ -1,11 +1,12 @@
 import traceback
-from typing import Any, Callable, Dict, List, Optional, Type, Union
+from typing import Any, Callable, Dict, Optional, Type, Union
 
 import ray
 
-from ray.tune import TuneError, ExperimentAnalysis
+from ray.ml.run_config import RunConfig
+from ray.tune import TuneError
 from ray.tune.api_v2.convertible_to_trainable import ConvertibleToTrainable
-from ray.tune.callback import Callback
+from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.impl.tuner_internal import TunerInternal
 from ray.tune.tune_config import TuneConfig
@@ -14,50 +15,35 @@ from ray.util.client.common import ClientActorHandle
 from ray.util.ml_utils.node import force_on_current_node
 
 
-########################################################################
-# The motivations behind the new Tuner API as part of Ray MLC effort are that
-# 1. Users can seamlessly transition from their training process to tuning process.
-# 2. Dataset and data preprocessing are now an integral part of training/tuning process.
-#   Bonus point: you can even tune dataset and preprocessing.
-
-# Some requirements on Tuner that may help you understand some implementation decisions:
-# 1. Tuner needs to work in ray client mode.
-# 2. Tuner needs to be restored in case of any failures.
-########################################################################
-
 # The magic key that is used when instantiating Tuner during resume.
-_TUNER_INTERNAL = "tuner_internal"
+_TUNER_INTERNAL = "_tuner_internal"
 _SELF = "self"
 
 
+# Change to alpha
 @PublicAPI(stability="beta")
 class Tuner:
     """The external facing Tuner class as part of Ray MLC effort.
 
     Args:
-        trainable (Union[
-                str,
-                Callable,
-                Type[Trainable],
-                Type[ConvertibleToTrainable],
-                ConvertibleToTrainable,
-            ]): The trainable to be tune.
-        param_space (Optional[Dict[str, Any]]): Search space to run tuning on.
+        trainable: The trainable to be tuned.
+        param_space: Search space to run tuning on.
             One thing to note is that both preprocessor and dataset can be tuned here.
-        tune_config (Optional[TuneConfig]): tune algo specific configs.
+        tune_config: Tune algo specific configs.
             Refer to ray.tune.tune_config.TuneConfig for more info.
-        name (Optional[str]): Name of the run.
-        local_dir (Optional[str]): Local dir to save training results to.
-            Defaults to ``~/ray_results``.
-        callbacks (Optional[List[Callback]]): Callbacks to invoke.
-            Refer to ray.tune.callback.Callback for more info.
+        run_config: Run time configuration that is universal between
+            Tune and Train.
+
+    Returns:
+        ``ResultGrid`` object.
 
     Usage pattern:
     .. code-block:: python
 
+    # TODO(xwjiang): Make this runnable. Add imports.
     # Only do the following, if you want to run in ray client mode.
     # This means the tune driver code will be running on head node of your cluster.
-    ray.init("ray://my_ray_cluster_address")
+    ray.init("ray://127.0.0.1:10001")
 
     param_space = {
         "scaling_config": {
@@ -78,20 +64,18 @@ class Tuner:
             "max_depth": tune.randint(1, 9),
         },
     }
-    tuner = Tuner(trainable=trainer, param_space=param_space, name="my_tune_run")
+    tuner = Tuner(trainable=trainer, param_space=param_space,
+        run_config(name="my_tune_run"))
     analysis = tuner.fit()
 
-    This returns an ``ExperimentAnalysis`` object, that you can interact with according
-    to its API.
-
-    If the run finishes in error, to retry
-    you can then do
+    To retry a failed tune run, you can then do
     .. code-block:: python
 
-    tuner = Tuner.restore(experiment_checkpoint_dir)
-    tuner.fit()
+        tuner = Tuner.restore(experiment_checkpoint_dir)
+        tuner.fit()
 
-    to resume your run.
+    `experiment_checkpoint_dir` can be easily located near the end of the
+    console output of your first failed run.
     """
 
     # One of the following is assigned.
@@ -110,16 +94,15 @@ class Tuner:
             ]
         ] = None,
         param_space: Optional[Dict[str, Any]] = None,
-        tune_algo_config: Optional[TuneConfig] = None,
-        name: Optional[str] = None,
-        local_dir: Optional[str] = None,
-        callbacks: Optional[List[Callback]] = None,
+        tune_config: Optional[TuneConfig] = None,
+        run_config: Optional[RunConfig] = None,
         # This is internal only arg.
-        tuner_internal: Optional[TunerInternal] = None,
+        _tuner_internal: Optional[TunerInternal] = None,
     ):
+        """Configure and construct a tune run."""
         kwargs = locals().copy()
         self._is_ray_client = ray.util.client.ray.is_connected()
-        if tuner_internal:
+        if _tuner_internal:
             if not self._is_ray_client:
                 self._local_tuner = kwargs[_TUNER_INTERNAL]
             else:
@@ -135,23 +118,26 @@ class Tuner:
                 ).remote(**kwargs)
 
     @classmethod
-    def restore(cls, path: str, callbacks: Optional[List[Callback]] = None) -> "Tuner":
-        """Restore Tuner.
+    def restore(cls, path: str) -> "Tuner":
+        """Restore Tuner after a previously failed run.
 
-        Note: depending on whether ray client mode is used or not, this path may
-        or may not exist on your local machine.
-
-        callbacks are passed again as they are considered run time thing."""
+        Args:
+           path: The path where the previous failed run is checkpointed.
+               This information could be easily located near the end of the
+               console output of previous run.
+               Note: depending on whether ray client mode is used or not,
+               this path may or may not exist on your local machine.
+        """
         if not ray.util.client.ray.is_connected():
-            tuner_internal = TunerInternal(restore_path=path, callbacks=callbacks)
+            tuner_internal = TunerInternal(restore_path=path)
             return Tuner(tuner_internal=tuner_internal)
         else:
             tuner_internal = force_on_current_node(
                 ray.remote(num_cpus=0)(TunerInternal)
-            ).remote(restore_path=path, callbacks=callbacks)
+            ).remote(restore_path=path)
             return Tuner(tuner_internal=tuner_internal)
 
-    def fit(self) -> ExperimentAnalysis:
+    def fit(self) -> ResultGrid:
         """Runs the tune run."""
         if not self._is_ray_client:
             try:

@@ -1,13 +1,14 @@
 import copy
 import os
-from typing import Any, Callable, Dict, List, Optional, Type, Union
+from typing import Any, Callable, Dict, Optional, Type, Union
 
 import ray.cloudpickle as pickle
 from ray.data import Dataset
 
+from ray.ml.run_config import RunConfig
 from ray.tune import Experiment, TuneError
 from ray.tune.api_v2.convertible_to_trainable import ConvertibleToTrainable
-from ray.tune.callback import Callback
+from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.tune import run
 from ray.tune.tune_config import TuneConfig
@@ -41,9 +42,7 @@ class TunerInternal:
         ] = None,
         param_space: Optional[Dict[str, Any]] = None,
         tune_config: Optional[TuneConfig] = None,
-        name: Optional[str] = None,
-        local_dir: Optional[str] = None,
-        callbacks: Optional[List[Callback]] = None,
+        run_config: Optional[RunConfig] = None,
     ):
         """For initialization, there are two scenarios.
         1. fresh run. ``_TunerInternal`` is constructed from fresh.
@@ -69,25 +68,22 @@ class TunerInternal:
             self.is_restored = True
             self.trainable = trainable
             self.experiment_checkpoint_dir = restore_path
-            self.callbacks = callbacks
             return
 
         # Start from fresh
         assert trainable
-        # TODO(xwjiang): Plumbing through `tune_algo_config`.
+
         self.is_restored = False
         self.trainable = trainable
-        # Only used when constructing Tuner from scatch.
+        self.tune_config = tune_config
+        self.run_config = run_config
+        self.experiment_checkpoint_dir = self._get_or_create_experiment_checkpoint_dir(
+            self.run_config
+        )
+
         # Not used for restored Tuner.
         self.param_space = param_space
         self._process_dataset_param()
-
-        self.name = name
-        self.callbacks = callbacks
-
-        self.experiment_checkpoint_dir = self._get_or_create_experiment_checkpoint_dir(
-            local_dir
-        )
 
         # This needs to happen before `tune.run()` is kicked in.
         # This is because currently tune does not exit gracefully if
@@ -144,10 +140,12 @@ class TunerInternal:
                 # We shouldn't be expecting anything here.
                 raise TuneError("Unexpected dataset param passed in.")
 
-    def _get_or_create_experiment_checkpoint_dir(self, local_dir: Optional[str]):
-        """Get experiment checkpoint dir before actually running experiment."""
+    def _get_or_create_experiment_checkpoint_dir(self, run_config: Optional[RunConfig]):
+        """Get experiment checkpoint dir before actually running the experiment."""
         path = Experiment.get_experiment_checkpoint_dir(
-            self._convert_trainable(self.trainable), local_dir, self.name
+            self._convert_trainable(self.trainable),
+            run_config.local_dir,
+            run_config.name,
         )
         if not os.path.exists(path):
             os.makedirs(path)
@@ -165,24 +163,29 @@ class TunerInternal:
             trainable = trainable
         return trainable
 
-    def fit(self):
+    def fit(self) -> ResultGrid:
         trainable = self._convert_trainable(self.trainable)
+        assert self.experiment_checkpoint_dir
         if not self.is_restored:
             param_space = copy.deepcopy(self.param_space)
             analysis = self._fit_internal(trainable, param_space)
-            assert self.experiment_checkpoint_dir
         else:
             analysis = self._fit_resume(trainable)
 
-        return analysis
+        return ResultGrid(analysis)
 
     def _fit_internal(self, trainable, param_space):
         """Fitting for a fresh Tuner."""
         analysis = run(
             trainable,
             config={**param_space},
-            name=self.name,
-            callbacks=self.callbacks,
+            mode=self.tune_config.mode,
+            metric=self.tune_config.metric,
+            num_samples=self.tune_config.num_samples,
+            search_alg=self.tune_config.search_alg,
+            scheduler=self.tune_config.scheduler,
+            name=self.run_config.name,
+            callbacks=self.run_config.callbacks,
             _experiment_checkpoint_dir=self.experiment_checkpoint_dir,
         )
         return analysis
@@ -192,7 +195,9 @@ class TunerInternal:
         analysis = run(
             trainable,
             resume=True,
-            callbacks=self.callbacks,
+            mode=self.tune_config.mode,
+            metric=self.tune_config.metric,
+            callbacks=self.run_config.callbacks,
             _experiment_checkpoint_dir=self.experiment_checkpoint_dir,
         )
         return analysis

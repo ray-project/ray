@@ -668,7 +668,7 @@ def test_xgboost_tuner(fail_after_finished: int = 0):
     )
 
     results = tuner.fit()
-    print(results)
+    import ipdb; ipdb.set_trace()
 
 
 def test_xgboost_resume():
@@ -691,8 +691,8 @@ def test_xgboost_resume():
 
 
 if __name__ == "__main__":
-    ray.init("ray://127.0.0.1:10001")
+    # ray.init("ray://127.0.0.1:10001")
 
-    # ray.init()
-    # test_xgboost_tuner()
-    test_xgboost_resume()
+    ray.init()
+    test_xgboost_tuner()
+    # test_xgboost_resume()

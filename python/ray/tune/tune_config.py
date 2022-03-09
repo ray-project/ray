@@ -6,6 +6,7 @@ from ray.tune.suggest import Searcher
 from ray.util import PublicAPI
 
 
+# Change to alpha
 @dataclass
 @PublicAPI(stability="beta")
 class TuneConfig:
@@ -13,19 +14,19 @@ class TuneConfig:
     are set up.
 
     Args:
-        metric (str): Metric to optimize. This metric should be reported
+        metric: Metric to optimize. This metric should be reported
             with `tune.report()`. If set, will be passed to the search
             algorithm and scheduler.
-        mode (str): Must be one of [min, max]. Determines whether objective is
+        mode: Must be one of [min, max]. Determines whether objective is
             minimizing or maximizing the metric attribute. If set, will be
             passed to the search algorithm and scheduler.
-        search_alg (Searcher): Search algorithm for optimization. Default to
+        search_alg: Search algorithm for optimization. Default to
             random search.
-        scheduler (TrialScheduler): Scheduler for executing
+        scheduler: Scheduler for executing
             the experiment. Choose among FIFO (default), MedianStopping,
             AsyncHyperBand, HyperBand and PopulationBasedTraining. Refer to
             ray.tune.schedulers for more options.
-        num_samples (int): Number of times to sample from the
+        num_samples: Number of times to sample from the
             hyperparameter space. Defaults to 1. If `grid_search` is
             provided as an argument, the grid will be repeated
             `num_samples` of times. If this is -1, (virtually) infinite
