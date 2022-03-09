@@ -33,14 +33,12 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
             to use for training. If a ``preprocessor`` is also provided,
             it will be fit on this dataset and this dataset will be
             transformed.
-        extra_datasets: Any extra
-            Datasets (such as validation or test datasets) to use for
-            training. If a ``preprocessor`` is provided, the datasets
-            specified here will only be transformed, and not fit on.
-        preprocessor: A preprocessor to preprocess
-            the provided datasets.
-        resume_from_checkpoint: A checkpoint to
-            resume training from.
+        extra_datasets: Any extra Datasets (such as validation or test
+            datasets) to use for training. If a ``preprocessor`` is
+            provided, the datasets specified here will only be transformed,
+            and not fit on.
+        preprocessor: A preprocessor to preprocess the provided datasets.
+        resume_from_checkpoint: A checkpoint to resume training from.
     """
 
     def __init__(
