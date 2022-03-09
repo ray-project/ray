@@ -168,12 +168,13 @@ class RuntimeEnvAgent(
         return unused_uris
 
     # Don't change URI reference for `client_server` because `client_server` doesn't
-    # send the `DecreaseRuntimeEnvReference` RPC when the client exits.
+    # send the `DeleteRuntimeEnvIfNeeded` RPC when the client exits.
     reference_exclude_sources: Set[str] = {
         "client_server",
     }
 
-    async def IncreaseRuntimeEnvReference(self, request, context):
+    async def CreateRuntimeEnvIfNeeded(self, request, context):
+        raise Exception("_perform_iteration")
         self._logger.info(
             f"Got request from {request.source_process} to increase "
             "reference for runtime env: "
@@ -286,7 +287,7 @@ class RuntimeEnvAgent(
             self._logger.exception(
                 "[Increase] Failed to parse runtime env: " f"{serialized_env}"
             )
-            return runtime_env_agent_pb2.IncreaseRuntimeEnvReferenceReply(
+            return runtime_env_agent_pb2.CreateRuntimeEnvIfNeededReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
                 error_message="".join(
                     traceback.format_exception(type(e), e, e.__traceback__)
@@ -308,7 +309,7 @@ class RuntimeEnvAgent(
                         f"successfully. Env: {serialized_env}, "
                         f"context: {context}"
                     )
-                    return runtime_env_agent_pb2.IncreaseRuntimeEnvReferenceReply(
+                    return runtime_env_agent_pb2.CreateRuntimeEnvIfNeededReply(
                         status=agent_manager_pb2.AGENT_RPC_STATUS_OK,
                         serialized_runtime_env_context=context,
                     )
@@ -320,7 +321,7 @@ class RuntimeEnvAgent(
                     )
                     if request.source_process not in self.reference_exclude_sources:
                         self.decrease_reference_for_uris(uris)
-                    return runtime_env_agent_pb2.IncreaseRuntimeEnvReferenceReply(
+                    return runtime_env_agent_pb2.CreateRuntimeEnvIfNeededReply(
                         status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
                         error_message=error_message,
                     )
@@ -359,7 +360,7 @@ class RuntimeEnvAgent(
                 if request.source_process not in self.reference_exclude_sources:
                     self.decrease_reference_for_uris(uris)
                 self._env_cache[serialized_env] = CreatedEnvResult(False, error_message)
-                return runtime_env_agent_pb2.IncreaseRuntimeEnvReferenceReply(
+                return runtime_env_agent_pb2.CreateRuntimeEnvIfNeededReply(
                     status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
                     error_message=error_message,
                 )
@@ -371,12 +372,12 @@ class RuntimeEnvAgent(
                 serialized_env,
                 serialized_context,
             )
-            return runtime_env_agent_pb2.IncreaseRuntimeEnvReferenceReply(
+            return runtime_env_agent_pb2.CreateRuntimeEnvIfNeededReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_OK,
                 serialized_runtime_env_context=serialized_context,
             )
 
-    async def DecreaseRuntimeEnvReference(self, request, context):
+    async def DeleteRuntimeEnvIfNeeded(self, request, context):
         self._logger.info(
             f"Got request from {request.source_process} to decrease "
             "reference for runtime env: "
@@ -392,7 +393,7 @@ class RuntimeEnvAgent(
                 "[Decrease] Failed to parse runtime env: "
                 f"{request.serialized_runtime_env}"
             )
-            return runtime_env_agent_pb2.IncreaseRuntimeEnvReferenceReply(
+            return runtime_env_agent_pb2.CreateRuntimeEnvIfNeededReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
                 error_message="".join(
                     traceback.format_exception(type(e), e, e.__traceback__)
@@ -414,7 +415,7 @@ class RuntimeEnvAgent(
             elif uri_type == self.UriType.PIP:
                 self._pip_uri_cache.mark_unused(uri)
 
-        return runtime_env_agent_pb2.DecreaseRuntimeEnvReferenceReply(
+        return runtime_env_agent_pb2.DeleteRuntimeEnvIfNeededReply(
             status=agent_manager_pb2.AGENT_RPC_STATUS_OK
         )
 

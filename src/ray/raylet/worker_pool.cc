@@ -21,6 +21,7 @@
 #include "ray/common/constants.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
+#include "ray/common/runtime_env_common.h"
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/common.h"
@@ -489,7 +490,7 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
                                           proc_startup_token, nullptr, status, &found,
                                           &used, &task_id);
       }
-      DecreaseRuntimeEnvReference(it->second.runtime_env_info.serialized_runtime_env());
+      DeleteRuntimeEnvIfNeeded(it->second.runtime_env_info.serialized_runtime_env());
       RemoveWorkerProcess(state, proc_startup_token);
       if (IsIOWorkerType(worker_type)) {
         // Mark the I/O worker as failed.
@@ -579,17 +580,11 @@ void WorkerPool::MarkPortAsFree(int port) {
   }
 }
 
-static bool RuntimeEnvNotEmpty(const std::string &serialized_runtime_env) {
-  return serialized_runtime_env != "{}" && serialized_runtime_env != "";
-}
-
 static bool NeedToEagerInstallRuntimeEnv(const rpc::JobConfig &job_config) {
   if (job_config.has_runtime_env_info() &&
       job_config.runtime_env_info().runtime_env_eager_install()) {
     auto const &runtime_env = job_config.runtime_env_info().serialized_runtime_env();
-    if (RuntimeEnvNotEmpty(runtime_env)) {
-      return true;
-    }
+    return !IsRuntimeEnvEmpty(runtime_env);
   }
   return false;
 }
@@ -607,7 +602,7 @@ void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job
     // `HandleJobFinished` will also decrement the ref count multiple times.
     RAY_LOG(INFO) << "[Eagerly] Start install runtime environment for job " << job_id
                   << ". The runtime environment was " << runtime_env << ".";
-    IncreaseRuntimeEnvReference(
+    CreateRuntimeEnvIfNeeded(
         runtime_env, job_id,
         [job_id](bool successful, const std::string &serialized_runtime_env_context,
                  const std::string &setup_error_message) {
@@ -632,7 +627,7 @@ void WorkerPool::HandleJobFinished(const JobID &job_id) {
   // Check eager install here because we only add URI reference when runtime
   // env install really happens.
   if (NeedToEagerInstallRuntimeEnv(*job_config)) {
-    DecreaseRuntimeEnvReference(job_config->runtime_env_info().serialized_runtime_env());
+    DeleteRuntimeEnvIfNeeded(job_config->runtime_env_info().serialized_runtime_env());
   }
   finished_jobs_.insert(job_id);
 }
@@ -1103,7 +1098,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
         state.starting_workers_to_tasks[startup_token] = std::move(task_info);
       }
     } else {
-      DecreaseRuntimeEnvReference(serialized_runtime_env);
+      DeleteRuntimeEnvIfNeeded(serialized_runtime_env);
       // TODO(SongGuyang): Wait until a worker is pushed or a worker can be started If
       // startup concurrency maxed out or job not started.
       PopWorkerCallbackAsync(callback, nullptr, status);
@@ -1136,7 +1131,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
         // create runtime env.
         RAY_LOG(DEBUG) << "[dedicated] Creating runtime env for task "
                        << task_spec.TaskId();
-        IncreaseRuntimeEnvReference(
+        CreateRuntimeEnvIfNeeded(
             task_spec.SerializedRuntimeEnv(), task_spec.JobId(),
             [this, start_worker_process_fn, callback, &state, task_spec, dynamic_options](
                 bool successful, const std::string &serialized_runtime_env_context,
@@ -1198,7 +1193,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
       if (task_spec.HasRuntimeEnv()) {
         // create runtime env.
         RAY_LOG(DEBUG) << "Creating runtime env for task " << task_spec.TaskId();
-        IncreaseRuntimeEnvReference(
+        CreateRuntimeEnvIfNeeded(
             task_spec.SerializedRuntimeEnv(), task_spec.JobId(),
             [this, start_worker_process_fn, callback, &state, task_spec](
                 bool successful, const std::string &serialized_runtime_env_context,
@@ -1268,7 +1263,7 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
   if (it != state.worker_processes.end()) {
     it->second.num_registered_workers--;
     if (it->second.num_registered_workers == 0 && it->second.num_starting_workers == 0) {
-      DecreaseRuntimeEnvReference(it->second.runtime_env_info.serialized_runtime_env());
+      DeleteRuntimeEnvIfNeeded(it->second.runtime_env_info.serialized_runtime_env());
       RemoveWorkerProcess(state, worker->GetStartupToken());
     }
   }
@@ -1506,12 +1501,12 @@ WorkerPool::IOWorkerState &WorkerPool::GetIOWorkerStateFromWorkerType(
   UNREACHABLE;
 }
 
-void WorkerPool::IncreaseRuntimeEnvReference(
+void WorkerPool::CreateRuntimeEnvIfNeeded(
     const std::string &serialized_runtime_env, const JobID &job_id,
-    const IncreaseRuntimeEnvReferenceCallback &callback,
+    const CreateRuntimeEnvIfNeededCallback &callback,
     const std::string &serialized_allocated_resource_instances) {
-  RAY_LOG(DEBUG) << "IncreaseRuntimeEnvReference " << serialized_runtime_env;
-  agent_manager_->IncreaseRuntimeEnvReference(
+  RAY_LOG(DEBUG) << "CreateRuntimeEnvIfNeeded " << serialized_runtime_env;
+  agent_manager_->CreateRuntimeEnvIfNeeded(
       job_id, serialized_runtime_env, serialized_allocated_resource_instances,
       [job_id, serialized_runtime_env = std::move(serialized_runtime_env), callback](
           bool successful, const std::string &serialized_runtime_env_context,
@@ -1527,13 +1522,13 @@ void WorkerPool::IncreaseRuntimeEnvReference(
       });
 }
 
-void WorkerPool::DecreaseRuntimeEnvReference(const std::string &serialized_runtime_env) {
-  RAY_LOG(DEBUG) << "DecreaseRuntimeEnvReference " << serialized_runtime_env;
-  if (RuntimeEnvNotEmpty(serialized_runtime_env)) {
-    agent_manager_->DecreaseRuntimeEnvReference(
+void WorkerPool::DeleteRuntimeEnvIfNeeded(const std::string &serialized_runtime_env) {
+  RAY_LOG(DEBUG) << "DeleteRuntimeEnvIfNeeded " << serialized_runtime_env;
+  if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
+    agent_manager_->DeleteRuntimeEnvIfNeeded(
         serialized_runtime_env, [serialized_runtime_env](bool success) {
-          RAY_LOG(ERROR) << "Decrease runtime env reference failed for "
-                         << serialized_runtime_env << ".";
+          RAY_LOG(ERROR) << "Delete runtime env failed for " << serialized_runtime_env
+                         << ".";
         });
   }
 }

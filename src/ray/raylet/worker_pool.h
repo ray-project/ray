@@ -460,7 +460,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     int num_starting_io_workers = 0;
   };
 
-  /// Some basic information about the starting worker process.
+  /// Some basic information about the worker process.
   struct WorkerProcessInfo {
     /// The number of workers in the worker process.
     int num_workers;
@@ -626,14 +626,44 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       const PopWorkerStatus &status, bool *found /* output */,
       bool *worker_used /* output */, TaskID *task_id /* output */);
 
-  /// Increase runtime env reference asynchronously by runtime env agent.
-  void IncreaseRuntimeEnvReference(
+  /// We manage all runtime env resources locally by the two methods:
+  /// `CreateRuntimeEnvIfNeeded` and `DeleteRuntimeEnvIfNeeded`.
+  ///
+  /// `CreateRuntimeEnvIfNeeded` means increasing the reference count for the runtime env
+  /// and `DeleteRuntimeEnvIfNeeded` means decreasing the reference count. We increase or
+  /// decrease runtime env reference in the cases below:
+  /// For the job with an eager installed runtime env:
+  /// - Increase reference when job started.
+  /// - Decrease reference when job finished.
+  /// For the worker process with a valid runtime env:
+  /// - Increase reference before worker process started.
+  /// - Decrease reference when the worker process is invalid in following cases:
+  ///     - Worker process exits normally.
+  ///     - Any worker instance registration times out.
+  ///     - Worker process isn't started by some reasons(see `StartWorkerProcess`).
+  ///
+  /// A normal state change flow is:
+  ///   job level:
+  ///       HandleJobStarted(ref + 1 = 1) -> HandleJobFinshed(ref - 1 = 0)
+  ///   worker level:
+  ///       StartWorkerProcess(ref + 1 = 1)
+  ///       -> DisconnectWorker * 3 (ref - 1 = 0)
+  ///
+  /// A state change flow for worker timeout case is:
+  ///       StartWorkerProcess(ref + 1 = 1)
+  ///       -> One worker registration times out, kill worker process (ref - 1 = 0)
+  ///
+  /// Note: "DisconnectWorker * 3" means that three workers are disconnected. And we
+  /// assume that the worker process has tree worker instances totally.
+
+  /// Create runtime env asynchronously by runtime env agent.
+  void CreateRuntimeEnvIfNeeded(
       const std::string &serialized_runtime_env, const JobID &job_id,
-      const IncreaseRuntimeEnvReferenceCallback &callback,
+      const CreateRuntimeEnvIfNeededCallback &callback,
       const std::string &serialized_allocated_resource_instances = "{}");
 
-  /// Decrease runtime env reference asynchronously by runtime env agent.
-  void DecreaseRuntimeEnvReference(const std::string &serialized_runtime_env);
+  /// Delete runtime env asynchronously by runtime env agent.
+  void DeleteRuntimeEnvIfNeeded(const std::string &serialized_runtime_env);
 
   void AddWorkerProcess(State &state, const int workers_to_start,
                         const rpc::WorkerType worker_type, const Process &proc,

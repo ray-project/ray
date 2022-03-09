@@ -43,8 +43,8 @@ typedef std::function<std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
 typedef std::function<void(bool successful,
                            const std::string &serialized_runtime_env_context,
                            const std::string &setup_error_message)>
-    IncreaseRuntimeEnvReferenceCallback;
-typedef std::function<void(bool successful)> DecreaseRuntimeEnvReferenceCallback;
+    CreateRuntimeEnvIfNeededCallback;
+typedef std::function<void(bool successful)> DeleteRuntimeEnvIfNeededCallback;
 
 class AgentManager : public rpc::AgentManagerServiceHandler {
  public:
@@ -74,16 +74,16 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   /// \param[in] serialized_allocated_resource_instances The serialized allocated resource
   /// instances.
   /// \param[in] callback The callback function.
-  virtual void IncreaseRuntimeEnvReference(
+  virtual void CreateRuntimeEnvIfNeeded(
       const JobID &job_id, const std::string &serialized_runtime_env,
       const std::string &serialized_allocated_resource_instances,
-      IncreaseRuntimeEnvReferenceCallback callback);
+      CreateRuntimeEnvIfNeededCallback callback);
 
   /// Request agent to decrease the runtime env reference. This API is not idempotent.
   /// \param[in] serialized_runtime_env The serialized runtime environment.
   /// \param[in] callback The callback function.
-  virtual void DecreaseRuntimeEnvReference(const std::string &serialized_runtime_env,
-                                           DecreaseRuntimeEnvReferenceCallback callback);
+  virtual void DeleteRuntimeEnvIfNeeded(const std::string &serialized_runtime_env,
+                                        DeleteRuntimeEnvIfNeededCallback callback);
 
  private:
   void StartAgent();
