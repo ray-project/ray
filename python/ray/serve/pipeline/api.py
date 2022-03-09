@@ -17,6 +17,9 @@ def build(ray_dag_root_node: DAGNode):
     This should be the only user facing API that user interacts with.
 
     Assumptions:
+        Following enforcements are only applied at generating and applying
+        pipeline artifact, but not blockers for local development and testing.
+
         - ALL args and kwargs used in DAG building should be JSON serializable.
             This means in order to ensure your pipeline application can run on
             a remote cluster potentially with different runtime environment,
@@ -52,7 +55,15 @@ def build(ray_dag_root_node: DAGNode):
         ...    m2_output = m2.forward.bind(dag_input[1])
         ...    ray_dag = ensemble.bind(m1_output, m2_output)
 
-        >>> app = serve.pipeline.build(ray_dag)
+        Assuming we have non-JSON serializable or inline defined class or
+        function in local pipeline development.
+
+        >>> app = serve.pipeline.build(ray_dag) # This works
+        >>> handle = app.deploy()
+        >>> # This also works, we're simply executing the transformed serve_dag.
+        >>> ray.get(handle.remote(data)
+        >>> # This will fail where enforcements are applied.
+        >>> deployment_yaml = app.to_yaml()
     """
     serve_root_dag = ray_dag_root_node.apply_recursive(transform_ray_dag_to_serve_dag)
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
@@ -61,4 +72,5 @@ def build(ray_dag_root_node: DAGNode):
     deployments.insert(0, ingress_deployment)
 
     # TODO (jiaodong): Call into Application once Shreyas' PR is merged
+    # TODO (jiaodong): Apply enforcements at serve app to_yaml level
     return deployments
