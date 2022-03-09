@@ -1,10 +1,8 @@
 import logging
 import os
-import tempfile
 from types import ModuleType
 from typing import Any, Dict, List, Optional
 from pathlib import Path
-from zipfile import ZipFile
 import asyncio
 
 from ray.experimental.internal_kv import _internal_kv_initialized
@@ -17,6 +15,7 @@ from ray._private.runtime_env.packaging import (
     get_uri_for_directory,
     get_uri_for_package,
     parse_uri,
+    is_whl_uri,
     Protocol,
     upload_package_if_needed,
     upload_package_to_gcs,
@@ -98,11 +97,7 @@ def upload_py_modules_if_needed(
                 )
             elif Path(module_path).suffix == ".whl":
                 module_uri = get_uri_for_package(Path(module_path))
-                with tempfile.TemporaryDirectory() as tmpdirname:
-                    local_zip_path = os.path.join(tmpdirname, "user_wheel.zip")
-                    with ZipFile(local_zip_path, "w") as zip_handler:
-                        zip_handler.write(module_path, Path(module_path).name)
-                    upload_package_to_gcs(module_uri, Path(local_zip_path).read_bytes())
+                upload_package_to_gcs(module_uri, Path(module_path).read_bytes())
             else:
                 raise ValueError(
                     "py_modules entry must be a directory or a .whl file; "
@@ -123,6 +118,9 @@ class PyModulesManager:
         self._resources_dir = os.path.join(resources_dir, "py_modules_files")
         try_to_create_directory(self._resources_dir)
         assert _internal_kv_initialized()
+
+    def _get_local_dir_from_uri(self, uri: str):
+        return get_local_dir_from_uri(uri, self._resources_dir)
 
     def delete_uri(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
@@ -153,27 +151,39 @@ class PyModulesManager:
         # TODO(Catch-Bull): Refactor method create into an async process, and
         # make this method running in current loop.
         def _create():
-            module_dir = download_and_unpack_package(
-                uri, self._resources_dir, logger=logger
-            )
-            if (
-                len(os.listdir(module_dir)) == 1
-                and Path(os.listdir(module_dir)[0]).suffix == ".whl"
-            ):
-                whl_file_path = Path(os.listdir(module_dir)[0])
+            if is_whl_uri(uri):
+                # Download and install the wheel, and then delete the wheel file.
+                wheel_file = download_and_unpack_package(
+                    uri, self._resources_dir, logger=logger
+                )
+                module_dir = self._get_local_dir_from_uri(uri)
+
                 pip_install_cmd = [
                     "pip",
                     "install",
-                    str(whl_file_path),
+                    wheel_file,
                     f"--target={module_dir}",
                 ]
-                logger.info("Installing python requirements to %s", module_dir)
+                logger.info(
+                    "Running py_modules wheel install command: %s", str(pip_install_cmd)
+                )
                 exit_code, output = exec_cmd_stream_to_logger(pip_install_cmd, logger)
+
+                if Path(wheel_file).exists():
+                    Path(wheel_file).unlink()
+
                 if exit_code != 0:
+                    if Path(module_dir).exists():
+                        Path(module_dir).unlink()
                     raise RuntimeError(
-                        "Failed to install python requirements "
+                        f"Failed to install py_modules wheel {wheel_file}"
                         f"to {module_dir}:\n{output}"
                     )
+
+            else:
+                module_dir = download_and_unpack_package(
+                    uri, self._resources_dir, logger=logger
+                )
 
             return get_directory_size_bytes(module_dir)
 
@@ -191,12 +201,12 @@ class PyModulesManager:
             return
         module_dirs = []
         for uri in uris:
-            module_dir = get_local_dir_from_uri(uri, self._resources_dir)
+            module_dir = self._get_local_dir_from_uri(uri)
             if not module_dir.exists():
                 raise ValueError(
                     f"Local directory {module_dir} for URI {uri} does "
                     "not exist on the cluster. Something may have gone wrong while "
-                    "downloading or unpacking the py_modules files."
+                    "downloading, unpacking or installing the py_modules files."
                 )
             module_dirs.append(str(module_dir))
         # Insert the py_modules directories into the PYTHONPATH.
