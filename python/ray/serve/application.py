@@ -17,6 +17,8 @@ from ray.dashboard.modules.serve.schema import (
 )
 from ray.serve.utils import logger
 from ray.serve.api import get_deployment_statuses
+from ray.autoscaler._private.cli_logger import _CliLogger
+from logging import Logger
 
 
 class Application:
@@ -105,7 +107,7 @@ class Application:
             parameter_group, _blocking=blocking
         )
 
-    def run(self, logger=logger):
+    def run(self, logger: Union[Logger, _CliLogger] = logger):
         """Deploys all deployments in this Application and logs status.
 
         This function keeps looping and printing status, so it must be manually
