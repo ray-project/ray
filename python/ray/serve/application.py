@@ -235,7 +235,7 @@ class Application:
                 JSON deployment definitions. The JSON format must adhere to the
                 ServeApplicationSchema JSON Schema defined in
                 ray.dashboard.modules.serve.schema.
-        
+
         Returns:
             Application: a new Application object containing the deployments.
         """
@@ -295,7 +295,7 @@ class Application:
                 ServeApplicationSchema JSON Schema defined in
                 ray.dashboard.modules.serve.schema. This function works with
                 Serve YAML config files.
-        
+
         Returns:
             Application: a new Application object containing the deployments.
         """
