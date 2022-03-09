@@ -168,7 +168,7 @@ class CoreWorkerTest : public ::testing::Test {
   }
 
   // Test normal tasks.
-  void TestNormalTask(std::unordered_map<std::string, double> &resources);
+  void TestNormalTask();
 
   // Test actor tasks.
   void TestActorTask(std::unordered_map<std::string, double> &resources);
@@ -234,7 +234,7 @@ int CoreWorkerTest::GetActorPid(const ActorID &actor_id,
   return std::stoi(pid_string);
 }
 
-void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &resources) {
+void CoreWorkerTest::TestNormalTask() {
   auto &driver = CoreWorkerProcess::GetCoreWorker();
 
   // Test for tasks with by-value and by-ref args.
@@ -849,8 +849,7 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
 }
 
 TEST_F(SingleNodeTest, TestNormalTaskLocal) {
-  std::unordered_map<std::string, double> resources;
-  TestNormalTask(resources);
+  TestNormalTask();
 }
 
 TEST_F(SingleNodeTest, TestCancelTasks) {
@@ -892,14 +891,11 @@ TEST_F(SingleNodeTest, TestCancelTasks) {
   // TestNormalTask will get stuck unless both func1 and func2 have been cancelled. Thus,
   // if TestNormalTask succeeds, we know that func2 must have been removed from the
   // worker's queue.
-  std::unordered_map<std::string, double> resources;
-  TestNormalTask(resources);
+  TestNormalTask();
 }
 
 TEST_F(TwoNodeTest, TestNormalTaskCrossNodes) {
-  std::unordered_map<std::string, double> resources;
-  resources.emplace("resource1", 1);
-  TestNormalTask(resources);
+  TestNormalTask();
 }
 
 TEST_F(SingleNodeTest, TestActorTaskLocal) {

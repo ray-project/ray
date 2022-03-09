@@ -1199,7 +1199,7 @@ TEST(DirectTaskTransportTest, TestSpillback) {
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
 
-  std::unordered_map<int, std::shared_ptr<MockRayletClient>> remote_lease_clients;
+  absl::flat_hash_map<int, std::shared_ptr<MockRayletClient>> remote_lease_clients;
   auto lease_client_factory = [&](const std::string &ip, int port) {
     // We should not create a connection to the same raylet more than once.
     RAY_CHECK(remote_lease_clients.count(port) == 0);
@@ -1263,7 +1263,7 @@ TEST(DirectTaskTransportTest, TestSpillbackRoundTrip) {
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
 
-  std::unordered_map<int, std::shared_ptr<MockRayletClient>> remote_lease_clients;
+  absl::flat_hash_map<int, std::shared_ptr<MockRayletClient>> remote_lease_clients;
   auto lease_client_factory = [&](const std::string &ip, int port) {
     // We should not create a connection to the same raylet more than once.
     RAY_CHECK(remote_lease_clients.count(port) == 0);
