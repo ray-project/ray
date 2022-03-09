@@ -1,3 +1,5 @@
+load("//bazel:python.bzl", "py_test_module_list")
+
 # --------------------------------------------------------------------
 # Tests from the python/ray/tune/tests directory.
 # Covers all tests starting with `test_`.
@@ -374,6 +376,16 @@ py_test(
     tags = ["team:ml", "exclusive", "tests_dir_T"],
 )
 
+py_test_module_list(
+  files = [
+      "tests/test_trial_executor_inheritance.py",
+  ],
+  size = "large",
+  extra_srcs = [],
+  tags = ["exclusive", "manual", "team:ml"],
+  deps = ["//:tune_lib"],
+)
+
 # --------------------------------------------------------------------
 # Tests from the python/ray/tune/tests directory.
 # Covers all remaining tests that do not start with `test_`.
@@ -446,7 +458,7 @@ py_test(
 
 py_test(
     name = "bohb_example",
-    size = "small",
+    size = "medium",
     srcs = ["examples/bohb_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"]
@@ -878,15 +890,6 @@ py_test(
 #     tags = ["team:ml", "exclusive", "example"],
 #     args = ["--model SqueezeNet1.0", "--smoke-test"]
 # )
-
-py_test(
-    name = "tune_comet_example",
-    size = "medium",
-    srcs = ["examples/tune_comet_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--mock-api"]
-)
 
 py_test(
     name = "tune_mnist_keras",

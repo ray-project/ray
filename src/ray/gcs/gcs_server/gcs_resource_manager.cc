@@ -15,6 +15,7 @@
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 
 #include "ray/common/ray_config.h"
+#include "ray/gcs/gcs_server/ray_syncer.h"
 #include "ray/stats/metric_defs.h"
 
 namespace ray {
@@ -22,12 +23,12 @@ namespace gcs {
 
 GcsResourceManager::GcsResourceManager(
     instrumented_io_context &main_io_service, std::shared_ptr<GcsPublisher> gcs_publisher,
-    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
+    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+    syncer::RaySyncer *ray_syncer)
     : periodical_runner_(main_io_service),
       gcs_publisher_(gcs_publisher),
       gcs_table_storage_(gcs_table_storage),
-      max_broadcasting_batch_size_(
-          RayConfig::instance().resource_broadcast_batch_size()) {}
+      ray_syncer_(ray_syncer) {}
 
 void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &request,
                                             rpc::GetResourcesReply *reply,
@@ -84,9 +85,7 @@ void GcsResourceManager::HandleUpdateResources(
       node_resource_change.set_node_id(node_id.Binary());
       node_resource_change.mutable_updated_resources()->insert(changed_resources->begin(),
                                                                changed_resources->end());
-      absl::MutexLock guard(&resource_buffer_mutex_);
-      resources_buffer_proto_.add_batch()->mutable_change()->Swap(&node_resource_change);
-
+      ray_syncer_->Update(std::move(node_resource_change));
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
       RAY_LOG(DEBUG) << "Finished updating resources, node id = " << node_id;
     };
@@ -133,11 +132,7 @@ void GcsResourceManager::HandleDeleteResources(
       for (const auto &resource_name : resource_names) {
         node_resource_change.add_deleted_resources(resource_name);
       }
-      {
-        absl::MutexLock guard(&resource_buffer_mutex_);
-        resources_buffer_proto_.add_batch()->mutable_change()->Swap(
-            &node_resource_change);
-      }
+      ray_syncer_->Update(std::move(node_resource_change));
 
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
     };
@@ -168,31 +163,21 @@ void GcsResourceManager::HandleGetAllAvailableResources(
 
 void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data) {
   NodeID node_id = NodeID::FromBinary(data.node_id());
-  auto resources_data = std::make_shared<rpc::ResourcesData>();
-  resources_data->CopyFrom(data);
-
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    UpdateNodeNormalTaskResources(node_id, *resources_data);
+    UpdateNodeNormalTaskResources(node_id, data);
   } else {
-    if (node_resource_usages_.count(node_id) == 0 ||
-        resources_data->resources_available_changed()) {
-      const auto &resource_changed =
-          MapFromProtobuf(resources_data->resources_available());
+    if (node_resource_usages_.count(node_id) == 0 || data.resources_available_changed()) {
+      const auto &resource_changed = MapFromProtobuf(data.resources_available());
       SetAvailableResources(node_id, ResourceSet(resource_changed));
     }
   }
 
   UpdateNodeResourceUsage(node_id, data);
 
-  if (resources_data->should_global_gc() || resources_data->resources_total_size() > 0 ||
-      resources_data->resources_available_changed() ||
-      resources_data->resource_load_changed()) {
-    absl::MutexLock guard(&resource_buffer_mutex_);
-    resources_buffer_[node_id] = *resources_data;
-    // Clear the fields that will not be used by raylet.
-    resources_buffer_[node_id].clear_resource_load();
-    resources_buffer_[node_id].clear_resource_load_by_shape();
-    resources_buffer_[node_id].clear_resources_normal_task();
+  // TODO (iycheng): This will only happen in testing. We'll clean this code path
+  // in follow up PRs.
+  if (ray_syncer_ != nullptr) {
+    ray_syncer_->Update(data);
   }
 }
 
@@ -338,10 +323,6 @@ void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
 }
 
 void GcsResourceManager::OnNodeDead(const NodeID &node_id) {
-  {
-    absl::MutexLock guard(&resource_buffer_mutex_);
-    resources_buffer_.erase(node_id);
-  }
   node_resource_usages_.erase(node_id);
   cluster_scheduling_resources_.erase(node_id);
   latest_resources_normal_task_timestamp_.erase(node_id);
@@ -370,20 +351,6 @@ bool GcsResourceManager::ReleaseResources(const NodeID &node_id,
   // If node dead, we will not find the node. This is a normal scenario, so it returns
   // true.
   return true;
-}
-
-void GcsResourceManager::GetResourceUsageBatchForBroadcast(
-    rpc::ResourceUsageBroadcastData &buffer) {
-  absl::MutexLock guard(&resource_buffer_mutex_);
-  resources_buffer_proto_.Swap(&buffer);
-  auto beg = resources_buffer_.begin();
-  auto ptr = beg;
-  for (size_t cnt = buffer.batch().size();
-       cnt < max_broadcasting_batch_size_ && cnt < resources_buffer_.size();
-       ++ptr, ++cnt) {
-    buffer.add_batch()->mutable_data()->Swap(&ptr->second);
-  }
-  resources_buffer_.erase(beg, ptr);
 }
 
 void GcsResourceManager::UpdatePlacementGroupLoad(

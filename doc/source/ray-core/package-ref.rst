@@ -208,6 +208,12 @@ Runtime Context APIs
 .. autoclass:: ray.runtime_context.RuntimeContext
     :members:
 
+.. _runtime-env-apis:
+
+Runtime Env APIs
+
+.. autoclass:: ray.runtime_env.RuntimeEnv
+    :members:
 .. _package-ref-debugging-apis:
 
 Debugging APIs

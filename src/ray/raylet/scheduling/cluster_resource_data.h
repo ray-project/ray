@@ -27,12 +27,11 @@
 
 namespace ray {
 
-/// List of predefined resources.
-enum PredefinedResources { CPU, MEM, GPU, OBJECT_STORE_MEM, PredefinedResources_MAX };
-
 const std::string ResourceEnumToString(PredefinedResources resource);
 
 const PredefinedResources ResourceStringToEnum(const std::string &resource);
+
+bool IsPredefinedResource(scheduling::ResourceID resource_id);
 
 /// Helper function to compare two vectors with FixedPoint values.
 bool EqualVectors(const std::vector<FixedPoint> &v1, const std::vector<FixedPoint> &v2);
@@ -72,6 +71,8 @@ class ResourceRequest {
   bool IsEmpty() const;
   /// Returns human-readable string for this task request.
   std::string DebugString() const;
+  /// Request for GPU.
+  bool IsGPURequest() const;
 };
 
 // Data structure specifying the capacity of each instance of each resource
@@ -84,8 +85,7 @@ class TaskResourceInstances {
   absl::flat_hash_map<int64_t, std::vector<FixedPoint>> custom_resources;
   bool operator==(const TaskResourceInstances &other);
   /// Get instances based on the string.
-  const std::vector<FixedPoint> &Get(const std::string &resource_name,
-                                     const StringIdMap &string_id_map) const;
+  const std::vector<FixedPoint> &Get(const std::string &resource_name) const;
   /// For each resource of this request aggregate its instances.
   ResourceRequest ToResourceRequest() const;
   /// Get CPU instances only.
@@ -138,7 +138,7 @@ class TaskResourceInstances {
   /// Check whether there are no resource instances.
   bool IsEmpty() const;
   /// Returns human-readable string for these resources.
-  [[nodiscard]] std::string DebugString(const StringIdMap &string_id_map) const;
+  [[nodiscard]] std::string DebugString() const;
 };
 
 /// Total and available capacities of each resource of a node.
@@ -170,9 +170,11 @@ class NodeResources {
   bool operator==(const NodeResources &other);
   bool operator!=(const NodeResources &other);
   /// Returns human-readable string for these resources.
-  std::string DebugString(StringIdMap string_to_int_map) const;
+  std::string DebugString() const;
   /// Returns compact dict-like string.
-  std::string DictString(StringIdMap string_to_int_map) const;
+  std::string DictString() const;
+  /// Has GPU.
+  bool HasGPU() const;
 };
 
 /// Total and available capacities of each resource instance.
@@ -189,7 +191,11 @@ class NodeResourceInstances {
   /// Returns if this equals another node resources.
   bool operator==(const NodeResourceInstances &other);
   /// Returns human-readable string for these resources.
-  [[nodiscard]] std::string DebugString(StringIdMap string_to_int_map) const;
+  [[nodiscard]] std::string DebugString() const;
+  /// Returns true if it contains this resource.
+  bool Contains(scheduling::ResourceID id) const;
+  /// Returns the resource instance of a given resource id.
+  ResourceInstanceCapacities &GetMutable(scheduling::ResourceID id);
 };
 
 struct Node {
@@ -211,13 +217,11 @@ struct Node {
 
 /// \request Conversion result to a ResourceRequest data structure.
 NodeResources ResourceMapToNodeResources(
-    StringIdMap &string_to_int_map,
     const absl::flat_hash_map<std::string, double> &resource_map_total,
     const absl::flat_hash_map<std::string, double> &resource_map_available);
 
 /// Convert a map of resources to a ResourceRequest data structure.
 ResourceRequest ResourceMapToResourceRequest(
-    StringIdMap &string_to_int_map,
     const absl::flat_hash_map<std::string, double> &resource_map,
     bool requires_object_store_memory);
 

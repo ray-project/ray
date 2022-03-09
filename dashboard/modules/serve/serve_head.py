@@ -1,5 +1,4 @@
 from aiohttp.web import Request, Response
-import json
 import logging
 
 import ray.dashboard.utils as dashboard_utils
@@ -28,13 +27,9 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def get_all_deployments(self, req: Request) -> Response:
         deployments = list(serve.list_deployments().values())
-        # statuses = get_deployment_statuses()
-        # serve_application_schema = serve_application_to_schema(
-        #     deployments=deployments, statuses=statuses
-        # )
         serve_application_schema = serve_application_to_schema(deployments=deployments)
         return Response(
-            text=json.dumps(serve_application_schema.json()),
+            text=serve_application_schema.json(),
             content_type="application/json",
         )
 
@@ -45,7 +40,7 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
             get_deployment_statuses()
         )
         return Response(
-            text=json.dumps(serve_application_status_schema.json()),
+            text=serve_application_status_schema.json(),
             content_type="application/json",
         )
 
@@ -58,9 +53,9 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @routes.put("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def put_all_deployments(self, req: Request) -> Response:
-        serve_application_json = await req.json()
+        serve_application_text = await req.text()
         serve_application_schema = ServeApplicationSchema.parse_raw(
-            json.dumps(serve_application_json)
+            serve_application_text, content_type="application/json"
         )
         deployments = schema_to_serve_application(serve_application_schema)
 
