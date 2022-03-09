@@ -1,4 +1,3 @@
-from ray.util.annotations import PublicAPI
 from ray.experimental.dag import DAGNode
 from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,
@@ -8,7 +7,6 @@ from ray.serve.pipeline.generate import (
 )
 
 
-@PublicAPI
 def build(ray_dag_root_node: DAGNode):
     """Do all the DAG transformation, extraction and generation needed to
     produce a runnable and deployable serve pipeline application from a valid
