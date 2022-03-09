@@ -27,8 +27,7 @@ def convert_pandas_to_torch_tensor(
             models. If None, then use all columns in the ``data_batch``.
         column_dtype (Optional[Union[torch.dtype, List[torch.dtype]): The
             torch dtype to use for the tensor. If set to None,
-            then automatically
-            infer the dtype.
+            then automatically infer the dtype.
 
     Returns:
         Either a torch tensor of size (N, len(columns)) where N is the
