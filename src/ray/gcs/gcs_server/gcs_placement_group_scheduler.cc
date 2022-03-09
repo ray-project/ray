@@ -328,7 +328,7 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
           node_resource_change.add_deleted_resources(iter.first);
         }
         node_resource_change.set_node_id(node_id.Binary());
-        ray_syncer_->Update(std::move(node_resource_change));
+        ray_syncer_.Update(std::move(node_resource_change));
         gcs_resource_manager_.DeleteResources(node_id, std::move(resource_names));
       });
 }
@@ -384,7 +384,7 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
         node_resource_change.set_node_id(node_id.Binary());
         node_resource_change.mutable_updated_resources()->insert(resources.begin(),
                                                                  resources.end());
-        ray_syncer_->Update(std::move(node_resource_change));
+        ray_syncer_.Update(std::move(node_resource_change));
       }
       if (lease_status_tracker->AllCommitRequestReturned()) {
         OnAllBundleCommitRequestReturned(lease_status_tracker, schedule_failure_handler,
