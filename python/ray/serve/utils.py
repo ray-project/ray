@@ -372,7 +372,7 @@ def require_packages(packages: List[str]):
                         missing_packages.append(package)
                 if len(missing_packages) > 0:
                     raise ImportError(
-                        f"{func} requires {packages} to run but "
+                        f"{func} requires packages {packages} to run but "
                         f"{missing_packages} are missing. Please "
                         "`pip install` them or add them to "
                         "`runtime_env`."
