@@ -3,7 +3,7 @@ import tarfile
 import tempfile
 
 import os
-from typing import Optional
+from typing import Optional, Union, Tuple
 
 import ray
 from ray import cloudpickle as pickle
@@ -156,70 +156,9 @@ class Checkpoint:
         self._uri = uri
         self._obj_ref = obj_ref
 
-    def get_local_path(self) -> Optional[str]:
-        """Return local path to checkpoint directory.
-
-        This function will return None if the checkpoint is stored in a
-        different format (e.g. as a dict). It will not convert the checkpoint
-        into a local storage checkpoint (for this, use
-        :func:`to_directory() <ray.ml.checkpoint.Checkpoint.to_directory>`
-        instead).
-
-        Returns:
-            String containing local checkpoint path or None.
-        """
-        return self._local_path
-
-    def get_data_dict(self) -> Optional[dict]:
-        """Return data dict containing the checkpoint data.
-
-        This function will return None if the checkpoint is stored in a
-        different format (e.g. in a local directory). It will not convert
-        the checkpoint into a dictionary checkpoint (for this, use
-        :func:`to_dict() <ray.ml.checkpoint.Checkpoint.to_dict>`
-        instead).
-
-        Returns:
-            Dict containing checkpoint data or None.
-        """
-        return self._data_dict
-
-    def get_uri(self, convert_local_path: bool = True) -> Optional[str]:
-        """Return URI pointing to checkpoint data location.
-
-        This function will return None if the checkpoint is stored in a
-        different format (e.g. as a dict). It will not convert the checkpoint
-        to a local or external storage checkpoint (for this, use
-        :func:`to_uri() <ray.ml.checkpoint.Checkpoint.to_uri>`
-        instead).
-
-        Args:
-            convert_local_path (bool): If ``True`` (default), local paths
-                will be converted into ``file://...`` URIs. If ``False``,
-                local paths will return ``None``.
-
-        Returns:
-            URI to checkpoint location or None.
-
-        """
-        if self._local_path and convert_local_path:
-            return f"file://{self._local_path}"
-        return self._uri
-
-    def get_obj_ref(self) -> Optional[ray.ObjectRef]:
-        """Return Ray object reference to checkpoint data.
-
-        This function will return None if the checkpoint is stored in a
-        different format (e.g. as a dict). It will not convert the checkpoint
-        to an object reference checkpoint (for this, use
-        :func:`to_object_ref( <ray.ml.checkpoint.Checkpoint.to_object_ref>`
-        instead).
-        """
-        return self._obj_ref
-
     @classmethod
     def from_bytes(cls, data: bytes) -> "Checkpoint":
-        """Create Checkpoint object from bytes string.
+        """Create a checkpoint from the given byte string.
 
         Args:
             data (bytes): Data object containing pickled checkpoint data.
@@ -427,6 +366,39 @@ class Checkpoint:
             shutil.rmtree(local_path)
 
         return uri
+
+    @DeveloperAPI
+    def get_internal_representation(
+        self,
+    ) -> Tuple[str, Union[dict, str, ray.ObjectRef]]:
+        """Return tuple of (type, data) for the internal representation.
+
+        The internal representation can be used e.g. to compare checkpoint
+        objects for equality or to access the underlying data storage.
+
+        The returned type is a string and one of
+        ``["local_path", "data_dict", "uri", "object_ref"]``.
+
+        The data is the respective data value.
+
+        Note that paths converted from ``file://...`` will be returned
+        as ``local_path`` (without the ``file://`` prefix) and not as ``uri``.
+
+        Returns:
+            Tuple of type and data.
+        """
+        if self._local_path:
+            return "local_path", self._local_path
+        elif self._data_dict:
+            return "data_dict", self._data_dict
+        elif self._uri:
+            return "uri", self._uri
+        elif self._obj_ref:
+            return "object_ref", self._obj_ref
+        else:
+            raise RuntimeError(
+                "Cannot get internal representation of empty checkpoint."
+            )
 
 
 def _get_local_path(path: Optional[str]) -> Optional[str]:
