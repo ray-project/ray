@@ -446,7 +446,7 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
 
   if (RayConfig::instance().support_fork()) {
     env.insert({"GRPC_ENABLE_FORK_SUPPORT", "True"});
-    env.insert({"GRPC_POLL_STRATEGY", "epoll1,poll"});
+    env.insert({"GRPC_POLL_STRATEGY", "poll"});
   } else {
     env.insert({"GRPC_ENABLE_FORK_SUPPORT", "False"});
   }

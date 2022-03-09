@@ -376,10 +376,17 @@ ray.get(b.f.remote())
     assert re.search("Actor2 pid=.*bye", out_str), out_str
 
 
-def test_output():
+@pytest.mark.parametrize("support_fork", [True, False])
+def test_ray_output(support_fork):
     # Use subprocess to execute the __main__ below.
     outputs = subprocess.check_output(
-        [sys.executable, __file__, "_ray_instance"], stderr=subprocess.STDOUT
+        [
+            sys.executable,
+            __file__,
+            "_ray_instance",
+            "support_fork" if support_fork else "no_support_fork",
+        ],
+        stderr=subprocess.STDOUT,
     ).decode()
     lines = outputs.split("\n")
     for line in lines:
@@ -529,12 +536,17 @@ time.sleep(5)
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "_ray_instance":
+        support_fork = "support_fork" in sys.argv
         # Set object store memory very low so that it won't complain
         # about low shm memory in Linux environment.
         # The test failures currently complain it only has 2 GB memory,
         # so let's set it much lower than that.
         MB = 1000 ** 2
-        ray.init(num_cpus=1, object_store_memory=(100 * MB))
+        ray.init(
+            num_cpus=1,
+            object_store_memory=(100 * MB),
+            _system_config={"support_fork": support_fork},
+        )
         ray.shutdown()
     else:
         sys.exit(pytest.main(["-v", __file__]))
