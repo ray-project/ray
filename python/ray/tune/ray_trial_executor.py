@@ -68,8 +68,9 @@ class _ActorClassCache:
 
     def get(self, trainable_cls):
         """Gets the wrapped trainable_cls, otherwise calls ray.remote."""
+        runtime_env = {"env_vars": {"TUNE_ORIG_WORKING_DIR": os.getcwd()}}
         if trainable_cls not in self._cache:
-            remote_cls = ray.remote(trainable_cls)
+            remote_cls = ray.remote(runtime_env=runtime_env)(trainable_cls)
             self._cache[trainable_cls] = remote_cls
         return self._cache[trainable_cls]
 
