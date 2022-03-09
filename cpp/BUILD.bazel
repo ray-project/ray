@@ -236,7 +236,7 @@ py_test_module_list(
     tags = [
         "exclusive",
         "small_size_python_tests",
-        "team:core"
+        "team:core",
     ],
     deps = [
         ":ray_api",
