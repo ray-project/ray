@@ -83,7 +83,6 @@ if __name__ == "__main__":
     # Whether all RLlib tests should be run.
     # Set to 1 only when a source file in `ray/rllib` has been changed.
     RAY_CI_RLLIB_DIRECTLY_AFFECTED = 0
-    RAY_CI_ML_AFFECTED = 0
     RAY_CI_SERVE_AFFECTED = 0
     RAY_CI_CORE_CPP_AFFECTED = 0
     RAY_CI_CPP_AFFECTED = 0
@@ -127,6 +126,12 @@ if __name__ == "__main__":
         for changed_file in files:
             if changed_file.startswith("python/ray/ml"):
                 RAY_CI_ML_AFFECTED = 1
+                RAY_CI_TRAIN_AFFECTED = 1
+                RAY_CI_SGD_AFFECTED = 1
+                RAY_CI_TUNE_AFFECTED = 1
+                RAY_CI_RLLIB_AFFECTED = 1
+                RAY_CI_LINUX_WHEELS_AFFECTED = 1
+                RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("python/ray/tune"):
                 RAY_CI_DOC_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
@@ -141,13 +146,6 @@ if __name__ == "__main__":
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
-            elif changed_file.startswith("python/ray/ml"):
-                RAY_CI_TRAIN_AFFECTED = 1
-                RAY_CI_LINUX_WHEELS_AFFECTED = 1
-                RAY_CI_SGD_AFFECTED = 1
-                RAY_CI_TUNE_AFFECTED = 1
-                RAY_CI_RLLIB_AFFECTED = 1
-                RAY_CI_ML_AFFECTED = 1
             elif changed_file.startswith("python/ray/util/ml_utils"):
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
@@ -215,7 +213,6 @@ if __name__ == "__main__":
                 RAY_CI_SGD_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
-                RAY_CI_ML_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_CORE_CPP_AFFECTED = 1
                 RAY_CI_CPP_AFFECTED = 1
@@ -231,7 +228,6 @@ if __name__ == "__main__":
                 RAY_CI_SGD_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
-                RAY_CI_ML_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_CORE_CPP_AFFECTED = 1
                 RAY_CI_CPP_AFFECTED = 1
@@ -248,7 +244,6 @@ if __name__ == "__main__":
         RAY_CI_TRAIN_AFFECTED = 1
         RAY_CI_RLLIB_AFFECTED = 1
         RAY_CI_RLLIB_DIRECTLY_AFFECTED = 1
-        RAY_CI_ML_AFFECTED = 1
         RAY_CI_SERVE_AFFECTED = 1
         RAY_CI_CPP_AFFECTED = 1
         RAY_CI_CORE_CPP_AFFECTED = 1
