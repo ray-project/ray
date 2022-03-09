@@ -683,7 +683,7 @@ def test_serialize_deserialize(option):
     else:
         raise ValueError("unexpected option " + str(option))
 
-    proto_runtime_env = RuntimeEnv(**runtime_env, _validate=False)._proto_runtime_env
+    proto_runtime_env = RuntimeEnv(**runtime_env, _validate=False).build_proto_runtime_env()
     cls_runtime_env = RuntimeEnv.from_proto(proto_runtime_env)
     assert cls_runtime_env.to_dict() == runtime_env
 

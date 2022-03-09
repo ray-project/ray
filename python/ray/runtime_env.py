@@ -343,9 +343,10 @@ class RuntimeEnv(dict):
 
         # set py_modules
         py_modules_uris = self.py_modules_uris()
-        proto_runtime_env.python_runtime_env.py_modules.extend(py_modules_uris)
-        # set py_modules uris
-        proto_runtime_env.uris.py_modules_uris.extend(py_modules_uris)
+        if py_modules_uris:
+            proto_runtime_env.python_runtime_env.py_modules.extend(py_modules_uris)
+            # set py_modules uris
+            proto_runtime_env.uris.py_modules_uris.extend(py_modules_uris)
 
         # set conda uri
         conda_uri = self.conda_uri()
