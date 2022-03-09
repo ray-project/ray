@@ -166,7 +166,8 @@ class InputAtrributeNode(DAGNode):
         >>> ray_dag.execute(2, 3)
 
         >>> # Alternatively, you can input a single object
-        >>> # and the inputs comes from indexing [0] and [1]:
+        >>> # and the inputs are automatically indexed from the object:
+        >>> # This makes a = 2 and b = 3
         >>> ray_dag.execute([2, 3])
     """
 
