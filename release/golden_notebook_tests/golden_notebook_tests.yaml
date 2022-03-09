@@ -7,7 +7,7 @@
   run:
     use_connect: True
     autosuspend_mins: 10
-    timeout: 1200
+    timeout: 1500
     script: python workloads/dask_xgboost_test.py
     args:
       [
@@ -26,7 +26,7 @@
   run:
     use_connect: True
     autosuspend_mins: 10
-    timeout: 1200
+    timeout: 1500
     script: python workloads/modin_xgboost_test.py
     args:
       [
