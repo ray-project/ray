@@ -150,19 +150,23 @@ class InputAtrributeNode(DAGNode):
 
     Examples:
         >>> with InputNode() as dag_input:
-        >>>     a = input[0]
-        >>>     b = input.x
+        >>>     a = dag_input[0]
+        >>>     b = dag_input.x
         >>>     ray_dag = add.bind(a, b)
 
         >>> # This makes a = 1 and b = 2
         >>> ray_dag.execute(1, x=2)
 
         >>> with InputNode() as dag_input:
-        >>>     a = input[0]
-        >>>     b = input[1]
+        >>>     a = dag_input[0]
+        >>>     b = dag_input[1]
         >>>     ray_dag = add.bind(a, b)
 
         >>> # This makes a = 2 and b = 3
+        >>> ray_dag.execute(2, 3)
+
+        >>> # Alternatively, you can input a single object
+        >>> # and the inputs comes from indexing [0] and [1]:
         >>> ray_dag.execute([2, 3])
     """
 
