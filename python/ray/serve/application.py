@@ -16,6 +16,7 @@ from ray.dashboard.modules.serve.schema import (
     serve_application_status_to_schema,
 )
 from ray.serve.utils import logger
+from ray.serve.api import get_deployment_statuses
 
 
 class Application:
@@ -126,7 +127,7 @@ class Application:
 
             while True:
                 statuses = serve_application_status_to_schema(
-                    serve.get_deployment_statuses()
+                    get_deployment_statuses()
                 ).json(indent=4)
                 logger.info(f"{statuses}")
                 time.sleep(10)

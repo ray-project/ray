@@ -1430,7 +1430,6 @@ def list_deployments() -> Dict[str, Deployment]:
     return deployments
 
 
-@PublicAPI
 def get_deployment_statuses() -> Dict[str, DeploymentStatusInfo]:
     """Returns a dictionary of deployment statuses.
 
@@ -1438,7 +1437,7 @@ def get_deployment_statuses() -> Dict[str, DeploymentStatusInfo]:
 
     Example:
 
-    >>> statuses = serve.get_deployment_statuses()
+    >>> statuses = get_deployment_statuses()
     >>> status_info = statuses["deployment_name"]
     >>> status = status_info.status
     >>> message = status_info.message

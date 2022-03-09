@@ -23,6 +23,7 @@ from ray.dashboard.modules.serve.schema import (
 from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P4
 from ray.serve.config import AutoscalingConfig
 from ray.serve.common import DeploymentStatus, DeploymentStatusInfo
+from ray.serve.api import get_deployment_statuses
 from ray import serve
 
 
@@ -579,9 +580,7 @@ def test_serve_application_to_schema_to_serve_application():
     assert requests.get("http://localhost:8000/hi").text == "Hello world!"
 
     # Check statuses
-    statuses = serve_application_status_to_schema(
-        serve.get_deployment_statuses()
-    ).statuses
+    statuses = serve_application_status_to_schema(get_deployment_statuses()).statuses
     deployment_names = {"f1", "f2"}
     for deployment_status in statuses:
         assert deployment_status.status in {"UPDATING", "HEALTHY"}
