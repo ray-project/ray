@@ -36,12 +36,11 @@ class Application:
             self.add_deployment(d)
 
     def add_deployment(self, deployment: Deployment):
-        """
-        Adds the deployment to this Serve application. Validates that a
-        deployment with the same name doesn't already exist. To overwrite an
-        existing deployment, use attribute or index notation. For example:
+        """Adds the deployment to this Serve application.
 
-        app.deployment_name = deployment
+        Validates that a deployment with the same name doesn't already exist.
+        To overwrite an existing deployment, use index notation. For example:
+
         app[deployment_name] = deployment
 
         Args:
@@ -66,10 +65,9 @@ class Application:
         self._deployments[deployment.name] = deployment
 
     def deploy(self, blocking: bool = True):
-        """
-        Deploys all the deployments contained in this Application to the Ray
-        cluster atomically. Deployments in this Application can carry handles
-        to one another.
+        """Atomically deploys the Application's deployments to the Ray cluster.
+
+        The Application's deployments can carry handles to one another.
 
         Args:
             blocking (bool): If True, this function only returns after the
@@ -113,12 +111,13 @@ class Application:
         dashboard_address="http://localhost:8265",
         logger=logger,
     ):
-        """
-        Deploys all deployments in this Application and then keeps looping.
-        This function must be manually killed (e.g. using ctrl-C). When it
-        recieves a kill signal, it tears down all deployments that it deployed.
-        If there are no deployments left, it also shuts down the rest of Serve,
-        including the controller. This is meant to help interactive development.
+        """Deploys all deployments in this Application and logs status.
+
+        This function keeps looping and printing status, so it must be manually
+        killed (e.g. using ctrl-C). When it recieves a kill signal, it tears
+        down all deployments that it deployed. If there are no deployments
+        left, it also shuts down the rest of Serve, including the controller.
+        This is meant to help interactive development.
 
         Args:
             runtime_env_updates (Dict): This is a runtime_env dictionary that
@@ -167,10 +166,10 @@ class Application:
             sys.exit()
 
     def to_json(self, f: Optional[TextIO] = None) -> str:
-        """
-        Returns this Application's deployments as a JSON string. Optionally
-        writes the JSON string to a file as well. To write to a file, use this
-        pattern:
+        """Returns this Application's deployments as a JSON string.
+
+        Optionally writes the JSON string to a file as well. To write to a
+        file, use this pattern:
 
         with open("file_name.txt", "w") as f:
             app.to_json(f=f)
@@ -195,9 +194,10 @@ class Application:
 
     @classmethod
     def from_json(cls, str_or_file: Union[str, TextIO]) -> "Application":
-        """
+        """Converts JSON data to deployments for an Application.
+
         Takes in a string or a file pointer to a file containing deployment
-        definitions in JSON. These definitions are converted to a new
+        definitions in JSON. The definitions are converted to a new
         Application object containing the deployments.
 
         To read from a file, use the following pattern:
@@ -226,10 +226,10 @@ class Application:
         return cls(schema_to_serve_application(schema))
 
     def to_yaml(self, f: Optional[TextIO]) -> Optional[str]:
-        """
-        Returns this Application's deployments as a YAML string. Optionally
-        writes the YAML string to a file as well. To write to a file, use this
-        pattern:
+        """Returns this Application's deployments as a YAML string.
+
+        Optionally writes the YAML string to a file as well. To write to a
+        file, use this pattern:
 
         with open("file_name.txt", "w") as f:
             app.to_yaml(f=f)
@@ -254,7 +254,8 @@ class Application:
 
     @classmethod
     def from_yaml(cls, str_or_file: Union[str, TextIO]) -> "Application":
-        """
+        """Converts YAML data to deployments for an Application.
+
         Takes in a string or a file pointer to a file containing deployment
         definitions in YAML. These definitions are converted to a new
         Application object containing the deployments.
@@ -281,9 +282,10 @@ class Application:
         return cls(schema_to_serve_application(schema))
 
     def _configure_runtime_env(self, deployment: Deployment, updates: Dict):
-        """
-        Overwrites deployment's runtime_env with fields in updates. Any fields
-        in deployment's runtime_env that aren't in updates stay the same.
+        """Overwrites deployment's runtime_env with fields in updates.
+
+        Any fields in deployment's runtime_env that aren't in updates stay the
+        same.
         """
 
         if deployment.ray_actor_options is None:
@@ -294,8 +296,7 @@ class Application:
             deployment.ray_actor_options["runtime_env"] = updates
 
     def __getitem__(self, key: str):
-        """
-        Fetch a deployment by name using dict syntax: app["name"]
+        """Fetch a deployment by name using dict syntax: app["name"]
 
         Raises:
             KeyError: if the name is not in this Application.
@@ -307,8 +308,7 @@ class Application:
             raise KeyError(f'Serve application does not contain a "{key}" deployment.')
 
     def __setitem__(self, key: str, value: Deployment):
-        """
-        Fetch a deployment by name using dict syntax: app[name] = new_deployment
+        """Set a deployment by name with dict syntax: app[name]=new_deployment
 
         Use this to overwrite existing deployments.
 
@@ -328,8 +328,7 @@ class Application:
         self._deployments[key] = value
 
     def __getattr__(self, name: str):
-        """
-        Fetch a deployment by name using attribute syntax: app.name
+        """Fetch a deployment by name using attribute syntax: app.name
 
         Raises:
             AttributeError: if the name is not in this Application.
@@ -343,8 +342,8 @@ class Application:
             )
 
     def __iter__(self):
-        """
-        Iterator over Application's deployments.
+        """Iterator over Application's deployments.
+
         Enables "for deployment in Application" pattern.
         """
 
