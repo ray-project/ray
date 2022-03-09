@@ -10,6 +10,7 @@ from ray.ml.checkpoint import (
     _get_local_path,
     _get_external_path,
 )
+from ray.util import log_once
 
 from ray.util.annotations import Deprecated
 from ray.util.ml_utils.cloud import (
@@ -393,11 +394,12 @@ class TrialCheckpoint(Checkpoint, _TrialCheckpoint):
         local_path: Optional[str] = None,
         overwrite: bool = False,
     ) -> str:
-        warnings.warn(
-            "`checkpoint.download()` is deprecated and will be removed in "
-            "the future. Please use `checkpoint.to_directory()` instead.",
-            DeprecationWarning,
-        )
+        if log_once("trial_checkpoint_download_deprecated"):
+            warnings.warn(
+                "`checkpoint.download()` is deprecated and will be removed in "
+                "the future. Please use `checkpoint.to_directory()` instead.",
+                DeprecationWarning,
+            )
         return _TrialCheckpoint.download(self, cloud_path, local_path, overwrite)
 
     def upload(
@@ -406,18 +408,20 @@ class TrialCheckpoint(Checkpoint, _TrialCheckpoint):
         local_path: Optional[str] = None,
         clean_before: bool = False,
     ):
-        warnings.warn(
-            "`checkpoint.upload()` is deprecated and will be removed in "
-            "the future. Please use `checkpoint.to_uri()` instead.",
-            DeprecationWarning,
-        )
+        if log_once("trial_checkpoint_upload_deprecated"):
+            warnings.warn(
+                "`checkpoint.upload()` is deprecated and will be removed in "
+                "the future. Please use `checkpoint.to_uri()` instead.",
+                DeprecationWarning,
+            )
         return _TrialCheckpoint.upload(self, cloud_path, local_path, clean_before)
 
     def save(self, path: Optional[str] = None, force_download: bool = False):
-        warnings.warn(
-            "`checkpoint.save()` is deprecated and will be removed in "
-            "the future. Please use `checkpoint.to_directory()` or"
-            "`checkpoint.to_uri()` instead.",
-            DeprecationWarning,
-        )
+        if log_once("trial_checkpoint_save_deprecated"):
+            warnings.warn(
+                "`checkpoint.save()` is deprecated and will be removed in "
+                "the future. Please use `checkpoint.to_directory()` or"
+                "`checkpoint.to_uri()` instead.",
+                DeprecationWarning,
+            )
         return _TrialCheckpoint.save(self, path, force_download)
