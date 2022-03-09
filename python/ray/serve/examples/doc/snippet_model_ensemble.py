@@ -11,11 +11,13 @@ def model_one(input_data):
     time.sleep(4)
     return 1
 
+
 @serve.deployment(num_replicas=5)
 def model_two(input_data):
     print("Model 2 predict")
     time.sleep(4)
     return 2
+
 
 @serve.deployment(max_concurrent_queries=10, route_prefix="/composed")
 class EnsembleModel:
@@ -25,17 +27,18 @@ class EnsembleModel:
 
     async def __call__(self, input_data):
         print("Call models concurrently, wait for both to finish")
-        tasks = [self.model_one.remote(data=input_data), self.model_two.remote(data=input_data)]
-        await asyncio.wait(tasks)
-        print("collect models predictions (blocking)")
-        predictions = ray.get(tasks)
+        tasks = [self.model_one.remote(input_data), self.model_two.remote(input_data)]
+        print("collect models predictions (non-blocking)")
+        predictions = await asyncio.gather(*tasks)
         return predictions
-
 
 
 def send_concurrent_model_requests(num_single_model_replicas=5):
     ensemble_model = EnsembleModel.get_handle()
-    all_data = [ensemble_model.remote(input_data) for input_data in range(num_single_model_replicas)]
+    all_data = [
+        ensemble_model.remote(input_data)
+        for input_data in range(num_single_model_replicas)
+    ]
     all_predictions = ray.get(all_data)
     print(all_predictions)
 
