@@ -18,7 +18,7 @@ def convert_pandas_to_torch_tensor(
     tensors.
 
     Args:
-        data_batch (pandas.DataFrame): The pandas dataframe to conver to a
+        data_batch (pandas.DataFrame): The pandas dataframe to convert to a
             torch tensor.
         columns (Optional[Union[List[str], List[List[str]]]):
             The names of the columns in the dataframe to include in the
