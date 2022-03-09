@@ -109,6 +109,14 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
         1) A List[str] describing the requirements. This is passed through.
         2) A string pointing to a local requirements file. In this case, the
            file contents will be read split into a list.
+        3) A python dictionary that has three fields:
+            a) packages (require, List[str]): a list of pip packages, it same as 1).
+            b) pip_check (optional, bool): whether enable pip check at the end of pip
+               install, default True.
+            c) pip_version (optional, str): the version of pip, ray will spell
+               the package name 'pip' in front of the `pip_version` to form the final
+               requirement string, the syntax of a requirement specifier is defined in
+               full in PEP 508.
 
     The returned parsed value will be a list of pip packages. If a Ray library
     (e.g. "ray[serve]") is specified, it will be deleted and replaced by its
