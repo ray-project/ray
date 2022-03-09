@@ -1,11 +1,12 @@
 from typing import Callable, Optional, Dict
 
-from ray.train.torch import TorchConfig
-from ray.train.ml_trainer import GenDataset
-from ray.train.impl.data_parallel_trainer import DataParallelFunctionTrainer
 from ray.ml.config import ScalingConfig, RunConfig
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
+
+from ray.train.torch import TorchConfig
+from ray.train.ml_trainer import GenDataset
+from ray.train.impl.data_parallel_trainer import DataParallelFunctionTrainer
 
 
 class TorchTrainer(DataParallelFunctionTrainer):

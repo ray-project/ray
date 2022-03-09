@@ -1,8 +1,12 @@
 import pytest
 
 import ray
+from ray import train
 from ray.train.integrations.torch import TorchTrainer
 from ray.train.examples.train_linear_example import train_func as linear_train_func
+
+from ray.ml.integrations.torch import TorchPredictor
+from ray.ml.constants import MODEL_KEY
 
 
 @pytest.fixture
@@ -31,6 +35,52 @@ class TestTorchTrainer:
             scaling_config=scaling_config,
         )
         trainer.fit()
+
+    def test_torch_predict(self, ray_start_4_cpus):
+        import torch
+
+        def train_func():
+            model = torch.nn.Linear(1, 1)
+            train.save_checkpoint({MODEL_KEY: model})
+
+        scaling_config = {"num_workers": 2}
+        trainer = TorchTrainer(train_func=train_func, scaling_config=scaling_config)
+        result = trainer.fit()
+
+        predictor = TorchPredictor.from_checkpoint(result.checkpoint)
+
+        predict_dataset = ray.data.range(3)
+        predictions = predict_dataset.map_batches(
+            lambda batch: predictor.predict(batch, dtype=torch.float),
+            batch_format="pandas",
+        )
+        assert predictions.count() == 3
+
+    def test_torch_predict_state_dict(self, ray_start_4_cpus):
+        import torch
+
+        def train_func():
+            model = torch.nn.Linear(1, 1).state_dict()
+            train.save_checkpoint({MODEL_KEY: model})
+
+        scaling_config = {"num_workers": 2}
+        trainer = TorchTrainer(train_func=train_func, scaling_config=scaling_config)
+        result = trainer.fit()
+
+        # If loading from a state dict, a model definition must be passed in.
+        with pytest.raises(RuntimeError):
+            TorchPredictor.from_checkpoint(result.checkpoint)
+
+        predictor = TorchPredictor.from_checkpoint(
+            result.checkpoint, model_definition=torch.nn.Linear(1, 1)
+        )
+
+        predict_dataset = ray.data.range(3)
+        predictions = predict_dataset.map_batches(
+            lambda batch: predictor.predict(batch, dtype=torch.float),
+            batch_format="pandas",
+        )
+        assert predictions.count() == 3
 
 
 if __name__ == "__main__":
