@@ -59,7 +59,7 @@ _DATASETS = "datasets"
 class _TunerInternal:
     """The real implementation behind external facing ``Tuner``.
 
-    The external facing Tuner multiplexes between local Tuner and remote Tuner
+    The external facing ``Tuner`` multiplexes between local Tuner and remote Tuner
     depending on whether in Ray client mode.
 
     In Ray client mode, external Tuner wraps ``_TunerInternal`` into a remote actor,
@@ -107,12 +107,13 @@ class _TunerInternal:
 
             self.is_restored = True
             self.trainable = trainable
-            self.experiment_path = restore_path
+            self.experiment_checkpoint_dir = restore_path
             self.callbacks = callbacks
             return
 
         # 2. Start from fresh
         assert trainable
+        # TODO(xwjiang): Plumbing through `tune_algo_config`.
         self.is_restored = False
         self.trainable = trainable
         # Only used when constructing Tuner from scatch.
@@ -123,7 +124,7 @@ class _TunerInternal:
         self.name = name
         self.callbacks = callbacks
 
-        self._experiment_checkpoint_dir = self._get_or_create_experiment_checkpoint_dir(
+        self.experiment_checkpoint_dir = self._get_or_create_experiment_checkpoint_dir(
             local_dir
         )
 
@@ -133,11 +134,11 @@ class _TunerInternal:
         # without allowing for checkpointing tuner and trainable.
         # Thus this has to happen before tune.run() so that we can have something
         # to restore from.
-        tuner_ckpt = os.path.join(self._experiment_checkpoint_dir, "tuner.pkl")
+        tuner_ckpt = os.path.join(self.experiment_checkpoint_dir, "tuner.pkl")
         with open(tuner_ckpt, "wb") as fp:
             pickle.dump(self, fp)
 
-        trainable_ckpt = os.path.join(self._experiment_checkpoint_dir, "trainable.pkl")
+        trainable_ckpt = os.path.join(self.experiment_checkpoint_dir, "trainable.pkl")
         with open(trainable_ckpt, "wb") as fp:
             pickle.dump(self.trainable, fp)
 
@@ -182,18 +183,6 @@ class _TunerInternal:
                 # We shouldn't be expecting anything here.
                 raise TuneError("Unexpected dataset param passed in.")
 
-    @staticmethod
-    def _convert_trainable(trainable: Any):
-        if isinstance(trainable, ConvertibleToTrainable):
-            trainable = trainable.as_trainable()
-        else:
-            trainable = trainable
-        return trainable
-
-    @property
-    def experiment_checkpoint_dir(self):
-        return self._experiment_checkpoint_dir
-
     def _get_or_create_experiment_checkpoint_dir(self, local_dir: Optional[str]):
         """Get experiment checkpoint dir before actually running experiment."""
         path = Experiment.get_experiment_checkpoint_dir(
@@ -202,6 +191,18 @@ class _TunerInternal:
         if not os.path.exists(path):
             os.makedirs(path)
         return path
+
+    # This has to be done through a function signature (@property won't do).
+    def experiment_checkpoint_dir(self):
+        return self.experiment_checkpoint_dir
+
+    @staticmethod
+    def _convert_trainable(trainable: Any):
+        if isinstance(trainable, ConvertibleToTrainable):
+            trainable = trainable.as_trainable()
+        else:
+            trainable = trainable
+        return trainable
 
     def fit(self):
         trainable = self._convert_trainable(self.trainable)
@@ -215,24 +216,24 @@ class _TunerInternal:
 
     def _fit_internal(self, trainable, param_space):
         """Fitting for a fresh Tuner."""
-        assert self.experiment_path
+        assert self.experiment_checkpoint_dir
         analysis = run(
             trainable,
             config={**param_space},
             name=self.name,
             callbacks=self.callbacks,
-            _experiment_checkpoint_dir=self.experiment_path,
+            _experiment_checkpoint_dir=self.experiment_checkpoint_dir,
         )
         return analysis
 
     def _fit_resume(self, trainable):
         """Fitting for a restored Tuner."""
-        assert self.experiment_path
+        assert self.experiment_checkpoint_dir
         analysis = run(
             trainable,
             resume=True,
             callbacks=self.callbacks,
-            _experiment_checkpoint_dir=self.experiment_path,
+            _experiment_checkpoint_dir=self.experiment_checkpoint_dir,
         )
         return analysis
 
@@ -307,6 +308,9 @@ class Tuner:
     def restore(cls, path, callbacks: Optional[List[Callback]] = None):
         """Restore Tuner.
 
+        Note: depending on whether ray client mode is used or not, this path may
+        or may not exist on your local machine.
+
         callbacks are passed again as they are considered run time thing."""
         if not ray.util.client.ray.is_connected():
             tuner_internal = _TunerInternal(restore_path=path, callbacks=callbacks)
@@ -320,7 +324,7 @@ class Tuner:
     def fit(self):
         if not self._is_ray_client:
             try:
-                self._local_tuner.fit()
+                return self._local_tuner.fit()
             except Exception:
                 raise TuneError(
                     f"Tune run fails with {traceback.format_exc()}. "

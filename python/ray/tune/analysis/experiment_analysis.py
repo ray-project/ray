@@ -81,8 +81,6 @@ class ExperimentAnalysis:
     ):
         experiment_checkpoint_path = os.path.expanduser(experiment_checkpoint_path)
 
-        self.experiment_dir = os.path.dirname(experiment_checkpoint_path)
-
         latest_checkpoint = self._get_latest_checkpoint(experiment_checkpoint_path)
 
         self._experiment_states = []
