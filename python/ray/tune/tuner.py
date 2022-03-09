@@ -144,9 +144,9 @@ class Tuner:
                 return self._local_tuner.fit()
             except Exception:
                 raise TuneError(
-                    f"Tune run fails with {traceback.format_exc()}. "
-                    f"Please use tuner = Tuner.restore("
-                    f"{self._local_tuner.experiment_checkpoint_dir}) to resume."
+                    f"Tune run fails with {traceback.format_exc()}"
+                    f'Please use tuner = Tuner.restore("'
+                    f'{self._local_tuner.experiment_checkpoint_dir}") to resume.'
                 )
         else:
             experiment_checkpoint_dir = ray.get(
@@ -156,7 +156,7 @@ class Tuner:
                 return ray.get(self._remote_tuner.fit.remote())
             except Exception:
                 raise TuneError(
-                    f"Tune run fails with {traceback.format_exc()}. "
-                    f"Please use tuner = Tuner.restore("
-                    f"{experiment_checkpoint_dir}) to resume."
+                    f"Tune run fails with {traceback.format_exc()}"
+                    f'Please use tuner = Tuner.restore("'
+                    f'{experiment_checkpoint_dir}") to resume.'
                 )
