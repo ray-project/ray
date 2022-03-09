@@ -15,6 +15,7 @@ from ray.serve.pipeline.deployment_node import DeploymentNode
 from ray.serve.pipeline.json_serde import DAGNodeEncoder
 from ray.serve.pipeline.ingress import Ingress
 from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
+from ray.util.annotations import PublicAPI
 
 DEFAULT_INGRESS_DEPLOYMENT_NAME = "ingress"
 
@@ -162,3 +163,21 @@ def get_ingress_deployment(
     )
 
     return serve_dag_root_deployment
+
+@PublicAPI
+def build(ray_dag_root_node: DAGNode):
+    """
+
+    Examples:
+        with ServeInputNode(preprocessor=request_to_data_int) as dag_input:
+            m1 = Model.bind(1)
+            m2 = Model.bind(2)
+            m1_output = m1.forward.bind(dag_input[0])
+            m2_output = m2.forward.bind(dag_input[1])
+            ray_dag = ensemble.bind(m1_output, m2_output)
+
+        app = serve.pipeline.build(ray_dag)
+        app.m1.set_options(num_replicas=3)
+        app.m2.set_options(num_replicas=5)
+    """
+    pass
