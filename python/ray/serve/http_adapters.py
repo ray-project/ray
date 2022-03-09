@@ -34,7 +34,7 @@ class NdArray(BaseModel):
     dtype: Optional[str] = Field(
         default=None,
         description=(
-            "The dtype of the array. If present, the array will be cast by `astype`."
+            "The numpy dtype of the array. If present, the array will be cast by `astype`."
         ),
     )
 
@@ -51,7 +51,7 @@ def array_to_databatch(payload: NdArray) -> DataBatchType:
 
 @require_packages(["PIL"])
 def image_to_databatch(img: bytes = File(...)) -> DataBatchType:
-    """Accepts a PIL-readable file from an HTTP form and converts it to a data batch type."""
+    """Accepts a PIL-readable file from an HTTP form and converts it to a DataBatchType."""
     from PIL import Image
 
     image = Image.open(BytesIO(img))
