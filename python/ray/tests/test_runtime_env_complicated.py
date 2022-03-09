@@ -10,6 +10,7 @@ from unittest import mock, skipIf
 import yaml
 
 import ray
+from ray.runtime_env import RuntimeEnv
 from ray._private.runtime_env.conda import (
     inject_dependencies,
     _inject_ray_to_conda_site,
@@ -215,16 +216,17 @@ def test_job_config_conda_env(conda_envs, shutdown_only):
     os.environ.get("CI") and sys.platform != "linux",
     reason="This test is only run on linux CI machines.",
 )
-def test_job_eager_install(shutdown_only):
+@pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
+def test_job_eager_install(shutdown_only, runtime_env_class):
     # Test enable eager install. This flag is set to True by default.
     runtime_env = {"conda": {"dependencies": ["toolz"]}}
     env_count = len(get_conda_env_list())
-    ray.init(runtime_env=runtime_env)
+    ray.init(runtime_env=runtime_env_class(**runtime_env))
     wait_for_condition(lambda: len(get_conda_env_list()) == env_count + 1, timeout=60)
     ray.shutdown()
     # Test disable eager install
     runtime_env = {"conda": {"dependencies": ["toolz"]}, "eager_install": False}
-    ray.init(runtime_env=runtime_env)
+    ray.init(runtime_env=runtime_env_class(**runtime_env))
     with pytest.raises(RuntimeError):
         wait_for_condition(
             lambda: len(get_conda_env_list()) == env_count + 2, timeout=5
@@ -233,7 +235,7 @@ def test_job_eager_install(shutdown_only):
     # Test unavailable type
     runtime_env = {"conda": {"dependencies": ["toolz"]}, "eager_install": 123}
     with pytest.raises(TypeError):
-        ray.init(runtime_env=runtime_env)
+        ray.init(runtime_env=runtime_env_class(**runtime_env))
     ray.shutdown()
 
 
