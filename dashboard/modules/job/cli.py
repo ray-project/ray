@@ -1,16 +1,17 @@
 import asyncio
+import json
 import os
 import pprint
 from subprocess import list2cmdline
 import time
 from typing import Optional, Tuple
+import yaml
 
 import click
 
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.util.annotations import PublicAPI
-from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 
 
 def _get_sdk_client(
@@ -143,11 +144,25 @@ def submit(
     """
     client = _get_sdk_client(address, create_cluster_if_needed=True)
 
-    final_runtime_env = parse_runtime_env_args(
-        runtime_env=runtime_env,
-        runtime_env_json=runtime_env_json,
-        working_dir=working_dir,
-    )
+    final_runtime_env = {}
+    if runtime_env is not None:
+        if runtime_env_json is not None:
+            raise ValueError(
+                "Only one of --runtime_env and " "--runtime-env-json can be provided."
+            )
+        with open(runtime_env, "r") as f:
+            final_runtime_env = yaml.safe_load(f)
+
+    elif runtime_env_json is not None:
+        final_runtime_env = json.loads(runtime_env_json)
+
+    if working_dir is not None:
+        if "working_dir" in final_runtime_env:
+            cli_logger.warning(
+                "Overriding runtime_env working_dir with --working-dir option"
+            )
+
+        final_runtime_env["working_dir"] = working_dir
 
     job_id = client.submit_job(
         entrypoint=list2cmdline(entrypoint),

@@ -557,9 +557,9 @@ class TrialCheckpointEndToEndTest(unittest.TestCase):
             with open(os.path.join(cd, "checkpoint.json"), "rt") as f:
                 return json.load(f)
 
-        with patch("ray.tune.cloud._clear_bucket", self._clear_bucket), patch(
-            "ray.tune.cloud._download_from_bucket", self._fake_download_from_bucket
-        ), patch("ray.tune.cloud._upload_to_bucket", self._fake_upload_to_bucket):
+        with patch("ray.tune.cloud.clear_bucket", self._clear_bucket), patch(
+            "ray.tune.cloud.download_from_bucket", self._fake_download_from_bucket
+        ), patch("ray.tune.cloud.upload_to_bucket", self._fake_upload_to_bucket):
             #######
             # Case: Checkpoint exists on local dir. Copy to other local dir.
             other_local_dir = tempfile.mkdtemp()

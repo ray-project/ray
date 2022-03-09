@@ -34,9 +34,10 @@ ClusterResourceScheduler::ClusterResourceScheduler()
       [&](const NodeResources &local_resource_update) {
         cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_resource_update);
       });
-  scheduling_policy_ = std::make_unique<raylet_scheduling_policy::SchedulingPolicy>(
-      local_node_id_, cluster_resource_manager_->GetResourceView(),
-      [this](auto node_id) { return this->NodeAlive(node_id); });
+  scheduling_policy_ =
+      std::make_unique<raylet_scheduling_policy::CompositeSchedulingPolicy>(
+          local_node_id_, cluster_resource_manager_->GetResourceView(),
+          [this](auto node_id) { return this->NodeAlive(node_id); });
 }
 
 ClusterResourceScheduler::ClusterResourceScheduler(
@@ -51,9 +52,10 @@ ClusterResourceScheduler::ClusterResourceScheduler(
         cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_resource_update);
       });
   cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_node_resources);
-  scheduling_policy_ = std::make_unique<raylet_scheduling_policy::SchedulingPolicy>(
-      local_node_id_, cluster_resource_manager_->GetResourceView(),
-      [this](auto node_id) { return this->NodeAlive(node_id); });
+  scheduling_policy_ =
+      std::make_unique<raylet_scheduling_policy::CompositeSchedulingPolicy>(
+          local_node_id_, cluster_resource_manager_->GetResourceView(),
+          [this](auto node_id) { return this->NodeAlive(node_id); });
 }
 
 ClusterResourceScheduler::ClusterResourceScheduler(
@@ -71,9 +73,10 @@ ClusterResourceScheduler::ClusterResourceScheduler(
         cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_resource_update);
       });
   cluster_resource_manager_->AddOrUpdateNode(local_node_id_, node_resources);
-  scheduling_policy_ = std::make_unique<raylet_scheduling_policy::SchedulingPolicy>(
-      local_node_id_, cluster_resource_manager_->GetResourceView(),
-      [this](auto node_id) { return this->NodeAlive(node_id); });
+  scheduling_policy_ =
+      std::make_unique<raylet_scheduling_policy::CompositeSchedulingPolicy>(
+          local_node_id_, cluster_resource_manager_->GetResourceView(),
+          [this](auto node_id) { return this->NodeAlive(node_id); });
 }
 
 bool ClusterResourceScheduler::NodeAlive(scheduling::NodeID node_id) const {
