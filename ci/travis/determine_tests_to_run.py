@@ -72,6 +72,7 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=str, help="json or envvars", default="envvars")
     args = parser.parse_args()
 
+    RAY_CI_ML_AFFECTED = 0
     RAY_CI_TUNE_AFFECTED = 0
     RAY_CI_SGD_AFFECTED = 0
     RAY_CI_TRAIN_AFFECTED = 0
@@ -124,7 +125,9 @@ if __name__ == "__main__":
         skip_prefix_list = ["doc/", "examples/", "dev/", "kubernetes/", "site/"]
 
         for changed_file in files:
-            if changed_file.startswith("python/ray/tune"):
+            if changed_file.startswith("python/ray/ml"):
+                RAY_CI_ML_AFFECTED = 1
+            elif changed_file.startswith("python/ray/tune"):
                 RAY_CI_DOC_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
@@ -173,6 +176,7 @@ if __name__ == "__main__":
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("python/"):
+                RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_SGD_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
@@ -206,6 +210,7 @@ if __name__ == "__main__":
                 RAY_CI_DOCKER_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
             elif changed_file.startswith("src/"):
+                RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_SGD_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
@@ -221,6 +226,7 @@ if __name__ == "__main__":
                 RAY_CI_DASHBOARD_AFFECTED = 1
                 RAY_CI_DOC_AFFECTED = 1
             else:
+                RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_SGD_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
@@ -236,6 +242,7 @@ if __name__ == "__main__":
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
                 RAY_CI_DASHBOARD_AFFECTED = 1
     else:
+        RAY_CI_ML_AFFECTED = 1
         RAY_CI_TUNE_AFFECTED = 1
         RAY_CI_SGD_AFFECTED = 1
         RAY_CI_TRAIN_AFFECTED = 1
@@ -255,6 +262,7 @@ if __name__ == "__main__":
     # Log the modified environment variables visible in console.
     output_string = " ".join(
         [
+            "RAY_CI_ML_AFFECTED={}".format(RAY_CI_ML_AFFECTED),
             "RAY_CI_TUNE_AFFECTED={}".format(RAY_CI_TUNE_AFFECTED),
             "RAY_CI_SGD_AFFECTED={}".format(RAY_CI_SGD_AFFECTED),
             "RAY_CI_TRAIN_AFFECTED={}".format(RAY_CI_TRAIN_AFFECTED),
