@@ -190,17 +190,7 @@ class TorchAccelerator(Accelerator):
         return device
 
     def enable_reproducibility(self, seed: int = 0) -> None:
-        """Limits sources of nondeterministic behavior.
-
-        This function:
-        * Seeds PyTorch, Python, and NumPy.
-        * Disables CUDA convolution benchmarking.
-        * Configures PyTorch to use determinstic algorithms.
-        * Seeds workers spawned for multi-process data loading.
-
-        Args:
-            seed (int): The number to seed libraries and data workers with.
-        """
+        """Limits sources of nondeterministic behavior."""
         self._seed = seed
 
         torch.manual_seed(seed)
@@ -476,13 +466,17 @@ def enable_reproducibility(seed: int = 0) -> None:
     """Limits sources of nondeterministic behavior.
 
     This function:
-    * Seeds PyTorch, Python, and NumPy.
-    * Disables CUDA convolution benchmarking.
-    * Configures PyTorch to use determinstic algorithms.
-    * Seeds workers spawned for multi-process data loading.
+    1. Seeds PyTorch, Python, and NumPy.
+    2. Disables CUDA convolution benchmarking.
+    3. Configures PyTorch to use determinstic algorithms.
+    4. Seeds workers spawned for multi-process data loading.
 
     Args:
         seed (int): The number to seed libraries and data workers with.
+
+    .. warning:: ``train.torch.enable_reproducibility()`` can't guarantee
+        completely reproducible results across executions. To learn more, read
+        the `PyTorch notes on randomness <https://pytorch.org/docs/stable/notes/randomness.html>`_.
     """
     get_accelerator(TorchAccelerator).enable_reproducibility(seed)
 
