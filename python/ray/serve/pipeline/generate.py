@@ -18,6 +18,7 @@ from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
 
 DEFAULT_INGRESS_DEPLOYMENT_NAME = "ingress"
 
+
 class DeploymentNameGenerator(object):
     """
     Generate unique suffix for each given deployment_name requested for name.
@@ -157,7 +158,7 @@ def get_ingress_deployment(
         init_args=(
             serve_dag_root_json,
             preprocessor_import_path,
-        )
+        ),
     )
 
     return serve_dag_root_deployment
