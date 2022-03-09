@@ -1,10 +1,9 @@
-from typing import List, Dict, TextIO, Optional, Union
+from typing import List, TextIO, Optional, Union
 import json
 import yaml
 import time
 import sys
 
-import ray
 from ray import serve
 from ray.serve.api import (
     Deployment,
@@ -16,7 +15,6 @@ from ray.dashboard.modules.serve.schema import (
     schema_to_serve_application,
     serve_application_status_to_schema,
 )
-from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve.utils import logger
 
 
@@ -104,13 +102,7 @@ class Application:
 
         return _get_global_client().deploy_group(parameter_group, _blocking=blocking)
 
-    def run(
-        self,
-        runtime_env_updates=None,
-        cluster_address="auto",
-        dashboard_address="http://localhost:8265",
-        logger=logger,
-    ):
+    def run(self, logger=logger):
         """Deploys all deployments in this Application and logs status.
 
         This function keeps looping and printing status, so it must be manually
@@ -135,16 +127,7 @@ class Application:
         """
 
         try:
-            runtime_env_updates = runtime_env_updates or {}
-
-            ray.init(address=cluster_address, namespace="serve")
             serve.start(detached=True)
-            ServeSubmissionClient(dashboard_address)._upload_working_dir_if_needed(
-                runtime_env_updates
-            )
-
-            for deployment in self._deployments.values():
-                self._configure_runtime_env(deployment, runtime_env_updates)
             self.deploy()
 
             logger.info("\nDeployed successfully!\n")
@@ -280,20 +263,6 @@ class Application:
         deployments_json = yaml.safe_load(str_or_file)
         schema = ServeApplicationSchema.parse_obj(deployments_json)
         return cls(schema_to_serve_application(schema))
-
-    def _configure_runtime_env(self, deployment: Deployment, updates: Dict):
-        """Overwrites deployment's runtime_env with fields in updates.
-
-        Any fields in deployment's runtime_env that aren't in updates stay the
-        same.
-        """
-
-        if deployment.ray_actor_options is None:
-            deployment._ray_actor_options = {"runtime_env": updates}
-        elif "runtime_env" in deployment.ray_actor_options:
-            deployment.ray_actor_options["runtime_env"].update(updates)
-        else:
-            deployment.ray_actor_options["runtime_env"] = updates
 
     def __getitem__(self, key: str):
         """Fetch a deployment by name using dict syntax: app["name"]

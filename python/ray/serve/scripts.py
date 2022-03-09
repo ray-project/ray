@@ -84,6 +84,21 @@ def process_args_and_kwargs(
     return args, args_and_kwargs
 
 
+def _configure_runtime_env(deployment: Deployment, updates: Dict):
+    """Overwrites deployment's runtime_env with fields in updates.
+
+    Any fields in deployment's runtime_env that aren't in updates stay the
+    same.
+    """
+
+    if deployment.ray_actor_options is None:
+        deployment._ray_actor_options = {"runtime_env": updates}
+    elif "runtime_env" in deployment.ray_actor_options:
+        deployment.ray_actor_options["runtime_env"].update(updates)
+    else:
+        deployment.ray_actor_options["runtime_env"] = updates
+
+
 @click.group(help="[EXPERIMENTAL] CLI for managing Serve instances on a Ray cluster.")
 def cli():
     pass
@@ -407,12 +422,15 @@ def run(
 
         app = Application([deployment.options(init_args=args, init_kwargs=kwargs)])
 
-    app.run(
-        runtime_env_updates=runtime_env_updates,
-        cluster_address=cluster_address,
-        dashboard_address=dashboard_address,
-        logger=cli_logger,
+    ray.init(address=cluster_address, namespace="serve")
+    ServeSubmissionClient(dashboard_address)._upload_working_dir_if_needed(
+        runtime_env_updates
     )
+
+    for deployment in app:
+        _configure_runtime_env(deployment, runtime_env_updates)
+
+    app.run(logger=cli_logger)
 
 
 @cli.command(
