@@ -61,7 +61,7 @@ ray.autoscaler.sdk.request_resources(num_cpus=4)
 
 You can uninstall the KubeRay operator using
 ```shell
-kubectl delete -f "ray/python/ray/autoscaler/kuberay/kuberay-autoscaler.yaml"
+kubectl delete -f "ray/python/ray/autoscaler/kuberay/kuberay-autoscaler-rbac.yaml"
 kubectl delete -k "ray/python/ray/autoscaler/kuberay/config/default"
 ```
 
