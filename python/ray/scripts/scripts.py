@@ -2023,13 +2023,20 @@ def global_gc(address):
     "--redis-password",
     required=False,
     type=str,
-    default=None,
-    help="The password to use for Redis",
+    default="",
+    help="The password to use for Redis.\n"
+    "Ray versions >= 1.11.0 don't use Redis.\n"
+    "Only set this if you really know what you're doing.",
 )
 def kuberay_autoscaler(
     cluster_name: str, cluster_namespace: str, redis_password: str
 ) -> None:
-    """Runs the autoscaler for a Ray cluster managed by the KubeRay operator."""
+    """Runs the autoscaler for a Ray cluster managed by the KubeRay operator.
+
+    `ray kuberay-autoscaler` is meant to be used as an entry point in
+        KubeRay cluster configs.
+    `ray kuberay-autoscaler` is NOT a public CLI.
+    """
     run_autoscaler_with_retries(cluster_name, cluster_namespace, redis_password)
 
 
