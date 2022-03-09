@@ -33,7 +33,7 @@ void MetricPointExporter::ExportToPoints(
   const auto &metric_name = measure_descriptor.name();
 
   // NOTE(lingxuan.zlx): No sampling in histogram data, so all points all be filled in.
-  absl::flat_hash_map<std::string, std::string> tags;
+  std::unordered_map<std::string, std::string> tags;
   for (size_t i = 0; i < view_data.begin()->first.size(); ++i) {
     tags[keys[i]] = view_data.begin()->first[i];
   }

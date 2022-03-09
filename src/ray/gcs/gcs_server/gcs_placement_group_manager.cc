@@ -798,8 +798,8 @@ void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
 }
 
 void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
-  std::unordered_map<NodeID, std::vector<rpc::Bundle>> node_to_bundles;
-  std::unordered_map<PlacementGroupID, std::vector<std::shared_ptr<BundleSpecification>>>
+  absl::flat_hash_map<NodeID, std::vector<rpc::Bundle>> node_to_bundles;
+  absl::flat_hash_map<PlacementGroupID, std::vector<std::shared_ptr<BundleSpecification>>>
       group_to_bundles;
   for (auto &item : gcs_init_data.PlacementGroups()) {
     auto placement_group = std::make_shared<GcsPlacementGroup>(item.second);

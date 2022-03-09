@@ -562,7 +562,7 @@ const GcsNodeInfo *NodeInfoAccessor::Get(const NodeID &node_id,
   return nullptr;
 }
 
-const std::unordered_map<NodeID, GcsNodeInfo> &NodeInfoAccessor::GetAll() const {
+const absl::flat_hash_map<NodeID, GcsNodeInfo> &NodeInfoAccessor::GetAll() const {
   return node_cache_;
 }
 
@@ -724,8 +724,8 @@ Status NodeResourceInfoAccessor::AsyncUpdateResources(const NodeID &node_id,
   RAY_LOG(DEBUG) << "Updating node resources, node id = " << node_id;
   rpc::UpdateResourcesRequest request;
   request.set_node_id(node_id.Binary());
-  for (auto &resource : resources) {
-    (*request.mutable_resources())[resource.first] = *resource.second;
+  for (const auto &[name, data] : resources) {
+    (*request.mutable_resources())[name] = *data;
   }
 
   auto operation = [this, request, node_id,

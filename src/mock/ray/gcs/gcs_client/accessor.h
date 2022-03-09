@@ -112,7 +112,7 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               (override));
   MOCK_METHOD(const rpc::GcsNodeInfo *, Get,
               (const NodeID &node_id, bool filter_dead_nodes), (const, override));
-  MOCK_METHOD((const std::unordered_map<NodeID, rpc::GcsNodeInfo> &), GetAll, (),
+  MOCK_METHOD((const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &), GetAll, (),
               (const, override));
   MOCK_METHOD(bool, IsRemoved, (const NodeID &node_id), (const, override));
   MOCK_METHOD(Status, AsyncReportHeartbeat,

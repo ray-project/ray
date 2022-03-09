@@ -522,7 +522,7 @@ GcsPlacementGroupScheduler::GetBundlesOnNode(const NodeID &node_id) {
 }
 
 void GcsPlacementGroupScheduler::ReleaseUnusedBundles(
-    const std::unordered_map<NodeID, std::vector<rpc::Bundle>> &node_to_bundles) {
+    const absl::flat_hash_map<NodeID, std::vector<rpc::Bundle>> &node_to_bundles) {
   // The purpose of this function is to release bundles that may be leaked.
   // When GCS restarts, it doesn't know which bundles it has scheduled in the
   // previous lifecycle. In this case, GCS will send a list of bundle ids that
@@ -550,7 +550,7 @@ void GcsPlacementGroupScheduler::ReleaseUnusedBundles(
 }
 
 void GcsPlacementGroupScheduler::Initialize(
-    const std::unordered_map<PlacementGroupID,
+    const absl::flat_hash_map<PlacementGroupID,
                              std::vector<std::shared_ptr<BundleSpecification>>>
         &group_to_bundles) {
   // We need to reinitialize the `committed_bundle_location_index_`, otherwise,

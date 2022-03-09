@@ -112,7 +112,7 @@ ray::Status Raylet::RegisterGcs() {
 
     // Add resource information.
     const NodeManagerConfig &node_manager_config = node_manager_.GetInitialConfig();
-    std::unordered_map<std::string, std::shared_ptr<rpc::ResourceTableData>> resources;
+    absl::flat_hash_map<std::string, std::shared_ptr<rpc::ResourceTableData>> resources;
     for (const auto &resource_pair :
          node_manager_config.resource_config.GetResourceMap()) {
       auto resource = std::make_shared<rpc::ResourceTableData>();

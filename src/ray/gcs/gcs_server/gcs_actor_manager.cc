@@ -1132,7 +1132,7 @@ void GcsActorManager::SetSchedulePendingActorsPosted(bool posted) {
 
 void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
   const auto &jobs = gcs_init_data.Jobs();
-  std::unordered_map<NodeID, std::vector<WorkerID>> node_to_workers;
+  absl::flat_hash_map<NodeID, std::vector<WorkerID>> node_to_workers;
   for (const auto &entry : gcs_init_data.Actors()) {
     auto job_iter = jobs.find(entry.first.JobId());
     auto is_job_dead = (job_iter == jobs.end() || job_iter->second.is_dead());

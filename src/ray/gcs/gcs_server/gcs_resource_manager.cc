@@ -52,7 +52,7 @@ void GcsResourceManager::HandleUpdateResources(
     rpc::SendReplyCallback send_reply_callback) {
   NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(DEBUG) << "Updating resources, node id = " << node_id;
-  auto changed_resources = std::make_shared<std::unordered_map<std::string, double>>();
+  auto changed_resources = std::make_shared<absl::flat_hash_map<std::string, double>>();
   for (const auto &entry : request.resources()) {
     changed_resources->emplace(entry.first, entry.second.resource_capacity());
   }
@@ -61,8 +61,8 @@ void GcsResourceManager::HandleUpdateResources(
   if (iter != cluster_scheduling_resources_.end()) {
     // Update `cluster_scheduling_resources_`.
     SchedulingResources &scheduling_resources = *iter->second;
-    for (const auto &entry : *changed_resources) {
-      scheduling_resources.UpdateResourceCapacity(entry.first, entry.second);
+    for (const auto& [name, capacity] : *changed_resources) {
+      scheduling_resources.UpdateResourceCapacity(name, capacity);
     }
 
     // Update gcs storage.
@@ -70,8 +70,8 @@ void GcsResourceManager::HandleUpdateResources(
     for (const auto &entry : scheduling_resources.GetTotalResources().GetResourceMap()) {
       (*resource_map.mutable_items())[entry.first].set_resource_capacity(entry.second);
     }
-    for (const auto &entry : *changed_resources) {
-      (*resource_map.mutable_items())[entry.first].set_resource_capacity(entry.second);
+    for (const auto& [name, capacity] : *changed_resources) {
+      (*resource_map.mutable_items())[name].set_resource_capacity(capacity);
     }
 
     auto start = absl::GetCurrentTimeNanos();

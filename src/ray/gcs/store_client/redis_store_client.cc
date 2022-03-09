@@ -244,11 +244,11 @@ Status RedisStoreClient::DeleteByKeys(const std::vector<std::string> &keys,
   return Status::OK();
 }
 
-std::unordered_map<RedisContext *, std::list<std::vector<std::string>>>
+absl::flat_hash_map<RedisContext *, std::list<std::vector<std::string>>>
 RedisStoreClient::GenCommandsByShards(const std::shared_ptr<RedisClient> &redis_client,
                                       const std::string &command,
                                       const std::vector<std::string> &keys, int *count) {
-  std::unordered_map<RedisContext *, std::list<std::vector<std::string>>>
+  absl::flat_hash_map<RedisContext *, std::list<std::vector<std::string>>>
       commands_by_shards;
   for (auto &key : keys) {
     auto shard_context = redis_client->GetShardContext(key).get();
