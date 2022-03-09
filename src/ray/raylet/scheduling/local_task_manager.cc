@@ -53,6 +53,13 @@ LocalTaskManager::LocalTaskManager(
       sched_cls_cap_max_ms_(RayConfig::instance().worker_cap_max_backoff_delay_ms()) {}
 
 void LocalTaskManager::QueueAndScheduleTask(std::shared_ptr<internal::Work> work) {
+  if (work->grant_or_reject &&
+      !cluster_resource_scheduler_->IsSchedulableOnLocalNode(
+          work->task.GetTaskSpecification().GetRequiredResources().GetResourceMap())) {
+    work->reply->set_rejected(true);
+    work->callback();
+    return;
+  }
   WaitForTaskArgsRequests(work);
   ScheduleAndDispatchTasks();
 }

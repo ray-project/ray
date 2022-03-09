@@ -103,6 +103,12 @@ class ClusterResourceScheduler {
   bool IsSchedulableOnNode(scheduling::NodeID node_id,
                            const absl::flat_hash_map<std::string, double> &shape);
 
+  /// Check whether a task request is schedulable on the local node. A node is
+  /// schedulable if it has the available resources needed to execute the task.
+  ///
+  /// \param shape The resource demand's shape.
+  bool IsSchedulableOnLocalNode(const absl::flat_hash_map<std::string, double> &shape);
+
   LocalResourceManager &GetLocalResourceManager() { return *local_resource_manager_; }
   ClusterResourceManager &GetClusterResourceManager() {
     return *cluster_resource_manager_;

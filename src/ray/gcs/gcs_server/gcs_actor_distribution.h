@@ -41,23 +41,17 @@ class GcsActorWorkerAssignment
   ///
   /// \param node_id ID of node on which this gcs actor worker assignment is allocated.
   /// \param acquired_resources Resources owned by this gcs actor worker assignment.
-  /// \param is_shared A flag to represent that whether the worker process can be shared.
-  GcsActorWorkerAssignment(const NodeID &node_id, const ResourceSet &acquired_resources,
-                           bool is_shared);
+  GcsActorWorkerAssignment(const NodeID &node_id, const ResourceSet &acquired_resources);
 
   const NodeID &GetNodeID() const;
 
   const ResourceSet &GetResources() const;
-
-  bool IsShared() const;
 
  private:
   /// ID of node on which this actor worker assignment is allocated.
   const NodeID node_id_;
   /// Resources owned by this actor worker assignment.
   const ResourceSet acquired_resources_;
-  /// A flag to represent that whether the worker process can be shared.
-  const bool is_shared_;
 };
 
 /// GcsBasedActorScheduler inherits from GcsActorScheduler. Its scheduling strategy is
@@ -121,29 +115,21 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
                               const rpc::RequestWorkerLeaseReply &reply) override;
 
  private:
-  /// Select an existing or allocate a new actor worker assignment for the actor.
-  std::unique_ptr<GcsActorWorkerAssignment> SelectOrAllocateActorWorkerAssignment(
-      std::shared_ptr<GcsActor> actor, bool need_sole_actor_worker_assignment);
-
   /// Allocate a new actor worker assignment.
   ///
-  /// \param required_resources The resources that the worker required.
-  /// \param is_shared If the worker is shared by multiple actors or not.
   /// \param task_spec The specification of the task.
-  std::unique_ptr<GcsActorWorkerAssignment> AllocateNewActorWorkerAssignment(
-      const ResourceSet &required_resources, bool is_shared,
+  std::unique_ptr<GcsActorWorkerAssignment> AllocateActorWorkerAssignment(
       const TaskSpecification &task_spec);
 
   /// Allocate resources for the actor.
   ///
-  /// \param required_resources The resources to be allocated.
+  /// \param task_spec The specification of the task.
   /// \return ID of the node from which the resources are allocated.
-  NodeID AllocateResources(const ResourceSet &required_resources);
+  NodeID AllocateResources(const TaskSpecification &task_spec);
 
   NodeID GetHighestScoreNodeResource(const ResourceSet &required_resources) const;
 
-  void WarnResourceAllocationFailure(const TaskSpecification &task_spec,
-                                     const ResourceSet &required_resources) const;
+  void WarnResourceAllocationFailure(const TaskSpecification &task_spec) const;
 
   /// A rejected rely means resources were preempted by normal tasks. Then
   /// update the the cluster resource view and reschedule immediately.

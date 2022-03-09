@@ -279,14 +279,6 @@ void ClusterTaskManager::ScheduleOnNode(const NodeID &spillback_to,
     return;
   }
 
-  auto send_reply_callback = work->callback;
-
-  if (work->grant_or_reject) {
-    work->reply->set_rejected(true);
-    send_reply_callback();
-    return;
-  }
-
   internal_stats_.TaskSpilled();
   const auto &task = work->task;
   const auto &task_spec = task.GetTaskSpecification();
@@ -309,7 +301,7 @@ void ClusterTaskManager::ScheduleOnNode(const NodeID &spillback_to,
   reply->mutable_retry_at_raylet_address()->set_port(node_info_ptr->node_manager_port());
   reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
 
-  send_reply_callback();
+  work->callback();
 }
 }  // namespace raylet
 }  // namespace ray

@@ -92,9 +92,7 @@ class Work {
 
   UnscheduledWorkCause GetUnscheduledCause() const { return unscheduled_work_cause_; }
 
-  bool PrioritizeLocalNode() const {
-    return grant_or_reject || is_selected_based_on_locality;
-  }
+  bool PrioritizeLocalNode() const { return is_selected_based_on_locality; }
 
  private:
   WorkStatus status_ = WorkStatus::WAITING;
