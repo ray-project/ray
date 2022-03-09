@@ -58,7 +58,7 @@ class SmokeTest(ReleaseTest):
 
 CORE_NIGHTLY_TESTS = {
     "~/ray/release/nightly_tests/nightly_tests.yaml": [
-        "shuffle_10gb",
+        # "shuffle_10gb",
         "shuffle_50gb",
         "shuffle_50gb_large_partition",
         "shuffle_100gb",
@@ -82,16 +82,17 @@ CORE_NIGHTLY_TESTS = {
         SmokeTest("threaded_actors_stress_test"),
         "pg_long_running_performance_test",
     ],
-    "~/ray/benchmarks/benchmark_tests.yaml": [
-        "single_node",
-        "object_store",
-        "many_actors_smoke_test",
-        "many_tasks_smoke_test",
-        "many_pgs_smoke_test",
-    ],
+    # "~/ray/benchmarks/benchmark_tests.yaml": [
+    #     "single_node",
+    #     "object_store",
+    #     "many_actors_smoke_test",
+    #     "many_tasks_smoke_test",
+    #     "many_pgs_smoke_test",
+    # ],
     "~/ray/release/nightly_tests/dataset/dataset_test.yaml": [
         "inference",
         "shuffle_data_loader",
+        "parquet_metadata_resolution",
         "pipelined_training_50_gb",
         "pipelined_ingestion_1500_gb",
         "datasets_preprocess_ingest",
@@ -103,9 +104,9 @@ CORE_NIGHTLY_TESTS = {
         "chaos_many_tasks_no_object_store",
         "chaos_pipelined_ingestion_1500_gb_15_windows",
     ],
-    "~/ray/release/microbenchmark/microbenchmark.yaml": [
-        "microbenchmark",
-    ],
+    # "~/ray/release/microbenchmark/microbenchmark.yaml": [
+    #     "microbenchmark",
+    # ],
 }
 
 SERVE_NIGHTLY_TESTS = {
@@ -119,7 +120,8 @@ SERVE_NIGHTLY_TESTS = {
         "autoscaling_single_deployment",
         "autoscaling_multi_deployment",
         "serve_micro_benchmark",
-        "serve_micro_benchmark_k8s",
+        # TODO(architkulkarni) Reenable after K8s migration.  Currently failing
+        # "serve_micro_benchmark_k8s",
         "serve_cluster_fault_tolerance",
     ],
 }
@@ -142,31 +144,22 @@ CORE_DAILY_TESTS = {
 }
 
 CORE_SCALABILITY_TESTS_DAILY = {
-    "~/ray/benchmarks/benchmark_tests.yaml": [
-        "many_actors",
-        "many_tasks",
-        "many_pgs",
-        "many_nodes",
-    ],
-}
-
-CORE_REDIS_HA_TESTS_DAILY = {
-    "~/ray/benchmarks/benchmark_tests.yaml": [
-        "many_actors_redis_ha",
-        "many_tasks_redis_ha",
-        "many_pgs_redis_ha",
-        "many_nodes_redis_ha",
-    ],
+    # "~/ray/benchmarks/benchmark_tests.yaml": [
+    #     "many_actors",
+    #     "many_tasks",
+    #     "many_pgs",
+    #     "many_nodes",
+    # ],
 }
 
 CORE_SCHEDULING_DAILY = {
-    "~/ray/benchmarks/benchmark_tests.yaml": [
-        "scheduling_test_many_0s_tasks_single_node",
-        "scheduling_test_many_0s_tasks_many_nodes",
-        # Reenable these two once we got right setup
-        # "scheduling_test_many_5s_tasks_single_node",
-        # "scheduling_test_many_5s_tasks_many_nodes",
-    ],
+    # "~/ray/benchmarks/benchmark_tests.yaml": [
+    #     "scheduling_test_many_0s_tasks_single_node",
+    #     "scheduling_test_many_0s_tasks_many_nodes",
+    #     # Reenable these two once we got right setup
+    #     # "scheduling_test_many_5s_tasks_single_node",
+    #     # "scheduling_test_many_5s_tasks_many_nodes",
+    # ],
     "~/ray/release/nightly_tests/nightly_tests.yaml": [
         "many_nodes_actor_test",
         "dask_on_ray_10gb_sort",
@@ -215,33 +208,33 @@ NIGHTLY_TESTS = {
     "~/ray/release/sgd_tests/sgd_tests.yaml": [
         "sgd_gpu",
     ],
-    "~/ray/release/tune_tests/cloud_tests/tune_cloud_tests.yaml": [
-        "aws_no_sync_down",
-        "aws_ssh_sync",
-        "aws_durable_upload",
-        "aws_durable_upload_rllib_str",
-        "aws_durable_upload_rllib_trainer",
-        "gcp_k8s_durable_upload",
-    ],
-    "~/ray/release/tune_tests/scalability_tests/tune_tests.yaml": [
-        "bookkeeping_overhead",
-        "durable_trainable",
-        SmokeTest("long_running_large_checkpoints"),
-        SmokeTest("network_overhead"),
-        "result_throughput_cluster",
-        "result_throughput_single_node",
-    ],
-    "~/ray/release/xgboost_tests/xgboost_tests.yaml": [
-        "train_small",
-        "train_moderate",
-        "train_gpu",
-        "tune_small",
-        "tune_4x32",
-        "tune_32x4",
-        "ft_small_elastic",
-        "ft_small_non_elastic",
-        "distributed_api_test",
-    ],
+    # "~/ray/release/tune_tests/cloud_tests/tune_cloud_tests.yaml": [
+    #     "aws_no_sync_down",
+    #     "aws_ssh_sync",
+    #     "aws_durable_upload",
+    #     "aws_durable_upload_rllib_str",
+    #     "aws_durable_upload_rllib_trainer",
+    #     "gcp_k8s_durable_upload",
+    # ],
+    # "~/ray/release/tune_tests/scalability_tests/tune_tests.yaml": [
+    #     "bookkeeping_overhead",
+    #     "durable_trainable",
+    #     SmokeTest("long_running_large_checkpoints"),
+    #     SmokeTest("network_overhead"),
+    #     "result_throughput_cluster",
+    #     "result_throughput_single_node",
+    # ],
+    # "~/ray/release/xgboost_tests/xgboost_tests.yaml": [
+    #     "train_small",
+    #     "train_moderate",
+    #     "train_gpu",
+    #     "tune_small",
+    #     "tune_4x32",
+    #     "tune_32x4",
+    #     "ft_small_elastic",
+    #     "ft_small_non_elastic",
+    #     "distributed_api_test",
+    # ],
     "~/ray/release/rllib_tests/rllib_tests.yaml": [
         SmokeTest("learning_tests"),
         SmokeTest("stress_tests"),
@@ -267,11 +260,11 @@ WEEKLY_TESTS = {
     "/long_running_distributed.yaml": [
         "pytorch_pbt_failure",
     ],
-    "~/ray/release/tune_tests/scalability_tests/tune_tests.yaml": [
-        "network_overhead",
-        "long_running_large_checkpoints",
-        "xgboost_sweep",
-    ],
+    # "~/ray/release/tune_tests/scalability_tests/tune_tests.yaml": [
+    #     "network_overhead",
+    #     "long_running_large_checkpoints",
+    #     "xgboost_sweep",
+    # ],
     "~/ray/release/rllib_tests/rllib_tests.yaml": [
         "learning_tests",
         "stress_tests",
@@ -304,7 +297,6 @@ SUITES = {
     "serve-nightly": SERVE_NIGHTLY_TESTS,
     "core-daily": CORE_DAILY_TESTS,
     "core-scalability": CORE_SCALABILITY_TESTS_DAILY,
-    "core-redis-ha": CORE_REDIS_HA_TESTS_DAILY,
     "nightly": {**NIGHTLY_TESTS, **USER_TESTS},
     "core-scheduling-daily": CORE_SCHEDULING_DAILY,
     "weekly": WEEKLY_TESTS,

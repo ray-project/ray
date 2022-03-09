@@ -1,3 +1,4 @@
+import threading
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, Union
 
 import datetime
@@ -655,6 +656,12 @@ def run(
         state[signal.SIGINT] = True
         # Restore original signal handler to react to future SIGINT signals
         signal.signal(signal.SIGINT, original_handler)
+
+    # We should only install the handler when it is safe to do so.
+    # When tune.run() is called from worker thread, singal.signal will
+    # fail.
+    if threading.current_thread() != threading.main_thread():
+        os.environ["TUNE_DISABLE_SIGINT_HANDLER"] = "1"
 
     if not int(os.getenv("TUNE_DISABLE_SIGINT_HANDLER", "0")):
         signal.signal(signal.SIGINT, sigint_handler)
