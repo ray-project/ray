@@ -138,40 +138,44 @@ PARAM_ARGS = ",".join(
     ]
 )
 
-TEST_DATA = [
-    pytest.param(
-        _get_basic_ray_cr(),
-        _get_basic_autoscaling_config(),
-        None,
-        None,
-        None,
-        id="basic",
-    ),
-    pytest.param(
-        _get_ray_cr_no_cpu_error(),
-        None,
-        ValueError,
-        _get_no_cpu_error(),
-        None,
-        id="no-cpu-error",
-    ),
-    pytest.param(
-        _get_ray_cr_memory_and_gpu(),
-        _get_autoscaling_config_memory_and_gpu(),
-        None,
-        None,
-        None,
-        id="memory-and-gpu",
-    ),
-    pytest.param(
-        _get_ray_cr_missing_gpu_arg(),
-        _get_basic_autoscaling_config(),
-        None,
-        None,
-        _get_gpu_complaint(),
-        id="gpu-complaint",
-    ),
-]
+TEST_DATA = (
+    None
+    if platform.system() == "Windows"
+    else [
+        pytest.param(
+            _get_basic_ray_cr(),
+            _get_basic_autoscaling_config(),
+            None,
+            None,
+            None,
+            id="basic",
+        ),
+        pytest.param(
+            _get_ray_cr_no_cpu_error(),
+            None,
+            ValueError,
+            _get_no_cpu_error(),
+            None,
+            id="no-cpu-error",
+        ),
+        pytest.param(
+            _get_ray_cr_memory_and_gpu(),
+            _get_autoscaling_config_memory_and_gpu(),
+            None,
+            None,
+            None,
+            id="memory-and-gpu",
+        ),
+        pytest.param(
+            _get_ray_cr_missing_gpu_arg(),
+            _get_basic_autoscaling_config(),
+            None,
+            None,
+            _get_gpu_complaint(),
+            id="gpu-complaint",
+        ),
+    ]
+)
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
