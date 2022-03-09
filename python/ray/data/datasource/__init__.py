@@ -11,8 +11,8 @@ from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.datasource.numpy_datasource import NumpyDatasource
 from ray.data.datasource.parquet_datasource import (
     ParquetDatasource,
-    ParquetBlockMetadataProvider,
-    DefaultParquetBlockMetadataProvider,
+    ParquetMetadataProvider,
+    DefaultParquetMetadataProvider,
 )
 from ray.data.datasource.binary_datasource import BinaryDatasource
 from ray.data.datasource.file_based_datasource import (
@@ -20,10 +20,10 @@ from ray.data.datasource.file_based_datasource import (
     _S3FileSystemWrapper,
     BlockWritePathProvider,
     DefaultBlockWritePathProvider,
-    BlockMetadataProvider,
-    BaseBlockMetadataProvider,
-    DefaultBlockMetadataProvider,
+    BaseFileMetadataProvider,
+    DefaultFileMetadataProvider,
 )
+from ray.data.datasource.file_meta_provider import FileMetadataProvider
 
 __all__ = [
     "JSONDatasource",
@@ -41,9 +41,9 @@ __all__ = [
     "WriteResult",
     "BlockWritePathProvider",
     "DefaultBlockWritePathProvider",
-    "BlockMetadataProvider",
-    "BaseBlockMetadataProvider",
-    "DefaultBlockMetadataProvider",
-    "ParquetBlockMetadataProvider",
-    "DefaultParquetBlockMetadataProvider",
+    "FileMetadataProvider",
+    "BaseFileMetadataProvider",
+    "DefaultFileMetadataProvider",
+    "ParquetMetadataProvider",
+    "DefaultParquetMetadataProvider",
 ]
