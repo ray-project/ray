@@ -447,7 +447,7 @@
   run:
     timeout: 600
     script: python workloads/distributed_api_test.py
-    results: ''
+
     wait_for_nodes:
       num_nodes: 4
       timeout: 600
@@ -475,7 +475,7 @@
   run:
     timeout: 900
     script: python workloads/ft_small_non_elastic.py
-    results: ''
+
     wait_for_nodes:
       num_nodes: 4
       timeout: 600
