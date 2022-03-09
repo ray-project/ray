@@ -9,15 +9,25 @@ from ray.ml.predictor import DataBatchType
 
 
 class PreprocessorAlreadyFittedException(RuntimeError):
+    """Error raised when the preprocessor cannot be fitted again."""
+
     pass
 
 
 class PreprocessorNotFittedException(RuntimeError):
+    """Error raised when the preprocessor needs to be fitted first."""
+
     pass
 
 
 class Preprocessor(abc.ABC):
-    """Preprocessor interface for transforming Datasets."""
+    """Implements a ML preprocessing operation.
+
+    Preprocessors are stateful objects that can be fitted against a Dataset and used
+    to transform both local data batches and distributed datasets. For example, a
+    Normalization preprocessor may calculate the mean and stdev of a field during
+    fitting, and uses these attributes to implement its normalization transform.
+    """
 
     # Preprocessors that do not need to be fitted must override this.
     _is_fittable = True
@@ -28,7 +38,8 @@ class Preprocessor(abc.ABC):
         Fitted state attributes will be directly set in the Preprocessor.
 
         Args:
-            dataset (Dataset): Input dataset.
+            dataset: Input dataset.
+
         Returns:
             Preprocessor: The fitted Preprocessor with state attributes.
         """
@@ -40,14 +51,11 @@ class Preprocessor(abc.ABC):
 
         return self._fit(dataset)
 
-    def _fit(self, dataset: Dataset) -> "Preprocessor":
-        raise NotImplementedError()
-
     def fit_transform(self, dataset: Dataset) -> Dataset:
         """Fit this Preprocessor to the Dataset and then transform the Dataset.
 
         Args:
-            dataset (Dataset): Input Dataset.
+            dataset: Input Dataset.
         Returns:
             Dataset: The transformed Dataset.
         """
@@ -68,11 +76,6 @@ class Preprocessor(abc.ABC):
             )
         return self._transform(dataset)
 
-    def _transform(self, dataset: Dataset) -> Dataset:
-        # TODO(matt): Expose `batch_size` or similar configurability.
-        # The default may be too small for some datasets and too large for others.
-        return dataset.map_batches(self._transform_pandas, batch_format="pandas")
-
     def transform_batch(self, df: DataBatchType) -> DataBatchType:
         """Transform a single batch of data.
 
@@ -81,12 +84,29 @@ class Preprocessor(abc.ABC):
         Returns:
             DataBatchType: The transformed data batch.
         """
-
         if self._is_fittable and not self.check_is_fitted():
             raise PreprocessorNotFittedException(
                 "`fit` must be called before `transform_batch`."
             )
         return self._transform_batch(df)
+
+    def check_is_fitted(self) -> bool:
+        """Returns whether this preprocessor is fitted.
+
+        We use the convention that attributes with a trailing ``_`` are set after
+        fitting is complete.
+        """
+        fitted_vars = [v for v in vars(self) if v.endswith("_")]
+        return bool(fitted_vars)
+
+    def _fit(self, dataset: Dataset) -> "Preprocessor":
+        """Sub-classes should override this instead of fit()."""
+        raise NotImplementedError()
+
+    def _transform(self, dataset: Dataset) -> Dataset:
+        # TODO(matt): Expose `batch_size` or similar configurability.
+        # The default may be too small for some datasets and too large for others.
+        return dataset.map_batches(self._transform_pandas, batch_format="pandas")
 
     def _transform_batch(self, df: DataBatchType) -> DataBatchType:
         import pandas as pd
@@ -101,7 +121,3 @@ class Preprocessor(abc.ABC):
 
     def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
         raise NotImplementedError()
-
-    def check_is_fitted(self) -> bool:
-        fitted_vars = [v for v in vars(self) if v.endswith("_")]
-        return bool(fitted_vars)
