@@ -75,9 +75,9 @@ def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus):
 
 
 @pytest.mark.parametrize("use_gpu", (False, True))
-def test_make_reproducible(ray_start_4_cpus_2_gpus, use_gpu):
+def test_enable_reproducibility(ray_start_4_cpus_2_gpus, use_gpu):
     def train_func():
-        train.torch.make_reproducible()
+        train.torch.enable_reproducibility()
 
         model = torchvision.models.resnet18()
         model = train.torch.prepare_model(model)

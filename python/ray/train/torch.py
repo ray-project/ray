@@ -189,7 +189,7 @@ class TorchAccelerator(Accelerator):
 
         return device
 
-    def make_reproducible(self, seed: int = 0) -> None:
+    def enable_reproducibility(self, seed: int = 0) -> None:
         """Limits sources of nondeterministic behavior.
 
         This function:
@@ -469,7 +469,7 @@ def accelerate() -> None:
 
 
 @PublicAPI(stability="beta")
-def make_reproducible(seed: int = 0) -> None:
+def enable_reproducibility(seed: int = 0) -> None:
     """Limits sources of nondeterministic behavior.
 
     This function:
@@ -478,7 +478,7 @@ def make_reproducible(seed: int = 0) -> None:
     * Configures PyTorch to use determinstic algorithms.
     * Seeds workers spawned for multi-process data loading.
     """
-    get_accelerator(TorchAccelerator).make_reproducible(seed)
+    get_accelerator(TorchAccelerator).enable_reproducibility(seed)
 
 
 WORKER_TRACE_DIR_NAME = "pytorch_profiler_worker_traces"
