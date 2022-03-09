@@ -442,14 +442,14 @@ class Trainable:
             checkpoint, parent_dir=checkpoint_dir, trainable_state=trainable_state
         )
 
-        self.postprocess_checkpoint(checkpoint_path)
+        self._postprocess_checkpoint(checkpoint_path)
 
         # Maybe sync to cloud
         self._maybe_save_to_cloud(checkpoint_dir)
 
         return checkpoint_path
 
-    def postprocess_checkpoint(self, checkpoint_path: str):
+    def _postprocess_checkpoint(self, checkpoint_path: str):
         """Run any additional postprocessing before the checkpoint
         is saved to cloud."""
         pass
