@@ -19,8 +19,7 @@ def _process_input_value(v: Any, input_context):
 
 def _transform_dag_recursive(dag_node: FunctionNode, input_context: DAGInputData):
     func_body = dag_node._body
-    workflow_step = workflow.step(func_body)
-    workflow_step_with_options = workflow_step.options(ray_options=dag_node.get_options())
+    workflow_step = workflow.step(func_body).options(ray_options=dag_node.get_options())
     args = []
     kwargs = {}
     for arg in dag_node.get_args():

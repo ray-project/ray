@@ -7,7 +7,7 @@ from ray import workflow
 from ray.experimental.dag import InputNode
 
 
-def test_dag_to_workflow(workflow_start_regular_shared):
+def test_dag_to_workflow_execution(workflow_start_regular_shared):
     """This test constructs a DAG with complex dependencies
     and turns it into a workflow."""
 
@@ -35,6 +35,20 @@ def test_dag_to_workflow(workflow_start_regular_shared):
 
     wf = workflow.create(b, 2, 3.14, a=10, b="ok")
     assert wf.run() == "left(23.14, hello, 10),right(23.14, ok, 2);ok"
+
+
+def test_dag_to_workflow_options(workflow_start_regular_shared):
+    """This test if the workflow inherits DAG options."""
+
+    ray_options = {"num_gpus": 100}
+
+    @ray.remote(**ray_options)
+    def no_resource():
+        pass
+
+    dag = no_resource._bind()
+    wf = workflow.create(dag)
+    assert wf.data.step_options.ray_options == ray_options
 
 
 if __name__ == "__main__":
