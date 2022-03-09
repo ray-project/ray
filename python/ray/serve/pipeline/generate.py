@@ -163,9 +163,10 @@ def get_pipeline_input_node(serve_dag_root_node: DAGNode):
             )
 
     serve_dag_root_node.apply_recursive(extractor)
-    assert (
-        len(input_nodes) == 1
-    ), "There should be one and only one PipelineInputNode in the DAG."
+    assert len(input_nodes) == 1, (
+        "There should be one and only one PipelineInputNode in the DAG. "
+        f"Found {len(input_nodes)} PipelineInputNode(s) instead."
+    )
 
     return input_nodes[0]
 

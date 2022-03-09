@@ -16,6 +16,24 @@ def build(ray_dag_root_node: DAGNode):
 
     This should be the only user facing API that user interacts with.
 
+    Assumptions:
+        - ALL args and kwargs used in DAG building should be JSON serializable.
+            This means in order to ensure your pipeline application can run on
+            a remote cluster potentially with different runtime environment,
+            among all options listed:
+
+                1) binding in-memory objects
+                2) Rely on pickling
+                3) Enforce JSON serialibility on all args used
+
+            We believe both 1) & 2) rely on unstable in-memory objects or
+            cross version pickling / closure capture, where JSON serialization
+            provides the right contract needed for proper deployment.
+
+        - ALL classes and methods used should be visible on top of the file and
+            importable via a fully qualified name. Thus no inline class or
+            function definitions should be used.
+
     Args:
         ray_dag_root_node: DAGNode acting as root of a Ray authored DAG. It
             should be executable via `ray_dag_root_node.execute(user_input)`
@@ -36,14 +54,10 @@ def build(ray_dag_root_node: DAGNode):
 
         >>> app = serve.pipeline.build(ray_dag)
     """
-    serve_root_dag = ray_dag_root_node.apply_recursive(
-        transform_ray_dag_to_serve_dag
-    )
+    serve_root_dag = ray_dag_root_node.apply_recursive(transform_ray_dag_to_serve_dag)
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
     pipeline_input_node = get_pipeline_input_node(serve_root_dag)
-    ingress_deployment = get_ingress_deployment(
-        serve_root_dag, pipeline_input_node
-    )
+    ingress_deployment = get_ingress_deployment(serve_root_dag, pipeline_input_node)
     deployments.insert(0, ingress_deployment)
 
     # TODO (jiaodong): Call into Application once Shreyas' PR is merged

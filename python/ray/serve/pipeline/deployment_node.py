@@ -164,6 +164,16 @@ class DeploymentNode(DAGNode):
             return self._deployment._func_or_class
         else:
             body = self._deployment._func_or_class.__ray_actor_class__
+            error_message = (
+                "Class used in DAG should not be in-line defined when exporting"
+                "import path for deployment. Please ensure it has fully "
+                "qualified name with valid __module__ and __qualname__ for "
+                "import path. \n"
+                f"Current __module__: {body.__module__} \n"
+                f"current __qualname__: {body.__qualname__}"
+            )
+            assert "__main__" not in f"{body.__module__}", error_message
+            assert "<locals>" not in f"{body.__qualname__}", error_message
             return f"{body.__module__}.{body.__qualname__}"
 
     def to_json(self, encoder_cls) -> Dict[str, Any]:
