@@ -7,7 +7,7 @@ from ray.util import PublicAPI
 # TODO(xwjiang): Change to alpha
 @PublicAPI(stability="beta")
 class ResultGrid:
-    """A summary returned by ``tuner.fit()`` call.
+    """A set of ``Result`` objects returned from a call to ``tuner.fit()``.
 
     You can use it to inspect the trials run as well as obtaining the best result.
     """
@@ -33,5 +33,5 @@ class ResultGrid:
         return len(self._experiment_analysis.trials)
 
     def __getitem__(self, i) -> Result:
-        """The "last" result and "last" checkpoint of the trial is returned."""
+        """Returns the i'th result in the grid."""
         return self._trial_to_result(self._experiment_analysis.trials[i])

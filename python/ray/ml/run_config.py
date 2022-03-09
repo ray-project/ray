@@ -9,11 +9,15 @@ from ray.util import PublicAPI
 @dataclass
 @PublicAPI(stability="beta")
 class RunConfig:
-    """Run time config that is shared by both Tune and Train.
+    """Runtime configuration for individual trials that are run.
+
+    This contains information that applies to individual runs of Trainable classes.
+    This includes both running a Trainable by itself or running a hyperparameter
+    tuning job on top of a Trainable (applies to each trial).
 
     Args:
-        name: Name of the run. If not provided, will be deduced
-            from the trainable.
+        name: Name of the trial or experiment. If not provided, will be deduced
+            from the Trainable.
         local_dir: Local dir to save training results to.
             Defaults to ``~/ray_results``.
         callbacks: Callbacks to invoke.
