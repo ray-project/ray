@@ -60,7 +60,6 @@ from ray.rllib.utils.typing import (
     PartialTrainerConfigDict,
     T,
 )
-from ray.tune.logger import Logger
 from ray.tune.trainable import Trainable
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.util.iter import LocalIterator
