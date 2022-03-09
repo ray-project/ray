@@ -318,7 +318,12 @@ class Application:
             deployment.ray_actor_options["runtime_env"] = updates
 
     def __getitem__(self, key: str):
-        """Fetch deployment by name using dict syntax: app["name"]"""
+        """
+        Fetch a deployment by name using dict syntax: app["name"]
+
+        Raises:
+            KeyError: if the name is not in this Application.
+        """
 
         if key in self._deployments:
             return self._deployments[key]
@@ -329,7 +334,12 @@ class Application:
         self.__setattr__(key, value)
 
     def __getattr__(self, name: str):
-        """Fetch deployment by name using attributes: app.name"""
+        """
+        Fetch a deployment by name using attribute syntax: app.name
+
+        Raises:
+            AttributeError: if the name is not in this Application.
+        """
 
         if name in self._deployments:
             return self._deployments[name]
