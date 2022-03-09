@@ -76,6 +76,12 @@ def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus):
 
 @pytest.mark.parametrize("use_gpu", (False, True))
 def test_enable_reproducibility(ray_start_4_cpus_2_gpus, use_gpu):
+    # NOTE: Reproducible results aren't guaranteed between seeded executions, even with
+    # identical hardware and software dependencies. This test should be okay given that
+    # it only runs for two epochs on a small dataset.
+    # NOTE: I've chosen to use a ResNet model over a more simple model, because
+    # `enable_reproducibility` disables CUDA convolution benchmarking, and a simpler
+    # model (e.g., linear) might not test this feature.
     def train_func():
         train.torch.enable_reproducibility()
 
