@@ -2054,7 +2054,7 @@ Dict[str, List[str]]]): The names of the columns
                 use for the label column. If None, then automatically infer
                 the dtype.
             feature_column_dtypes (Union[None, torch.dtype, List[torch.dtype],\
-Dict[str, torch.dtype]]): The dtypes to use for the feature
+ Dict[str, torch.dtype]]): The dtypes to use for the feature
                 tensors. This should match the format of ``feature_columns``,
                 or be a single dtype, in which case it will be applied to
                 all tensors. If None, then automatically infer the dtype.
