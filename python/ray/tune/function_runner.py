@@ -479,6 +479,8 @@ class FunctionRunner(Trainable):
             checkpoint, parent_dir, state
         )
 
+        self.postprocess_checkpoint(checkpoint_path)
+
         self._maybe_save_to_cloud(parent_dir)
 
         return checkpoint_path
