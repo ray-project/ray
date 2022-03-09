@@ -42,7 +42,7 @@ class TorchAccelerator(Accelerator):
     """A utility that implements methods to accelerate PyTorch training."""
 
     def __init__(self):
-        self._is_seeded = False
+        self._seed = None
 
     def prepare_model(
         self,
@@ -151,10 +151,10 @@ class TorchAccelerator(Accelerator):
 
                 worker_init_fn = loader.worker_init_fn
                 generator = loader.generator
-                if self._is_seeded:
+                if self._seed is not None:
                     worker_init_fn = seeded_worker_init_fn(loader.worker_init_fn)
                     generator = torch.Generator()
-                    generator.manual_seed(0)
+                    generator.manual_seed(self._seed)
 
                 data_loader_args = {
                     "dataset": loader.dataset,
@@ -193,19 +193,22 @@ class TorchAccelerator(Accelerator):
         """Limits sources of nondeterministic behavior.
 
         This function:
-        * Seeds PyTorch, Python, and NumPy using the specified seed.
+        * Seeds PyTorch, Python, and NumPy.
         * Disables CUDA convolution benchmarking.
         * Configures PyTorch to use determinstic algorithms.
         * Seeds workers spawned for multi-process data loading.
+
+        Args:
+            seed (int): The number to seed libraries and data workers with.
         """
+        self._seed = seed
+
         torch.manual_seed(seed)
         random.seed(seed)
         np.random.seed(seed)
 
         torch.use_deterministic_algorithms(True)
         torch.backends.cudnn.benchmark = False
-
-        self._is_seeded = True
 
 
 @PublicAPI(stability="beta")
@@ -473,10 +476,13 @@ def enable_reproducibility(seed: int = 0) -> None:
     """Limits sources of nondeterministic behavior.
 
     This function:
-    * Seeds PyTorch, Python, and NumPy using the specified seed.
+    * Seeds PyTorch, Python, and NumPy.
     * Disables CUDA convolution benchmarking.
     * Configures PyTorch to use determinstic algorithms.
     * Seeds workers spawned for multi-process data loading.
+
+    Args:
+        seed (int): The number to seed libraries and data workers with.
     """
     get_accelerator(TorchAccelerator).enable_reproducibility(seed)
 
