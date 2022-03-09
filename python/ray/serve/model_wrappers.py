@@ -31,10 +31,16 @@ class ModelWrapper:
     def __init__(
         self,
         predictor_cls: Type[Predictor],
-        checkpoint: Checkpoint,
+        checkpoint: Union[Checkpoint, Dict],
         input_schema: Optional[Union[str, InputSchemaFn]] = None,
         batching_params: Optional[Dict[str, int]] = None,
     ):
+        if isinstance(checkpoint, dict):
+            checkpoint = import_attr(checkpoint["checkpoint_cls"]).from_uri(
+                checkpoint["uri"]
+            )
+        assert isinstance(checkpoint, Checkpoint)
+
         self.model = predictor_cls.from_checkpoint(checkpoint)
         self.app = FastAPI()
 

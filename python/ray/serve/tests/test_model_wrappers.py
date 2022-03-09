@@ -1,3 +1,5 @@
+import json
+import tempfile
 import numpy as np
 import requests
 
@@ -32,16 +34,29 @@ class AdderCheckpoint(Checkpoint):
     def from_dict(cls, data: dict) -> "Checkpoint":
         return cls(data["increment"])
 
+    @classmethod
+    def from_uri(cls, uri: str) -> "Checkpoint":
+        with open(uri) as f:
+            return cls(json.load(f))
 
-# TODO(simon): Add REST API and CLI integration test
+
+def adder_schema(query_param_arg: int) -> DataBatchType:
+    return np.array([query_param_arg])
+
+
+@ray.remote
+def send_request():
+    return requests.post(
+        "http://localhost:8000/Adder/predict", json={"array": [40]}
+    ).json()
+
+
 def test_simple_adder(serve_instance):
     serve.deployment(name="Adder")(ModelWrapper).deploy(
         predictor_cls=AdderPredictor,
         checkpoint=AdderCheckpoint.from_dict({"increment": 2}),
     )
-    resp = requests.post(
-        "http://localhost:8000/Adder/predict", json={"array": [40]}
-    ).json()
+    resp = ray.get(send_request.remote())
     assert resp == {"value": [42], "batch_size": 1}
 
 
@@ -52,12 +67,34 @@ def test_batching(serve_instance):
         batching_params=dict(max_batch_size=2, batch_wait_timeout_s=1000),
     )
 
-    @ray.remote
-    def send_request():
-        return requests.post(
-            "http://localhost:8000/Adder/predict", json={"array": [40]}
-        ).json()
-
     refs = [send_request.remote() for _ in range(2)]
     for resp in ray.get(refs):
         assert resp == {"value": [42], "batch_size": 2}
+
+
+def test_yaml_compatibility(serve_instance):
+    _, path = tempfile.mkstemp()
+    with open(path, "w") as f:
+        json.dump(2, f)
+
+    client = ServeSubmissionClient()
+    client.deploy_application(
+        [
+            {
+                "name": "Adder",
+                "import_path": "ray.serve.model_wrappers.ModelWrapper",
+                "init_kwargs": {
+                    "predictor_cls": "ray.serve.tests.test_model_wrappers.AdderPredictor",
+                    "checkpoint": {
+                        "checkpoint_cls": "ray.serve.tests.test_model_wrappers.AdderCheckpoint",
+                        "uri": path,
+                    },
+                    "input_schema": "ray.serve.tests.test_model_wrappers.adder_schema",
+                    "batching_params": {"max_batch_size": 1},
+                },
+            }
+        ]
+    )
+
+    resp = ray.get(send_request.remote())
+    assert resp == {"value": [42], "batch_size": 1}
