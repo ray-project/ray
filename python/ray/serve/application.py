@@ -219,7 +219,26 @@ class Application:
 
     @classmethod
     def from_json(cls, str_or_file: Union[str, TextIO]) -> "Application":
-        """Load list of deployments from json str or file."""
+        """
+        Takes in a string or a file pointer to a file containing deployment
+        definitions in JSON. These definitions are converted to a new
+        Application object containing the deployments.
+
+        To read from a file, use the following pattern:
+
+        with open("file_name.txt", "w") as f:
+            app = app.from_json(str_or_file)
+
+        Args:
+            str_or_file (Union[String, TextIO]): Either a string containing
+                JSON deployment definitions or a pointer to a file containing
+                JSON deployment definitions. The JSON format must adhere to the
+                ServeApplicationSchema JSON Schema defined in
+                ray.dashboard.modules.serve.schema.
+        
+        Returns:
+            Application: a new Application object containing the deployments.
+        """
 
         if isinstance(str_or_file, str):
             schema = ServeApplicationSchema.parse_raw(
