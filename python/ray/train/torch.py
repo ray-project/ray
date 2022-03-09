@@ -26,6 +26,7 @@ from torch.utils.data import (
     DataLoader,
     IterableDataset,
     SequentialSampler,
+    RandomSampler,
 )
 
 try:
@@ -123,14 +124,26 @@ class TorchAccelerator(Accelerator):
             def with_sampler(loader):
                 # Automatically set the DistributedSampler
 
-                # If using a sampler, the shuffle attribute in the
-                # DataLoader must be set to False.
-                # Instead the shuffling is determined by the shuffle attribute
-                # in the DistributedSampler.
-                # We identify if shuffling is enabled in the passed in
-                # DataLoader by seeing if the sampler for the DataLoader is a
-                # SequentialSampler.
+                # If you're using a sampler, the DataLoader shuffle flag must be set to
+                # False. Shuffling is instead determined by the shuffle argument passed
+                # to the DistributedSampler constructor.
+
+                # If no sampler is passed to the DataLoader constructor, Torch
+                # constructs a default sampler. The default sampler is a RandomSampler
+                # if shuffling is enabled and a SequentialSampler otherwise. DataLoader
+                # does not have a shuffle attribute, so we instead identify whether
+                # shuffling is enabled by checking the default sampler type.
                 shuffle = not isinstance(loader.sampler, SequentialSampler)
+
+                using_default_sampler = isinstance(
+                    loader.sampler, (SequentialSampler, RandomSampler)
+                )
+                if not using_default_sampler and train.world_rank() == 0:
+                    logger.warn(
+                        f"The {loader.sampler.__class__.__name__} will be overwritten "
+                        "with a DistributedSampler. You can disable this by setting "
+                        "`with_sampler` to False in `prepare_data_loader`."
+                    )
 
                 data_loader_args = {
                     "dataset": loader.dataset,
