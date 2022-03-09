@@ -21,7 +21,7 @@ class PreprocessorNotFittedException(RuntimeError):
 
 
 class Preprocessor(abc.ABC):
-    """Implements a ML preprocessing operation.
+    """Implements an ML preprocessing operation.
 
     Preprocessors are stateful objects that can be fitted against a Dataset and used
     to transform both local data batches and distributed datasets. For example, a
