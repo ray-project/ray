@@ -2,11 +2,9 @@ import logging
 from pathlib import Path
 import sys
 from typing import Dict, List, Optional, Union
-from pkg_resources import Requirement
+
 from collections import OrderedDict
 import yaml
-
-from ray._private.runtime_env.conda import _resolve_install_from_source_ray_extras
 
 logger = logging.getLogger(__name__)
 
@@ -104,51 +102,6 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
     return result
 
 
-def _rewrite_pip_list_ray_libraries(pip_list: List[str]) -> List[str]:
-    """Remove Ray and replace Ray libraries with their dependencies.
-
-    The `pip` field of runtime_env installs packages into the current
-    environment, inheriting the existing environment.  If users want to
-    use Ray libraries like `ray[serve]` in their job, they must include
-    `ray[serve]` in their `runtime_env` `pip` field.  However, without this
-    function, the Ray installed at runtime would take precedence over the
-    Ray that exists in the cluster, which would lead to version mismatch
-    issues.
-
-    To work around this, this function deletes Ray from the input `pip_list`
-    if it's specified without any libraries (e.g. "ray" or "ray>1.4"). If
-    a Ray library is specified (e.g. "ray[serve]"), it is replaced by
-    its dependencies (e.g. "uvicorn", ...).
-
-    """
-    result = []
-    for specifier in pip_list:
-        try:
-            requirement = Requirement.parse(specifier)
-        except Exception:
-            # Some lines in a pip_list might not be requirements but
-            # rather options for `pip`; e.g. `--extra-index-url MY_INDEX`.
-            # Requirement.parse would raise an InvalidRequirement in this
-            # case.  Since we are only interested in lines specifying Ray
-            # or its libraries, we should just skip this line.
-            result.append(specifier)
-            continue
-        package_name = requirement.name
-        if package_name == "ray":
-            libraries = requirement.extras  # e.g. ("serve", "tune")
-            if libraries == ():
-                result.append(specifier)
-            else:
-                # Replace the library with its dependencies.
-                extras = _resolve_install_from_source_ray_extras()
-                for library in libraries:
-                    result += extras[library]
-        else:
-            # Pass through all non-Ray packages unmodified.
-            result.append(specifier)
-    return result
-
-
 def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
     """Parses and validates a user-provided 'pip' option.
 
@@ -183,13 +136,11 @@ def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
             "runtime_env['pip'] must be of type str or " f"List[str], got {type(pip)}"
         )
 
-    result = _rewrite_pip_list_ray_libraries(pip_list)
-
     # Eliminate duplicates to prevent `pip install` from erroring. Use
     # OrderedDict to preserve the order of the list.  This makes the output
     # deterministic and easier to debug, because pip install can have
     # different behavior depending on the order of the input.
-    result = list(OrderedDict.fromkeys(result))
+    result = list(OrderedDict.fromkeys(pip_list))
 
     if len(result) == 0:
         result = None
