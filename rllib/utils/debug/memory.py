@@ -74,15 +74,16 @@ def check_memory_leaks(
         # Isolate the first sub-env in the vectorized setup and test it.
         env = local_worker.async_env.get_sub_environments()[0]
         action_space = env.action_space
+        # Always use same action to avoid numpy random caused memory leaks.
+        action_sample = action_space.sample()
 
         def code():
             env.reset()
             while True:
-                action = action_space.sample()
                 # If masking is used, try something like this:
                 # np.random.choice(
                 #    action_space.n, p=(obs["action_mask"] / sum(obs["action_mask"])))
-                _, _, done, _ = env.step(action)
+                _, _, done, _ = env.step(action_sample)
                 if done:
                     break
 
