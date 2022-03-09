@@ -24,7 +24,7 @@ from ray.serve.application import Application
 from ray.serve.api import Deployment
 
 
-def process_args_and_kwargs(
+def _process_args_and_kwargs(
     args_and_kwargs: Tuple[str],
 ) -> Tuple[List[str], Dict[str, str]]:
     """
@@ -386,7 +386,7 @@ def run(
 
     # Check if path provided is for config or import
     is_config = pathlib.Path(config_or_import_path).is_file()
-    args, kwargs = process_args_and_kwargs(args_and_kwargs)
+    args, kwargs = _process_args_and_kwargs(args_and_kwargs)
     runtime_env_updates = parse_runtime_env_args(
         runtime_env=runtime_env,
         runtime_env_json=runtime_env_json,
