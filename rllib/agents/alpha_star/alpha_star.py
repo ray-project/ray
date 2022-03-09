@@ -292,9 +292,10 @@ class AlphaStarTrainer(appo.APPOTrainer):
                 remote_fn=self._sample_and_send_to_buffer,
             )
         # Update sample counters.
-        for (env_steps, agent_steps) in sample_results.values():
-            self._counters[NUM_ENV_STEPS_SAMPLED] += env_steps
-            self._counters[NUM_AGENT_STEPS_SAMPLED] += agent_steps
+        for sample_result in sample_results.values():
+            for (env_steps, agent_steps) in sample_result:
+                self._counters[NUM_ENV_STEPS_SAMPLED] += env_steps
+                self._counters[NUM_AGENT_STEPS_SAMPLED] += agent_steps
 
         # Trigger asynchronous training update requests on all learning
         # policies.
@@ -314,11 +315,12 @@ class AlphaStarTrainer(appo.APPOTrainer):
             )
 
         # Update sample counters.
-        for result in train_results.values():
-            if NUM_AGENT_STEPS_TRAINED in result:
-                self._counters[NUM_AGENT_STEPS_TRAINED] += result[
-                    NUM_AGENT_STEPS_TRAINED
-                ]
+        for train_result in train_results.values():
+            for result in train_result:
+                if NUM_AGENT_STEPS_TRAINED in result:
+                    self._counters[NUM_AGENT_STEPS_TRAINED] += result[
+                        NUM_AGENT_STEPS_TRAINED
+                    ]
 
         # For those policies that have been updated in this iteration
         # (not all policies may have undergone an updated as we are
