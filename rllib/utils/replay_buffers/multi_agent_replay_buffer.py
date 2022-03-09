@@ -81,7 +81,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                 'episodes'. Specifies how experiences are stored. If they
                 are stored in episodes, replay_sequence_length is ignored.
             learning_starts: Number of timesteps after which a call to
-                `replay()` will yield samples (before that, `replay()` will
+                `sample()` will yield samples (before that, `sample()` will
                 return None).
             capacity: Max number of total timesteps in all policy buffers.
                 After reaching this number, older samples will be
@@ -282,7 +282,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         kwargs = merge_dicts_with_warning(self.underlying_buffer_call_args, kwargs)
 
         if self._num_added < self.replay_starts:
-            return None
+            return MultiAgentBatch({}, 0)
         with self.replay_timer:
             # Lockstep mode: Sample from all policies at the same time an
             # equal amount of steps.

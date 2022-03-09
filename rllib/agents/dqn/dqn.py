@@ -69,19 +69,15 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # Size of the replay buffer. Note that if async_updates is set, then
         # each worker will have a replay buffer of this size.
         "buffer_size": DEPRECATED_VALUE,
+        # For now we don't use the new ReplayBuffer API here
+        "_replay_buffer_api": False,
         "replay_buffer_config": {
-            # Until the new ReplayBuffer API is fully integrated, we specify
-            # new-style buffers by their full path.
-            "type": "ray.rllib.utils.replay_buffers.MultiAgentPrioritizedReplayBuffer",
+            "type": "MultiAgentReplayBuffer",
             "capacity": 50000,
             "replay_batch_size": 32,
             "prioritized_replay_alpha": 0.6,
             # Beta parameter for sampling from prioritized replay buffer.
             "prioritized_replay_beta": 0.4,
-            # Final value of beta (by default, we use constant beta=0.4).
-            "final_prioritized_replay_beta": 0.4,
-            # Time steps over which the beta parameter is annealed.
-            "prioritized_replay_beta_annealing_timesteps": 20000,
             # Epsilon to add to the TD errors when updating priorities.
             "prioritized_replay_eps": 1e-6,
         },
@@ -122,6 +118,12 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # === Parallelism ===
         # Whether to compute priorities on workers.
         "worker_side_prioritization": False,
+
+        # Experimental flag.
+        # If True, the execution plan API will not be used. Instead,
+        # a Trainer's `training_iteration` method will be called as-is each
+        # training iteration.
+        "_disable_execution_plan_api": False,
     },
     _allow_unknown_configs=True,
 )

@@ -15,19 +15,36 @@ from typing import Optional, Type
 from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
 from ray.rllib.agents.dqn.simple_q_torch_policy import SimpleQTorchPolicy
 from ray.rllib.agents.trainer import Trainer, with_common_config
+from ray.rllib.execution.common import WORKER_UPDATE_TIMER
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
-from ray.rllib.execution.rollout_ops import ParallelRollouts
+from ray.rllib.execution.rollout_ops import (
+    ParallelRollouts,
+    synchronous_parallel_sample,
+)
 from ray.rllib.execution.train_ops import (
-    MultiGPUTrainOneStep,
     TrainOneStep,
+    MultiGPUTrainOneStep,
+    train_one_step,
+    multi_gpu_train_one_step,
+)
+from ray.rllib.execution.train_ops import (
     UpdateTargetNetwork,
 )
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.metrics import (
+    NUM_ENV_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_SAMPLED,
+)
+from ray.rllib.utils.typing import (
+    ResultDict,
+    TrainerConfigDict,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,13 +81,12 @@ DEFAULT_CONFIG = with_common_config({
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
     "buffer_size": DEPRECATED_VALUE,
+    # For now we don't use the new ReplayBuffer API here
+    "_replay_buffer_api": True,
     "replay_buffer_config": {
-        # Until the new ReplayBuffer API is fully integrated, we specify
-        # new-style buffers by their full path.
         "type": "MultiAgentPrioritizedReplayBuffer",
         "capacity": 50000,
         "replay_batch_size": 32,
-        "replay_buffer_api": True,
     },
     # Set this to True, if you want the contents of your buffer(s) to be
     # stored in any saved checkpoints as well.
@@ -112,6 +128,12 @@ DEFAULT_CONFIG = with_common_config({
     "num_workers": 0,
     # Prevent reporting frequency from going lower than this time span.
     "min_time_s_per_reporting": 1,
+
+    # Experimental flag.
+    # If True, the execution plan API will not be used. Instead,
+    # a Trainer's `training_iteration` method will be called as-is each
+    # training iteration.
+    "_disable_execution_plan_api": True,
 })
 # __sphinx_doc_end__
 # fmt: on
@@ -219,3 +241,61 @@ class SimpleQTrainer(Trainer):
         )
 
         return StandardMetricsReporting(train_op, workers, config)
+
+    @ExperimentalAPI
+    def training_iteration(self) -> ResultDict:
+        """Default single iteration logic of an algorithm.
+
+        - Collect on-policy samples (SampleBatches) in parallel using the
+          Trainer's RolloutWorkers (@ray.remote).
+        - Concatenate collected SampleBatches into one train batch.
+        - Note that we may have more than one policy in the multi-agent case:
+          Call the different policies' `learn_on_batch` (simple optimizer) OR
+          `load_batch_into_buffer` + `learn_on_loaded_batch` (multi-GPU
+          optimizer) methods to calculate loss and update the model(s).
+        - Return all collected metrics for the iteration.
+
+        Returns:
+            The results dict from executing the training iteration.
+        """
+        batch_size = self.config["train_batch_size"]
+
+        # Collects SampleBatches in parallel and synchronously
+        # from the Trainer's RolloutWorkers until we hit the
+        # configured `train_batch_size`.
+        # TODO Artur: See what happens if we add to buffer and train as fast
+        #  as we can instead of waiting for full batches
+        sample_batches = []
+        num_env_steps = 0
+        num_agent_steps = 0
+
+        new_sample_batches = synchronous_parallel_sample(self.workers)
+        sample_batches.extend(new_sample_batches)
+        num_env_steps += sum(len(s) for s in new_sample_batches)
+        num_agent_steps += sum(
+            len(s) if isinstance(s, SampleBatch) else s.agent_steps()
+            for s in new_sample_batches
+            )
+        self._counters[NUM_ENV_STEPS_SAMPLED] += num_env_steps
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += num_agent_steps
+
+        # Combine all batches at once and add them to the buffer
+        self.local_replay_buffer.add(SampleBatch.concat_samples(sample_batches))
+
+        # Sample a new batch from the buffer
+        train_batch = self.local_replay_buffer.sample(batch_size)
+
+        # Use simple optimizer (only for multi-agent or tf-eager; all other
+        # cases should use the multi-GPU optimizer, even if only using 1 GPU).
+        if self.config.get("simple_optimizer") is True:
+            train_results = train_one_step(self, train_batch)
+        else:
+            train_results = multi_gpu_train_one_step(self, train_batch)
+
+        # Update weights - after learning on the local worker - on all remote
+        # workers.
+        if self.workers.remote_workers():
+            with self._timers[WORKER_UPDATE_TIMER]:
+                self.workers.sync_weights()
+
+        return train_results

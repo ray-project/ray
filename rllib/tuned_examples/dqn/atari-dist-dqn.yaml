@@ -25,7 +25,5 @@ atari-dist-dqn:
           epsilon_timesteps: 200000
           final_epsilon: 0.01
         prioritized_replay_alpha: 0.5
-        final_prioritized_replay_beta: 1.0
-        prioritized_replay_beta_annealing_timesteps: 2000000
         num_gpus: 0.2
         timesteps_per_iteration: 10000
