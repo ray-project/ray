@@ -836,6 +836,8 @@
     file_manager: job
 
   smoke_test:
+    frequency: disabled
+
     run:
       timeout: 1800
 
