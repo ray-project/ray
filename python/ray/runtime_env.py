@@ -580,6 +580,8 @@ class RuntimeEnv(dict):
                 plugin.config = plugin_field
 
     def __getstate__(self):
+        # When pickle serialization, exclude some fields
+        # which can't be serialized by pickle
         return dict(**self)
 
     def __setstate__(self, state):
@@ -604,6 +606,12 @@ def get_runtime_env_info(
     proto_runtime_env_info = ProtoRuntimeEnvInfo()
 
     proto_runtime_env_info.uris[:] = runtime_env.get_uris()
+
+    # Normally, `RuntimeEnv` should guarantee the accuracy of field eager_install,
+    # but so far, the internal code has not completely prohibited direct
+    # modification of fields in RuntimeEnv, so we should check it for insurance.
+    # TODO(Catch-Bull): overload `__setitem__` for `RuntimeEnv`, change the
+    # runtime_env of all internal code from dict to RuntimeEnv.
 
     eager_install = runtime_env.get("eager_install")
     if is_job_runtime_env or eager_install is not None:
