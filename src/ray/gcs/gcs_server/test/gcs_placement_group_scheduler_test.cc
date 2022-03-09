@@ -201,7 +201,10 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     WaitPlacementGroupPendingDone(0, GcsPlacementGroupStatus::FAILURE);
     WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
     CheckEqWithPlacementGroupFront(placement_group, GcsPlacementGroupStatus::SUCCESS);
-    CheckResourceUpdateMatch(success_placement_groups_, true);
+    {
+      absl::MutexLock lock(&placement_group_requests_mutex_);
+      CheckResourceUpdateMatch(success_placement_groups_, true);
+    }
   }
 
   void ReschedulingWhenNodeAddTest(rpc::PlacementStrategy strategy) {
@@ -492,7 +495,10 @@ TEST_F(GcsPlacementGroupSchedulerTest, DestroyPlacementGroup) {
   scheduler_->DestroyPlacementGroupBundleResourcesIfExists(placement_group_id);
   ASSERT_TRUE(raylet_clients_[0]->GrantCancelResourceReserve());
   ASSERT_TRUE(raylet_clients_[0]->GrantCancelResourceReserve());
-  CheckResourceUpdateMatch(success_placement_groups_, false);
+  {
+    absl::MutexLock lock(&placement_group_requests_mutex_);
+    CheckResourceUpdateMatch(success_placement_groups_, false);
+  }
   // Subsequent destroy request should not do anything.
   scheduler_->DestroyPlacementGroupBundleResourcesIfExists(placement_group_id);
   ASSERT_FALSE(raylet_clients_[0]->GrantCancelResourceReserve());
