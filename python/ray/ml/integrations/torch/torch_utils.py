@@ -14,7 +14,7 @@ def convert_pandas_to_torch_tensor(
 
     The format of the return type will match the format of ``columns``. If a
     list of columns is provided, the return type will be a single tensor. If
-    ``columns`` is a list of list, then the return type will be a list of
+    ``columns`` is a list of lists, then the return type will be a list of
     tensors.
 
     Args:
