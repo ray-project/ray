@@ -585,6 +585,7 @@ def create(dag_node: "DAGNode", *args, **kwargs) -> Workflow:
         kwargs: Keyword arguments of the DAG input node.
     """
     from ray.workflow.dag_to_workflow import transform_ray_dag_to_workflow
+
     input_context = DAGInputData(*args, **kwargs)
     return transform_ray_dag_to_workflow(dag_node, input_context)
 

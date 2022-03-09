@@ -24,14 +24,14 @@ def test_dag_to_workflow_execution(workflow_start_regular_shared):
         return f"right({x}, {b}, {pos})"
 
     @ray.remote
-    def end(l, r, b):
-        return f"{l},{r};{b}"
+    def end(lf, rt, b):
+        return f"{lf},{rt};{b}"
 
     with InputNode() as dag_input:
         f = begin._bind(2, dag_input[1], a=dag_input.a)
-        l = left._bind(f, "hello", dag_input.a)
-        r = right._bind(f, b=dag_input.b, pos=dag_input[0])
-        b = end._bind(l, r, b=dag_input.b)
+        lf = left._bind(f, "hello", dag_input.a)
+        rt = right._bind(f, b=dag_input.b, pos=dag_input[0])
+        b = end._bind(lf, rt, b=dag_input.b)
 
     wf = workflow.create(b, 2, 3.14, a=10, b="ok")
     assert wf.run() == "left(23.14, hello, 10),right(23.14, ok, 2);ok"
