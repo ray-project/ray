@@ -22,15 +22,16 @@ from ray.serve.utils import logger
 
 
 class Application:
-    def __init__(self, deployments: List[Deployment] = None):
-        """
-        Initializes a new Serve Application, which contains a group of
-        deployments.
+    """
+    Contains a group of Serve deployments and manages their deployment to the
+    Ray cluster.
 
-        Args:
-            deployments (List[Deployment]): The Serve Application is
-                initialized to contain this group of deployments.
-        """
+    Args:
+        deployments (List[Deployment]): The Serve Application is
+            initialized to contain this group of deployments.
+    """
+
+    def __init__(self, deployments: List[Deployment] = None):
         deployments = deployments or []
 
         self._deployments = dict()
