@@ -29,7 +29,6 @@
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
-#include "ray/gcs/gcs_server/ray_syncer.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
@@ -175,7 +174,6 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param gcs_table_storage Used to flush placement group data to storage.
   /// \param gcs_resource_manager Reference of GcsResourceManager.
   /// \param get_ray_namespace A callback to get the ray namespace.
-  /// \param ray_syncer Syncer handler to pass information to all subscribed nodes
   explicit GcsPlacementGroupManager(
       instrumented_io_context &io_context,
       std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
