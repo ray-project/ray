@@ -43,6 +43,10 @@ const PredefinedResources ResourceStringToEnum(const std::string &resource) {
   return PredefinedResources_MAX;
 }
 
+bool IsPredefinedResource(scheduling::ResourceID resource) {
+  return resource.ToInt() >= 0 && resource.ToInt() < PredefinedResources_MAX;
+}
+
 std::string VectorToString(const std::vector<FixedPoint> &vector) {
   std::stringstream buffer;
 
@@ -194,6 +198,13 @@ NodeResources ResourceMapToNodeResources(
     }
   }
   return node_resources;
+}
+
+bool ResourceRequest::IsGPURequest() const {
+  if (predefined_resources.size() <= GPU) {
+    return false;
+  }
+  return predefined_resources[GPU] > 0;
 }
 
 float NodeResources::CalculateCriticalResourceUtilization() const {
@@ -404,6 +415,13 @@ std::string NodeResources::DictString() const {
   return buffer.str();
 }
 
+bool NodeResources::HasGPU() const {
+  if (predefined_resources.size() <= GPU) {
+    return false;
+  }
+  return predefined_resources[GPU].total > 0;
+}
+
 bool NodeResourceInstances::operator==(const NodeResourceInstances &other) {
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (!EqualVectors(this->predefined_resources[i].total,
@@ -491,6 +509,18 @@ TaskResourceInstances NodeResourceInstances::GetAvailableResourceInstances() {
   }
   return task_resources;
 };
+
+bool NodeResourceInstances::Contains(scheduling::ResourceID id) const {
+  return IsPredefinedResource(id) || custom_resources.contains(id.ToInt());
+}
+
+ResourceInstanceCapacities &NodeResourceInstances::GetMutable(scheduling::ResourceID id) {
+  RAY_CHECK(Contains(id));
+  if (IsPredefinedResource(id)) {
+    return predefined_resources.at(id.ToInt());
+  }
+  return custom_resources.at(id.ToInt());
+}
 
 bool ResourceRequest::IsEmpty() const {
   for (size_t i = 0; i < this->predefined_resources.size(); i++) {

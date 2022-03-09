@@ -302,20 +302,8 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
   auto placement_group_id = placement_group->GetPlacementGroupID();
   RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
       placement_group_id, placement_group->GetPlacementGroupTableData(),
-      [this, placement_group_id, placement_group](Status status) {
+      [this, placement_group_id](Status status) {
         RAY_CHECK_OK(status);
-        // Push request to ray syncer.
-        // TODO (iycheng): This needs to be removed and reporting shouldn't
-        // involve placement group.
-        for (auto &bundle : placement_group->GetBundles()) {
-          auto &resources = bundle->GetFormattedResources();
-          auto node_id = bundle->NodeId();
-          rpc::NodeResourceChange node_resource_change;
-          node_resource_change.set_node_id(node_id.Binary());
-          node_resource_change.mutable_updated_resources()->insert(resources.begin(),
-                                                                   resources.end());
-          ray_syncer_.Update(std::move(node_resource_change));
-        }
         // Invoke all callbacks for all `WaitPlacementGroupUntilReady` requests of this
         // placement group and remove all of them from
         // placement_group_to_create_callbacks_.
@@ -473,21 +461,6 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
   if (pending_it != infeasible_placement_groups_.end()) {
     // The placement group is infeasible now, remove it from the queue.
     infeasible_placement_groups_.erase(pending_it);
-  }
-
-  for (auto &bundle : placement_group->GetBundles()) {
-    std::vector<std::string> resource_names;
-    auto &resources = bundle->GetFormattedResources();
-    for (const auto &iter : resources) {
-      resource_names.push_back(iter.first);
-    }
-    auto node_id = bundle->NodeId();
-    rpc::NodeResourceChange node_resource_change;
-    node_resource_change.set_node_id(node_id.Binary());
-    for (const auto &resource_name : resource_names) {
-      node_resource_change.add_deleted_resources(resource_name);
-    }
-    ray_syncer_.Update(std::move(node_resource_change));
   }
 
   // Flush the status and respond to workers.

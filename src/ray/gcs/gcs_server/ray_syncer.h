@@ -21,6 +21,7 @@
 #include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
 
 namespace ray {
+class GcsPlacementGroupSchedulerTest;
 namespace syncer {
 
 // RaySyncer is a service to sync components in the cluster.
@@ -101,7 +102,6 @@ class RaySyncer {
     static_assert(std::is_same_v<T, rpc::NodeResourceChange> ||
                       std::is_same_v<T, rpc::ResourcesData>,
                   "unknown type");
-
     if constexpr (std::is_same_v<T, rpc::NodeResourceChange>) {
       resources_buffer_proto_.add_batch()->mutable_change()->Swap(&update);
     } else if constexpr (std::is_same_v<T, rpc::ResourcesData>) {
@@ -164,6 +164,7 @@ class RaySyncer {
   // resources_buffer_proto_ will be cleared after each broadcasting.
   absl::flat_hash_map<std::string, rpc::ResourcesData> resources_buffer_;
   rpc::ResourceUsageBroadcastData resources_buffer_proto_;
+  friend class ray::GcsPlacementGroupSchedulerTest;
 };
 
 }  // namespace syncer

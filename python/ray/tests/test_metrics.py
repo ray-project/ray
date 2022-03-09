@@ -97,7 +97,7 @@ def test_worker_stats(shutdown_only):
             )
 
         # Wait for the workers to start.
-        if len(reply.core_workers_stats) < num_cpus + 1:
+        if len(reply.core_workers_stats) < num_cpus + 2:
             time.sleep(1)
             reply = try_get_node_stats()
             continue

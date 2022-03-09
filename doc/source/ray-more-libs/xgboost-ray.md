@@ -46,9 +46,15 @@ pip install "git+https://github.com/ray-project/xgboost_ray.git#egg=xgboost_ray"
 
 XGBoost-Ray provides a drop-in replacement for XGBoost's `train`
 function. To pass data, instead of using `xgb.DMatrix` you will
-have to use `xgboost_ray.RayDMatrix`.
+have to use `xgboost_ray.RayDMatrix`. You can also use a scikit-learn
+interface - see next section.
 
-Distributed training parameters are configured with a
+
+Just as in original `xgb.train()` function, the 
+[training parameters](https://xgboost.readthedocs.io/en/stable/parameter.html)
+are passed as the `params` dictionary.
+
+Ray-specific distributed training parameters are configured with a
 `xgboost_ray.RayParams` object. For instance, you can set
 the `num_actors` property to specify how many distributed actors
 you would like to use.
@@ -131,7 +137,7 @@ clf = RayXGBClassifier(
     random_state=seed
 )
 
-# scikit-learn API will automatically conver the data
+# scikit-learn API will automatically convert the data
 # to RayDMatrix format as needed.
 # You can also pass X as a RayDMatrix, in which case
 # y will be ignored.
@@ -209,6 +215,7 @@ dtrain = RayDMatrix(
     path,
     label="passenger_count",  # Will select this column as the label
     columns=columns,
+    # ignore=["total_amount"],  # Optional list of columns to ignore
     filetype=RayFileType.PARQUET)
 ```
 
@@ -216,7 +223,7 @@ dtrain = RayDMatrix(
 
 ## Hyperparameter Tuning
 
-XGBoost-Ray integrates with [Ray Tune](https://tune.io) to provide distributed hyperparameter tuning for your
+XGBoost-Ray integrates with {ref}`Ray Tune <tune-main>` to provide distributed hyperparameter tuning for your
 distributed XGBoost models. You can run multiple XGBoost-Ray training runs in parallel, each with a different
 hyperparameter configuration, and each training run parallelized by itself. All you have to do is move your training
 code to a function, and pass the function to `tune.run`. Internally, `train` will detect if `tune` is being used and will
@@ -346,7 +353,9 @@ the `num_actors` argument.
 
 XGBoost-Ray enables multi GPU training. The XGBoost core backend
 will automatically leverage NCCL2 for cross-device communication.
-All you have to do is to start one actor per GPU.
+All you have to do is to start one actor per GPU and set XGBoost's
+`tree_method` to a GPU-compatible option, eg. `gpu_hist` (see XGBoost
+documentation for more details.) 
 
 For instance, if you have 2 machines with 4 GPUs each, you will want
 to start 8 remote actors, and set `gpus_per_actor=1`. There is usually
@@ -429,9 +438,10 @@ ray_params = RayDMatrix([
 ```
 
 Lastly, XGBoost-Ray supports **distributed dataframe** representations, such
-as [Modin](https://modin.readthedocs.io/en/latest/) and
+as {ref}`Ray Datasets <datasets>`,
+[Modin](https://modin.readthedocs.io/en/latest/) and
 [Dask dataframes](https://docs.dask.org/en/latest/dataframe.html)
-(used with [Dask on Ray](https://docs.ray.io/en/master/data/dask-on-ray.html)).
+(used with {ref}`Dask on Ray <dask-on-ray>`).
 Here, XGBoost-Ray will check on which nodes the distributed partitions
 are currently located, and will assign partitions to actors in order to
 minimize cross-node data transfer. Please note that we also assume here
@@ -447,6 +457,8 @@ ray_params = RayDMatrix(existing_modin_df)
 ```
 
 ### Data sources
+
+The following data sources can be used with a ``RayDMatrix`` object.
 
 ```{eval-rst}
 .. list-table::
@@ -473,13 +485,16 @@ ray_params = RayDMatrix(existing_modin_df)
    * - Multi Parquet
      - Yes
      - Yes
-   * - `Petastorm <https://github.com/uber/petastorm>`__
+   * - :ref:`Ray Dataset <datasets>`
      - Yes
      - Yes
-   * - `Dask dataframe <https://docs.dask.org/en/latest/dataframe.html>`__
+   * - `Petastorm <https://github.com/uber/petastorm>`_
      - Yes
      - Yes
-   * - `Modin dataframe <https://modin.readthedocs.io/en/latest/>`__
+   * - `Dask dataframe <https://docs.dask.org/en/latest/dataframe.html>`_
+     - Yes
+     - Yes
+   * - `Modin dataframe <https://modin.readthedocs.io/en/latest/>`_
      - Yes
      - Yes
 
@@ -545,7 +560,7 @@ to implement placement strategies for better fault tolerance.
 By default, a SPREAD strategy is used for training, which attempts to spread all of the training workers
 across the nodes in a cluster on a best-effort basis. This improves fault tolerance since it minimizes the
 number of worker failures when a node goes down, but comes at a cost of increased inter-node communication
-To disable this strategy, set the `USE_SPREAD_STRATEGY` environment variable to 0. If disabled, no
+To disable this strategy, set the `RXGB_USE_SPREAD_STRATEGY` environment variable to 0. If disabled, no
 particular placement strategy will be used.
 
 Note that this strategy is used only when `elastic_training` is not used. If `elastic_training` is set to `True`,
@@ -557,7 +572,7 @@ goes down, it will be less likely to impact multiple trials.
 
 When placement strategies are used, XGBoost-Ray will wait for 100 seconds for the required resources
 to become available, and will fail if the required resources cannot be reserved and the cluster cannot autoscale
-to increase the number of resources. You can change the `PLACEMENT_GROUP_TIMEOUT_S` environment variable to modify
+to increase the number of resources. You can change the `RXGB_PLACEMENT_GROUP_TIMEOUT_S` environment variable to modify
 how long this timeout should be.
 
 ## More examples

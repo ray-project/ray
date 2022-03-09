@@ -313,10 +313,17 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
   const auto return_client = GetLeaseClientFromNode(node.value());
 
   return_client->CancelResourceReserve(
-      *bundle_spec, [bundle_spec, node_id](const Status &status,
-                                           const rpc::CancelResourceReserveReply &reply) {
+      *bundle_spec,
+      [this, bundle_spec, node_id](const Status &status,
+                                   const rpc::CancelResourceReserveReply &reply) {
         RAY_LOG(DEBUG) << "Finished cancelling the resource reserved for bundle: "
                        << bundle_spec->DebugString() << " at node " << node_id;
+        std::vector<std::string> resource_names;
+        auto &resources = bundle_spec->GetFormattedResources();
+        for (const auto &iter : resources) {
+          resource_names.push_back(iter.first);
+        }
+        gcs_resource_manager_.DeleteResources(node_id, std::move(resource_names));
       });
 }
 
@@ -362,6 +369,9 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
                                       schedule_success_handler](const Status &status) {
       for (const auto &bundle : bundles_per_node) {
         lease_status_tracker->MarkCommitRequestReturned(node_id, bundle, status);
+        // Update the resource in gcs resource manager
+        auto &resources = bundle->GetFormattedResources();
+        gcs_resource_manager_.UpdateResources(node_id, resources);
       }
       if (lease_status_tracker->AllCommitRequestReturned()) {
         OnAllBundleCommitRequestReturned(lease_status_tracker, schedule_failure_handler,
