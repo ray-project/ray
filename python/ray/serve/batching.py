@@ -12,31 +12,33 @@ from ray.serve.exceptions import RayServeException
 @dataclass
 class SingleRequest:
     self_arg: Optional[Any]
-    flat_args: List[Any]
+    flattened_args: List[Any]
     future: asyncio.Future
 
 
 def _batch_args_kwargs(
-    list_of_flatten_args: List[List[Any]],
+    list_of_flattened_args: List[List[Any]],
 ) -> Tuple[Tuple[Any], Dict[Any, Any]]:
     """Batch a list of flatten args and returns regular args and kwargs"""
     # Ray's flatten arg format is a list with alternating key and values
     # e.g. args=(1, 2), kwargs={"key": "val"} got turned into
     #      [None, 1, None, 2, "key", "val"]
-    arg_lengths = {len(args) for args in list_of_flatten_args}
+    arg_lengths = {len(args) for args in list_of_flattened_args}
     assert (
         len(arg_lengths) == 1
     ), "All batch requests should have the same number of parameters."
     arg_length = arg_lengths.pop()
 
-    batched_flatten_args = []
+    batched_flattened_args = []
     for idx in range(arg_length):
         if idx % 2 == 0:
-            batched_flatten_args.append(list_of_flatten_args[0][idx])
+            batched_flattened_args.append(list_of_flattened_args[0][idx])
         else:
-            batched_flatten_args.append([item[idx] for item in list_of_flatten_args])
+            batched_flattened_args.append(
+                [item[idx] for item in list_of_flattened_args]
+            )
 
-    return recover_args(batched_flatten_args)
+    return recover_args(batched_flattened_args)
 
 
 class _BatchQueue:
@@ -129,7 +131,7 @@ class _BatchQueue:
             batch: List[SingleRequest] = await self.wait_for_batch()
             assert len(batch) > 0
             self_arg = batch[0].self_arg
-            args, kwargs = _batch_args_kwargs([item.flat_args for item in batch])
+            args, kwargs = _batch_args_kwargs([item.flattened_args for item in batch])
             futures = [item.future for item in batch]
 
             try:
@@ -263,7 +265,7 @@ def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.0):
         @wraps(_func)
         async def batch_wrapper(*args, **kwargs):
             self = extract_self_if_method_call(args, _func)
-            flat_args: List = flatten_args(extract_signature(_func), args, kwargs)
+            flattened_args: List = flatten_args(extract_signature(_func), args, kwargs)
 
             if self is None:
                 # For functions, inject the batch queue as an
@@ -274,7 +276,7 @@ def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.0):
                 # attribute of the object.
                 batch_queue_object = self
                 # Trim the self argument from methods
-                flat_args = flat_args[2:]
+                flattened_args = flattened_args[2:]
 
             # The first time the function runs, we lazily construct the batch
             # queue and inject it under a custom attribute name. On subsequent
@@ -287,7 +289,7 @@ def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.0):
                 batch_queue = getattr(batch_queue_object, batch_queue_attr)
 
             future = asyncio.get_event_loop().create_future()
-            batch_queue.put(SingleRequest(self, flat_args, future))
+            batch_queue.put(SingleRequest(self, flattened_args, future))
 
             # This will raise if the underlying call raised an exception.
             return await future

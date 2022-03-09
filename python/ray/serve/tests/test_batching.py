@@ -260,7 +260,7 @@ async def test_batch_size_multiple_long_timeout(use_class):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("mode", ["args", "kwargs", "mixed"])
+@pytest.mark.parametrize("mode", ["args", "kwargs", "mixed", "out-of-order"])
 @pytest.mark.parametrize("use_class", [True, False])
 async def test_batch_args_kwargs(mode, use_class):
     if use_class:
@@ -285,6 +285,8 @@ async def test_batch_args_kwargs(mode, use_class):
         coros = [func(key1="hi1", key2="hi2"), func(key1="hi3", key2="hi4")]
     elif mode == "mixed":
         coros = [func("hi1", key2="hi2"), func("hi3", key2="hi4")]
+    elif mode == "out-of-order":
+        coros = [func(key2="hi2", key1="hi1"), func(key2="hi4", key1="hi3")]
 
     result = await asyncio.gather(*coros)
     assert result == [("hi1", "hi2"), ("hi3", "hi4")]
