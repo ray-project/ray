@@ -45,6 +45,9 @@ void ActorSchedulingQueue::Stop() {
   if (pool_manager_) {
     pool_manager_->Stop();
   }
+  if (fiber_state_manager_) {
+    fiber_state_manager_->Stop();
+  }
 }
 
 bool ActorSchedulingQueue::TaskQueueEmpty() const {
