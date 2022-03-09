@@ -1,3 +1,4 @@
+import inspect
 from typing import Any, Callable, Dict, Optional, Type, Union
 
 import starlette.requests
@@ -22,7 +23,7 @@ def _load_input_schema(
     if isinstance(input_schema, str):
         input_schema = import_attr(input_schema)
 
-    assert callable(input_schema), "input schema must be callable"
+    assert inspect.isfunction(input_schema), "input schema must be a callable function."
     return input_schema
 
 
@@ -46,6 +47,8 @@ class ModelWrapper:
             return self.model.predict(inp)
 
     async def __call__(self, request: starlette.requests.Request):
+        # NOTE(simon): This is now duplicated from ASGIAppWrapper because we need to
+        # generate FastAPI on the fly, we should find a way to unify the two.
         sender = ASGIHTTPSender()
         await self.app(request.scope, receive=request.receive, send=sender)
         return sender.build_asgi_response()

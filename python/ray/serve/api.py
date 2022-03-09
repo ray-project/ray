@@ -851,7 +851,7 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
                 sender = ASGIHTTPSender()
                 await self._serve_app(
                     request.scope,
-                    request.receive,
+                    request._receive,
                     sender,
                 )
                 return sender.build_asgi_response()
