@@ -140,7 +140,7 @@ class TestDataParallelTrainer:
             train_func=get_dataset,
             scaling_config=scale_config,
             train_dataset=train_dataset,
-            additional_datasets={"val": val_dataset},
+            extra_datasets={"val": val_dataset},
         )
         trainer.fit()
 
@@ -165,7 +165,7 @@ class TestDataParallelTrainer:
             train_func=get_dataset,
             scaling_config=scale_config,
             train_dataset=train_dataset,
-            additional_datasets={"val": val_dataset},
+            extra_datasets={"val": val_dataset},
             preprocessor=preprocessor,
         )
         trainer.fit()

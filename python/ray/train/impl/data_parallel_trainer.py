@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Dict, Callable, Optional, Type, TYPE_CHECKING
+from typing import Dict, Callable, Optional, Type
 
 import ray
 from ray.ml.preprocessor import Preprocessor
@@ -9,7 +9,7 @@ from ray.ml.config import ScalingConfig, RunConfig, _DataParallelScalingConfig
 from ray.train.backend import BackendExecutor
 from ray.train.checkpoint import TuneCheckpointManagerV2
 from ray.train.trainer import BACKEND_ENV_VARS
-from ray.train.ml_trainer import Trainer
+from ray.train.ml_trainer import Trainer, GenDataset
 from ray.train import BackendConfig, TrainingIterator
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.utils import construct_train_func
@@ -18,9 +18,6 @@ from ray.tune import PlacementGroupFactory
 from ray.tune.function_runner import wrap_function
 from ray.tune.trainable import Trainable
 from ray.util.annotations import DeveloperAPI
-
-if TYPE_CHECKING:
-    import ray.data.Dataset
 
 logger = logging.getLogger(__name__)
 
@@ -35,30 +32,30 @@ class DataParallelFunctionTrainer(Trainer):
     the training function.
 
     Args:
-        train_func (Callable): The training function to execute.
+        train_func: The training function to execute.
             This can either take in no arguments or a ``config`` dict.
-        train_func_config (Optional[Dict]): Configurations to pass into
+        train_func_config: Configurations to pass into
             ``train_func`` if it accepts an argument.
-        backend_config (Optional[BackendConfig]): Used to specify which
+        backend_config: Used to specify which
             backend to setup on the workers enable distributed
             communication, for example torch or horovod. If no Backend
             should be set up, then set this to None.
-        scaling_config (Optional[ScalingConfig]): Configuration
+        scaling_config: Configuration
             for how to scale data parallel training.
         run_config (Optional[RunConfig]): Configuration for the execution of
             the training run.
-        train_dataset (Optional[GenDataset]): Either a distributed Ray
+        train_dataset: Either a distributed Ray
             :ref:`Dataset <dataset-api>` or :ref:`DatasetPipeline
             <dataset-pipeline-api>`, or a Callbable that returns a Dataset, to
             use for training. If a ``preprocessor`` is also provided,
             it will be fit on this dataset.
-        additional_datasets (Optional[GenDataset]): Any additional Ray
+        extra_datasets: Any extra
             Datasets (such as validation or test datasets) to use for
             training. If a ``preprocessor`` is provided, it will only
             transform these datasets.
-        preprocessor (Optional[Preprocessor]): A preprocessor to preprocess
+        preprocessor: A preprocessor to preprocess
             the provided datasets.
-        resume_from_checkpoint (Optional[Checkpoint]): A checkpoint to
+        resume_from_checkpoint: A checkpoint to
             resume training from.
 
     """
@@ -70,8 +67,8 @@ class DataParallelFunctionTrainer(Trainer):
         backend_config: Optional[BackendConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
-        train_dataset: Optional["ray.data.Dataset"] = None,
-        additional_datasets: Optional[Dict[str, "ray.data.Dataset"]] = None,
+        train_dataset: Optional[GenDataset] = None,
+        extra_datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
@@ -96,7 +93,7 @@ class DataParallelFunctionTrainer(Trainer):
             scaling_config=scaling_config,
             run_config=run_config,
             train_dataset=train_dataset,
-            additional_datasets=additional_datasets,
+            extra_datasets=extra_datasets,
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
