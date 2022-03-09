@@ -65,7 +65,7 @@ CORE_NIGHTLY_TESTS = {
         "non_streaming_shuffle_100gb",
         "non_streaming_shuffle_50gb_large_partition",
         "non_streaming_shuffle_50gb",
-        # SmokeTest("dask_on_ray_large_scale_test_no_spilling"),
+        SmokeTest("dask_on_ray_large_scale_test_no_spilling"),
         SmokeTest("dask_on_ray_large_scale_test_spilling"),
         "stress_test_placement_group",
         "shuffle_1tb_1000_partition",
@@ -128,12 +128,10 @@ SERVE_NIGHTLY_TESTS = {
 
 CORE_DAILY_TESTS = {
     "~/ray/release/nightly_tests/nightly_tests.yaml": [
-        "k8s_dask_on_ray_large_scale_test_no_spilling",
-        # "dask_on_ray_large_scale_test_no_spilling",
+        "dask_on_ray_large_scale_test_no_spilling",
         "dask_on_ray_large_scale_test_spilling",
         "pg_autoscaling_regression_test",
         "threaded_actors_stress_test",
-        "k8s_threaded_actors_stress_test",
         "stress_test_many_tasks",
         "stress_test_dead_actors",
     ],

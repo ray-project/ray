@@ -16,6 +16,7 @@ from ray_release.config import (
     DEFAULT_CLUSTER_TIMEOUT,
     DEFAULT_COMMAND_TIMEOUT,
     RELEASE_PACKAGE_DIR,
+    DEFAULT_AUTOSUSPEND_MINS,
     validate_test,
 )
 from ray_release.exception import (
@@ -181,6 +182,10 @@ def run_release_test(
             autosuspend_mins = test["cluster"].get("autosuspend_mins", None)
             if autosuspend_mins:
                 cluster_manager.autosuspend_minutes = autosuspend_mins
+            else:
+                cluster_manager.autosuspend_minutes = min(
+                    DEFAULT_AUTOSUSPEND_MINS, int(cluster_timeout / 60) + 10
+                )
 
             cluster_manager.start_cluster(timeout=cluster_timeout)
 

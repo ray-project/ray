@@ -6,6 +6,7 @@ from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
 
 from ray_release.anyscale_util import get_project_name
 from ray_release.util import dict_hash, get_anyscale_sdk, anyscale_cluster_url
+from ray_release.config import DEFAULT_AUTOSUSPEND_MINS
 
 
 class ClusterManager(abc.ABC):
@@ -30,7 +31,7 @@ class ClusterManager(abc.ABC):
         self.cluster_compute_name = None
         self.cluster_compute_id = None
 
-        self.autosuspend_minutes = 120
+        self.autosuspend_minutes = DEFAULT_AUTOSUSPEND_MINS
 
     def set_cluster_env(self, cluster_env: Dict[str, Any]):
         self.cluster_env = cluster_env
@@ -69,13 +70,10 @@ class ClusterManager(abc.ABC):
     def terminate_cluster(self):
         raise NotImplementedError
 
-    def get_cluster_address(self) -> str:
+    def get_cluster_address(self, full=True) -> str:
         raise NotImplementedError
 
     def get_cluster_url(self) -> Optional[str]:
         if not self.project_id or not self.cluster_id:
             return None
         return anyscale_cluster_url(self.project_id, self.cluster_id)
-
-    def get_session_name(self) -> str:
-        raise NotImplementedError
