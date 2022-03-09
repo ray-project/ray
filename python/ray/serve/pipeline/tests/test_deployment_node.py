@@ -151,7 +151,7 @@ def test_invalid_use_sync_handle():
     )
     with pytest.raises(
         ValueError,
-        match="use_sync_handle should only be set with a boolean value",
+        match=f"{USE_SYNC_HANDLE_KEY} should only be set with a boolean value",
     ):
         _ = DeploymentNode(
             Actor,
@@ -163,7 +163,7 @@ def test_invalid_use_sync_handle():
         )
     with pytest.raises(
         ValueError,
-        match="use_sync_handle should only be set with a boolean value",
+        match=f"{USE_SYNC_HANDLE_KEY} should only be set with a boolean value",
     ):
         _ = DeploymentMethodNode(
             deployment,

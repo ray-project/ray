@@ -10,7 +10,6 @@ from ray._private.test_utils import (
     generate_runtime_env_dict,
 )
 from ray._private.runtime_env.conda import _get_conda_dict_with_ray_inserted
-from ray._private.runtime_env.validation import _rewrite_pip_list_ray_libraries
 from ray.runtime_env import RuntimeEnv
 
 import yaml
@@ -23,14 +22,6 @@ if not os.environ.get("CI"):
     # This flags turns on the local development that link against current ray
     # packages and fall back all the dependencies to current python's site.
     os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
-
-
-def test_rewrite_pip_list_ray_libraries():
-    input = ["--extra-index-url my.url", "ray==1.4", "requests", "ray[serve]"]
-    output = _rewrite_pip_list_ray_libraries(input)
-    assert "ray" not in output
-    assert "ray[serve]" not in output
-    assert output[:3] == ["--extra-index-url my.url", "ray==1.4", "requests"]
 
 
 def test_get_conda_dict_with_ray_inserted_m1_wheel(monkeypatch):

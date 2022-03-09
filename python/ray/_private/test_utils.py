@@ -38,6 +38,7 @@ from ray._private.gcs_pubsub import (
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray.util.queue import Queue, _QueueActor, Empty
 from ray.scripts.scripts import main as ray_main
+from ray.internal.internal_api import memory_summary
 
 try:
     from prometheus_client.parser import text_string_to_metric_families
@@ -1240,3 +1241,38 @@ def generate_runtime_env_dict(field, spec_format, tmp_path, pip_list=None):
             pip = pip_list
         runtime_env = {"pip": pip}
     return runtime_env
+
+
+def check_spilled_mb(address, spilled=None, restored=None, fallback=None):
+    def ok():
+        s = memory_summary(address=address["address"], stats_only=True)
+        print(s)
+        if restored:
+            if "Restored {} MiB".format(restored) not in s:
+                return False
+        else:
+            if "Restored" in s:
+                return False
+        if spilled:
+            if not isinstance(spilled, list):
+                spilled_lst = [spilled]
+            else:
+                spilled_lst = spilled
+            found = False
+            for n in spilled_lst:
+                if "Spilled {} MiB".format(n) in s:
+                    found = True
+            if not found:
+                return False
+        else:
+            if "Spilled" in s:
+                return False
+        if fallback:
+            if "Plasma filesystem mmap usage: {} MiB".format(fallback) not in s:
+                return False
+        else:
+            if "Plasma filesystem mmap usage:" in s:
+                return False
+        return True
+
+    wait_for_condition(ok, timeout=3, retry_interval_ms=1000)

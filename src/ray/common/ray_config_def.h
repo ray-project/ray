@@ -94,7 +94,7 @@ RAY_CONFIG(size_t, free_objects_batch_size, 100)
 /// the task's recursive dependencies. If this is set to true, then the system
 /// will attempt to reconstruct the object from its lineage if the object is
 /// lost.
-RAY_CONFIG(bool, lineage_pinning_enabled, false)
+RAY_CONFIG(bool, lineage_pinning_enabled, true)
 
 /// Objects that require recovery are added to a local cache. This is the
 /// duration between attempts to flush and recover the objects in the local
@@ -500,6 +500,14 @@ RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512);
 // If enabled and worker stated in container, the container will add
 // resource limit.
 RAY_CONFIG(bool, worker_resource_limits_enabled, false)
+
+// When enabled, workers will not be re-used across tasks requesting different
+// resources (e.g., CPU vs GPU).
+RAY_CONFIG(bool, isolate_workers_across_resource_types, true)
+
+// When enabled, workers will not be re-used across tasks of different types
+// (i.e., Actor vs normal tasks).
+RAY_CONFIG(bool, isolate_workers_across_task_types, true)
 
 /// ServerCall instance number of each RPC service handler
 RAY_CONFIG(int64_t, gcs_max_active_rpcs_per_handler, 100)

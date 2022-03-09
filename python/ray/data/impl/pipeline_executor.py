@@ -33,7 +33,15 @@ class PipelineExecutor:
         self._stages: List[ObjectRef[Dataset[Any]]] = [None] * (
             len(self._pipeline._optimized_stages) + 1
         )
-        self._stage_runners = [_StageRunner.remote() for _ in self._stages]
+        # Pin the child actors to the local node so that they fate-share with
+        # the PipelineExecutor during a node failure.
+        local_node_resource = "node:{}".format(ray.util.get_node_ip_address())
+        self._stage_runners = [
+            _StageRunner.options(
+                resources={local_node_resource: 0.0001}, placement_group=None
+            ).remote()
+            for _ in self._stages
+        ]
         self._iter = iter(self._pipeline._base_iterable)
         self._stages[0] = self._stage_runners[0].run.remote(
             next(self._iter), DatasetContext.get_current()

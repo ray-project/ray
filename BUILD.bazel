@@ -1027,7 +1027,7 @@ cc_test(
     name = "scheduling_policy_test",
     size = "small",
     srcs = [
-        "src/ray/raylet/scheduling/scheduling_policy_test.cc",
+        "src/ray/raylet/scheduling/policy/scheduling_policy_test.cc",
     ],
     copts = COPTS,
     tags = ["team:core"],
@@ -1057,6 +1057,20 @@ cc_test(
     size = "small",
     srcs = [
         "src/ray/raylet/scheduling/cluster_resource_manager_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "scheduling_ids_test",
+    size = "small",
+    srcs = [
+        "src/ray/raylet/scheduling/scheduling_ids_test.cc",
     ],
     copts = COPTS,
     tags = ["team:core"],
