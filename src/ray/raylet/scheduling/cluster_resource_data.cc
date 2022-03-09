@@ -200,6 +200,13 @@ NodeResources ResourceMapToNodeResources(
   return node_resources;
 }
 
+bool ResourceRequest::IsGPURequest() const {
+  if (predefined_resources.size() <= GPU) {
+    return false;
+  }
+  return predefined_resources[GPU] > 0;
+}
+
 float NodeResources::CalculateCriticalResourceUtilization() const {
   float highest = 0;
   for (const auto &i : {CPU, MEM, OBJECT_STORE_MEM}) {
@@ -406,6 +413,13 @@ std::string NodeResources::DictString() const {
   }
   buffer << "}" << std::endl;
   return buffer.str();
+}
+
+bool NodeResources::HasGPU() const {
+  if (predefined_resources.size() <= GPU) {
+    return false;
+  }
+  return predefined_resources[GPU].total > 0;
 }
 
 bool NodeResourceInstances::operator==(const NodeResourceInstances &other) {
