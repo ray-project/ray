@@ -48,22 +48,28 @@ class Application:
         Adds the deployment to this Serve application. Validates that a
         deployment with the same name doesn't already exist. To overwrite an
         existing deployment, use attribute or index notation. For example:
-        
+
         app.deployment_name = deployment
         app[deployment_name] = deployment
 
         Args:
-            deployment (Deployment): deployment to add to this Application
+            deployment (Deployment): deployment to add to this Application.
+
+        Raises:
+            ValueError: If a deployment with deployment.name already exists in
+                this Application.
         """
 
         if not isinstance(deployment, Deployment):
             raise TypeError(f"Got {type(deployment)}. Expected deployment.")
         elif deployment.name in self._deployments:
-            raise ValueError(f'Deployment with name "{deployment.name}" already '
-                             "exists in this application. To overwrite this "
-                             "deployment, use attribute or index notation. "
-                             "For example:\n\napp.deployment_name = "
-                             "new_deployment")
+            raise ValueError(
+                f'Deployment with name "{deployment.name}" already '
+                "exists in this application. To overwrite this "
+                "deployment, use attribute or index notation. "
+                "For example:\n\napp.deployment_name = "
+                "new_deployment"
+            )
 
         self._deployments[deployment.name] = deployment
 
@@ -110,7 +116,17 @@ class Application:
 
     @staticmethod
     def get_statuses() -> Dict[str, DeploymentStatus]:
-        """Get current status of all deployments."""
+        """
+        Gets the currents statuses of all deployments running on the Ray cluster.
+        NOTE: these deployments may not match the deployments stored in this
+        Application since other Applications and deployments may have been
+        deployed to the cluster.
+
+        Returns:
+            Dict[str, DeploymentStatus]: This dictionary maps the running
+                deployment's name to a DeploymentStatus object containing its
+                status and a message explaining the status.
+        """
 
         return _get_global_client().get_deployment_statuses()
 
