@@ -16,13 +16,14 @@ from ray.serve.pipeline.tests.test_modules import (
     ClassHello,
     fn_hello,
     Combine,
+    request_to_data_int,
     NESTED_HANDLE_KEY,
 )
 from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
 )
-from ray.experimental.dag import InputNode
+from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
 
 RayHandleLike = TypeVar("RayHandleLike")
 
@@ -289,7 +290,7 @@ def test_simple_deployment_method_call_chain(serve_instance):
 
 
 def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
-    with InputNode() as dag_input:
+    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
         m1 = Model._bind(2)
         m2 = Model._bind(3)
         combine = Combine._bind(m1, m2={NESTED_HANDLE_KEY: m2}, m2_nested=True)
@@ -305,7 +306,7 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
 
 
 def test_nested_deployment_node_json_serde(serve_instance):
-    with InputNode() as dag_input:
+    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
         m1 = Model._bind(2)
         m2 = Model._bind(3)
 
