@@ -113,14 +113,14 @@ class DataParallelFunctionTrainer(Trainer):
         }
 
         def tune_function(config, checkpoint_dir=None):
-            self._override_attributes_with_config(config)
+            leftover_config = self._override_attributes_with_config(config)
 
             scaling_config_dataclass = _DataParallelScalingConfig(**self.scaling_config)
 
             # If there are any leftover key-value pairs in config,
             # then propagate them directly to the training function.
-            if self.train_func_config and config:
-                self.train_func_config.update(config)
+            if self.train_func_config and leftover_config:
+                self.train_func_config.update(leftover_config)
 
             train_func = construct_train_func(self.train_func, self.train_func_config)
 
