@@ -396,4 +396,22 @@ public class CrossLanguageInvocationTest extends BaseTest {
 
     private byte[] value;
   }
+
+  public void testPyCallJavaOeveridedMethodWithDefault() {
+    ObjectRef<Object> res =
+        Ray.task(
+                PyFunction.of(
+                    PYTHON_MODULE,
+                    "py_func_call_java_overrided_method_with_default_keyword",
+                    Object.class))
+            .remote();
+    Assert.assertEquals("hi", res.get());
+  }
+
+  public void testPyCallJavaOverloadedMethodByParameterSize() {
+    ObjectRef<Object> res =
+        Ray.task(PyFunction.of(PYTHON_MODULE, "py_func_call_java_overloaded_method", Object.class))
+            .remote();
+    Assert.assertEquals(true, res.get());
+  }
 }

@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ActorWrapper:
     """Class containing an actor and its metadata."""
+
     actor: ActorHandle
     metadata: ActorMetadata
 
@@ -34,10 +35,12 @@ class ActorGroupMethod:
         self._method_name = method_name
 
     def __call__(self, *args, **kwargs):
-        raise TypeError("ActorGroup methods cannot be called directly. "
-                        "Instead "
-                        f"of running 'object.{self._method_name}()', try "
-                        f"'object.{self._method_name}.remote()'.")
+        raise TypeError(
+            "ActorGroup methods cannot be called directly. "
+            "Instead "
+            f"of running 'object.{self._method_name}()', try "
+            f"'object.{self._method_name}.remote()'."
+        )
 
     def remote(self, *args, **kwargs):
         return [
@@ -73,24 +76,30 @@ class ActorGroup:
 
     """
 
-    def __init__(self,
-                 actor_cls: Type,
-                 num_actors: int = 1,
-                 num_cpus_per_actor: float = 1,
-                 num_gpus_per_actor: float = 0,
-                 resources_per_actor: Optional[Dict[str, float]] = None,
-                 init_args: Optional[Tuple] = None,
-                 init_kwargs: Optional[Dict] = None):
+    def __init__(
+        self,
+        actor_cls: Type,
+        num_actors: int = 1,
+        num_cpus_per_actor: float = 1,
+        num_gpus_per_actor: float = 0,
+        resources_per_actor: Optional[Dict[str, float]] = None,
+        init_args: Optional[Tuple] = None,
+        init_kwargs: Optional[Dict] = None,
+    ):
 
         if num_actors <= 0:
-            raise ValueError("The provided `num_actors` must be greater "
-                             f"than 0. Received num_actors={num_actors} "
-                             f"instead.")
+            raise ValueError(
+                "The provided `num_actors` must be greater "
+                f"than 0. Received num_actors={num_actors} "
+                f"instead."
+            )
         if num_cpus_per_actor < 0 or num_gpus_per_actor < 0:
-            raise ValueError("The number of CPUs and GPUs per actor must "
-                             "not be negative. Received "
-                             f"num_cpus_per_actor={num_cpus_per_actor} and "
-                             f"num_gpus_per_actor={num_gpus_per_actor}.")
+            raise ValueError(
+                "The number of CPUs and GPUs per actor must "
+                "not be negative. Received "
+                f"num_cpus_per_actor={num_cpus_per_actor} and "
+                f"num_gpus_per_actor={num_gpus_per_actor}."
+            )
 
         self.actors = []
 
@@ -101,19 +110,22 @@ class ActorGroup:
             num_gpus=num_gpus_per_actor,
             resources=resources_per_actor,
             init_args=init_args or (),
-            init_kwargs=init_kwargs or {})
+            init_kwargs=init_kwargs or {},
+        )
 
         self._remote_cls = ray.remote(
             num_cpus=self.actor_config.num_cpus,
             num_gpus=self.actor_config.num_gpus,
-            resources=self.actor_config.resources)(actor_cls)
+            resources=self.actor_config.resources,
+        )(actor_cls)
 
         self.start()
 
     def __getattr__(self, item):
         if len(self.actors) == 0:
-            raise RuntimeError("This ActorGroup has been shutdown. Please "
-                               "start it again.")
+            raise RuntimeError(
+                "This ActorGroup has been shutdown. Please " "start it again."
+            )
         # Same implementation as actor.py
         return ActorGroupMethod(self, item)
 
@@ -126,9 +138,11 @@ class ActorGroup:
     def start(self):
         """Starts all the actors in this actor group."""
         if self.actors and len(self.actors) > 0:
-            raise RuntimeError("The actors have already been started. "
-                               "Please call `shutdown` first if you want to "
-                               "restart them.")
+            raise RuntimeError(
+                "The actors have already been started. "
+                "Please call `shutdown` first if you want to "
+                "restart them."
+            )
 
         logger.debug(f"Starting {self.num_actors} actors.")
         self.add_actors(self.num_actors)
@@ -149,14 +163,13 @@ class ActorGroup:
             for actor in self.actors:
                 ray.kill(actor.actor)
         else:
-            done_refs = [
-                w.actor.__ray_terminate__.remote() for w in self.actors
-            ]
+            done_refs = [w.actor.__ray_terminate__.remote() for w in self.actors]
             # Wait for actors to die gracefully.
             done, not_done = ray.wait(done_refs, timeout=patience_s)
             if not_done:
-                logger.debug("Graceful termination failed. Falling back to "
-                             "force kill.")
+                logger.debug(
+                    "Graceful termination failed. Falling back to " "force kill."
+                )
                 # If all actors are not able to die gracefully, then kill them.
                 for actor in self.actors:
                     ray.kill(actor.actor)
@@ -185,8 +198,9 @@ class ActorGroup:
         new_actors = []
         new_actor_metadata = []
         for _ in range(num_actors):
-            actor = self._remote_cls.remote(*self.actor_config.init_args,
-                                            **self.actor_config.init_kwargs)
+            actor = self._remote_cls.remote(
+                *self.actor_config.init_args, **self.actor_config.init_kwargs
+            )
             new_actors.append(actor)
             if hasattr(actor, "get_actor_metadata"):
                 new_actor_metadata.append(actor.get_actor_metadata.remote())
@@ -198,8 +212,7 @@ class ActorGroup:
             metadata = [None] * len(new_actors)
 
         for i in range(len(new_actors)):
-            self.actors.append(
-                ActorWrapper(actor=new_actors[i], metadata=metadata[i]))
+            self.actors.append(ActorWrapper(actor=new_actors[i], metadata=metadata[i]))
 
     @property
     def actor_metadata(self):

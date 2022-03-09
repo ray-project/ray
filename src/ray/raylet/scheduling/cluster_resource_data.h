@@ -27,9 +27,6 @@
 
 namespace ray {
 
-/// List of predefined resources.
-enum PredefinedResources { CPU, MEM, GPU, OBJECT_STORE_MEM, PredefinedResources_MAX };
-
 const std::string ResourceEnumToString(PredefinedResources resource);
 
 const PredefinedResources ResourceStringToEnum(const std::string &resource);
@@ -84,8 +81,7 @@ class TaskResourceInstances {
   absl::flat_hash_map<int64_t, std::vector<FixedPoint>> custom_resources;
   bool operator==(const TaskResourceInstances &other);
   /// Get instances based on the string.
-  const std::vector<FixedPoint> &Get(const std::string &resource_name,
-                                     const StringIdMap &string_id_map) const;
+  const std::vector<FixedPoint> &Get(const std::string &resource_name) const;
   /// For each resource of this request aggregate its instances.
   ResourceRequest ToResourceRequest() const;
   /// Get CPU instances only.
@@ -138,7 +134,7 @@ class TaskResourceInstances {
   /// Check whether there are no resource instances.
   bool IsEmpty() const;
   /// Returns human-readable string for these resources.
-  [[nodiscard]] std::string DebugString(const StringIdMap &string_id_map) const;
+  [[nodiscard]] std::string DebugString() const;
 };
 
 /// Total and available capacities of each resource of a node.
@@ -170,9 +166,9 @@ class NodeResources {
   bool operator==(const NodeResources &other);
   bool operator!=(const NodeResources &other);
   /// Returns human-readable string for these resources.
-  std::string DebugString(StringIdMap string_to_int_map) const;
+  std::string DebugString() const;
   /// Returns compact dict-like string.
-  std::string DictString(StringIdMap string_to_int_map) const;
+  std::string DictString() const;
 };
 
 /// Total and available capacities of each resource instance.
@@ -189,24 +185,17 @@ class NodeResourceInstances {
   /// Returns if this equals another node resources.
   bool operator==(const NodeResourceInstances &other);
   /// Returns human-readable string for these resources.
-  [[nodiscard]] std::string DebugString(StringIdMap string_to_int_map) const;
+  [[nodiscard]] std::string DebugString() const;
 };
 
 struct Node {
-  Node(const NodeResources &resources)
-      : last_reported_(resources), local_view_(resources) {}
+  Node(const NodeResources &resources) : local_view_(resources) {}
 
   NodeResources *GetMutableLocalView() { return &local_view_; }
 
   const NodeResources &GetLocalView() const { return local_view_; }
 
  private:
-  /// The resource information according to the last heartbeat reported by
-  /// this node.
-  /// NOTE(swang): For the local node, this field should be ignored because
-  /// we do not receive heartbeats from ourselves and the local view is
-  /// therefore always the most up-to-date.
-  NodeResources last_reported_;
   /// Our local view of the remote node's resources. This may be dirty
   /// because it includes any resource requests that we allocated to this
   /// node through spillback since our last heartbeat tick. This view will
@@ -218,13 +207,11 @@ struct Node {
 
 /// \request Conversion result to a ResourceRequest data structure.
 NodeResources ResourceMapToNodeResources(
-    StringIdMap &string_to_int_map,
     const absl::flat_hash_map<std::string, double> &resource_map_total,
     const absl::flat_hash_map<std::string, double> &resource_map_available);
 
 /// Convert a map of resources to a ResourceRequest data structure.
 ResourceRequest ResourceMapToResourceRequest(
-    StringIdMap &string_to_int_map,
     const absl::flat_hash_map<std::string, double> &resource_map,
     bool requires_object_store_memory);
 

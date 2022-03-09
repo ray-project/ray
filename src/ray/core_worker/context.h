@@ -47,7 +47,9 @@ class WorkerContext {
   std::shared_ptr<rpc::RuntimeEnv> GetCurrentRuntimeEnv() const LOCKS_EXCLUDED(mutex_);
 
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
-  void SetCurrentTaskId(const TaskID &task_id);
+  void SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number);
+
+  const TaskID &GetCurrentInternalTaskId() const;
 
   void SetCurrentActorId(const ActorID &actor_id) LOCKS_EXCLUDED(mutex_);
 

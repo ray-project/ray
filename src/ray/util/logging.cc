@@ -198,19 +198,19 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
   // All the logging sinks to add.
   std::vector<spdlog::sink_ptr> sinks;
   auto level = static_cast<spdlog::level::level_enum>(severity_threshold_);
+  std::string app_name_without_path = app_name;
+  if (app_name.empty()) {
+    app_name_without_path = "DefaultApp";
+  } else {
+    // Find the app name without the path.
+    std::string app_file_name = ray::GetFileName(app_name);
+    if (!app_file_name.empty()) {
+      app_name_without_path = app_file_name;
+    }
+  }
 
   if (!log_dir_.empty()) {
     // Enable log file if log_dir_ is not empty.
-    std::string app_name_without_path = app_name;
-    if (app_name.empty()) {
-      app_name_without_path = "DefaultApp";
-    } else {
-      // Find the app name without the path.
-      std::string app_file_name = ray::GetFileName(app_name);
-      if (!app_file_name.empty()) {
-        app_name_without_path = app_file_name;
-      }
-    }
 #ifdef _WIN32
     int pid = _getpid();
 #else
@@ -247,6 +247,10 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
         log_rotation_max_size_, log_rotation_file_num_);
     sinks.push_back(file_sink);
   } else {
+    // Format pattern is 2020-08-21 17:00:00,000 I 100 1001 msg.
+    // %L is loglevel, %P is process id, %t for thread id.
+    log_format_pattern_ =
+        "[%Y-%m-%d %H:%M:%S,%e %L %P %t] (" + app_name_without_path + ") %v";
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     console_sink->set_pattern(log_format_pattern_);
     console_sink->set_level(level);

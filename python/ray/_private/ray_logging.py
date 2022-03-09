@@ -28,14 +28,16 @@ def setup_logger(logging_level, logging_format):
     logger.propagate = False
 
 
-def setup_component_logger(*,
-                           logging_level,
-                           logging_format,
-                           log_dir,
-                           filename,
-                           max_bytes,
-                           backup_count,
-                           logger_name=""):
+def setup_component_logger(
+    *,
+    logging_level,
+    logging_format,
+    log_dir,
+    filename,
+    max_bytes,
+    backup_count,
+    logger_name=None,
+):
     """Configure the root logger that is used for Ray's python components.
 
     For example, it should be used for monitor, dashboard, and log monitor.
@@ -44,8 +46,10 @@ def setup_component_logger(*,
     Args:
         logging_level(str | int): Logging level in string or logging enum.
         logging_format(str): Logging format string.
-        log_dir(str): Log directory path.
-        filename(str): Name of the file to write logs.
+        log_dir(str): Log directory path. If empty, logs will go to
+            stderr.
+        filename(str): Name of the file to write logs. If empty, logs will go
+            to stderr.
         max_bytes(int): Same argument as RotatingFileHandler's maxBytes.
         backup_count(int): Same argument as RotatingFileHandler's backupCount.
         logger_name(str, optional): used to create or get the correspoding
@@ -56,12 +60,14 @@ def setup_component_logger(*,
     logger = logging.getLogger(logger_name)
     if type(logging_level) is str:
         logging_level = logging.getLevelName(logging_level.upper())
-    assert filename, "filename argument should not be None."
-    assert log_dir, "log_dir should not be None."
-    handler = logging.handlers.RotatingFileHandler(
-        os.path.join(log_dir, filename),
-        maxBytes=max_bytes,
-        backupCount=backup_count)
+    if not filename or not log_dir:
+        handler = logging.StreamHandler()
+    else:
+        handler = logging.handlers.RotatingFileHandler(
+            os.path.join(log_dir, filename),
+            maxBytes=max_bytes,
+            backupCount=backup_count,
+        )
     handler.setLevel(logging_level)
     logger.setLevel(logging_level)
     handler.setFormatter(logging.Formatter(logging_format))
@@ -98,8 +104,9 @@ class StandardStreamInterceptor:
 
     def __init__(self, logger, intercept_stdout=True):
         self.logger = logger
-        assert len(self.logger.handlers) == 1, (
-            "Only one handler is allowed for the interceptor logger.")
+        assert (
+            len(self.logger.handlers) == 1
+        ), "Only one handler is allowed for the interceptor logger."
         self.intercept_stdout = intercept_stdout
 
     def write(self, message):
@@ -134,21 +141,24 @@ class StandardFdRedirectionRotatingFileHandler(RotatingFileHandler):
     that it actually duplicates the OS level fd using os.dup2.
     """
 
-    def __init__(self,
-                 filename,
-                 mode="a",
-                 maxBytes=0,
-                 backupCount=0,
-                 encoding=None,
-                 delay=False,
-                 is_for_stdout=True):
+    def __init__(
+        self,
+        filename,
+        mode="a",
+        maxBytes=0,
+        backupCount=0,
+        encoding=None,
+        delay=False,
+        is_for_stdout=True,
+    ):
         super().__init__(
             filename,
             mode=mode,
             maxBytes=maxBytes,
             backupCount=backupCount,
             encoding=encoding,
-            delay=delay)
+            delay=delay,
+        )
         self.is_for_stdout = is_for_stdout
         self.switch_os_fd()
 
@@ -173,7 +183,8 @@ def get_worker_log_file_name(worker_type):
         assert job_id is not None, (
             "RAY_JOB_ID should be set as an env "
             "variable within default_worker.py. If you see this error, "
-            "please report it to Ray's Github issue.")
+            "please report it to Ray's Github issue."
+        )
         worker_name = "worker"
     else:
         job_id = ""
@@ -182,8 +193,7 @@ def get_worker_log_file_name(worker_type):
     # Make sure these values are set already.
     assert ray.worker._global_node is not None
     assert ray.worker.global_worker is not None
-    filename = (f"{worker_name}-"
-                f"{binary_to_hex(ray.worker.global_worker.worker_id)}-")
+    filename = f"{worker_name}-" f"{binary_to_hex(ray.worker.global_worker.worker_id)}-"
     if job_id:
         filename += f"{job_id}-"
     filename += f"{os.getpid()}"
@@ -208,15 +218,16 @@ def configure_log_file(out_file, err_file):
     # statements. We never want to close the stdout file descriptor, dup2 will
     # close it when necessary and we don't want python's GC to close it.
     sys.stdout = ray._private.utils.open_log(
-        stdout_fileno, unbuffered=True, closefd=False)
+        stdout_fileno, unbuffered=True, closefd=False
+    )
     sys.stderr = ray._private.utils.open_log(
-        stderr_fileno, unbuffered=True, closefd=False)
+        stderr_fileno, unbuffered=True, closefd=False
+    )
 
 
-def setup_and_get_worker_interceptor_logger(args,
-                                            max_bytes=0,
-                                            backup_count=0,
-                                            is_for_stdout: bool = True):
+def setup_and_get_worker_interceptor_logger(
+    args, max_bytes=0, backup_count=0, is_for_stdout: bool = True
+):
     """Setup a logger to be used to intercept worker log messages.
 
     NOTE: This method is only meant to be used within default_worker.py.
@@ -250,7 +261,8 @@ def setup_and_get_worker_interceptor_logger(args,
         assert job_id is not None, (
             "RAY_JOB_ID should be set as an env "
             "variable within default_worker.py. If you see this error, "
-            "please report it to Ray's Github issue.")
+            "please report it to Ray's Github issue."
+        )
         worker_name = "worker"
     else:
         job_id = ray.JobID.nil()
@@ -259,15 +271,18 @@ def setup_and_get_worker_interceptor_logger(args,
     # Make sure these values are set already.
     assert ray.worker._global_node is not None
     assert ray.worker.global_worker is not None
-    filename = (f"{ray.worker._global_node.get_session_dir_path()}/logs/"
-                f"{worker_name}-"
-                f"{binary_to_hex(ray.worker.global_worker.worker_id)}-"
-                f"{job_id}-{os.getpid()}.{file_extension}")
+    filename = (
+        f"{ray.worker._global_node.get_session_dir_path()}/logs/"
+        f"{worker_name}-"
+        f"{binary_to_hex(ray.worker.global_worker.worker_id)}-"
+        f"{job_id}-{os.getpid()}.{file_extension}"
+    )
     handler = StandardFdRedirectionRotatingFileHandler(
         filename,
         maxBytes=max_bytes,
         backupCount=backup_count,
-        is_for_stdout=is_for_stdout)
+        is_for_stdout=is_for_stdout,
+    )
     logger.addHandler(handler)
     # TODO(sang): Add 0 or 1 to decide whether
     # or not logs are streamed to drivers.

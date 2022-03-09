@@ -13,15 +13,17 @@ MAX_RECEIVED_DATA_MEMORY_SIZE = 25 * 1024 * 1024  # 25MB
 
 
 class S3StorageImpl(Storage):
-    def __init__(self,
-                 bucket: str,
-                 s3_path: str,
-                 region_name=None,
-                 endpoint_url=None,
-                 aws_access_key_id=None,
-                 aws_secret_access_key=None,
-                 aws_session_token=None,
-                 config=None):
+    def __init__(
+        self,
+        bucket: str,
+        s3_path: str,
+        region_name=None,
+        endpoint_url=None,
+        aws_access_key_id=None,
+        aws_secret_access_key=None,
+        aws_session_token=None,
+        config=None,
+    ):
         if not isinstance(bucket, str):
             raise ValueError("bucket_name must be str")
         if not isinstance(s3_path, str):
@@ -36,7 +38,8 @@ class S3StorageImpl(Storage):
             region_name=region_name,
             aws_access_key_id=aws_access_key_id,
             aws_secret_access_key=aws_secret_access_key,
-            aws_session_token=aws_session_token)
+            aws_session_token=aws_session_token,
+        )
         self._region_name = region_name
         self._endpoint_url = endpoint_url
         self._aws_access_key_id = aws_access_key_id
@@ -49,8 +52,8 @@ class S3StorageImpl(Storage):
 
     async def put(self, key: str, data: Any, is_json: bool = False) -> None:
         with tempfile.SpooledTemporaryFile(
-                mode="w+b",
-                max_size=MAX_RECEIVED_DATA_MEMORY_SIZE) as tmp_file:
+            mode="w+b", max_size=MAX_RECEIVED_DATA_MEMORY_SIZE
+        ) as tmp_file:
             if is_json:
                 tmp_file.write(json.dumps(data).encode())
             else:
@@ -62,8 +65,8 @@ class S3StorageImpl(Storage):
     async def get(self, key: str, is_json: bool = False) -> Any:
         try:
             with tempfile.SpooledTemporaryFile(
-                    mode="w+b",
-                    max_size=MAX_RECEIVED_DATA_MEMORY_SIZE) as tmp_file:
+                mode="w+b", max_size=MAX_RECEIVED_DATA_MEMORY_SIZE
+            ) as tmp_file:
                 async with self._client() as s3:
                     obj = await s3.get_object(Bucket=self._bucket, Key=key)
                     async for chunk in obj["Body"]:
@@ -81,8 +84,8 @@ class S3StorageImpl(Storage):
 
     async def delete_prefix(self, key_prefix: str) -> None:
         async with self._session.resource(
-                "s3", endpoint_url=self._endpoint_url,
-                config=self._config) as s3:
+            "s3", endpoint_url=self._endpoint_url, config=self._config
+        ) as s3:
             bucket = await s3.Bucket(self._bucket)
             await bucket.objects.filter(Prefix=key_prefix).delete()
 
@@ -95,7 +98,7 @@ class S3StorageImpl(Storage):
             operation_parameters = {
                 "Bucket": self._bucket,
                 "Delimiter": "/",
-                "Prefix": key_prefix
+                "Prefix": key_prefix,
             }
             page_iterator = paginator.paginate(**operation_parameters)
             async for page in page_iterator:
@@ -108,29 +111,37 @@ class S3StorageImpl(Storage):
 
     def _client(self):
         return self._session.client(
-            "s3", endpoint_url=self._endpoint_url, config=self._config)
+            "s3", endpoint_url=self._endpoint_url, config=self._config
+        )
 
     @property
     def storage_url(self) -> str:
-        params = [("region_name", self._region_name), ("endpoint_url",
-                                                       self._endpoint_url),
-                  ("aws_access_key_id", self._aws_access_key_id),
-                  ("aws_secret_access_key",
-                   self._aws_secret_access_key), ("aws_session_token",
-                                                  self._aws_session_token)]
-        params = "&".join(
-            ["=".join(param) for param in params if param[1] is not None])
+        params = [
+            ("region_name", self._region_name),
+            ("endpoint_url", self._endpoint_url),
+            ("aws_access_key_id", self._aws_access_key_id),
+            ("aws_secret_access_key", self._aws_secret_access_key),
+            ("aws_session_token", self._aws_session_token),
+        ]
+        params = "&".join(["=".join(param) for param in params if param[1] is not None])
         parsed_url = parse.ParseResult(
             scheme="s3",
             netloc=self._bucket,
             path=self._s3_path,
             params="",
             query=params,
-            fragment="")
+            fragment="",
+        )
         return parse.urlunparse(parsed_url)
 
     def __reduce__(self):
-        return S3StorageImpl, (self._bucket, self._s3_path, self._region_name,
-                               self._endpoint_url, self._aws_access_key_id,
-                               self._aws_secret_access_key,
-                               self._aws_session_token, self._config)
+        return S3StorageImpl, (
+            self._bucket,
+            self._s3_path,
+            self._region_name,
+            self._endpoint_url,
+            self._aws_access_key_id,
+            self._aws_secret_access_key,
+            self._aws_session_token,
+            self._config,
+        )

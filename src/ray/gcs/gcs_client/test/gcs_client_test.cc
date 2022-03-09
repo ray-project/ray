@@ -28,51 +28,67 @@ namespace ray {
 
 class GcsClientTest : public ::testing::TestWithParam<bool> {
  public:
-  GcsClientTest() : use_gcs_pubsub_(GetParam()) {
+  GcsClientTest() : enable_gcs_bootstrap_(GetParam()) {
     RayConfig::instance().initialize(
         absl::Substitute(R"(
 {
   "gcs_rpc_server_reconnect_timeout_s": 60,
   "maximum_gcs_destroyed_actor_cached_count": 10,
   "maximum_gcs_dead_node_cached_count": 10,
-  "gcs_grpc_based_pubsub": $0
+  "gcs_grpc_based_pubsub": $0,
+  "gcs_storage": $1,
+  "bootstrap_with_gcs": $2
 }
   )",
-                         use_gcs_pubsub_ ? "true" : "false"));
-    TestSetupUtil::StartUpRedisServers(std::vector<int>());
+                         enable_gcs_bootstrap_ ? "true" : "false",
+                         enable_gcs_bootstrap_ ? "\"memory\"" : "\"redis\"",
+                         enable_gcs_bootstrap_ ? "true" : "false"));
+    if (!enable_gcs_bootstrap_) {
+      TestSetupUtil::StartUpRedisServers(std::vector<int>());
+    }
   }
 
-  virtual ~GcsClientTest() { TestSetupUtil::ShutDownRedisServers(); }
+  virtual ~GcsClientTest() {
+    if (!enable_gcs_bootstrap_) {
+      TestSetupUtil::ShutDownRedisServers();
+    }
+  }
 
  protected:
   void SetUp() override {
-    config_.grpc_server_port = 0;
+    if (enable_gcs_bootstrap_) {
+      config_.grpc_server_port = 5397;
+      config_.redis_port = 0;
+      config_.redis_address = "";
+    } else {
+      config_.grpc_server_port = 0;
+      config_.redis_port = TEST_REDIS_SERVER_PORTS.front();
+      config_.redis_address = "127.0.0.1";
+    }
     config_.grpc_server_name = "MockedGcsServer";
     config_.grpc_server_thread_num = 1;
-    config_.redis_address = "127.0.0.1";
     config_.node_ip_address = "127.0.0.1";
     config_.enable_sharding_conn = false;
-    config_.redis_port = TEST_REDIS_SERVER_PORTS.front();
+
     // Tests legacy code paths. The poller and broadcaster have their own dedicated unit
     // test targets.
-    config_.grpc_based_resource_broadcast = false;
-    config_.grpc_pubsub_enabled = use_gcs_pubsub_;
+    config_.grpc_pubsub_enabled = enable_gcs_bootstrap_;
 
-    client_io_service_.reset(new instrumented_io_context());
-    client_io_service_thread_.reset(new std::thread([this] {
+    client_io_service_ = std::make_unique<instrumented_io_context>();
+    client_io_service_thread_ = std::make_unique<std::thread>([this] {
       std::unique_ptr<boost::asio::io_service::work> work(
           new boost::asio::io_service::work(*client_io_service_));
       client_io_service_->run();
-    }));
+    });
 
-    server_io_service_.reset(new instrumented_io_context());
-    gcs_server_.reset(new gcs::GcsServer(config_, *server_io_service_));
+    server_io_service_ = std::make_unique<instrumented_io_context>();
+    gcs_server_ = std::make_unique<gcs::GcsServer>(config_, *server_io_service_);
     gcs_server_->Start();
-    server_io_service_thread_.reset(new std::thread([this] {
+    server_io_service_thread_ = std::make_unique<std::thread>([this] {
       std::unique_ptr<boost::asio::io_service::work> work(
           new boost::asio::io_service::work(*server_io_service_));
       server_io_service_->run();
-    }));
+    });
 
     // Wait until server starts listening.
     while (!gcs_server_->IsStarted()) {
@@ -80,9 +96,14 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     }
 
     // Create GCS client.
-    gcs::GcsClientOptions options(config_.redis_address, config_.redis_port,
-                                  config_.redis_password);
-    gcs_client_.reset(new gcs::GcsClient(options));
+    if (enable_gcs_bootstrap_) {
+      gcs::GcsClientOptions options("127.0.0.1:5397");
+      gcs_client_ = std::make_unique<gcs::GcsClient>(options);
+    } else {
+      gcs::GcsClientOptions options(config_.redis_address, config_.redis_port,
+                                    config_.redis_password);
+      gcs_client_ = std::make_unique<gcs::GcsClient>(options);
+    }
     RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
   }
 
@@ -95,7 +116,9 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     server_io_service_thread_->join();
     gcs_server_->Stop();
     gcs_server_.reset();
-    TestSetupUtil::FlushAllRedisServers();
+    if (!enable_gcs_bootstrap_) {
+      TestSetupUtil::FlushAllRedisServers();
+    }
   }
 
   void RestartGcsServer() {
@@ -239,7 +262,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     std::vector<rpc::ActorTableData> actors;
     RAY_CHECK_OK(gcs_client_->Actors().AsyncGetAll(
         [filter_non_dead_actor, &actors, &promise](
-            Status status, const std::vector<rpc::ActorTableData> &result) {
+            Status status, std::vector<rpc::ActorTableData> &&result) {
           if (!result.empty()) {
             if (filter_non_dead_actor) {
               for (auto &iter : result) {
@@ -248,7 +271,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
                 }
               }
             } else {
-              actors.assign(result.begin(), result.end());
+              actors = std::move(result);
             }
           }
           promise.set_value(true);
@@ -286,9 +309,9 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     std::promise<bool> promise;
     std::vector<rpc::GcsNodeInfo> nodes;
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
-        [&nodes, &promise](Status status, const std::vector<rpc::GcsNodeInfo> &result) {
+        [&nodes, &promise](Status status, std::vector<rpc::GcsNodeInfo> &&result) {
           assert(!result.empty());
-          nodes.assign(result.begin(), result.end());
+          nodes = std::move(result);
           promise.set_value(status.ok());
         }));
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
@@ -431,8 +454,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return node_ids;
   }
 
-  // Test parameter, whether to use GCS pubsub instead of Redis pubsub.
-  const bool use_gcs_pubsub_;
+  // Test parameter, whether to use GCS without redis.
+  const bool enable_gcs_bootstrap_;
 
   // GCS server.
   gcs::GcsServerConfig config_;
@@ -550,37 +573,6 @@ TEST_P(GcsClientTest, TestNodeInfo) {
   EXPECT_EQ(node_list[1].state(),
             rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
   ASSERT_TRUE(gcs_client_->Nodes().IsRemoved(node2_id));
-}
-
-TEST_P(GcsClientTest, TestNodeResources) {
-  // Subscribe to node resource changes.
-  std::atomic<int> add_count(0);
-  std::atomic<int> remove_count(0);
-  auto on_subscribe = [&add_count,
-                       &remove_count](const rpc::NodeResourceChange &notification) {
-    if (0 == notification.deleted_resources_size()) {
-      ++add_count;
-    } else {
-      ++remove_count;
-    }
-  };
-  ASSERT_TRUE(SubscribeToResources(on_subscribe));
-
-  // Register node.
-  auto node_info = Mocker::GenNodeInfo();
-  RAY_CHECK(RegisterNode(*node_info));
-
-  // Update resources of node in GCS.
-  NodeID node_id = NodeID::FromBinary(node_info->node_id());
-  std::string key = "CPU";
-  ASSERT_TRUE(UpdateResources(node_id, key));
-  WaitForExpectedCount(add_count, 1);
-  ASSERT_TRUE(GetResources(node_id).count(key));
-
-  // Delete resources of a node from GCS.
-  ASSERT_TRUE(DeleteResources(node_id, {key}));
-  WaitForExpectedCount(remove_count, 1);
-  ASSERT_TRUE(GetResources(node_id).empty());
 }
 
 TEST_P(GcsClientTest, TestNodeResourceUsage) {
@@ -718,7 +710,7 @@ TEST_P(GcsClientTest, TestErrorInfo) {
 
 TEST_P(GcsClientTest, TestJobTableResubscribe) {
   // TODO: Support resubscribing with GCS pubsub.
-  if (use_gcs_pubsub_) {
+  if (RayConfig::instance().gcs_grpc_based_pubsub()) {
     return;
   }
 
@@ -747,7 +739,7 @@ TEST_P(GcsClientTest, TestJobTableResubscribe) {
 
 TEST_P(GcsClientTest, TestActorTableResubscribe) {
   // TODO: Support resubscribing with GCS pubsub.
-  if (use_gcs_pubsub_) {
+  if (RayConfig::instance().gcs_grpc_based_pubsub()) {
     return;
   }
 
@@ -806,7 +798,7 @@ TEST_P(GcsClientTest, TestActorTableResubscribe) {
 
 TEST_P(GcsClientTest, TestNodeTableResubscribe) {
   // TODO: Support resubscribing with GCS pubsub.
-  if (use_gcs_pubsub_) {
+  if (RayConfig::instance().gcs_grpc_based_pubsub()) {
     return;
   }
 
@@ -818,14 +810,6 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
     ++node_change_count;
   };
   ASSERT_TRUE(SubscribeToNodeChange(node_subscribe));
-
-  // Subscribe to node resource changes.
-  std::atomic<int> resource_change_count(0);
-  auto resource_subscribe =
-      [&resource_change_count](const rpc::NodeResourceChange &result) {
-        ++resource_change_count;
-      };
-  ASSERT_TRUE(SubscribeToResources(resource_subscribe));
 
   auto node_info = Mocker::GenNodeInfo(1);
   ASSERT_TRUE(RegisterNode(*node_info));
@@ -848,12 +832,11 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
   ASSERT_TRUE(ReportResourceUsage(resources));
 
   WaitForExpectedCount(node_change_count, 2);
-  WaitForExpectedCount(resource_change_count, 2);
 }
 
 TEST_P(GcsClientTest, TestWorkerTableResubscribe) {
   // TODO: Support resubscribing with GCS pubsub.
-  if (use_gcs_pubsub_) {
+  if (RayConfig::instance().gcs_grpc_based_pubsub()) {
     return;
   }
 
@@ -878,6 +861,10 @@ TEST_P(GcsClientTest, TestWorkerTableResubscribe) {
 }
 
 TEST_P(GcsClientTest, TestGcsTableReload) {
+  // Restart gcs only work with redis.
+  if (RayConfig::instance().bootstrap_with_gcs()) {
+    return;
+  }
   // Register node to GCS.
   auto node_info = Mocker::GenNodeInfo();
   ASSERT_TRUE(RegisterNode(*node_info));
@@ -892,6 +879,9 @@ TEST_P(GcsClientTest, TestGcsTableReload) {
 
 TEST_P(GcsClientTest, TestGcsRedisFailureDetector) {
   // Stop redis.
+  if (RayConfig::instance().bootstrap_with_gcs()) {
+    return;
+  }
   TestSetupUtil::ShutDownRedisServers();
 
   // Sleep 3 times of gcs_redis_heartbeat_interval_milliseconds to make sure gcs_server
@@ -963,6 +953,10 @@ TEST_P(GcsClientTest, DISABLED_TestGetActorPerf) {
 }
 
 TEST_P(GcsClientTest, TestEvictExpiredDestroyedActors) {
+  // Restart doesn't work with in memory storage
+  if (RayConfig::instance().gcs_storage() == "memory") {
+    return;
+  }
   // Register actors and the actors will be destroyed.
   JobID job_id = JobID::FromInt(1);
   AddJob(job_id);

@@ -60,6 +60,7 @@ class LocalObjectManager {
         is_plasma_object_spillable_(is_plasma_object_spillable),
         is_external_storage_type_fs_(is_external_storage_type_fs),
         max_fused_object_count_(max_fused_object_count),
+        next_spill_error_log_bytes_(RayConfig::instance().verbose_spill_logs()),
         core_worker_subscriber_(core_worker_subscriber) {}
 
   /// Pin objects.
@@ -138,6 +139,9 @@ class LocalObjectManager {
   /// In that case, the URL is supposed to be obtained by the object directory.
   std::string GetLocalSpilledObjectURL(const ObjectID &object_id);
 
+  /// Get the current pinned object store memory usage.
+  int64_t GetPinnedBytes() const { return pinned_objects_size_; }
+
   std::string DebugString() const;
 
  private:
@@ -196,8 +200,14 @@ class LocalObjectManager {
   /// A callback to call when an object has been freed.
   std::function<void(const std::vector<ObjectID> &)> on_objects_freed_;
 
-  /// Hashmap from objects that we are waiting to free to their owner address.
-  absl::flat_hash_map<ObjectID, rpc::Address> objects_waiting_for_free_;
+  /// Hashmap from local objects that we are waiting to free to a tuple of
+  /// (their owner address, whether the object has been freed).
+  /// All objects in this hashmap should also be in exactly one of the
+  /// following maps:
+  /// - pinned_objects_: objects pinned in shared memory
+  /// - objects_pending_spill_: objects pinned and waiting for spill to complete
+  /// - spilled_objects_url_: objects already spilled
+  absl::flat_hash_map<ObjectID, std::pair<rpc::Address, bool>> local_objects_;
 
   // Objects that are pinned on this node.
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
@@ -268,6 +278,10 @@ class LocalObjectManager {
 
   /// Maximum number of objects that can be fused into a single file.
   int64_t max_fused_object_count_;
+
+  /// The next total bytes for an error-level spill log, or zero to disable.
+  /// This is doubled each time a message is logged.
+  int64_t next_spill_error_log_bytes_;
 
   /// The raylet client to initiate the pubsub to core workers (owners).
   /// It is used to subscribe objects to evict.

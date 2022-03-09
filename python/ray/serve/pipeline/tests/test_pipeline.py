@@ -68,8 +68,7 @@ def test_multiple_inputs(execution_mode, shared_ray_instance):
     def step3(step1_output: str, step2_output: str):
         return f"{step1_output}|{step2_output}"
 
-    multiple_inputs = step3(step1(pipeline.INPUT),
-                            step2(pipeline.INPUT)).deploy()
+    multiple_inputs = step3(step1(pipeline.INPUT), step2(pipeline.INPUT)).deploy()
     assert multiple_inputs.call("HELLO") == "step1_HELLO|step2_HELLO"
 
 
@@ -88,39 +87,43 @@ def test_basic_class(execution_mode, shared_ray_instance):
     assert greeter.call("Theodore") == "Top of the morning Theodore!"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="File handling.")
 @pytest.mark.parametrize("execution_mode", ALL_EXECUTION_MODES)
 @enable_local_execution_mode_only
-def test_class_constructor_not_called_until_deployed(execution_mode,
-                                                     shared_ray_instance):
+def test_class_constructor_not_called_until_deployed(
+    execution_mode, shared_ray_instance
+):
     """Constructor should only be called after .deploy()."""
 
-    with tempfile.NamedTemporaryFile("w") as tmp:
+    tmp = tempfile.NamedTemporaryFile("w+", suffix=".tmp", delete=False)
+    tmp.close()
 
-        @pipeline.step(execution_mode=execution_mode)
-        class FileWriter:
-            def __init__(self, tmpfile: str, msg: str):
-                with open(tmpfile, "w") as f:
-                    f.write(msg)
-                    f.flush()
+    @pipeline.step(execution_mode=execution_mode)
+    class FileWriter:
+        def __init__(self, tmpfile_name, msg: str):
+            with open(tmpfile_name, "w") as tmpfile:
+                tmpfile.write(msg)
+                tmpfile.flush()
 
-            def __call__(self, arg: str):
-                return arg
+        def __call__(self, arg: str):
+            return arg
 
-        msg = "hello"
+    msg = "hello"
 
-        def constructor_called():
-            with open(tmp.name, "r") as f:
-                return f.read() == msg
+    def constructor_called():
+        with open(tmp.name, "r") as f:
+            ret = f.readline() == msg
+        return ret
 
-        file_writer = FileWriter(tmp.name, msg)
-        assert not constructor_called()
+    file_writer = FileWriter(tmp.name, msg)
+    assert not constructor_called()
 
-        writer_pipeline = file_writer(pipeline.INPUT)
-        assert not constructor_called()
+    writer_pipeline = file_writer(pipeline.INPUT)
+    assert not constructor_called()
 
-        assert writer_pipeline.deploy().call("hi") == "hi"
-        assert constructor_called()
+    assert writer_pipeline.deploy().call("hi") == "hi"
+    assert constructor_called()
+
+    os.unlink(tmp.name)
 
 
 @pytest.mark.parametrize("execution_mode", ALL_EXECUTION_MODES)
@@ -143,8 +146,8 @@ def test_mix_classes_and_functions(execution_mode, shared_ray_instance):
         return f"{greeting1}|{greeting2}"
 
     greeter = combiner(
-        GreeterStep1("Howdy")(pipeline.INPUT),
-        greeter_step_2(pipeline.INPUT)).deploy()
+        GreeterStep1("Howdy")(pipeline.INPUT), greeter_step_2(pipeline.INPUT)
+    ).deploy()
     assert greeter.call("Teddy") == "Howdy Teddy!|How's it hanging, Teddy?"
 
 

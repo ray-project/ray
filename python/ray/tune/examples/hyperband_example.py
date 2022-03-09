@@ -10,14 +10,15 @@ from ray.tune.schedulers import HyperBandScheduler
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
+        "--smoke-test", action="store_true", help="Finish quickly for testing"
+    )
     parser.add_argument(
         "--server-address",
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using "
-        "Ray Client.")
+        help="The address of server to connect to if using " "Ray Client.",
+    )
     args, _ = parser.parse_known_args()
     if args.server_address:
         ray.init(f"ray://{args.server_address}")
@@ -36,12 +37,10 @@ if __name__ == "__main__":
         metric="episode_reward_mean",
         mode="max",
         stop={"training_iteration": 1 if args.smoke_test else 200},
-        config={
-            "width": tune.randint(10, 90),
-            "height": tune.randint(0, 100)
-        },
+        config={"width": tune.randint(10, 90), "height": tune.randint(0, 100)},
         verbose=1,
         scheduler=hyperband,
-        fail_fast=True)
+        fail_fast=True,
+    )
 
     print("Best hyperparameters found were: ", analysis.best_config)

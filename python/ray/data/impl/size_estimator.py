@@ -43,8 +43,11 @@ class SizeEstimator:
         if not _ray_initialized:
             _ray_initialized = True
             ray.put(None)
-        return ray.worker.global_worker.get_serialization_context().serialize(
-            item).total_bytes
+        return (
+            ray.worker.global_worker.get_serialization_context()
+            .serialize(item)
+            .total_bytes
+        )
 
 
 # Adapted from the RLlib MeanStdFilter.

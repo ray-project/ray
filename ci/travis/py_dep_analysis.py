@@ -43,7 +43,8 @@ def list_rllib_tests(n: int = -1, test: str = None) -> Tuple[str, List[str]]:
         test: only return information about a specific test.
     """
     tests_res = _run_shell(
-        ["bazel", "query", "tests(//python/ray/rllib:*)", "--output", "label"])
+        ["bazel", "query", "tests(//python/ray/rllib:*)", "--output", "label"]
+    )
 
     all_tests = []
 
@@ -53,15 +54,18 @@ def list_rllib_tests(n: int = -1, test: str = None) -> Tuple[str, List[str]]:
         if test and t != test:
             continue
 
-        src_out = _run_shell([
-            "bazel", "query", "kind(\"source file\", deps({}))".format(t),
-            "--output", "label"
-        ])
+        src_out = _run_shell(
+            [
+                "bazel",
+                "query",
+                'kind("source file", deps({}))'.format(t),
+                "--output",
+                "label",
+            ]
+        )
 
         srcs = [f.strip() for f in src_out.splitlines()]
-        srcs = [
-            f for f in srcs if f.startswith("//python") and f.endswith(".py")
-        ]
+        srcs = [f for f in srcs if f.startswith("//python") and f.endswith(".py")]
         if srcs:
             all_tests.append((t, srcs))
 
@@ -73,8 +77,7 @@ def list_rllib_tests(n: int = -1, test: str = None) -> Tuple[str, List[str]]:
 
 
 def _new_dep(graph: DepGraph, src_module: str, dep: str):
-    """Create a new dependency between src_module and dep.
-    """
+    """Create a new dependency between src_module and dep."""
     if dep not in graph.ids:
         graph.ids[dep] = len(graph.ids)
 
@@ -87,8 +90,7 @@ def _new_dep(graph: DepGraph, src_module: str, dep: str):
 
 
 def _new_import(graph: DepGraph, src_module: str, dep_module: str):
-    """Process a new import statement in src_module.
-    """
+    """Process a new import statement in src_module."""
     # We don't care about system imports.
     if not dep_module.startswith("ray"):
         return
@@ -97,8 +99,7 @@ def _new_import(graph: DepGraph, src_module: str, dep_module: str):
 
 
 def _is_path_module(module: str, name: str, _base_dir: str) -> bool:
-    """Figure out if base.sub is a python module or not.
-    """
+    """Figure out if base.sub is a python module or not."""
     # Special handling for _raylet, which is a C++ lib.
     if module == "ray._raylet":
         return False
@@ -110,10 +111,10 @@ def _is_path_module(module: str, name: str, _base_dir: str) -> bool:
     return False
 
 
-def _new_from_import(graph: DepGraph, src_module: str, dep_module: str,
-                     dep_name: str, _base_dir: str):
-    """Process a new "from ... import ..." statement in src_module.
-    """
+def _new_from_import(
+    graph: DepGraph, src_module: str, dep_module: str, dep_name: str, _base_dir: str
+):
+    """Process a new "from ... import ..." statement in src_module."""
     # We don't care about imports outside of ray package.
     if not dep_module or not dep_module.startswith("ray"):
         return
@@ -126,10 +127,7 @@ def _new_from_import(graph: DepGraph, src_module: str, dep_module: str,
         _new_dep(graph, src_module, dep_module)
 
 
-def _process_file(graph: DepGraph,
-                  src_path: str,
-                  src_module: str,
-                  _base_dir=""):
+def _process_file(graph: DepGraph, src_path: str, src_module: str, _base_dir=""):
     """Create dependencies from src_module to all the valid imports in src_path.
 
     Args:
@@ -147,13 +145,13 @@ def _process_file(graph: DepGraph,
                     _new_import(graph, src_module, alias.name)
             elif isinstance(node, ast.ImportFrom):
                 for alias in node.names:
-                    _new_from_import(graph, src_module, node.module,
-                                     alias.name, _base_dir)
+                    _new_from_import(
+                        graph, src_module, node.module, alias.name, _base_dir
+                    )
 
 
 def build_dep_graph() -> DepGraph:
-    """Build index from py files to their immediate dependees.
-    """
+    """Build index from py files to their immediate dependees."""
     graph = DepGraph()
 
     # Assuming we run from root /ray directory.
@@ -197,8 +195,7 @@ def _full_module_path(module, f) -> str:
 
 
 def _should_skip(d: str) -> bool:
-    """Skip directories that should not contain py sources.
-    """
+    """Skip directories that should not contain py sources."""
     if d.startswith("python/.eggs/"):
         return True
     if d.startswith("python/."):
@@ -224,14 +221,14 @@ def _bazel_path_to_module_path(d: str) -> str:
 
 
 def _file_path_to_module_path(f: str) -> str:
-    """Return the corresponding module path for a .py file.
-    """
+    """Return the corresponding module path for a .py file."""
     dir, fn = os.path.split(f)
     return _full_module_path(_bazel_path_to_module_path(dir), fn)
 
 
-def _depends(graph: DepGraph, visited: Dict[int, bool], tid: int,
-             qid: int) -> List[int]:
+def _depends(
+    graph: DepGraph, visited: Dict[int, bool], tid: int, qid: int
+) -> List[int]:
     """Whether there is a dependency path from module tid to module qid.
 
     Given graph, and without going through visited.
@@ -253,8 +250,9 @@ def _depends(graph: DepGraph, visited: Dict[int, bool], tid: int,
     return []
 
 
-def test_depends_on_file(graph: DepGraph, test: Tuple[str, Tuple[str]],
-                         path: str) -> List[int]:
+def test_depends_on_file(
+    graph: DepGraph, test: Tuple[str, Tuple[str]], path: str
+) -> List[int]:
     """Give dependency graph, check if a test depends on a specific .py file.
 
     Args:
@@ -307,8 +305,7 @@ def _find_circular_dep_impl(graph: DepGraph, id: str, branch: str) -> bool:
 
 
 def find_circular_dep(graph: DepGraph) -> Dict[str, List[int]]:
-    """Find circular dependencies among a dependency graph.
-    """
+    """Find circular dependencies among a dependency graph."""
     known = {}
     circles = {}
     for m, id in graph.ids.items():
@@ -334,25 +331,29 @@ if __name__ == "__main__":
         "--mode",
         type=str,
         default="test-dep",
-        help=("test-dep: find dependencies for a specified test. "
-              "circular-dep: find circular dependencies in "
-              "the specific codebase."))
+        help=(
+            "test-dep: find dependencies for a specified test. "
+            "circular-dep: find circular dependencies in "
+            "the specific codebase."
+        ),
+    )
     parser.add_argument(
-        "--file",
-        type=str,
-        help="Path of a .py source file relative to --base_dir.")
+        "--file", type=str, help="Path of a .py source file relative to --base_dir."
+    )
     parser.add_argument("--test", type=str, help="Specific test to check.")
     parser.add_argument(
-        "--smoke-test",
-        action="store_true",
-        help="Load only a few tests for testing.")
+        "--smoke-test", action="store_true", help="Load only a few tests for testing."
+    )
 
     args = parser.parse_args()
 
     print("building dep graph ...")
     graph = build_dep_graph()
-    print("done. total {} files, {} of which have dependencies.".format(
-        len(graph.ids), len(graph.edges)))
+    print(
+        "done. total {} files, {} of which have dependencies.".format(
+            len(graph.ids), len(graph.edges)
+        )
+    )
 
     if args.mode == "circular-dep":
         circles = find_circular_dep(graph)

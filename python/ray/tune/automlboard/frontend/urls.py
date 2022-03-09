@@ -30,5 +30,5 @@ urlpatterns = [
     url(r"^job$", view.job),
     url(r"^trial$", view.trial),
     url(r"^query_job", query.query_job),
-    url(r"^query_trial", query.query_trial)
+    url(r"^query_trial", query.query_trial),
 ]

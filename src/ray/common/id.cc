@@ -194,9 +194,30 @@ TaskID TaskID::ForNormalTask(const JobID &job_id, const TaskID &parent_task_id,
   return TaskID::FromBinary(data);
 }
 
+TaskID TaskID::ForExecutionAttempt(const TaskID &task_id, uint64_t attempt_number) {
+  std::string data_str;
+  std::copy_n(task_id.Data(), TaskID::kLength, std::back_inserter(data_str));
+  static_assert(TaskID::kUniqueBytesLength >= 8, "TaskID must have at least 64 bits");
+  auto data = reinterpret_cast<uint64_t *>(data_str.data());
+  // Zero out the low byte for readability.
+  uint64_t mask = 0xFFFFFFFFFFFFFF00;
+  data[0] &= mask;
+  // Add attempt number to the task ID unique bytes.
+  (*data) += attempt_number;
+  return TaskID::FromBinary(data_str);
+}
+
 ActorID TaskID::ActorId() const {
   return ActorID::FromBinary(std::string(
       reinterpret_cast<const char *>(id_ + kUniqueBytesLength), ActorID::Size()));
+}
+
+bool TaskID::IsForActorCreationTask() const {
+  static std::string nil_data(kUniqueBytesLength, 0);
+  FillNil(&nil_data);
+  bool unique_bytes_nil = std::memcmp(id_, nil_data.data(), kUniqueBytesLength) == 0;
+  bool actor_id_nil = ActorId().IsNil();
+  return unique_bytes_nil && !actor_id_nil;
 }
 
 JobID TaskID::JobId() const { return ActorId().JobId(); }
