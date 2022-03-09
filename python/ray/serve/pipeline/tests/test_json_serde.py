@@ -15,6 +15,7 @@ from ray.serve.pipeline.tests.resources.test_modules import (
     Counter,
     ClassHello,
     fn_hello,
+    class_factory,
     Combine,
     request_to_data_int,
     NESTED_HANDLE_KEY,
@@ -118,7 +119,7 @@ def test_non_json_serializable_args():
 
 
 def test_no_inline_class_or_func(serve_instance):
-    # This function is defined inline given it lives in the test function
+    # 1) Inline function
     @ray.remote
     def inline_func(val):
         return val
@@ -133,7 +134,7 @@ def test_no_inline_class_or_func(serve_instance):
     ):
         _ = json.dumps(ray_dag, cls=DAGNodeEncoder)
 
-    # This class is defined inline given it lives in the test function
+    # 2) Inline class
     @ray.remote
     class InlineClass:
         def __init__(self, val):
@@ -152,6 +153,7 @@ def test_no_inline_class_or_func(serve_instance):
     ):
         _ = json.dumps(ray_dag, cls=DAGNodeEncoder)
 
+    # 3) Inline preprocessor fn
     def inline_preprocessor_fn(input):
         return input
 
@@ -161,6 +163,16 @@ def test_no_inline_class_or_func(serve_instance):
     with pytest.raises(
         AssertionError,
         match="Preprocessor used in DAG should not be in-line defined",
+    ):
+        _ = json.dumps(ray_dag, cls=DAGNodeEncoder)
+
+    # 4) Class factory that function returns class object
+    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
+        instance = ray.remote(class_factory()).bind()
+        ray_dag = instance.get.bind()
+    with pytest.raises(
+        AssertionError,
+        match="Class used in DAG should not be in-line defined",
     ):
         _ = json.dumps(ray_dag, cls=DAGNodeEncoder)
 
