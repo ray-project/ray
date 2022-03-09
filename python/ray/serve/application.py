@@ -331,6 +331,19 @@ class Application:
             raise KeyError(f'Serve application does not contain a "{key}" deployment.')
 
     def __setitem__(self, key: str, value: Deployment):
+        """
+        Fetch a deployment by name using dict syntax: app[name] = new_deployment
+
+        Use this to overwrite existing deployments.
+
+        Args:
+            key (String): name
+            value (Deployment): the deployment that the name maps to
+
+        Raises:
+            TypeError: if the key is not a String or the value is not a deployment.
+        """
+
         self.__setattr__(key, value)
 
     def __getattr__(self, name: str):
@@ -349,6 +362,19 @@ class Application:
             )
 
     def __setattr__(self, key: str, value: Deployment):
+        """
+        Fetch a deployment by name using attribute syntax: app.name = new_deployment
+
+        Use this to overwrite existing deployments.
+
+        Args:
+            key (String): name
+            value (Deployment): the deployment that the name maps to
+
+        Raises:
+            TypeError: if the key is not a String or the value is not a deployment.
+        """
+
         if not isinstance(key):
             raise TypeError(f"key should be a string, but got object of type {key}.")
         elif not isinstance(value, Deployment):
