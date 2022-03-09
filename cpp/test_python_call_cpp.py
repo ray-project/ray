@@ -5,9 +5,7 @@ import pytest
 
 
 def test_cross_language_cpp():
-    ray.init(
-        job_config=ray.job_config.JobConfig(code_search_path=["../../plus.so"])
-    )
+    ray.init(job_config=ray.job_config.JobConfig(code_search_path=["../../plus.so"]))
     obj = ray.cross_language.cpp_function("Plus1").remote(1)
     assert 2 == ray.get(obj)
 
@@ -63,7 +61,6 @@ def test_cross_language_cpp():
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
