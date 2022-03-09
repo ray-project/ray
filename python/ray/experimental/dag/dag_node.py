@@ -207,7 +207,7 @@ class DAGNode:
             )
         )
 
-    def _apply_functional(
+    def apply_functional(
         self,
         source_input_list: Any,
         predictate_fn: Callable,

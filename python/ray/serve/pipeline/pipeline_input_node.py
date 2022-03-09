@@ -24,8 +24,8 @@ class PipelineInputNode(InputNode):
         >>> with PipelineInputNode(
         ...     preprocessor=request_to_data_int
         ... ) as dag_input:
-        ...    model = Model._bind(2, ratio=0.3)
-        ...    ray_dag = model.forward._bind(dag_input)
+        ...    model = Model.bind(2, ratio=0.3)
+        ...    ray_dag = model.forward.bind(dag_input)
     """
 
     def __init__(

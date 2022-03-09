@@ -59,21 +59,21 @@ class FunctionNode(DAGNode):
         return get_dag_node_str(self, str(self._body))
 
     def get_import_path(self):
-        error_message = (
-            "Function used in DAG should not be in-line defined when exporting"
-            "import path for deployment. Please ensure it has fully qualified "
-            "name with valid __module__ and __qualname__ for import path. \n"
-            f"Current __module__: {self._body.__module__} \n"
-            f"current __qualname__: {self._body.__qualname__}"
-        )
-        assert "__main__" not in f"{self._body.__module__}", error_message
-        assert "<locals>" not in f"{self._body.__qualname__}", error_message
-
         return f"{self._body.__module__}.{self._body.__qualname__}"
 
     def to_json(self, encoder_cls) -> Dict[str, Any]:
         json_dict = super().to_json_base(encoder_cls, FunctionNode.__name__)
-        json_dict["import_path"] = self.get_import_path()
+        import_path = self.get_import_path()
+        error_message = (
+            "Function used in DAG should not be in-line defined when exporting"
+            "import path for deployment. Please ensure it has fully "
+            "qualified name with valid __module__ and __qualname__ for "
+            "import path, with no __main__ or <locals>. \n"
+            f"Current import path: {import_path}"
+        )
+        assert "__main__" not in import_path, error_message
+        assert "<locals>" not in import_path, error_message
+        json_dict["import_path"] = import_path
         return json_dict
 
     @classmethod
