@@ -156,6 +156,8 @@ class LocalTaskManager {
   /// false.
   bool ReturnCpuResourcesToBlockedWorker(std::shared_ptr<WorkerInterface> worker);
 
+  /// TODO(Chong-Li): Removing this and maintaining normal task resources by local
+  /// resource manager.
   /// Calculate normal task resources.
   ResourceSet CalcNormalTaskResources() const;
 
