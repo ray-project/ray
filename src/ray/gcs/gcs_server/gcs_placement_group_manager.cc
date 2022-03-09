@@ -546,8 +546,8 @@ void GcsPlacementGroupManager::HandleGetAllPlacementGroup(
   RAY_LOG(DEBUG) << "Getting all placement group info.";
   auto on_done =
       [this, reply, send_reply_callback](
-          const std::unordered_map<PlacementGroupID, PlacementGroupTableData> &result) {
-        for (auto &[placement_group_id, data] : result) {
+          const absl::flat_hash_map<PlacementGroupID, PlacementGroupTableData> &result) {
+        for (const auto &[placement_group_id, data] : result) {
           auto it = registered_placement_groups_.find(placement_group_id);
           // If the pg entry exists in memory just copy from it since
           // it has less stale data. It is useful because we don't
@@ -565,7 +565,7 @@ void GcsPlacementGroupManager::HandleGetAllPlacementGroup(
       };
   Status status = gcs_table_storage_->PlacementGroupTable().GetAll(on_done);
   if (!status.ok()) {
-    on_done(std::unordered_map<PlacementGroupID, PlacementGroupTableData>());
+    on_done(absl::flat_hash_map<PlacementGroupID, PlacementGroupTableData>());
   }
   ++counts_[CountType::GET_ALL_PLACEMENT_GROUP_REQUEST];
 }

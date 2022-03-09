@@ -15,7 +15,6 @@
 #pragma once
 
 #include <boost/optional/optional.hpp>
-#include <unordered_map>
 #include <vector>
 
 #include "ray/common/status.h"
@@ -59,7 +58,7 @@ using ItemCallback = std::function<void(const Data &result)>;
 /// This callback is used to receive multiple key-value items from GCS.
 /// \param result The key-value items returned by GCS.
 template <typename Key, typename Value>
-using MapCallback = std::function<void(std::unordered_map<Key, Value> &&result)>;
+using MapCallback = std::function<void(absl::flat_hash_map<Key, Value> &&result)>;
 
 }  // namespace gcs
 

@@ -145,7 +145,7 @@ class StoreClientTestBase : public ::testing::Test {
 
   void GetByIndex() {
     auto get_calllback =
-        [this](const std::unordered_map<std::string, std::string> &result) {
+        [this](const absl::flat_hash_map<std::string, std::string> &result) {
           if (!result.empty()) {
             auto key = ActorID::FromBinary(result.begin()->first);
             auto it = key_to_index_.find(key);
@@ -179,7 +179,7 @@ class StoreClientTestBase : public ::testing::Test {
 
   void GetAll() {
     auto get_all_callback =
-        [this](const std::unordered_map<std::string, std::string> &result) {
+        [this](const absl::flat_hash_map<std::string, std::string> &result) {
           static std::unordered_set<ActorID> received_keys;
           for (const auto &item : result) {
             const ActorID &actor_id = ActorID::FromBinary(item.first);
