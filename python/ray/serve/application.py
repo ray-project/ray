@@ -10,7 +10,6 @@ from ray.serve.api import (
     Deployment,
     _get_global_client,
 )
-from ray.serve.common import DeploymentStatus
 from ray.dashboard.modules.serve.schema import (
     ServeApplicationSchema,
     serve_application_to_schema,
@@ -22,9 +21,7 @@ from ray.serve.utils import logger
 
 
 class Application:
-    """
-    Contains a group of Serve deployments and manages their deployment to the
-    Ray cluster.
+    """Used to deploy, update, and monitor groups of Serve deployments.
 
     Args:
         deployments (List[Deployment]): The Serve Application is
@@ -35,14 +32,8 @@ class Application:
         deployments = deployments or []
 
         self._deployments = dict()
-        for idx, d in enumerate(deployments):
-            if isinstance(d, Deployment):
-                self._deployments[d.name] = d
-            else:
-                raise TypeError(
-                    f"Got object of type {type(d)} at index {idx}. "
-                    "Expected only Deployment objects to be passed in."
-                )
+        for d in deployments:
+            self.add_deployment(d)
 
     def add_deployment(self, deployment: Deployment):
         """
@@ -115,22 +106,6 @@ class Application:
 
         return _get_global_client().deploy_group(parameter_group, _blocking=blocking)
 
-    @staticmethod
-    def get_statuses() -> Dict[str, DeploymentStatus]:
-        """
-        Gets the currents statuses of all deployments running on the Ray cluster.
-        NOTE: these deployments may not match the deployments stored in this
-        Application since other Applications and deployments may have been
-        deployed to the cluster.
-
-        Returns:
-            Dict[str, DeploymentStatus]: This dictionary maps the running
-                deployment's name to a DeploymentStatus object containing its
-                status and a message explaining the status.
-        """
-
-        return _get_global_client().get_deployment_statuses()
-
     def run(
         self,
         runtime_env_updates=None,
@@ -176,9 +151,9 @@ class Application:
             logger.info("\nDeployed successfully!\n")
 
             while True:
-                statuses = serve_application_status_to_schema(self.get_statuses()).json(
-                    indent=4
-                )
+                statuses = serve_application_status_to_schema(
+                    serve.get_deployment_statuses()
+                ).json(indent=4)
                 logger.info(f"{statuses}")
                 time.sleep(10)
 

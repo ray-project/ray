@@ -35,7 +35,7 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def get_all_deployment_statuses(self, req: Request) -> Response:
         serve_application_status_schema = serve_application_status_to_schema(
-            Application.get_statuses()
+            serve.get_deployment_statuses()
         )
         return Response(
             text=serve_application_status_schema.json(),

@@ -1423,3 +1423,25 @@ def list_deployments() -> Dict[str, Deployment]:
         )
 
     return deployments
+
+
+@PublicAPI
+def get_deployment_statuses() -> Dict[str, DeploymentStatusInfo]:
+    """Returns a dictionary of deployment statuses.
+
+    A deployment's status is one of {UPDATING, UNHEALTHY, and HEALTHY}.
+
+    Example:
+
+    >>> statuses = serve.get_deployment_statuses()
+    >>> status_info = statuses["deployment_name"]
+    >>> status = status_info.status
+    >>> message = status_info.message
+
+    Returns:
+            Dict[str, DeploymentStatus]: This dictionary maps the running
+                deployment's name to a DeploymentStatus object containing its
+                status and a message explaining the status.
+    """
+
+    return _get_global_client().get_deployment_statuses()
