@@ -353,14 +353,13 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_node_manager_);
   auto scheduler = std::make_shared<GcsPlacementGroupScheduler>(
       main_service_, gcs_table_storage_, *gcs_node_manager_, *gcs_resource_manager_,
-      *gcs_resource_scheduler_, raylet_client_pool_);
+      *gcs_resource_scheduler_, raylet_client_pool_, *ray_syncer_);
 
   gcs_placement_group_manager_ = std::make_shared<GcsPlacementGroupManager>(
       main_service_, scheduler, gcs_table_storage_, *gcs_resource_manager_,
       [this](const JobID &job_id) {
         return gcs_job_manager_->GetJobConfig(job_id)->ray_namespace();
-      },
-      *ray_syncer_);
+      });
   // Initialize by gcs tables data.
   gcs_placement_group_manager_->Initialize(gcs_init_data);
   // Register service.

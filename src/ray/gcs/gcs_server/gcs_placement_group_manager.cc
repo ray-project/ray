@@ -132,10 +132,8 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
     std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     GcsResourceManager &gcs_resource_manager,
-    std::function<std::string(const JobID &)> get_ray_namespace,
-    syncer::RaySyncer &ray_syncer)
-    : ray_syncer_(ray_syncer),
-      io_context_(io_context),
+    std::function<std::string(const JobID &)> get_ray_namespace)
+    : io_context_(io_context),
       gcs_placement_group_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_resource_manager_(gcs_resource_manager),

@@ -181,9 +181,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
       std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
       GcsResourceManager &gcs_resource_manager,
-      std::function<std::string(const JobID &)> get_ray_namespace,
-      /* TODO (iycheng): Delete this once everything is moved to ray sycner*/
-      syncer::RaySyncer &ray_syncer);
+      std::function<std::string(const JobID &)> get_ray_namespace);
 
   ~GcsPlacementGroupManager() = default;
 
@@ -316,7 +314,6 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   void RecordMetrics() const;
 
  private:
-  syncer::RaySyncer &ray_syncer_;
   /// Push a placement group to pending queue.
   ///
   /// \param pg The placementgroup we are adding
