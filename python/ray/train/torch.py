@@ -515,6 +515,9 @@ def accelerate(amp: bool = False) -> None:
     Arguments:
         amp (bool): If true, perform training with automatic mixed precision.
             Otherwise, use full precision.
+
+    .. warning:: ``train.torch.accelerate`` cannot be called more than once, and it
+       must be called before any other ``train.torch`` utility function.
     """
     try:
         set_accelerator(TorchAccelerator(amp=amp))

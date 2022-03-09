@@ -202,9 +202,6 @@ train.torch.accelerate
 
 .. autofunction:: ray.train.torch.accelerate
 
-.. warning:: ``train.torch.accelerate`` cannot be called more than once, and it
-   must be called before any other ``train.torch`` utility function.
-
 train.torch.TorchWorkerProfiler
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
