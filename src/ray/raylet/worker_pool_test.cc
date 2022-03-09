@@ -866,12 +866,11 @@ TEST_F(WorkerPoolTest, HandleIOWorkersPushPop) {
   // 2 pending tasks / 2 new idle workers.
   for (const auto &worker : spill_workers) {
     auto status = PopWorkerStatus::OK;
-    auto proc = worker_pool_->StartWorkerProcess(
+    auto [proc, token] = worker_pool_->StartWorkerProcess(
         rpc::Language::PYTHON, rpc::WorkerType::SPILL_WORKER, JobID::Nil(), &status);
     ASSERT_EQ(status, PopWorkerStatus::OK);
-    RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
-                                              worker_pool_->GetStartupToken(proc),
-                                              [](Status, int) {}));
+    RAY_CHECK_OK(
+        worker_pool_->RegisterWorker(worker, proc.GetId(), token, [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     worker_pool_->PushSpillWorker(worker);
   }
@@ -884,12 +883,11 @@ TEST_F(WorkerPoolTest, HandleIOWorkersPushPop) {
     auto worker = CreateSpillWorker(Process());
     spill_workers.insert(worker);
     auto status = PopWorkerStatus::OK;
-    auto proc = worker_pool_->StartWorkerProcess(
+    auto [proc, token] = worker_pool_->StartWorkerProcess(
         rpc::Language::PYTHON, rpc::WorkerType::SPILL_WORKER, JobID::Nil(), &status);
     ASSERT_EQ(status, PopWorkerStatus::OK);
-    RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
-                                              worker_pool_->GetStartupToken(proc),
-                                              [](Status, int) {}));
+    RAY_CHECK_OK(
+        worker_pool_->RegisterWorker(worker, proc.GetId(), token, [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
   }
   // Now push back to used workers
@@ -907,12 +905,11 @@ TEST_F(WorkerPoolTest, HandleIOWorkersPushPop) {
   restore_workers.insert(CreateRestoreWorker(Process()));
   for (const auto &worker : restore_workers) {
     auto status = PopWorkerStatus::OK;
-    auto proc = worker_pool_->StartWorkerProcess(
+    auto [proc, token] = worker_pool_->StartWorkerProcess(
         rpc::Language::PYTHON, rpc::WorkerType::RESTORE_WORKER, JobID::Nil(), &status);
     ASSERT_EQ(status, PopWorkerStatus::OK);
-    RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
-                                              worker_pool_->GetStartupToken(proc),
-                                              [](Status, int) {}));
+    RAY_CHECK_OK(
+        worker_pool_->RegisterWorker(worker, proc.GetId(), token, [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     worker_pool_->PushRestoreWorker(worker);
   }
@@ -1792,7 +1789,7 @@ TEST_F(WorkerPoolTest, TestIOWorkerFailureAndSpawn) {
 
   // Initialize the worker pool with MAX_IO_WORKER_SIZE idle spill workers.
 
-  std::vector<Process> processes;
+  std::vector<std::tuple<Process, StartupToken>> processes;
   for (int i = 0; i < MAX_IO_WORKER_SIZE; i++) {
     auto status = PopWorkerStatus::OK;
     auto process = worker_pool_->StartWorkerProcess(
@@ -1800,11 +1797,11 @@ TEST_F(WorkerPoolTest, TestIOWorkerFailureAndSpawn) {
     ASSERT_EQ(status, PopWorkerStatus::OK);
     processes.push_back(process);
   }
-  for (const auto &proc : processes) {
+  for (const auto &process : processes) {
+    auto [proc, token] = process;
     auto worker = CreateSpillWorker(Process());
-    RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
-                                              worker_pool_->GetStartupToken(proc),
-                                              [](Status, int) {}));
+    RAY_CHECK_OK(
+        worker_pool_->RegisterWorker(worker, proc.GetId(), token, [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     worker_pool_->PushSpillWorker(worker);
   }
@@ -1837,12 +1834,11 @@ TEST_F(WorkerPoolTest, TestIOWorkerFailureAndSpawn) {
   ASSERT_EQ(spill_worker_set.size(), 0);
   auto worker2 = CreateSpillWorker(Process());
   auto status = PopWorkerStatus::OK;
-  auto proc2 = worker_pool_->StartWorkerProcess(
+  auto [proc2, token2] = worker_pool_->StartWorkerProcess(
       rpc::Language::PYTHON, rpc::WorkerType::SPILL_WORKER, JobID::Nil(), &status);
   ASSERT_EQ(status, PopWorkerStatus::OK);
-  RAY_CHECK_OK(worker_pool_->RegisterWorker(worker2, proc2.GetId(), proc2.GetId(),
-                                            worker_pool_->GetStartupToken(proc2),
-                                            [](Status, int) {}));
+  RAY_CHECK_OK(
+      worker_pool_->RegisterWorker(worker2, proc2.GetId(), token2, [](Status, int) {}));
   worker_pool_->OnWorkerStarted(worker2);
   worker_pool_->PushSpillWorker(worker2);
   ASSERT_EQ(spill_worker_set.size(), 1);
@@ -1864,12 +1860,11 @@ TEST_F(WorkerPoolTest, TestIOWorkerFailureAndSpawn) {
   // Unable to pop a spill worker from the idle pool, but a new one is being started.
   ASSERT_EQ(spill_worker_set.size(), 0);
   auto worker3 = CreateSpillWorker(Process());
-  auto proc3 = worker_pool_->StartWorkerProcess(
+  auto [proc3, token3] = worker_pool_->StartWorkerProcess(
       rpc::Language::PYTHON, rpc::WorkerType::SPILL_WORKER, JobID::Nil(), &status);
   ASSERT_EQ(status, PopWorkerStatus::OK);
-  RAY_CHECK_OK(worker_pool_->RegisterWorker(worker3, proc3.GetId(), proc3.GetId(),
-                                            worker_pool_->GetStartupToken(proc3),
-                                            [](Status, int) {}));
+  RAY_CHECK_OK(
+      worker_pool_->RegisterWorker(worker3, proc3.GetId(), token3, [](Status, int) {}));
   worker_pool_->OnWorkerStarted(worker3);
   worker_pool_->PushSpillWorker(worker3);
   ASSERT_EQ(spill_worker_set.size(), 1);
