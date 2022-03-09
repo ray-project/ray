@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/raylet/scheduling/scheduling_policy.h"
+#include "ray/raylet/scheduling/policy/hybrid_scheduling_policy.h"
 
 #include <functional>
 
@@ -22,73 +22,8 @@
 namespace ray {
 
 namespace raylet_scheduling_policy {
-namespace {
 
-bool IsGPURequest(const ResourceRequest &resource_request) {
-  if (resource_request.predefined_resources.size() <= GPU) {
-    return false;
-  }
-  return resource_request.predefined_resources[GPU] > 0;
-}
-
-bool DoesNodeHaveGPUs(const NodeResources &resources) {
-  if (resources.predefined_resources.size() <= GPU) {
-    return false;
-  }
-  return resources.predefined_resources[GPU].total > 0;
-}
-}  // namespace
-
-scheduling::NodeID SchedulingPolicy::Schedule(const ResourceRequest &resource_request,
-                                              SchedulingOptions options) {
-  switch (options.scheduling_type) {
-  case SchedulingType::SPREAD:
-    return SpreadPolicy(resource_request, options);
-  case SchedulingType::RANDOM:
-    return RandomPolicy(resource_request, options);
-  case SchedulingType::HYBRID:
-    return HybridPolicy(resource_request, options);
-  default:
-    RAY_LOG(FATAL) << "Unsupported scheduling type: "
-                   << static_cast<typename std::underlying_type<SchedulingType>::type>(
-                          options.scheduling_type);
-  }
-  UNREACHABLE;
-}
-
-scheduling::NodeID SchedulingPolicy::SpreadPolicy(const ResourceRequest &resource_request,
-                                                  SchedulingOptions options) {
-  RAY_CHECK(options.spread_threshold == 0 &&
-            options.scheduling_type == SchedulingType::SPREAD)
-      << "SpreadPolicy policy requires spread_threshold = 0 and type = SPREAD";
-  std::vector<scheduling::NodeID> round;
-  round.reserve(nodes_.size());
-  for (const auto &pair : nodes_) {
-    round.emplace_back(pair.first);
-  }
-  std::sort(round.begin(), round.end());
-
-  size_t round_index = spread_scheduling_next_index_;
-  for (size_t i = 0; i < round.size(); ++i, ++round_index) {
-    const auto &node_id = round[round_index % round.size()];
-    const auto &node = map_find_or_die(nodes_, node_id);
-    if (node_id == local_node_id_ && options.avoid_local_node) {
-      continue;
-    }
-    if (!is_node_available_(node_id) ||
-        !node.GetLocalView().IsFeasible(resource_request) ||
-        !node.GetLocalView().IsAvailable(resource_request, true)) {
-      continue;
-    }
-
-    spread_scheduling_next_index_ = ((round_index + 1) % round.size());
-    return node_id;
-  }
-  options.scheduling_type = SchedulingType::HYBRID;
-  return HybridPolicy(resource_request, options);
-}
-
-scheduling::NodeID SchedulingPolicy::HybridPolicyWithFilter(
+scheduling::NodeID HybridSchedulingPolicy::HybridPolicyWithFilter(
     const ResourceRequest &resource_request, float spread_threshold, bool force_spillback,
     bool require_node_available, NodeFilter node_filter) {
   // Step 1: Generate the traversal order. We guarantee that the first node is local, to
@@ -106,7 +41,7 @@ scheduling::NodeID SchedulingPolicy::HybridPolicyWithFilter(
     if (node_filter == NodeFilter::kAny) {
       return true;
     }
-    const bool has_gpu = DoesNodeHaveGPUs(node_resources);
+    const bool has_gpu = node_resources.HasGPU();
     if (node_filter == NodeFilter::kGPU) {
       return has_gpu;
     }
@@ -198,11 +133,11 @@ scheduling::NodeID SchedulingPolicy::HybridPolicyWithFilter(
   return best_node_id;
 }
 
-scheduling::NodeID SchedulingPolicy::HybridPolicy(const ResourceRequest &resource_request,
-                                                  SchedulingOptions options) {
+scheduling::NodeID HybridSchedulingPolicy::Schedule(
+    const ResourceRequest &resource_request, SchedulingOptions options) {
   RAY_CHECK(options.scheduling_type == SchedulingType::HYBRID)
       << "HybridPolicy policy requires type = HYBRID";
-  if (!options.avoid_gpu_nodes || IsGPURequest(resource_request)) {
+  if (!options.avoid_gpu_nodes || resource_request.IsGPURequest()) {
     return HybridPolicyWithFilter(resource_request, options.spread_threshold,
                                   options.avoid_local_node,
                                   options.require_node_available);
@@ -220,47 +155,6 @@ scheduling::NodeID SchedulingPolicy::HybridPolicy(const ResourceRequest &resourc
   // scheduling
   return HybridPolicyWithFilter(resource_request, options.spread_threshold,
                                 options.avoid_local_node, options.require_node_available);
-}
-
-scheduling::NodeID SchedulingPolicy::RandomPolicy(const ResourceRequest &resource_request,
-                                                  SchedulingOptions options) {
-  RAY_CHECK(options.scheduling_type == SchedulingType::RANDOM)
-      << "HybridPolicy policy requires type = RANDOM";
-  scheduling::NodeID best_node = scheduling::NodeID::Nil();
-  if (nodes_.empty()) {
-    return best_node;
-  }
-
-  RAY_CHECK(options.spread_threshold == 0 && !options.avoid_local_node &&
-            options.require_node_available && !options.avoid_gpu_nodes)
-      << "Random policy requires spread_threshold = 0, "
-      << "avoid_local_node = false, "
-      << "require_node_available = true, "
-      << "avoid_gpu_nodes = false.";
-
-  std::uniform_int_distribution<int> distribution(0, nodes_.size() - 1);
-  int idx = distribution(gen_);
-  auto iter = std::next(nodes_.begin(), idx);
-  for (size_t i = 0; i < nodes_.size(); ++i) {
-    // TODO(scv119): if there are a lot of nodes died or can't fulfill the resource
-    // requirement, the distribution might not be even.
-    const auto &node_id = iter->first;
-    const auto &node = iter->second;
-    if (is_node_available_(node_id) && node.GetLocalView().IsFeasible(resource_request) &&
-        node.GetLocalView().IsAvailable(resource_request,
-                                        /*ignore_pull_manager_at_capacity*/ true)) {
-      best_node = iter->first;
-      break;
-    }
-    ++iter;
-    if (iter == nodes_.end()) {
-      iter = nodes_.begin();
-    }
-  }
-  RAY_LOG(DEBUG) << "RandomPolicy, best_node = " << best_node.ToInt()
-                 << ", # nodes = " << nodes_.size()
-                 << ", resource_request = " << resource_request.DebugString();
-  return best_node;
 }
 
 }  // namespace raylet_scheduling_policy
