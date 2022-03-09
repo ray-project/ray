@@ -158,7 +158,7 @@ class Checkpoint:
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "Checkpoint":
-        """Create Checkpoint object from bytes string.
+        """Create a checkpoint from the given byte string.
 
         Args:
             data (bytes): Data object containing pickled checkpoint data.
