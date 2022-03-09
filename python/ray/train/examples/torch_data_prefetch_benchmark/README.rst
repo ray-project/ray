@@ -3,20 +3,20 @@ Torch Data Prefetching Benchmark Example
 
 We provide a benchmark example to show how the auto pipeline for host to device data transfer speeds up the training on GPUs.
 Running the following command gives the actual runtime of a small model training with and without the auto pipeline functionality.
-The experiment size can be modified by setting different values for :code:`epochs` and :code:`num_hidden_layers`.
+The experiment size can be modified by setting different values for :code:`epochs` and :code:`num_hidden_layers`, e.g.
 
 .. code-block:: bash
 
-    python auto_pipeline_for_host_to_device_data_transfer.py \
-      --epochs 2 \
-      --num_hidden_layers 2
+    python auto_pipeline_for_host_to_device_data_transfer.py --epochs 2 --num_hidden_layers 2
 
 
-The table below displays the runtime of training epochs (excluding preparation work) under different configurations on a Nvidia 2080 Ti.
+The table below displays the runtime of training epochs (excluding preparation work) under different configurations.
+The first value in the parentheses reports the runtime of using the auto pipeline, and the second reports the time of not using it.
+These experiments were done on a Nvidia 2080 Ti.
 The auto pipeline functionality offers more speed improvement when the model size and the number of epochs get larger.
 (The actual runtime outputs may vary if these experiments are run locally or different hardware devices are used.)
 
-.. list-table:: Runtime of training epochs (using auto pipeline, not using auto pipeline)
+.. list-table::
    :widths: 25 25 25 25
    :header-rows: 1
 
