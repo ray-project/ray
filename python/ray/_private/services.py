@@ -1309,13 +1309,11 @@ def start_log_monitor(
 def start_dashboard(
     require_dashboard,
     host,
-    redis_address,
     gcs_address,
     temp_dir,
     logdir,
     session_dir,
     port=None,
-    redis_password=None,
     fate_share=None,
     max_bytes=0,
     backup_count=0,
@@ -1328,7 +1326,6 @@ def start_dashboard(
             fail to start the dashboard. Otherwise it will print a warning if
             we fail to start the dashboard.
         host (str): The host to bind the dashboard web server to.
-        redis_address (str): The address of the Redis instance.
         gcs_address (str): The gcs address the dashboard should connect to
         temp_dir (str): The temporary directory used for log files and
             information for this Ray session.
@@ -1337,7 +1334,6 @@ def start_dashboard(
         logdir (str): The log directory used to generate dashboard log.
         port (str): The port to bind the dashboard web server to.
             Defaults to 8265.
-        redis_password (str): The password of the redis server.
         max_bytes (int): Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count (int): Log rotation parameter. Corresponding to
@@ -1392,7 +1388,6 @@ def start_dashboard(
             f"--host={host}",
             f"--port={port}",
             f"--port-retries={port_retries}",
-            f"--redis-address={redis_address}",
             f"--temp-dir={temp_dir}",
             f"--log-dir={logdir}",
             f"--session-dir={session_dir}",
@@ -1420,8 +1415,6 @@ def start_dashboard(
         if minimal:
             command.append("--minimal")
 
-        if redis_password is not None:
-            command.append(f"--redis-password={redis_password}")
         process_info = start_ray_process(
             command,
             ray_constants.PROCESS_TYPE_DASHBOARD,
@@ -1431,13 +1424,7 @@ def start_dashboard(
         )
 
         # Retrieve the dashboard url
-        if not use_gcs_for_bootstrap():
-            redis_client = ray._private.services.create_redis_client(
-                redis_address, redis_password
-            )
-            gcs_client = GcsClient.create_from_redis(redis_client)
-        else:
-            gcs_client = GcsClient(address=gcs_address)
+        gcs_client = GcsClient(address=gcs_address)
         ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
         dashboard_url = None
         dashboard_returncode = None
@@ -1756,7 +1743,6 @@ def start_raylet(
         "-u",
         os.path.join(RAY_PATH, "dashboard", "agent.py"),
         f"--node-ip-address={node_ip_address}",
-        f"--redis-address={redis_address}",
         f"--metrics-export-port={metrics_export_port}",
         f"--dashboard-agent-port={metrics_agent_port}",
         f"--listen-port={dashboard_agent_listen_port}",
@@ -1780,9 +1766,6 @@ def start_raylet(
             component=ray_constants.PROCESS_TYPE_DASHBOARD_AGENT
         )
         agent_command.append(f"--logging-format={logging_format}")
-
-    if redis_password is not None and len(redis_password) != 0:
-        agent_command.append("--redis-password={}".format(redis_password))
 
     if not ray._private.utils.check_dashboard_dependencies_installed():
         # If dependencies are not installed, it is the minimally packaged

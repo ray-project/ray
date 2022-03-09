@@ -31,6 +31,8 @@ const std::string ResourceEnumToString(PredefinedResources resource);
 
 const PredefinedResources ResourceStringToEnum(const std::string &resource);
 
+bool IsPredefinedResource(scheduling::ResourceID resource_id);
+
 /// Helper function to compare two vectors with FixedPoint values.
 bool EqualVectors(const std::vector<FixedPoint> &v1, const std::vector<FixedPoint> &v2);
 
@@ -69,6 +71,8 @@ class ResourceRequest {
   bool IsEmpty() const;
   /// Returns human-readable string for this task request.
   std::string DebugString() const;
+  /// Request for GPU.
+  bool IsGPURequest() const;
 };
 
 // Data structure specifying the capacity of each instance of each resource
@@ -169,6 +173,8 @@ class NodeResources {
   std::string DebugString() const;
   /// Returns compact dict-like string.
   std::string DictString() const;
+  /// Has GPU.
+  bool HasGPU() const;
 };
 
 /// Total and available capacities of each resource instance.
@@ -186,6 +192,10 @@ class NodeResourceInstances {
   bool operator==(const NodeResourceInstances &other);
   /// Returns human-readable string for these resources.
   [[nodiscard]] std::string DebugString() const;
+  /// Returns true if it contains this resource.
+  bool Contains(scheduling::ResourceID id) const;
+  /// Returns the resource instance of a given resource id.
+  ResourceInstanceCapacities &GetMutable(scheduling::ResourceID id);
 };
 
 struct Node {

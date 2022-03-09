@@ -2,7 +2,7 @@
   team: serve
   cluster:
     app_config: app_config.yaml
-    compute_template: compute_tpl_8_cpu.yaml
+    compute_template: compute_tpl_32_cpu.yaml
 
   run:
     timeout: 7200
@@ -16,7 +16,7 @@
   team: serve
   cluster:
     app_config: app_config.yaml
-    compute_template: compute_tpl_8_cpu.yaml
+    compute_template: compute_tpl_32_cpu.yaml
 
   run:
     timeout: 7200
