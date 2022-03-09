@@ -236,8 +236,7 @@ PlasmaClientImpl::~PlasmaClientImpl() {}
 // If the file descriptor fd has been mmapped in this client process before,
 // return the pointer that was returned by mmap, otherwise mmap it and store the
 // pointer in a hash table.
-uint8_t *PlasmaClientImpl::GetStoreFdAndMmap(MEMFD_TYPE store_fd_val,
-                                               int64_t map_size) {
+uint8_t *PlasmaClientImpl::GetStoreFdAndMmap(MEMFD_TYPE store_fd_val, int64_t map_size) {
   auto entry = mmap_table_.find(store_fd_val);
   if (entry != mmap_table_.end()) {
     return entry->second->pointer();
@@ -297,9 +296,9 @@ void PlasmaClient::Impl::IncrementObjectCount(const ObjectID &object_id,
 }
 
 Status PlasmaClientImpl::HandleCreateReply(const ObjectID &object_id,
-                                             const uint8_t *metadata,
-                                             uint64_t *retry_with_request_id,
-                                             std::shared_ptr<Buffer> *data) {
+                                           const uint8_t *metadata,
+                                           uint64_t *retry_with_request_id,
+                                           std::shared_ptr<Buffer> *data) {
   std::vector<uint8_t> buffer;
   RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaCreateReply, &buffer));
   ObjectID id;
@@ -401,6 +400,7 @@ Status PlasmaClient::Impl::RetryCreate(const ObjectID &object_id,
                                        const uint8_t *metadata,
                                        uint64_t *retry_with_request_id,
                                        std::shared_ptr<Buffer> *data) {
+
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
   RAY_RETURN_NOT_OK(SendCreateRetryRequest(store_conn_, object_id, request_id));
   return HandleCreateReply(object_id, metadata, retry_with_request_id, data);

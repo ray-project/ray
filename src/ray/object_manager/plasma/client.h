@@ -122,7 +122,7 @@ class ClientImplInterface {
   ///
   /// The returned object must be released once it is done with.  It must also
   /// be either sealed or aborted.
-  
+
   virtual Status TryCreateImmediately(const ObjectID &object_id,
                                       const ray::rpc::Address &owner_address,
                                       int64_t data_size, const uint8_t *metadata,
@@ -149,7 +149,7 @@ class ClientImplInterface {
   virtual Status Get(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
                      std::vector<ObjectBuffer> *object_buffers, bool is_from_worker) = 0;
 
- /// Tell Plasma that the client no longer needs the object. This should be
+  /// Tell Plasma that the client no longer needs the object. This should be
   /// called after Get() or Create() when the client is done with the object.
   /// After this call, the buffer returned by Get() is no longer valid.
   ///
@@ -531,7 +531,7 @@ class PlasmaClient : public PlasmaClientInterface {
   friend class PlasmaMutableBuffer;
   bool IsInUse(const ObjectID &object_id);
 
-  std::shared_ptr<ClientImplInterface > impl_;
+  std::shared_ptr<ClientImplInterface> impl_;
 };
 
 }  // namespace plasma
