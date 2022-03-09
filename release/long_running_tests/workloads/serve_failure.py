@@ -17,8 +17,8 @@ MAX_BATCH_SIZE = 16
 
 # Cluster setup constants
 NUM_REDIS_SHARDS = 1
-REDIS_MAX_MEMORY = 10 ** 8
-OBJECT_STORE_MEMORY = 10 ** 8
+REDIS_MAX_MEMORY = 10**8
+OBJECT_STORE_MEMORY = 10**8
 NUM_NODES = 4
 
 # RandomTest setup constants
@@ -68,7 +68,7 @@ class RandomKiller:
         self.kill_period_s = kill_period_s
 
     def _get_all_serve_actors(self):
-        controller = serve.api._get_global_client()._controller
+        controller = serve.api.internal_get_global_client()._controller
         routers = list(ray.get(controller.get_http_proxies.remote()).values())
         all_handles = routers + [controller]
         worker_handle_dict = ray.get(controller._all_running_replicas.remote())

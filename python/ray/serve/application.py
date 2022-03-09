@@ -7,7 +7,7 @@ import sys
 from ray import serve
 from ray.serve.api import (
     Deployment,
-    _get_global_client,
+    internal_get_global_client,
 )
 from ray.dashboard.modules.serve.schema import (
     ServeApplicationSchema,
@@ -100,7 +100,9 @@ class Application:
 
             parameter_group.append(deployment_parameters)
 
-        return _get_global_client().deploy_group(parameter_group, _blocking=blocking)
+        return internal_get_global_client().deploy_group(
+            parameter_group, _blocking=blocking
+        )
 
     def run(self, logger=logger):
         """Deploys all deployments in this Application and logs status.

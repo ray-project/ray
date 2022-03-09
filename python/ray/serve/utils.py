@@ -147,7 +147,7 @@ def serve_handle_object_hook(ray_serve_handle_json: Dict[str, Any]):
             if ray_serve_handle_json[SERVE_HANDLE_JSON_KEY] == ServeHandleType.SYNC
             else False
         )
-        return serve.api._get_global_client().get_handle(
+        return serve.api.internal_get_global_client().get_handle(
             ray_serve_handle_json["deployment_name"],
             sync=is_sync,
             missing_ok=True,

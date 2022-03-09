@@ -87,7 +87,7 @@ def _get_controller_namespace(detached):
     return controller_namespace
 
 
-def _get_global_client():
+def internal_get_global_client():
     if _global_client is not None:
         return _global_client
 
@@ -664,7 +664,7 @@ def start(
     controller_namespace = _get_controller_namespace(detached)
 
     try:
-        client = _get_global_client()
+        client = internal_get_global_client()
         logger.info(
             "Connecting to existing Serve instance in namespace "
             f"'{controller_namespace}'."
@@ -773,7 +773,7 @@ def shutdown() -> None:
     if _global_client is None:
         return
 
-    _get_global_client().shutdown()
+    internal_get_global_client().shutdown()
     _set_global_client(None)
 
 
@@ -1036,7 +1036,7 @@ class Deployment:
             # this deployment is not exposed over HTTP
             return None
 
-        return _get_global_client().root_url + self.route_prefix
+        return internal_get_global_client().root_url + self.route_prefix
 
     def __call__(self):
         raise RuntimeError(
@@ -1059,7 +1059,7 @@ class Deployment:
         if len(init_kwargs) == 0 and self._init_kwargs is not None:
             init_kwargs = self._init_kwargs
 
-        return _get_global_client().deploy(
+        return internal_get_global_client().deploy(
             self._name,
             self._func_or_class,
             init_args,
@@ -1076,7 +1076,7 @@ class Deployment:
     @PublicAPI
     def delete(self):
         """Delete this deployment."""
-        return _get_global_client().delete_deployment(self._name)
+        return internal_get_global_client().delete_deployment(self._name)
 
     @PublicAPI
     def get_handle(
@@ -1093,7 +1093,9 @@ class Deployment:
         Returns:
             ServeHandle
         """
-        return _get_global_client().get_handle(self._name, missing_ok=True, sync=sync)
+        return internal_get_global_client().get_handle(
+            self._name, missing_ok=True, sync=sync
+        )
 
     @PublicAPI
     def options(
@@ -1382,7 +1384,10 @@ def get_deployment(name: str) -> Deployment:
         Deployment
     """
     try:
-        deployment_info, route_prefix = _get_global_client().get_deployment_info(name)
+        (
+            deployment_info,
+            route_prefix,
+        ) = internal_get_global_client().get_deployment_info(name)
     except KeyError:
         raise KeyError(
             f"Deployment {name} was not found. " "Did you call Deployment.deploy()?"
@@ -1406,7 +1411,7 @@ def list_deployments() -> Dict[str, Deployment]:
 
     Dictionary maps deployment name to Deployment objects.
     """
-    infos = _get_global_client().list_deployments()
+    infos = internal_get_global_client().list_deployments()
 
     deployments = {}
     for name, (deployment_info, route_prefix) in infos.items():
@@ -1444,4 +1449,4 @@ def get_deployment_statuses() -> Dict[str, DeploymentStatusInfo]:
                 status and a message explaining the status.
     """
 
-    return _get_global_client().get_deployment_statuses()
+    return internal_get_global_client().get_deployment_statuses()
