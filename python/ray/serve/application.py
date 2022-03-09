@@ -68,7 +68,16 @@ class Application:
         self._deployments[deployment.name] = deployment
 
     def deploy(self, blocking: bool = True):
-        """Async deploy."""
+        """
+        Deploys all the deployments contained in this Application to the Ray
+        cluster atomically. Deployments in this Application can carry handles
+        to one another.
+
+        Args:
+            blocking (bool): If True, this function only returns after the
+                deployment is finished. If False, this function returns
+                immediately after requesting the deployment.
+        """
 
         if len(self._deployments) == 0:
             return
