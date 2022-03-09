@@ -108,6 +108,8 @@ DEFAULT_CONFIG = with_common_config({
     "num_workers": 0,
     # Prevent reporting frequency from going lower than this time span.
     "min_time_s_per_reporting": 1,
+
+    "_disable_execution_plan_api": True,
 })
 # __sphinx_doc_end__
 # fmt: on
@@ -172,6 +174,11 @@ class SimpleQTrainer(Trainer):
             return SimpleQTorchPolicy
         else:
             return SimpleQTFPolicy
+
+    @override(Trainer)
+    def training_iteration(self) -> ResultDict:
+
+        return {}
 
     @staticmethod
     @override(Trainer)

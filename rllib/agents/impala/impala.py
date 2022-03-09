@@ -26,6 +26,8 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_SAMPLED, NUM_AGENT_STEPS_TRAINED, \
     NUM_ENV_STEPS_SAMPLED
+from ray.rllib.utils.replay_buffers.multi_agent_mixin_replay_buffer import \
+    MultiAgentMixInReplayBuffer
 from ray.rllib.utils.typing import PartialTrainerConfigDict, ResultDict, \
     TrainerConfigDict
 from ray.tune.utils.placement_groups import PlacementGroupFactory
@@ -82,9 +84,9 @@ DEFAULT_CONFIG = with_common_config({
     "minibatch_buffer_size": 1,
     # Number of passes to make over each train batch.
     "num_sgd_iter": 1,
-    # Set >0 to enable experience replay. Saved samples will be replayed with
-    # a p:1 proportion to new data samples.
-    "replay_proportion": 0.0,
+    # The ratio of old (replayed) samples over new ones.
+    #
+    "replay_ratio": 0.0,
     # Number of sample batches to store for replay. The number of transitions
     # saved total will be (replay_buffer_num_slots * rollout_fragment_length).
     "replay_buffer_num_slots": 0,
@@ -138,6 +140,7 @@ DEFAULT_CONFIG = with_common_config({
 
     # DEPRECATED:
     "num_data_loader_buffers": DEPRECATED_VALUE,
+    "replay_proportion": DEPRECATED_VALUE,
 })
 # __sphinx_doc_end__
 # fmt: on
@@ -281,6 +284,17 @@ class ImpalaTrainer(Trainer):
             )
             config["num_multi_gpu_tower_stacks"] = config["num_data_loader_buffers"]
 
+        if config["replay_proportion"] != DEPRECATED_VALUE:
+            deprecation_warning(
+                "replay_proportion", "replay_ratio", error=False
+            )
+            # r = P / (P+1)
+            # Examples:
+            #  P = 2 -> 2:1 -> r=2/3 (66% replay)
+            #  P = 1 -> 1:1 -> r=1/2 (50% replay)
+            config["replay_ratio"] = \
+                config["replay_proportion"] / (config["replay_proportion"] + 1)
+
         if config["entropy_coeff"] < 0.0:
             raise ValueError("`entropy_coeff` must be >= 0.0!")
 
@@ -354,6 +368,13 @@ class ImpalaTrainer(Trainer):
                     node=localhost,
                 )
 
+            # Create our mixin buffer.
+            self.mixin_buffer = MultiAgentMixInReplayBuffer(
+                capacity=self.config["replay_buffer_num_slots"],
+                replay_ratio=self.config["replay_ratio"],
+            )
+
+            # Create and start the learner thread.
             self._learner_thread = make_learner_thread(
                 self.workers.local_worker(), self.config)
             self._learner_thread.start()
@@ -374,7 +395,12 @@ class ImpalaTrainer(Trainer):
         # TODO: mixin buffer and batch size control.
         try:
             for batch in sample_batches.values():
-                self._learner_thread.inqueue.put(batch, block=False)#timeout=0.001)
+                # Decompress batch (if compressed).
+                batch.decompress_if_needed()
+                # Send batch through mixin buffer.
+                self.
+                self._learner_thread.inqueue.put(
+                    batch.decompress_if_needed(), block=False)
                 self._counters[NUM_ENV_STEPS_SAMPLED] += len(batch)
                 self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
         except queue.Full:
