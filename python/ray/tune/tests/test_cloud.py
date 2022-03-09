@@ -654,8 +654,6 @@ class TrialCheckpointEndToEndTest(unittest.TestCase):
             self.assertEqual(cp_content["train_id"], 4)
             self.assertEqual(cp_content["score"], 9)
 
-            print("LISTLIST", temp_dir, os.listdir(temp_dir))
-
             shutil.rmtree(temp_dir)
 
 
