@@ -806,6 +806,316 @@
     timeout: 1800
     script: OMP_NUM_THREADS=64 RAY_ADDRESS= python run_microbenchmark.py
 
+- name: dask_on_ray_10gb_sort
+  group: core-daily-test
+  working_dir: nightly_tests
+  legacy:
+    test_name: dask_on_ray_10gb_sort
+    test_suite: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: dask_on_ray/dask_on_ray_app_config.yaml
+    cluster_compute: dask_on_ray/dask_on_ray_sort_compute_template.yaml
+
+  run:
+    timeout: 7200
+    script: python dask_on_ray/dask_on_ray_sort.py --nbytes 10_000_000_000 --npartitions
+      50 --num-nodes 1 --ray --data-dir /tmp/ray --file-path /tmp/ray
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: dask_on_ray_100gb_sort
+  group: core-daily-test
+  working_dir: nightly_tests
+  legacy:
+    test_name: dask_on_ray_100gb_sort
+    test_suite: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: dask_on_ray/dask_on_ray_app_config.yaml
+    cluster_compute: dask_on_ray/dask_on_ray_sort_compute_template.yaml
+
+  run:
+    timeout: 7200
+    script: python dask_on_ray/dask_on_ray_sort.py --nbytes 100_000_000_000 --npartitions
+      200 --num-nodes 1 --ray --data-dir /tmp/ray --file-path /tmp/ray
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: dask_on_ray_large_scale_test_no_spilling
+  group: core-daily-test
+  working_dir: nightly_tests
+  legacy:
+    test_name: dask_on_ray_large_scale_test_no_spilling
+    test_suite: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
+    cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
+
+  run:
+    timeout: 7200
+    script: python dask_on_ray/large_scale_test.py --num_workers 20 --worker_obj_store_size_in_gb
+      20 --error_rate 0  --data_save_path /tmp/ray
+
+    wait_for_nodes:
+      num_nodes: 21
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+  smoke_test:
+    cluster:
+      app_config: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
+      compute_template: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
+
+    run:
+      timeout: 7200
+      script: python dask_on_ray/large_scale_test.py --num_workers 4 --worker_obj_store_size_in_gb
+        20 --error_rate 0  --data_save_path /tmp/ray
+
+      wait_for_nodes:
+        num_nodes: 5
+        timeout: 600
+
+- name: dask_on_ray_large_scale_test_spilling
+  group: core-daily-test
+  working_dir: nightly_tests
+  legacy:
+    test_name: dask_on_ray_large_scale_test_spilling
+    test_suite: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
+    cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
+
+  run:
+    timeout: 7200
+    script: python dask_on_ray/large_scale_test.py --num_workers 150 --worker_obj_store_size_in_gb
+      70 --error_rate 0  --data_save_path /tmp/ray
+
+    wait_for_nodes:
+      num_nodes: 21
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+  smoke_test:
+    cluster:
+      app_config: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
+      compute_template: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
+
+    run:
+      timeout: 7200
+      script: python dask_on_ray/large_scale_test.py --num_workers 32 --worker_obj_store_size_in_gb
+        70 --error_rate 0  --data_save_path /tmp/ray
+
+      wait_for_nodes:
+        num_nodes: 5
+        timeout: 600
+
+- name: stress_test_many_tasks
+  group: core-daily-test
+  working_dir: nightly_tests
+  legacy:
+    test_name: stress_test_many_tasks
+    test_suite: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: stress_tests/stress_tests_app_config.yaml
+    cluster_compute: stress_tests/stress_tests_compute.yaml
+
+  run:
+    timeout: 7200
+    script: python stress_tests/test_many_tasks.py
+    type: sdk_command
+    file_manager: sdk
+
+  smoke_test:
+    cluster:
+      app_config: stress_tests/stress_tests_app_config.yaml
+      compute_template: stress_tests/smoke_test_compute.yaml
+
+    run:
+      timeout: 3600
+      script: python stress_tests/test_many_tasks.py --num-nodes=4 --smoke-test
+
+- name: stress_test_dead_actors
+  group: core-daily-test
+  working_dir: nightly_tests
+  legacy:
+    test_name: stress_test_dead_actors
+    test_suite: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: stress_tests/stress_tests_app_config.yaml
+    cluster_compute: stress_tests/stress_tests_compute.yaml
+
+  run:
+    timeout: 7200
+    script: python stress_tests/test_dead_actors.py
+    type: sdk_command
+    file_manager: sdk
+
+  smoke_test:
+    cluster:
+      app_config: stress_tests/stress_tests_app_config.yaml
+      compute_template: stress_tests/smoke_test_compute.yaml
+
+    run:
+      timeout: 3600
+      script: python stress_tests/test_dead_actors.py --num-nodes=4 --num-parents=3
+        --num-children=3
+
+- name: threaded_actors_stress_test
+  group: core-daily-test
+  working_dir: nightly_tests
+  legacy:
+    test_name: threaded_actors_stress_test
+    test_suite: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: stress_tests/stress_tests_app_config.yaml
+    cluster_compute: stress_tests/stress_test_threaded_actor_compute.yaml
+
+  run:
+    timeout: 7200
+    script: python stress_tests/test_threaded_actors.py --test-runtime 3600 --kill-interval_s
+      60
+
+    wait_for_nodes:
+      num_nodes: 201
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+  smoke_test:
+    cluster:
+      app_config: stress_tests/stress_tests_app_config.yaml
+      compute_template: stress_tests/smoke_test_compute.yaml
+
+    run:
+      timeout: 3600
+      script: python stress_tests/test_threaded_actors.py --test-runtime 1800 --kill-interval_s
+        30
+
+      wait_for_nodes:
+        num_nodes: 5
+        timeout: 600
+
+- name: dask_on_ray_1tb_sort
+  group: core-daily-test
+  working_dir: nightly_tests
+  legacy:
+    test_name: dask_on_ray_1tb_sort
+    test_suite: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: dask_on_ray/dask_on_ray_app_config.yaml
+    cluster_compute: dask_on_ray/1tb_sort_compute.yaml
+
+  run:
+    timeout: 7200
+    script: python dask_on_ray/dask_on_ray_sort.py --nbytes 1_000_000_000_000 --npartitions
+      1000 --num-nodes 31 --ray --data-dir /tmp/ray --s3-bucket core-nightly-test
+
+    wait_for_nodes:
+      num_nodes: 32
+      timeout: 1000
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: many_nodes_actor_test
+  group: core-daily-test
+  working_dir: nightly_tests
+  legacy:
+    test_name: many_nodes_actor_test
+    test_suite: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: many_nodes_tests/app_config.yaml
+    cluster_compute: many_nodes_tests/compute_config.yaml
+
+  run:
+    timeout: 7200
+    script: python many_nodes_tests/actor_test.py
+    wait_for_nodes:
+      num_nodes: 251
+      timeout: 5400
+
+    type: sdk_command
+    file_manager: sdk
+
+
+- name: pg_autoscaling_regression_test
+  group: core-daily-test
+  working_dir: nightly_tests
+  legacy:
+    test_name: pg_autoscaling_regression_test
+    test_suite: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: placement_group_tests/app_config.yaml
+    cluster_compute: placement_group_tests/compute.yaml
+
+  run:
+    timeout: 1200
+    script: python placement_group_tests/pg_run.py
+    type: sdk_command
+    file_manager: sdk
+
+- name: placement_group_performance_test
+  group: core-daily-test
+  working_dir: nightly_tests
+  legacy:
+    test_name: placement_group_performance_test
+    test_suite: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: placement_group_tests/app_config.yaml
+    cluster_compute: placement_group_tests/pg_perf_test_compute.yaml
+
+  run:
+    timeout: 1200
+    script: python placement_group_tests/placement_group_performance_test.py
+    wait_for_nodes:
+      num_nodes: 5
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+  alert: ''
+
+
 #########################
 # Core Scalability Tests
 #########################
@@ -1115,3 +1425,4 @@
     type: sdk_command
     file_manager: sdk
   stable: false
+

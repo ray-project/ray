@@ -35,7 +35,8 @@ def main(legacy_config: str, prefix: str, group: str, alert: str):
     tests = []
     for old in config:
         test = {}
-        test["name"] = f"{prefix}_{old['name']}"
+        # test["name"] = f"{prefix}_{old['name']}"
+        test["name"] = old["name"]
 
         test["group"] = group
         test["working_dir"] = os.path.basename(os.path.dirname(legacy_config))

@@ -127,16 +127,16 @@ SERVE_NIGHTLY_TESTS = {
 }
 
 CORE_DAILY_TESTS = {
-    "~/ray/release/nightly_tests/nightly_tests.yaml": [
-        "k8s_dask_on_ray_large_scale_test_no_spilling",
-        "dask_on_ray_large_scale_test_no_spilling",
-        "dask_on_ray_large_scale_test_spilling",
-        "pg_autoscaling_regression_test",
-        "threaded_actors_stress_test",
-        "k8s_threaded_actors_stress_test",
-        "stress_test_many_tasks",
-        "stress_test_dead_actors",
-    ],
+    # "~/ray/release/nightly_tests/nightly_tests.yaml": [
+    #     "k8s_dask_on_ray_large_scale_test_no_spilling",
+    #     "dask_on_ray_large_scale_test_no_spilling",
+    #     "dask_on_ray_large_scale_test_spilling",
+    #     "pg_autoscaling_regression_test",
+    #     "threaded_actors_stress_test",
+    #     "k8s_threaded_actors_stress_test",
+    #     "stress_test_many_tasks",
+    #     "stress_test_dead_actors",
+    # ],
     "~/ray/release/nightly_tests/chaos_test.yaml": [
         "chaos_dask_on_ray_large_scale_test_no_spilling",
         "chaos_dask_on_ray_large_scale_test_spilling",
@@ -160,13 +160,13 @@ CORE_SCHEDULING_DAILY = {
     #     # "scheduling_test_many_5s_tasks_single_node",
     #     # "scheduling_test_many_5s_tasks_many_nodes",
     # ],
-    "~/ray/release/nightly_tests/nightly_tests.yaml": [
-        "many_nodes_actor_test",
-        "dask_on_ray_10gb_sort",
-        "dask_on_ray_100gb_sort",
-        "dask_on_ray_1tb_sort",
-        "placement_group_performance_test",
-    ],
+    # "~/ray/release/nightly_tests/nightly_tests.yaml": [
+    #     "many_nodes_actor_test",
+    #     "dask_on_ray_10gb_sort",
+    #     "dask_on_ray_100gb_sort",
+    #     "dask_on_ray_1tb_sort",
+    #     "placement_group_performance_test",
+    # ],
 }
 
 NIGHTLY_TESTS = {
