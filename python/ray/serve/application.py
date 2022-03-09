@@ -189,6 +189,9 @@ class Application:
         else:
             raise KeyError(f'Serve application does not contain a "{key}" deployment.')
 
+    def __setitem__(self, key: str, value: Deployment):
+        self.__setattr__(key, value)
+
     def __getattr__(self, name: str):
         """Fetch deployment by name using attributes: app.name"""
 
