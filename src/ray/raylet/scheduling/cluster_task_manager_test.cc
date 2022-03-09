@@ -135,9 +135,10 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
   return scheduler;
 }
 
-RayTask CreateTask(const std::unordered_map<std::string, double> &required_resources,
-                   int num_args = 0, std::vector<ObjectID> args = {},
-                   std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr) {
+RayTask CreateTask(
+    const std::unordered_map<std::string, double> &required_resources, int num_args = 0,
+    std::vector<ObjectID> args = {},
+    const std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr) {
   TaskSpecBuilder spec_builder;
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();

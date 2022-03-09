@@ -44,6 +44,5 @@ public class RuntimeEnvImpl implements RuntimeEnv {
     } catch (InvalidProtocolBufferException e) {
       throw new RuntimeException(e);
     }
-
   }
 }

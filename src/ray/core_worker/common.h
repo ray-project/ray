@@ -75,7 +75,7 @@ struct TaskOptions {
   /// The name of the concurrency group in which this task will be executed.
   std::string concurrency_group_name;
   /// Runtime Env Info used by this task. It includes Runtime Env and some
-  /// fields which not contained in Runtime Env Info, such as eager_install.
+  /// fields which not contained in Runtime Env, such as eager_install.
   /// Propagated to child actors and tasks.
   std::string serialized_runtime_env_info;
 };
@@ -141,7 +141,7 @@ struct ActorCreationOptions {
   /// Whether to use async mode of direct actor call.
   const bool is_asyncio = false;
   /// Runtime Env Info used by this task. It includes Runtime Env and some
-  /// fields which not contained in Runtime Env Info, such as eager_install.
+  /// fields which not contained in Runtime Env, such as eager_install.
   /// Propagated to child actors and tasks.
   std::string serialized_runtime_env_info;
   /// The actor concurrency groups to indicate how this actor perform its
