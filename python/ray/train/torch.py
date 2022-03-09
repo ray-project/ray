@@ -26,6 +26,7 @@ from torch.utils.data import (
     DataLoader,
     IterableDataset,
     SequentialSampler,
+    RandomSampler,
 )
 
 try:
@@ -90,6 +91,7 @@ class TorchAccelerator(Accelerator):
         data_loader: torch.utils.data.DataLoader,
         add_dist_sampler: bool = True,
         move_to_device: bool = True,
+        auto_transfer: bool = True,
     ) -> torch.utils.data.DataLoader:
         """Prepares DataLoader for distributed execution.
 
@@ -103,6 +105,12 @@ class TorchAccelerator(Accelerator):
                 the provided DataLoader.
             move_to_device (bool): If set, automatically move the data
                 returned by the data loader to the correct device.
+            auto_transfer (bool): If set and device is GPU, another CUDA stream
+                is created to automatically copy data from host (CPU) memory
+                to device (GPU) memory (the default CUDA stream still runs the
+                training procedure). If device is CPU, it will be disabled
+                regardless of the setting. This configuration will be ignored
+                if ``move_to_device`` is False.
         """
 
         # Only add Distributed Sampler if the following conditions hold:
@@ -123,14 +131,26 @@ class TorchAccelerator(Accelerator):
             def with_sampler(loader):
                 # Automatically set the DistributedSampler
 
-                # If using a sampler, the shuffle attribute in the
-                # DataLoader must be set to False.
-                # Instead the shuffling is determined by the shuffle attribute
-                # in the DistributedSampler.
-                # We identify if shuffling is enabled in the passed in
-                # DataLoader by seeing if the sampler for the DataLoader is a
-                # SequentialSampler.
+                # If you're using a sampler, the DataLoader shuffle flag must be set to
+                # False. Shuffling is instead determined by the shuffle argument passed
+                # to the DistributedSampler constructor.
+
+                # If no sampler is passed to the DataLoader constructor, Torch
+                # constructs a default sampler. The default sampler is a RandomSampler
+                # if shuffling is enabled and a SequentialSampler otherwise. DataLoader
+                # does not have a shuffle attribute, so we instead identify whether
+                # shuffling is enabled by checking the default sampler type.
                 shuffle = not isinstance(loader.sampler, SequentialSampler)
+
+                using_default_sampler = isinstance(
+                    loader.sampler, (SequentialSampler, RandomSampler)
+                )
+                if not using_default_sampler and train.world_rank() == 0:
+                    logger.warn(
+                        f"The {loader.sampler.__class__.__name__} will be overwritten "
+                        "with a DistributedSampler. You can disable this by setting "
+                        "`with_sampler` to False in `prepare_data_loader`."
+                    )
 
                 data_loader_args = {
                     "dataset": loader.dataset,
@@ -150,7 +170,7 @@ class TorchAccelerator(Accelerator):
 
         if move_to_device:
             device = self.get_device()
-            data_loader = _WrappedDataLoader(data_loader, device)
+            data_loader = _WrappedDataLoader(data_loader, device, auto_transfer)
 
         return data_loader
 
@@ -323,30 +343,74 @@ class TorchBackend(Backend):
 
 
 class _WrappedDataLoader(DataLoader):
-    def __init__(self, base_dataloader: DataLoader, device: torch.device):
+    def __init__(
+        self, base_dataloader: DataLoader, device: torch.device, auto_transfer: bool
+    ):
 
         self.__dict__.update(getattr(base_dataloader, "__dict__", {}))
-        self.dataloader = base_dataloader
+        self._dataloader = base_dataloader
+        self.dataloader_iter = None
         self.device = device
+        # disable auto transfer (host->device) if cpu is used
+        self._auto_transfer = auto_transfer if device.type == "cuda" else False
+        # create a new CUDA stream to move data from host to device concurrently
+        self._memcpy_stream = (
+            torch.cuda.Stream()
+            if device.type == "cuda" and self._auto_transfer
+            else None
+        )
+        self.next_batch = None
 
     def _move_to_device(self, item):
+        if item is None:
+            return None
+
         def try_move_device(i):
             try:
-                i = i.to(self.device)
+                i = i.to(self.device, non_blocking=self._auto_transfer)
             except AttributeError:
                 logger.debug(f"Item {i} cannot be moved to device " f"{self.device}.")
             return i
 
-        return tuple(try_move_device(i) for i in item)
+        with torch.cuda.stream(self._memcpy_stream):
+            return tuple(try_move_device(i) for i in item)
+
+    def _wait_for_batch(self, item):
+        if self._memcpy_stream is None:
+            return
+        # Reference:
+        # https://pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html
+        # The training stream (current) needs to wait until
+        # the memory copy stream finishes.
+        curr_stream = torch.cuda.current_stream()
+        curr_stream.wait_stream(self._memcpy_stream)
+        # When a tensor is used by CUDA streams different from
+        # its original allocator, we need to call ``record_stream``
+        # to inform the allocator of all these streams. Otherwise,
+        # the tensor might be freed once it is no longer used by
+        # the creator stream.
+        for i in item:
+            i.record_stream(curr_stream)
 
     def __len__(self):
-        return len(self.dataloader)
+        return len(self._dataloader)
+
+    def _prefetch_next_batch(self):
+        next_batch = next(self.dataloader_iter, None)
+        self.next_batch = self._move_to_device(next_batch)
 
     def __iter__(self):
-        iterator = iter(self.dataloader)
+        self.dataloader_iter = iter(self._dataloader)
+        self._prefetch_next_batch()
+        return self
 
-        for item in iterator:
-            yield self._move_to_device(item)
+    def __next__(self):
+        next_batch = self.next_batch
+        if next_batch is None:
+            raise StopIteration
+        self._wait_for_batch(next_batch)
+        self._prefetch_next_batch()
+        return next_batch
 
 
 @PublicAPI(stability="beta")
@@ -391,6 +455,7 @@ def prepare_data_loader(
     data_loader: torch.utils.data.DataLoader,
     add_dist_sampler: bool = True,
     move_to_device: bool = True,
+    auto_transfer: bool = True,
 ) -> torch.utils.data.DataLoader:
     """Prepares DataLoader for distributed execution.
 
@@ -404,11 +469,18 @@ def prepare_data_loader(
             the provided DataLoader.
         move_to_device (bool): If set, automatically move the data
             returned by the data loader to the correct device.
+        auto_transfer (bool): If set and device is GPU, another CUDA stream
+            is created to automatically copy data from host (CPU) memory
+            to device (GPU) memory (the default CUDA stream still runs the
+            training procedure). If device is CPU, it will be disabled
+            regardless of the setting. This configuration will be ignored
+            if ``move_to_device`` is False.
     """
     return get_accelerator(TorchAccelerator).prepare_data_loader(
         data_loader,
         add_dist_sampler=add_dist_sampler,
         move_to_device=move_to_device,
+        auto_transfer=auto_transfer,
     )
 
 
