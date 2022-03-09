@@ -19,26 +19,25 @@ logger = logging.getLogger(__name__)
 
 # TODO: support conditional hyperparameter tuning of Trainer __init__ args.
 class Trainer(ConvertibleToTrainable, abc.ABC):
-    """
-    Defines interface for distributed training on Ray.
+    """Defines interface for distributed training on Ray.
 
     Args:
-        scaling_config (Optional[ScalingConfig]): Configuration for how to
+        scaling_config: Configuration for how to
             scale training.
-        run_config (Optional[RunConfig]): Configuration for the execution of
+        run_config: Configuration for the execution of
             the training run.
-        train_dataset (Optional[GenDataset]): Either a distributed Ray
-            :ref:`Dataset <dataset-api>` or a Callbable that returns a Dataset,
+        train_dataset: Either a distributed Ray
+            :ref:`Dataset <dataset-api>` or a Callable that returns a Dataset,
             to use for training. If a ``preprocessor`` is also provided,
             it will be fit on this dataset and this dataset will be
             transformed.
-        additional_datasets (Optional[GenDataset]): Any additional
+        extra_datasets: Any extra
             Datasets (such as validation or test datasets) to use for
             training. If a ``preprocessor`` is provided, the datasets
             specified here will only be transformed, and not fit on.
-        preprocessor (Optional[Preprocessor]): A preprocessor to preprocess
+        preprocessor: A preprocessor to preprocess
             the provided datasets.
-        resume_from_checkpoint (Optional[Checkpoint]): A checkpoint to
+        resume_from_checkpoint: A checkpoint to
             resume training from.
     """
 
@@ -47,14 +46,14 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
         train_dataset: Optional[GenDataset] = None,
-        additional_datasets: Optional[Dict[str, GenDataset]] = None,
+        extra_datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
         self.scaling_config = scaling_config
         self.run_config = run_config if run_config else {}
         self.train_dataset = train_dataset
-        self.additional_datasets = additional_datasets
+        self.extra_datasets = extra_datasets
         self.preprocessor = preprocessor
         self.checkpoint_to_resume_from = resume_from_checkpoint
 
@@ -92,7 +91,7 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
         This method does a deep update of dictionaries.
 
         Args:
-            config (Dict): A dictionary to update attributes with.
+            config: A dictionary to update attributes with.
         """
         for key in list(config.keys()):
             if hasattr(self, key):
