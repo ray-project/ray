@@ -111,7 +111,9 @@ def validate_release_test_collection(test_collection: List[Test]):
         )
 
 
-def validate_test(test: Test, schema: Dict) -> Optional[str]:
+def validate_test(test: Test, schema: Optional[Dict] = None) -> Optional[str]:
+    schema = schema or load_schema_file()
+
     try:
         jsonschema.validate(test, schema=schema)
     except (jsonschema.ValidationError, jsonschema.SchemaError) as e:
