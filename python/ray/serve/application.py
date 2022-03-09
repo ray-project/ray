@@ -191,7 +191,22 @@ class Application:
             sys.exit()
 
     def to_json(self, f: Optional[TextIO] = None) -> str:
-        """Write list of deployments to json str or file."""
+        """
+        Returns this Application's deployments as a JSON string. Optionally
+        writes the JSON string to a file as well. To write to a file, use this
+        pattern:
+
+        with open("file_name.txt", "w"):
+            app.to_json()
+        
+        Args:
+            f (Optional[TextIO]): A pointer to the file where the JSON should
+                be written.
+        
+        Returns:
+            String: The deployments' JSON string. The output is similar to
+                json.dumps().
+        """
 
         json_str = serve_application_to_schema(self._deployments).json(indent=4)
 
