@@ -128,6 +128,14 @@ py_test(
 )
 
 py_test(
+    name = "test_ml_trainer",
+    size = "large",
+    srcs = ["tests/test_ml_trainer.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_minimal",
     size = "small",
     srcs = ["tests/test_minimal.py"],
