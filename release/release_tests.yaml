@@ -512,12 +512,12 @@
 
   alert: default
 
-- name: lightgbm_tune_32x4
+- name: lightgbm_tune_16x4
   group: LightGBM tests
   working_dir: lightgbm_tests
 
   legacy:
-    test_name: tune_32x4
+    test_name: tune_16x4
     test_suite: lightgbm_tests
 
   frequency: nightly
@@ -529,7 +529,7 @@
 
   run:
     timeout: 900
-    script: python workloads/tune_32x4.py
+    script: python workloads/tune_16x4.py
     wait_for_nodes:
       num_nodes: 32
       timeout: 600
@@ -539,12 +539,12 @@
 
   alert: default
 
-- name: lightgbm_tune_4x32
+- name: lightgbm_tune_4x16
   group: LightGBM tests
   working_dir: lightgbm_tests
 
   legacy:
-    test_name: tune_4x32
+    test_name: tune_4x16
     test_suite: lightgbm_tests
 
   frequency: nightly
@@ -556,7 +556,7 @@
 
   run:
     timeout: 900
-    script: python workloads/tune_4x32.py
+    script: python workloads/tune_4x16.py
     wait_for_nodes:
       num_nodes: 32
       timeout: 600

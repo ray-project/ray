@@ -47,8 +47,8 @@ if __name__ == "__main__":
     ray_params = RayParams(
         elastic_training=False,
         max_actor_restarts=2,
-        num_actors=4,
-        cpus_per_actor=1,
+        num_actors=2,
+        cpus_per_actor=2,
         gpus_per_actor=0,
     )
 
@@ -56,7 +56,7 @@ if __name__ == "__main__":
     analysis = tune.run(
         tune.with_parameters(train_wrapper, ray_params=ray_params),
         config=search_space,
-        num_samples=32,
+        num_samples=16,
         resources_per_trial=ray_params.get_tune_resources(),
     )
     taken = time.time() - start

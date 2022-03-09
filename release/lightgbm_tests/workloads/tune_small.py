@@ -47,8 +47,8 @@ if __name__ == "__main__":
     ray_params = RayParams(
         elastic_training=False,
         max_actor_restarts=2,
-        num_actors=4,
-        cpus_per_actor=1,
+        num_actors=2,
+        cpus_per_actor=2,
         gpus_per_actor=0,
     )
 
