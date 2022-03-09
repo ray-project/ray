@@ -172,8 +172,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   }
 
   void WaitUntilSyncMessage(int n) {
-    for(int i = 0; i < 20; ++i) {
-      if(ray_syncer_->resources_buffer_proto_.batch().size() == n) {
+    for (int i = 0; i < 20; ++i) {
+      if (ray_syncer_->resources_buffer_proto_.batch().size() == n) {
         break;
       }
       sleep(1);
