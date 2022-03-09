@@ -133,7 +133,12 @@ if __name__ == "__main__":
     if not torch.cuda.is_available():
         warnings.warn("GPU is not available. Skip the test using auto pipeline.")
     else:
-        train_linear(num_workers=1, use_auto_transfer=True, epochs=args.epochs)
+        train_linear(
+            num_workers=1,
+            num_hidden_layers=args.num_hidden_layers,
+            use_auto_transfer=True,
+            epochs=args.epochs,
+        )
 
     torch.cuda.empty_cache()
     train_linear(
