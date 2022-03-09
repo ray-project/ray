@@ -1,5 +1,6 @@
 import asyncio
 from asyncio.tasks import FIRST_COMPLETED
+import os
 import socket
 import time
 import pickle
@@ -22,11 +23,15 @@ from ray.serve.http_util import (
     RawASGIResponse,
     receive_http_body,
     Response,
+    set_socket_reuse_port,
 )
 from ray.serve.long_poll import LongPollClient
 
 MAX_REPLICA_FAILURE_RETRIES = 10
 DISCONNECT_ERROR_CODE = "disconnection"
+SOCKET_REUSE_PORT_ENABLED = (
+    os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
+)
 
 
 async def _send_request_to_handle(handle, scope, receive, send) -> str:
@@ -359,26 +364,8 @@ class HTTPProxyActor:
 
     async def run(self):
         sock = socket.socket()
-        # These two socket options will allow multiple process to bind the the
-        # same port. Kernel will evenly load balance among the port listeners.
-        # Note: this will only work on Linux.
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        if hasattr(socket, "SO_REUSEPORT"):
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-        # In some Python binary distribution (e.g., conda py3.6), this flag
-        # was not present at build time but available in runtime. But
-        # Python relies on compiler flag to include this in binary.
-        # Therefore, in the absence of socket.SO_REUSEPORT, we try
-        # to use `15` which is value in linux kernel.
-        # https://github.com/torvalds/linux/blob/master/tools/include/uapi/asm-generic/socket.h#L27
-        else:
-            try:
-                sock.setsockopt(socket.SOL_SOCKET, 15, 1)
-            except Exception:
-                logger.debug(
-                    "Force setting SO_REUSEPORT failed. SO_REUSEPORT disabled."
-                )
-
+        if SOCKET_REUSE_PORT_ENABLED:
+            set_socket_reuse_port(sock)
         try:
             sock.bind((self.host, self.port))
         except OSError:

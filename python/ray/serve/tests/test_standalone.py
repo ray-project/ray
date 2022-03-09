@@ -11,6 +11,7 @@ from tempfile import mkstemp
 
 import pytest
 import pydantic
+from ray.serve.http_util import set_socket_reuse_port
 import requests
 
 import ray
@@ -175,20 +176,23 @@ def test_dedicated_cpu(controller_cpu, num_proxy_cpus, ray_cluster):
     ray.shutdown()
 
 
-def _reuse_port_is_available():
-    # If the attribute exists, Python binary is built against a linux kernel
-    # supporting this flag. If not, we will default to 15 which is the defined
-    # value in linux kernel.
-    val = 15
+def test_set_socket_reuse_port():
+    sock = socket.socket()
     if hasattr(socket, "SO_REUSEPORT"):
-        val = socket.SO_REUSEPORT
+        # If the flag exists, we should be able to to use it
+        assert set_socket_reuse_port(sock)
+    elif sys.platform == "linux":
+        # If the flag doesn't exist, but we are only mordern version
+        # of linux, we should be able to force set this flag.
+        assert set_socket_reuse_port(sock)
+    else:
+        # Otherwise, it should graceful fail without exception.
+        assert not set_socket_reuse_port(sock)
 
-    try:
-        sock = socket.socket()
-        sock.setsockopt(socket.SOL_SOCKET, val, 1)
-        return True
-    except Exception:
-        return False
+
+def _reuse_port_is_available():
+    sock = socket.socket()
+    return set_socket_reuse_port(sock)
 
 
 @pytest.mark.skipif(
