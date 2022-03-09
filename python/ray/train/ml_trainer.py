@@ -1,8 +1,7 @@
 import abc
 import logging
-from typing import Dict, Union, Callable, Optional
+from typing import Dict, Union, Callable, Optional, TYPE_CHECKING
 
-from ray.data import Dataset
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.config import ScalingConfig, RunConfig
@@ -11,7 +10,10 @@ from ray import tune
 from ray.tune.trainable import ConvertibleToTrainable
 from ray.tune.utils import deep_update
 
-GenDataset = Union[Dataset, Callable[[], Dataset]]
+if TYPE_CHECKING:
+    from ray.data import Dataset
+
+GenDataset = Union["Dataset", Callable[[], "Dataset"]]
 
 
 logger = logging.getLogger(__name__)
