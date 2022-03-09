@@ -64,7 +64,7 @@ def test_get_job_submission_client_cluster_info():
     # Test that the name for get_job_submission_client_cluster_info stays the
     # same
 
-    from ray.dashboard.modules.dashboard_sdk import (
+    from ray.dashboard.modules.dashboard_sdk import (  # noqa: F401
         get_job_submission_client_cluster_info,
     )
 
