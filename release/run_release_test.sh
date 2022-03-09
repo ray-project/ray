@@ -125,7 +125,7 @@ echo "Final release test exit code is ${EXIT_CODE} (${REASON})"
 
 if [ "$EXIT_CODE" -eq 0 ]; then
   echo "RELEASE MANAGER: This test seems to have passed."
-elif [ "$EXIT_CODE" -gt 30 ] && [ "$EXIT_CODE" -le 40 ]; then
+elif [ "$EXIT_CODE" -ge 30 ] && [ "$EXIT_CODE" -lt 40 ]; then
   echo "RELEASE MANAGER: This is likely an infra error that can be solved by RESTARTING this test."
 else
   echo "RELEASE MANAGER: This could be an error in the test. Please REVIEW THE LOGS and ping the test owner."
