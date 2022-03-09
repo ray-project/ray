@@ -44,10 +44,26 @@ class Application:
                 )
 
     def add_deployment(self, deployment: Deployment):
-        """Add deployment to the list. Validate name uniqueness."""
+        """
+        Adds the deployment to this Serve application. Validates that a
+        deployment with the same name doesn't already exist. To overwrite an
+        existing deployment, use attribute or index notation. For example:
+        
+        app.deployment_name = deployment
+        app[deployment_name] = deployment
+
+        Args:
+            deployment (Deployment): deployment to add to this Application
+        """
 
         if not isinstance(deployment, Deployment):
             raise TypeError(f"Got {type(deployment)}. Expected deployment.")
+        elif deployment.name in self._deployments:
+            raise ValueError(f'Deployment with name "{deployment.name}" already '
+                             "exists in this application. To overwrite this "
+                             "deployment, use attribute or index notation. "
+                             "For example:\n\napp.deployment_name = "
+                             "new_deployment")
 
         self._deployments[deployment.name] = deployment
 
