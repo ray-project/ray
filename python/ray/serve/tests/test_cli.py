@@ -12,7 +12,7 @@ from ray import serve
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray._private.test_utils import wait_for_condition
 from ray.dashboard.optional_utils import RAY_INTERNAL_DASHBOARD_NAMESPACE
-from ray.serve.scripts import process_args_and_kwargs, configure_runtime_env
+from ray.serve.scripts import process_args_and_kwargs
 
 
 def ping_endpoint(endpoint: str, params: str = ""):
@@ -149,72 +149,6 @@ class TestProcessArgsAndKwargs:
             assert kwargs == {}
 
 
-class TestConfigureRuntimeEnv:
-    @serve.deployment
-    def f():
-        pass
-
-    @pytest.mark.parametrize("ray_actor_options", [None, {}])
-    def test_empty_ray_actor_options(self, ray_actor_options):
-        runtime_env = {
-            "working_dir": "http://test.com",
-            "pip": ["requests", "pendulum==2.1.2"],
-        }
-        deployment = TestConfigureRuntimeEnv.f.options(
-            ray_actor_options=ray_actor_options
-        )
-        configure_runtime_env(deployment, runtime_env)
-        assert deployment.ray_actor_options["runtime_env"] == runtime_env
-
-    def test_overwrite_all_options(self):
-        old_runtime_env = {
-            "working_dir": "http://test.com",
-            "pip": ["requests", "pendulum==2.1.2"],
-        }
-        new_runtime_env = {
-            "working_dir": "http://new.com",
-            "pip": [],
-            "env_vars": {"test_var": "test"},
-        }
-        deployment = TestConfigureRuntimeEnv.f.options(
-            ray_actor_options={"runtime_env": old_runtime_env}
-        )
-        configure_runtime_env(deployment, new_runtime_env)
-        assert deployment.ray_actor_options["runtime_env"] == new_runtime_env
-
-    def test_overwrite_some_options(self):
-        old_runtime_env = {
-            "working_dir": "http://new.com",
-            "pip": [],
-            "env_vars": {"test_var": "test"},
-        }
-        new_runtime_env = {
-            "working_dir": "http://test.com",
-            "pip": ["requests", "pendulum==2.1.2"],
-        }
-        merged_env = {
-            "working_dir": "http://test.com",
-            "pip": ["requests", "pendulum==2.1.2"],
-            "env_vars": {"test_var": "test"},
-        }
-        deployment = TestConfigureRuntimeEnv.f.options(
-            ray_actor_options={"runtime_env": old_runtime_env}
-        )
-        configure_runtime_env(deployment, new_runtime_env)
-        assert deployment.ray_actor_options["runtime_env"] == merged_env
-
-    def test_overwrite_no_options(self):
-        runtime_env = {
-            "working_dir": "http://test.com",
-            "pip": ["requests", "pendulum==2.1.2"],
-        }
-        deployment = TestConfigureRuntimeEnv.f.options(
-            ray_actor_options={"runtime_env": runtime_env}
-        )
-        configure_runtime_env(deployment, {})
-        assert deployment.ray_actor_options["runtime_env"] == runtime_env
-
-
 def test_start_shutdown(ray_start_stop):
     with pytest.raises(subprocess.CalledProcessError):
         subprocess.check_output(["serve", "shutdown"])
@@ -225,10 +159,10 @@ def test_start_shutdown(ray_start_stop):
 
 def test_start_shutdown_in_namespace(ray_start_stop):
     with pytest.raises(subprocess.CalledProcessError):
-        subprocess.check_output(["serve", "shutdown", "-n", "test"])
+        subprocess.check_output(["serve", "-n", "test", "shutdown"])
 
-    subprocess.check_output(["serve", "start", "-n", "test"])
-    subprocess.check_output(["serve", "shutdown", "-n", "test"])
+    subprocess.check_output(["serve", "-n", "test", "start"])
+    subprocess.check_output(["serve", "-n", "test", "shutdown"])
 
 
 class A:
@@ -261,14 +195,14 @@ def test_create_deployment(ray_start_stop, tmp_working_dir, class_name):  # noqa
     subprocess.check_output(
         [
             "serve",
-            "create-deployment",
-            f"ray.serve.tests.test_cli.{class_name}",
             "--runtime-env-json",
             json.dumps(
                 {
                     "working_dir": tmp_working_dir,
                 }
             ),
+            "create-deployment",
+            f"ray.serve.tests.test_cli.{class_name}",
             "--options-json",
             json.dumps(
                 {
@@ -400,7 +334,7 @@ def test_info(ray_start_stop):
     deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
     assert success_message_fragment in deploy_response
 
-    info_response = subprocess.check_output(["serve", "info", "-j"]).decode("utf-8")
+    info_response = subprocess.check_output(["serve", "info"]).decode("utf-8")
     info = json.loads(info_response)
 
     assert "deployments" in info
@@ -470,7 +404,7 @@ def test_delete(ray_start_stop):
     # Deploys a config file and deletes it
 
     def get_num_deployments():
-        info_response = subprocess.check_output(["serve", "info", "-j"])
+        info_response = subprocess.check_output(["serve", "info"])
         info = json.loads(info_response)
         return len(info["deployments"])
 
@@ -625,82 +559,6 @@ def test_run_simultaneous(ray_start_stop):
     p2.wait()
     assert ping_endpoint("parrot") == "connection error"
     assert ping_endpoint("Macaw") == "connection error"
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_runtime_env(ray_start_stop):
-    # Tests serve run with runtime_envs specified
-
-    # Use local working_dir with import path
-    p = subprocess.Popen(
-        [
-            "serve",
-            "run",
-            "test_cli.Macaw",
-            "--working-dir",
-            os.path.dirname(__file__),
-            "--",
-            "green",
-            "--name=Molly",
-        ]
-    )
-    wait_for_condition(lambda: ping_endpoint("Macaw") == "Molly is green!", timeout=10)
-    p.send_signal(signal.SIGINT)
-    p.wait()
-
-    # Use local working_dir with config file
-    p = subprocess.Popen(
-        [
-            "serve",
-            "run",
-            os.path.join(
-                os.path.dirname(__file__), "test_config_files", "scarlet.yaml"
-            ),
-            "--working-dir",
-            os.path.dirname(__file__),
-        ]
-    )
-    wait_for_condition(
-        lambda: ping_endpoint("Scarlet") == "Scarlet is red!", timeout=10
-    )
-    p.send_signal(signal.SIGINT)
-    p.wait()
-
-    # Use remote working_dir
-    p = subprocess.Popen(
-        [
-            "serve",
-            "run",
-            "test_module.test.one",
-            "--working-dir",
-            "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip",
-        ]
-    )
-    wait_for_condition(lambda: ping_endpoint("one") == "2", timeout=10)
-    p.send_signal(signal.SIGINT)
-    p.wait()
-
-    # Use runtime env
-    p = subprocess.Popen(
-        [
-            "serve",
-            "run",
-            os.path.join(
-                os.path.dirname(__file__), "test_config_files", "fake_runtime_env.yaml"
-            ),
-            "--runtime-env-json",
-            (
-                '{"py_modules": ["https://github.com/shrekris-anyscale/'
-                'test_deploy_group/archive/HEAD.zip"],'
-                '"working_dir": "http://nonexistentlink-q490123950ni34t"}'
-            ),
-            "--working-dir",
-            "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip",
-        ]
-    )
-    wait_for_condition(lambda: ping_endpoint("one") == "2", timeout=10)
-    p.send_signal(signal.SIGINT)
-    p.wait()
 
 
 if __name__ == "__main__":
