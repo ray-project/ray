@@ -315,7 +315,7 @@ def get_deployment_import_path(deployment):
         # deployment's func_or_class is already an import path
         return deployment._func_or_class
     else:
-        body = deployment._func_or_class.__ray_actor_class__
+        body = deployment._func_or_class
         return f"{body.__module__}.{body.__qualname__}"
 
 
