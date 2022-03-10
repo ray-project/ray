@@ -311,11 +311,14 @@ def msgpack_serialize(obj):
 
 
 def get_deployment_import_path(deployment):
-    if isinstance(deployment._func_or_class, str):
+    """Gets the import path for deployment's func_or_class."""
+
+    body = deployment._func_or_class
+
+    if isinstance(body, str):
         # deployment's func_or_class is already an import path
-        return deployment._func_or_class
+        return body
     else:
-        body = deployment._func_or_class
         return f"{body.__module__}.{body.__qualname__}"
 
 
