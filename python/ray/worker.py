@@ -40,6 +40,7 @@ from ray._private.gcs_pubsub import (
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
+from ray._private.usage import usage_lib
 import ray._private.import_thread as import_thread
 from ray.util.tracing.tracing_helper import import_from_string
 from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
@@ -1007,6 +1008,8 @@ def init(
     if bootstrap_address is None:
         # In this case, we need to start a new cluster.
         # Use a random port by not specifying Redis port / GCS server port.
+        usage_lib.print_usage_stats_heads_up_message()
+
         ray_params = ray._private.parameter.RayParams(
             node_ip_address=node_ip_address,
             raylet_ip_address=raylet_ip_address,
