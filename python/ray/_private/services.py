@@ -23,7 +23,6 @@ import ray
 import ray.ray_constants as ray_constants
 from ray._raylet import GcsClientOptions
 from ray._private.gcs_utils import GcsClient, use_gcs_for_bootstrap
-import redis
 from ray.core.generated.common_pb2 import Language
 
 # Import psutil and colorama after ray so the packaged version is used.
@@ -563,6 +562,7 @@ def create_redis_client(redis_address, password=None):
     Returns:
         A Redis client.
     """
+    import redis
     if not hasattr(create_redis_client, "instances"):
         create_redis_client.instances = {}
 
@@ -828,6 +828,7 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
     Raises:
         Exception: An exception is raised if we could not connect with Redis.
     """
+    import redis
     redis_client = redis.StrictRedis(
         host=redis_ip_address, port=redis_port, password=password
     )
@@ -969,6 +970,7 @@ def start_redis(
             addresses for the remaining shards, and the processes that were
             started.
     """
+    import redis
     processes = []
 
     if external_addresses is not None:

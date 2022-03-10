@@ -7,7 +7,6 @@ import io
 import json
 import logging
 import os
-import redis
 import sys
 import threading
 import time
@@ -1373,6 +1372,7 @@ def listen_error_messages_raylet(worker, threads_stopped):
         threads_stopped (threading.Event): A threading event used to signal to
             the thread that it should exit.
     """
+    import redis
     worker.error_message_pubsub_client = worker.redis_client.pubsub(
         ignore_subscribe_messages=True
     )
