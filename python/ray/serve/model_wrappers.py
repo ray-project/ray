@@ -111,4 +111,5 @@ class ModelWrapper:
         return sender.build_asgi_response()
 
     def predict(self, inp):
+        """Performing inference directly without HTTP."""
         return self.model.predict(inp)

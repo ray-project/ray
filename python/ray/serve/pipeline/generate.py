@@ -16,8 +16,6 @@ from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_node import DeploymentNode
 from ray.serve.pipeline.ingress import PipelineIngressCheckpoint, PipelineIngressModel
 from ray.serve.pipeline.json_serde import DAGNodeEncoder
-
-# from ray.serve.pipeline.ingress import Ingress
 from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
 
 DEFAULT_INGRESS_DEPLOYMENT_NAME = "ingress"
