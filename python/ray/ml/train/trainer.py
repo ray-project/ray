@@ -12,6 +12,8 @@ from ray.util import PublicAPI
 if TYPE_CHECKING:
     from ray.data import Dataset
 
+# A type representing either a ray.data.Dataset or a function that returns a
+# ray.data.Dataset and accepts no arguments.
 GenDataset = Union["Dataset", Callable[[], "Dataset"]]
 
 
@@ -21,16 +23,14 @@ logger = logging.getLogger(__name__)
 @PublicAPI(stability="alpha")
 class Trainer(ConvertibleToTrainable, abc.ABC):
     """Defines interface for distributed training on Ray.
+
     Args:
-        scaling_config: Configuration for how to
-            scale training.
-        run_config: Configuration for the execution of
-            the training run.
-        train_dataset: Either a distributed Ray
-            :ref:`Dataset <dataset-api>` or a Callable that returns a Dataset,
-            to use for training. If a ``preprocessor`` is also provided,
-            it will be fit on this dataset and this dataset will be
-            transformed.
+        scaling_config: Configuration for how to scale training.
+        run_config: Configuration for the execution of the training run.
+        train_dataset: Either a distributed Ray :ref:`Dataset <dataset-api>`
+            or a Callable that returns a Dataset, to use for training. If a
+            ``preprocessor`` is also provided, it will be fit on this
+            dataset and this dataset will be transformed.
         extra_datasets: Any extra Datasets (such as validation or test
             datasets) to use for training. If a ``preprocessor`` is
             provided, the datasets specified here will only be transformed,
