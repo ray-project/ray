@@ -51,10 +51,10 @@ class _PathHelper:
         virtualenv_path = cls.get_virtualenv_path(target_dir)
         return os.path.join(virtualenv_path, "bin/python")
 
-    # TODO(SongGuyang): Support Windows
     @classmethod
     def get_virtualenv_activate_command(cls, target_dir: str) -> str:
         virtualenv_path = cls.get_virtualenv_path(target_dir)
+        # TODO(SongGuyang): Support Windows
         return "source %s 1>&2" % (os.path.join(virtualenv_path, "bin/activate"))
 
     @staticmethod
