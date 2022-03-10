@@ -33,7 +33,7 @@ const std::string ResourceEnumToString(PredefinedResourcesEnum resource) {
   return label;
 }
 
-const PredefinedResourcesEnu ResourceStringToEnum(const std::string &resource) {
+const PredefinedResourcesEnum ResourceStringToEnum(const std::string &resource) {
   for (std::size_t i = 0; i < resource_labels->size(); i++) {
     if (resource_labels[i] == resource) {
       return static_cast<PredefinedResourcesEnum>(i);
@@ -127,21 +127,14 @@ const std::vector<FixedPoint> &TaskResourceInstances::Get(
 
 ResourceRequest TaskResourceInstances::ToResourceRequest() const {
   ResourceRequest resource_request;
-  resource_request.predefined_resources.resize(PredefinedResourcesEnum_MAX);
 
   for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
-    resource_request.predefined_resources[i] = 0;
-    for (auto predefined_resource_instance : this->predefined_resources[i]) {
-      resource_request.predefined_resources[i] += predefined_resource_instance;
-    }
+    resource_request.Set(i, FixedPoint.Sum(this->predefined_resources[i]));
   }
 
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    resource_request.custom_resources[it->first] = 0;
-    for (size_t j = 0; j < it->second.size(); j++) {
-      resource_request.custom_resources[it->first] += it->second[j];
-    }
+    resource_request.Set(it->first, FixedPoint.Sum(it->second));
   }
   return resource_request;
 }
@@ -187,11 +180,11 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
     return false;
   }
 
-  return resource_request.IsSubsetOf(this->available);
+  return resource_request <= this->available;
 }
 
 bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
-  return resource_request.IsSubsetOf(this->total);
+  return resource_request <= this->total;
 }
 
 bool NodeResources::operator==(const NodeResources &other) {

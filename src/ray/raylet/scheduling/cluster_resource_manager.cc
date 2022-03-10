@@ -62,7 +62,7 @@ bool ClusterResourceManager::UpdateNode(scheduling::NodeID node_id,
 
   local_view.total = node_resources.total;
   if (resource_data.resources_available_changed()) {
-    local_view.avaivale = node_resources.avaivale;
+    local_view.available = node_resources.available;
     local_view.object_pulls_queued = resource_data.object_pulls_queued();
   }
 
@@ -111,7 +111,7 @@ void ClusterResourceManager::UpdateResourceCapacity(scheduling::NodeID node_id,
 
   auto local_view = it->second.GetMutableLocalView();
   FixedPoint resource_total_fp(resource_total);
-  auto diff_capacity = resource_total_fp - local_view->local.Get(resource_id);
+  auto diff_capacity = resource_total_fp - local_view->total.Get(resource_id);
   auto total = local_view->total.Get(resource_id) + diff_capacity;
   auto available = local_view->available.Get(resource_id) + diff_capacity;
   if (total < 0) {
@@ -186,7 +186,7 @@ bool ClusterResourceManager::HasSufficientResource(
     return false;
   }
 
-  return resources.available >= resou_request;
+  return resources.available >= resource_request;
 }
 
 void ClusterResourceManager::DebugString(std::stringstream &buffer) const {

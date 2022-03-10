@@ -42,7 +42,7 @@ void LocalResourceManager::InitResourceUnitInstanceInfo() {
     std::vector<std::string> results;
     boost::split(results, predefined_unit_instance_resources, boost::is_any_of(","));
     for (std::string &result : results) {
-      PredefinedResources resource = ResourceStringToEnum(result);
+      PredefinedResourcesEnum resource = ResourceStringToEnum(result);
       RAY_CHECK(resource < PredefinedResources_MAX)
           << "Failed to parse predefined resource";
       predefined_unit_instance_resources_.emplace(resource);
@@ -478,7 +478,7 @@ void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data)
   }
 
   for (int i = 0; i < PredefinedResources_MAX; i++) {
-    const auto &label = ResourceEnumToString((PredefinedResources)i);
+    const auto &label = ResourceEnumToString((PredefinedResourcesEnum)i);
     const auto &capacity = resources.predefined_resources[i];
     const auto &last_capacity = last_report_resources_->predefined_resources[i];
     // Note: available may be negative, but only report positive to GCS.
@@ -534,7 +534,7 @@ ray::gcs::NodeResourceInfoAccessor::ResourceMap LocalResourceManager::GetResourc
     const absl::flat_hash_map<std::string, double> &resource_map_filter) const {
   ray::gcs::NodeResourceInfoAccessor::ResourceMap map;
   for (size_t i = 0; i < local_resources_.predefined_resources.size(); i++) {
-    std::string resource_name = ResourceEnumToString(static_cast<PredefinedResources>(i));
+    std::string resource_name = ResourceEnumToString(static_cast<PredefinedResourcesEnum>(i));
     double resource_total =
         FixedPoint::Sum(local_resources_.predefined_resources[i].total).Double();
     if (!resource_map_filter.contains(resource_name)) {
@@ -584,7 +584,7 @@ std::string LocalResourceManager::SerializedTaskResourceInstances(
     if (has_added_resource) {
       buffer << ",";
     }
-    std::string resource_name = ResourceEnumToString(static_cast<PredefinedResources>(i));
+    std::string resource_name = ResourceEnumToString(static_cast<PredefinedResourcesEnum>(i));
     buffer << "\"" << resource_name << "\":";
     bool is_unit_instance = predefined_unit_instance_resources_.find(i) !=
                             predefined_unit_instance_resources_.end();

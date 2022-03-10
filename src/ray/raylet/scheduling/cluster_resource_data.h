@@ -228,7 +228,7 @@ class CustomResources {
 
   size_t Size() const { return values_.size(); }
 
-  bool IsEmty() const { return values_.size() == 0; }
+  bool IsEmpty() const { return values_.size() == 0; }
 
   void Clear() { this->values_.clear(); }
 
@@ -433,7 +433,7 @@ class ResourceRequest {
     return this->predefined_resources == other.predefined_resources && this->custom_resources == other.custom_resources;
   }
 
-  bool operator<=(const ResourceRequest &other) {
+  bool operator<=(const ResourceRequest &other) const {
     return predefined_resources <= other.predefined_resources && custom_resources <= other.custom_resources;
   }
 
