@@ -211,7 +211,8 @@ class Node:
 
         # Validate and initialize the persistent storage API.
         ray.storage.impl._init_storage(
-            ray_params.storage or os.environ.get("RAY_STORAGE"), is_head=head)
+            ray_params.storage or os.environ.get("RAY_STORAGE"), is_head=head
+        )
 
         if connect_only:
             # Get socket names from the configuration.

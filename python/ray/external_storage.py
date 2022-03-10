@@ -222,15 +222,9 @@ class ExternalStorage(metaclass=abc.ABCMeta):
         started by ray.init
         """
 
-from dataclasses import dataclass
-from typing import Dict, Union, Optional, Any, List
-
 
 class NullStorage(ExternalStorage):
     """The class that represents an uninitialized external storage."""
-
-    def list_objects(self, namespace: str, path: str, limit: Optional[int] = None) -> List[str]:
-        raise NotImplementedError("External storage is not initialized")
 
     def spill_objects(self, object_refs, owner_addresses) -> List[str]:
         raise NotImplementedError("External storage is not initialized")
@@ -291,17 +285,6 @@ class FileSystemStorage(ExternalStorage):
         # It chooses a random index to maximize multiple directories that are
         # mounted at different point.
         self._current_directory_index = random.randrange(0, len(self._directory_paths))
-
-    def list_objects(self, namespace: str, path: str, limit: Optional[int] = None) -> List[str]:
-        root = self._directory_paths[0]
-        path = os.path.join(root, path)
-        output = []
-        with os.scandir(path) as it:
-            for entry in it:
-                output.append(os.path.join(entry.path, entry.name))
-                if limit and len(output) >= limit:
-                    break
-        return output
 
     def spill_objects(self, object_refs, owner_addresses) -> List[str]:
         if len(object_refs) == 0:

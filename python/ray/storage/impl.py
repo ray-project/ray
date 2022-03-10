@@ -34,9 +34,11 @@ def _init_filesystem(storage_uri: str, create_valid_file: bool = False):
     if not storage_uri:
         raise ValueError(
             "No storage URI has been configured for the cluster. "
-            "Specify a storage URI via `ray.init(storage=<uri>)`")
+            "Specify a storage URI via `ray.init(storage=<uri>)`"
+        )
 
     import pyarrow.fs
+
     _filesystem, _storage_prefix = pyarrow.fs.FileSystem.from_uri(storage_uri)
 
     valid_file = os.path.join(_storage_prefix, "_valid")
@@ -50,7 +52,8 @@ def _init_filesystem(storage_uri: str, create_valid_file: bool = False):
             raise RuntimeError(
                 "Unable to initialize storage: {} flag not found. "
                 "Check that configured cluster storage path is readable from all "
-                "worker nodes of the cluster.".format(valid_file))
+                "worker nodes of the cluster.".format(valid_file)
+            )
 
     return _filesystem, _storage_prefix
 
@@ -102,10 +105,13 @@ def get_object_info(namespace: str, path: str) -> List["pyarrow.fs.FileInfo"]:
 
 
 def list_objects(
-    namespace: str, path: str, recursive: bool = False,
+    namespace: str,
+    path: str,
+    recursive: bool = False,
 ) -> List["pyarrow.fs.FileInfo"]:
     fs, prefix = get_filesystem()
     from pyarrow.fs import FileSelector
+
     base = os.path.join(prefix, namespace)
     full_path = os.path.join(base, path)
     selector = FileSelector(full_path, recursive=recursive)
@@ -118,6 +124,6 @@ def load_object(namespace: str, path: str) -> ObjectRef:
     base = os.path.join(prefix, namespace)
     full_path = os.path.join(base, path)
     with fs.open_input_stream(full_path) as f:
-            # TODO: do this efficiently
+        # TODO: do this efficiently
         data = cloudpickle.loads(f.read())
         return data
