@@ -1002,18 +1002,7 @@ ResourceSet LocalTaskManager::CalcNormalTaskResources() const {
 
     if (auto allocated_instances = worker->GetAllocatedInstances()) {
       auto resource_request = allocated_instances->ToResourceRequest();
-      for (size_t i = 0; i < resource_request.predefined_resources.size(); i++) {
-        if (resource_request.predefined_resources[i] > 0) {
-          total_normal_task_resources[ResourceEnumToString(PredefinedResources(i))] +=
-              resource_request.predefined_resources[i];
-        }
-      }
-      for (auto &entry : resource_request.custom_resources) {
-        if (entry.second > 0) {
-          total_normal_task_resources[scheduling::ResourceID(entry.first).Binary()] +=
-              entry.second;
-        }
-      }
+      total_normal_task_resources = resource_request.ToMap();
     }
   }
   return ResourceSet(total_normal_task_resources);

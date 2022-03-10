@@ -51,6 +51,8 @@ struct ResourceInstanceCapacities {
   std::vector<FixedPoint> available;
 };
 
+class ResourceRequest;
+
 class PredefinedResources {
  public:
   PredefinedResources() {
@@ -167,20 +169,12 @@ class PredefinedResources {
       if (this->values_[i] > other.values_[i]) {
         return false;
       }
-      return true;
     }
+    return true;
   }
 
   bool operator>=(const PredefinedResources &other) const {
     return other <= *this;
-  }
-
-  void Normalize() {
-    for (size_t i = 0; i < this->values_.size(); i++) {
-      if (this->values_[i] < 0) {
-        this->values_[i] = 0;
-      }
-    }
   }
 
  std::string DebugString() const {
@@ -199,6 +193,8 @@ class PredefinedResources {
 
  private:
   std::vector<FixedPoint> values_;
+
+  friend class ResourceRequest;
 };
 
 class CustomResources {
@@ -321,6 +317,8 @@ class CustomResources {
 
  private:
   absl::flat_hash_map<int64_t, FixedPoint> values_;
+
+  friend class ResourceRequest;
 };
 
 // Data structure specifying the capacity of each resource requested by a task.
@@ -396,6 +394,34 @@ class ResourceRequest {
   bool HasObjectStoreMemory() const { return this->predefined_resources.HasObjectStoreMemory(); }
 
   void Clear() { this->predefined_resources.Clear(); this->custom_resources.Clear(); }
+
+  void Normalize() {
+    for (size_t i = 0; i < predefined_resources.values_.size(); i++) {
+      if (predefined_resources.values_[i] < 0) {
+        predefined_resources.values_[i] = 0;
+      }
+    }
+    for (auto &entry : custom_resources.values_) {
+      if (entry.second < 0) {
+        entry.second = 0;
+      }
+    }
+  }
+
+  absl::flat_hash_map<std::string, FixedPoint> ToMap() {
+    absl::flat_hash_map<std::string, FixedPoint> res;
+    for (size_t i = 0; i < predefined_resources.values_.size(); i++) {
+      if (predefined_resources.values_[i] > 0) {
+        res.emplace(scheduling::ResourceID(i).Binary(), predefined_resources.values_[i]);
+      }
+    }
+    for (auto &entry : custom_resources.values_) {
+      if (entry.second > 0) {
+        res.emplace(scheduling::ResourceID(entry.first).Binary(), entry.second);
+      }
+    }
+    return res;
+  }
 
   ResourceRequest operator+(const ResourceRequest &other) {
     ResourceRequest res;

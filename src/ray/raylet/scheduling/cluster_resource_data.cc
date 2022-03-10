@@ -129,12 +129,12 @@ ResourceRequest TaskResourceInstances::ToResourceRequest() const {
   ResourceRequest resource_request;
 
   for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
-    resource_request.Set(i, FixedPoint.Sum(this->predefined_resources[i]));
+    resource_request.Set(i, FixedPoint::Sum(this->predefined_resources[i]));
   }
 
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    resource_request.Set(it->first, FixedPoint.Sum(it->second));
+    resource_request.Set(it->first, FixedPoint::Sum(it->second));
   }
   return resource_request;
 }
@@ -150,8 +150,8 @@ NodeResources ResourceMapToNodeResources(
     const absl::flat_hash_map<std::string, double> &resource_map_total,
     const absl::flat_hash_map<std::string, double> &resource_map_available) {
   NodeResources node_resources;
-  node_resources.total = ResourceMapToResourceRequest(resource_map_total);
-  node_resources.available = ResourceMapToResourceRequest(resource_map_available);
+  node_resources.total = ResourceMapToResourceRequest(resource_map_total, false);
+  node_resources.available = ResourceMapToResourceRequest(resource_map_available, false);
   return node_resources;
 }
 
@@ -200,6 +200,7 @@ std::string NodeResources::DebugString() const {
 }
 
 std::string NodeResources::DictString() const {
+  return DebugString();
   // std::stringstream buffer;
   // bool first = true;
   // buffer << "{";

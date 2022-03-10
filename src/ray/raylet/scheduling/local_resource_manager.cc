@@ -43,7 +43,7 @@ void LocalResourceManager::InitResourceUnitInstanceInfo() {
     boost::split(results, predefined_unit_instance_resources, boost::is_any_of(","));
     for (std::string &result : results) {
       PredefinedResourcesEnum resource = ResourceStringToEnum(result);
-      RAY_CHECK(resource < PredefinedResources_MAX)
+      RAY_CHECK(resource < PredefinedResourcesEnum_MAX)
           << "Failed to parse predefined resource";
       predefined_unit_instance_resources_.emplace(resource);
     }
@@ -64,7 +64,7 @@ void LocalResourceManager::AddLocalResourceInstances(
     scheduling::ResourceID resource_id, const std::vector<FixedPoint> &instances) {
   auto resource_name = resource_id.Binary();
   ResourceInstanceCapacities *node_instances;
-  local_resources_.predefined_resources.resize(PredefinedResources_MAX);
+  local_resources_.predefined_resources.resize(PredefinedResourcesEnum_MAX);
   if (kCPU_ResourceLabel == resource_name) {
     node_instances = &local_resources_.predefined_resources[CPU];
   } else if (kGPU_ResourceLabel == resource_name) {
@@ -152,9 +152,9 @@ void LocalResourceManager::InitResourceInstances(
 }
 
 void LocalResourceManager::InitLocalResources(const NodeResources &node_resources) {
-  local_resources_.predefined_resources.resize(PredefinedResources_MAX);
+  local_resources_.predefined_resources.resize(PredefinedResourcesEnum_MAX);
 
-  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+  for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
     if (node_resources.predefined_resources[i].total > 0) {
       // when we enable cpushare, the CPU will not be treat as unit_instance.
       bool is_unit_instance = predefined_unit_instance_resources_.find(i) !=
@@ -295,8 +295,8 @@ bool LocalResourceManager::AllocateTaskResourceInstances(
     const ResourceRequest &resource_request,
     std::shared_ptr<TaskResourceInstances> task_allocation) {
   RAY_CHECK(task_allocation != nullptr);
-  task_allocation->predefined_resources.resize(PredefinedResources_MAX);
-  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+  task_allocation->predefined_resources.resize(PredefinedResourcesEnum_MAX);
+  for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
     if (resource_request.predefined_resources[i] > 0) {
       if (!AllocateResourceInstances(resource_request.predefined_resources[i],
                                      local_resources_.predefined_resources[i].available,
@@ -340,7 +340,7 @@ bool LocalResourceManager::AllocateTaskResourceInstances(
 void LocalResourceManager::FreeTaskResourceInstances(
     std::shared_ptr<TaskResourceInstances> task_allocation) {
   RAY_CHECK(task_allocation != nullptr);
-  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+  for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
     AddAvailableResourceInstances(task_allocation->predefined_resources[i],
                                   &local_resources_.predefined_resources[i]);
   }
@@ -421,8 +421,8 @@ namespace {
 
 NodeResources ToNodeResources(const NodeResourceInstances &instance) {
   NodeResources node_resources;
-  node_resources.predefined_resources.resize(PredefinedResources_MAX);
-  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+  node_resources.predefined_resources.resize(PredefinedResourcesEnum_MAX);
+  for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
     node_resources.predefined_resources[i].available = 0;
     node_resources.predefined_resources[i].total = 0;
     for (size_t j = 0; j < instance.predefined_resources[i].available.size(); j++) {
@@ -477,7 +477,7 @@ void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data)
     last_report_resources_.reset(new NodeResources(node_resources));
   }
 
-  for (int i = 0; i < PredefinedResources_MAX; i++) {
+  for (int i = 0; i < PredefinedResourcesEnum_MAX; i++) {
     const auto &label = ResourceEnumToString((PredefinedResourcesEnum)i);
     const auto &capacity = resources.predefined_resources[i];
     const auto &last_capacity = last_report_resources_->predefined_resources[i];
@@ -576,7 +576,7 @@ std::string LocalResourceManager::SerializedTaskResourceInstances(
   bool has_added_resource = false;
   std::stringstream buffer;
   buffer << "{";
-  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+  for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
     std::vector<FixedPoint> resource = task_allocation->predefined_resources[i];
     if (resource.empty()) {
       continue;
@@ -627,7 +627,7 @@ bool LocalResourceManager::ResourcesExist(scheduling::ResourceID resource_id) co
 }
 
 int GetPredefinedResourceIndex(scheduling::ResourceID resource_id) {
-  if (resource_id.ToInt() >= 0 && resource_id.ToInt() < PredefinedResources_MAX) {
+  if (resource_id.ToInt() >= 0 && resource_id.ToInt() < PredefinedResourcesEnum_MAX) {
     return resource_id.ToInt();
   }
   return -1;

@@ -132,7 +132,7 @@ void ClusterResourceManager::DeleteResource(scheduling::NodeID node_id,
   }
 
   auto local_view = it->second.GetMutableLocalView();
-  local_view.Reset();
+  local_view->Clear();
 }
 
 std::string ClusterResourceManager::GetNodeResourceViewString(
@@ -158,8 +158,6 @@ bool ClusterResourceManager::SubtractNodeAvailableResources(
   }
 
   NodeResources *resources = it->second.GetMutableLocalView();
-
-  FixedPoint zero(0.);
 
   resources->available -= resource_request;
   resources->available.Normalize();

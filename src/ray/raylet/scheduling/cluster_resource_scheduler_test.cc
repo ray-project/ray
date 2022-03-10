@@ -66,8 +66,8 @@ void addTaskResourceInstances(bool predefined, vector<double> allocation, uint64
                               TaskResourceInstances *task_allocation) {
   std::vector<FixedPoint> allocation_fp = VectorDoubleToVectorFixedPoint(allocation);
 
-  if (task_allocation->predefined_resources.size() < PredefinedResources_MAX) {
-    task_allocation->predefined_resources.resize(PredefinedResources_MAX);
+  if (task_allocation->predefined_resources.size() < PredefinedResourcesEnum_MAX) {
+    task_allocation->predefined_resources.resize(PredefinedResourcesEnum_MAX);
   }
   if (predefined) {
     task_allocation->predefined_resources[idx] = allocation_fp;
@@ -85,8 +85,8 @@ void initNodeResources(NodeResources &node, vector<FixedPoint> &pred_capacities,
     node.predefined_resources.push_back(rc);
   }
 
-  if (pred_capacities.size() < PredefinedResources_MAX) {
-    for (int i = pred_capacities.size(); i < PredefinedResources_MAX; i++) {
+  if (pred_capacities.size() < PredefinedResourcesEnum_MAX) {
+    for (int i = pred_capacities.size(); i < PredefinedResourcesEnum_MAX; i++) {
       ResourceCapacity rc;
       rc.total = rc.available = 0;
       node.predefined_resources.push_back(rc);
@@ -128,7 +128,7 @@ class ClusterResourceSchedulerTest : public ::testing::Test {
     for (i = 0; i < n; i++) {
       NodeResources node_resources;
 
-      for (k = 0; k < PredefinedResources_MAX; k++) {
+      for (k = 0; k < PredefinedResourcesEnum_MAX; k++) {
         if (rand() % 3 == 0) {
           pred_capacities.push_back(0);
         } else {
@@ -136,7 +136,7 @@ class ClusterResourceSchedulerTest : public ::testing::Test {
         }
       }
 
-      int m = min(rand() % PredefinedResources_MAX, n);
+      int m = min(rand() % PredefinedResourcesEnum_MAX, n);
 
       int start = rand() % n;
       for (k = 0; k < m; k++) {
@@ -307,7 +307,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingModifyClusterNodeTest) {
   vector<FixedPoint> cust_capacities;
   int k;
 
-  for (k = 0; k < PredefinedResources_MAX; k++) {
+  for (k = 0; k < PredefinedResourcesEnum_MAX; k++) {
     if (rand() % 3 == 0) {
       pred_capacities.push_back(0);
     } else {
@@ -315,7 +315,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingModifyClusterNodeTest) {
     }
   }
 
-  int m = min(rand() % PredefinedResources_MAX, num_nodes);
+  int m = min(rand() % PredefinedResourcesEnum_MAX, num_nodes);
 
   int start = rand() % num_nodes;
   for (k = 0; k < m; k++) {
