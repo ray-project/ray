@@ -99,7 +99,7 @@ We can also query the deployment using the :mod:`ServeHandle <ray.serve.handle.R
 
   print(ray.get(handle.remote()))
 
-As noted above, there are two ways to expose deployments. This first is by using the :mod:`ServeHandle <ray.serve.handle.RayServeHandle>`
+As noted above, there are two ways to expose deployments. The first is by using the :mod:`ServeHandle <ray.serve.handle.RayServeHandle>`
 interface. This method allows you to access deployments within a Python script or code, making it convenient for a
 Python developer. And the second is by using the HTTP request, allowing access to deployments via a web client application.
 
