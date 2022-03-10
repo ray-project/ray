@@ -23,11 +23,11 @@ def transform_ray_dag_to_workflow(dag_node: DAGNode, input_context: DAGInputData
             workflow_step = workflow.step(node._body).options(**node._bound_options)
             return workflow_step.step(*node._bound_args, **node._bound_kwargs)
         if isinstance(node, InputAtrributeNode):
-            return node._execute_impl()
+            return node._execute_impl()  # get data from input node
         if isinstance(node, InputNode):
             return input_context  # replace input node with input data
         if not isinstance(node, DAGNode):
-            return node
+            return node  # return normal objects
         raise TypeError(f"Unsupported DAG node: {node}")
 
     return dag_node._apply_recursive(_node_visitor)
