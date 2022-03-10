@@ -540,7 +540,8 @@ bool ResourceRequest::IsEmpty() const {
 
 bool ResourceRequest::operator==(const ResourceRequest &other) const {
   if (predefined_resources.size() != other.predefined_resources.size() ||
-      custom_resources.size() != other.custom_resources.size()) {
+      custom_resources.size() != other.custom_resources.size() ||
+      requires_object_store_memory != other.requires_object_store_memory) {
     return false;
   }
   for (size_t i = 0; i < predefined_resources.size(); i++) {

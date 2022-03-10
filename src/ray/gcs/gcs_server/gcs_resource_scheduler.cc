@@ -24,8 +24,9 @@ double LeastResourceScorer::Score(const ResourceRequest &required_resources,
   // being updated by resource reports from raylets. So we have to subtract normal task
   // resources (if exist) from the current available resources.
   const NodeResources *node_resources_ptr = &node_resources;
+  NodeResources new_node_resources;
   if (!node_resources.normal_task_resources.IsEmpty()) {
-    auto new_node_resources = node_resources;
+    new_node_resources = node_resources;
     for (size_t i = 0; i < required_resources.predefined_resources.size(); ++i) {
       new_node_resources.predefined_resources[i].available -=
           required_resources.predefined_resources[i];
