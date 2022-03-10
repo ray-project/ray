@@ -245,11 +245,11 @@ NIGHTLY_TESTS = {
         # We'll have these as per-PR tests soon.
         # "example_scripts_on_gpu_tests",
     ],
-    "~/ray/release/runtime_env_tests/runtime_env_tests.yaml": [
-        "rte_many_tasks_actors",
-        "wheel_urls",
-        "rte_ray_client",
-    ],
+    # "~/ray/release/runtime_env_tests/runtime_env_tests.yaml": [
+    #     "rte_many_tasks_actors",
+    #     "wheel_urls",
+    #     "rte_ray_client",
+    # ],
 }
 
 WEEKLY_TESTS = {
