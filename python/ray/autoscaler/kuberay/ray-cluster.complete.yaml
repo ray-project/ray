@@ -101,9 +101,7 @@ spec:
               name: ray-logs
         # The Ray autoscaler sidecar to the head pod
         - name: autoscaler
-          # TODO (short term): Pin the image to a particular Ray commit after
-          #   nightly image with changes from https://github.com/ray-project/ray/pull/22847 is built. 
-          # TODO (longer term): This should be selected based on Ray version.
+          # TODO: Use released Ray version starting with Ray 1.12.0.
           image: rayproject/ray:413fe0
           imagePullPolicy: Always
           env:
