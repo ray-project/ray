@@ -148,7 +148,8 @@ class JobFileManager(FileManager):
             self._run_with_retry(
                 lambda: self.s3_client.delete_object(
                     Bucket=self.bucket, Key=remote_upload_to
-                )
+                ),
+                initial_retry_delay_s=2,
             )
         except Exception as e:
             logger.warning(f"Could not remove temporary S3 object: {e}")
