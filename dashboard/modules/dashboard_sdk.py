@@ -74,7 +74,8 @@ class ClusterInfo:
     headers: Optional[Dict[str, Any]] = None
 
 
-def get_submission_client_cluster_info(
+# TODO (shrekris-anyscale): renaming breaks compatibility, do NOT rename
+def get_job_submission_client_cluster_info(
     address: str,
     # For backwards compatibility
     *,
@@ -134,7 +135,7 @@ def parse_cluster_info(
 
     # If user passes http(s):// or ray://, go through normal parsing.
     if module_string in {"http", "https", "ray"}:
-        return get_submission_client_cluster_info(
+        return get_job_submission_client_cluster_info(
             inner_address,
             create_cluster_if_needed=create_cluster_if_needed,
             cookies=cookies,
@@ -151,12 +152,12 @@ def parse_cluster_info(
                 f"Module: {module_string} does not exist.\n"
                 f"This module was parsed from Address: {address}"
             ) from None
-        assert "get_submission_client_cluster_info" in dir(module), (
+        assert "get_job_submission_client_cluster_info" in dir(module), (
             f"Module: {module_string} does "
-            "not have `get_submission_client_cluster_info`."
+            "not have `get_job_submission_client_cluster_info`."
         )
 
-        return module.get_submission_client_cluster_info(
+        return module.get_job_submission_client_cluster_info(
             inner_address,
             create_cluster_if_needed=create_cluster_if_needed,
             cookies=cookies,
