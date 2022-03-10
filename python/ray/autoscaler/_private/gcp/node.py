@@ -463,13 +463,12 @@ class GCPCompute(GCPResource):
         for accelerator in configuration_dict.get("guestAccelerators", []):
             gpu_type = accelerator["acceleratorType"]
             if not re.search(".*/acceleratorTypes/.*", gpu_type):
-                accelerator["acceleratorType"] = (
-                    "projects/{project}/zones/{zone}/"
-                    "acceleratorTypes/{accelerator}".format(  # noqa: E501
-                        project=self.project_id,
-                        zone=self.availability_zone,
-                        accelerator=gpu_type,
-                    )
+                accelerator[
+                    "acceleratorType"
+                ] = "projects/{project}/zones/{zone}/" "acceleratorTypes/{accelerator}".format(  # noqa: E501
+                    project=self.project_id,
+                    zone=self.availability_zone,
+                    accelerator=gpu_type,
                 )
 
         return configuration_dict
@@ -569,7 +568,7 @@ class GCPTPU(GCPResource):
         for _ in range(max_polls):
             result = (
                 self.resource.projects()
-                ._locations()
+                .locations()
                 .operations()
                 .get(name=f"{operation['name']}")
                 .execute()
@@ -591,7 +590,7 @@ class GCPTPU(GCPResource):
     def list_instances(self, label_filters: Optional[dict] = None) -> List[GCPTPUNode]:
         response = (
             self.resource.projects()
-            ._locations()
+            .locations()
             .nodes()
             .list(parent=self.path)
             .execute()
@@ -627,7 +626,7 @@ class GCPTPU(GCPResource):
 
     def get_instance(self, node_id: str) -> GCPTPUNode:
         instance = (
-            self.resource.projects()._locations().nodes().get(name=node_id).execute()
+            self.resource.projects().locations().nodes().get(name=node_id).execute()
         )
 
         return GCPTPUNode(instance, self)
@@ -645,7 +644,7 @@ class GCPTPU(GCPResource):
 
         operation = (
             self.resource.projects()
-            ._locations()
+            .locations()
             .nodes()
             .patch(
                 name=node["name"],
@@ -687,7 +686,7 @@ class GCPTPU(GCPResource):
 
         operation = (
             self.resource.projects()
-            ._locations()
+            .locations()
             .nodes()
             .create(
                 parent=self.path,
@@ -706,7 +705,7 @@ class GCPTPU(GCPResource):
 
     def delete_instance(self, node_id: str, wait_for_operation: bool = True) -> dict:
         operation = (
-            self.resource.projects()._locations().nodes().delete(name=node_id).execute()
+            self.resource.projects().locations().nodes().delete(name=node_id).execute()
         )
 
         # No need to increase MAX_POLLS for deletion
