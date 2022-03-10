@@ -2052,7 +2052,7 @@
 # Core K8s tests
 ################
 - name: k8s_dask_on_ray_large_scale_test_no_spilling
-  group: Core nightly tests
+  group: k8s-core-nightly-test
   team: core
   working_dir: nightly_tests
   frequency: nightly
@@ -2101,7 +2101,7 @@
       file_manager: job
 
 - name: k8s_threaded_actors_stress_test
-  group: Core nightly tests
+  group: k8s-core-nightly-test
   team: core
   working_dir: nightly_tests
   frequency: nightly
