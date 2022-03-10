@@ -30,7 +30,7 @@ from ray.data.context import DatasetContext
 from ray.data.datasource import (
     Datasource, CSVDatasource, JSONDatasource, NumpyDatasource,
     ParquetDatasource, BlockWritePathProvider, DefaultBlockWritePathProvider)
-from ray.data.aggregate import AggregateFn, Sum, Max, Min, \
+from ray.data.aggregate import AggregateFn, Max, Min, \
     Mean, Std
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
