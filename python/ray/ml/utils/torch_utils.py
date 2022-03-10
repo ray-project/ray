@@ -9,7 +9,6 @@ def convert_pandas_to_torch_tensor(
     columns: Optional[Union[List[str], List[List[str]]]] = None,
     column_dtypes: Optional[Union[torch.dtype, List[torch.dtype]]] = None,
 ) -> Union[torch.Tensor, List[torch.Tensor]]:
-
     """Converts a Pandas dataframe to a torch Tensor or list of torch Tensors.
 
     The format of the return type will match the format of ``columns``. If a
