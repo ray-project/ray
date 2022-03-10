@@ -14,7 +14,6 @@ py_test_module_list(
     "test_ray_cluster_with_external_redis.py",
     "test_k8s_cluster_launcher.py",
     "test_runtime_env_working_dir_3.py",
-    "test_setup_worker.py",
   ],
   size = "large",
   extra_srcs = SRCS,
