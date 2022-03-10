@@ -405,6 +405,7 @@ def _workflow_step_executor(
     # Part 2: resolve inputs
     # f(e1, e2, w1)
     args, kwargs = baked_inputs.resolve()
+
     # before: after this step, all inputs are ready
     # after: after this step, e1, e2, w1 can be not ready.
     # Pass the context to event coordinator:
@@ -416,7 +417,18 @@ def _workflow_step_executor(
     #      re-execute this function.
     # WorkflowManagementActor
     # EventCoordinator
-    
+
+    # if it's event step:
+    #    pass it to event coordinator, and event coordinator will continue to run this:
+    #         await for event (new part3)
+    #         save outputs (new part 4)
+    #         
+    # if it's a step has events as inputs:
+    #    pass it to event coordinator, e1, e2, w1 -> f
+    #    waiting until all events arrived (maybe, also the w1 finished) (new part2)
+    #    resume the step (call _workflow_step_executor again)
+    #         part2 will be finished quickly since everything is ready
+    #    execute the step (part3)
 
     # Part 3: execute the step
     store = workflow_storage.get_workflow_storage()
