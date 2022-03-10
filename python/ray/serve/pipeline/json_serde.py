@@ -9,7 +9,6 @@ from ray.experimental.dag import (
     ClassMethodNode,
     FunctionNode,
     InputNode,
-    InputAtrributeNode,
     DAGNODE_TYPE_KEY,
 )
 from ray.serve.pipeline.deployment_node import DeploymentNode
@@ -91,8 +90,6 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
     # Deserialize DAGNode type
     elif input_json[DAGNODE_TYPE_KEY] == InputNode.__name__:
         return InputNode.from_json(input_json, object_hook=dagnode_from_json)
-    elif input_json[DAGNODE_TYPE_KEY] == InputAtrributeNode.__name__:
-        return InputAtrributeNode.from_json(input_json, object_hook=dagnode_from_json)
     elif input_json[DAGNODE_TYPE_KEY] == PipelineInputNode.__name__:
         return PipelineInputNode.from_json(input_json, object_hook=dagnode_from_json)
     elif input_json[DAGNODE_TYPE_KEY] == ClassMethodNode.__name__:
@@ -103,7 +100,6 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
         return DeploymentMethodNode.from_json(input_json, object_hook=dagnode_from_json)
     else:
         # Class and Function nodes require original module as body.
-        print(f"import_path: {input_json['import_path']}")
         module_name, attr_name = parse_import_path(input_json["import_path"])
         module = getattr(import_module(module_name), attr_name)
         if input_json[DAGNODE_TYPE_KEY] == FunctionNode.__name__:

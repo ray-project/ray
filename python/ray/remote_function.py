@@ -248,7 +248,7 @@ class RemoteFunction:
             def remote(self, *args, **kwargs):
                 return func_cls._remote(args=args, kwargs=kwargs, **options)
 
-            def bind(self, *args, **kwargs):
+            def _bind(self, *args, **kwargs):
                 """
                 **Experimental**
 
@@ -460,7 +460,7 @@ class RemoteFunction:
 
         return invocation(args, kwargs)
 
-    def bind(self, *args, **kwargs):
+    def _bind(self, *args, **kwargs):
         """
         **Experimental**
 

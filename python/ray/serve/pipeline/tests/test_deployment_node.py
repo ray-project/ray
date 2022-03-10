@@ -51,7 +51,7 @@ def test_disallow_binding_deployments():
         AttributeError,
         match="DAG building API should only be used for @ray.remote decorated",
     ):
-        _ = ServeActor.bind(10)
+        _ = ServeActor._bind(10)
 
 
 @pytest.mark.asyncio
