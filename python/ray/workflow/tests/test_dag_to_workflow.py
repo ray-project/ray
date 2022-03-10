@@ -34,6 +34,7 @@ def test_dag_to_workflow_execution(workflow_start_regular_shared):
         b = end._bind(lf, rt, b=dag_input.b)
 
     wf = workflow.create(b, 2, 3.14, a=10, b="ok")
+    assert len(list(wf._iter_workflows_in_dag())) == 4, "incorrect amount of steps"
     assert wf.run() == "left(23.14, hello, 10),right(23.14, ok, 2);ok"
 
 
