@@ -247,7 +247,7 @@ class Application:
 
         for name, deployment in self._deployments.items():
             self._deployments[name] = deployment.options(
-                func_or_class=get_deployment_import_path(deployment)
+                func_or_class=get_deployment_import_path(deployment, replace_main=True)
             )
 
     def __getitem__(self, key: str):

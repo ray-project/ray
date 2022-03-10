@@ -11,6 +11,7 @@ from typing import Iterable, List, Tuple, Dict, Any
 import os
 import traceback
 from enum import Enum
+import __main__
 from ray.actor import ActorHandle
 
 import requests
@@ -310,8 +311,14 @@ def msgpack_serialize(obj):
     return serialized
 
 
-def get_deployment_import_path(deployment):
-    """Gets the import path for deployment's func_or_class."""
+def get_deployment_import_path(deployment, replace_main=False):
+    """
+    Gets the import path for deployment's func_or_class.
+
+    deployment: A deployment object whose import path should be returned
+    replace_main: If this is True, the function will try to replace __main__
+        with __main__'s file name if the deployment's module is __main__
+    """
 
     body = deployment._func_or_class
 
@@ -322,7 +329,14 @@ def get_deployment_import_path(deployment):
         # If ActorClass, get the class or function inside
         body = body.__ray_actor_class__
 
-    return f"{body.__module__}.{body.__qualname__}"
+    import_path = f"{body.__module__}.{body.__qualname__}"
+
+    if replace_main:
+        if import_path.split(".")[0] == "__main__" and hasattr(__main__, "__file__"):
+            file_name = os.path.basename(__main__.__file__)
+            import_path = f"{file_name.split('.')[0]}.{import_path.split('.')[1]}"
+
+    return import_path
 
 
 def parse_import_path(import_path: str):
