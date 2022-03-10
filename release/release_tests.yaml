@@ -978,7 +978,7 @@
     autosuspend_mins: 10
 
   run:
-    timeout: 1200
+    timeout: 1800
     script: python workloads/dask_xgboost_test.py --num-actors 4 --cpus-per-actor 4 --num-actors-inference 16 --cpus-per-actor-inference 1
     type: client
 
@@ -1005,7 +1005,7 @@
     autosuspend_mins: 10
 
   run:
-    timeout: 1200
+    timeout: 1800
     script: python workloads/modin_xgboost_test.py --num-actors 4 --cpus-per-actor 4 --num-actors-inference 16 --cpus-per-actor-inference 1
     type: client
 
@@ -1032,7 +1032,7 @@
     autosuspend_mins: 10
 
   run:
-    timeout: 1200
+    timeout: 1800
     script: python workloads/torch_tune_serve_test.py
     type: client
 
