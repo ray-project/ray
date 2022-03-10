@@ -1064,54 +1064,54 @@
     type: sdk_command
     file_manager: sdk
 
-- name: scheduling_test_many_5s_tasks_single_node
-  group: core-scalability-test
-  working_dir: benchmarks
-  legacy:
-    test_name: scheduling_test_many_5s_tasks_single_node
-    test_suite: benchmark_tests
+# - name: scheduling_test_many_5s_tasks_single_node
+#   group: core-scalability-test
+#   working_dir: benchmarks
+#   legacy:
+#     test_name: scheduling_test_many_5s_tasks_single_node
+#     test_suite: benchmark_tests
 
-  frequency: nightly
-  team: core
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: scheduling.yaml
+#   frequency: nightly
+#   team: core
+#   cluster:
+#     cluster_env: app_config.yaml
+#     cluster_compute: scheduling.yaml
 
-  run:
-    timeout: 3600
-    script: python distributed/test_scheduling.py --total-num-task=1984000 --num-cpu-per-task=1
-      --task-duration-s=5 --total-num-actors=1 --num-actors-per-nodes=1
+#   run:
+#     timeout: 3600
+#     script: python distributed/test_scheduling.py --total-num-task=1984000 --num-cpu-per-task=1
+#       --task-duration-s=5 --total-num-actors=1 --num-actors-per-nodes=1
 
-    wait_for_nodes:
-      num_nodes: 32
-      timeout: 600
+#     wait_for_nodes:
+#       num_nodes: 32
+#       timeout: 600
 
-    type: sdk_command
-    file_manager: sdk
-  stable: false
+#     type: sdk_command
+#     file_manager: sdk
+#   stable: false
 
-- name: scheduling_test_many_5s_tasks_many_nodes
-  group: core-scalability-test
-  working_dir: benchmarks
-  legacy:
-    test_name: scheduling_test_many_5s_tasks_many_nodes
-    test_suite: benchmark_tests
+# - name: scheduling_test_many_5s_tasks_many_nodes
+#   group: core-scalability-test
+#   working_dir: benchmarks
+#   legacy:
+#     test_name: scheduling_test_many_5s_tasks_many_nodes
+#     test_suite: benchmark_tests
 
-  frequency: nightly
-  team: core
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: scheduling.yaml
+#   frequency: nightly
+#   team: core
+#   cluster:
+#     cluster_env: app_config.yaml
+#     cluster_compute: scheduling.yaml
 
-  run:
-    timeout: 3600
-    script: python distributed/test_scheduling.py --total-num-task=1984000 --num-cpu-per-task=1
-      --task-duration-s=5 --total-num-actors=32 --num-actors-per-nodes=1
+#   run:
+#     timeout: 3600
+#     script: python distributed/test_scheduling.py --total-num-task=1984000 --num-cpu-per-task=1
+#       --task-duration-s=5 --total-num-actors=32 --num-actors-per-nodes=1
 
-    wait_for_nodes:
-      num_nodes: 32
-      timeout: 600
+#     wait_for_nodes:
+#       num_nodes: 32
+#       timeout: 600
 
-    type: sdk_command
-    file_manager: sdk
-  stable: false
+#     type: sdk_command
+#     file_manager: sdk
+#   stable: false
