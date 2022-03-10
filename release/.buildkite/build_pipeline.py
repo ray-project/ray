@@ -114,16 +114,16 @@ SERVE_NIGHTLY_TESTS = {
         SmokeTest("serve"),
         SmokeTest("serve_failure"),
     ],
-    "~/ray/release/serve_tests/serve_tests.yaml": [
-        "single_deployment_1k_noop_replica",
-        "multi_deployment_1k_noop_replica",
-        "autoscaling_single_deployment",
-        "autoscaling_multi_deployment",
-        "serve_micro_benchmark",
-        # TODO(architkulkarni) Reenable after K8s migration.  Currently failing
-        # "serve_micro_benchmark_k8s",
-        "serve_cluster_fault_tolerance",
-    ],
+    # "~/ray/release/serve_tests/serve_tests.yaml": [
+    #     "single_deployment_1k_noop_replica",
+    #     "multi_deployment_1k_noop_replica",
+    #     "autoscaling_single_deployment",
+    #     "autoscaling_multi_deployment",
+    #     "serve_micro_benchmark",
+    #     # TODO(architkulkarni) Reenable after K8s migration.  Currently failing
+    #     # "serve_micro_benchmark_k8s",
+    #     "serve_cluster_fault_tolerance",
+    # ],
 }
 
 CORE_DAILY_TESTS = {
