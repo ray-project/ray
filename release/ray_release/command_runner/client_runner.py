@@ -8,7 +8,6 @@ import time
 from collections import deque
 from typing import Optional, Dict, Any
 
-import ray
 from ray_release.anyscale_util import LAST_LOGS_LENGTH
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
@@ -83,6 +82,10 @@ class ClientRunner(CommandRunner):
             raise LocalEnvSetupError(f"Error setting up local environment: {e}") from e
 
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
+        # Local import of Ray to avoid premature import (e.g. when local
+        # Ray is updated in client tests)
+        import ray
+
         ray_address = self.cluster_manager.get_cluster_address()
         if ray.is_initialized:
             ray.shutdown()
