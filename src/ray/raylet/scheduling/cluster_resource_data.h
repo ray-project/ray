@@ -59,7 +59,11 @@ struct ResourceInstanceCapacities {
 
 class PredefinedResources {
  public:
-  PredefinedResources() { values_.resize(PredefinedResources_MAX); }
+  PredefinedResources() {
+    for (int i = 0; i < PredefinedResources_MAX; i++) {
+      values_.push_back(0);
+    }
+  }
 
   const FixedPoint &Get(int64_t resource_id) const {
     return this->values_[resource_id];
@@ -115,6 +119,12 @@ class PredefinedResources {
       }
     }
     return true;
+  }
+
+  void Clear() {
+    for (int i = 0; i < values_.size(); i++) {
+      this->values_[i] = 0;
+    }
   }
 
   PredefinedResources operator+(const PredefinedResources &other) {
@@ -231,6 +241,8 @@ class CustomResources {
   size_t Size() const { return values_.size(); }
 
   bool IsEmty() const { return values_.size() == 0; }
+
+  void Clear() { this->values_.clear(); }
 
   CustomResources operator+(const CustomResources &other) {
     CustomResources res;
@@ -354,12 +366,13 @@ class ResourceRequest {
     }
   }
 
-  PredefinedResources &Set(int64_t resource_id, const FixedPoint & value) {
+  ResourceRequest &Set(int64_t resource_id, const FixedPoint & value) {
     if (IsPredefinedResource(resource_id)) {
       return this->predefined_resources.Set(resource_id, value);
     } else {
       return this->custom_resources.Set(resource_id, value);
     }
+    return *this;
   }
 
   const bool Has(int64_t resource_id) const {
@@ -369,6 +382,32 @@ class ResourceRequest {
       return this->custom_resources.Has(resource_id);
     }
   }
+
+  const FixedPoint &GetCPU() const { return this->predefined_resources.GetCPU(); }
+
+  const FixedPoint &GetMemory() const { return this->predefined_resources.GetMemory(); }
+
+  const FixedPoint &GetGPU() const { return this->predefined_resources.GetGPU(); }
+
+  const FixedPoint &GetObjectStoreMemory() const { return this->predefined_resources.GetObjectStoreMemory(); }
+
+  ResourceRequest &SetCPU(const FixedPoint &value) { this->predefined_resources.SetCPU(value); return *this; }
+
+  ResourceRequest &SetMemory(const FixedPoint &value) { this->predefined_resources.SetMemory(value); return *this; }
+
+  ResourceRequest &SetGPU(const FixedPoint &value) { this->predefined_resources.SetGPU(value); return *this; }
+
+  ResourceRequest &SetObjectStoreMemory(const FixedPoint &value) { this->predefined_resources.SetObjectStoreMemory(value); return *this; }
+
+  bool HasCPU() const { return this->predefined_resources.HasCPU(); }
+
+  bool HasMemory() const { return this->predefined_resources.HasMemory(); }
+
+  bool HasGPU() const { return this->predefined_resources.HasGPU(); }
+
+  bool HasObjectStoreMemory() const { return this->predefined_resources.HasObjectStoreMemory(); }
+
+  void Clear() { this->predefined_resources.Clear(); this->custom_resources.Clear(); }
 
   ResourceRequest operator+(const ResourceRequest &other) {
     ResourceRequest res;
@@ -492,11 +531,6 @@ class NodeResources {
         object_pulls_queued(other.object_pulls_queued) {}
   ResourceRequest total;
   ResourceRequest available;
-  /// Available and total capacities for predefined resources.
-  std::vector<ResourceCapacity> predefined_resources;
-  /// Map containing custom resources. The key of each entry represents the
-  /// custom resource ID.
-  absl::flat_hash_map<int64_t, ResourceCapacity> custom_resources;
   bool object_pulls_queued = false;
 
   /// Amongst CPU, memory, and object store memory, calculate the utilization percentage
