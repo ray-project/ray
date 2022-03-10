@@ -89,19 +89,11 @@ void GcsResourceManager::HandleUpdateResources(
       (*resource_map.mutable_items())[resource_name].set_resource_capacity(
           resource_value.Double());
     }
-<<<<<<< HEAD
-    for (const auto &[name, capacity] : *changed_resources) {
-      (*resource_map.mutable_items())[name].set_resource_capacity(capacity);
-||||||| 9d0148dbb
-    for (const auto &entry : *changed_resources) {
-      (*resource_map.mutable_items())[entry.first].set_resource_capacity(entry.second);
-=======
-    for (const auto &entry : node_resources->custom_resources) {
-      const auto &resource_name = scheduling::ResourceID(entry.first).Binary();
-      const auto &resource_value = entry.second.total;
+    for (const auto &[id, capacity] : node_resources->custom_resources) {
+      const auto &resource_name = scheduling::ResourceID(id).Binary();
+      const auto &resource_value = capacity.total;
       (*resource_map.mutable_items())[resource_name].set_resource_capacity(
           resource_value.Double());
->>>>>>> master
     }
 
     auto start = absl::GetCurrentTimeNanos();
