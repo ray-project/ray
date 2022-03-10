@@ -457,7 +457,7 @@ def test_run_basic(ray_start_stop):
         os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
     )
 
-    p = subprocess.Popen(["serve", "run", config_file_name])
+    p = subprocess.Popen(["serve", "run", "--address=auto", config_file_name])
     wait_for_condition(lambda: ping_endpoint("one") == "2", timeout=10)
     wait_for_condition(
         lambda: ping_endpoint("shallow") == "Hello shallow world!", timeout=10
@@ -469,7 +469,9 @@ def test_run_basic(ray_start_stop):
     assert ping_endpoint("shallow") == "connection error"
 
     # Deploy via import path
-    p = subprocess.Popen(["serve", "run", "ray.serve.tests.test_cli.parrot"])
+    p = subprocess.Popen(
+        ["serve", "run", "--address=auto", "ray.serve.tests.test_cli.parrot"]
+    )
     wait_for_condition(
         lambda: ping_endpoint("parrot", params="?sound=squawk") == "squawk", timeout=10
     )
@@ -501,6 +503,7 @@ def test_run_init_args_kwargs(ray_start_stop):
         [
             "serve",
             "run",
+            "--address=auto",
             "ray.serve.tests.test_cli.Macaw",
             "--",
             "green",
@@ -518,6 +521,7 @@ def test_run_init_args_kwargs(ray_start_stop):
         [
             "serve",
             "run",
+            "--address=auto",
             "ray.serve.tests.test_cli.Macaw",
             "--",
             "green",
@@ -540,7 +544,16 @@ def test_run_init_args_kwargs(ray_start_stop):
 
     with pytest.raises(subprocess.CalledProcessError):
         subprocess.check_output(
-            ["serve", "run", config_file_name, "--", "green", "--name", "Molly"]
+            [
+                "serve",
+                "run",
+                "--address=auto",
+                config_file_name,
+                "--",
+                "green",
+                "--name",
+                "Molly",
+            ]
         )
 
 
@@ -548,7 +561,9 @@ def test_run_init_args_kwargs(ray_start_stop):
 def test_run_simultaneous(ray_start_stop):
     # Test that two serve run processes can run simultaneously
 
-    p1 = subprocess.Popen(["serve", "run", "ray.serve.tests.test_cli.parrot"])
+    p1 = subprocess.Popen(
+        ["serve", "run", "--address=auto", "ray.serve.tests.test_cli.parrot"]
+    )
     wait_for_condition(
         lambda: ping_endpoint("parrot", params="?sound=squawk") == "squawk", timeout=10
     )
@@ -557,6 +572,7 @@ def test_run_simultaneous(ray_start_stop):
         [
             "serve",
             "run",
+            "--address=auto",
             "ray.serve.tests.test_cli.Macaw",
             "--",
             "green",
@@ -593,6 +609,7 @@ def test_run_runtime_env(ray_start_stop):
         [
             "serve",
             "run",
+            "--address=auto",
             "test_cli.Macaw",
             "--working-dir",
             os.path.dirname(__file__),
@@ -610,6 +627,7 @@ def test_run_runtime_env(ray_start_stop):
         [
             "serve",
             "run",
+            "--address=auto",
             os.path.join(
                 os.path.dirname(__file__), "test_config_files", "scarlet.yaml"
             ),
@@ -628,6 +646,7 @@ def test_run_runtime_env(ray_start_stop):
         [
             "serve",
             "run",
+            "--address=auto",
             "test_module.test.one",
             "--working-dir",
             "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip",
@@ -642,6 +661,7 @@ def test_run_runtime_env(ray_start_stop):
         [
             "serve",
             "run",
+            "--address=auto",
             os.path.join(
                 os.path.dirname(__file__),
                 "test_config_files",

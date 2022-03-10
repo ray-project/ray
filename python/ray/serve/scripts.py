@@ -231,7 +231,7 @@ def shutdown(address: str, namespace: str):
 @click.option(
     "--address",
     "-a",
-    default=None,
+    default=os.environ.get("RAY_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
@@ -401,7 +401,8 @@ def info(address: str, json_format=bool):
     help=(
         "Prints status information about all deployments in the Serve app.\n\n"
         "Deployments may be:\n\n"
-        "- HEALTHY: all replicas are acting normally and passing their health checks.\n\n"
+        "- HEALTHY: all replicas are acting normally and passing their "
+        "health checks.\n\n"
         "- UNHEALTHY: at least one replica is not acting normally and may not be "
         "passing its health check.\n\n"
         "- UPDATING: the deployment is updating."
