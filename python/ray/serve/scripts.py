@@ -441,3 +441,16 @@ def delete(address: str, yes: bool):
     cli_logger.newline()
     cli_logger.success("\nSent delete request successfully!\n")
     cli_logger.newline()
+
+
+@cli.command(
+    short_help="Build a Serve config using an Application",
+    help=(
+        "Imports the Serve app stored at IMPORT_PATH, and writes a config "
+        "file to the FILE_PATH."
+    ),
+)
+@click.argument("import_path")
+@click.argument("file_path")
+def build(import_path: str, file_path: str):
+    pass
