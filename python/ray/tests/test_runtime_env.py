@@ -693,6 +693,9 @@ def test_serialize_deserialize(option):
     assert cls_runtime_env.to_dict() == runtime_env
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="conda in runtime_env unsupported on Windows."
+)
 def test_runtime_env_interface():
 
     # Test the interface related to working_dir
