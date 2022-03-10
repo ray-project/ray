@@ -389,20 +389,14 @@ def run(
         runtime_env_updates = parse_runtime_env_args(
             runtime_env=runtime_env,
             runtime_env_json=runtime_env_json,
+            working_dir=working_dir,
         )
 
-        # Get final working_dir
-        working_dir = working_dir or runtime_env_updates.get("working_dir")
-        if "working_dir" in runtime_env_updates:
-            del runtime_env_updates["working_dir"]
-
         # Create ray.init()'s runtime_env
-        if working_dir is None:
-            ray_runtime_env = {}
+        if "working_dir" in runtime_env_updates:
+            ray_runtime_env = {"working_dir": runtime_env_updates.pop("working_dir")}
         else:
-            ray_runtime_env = {"working_dir": working_dir}
-            if "working_dir" in runtime_env_updates:
-                del runtime_env_updates["working_dir"]
+            ray_runtime_env = {}
 
         if is_config:
             config_path = config_or_import_path
