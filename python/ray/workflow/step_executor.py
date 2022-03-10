@@ -403,7 +403,20 @@ def _workflow_step_executor(
     context.checkpoint_context.checkpoint = runtime_options.checkpoint
 
     # Part 2: resolve inputs
+    # f(e1, e2, w1)
     args, kwargs = baked_inputs.resolve()
+    # before: after this step, all inputs are ready
+    # after: after this step, e1, e2, w1 can be not ready.
+    # Pass the context to event coordinator:
+    #     - Inputs: e1, e2, w1 (object ref)
+    #     - StepId, Workflow ID 
+    #     - ... basically inputs which can't be fetched from somewhere else of this function.
+    #
+    # step 2.5 -> event coordinator knows e1, e2, w1 has been resolved
+    #      re-execute this function.
+    # WorkflowManagementActor
+    # EventCoordinator
+    
 
     # Part 3: execute the step
     store = workflow_storage.get_workflow_storage()
@@ -578,7 +591,10 @@ class _BakedWorkflowInputs:
             objects_mapping.append(obj)
 
         workflow_ref_mapping = _resolve_dynamic_workflow_refs(self.workflow_refs)
-
+        # f(e1, e2, w1)
+        # e1 -> f 
+        # e2 /
+        # w1 /
         with serialization_context.workflow_args_resolving_context(
             objects_mapping, workflow_ref_mapping
         ):
