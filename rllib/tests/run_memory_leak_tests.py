@@ -116,7 +116,7 @@ if __name__ == "__main__":
                 trainer,
                 to_check=set(args.to_check) or {"rollout_worker", "policy"},
             )
-            if results is None:
+            if not results:
                 leaking = False
         finally:
             ray.shutdown()
