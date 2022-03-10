@@ -11,6 +11,9 @@ def PublicAPI(*args, **kwargs):
     If "stability" is alpha, the API can be used by advanced users who are
     tolerant to and expect breaking changes.
 
+    For a full definition of the stability levels, please refer to the
+    `Google stability level guidelines <https://google.aip.dev/181>`_
+
     Args:
         stability: One of {"stable", "beta", "alpha"}.
 
