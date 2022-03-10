@@ -1,4 +1,6 @@
 from ray.experimental.dag import DAGNode
+from ray.serve.handle import RayServeHandle
+from ray.serve.application import Application
 from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
@@ -63,12 +65,15 @@ def build(ray_dag_root_node: DAGNode):
         >>> # This will fail where enforcements are applied.
         >>> deployment_yaml = app.to_yaml()
     """
+
     serve_root_dag = ray_dag_root_node.apply_recursive(transform_ray_dag_to_serve_dag)
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
+
+    app = Application(deployments)
+
+    # No JSON serde or FQN import path enforced yet.
     pipeline_input_node = get_pipeline_input_node(serve_root_dag)
     ingress_deployment = get_ingress_deployment(serve_root_dag, pipeline_input_node)
-    deployments.insert(0, ingress_deployment)
+    app.add_deployment(ingress_deployment)
 
-    # TODO (jiaodong): Call into Application once Shreyas' PR is merged
-    # TODO (jiaodong): Apply enforcements at serve app to_yaml level
-    return deployments
+    return app

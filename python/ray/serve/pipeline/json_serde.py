@@ -3,6 +3,7 @@ from importlib import import_module
 
 import json
 
+import ray.cloudpickle as pickle
 from ray.experimental.dag import (
     DAGNode,
     ClassNode,
@@ -51,14 +52,17 @@ class DAGNodeEncoder(json.JSONEncoder):
             # Let the base class default method raise the TypeError
             try:
                 return json.JSONEncoder.default(self, obj)
-            except Exception as e:
-                raise TypeError(
-                    "All args and kwargs used in Ray DAG building for serve "
-                    "deployment need to be JSON serializable. Please JSON "
-                    "serialize your args to make your ray application "
-                    "deployment ready."
-                    f"\n Original exception message: {e}"
-                )
+            except Exception as _:
+                # To facilitate local dev we don't enforce JSON serialization
+                # in dev mode, and only enforced on app.to_yaml()
+                return pickle.dumps(obj)
+                # raise TypeError(
+                #     "All args and kwargs used in Ray DAG building for serve "
+                #     "deployment need to be JSON serializable. Please JSON "
+                #     "serialize your args to make your ray application "
+                #     "deployment ready."
+                #     f"\n Original exception message: {e}"
+                # )
 
 
 def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
@@ -87,7 +91,13 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
         try:
             return json.loads(input_json)
         except Exception:
-            return input_json
+            if isinstance(input_json, bytes):
+                # To facilitate local dev we don't enforce args JSON
+                # serialization or FQN import path in dev mode, only enforced
+                # on last deployment step app.to_yaml()
+                return pickle.loads(input_json)
+            else:
+                return input_json
     # Deserialize DAGNode type
     elif input_json[DAGNODE_TYPE_KEY] == InputNode.__name__:
         return InputNode.from_json(input_json, object_hook=dagnode_from_json)
@@ -103,9 +113,15 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
         return DeploymentMethodNode.from_json(input_json, object_hook=dagnode_from_json)
     else:
         # Class and Function nodes require original module as body.
-        print(f"import_path: {input_json['import_path']}")
-        module_name, attr_name = parse_import_path(input_json["import_path"])
-        module = getattr(import_module(module_name), attr_name)
+        import_path = input_json["import_path"]
+        if isinstance(import_path, bytes):
+            # In dev mode we store pickled class or function body in import_path
+            # if we failed to get a FQN import path for it.
+            module = pickle.loads(input_json["import_path"])
+        else:
+            module_name, attr_name = parse_import_path(input_json["import_path"])
+            module = getattr(import_module(module_name), attr_name)
+
         if input_json[DAGNODE_TYPE_KEY] == FunctionNode.__name__:
             return FunctionNode.from_json(
                 input_json, module, object_hook=dagnode_from_json

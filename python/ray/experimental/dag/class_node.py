@@ -1,4 +1,7 @@
+from typing import Any, Dict, List, Optional, Tuple
+
 import ray
+import ray.cloudpickle as pickle
 from ray.experimental.dag.dag_node import DAGNode
 from ray.experimental.dag.input_node import InputNode
 from ray.experimental.dag.format_utils import get_dag_node_str
@@ -7,8 +10,6 @@ from ray.experimental.dag.constants import (
     PREV_CLASS_METHOD_CALL_KEY,
     DAGNODE_TYPE_KEY,
 )
-
-from typing import Any, Dict, List, Optional, Tuple
 
 
 class ClassNode(DAGNode):
@@ -94,17 +95,22 @@ class ClassNode(DAGNode):
     def to_json(self, encoder_cls) -> Dict[str, Any]:
         json_dict = super().to_json_base(encoder_cls, ClassNode.__name__)
         import_path = self.get_import_path()
-        error_message = (
-            "Class used in DAG should not be in-line defined when exporting"
-            "import path for deployment. Please ensure it has fully "
-            "qualified name with valid __module__ and __qualname__ for "
-            "import path, with no __main__ or <locals>. \n"
-            f"Current import path: {import_path}"
-        )
-        assert "__main__" not in import_path, error_message
-        assert "<locals>" not in import_path, error_message
+        # error_message = (
+        #     "Class used in DAG should not be in-line defined when exporting"
+        #     "import path for deployment. Please ensure it has fully "
+        #     "qualified name with valid __module__ and __qualname__ for "
+        #     "import path, with no __main__ or <locals>. \n"
+        #     f"Current import path: {import_path}"
+        # )
+        # assert "__main__" not in import_path, error_message
+        # assert "<locals>" not in import_path, error_message
 
-        json_dict["import_path"] = import_path
+        if "__main__" in import_path or "<locals>" in import_path:
+            # Best effort to get FQN string import path
+            json_dict["import_path"] = pickle.dumps(self._body)
+        else:
+            json_dict["import_path"] = import_path
+
         return json_dict
 
     @classmethod

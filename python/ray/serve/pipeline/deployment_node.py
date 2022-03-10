@@ -1,5 +1,6 @@
 from typing import Any, Callable, Dict, Optional, List, Tuple, Union
 
+import ray.cloudpickle as pickle
 from ray.experimental.dag import DAGNode, InputNode
 from ray.serve.handle import RayServeSyncHandle, RayServeHandle
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
@@ -71,7 +72,9 @@ class DeploymentNode(DAGNode):
         )
         self._deployment_handle: Union[
             RayServeHandle, RayServeSyncHandle
-        ] = self._get_serve_deployment_handle(self._deployment, other_args_to_resolve)
+        ] = self._get_serve_deployment_handle(
+            self._deployment, other_args_to_resolve
+        )
 
     def _copy_impl(
         self,
@@ -171,17 +174,22 @@ class DeploymentNode(DAGNode):
         json_dict["deployment_name"] = self.get_deployment_name()
         import_path = self.get_import_path()
 
-        error_message = (
-            "Class used in DAG should not be in-line defined when exporting"
-            "import path for deployment. Please ensure it has fully "
-            "qualified name with valid __module__ and __qualname__ for "
-            "import path, with no __main__ or <locals>. \n"
-            f"Current import path: {import_path}"
-        )
-        assert "__main__" not in import_path, error_message
-        assert "<locals>" not in import_path, error_message
-
-        json_dict["import_path"] = import_path
+        # error_message = (
+        #     "Class used in DAG should not be in-line defined when exporting"
+        #     "import path for deployment. Please ensure it has fully "
+        #     "qualified name with valid __module__ and __qualname__ for "
+        #     "import path, with no __main__ or <locals>. \n"
+        #     f"Current import path: {import_path}"
+        # )
+        # assert "__main__" not in import_path, error_message
+        # assert "<locals>" not in import_path, error_message
+        if "__main__" in import_path or "<locals>" in import_path:
+            # Best effort to get FQN string import path
+            json_dict["import_path"] = pickle.dumps(
+                self._deployment.func_or_class
+            )
+        else:
+            json_dict["import_path"] = import_path
 
         return json_dict
 

@@ -64,7 +64,7 @@ class Application:
 
         self._deployments[deployment.name] = deployment
 
-    def deploy(self, blocking: bool = True):
+    def deploy(self, blocking: bool = True, return_sync_handle = True):
         """Atomically deploys the Application's deployments to the Ray cluster.
 
         The Application's deployments can carry handles to one another.
@@ -102,9 +102,11 @@ class Application:
 
             parameter_group.append(deployment_parameters)
 
-        return internal_get_global_client().deploy_group(
+        internal_get_global_client().deploy_group(
             parameter_group, _blocking=blocking
         )
+
+        return self._deployments["ingress"].get_handle(sync=return_sync_handle)
 
     def run(self, logger: Union[Logger, _CliLogger] = logger):
         """Deploys all deployments in this Application and logs status.

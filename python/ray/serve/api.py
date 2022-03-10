@@ -328,7 +328,7 @@ class Client:
             self.log_deployment_ready(name, version, url, tag)
 
     @_ensure_connected
-    def deploy_group(self, deployments: List[Dict], _blocking: bool = True):
+    def deploy_group(self, deployments: List[Dict], _blocking: bool = True) -> None:
         deployment_args_list = []
         for deployment in deployments:
             deployment_args_list.append(
