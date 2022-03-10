@@ -102,8 +102,13 @@ def upload_py_modules_if_needed(
                     upload_fn(module_path, excludes=excludes)
             elif Path(module_path).suffix == ".whl":
                 module_uri = get_uri_for_package(Path(module_path))
-                if not package_exists(module_uri):
-                    upload_package_to_gcs(module_uri, Path(module_path).read_bytes())
+                if upload_fn is None:
+                    if not package_exists(module_uri):
+                        upload_package_to_gcs(
+                            module_uri, Path(module_path).read_bytes()
+                        )
+                else:
+                    upload_fn(module_path, excludes=None, is_file=True)
             else:
                 raise ValueError(
                     "py_modules entry must be a directory or a .whl file; "

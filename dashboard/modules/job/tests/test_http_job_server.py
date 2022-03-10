@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+import os
 import sys
 import json
 import tempfile
@@ -113,7 +114,10 @@ def _check_job_stopped(client: JobSubmissionClient, job_id: str) -> bool:
         "no_working_dir",
         "local_working_dir",
         "s3_working_dir",
-        "local_py_modules",  # XXX: add test for whl
+        "local_py_modules",
+        "working_dir_and_local_py_modules_whl",
+        # XXX Add test for working dir local zip,
+        # XXX python -c "import pip_install_test"
     ],
 )
 def runtime_env_option(request):
@@ -123,7 +127,11 @@ def runtime_env_option(request):
             "entrypoint": "echo hello",
             "expected_logs": "hello\n",
         }
-    elif request.param == "local_working_dir" or request.param == "local_py_modules":
+    elif request.param in {
+        "local_working_dir",
+        "local_py_modules",
+        "working_dir_and_local_py_modules_whl",
+    }:
         with tempfile.TemporaryDirectory() as tmp_dir:
             path = Path(tmp_dir)
 
@@ -159,6 +167,23 @@ def runtime_env_option(request):
                     ),
                     "expected_logs": "Hello from test_module!\n",
                 }
+            elif request.param == "working_dir_and_local_py_modules_whl":
+                yield {
+                    "runtime_env": {
+                        "working_dir": "s3://runtime-env-test/script_runtime_env.zip",
+                        "py_modules": [
+                            Path(os.path.dirname(__file__))
+                            / "pip_install_test-0.5-py3-none-any.whl"
+                        ],
+                    },
+                    "entrypoint": (
+                        "python script.py && python -c 'import pip_install_test'"
+                    ),
+                    "expected_logs": (
+                        "Executing main() from script.py !!\n"
+                        "Good job!  You installed a pip module."
+                    ),
+                }
             else:
                 raise ValueError(f"Unexpected pytest fixture option {request.param}")
     elif request.param == "s3_working_dir":
@@ -184,7 +209,7 @@ def test_submit_job(job_sdk_client, runtime_env_option):
     wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
 
     logs = client.get_job_logs(job_id)
-    assert logs == runtime_env_option["expected_logs"]
+    assert runtime_env_option["expected_logs"] in logs
 
 
 def test_http_bad_request(job_sdk_client):
