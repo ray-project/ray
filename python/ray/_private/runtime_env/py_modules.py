@@ -14,6 +14,7 @@ from ray._private.runtime_env.packaging import (
     get_local_dir_from_uri,
     get_uri_for_directory,
     get_uri_for_package,
+    package_exists,
     parse_uri,
     is_whl_uri,
     Protocol,
@@ -97,7 +98,8 @@ def upload_py_modules_if_needed(
                 )
             elif Path(module_path).suffix == ".whl":
                 module_uri = get_uri_for_package(Path(module_path))
-                upload_package_to_gcs(module_uri, Path(module_path).read_bytes())
+                if not package_exists(module_uri):
+                    upload_package_to_gcs(module_uri, Path(module_path).read_bytes())
             else:
                 raise ValueError(
                     "py_modules entry must be a directory or a .whl file; "
