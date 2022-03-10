@@ -7,7 +7,7 @@ import pytest
 import requests
 
 import ray
-from ray.dashboard.modules.serve.schema import (
+from ray.serve.schema import (
     RayActorOptionsSchema,
     DeploymentSchema,
     DeploymentStatusSchema,
@@ -522,7 +522,7 @@ def test_deployment_to_schema_to_deployment():
         # decorator without converting global_f() into a Deployment object.
         pass
 
-    f._func_or_class = "ray.dashboard.modules.serve.tests.test_schema.global_f"
+    f._func_or_class = "ray.serve.tests.test_schema.global_f"
 
     deployment = schema_to_deployment(deployment_to_schema(f))
 
@@ -560,8 +560,8 @@ def test_serve_application_to_schema_to_serve_application():
     def f2():
         pass
 
-    f1._func_or_class = "ray.dashboard.modules.serve.tests.test_schema.global_f"
-    f2._func_or_class = "ray.dashboard.modules.serve.tests.test_schema.global_f"
+    f1._func_or_class = "ray.serve.tests.test_schema.global_f"
+    f2._func_or_class = "ray.serve.tests.test_schema.global_f"
 
     deployments = schema_to_serve_application(serve_application_to_schema([f1, f2]))
 

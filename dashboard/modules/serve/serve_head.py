@@ -6,7 +6,7 @@ import ray.dashboard.optional_utils as optional_utils
 
 from ray import serve
 from ray.serve.application import Application
-from ray.dashboard.modules.serve.schema import (
+from ray.serve.schema import (
     serve_application_to_schema,
     serve_application_status_to_schema,
 )
@@ -52,7 +52,7 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @routes.put("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def put_all_deployments(self, req: Request) -> Response:
-        app = Application.from_json(await req.text())
+        app = Application.from_dict(await req.json())
         app.deploy(blocking=False)
 
         new_names = set()

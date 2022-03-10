@@ -8,7 +8,7 @@ from ray.serve.api import (
     Deployment,
     internal_get_global_client,
 )
-from ray.dashboard.modules.serve.schema import (
+from ray.serve.schema import (
     ServeApplicationSchema,
     serve_application_to_schema,
     schema_to_serve_application,
@@ -217,7 +217,7 @@ class Application:
                 YAML deployment definitions or a pointer to a file containing
                 YAML deployment definitions. The YAML format must adhere to the
                 ServeApplicationSchema JSON Schema defined in
-                ray.dashboard.modules.serve.schema. This function works with
+                ray.serve.schema. This function works with
                 Serve YAML config files.
 
         Returns:
