@@ -497,9 +497,7 @@ class DatasetPipeline(Generic[T]):
             The Python type or Arrow schema of the records, or None if the
             schema is not known.
         """
-        if self._first_dataset is None:
-            self._first_dataset, self._dataset_iter = self._peek()
-        return self._first_dataset.schema(fetch_if_missing=fetch_if_missing)
+        return self._peek().schema(fetch_if_missing=fetch_if_missing)
 
     def count(self) -> int:
         """Count the number of records in the dataset pipeline.
@@ -647,11 +645,6 @@ class DatasetPipeline(Generic[T]):
 
         return EpochDelimitedIterator(self)
 
-    def _peek(self) -> (Dataset[T], Iterator[Dataset[T]]):
-        self._optimize_stages()
-        dataset_iter = PipelineExecutor(self)
-        return next(dataset_iter), dataset_iter
-
     @DeveloperAPI
     def iter_datasets(self) -> Iterator[Dataset[T]]:
         """Iterate over the output datasets of this pipeline.
@@ -663,12 +656,12 @@ class DatasetPipeline(Generic[T]):
             raise RuntimeError("Pipeline cannot be read multiple times.")
         self._executed[0] = True
         iter = None
-        if self._dataset_iter:
+        if self._first_dataset:
             iter = itertools.chain([self._first_dataset], self._dataset_iter)
-            del self._dataset_iter
         else:
-            self._first_dataset, rest = self._peek()
-            iter = itertools.chain([self._first_dataset], rest)
+            self._peek()
+            iter = itertools.chain([self._first_dataset], self._dataset_iter)
+        self._dataset_iter = None
         return iter
 
     @DeveloperAPI
@@ -758,6 +751,13 @@ class DatasetPipeline(Generic[T]):
                 )
             )
         self._optimized_stages = optimized_stages
+
+    def _peek(self) -> Dataset[T]:
+        if self._first_dataset is None:
+            self._optimize_stages()
+            self._dataset_iter = PipelineExecutor(self)
+            self._first_dataset = next(self._dataset_iter)
+        return self._first_dataset
 
 
 for method in _PER_DATASET_OPS:
