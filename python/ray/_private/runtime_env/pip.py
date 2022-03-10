@@ -51,10 +51,11 @@ class _PathHelper:
         virtualenv_path = cls.get_virtualenv_path(target_dir)
         return os.path.join(virtualenv_path, "bin/python")
 
+    # TODO(SongGuyang): Support Windows
     @classmethod
-    def get_virtualenv_activate(cls, target_dir: str) -> str:
+    def get_virtualenv_activate_command(cls, target_dir: str) -> str:
         virtualenv_path = cls.get_virtualenv_path(target_dir)
-        return os.path.join(virtualenv_path, "bin/activate")
+        return "source %s 1>&2" % (os.path.join(virtualenv_path, "bin/activate"))
 
     @staticmethod
     def get_requirements_file(target_dir: str) -> str:
@@ -366,6 +367,6 @@ class PipManager:
                 "installing the runtime_env `pip` packages."
             )
         context.py_executable = virtualenv_python
-        virtualenv_activate = _PathHelper.get_virtualenv_activate(target_dir)
-        # TODO(SongGuyang): Support Windows
-        context.command_prefix += ["source %s 1>&2" % (virtualenv_activate)]
+        context.command_prefix += [
+            _PathHelper.get_virtualenv_activate_command(target_dir)
+        ]
