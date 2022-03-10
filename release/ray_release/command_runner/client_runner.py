@@ -149,12 +149,24 @@ class ClientRunner(CommandRunner):
             }
         )
 
-        def _kill_after(proc: subprocess.Popen, timeout: int = 30):
+        kill_event = threading.Event()
+
+        def _kill_after(
+            proc: subprocess.Popen,
+            timeout: int = 30,
+            kill_event: Optional[threading.Event] = None,
+        ):
             timeout_at = time.monotonic() + timeout
             while time.monotonic() < timeout_at:
                 if proc.poll() is not None:
                     return
                 time.sleep(1)
+            logger.info(
+                f"Client command timed out after {timeout} seconds, "
+                f"killing subprocess."
+            )
+            if kill_event:
+                kill_event.set()
             proc.terminate()
 
         start_time = time.monotonic()
@@ -167,7 +179,9 @@ class ClientRunner(CommandRunner):
             text=True,
         )
 
-        kill_thread = threading.Thread(target=_kill_after, args=(proc, timeout))
+        kill_thread = threading.Thread(
+            target=_kill_after, args=(proc, timeout, kill_event)
+        )
         kill_thread.start()
 
         proc.stdout.reconfigure(line_buffering=True)
@@ -182,7 +196,7 @@ class ClientRunner(CommandRunner):
         self.last_logs = "\n".join(logs)
 
         return_code = proc.poll()
-        if return_code == -15 or return_code == 15:
+        if return_code == -15 or return_code == 15 or kill_event.is_set():
             # Process has been terminated
             raise CommandTimeout(f"Cluster command timed out after {timeout} seconds.")
         if return_code != 0:

@@ -747,7 +747,7 @@
 
   driver_setup: tune_rllib/driver_setup.sh
   run:
-    timeout: 1200
+    timeout: 2000
     script: python tune_rllib/run_connect_tests.py
     type: client
 
