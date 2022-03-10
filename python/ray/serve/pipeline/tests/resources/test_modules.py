@@ -3,8 +3,11 @@ Ray decorated classes and functions defined at top of file, importable with
 fully qualified name as import_path to test DAG building, artifact generation
 and structured deployment.
 """
-import ray
+import starlette
+import json
 from typing import TypeVar
+
+import ray
 
 RayHandleLike = TypeVar("RayHandleLike")
 NESTED_HANDLE_KEY = "nested_handle"
@@ -26,11 +29,9 @@ class Model:
         self.ratio = ratio or 1
 
     def forward(self, input: int):
-        print(f"forward() recevied input: {input}")
         return self.ratio * self.weight * input
 
     def __call__(self, request):
-        print(f"__call__() recevied request: {request}")
         input_data = request
         return self.ratio * self.weight * input_data
 
@@ -72,3 +73,24 @@ def fn_hello():
 @ray.remote
 def combine(m1_output, m2_output, kwargs_output=0):
     return m1_output + m2_output + kwargs_output
+
+
+def class_factory():
+    class MyInlineClass:
+        def __init__(self, val):
+            self.val = val
+
+        def get(self):
+            return self.val
+
+    return MyInlineClass
+
+
+async def request_to_data_int(request: starlette.requests.Request):
+    data = await request.body()
+    return int(data)
+
+
+async def request_to_data_obj(request: starlette.requests.Request):
+    data = await request.body()
+    return json.loads(data)

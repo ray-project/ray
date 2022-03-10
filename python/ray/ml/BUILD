@@ -5,6 +5,14 @@
 # --------------------------------------------------------------------
 
 py_test(
+    name = "test_checkpoints",
+    size = "small",
+    srcs = ["tests/test_checkpoints.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_preprocessors",
     size = "small",
     srcs = ["tests/test_preprocessors.py"],
