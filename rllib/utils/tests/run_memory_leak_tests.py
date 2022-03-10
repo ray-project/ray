@@ -49,7 +49,7 @@ parser.add_argument(
 parser.add_argument(
     "--to-check",
     nargs="+",
-    default=["env", "policy"],
+    default=["env", "policy", "rollout_worker"],
     help="List of 'env', 'policy', 'rollout_worker', 'model'.",
 )
 
@@ -114,7 +114,7 @@ if __name__ == "__main__":
             trainer = get_trainer_class(experiment["run"])(experiment["config"])
             results = check_memory_leaks(
                 trainer,
-                to_check=set(args.to_check) or {"rollout_worker", "policy"},
+                to_check=set(args.to_check),
             )
             if not results:
                 leaking = False

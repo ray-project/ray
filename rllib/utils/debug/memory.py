@@ -294,11 +294,11 @@ def _take_snapshot(table, suspicious=None):
 
     # Always loop only through n largest sizes and store these in our
     # table, no matter what.
-    for stat in top_stats[:100]:
+    for stat in top_stats[:10]:
         table[stat.traceback].append(stat.size)
     # For the next m largest sizes, keep if a) first trial or b) those
     # that are already in the `suspicious` set.
-    for stat in top_stats[100:1000]:
+    for stat in top_stats[10:100]:
         if suspicious is None or stat.traceback in suspicious:
             table[stat.traceback].append(stat.size)
 
