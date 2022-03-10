@@ -1092,6 +1092,9 @@
 - name: long_running_serve_failure
   group: Long running tests
   working_dir: long_running_tests
+
+  stable: False
+
   legacy:
     test_name: serve_failure
     test_suite: long_running_tests
