@@ -315,13 +315,29 @@ class RuntimeEnv(dict):
 
         return plugin_uris
 
+    def __setitem__(self, key: str, value: Any) -> None:
+        if key not in RuntimeEnv.known_fields:
+            logger.warning(
+                "The following unknown entries in the runtime_env dictionary "
+                f"will be ignored: {key}. If you intended to use "
+                "them as plugins, they must be nested in the `plugins` field."
+            )
+            return
+        res_value = value
+        if key in OPTION_TO_VALIDATION_FN:
+            res_value = OPTION_TO_VALIDATION_FN[key](value)
+        return super().__setitem__(key, res_value)
+
     @classmethod
     def deserialize(cls, serialized_runtime_env: str) -> "RuntimeEnv":  # noqa: F821
         proto_runtime_env = json_format.Parse(serialized_runtime_env, ProtoRuntimeEnv())
         return cls.from_proto(proto_runtime_env)
 
     def serialize(self) -> str:
-        proto_runtime_env = self.build_proto_runtime_env()
+        # To ensure the accuracy of Proto, `__setitem__` can only guarantee the
+        # accuracy of a certain field, not the overall accuracy
+        runtime_env = type(self)(_validate=True, **self)
+        proto_runtime_env = runtime_env.build_proto_runtime_env()
         return json.dumps(
             json.loads(json_format.MessageToJson(proto_runtime_env)),
             sort_keys=True,
