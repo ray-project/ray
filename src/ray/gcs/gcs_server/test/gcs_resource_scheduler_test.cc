@@ -149,9 +149,8 @@ class GcsResourceSchedulerTest : public ::testing::Test {
       for (auto r : resources) {
         resource_map[r.first] = r.second;
       }
-      required_resources_list.emplace_back(
-        ResourceMapToResourceRequest(resource_map, /*requires_object_store_memory=*/false)
-      );
+      required_resources_list.emplace_back(ResourceMapToResourceRequest(
+          resource_map, /*requires_object_store_memory=*/false));
     }
 
     const auto &result1 =
