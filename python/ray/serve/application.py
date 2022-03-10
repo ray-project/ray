@@ -62,7 +62,7 @@ class Application:
                 "new_deployment"
             )
 
-        self.__setitem__(deployment.name, deployment)
+        self._deployments[deployment.name] = deployment
 
     def deploy(self, blocking: bool = True):
         """Atomically deploys the Application's deployments to the Ray cluster.
@@ -148,9 +148,14 @@ class Application:
         This dictionary adheres to the Serve REST API schema. It can be deployed
         via the Serve REST API.
 
+        If any deployment's func_or_class is a function or class (and not an
+        import path), it overwrites it with that function or class's import path.
+
         Returns:
             Dict: The Application's deployments formatted in a dictionary.
         """
+
+        self._convert_to_import_paths()
 
         return serve_application_to_schema(self._deployments.values()).dict()
 
@@ -184,6 +189,9 @@ class Application:
         This file is formatted as a Serve YAML config file. It can be deployed
         via the Serve CLI.
 
+        If any deployment's func_or_class is a function or class (and not an
+        import path), it overwrites it with that function or class's import path.
+
         Args:
             f (Optional[TextIO]): A pointer to the file where the YAML should
                 be written.
@@ -192,6 +200,8 @@ class Application:
             Optional[String]: The deployments' YAML string. The output is from
                 yaml.safe_dump(). Returned only if no file pointer is passed in.
         """
+
+        self._convert_to_import_paths()
 
         deployment_dict = serve_application_to_schema(self._deployments.values()).dict()
 
@@ -228,6 +238,16 @@ class Application:
         schema = ServeApplicationSchema.parse_obj(deployments_json)
         return cls(schema_to_serve_application(schema))
 
+    def _convert_to_import_paths(self):
+        """Convert all func_or_classes to import paths.
+
+        If any deployment's func_or_class is a function or class (and not an
+        import path), it overwrites it with that function or class's import path.
+        """
+
+        for deployment in self._deployments.values():
+            deployment._func_or_class = get_deployment_import_path(deployment)
+
     def __getitem__(self, key: str):
         """Fetch a deployment by name using dict syntax: app["name"]
 
@@ -243,9 +263,6 @@ class Application:
     def __setitem__(self, key: str, value: Deployment):
         """Set a deployment by name with dict syntax: app[name]=new_deployment
 
-        If the deployment's func_or_class is a function or class (and not an
-        import path), it overwrites it with that function or class's import path.
-
         Use this to overwrite existing deployments.
 
         Args:
@@ -260,8 +277,6 @@ class Application:
             raise TypeError(f"key should be a string, but got object of type {key}.")
         elif not isinstance(value, Deployment):
             raise TypeError(f"Got {type(Deployment)} for value. Expected deployment.")
-
-        value._func_or_class = get_deployment_import_path(value)
 
         self._deployments[key] = value
 
