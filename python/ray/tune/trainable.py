@@ -450,8 +450,7 @@ class Trainable:
         return checkpoint_path
 
     def _postprocess_checkpoint(self, checkpoint_path: str):
-        """Run any additional postprocessing before the checkpoint
-        is saved to cloud."""
+        """Run extra postprocessing before the checkpoint is saved to cloud."""
         pass
 
     def _maybe_save_to_cloud(self, checkpoint_dir):
