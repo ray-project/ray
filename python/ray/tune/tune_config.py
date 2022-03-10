@@ -10,8 +10,7 @@ from ray.util import PublicAPI
 @dataclass
 @PublicAPI(stability="beta")
 class TuneConfig:
-    """Tune specific config, related to how hyperparameter tuning algorithms
-    are set up.
+    """Tune specific configs.
 
     Args:
         metric: Metric to optimize. This metric should be reported
@@ -22,8 +21,8 @@ class TuneConfig:
             passed to the search algorithm and scheduler.
         search_alg: Search algorithm for optimization. Default to
             random search.
-        scheduler: Scheduler for executing
-            the experiment. Choose among FIFO (default), MedianStopping,
+        scheduler: Scheduler for executing the experiment.
+            Choose among FIFO (default), MedianStopping,
             AsyncHyperBand, HyperBand and PopulationBasedTraining. Refer to
             ray.tune.schedulers for more options.
         num_samples: Number of times to sample from the
@@ -31,6 +30,13 @@ class TuneConfig:
             provided as an argument, the grid will be repeated
             `num_samples` of times. If this is -1, (virtually) infinite
             samples are generated until a stopping condition is met.
+        max_failures: Tries to recover a trial at least this many times.
+            Tune will recover from the latest checkpoint if present.
+            Setting to -1 will lead to infinite recovery retries.
+            Setting to 0 will disable retries. Defaults to 0.
+        fail_fast: Whether to fail upon the first error.
+            If True, `max_failures` has to be `0` and Tune will automatically
+            raise the exception received by the Trainable. Defaults to `False`.
     """
 
     # Currently this is not at feature parity with `tune.run`, nor should it be.
@@ -41,3 +47,5 @@ class TuneConfig:
     search_alg: Optional[Searcher] = None
     scheduler: Optional[TrialScheduler] = None
     num_samples: int = 1
+    max_failures: int = 0
+    fail_fast: bool = False

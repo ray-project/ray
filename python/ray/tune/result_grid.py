@@ -15,25 +15,34 @@ class ResultGrid:
     .. code-block:: python
         result_grid = tuner.fit()
         for i in range(len(result_grid)):
-            print(result_grid[i])
+            result = result_grid[i]
+            if result.status == Trial.TERMINATED:
+                print(f"Trial finishes successfully with metric {result.metric}.")
+            elif result.error:
+                print(f"Trial errors out with {result.error}.")
         best_result = result_grid.get_best_result()
         best_checkpoint = best_result.checkpoint
         best_metric = best_result.metric
 
-    Note only terminated trials are included in the final result grid.
-    If one wants to inspect errored trials, one may look at console output,
-    where there is a highlight of errored trials, together with path to error file.
-
+    Note trials of all status are included in the final result grid.
+    In case if a trial is not terminated, its most latest result and checkpoint as
+    perceived by Tune driver component will be presented.
     """
 
     def __init__(self, experiment_analysis: ExperimentAnalysis):
         self._experiment_analysis = experiment_analysis
-        self._terminated_trials = [
-            t for t in experiment_analysis.trials if t.status == Trial.TERMINATED
-        ]
 
-    def _trial_to_result(self, trial: Trial) -> Result:
-        result = Result(checkpoint=trial.checkpoint, metrics=trial.last_result)
+    @staticmethod
+    def _trial_to_result(trial: Trial) -> Result:
+        if trial.error_file:
+            with open(trial.error_file, "r") as f:
+                error_msg = f.read()
+        result = Result(
+            checkpoint=trial.checkpoint,
+            metrics=trial.last_result,
+            status=Trial.status,
+            error=error_msg,
+        )
         return result
 
     def get_best_result(self) -> Result:
@@ -47,8 +56,8 @@ class ResultGrid:
         return self._trial_to_result(self._experiment_analysis.best_trial)
 
     def __len__(self) -> int:
-        return len(self._terminated_trials)
+        return len(self._experiment_analysis.trials)
 
     def __getitem__(self, i) -> Result:
         """Returns the i'th result in the grid."""
-        return self._trial_to_result(self._terminated_trials[i])
+        return self._trial_to_result(self._experiment_analysis.trials[i])
