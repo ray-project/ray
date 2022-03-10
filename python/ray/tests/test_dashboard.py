@@ -159,24 +159,11 @@ def set_agent_failure_env_var():
     del os.environ["_RAY_AGENT_FAILING"]
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster_head",
-    [
-        {
-            "_system_config": {
-                "agent_restart_interval_ms": 10,
-                "agent_max_restart_count": 5,
-            }
-        }
-    ],
-    indirect=True,
-)
 def test_dashboard_agent_restart(
     set_agent_failure_env_var, ray_start_cluster_head, error_pubsub, log_pubsub
 ):
-    """Test that when the agent fails to start many times in a row
-    if the error message is suppressed correctly without spamming
-    the driver.
+    """Test that when the agent fails to start if the error message
+    is suppressed correctly without spamming the driver.
     """
     # Choose a duplicated port for the agent so that it will crash.
     errors = get_error_message(
@@ -193,10 +180,12 @@ def test_dashboard_agent_restart(
 
     # Make sure there's no spammy message for 5 seconds.
     def matcher(log_batch):
-        return log_batch["pid"] != "autoscaler"
+        return log_batch["pid"] == "raylet" and any(
+            "Agent process with pid" in line for line in log_batch["lines"]
+        )
 
     match = get_log_batch(log_pubsub, 1, timeout=5, matcher=matcher)
-    assert len(match) == 0, (
+    assert len(match) == 1, (
         "There are spammy logs during Ray agent restart process. " f"Logs: {match}"
     )
 

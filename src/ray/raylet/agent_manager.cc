@@ -45,8 +45,6 @@ void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
     disable_agent_client_ = true;
   }
   reply->set_status(rpc::AGENT_RPC_STATUS_OK);
-  // Reset the restart count after registration is done.
-  agent_restart_count_ = 0;
   send_reply_callback(ray::Status::OK(), nullptr, nullptr);
 }
 
@@ -77,11 +75,6 @@ void AgentManager::StartAgent() {
   ProcessEnvironment env;
   env.insert({"RAY_NODE_ID", options_.node_id.Hex()});
   env.insert({"RAY_RAYLET_PID", std::to_string(getpid())});
-  // Report the restart count to the agent so that we can decide whether or not
-  // report the error message to drivers.
-  env.insert({"RESTART_COUNT", std::to_string(agent_restart_count_)});
-  env.insert({"MAX_RESTART_COUNT",
-              std::to_string(RayConfig::instance().agent_max_restart_count())});
   Process child(argv.data(), nullptr, ec, false, env);
   if (!child.IsValid() || ec) {
     // The worker failed to start. This is a fatal error.
@@ -111,34 +104,12 @@ void AgentManager::StartAgent() {
                      << " exit, return value " << exit_code << ". ip "
                      << agent_ip_address_ << ". pid " << agent_pid_;
     agent_failed_ = true;
-    if (agent_restart_count_ < RayConfig::instance().agent_max_restart_count()) {
-      RAY_UNUSED(delay_executor_(
-          [this] {
-            agent_restart_count_++;
-            StartAgent();
-          },
-          // Retrying with exponential backoff
-          RayConfig::instance().agent_restart_interval_ms() *
-              std::pow(2, (agent_restart_count_ + 1))));
-    } else {
-      RAY_LOG(WARNING) << "Agent has failed to restart for "
-                       << RayConfig::instance().agent_max_restart_count()
-                       << " times in a row without registering the agent. This is highly "
-                          "likely there's a bug in the dashboard agent. Please check out "
-                          "the dashboard_agent.log file.";
-      RAY_EVENT(WARNING, EL_RAY_AGENT_EXIT)
-              .WithField("ip", agent_ip_address_)
-              .WithField("pid", agent_pid_)
-          << "Agent failed to be restarted "
-          << RayConfig::instance().agent_max_restart_count()
-          << " times. Agent won't be restarted.";
-      if (RayConfig::instance().raylet_shares_fate_with_agent()) {
-        RAY_LOG(ERROR) << "Raylet exits immediately because the ray agent has failed. "
-                          "Raylet fate shares with the agent. It can happen because the "
-                          "Ray agent is unexpectedly killed or failed. See "
-                          "`dashboard_agent.log` for the root cause.";
-        QuickExit();
-      }
+    if (RayConfig::instance().raylet_shares_fate_with_agent()) {
+      RAY_LOG(ERROR) << "Raylet exits immediately because the ray agent has failed. "
+                        "Raylet fate shares with the agent. It can happen because the "
+                        "Ray agent is unexpectedly killed or failed. See "
+                        "`dashboard_agent.log` for the root cause.";
+      QuickExit();
     }
   });
   monitor_thread.detach();
