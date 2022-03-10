@@ -69,20 +69,3 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
             ``self.as_trainable()``.
         """
         raise NotImplementedError
-
-    def _override_attributes_with_config(self, config: Dict) -> Dict:
-        """Overrides attributes of the Trainer with values in ``config``.
-
-        This is needed to allow attributes of Trainer to be tuned as
-        hyperparameters.
-        This method does a deep update of class attributes that are dicts.
-
-        Args:
-            config: A dictionary to update attributes with.
-        Returns:
-            A dict containing any remaining key-value pairs from ``config``
-            that don't override any attributes. This leftover config can be
-            used for any downstream tasks (such as as passing to a training
-            function).
-        """
-        raise NotImplementedError
