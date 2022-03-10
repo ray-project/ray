@@ -1,18 +1,11 @@
 import os
 import shutil
 import tempfile
-import warnings
 from typing import Optional
 
 from ray import logger
-from ray.ml.checkpoint import (
-    Checkpoint,
-    _get_local_path,
-    _get_external_path,
-)
-from ray.util import log_once
 
-from ray.util.annotations import Deprecated
+from ray.util import PublicAPI
 from ray.util.ml_utils.cloud import (
     download_from_bucket,
     clear_bucket,
@@ -21,29 +14,13 @@ from ray.util.ml_utils.cloud import (
 )
 
 
-@Deprecated
-class _TrialCheckpoint(os.PathLike):
+@PublicAPI(stability="beta")
+class TrialCheckpoint(os.PathLike):
     def __init__(
         self, local_path: Optional[str] = None, cloud_path: Optional[str] = None
     ):
-        self._local_path = local_path
-        self._cloud_path = cloud_path
-
-    @property
-    def local_path(self):
-        return self._local_path
-
-    @local_path.setter
-    def local_path(self, path: str):
-        self._local_path = path
-
-    @property
-    def cloud_path(self):
-        return self._cloud_path
-
-    @cloud_path.setter
-    def cloud_path(self, path: str):
-        self._cloud_path = path
+        self.local_path = local_path
+        self.cloud_path = cloud_path
 
     # The following magic methods are implemented to keep backwards
     # compatibility with the old path-based return values.
@@ -318,110 +295,3 @@ class _TrialCheckpoint(os.PathLike):
                 "Cannot save trial checkpoint to local target as downloading "
                 "from cloud failed. Did you pass the correct `SyncConfig`?"
             ) from e
-
-
-@Deprecated
-class TrialCheckpoint(Checkpoint, _TrialCheckpoint):
-    def __init__(
-        self,
-        local_path: Optional[str] = None,
-        cloud_path: Optional[str] = None,
-    ):
-        _TrialCheckpoint.__init__(self)
-
-        # Checkpoint does not allow empty data, but TrialCheckpoint
-        # did. To keep backwards compatibility, we use a placeholder URI
-        # here, and manually set self._uri to empty later if it's not
-        # overwritten.
-        PLACEHOLDER = "s3://placeholder"
-        uri = PLACEHOLDER
-
-        self._cloud_path = None
-        self._local_path_tcp = None
-
-        locations = set()
-        if local_path:
-            # Add _tcp to not conflict with Checkpoint._local_path
-            self._local_path_tcp = local_path
-            locations.add(local_path)
-            uri = f"file://{local_path}"
-        if cloud_path:
-            self._cloud_path = cloud_path
-            locations.add(cloud_path)
-            uri = cloud_path
-        Checkpoint.__init__(self, uri=uri)
-        if self._uri == PLACEHOLDER:
-            self._uri = None
-        self._locations = locations
-
-    @property
-    def local_path(self):
-        local_path = _get_local_path(self._local_path)
-        if not local_path:
-            for candidate in self._locations:
-                local_path = _get_local_path(candidate)
-                if local_path:
-                    break
-        return local_path or self._local_path_tcp
-
-    @local_path.setter
-    def local_path(self, path: str):
-        self._local_path = path
-        if not path or not os.path.exists(path):
-            return
-        self._locations.add(path)
-
-    @property
-    def cloud_path(self):
-        cloud_path = _get_external_path(self._uri)
-        if not cloud_path:
-            for candidate in self._locations:
-                cloud_path = _get_external_path(candidate)
-                if cloud_path:
-                    break
-        return cloud_path or self._cloud_path
-
-    @cloud_path.setter
-    def cloud_path(self, path: str):
-        self._cloud_path = path
-        if not self._uri:
-            self._uri = path
-        self._locations.add(path)
-
-    def download(
-        self,
-        cloud_path: Optional[str] = None,
-        local_path: Optional[str] = None,
-        overwrite: bool = False,
-    ) -> str:
-        if log_once("trial_checkpoint_download_deprecated"):
-            warnings.warn(
-                "`checkpoint.download()` is deprecated and will be removed in "
-                "the future. Please use `checkpoint.to_directory()` instead.",
-                DeprecationWarning,
-            )
-        return _TrialCheckpoint.download(self, cloud_path, local_path, overwrite)
-
-    def upload(
-        self,
-        cloud_path: Optional[str] = None,
-        local_path: Optional[str] = None,
-        clean_before: bool = False,
-    ):
-        if log_once("trial_checkpoint_upload_deprecated"):
-            warnings.warn(
-                "`checkpoint.upload()` is deprecated and will be removed in "
-                "the future. Please use `checkpoint.to_uri()` instead.",
-                DeprecationWarning,
-            )
-        return _TrialCheckpoint.upload(self, cloud_path, local_path, clean_before)
-
-    def save(self, path: Optional[str] = None, force_download: bool = False):
-        if log_once("trial_checkpoint_save_deprecated"):
-            warnings.warn(
-                "`checkpoint.save()` is deprecated and will be removed in "
-                "the future. Please use `checkpoint.to_directory()` or"
-                "`checkpoint.to_uri()` instead.",
-                DeprecationWarning,
-            )
-        return _TrialCheckpoint.save(self, path, force_download)
