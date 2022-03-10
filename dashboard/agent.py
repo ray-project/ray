@@ -393,13 +393,7 @@ if __name__ == "__main__":
         message = (
             f"(ip={node_ip}) "
             f"The agent on node {platform.uname()[1]} failed to "
-            f"be started."
-            "There are 3 possible problems if you see this error."
-            "\n  1. The dashboard might not display correct "
-            "information on this node."
-            "\n  2. Metrics on this node won't be reported."
-            "\n  3. runtime_env APIs won't work."
-            "\nCheck out the `dashboard_agent.log` to see the "
+            "be started. Check out the `dashboard_agent.log` to see the"
             "detailed failure messages."
         )
         ray._private.utils.publish_error_to_driver(

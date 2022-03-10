@@ -171,9 +171,7 @@ def test_dashboard_agent_restart(
     )
     assert len(errors) == 1
     for e in errors:
-        assert (
-            "There are 3 possible problems " "if you see this error." in e.error_message
-        )
+        assert "Check out the `dashboard_agent.log`" in e.error_message
     # Make sure the agent process is not started anymore.
     cluster = ray_start_cluster_head
     wait_for_condition(lambda: search_agents(cluster) is None)
@@ -185,7 +183,7 @@ def test_dashboard_agent_restart(
         )
 
     match = get_log_batch(log_pubsub, 1, timeout=5, matcher=matcher)
-    assert len(match) == 1, (
+    assert len(match) == 0, (
         "There are spammy logs during Ray agent restart process. " f"Logs: {match}"
     )
 
