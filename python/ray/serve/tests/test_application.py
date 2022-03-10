@@ -357,10 +357,7 @@ class TestYAMLTranslation:
         C = DecoratedClass.options(name="C")
         app = Application([f, C])
 
-        with tempfile.TemporaryFile(mode="w+") as tmp:
-            app.to_yaml(tmp)
-            tmp.seek(0)
-            reconstructed_app = Application.from_yaml(tmp)
+        reconstructed_app = Application.from_yaml(app.to_yaml())
 
         reconstructed_app.deploy()
         assert requests.get("http://localhost:8000/f").text == "got decorated func"

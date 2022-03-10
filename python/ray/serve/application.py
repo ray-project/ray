@@ -31,7 +31,7 @@ class Application:
     def __init__(self, deployments: List[Deployment] = None):
         deployments = deployments or []
 
-        self._deployments = dict()
+        self._deployments: Dict[str, Deployment] = dict()
         for d in deployments:
             self.add_deployment(d)
 
@@ -245,8 +245,10 @@ class Application:
         import path), it overwrites it with that function or class's import path.
         """
 
-        for deployment in self._deployments.values():
-            deployment._func_or_class = get_deployment_import_path(deployment)
+        for name, deployment in self._deployments.items():
+            self._deployments[name] = deployment.options(
+                func_or_class=get_deployment_import_path(deployment)
+            )
 
     def __getitem__(self, key: str):
         """Fetch a deployment by name using dict syntax: app["name"]
