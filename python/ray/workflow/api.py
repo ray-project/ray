@@ -365,6 +365,7 @@ def wait_for_event(
         event_listener = event_listener_type()
         asyncio_run(event_listener.event_checkpointed(event))
         return event
+
     # wait for event -> get_message (poll_for_event) -> tell the upstream message is checkpointed (event_checkpointed)
     return message_committed.step(
         event_listener_type, get_message.step(event_listener_type, *args, **kwargs)

@@ -410,7 +410,7 @@ def _workflow_step_executor(
     # after: after this step, e1, e2, w1 can be not ready.
     # Pass the context to event coordinator:
     #     - Inputs: e1, e2, w1 (object ref)
-    #     - StepId, Workflow ID 
+    #     - StepId, Workflow ID
     #     - ... basically inputs which can't be fetched from somewhere else of this function.
     #
     # step 2.5 -> event coordinator knows e1, e2, w1 has been resolved
@@ -422,7 +422,7 @@ def _workflow_step_executor(
     #    pass it to event coordinator, and event coordinator will continue to run this:
     #         await for event (new part3)
     #         save outputs (new part 4)
-    #         
+    #
     # if it's a step has events as inputs:
     #    pass it to event coordinator, e1, e2, w1 -> f
     #    waiting until all events arrived (maybe, also the w1 finished) (new part2)
@@ -604,7 +604,7 @@ class _BakedWorkflowInputs:
 
         workflow_ref_mapping = _resolve_dynamic_workflow_refs(self.workflow_refs)
         # f(e1, e2, w1)
-        # e1 -> f 
+        # e1 -> f
         # e2 /
         # w1 /
         with serialization_context.workflow_args_resolving_context(
