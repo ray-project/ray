@@ -1,6 +1,5 @@
 from typing import Any, Callable, Dict, List, Union, Optional
 import base64
-import json
 from importlib import import_module
 
 import ray.cloudpickle as pickle
@@ -69,7 +68,10 @@ class PipelineInputNode(InputNode):
         )
 
     def __str__(self) -> str:
-        return get_dag_node_str(self, f"Preprocessor: {str(self._preprocessor)}")
+        return get_dag_node_str(self, str(self.get_preprocessor_import_path()))
+
+    def get_body(self):
+        return self._preprocessor
 
     def get_preprocessor_import_path(self) -> Optional[str]:
         if isinstance(self._preprocessor, str):
@@ -77,7 +79,7 @@ class PipelineInputNode(InputNode):
             # is the resolved import path.
             return self._preprocessor
         else:
-            return f"{self._preprocessor.__module__}.{self._preprocessor.__qualname__}"
+            return f"{self.get_body().__module__}.{self.get_body().__qualname__}"
 
     def to_json(self, encoder_cls) -> Dict[str, Any]:
         json_dict = super().to_json_base(encoder_cls, PipelineInputNode.__name__)
@@ -88,7 +90,7 @@ class PipelineInputNode(InputNode):
         ):
             # Best effort to get FQN string import path
             json_dict["import_path"] = base64.b64encode(
-                pickle.dumps(self._preprocessor)
+                pickle.dumps(self.get_body())
             ).decode()
         else:
             json_dict["import_path"] = preprocessor_import_path
@@ -100,11 +102,12 @@ class PipelineInputNode(InputNode):
         args_dict = super().from_json_base(input_json, object_hook=object_hook)
         import_path = input_json["import_path"]
         preprocessor = import_path
-        if isinstance(import_path, bytes):
+
+        try:
             # In dev mode we store pickled class or function body in import_path
             # if we failed to get a FQN import path for it.
-            preprocessor = pickle.loads(base64.b64decode(json.loads(import_path)))
-        else:
+            preprocessor = pickle.loads(base64.b64decode(import_path))
+        except Exception:
             module_name, attr_name = parse_import_path(input_json["import_path"])
             preprocessor = getattr(import_module(module_name), attr_name)
 

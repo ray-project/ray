@@ -1,10 +1,8 @@
 from typing import Any, Dict, Optional, Tuple, List, Union
 import base64
-import json
 from importlib import import_module
 
 import ray.cloudpickle as pickle
-from ray.actor import ActorClass
 from ray.experimental.dag import DAGNode
 from ray.experimental.dag.format_utils import get_dag_node_str
 from ray.serve.handle import RayServeSyncHandle, RayServeHandle
@@ -110,10 +108,7 @@ class DeploymentMethodNode(DAGNode):
         return self._deployment_method_name
 
     def get_body(self):
-        if isinstance(self._deployment._func_or_class, ActorClass):
-            return self._deployment._func_or_class.__ray_actor_class__
-        else:
-            return self._deployment._func_or_class
+        return self._deployment._func_or_class.__ray_actor_class__
 
     def get_import_path(self) -> str:
         if isinstance(self._deployment._func_or_class, str):
@@ -145,11 +140,11 @@ class DeploymentMethodNode(DAGNode):
         args_dict = super().from_json_base(input_json, object_hook=object_hook)
         import_path = input_json["import_path"]
         module = import_path
-        if isinstance(import_path, bytes):
+        try:
             # In dev mode we store pickled class or function body in import_path
             # if we failed to get a FQN import path for it.
-            module = pickle.loads(base64.b64decode(json.loads(import_path)))
-        else:
+            module = pickle.loads(base64.b64decode(import_path))
+        except Exception:
             module_name, attr_name = parse_import_path(input_json["import_path"])
             module = getattr(import_module(module_name), attr_name)
 

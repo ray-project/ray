@@ -184,7 +184,9 @@ def get_ingress_deployment(
         ingress (Deployment): Generated pipeline ingress deployment to serve
             user HTTP requests.
     """
+    print(f"serve_dag_root_node: \n{serve_dag_root_node}")
     serve_dag_root_json = json.dumps(serve_dag_root_node, cls=DAGNodeEncoder)
+    print(f"serve_dag_root_json: \n{serve_dag_root_json}")
     preprocessor_import_path = pipeline_input_node.get_preprocessor_import_path()
     serve_dag_root_deployment = make_ingress_deployment(
         DEFAULT_INGRESS_DEPLOYMENT_NAME,

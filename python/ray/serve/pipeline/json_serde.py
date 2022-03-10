@@ -48,8 +48,8 @@ class DAGNodeEncoder(json.JSONEncoder):
             return obj.to_json(DAGNodeEncoder)
         # # In local dev mode we don't enforce JSON serialization or module with
         # # FQN import path
-        if isinstance(obj, bytes):
-            return obj
+        # if isinstance(obj, bytes):
+        #     return obj
         else:
             return json.JSONEncoder.default(self, obj)
 
@@ -78,13 +78,17 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
     # Base case for plain objects
     elif DAGNODE_TYPE_KEY not in input_json:
         if isinstance(input_json, bytes):
-            # To facilitate local dev we don't enforce args JSON
-            # serialization or FQN import path in dev mode, only enforced
-            # on last deployment step app.to_yaml()
             return pickle.loads(base64.b64decode(json.loads(input_json)))
         else:
             try:
-                return json.loads(input_json)
+                rst = json.loads(input_json)
+                # To facilitate local dev we don't enforce args JSON
+                # serialization or FQN import path in dev mode, only enforced
+                # on last deployment step app.to_yaml()
+                if isinstance(rst, bytes):
+                    return pickle.loads(base64.b64decode(rst))
+                else:
+                    return rst
             except Exception:
                 return input_json
     # Deserialize DAGNode type

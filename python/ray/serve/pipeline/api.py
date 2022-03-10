@@ -1,5 +1,4 @@
 from ray.experimental.dag import DAGNode
-from ray.serve.handle import RayServeHandle
 from ray.serve.application import Application
 from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,

@@ -233,14 +233,24 @@ class ClassMethodNode(DAGNode):
     def get_method_name(self) -> str:
         return self._method_name
 
+    def get_body(self):
+        return self._parent_class_node._body.__ray_actor_class__
+
     def get_import_path(self) -> str:
-        body = self._parent_class_node._body.__ray_actor_class__
+        body = self.get_body()
         return f"{body.__module__}.{body.__qualname__}"
 
     def to_json(self, encoder_cls) -> Dict[str, Any]:
         json_dict = super().to_json_base(encoder_cls, ClassMethodNode.__name__)
         json_dict["method_name"] = self.get_method_name()
-        json_dict["import_path"] = self.get_import_path()
+        import_path = self.get_import_path()
+        if "__main__" in import_path or "<locals>" in import_path:
+            # Best effort to get FQN string import path
+            json_dict["import_path"] = base64.b64encode(
+                pickle.dumps(self.get_body())
+            ).decode()
+        else:
+            json_dict["import_path"] = import_path
         return json_dict
 
     @classmethod

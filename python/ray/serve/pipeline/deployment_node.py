@@ -1,8 +1,6 @@
 from importlib import import_module
-import json
 from typing import Any, Callable, Dict, Optional, List, Tuple, Union
 import base64
-from ray.actor import ActorClass
 
 import ray.cloudpickle as pickle
 from ray.experimental.dag import DAGNode, InputNode
@@ -164,10 +162,7 @@ class DeploymentNode(DAGNode):
         return self._deployment.name
 
     def get_body(self):
-        if isinstance(self._deployment._func_or_class, ActorClass):
-            return self._deployment._func_or_class.__ray_actor_class__
-        else:
-            return self._deployment._func_or_class
+        return self._deployment._func_or_class.__ray_actor_class__
 
     def get_import_path(self) -> str:
         if isinstance(self._deployment._func_or_class, str):
@@ -182,6 +177,7 @@ class DeploymentNode(DAGNode):
         json_dict = super().to_json_base(encoder_cls, DeploymentNode.__name__)
         json_dict["deployment_name"] = self.get_deployment_name()
         import_path = self.get_import_path()
+        print(f">>> DeploymentNode import_path: {import_path}")
         if "__main__" in import_path or "<locals>" in import_path:
             # Best effort to get FQN string import path
             json_dict["import_path"] = base64.b64encode(
@@ -198,11 +194,11 @@ class DeploymentNode(DAGNode):
         args_dict = super().from_json_base(input_json, object_hook=object_hook)
         import_path = input_json["import_path"]
         module = import_path
-        if isinstance(import_path, bytes):
+        try:
             # In dev mode we store pickled class or function body in import_path
             # if we failed to get a FQN import path for it.
             module = pickle.loads(base64.b64decode(import_path))
-        else:
+        except Exception:
             module_name, attr_name = parse_import_path(input_json["import_path"])
             module = getattr(import_module(module_name), attr_name)
 
