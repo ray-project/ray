@@ -31,6 +31,8 @@ const std::string ResourceEnumToString(PredefinedResourcesEnum resource);
 
 const PredefinedResourcesEnum ResourceStringToEnum(const std::string &resource);
 
+bool IsPredefinedResource(int64_t id);
+
 bool IsPredefinedResource(scheduling::ResourceID resource_id);
 
 /// Helper function to compare two vectors with FixedPoint values.
@@ -43,14 +45,6 @@ std::vector<FixedPoint> VectorDoubleToVectorFixedPoint(const std::vector<double>
 std::vector<double> VectorFixedPointToVectorDouble(
     const std::vector<FixedPoint> &vector_fp);
 
-struct ResourceCapacity {
-  FixedPoint total;
-  FixedPoint available;
-  ResourceCapacity() {}
-  ResourceCapacity(FixedPoint &&_available, FixedPoint &&_total)
-      : total(_total), available(_available) {}
-};
-
 /// Capacities of each instance of a resource.
 struct ResourceInstanceCapacities {
   std::vector<FixedPoint> total;
@@ -60,7 +54,7 @@ struct ResourceInstanceCapacities {
 class PredefinedResources {
  public:
   PredefinedResources() {
-    for (int i = 0; i < PredefinedResources_MAX; i++) {
+    for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
       values_.push_back(0);
     }
   }
@@ -75,7 +69,7 @@ class PredefinedResources {
   }
 
   const bool Has(int64_t resource_id) const {
-    return this.values_[resource_id] != 0;
+    return this->values_[resource_id] != 0;
   }
 
   const FixedPoint &GetCPU() const { return this->values_[CPU]; }
@@ -122,55 +116,55 @@ class PredefinedResources {
   }
 
   void Clear() {
-    for (int i = 0; i < values_.size(); i++) {
+    for (size_t i = 0; i < values_.size(); i++) {
       this->values_[i] = 0;
     }
   }
 
   PredefinedResources operator+(const PredefinedResources &other) {
     PredefinedResources res;
-    for (int i = 0; i < this->values_.size(); i++) {
-      res[i] = this->values_[i] + other.values_[i];
+    for (size_t i = 0; i < this->values_.size(); i++) {
+      res.values_[i] = this->values_[i] + other.values_[i];
     }
     return res;
   }
 
   PredefinedResources operator-(const PredefinedResources &other) {
     PredefinedResources res;
-    for (int i = 0; i < this->values_.size(); i++) {
-      res[i] = this->values_[i] - other.values_[i];
+    for (size_t i = 0; i < this->values_.size(); i++) {
+      res.values_[i] = this->values_[i] - other.values_[i];
     }
     return res;
   }
 
   PredefinedResources &operator=(const PredefinedResources &other) {
-    for (int i = 0; i < this->values_.size(); i++) {
+    for (size_t i = 0; i < this->values_.size(); i++) {
       this->values_[i] = other.values_[i];
     }
     return *this;
   }
 
   PredefinedResources &operator+=(const PredefinedResources &other) {
-    for (int i = 0; i < this->values_.size(); i++) {
+    for (size_t i = 0; i < this->values_.size(); i++) {
       this->values_[i] += other.values_[i];
     }
     return *this;
   }
 
   PredefinedResources &operator-=(const PredefinedResources &other) {
-    for (int i = 0; i < this->values_.size(); i++) {
+    for (size_t i = 0; i < this->values_.size(); i++) {
       this->values_[i] -= other.values_[i];
     }
     return *this;
   }
 
   bool operator==(const PredefinedResources &other) const {
-    return std::equal(std::begin(this->values_), std::end(this.values_), std::begin(other.values_));
+    return std::equal(std::begin(this->values_), std::end(this->values_), std::begin(other.values_));
   }
 
   bool operator<=(const PredefinedResources &other) const {
-    for (int i = 0; i < this->values_.size(); i++) {
-      if (this.values_[i] > other.values_[i]) {
+    for (size_t i = 0; i < this->values_.size(); i++) {
+      if (this->values_[i] > other.values_[i]) {
         return false;
       }
       return true;
@@ -190,12 +184,13 @@ class PredefinedResources {
   }
 
  std::string DebugString() const {
-    buffer << "{";
-    for (size_t i = 0; i < this->values_.size(); i++) {
-      buffer << "(" << this->values_[i] << ") ";
-    }
-    buffer << "}";
-    return buffer.str();
+  std::stringstream buffer;
+  buffer << "{";
+  for (size_t i = 0; i < this->values_.size(); i++) {
+    buffer << "(" << this->values_[i] << ") ";
+  }
+  buffer << "}";
+  return buffer.str();
   }
 
   static size_t NumAllPredefinedResources() {
@@ -204,24 +199,17 @@ class PredefinedResources {
 
  private:
   std::vector<FixedPoint> values_;
-}
+};
 
 class CustomResources {
  public:
-  const std::optional<FixedPoint &> Get(const int64_t resource_id) {
-    auto it = this->values_.find(resource_id);
-    if (it != this->values_.end()) {
-      return *it;
-    } else {
-      return std::nullopt;
-    }
-  }
-
   const FixedPoint &Get(int64_t resource_id) const {
-    return this->values_[resource_id];
+    auto it = this->values_.find(resource_id);
+    RAY_CHECK(it != this->values_.end());
+    return it->second;
   }
 
-  const FixedPoint &GetOrZero(int64_t resource_id) const {
+  const FixedPoint GetOrZero(int64_t resource_id) const {
     auto it = this->values_.find(resource_id);
     if (it == this->values_.end()) {
       return 0;
@@ -229,7 +217,7 @@ class CustomResources {
     return it->second;
   }
 
-  PredefinedResources &Set(int64_t resource_id, const FixedPoint & value) {
+  CustomResources &Set(int64_t resource_id, const FixedPoint & value) {
     this->values_[resource_id] = value;
     return *this;
   }
@@ -249,7 +237,7 @@ class CustomResources {
     for (auto entry: values_) {
       res.values_[entry.first] = entry.second + other.GetOrZero(entry.first);
     }
-    for (auto entry: other.values) {
+    for (auto entry: other.values_) {
       if (!Has(entry.first)) {
         res.values_[entry.first] = entry.second;
       }
@@ -262,7 +250,7 @@ class CustomResources {
     for (auto entry: values_) {
       res.values_[entry.first] = entry.second - other.GetOrZero(entry.first);
     }
-    for (auto entry: other.values) {
+    for (auto entry: other.values_) {
       if (!Has(entry.first)) {
         res.values_[entry.first] = -entry.second;
       }
@@ -271,7 +259,7 @@ class CustomResources {
   }
 
   CustomResources &operator=(const CustomResources &other) {
-    this.values_ = other.values_;
+    this->values_ = other.values_;
     return *this;
   }
 
@@ -279,7 +267,7 @@ class CustomResources {
     for (auto entry: values_) {
       entry.second += other.GetOrZero(entry.first);
     }
-    for (auto entry: other.values) {
+    for (auto entry: other.values_) {
       if (!Has(entry.first)) {
         values_[entry.first] = entry.second;
       }
@@ -291,7 +279,7 @@ class CustomResources {
     for (auto entry: values_) {
       entry.second -= other.GetOrZero(entry.first);
     }
-    for (auto entry: other.values) {
+    for (auto entry: other.values_) {
       if (!Has(entry.first)) {
         values_[entry.first] = -entry.second;
       }
@@ -300,7 +288,7 @@ class CustomResources {
   }
 
   bool operator==(const CustomResources &other) const {
-    return this->values_ == other.values;
+    return this->values_ == other.values_;
   }
 
   bool operator<=(const CustomResources &other) const {
@@ -316,7 +304,7 @@ class CustomResources {
     return true;
   }
 
-  bool operator>=(const PredefinedResources &other) const {
+  bool operator>=(const CustomResources &other) const {
     return other <= *this;
   }
 
@@ -333,7 +321,7 @@ class CustomResources {
 
  private:
   absl::flat_hash_map<int64_t, FixedPoint> values_;
-}
+};
 
 // Data structure specifying the capacity of each resource requested by a task.
 class ResourceRequest {
@@ -358,7 +346,7 @@ class ResourceRequest {
     }
   }
 
-  const FixedPoint &GetOrZero(int64_t resource_id) const {
+  const FixedPoint GetOrZero(int64_t resource_id) const {
     if (IsPredefinedResource(resource_id)) {
       return this->predefined_resources.Get(resource_id);
     } else {
@@ -368,9 +356,9 @@ class ResourceRequest {
 
   ResourceRequest &Set(int64_t resource_id, const FixedPoint & value) {
     if (IsPredefinedResource(resource_id)) {
-      return this->predefined_resources.Set(resource_id, value);
+      this->predefined_resources.Set(resource_id, value);
     } else {
-      return this->custom_resources.Set(resource_id, value);
+      this->custom_resources.Set(resource_id, value);
     }
     return *this;
   }
@@ -442,14 +430,14 @@ class ResourceRequest {
   }
 
   bool operator==(const ResourceRequest &other) const {
-    return this->predefined_resources == other.predefined_resources && this->custom_resources == other.predefined_resources;
+    return this->predefined_resources == other.predefined_resources && this->custom_resources == other.custom_resources;
   }
 
   bool operator<=(const ResourceRequest &other) {
-    return predefined_resources.IsSubsetOf(other.predefined_resources) && custom_resources.IsSubsetOf(other.custom_resources);
+    return predefined_resources <= other.predefined_resources && custom_resources <= other.custom_resources;
   }
 
-  bool operator>=(const PredefinedResources &other) const {
+  bool operator>=(const ResourceRequest &other) const {
     return other <= *this;
   }
 };
