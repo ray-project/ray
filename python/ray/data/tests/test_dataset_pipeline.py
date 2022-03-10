@@ -68,8 +68,8 @@ def test_pipeline_is_parallel(shutdown_only):
         return x
 
     pipe = ds.window(blocks_per_window=1)
-    for _ in range(4):
-        pipe = pipe.map(sleep)
+    # Shuffle in between to prevent fusion.
+    pipe = pipe.map(sleep).random_shuffle_each_window().map(sleep)
     for i, v in enumerate(pipe.iter_rows()):
         print(i, v)
     assert ray.get(tracker.get_max.remote()) > 1

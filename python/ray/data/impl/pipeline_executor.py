@@ -6,7 +6,7 @@ import ray
 from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset, T
 from ray.data.impl.progress_bar import ProgressBar, set_progress_bars
-import ray.data.impl.progress_bar
+from ray.data.impl import progress_bar
 
 if TYPE_CHECKING:
     from ray.data.dataset_pipeline import DatasetPipeline
@@ -68,6 +68,7 @@ class PipelineExecutor:
             self._pool.shutdown(wait=False)
             if not [t for t in self._pool._threads if t.is_alive()]:
                 break
+        self._pool.shutdown()
 
     def __iter__(self):
         return self
