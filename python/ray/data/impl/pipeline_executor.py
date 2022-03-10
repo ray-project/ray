@@ -150,6 +150,9 @@ class PipelineSplitExecutorCoordinator:
         self.cur_splits = [None] * self.n
 
     def next_dataset_if_ready(self, split_index: int) -> Optional[Dataset[T]]:
+        # TODO(swang): This will hang if one of the consumers fails and is
+        # re-executed from the beginning. To make this fault-tolerant, we need
+        # to make next_dataset_if_ready idempotent.
         # Pull the next dataset once all splits are fully consumed.
         if all(s is None for s in self.cur_splits):
             ds = next(self.executor)
