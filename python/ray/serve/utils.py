@@ -318,8 +318,8 @@ def get_deployment_import_path(deployment):
     if isinstance(body, str):
         # deployment's func_or_class is already an import path
         return body
-    elif hasattr(body.__ray_actor_class__):
-        # If decorated with @ray.remote, get the class or function inside
+    elif hasattr(body, "__ray_actor_class__"):
+        # If ActorClass, get the class or function inside
         body = body.__ray_actor_class__
 
     return f"{body.__module__}.{body.__qualname__}"
