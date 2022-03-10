@@ -3,7 +3,7 @@ import sys
 import ray
 
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
-from test_placement_group import are_pairwise_unique
+from ray.tests.test_placement_group import are_pairwise_unique
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
