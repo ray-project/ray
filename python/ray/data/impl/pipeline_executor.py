@@ -6,6 +6,7 @@ import ray
 from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset, T
 from ray.data.impl.progress_bar import ProgressBar, set_progress_bars
+import ray.data.impl.progress_bar
 
 if TYPE_CHECKING:
     from ray.data.dataset_pipeline import DatasetPipeline
@@ -50,11 +51,23 @@ class PipelineExecutor:
             self._bars = None
 
     def __del__(self):
-        executed = [f for f in self._stages if f is not None]
-        if executed:
-            pending = [f for f in self._stages if f is not None and not f.cancel()]
-            concurrent.futures.wait(pending)
-            self._pool.shutdown()
+        for f in self._stages:
+            if f is not None:
+                f.cancel()
+        self._pool.shutdown(wait=False)
+
+        # Signal to all remaining threads to shut down.
+        with progress_bar._canceled_threads_lock:
+            for t in self._pool._threads:
+                if t.is_alive():
+                    progress_bar._canceled_threads.add(t)
+
+        # Wait for 1s for all threads to shut down.
+        start = time.time()
+        while time.time() - start < 1:
+            self._pool.shutdown(wait=False)
+            if not [t for t in self._pool._threads if t.is_alive()]:
+                break
 
     def __iter__(self):
         return self

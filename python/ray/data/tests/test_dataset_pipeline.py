@@ -402,6 +402,70 @@ def test_count_sum_on_infinite_pipeline(ray_start_regular_shared):
     assert 9 == pipe.sum()
 
 
+@pytest.mark.parametrize("use_actors", [False, True])
+def test_reconstruction(ray_start_cluster, use_actors):
+    config = {
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_period_milliseconds": 100,
+        "object_timeout_milliseconds": 200,
+        "max_direct_call_object_size": 100,
+    }
+
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(
+        num_cpus=0,
+        _system_config=config,
+    )
+    ray.init(address=cluster.address)
+
+    base = ray.data.range_arrow(1000000, parallelism=10)
+    pipe = base.repeat(100).random_shuffle_each_window().map_batches(lambda x: x)
+
+    @ray.remote(num_cpus=0)
+    class Consumer:
+        def __init__(self):
+            pass
+
+        def ready(self):
+            return
+
+        def consume(self, shard, i):
+            for i, batch in enumerate(shard.iter_batches()):
+                if i % 100 == 0:
+                    print(i)
+
+    @ray.remote
+    def consume(shard, i):
+        for i, batch in enumerate(shard.iter_batches()):
+            if i % 100 == 0:
+                print(i)
+
+    num_consumers = 3
+    consumers = []
+    if use_actors:
+        consumers = [Consumer.remote() for _ in range(num_consumers)]
+        ray.get([consumer.ready.remote() for consumer in consumers])
+
+    shards = pipe.split(num_consumers)
+    if use_actors:
+        refs = [consumers[i].consume.remote(s, i) for i, s in enumerate(shards)]
+    else:
+        refs = [consume.remote(s, i) for i, s in enumerate(shards)]
+
+    for _ in range(2):
+        node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=int(1e9))
+
+    for _ in range(3):
+        time.sleep(10)
+        cluster.remove_node(node_to_kill, allow_graceful=False)
+        node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=int(1e9))
+
+    while refs:
+        [ready], refs = ray.wait(refs, num_returns=1)
+        ray.get(ready)
+
+
 if __name__ == "__main__":
     import sys
 

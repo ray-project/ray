@@ -1,4 +1,5 @@
 from typing import List, Any
+import threading
 
 import ray
 from ray.ray_constants import env_integer
@@ -15,6 +16,9 @@ except ImportError:
 
 # Whether progress bars are enabled in this process.
 _enabled: bool = not bool(env_integer("RAY_DATA_DISABLE_PROGRESS_BARS", 0))
+
+_canceled_threads = set()
+_canceled_threads_lock = threading.Lock()
 
 
 @PublicAPI
@@ -54,18 +58,29 @@ class ProgressBar:
             self._bar = None
 
     def block_until_complete(self, remaining: List[ObjectRef]) -> None:
+        t = threading.current_thread()
         while remaining:
-            done, remaining = ray.wait(remaining, fetch_local=False)
+            done, remaining = ray.wait(remaining, fetch_local=False, timeout=0.1)
             self.update(len(done))
+
+            with _canceled_threads_lock:
+                if t in _canceled_threads:
+                    break
 
     def fetch_until_complete(self, refs: List[ObjectRef]) -> List[Any]:
         ref_to_result = {}
         remaining = refs
+        t = threading.current_thread()
         while remaining:
-            done, remaining = ray.wait(remaining, fetch_local=True)
+            done, remaining = ray.wait(remaining, fetch_local=True, timeout=0.1)
             for ref, result in zip(done, ray.get(done)):
                 ref_to_result[ref] = result
             self.update(len(done))
+
+            with _canceled_threads_lock:
+                if t in _canceled_threads:
+                    break
+
         return [ref_to_result[ref] for ref in refs]
 
     def set_description(self, name: str) -> None:
