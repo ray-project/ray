@@ -2,7 +2,7 @@ from typing import Dict, Union, Optional
 from google.protobuf import json_format
 
 import ray._private.utils as private_utils
-from ray.runtime import RuntimeEnv
+from ray.runtime_env import RuntimeEnv
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
