@@ -270,6 +270,13 @@ class DecoratedClass:
     def __call__(self, req=None):
         return "got decorated class"
 
+# Ray decorated class
+@serve.deployment(max_concurrent_queries=17)
+@ray.remote
+class RayDecorated:
+    def __call__(self, req=None):
+        return "got ray class"
+
 
 def compare_specified_options(deployments1: Dict, deployments2: Dict):
     """
@@ -355,7 +362,8 @@ class TestYAMLTranslation:
     def test_convert_to_import_path(self, serve_instance):
         f = decorated_func.options(name="f")
         C = DecoratedClass.options(name="C")
-        app = Application([f, C])
+        R = RayDecorated.option(name="R")
+        app = Application([f, C, R])
 
         with tempfile.TemporaryFile(mode="w+") as tmp:
             app.to_yaml(tmp)
@@ -365,6 +373,7 @@ class TestYAMLTranslation:
         reconstructed_app.deploy()
         assert requests.get("http://localhost:8000/f").text == "got decorated func"
         assert requests.get("http://localhost:8000/C").text == "got decorated class"
+        assert requests.get("http://localhost:8000/R").text == "got ray class"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
