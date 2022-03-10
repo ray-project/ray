@@ -9,6 +9,7 @@ from ray.ml.checkpoint import Checkpoint
 from ray.ml.predictor import Predictor, DataBatchType
 from ray.serve.http_util import ASGIHTTPSender
 from ray import serve
+import ray
 
 DEFAULT_INPUT_SCHEMA = "ray.serve.http_adapters.array_to_databatch"
 InputSchemaFn = Callable[[Any], DataBatchType]
@@ -63,7 +64,7 @@ class ModelWrapper:
         predictor_cls: Union[str, Type[Predictor]],
         checkpoint: Union[Checkpoint, Dict],
         input_schema: Optional[Union[str, InputSchemaFn]] = None,
-        batching_params: Optional[Dict[str, int]] = None,
+        batching_params: Optional[Union[Dict[str, int], bool]] = None,
     ):
         """Serve any Ray ML predictor from checkpoint.
 
@@ -83,7 +84,8 @@ class ModelWrapper:
               numpy array. You can pass in any FastAPI dependency resolver that returns
               an array. When you pass in a string, Serve will import it.
               Please refer to Serve HTTP adatper documentation to learn more.
-            batching_params(dict, None): override the default parameters to serve.batch.
+            batching_params(dict, None, False): override the default parameters to
+              serve.batch. Pass `False` to disable batching.
         """
         predictor_cls = _load_predictor_cls(predictor_cls)
         checkpoint = _load_checkpoint(checkpoint)
@@ -91,13 +93,30 @@ class ModelWrapper:
         self.model = predictor_cls.from_checkpoint(checkpoint)
         self.app = FastAPI()
 
-        input_schema = _load_input_schema(input_schema)
-        batching_params = batching_params or dict()
+        # Configure Batching
+        if batching_params is False:
+            # Inject noop decorator to disable batching
+            batching_decorator = lambda f: f  # noqa: E731
+        else:
+            batching_params = batching_params or dict()
+            batching_decorator = serve.batch(**batching_params)
 
-        @self.app.post("/predict")
-        @serve.batch(**batching_params)
+        @batching_decorator
+        async def batched_predict(inp):
+            out = self.model.predict(inp)
+            if isinstance(out, ray.ObjectRef):
+                out = await out
+            return out
+
+        self.batched_predict = batched_predict
+
+        # Configure Input Schema
+        input_schema = _load_input_schema(input_schema)
+
+        @self.app.get("/")
+        @self.app.post("/")
         async def handle_request(inp=Depends(input_schema)):
-            return self.model.predict(inp)
+            return await batched_predict(inp)
 
     async def __call__(self, request: starlette.requests.Request):
         # NOTE(simon): This is now duplicated from ASGIAppWrapper because we need to
@@ -105,3 +124,7 @@ class ModelWrapper:
         sender = ASGIHTTPSender()
         await self.app(request.scope, receive=request.receive, send=sender)
         return sender.build_asgi_response()
+
+    async def predict(self, inp):
+        """Performing inference directly without HTTP."""
+        return await self.batched_predict(inp)
