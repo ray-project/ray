@@ -693,7 +693,7 @@ if sys.platform != "win32":
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_build(ray_start_stop, import_path):
+def test_build(ray_start_stop):
     f = NamedTemporaryFile(mode="w", delete=False)
 
     # Build an app
