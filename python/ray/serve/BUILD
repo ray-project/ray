@@ -277,7 +277,7 @@ py_test(
 
 py_test(
     name = "test_cli",
-    size = "medium",
+    size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -294,6 +294,14 @@ py_test(
 py_test(
     name = "test_cross_langauge",
     size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_model_wrappers",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -447,6 +455,14 @@ py_test(
 
 py_test(
     name = "test_json_serde",
+    size = "medium",
+    srcs = pipeline_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_build",
     size = "medium",
     srcs = pipeline_tests_srcs,
     tags = ["exclusive", "team:serve"],

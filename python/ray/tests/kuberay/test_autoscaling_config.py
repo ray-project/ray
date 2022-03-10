@@ -2,18 +2,21 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from unittest import mock
 
+import platform
 import pytest
 import yaml
 
-from autoscaling_config import _derive_autoscaling_config_from_ray_cr
+from ray.autoscaler._private.kuberay.autoscaling_config import (
+    _derive_autoscaling_config_from_ray_cr,
+)
+
+AUTOSCALING_CONFIG_MODULE_PATH = "ray.autoscaler._private.kuberay.autoscaling_config"
 
 
 def _get_basic_ray_cr() -> dict:
     """Returns the example Ray CR included in the Ray documentation."""
     cr_path = str(
         Path(__file__).resolve().parents[2]
-        / "python"
-        / "ray"
         / "autoscaler"
         / "kuberay"
         / "ray-cluster.complete.yaml"
@@ -135,42 +138,47 @@ PARAM_ARGS = ",".join(
     ]
 )
 
-TEST_DATA = [
-    pytest.param(
-        _get_basic_ray_cr(),
-        _get_basic_autoscaling_config(),
-        None,
-        None,
-        None,
-        id="basic",
-    ),
-    pytest.param(
-        _get_ray_cr_no_cpu_error(),
-        None,
-        ValueError,
-        _get_no_cpu_error(),
-        None,
-        id="no-cpu-error",
-    ),
-    pytest.param(
-        _get_ray_cr_memory_and_gpu(),
-        _get_autoscaling_config_memory_and_gpu(),
-        None,
-        None,
-        None,
-        id="memory-and-gpu",
-    ),
-    pytest.param(
-        _get_ray_cr_missing_gpu_arg(),
-        _get_basic_autoscaling_config(),
-        None,
-        None,
-        _get_gpu_complaint(),
-        id="gpu-complaint",
-    ),
-]
+TEST_DATA = (
+    []
+    if platform.system() == "Windows"
+    else [
+        pytest.param(
+            _get_basic_ray_cr(),
+            _get_basic_autoscaling_config(),
+            None,
+            None,
+            None,
+            id="basic",
+        ),
+        pytest.param(
+            _get_ray_cr_no_cpu_error(),
+            None,
+            ValueError,
+            _get_no_cpu_error(),
+            None,
+            id="no-cpu-error",
+        ),
+        pytest.param(
+            _get_ray_cr_memory_and_gpu(),
+            _get_autoscaling_config_memory_and_gpu(),
+            None,
+            None,
+            None,
+            id="memory-and-gpu",
+        ),
+        pytest.param(
+            _get_ray_cr_missing_gpu_arg(),
+            _get_basic_autoscaling_config(),
+            None,
+            None,
+            _get_gpu_complaint(),
+            id="gpu-complaint",
+        ),
+    ]
+)
 
 
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
 @pytest.mark.parametrize(PARAM_ARGS, TEST_DATA)
 def test_autoscaling_config(
     ray_cr_in: Dict[str, Any],
@@ -180,7 +188,7 @@ def test_autoscaling_config(
     expected_log_warning: Optional[str],
 ):
     ray_cr_in["metadata"]["namespace"] = "default"
-    with mock.patch("autoscaling_config.logger") as mock_logger:
+    with mock.patch(f"{AUTOSCALING_CONFIG_MODULE_PATH}.logger") as mock_logger:
         if expected_error:
             with pytest.raises(expected_error, match=expected_error_message):
                 _derive_autoscaling_config_from_ray_cr(ray_cr_in)
