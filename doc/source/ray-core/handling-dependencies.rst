@@ -507,7 +507,7 @@ The first option is to use the remote Git provider's "Download Zip" feature, whi
 This is quick, but it is **not recommended** because it only allows you to download a zip file of a repository branch's latest commit.
 To find a GitHub URL, navigate to your repository on `GitHub <https://github.com/>`_, choose a branch, and click on the green "Code" drop down button:
 
-.. figure:: ray_repo.png
+.. figure:: images/ray_repo.png
    :width: 500px
 
 This will drop down a menu that provides three options: "Clone" which provides HTTPS/SSH links to clone the repository,
@@ -515,7 +515,7 @@ This will drop down a menu that provides three options: "Clone" which provides H
 Right-click on "Download Zip."
 This will open a pop-up near your cursor. Select "Copy Link Address":
 
-.. figure:: download_zip_url.png
+.. figure:: images/download_zip_url.png
    :width: 300px
 
 Now your HTTPS link is copied to your clipboard. You can paste it into your ``runtime_env`` dictionary.

@@ -3,6 +3,7 @@ from pathlib import Path
 import os
 import sys
 import json
+import yaml
 import tempfile
 from typing import Optional
 
@@ -20,6 +21,7 @@ from ray.dashboard.tests.conftest import *  # noqa
 from ray.ray_constants import DEFAULT_DASHBOARD_PORT
 from ray.tests.conftest import _ray_start
 from ray._private.test_utils import (
+    chdir,
     format_web_url,
     wait_for_condition,
     wait_until_server_available,
@@ -118,9 +120,22 @@ def _check_job_stopped(client: JobSubmissionClient, job_id: str) -> bool:
         "working_dir_and_local_py_modules_whl",
         # XXX Add test for working dir local zip,
         # XXX python -c "import pip_install_test"
+        "pip_txt",
+        "conda_yaml",
+        "local_py_modules",
     ],
 )
 def runtime_env_option(request):
+    driver_script = """
+import ray
+ray.init(address="auto")
+
+@ray.remote
+def f():
+    import pip_install_test
+
+ray.get(f.remote())
+"""
     if request.param == "no_working_dir":
         yield {
             "runtime_env": {},
@@ -194,11 +209,45 @@ def runtime_env_option(request):
             "entrypoint": "python script.py",
             "expected_logs": "Executing main() from script.py !!\n",
         }
+    elif request.param == "pip_txt":
+        with tempfile.TemporaryDirectory() as tmpdir, chdir(tmpdir):
+            pip_list = ["pip-install-test==0.5"]
+            relative_filepath = "requirements.txt"
+            pip_file = Path(relative_filepath)
+            pip_file.write_text("\n".join(pip_list))
+            runtime_env = {"pip": relative_filepath}
+            yield {
+                "runtime_env": runtime_env,
+                "entrypoint": f"python -c '{driver_script}'",
+                # TODO(architkulkarni): Uncomment after #22968 is fixed.
+                # "entrypoint": "python -c 'import pip_install_test'",
+                "expected_logs": "Good job!  You installed a pip module.",
+            }
+    elif request.param == "conda_yaml":
+        with tempfile.TemporaryDirectory() as tmpdir, chdir(tmpdir):
+            conda_dict = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
+            relative_filepath = "environment.yml"
+            conda_file = Path(relative_filepath)
+            conda_file.write_text(yaml.dump(conda_dict))
+            runtime_env = {"conda": relative_filepath}
+
+            yield {
+                "runtime_env": runtime_env,
+                "entrypoint": f"python -c '{driver_script}'",
+                # TODO(architkulkarni): Uncomment after #22968 is fixed.
+                # "entrypoint": "python -c 'import pip_install_test'",
+                "expected_logs": "Good job!  You installed a pip module.",
+            }
     else:
         assert False, f"Unrecognized option: {request.param}."
 
 
-def test_submit_job(job_sdk_client, runtime_env_option):
+def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
+    # This flag allows for local testing of runtime env conda functionality
+    # without needing a built Ray wheel.  Rather than insert the link to the
+    # wheel into the conda spec, it links to the current Python site.
+    monkeypatch.setenv("RAY_RUNTIME_ENV_LOCAL_DEV_MODE", "1")
+
     client = job_sdk_client
 
     job_id = client.submit_job(
@@ -206,7 +255,7 @@ def test_submit_job(job_sdk_client, runtime_env_option):
         runtime_env=runtime_env_option["runtime_env"],
     )
 
-    wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
+    wait_for_condition(_check_job_succeeded, client=client, job_id=job_id, timeout=120)
 
     logs = client.get_job_logs(job_id)
     assert runtime_env_option["expected_logs"] in logs
