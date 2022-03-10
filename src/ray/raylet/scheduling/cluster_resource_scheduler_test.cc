@@ -54,17 +54,11 @@ vector<FixedPoint> EmptyFixedPointVector;
 
 void initResourceRequest(ResourceRequest &res_request, vector<FixedPoint> pred_demands,
                          vector<int64_t> cust_ids, vector<FixedPoint> cust_demands) {
-  res_request.predefined_resources.resize(PredefinedResources_MAX + pred_demands.size());
   for (size_t i = 0; i < pred_demands.size(); i++) {
-    res_request.predefined_resources[i] = pred_demands[i];
+    res_req.Set(i, pred_demands[i]);
   }
-
-  for (size_t i = pred_demands.size(); i < PredefinedResources_MAX; i++) {
-    res_request.predefined_resources.push_back(0);
-  }
-
   for (size_t i = 0; i < cust_ids.size(); i++) {
-    res_request.custom_resources[cust_ids[i]] = cust_demands[i];
+    res_request.Set(cust_ids[i], cust_demands[i]);
   }
 };
 
@@ -107,40 +101,7 @@ void initNodeResources(NodeResources &node, vector<FixedPoint> &pred_capacities,
 }
 
 bool nodeResourcesEqual(const NodeResources &nr1, const NodeResources &nr2) {
-  if (nr1.predefined_resources.size() != nr2.predefined_resources.size()) {
-    cout << nr1.predefined_resources.size() << " " << nr2.predefined_resources.size()
-         << endl;
-    return false;
-  }
-
-  for (size_t i = 0; i < nr1.predefined_resources.size(); i++) {
-    if (nr1.predefined_resources[i].available != nr2.predefined_resources[i].available) {
-      return false;
-    }
-    if (nr1.predefined_resources[i].total != nr2.predefined_resources[i].total) {
-      return false;
-    }
-  }
-
-  if (nr1.custom_resources.size() != nr2.custom_resources.size()) {
-    return false;
-  }
-
-  auto cr1 = nr1.custom_resources;
-  auto cr2 = nr2.custom_resources;
-  for (auto it1 = cr1.begin(); it1 != cr1.end(); ++it1) {
-    auto it2 = cr2.find(it1->first);
-    if (it2 == cr2.end()) {
-      return false;
-    }
-    if (it1->second.total != it2->second.total) {
-      return false;
-    }
-    if (it1->second.available != it2->second.available) {
-      return false;
-    }
-  }
-  return true;
+  return nr1 == nr2;
 }
 
 class ClusterResourceSchedulerTest : public ::testing::Test {
@@ -433,10 +394,9 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {
         resource_scheduler.GetClusterResourceManager().GetNodeResources(node_id, &nr2));
 
     for (size_t i = 0; i < PRED_CUSTOM_LEN; i++) {
-      auto t = nr1.predefined_resources[i].available -
-               resource_request.predefined_resources[i];
+      auto t = nr1.availabile.Get(i) - resource_request.Get(i);
       if (t < 0) t = 0;
-      ASSERT_EQ(nr2.predefined_resources[i].available, t);
+      ASSERT_EQ(nr2.available.Get(i), t);
     }
 
     for (size_t i = 1; i <= PRED_CUSTOM_LEN; i++) {
