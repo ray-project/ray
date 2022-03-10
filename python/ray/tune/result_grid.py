@@ -15,6 +15,7 @@ class ResultGrid:
 
     Usage pattern:
     .. code-block:: python
+
         result_grid = tuner.fit()
         for i in range(len(result_grid)):
             result = result_grid[i]
