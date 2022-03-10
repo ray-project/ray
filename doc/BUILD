@@ -158,10 +158,14 @@ py_test_run_all_subdirectory(
     tags = ["exclusive", "team:ml"],
 )
 
-py_test(
-    name = "snippet_model_ensemble",
+# --------------------------------------------------------------------
+# Test all doc/source/ray-overview/doc_code snippets, used on ray.io
+# --------------------------------------------------------------------
+
+py_test_run_all_subdirectory(
     size = "small",
-    srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"]
+    include = ["source/ray-overview/doc_code/*.py"],
+    exclude = ["source/ray-overview/doc_code/ray_data.py"],
+    extra_srcs = [],
+    tags = ["exclusive", "team:ml"],
 )

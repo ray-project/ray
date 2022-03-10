@@ -8,8 +8,8 @@ import javax.xml.bind.DatatypeConverter;
 public abstract class BaseId implements Serializable {
   private static final long serialVersionUID = 8588849129675565761L;
   private final byte[] id;
-  private int hashCodeCache = 0;
-  private Boolean isNilCache = null;
+  private transient int hashCodeCache = 0;
+  private transient Boolean isNilCache = null;
 
   /** Create a BaseId instance according to the input byte array. */
   protected BaseId(byte[] id) {
