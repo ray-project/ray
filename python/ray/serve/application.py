@@ -260,20 +260,6 @@ class Application:
 
         self._deployments[key] = value
 
-    def __getattr__(self, name: str):
-        """Fetch a deployment by name using attribute syntax: app.name
-
-        Raises:
-            AttributeError: if the name is not in this Application.
-        """
-
-        if name in self._deployments:
-            return self._deployments[name]
-        else:
-            raise AttributeError(
-                f'Serve application does not contain a "{name}" deployment.'
-            )
-
     def __iter__(self):
         """Iterator over Application's deployments.
 
