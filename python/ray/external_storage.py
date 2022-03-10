@@ -386,9 +386,7 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
         uri: str or list,
         prefix: str = DEFAULT_OBJECT_PREFIX,
         override_transport_params: dict = None,
-        buffer_size=50
-        * 1024
-        * 1024,  # For remote spilling, at least 1MB is recommended.
+        buffer_size=1024 * 1024,  # For remote spilling, at least 1MB is recommended.
     ):
         try:
             from smart_open import open  # noqa
@@ -405,7 +403,7 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
             uri = [uri]
         assert isinstance(uri, list), "uri must be a single string or list of strings."
         assert isinstance(buffer_size, int), "buffer_size must be an integer."
-        
+
         uri_is_s3 = [u.startswith("s3://") for u in uri]
         self.is_for_s3 = all(uri_is_s3)
         if not self.is_for_s3:
