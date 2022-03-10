@@ -41,7 +41,7 @@ def _check_is_uri(s: str) -> bool:
 
 def upload_py_modules_if_needed(
     runtime_env: Dict[str, Any],
-    scratch_dir: str,
+    scratch_dir: Optional[str] = os.getcwd(),
     logger: Optional[logging.Logger] = default_logger,
     upload_fn=None,
 ) -> Dict[str, Any]:

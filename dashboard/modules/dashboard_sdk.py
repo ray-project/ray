@@ -329,7 +329,7 @@ class SubmissionClient:
                 module_path, include_parent_dir=True, excludes=excludes, is_file=is_file
             )
 
-        upload_py_modules_if_needed(runtime_env, "", upload_fn=_upload_fn)
+        upload_py_modules_if_needed(runtime_env, upload_fn=_upload_fn)
 
     @PublicAPI(stability="beta")
     def get_version(self) -> str:
