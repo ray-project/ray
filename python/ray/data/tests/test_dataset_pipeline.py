@@ -415,6 +415,7 @@ def test_reconstruction(ray_start_cluster, use_actors):
     # Head node with no resources.
     cluster.add_node(
         num_cpus=0,
+        resources={"head": 1},
         _system_config=config,
     )
     ray.init(address=cluster.address, ignore_reinit_error=True)
@@ -422,7 +423,7 @@ def test_reconstruction(ray_start_cluster, use_actors):
     base = ray.data.range_arrow(1000000, parallelism=10)
     pipe = base.repeat(100).random_shuffle_each_window().map_batches(lambda x: x)
 
-    @ray.remote(num_cpus=0)
+    @ray.remote(num_cpus=0, resources={"head": 0.01})
     class Consumer:
         def __init__(self):
             pass
@@ -435,7 +436,7 @@ def test_reconstruction(ray_start_cluster, use_actors):
                 if i % 100 == 0:
                     print(i)
 
-    @ray.remote
+    @ray.remote(num_cpus=0, resources={"head": 0.01})
     def consume(shard, i):
         for i, batch in enumerate(shard.iter_batches()):
             if i % 100 == 0:
@@ -454,12 +455,12 @@ def test_reconstruction(ray_start_cluster, use_actors):
         refs = [consume.remote(s, i) for i, s in enumerate(shards)]
 
     for _ in range(2):
-        node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=int(1e9))
+        node_to_kill = cluster.add_node(num_cpus=2, object_store_memory=int(1e9))
 
     for _ in range(3):
         time.sleep(10)
         cluster.remove_node(node_to_kill, allow_graceful=False)
-        node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=int(1e9))
+        node_to_kill = cluster.add_node(num_cpus=2, object_store_memory=int(1e9))
 
     while refs:
         [ready], refs = ray.wait(refs, num_returns=1)
