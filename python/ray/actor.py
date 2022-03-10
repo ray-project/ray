@@ -643,7 +643,7 @@ class ActorClass:
                     **cls_options,
                 )
 
-            def _bind(self, *args, **kwargs):
+            def bind(self, *args, **kwargs):
                 """
                 **Experimental**
 
@@ -1041,7 +1041,7 @@ class ActorClass:
 
         return actor_handle
 
-    def _bind(self, *args, **kwargs):
+    def bind(self, *args, **kwargs):
         """
         **Experimental**
 
