@@ -30,6 +30,7 @@ class JobFileManager(FileManager):
         sys.path.insert(0, f"{anyscale.ANYSCALE_RAY_DIR}/bin")
 
     def _run_with_retry(self, f, initial_retry_delay_s: int = 10):
+        assert callable(f)
         return exponential_backoff_retry(
             f,
             retry_exceptions=Exception,
@@ -60,19 +61,20 @@ class JobFileManager(FileManager):
             raise FileDownloadError(f"Error downloading file {source} to {target}")
 
         # s3 -> local target
-        def download_result():
-            self.s3_client.download_file(
+        self._run_with_retry(
+            lambda: self.s3_client.download_file(
                 Bucket=self.bucket,
                 Key=remote_upload_to,
                 Filename=target,
             )
+        )
 
-        self._run_with_retry(download_result)
-
-        def delete():
-            self.s3_client.delete_object(Bucket=self.bucket, Key=remote_upload_to)
-
-        self._run_with_retry(delete)
+        self._run_with_retry(
+            lambda: self.s3_client.delete_object(
+                Bucket=self.bucket, Key=remote_upload_to
+            ),
+            initial_retry_delay_s=2,
+        )
 
     def _push_local_dir(self):
         remote_upload_to = self._generate_tmp_s3_path()
@@ -80,10 +82,12 @@ class JobFileManager(FileManager):
         _, local_path = tempfile.mkstemp()
         shutil.make_archive(local_path, "gztar", os.getcwd())
         # local source -> s3
-        self.s3_client.upload_file(
-            Filename=local_path + ".tar.gz",
-            Bucket=self.bucket,
-            Key=remote_upload_to,
+        self._run_with_retry(
+            lambda: self.s3_client.upload_file(
+                Filename=local_path + ".tar.gz",
+                Bucket=self.bucket,
+                Key=remote_upload_to,
+            )
         )
         # remove local archive
         os.unlink(local_path)
@@ -122,14 +126,13 @@ class JobFileManager(FileManager):
         remote_upload_to = self._generate_tmp_s3_path()
 
         # local source -> s3
-        def upload():
-            self.s3_client.upload_file(
+        self._run_with_retry(
+            lambda: self.s3_client.upload_file(
                 Filename=source,
                 Bucket=self.bucket,
                 Key=remote_upload_to,
             )
-
-        self._run_with_retry(upload)
+        )
 
         # s3 -> remote target
         bucket_address = f"s3://{self.bucket}/{remote_upload_to}"
@@ -143,7 +146,9 @@ class JobFileManager(FileManager):
 
         try:
             self._run_with_retry(
-                self.s3_client.delete_object(Bucket=self.bucket, Key=remote_upload_to)
+                lambda: self.s3_client.delete_object(
+                    Bucket=self.bucket, Key=remote_upload_to
+                )
             )
         except Exception as e:
             logger.warning(f"Could not remove temporary S3 object: {e}")

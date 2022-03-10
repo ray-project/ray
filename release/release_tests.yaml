@@ -768,7 +768,6 @@
 - name: shuffle_10gb
   group: Core nightly tests
 
-  frequency: nightly
   team: core
   frequency: multi
   working_dir: nightly_tests
@@ -802,7 +801,7 @@
     cluster_env: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
     cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
     autosuspend_mins: 120
-    cluster_id: cld_HSrCZdMCYDe1NmMCJhYRgQ4p
+    cloud_id: cld_HSrCZdMCYDe1NmMCJhYRgQ4p
 
   run:
     timeout: 7200
@@ -823,7 +822,7 @@
       cluster_env: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
       cluster_compute: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
       autosuspend_mins: 120
-      cluster_id: cld_HSrCZdMCYDe1NmMCJhYRgQ4p
+      cloud_id: cld_HSrCZdMCYDe1NmMCJhYRgQ4p
 
     run:
       timeout: 7200
@@ -851,7 +850,7 @@
     cluster_env: stress_tests/stress_tests_app_config.yaml
     cluster_compute: stress_tests/k8s_stress_test_threaded_actor_compute.yaml
     autosuspend_mins: 120
-    cluster_id: cld_HSrCZdMCYDe1NmMCJhYRgQ4p
+    cloud_id: cld_HSrCZdMCYDe1NmMCJhYRgQ4p
 
   run:
     timeout: 3600

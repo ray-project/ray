@@ -126,7 +126,7 @@ class FullClusterManager(MinimalClusterManager):
                 time.sleep(1)
                 result = self.sdk.get_cluster(self.cluster_id)
 
-    def get_cluster_address(self, full=True) -> str:
+    def get_cluster_address(self, full: bool = True) -> str:
         if full:
             return f"anyscale://{self.project_name}/{self.cluster_name}"
         else:

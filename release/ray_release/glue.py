@@ -161,6 +161,7 @@ def run_release_test(
 
         # Install local dependencies
         command_runner.prepare_local_env(ray_wheels_url)
+        command_timeout = test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT)
 
         # Start session
         if cluster_id:
@@ -184,7 +185,7 @@ def run_release_test(
                 cluster_manager.autosuspend_minutes = autosuspend_mins
             else:
                 cluster_manager.autosuspend_minutes = min(
-                    DEFAULT_AUTOSUSPEND_MINS, int(cluster_timeout / 60) + 10
+                    DEFAULT_AUTOSUSPEND_MINS, int(command_timeout / 60) + 10
                 )
 
             cluster_manager.start_cluster(timeout=cluster_timeout)
@@ -193,8 +194,6 @@ def run_release_test(
 
         # Upload files
         command_runner.prepare_remote_env()
-
-        command_timeout = test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT)
 
         wait_for_nodes = test["run"].get("wait_for_nodes", None)
         if wait_for_nodes:
