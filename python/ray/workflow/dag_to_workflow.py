@@ -2,30 +2,8 @@ from typing import Any
 
 from ray import workflow
 
-from ray.experimental.dag import DAGNode, FunctionNode
+from ray.experimental.dag import DAGNode, FunctionNode, InputNode
 from ray.experimental.dag.input_node import InputAtrributeNode, DAGInputData
-
-
-def _process_input_value(v: Any, input_context):
-    if isinstance(v, FunctionNode):
-        return _transform_dag_recursive(v, input_context)
-    if isinstance(v, InputAtrributeNode):
-        return input_context[v._key]
-    if not isinstance(v, DAGNode):
-        return v
-    raise TypeError(f"Unsupported DAG node: {v}")
-
-
-def _transform_dag_recursive(dag_node: FunctionNode, input_context: DAGInputData):
-    func_body = dag_node._body
-    workflow_step = workflow.step(func_body).options(**dag_node.get_options())
-    args = []
-    kwargs = {}
-    for arg in dag_node.get_args():
-        args.append(_process_input_value(arg, input_context))
-    for k, v in dag_node.get_kwargs().items():
-        kwargs[k] = _process_input_value(v, input_context)
-    return workflow_step.step(*args, **kwargs)
 
 
 def transform_ray_dag_to_workflow(dag_node: DAGNode, input_context: DAGInputData):
@@ -39,4 +17,17 @@ def transform_ray_dag_to_workflow(dag_node: DAGNode, input_context: DAGInputData
     """
     if not isinstance(dag_node, FunctionNode):
         raise TypeError("Currently workflow does not support classes as DAG inputs.")
-    return _transform_dag_recursive(dag_node, input_context)
+
+    def _node_visitor(node: Any) -> Any:
+        if isinstance(node, FunctionNode):
+            workflow_step = workflow.step(node._body).options(**node._bound_options)
+            return workflow_step.step(*node._bound_args, **node._bound_kwargs)
+        if isinstance(node, InputAtrributeNode):
+            return node._execute_impl()
+        if isinstance(node, InputNode):
+            return input_context  # replace input node with input data
+        if not isinstance(node, DAGNode):
+            return node
+        raise TypeError(f"Unsupported DAG node: {node}")
+
+    return dag_node._apply_recursive(_node_visitor)
