@@ -1,3 +1,5 @@
+from typing import Optional
+
 from ray.ml.result import Result
 from ray.tune import ExperimentAnalysis
 from ray.tune.trial import Trial
@@ -16,9 +18,9 @@ class ResultGrid:
         result_grid = tuner.fit()
         for i in range(len(result_grid)):
             result = result_grid[i]
-            if result.status == Trial.TERMINATED:
+            if not result.error_msg:
                 print(f"Trial finishes successfully with metric {result.metric}.")
-            elif result.error:
+            else:
                 print(f"Trial errors out with {result.error}.")
         best_result = result_grid.get_best_result()
         best_checkpoint = best_result.checkpoint
@@ -33,15 +35,18 @@ class ResultGrid:
         self._experiment_analysis = experiment_analysis
 
     @staticmethod
-    def _trial_to_result(trial: Trial) -> Result:
+    def _get_error_msg(trial: Trial) -> Optional[str]:
         if trial.error_file:
             with open(trial.error_file, "r") as f:
-                error_msg = f.read()
+                return f.read()
+        return None
+
+    def _trial_to_result(self, trial: Trial) -> Result:
+        # TODO(xwjiang): Use Kai's new checkpoint!
         result = Result(
             checkpoint=trial.checkpoint,
             metrics=trial.last_result,
-            status=Trial.status,
-            error=error_msg,
+            error=self._get_error_msg(trial),
         )
         return result
 

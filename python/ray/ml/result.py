@@ -14,22 +14,18 @@ class Result:
 
     Args:
         metrics: The final metrics as reported by an Trainable.
-        checkpoint: The final checkpoint of the Trainable.
-        status: The status of the Trainable run. Should be between TERMINATED and ERROR.
-        error: The execution error of the Trainable run, when `status` is reported as
-            ERROR.
+        checkpoint: The final checkpoint of the Trainable
+        error: The execution error of the Trainable run, if the trial finishes in error.
     """
 
     def __init__(
         self,
         metrics: Any,
         checkpoint: Optional[Checkpoint],
-        status: str,
         error: Optional[str] = None,
     ):
         self.metrics = metrics
         self.checkpoint = checkpoint
-        self.status = status
         self.error = error
 
     def __getstate__(self) -> dict:
