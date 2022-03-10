@@ -146,7 +146,7 @@ void GcsResourceManager::DeleteResources(const NodeID &node_id,
           resource_value.Double());
     }
 
-    auto on_done = [node_id](const Status &status) { RAY_CHECK_OK(status); };
+    auto on_done = [](const Status &status) { RAY_CHECK_OK(status); };
     RAY_CHECK_OK(
         gcs_table_storage_->NodeResourceTable().Put(node_id, resource_map, on_done));
   } else {
