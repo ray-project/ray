@@ -19,6 +19,8 @@ from ray.dashboard.modules.job.common import (
 )
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 
+from ray.runtime_env import RuntimeEnv
+
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -68,6 +70,10 @@ class JobSubmissionClient(SubmissionClient):
 
         self._upload_working_dir_if_needed(runtime_env)
         self._upload_py_modules_if_needed(runtime_env)
+
+        # Run the RuntimeEnv constructor to parse local pip/conda requirements files.
+        runtime_env = RuntimeEnv(**runtime_env).to_dict()
+
         req = JobSubmitRequest(
             entrypoint=entrypoint,
             job_id=job_id,

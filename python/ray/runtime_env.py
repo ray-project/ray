@@ -380,7 +380,7 @@ class RuntimeEnv(dict):
         )
 
     def to_dict(self) -> Dict:
-        return deepcopy(self)
+        return dict(deepcopy(self))
 
     @property
     def _proto_runtime_env(self):
