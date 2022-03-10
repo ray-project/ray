@@ -277,7 +277,7 @@ usage across multiple physical devices if needed (e.g., SSD devices):
   
   To optimize the performance, it is recommended to use SSD instead of HDD when using object spilling for memory intensive workloads.
 
-If you are using an HDD, it is recommended that you specify a large buffer size (> 1MB) to lower IO requests during spilling.
+If you are using an HDD, it is recommended that you specify a large buffer size (> 1MB) to reduce IO requests during spilling.
 
 .. code-block:: python
 
@@ -307,7 +307,7 @@ To enable object spilling to remote storage (any URI supported by `smart_open <h
                 {
                   "type": "smart_open", 
                   "params": {
-                    "uri": "s3:///bucket/path"
+                    "uri": "s3://bucket/path"
                   },
                   "buffer_size": 100 * 1024 * 1024 # Use a 100MB buffer for writes
                 },
@@ -315,7 +315,7 @@ To enable object spilling to remote storage (any URI supported by `smart_open <h
         },
     )
 
-It is recommended that you specify a large buffer size (> 1MB) to lower IO requests during spilling.
+It is recommended that you specify a large buffer size (> 1MB) to reduce IO requests during spilling.
 
 Spilling to multiple remote storages is also supported.
 
@@ -329,7 +329,7 @@ Spilling to multiple remote storages is also supported.
                 {
                   "type": "smart_open", 
                   "params": {
-                    "uri": ["s3:///bucket/path1", "s3:///bucket/path2, "s3:///bucket/path3"]
+                    "uri": ["s3://bucket/path1", "s3://bucket/path2, "s3://bucket/path3"]
                   },
                   "buffer_size": 100 * 1024 * 1024 # Use a 100MB buffer for writes
                 },

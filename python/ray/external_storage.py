@@ -405,20 +405,18 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
             uri = [uri]
         assert isinstance(uri, list), "uri must be a single string or list of strings."
         assert isinstance(buffer_size, int), "buffer_size must be an integer."
-
-        s3 = [u.startswith("s3") for u in uri]
-        if any(s3):
-            assert all(s3), "all uri's must be s3 or none can be s3."
-        self.is_for_s3 = all(s3)
-        if self.is_for_s3:
-            self._uris = [u.strip("/") for u in uri]
-        else:
+        
+        uri_is_s3 = [u.startswith("s3://") for u in uri]
+        self.is_for_s3 = all(uri_is_s3)
+        if not self.is_for_s3:
+            assert not any(uri_is_s3), "all uri's must be s3 or none can be s3."
             self._uris = uri
+        else:
+            self._uris = [u.strip("/") for u in uri]
         assert len(self._uris) == len(uri)
-        self._current_uri_index = random.randrange(0, len(self._uris))
 
+        self._current_uri_index = random.randrange(0, len(self._uris))
         self.prefix = prefix
-        self._buffer_size = buffer_size
         self.override_transport_params = override_transport_params or {}
 
         if self.is_for_s3:
@@ -435,9 +433,8 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
             self.transport_params = {
                 "defer_seek": True,
                 "resource": self.s3,
-                "buffer_size": self._buffer_size,
+                "buffer_size": buffer_size,
             }
-            # self.transport_params = {"defer_seek": True, "resource": self.s3}
         else:
             self.transport_params = {}
 
@@ -456,11 +453,10 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
         first_ref = object_refs[0]
         key = f"{self.prefix}-{first_ref.hex()}-multi-{len(object_refs)}"
         url = f"{uri}/{key}"
-        # with open(url, mode="wb", transport_params=self.transport_params) as file_like:
+
         with open(
             url,
             mode="wb",
-            buffering=self._buffer_size,
             transport_params=self.transport_params,
         ) as file_like:
             return self._write_multiple_objects(
