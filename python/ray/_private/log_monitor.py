@@ -24,8 +24,8 @@ from ray._private.ray_logging import setup_component_logger
 # entry/init points.
 logger = logging.getLogger(__name__)
 
-# The groups are worker id, job id, and pid.
-JOB_LOG_PATTERN = re.compile(".*worker-([0-9a-f]+)-([0-9a-f]+)-(\d+)")
+# The groups are job id, and pid.
+JOB_LOG_PATTERN = re.compile(".*worker.*-([0-9a-f]+)-(\d+)")
 # The groups are job id.
 RUNTIME_ENV_SETUP_PATTERN = re.compile(".*runtime_env_setup-(\d+).log")
 # Log name update interval under pressure.
@@ -164,7 +164,9 @@ class LogMonitor:
     def update_log_filenames(self):
         """Update the list of log files to monitor."""
         # output of user code is written here
-        log_file_paths = glob.glob(f"{self.logs_dir}/worker*[.out|.err]")
+        log_file_paths = glob.glob(f"{self.logs_dir}/worker*[.out|.err]") + glob.glob(
+            f"{self.logs_dir}/java-worker*.log"
+        )
         # segfaults and other serious errors are logged here
         raylet_err_paths = glob.glob(f"{self.logs_dir}/raylet*.err")
         # monitor logs are needed to report autoscaler events
@@ -186,8 +188,8 @@ class LogMonitor:
             if os.path.isfile(file_path) and file_path not in self.log_filenames:
                 job_match = JOB_LOG_PATTERN.match(file_path)
                 if job_match:
-                    job_id = job_match.group(2)
-                    worker_pid = int(job_match.group(3))
+                    job_id = job_match.group(1)
+                    worker_pid = int(job_match.group(2))
                 else:
                     job_id = None
                     worker_pid = None
@@ -319,8 +321,7 @@ class LogMonitor:
                     next_line = next_line.decode("utf-8", "replace")
                     if next_line == "":
                         break
-                    if next_line[-1] == "\n":
-                        next_line = next_line[:-1]
+                    next_line = next_line.rstrip("\r\n")
 
                     if next_line.startswith(ray_constants.LOG_PREFIX_ACTOR_NAME):
                         flush()  # Possible change of task/actor name.

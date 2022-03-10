@@ -1,5 +1,7 @@
 .. _tune-tutorial:
 
+.. TODO: make this an executable notebook later on.
+
 Getting Started
 ===============
 
@@ -7,7 +9,8 @@ This tutorial will walk you through the process of setting up a Tune experiment.
 We'll start with a PyTorch model and show you how to leverage Ray Tune to optimize the hyperparameters of this model.
 Specifically, we'll leverage early stopping and Bayesian Optimization via HyperOpt to do so.
 
-.. tip:: If you have suggestions as to how to improve this tutorial, please `let us know <https://github.com/ray-project/ray/issues/new/choose>`_!
+.. tip:: If you have sugges tions as to how to improve this tutorial,
+    please `let us know <https://github.com/ray-project/ray/issues/new/choose>`_!
 
 To run this example, you will need to install the following:
 
@@ -85,7 +88,9 @@ You can use this to plot the performance of this trial.
    :start-after: __plot_begin__
    :end-before: __plot_end__
 
-.. note:: Tune will automatically run parallel trials across all available cores/GPUs on your machine or cluster. To limit the number of cores that Tune uses, you can call ``ray.init(num_cpus=<int>, num_gpus=<int>)`` before ``tune.run``. If you're using a Search Algorithm like Bayesian Optimization, you'll want to use the :ref:`ConcurrencyLimiter <limiter>`.
+.. note:: Tune will automatically run parallel trials across all available cores/GPUs on your machine or cluster.
+    To limit the number of cores that Tune uses, you can call ``ray.init(num_cpus=<int>, num_gpus=<int>)`` before ``tune.run``.
+    If you're using a Search Algorithm like Bayesian Optimization, you'll want to use the :ref:`ConcurrencyLimiter <limiter>`.
 
 
 Early Stopping with ASHA
@@ -95,9 +100,12 @@ Let's integrate early stopping into our optimization process. Let's use :ref:`AS
 
 .. _`principled early stopping`: https://blog.ml.cmu.edu/2018/12/12/massively-parallel-hyperparameter-optimization/
 
-On a high level, ASHA terminates trials that are less promising and allocates more time and resources to more promising trials. As our optimization process becomes more efficient, we can afford to **increase the search space by 5x**, by adjusting the parameter ``num_samples``.
+On a high level, ASHA terminates trials that are less promising and allocates more time and resources to more promising trials.
+As our optimization process becomes more efficient, we can afford to **increase the search space by 5x**, by adjusting the parameter ``num_samples``.
 
-ASHA is implemented in Tune as a "Trial Scheduler". These Trial Schedulers can early terminate bad trials, pause trials, clone trials, and alter hyperparameters of a running trial. See :ref:`the TrialScheduler documentation <tune-schedulers>` for more details of available schedulers and library integrations.
+ASHA is implemented in Tune as a "Trial Scheduler".
+These Trial Schedulers can early terminate bad trials, pause trials, clone trials, and alter hyperparameters of a running trial.
+See :ref:`the TrialScheduler documentation <tune-schedulers>` for more details of available schedulers and library integrations.
 
 .. literalinclude:: /../../python/ray/tune/tests/tutorial.py
    :language: python
@@ -125,7 +133,10 @@ You can also use :ref:`TensorBoard <tensorboard>` for visualizing results.
 Search Algorithms in Tune
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In addition to :ref:`TrialSchedulers <tune-schedulers>`, you can further optimize your hyperparameters by using an intelligent search technique like Bayesian Optimization. To do this, you can use a Tune :ref:`Search Algorithm <tune-search-alg>`. Search Algorithms leverage optimization algorithms to intelligently navigate the given hyperparameter space.
+In addition to :ref:`TrialSchedulers <tune-schedulers>`, you can further optimize your hyperparameters
+by using an intelligent search technique like Bayesian Optimization.
+To do this, you can use a Tune :ref:`Search Algorithm <tune-search-alg>`.
+Search Algorithms leverage optimization algorithms to intelligently navigate the given hyperparameter space.
 
 Note that each library has a specific way of defining the search space.
 

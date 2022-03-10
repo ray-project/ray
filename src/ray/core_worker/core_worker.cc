@@ -283,8 +283,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           absl::MutexLock lock(&mutex_);
           to_resubmit_.push_back(std::make_pair(current_time_ms() + delay, spec));
         } else {
-          RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object: "
-                        << spec.DebugString();
+          RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object, attempt #"
+                        << spec.AttemptNumber() + 1 << ": " << spec.DebugString();
           if (spec.IsActorTask()) {
             auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
             actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
@@ -454,17 +454,23 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   periodical_runner_.RunFnPeriodically(
       [this] {
         const auto lost_objects = reference_counter_->FlushObjectsToRecover();
-        // Delete the objects from the in-memory store to indicate that they are not
-        // available. The object recovery manager will guarantee that a new value
-        // will eventually be stored for the objects (either an
-        // UnreconstructableError or a value reconstructed from lineage).
-        memory_store_->Delete(lost_objects);
-        for (const auto &object_id : lost_objects) {
-          // NOTE(swang): There is a race condition where this can return false if
-          // the reference went out of scope since the call to the ref counter to get
-          // the lost objects. It's okay to not mark the object as failed or recover
-          // the object since there are no reference holders.
-          RAY_UNUSED(object_recovery_manager_->RecoverObject(object_id));
+        if (!lost_objects.empty()) {
+          // Keep :info_message: in sync with LOG_PREFIX_INFO_MESSAGE in ray_constants.py.
+          RAY_LOG(ERROR) << ":info_message: Attempting to recover " << lost_objects.size()
+                         << " lost objects by resubmitting their tasks. To disable "
+                         << "object reconstruction, set @ray.remote(max_tries=0).";
+          // Delete the objects from the in-memory store to indicate that they are not
+          // available. The object recovery manager will guarantee that a new value
+          // will eventually be stored for the objects (either an
+          // UnreconstructableError or a value reconstructed from lineage).
+          memory_store_->Delete(lost_objects);
+          for (const auto &object_id : lost_objects) {
+            // NOTE(swang): There is a race condition where this can return false if
+            // the reference went out of scope since the call to the ref counter to get
+            // the lost objects. It's okay to not mark the object as failed or recover
+            // the object since there are no reference holders.
+            RAY_UNUSED(object_recovery_manager_->RecoverObject(object_id));
+          }
         }
       },
       100);
@@ -483,6 +489,13 @@ void CoreWorker::Shutdown() {
   is_shutdown_ = true;
   if (options_.worker_type == WorkerType::WORKER) {
     // Running in a main thread.
+    // Asyncio coroutines could still run after CoreWorker is removed because it is
+    // running in a different thread. This can cause segfault because coroutines try to
+    // access CoreWorker methods that are already garbage collected. We should complete
+    // all coroutines before shutting down in order to prevent this.
+    if (worker_context_.CurrentActorIsAsync()) {
+      options_.terminate_asyncio_thread();
+    }
     direct_task_receiver_->Stop();
     task_execution_service_.stop();
   }
@@ -509,15 +522,6 @@ void CoreWorker::Shutdown() {
   // it up.
   gcs_client_.reset();
 
-  if (options_.worker_type == WorkerType::WORKER) {
-    // Asyncio coroutines could still run after CoreWorker is removed because it is
-    // running in a different thread. This can cause segfault because coroutines try to
-    // access CoreWorker methods that are already garbage collected. We should complete
-    // all coroutines before shutting down in order to prevent this.
-    if (worker_context_.CurrentActorIsAsync()) {
-      options_.terminate_asyncio_thread();
-    }
-  }
   RAY_LOG(INFO) << "Core worker ready to be deallocated.";
 }
 
@@ -1366,6 +1370,43 @@ std::unordered_map<std::string, double> AddPlacementGroupConstraint(
   return resources;
 }
 
+rpc::RuntimeEnv CoreWorker::OverrideRuntimeEnv(
+    const rpc::RuntimeEnv &child, const std::shared_ptr<rpc::RuntimeEnv> parent) {
+  // By default, the child runtime env inherits non-specified options from the
+  // parent. There is one exception to this:
+  //     - The env_vars dictionaries are merged, so environment variables
+  //       not specified by the child are still inherited from the parent.
+
+  // Override environment variables.
+  google::protobuf::Map<std::string, std::string> result_env_vars(parent->env_vars());
+  result_env_vars.insert(child.env_vars().begin(), child.env_vars().end());
+  // Inherit all other non-specified options from the parent.
+  rpc::RuntimeEnv result_runtime_env(*parent);
+  // TODO(SongGuyang): avoid dupliacated fields.
+  result_runtime_env.MergeFrom(child);
+  if (child.python_runtime_env().py_modules().size() > 0 &&
+      parent->python_runtime_env().py_modules().size() > 0) {
+    result_runtime_env.mutable_python_runtime_env()->clear_py_modules();
+    for (auto &module : child.python_runtime_env().py_modules()) {
+      result_runtime_env.mutable_python_runtime_env()->add_py_modules(module);
+    }
+    result_runtime_env.mutable_uris()->clear_py_modules_uris();
+    result_runtime_env.mutable_uris()->mutable_py_modules_uris()->CopyFrom(
+        child.uris().py_modules_uris());
+  }
+  if (child.python_runtime_env().has_pip_runtime_env() &&
+      parent->python_runtime_env().has_pip_runtime_env()) {
+    result_runtime_env.mutable_python_runtime_env()->clear_pip_runtime_env();
+    result_runtime_env.mutable_python_runtime_env()->mutable_pip_runtime_env()->CopyFrom(
+        child.python_runtime_env().pip_runtime_env());
+  }
+  if (!result_env_vars.empty()) {
+    result_runtime_env.mutable_env_vars()->insert(result_env_vars.begin(),
+                                                  result_env_vars.end());
+  }
+  return result_runtime_env;
+}
+
 // TODO(SongGuyang): This function exists in both C++ and Python. We should make this
 // logic clearly.
 static std::string encode_plugin_uri(std::string plugin, std::string uri) {
@@ -1399,45 +1440,57 @@ static std::vector<std::string> GetUrisFromRuntimeEnv(
   return result;
 }
 
-std::string CoreWorker::OverrideTaskOrActorRuntimeEnv(
-    const std::string &serialized_runtime_env,
-    std::vector<std::string> *runtime_env_uris) {
-  std::shared_ptr<const rpc::RuntimeEnv> parent_runtime_env;
-  std::string parent_serialized_runtime_env;
-  if (options_.worker_type == WorkerType::DRIVER) {
-    parent_runtime_env = job_runtime_env_;
-    parent_serialized_runtime_env =
-        job_config_->runtime_env_info().serialized_runtime_env();
-  } else {
-    parent_runtime_env = worker_context_.GetCurrentRuntimeEnv();
-    parent_serialized_runtime_env = worker_context_.GetCurrentSerializedRuntimeEnv();
-  }
-  if (IsRuntimeEnvEmpty(serialized_runtime_env)) {
-    // Try to inherit runtime env from job or worker.
-    *runtime_env_uris = GetUrisFromRuntimeEnv(parent_runtime_env.get());
-    return parent_serialized_runtime_env;
-  }
-
-  if (!IsRuntimeEnvEmpty(parent_serialized_runtime_env)) {
-    // TODO(SongGuyang): We add this warning log because of the change of API behavior.
-    // Refer to https://github.com/ray-project/ray/issues/21818.
-    // Modify this log level to `INFO` or `DEBUG` after a few release versions.
-    RAY_LOG(WARNING) << "Runtime env already exists and the parent runtime env is "
-                     << parent_serialized_runtime_env << ". It will be overridden by "
-                     << serialized_runtime_env << ".";
-  }
-
+static std::vector<std::string> GetUrisFromSerializedRuntimeEnv(
+    const std::string &serialized_runtime_env) {
   rpc::RuntimeEnv runtime_env;
   if (!google::protobuf::util::JsonStringToMessage(serialized_runtime_env, &runtime_env)
            .ok()) {
     RAY_LOG(WARNING) << "Parse runtime env failed for " << serialized_runtime_env;
     // TODO(SongGuyang): We pass the raw string here and the task will fail after an
     // exception raised in runtime env agent. Actually, we can fail the task here.
+    return {};
+  }
+  return GetUrisFromRuntimeEnv(&runtime_env);
+}
+
+std::string CoreWorker::OverrideTaskOrActorRuntimeEnv(
+    const std::string &serialized_runtime_env,
+    std::vector<std::string> *runtime_env_uris) {
+  std::shared_ptr<rpc::RuntimeEnv> parent = nullptr;
+  if (options_.worker_type == WorkerType::DRIVER) {
+    if (IsRuntimeEnvEmpty(serialized_runtime_env)) {
+      *runtime_env_uris = GetUrisFromRuntimeEnv(job_runtime_env_.get());
+      return job_config_->runtime_env_info().serialized_runtime_env();
+    }
+    parent = job_runtime_env_;
+  } else {
+    if (IsRuntimeEnvEmpty(serialized_runtime_env)) {
+      *runtime_env_uris =
+          GetUrisFromRuntimeEnv(worker_context_.GetCurrentRuntimeEnv().get());
+      return worker_context_.GetCurrentSerializedRuntimeEnv();
+    }
+    parent = worker_context_.GetCurrentRuntimeEnv();
+  }
+  if (parent) {
+    rpc::RuntimeEnv child_runtime_env;
+    if (!google::protobuf::util::JsonStringToMessage(serialized_runtime_env,
+                                                     &child_runtime_env)
+             .ok()) {
+      RAY_LOG(WARNING) << "Parse runtime env failed for " << serialized_runtime_env;
+      // TODO(SongGuyang): We pass the raw string here and the task will fail after an
+      // exception raised in runtime env agent. Actually, we can fail the task here.
+      return serialized_runtime_env;
+    }
+    auto override_runtime_env = OverrideRuntimeEnv(child_runtime_env, parent);
+    std::string result;
+    RAY_CHECK(
+        google::protobuf::util::MessageToJsonString(override_runtime_env, &result).ok());
+    *runtime_env_uris = GetUrisFromRuntimeEnv(&override_runtime_env);
+    return result;
+  } else {
+    *runtime_env_uris = GetUrisFromSerializedRuntimeEnv(serialized_runtime_env);
     return serialized_runtime_env;
   }
-
-  *runtime_env_uris = GetUrisFromRuntimeEnv(&runtime_env);
-  return serialized_runtime_env;
 }
 
 void CoreWorker::BuildCommonTaskSpec(
@@ -2599,7 +2652,7 @@ void CoreWorker::HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &re
                                          rpc::SendReplyCallback send_reply_callback) {
   const auto subscriber_id = NodeID::FromBinary(request.subscriber_id());
   RAY_LOG(DEBUG) << "Got a long polling request from a node " << subscriber_id;
-  object_info_publisher_->ConnectToSubscriber(subscriber_id, reply,
+  object_info_publisher_->ConnectToSubscriber(request, reply,
                                               std::move(send_reply_callback));
 }
 

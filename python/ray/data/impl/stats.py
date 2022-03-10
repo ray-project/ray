@@ -315,7 +315,10 @@ class DatasetPipelineStats:
         self.wait_time_s = []
 
         # Iteration stats, filled out if the user iterates over the pipeline.
+        self.iter_ds_wait_s: Timer = Timer()
         self.iter_wait_s: Timer = Timer()
+        self.iter_get_s: Timer = Timer()
+        self.iter_format_batch_s: Timer = Timer()
         self.iter_user_s: Timer = Timer()
         self.iter_total_s: Timer = Timer()
 
@@ -325,6 +328,28 @@ class DatasetPipelineStats:
         if len(self.history_buffer) > self.max_history:
             self.history_buffer.pop(0)
         self.count += 1
+
+    def _summarize_iter(self) -> str:
+        out = ""
+        if (
+            self.iter_total_s.get()
+            or self.iter_wait_s.get()
+            or self.iter_format_batch_s.get()
+            or self.iter_get_s.get()
+        ):
+            out += "\nDatasetPipeline iterator time breakdown:\n"
+            out += "* Waiting for next dataset: {}\n".format(
+                fmt(self.iter_ds_wait_s.get())
+            )
+            out += "* In ray.wait(): {}\n".format(fmt(self.iter_wait_s.get()))
+            out += "* In ray.get(): {}\n".format(fmt(self.iter_get_s.get()))
+            out += "* In format_batch(): {}\n".format(
+                fmt(self.iter_format_batch_s.get())
+            )
+            out += "* In user code: {}\n".format(fmt(self.iter_user_s.get()))
+            out += "* Total time: {}\n".format(fmt(self.iter_total_s.get()))
+
+        return out
 
     def summary_string(self, exclude_first_window: bool = True) -> str:
         """Return a human-readable summary of this pipeline's stats."""
@@ -347,7 +372,5 @@ class DatasetPipelineStats:
                     fmt(sum(wait_time_s)),
                 )
             )
-        out += "* Time in dataset iterator: {}\n".format(fmt(self.iter_wait_s.get()))
-        out += "* Time in user code: {}\n".format(fmt(self.iter_user_s.get()))
-        out += "* Total time: {}\n".format(fmt(self.iter_total_s.get()))
+        out += self._summarize_iter()
         return out
