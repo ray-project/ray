@@ -122,13 +122,6 @@ def cli():
     help='Ray namespace to connect to. Defaults to "serve".',
 )
 @click.option(
-    "--runtime-env-json",
-    default=r"{}",
-    required=False,
-    type=str,
-    help=("Runtime environment dictionary to pass into ray.init. Defaults to empty."),
-)
-@click.option(
     "--http-host",
     default=DEFAULT_HTTP_HOST,
     required=False,
@@ -159,7 +152,6 @@ def cli():
 def start(
     address,
     namespace,
-    runtime_env_json,
     http_host,
     http_port,
     http_location,
@@ -168,7 +160,6 @@ def start(
     ray.init(
         address=address,
         namespace=namespace,
-        runtime_env=json.loads(runtime_env_json),
     )
     serve.start(
         detached=True,
@@ -480,7 +471,6 @@ def info(address: str, json_format=bool):
     help='Address of the Ray dashboard to query. For example, "http://localhost:8265".',
 )
 def status(address: str):
-
     app_status = ServeSubmissionClient(address).get_status()
     if app_status is not None:
         print(json.dumps(app_status, indent=4))
