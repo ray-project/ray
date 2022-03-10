@@ -32,8 +32,8 @@ bool SubscriberChannel::Subscribe(
   if (key_id) {
     return subscription_map_[publisher_id]
         .per_entity_subscription
-        .try_emplace(*key_id, std::make_pair(std::move(subscription_callback),
-                                             std::move(subscription_failure_callback)))
+        .try_emplace(*key_id, SubscriptionInfo(std::move(subscription_callback),
+                                               std::move(subscription_failure_callback)))
         .second;
   }
   auto &all_entities_subscription =
@@ -41,9 +41,8 @@ bool SubscriberChannel::Subscribe(
   if (all_entities_subscription != nullptr) {
     return false;
   }
-  all_entities_subscription =
-      std::make_unique<std::pair<SubscriptionItemCallback, SubscriptionFailureCallback>>(
-          std::move(subscription_callback), std::move(subscription_failure_callback));
+  all_entities_subscription = std::make_unique<SubscriptionInfo>(
+      std::move(subscription_callback), std::move(subscription_failure_callback));
   return true;
 }
 
@@ -375,7 +374,7 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
         continue;
       }
 
-      // Otherwise, invoke the subscribe callback.
+      // Otherwise, invoke the subscription callback.
       Channel(channel_type)->HandlePublishedMessage(publisher_address, msg);
     }
   }
@@ -461,11 +460,8 @@ bool Subscriber::CheckNoLeaks() const {
       leaks = true;
     }
   }
-  bool command_batch_leak = command_batch_sent_.size() != 0;
-  bool long_polling_leak = publishers_connected_.size() != 0;
-  bool command_queue_leak = commands_.size() != 0;
-  return !leaks && publishers_connected_.size() == 0 && !command_batch_leak &&
-         !long_polling_leak && !command_queue_leak;
+  return !leaks && publishers_connected_.empty() && command_batch_sent_.empty() &&
+         commands_.empty();
 }
 
 std::string Subscriber::DebugString() const {

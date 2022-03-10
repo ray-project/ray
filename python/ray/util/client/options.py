@@ -46,6 +46,7 @@ options = {
     "placement_group_capture_child_tasks": (),
     "runtime_env": (),
     "max_pending_calls": (),
+    "concurrency_groups": (),
     "scheduling_strategy": (),
 }
 
