@@ -46,6 +46,7 @@ struct ObjectBuffer {
 
 class ClientImplInterface {
  public:
+  virtual ~ClientImplInterface() {}
   /// Connect to the local plasma store. Return the resulting connection.
   ///
   /// \param store_socket_name The name of the UNIX domain socket to use to
