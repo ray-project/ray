@@ -6,6 +6,7 @@ import sys
 import signal
 import pytest
 import requests
+from tempfile import NamedTemporaryFile
 
 import ray
 from ray import serve
@@ -13,6 +14,7 @@ from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray._private.test_utils import wait_for_condition
 from ray.dashboard.optional_utils import RAY_INTERNAL_DASHBOARD_NAMESPACE
 from ray.serve.scripts import _process_args_and_kwargs, _configure_runtime_env
+from ray.serve.application import Application
 
 
 def ping_endpoint(endpoint: str, params: str = ""):
@@ -680,6 +682,29 @@ def test_run_runtime_env(ray_start_stop):
     wait_for_condition(lambda: ping_endpoint("one") == "2", timeout=10)
     p.send_signal(signal.SIGINT)
     p.wait()
+
+
+if sys.platform != "win32":
+    app_config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
+    )
+    with open(app_config_file_name, "r") as f:
+        test_build_app = Application.from_yaml(f)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_build(ray_start_stop):
+    f = NamedTemporaryFile(mode="w", delete=False)
+
+    subprocess.check_output(
+        ["serve", "build", "ray.serve.tests.test_cli.test_build_app", f.name]
+    )
+    subprocess.check_output(["serve", "deploy", f.name])
+
+    assert requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
+    assert requests.get("http://localhost:8000/one").text == "2"
+
+    os.unlink(f.name)
 
 
 if __name__ == "__main__":
