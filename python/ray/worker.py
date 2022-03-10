@@ -7,7 +7,6 @@ import io
 import json
 import logging
 import os
-import redis
 import sys
 import threading
 import time
@@ -453,11 +452,17 @@ class Worker:
     def print_logs(self):
         """Prints log messages from workers on all nodes in the same job."""
         if self.gcs_pubsub_enabled:
+            import grpc
+
             subscriber = self.gcs_log_subscriber
             subscriber.subscribe()
+            exception_type = grpc.RpcError
         else:
+            import redis
+
             subscriber = self.redis_client.pubsub(ignore_subscribe_messages=True)
             subscriber.subscribe(gcs_utils.LOG_FILE_CHANNEL)
+            exception_type = redis.exceptions.ConnectionError
         localhost = services.get_node_ip_address()
         try:
             # Keep track of the number of consecutive log messages that have
@@ -523,7 +528,7 @@ class Worker:
                         "'ray.init(log_to_driver=False)'."
                     )
 
-        except (OSError, redis.exceptions.ConnectionError) as e:
+        except (OSError, exception_type) as e:
             logger.error(f"print_logs: {e}")
         finally:
             # Close the pubsub client to avoid leaking file descriptors.
@@ -1373,6 +1378,8 @@ def listen_error_messages_raylet(worker, threads_stopped):
         threads_stopped (threading.Event): A threading event used to signal to
             the thread that it should exit.
     """
+    import redis
+
     worker.error_message_pubsub_client = worker.redis_client.pubsub(
         ignore_subscribe_messages=True
     )
