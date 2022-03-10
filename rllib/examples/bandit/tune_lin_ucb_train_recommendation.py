@@ -36,7 +36,6 @@ if __name__ == "__main__":
         # Uncomment to use TF2 framework.
         # "framework": "tf2",
         # "eager_tracing": True,
-
         "env": "ParametricRecSysEnv",
         "env_config": {
             "embedding_size": 20,
@@ -47,7 +46,6 @@ if __name__ == "__main__":
             "user_time_budget": 1.0,
         },
         "num_envs_per_worker": 2,  # Test with batched inference.
-
         "evaluation_interval": 20,
         "evaluation_duration": 100,
         "evaluation_duration_unit": "episodes",
