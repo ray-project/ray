@@ -310,6 +310,21 @@ def msgpack_serialize(obj):
     return serialized
 
 
+def get_deployment_import_path(deployment):
+    """Gets the import path for deployment's func_or_class."""
+
+    body = deployment._func_or_class
+
+    if isinstance(body, str):
+        # deployment's func_or_class is already an import path
+        return body
+    elif hasattr(body, "__ray_actor_class__"):
+        # If ActorClass, get the class or function inside
+        body = body.__ray_actor_class__
+
+    return f"{body.__module__}.{body.__qualname__}"
+
+
 def parse_import_path(import_path: str):
     """
     Takes in an import_path of form:
