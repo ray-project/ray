@@ -18,6 +18,7 @@ from ray import serve
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.serve.constants import SERVE_ROOT_URL_ENV_KEY, SERVE_PROXY_NAME
 from ray.serve.exceptions import RayServeException
+from ray.serve.generated.serve_pb2 import ActorHandleList
 from ray.serve.utils import block_until_http_ready, get_all_node_ids, format_actor_name
 from ray.serve.config import HTTPOptions
 from ray.serve.api import _get_global_client
@@ -373,7 +374,10 @@ def test_no_http(ray_shutdown):
         ]
         assert len(live_actors) == 1
         controller = serve.api._global_client._controller
-        assert len(ray.get(controller.get_http_proxies.remote())) == 0
+
+        proxy_handles_bytes = ray.get(controller.get_http_proxies.remote())
+        proto = ActorHandleList.ParseFromString(proxy_handles_bytes)
+        assert len(proto.handles) == 0
 
         # Test that the handle still works.
         @serve.deployment

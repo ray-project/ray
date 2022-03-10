@@ -1,11 +1,21 @@
+import pickle
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, Optional
+
+from google.protobuf.json_format import MessageToDict
 
 import ray
 from ray.actor import ActorHandle
 from ray.serve.config import DeploymentConfig, ReplicaConfig
 from ray.serve.autoscaling_policy import AutoscalingPolicy
+from ray.serve.generated.serve_pb2 import (
+    DeploymentConfig as DeploymentConfigProto,
+    AutoscalingConfig as AutoscalingConfigProto,
+    DeploymentInfo as DeploymentInfoProto,
+    ReplicaConfig as ReplicaConfigProto,
+    DeploymentStatusInfo as DeploymentStatusInfoProto,
+)
 
 EndpointTag = str
 ReplicaTag = str
@@ -28,6 +38,21 @@ class DeploymentStatus(str, Enum):
 class DeploymentStatusInfo:
     status: DeploymentStatus
     message: str = ""
+
+    def to_proto(self):
+        data = self.dict()
+        return DeploymentStatusInfoProto(**data)
+
+    @classmethod
+    def from_proto_bytes(cls, proto_bytes: bytes):
+        proto = DeploymentStatusInfoProto.FromString(proto_bytes)
+        data = MessageToDict(
+            proto,
+            including_default_value_fields=True,
+            preserving_proto_field_name=True,
+            use_integers_for_enums=True,
+        )
+        return cls(**data)
 
 
 class DeploymentInfo:
@@ -94,6 +119,34 @@ class DeploymentInfo:
                 )
 
         return self._cached_actor_def
+
+    @classmethod
+    def from_proto_bytes(cls, proto_bytes: bytes):
+        proto = DeploymentInfoProto.FromString(proto_bytes)
+        data = MessageToDict(
+            proto,
+            including_default_value_fields=True,
+            preserving_proto_field_name=True,
+            use_integers_for_enums=True,
+        )
+
+        if "deployment_config" in data:
+            data["deployment_config"] = DeploymentConfig.from_proto_bytes()
+
+        return cls(**data)
+
+    def to_proto(self):
+        data = self.dict()
+        if data.get("deployment_config"):
+            if data.get("deployment_config").get("user_config"):
+                data.get("deployment_config")["user_config"] = pickle.dumps(data["user_config"])
+            if data.get("deployment_config").get("autoscaling_config"):
+                data.get("deployment_config")["autoscaling_config"] = AutoscalingConfigProto(
+                    **data["autoscaling_config"]
+                )
+        if data.get("replica_config"):
+            data["replica_config"] = ReplicaConfigProto(**data["replica_config"])
+        return DeploymentInfoProto(**data)
 
 
 @dataclass

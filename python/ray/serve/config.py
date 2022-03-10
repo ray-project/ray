@@ -27,6 +27,7 @@ from ray.serve.generated.serve_pb2 import (
     DeploymentConfig as DeploymentConfigProto,
     DeploymentLanguage,
     AutoscalingConfig as AutoscalingConfigProto,
+    ReplicaConfig as ReplicaConfigProto,
 )
 
 
@@ -128,6 +129,10 @@ class DeploymentConfig(BaseModel):
     # This flag is used to let controller know which language does
     # the deploymnent use.
     deployment_language: Any = DeploymentLanguage.PYTHON
+
+    name: str
+    version: Optional[str]
+    prev_version: Optional[str]
 
     class Config:
         validate_assignment = True
@@ -284,6 +289,18 @@ class ReplicaConfig:
         if not isinstance(custom_resources, dict):
             raise TypeError("resources in ray_actor_options must be a dictionary.")
         self.resource_dict.update(custom_resources)
+
+    @classmethod
+    def from_proto_bytes(cls, proto_bytes: bytes):
+        proto = ReplicaConfigProto.FromString(proto_bytes)
+        data = MessageToDict(
+            proto,
+            including_default_value_fields=True,
+            preserving_proto_field_name=True,
+            use_integers_for_enums=True,
+        )
+
+        return cls(**data)
 
 
 class DeploymentMode(str, Enum):

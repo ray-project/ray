@@ -86,6 +86,12 @@ message DeploymentConfig {
 
   // The deployment's autoscaling configuration.
   AutoscalingConfig autoscaling_config = 10;
+
+  string name = 11;
+
+  string version = 12;
+
+  string prev_version = 13;
 }
 
 // Deployment language.
@@ -131,11 +137,57 @@ message EndpointSet {
   map<string, EndpointInfo> endpoints = 1;
 }
 
-message ActorSet {
+message ActorNameList {
   repeated string names = 1;
 }
 
 message DeploymentVersion {
   string code_version = 1;
   bytes user_config = 2;
+}
+
+message ReplicaConfig {
+  string deployment_def = 1;
+  bytes init_args = 2;
+  bytes init_kwargs = 3;
+  map<string, double> ray_actor_options = 4;
+}
+
+message ActorHandleList {
+  repeated bytes handles = 1;
+}
+
+message DeploymentInfo {
+  DeploymentConfig deployment_config = 1;
+  ReplicaConfig replica_config = 2;
+  int32 start_time_ms = 3;
+  string actor_name = 4;
+  bytes serialized_deployment_def = 5;
+  string version = 6;
+  int32 end_time_ms = 7;
+}
+
+message DeploymentRoute {
+  DeploymentInfo deployment_info = 1;
+  string route = 2;
+}
+
+message DeploymentRouteList {
+  repeated DeploymentRoute deployment_routes = 1;
+}
+
+enum DeploymentStatus {
+  UPDATING = 0;
+  HEALTHY = 1;
+  UNHEALTHY = 2;
+}
+
+message DeploymentStatusInfo {
+  string name = 1;
+  DeploymentStatus status = 2;
+  string message = 3;
+}
+
+message DeploymentStatusInfoList {
+  repeated DeploymentStatusInfo deployment_status_infos = 1;
 }

@@ -21,12 +21,14 @@ from ray.serve.common import (
 from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY
 from ray.serve.endpoint_state import EndpointState
+from ray.serve.generated.serve_pb2 import ActorHandleList, DeploymentRouteList, DeploymentStatusInfoList
 from ray.serve.http_state import HTTPState
 from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.long_poll import LongPollHost
 from ray.serve.storage.kv_store import RayInternalKVStore
-from ray.serve.utils import logger
+from ray.serve.utils import logger, msgpack_serialize
 from ray.serve.autoscaling_metrics import InMemoryMetricsStore
+from ray.serve.generated.serve_pb2 import DeploymentRoute
 
 # Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
@@ -136,9 +138,12 @@ class ServeController:
         """Returns a dictionary of deployment name to config."""
         return self.endpoint_state.get_endpoints()
 
-    def get_http_proxies(self) -> Dict[NodeId, ActorHandle]:
-        """Returns a dictionary of node ID to http_proxy actor handles."""
-        return self.http_state.get_http_proxy_handles()
+    def get_http_proxies(self) -> bytes:
+        """Returns the http_proxy actor handle list serialized by protobuf."""
+        actor_handle_list = ActorHandleList()
+        for handle in self._proxy_actors.values():
+            actor_handle_list.handles.append(msgpack_serialize(handle))
+        return str.encode(actor_handle_list.SerializeToString())
 
     def autoscale(self) -> None:
         """Updates autoscaling deployments with calculated num_replicas."""
@@ -282,11 +287,8 @@ class ServeController:
 
     def deploy(
         self,
-        name: str,
         deployment_config_proto_bytes: bytes,
-        replica_config: ReplicaConfig,
-        version: Optional[str],
-        prev_version: Optional[str],
+        replica_config_proto_bytes: bytes,
         route_prefix: Optional[str],
         deployer_job_id: "ray._raylet.JobID",
     ) -> bool:
@@ -296,6 +298,11 @@ class ServeController:
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
         )
+        name = deployment_config.name
+        version = deployment_config.version
+        prev_version = deployment_config.prev_version
+
+        replica_config = ReplicaConfig.from_proto_bytes(replica_config_proto_bytes)
 
         if prev_version is not None:
             existing_deployment_info = self.deployment_state_manager.get_deployment(
@@ -360,7 +367,7 @@ class ServeController:
         self.endpoint_state.delete_endpoint(name)
         return self.deployment_state_manager.delete_deployment(name)
 
-    def get_deployment_info(self, name: str) -> Tuple[DeploymentInfo, str]:
+    def get_deployment_info(self, name: str) -> bytes:
         """Get the current information about a deployment.
 
         Args:
@@ -378,7 +385,11 @@ class ServeController:
 
         route = self.endpoint_state.get_endpoint_route(name)
 
-        return deployment_info, route
+        deployment_route = DeploymentRoute()
+        deployment_route.deployment_info = deployment_info.to_proto()
+        deployment_route.route = route
+
+        return deployment_route.SerializeToString()
 
     def list_deployments(
         self, include_deleted: Optional[bool] = False
@@ -395,17 +406,21 @@ class ServeController:
         Raises:
             KeyError if the deployment doesn't exist.
         """
-        return {
-            name: (
-                self.deployment_state_manager.get_deployment(
-                    name, include_deleted=include_deleted
-                ),
-                self.endpoint_state.get_endpoint_route(name),
-            )
-            for name in self.deployment_state_manager.get_deployment_configs(
-                include_deleted=include_deleted
-            )
-        }
+        deployment_route_list = DeploymentRouteList()
+        for name in self.deployment_state_manager.get_deployment_configs(include_deleted=include_deleted):
+            deployment_info = self.deployment_state_manager.get_deployment(name, include_deleted=include_deleted)
+            route = self.endpoint_state.get_endpoint_route(name)
+            deployment_route = DeploymentRoute()
+            deployment_route.deployment_info = deployment_info.to_proto()
+            deployment_route.route = route
+            deployment_route_list.deployment_routes.append(deployment_route)
 
-    def get_deployment_statuses(self) -> Dict[str, DeploymentStatusInfo]:
-        return self.deployment_state_manager.get_deployment_statuses()
+        return deployment_route_list.SerializeToString()
+
+    def get_deployment_statuses(self) -> bytes:
+        deployment_status_info_list = DeploymentStatusInfoList()
+        for name, deployment_status_info in self.deployment_state_manager.get_deployment_statuses():
+            deployment_status_info_proto = deployment_status_info.to_proto()
+            deployment_status_info_proto.name = name;
+            deployment_status_info_list.deployment_status_infos.append(deployment_status_info_proto)
+        return deployment_status_info_list.SerializeToString()

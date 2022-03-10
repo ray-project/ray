@@ -11,11 +11,13 @@ from functools import wraps
 from typing import Any, Callable, Dict, Optional, Tuple, Type, Union, List, overload
 
 from fastapi import APIRouter, FastAPI
+from google.protobuf.json_format import MessageToDict
 from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
 from ray.actor import ActorHandle
+from ray.serialization import _actor_handle_deserializer
 from ray.serve.common import (
     DeploymentInfo,
     DeploymentStatus,
@@ -37,6 +39,8 @@ from ray.serve.constants import (
 )
 from ray.serve.controller import ServeController
 from ray.serve.exceptions import RayServeException
+from ray.serve.generated.serve_pb2 import ActorHandleList, DeploymentRoute, DeploymentRouteList, \
+    DeploymentStatusInfoList
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
 from ray.serve.utils import (
@@ -210,7 +214,7 @@ class Client:
         """
         start = time.time()
         while time.time() - start < timeout_s:
-            statuses = ray.get(self._controller.get_deployment_statuses.remote())
+            statuses = get_deployment_statuses()
             if len(statuses) == 0:
                 break
             else:
@@ -235,7 +239,7 @@ class Client:
         """
         start = time.time()
         while time.time() - start < timeout_s or timeout_s < 0:
-            statuses = ray.get(self._controller.get_deployment_statuses.remote())
+            statuses = get_deployment_statuses()
             try:
                 status = statuses[name]
             except KeyError:
@@ -268,7 +272,7 @@ class Client:
         """
         start = time.time()
         while time.time() - start < timeout_s:
-            statuses = ray.get(self._controller.get_deployment_statuses.remote())
+            statuses = get_deployment_statuses()
             if name not in statuses:
                 break
             else:
@@ -360,14 +364,27 @@ class Client:
 
     @_ensure_connected
     def get_deployment_info(self, name: str) -> Tuple[DeploymentInfo, str]:
-        return ray.get(self._controller.get_deployment_info.remote(name))
+        deployment_route_bytes = ray.get(self._controller.get_deployment_info.remote(name))
+        proto = DeploymentRoute.ParseFromString(deployment_route_bytes)
+        return DeploymentInfo.from_proto_bytes(proto.deployment_info), proto.route
 
     @_ensure_connected
     def list_deployments(self) -> Dict[str, Tuple[DeploymentInfo, str]]:
-        return ray.get(self._controller.list_deployments.remote())
+        deployment_route_list_bytes = ray.get(self._controller.list_deployments.remote())
+        proto = DeploymentRouteList.ParseFromString(deployment_route_list_bytes)
+        return {
+            deployment_route.deployment_info.deployment_config.name:(DeploymentInfo.from_proto_bytes(deployment_route.deployment_info), deployment_route.route)
+            for deployment_route in proto.deployment_routes
+        }
 
     @_ensure_connected
     def get_deployment_statuses(self) -> Dict[str, DeploymentStatusInfo]:
+        deployment_status_info_list_bytes = ray.get(self._controller.get_deployment_statuses.remote())
+        proto = DeploymentStatusInfoList.ParseFromString(deployment_status_info_list_bytes)
+        return {
+            deployment_status_info.name: DeploymentStatusInfo.from_proto_bytes(proto)
+            for deployment_status_info in proto.deployment_status_infos
+        }
         return ray.get(self._controller.get_deployment_statuses.remote())
 
     @_ensure_connected
@@ -691,7 +708,12 @@ def start(
         detached=detached,
     )
 
-    proxy_handles = ray.get(controller.get_http_proxies.remote())
+    proxy_handles_bytes = ray.get(controller.get_http_proxies.remote())
+    proto = ActorHandleList.ParseFromString(proxy_handles_bytes)
+    proxy_handles = []
+    for handle_bytes in proto.handles:
+        proxy_handles.append(_actor_handle_deserializer(handle_bytes))
+
     if len(proxy_handles) > 0:
         try:
             ray.get(
