@@ -369,5 +369,20 @@ class TestYAMLTranslation:
             )
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_get_set_item(serve_instance):
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
+    )
+
+    with open(config_file_name, "r") as f:
+        app = Application.from_yaml(f)
+    app["shallow"].deploy()
+    app["one"].deploy()
+
+    assert requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
+    assert requests.get("http://localhost:8000/one").text == "2"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
