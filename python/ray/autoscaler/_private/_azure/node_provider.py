@@ -136,9 +136,11 @@ class AzureNodeProvider(NodeProvider):
         nodes() must be called again to refresh results.
 
         Examples:
-            >>> provider.non_terminated_nodes({TAG_RAY_NODE_KIND: "worker"})
+            >>> provider.non_terminated_nodes({TAG_RAY_NODE_KIND: "worker", TAG_RAY_CLUSTER_NAME: "cluster_name"})
             ["node-1", "node-2"]
         """
+        tag_cluster_name = {TAG_RAY_CLUSTER_NAME: self.cluster_name}
+        tag_filters.update(tag_cluster_name)
         nodes = self._get_filtered_nodes(tag_filters=tag_filters)
         return [k for k, v in nodes.items() if not v["status"].startswith("deallocat")]
 
