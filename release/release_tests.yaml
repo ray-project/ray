@@ -1014,6 +1014,8 @@
     type: sdk_command
     file_manager: job
 
+  alert: default
+
 - name: runtime_env_rte_ray_client
   group: Runtime env tests
   working_dir: runtime_env_tests
