@@ -300,6 +300,14 @@ py_test(
 )
 
 py_test(
+    name = "test_model_wrappers",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_http_adapters",
     size = "small",
     srcs = serve_tests_srcs,
