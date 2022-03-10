@@ -44,8 +44,8 @@ class ServeSubmissionClient(SubmissionClient):
             "running Ray 1.12 or higher.",
         )
 
-    def deploy_application(self, app_config: Dict) -> None:
-        response = self._do_request("PUT", DEPLOY_PATH, json_data=app_config)
+    def deploy_application(self, config: Dict) -> None:
+        response = self._do_request("PUT", DEPLOY_PATH, json_data=config)
 
         if response.status_code != 200:
             self._raise_error(response)
