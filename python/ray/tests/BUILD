@@ -191,6 +191,7 @@ py_test_module_list(
     "test_k8s_operator_unit_tests.py",
     "test_monitor.py",
     "test_response_cache.py",
+    "kuberay/test_autoscaling_config.py"
   ],
   size = "small",
   extra_srcs = SRCS,
