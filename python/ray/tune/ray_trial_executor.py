@@ -1011,7 +1011,7 @@ class RayTrialExecutor(TrialExecutor):
                     else:
                         raise TuneError(f"Unexpected future type - [{result_type}]")
                 except Exception as e:
-                    return ExecutorEvent(ExecutorEventType.ERROR, trial, e)
+                    return ExecutorEvent(ExecutorEventType.ERROR, trial, (e, traceback.format_exc()))
 
 
 def _to_gb(n_bytes):
