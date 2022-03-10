@@ -9,3 +9,7 @@
         :classes: btn-outline-primary
 
 .. _`Production RL Summit - March 29`: https://www.anyscale.com/production-rl-summit?utm_source=ray-docs&utm_medium=info-box&utm_campaign=rl_summit
+
+.. image:: https://ray-docs-promo.netlify.app/assets/img/rllib/bottom.png
+    :alt:
+    :target: https://ray-docs-promo.netlify.app/rllib
