@@ -53,14 +53,6 @@ py_test(
 )
 
 py_test(
-    name = "datasets_train",
-    size = "medium",
-    srcs = ["source/ray-core/_examples/datasets_train/datasets_train.py"],
-    tags = ["exclusive", "team:ml", "py37", "datasets_train"],
-    args = ["--smoke-test", "--num-workers=2", "--use-gpu"]
-)
-
-py_test(
     name = "plot_hyperparameter",
     size = "small",
     main = "test_myst_doc.py",
@@ -90,18 +82,10 @@ py_test(
     tags = ["exclusive", "team:ml"]
 )
 
-py_test(
-    name = "progress_bar",
-    main = "test_myst_doc.py",
-    srcs = ["test_myst_doc.py"],
-    size = "small",
-    args = ["--path", "doc/source/ray-core/examples/progress_bar.ipynb"],
-    data = ["//doc/source/ray-core/examples:core_examples"],
-    tags = ["exclusive", "team:ml"]
-)
+# --------------------------------------------------------------------
+# Test all doc/source/ray-core/doc_code code included in rst/md files.
+# --------------------------------------------------------------------
 
-
-# Directory: source/ray-core/doc_code
 py_test(
     name = "doc_code_tf_example",
     size = "small",
