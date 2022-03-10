@@ -93,9 +93,9 @@ def _configure_runtime_env(deployment: Deployment, updates: Dict):
 
     if deployment.ray_actor_options is None:
         deployment._ray_actor_options = {"runtime_env": updates}
-    elif "runtime_env" in deployment.ray_actor_options:
-        deployment.ray_actor_options["runtime_env"].update(updates)
     else:
+        current_env = deployment.ray_actor_options.get("runtime_env", {})
+        updates.update(current_env)
         deployment.ray_actor_options["runtime_env"] = updates
 
 
@@ -357,21 +357,13 @@ def deploy(config_file_name: str, address: str):
     ),
 )
 @click.option(
-    "--cluster-address",
-    "-c",
+    "--address",
+    "-a",
     default="auto",
     required=False,
     type=str,
-    help=('Address of the Ray cluster to query. Defaults to "auto".'),
-)
-@click.option(
-    "--dashboard-address",
-    "-d",
-    default="http://localhost:8265",
-    required=False,
-    type=str,
     help=(
-        'Address of the Ray dashboard to query. Defaults to "http://localhost:8265".'
+        'Address of the Ray cluster (not the dashboard) to query. Defaults to "auto".'
     ),
 )
 def run(
@@ -380,18 +372,25 @@ def run(
     runtime_env: str,
     runtime_env_json: str,
     working_dir: str,
-    cluster_address: str,
-    dashboard_address: str,
+    address: str,
 ):
 
     # Check if path provided is for config or import
     is_config = pathlib.Path(config_or_import_path).is_file()
     args, kwargs = _process_args_and_kwargs(args_and_kwargs)
+
+    # Calculate deployments' runtime env updates requested via args
     runtime_env_updates = parse_runtime_env_args(
         runtime_env=runtime_env,
         runtime_env_json=runtime_env_json,
         working_dir=working_dir,
     )
+
+    # Create ray.init()'s runtime_env
+    if "working_dir" in runtime_env_updates:
+        ray_runtime_env = {"working_dir": runtime_env_updates.pop("working_dir")}
+    else:
+        ray_runtime_env = {}
 
     if is_config:
         config_path = config_or_import_path
@@ -422,10 +421,7 @@ def run(
 
         app = Application([deployment.options(init_args=args, init_kwargs=kwargs)])
 
-    ray.init(address=cluster_address, namespace="serve")
-    ServeSubmissionClient(dashboard_address)._upload_working_dir_if_needed(
-        runtime_env_updates
-    )
+    ray.init(address=address, namespace="serve", runtime_env=ray_runtime_env)
 
     for deployment in app:
         _configure_runtime_env(deployment, runtime_env_updates)

@@ -862,7 +862,7 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
                 sender = ASGIHTTPSender()
                 await self._serve_app(
                     request.scope,
-                    request._receive,
+                    request.receive,
                     sender,
                 )
                 return sender.build_asgi_response()
@@ -1180,7 +1180,7 @@ class Deployment:
             _internal=True,
         )
 
-    def _bind(self, *args, **kwargs):
+    def bind(self, *args, **kwargs):
         raise AttributeError(
             "DAG building API should only be used for @ray.remote decorated "
             "class or function, not in serve deployment or library "

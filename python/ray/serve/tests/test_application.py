@@ -41,22 +41,6 @@ class TestAddDeployment:
             Application([self.C, self.f.options(name="C")])
 
 
-class TestDeploy2:
-    @serve.deployment
-    def f(*args):
-        return "got f"
-
-    @serve.deployment
-    class C:
-        def __call__(self, *args):
-            return "got C"
-
-    def test_deploy_valid(self, serve_instance):
-        Application([self.f, self.C]).deploy()
-        assert ray.get(serve.get_deployment("f").get_handle().remote()) == "got f"
-        assert ray.get(serve.get_deployment("C").get_handle().remote()) == "got C"
-
-
 class TestDeployGroup:
     @serve.deployment
     def f():
@@ -258,11 +242,11 @@ class TestDeployGroup:
     def test_import_path_deployment_decorated(self, serve_instance):
         func = serve.deployment(
             name="decorated_func",
-        )("ray.serve.tests.test_deploy.decorated_func")
+        )("ray.serve.tests.test_application.decorated_func")
 
         clss = serve.deployment(
             name="decorated_clss",
-        )("ray.serve.tests.test_deploy.DecoratedClass")
+        )("ray.serve.tests.test_application.DecoratedClass")
 
         deployments = [func, clss]
         responses = ["got decorated func", "got decorated class"]
