@@ -15,8 +15,7 @@ except ImportError:
     needs_warning = True
 
 # Whether progress bars are enabled in this thread.
-_enabled = threading.local()
-_enabled_default = not bool(env_integer("RAY_DATA_DISABLE_PROGRESS_BARS", 0))
+_enabled = not bool(env_integer("RAY_DATA_DISABLE_PROGRESS_BARS", 0))
 
 # Used a signal to cancel execution.
 _canceled_threads = set()
@@ -36,8 +35,8 @@ def set_progress_bars(enabled: bool) -> bool:
         Whether progress bars were previously enabled.
     """
     global _enabled
-    old_value = getattr(_enabled, "flag", _enabled_default)
-    _enabled.flag = enabled
+    old_value = _enabled
+    _enabled = enabled
     return old_value
 
 
@@ -45,7 +44,7 @@ class ProgressBar:
     """Thin wrapper around tqdm to handle soft imports."""
 
     def __init__(self, name: str, total: int, position: int = 0):
-        if not getattr(_enabled, "flag", _enabled_default):
+        if not _enabled or threading.current_thread() is not threading.main_thread():
             self._bar = None
         elif tqdm:
             self._bar = tqdm.tqdm(total=total, position=position)

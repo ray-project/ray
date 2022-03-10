@@ -6,7 +6,7 @@ import logging
 import ray
 from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset, T
-from ray.data.impl.progress_bar import ProgressBar, set_progress_bars
+from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl import progress_bar
 
 logger = logging.getLogger(__name__)
@@ -16,14 +16,10 @@ if TYPE_CHECKING:
 
 
 def pipeline_stage(fn: Callable[[], Dataset[T]]) -> Dataset[T]:
-    try:
-        prev = set_progress_bars(False)
-        # Force eager evaluation of all blocks in the pipeline stage. This
-        # prevents resource deadlocks due to overlapping stage execution (e.g.,
-        # task -> actor stage).
-        return fn().fully_executed()
-    finally:
-        set_progress_bars(prev)
+    # Force eager evaluation of all blocks in the pipeline stage. This
+    # prevents resource deadlocks due to overlapping stage execution (e.g.,
+    # task -> actor stage).
+    return fn().fully_executed()
 
 
 class PipelineExecutor:
