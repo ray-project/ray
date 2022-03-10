@@ -21,6 +21,13 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="alpha")
+class TrainingFailedError(RuntimeError):
+    """An error indicating that training has failed."""
+
+    pass
+
+
+@PublicAPI(stability="alpha")
 class Trainer(ConvertibleToTrainable, abc.ABC):
     """Defines interface for distributed training on Ray.
 
@@ -56,6 +63,10 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
 
         Returns:
             A Result object containing the training result.
+
+        Raises:
+            TrainingFailedError: If any failures during the execution of
+            ``self.as_trainable()``.
         """
         raise NotImplementedError
 
