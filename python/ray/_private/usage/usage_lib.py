@@ -168,10 +168,7 @@ def print_usage_stats_heads_up_message() -> None:
         if _is_in_third_party_library():
             return
 
-        print(
-            "Usage stats collection will be enabled by default in the next release. "
-            "See https://docs.google.com/document/d/1ZT-l9YbGHh-iWRUC91jS-ssQ5Qe2UQ43Lsoc1edCalc/edit#heading=h.17dss3b9evbj for more details"
-        )
+        print(usage_constant.USAGE_STATS_HEADS_UP_MESSAGE, file=sys.stderr)
     except Exception:
         # Silently ignore the exception since it doesn't affect the use of ray.
         pass
