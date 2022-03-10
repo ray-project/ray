@@ -14,7 +14,7 @@ from ray.serve.schema import (
     schema_to_serve_application,
     serve_application_status_to_schema,
 )
-from ray.serve.utils import logger
+from ray.serve.utils import logger, get_deployment_import_path
 from ray.serve.api import get_deployment_statuses
 from ray.autoscaler._private.cli_logger import _CliLogger
 from logging import Logger
@@ -62,7 +62,7 @@ class Application:
                 "new_deployment"
             )
 
-        self._deployments[deployment.name] = deployment
+        self.__setitem__(deployment.name, deployment)
 
     def deploy(self, blocking: bool = True):
         """Atomically deploys the Application's deployments to the Ray cluster.
@@ -243,6 +243,9 @@ class Application:
     def __setitem__(self, key: str, value: Deployment):
         """Set a deployment by name with dict syntax: app[name]=new_deployment
 
+        If the deployment's func_or_class is a function or class (and not an
+        import path), it overwrites it with that function or class's import path.
+
         Use this to overwrite existing deployments.
 
         Args:
@@ -257,6 +260,8 @@ class Application:
             raise TypeError(f"key should be a string, but got object of type {key}.")
         elif not isinstance(value, Deployment):
             raise TypeError(f"Got {type(Deployment)} for value. Expected deployment.")
+
+        value._func_or_class = get_deployment_import_path(value)
 
         self._deployments[key] = value
 
