@@ -1,3 +1,5 @@
+from typing import Optional
+
 from ray.tune.result_grid import ResultGrid
 from ray.util import PublicAPI
 
@@ -59,7 +61,7 @@ class Tuner:
 
     @classmethod
     def restore(cls, path: str) -> "Tuner":
-        """Restore Tuner after a previously failed run.
+        """Restores Tuner after a previously failed run.
 
         Args:
            path: The path where the previous failed run is checkpointed.
@@ -74,6 +76,20 @@ class Tuner:
         #  when a Tuner is restored and fit again?
         raise NotImplementedError
 
-    def fit(self) -> ResultGrid:
-        """Executes hyperparameter tuning job as configured and returns result."""
+    def fit(self) -> Optional[ResultGrid]:
+        """Executes hyperparameter tuning job as configured and returns result.
+
+        If exception happens during the run, user may refer to the end of console
+        output to restore the run.
+
+        Sample output looks like:
+
+        ```
+        ... the whole stack trace ...
+        RuntimeError: This is a simulated error!
+
+        Please use tuner = Tuner.restore("/Users/xwjiang/ray_results/tuner_resume")
+        to resume.
+        ```
+        """
         raise NotImplementedError
