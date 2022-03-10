@@ -10,6 +10,7 @@ from ray.serve.pipeline.tests.resources.test_dags import (
     get_multi_instantiation_class_deployment_in_init_args_dag,
     get_shared_deployment_handle_dag,
     get_multi_instantiation_class_nested_deployment_arg_dag,
+    get_inline_class_factory_dag,
 )
 
 
@@ -18,7 +19,7 @@ def test_build_simple_func_dag(serve_instance):
 
     app = build(ray_dag)
     app_handle = app.deploy()
-    assert ray.get(app_handle.remote([1, 2])) == 4
+    assert ray.get(app_handle.predict.remote([1, 2])) == 4
 
     for _ in range(5):
         resp = requests.get("http://127.0.0.1:8000/ingress", data=json.dumps([1, 2]))
@@ -30,7 +31,7 @@ def test_build_simple_class_with_class_method_dag(serve_instance):
 
     app = build(ray_dag)
     app_handle = app.deploy()
-    assert ray.get(app_handle.remote(1)) == 0.6
+    assert ray.get(app_handle.predict.remote(1)) == 0.6
 
     for _ in range(5):
         resp = requests.get("http://127.0.0.1:8000/ingress", data="1")
@@ -42,7 +43,7 @@ def test_build_func_class_with_class_method_dag(serve_instance):
 
     app = build(ray_dag)
     app_handle = app.deploy()
-    assert ray.get(app_handle.remote([1, 2, 3])) == 8
+    assert ray.get(app_handle.predict.remote([1, 2, 3])) == 8
 
     for _ in range(5):
         resp = requests.get("http://127.0.0.1:8000/ingress", data=json.dumps([1, 2, 3]))
@@ -61,7 +62,7 @@ def test_build_multi_instantiation_class_deployment_in_init_args(
 
     app = build(ray_dag)
     app_handle = app.deploy()
-    assert ray.get(app_handle.remote(1)) == 5
+    assert ray.get(app_handle.predict.remote(1)) == 5
 
     for _ in range(5):
         resp = requests.get("http://127.0.0.1:8000/ingress", data="1")
@@ -77,7 +78,7 @@ def test_build_shared_deployment_handle(serve_instance):
 
     app = build(ray_dag)
     app_handle = app.deploy()
-    assert ray.get(app_handle.remote(1)) == 4
+    assert ray.get(app_handle.predict.remote(1)) == 4
 
     for _ in range(5):
         resp = requests.get("http://127.0.0.1:8000/ingress", data="1")
@@ -94,12 +95,18 @@ def test_build_multi_instantiation_class_nested_deployment_arg(serve_instance):
 
     app = build(ray_dag)
     app_handle = app.deploy()
-    assert ray.get(app_handle.remote(1)) == 5
+    assert ray.get(app_handle.predict.remote(1)) == 5
 
     for _ in range(5):
         resp = requests.get("http://127.0.0.1:8000/ingress", data="1")
         assert resp.text == "5"
 
 def test_build_inline_func_dev_mode(serve_instance):
-    pass
+    ray_dag, _ = get_inline_class_factory_dag()
+    app = build(ray_dag)
+    app_handle = app.deploy()
+    assert ray.get(app_handle.predict.remote(2)) == 2
+    for _ in range(5):
+        resp = requests.get("http://127.0.0.1:8000/ingress", data="2")
+        assert resp.text == "2"
     # Should fail on to_yaml or to_json

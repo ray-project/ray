@@ -7,6 +7,7 @@ from ray.serve.pipeline.tests.resources.test_modules import (
     request_to_data_int,
     request_to_data_obj,
 )
+import ray
 from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
 
 
@@ -64,11 +65,12 @@ def get_multi_instantiation_class_nested_deployment_arg_dag():
 
     return ray_dag, dag_input
 
-def get_inline_func_dag():
+def get_inline_class_factory_dag():
     with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
         # inline returned class that is not suitable for prod deployment, but
         # not enforced for local testing
-        instance = ray.remote(class_factory()).bind()
-        ray_dag = instance.get.bind()
+        inline_counter = ray.remote(class_factory()).bind()
+        inline_counter.inc.bind(dag_input)
+        ray_dag = inline_counter.get.bind()
 
     return ray_dag, dag_input

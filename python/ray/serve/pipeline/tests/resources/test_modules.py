@@ -76,14 +76,17 @@ def combine(m1_output, m2_output, kwargs_output=0):
 
 
 def class_factory():
-    class MyInlineClass:
+    class InlineCounter:
         def __init__(self, val):
             self.val = val
+
+        def inc(self, val = 1):
+            self.val += val
 
         def get(self):
             return self.val
 
-    return MyInlineClass
+    return InlineCounter
 
 
 async def request_to_data_int(request: starlette.requests.Request):
