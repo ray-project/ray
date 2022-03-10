@@ -17,6 +17,7 @@
 #include <type_traits>
 
 #include "ray/common/asio/periodical_runner.h"
+#include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_report_poller.h"
 #include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
 
@@ -36,11 +37,18 @@ namespace syncer {
 class RaySyncer {
  public:
   RaySyncer(instrumented_io_context &main_thread,
-            std::unique_ptr<::ray::gcs::GrpcBasedResourceBroadcaster> braodcaster,
-            std::unique_ptr<::ray::gcs::GcsResourceReportPoller> poller)
-      : ticker_(main_thread),
-        broadcaster_(std::move(braodcaster)),
-        poller_(std::move(poller)) {}
+            std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
+            ::ray::gcs::GcsResourceManager &gcs_resource_manager)
+      : ticker_(main_thread), gcs_resource_manager_(gcs_resource_manager) {
+    poller_ = std::make_unique<::ray::gcs::GcsResourceReportPoller>(
+        raylet_client_pool, [this, &main_thread](const rpc::ResourcesData &data) {
+          main_thread.post([this, data]() mutable { Update(std::move(data)); },
+                           "ResourceUpdate");
+        });
+
+    broadcaster_ =
+        std::make_unique<::ray::gcs::GrpcBasedResourceBroadcaster>(raylet_client_pool);
+  }
 
   void Start() {
     poller_->Start();
@@ -105,6 +113,10 @@ class RaySyncer {
     if constexpr (std::is_same_v<T, rpc::NodeResourceChange>) {
       resources_buffer_proto_.add_batch()->mutable_change()->Swap(&update);
     } else if constexpr (std::is_same_v<T, rpc::ResourcesData>) {
+      if (!alive_nodes_.contains(update.node_id())) {
+        return;
+      }
+      gcs_resource_manager_.UpdateFromResourceReport(update);
       if (update.should_global_gc() || update.resources_total_size() > 0 ||
           update.resources_available_changed() || update.resource_load_changed()) {
         update.clear_resource_load();
@@ -116,6 +128,11 @@ class RaySyncer {
     }
   }
 
+  void Initialize(const ::ray::gcs::GcsInitData &gcs_init_data) {
+    poller_->Initialize(gcs_init_data);
+    broadcaster_->Initialize(gcs_init_data);
+  }
+
   /// Handle a node registration.
   /// This will call the sub-components add function.
   ///
@@ -123,6 +140,7 @@ class RaySyncer {
   void AddNode(const rpc::GcsNodeInfo &node_info) {
     broadcaster_->HandleNodeAdded(node_info);
     poller_->HandleNodeAdded(node_info);
+    alive_nodes_.insert(node_info.node_id());
   }
 
   /// Handle a node removal.
@@ -133,6 +151,7 @@ class RaySyncer {
     broadcaster_->HandleNodeRemoved(node_info);
     poller_->HandleNodeRemoved(node_info);
     resources_buffer_.erase(node_info.node_id());
+    alive_nodes_.erase(node_info.node_id());
   }
 
   std::string DebugString() { return broadcaster_->DebugString(); }
@@ -143,6 +162,9 @@ class RaySyncer {
 
   // ticker is running from main thread.
   PeriodicalRunner ticker_;
+  // The receiver of this syncer.
+  // TODO (iycheng): Generalize this module in the future PR.
+  ::ray::gcs::GcsResourceManager &gcs_resource_manager_;
   // All operations in broadcaster is supposed to be put in broadcast thread
   std::unique_ptr<std::thread> broadcast_thread_;
   instrumented_io_context broadcast_service_;
@@ -163,6 +185,7 @@ class RaySyncer {
   // it'll be copied to resources_buffer_proto_ and sent to other nodes.
   // resources_buffer_proto_ will be cleared after each broadcasting.
   absl::flat_hash_map<std::string, rpc::ResourcesData> resources_buffer_;
+  absl::flat_hash_set<std::string> alive_nodes_;
   rpc::ResourceUsageBroadcastData resources_buffer_proto_;
   friend class ray::GcsPlacementGroupSchedulerTest;
 };

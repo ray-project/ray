@@ -121,11 +121,11 @@ void GcsServer::Start() {
 }
 
 void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
-  // Init synchronization service
-  InitRaySyncer(gcs_init_data);
-
   // Init gcs resource manager.
   InitGcsResourceManager(gcs_init_data);
+
+  // Init synchronization service
+  InitRaySyncer(gcs_init_data);
 
   // Init gcs resource scheduler.
   InitGcsResourceScheduler();
@@ -403,34 +403,12 @@ void GcsServer::StoreGcsServerAddressInRedis() {
 void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
   /*
     The current synchronization flow is:
-        syncer::poller -> gcs_resource_manager -> syncer::buffer -> syncer::broadcast
-
-    Ideally, we should make it:
-        syncer::poller --> gcs_resource_manager
-                       |-> syncer::buffer -> syncer::broadcast
-    But right now, placement group resource update is preventing us from doing this.
-    TODO (iycheng): Update placement group resource reporting and update it to the
-    right flow.
+        raylet -> syncer::poller --> syncer::update -> gcs_resource_manager
+        gcs_placement_scheduler --/
   */
-  auto on_update = [this](const rpc::ResourcesData &report) {
-    main_service_.dispatch(
-        [this, report]() mutable {
-          gcs_resource_manager_->UpdateFromResourceReport(std::move(report));
-        },
-        "UpdateResourceReport");
-  };
-
-  auto gcs_resource_report_poller = std::make_unique<GcsResourceReportPoller>(
-      raylet_client_pool_, std::move(on_update));
-
-  gcs_resource_report_poller->Initialize(gcs_init_data);
-
-  auto grpc_based_resource_broadcaster =
-      std::make_unique<GrpcBasedResourceBroadcaster>(raylet_client_pool_);
-  grpc_based_resource_broadcaster->Initialize(gcs_init_data);
-  ray_syncer_ = std::make_unique<syncer::RaySyncer>(
-      main_service_, std::move(grpc_based_resource_broadcaster),
-      std::move(gcs_resource_report_poller));
+  ray_syncer_ = std::make_unique<syncer::RaySyncer>(main_service_, raylet_client_pool_,
+                                                    *gcs_resource_manager_);
+  ray_syncer_->Initialize(gcs_init_data);
   ray_syncer_->Start();
 }
 
