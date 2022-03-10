@@ -117,9 +117,10 @@ def _check_job_stopped(client: JobSubmissionClient, job_id: str) -> bool:
         "s3_working_dir",
         "pip_txt",
         "conda_yaml",
+        "local_py_modules",
     ],
 )
-def working_dir_option(request):
+def runtime_env_option(request):
     driver_script = """
 import ray
 ray.init(address="auto")
@@ -136,7 +137,7 @@ ray.get(f.remote())
             "entrypoint": "echo hello",
             "expected_logs": "hello\n",
         }
-    elif request.param == "local_working_dir":
+    elif request.param == "local_working_dir" or request.param == "local_py_modules":
         with tempfile.TemporaryDirectory() as tmp_dir:
             path = Path(tmp_dir)
 
@@ -157,11 +158,23 @@ ray.get(f.remote())
             with init_file.open(mode="w") as f:
                 f.write("from test_module.test import run_test\n")
 
-            yield {
-                "runtime_env": {"working_dir": tmp_dir},
-                "entrypoint": "python test.py",
-                "expected_logs": "Hello from test_module!\n",
-            }
+            if request.param == "local_working_dir":
+                yield {
+                    "runtime_env": {"working_dir": tmp_dir},
+                    "entrypoint": "python test.py",
+                    "expected_logs": "Hello from test_module!\n",
+                }
+            elif request.param == "local_py_modules":
+                yield {
+                    "runtime_env": {"py_modules": [str(Path(tmp_dir) / "test_module")]},
+                    "entrypoint": (
+                        "python -c 'import test_module;"
+                        "print(test_module.run_test())'"
+                    ),
+                    "expected_logs": "Hello from test_module!\n",
+                }
+            else:
+                raise ValueError(f"Unexpected pytest fixture option {request.param}")
     elif request.param == "s3_working_dir":
         yield {
             "runtime_env": {
@@ -203,7 +216,7 @@ ray.get(f.remote())
         assert False, f"Unrecognized option: {request.param}."
 
 
-def test_submit_job(job_sdk_client, working_dir_option, monkeypatch):
+def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
     # This flag allows for local testing of runtime env conda functionality
     # without needing a built Ray wheel.  Rather than insert the link to the
     # wheel into the conda spec, it links to the current Python site.
@@ -212,14 +225,14 @@ def test_submit_job(job_sdk_client, working_dir_option, monkeypatch):
     client = job_sdk_client
 
     job_id = client.submit_job(
-        entrypoint=working_dir_option["entrypoint"],
-        runtime_env=working_dir_option["runtime_env"],
+        entrypoint=runtime_env_option["entrypoint"],
+        runtime_env=runtime_env_option["runtime_env"],
     )
 
     wait_for_condition(_check_job_succeeded, client=client, job_id=job_id, timeout=120)
 
     logs = client.get_job_logs(job_id)
-    assert working_dir_option["expected_logs"] in logs
+    assert runtime_env_option["expected_logs"] in logs
 
 
 def test_http_bad_request(job_sdk_client):

@@ -69,8 +69,11 @@ class JobSubmissionClient(SubmissionClient):
         metadata.update(self._default_metadata)
 
         self._upload_working_dir_if_needed(runtime_env)
+        self._upload_py_modules_if_needed(runtime_env)
+
         # Run the RuntimeEnv constructor to parse local pip/conda requirements files.
         runtime_env = RuntimeEnv(**runtime_env).to_dict()
+
         req = JobSubmitRequest(
             entrypoint=entrypoint,
             job_id=job_id,
