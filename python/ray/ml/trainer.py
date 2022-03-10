@@ -1,12 +1,12 @@
 import abc
 import logging
-from typing import Dict, Union, Callable, Optional, TYPE_CHECKING
+from typing import Dict, Union, Callable, Optional, TYPE_CHECKING, Type
 
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.result import Result
 from ray.ml.config import ScalingConfig, RunConfig
-from ray.tune.trainable import ConvertibleToTrainable
+from ray.tune import Trainable
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:
@@ -28,7 +28,7 @@ class TrainingFailedError(RuntimeError):
 
 
 @PublicAPI(stability="alpha")
-class Trainer(ConvertibleToTrainable, abc.ABC):
+class Trainer(abc.ABC):
     """Defines interface for distributed training on Ray.
 
     Args:
@@ -64,4 +64,9 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
             TrainingFailedError: If any failures during the execution of
             ``self.as_trainable()``.
         """
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def as_trainable(self) -> Type[Trainable]:
+        """Convert self to a ``tune.Trainable`` class."""
         raise NotImplementedError
