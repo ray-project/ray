@@ -150,6 +150,7 @@ parts:
       - file: ray-contribute/getting-involved
         sections:
           - file: ray-contribute/development
+          - file: ray-contribute/docs
           - file: ray-contribute/fake-autoscaler
       - file: ray-core/configure
       - file: ray-observability/index

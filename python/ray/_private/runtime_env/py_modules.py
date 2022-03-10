@@ -43,6 +43,7 @@ def upload_py_modules_if_needed(
     runtime_env: Dict[str, Any],
     scratch_dir: str,
     logger: Optional[logging.Logger] = default_logger,
+    upload_fn=None,
 ) -> Dict[str, Any]:
     """Uploads the entries in py_modules and replaces them with a list of URIs.
 
@@ -88,14 +89,17 @@ def upload_py_modules_if_needed(
             if Path(module_path).is_dir():
                 excludes = runtime_env.get("excludes", None)
                 module_uri = get_uri_for_directory(module_path, excludes=excludes)
-                upload_package_if_needed(
-                    module_uri,
-                    scratch_dir,
-                    module_path,
-                    excludes=excludes,
-                    include_parent_dir=True,
-                    logger=logger,
-                )
+                if upload_fn is None:
+                    upload_package_if_needed(
+                        module_uri,
+                        scratch_dir,
+                        module_path,
+                        excludes=excludes,
+                        include_parent_dir=True,
+                        logger=logger,
+                    )
+                else:
+                    upload_fn(module_path, excludes=excludes)
             elif Path(module_path).suffix == ".whl":
                 module_uri = get_uri_for_package(Path(module_path))
                 if not package_exists(module_uri):
