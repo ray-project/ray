@@ -77,10 +77,10 @@ def combine(m1_output, m2_output, kwargs_output=0):
 
 def class_factory():
     class InlineCounter:
-        def __init__(self, val):
-            self.val = val
+        def __init__(self):
+            self.val = 0
 
-        def inc(self, val = 1):
+        def inc(self, val=1):
             self.val += val
 
         def get(self):

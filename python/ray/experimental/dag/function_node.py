@@ -1,3 +1,6 @@
+import base64
+from importlib import import_module
+import json
 from typing import Any, Dict, List
 
 
@@ -6,6 +9,7 @@ import ray.cloudpickle as pickle
 from ray.experimental.dag.dag_node import DAGNode
 from ray.experimental.dag.format_utils import get_dag_node_str
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
+from ray.serve.utils import parse_import_path
 
 
 class FunctionNode(DAGNode):
@@ -65,27 +69,31 @@ class FunctionNode(DAGNode):
     def to_json(self, encoder_cls) -> Dict[str, Any]:
         json_dict = super().to_json_base(encoder_cls, FunctionNode.__name__)
         import_path = self.get_import_path()
-        # error_message = (
-        #     "Function used in DAG should not be in-line defined when exporting"
-        #     "import path for deployment. Please ensure it has fully "
-        #     "qualified name with valid __module__ and __qualname__ for "
-        #     "import path, with no __main__ or <locals>. \n"
-        #     f"Current import path: {import_path}"
-        # )
-        # assert "__main__" not in import_path, error_message
-        # assert "<locals>" not in import_path, error_message
         if "__main__" in import_path or "<locals>" in import_path:
             # Best effort to get FQN string import path
-            json_dict["import_path"] = pickle.dumps(self._body)
+            json_dict["import_path"] = base64.b64encode(
+                pickle.dumps(self._body)
+            ).decode()
         else:
             json_dict["import_path"] = import_path
 
         return json_dict
 
     @classmethod
-    def from_json(cls, input_json, module, object_hook=None):
+    def from_json(cls, input_json, object_hook=None):
         assert input_json[DAGNODE_TYPE_KEY] == FunctionNode.__name__
         args_dict = super().from_json_base(input_json, object_hook=object_hook)
+
+        import_path = input_json["import_path"]
+        module = import_path
+        if isinstance(import_path, bytes):
+            # In dev mode we store pickled class or function body in import_path
+            # if we failed to get a FQN import path for it.
+            module = pickle.loads(base64.b64decode(json.loads(import_path)))
+        else:
+            module_name, attr_name = parse_import_path(import_path)
+            module = getattr(import_module(module_name), attr_name)
+
         node = cls(
             module._function,
             args_dict["args"],

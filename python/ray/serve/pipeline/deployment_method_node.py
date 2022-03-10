@@ -1,11 +1,17 @@
 from typing import Any, Dict, Optional, Tuple, List, Union
+import base64
+import json
+from importlib import import_module
 
+import ray.cloudpickle as pickle
+from ray.actor import ActorClass
 from ray.experimental.dag import DAGNode
 from ray.experimental.dag.format_utils import get_dag_node_str
 from ray.serve.handle import RayServeSyncHandle, RayServeHandle
 from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 from ray.serve.api import Deployment, DeploymentConfig
+from ray.serve.utils import parse_import_path
 
 
 class DeploymentMethodNode(DAGNode):
@@ -103,20 +109,33 @@ class DeploymentMethodNode(DAGNode):
     def get_deployment_method_name(self) -> str:
         return self._deployment_method_name
 
+    def get_body(self):
+        if isinstance(self._deployment._func_or_class, ActorClass):
+            return self._deployment._func_or_class.__ray_actor_class__
+        else:
+            return self._deployment._func_or_class
+
     def get_import_path(self) -> str:
         if isinstance(self._deployment._func_or_class, str):
             # We're processing a deserilized JSON node where import_path
             # is dag_node body.
             return self._deployment._func_or_class
         else:
-            body = self._deployment._func_or_class.__ray_actor_class__
+            body = self.get_body()
             return f"{body.__module__}.{body.__qualname__}"
 
     def to_json(self, encoder_cls) -> Dict[str, Any]:
         json_dict = super().to_json_base(encoder_cls, DeploymentMethodNode.__name__)
         json_dict["deployment_name"] = self.get_deployment_name()
         json_dict["deployment_method_name"] = self.get_deployment_method_name()
-        json_dict["import_path"] = self.get_import_path()
+        import_path = self.get_import_path()
+        if "__main__" in import_path or "<locals>" in import_path:
+            # Best effort to get FQN string import path
+            json_dict["import_path"] = base64.b64encode(
+                pickle.dumps(self.get_body())
+            ).decode()
+        else:
+            json_dict["import_path"] = import_path
 
         return json_dict
 
@@ -124,9 +143,19 @@ class DeploymentMethodNode(DAGNode):
     def from_json(cls, input_json, object_hook=None):
         assert input_json[DAGNODE_TYPE_KEY] == DeploymentMethodNode.__name__
         args_dict = super().from_json_base(input_json, object_hook=object_hook)
+        import_path = input_json["import_path"]
+        module = import_path
+        if isinstance(import_path, bytes):
+            # In dev mode we store pickled class or function body in import_path
+            # if we failed to get a FQN import path for it.
+            module = pickle.loads(base64.b64decode(json.loads(import_path)))
+        else:
+            module_name, attr_name = parse_import_path(input_json["import_path"])
+            module = getattr(import_module(module_name), attr_name)
+
         return cls(
             Deployment(
-                input_json["import_path"],
+                module,
                 input_json["deployment_name"],
                 # TODO: (jiaodong) Support deployment config from user input
                 DeploymentConfig(),

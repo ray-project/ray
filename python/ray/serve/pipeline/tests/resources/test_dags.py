@@ -65,6 +65,7 @@ def get_multi_instantiation_class_nested_deployment_arg_dag():
 
     return ray_dag, dag_input
 
+
 def get_inline_class_factory_dag():
     with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
         # inline returned class that is not suitable for prod deployment, but

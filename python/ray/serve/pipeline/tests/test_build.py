@@ -101,12 +101,16 @@ def test_build_multi_instantiation_class_nested_deployment_arg(serve_instance):
         resp = requests.get("http://127.0.0.1:8000/ingress", data="1")
         assert resp.text == "5"
 
+
 def test_build_inline_func_dev_mode(serve_instance):
     ray_dag, _ = get_inline_class_factory_dag()
+    print(ray_dag)
     app = build(ray_dag)
     app_handle = app.deploy()
     assert ray.get(app_handle.predict.remote(2)) == 2
-    for _ in range(5):
-        resp = requests.get("http://127.0.0.1:8000/ingress", data="2")
-        assert resp.text == "2"
+    for i in range(1, 5):
+        # Same deployment state start with 2 from python test, then
+        # increment by 1 each call
+        resp = requests.get("http://127.0.0.1:8000/ingress", data="1")
+        assert resp.text == str(2 + i)
     # Should fail on to_yaml or to_json
