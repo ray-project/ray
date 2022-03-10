@@ -628,7 +628,22 @@ def get_runtime_env_info(
     if not serialize:
         return proto_runtime_env_info
 
-    return json.dumps(
-        json.loads(json_format.MessageToJson(proto_runtime_env_info)),
-        sort_keys=True,
-    )
+    return json_format.MessageToJson(proto_runtime_env_info)
+
+
+def parse_runtime_env(runtime_env: Optional[Union[Dict, RuntimeEnv]]):
+    # Parse local pip/conda config files here. If we instead did it in
+    # .remote(), it would get run in the Ray Client server, which runs on
+    # a remote node where the files aren't available.
+    if runtime_env:
+        if isinstance(runtime_env, dict):
+            return RuntimeEnv(**(runtime_env or {}))
+        raise TypeError(
+            "runtime_env must be dict or RuntimeEnv, ",
+            f"but got: {type(runtime_env)}",
+        )
+    else:
+        # Keep the new_runtime_env as None.  In .remote(), we need to know
+        # if runtime_env is None to know whether or not to fall back to the
+        # runtime_env specified in the @ray.remote decorator.
+        return None

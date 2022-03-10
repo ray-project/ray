@@ -2,7 +2,6 @@ from functools import wraps
 import inspect
 import logging
 import uuid
-from typing import Union, Optional
 
 from ray import cloudpickle as pickle
 from ray.util.scheduling_strategies import (
@@ -15,7 +14,7 @@ from ray._private.client_mode_hook import client_mode_convert_function
 from ray._private.client_mode_hook import client_mode_should_convert
 from ray.util.placement_group import configure_placement_group_based_on_context
 import ray._private.signature
-from ray.runtime_env import RuntimeEnv, get_runtime_env_info
+from ray.runtime_env import get_runtime_env_info, parse_runtime_env
 from ray.util.tracing.tracing_helper import (
     _tracing_task_invocation,
     _inject_tracing_into_function,
@@ -141,7 +140,7 @@ class RemoteFunction:
             else retry_exceptions
         )
 
-        self._runtime_env = self._parse_runtime_env(runtime_env)
+        self._runtime_env = parse_runtime_env(runtime_env)
 
         self._placement_group = placement_group
         self._decorator = getattr(function, "__ray_invocation_decorator__", None)
@@ -159,23 +158,6 @@ class RemoteFunction:
             return self._remote(args=args, kwargs=kwargs)
 
         self.remote = _remote_proxy
-
-    def _parse_runtime_env(self, runtime_env: Optional[Union[dict, RuntimeEnv]]):
-        # Parse local pip/conda config files here. If we instead did it in
-        # .remote(), it would get run in the Ray Client server, which runs on
-        # a remote node where the files aren't available.
-        if runtime_env:
-            if isinstance(runtime_env, dict):
-                return RuntimeEnv(**(runtime_env or {}))
-            raise TypeError(
-                "runtime_env must be dict or RuntimeEnv, ",
-                f"but got: {type(runtime_env)}",
-            )
-        else:
-            # Keep the runtime_env as None.  In .remote(), we need to know if
-            # runtime_env is None to know whether or not to fall back to the
-            # runtime_env specified in the @ray.remote decorator.
-            return None
 
     def __call__(self, *args, **kwargs):
         raise TypeError(
@@ -222,11 +204,7 @@ class RemoteFunction:
         """
 
         func_cls = self
-        # Parse local pip/conda config files here. If we instead did it in
-        # .remote(), it would get run in the Ray Client server, which runs on
-        # a remote node where the files aren't available.
-
-        new_runtime_env = self._parse_runtime_env(runtime_env)
+        new_runtime_env = parse_runtime_env(runtime_env)
 
         options = dict(
             num_returns=num_returns,
