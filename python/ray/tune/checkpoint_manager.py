@@ -28,7 +28,7 @@ class _TuneCheckpoint:
         self.storage = storage
         self.value = value
         self.result = result or {}
-        self.node_ip = node_ip or result.get(NODE_IP, None)
+        self.node_ip = node_ip or self.result.get(NODE_IP, None)
         # The logical order of checkpoints (both in memory and persistent)
         # The more recent checkpoints have larger order.
         # The most recent checkpoint is used to restore the trial.
