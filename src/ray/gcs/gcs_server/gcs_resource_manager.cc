@@ -88,9 +88,8 @@ void GcsResourceManager::UpdateResources(
     }
 
     auto start = absl::GetCurrentTimeNanos();
-    auto on_done = [this, node_id, start,
-                    changed_resources =
-                        std::move(changed_resources)](const Status &status) {
+    auto on_done = [node_id, start, changed_resources = std::move(changed_resources)](
+                       const Status &status) {
       auto end = absl::GetCurrentTimeNanos();
       ray::stats::STATS_gcs_new_resource_creation_latency_ms.Record(
           absl::Nanoseconds(end - start) / absl::Milliseconds(1));
@@ -148,7 +147,7 @@ void GcsResourceManager::DeleteResources(const NodeID &node_id,
           resource_value.Double());
     }
 
-    auto on_done = [this, node_id, resource_names = std::move(resource_names)](
+    auto on_done = [node_id, resource_names = std::move(resource_names)](
                        const Status &status) { RAY_CHECK_OK(status); };
     RAY_CHECK_OK(
         gcs_table_storage_->NodeResourceTable().Put(node_id, resource_map, on_done));
