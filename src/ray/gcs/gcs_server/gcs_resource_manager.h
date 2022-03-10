@@ -18,11 +18,10 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
-#include "ray/common/task/scheduling_resources.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
-#include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
+#include "ray/raylet/scheduling/cluster_resource_data.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -85,8 +84,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// Get the resources of all nodes in the cluster.
   ///
   /// \return The resources of all nodes in the cluster.
-  const absl::flat_hash_map<NodeID, std::shared_ptr<SchedulingResources>>
-      &GetClusterResources() const;
+  const absl::flat_hash_map<NodeID, std::shared_ptr<Node>> &GetClusterResources() const;
 
   /// Handle a node registration.
   ///
@@ -102,7 +100,9 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   ///
   /// \param node_id Id of a node.
   /// \param resources Available resources of a node.
-  void SetAvailableResources(const NodeID &node_id, const ResourceSet &resources);
+  void SetAvailableResources(
+      const NodeID &node_id,
+      const absl::flat_hash_map<std::string, double> &resource_map);
 
   /// Acquire resources from the specified node. It will deduct directly from the node
   /// resources.
@@ -110,7 +110,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// \param node_id Id of a node.
   /// \param required_resources Resources to apply for.
   /// \return True if acquire resources successfully. False otherwise.
-  bool AcquireResources(const NodeID &node_id, const ResourceSet &required_resources);
+  bool AcquireResources(const NodeID &node_id, const ResourceRequest &required_resources);
 
   /// Release the resources of the specified node. It will be added directly to the node
   /// resources.
@@ -118,7 +118,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// \param node_id Id of a node.
   /// \param acquired_resources Resources to release.
   /// \return True if release resources successfully. False otherwise.
-  bool ReleaseResources(const NodeID &node_id, const ResourceSet &acquired_resources);
+  bool ReleaseResources(const NodeID &node_id, const ResourceRequest &acquired_resources);
 
   /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
@@ -158,10 +158,14 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
  private:
   /// Delete the scheduling resources of the specified node.
   ///
-  /// \param node_id Id of a node.
-  /// \param deleted_resources Deleted resources of a node.
-  void DeleteResources(const NodeID &node_id,
-                       const std::vector<std::string> &deleted_resources);
+  /// \param node_resources Id of a node.
+  /// \param resource_names Deleted resources of a node.
+  void DeleteResources(NodeResources *node_resources,
+                       const std::vector<std::string> &resource_names);
+
+  void UpdateResourceCapacity(NodeResources *node_resources,
+                              const std::string &resource_name,
+                              double capacity);
 
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;
@@ -173,8 +177,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// Storage for GCS tables.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// Map from node id to the scheduling resources of the node.
-  absl::flat_hash_map<NodeID, std::shared_ptr<SchedulingResources>>
-      cluster_scheduling_resources_;
+  absl::flat_hash_map<NodeID, std::shared_ptr<Node>> cluster_scheduling_resources_;
   /// Placement group load information that is used for autoscaler.
   absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
   /// Normal task resources could be uploaded by 1) Raylets' periodical reporters; 2)
@@ -204,3 +207,34 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
 
 }  // namespace gcs
 }  // namespace ray
+
+namespace std {
+template <>
+struct hash<google::protobuf::Map<std::string, double>> {
+  size_t operator()(google::protobuf::Map<std::string, double> const &k) const {
+    size_t seed = k.size();
+    for (auto &elem : k) {
+      seed ^= std::hash<std::string>()(elem.first);
+      seed ^= std::hash<double>()(elem.second);
+    }
+    return seed;
+  }
+};
+
+template <>
+struct equal_to<google::protobuf::Map<std::string, double>> {
+  bool operator()(const google::protobuf::Map<std::string, double> &left,
+                  const google::protobuf::Map<std::string, double> &right) const {
+    if (left.size() != right.size()) {
+      return false;
+    }
+    for (const auto &entry : left) {
+      auto iter = right.find(entry.first);
+      if (iter == right.end() || iter->second != entry.second) {
+        return false;
+      }
+    }
+    return true;
+  }
+};
+}  // namespace std

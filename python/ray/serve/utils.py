@@ -1,3 +1,5 @@
+from functools import wraps
+import importlib
 from itertools import groupby
 import json
 import logging
@@ -5,9 +7,10 @@ import pickle
 import random
 import string
 import time
-from typing import Iterable, Tuple
+from typing import Iterable, List, Tuple, Dict, Any
 import os
 import traceback
+from enum import Enum
 from ray.actor import ActorHandle
 
 import requests
@@ -18,9 +21,13 @@ import ray
 import ray.serialization_addons
 from ray.exceptions import RayTaskError
 from ray.util.serialization import StandaloneSerializationContext
-from ray.serve.constants import HTTP_PROXY_TIMEOUT
 from ray.serve.http_util import build_starlette_request, HTTPRequestWrapper
-from enum import Enum
+from ray.serve.constants import (
+    HTTP_PROXY_TIMEOUT,
+    SERVE_HANDLE_JSON_KEY,
+    ServeHandleType,
+)
+from ray import serve
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
@@ -103,9 +110,67 @@ class ServeEncoder(json.JSONEncoder):
         return super().default(o)
 
 
+class ServeHandleEncoder(json.JSONEncoder):
+    """JSON encoder for RayServeHandle and RayServeSyncHandle. Use to enforce
+    JSON serialization of deployment init args & kwargs to faciliate serve
+    pipeline deployment as well as operationaling serve.
+    """
+
+    def default(self, obj):
+        # Import RayServeHandle in utils file lead to import errors
+        if type(obj).__name__ == "RayServeSyncHandle":
+            return {
+                SERVE_HANDLE_JSON_KEY: ServeHandleType.SYNC,
+                "deployment_name": obj.deployment_name,
+                "_internal_pickled_http_request": obj._pickled_http_request,
+            }
+        elif type(obj).__name__ == "RayServeHandle":
+            return {
+                SERVE_HANDLE_JSON_KEY: ServeHandleType.ASYNC,
+                "deployment_name": obj.deployment_name,
+                "_internal_pickled_http_request": obj._pickled_http_request,
+            }
+        else:
+            return super().default(obj)
+
+
+def serve_handle_object_hook(ray_serve_handle_json: Dict[str, Any]):
+    """Return RayServeHandle given a JSON serialized dict. Re-constructs the
+    object by fullfilling the following fieds that matches our signature of
+    `get_handle()`:
+        - controller handle
+        - deployment name
+        - _internal_pickled_http_request
+    """
+
+    if SERVE_HANDLE_JSON_KEY in ray_serve_handle_json:
+        is_sync = (
+            True
+            if ray_serve_handle_json[SERVE_HANDLE_JSON_KEY] == ServeHandleType.SYNC
+            else False
+        )
+        return serve.api._get_global_client().get_handle(
+            ray_serve_handle_json["deployment_name"],
+            sync=is_sync,
+            missing_ok=True,
+            _internal_pickled_http_request=ray_serve_handle_json[
+                "_internal_pickled_http_request"
+            ],
+        )
+    else:
+        # Not RayServeHandle type.
+        try:
+            return json.loads(ray_serve_handle_json)
+        except Exception:
+            return ray_serve_handle_json
+
+
 @ray.remote(num_cpus=0)
 def block_until_http_ready(
-    http_endpoint, backoff_time_s=1, check_ready=None, timeout=HTTP_PROXY_TIMEOUT
+    http_endpoint,
+    backoff_time_s=1,
+    check_ready=None,
+    timeout=HTTP_PROXY_TIMEOUT,
 ):
     http_is_ready = False
     start_time = time.time()
@@ -281,3 +346,40 @@ class JavaActorHandleProxy:
             components = key.split("_")
             camel_case_key = components[0] + "".join(x.title() for x in components[1:])
         return getattr(self.handle, camel_case_key)
+
+
+def require_packages(packages: List[str]):
+    """Decorator making sure function run in specified environments
+
+    Examples:
+        >>> @require_packages(["numpy", "package_a"])
+            def func():
+                import numpy as np
+        >>> func()
+            ImportError: func requires ["numpy", "package_a"] but
+            ["package_a"] are not available, please pip install them.
+    """
+
+    def decorator(func):
+        @wraps(func)
+        def wrapped(*args, **kwargs):
+            if not hasattr(func, "_require_packages_checked"):
+                missing_packages = []
+                for package in packages:
+                    try:
+                        importlib.import_module(package)
+                    except ModuleNotFoundError:
+                        missing_packages.append(package)
+                if len(missing_packages) > 0:
+                    raise ImportError(
+                        f"{func} requires packages {packages} to run but "
+                        f"{missing_packages} are missing. Please "
+                        "`pip install` them or add them to "
+                        "`runtime_env`."
+                    )
+                setattr(func, "_require_packages_checked", True)
+            return func(*args, **kwargs)
+
+        return wrapped
+
+    return decorator

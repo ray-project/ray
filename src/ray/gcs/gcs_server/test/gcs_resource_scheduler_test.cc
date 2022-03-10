@@ -53,8 +53,21 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     const auto &cluster_resource = gcs_resource_manager_->GetClusterResources();
     auto iter = cluster_resource.find(node_id);
     ASSERT_TRUE(iter != cluster_resource.end());
-    ASSERT_EQ(iter->second->GetAvailableResources().GetResource(resource_name).Double(),
-              resource_value);
+    const auto &node_resources = iter->second->GetLocalView();
+    auto resource_id = scheduling::ResourceID(resource_name).ToInt();
+    ASSERT_NE(resource_id, -1);
+
+    const ResourceCapacity *resource_capacity = nullptr;
+    if (resource_id >= 0 && resource_id < PredefinedResources_MAX) {
+      resource_capacity = &node_resources.predefined_resources[resource_id];
+    } else {
+      auto iter = node_resources.custom_resources.find(resource_id);
+      if (iter != node_resources.custom_resources.end()) {
+        resource_capacity = &iter->second;
+      }
+    }
+    ASSERT_TRUE(resource_capacity != nullptr);
+    ASSERT_EQ(resource_capacity->available.Double(), resource_value);
   }
 
   void TestResourceLeaks(const gcs::SchedulingType &scheduling_type) {
@@ -65,11 +78,12 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     AddClusterResources(node_id, cpu_resource, node_cpu_num);
 
     // Scheduling succeeded and node resources are used up.
-    std::vector<ResourceSet> required_resources_list;
+    std::vector<ResourceRequest> required_resources_list;
     absl::flat_hash_map<std::string, double> resource_map;
     for (int bundle_cpu_num = 1; bundle_cpu_num <= 3; ++bundle_cpu_num) {
       resource_map[cpu_resource] = bundle_cpu_num;
-      required_resources_list.emplace_back(resource_map);
+      required_resources_list.emplace_back(ResourceMapToResourceRequest(
+          resource_map, /*requires_object_store_memory=*/false));
     }
     const auto &result1 =
         gcs_resource_scheduler_->Schedule(required_resources_list, scheduling_type);
@@ -81,7 +95,9 @@ class GcsResourceSchedulerTest : public ::testing::Test {
 
     // Scheduling failure.
     resource_map[cpu_resource] = 5;
-    required_resources_list.emplace_back(resource_map);
+    required_resources_list.emplace_back(
+        ResourceMapToResourceRequest(resource_map,
+                                     /*requires_object_store_memory=*/false));
     const auto &result2 =
         gcs_resource_scheduler_->Schedule(required_resources_list, scheduling_type);
     ASSERT_TRUE(result2.first == gcs::SchedulingResultStatus::FAILED);
@@ -114,10 +130,11 @@ TEST_F(GcsResourceSchedulerTest, TestNodeFilter) {
   AddClusterResources(node_id, cpu_resource, node_cpu_num);
 
   // Scheduling failure.
-  std::vector<ResourceSet> required_resources_list;
+  std::vector<ResourceRequest> required_resources_list;
   absl::flat_hash_map<std::string, double> resource_map;
   resource_map[cpu_resource] = 1;
-  required_resources_list.emplace_back(resource_map);
+  required_resources_list.emplace_back(
+      ResourceMapToResourceRequest(resource_map, /*requires_object_store_memory=*/false));
   const auto &result1 = gcs_resource_scheduler_->Schedule(
       required_resources_list, gcs::SchedulingType::STRICT_SPREAD, [](const NodeID &) {
         return false;
@@ -144,11 +161,12 @@ TEST_F(GcsResourceSchedulerTest, TestSchedulingResultStatusForStrictStrategy) {
   AddClusterResources(node_tow_id, cpu_resource, node_cpu_num);
 
   // Mock a request that has three required resources.
-  std::vector<ResourceSet> required_resources_list;
+  std::vector<ResourceRequest> required_resources_list;
   absl::flat_hash_map<std::string, double> resource_map;
   resource_map[cpu_resource] = 1;
   for (int node_number = 0; node_number < 3; node_number++) {
-    required_resources_list.emplace_back(resource_map);
+    required_resources_list.emplace_back(ResourceMapToResourceRequest(
+        resource_map, /*requires_object_store_memory=*/false));
   }
 
   const auto &result1 = gcs_resource_scheduler_->Schedule(
@@ -165,7 +183,8 @@ TEST_F(GcsResourceSchedulerTest, TestSchedulingResultStatusForStrictStrategy) {
   required_resources_list.clear();
   resource_map.clear();
   resource_map[cpu_resource] = 50;
-  required_resources_list.emplace_back(resource_map);
+  required_resources_list.emplace_back(
+      ResourceMapToResourceRequest(resource_map, /*requires_object_store_memory=*/false));
 
   const auto &result2 = gcs_resource_scheduler_->Schedule(
       required_resources_list, gcs::SchedulingType::STRICT_PACK);

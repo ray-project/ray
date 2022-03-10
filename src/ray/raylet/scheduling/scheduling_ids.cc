@@ -17,6 +17,7 @@
 namespace ray {
 
 int64_t StringIdMap::Get(const std::string &string_id) const {
+  absl::ReaderMutexLock lock(&mutex_);
   auto it = string_to_int_.find(string_id);
   if (it == string_to_int_.end()) {
     return -1;
@@ -26,6 +27,7 @@ int64_t StringIdMap::Get(const std::string &string_id) const {
 };
 
 std::string StringIdMap::Get(uint64_t id) const {
+  absl::ReaderMutexLock lock(&mutex_);
   std::string id_string;
   auto it = int_to_string_.find(id);
   if (it == int_to_string_.end()) {
@@ -37,6 +39,7 @@ std::string StringIdMap::Get(uint64_t id) const {
 };
 
 int64_t StringIdMap::Insert(const std::string &string_id, uint8_t max_id) {
+  absl::WriterMutexLock lock(&mutex_);
   auto sit = string_to_int_.find(string_id);
   if (sit == string_to_int_.end()) {
     int64_t id = hasher_(string_id);
@@ -63,12 +66,17 @@ int64_t StringIdMap::Insert(const std::string &string_id, uint8_t max_id) {
 };
 
 StringIdMap &StringIdMap::InsertOrDie(const std::string &string_id, int64_t value) {
-  RAY_CHECK(Get(string_id) == -1) << string_id << " or " << value << " already exist!";
-  string_to_int_.emplace(string_id, value);
-  int_to_string_.emplace(value, string_id);
+  absl::WriterMutexLock lock(&mutex_);
+  RAY_CHECK(string_to_int_.emplace(string_id, value).second)
+      << string_id << " or " << value << " already exist!";
+  RAY_CHECK(int_to_string_.emplace(value, string_id).second)
+      << string_id << " or " << value << " already exist!";
   return *this;
 }
 
-int64_t StringIdMap::Count() { return string_to_int_.size(); }
+int64_t StringIdMap::Count() {
+  absl::ReaderMutexLock lock(&mutex_);
+  return string_to_int_.size();
+}
 
 }  // namespace ray

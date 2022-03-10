@@ -1,3 +1,5 @@
+from enum import Enum
+
 #: Actor name used to register controller
 SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR"
 
@@ -74,3 +76,11 @@ DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30
 #: Number of times in a row that a replica must fail the health check before
 #: being marked unhealthy.
 REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
+
+# Key used to idenfity given json represents a serialized RayServeHandle
+SERVE_HANDLE_JSON_KEY = "__SerializedServeHandle__"
+
+
+class ServeHandleType(str, Enum):
+    SYNC = "SYNC"
+    ASYNC = "ASYNC"

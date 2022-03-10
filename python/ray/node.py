@@ -932,12 +932,10 @@ class Node:
         self._webui_url, process_info = ray._private.services.start_dashboard(
             require_dashboard,
             self._ray_params.dashboard_host,
-            self.redis_address,
             self.gcs_address,
             self._temp_dir,
             self._logs_dir,
             self._session_dir,
-            redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
