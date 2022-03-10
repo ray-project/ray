@@ -498,7 +498,7 @@ class DatasetPipeline(Generic[T]):
             schema is not known.
         """
         if self._first_dataset is None:
-            self._first_dataset, self._dataset_iter = self._peak()
+            self._first_dataset, self._dataset_iter = self._peek()
         return self._first_dataset.schema(fetch_if_missing=fetch_if_missing)
 
     def count(self) -> int:
@@ -647,7 +647,7 @@ class DatasetPipeline(Generic[T]):
 
         return EpochDelimitedIterator(self)
 
-    def _peak(self) -> (Dataset[T], Iterator[Dataset[T]]):
+    def _peek(self) -> (Dataset[T], Iterator[Dataset[T]]):
         self._optimize_stages()
         dataset_iter = PipelineExecutor(self)
         return next(dataset_iter), dataset_iter
@@ -667,7 +667,7 @@ class DatasetPipeline(Generic[T]):
             iter = itertools.chain([self._first_dataset], self._dataset_iter)
             del self._dataset_iter
         else:
-            self._first_dataset, rest = self._peak()
+            self._first_dataset, rest = self._peek()
             iter = itertools.chain([self._first_dataset], rest)
         return iter
 
