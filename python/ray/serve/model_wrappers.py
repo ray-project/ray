@@ -9,6 +9,7 @@ from ray.ml.checkpoint import Checkpoint
 from ray.ml.predictor import Predictor, DataBatchType
 from ray.serve.http_util import ASGIHTTPSender
 from ray import serve
+import ray
 
 DEFAULT_INPUT_SCHEMA = "ray.serve.http_adapters.array_to_databatch"
 InputSchemaFn = Callable[[Any], DataBatchType]
@@ -97,7 +98,10 @@ class ModelWrapper:
         @self.app.post("/predict")
         @serve.batch(**batching_params)
         async def handle_request(inp=Depends(input_schema)):
-            return self.model.predict(inp)
+            out = self.model.predict(inp)
+            if isinstance(out, ray.ObjectRef):
+                out = await out
+            return out
 
     async def __call__(self, request: starlette.requests.Request):
         # NOTE(simon): This is now duplicated from ASGIAppWrapper because we need to
@@ -105,3 +109,6 @@ class ModelWrapper:
         sender = ASGIHTTPSender()
         await self.app(request.scope, receive=request.receive, send=sender)
         return sender.build_asgi_response()
+
+    def predict(self, inp):
+        return self.model.predict(inp)
