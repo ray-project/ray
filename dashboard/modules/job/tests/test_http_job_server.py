@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 import os
+import shutil
 import sys
 import json
 import yaml
@@ -118,15 +119,14 @@ def _check_job_stopped(client: JobSubmissionClient, job_id: str) -> bool:
         "s3_working_dir",
         "local_py_modules",
         "working_dir_and_local_py_modules_whl",
-        # XXX Add test for working dir local zip,
-        # XXX python -c "import pip_install_test"
+        "local_working_dir_zip",
         "pip_txt",
         "conda_yaml",
         "local_py_modules",
     ],
 )
 def runtime_env_option(request):
-    driver_script = """
+    import_in_task_script = """
 import ray
 ray.init(address="auto")
 
@@ -144,6 +144,7 @@ ray.get(f.remote())
         }
     elif request.param in {
         "local_working_dir",
+        "local_working_dir_zip",
         "local_py_modules",
         "working_dir_and_local_py_modules_whl",
     }:
@@ -170,6 +171,15 @@ ray.get(f.remote())
             if request.param == "local_working_dir":
                 yield {
                     "runtime_env": {"working_dir": tmp_dir},
+                    "entrypoint": "python test.py",
+                    "expected_logs": "Hello from test_module!\n",
+                }
+            elif request.param == "local_working_dir_zip":
+                local_zipped_dir = shutil.make_archive(
+                    os.path.join(tmp_dir, "test"), "zip", tmp_dir
+                )
+                yield {
+                    "runtime_env": {"working_dir": local_zipped_dir},
                     "entrypoint": "python test.py",
                     "expected_logs": "Hello from test_module!\n",
                 }
@@ -218,9 +228,10 @@ ray.get(f.remote())
             runtime_env = {"pip": relative_filepath}
             yield {
                 "runtime_env": runtime_env,
-                "entrypoint": f"python -c '{driver_script}'",
-                # TODO(architkulkarni): Uncomment after #22968 is fixed.
-                # "entrypoint": "python -c 'import pip_install_test'",
+                "entrypoint": (
+                    f"python -c 'import pip_install_test' && "
+                    f"python -c '{import_in_task_script}'"
+                ),
                 "expected_logs": "Good job!  You installed a pip module.",
             }
     elif request.param == "conda_yaml":
