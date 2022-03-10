@@ -74,7 +74,7 @@ def _kill_http_proxies():
     proxy_handles_bytes = ray.get(
         serve.api._global_client._controller.get_http_proxies.remote()
     )
-    proto = ActorHandleList.ParseFromString(proxy_handles_bytes)
+    proto = ActorHandleList.FromString(ray.get(serve.api._global_client._controller.get_http_proxies.remote()))
     http_proxies = []
     for handle_bytes in proto.handles:
         http_proxies.append(_actor_handle_deserializer(handle_bytes))

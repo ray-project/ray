@@ -365,22 +365,22 @@ class Client:
     @_ensure_connected
     def get_deployment_info(self, name: str) -> Tuple[DeploymentInfo, str]:
         deployment_route_bytes = ray.get(self._controller.get_deployment_info.remote(name))
-        proto = DeploymentRoute.ParseFromString(deployment_route_bytes)
-        return DeploymentInfo.from_proto_bytes(proto.deployment_info), proto.route
+        proto = DeploymentRoute.ParseString(deployment_route_bytes)
+        return DeploymentInfo.from_proto(proto.deployment_info), proto.route
 
     @_ensure_connected
     def list_deployments(self) -> Dict[str, Tuple[DeploymentInfo, str]]:
         deployment_route_list_bytes = ray.get(self._controller.list_deployments.remote())
-        proto = DeploymentRouteList.ParseFromString(deployment_route_list_bytes)
+        proto = DeploymentRouteList.FromString(deployment_route_list_bytes)
         return {
-            deployment_route.deployment_info.deployment_config.name:(DeploymentInfo.from_proto_bytes(deployment_route.deployment_info), deployment_route.route)
+            deployment_route.deployment_info.deployment_config.name:(DeploymentInfo.from_proto(deployment_route.deployment_info), deployment_route.route)
             for deployment_route in proto.deployment_routes
         }
 
     @_ensure_connected
     def get_deployment_statuses(self) -> Dict[str, DeploymentStatusInfo]:
         deployment_status_info_list_bytes = ray.get(self._controller.get_deployment_statuses.remote())
-        proto = DeploymentStatusInfoList.ParseFromString(deployment_status_info_list_bytes)
+        proto = DeploymentStatusInfoList.FromString(deployment_status_info_list_bytes)
         return {
             deployment_status_info.name: DeploymentStatusInfo.from_proto_bytes(proto)
             for deployment_status_info in proto.deployment_status_infos
@@ -708,8 +708,7 @@ def start(
         detached=detached,
     )
 
-    proxy_handles_bytes = ray.get(controller.get_http_proxies.remote())
-    proto = ActorHandleList.ParseFromString(proxy_handles_bytes)
+    proto = ActorHandleList.FromString(ray.get(controller.get_http_proxies.remote()))
     proxy_handles = []
     for handle_bytes in proto.handles:
         proxy_handles.append(_actor_handle_deserializer(handle_bytes))

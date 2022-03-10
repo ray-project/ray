@@ -143,14 +143,14 @@ class ServeController:
         actor_handle_list = ActorHandleList()
         for handle in self._proxy_actors.values():
             actor_handle_list.handles.append(msgpack_serialize(handle))
-        return str.encode(actor_handle_list.SerializeToString())
+        return actor_handle_list.SerializeToString()
 
     def autoscale(self) -> None:
         """Updates autoscaling deployments with calculated num_replicas."""
         for deployment_name, (
             deployment_info,
             route_prefix,
-        ) in self.list_deployments().items():
+        ) in self.list_deployments_internal().items():
             deployment_config = deployment_info.deployment_config
             autoscaling_policy = deployment_info.autoscaling_policy
 
@@ -217,7 +217,7 @@ class ServeController:
 
     def _put_serve_snapshot(self) -> None:
         val = dict()
-        for deployment_name, (deployment_info, route_prefix) in self.list_deployments(
+        for deployment_name, (deployment_info, route_prefix) in self.list_deployments_internal(
             include_deleted=True
         ).items():
             entry = dict()
@@ -374,7 +374,7 @@ class ServeController:
             name(str): the name of the deployment.
 
         Returns:
-            (DeploymentInfo, route)
+            DeploymentRoute's protobuf
 
         Raises:
             KeyError if the deployment doesn't exist.
@@ -385,13 +385,10 @@ class ServeController:
 
         route = self.endpoint_state.get_endpoint_route(name)
 
-        deployment_route = DeploymentRoute()
-        deployment_route.deployment_info = deployment_info.to_proto()
-        deployment_route.route = route
-
+        deployment_route = DeploymentRoute(deployment_info = deployment_info.to_proto(), route = route)
         return deployment_route.SerializeToString()
 
-    def list_deployments(
+    def list_deployments_internal(
         self, include_deleted: Optional[bool] = False
     ) -> Dict[str, Tuple[DeploymentInfo, str]]:
         """Gets the current information about all deployments.
@@ -406,15 +403,38 @@ class ServeController:
         Raises:
             KeyError if the deployment doesn't exist.
         """
-        deployment_route_list = DeploymentRouteList()
-        for name in self.deployment_state_manager.get_deployment_configs(include_deleted=include_deleted):
-            deployment_info = self.deployment_state_manager.get_deployment(name, include_deleted=include_deleted)
-            route = self.endpoint_state.get_endpoint_route(name)
-            deployment_route = DeploymentRoute()
-            deployment_route.deployment_info = deployment_info.to_proto()
-            deployment_route.route = route
-            deployment_route_list.deployment_routes.append(deployment_route)
+        return {
+            name: (
+                self.deployment_state_manager.get_deployment(
+                    name, include_deleted=include_deleted
+                ),
+                self.endpoint_state.get_endpoint_route(name),
+            )
+            for name in self.deployment_state_manager.get_deployment_configs(
+                include_deleted=include_deleted
+            )
+        }
 
+    def list_deployments(
+        self, include_deleted: Optional[bool] = False
+    ) -> bytes:
+        """Gets the current information about all deployments.
+
+        Args:
+            include_deleted(bool): Whether to include information about
+                deployments that have been deleted.
+
+        Returns:
+            DeploymentRoute's protobuf
+
+        Raises:
+            KeyError if the deployment doesn't exist.
+        """
+        deployment_route_list = DeploymentRouteList()
+        for deployment_name, (deployment_info, route_prefix) in self.list_deployments_internal(
+            include_deleted=True
+        ).items():
+            deployment_route_list.deployment_routes.append(DeploymentRoute(deployment_info = deployment_info.to_proto(), route = route_prefix))
         return deployment_route_list.SerializeToString()
 
     def get_deployment_statuses(self) -> bytes:

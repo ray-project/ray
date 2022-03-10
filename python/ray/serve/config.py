@@ -149,7 +149,7 @@ class DeploymentConfig(BaseModel):
                 raise ValueError("max_concurrent_queries must be >= 0")
         return v
 
-    def to_proto_bytes(self):
+    def to_proto(self):
         data = self.dict()
         if data.get("user_config"):
             data["user_config"] = pickle.dumps(data["user_config"])
@@ -157,11 +157,13 @@ class DeploymentConfig(BaseModel):
             data["autoscaling_config"] = AutoscalingConfigProto(
                 **data["autoscaling_config"]
             )
-        return DeploymentConfigProto(**data).SerializeToString()
+        return DeploymentConfigProto(**data)
+
+    def to_proto_bytes(self):
+        return self.to_proto().SerializeToString()
 
     @classmethod
-    def from_proto_bytes(cls, proto_bytes: bytes):
-        proto = DeploymentConfigProto.FromString(proto_bytes)
+    def from_proto(cls, proto: DeploymentConfigProto):
         data = MessageToDict(
             proto,
             including_default_value_fields=True,
@@ -177,6 +179,11 @@ class DeploymentConfig(BaseModel):
             data["autoscaling_config"] = AutoscalingConfig(**data["autoscaling_config"])
 
         return cls(**data)
+
+    @classmethod
+    def from_proto_bytes(cls, proto_bytes: bytes):
+        proto = DeploymentConfigProto.FromString(proto_bytes)
+        return cls.from_proto(cls, proto)
 
 
 class ReplicaConfig:
@@ -291,16 +298,38 @@ class ReplicaConfig:
         self.resource_dict.update(custom_resources)
 
     @classmethod
-    def from_proto_bytes(cls, proto_bytes: bytes):
-        proto = ReplicaConfigProto.FromString(proto_bytes)
+    def from_proto(cls, proto: ReplicaConfigProto):
         data = MessageToDict(
             proto,
             including_default_value_fields=True,
             preserving_proto_field_name=True,
             use_integers_for_enums=True,
         )
+        if "init_args" in data:
+            if data["init_args"] != "":
+                data["init_args"] = pickle.loads(proto.init_args)
+            else:
+                data["init_args"] = None
+        if "init_kwargs" in data:
+            if data["init_kwargs"] != "":
+                data["init_kwargs"] = pickle.loads(proto.init_args)
+            else:
+                data["init_kwargs"] = None
 
         return cls(**data)
+
+    @classmethod
+    def from_proto_bytes(cls, proto_bytes: bytes):
+        proto = ReplicaConfigProto.FromString(proto_bytes)
+        return cls.from_proto(cls, proto)
+
+    def to_proto(self):
+        data = self.dict()
+        if data.get("init_args"):
+            data["init_args"] = pickle.dumps(data["init_args"])
+        if data.get("init_kwargs"):
+            data["init_kwargs"] = pickle.dumps(data["init_kwargs"])
+        return ReplicaConfigProto(**data)
 
 
 class DeploymentMode(str, Enum):
