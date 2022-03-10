@@ -2,19 +2,19 @@ import logging
 from dataclasses import dataclass
 from typing import Dict, Callable, Optional
 
-from ray.ml.train.function_trainer import FunctionTrainer
+from ray.ml.train.impl.function_trainer import FunctionTrainer
 from ray.ml.config import ScalingConfig, RunConfig
 from ray.ml.train.trainer import GenDataset
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.train import BackendConfig
 from ray.tune import PlacementGroupFactory
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 class DataParallelFunctionTrainer(FunctionTrainer):
     """A Trainer for data parallel training.
 
