@@ -152,7 +152,7 @@ class Application:
             Dict: The Application's deployments formatted in a dictionary.
         """
 
-        return serve_application_to_schema(self._deployments).dict()
+        return serve_application_to_schema(self._deployments.values()).dict()
 
     @classmethod
     def from_dict(cls, d: Dict) -> "Application":
@@ -172,7 +172,7 @@ class Application:
         schema = ServeApplicationSchema.parse_obj(d)
         return cls(schema_to_serve_application(schema))
 
-    def to_yaml(self, f: Optional[TextIO]) -> Optional[str]:
+    def to_yaml(self, f: Optional[TextIO] = None) -> Optional[str]:
         """Returns this Application's deployments as a YAML string.
 
         Optionally writes the YAML string to a file as well. To write to a
@@ -193,11 +193,11 @@ class Application:
                 yaml.safe_dump(). Returned only if no file pointer is passed in.
         """
 
-        json_str = serve_application_to_schema(self._deployments).json(indent=4)
+        deployment_dict = serve_application_to_schema(self._deployments.values()).dict()
 
         if f:
-            yaml.safe_dump(json_str, f)
-        return yaml.safe_dump(json_str)
+            yaml.safe_dump(deployment_dict, f, default_flow_style=False)
+        return yaml.safe_dump(deployment_dict, default_flow_style=False)
 
     @classmethod
     def from_yaml(cls, str_or_file: Union[str, TextIO]) -> "Application":
