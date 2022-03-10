@@ -95,7 +95,8 @@ class ModelWrapper:
         input_schema = _load_input_schema(input_schema)
         batching_params = batching_params or dict()
 
-        @self.app.post("/predict")
+        @self.app.get("/")
+        @self.app.post("/")
         @serve.batch(**batching_params)
         async def handle_request(inp=Depends(input_schema)):
             out = self.model.predict(inp)

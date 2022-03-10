@@ -50,7 +50,7 @@ def adder_schema(query_param_arg: int) -> DataBatchType:
 
 @ray.remote
 def send_request(**requests_kargs):
-    return requests.post("http://localhost:8000/Adder/predict", **requests_kargs).json()
+    return requests.post("http://localhost:8000/Adder/", **requests_kargs).json()
 
 
 def test_simple_adder(serve_instance):
@@ -141,6 +141,6 @@ def test_model_wrappers_in_pipeline(serve_instance):
     for d in deployments:
         d.deploy()
 
-    resp = requests.post("http://127.0.0.1:8000/ingress/predict", json={"array": [40]})
+    resp = requests.post("http://127.0.0.1:8000/ingress", json={"array": [40]})
     assert resp.status_code == 200, resp.text
     assert resp.json() == {"value": [42], "batch_size": 1}
