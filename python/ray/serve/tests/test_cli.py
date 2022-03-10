@@ -250,49 +250,6 @@ class A:
         return (self.value + self.increment - self.decrement) * self.multiplier
 
 
-@serve.deployment
-class DecoratedA(A):
-    pass
-
-
-@pytest.mark.parametrize("class_name", ["A", "DecoratedA"])
-def test_create_deployment(ray_start_stop, tmp_working_dir, class_name):  # noqa: F811
-    subprocess.check_output(["serve", "start"])
-    subprocess.check_output(
-        [
-            "serve",
-            "create-deployment",
-            f"ray.serve.tests.test_cli.{class_name}",
-            "--runtime-env-json",
-            json.dumps(
-                {
-                    "working_dir": tmp_working_dir,
-                }
-            ),
-            "--options-json",
-            json.dumps(
-                {
-                    "name": "B",
-                    "init_args": [42],
-                    "init_kwargs": {"increment": 10},
-                    "num_replicas": 2,
-                    "user_config": {"decrement": 5},
-                    "ray_actor_options": {
-                        "runtime_env": {
-                            "env_vars": {
-                                "SERVE_TEST_MULTIPLIER": "2",
-                            },
-                        }
-                    },
-                }
-            ),
-        ]
-    )
-    resp = requests.get("http://127.0.0.1:8000/B")
-    resp.raise_for_status()
-    assert resp.text == "94", resp.text
-
-
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_deploy(ray_start_stop):
     # Deploys some valid config files and checks that the deployments work
