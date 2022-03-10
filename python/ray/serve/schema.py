@@ -86,7 +86,7 @@ class DeploymentSchema(BaseModel, extra=Extra.forbid):
             'form "module.submodule_1...submodule_n.'
             'MyClassOrFunction." This is equivalent to '
             '"from module.submodule_1...submodule_n import '
-            'MyClassOrFunction". Only works with Python 3 '
+            'MyClassOrFunction". Only works with Python '
             "applications."
         ),
         # This regex checks that there is at least one character, followed by
@@ -96,13 +96,13 @@ class DeploymentSchema(BaseModel, extra=Extra.forbid):
     init_args: Union[Tuple, List] = Field(
         default=None,
         description=(
-            "The application's init_args. Only works with Python 3 applications."
+            "The application's init_args. Only works with Python applications."
         ),
     )
     init_kwargs: Dict = Field(
         default=None,
         description=(
-            "The application's init_args. Only works with Python 3 applications."
+            "The application's init_args. Only works with Python applications."
         ),
     )
     num_replicas: int = Field(
