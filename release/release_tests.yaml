@@ -346,6 +346,200 @@
   alert: xgboost_tests
 
 #######################
+# LightGBM tests
+#######################
+- name: lightgbm_train_small
+  group: LightGBM tests
+  working_dir: lightgbm_tests
+
+  legacy:
+    test_name: train_small
+    test_suite: lightgbm_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_small.yaml
+    autosuspend_mins: 10
+
+  run:
+    timeout: 600
+    script: python workloads/train_small.py
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
+
+    type: client
+
+  alert: default
+
+- name: lightgbm_train_moderate
+  group: LightGBM tests
+  working_dir: lightgbm_tests
+
+  legacy:
+    test_name: train_moderate
+    test_suite: lightgbm_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_moderate.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/train_moderate.py
+    wait_for_nodes:
+      num_nodes: 32
+      timeout: 600
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: lightgbm_distributed_api_test
+  group: LightGBM tests
+  working_dir: lightgbm_tests
+
+  legacy:
+    test_name: distributed_api_test
+    test_suite: lightgbm_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_small.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/distributed_api_test.py
+
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: lightgbm_ft_small_non_elastic
+  group: LightGBM tests
+  working_dir: lightgbm_tests
+
+  legacy:
+    test_name: ft_small_non_elastic
+    test_suite: lightgbm_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_small.yaml
+
+  run:
+    timeout: 900
+    script: python workloads/ft_small_non_elastic.py
+
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: lightgbm_tune_small
+  group: LightGBM tests
+  working_dir: lightgbm_tests
+
+  legacy:
+    test_name: tune_small
+    test_suite: lightgbm_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_small.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/tune_small.py
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: lightgbm_tune_16x4
+  group: LightGBM tests
+  working_dir: lightgbm_tests
+
+  legacy:
+    test_name: tune_16x4
+    test_suite: lightgbm_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_moderate.yaml
+
+  run:
+    timeout: 900
+    script: python workloads/tune_16x4.py
+    wait_for_nodes:
+      num_nodes: 32
+      timeout: 600
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: lightgbm_tune_4x16
+  group: LightGBM tests
+  working_dir: lightgbm_tests
+
+  legacy:
+    test_name: tune_4x16
+    test_suite: lightgbm_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_moderate.yaml
+
+  run:
+    timeout: 900
+    script: python workloads/tune_4x16.py
+    wait_for_nodes:
+      num_nodes: 32
+      timeout: 600
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+#######################
 # Tune cloud  tests
 #######################
 - name: tune_cloud_aws_no_sync_down
@@ -625,6 +819,7 @@
 
   frequency: weekly
   team: ml
+
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: tpl_1x32_hd.yaml
@@ -653,6 +848,7 @@
 
   frequency: weekly
   team: ml
+
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: tpl_100x2.yaml
@@ -693,6 +889,7 @@
 
   frequency: nightly
   team: ml
+
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: tpl_16x64.yaml
@@ -761,3 +958,783 @@
 
   alert: tune_tests
 
+
+########################
+# Runtime env tests
+########################
+- name: runtime_env_rte_many_tasks_actors
+  group: Runtime env tests
+  working_dir: runtime_env_tests
+
+  legacy:
+    test_name: rte_many_tasks_actors
+    test_suite: runtime_env_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: rte_small.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/rte_many_tasks_actors.py
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: runtime_env_wheel_urls
+  group: Runtime env tests
+  working_dir: runtime_env_tests
+
+  legacy:
+    test_name: wheel_urls
+    test_suite: runtime_env_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: rte_minimal.yaml
+
+  run:
+    timeout: 9000
+    script: python workloads/wheel_urls.py
+    wait_for_nodes:
+      num_nodes: 1
+      timeout: 600
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: runtime_env_rte_ray_client
+  group: Runtime env tests
+  working_dir: runtime_env_tests
+
+  legacy:
+    test_name: rte_ray_client
+    test_suite: runtime_env_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: rte_minimal.yaml
+    autosuspend_mins: 10
+
+  run:
+    timeout: 600
+    script: python workloads/rte_ray_client.py
+    wait_for_nodes:
+      num_nodes: 1
+      timeout: 600
+
+    type: client
+
+  alert: default
+
+
+########################
+# Serve tests
+########################
+
+- name: serve_single_deployment_1k_noop_replica
+  group: Serve tests
+  working_dir: serve_tests
+
+  legacy:
+    test_name: single_deployment_1k_noop_replica
+    test_suite: serve_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_32_cpu.yaml
+
+  run:
+    timeout: 7200
+    long_running: false
+    script: python workloads/single_deployment_1k_noop_replica.py
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: serve_multi_deployment_1k_noop_replica
+  group: Serve tests
+  working_dir: serve_tests
+
+  legacy:
+    test_name: multi_deployment_1k_noop_replica
+    test_suite: serve_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_32_cpu.yaml
+
+  run:
+    timeout: 7200
+    long_running: false
+    script: python workloads/multi_deployment_1k_noop_replica.py
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: serve_autoscaling_single_deployment
+  group: Serve tests
+  working_dir: serve_tests
+
+  legacy:
+    test_name: autoscaling_single_deployment
+    test_suite: serve_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_8_cpu_autoscaling.yaml
+
+  run:
+    timeout: 7200
+    long_running: false
+    script: python workloads/autoscaling_single_deployment.py
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: serve_autoscaling_multi_deployment
+  group: Serve tests
+  working_dir: serve_tests
+
+  legacy:
+    test_name: autoscaling_multi_deployment
+    test_suite: serve_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_8_cpu_autoscaling.yaml
+
+  run:
+    timeout: 7200
+    long_running: false
+    script: python workloads/autoscaling_multi_deployment.py
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: serve_serve_micro_benchmark
+  group: Serve tests
+  working_dir: serve_tests
+
+  legacy:
+    test_name: serve_micro_benchmark
+    test_suite: serve_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_single_node.yaml
+
+  run:
+    timeout: 7200
+    long_running: false
+    script: python workloads/serve_micro_benchmark.py
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: serve_serve_micro_benchmark_k8s
+  group: Serve tests
+  working_dir: serve_tests
+
+  legacy:
+    test_name: serve_micro_benchmark_k8s
+    test_suite: serve_tests
+
+  # TODO(architkulkarni) Reenable after K8s migration.  Currently failing
+  frequency: disabled
+  team: serve
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_single_node_k8s.yaml
+
+  run:
+    timeout: 7200
+    long_running: false
+    script: python workloads/serve_micro_benchmark.py
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: serve_serve_cluster_fault_tolerance
+  group: Serve tests
+  working_dir: serve_tests
+
+  legacy:
+    test_name: serve_cluster_fault_tolerance
+    test_suite: serve_tests
+
+  frequency: nightly
+  team: serve
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_single_node.yaml
+
+  run:
+    timeout: 7200
+    long_running: false
+    script: python workloads/serve_cluster_fault_tolerance.py
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+########################
+# SGD tests
+########################
+
+- name: sgd_gpu
+  group: SGD tests
+  working_dir: sgd_tests
+
+  legacy:
+    test_name: sgd_gpu
+    test_suite: sgd_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: sgd_gpu/sgd_gpu_app_config.yaml
+    cluster_compute: sgd_gpu/sgd_gpu_compute.yaml
+
+  run:
+    timeout: 3000
+    script: python sgd_gpu/sgd_gpu_test.py --num-workers=2 --use-gpu --address=auto
+
+    wait_for_nodes:
+      num_nodes: 2
+      timeout: 600
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+########################
+# RLLib tests
+########################
+
+- name: rllib_learning_tests
+  group: RLLib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: weekly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 8gpus_64cpus.yaml
+
+  run:
+    timeout: 14400
+    script: python learning_tests/run.py
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: nightly
+
+    run:
+      timeout: 1200
+
+  alert: default
+
+- name: rllib_multi_gpu_learning_tests
+  group: RLLib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: multi_gpu_learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 8gpus_96cpus.yaml
+
+  run:
+    timeout: 7200
+    script: python multi_gpu_learning_tests/run.py
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: rllib_multi_gpu_with_lstm_learning_tests
+  group: RLLib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: multi_gpu_with_lstm_learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 8gpus_96cpus.yaml
+
+  run:
+    timeout: 7200
+    script: python multi_gpu_with_lstm_learning_tests/run.py
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: rllib_multi_gpu_with_attention_learning_tests
+  group: RLLib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: multi_gpu_with_attention_learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 8gpus_96cpus.yaml
+
+  run:
+    timeout: 7200
+    script: python multi_gpu_with_attention_learning_tests/run.py
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: rllib_stress_tests
+  group: RLLib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: stress_tests
+    test_suite: rllib_tests
+
+  frequency: weekly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 4gpus_544_cpus.yaml
+
+  run:
+    timeout: 5400
+    script: python stress_tests/run_stress_tests.py
+
+    wait_for_nodes:
+      num_nodes: 6
+      timeout: 600
+
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: nightly
+
+    run:
+      timeout: 2000
+
+  alert: default
+
+########################
+# Core Nightly Tests
+########################
+
+- name: shuffle_10gb
+  group: Core nightly tests
+
+  frequency: nightly
+  team: core
+  frequency: multi
+  working_dir: nightly_tests
+
+  legacy:
+    test_name: shuffle_10gb
+    test_suite: nightly_tests
+
+  cluster:
+    cluster_env: shuffle/shuffle_app_config.yaml
+    cluster_compute: shuffle/shuffle_compute_single.yaml
+
+  run:
+    timeout: 3000
+    script: python shuffle/shuffle_test.py --num-partitions=50 --partition-size=200e6
+    
+    type: sdk_command
+    file_manager: sdk
+
+- name: microbenchmark
+  group: Core nightly tests
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+
+  legacy:
+    test_name: microbenchmark
+    test_suite: microbenchmark
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_64.yaml
+
+  run:
+    timeout: 1800
+    script: OMP_NUM_THREADS=64 RAY_ADDRESS= python run_microbenchmark.py
+
+#########################
+# Core Scalability Tests
+#########################
+
+- name: single_node
+  group: core-scalability-test
+  working_dir: benchmarks
+  legacy:
+    test_name: single_node
+    test_suite: benchmark_tests
+
+  frequency: multi
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: single_node.yaml
+
+  run:
+    timeout: 12000
+    prepare: sleep 0
+    script: python single_node/test_single_node.py
+    type: sdk_command
+    file_manager: sdk
+
+- name: object_store
+  group: core-scalability-test
+  working_dir: benchmarks
+  legacy:
+    test_name: object_store
+    test_suite: benchmark_tests
+
+  frequency: multi
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: object_store.yaml
+
+  run:
+    timeout: 3600
+    script: python object_store/test_object_store.py
+    wait_for_nodes:
+      num_nodes: 50
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: many_actors
+  group: core-scalability-test
+  working_dir: benchmarks
+  legacy:
+    test_name: many_actors
+    test_suite: benchmark_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: distributed.yaml
+
+  run:
+    timeout: 3600
+    script: python distributed/test_many_actors.py
+    wait_for_nodes:
+      num_nodes: 65
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: many_actors_smoke_test
+  group: core-scalability-test
+  working_dir: benchmarks
+  legacy:
+    test_name: many_actors_smoke_test
+    test_suite: benchmark_tests
+
+  frequency: multi
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: distributed_smoke_test.yaml
+
+  run:
+    timeout: 3600
+    script: SMOKE_TEST=1 python distributed/test_many_actors.py
+    wait_for_nodes:
+      num_nodes: 2
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: many_tasks
+  group: core-scalability-test
+  working_dir: benchmarks
+  legacy:
+    test_name: many_tasks
+    test_suite: benchmark_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: distributed.yaml
+
+  run:
+    timeout: 3600
+    script: python distributed/test_many_tasks.py --num-tasks=10000
+    wait_for_nodes:
+      num_nodes: 65
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: many_tasks_smoke_test
+  group: core-scalability-test
+  working_dir: benchmarks
+  legacy:
+    test_name: many_tasks_smoke_test
+    test_suite: benchmark_tests
+
+  frequency: multi
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: distributed_smoke_test.yaml
+
+  run:
+    timeout: 3600
+    script: python distributed/test_many_tasks.py --num-tasks=100
+    wait_for_nodes:
+      num_nodes: 2
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: many_pgs
+  group: core-scalability-test
+  working_dir: benchmarks
+  legacy:
+    test_name: many_pgs
+    test_suite: benchmark_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: distributed.yaml
+
+  run:
+    timeout: 3600
+    script: python distributed/test_many_pgs.py
+    wait_for_nodes:
+      num_nodes: 65
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: many_pgs_smoke_test
+  group: core-scalability-test
+  working_dir: benchmarks
+  legacy:
+    test_name: many_pgs_smoke_test
+    test_suite: benchmark_tests
+
+  frequency: multi
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: distributed_smoke_test.yaml
+
+  run:
+    timeout: 3600
+    script: SMOKE_TEST=1 python distributed/test_many_pgs.py
+    wait_for_nodes:
+      num_nodes: 2
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: many_nodes
+  group: core-scalability-test
+  working_dir: benchmarks
+  legacy:
+    test_name: many_nodes
+    test_suite: benchmark_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: many_nodes.yaml
+
+  run:
+    timeout: 3600
+    script: python distributed/test_many_tasks.py --num-tasks=1000
+    wait_for_nodes:
+      num_nodes: 250
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: scheduling_test_many_0s_tasks_single_node
+  group: core-scalability-test
+  working_dir: benchmarks
+  legacy:
+    test_name: scheduling_test_many_0s_tasks_single_node
+    test_suite: benchmark_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: scheduling.yaml
+
+  run:
+    timeout: 3600
+    script: python distributed/test_scheduling.py --total-num-task=1984000 --num-cpu-per-task=1
+      --task-duration-s=0 --total-num-actors=1 --num-actors-per-nodes=1
+
+    wait_for_nodes:
+      num_nodes: 32
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: scheduling_test_many_0s_tasks_many_nodes
+  group: core-scalability-test
+  working_dir: benchmarks
+  legacy:
+    test_name: scheduling_test_many_0s_tasks_many_nodes
+    test_suite: benchmark_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: scheduling.yaml
+
+  run:
+    timeout: 3600
+    script: python distributed/test_scheduling.py --total-num-task=1984000 --num-cpu-per-task=1
+      --task-duration-s=0 --total-num-actors=32 --num-actors-per-nodes=1
+
+    wait_for_nodes:
+      num_nodes: 32
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: scheduling_test_many_5s_tasks_single_node
+  group: core-scalability-test
+  working_dir: benchmarks
+  legacy:
+    test_name: scheduling_test_many_5s_tasks_single_node
+    test_suite: benchmark_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: scheduling.yaml
+
+  run:
+    timeout: 3600
+    script: python distributed/test_scheduling.py --total-num-task=1984000 --num-cpu-per-task=1
+      --task-duration-s=5 --total-num-actors=1 --num-actors-per-nodes=1
+
+    wait_for_nodes:
+      num_nodes: 32
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+  stable: false
+
+- name: scheduling_test_many_5s_tasks_many_nodes
+  group: core-scalability-test
+  working_dir: benchmarks
+  legacy:
+    test_name: scheduling_test_many_5s_tasks_many_nodes
+    test_suite: benchmark_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: scheduling.yaml
+
+  run:
+    timeout: 3600
+    script: python distributed/test_scheduling.py --total-num-task=1984000 --num-cpu-per-task=1
+      --task-duration-s=5 --total-num-actors=32 --num-actors-per-nodes=1
+
+    wait_for_nodes:
+      num_nodes: 32
+      timeout: 600
+
+    type: sdk_command
+    file_manager: sdk
+  stable: false
