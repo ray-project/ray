@@ -1,8 +1,12 @@
+from typing import Type
+
+
 from ray.experimental.dag import DAGNode
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.predictor import Predictor
-
+from ray.serve.model_wrappers import ModelWrapper
 import ray
+from ray import serve
 
 
 class PipelineIngressModel(Predictor):
@@ -33,3 +37,25 @@ class PipelineIngressCheckpoint(Checkpoint):
     @classmethod
     def from_uri(cls, serve_dag_node_json):
         return PipelineIngressCheckpoint(serve_dag_node_json)
+
+
+# TODO(simon): replace other usage in pipeline codebase by this util function.
+def _get_import_path(cls: Type):
+    return f"{cls.__module__}.{cls.__qualname__}"
+
+
+def make_ingress_deployment(
+    name: str, serve_dag_root_json: str, input_schema_path: str
+):
+    return serve.deployment(ModelWrapper).options(
+        name=name,
+        init_kwargs={
+            "predictor_cls": _get_import_path(PipelineIngressModel),
+            "checkpoint": {
+                "checkpoint_cls": _get_import_path(PipelineIngressCheckpoint),
+                "uri": serve_dag_root_json,
+            },
+            "input_schema": input_schema_path,
+            "batching_params": False,
+        },
+    )

@@ -1,8 +1,7 @@
-from typing import Any, Dict, List, Type
+from typing import Any, Dict, List
 import threading
 import json
 
-from ray import serve
 from ray.experimental.dag import (
     DAGNode,
     ClassNode,
@@ -11,10 +10,9 @@ from ray.experimental.dag import (
 )
 from ray.experimental.dag.input_node import InputNode
 from ray.serve.api import Deployment
-from ray.serve.model_wrappers import ModelWrapper
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_node import DeploymentNode
-from ray.serve.pipeline.ingress import PipelineIngressCheckpoint, PipelineIngressModel
+from ray.serve.pipeline.ingress import make_ingress_deployment
 from ray.serve.pipeline.json_serde import DAGNodeEncoder
 from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
 
@@ -172,11 +170,6 @@ def get_pipeline_input_node(serve_dag_root_node: DAGNode):
     return input_nodes[0]
 
 
-# TODO(simon): replace other usage in pipeline codebase by this util function.
-def _get_import_path(cls: Type):
-    return f"{cls.__module__}.{cls.__qualname__}"
-
-
 def get_ingress_deployment(
     serve_dag_root_node: DAGNode, pipeline_input_node: PipelineInputNode
 ) -> Deployment:
@@ -193,15 +186,9 @@ def get_ingress_deployment(
     """
     serve_dag_root_json = json.dumps(serve_dag_root_node, cls=DAGNodeEncoder)
     preprocessor_import_path = pipeline_input_node.get_preprocessor_import_path()
-    serve_dag_root_deployment = serve.deployment(ModelWrapper).options(
-        name=DEFAULT_INGRESS_DEPLOYMENT_NAME,
-        init_kwargs={
-            "predictor_cls": _get_import_path(PipelineIngressModel),
-            "checkpoint": {
-                "checkpoint_cls": _get_import_path(PipelineIngressCheckpoint),
-                "uri": serve_dag_root_json,
-            },
-            "input_schema": preprocessor_import_path,
-        },
+    serve_dag_root_deployment = make_ingress_deployment(
+        DEFAULT_INGRESS_DEPLOYMENT_NAME,
+        serve_dag_root_json,
+        preprocessor_import_path,
     )
     return serve_dag_root_deployment

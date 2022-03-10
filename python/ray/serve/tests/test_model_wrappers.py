@@ -74,6 +74,35 @@ def test_batching(serve_instance):
         assert resp == {"value": [42], "batch_size": 2}
 
 
+def test_model_wrappers_in_pipeline(serve_instance):
+    _, path = tempfile.mkstemp()
+    with open(path, "w") as f:
+        json.dump(2, f)
+
+    predictor_cls = "ray.serve.tests.test_model_wrappers.AdderPredictor"
+    checkpoint_cls = "ray.serve.tests.test_model_wrappers.AdderCheckpoint"
+    schema_cls = "ray.serve.http_adapters.array_to_databatch"
+
+    with PipelineInputNode(preprocessor=schema_cls) as dag_input:
+        m1 = ray.remote(ModelWrapper).bind(
+            predictor_cls=predictor_cls,  # TODO: can't be the raw class right now?
+            checkpoint={  # TODO: can't be the raw object right now?
+                "checkpoint_cls": checkpoint_cls,
+                "uri": path,
+            },
+        )
+        dag = m1.predict.bind(dag_input)
+    deployments = build(dag)
+    for d in deployments:
+        d.deploy()
+
+    resp = requests.post("http://127.0.0.1:8000/ingress", json={"array": [40]})
+    resp.raise_for_status()
+    return resp.json() == {"value": [42], "batch_size": 1}
+
+
+# NOTE(simon): Make sure this is the last test because the REST API will start
+# controller and http proxy in another namespace.
 def test_yaml_compatibility(serve_instance):
     _, path = tempfile.mkstemp()
     with open(path, "w") as f:
@@ -117,30 +146,3 @@ def test_yaml_compatibility(serve_instance):
         return resp == {"value": [42], "batch_size": 1}
 
     wait_for_condition(cond)
-
-
-def test_model_wrappers_in_pipeline(serve_instance):
-    _, path = tempfile.mkstemp()
-    with open(path, "w") as f:
-        json.dump(2, f)
-
-    predictor_cls = "ray.serve.tests.test_model_wrappers.AdderPredictor"
-    checkpoint_cls = "ray.serve.tests.test_model_wrappers.AdderCheckpoint"
-    schema_cls = "ray.serve.http_adapters.array_to_databatch"
-
-    with PipelineInputNode(preprocessor=schema_cls) as dag_input:
-        m1 = ray.remote(ModelWrapper).bind(
-            predictor_cls=predictor_cls,  # TODO: can't be the raw class right now?
-            checkpoint={  # TODO: can't be the raw object right now?
-                "checkpoint_cls": checkpoint_cls,
-                "uri": path,
-            },
-        )
-        dag = m1.predict.bind(dag_input)
-    deployments = build(dag)
-    for d in deployments:
-        d.deploy()
-
-    resp = requests.post("http://127.0.0.1:8000/ingress", json={"array": [40]})
-    assert resp.status_code == 200, resp.text
-    assert resp.json() == {"value": [42], "batch_size": 1}
