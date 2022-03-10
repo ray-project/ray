@@ -66,10 +66,10 @@ from ray.data.datasource.file_based_datasource import (
 from ray.data.row import TableRow
 from ray.data.aggregate import AggregateFn, Sum, Max, Min, Mean, Std
 from ray.data.impl.remote_fn import cached_remote_fn
-from ray.data.impl.batcher import Batcher
+from ray.data.impl.block_batching import batch_blocks, BatchType
 from ray.data.impl.plan import ExecutionPlan, OneToOneStage, AllToAllStage
 from ray.data.impl.stats import DatasetStats
-from ray.data.impl.compute import cache_wrapper, CallableClass
+from ray.data.impl.compute import cache_wrapper, CallableClass, ComputeStrategy
 from ray.data.impl.output_buffer import BlockOutputBuffer
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.shuffle import simple_shuffle
@@ -78,9 +78,6 @@ from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
-
-# An output type of iter_batches() determined by the batch_format parameter.
-BatchType = Union["pandas.DataFrame", "pyarrow.Table", np.ndarray, list]
 
 logger = logging.getLogger(__name__)
 
@@ -195,7 +192,7 @@ class Dataset(Generic[T]):
         fn: Union[CallableClass, Callable[[BatchType], BatchType]],
         *,
         batch_size: Optional[int] = 4096,
-        compute: Optional[str] = None,
+        compute: Union[str, ComputeStrategy] = None,
         batch_format: str = "native",
         **ray_remote_args,
     ) -> "Dataset[Any]":
@@ -1971,65 +1968,21 @@ class Dataset(Generic[T]):
             drop_last: Whether to drop the last batch if it's incomplete.
 
         Returns:
-            A list of iterators over record batches.
+            An iterator over record batches.
         """
-
-        import pyarrow as pa
-
         blocks = self._plan.execute()
         stats = self._plan.stats()
 
         time_start = time.perf_counter()
 
-        def format_batch(batch: Block, format: str) -> BatchType:
-            if batch_format == "native":
-                # Always promote Arrow blocks to pandas for consistency, since
-                # we lazily convert pandas->Arrow internally for efficiency.
-                if isinstance(batch, pa.Table) or isinstance(batch, bytes):
-                    batch = BlockAccessor.for_block(batch)
-                    batch = batch.to_pandas()
-                return batch
-            elif batch_format == "pandas":
-                batch = BlockAccessor.for_block(batch)
-                return batch.to_pandas()
-            elif batch_format == "pyarrow":
-                batch = BlockAccessor.for_block(batch)
-                return batch.to_arrow()
-            else:
-                raise ValueError(
-                    f"The given batch format: {batch_format} "
-                    f"is invalid. Supported batch type: {BatchType}"
-                )
-
-        batcher = Batcher(batch_size=batch_size)
-
-        def batch_block(block: ObjectRef[Block]):
-            with stats.iter_get_s.timer():
-                block = ray.get(block)
-            batcher.add(block)
-            while batcher.has_batch():
-                with stats.iter_format_batch_s.timer():
-                    result = format_batch(batcher.next_batch(), batch_format)
-                with stats.iter_user_s.timer():
-                    yield result
-
-        block_window = []  # Handle empty sliding window gracefully.
-        for block_window in _sliding_window(blocks.iter_blocks(), prefetch_blocks + 1):
-            block_window = list(block_window)
-            with stats.iter_wait_s.timer():
-                ray.wait(block_window, num_returns=1, fetch_local=True)
-            yield from batch_block(block_window[0])
-
-        # Consume remainder of final block window.
-        for block in block_window[1:]:
-            yield from batch_block(block)
-
-        # Yield any remainder batches.
-        if batcher.has_any() and not drop_last:
-            with stats.iter_format_batch_s.timer():
-                result = format_batch(batcher.next_batch(), batch_format)
-            with stats.iter_user_s.timer():
-                yield result
+        yield from batch_blocks(
+            blocks.iter_blocks(),
+            stats,
+            prefetch_blocks=prefetch_blocks,
+            batch_size=batch_size,
+            batch_format=batch_format,
+            drop_last=drop_last,
+        )
 
         stats.iter_total_s.add(time.perf_counter() - time_start)
 
@@ -2575,7 +2528,12 @@ Dict[str, List[str]]]): The names of the columns
             "Use .window(blocks_per_window=n) instead of " ".pipeline(parallelism=n)"
         )
 
-    def window(self, *, blocks_per_window: int = 10) -> "DatasetPipeline[T]":
+    def window(
+        self,
+        *,
+        blocks_per_window: Optional[int] = None,
+        bytes_per_window: Optional[int] = None,
+    ) -> "DatasetPipeline[T]":
         """Convert this into a DatasetPipeline by windowing over data blocks.
 
         Transformations prior to the call to ``window()`` are evaluated in
@@ -2621,8 +2579,18 @@ Dict[str, List[str]]]): The names of the columns
                 increases the latency to initial output, since it decreases the
                 length of the pipeline. Setting this to infinity effectively
                 disables pipelining.
+            bytes_per_window: Specify the window size in bytes instead of blocks.
+                This will be treated as an upper bound for the window size, but each
+                window will still include at least one block. This is mutually
+                exclusive with ``blocks_per_window``.
         """
         from ray.data.dataset_pipeline import DatasetPipeline
+
+        if blocks_per_window is not None and bytes_per_window is not None:
+            raise ValueError("Only one windowing scheme can be specified.")
+
+        if blocks_per_window is None:
+            blocks_per_window = 10
 
         # If optimizations are enabled, rewrite the read stage into a OneToOneStage
         # to enable fusion with downstream map stages.
@@ -2656,7 +2624,37 @@ Dict[str, List[str]]]): The names of the columns
 
         class Iterable:
             def __init__(self, blocks, epoch):
-                self._splits = blocks.split(split_size=blocks_per_window)
+                if bytes_per_window:
+                    self._splits = blocks.split_by_bytes(bytes_per_window)
+                else:
+                    self._splits = blocks.split(split_size=blocks_per_window)
+                try:
+                    sizes = [s.size_bytes() for s in self._splits]
+                    assert [s > 0 for s in sizes], sizes
+
+                    def fmt(size_bytes):
+                        if size_bytes > 10 * 1024:
+                            return "{}MiB".format(round(size_bytes / (1024 * 1024), 2))
+                        else:
+                            return "{}b".format(size_bytes)
+
+                    logger.info(
+                        "Created DatasetPipeline with {} windows: "
+                        "{} min, {} max, {} mean".format(
+                            len(self._splits),
+                            fmt(min(sizes)),
+                            fmt(max(sizes)),
+                            fmt(int(np.mean(sizes))),
+                        )
+                    )
+                except Exception as e:
+                    logger.info(
+                        "Created DatasetPipeline with {} windows; "
+                        "error getting sizes: {}".format(
+                            len(self._splits),
+                            e,
+                        )
+                    )
                 self._epoch = epoch
 
             def __iter__(self):

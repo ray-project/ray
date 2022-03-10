@@ -1,4 +1,7 @@
+import sys
+
 from pydantic import ValidationError
+
 import pytest
 
 import requests
@@ -586,3 +589,7 @@ def test_serve_application_to_schema_to_serve_application():
     assert len(deployment_names) == 0
 
     serve.shutdown()
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
