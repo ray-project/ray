@@ -108,16 +108,22 @@ def _check_job_stopped(client: JobSubmissionClient, job_id: str) -> bool:
 
 
 @pytest.fixture(
-    scope="module", params=["no_working_dir", "local_working_dir", "s3_working_dir"]
+    scope="module",
+    params=[
+        "no_working_dir",
+        "local_working_dir",
+        "s3_working_dir",
+        "local_py_modules",
+    ],
 )
-def working_dir_option(request):
+def runtime_env_option(request):
     if request.param == "no_working_dir":
         yield {
             "runtime_env": {},
             "entrypoint": "echo hello",
             "expected_logs": "hello\n",
         }
-    elif request.param == "local_working_dir":
+    elif request.param == "local_working_dir" or request.param == "local_py_modules":
         with tempfile.TemporaryDirectory() as tmp_dir:
             path = Path(tmp_dir)
 
@@ -138,11 +144,23 @@ def working_dir_option(request):
             with init_file.open(mode="w") as f:
                 f.write("from test_module.test import run_test\n")
 
-            yield {
-                "runtime_env": {"working_dir": tmp_dir},
-                "entrypoint": "python test.py",
-                "expected_logs": "Hello from test_module!\n",
-            }
+            if request.param == "local_working_dir":
+                yield {
+                    "runtime_env": {"working_dir": tmp_dir},
+                    "entrypoint": "python test.py",
+                    "expected_logs": "Hello from test_module!\n",
+                }
+            elif request.param == "local_py_modules":
+                yield {
+                    "runtime_env": {"py_modules": [str(Path(tmp_dir) / "test_module")]},
+                    "entrypoint": (
+                        "python -c 'import test_module;"
+                        "print(test_module.run_test())'"
+                    ),
+                    "expected_logs": "Hello from test_module!\n",
+                }
+            else:
+                raise ValueError(f"Unexpected pytest fixture option {request.param}")
     elif request.param == "s3_working_dir":
         yield {
             "runtime_env": {
@@ -155,18 +173,18 @@ def working_dir_option(request):
         assert False, f"Unrecognized option: {request.param}."
 
 
-def test_submit_job(job_sdk_client, working_dir_option):
+def test_submit_job(job_sdk_client, runtime_env_option):
     client = job_sdk_client
 
     job_id = client.submit_job(
-        entrypoint=working_dir_option["entrypoint"],
-        runtime_env=working_dir_option["runtime_env"],
+        entrypoint=runtime_env_option["entrypoint"],
+        runtime_env=runtime_env_option["runtime_env"],
     )
 
     wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
 
     logs = client.get_job_logs(job_id)
-    assert logs == working_dir_option["expected_logs"]
+    assert logs == runtime_env_option["expected_logs"]
 
 
 def test_http_bad_request(job_sdk_client):
@@ -189,13 +207,10 @@ def test_http_bad_request(job_sdk_client):
 
 def test_invalid_runtime_env(job_sdk_client):
     client = job_sdk_client
-    job_id = client.submit_job(
-        entrypoint="echo hello", runtime_env={"working_dir": "s3://not_a_zip"}
-    )
-
-    wait_for_condition(_check_job_failed, client=client, job_id=job_id)
-    data = client.get_job_info(job_id)
-    assert "Only .zip files supported for remote URIs" in data.message
+    with pytest.raises(ValueError, match="Only .zip files supported"):
+        client.submit_job(
+            entrypoint="echo hello", runtime_env={"working_dir": "s3://not_a_zip"}
+        )
 
 
 def test_runtime_env_setup_failure(job_sdk_client):

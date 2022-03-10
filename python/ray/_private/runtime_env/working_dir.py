@@ -24,8 +24,9 @@ default_logger = logging.getLogger(__name__)
 
 def upload_working_dir_if_needed(
     runtime_env: Dict[str, Any],
-    scratch_dir: str,
+    scratch_dir: Optional[str] = os.getcwd(),
     logger: Optional[logging.Logger] = default_logger,
+    upload_fn=None,
 ) -> Dict[str, Any]:
     """Uploads the working_dir and replaces it with a URI.
 
@@ -70,15 +71,18 @@ def upload_working_dir_if_needed(
         upload_package_to_gcs(pkg_uri, package_path.read_bytes())
         runtime_env["working_dir"] = pkg_uri
         return runtime_env
+    if upload_fn is None:
+        upload_package_if_needed(
+            working_dir_uri,
+            scratch_dir,
+            working_dir,
+            include_parent_dir=False,
+            excludes=excludes,
+            logger=logger,
+        )
+    else:
+        upload_fn(working_dir, excludes=excludes)
 
-    upload_package_if_needed(
-        working_dir_uri,
-        scratch_dir,
-        working_dir,
-        include_parent_dir=False,
-        excludes=excludes,
-        logger=logger,
-    )
     runtime_env["working_dir"] = working_dir_uri
     return runtime_env
 
