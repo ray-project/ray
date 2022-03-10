@@ -417,7 +417,7 @@ def test_reconstruction(ray_start_cluster, use_actors):
         num_cpus=0,
         _system_config=config,
     )
-    ray.init(address=cluster.address)
+    ray.init(address=cluster.address, ignore_reinit_error=True)
 
     base = ray.data.range_arrow(1000000, parallelism=10)
     pipe = base.repeat(100).random_shuffle_each_window().map_batches(lambda x: x)

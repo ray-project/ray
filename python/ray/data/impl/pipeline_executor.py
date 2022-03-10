@@ -1,12 +1,15 @@
 from typing import Any, Callable, List, Optional, TYPE_CHECKING
 import time
 import concurrent.futures
+import logging
 
 import ray
 from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset, T
 from ray.data.impl.progress_bar import ProgressBar, set_progress_bars
 from ray.data.impl import progress_bar
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ray.data.dataset_pipeline import DatasetPipeline
@@ -68,7 +71,13 @@ class PipelineExecutor:
             self._pool.shutdown(wait=False)
             if not [t for t in self._pool._threads if t.is_alive()]:
                 break
-        self._pool.shutdown()
+
+        if [t for t in self._pool._threads if t.is_alive()]:
+            logger.info(
+                "Failed to shutdown all DatasetPipeline execution threads. "
+                "These threads will be destroyed once all current stages "
+                "complete or when the driver exits"
+            )
 
     def __iter__(self):
         return self
