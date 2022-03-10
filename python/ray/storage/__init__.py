@@ -1,4 +1,4 @@
-from ray.storage.store import (
+from ray.storage.impl import (
     save_objects,
     delete_object,
     get_object_info,

@@ -730,6 +730,7 @@ def init(
     log_to_driver: bool = True,
     namespace: Optional[str] = None,
     runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
+    storage: Optional[str] = None,
     # The following are unstable parameters and their use is discouraged.
     _enable_object_reconstruction: bool = False,
     _redis_max_memory: Optional[int] = None,
@@ -827,11 +828,14 @@ def init(
             timestamp, filename, line number, and message. See the source file
             ray_constants.py for details. Ignored unless "configure_logging"
             is true.
-        log_to_driver (bool): If true, the output from all of the worker
+        log_to_driver: If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
-        namespace (str): Namespace to use
-        runtime_env (dict, RuntimeEnv, None): The runtime environment to use
+        namespace: Namespace to use
+        runtime_env: The runtime environment to use
             for this job (see :ref:`runtime-environments` for details).
+        storage: Specify a URI for persistent cluster-wide storage. This storage path
+            must be accessible by all nodes of the cluster, otherwise an error will be
+            raised. This config must be specified to use the ``ray.storage`` APIs.
         _enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
@@ -1029,6 +1033,7 @@ def init(
             redis_max_memory=_redis_max_memory,
             plasma_store_socket_name=None,
             temp_dir=_temp_dir,
+            storage=storage,
             # We need to disable it if runtime env is not set.
             # Uploading happens after core worker is created. And we should
             # prevent default worker being created before uploading.
@@ -1086,6 +1091,7 @@ def init(
             redis_address=redis_address,
             redis_password=_redis_password,
             object_ref_seed=None,
+            storage=storage,
             temp_dir=_temp_dir,
             _system_config=_system_config,
             enable_object_reconstruction=_enable_object_reconstruction,

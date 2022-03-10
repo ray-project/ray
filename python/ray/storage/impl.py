@@ -11,8 +11,48 @@ if TYPE_CHECKING:
     import pyarrow.fs
 
 
-_filesystem = None
+# The full storage argument specified, e.g., in ``ray.init(storage="s3://foo/bar")``
+_storage_uri = None
+
+# The storage prefix, e.g., "foo/bar" under which files should be written.
 _storage_prefix = None
+
+# The pyarrow.fs.FileSystem instantiated for the storage.
+_filesystem = None
+
+
+def _init_storage(storage_uri: str, is_head: bool):
+    global _storage_uri
+    _storage_uri = storage_uri
+
+    if is_head:
+        _init_filesystem(storage_uri, create_valid_file=True)
+
+
+def _init_filesystem(storage_uri: str, create_valid_file: bool = False):
+    global _filesystem, _storage_prefix
+    if not storage_uri:
+        raise ValueError(
+            "No storage URI has been configured for the cluster. "
+            "Specify a storage URI via `ray.init(storage=<uri>)`")
+
+    import pyarrow.fs
+    _filesystem, _storage_prefix = pyarrow.fs.FileSystem.from_uri(storage_uri)
+
+    valid_file = os.path.join(_storage_prefix, "_valid")
+    if create_valid_file:
+        _filesystem.create_dir(_storage_prefix)
+        with _filesystem.open_output_stream(valid_file):
+            pass
+    else:
+        valid = _filesystem.get_file_info([valid_file + "x"])[0]
+        if valid.type == pyarrow.fs.FileType.NotFound:
+            raise RuntimeError(
+                "Unable to initialize storage: {} flag not found. "
+                "Check that configured cluster storage path is readable from all "
+                "worker nodes of the cluster.".format(valid_file))
+
+    return _filesystem, _storage_prefix
 
 
 @PublicAPI
@@ -20,11 +60,7 @@ _storage_prefix = None
 def get_filesystem() -> ("pyarrow.fs.FileSystem", str):
     global _filesystem, _storage_prefix
     if _filesystem is None:
-        worker = ray.worker.global_worker
-        base_uri = os.environ.get("RAY_storage", os.path.join(worker.node._temp_dir, "storage"))
-        import pyarrow.fs
-        _filesystem, _storage_prefix = pyarrow.fs.FileSystem.from_uri(base_uri)
-        print("Storage initialized", _filesystem, _storage_prefix)
+        _init_filesystem()
     return _filesystem, _storage_prefix
 
 

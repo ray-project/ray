@@ -458,6 +458,11 @@ def debug(address):
     help="manually specify the root temporary dir of the Ray process",
 )
 @click.option(
+    "--storage",
+    default=None,
+    help="the persistent storage URI for the cluster",
+)
+@click.option(
     "--system-config",
     default=None,
     hidden=True,
@@ -535,6 +540,7 @@ def start(
     plasma_store_socket_name,
     raylet_socket_name,
     temp_dir,
+    storage,
     system_config,
     enable_object_reconstruction,
     metrics_export_port,
@@ -595,6 +601,7 @@ def start(
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir,
+        storage=storage,
         include_dashboard=include_dashboard,
         dashboard_host=dashboard_host,
         dashboard_port=dashboard_port,

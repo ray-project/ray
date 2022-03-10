@@ -209,6 +209,10 @@ class Node:
         if head:
             self.validate_external_storage()
 
+        # Validate and initialize the persistent storage API.
+        ray.storage.impl._init_storage(
+            ray_params.storage or os.environ.get("RAY_STORAGE"), is_head=head)
+
         if connect_only:
             # Get socket names from the configuration.
             self._plasma_store_socket_name = ray_params.plasma_store_socket_name
