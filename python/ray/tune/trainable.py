@@ -1032,20 +1032,3 @@ class ConvertibleToTrainable(abc.ABC):
     def as_trainable(self) -> Type[Trainable]:
         """Convert self to a ``tune.Trainable`` class."""
         raise NotImplementedError
-
-    def _override_attributes_with_config(self, config: Dict) -> Dict:
-        """Overrides attributes of self with values in ``config``.
-
-        This is needed to allow attributes to be tuned as
-        hyperparameters.
-        This method does a deep update of attributes that are dicts.
-
-        Args:
-            config: A dictionary to update attributes with.
-        Returns:
-            A dict containing any remaining key-value pairs from ``config``
-            that don't override any attributes. This leftover config can be
-            used for any downstream tasks (such as as passing to a training
-            function).
-        """
-        raise NotImplementedError
