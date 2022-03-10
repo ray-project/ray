@@ -27,8 +27,7 @@ def convert_pandas_to_torch_tensor(
             models. If None, then use all columns in the ``data_batch``.
         column_dtype (Optional[Union[torch.dtype, List[torch.dtype]): The
             torch dtype to use for the tensor. If set to None,
-            then automatically
-            infer the dtype.
+            then automatically infer the dtype.
 
     Returns:
         Either a torch tensor of size (N, len(columns)) where N is the
@@ -39,24 +38,14 @@ def convert_pandas_to_torch_tensor(
 
     multi_input = columns and (isinstance(columns[0], (list, tuple)))
 
-    if multi_input and column_dtypes:
-        if not type(column_dtypes) not in [torch.dtype, list, tuple]:
-            raise TypeError(
-                "If `columns` is a list of lists, "
-                "`column_dtypes` must be None, `torch.dtype`,"
-                f" or a sequence, got {type(column_dtypes)}."
-            )
-
-    if (
-        not multi_input
-        and column_dtypes
-        and type(column_dtypes) not in [torch.dtype, list, tuple]
-    ):
+    if not multi_input and column_dtypes and type(column_dtypes) != torch.dtype:
         raise TypeError(
             "If `columns` is a list of strings, "
             "`column_dtypes` must be None or a single `torch.dtype`."
             f"Got {type(column_dtypes)} instead."
         )
+
+    columns = columns if columns else []
 
     def get_tensor_for_columns(columns, dtype):
         feature_tensors = []
@@ -75,7 +64,7 @@ def convert_pandas_to_torch_tensor(
         return torch.cat(feature_tensors, dim=1)
 
     if multi_input:
-        if isinstance(column_dtypes, torch.dtype):
+        if type(column_dtypes) not in [list, tuple]:
             column_dtypes = [column_dtypes] * len(columns)
         return [
             get_tensor_for_columns(columns=subcolumns, dtype=dtype)
