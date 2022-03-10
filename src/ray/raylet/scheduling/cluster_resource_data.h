@@ -71,6 +71,8 @@ class ResourceRequest {
   bool IsEmpty() const;
   /// Returns human-readable string for this task request.
   std::string DebugString() const;
+  /// Request for GPU.
+  bool IsGPURequest() const;
 };
 
 // Data structure specifying the capacity of each instance of each resource
@@ -165,12 +167,14 @@ class NodeResources {
   /// Note: This doesn't account for the binpacking of unit resources.
   bool IsFeasible(const ResourceRequest &resource_request) const;
   /// Returns if this equals another node resources.
-  bool operator==(const NodeResources &other);
-  bool operator!=(const NodeResources &other);
+  bool operator==(const NodeResources &other) const;
+  bool operator!=(const NodeResources &other) const;
   /// Returns human-readable string for these resources.
   std::string DebugString() const;
   /// Returns compact dict-like string.
   std::string DictString() const;
+  /// Has GPU.
+  bool HasGPU() const;
 };
 
 /// Total and available capacities of each resource instance.

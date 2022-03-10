@@ -63,9 +63,9 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
   scheduler_strategies_.push_back(std::make_shared<GcsStrictSpreadStrategy>());
 }
 
-std::vector<ResourceSet> GcsScheduleStrategy::GetRequiredResourcesFromBundles(
+std::vector<ResourceRequest> GcsScheduleStrategy::GetRequiredResourcesFromBundles(
     const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles) {
-  std::vector<ResourceSet> required_resources;
+  std::vector<ResourceRequest> required_resources;
   for (const auto &bundle : bundles) {
     required_resources.push_back(bundle->GetRequiredResources());
   }

@@ -1027,7 +1027,7 @@ cc_test(
     name = "scheduling_policy_test",
     size = "small",
     srcs = [
-        "src/ray/raylet/scheduling/scheduling_policy_test.cc",
+        "src/ray/raylet/scheduling/policy/scheduling_policy_test.cc",
     ],
     copts = COPTS,
     tags = ["team:core"],
