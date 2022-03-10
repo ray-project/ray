@@ -1,4 +1,5 @@
 import inspect
+import itertools
 import logging
 import time
 from typing import (
@@ -94,6 +95,8 @@ class DatasetPipeline(Generic[T]):
         # Whether the pipeline execution has started.
         # This variable is shared across all pipelines descending from this.
         self._executed = _executed or [False]
+        self._dataset_iter = None
+        self._first_dataset = None
         self._stats = DatasetPipelineStats()
 
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
@@ -494,7 +497,9 @@ class DatasetPipeline(Generic[T]):
             The Python type or Arrow schema of the records, or None if the
             schema is not known.
         """
-        return next(self.iter_datasets()).schema(fetch_if_missing=fetch_if_missing)
+        if self._first_dataset is None:
+            self._first_dataset, self._dataset_iter = self._peak()
+        return self._first_dataset.schema(fetch_if_missing=fetch_if_missing)
 
     def count(self) -> int:
         """Count the number of records in the dataset pipeline.
@@ -642,6 +647,11 @@ class DatasetPipeline(Generic[T]):
 
         return EpochDelimitedIterator(self)
 
+    def _peak(self) -> (Dataset[T], Iterator[Dataset[T]]):
+        self._optimize_stages()
+        dataset_iter = PipelineExecutor(self)
+        return next(dataset_iter), dataset_iter
+
     @DeveloperAPI
     def iter_datasets(self) -> Iterator[Dataset[T]]:
         """Iterate over the output datasets of this pipeline.
@@ -652,8 +662,14 @@ class DatasetPipeline(Generic[T]):
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
         self._executed[0] = True
-        self._optimize_stages()
-        return PipelineExecutor(self)
+        iter = None
+        if self._dataset_iter:
+            iter = itertools.chain([self._first_dataset], self._dataset_iter)
+            del self._dataset_iter
+        else:
+            self._first_dataset, rest = self._peak()
+            iter = itertools.chain([self._first_dataset], rest)
+        return iter
 
     @DeveloperAPI
     def foreach_window(
