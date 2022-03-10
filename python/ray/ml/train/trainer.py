@@ -35,13 +35,9 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
         scaling_config: Configuration for how to scale training.
         run_config: Configuration for the execution of the training run.
         train_dataset: Either a distributed Ray :ref:`Dataset <dataset-api>`
-            or a Callable that returns a Dataset, to use for training. If a
-            ``preprocessor`` is also provided, it will be fit on this
-            dataset and this dataset will be transformed.
+            or a Callable that returns a Dataset to use for training.
         extra_datasets: Any extra Datasets (such as validation or test
-            datasets) to use for training. If a ``preprocessor`` is
-            provided, the datasets specified here will only be transformed,
-            and not fit on.
+            datasets) to use for training.
         preprocessor: A preprocessor to preprocess the provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
     """
