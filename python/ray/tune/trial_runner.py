@@ -739,7 +739,6 @@ class TrialRunner:
                         self._on_saving_result(trial, result)
                     self._post_process_on_training_saving_result(trial)
         except Exception as e:
-            import ipdb; ipdb.set_trace()
             if e is TuneError or self._fail_fast == TrialRunner.RAISE:
                 raise e
             else:

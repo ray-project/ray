@@ -13,6 +13,7 @@ import unittest
 import ray
 from ray import tune
 from ray._private.test_utils import recursive_fnmatch
+from ray.exceptions import RayTaskError
 from ray.rllib import _register_all
 from ray.tune.callback import Callback
 from ray.tune.suggest.basic_variant import BasicVariantGenerator
@@ -530,12 +531,13 @@ class TrainableCrashWithFailFast(unittest.TestCase):
     def test(self):
         """Trainable crashes with fail_fast flag and the original crash message
         should bubble up."""
+
         def f(config):
             tune.report({"a": 1})
             time.sleep(0.1)
             raise RuntimeError("Error happens in trainable!!")
 
-        with self.assertRaisesRegex(RuntimeError, "Error happens in trainable!!"):
+        with self.assertRaisesRegex(RayTaskError, "Error happens in trainable!!"):
             tune.run(f, fail_fast=TrialRunner.RAISE)
 
 
