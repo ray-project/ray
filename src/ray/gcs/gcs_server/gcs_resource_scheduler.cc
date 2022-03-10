@@ -16,6 +16,8 @@
 
 #include <numeric>
 
+#include "ray/raylet/scheduling/scheduling_ids.h"
+
 namespace ray {
 namespace gcs {
 
@@ -149,80 +151,50 @@ absl::flat_hash_set<NodeID> GcsResourceScheduler::FilterCandidateNodes(
   return result;
 }
 
-std::tuple<bool, bool> cmp_resource(
-    const std::string &resource,
-    const absl::flat_hash_map<std::string, FixedPoint> &a_map,
-    const absl::flat_hash_map<std::string, FixedPoint> &b_map) {
-  auto a_resource = a_map.find(resource);
-  auto b_resource = b_map.find(resource);
-
-  bool a_less_than_b = false;
-  bool finished = false;
-
-  if (a_resource != a_map.end() && b_resource != b_map.end()) {
-    if (a_resource->second != b_resource->second) {
-      a_less_than_b = a_resource->second < b_resource->second;
-      finished = true;
-    }
-  } else if (a_resource != a_map.end() && a_resource->second != 0) {
-    a_less_than_b = false;
-    finished = true;
-  } else if (b_resource != b_map.end() && b_resource->second != 0) {
-    a_less_than_b = true;
-    finished = true;
-  }
-  return std::make_tuple(finished, a_less_than_b);
-}
-
 std::vector<int> GcsResourceScheduler::SortRequiredResources(
     const std::vector<ResourceRequest> &required_resources) {
   std::vector<int> sorted_index(required_resources.size());
   std::iota(sorted_index.begin(), sorted_index.end(), 0);
-  std::sort(sorted_index.begin(), sorted_index.end(), [&](int b, int a) {
-    auto a_map = required_resources[a].GetResourceAmountMap();
-    auto b_map = required_resources[b].GetResourceAmountMap();
-    bool finished, cmp_res;
+  std::sort(sorted_index.begin(), sorted_index.end(), [&](int b_idx, int a_idx) {
+    auto a = required_resources[a_idx];
+    auto b = required_resources[b_idx];
+
+    RAY_CHECK(a.predefined_resources.size() == (int)PredefinedResources_MAX);
+    RAY_CHECK(b.predefined_resources.size() == (int)PredefinedResources_MAX);
 
     // Make sure that resources are always sorted in the same order
-    std::set<std::string> extra_resources_set;
-    for (auto r : a_map) {
-      if (r.first != "CPU" && r.first != "GPU") {
-        extra_resources_set.insert(r.first);
-      }
+    std::set<uint64_t> extra_resources_set;
+    for (auto r : a.custom_resources) {
+      extra_resources_set.insert(r.first);
     }
-    for (auto r : b_map) {
-      if (r.first != "CPU" && r.first != "GPU") {
-        extra_resources_set.insert(r.first);
-      }
+    for (auto r : b.custom_resources) {
+      extra_resources_set.insert(r.first);
     }
 
     // TODO (jon-chuang): the exact resource priority defined here needs to be revisted.
 
-    // Notes: This is a comparator for sorting in c++. We return true if a < b.
-    //
-    // Here we are comparing two maps to see if a_map < b_map, based on the given resource
-    // e.g. "GPU". If we can resolve the predicate, we return finished = true.
-    //
-    // Else, we rely on the resource of the next priority level to try to
-    // resolve the comparison, all the way until "CPU", after which we return false,
-    // since the a_map's and b_map's resources are tied by priority.
+    // Notes: This is a comparator for sorting in c++. We return true if a < b based on a
+    // resource at the given level of priority. If tied, we attempt to resolve based on
+    // the resource at the next level of priority
 
-    std::tie(finished, cmp_res) = cmp_resource("GPU", a_map, b_map);
-    if (finished) {
-      return cmp_res;
+    if (a.predefined_resources[GPU] != b.predefined_resources[GPU]) {
+      return a.predefined_resources[GPU] < b.predefined_resources[GPU];
     }
     for (auto r : extra_resources_set) {
-      std::tie(finished, cmp_res) = cmp_resource(r, a_map, b_map);
-      if (finished) {
-        return cmp_res;
+      auto a_iter = a.custom_resources.find(r);
+      auto a_resource = a_iter != a.custom_resources.end() ? a_iter->second : 0;
+      auto b_iter = a.custom_resources.find(r);
+      auto b_resource = b_iter != b.custom_resources.end() ? b_iter->second : 0;
+      if (a_resource != b_resource) {
+        return a_resource < b_resource;
       }
     }
-    std::tie(finished, cmp_res) = cmp_resource("CPU", a_map, b_map);
-    if (finished) {
-      return cmp_res;
-    } else {
-      return false;
+    for (auto idx : std::vector({OBJECT_STORE_MEM, MEM, CPU})) {
+      if (a.predefined_resources[idx] != b.predefined_resources[idx]) {
+        return a.predefined_resources[idx] < b.predefined_resources[idx];
+      }
     }
+    return false;
   });
   return sorted_index;
 }

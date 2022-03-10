@@ -143,13 +143,15 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     }
 
     // Scheduling succeeded and node resources are used up.
-    std::vector<ResourceSet> required_resources_list;
+    std::vector<ResourceRequest> required_resources_list;
     for (auto resources : resources_list) {
       absl::flat_hash_map<std::string, double> resource_map;
       for (auto r : resources) {
         resource_map[r.first] = r.second;
       }
-      required_resources_list.emplace_back(resource_map);
+      required_resources_list.emplace_back(
+        ResourceMapToResourceRequest(resource_map, /*requires_object_store_memory=*/false)
+      );
     }
 
     const auto &result1 =
