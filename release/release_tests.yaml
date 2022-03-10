@@ -2349,3 +2349,85 @@
 #     type: sdk_command
 #     file_manager: sdk
 #   stable: false
+
+################
+# Core K8s tests
+################
+- name: k8s_dask_on_ray_large_scale_test_no_spilling
+  group: k8s-core-nightly-test
+  team: core
+  working_dir: nightly_tests
+  frequency: nightly
+
+  legacy:
+    test_name: k8s_dask_on_ray_large_scale_test_no_spilling
+    test_suite: nightly_tests
+
+  cluster:
+    cluster_env: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
+    cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
+    autosuspend_mins: 120
+    cloud_id: cld_HSrCZdMCYDe1NmMCJhYRgQ4p
+
+  run:
+    timeout: 7200
+    wait_for_nodes:
+      # Number of nodes
+      num_nodes: 21
+      # Timeout for waiting for nodes. If nodes are not up by then, the
+      # test will fail.
+      timeout: 600
+    script: python dask_on_ray/large_scale_test.py --num_workers 20 --worker_obj_store_size_in_gb 20 --error_rate 0  --data_save_path /tmp/ray
+    type: job
+    file_manager: job
+
+  smoke_test:
+    frequency: nightly
+
+    cluster:
+      cluster_env: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
+      cluster_compute: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
+      autosuspend_mins: 120
+      cloud_id: cld_HSrCZdMCYDe1NmMCJhYRgQ4p
+
+    run:
+      timeout: 7200
+      wait_for_nodes:
+        # Number of nodes
+        num_nodes: 5
+        # Timeout for waiting for nodes. If nodes are not up by then, the
+        # test will fail.
+        timeout: 600
+      script: python dask_on_ray/large_scale_test.py --num_workers 4 --worker_obj_store_size_in_gb 20 --error_rate 0  --data_save_path /tmp/ray
+      type: job
+      file_manager: job
+
+- name: k8s_threaded_actors_stress_test
+  group: k8s-core-nightly-test
+  team: core
+  working_dir: nightly_tests
+  frequency: nightly
+
+  legacy:
+    test_name: k8s_threaded_actors_stress_test
+    test_suite: nightly_tests
+
+  cluster:
+    cluster_env: stress_tests/stress_tests_app_config.yaml
+    cluster_compute: stress_tests/k8s_stress_test_threaded_actor_compute.yaml
+    autosuspend_mins: 120
+    cloud_id: cld_HSrCZdMCYDe1NmMCJhYRgQ4p
+
+  run:
+    timeout: 3600
+    wait_for_nodes:
+      # Number of nodes
+      num_nodes: 201
+      # Timeout for waiting for nodes. If nodes are not up by then, the
+      # test will fail.
+      timeout: 1200
+    script: python stress_tests/test_threaded_actors.py --test-runtime 3600 --kill-interval_s 60
+    type: job
+    file_manager: job
+
+  stable: false
