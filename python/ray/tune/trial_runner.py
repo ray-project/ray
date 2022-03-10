@@ -868,7 +868,8 @@ class TrialRunner:
         error_msg = f"Trial {trial}: Error processing event."
         if self._fail_fast == TrialRunner.RAISE:
             logger.error(error_msg)
-            raise
+            assert isinstance(result, Exception)
+            raise result
         else:
             logger.exception(error_msg)
         self._process_trial_failure(trial, result)
