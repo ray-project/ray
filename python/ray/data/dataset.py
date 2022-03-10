@@ -2154,8 +2154,8 @@ Dict[str, List[str]]]): The names of the columns
     def to_tf(
         self,
         *,
-        label_column: str,
-        output_signature: Tuple["tf.TypeSpec", "tf.TypeSpec"],
+        output_signature: Union["tf.TypeSpec", Tuple["tf.TypeSpec", "tf.TypeSpec"]],
+        label_column: Optional[str] = None,
         feature_columns: Optional[List[str]] = None,
         prefetch_blocks: int = 0,
         batch_size: int = 1,
@@ -2180,11 +2180,14 @@ Dict[str, List[str]]]): The names of the columns
         Time complexity: O(1)
 
         Args:
-            label_column (str): The name of the column used as the label
-                (second element of the output tuple).
-            output_signature (Tuple[tf.TypeSpec, tf.TypeSpec]): A 2-element
-                tuple of `tf.TypeSpec` objects corresponding to
-                (features, label).
+            output_signature (Union[tf.TypeSpec, Tuple[tf.TypeSpec, tf.TypeSpec]]):
+                If ``label_column`` is specified, a 2-element
+                tuple of ``tf.TypeSpec`` objects corresponding to
+                (features, label). Otherwise, a single ``tf.TypeSpec``
+                corresponding to features tensor.
+            label_column (Optional[str]): The name of the column used as the label
+                (second element of the output tuple). If not specified, output
+                will be just one tensor instead of a tuple.
             feature_columns (Optional[List[str]]): List of columns in datasets
                 to use. If None, all columns will be used.
             prefetch_blocks: The number of blocks to prefetch ahead of the
@@ -2208,12 +2211,16 @@ Dict[str, List[str]]]): The names of the columns
                 batch_size=batch_size,
                 batch_format="pandas",
             ):
-                target_col = batch.pop(label_column)
+                if label_column:
+                    target_col = batch.pop(label_column)
                 if feature_columns:
                     batch = batch[feature_columns]
                 # TODO(Clark): Support batches containing our extension array
                 # TensorArray.
-                yield batch.values, target_col.values
+                if label_column:
+                    yield batch.values, target_col.values
+                else:
+                    yield batch.values
 
         dataset = tf.data.Dataset.from_generator(
             make_generator, output_signature=output_signature
