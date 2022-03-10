@@ -766,9 +766,8 @@
 ########################
 
 - name: shuffle_10gb
-  group: Core nightly tests
+  group: core-multi-test
 
-  frequency: nightly
   team: core
   frequency: multi
   working_dir: nightly_tests
@@ -789,7 +788,7 @@
     file_manager: sdk
 
 - name: microbenchmark
-  group: Core nightly tests
+  group: core-daily-test
   team: core
   frequency: nightly
   working_dir: microbenchmark
