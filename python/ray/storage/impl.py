@@ -58,13 +58,17 @@ def _init_filesystem(storage_uri: str, create_valid_file: bool = False):
     return _filesystem, _storage_prefix
 
 
+def _get_or_init_filesystem() -> ("pyarrow.fs.FileSystem", str):
+    global _filesystem, _storage_prefix
+    if _filesystem is None:
+        _init_filesystem(_storage_uri)
+    return _filesystem, _storage_prefix
+
+
 @PublicAPI
 @client_mode_hook(auto_init=True)
 def get_filesystem() -> ("pyarrow.fs.FileSystem", str):
-    global _filesystem, _storage_prefix
-    if _filesystem is None:
-        _init_filesystem()
-    return _filesystem, _storage_prefix
+    return _get_or_init_filesystem()
 
 
 def save_objects(

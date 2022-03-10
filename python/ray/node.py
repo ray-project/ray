@@ -204,15 +204,15 @@ class Node:
 
         self._init_temp()
 
-        # If it is a head node, try validating if
-        # external storage is configurable.
-        if head:
-            self.validate_external_storage()
-
         # Validate and initialize the persistent storage API.
         ray.storage.impl._init_storage(
             ray_params.storage or os.environ.get("RAY_STORAGE"), is_head=head
         )
+
+        # If it is a head node, try validating if
+        # external storage is configurable.
+        if head:
+            self.validate_external_storage()
 
         if connect_only:
             # Get socket names from the configuration.
