@@ -21,6 +21,7 @@ from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.serve.application import Application
 from ray.serve.api import Deployment
+from ray._private.utils import import_attr
 
 RAY_INIT_ADDRESS_HELP_STR = (
     "Address to use for ray.init(). Can also be specified "
@@ -453,4 +454,6 @@ def delete(address: str, yes: bool):
 @click.argument("import_path")
 @click.argument("file_path")
 def build(import_path: str, file_path: str):
-    pass
+    app: Application = import_attr(import_path)
+    with open(file_path, "w+") as f:
+        app.to_yaml(f)
