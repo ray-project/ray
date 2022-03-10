@@ -31,22 +31,22 @@ enum TablePrefix {
   NODE = 4;
   OBJECT = 5;
   ACTOR = 6;
-  ACTOR_TASK_SPEC = 7;
-  FUNCTION = 8;
-  TASK_RECONSTRUCTION = 9;
-  RESOURCE_USAGE_BATCH = 10;
-  JOB = 11;
-  PROFILE = 12;
-  TASK_LEASE = 13;
-  NODE_RESOURCE = 14;
-  DIRECT_ACTOR = 15;
+  FUNCTION = 7;
+  TASK_RECONSTRUCTION = 8;
+  RESOURCE_USAGE_BATCH = 9;
+  JOB = 10;
+  PROFILE = 11;
+  TASK_LEASE = 12;
+  NODE_RESOURCE = 13;
+  DIRECT_ACTOR = 14;
   // WORKER is already used in WorkerType, so use WORKERS here.
-  WORKERS = 16;
-  INTERNAL_CONFIG = 17;
-  TABLE_PREFIX_MAX = 18;
-  PLACEMENT_GROUP_SCHEDULE = 19;
-  PLACEMENT_GROUP = 20;
-  KV = 21;
+  WORKERS = 15;
+  INTERNAL_CONFIG = 16;
+  TABLE_PREFIX_MAX = 17;
+  PLACEMENT_GROUP_SCHEDULE = 18;
+  PLACEMENT_GROUP = 19;
+  KV = 20;
+  ACTOR_TASK_SPEC = 21;
 }
 
 // The channel that Add operations to the Table should be published on, if any.
