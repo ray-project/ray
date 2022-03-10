@@ -6,9 +6,8 @@ from ray.tune.suggest import Searcher
 from ray.util import PublicAPI
 
 
-# TODO(xwjiang): Change to alpha
 @dataclass
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class TuneConfig:
     """Tune specific configs.
 
@@ -30,10 +29,6 @@ class TuneConfig:
             provided as an argument, the grid will be repeated
             `num_samples` of times. If this is -1, (virtually) infinite
             samples are generated until a stopping condition is met.
-        max_failures: Tries to recover a trial at least this many times.
-            Tune will recover from the latest checkpoint if present.
-            Setting to -1 will lead to infinite recovery retries.
-            Setting to 0 will disable retries. Defaults to 0.
     """
 
     # Currently this is not at feature parity with `tune.run`, nor should it be.
@@ -44,4 +39,3 @@ class TuneConfig:
     search_alg: Optional[Searcher] = None
     scheduler: Optional[TrialScheduler] = None
     num_samples: int = 1
-    max_failures: int = 0

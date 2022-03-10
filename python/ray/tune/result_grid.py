@@ -2,16 +2,18 @@ from typing import Optional
 
 from ray.ml.result import Result
 from ray.tune import ExperimentAnalysis
+from ray.tune.error import TuneError
 from ray.tune.trial import Trial
 from ray.util import PublicAPI
 
 
-# TODO(xwjiang): Change to alpha
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class ResultGrid:
     """A set of ``Result`` objects returned from a call to ``tuner.fit()``.
 
     You can use it to inspect the trials run as well as obtaining the best result.
+
+    The constructor is a private API.
 
     Usage pattern:
     .. code-block:: python
@@ -19,7 +21,7 @@ class ResultGrid:
         result_grid = tuner.fit()
         for i in range(len(result_grid)):
             result = result_grid[i]
-            if not result.error_msg:
+            if not result.error:
                 print(f"Trial finishes successfully with metric {result.metric}.")
             else:
                 print(f"Trial errors out with {result.error}.")
@@ -27,29 +29,13 @@ class ResultGrid:
         best_checkpoint = best_result.checkpoint
         best_metric = best_result.metric
 
-    Note trials of all status are included in the final result grid.
-    In case if a trial is not terminated, its most latest result and checkpoint as
-    perceived by Tune driver component will be presented.
+    Note that trials of all statuses are included in the final result grid.
+    If a trial is not in terminated state, its latest result and checkpoint as
+    seen by Tune will be provided.
     """
 
     def __init__(self, experiment_analysis: ExperimentAnalysis):
         self._experiment_analysis = experiment_analysis
-
-    @staticmethod
-    def _get_error_msg(trial: Trial) -> Optional[str]:
-        if trial.error_file:
-            with open(trial.error_file, "r") as f:
-                return f.read()
-        return None
-
-    def _trial_to_result(self, trial: Trial) -> Result:
-        # TODO(xwjiang): Use Kai's new checkpoint!
-        result = Result(
-            checkpoint=trial.checkpoint,
-            metrics=trial.last_result,
-            error=self._get_error_msg(trial),
-        )
-        return result
 
     def get_best_result(self) -> Result:
         """Get the best result from all the trials run.
@@ -67,3 +53,19 @@ class ResultGrid:
     def __getitem__(self, i) -> Result:
         """Returns the i'th result in the grid."""
         return self._trial_to_result(self._experiment_analysis.trials[i])
+
+    @staticmethod
+    def _populate_exception(trial: Trial) -> Optional[TuneError]:
+        if trial.error_file:
+            with open(trial.error_file, "r") as f:
+                return TuneError(f.read())
+        return None
+
+    def _trial_to_result(self, trial: Trial) -> Result:
+        # TODO(xwjiang): Use Kai's new checkpoint!
+        result = Result(
+            checkpoint=trial.checkpoint,
+            metrics=trial.last_result,
+            error=self._get_error_msg(trial),
+        )
+        return result

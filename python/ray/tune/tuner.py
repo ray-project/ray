@@ -1,11 +1,8 @@
-from typing import Optional
-
 from ray.tune.result_grid import ResultGrid
 from ray.util import PublicAPI
 
 
-# TODO(xwjiang): Change to alpha
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class Tuner:
     """Tuner is the recommended way of launching hyperparameter tuning jobs with Ray Tune.
 
@@ -76,20 +73,27 @@ class Tuner:
         #  when a Tuner is restored and fit again?
         raise NotImplementedError
 
-    def fit(self) -> Optional[ResultGrid]:
+    def fit(self) -> ResultGrid:
         """Executes hyperparameter tuning job as configured and returns result.
 
-        If exception happens during the run, user may refer to the end of console
-        output to restore the run.
+        Failure handling:
+        For the kind of exception that happens during the execution of a trial,
+        one may inspect it together with stacktrace through the returned result grid.
+        See ``ResultGrid`` for reference. Each trial may fail up to a certain number.
+        This is configured by `RunConfig.FailureConfig.max_failures`.
 
-        Sample output looks like:
-
-        ```
-        ... the whole stack trace ...
-        RuntimeError: This is a simulated error!
+        Exception that happens beyond trials will be thrown by this method as well.
+        In such cases, there will be instruction like the following printed out
+        at the end of console output to inform users on how to resume.
 
         Please use tuner = Tuner.restore("/Users/xwjiang/ray_results/tuner_resume")
         to resume.
         ```
+
+        Exception that happens in non-essential integration blocks like during invoking
+        callbacks will not crash the whole run.
+
+        Raises:
+            TuneError
         """
         raise NotImplementedError

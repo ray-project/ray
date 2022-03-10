@@ -12,6 +12,8 @@ class Result:
     training metrics. `status` and `error` are included so that non successful runs
     and trials can be represented as well.
 
+    The constructor is a private API.
+
     Args:
         metrics: The final metrics as reported by an Trainable.
         checkpoint: The final checkpoint of the Trainable
@@ -22,7 +24,7 @@ class Result:
         self,
         metrics: Any,
         checkpoint: Optional[Checkpoint],
-        error: Optional[str] = None,
+        error: Optional[Exception] = None,
     ):
         self.metrics = metrics
         self.checkpoint = checkpoint
