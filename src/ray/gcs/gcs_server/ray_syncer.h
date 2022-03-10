@@ -21,6 +21,7 @@
 #include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
 
 namespace ray {
+class GcsPlacementGroupSchedulerTest;
 namespace syncer {
 
 // RaySyncer is a service to sync components in the cluster.
@@ -35,10 +36,10 @@ namespace syncer {
 class RaySyncer {
  public:
   RaySyncer(instrumented_io_context &main_thread,
-            std::unique_ptr<::ray::gcs::GrpcBasedResourceBroadcaster> broadcaster,
+            std::unique_ptr<::ray::gcs::GrpcBasedResourceBroadcaster> braodcaster,
             std::unique_ptr<::ray::gcs::GcsResourceReportPoller> poller)
       : ticker_(main_thread),
-        broadcaster_(std::move(broadcaster)),
+        broadcaster_(std::move(braodcaster)),
         poller_(std::move(poller)) {}
 
   void Start() {
@@ -48,6 +49,7 @@ class RaySyncer {
       boost::asio::io_service::work work(broadcast_service_);
       broadcast_service_.run();
     });
+
     // Perodically broadcast the messages received to other nodes.
     ticker_.RunFnPeriodically(
         [this] {
@@ -100,7 +102,6 @@ class RaySyncer {
     static_assert(std::is_same_v<T, rpc::NodeResourceChange> ||
                       std::is_same_v<T, rpc::ResourcesData>,
                   "unknown type");
-
     if constexpr (std::is_same_v<T, rpc::NodeResourceChange>) {
       resources_buffer_proto_.add_batch()->mutable_change()->Swap(&update);
     } else if constexpr (std::is_same_v<T, rpc::ResourcesData>) {
@@ -163,6 +164,7 @@ class RaySyncer {
   // resources_buffer_proto_ will be cleared after each broadcasting.
   absl::flat_hash_map<std::string, rpc::ResourcesData> resources_buffer_;
   rpc::ResourceUsageBroadcastData resources_buffer_proto_;
+  friend class ray::GcsPlacementGroupSchedulerTest;
 };
 
 }  // namespace syncer

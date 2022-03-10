@@ -55,16 +55,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
                           rpc::GetResourcesReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle update resource rpc request.
-  void HandleUpdateResources(const rpc::UpdateResourcesRequest &request,
-                             rpc::UpdateResourcesReply *reply,
-                             rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle delete resource rpc request.
-  void HandleDeleteResources(const rpc::DeleteResourcesRequest &request,
-                             rpc::DeleteResourcesReply *reply,
-                             rpc::SendReplyCallback send_reply_callback) override;
-
   /// Handle get available resources of all nodes.
   void HandleGetAllAvailableResources(
       const rpc::GetAllAvailableResourcesRequest &request,
@@ -85,6 +75,18 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   ///
   /// \return The resources of all nodes in the cluster.
   const absl::flat_hash_map<NodeID, std::shared_ptr<Node>> &GetClusterResources() const;
+
+  /// Update resources of a node
+  /// \param node_id Id of a node.
+  /// \param changed_resources The newly added resources for the node. Usually it's
+  /// placement group resources.
+  void UpdateResources(const NodeID &node_id,
+                       absl::flat_hash_map<std::string, double> changed_resources);
+
+  /// Delete resource of a node
+  /// \param node_id Id of a node.
+  /// \param resource_names The resources to be deleted from the node.
+  void DeleteResources(const NodeID &node_id, std::vector<std::string> resource_names);
 
   /// Handle a node registration.
   ///

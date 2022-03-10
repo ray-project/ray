@@ -16,6 +16,7 @@
 
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/gcs/gcs_server/ray_syncer.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
 
@@ -34,18 +35,17 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
           new boost::asio::io_service::work(io_service_));
       io_service_.run();
     }));
-
+    ray_syncer_ = std::make_shared<ray::syncer::RaySyncer>(io_service_, nullptr, nullptr);
     for (int index = 0; index < 3; ++index) {
       raylet_clients_.push_back(std::make_shared<GcsServerMocker::MockRayletClient>());
     }
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
         std::make_unique<GcsServerMocker::MockGcsPubSub>(redis_client_));
-    gcs_resource_manager_ =
-        std::make_shared<gcs::GcsResourceManager>(io_service_, nullptr, nullptr);
+    gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
+        io_service_, nullptr, gcs_table_storage_, ray_syncer_.get());
     gcs_resource_scheduler_ =
         std::make_shared<gcs::GcsResourceScheduler>(*gcs_resource_manager_);
-    gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
     raylet_client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &addr) { return raylet_clients_[addr.port()]; });
@@ -133,6 +133,53 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     CheckEqWithPlacementGroupFront(placement_group, GcsPlacementGroupStatus::FAILURE);
   }
 
+  void CheckResourceUpdateMatch(
+      const std::vector<std::shared_ptr<gcs::GcsPlacementGroup>> &placement_groups,
+      bool create) {
+    auto resource_buffer = ray_syncer_->resources_buffer_proto_;
+    if (create) {
+      absl::flat_hash_map<std::string, absl::flat_hash_map<std::string, double>> updates,
+          pg;
+      for (auto placement_group : placement_groups) {
+        for (auto bundle : placement_group->GetBundles()) {
+          const auto &resources = bundle->GetFormattedResources();
+          pg[bundle->NodeId().Binary()].insert(resources.begin(), resources.end());
+        }
+      }
+      for (auto batch : resource_buffer.batch()) {
+        updates[batch.change().node_id()].insert(
+            batch.change().updated_resources().begin(),
+            batch.change().updated_resources().end());
+      }
+      ASSERT_EQ(updates, pg);
+    } else {
+      absl::flat_hash_map<std::string, absl::flat_hash_set<std::string>> updates, pg;
+      for (auto placement_group : placement_groups) {
+        for (auto bundle : placement_group->GetBundles()) {
+          const auto &resources = bundle->GetFormattedResources();
+          for (auto [key, _] : resources) {
+            pg[bundle->NodeId().Binary()].insert(key);
+          }
+        }
+      }
+      for (auto batch : resource_buffer.batch()) {
+        updates[batch.change().node_id()].insert(
+            batch.change().deleted_resources().begin(),
+            batch.change().deleted_resources().end());
+      }
+      ASSERT_EQ(updates, pg);
+    }
+  }
+
+  void WaitUntilSyncMessage(int n) {
+    for (int i = 0; i < 20; ++i) {
+      if (ray_syncer_->resources_buffer_proto_.batch().size() == n) {
+        break;
+      }
+      sleep(1);
+    }
+  }
+
   void SchedulePlacementGroupSuccessTest(rpc::PlacementStrategy strategy) {
     auto node = Mocker::GenNodeInfo();
     AddNode(node);
@@ -163,6 +210,11 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     WaitPlacementGroupPendingDone(0, GcsPlacementGroupStatus::FAILURE);
     WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
     CheckEqWithPlacementGroupFront(placement_group, GcsPlacementGroupStatus::SUCCESS);
+    WaitUntilSyncMessage(2);
+    {
+      absl::MutexLock lock(&placement_group_requests_mutex_);
+      CheckResourceUpdateMatch(success_placement_groups_, true);
+    }
   }
 
   void ReschedulingWhenNodeAddTest(rpc::PlacementStrategy strategy) {
@@ -216,6 +268,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::RedisClient> redis_client_;
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
+  std::shared_ptr<ray::syncer::RaySyncer> ray_syncer_;
 };
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestSpreadScheduleFailedWithZeroNode) {
@@ -452,6 +505,11 @@ TEST_F(GcsPlacementGroupSchedulerTest, DestroyPlacementGroup) {
   scheduler_->DestroyPlacementGroupBundleResourcesIfExists(placement_group_id);
   ASSERT_TRUE(raylet_clients_[0]->GrantCancelResourceReserve());
   ASSERT_TRUE(raylet_clients_[0]->GrantCancelResourceReserve());
+  WaitUntilSyncMessage(4);
+  {
+    absl::MutexLock lock(&placement_group_requests_mutex_);
+    CheckResourceUpdateMatch(success_placement_groups_, false);
+  }
   // Subsequent destroy request should not do anything.
   scheduler_->DestroyPlacementGroupBundleResourcesIfExists(placement_group_id);
   ASSERT_FALSE(raylet_clients_[0]->GrantCancelResourceReserve());
