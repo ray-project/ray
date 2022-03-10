@@ -4,7 +4,7 @@ import yaml
 import os
 import pathlib
 import click
-from typing import Tuple, List, Dict
+from typing import Tuple, List, Dict, Union
 import argparse
 
 import ray
@@ -447,13 +447,19 @@ def delete(address: str, yes: bool):
 @cli.command(
     short_help="Build a Serve config using an Application",
     help=(
-        "Imports the Serve app stored at IMPORT_PATH, and writes a config "
-        "file to the FILE_PATH."
+        "Imports the Serve app or deployment stored at IMPORT_PATH, and "
+        "writes a config file to the FILE_PATH."
     ),
 )
 @click.argument("import_path")
 @click.argument("file_path")
 def build(import_path: str, file_path: str):
-    app: Application = import_attr(import_path)
+    app_or_deployment: Union[Application, Deployment] = import_attr(import_path)
+
+    if isinstance(app_or_deployment, Deployment):
+        app = Application([app_or_deployment])
+    else:
+        app = app_or_deployment
+
     with open(file_path, "w+") as f:
         app.to_yaml(f)

@@ -693,9 +693,10 @@ if sys.platform != "win32":
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_build(ray_start_stop):
+def test_build(ray_start_stop, import_path):
     f = NamedTemporaryFile(mode="w", delete=False)
 
+    # Build an app
     subprocess.check_output(
         ["serve", "build", "ray.serve.tests.test_cli.test_build_app", f.name]
     )
@@ -703,6 +704,14 @@ def test_build(ray_start_stop):
 
     assert requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
     assert requests.get("http://localhost:8000/one").text == "2"
+
+    # Build a deployment
+    subprocess.check_output(
+        ["serve", "build", "ray.serve.tests.test_cli.parrot", f.name]
+    )
+    subprocess.check_output(["serve", "deploy", f.name])
+
+    assert requests.get("http://localhost:8000/parrot?sound=squawk").text == "squawk"
 
     os.unlink(f.name)
 
