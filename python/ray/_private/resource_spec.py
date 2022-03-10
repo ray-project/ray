@@ -214,7 +214,8 @@ class ResourceSpec(
             # Cap by shm size by default to avoid low performance, but don't
             # go lower than REQUIRE_SHM_SIZE_THRESHOLD.
             if sys.platform == "linux" or sys.platform == "linux2":
-                shm_avail = ray._private.utils.get_shared_memory_bytes()
+                # Multiple by 0.95 to give a bit of wiggle-room.
+                shm_avail = ray._private.utils.get_shared_memory_bytes() * 0.95
                 max_cap = min(
                     max(ray_constants.REQUIRE_SHM_SIZE_THRESHOLD, shm_avail), max_cap
                 )
