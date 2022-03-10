@@ -1,6 +1,5 @@
 import os
 import re
-import socket
 import subprocess
 import sys
 import time
@@ -95,11 +94,12 @@ ray.shutdown()
     )
 
 
-def test_port_conflict(call_ray_stop_only, shutdown_only):
-    sock = socket.socket()
-    if hasattr(socket, "SO_REUSEPORT"):
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 0)
-    sock.bind(("127.0.0.1", 9999))
+@pytest.mark.parametrize(
+    "listen_port",
+    [9999],
+    indirect=True,
+)
+def test_port_conflict(listen_port, call_ray_stop_only, shutdown_only):
 
     try:
         subprocess.check_output(
@@ -120,8 +120,6 @@ def test_port_conflict(call_ray_stop_only, shutdown_only):
 
     with pytest.raises(ValueError, match="already occupied"):
         ray.init(dashboard_port=9999, include_dashboard=True)
-
-    sock.close()
 
 
 def test_dashboard(shutdown_only):
@@ -201,6 +199,78 @@ def test_dashboard_agent_restart(
     assert len(match) == 0, (
         "There are spammy logs during Ray agent restart process. " f"Logs: {match}"
     )
+
+
+conflict_port = 34567
+
+
+def run_tasks_without_runtime_env():
+    @ray.remote
+    def f():
+        pass
+
+    for _ in range(10):
+        time.sleep(1)
+        ray.get(f.remote())
+
+
+def run_tasks_with_runtime_env():
+    @ray.remote(runtime_env={"pip": ["pip-install-test==0.5"]})
+    def f():
+        import pip_install_test  # noqa
+
+        pass
+
+    for _ in range(3):
+        time.sleep(1)
+        ray.get(f.remote())
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="`runtime_env` with `pip` not supported on Windows."
+)
+@pytest.mark.parametrize(
+    "listen_port",
+    [conflict_port],
+    indirect=True,
+)
+@pytest.mark.parametrize(
+    "call_ray_start",
+    [f"ray start --head --num-cpus=1 --dashboard-agent-grpc-port={conflict_port}"],
+    indirect=True,
+)
+def test_dashboard_agent_grpc_port_conflict(listen_port, call_ray_start):
+    address = call_ray_start
+    ray.init(address=address)
+    # Tasks without runtime env still work when dashboard agent grpc port conflicts.
+    run_tasks_without_runtime_env()
+    # Tasks with runtime env couldn't work.
+    with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
+        run_tasks_with_runtime_env()
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="`runtime_env` with `pip` not supported on Windows."
+)
+@pytest.mark.parametrize(
+    "listen_port",
+    [conflict_port],
+    indirect=True,
+)
+@pytest.mark.parametrize(
+    "call_ray_start",
+    [
+        f"ray start --head --num-cpus=1 --metrics-export-port={conflict_port}",
+        f"ray start --head --num-cpus=1 --dashboard-agent-listen-port={conflict_port}",
+    ],
+    indirect=True,
+)
+def test_dashboard_agent_metrics_or_http_port_conflict(listen_port, call_ray_start):
+    address = call_ray_start
+    ray.init(address=address)
+    # Tasks with runtime env still work when other agent port conflicts,
+    # except grpc port.
+    run_tasks_with_runtime_env()
 
 
 if __name__ == "__main__":

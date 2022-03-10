@@ -628,3 +628,16 @@ def set_runtime_env_retry_times(request):
         yield runtime_env_retry_times
     finally:
         del os.environ["RUNTIME_ENV_RETRY_TIMES"]
+
+
+@pytest.fixture
+def listen_port(request):
+    port = getattr(request, "param", 0)
+    try:
+        sock = socket.socket()
+        if hasattr(socket, "SO_REUSEPORT"):
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 0)
+        sock.bind(("127.0.0.1", port))
+        yield port
+    finally:
+        sock.close()

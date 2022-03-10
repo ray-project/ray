@@ -32,10 +32,18 @@ void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
   agent_ip_address_ = request.agent_ip_address();
   agent_port_ = request.agent_port();
   agent_pid_ = request.agent_pid();
-  runtime_env_agent_client_ =
-      runtime_env_agent_client_factory_(agent_ip_address_, agent_port_);
-  RAY_LOG(INFO) << "HandleRegisterAgent, ip: " << agent_ip_address_
-                << ", port: " << agent_port_ << ", pid: " << agent_pid_;
+  // Note: `agent_port_` should be 0 if the grpc port of agent is in conflict.
+  if (agent_port_ != 0) {
+    runtime_env_agent_client_ =
+        runtime_env_agent_client_factory_(agent_ip_address_, agent_port_);
+    RAY_LOG(INFO) << "HandleRegisterAgent, ip: " << agent_ip_address_
+                  << ", port: " << agent_port_ << ", pid: " << agent_pid_;
+  } else {
+    RAY_LOG(ERROR) << "The grpc port of agent is invalid (be 0), ip: "
+                   << agent_ip_address_ << ", pid: " << agent_pid_
+                   << ". Disable the agent client in raylet.";
+    disable_agent_client_ = true;
+  }
   reply->set_status(rpc::AGENT_RPC_STATUS_OK);
   // Reset the restart count after registration is done.
   agent_restart_count_ = 0;
@@ -102,6 +110,7 @@ void AgentManager::StartAgent() {
     RAY_LOG(WARNING) << "Agent process with pid " << child.GetId()
                      << " exit, return value " << exit_code << ". ip "
                      << agent_ip_address_ << ". pid " << agent_pid_;
+    agent_failed_ = true;
     if (agent_restart_count_ < RayConfig::instance().agent_max_restart_count()) {
       RAY_UNUSED(delay_executor_(
           [this] {
@@ -162,10 +171,11 @@ void AgentManager::CreateRuntimeEnv(
 
   if (runtime_env_agent_client_ == nullptr) {
     // If the agent cannot be restarted anymore, fail the request.
-    if (agent_restart_count_ >= RayConfig::instance().agent_max_restart_count()) {
+    if (disable_agent_client_ || agent_failed_) {
       std::stringstream str_stream;
       str_stream << "Runtime environment " << serialized_runtime_env
-                 << " cannot be created on this node because the agent is dead.";
+                 << " cannot be created on this node because the grpc service of agent "
+                    "is invalid.";
       const auto &error_message = str_stream.str();
       RAY_LOG(WARNING) << error_message;
       delay_executor_(
@@ -230,6 +240,11 @@ void AgentManager::CreateRuntimeEnv(
 
 void AgentManager::DeleteURIs(const std::vector<std::string> &uris,
                               DeleteURIsCallback callback) {
+  if (disable_agent_client_) {
+    RAY_LOG(ERROR) << "Failed to delete URIs because the agent client is disabled.";
+    delay_executor_([callback] { callback(false); }, 0);
+    return;
+  }
   if (runtime_env_agent_client_ == nullptr) {
     RAY_LOG(INFO)
         << "Runtime env agent is not registered yet. Will retry DeleteURIs later.";

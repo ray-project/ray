@@ -347,10 +347,10 @@ RAY_CONFIG(uint32_t, agent_restart_interval_ms, 1000)
 RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
 
 /// Max restart count for the dashboard agent.
-RAY_CONFIG(uint32_t, agent_max_restart_count, 5)
+RAY_CONFIG(uint32_t, agent_max_restart_count, 0)
 
 /// Whether to fail raylet when agent fails.
-RAY_CONFIG(bool, raylet_shares_fate_with_agent, false)
+RAY_CONFIG(bool, raylet_shares_fate_with_agent, true)
 
 /// If the agent manager fails to communicate with the dashboard agent, we will retry
 /// after this interval.

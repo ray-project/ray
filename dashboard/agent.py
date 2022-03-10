@@ -84,16 +84,29 @@ class DashboardAgent(object):
             self.ppid = int(os.environ["RAY_RAYLET_PID"])
             assert self.ppid > 0
             logger.info("Parent pid is %s", self.ppid)
-        self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0),))
-        grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
-        self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
-            self.server, f"{grpc_ip}:{self.dashboard_agent_port}"
-        )
-        logger.info("Dashboard agent grpc address: %s:%s", grpc_ip, self.grpc_port)
+
+        # Setup raylet channel
         options = (("grpc.enable_http_proxy", 0),)
         self.aiogrpc_raylet_channel = ray._private.utils.init_grpc_channel(
             f"{self.ip}:{self.node_manager_port}", options, asynchronous=True
         )
+
+        # Setup grpc server
+        self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0),))
+        grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
+        try:
+            self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
+                self.server, f"{grpc_ip}:{self.dashboard_agent_port}"
+            )
+        except Exception:
+            logger.exception(
+                "Failed to add port to grpc server. Agent will stay alive but "
+                "disable the grpc service."
+            )
+            self.server = None
+            self.grpc_port = None
+        else:
+            logger.info("Dashboard agent grpc address: %s:%s", grpc_ip, self.grpc_port)
 
         # If the agent is started as non-minimal version, http server should
         # be configured to communicate with the dashboard in a head node.
@@ -147,7 +160,8 @@ class DashboardAgent(object):
             check_parent_task = create_task(_check_parent())
 
         # Start a grpc asyncio server.
-        await self.server.start()
+        if self.server:
+            await self.server.start()
 
         self.gcs_client = GcsClient(address=self.gcs_address)
         modules = self._load_modules()
@@ -159,7 +173,13 @@ class DashboardAgent(object):
             # Http server is not started in the minimal version because
             # it requires additional dependencies that are not
             # included in the minimal ray package.
-            self.http_server = await self._configure_http_server(modules)
+            try:
+                self.http_server = await self._configure_http_server(modules)
+            except Exception:
+                logger.exception(
+                    "Failed to start http server. Agent will stay alive but "
+                    "disable the http service."
+                )
 
         # Write the dashboard agent port to kv.
         # TODO: Use async version if performance is an issue
