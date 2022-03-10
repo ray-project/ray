@@ -155,9 +155,15 @@ std::vector<int> GcsResourceScheduler::SortRequiredResources(
     const std::vector<ResourceRequest> &required_resources) {
   std::vector<int> sorted_index(required_resources.size());
   std::iota(sorted_index.begin(), sorted_index.end(), 0);
+  
+  // Here we sort in reverse order:
+  // sort(_, _, a < b) would result in the vector [a < b < c]
+  // sort(_, _, a > b) would result in the vector [c > b > a] which leads to our desired
+  // outcome of having highest priority `ResourceRequest` being scheduled first.
+
   std::sort(sorted_index.begin(), sorted_index.end(), [&](int b_idx, int a_idx) {
-    auto a = required_resources[a_idx];
-    auto b = required_resources[b_idx];
+    const auto &a = required_resources[a_idx];
+    const auto &b = required_resources[b_idx];
 
     RAY_CHECK(a.predefined_resources.size() == (int)PredefinedResources_MAX);
     RAY_CHECK(b.predefined_resources.size() == (int)PredefinedResources_MAX);
@@ -175,16 +181,21 @@ std::vector<int> GcsResourceScheduler::SortRequiredResources(
 
     // Notes: This is a comparator for sorting in c++. We return true if a < b based on a
     // resource at the given level of priority. If tied, we attempt to resolve based on
-    // the resource at the next level of priority
+    // the resource at the next level of priority.
+    //
+    // The order of priority is: `ResourceRequest`s with GPU requirements first, then extra resources,
+    // then object store memory, memory and finally CPU requirements. If two `ResourceRequest`s
+    // require a resource under consideration, the one requiring more of the resource is
+    // prioritized.
 
     if (a.predefined_resources[GPU] != b.predefined_resources[GPU]) {
       return a.predefined_resources[GPU] < b.predefined_resources[GPU];
     }
     for (auto r : extra_resources_set) {
       auto a_iter = a.custom_resources.find(r);
-      auto a_resource = a_iter != a.custom_resources.end() ? a_iter->second : 0;
+      const auto &a_resource = a_iter != a.custom_resources.end() ? a_iter->second : 0;
       auto b_iter = a.custom_resources.find(r);
-      auto b_resource = b_iter != b.custom_resources.end() ? b_iter->second : 0;
+      const auto &b_resource = b_iter != b.custom_resources.end() ? b_iter->second : 0;
       if (a_resource != b_resource) {
         return a_resource < b_resource;
       }
