@@ -367,4 +367,5 @@ class PipManager:
             )
         context.py_executable = virtualenv_python
         virtualenv_activate = _PathHelper.get_virtualenv_activate(target_dir)
+        # TODO(SongGuyang): Support Windows
         context.command_prefix += ["source %s 1>&2" % (virtualenv_activate)]

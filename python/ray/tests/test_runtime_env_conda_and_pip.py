@@ -196,6 +196,7 @@ class TestGC:
         wait_for_condition(lambda: check_local_files_gced(cluster), timeout=30)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Don't support pip on Windows.")
 def test_import_in_subprocess(shutdown_only):
 
     ray.init()
