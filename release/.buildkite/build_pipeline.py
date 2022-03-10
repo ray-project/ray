@@ -114,16 +114,16 @@ SERVE_NIGHTLY_TESTS = {
         SmokeTest("serve"),
         SmokeTest("serve_failure"),
     ],
-    "~/ray/release/serve_tests/serve_tests.yaml": [
-        "single_deployment_1k_noop_replica",
-        "multi_deployment_1k_noop_replica",
-        "autoscaling_single_deployment",
-        "autoscaling_multi_deployment",
-        "serve_micro_benchmark",
-        # TODO(architkulkarni) Reenable after K8s migration.  Currently failing
-        # "serve_micro_benchmark_k8s",
-        "serve_cluster_fault_tolerance",
-    ],
+    # "~/ray/release/serve_tests/serve_tests.yaml": [
+    #     "single_deployment_1k_noop_replica",
+    #     "multi_deployment_1k_noop_replica",
+    #     "autoscaling_single_deployment",
+    #     "autoscaling_multi_deployment",
+    #     "serve_micro_benchmark",
+    #     # TODO(architkulkarni) Reenable after K8s migration.  Currently failing
+    #     # "serve_micro_benchmark_k8s",
+    #     "serve_cluster_fault_tolerance",
+    # ],
 }
 
 CORE_DAILY_TESTS = {
@@ -205,9 +205,9 @@ NIGHTLY_TESTS = {
         "serve",
         "serve_failure",
     ],
-    "~/ray/release/sgd_tests/sgd_tests.yaml": [
-        "sgd_gpu",
-    ],
+    # "~/ray/release/sgd_tests/sgd_tests.yaml": [
+    #     "sgd_gpu",
+    # ],
     # "~/ray/release/tune_tests/cloud_tests/tune_cloud_tests.yaml": [
     #     "aws_no_sync_down",
     #     "aws_ssh_sync",
@@ -245,11 +245,11 @@ NIGHTLY_TESTS = {
         # We'll have these as per-PR tests soon.
         # "example_scripts_on_gpu_tests",
     ],
-    "~/ray/release/runtime_env_tests/runtime_env_tests.yaml": [
-        "rte_many_tasks_actors",
-        "wheel_urls",
-        "rte_ray_client",
-    ],
+    # "~/ray/release/runtime_env_tests/runtime_env_tests.yaml": [
+    #     "rte_many_tasks_actors",
+    #     "wheel_urls",
+    #     "rte_ray_client",
+    # ],
 }
 
 WEEKLY_TESTS = {

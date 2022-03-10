@@ -645,7 +645,7 @@ def get_log_data(
     timeout: float = 20,
     job_id: Optional[str] = None,
     matcher=None,
-) -> List[str]:
+) -> List[dict]:
     deadline = time.time() + timeout
     msgs = []
     while time.time() < deadline and len(msgs) < num:
@@ -675,10 +675,10 @@ def get_log_message(
     timeout: float = 20,
     job_id: Optional[str] = None,
     matcher=None,
-) -> List[str]:
+) -> List[List[str]]:
     """Gets log lines through GCS / Redis subscriber.
 
-    Returns maximum `num` lines of log messages, within `timeout`.
+    Returns maximum `num` of log messages, within `timeout`.
 
     If `job_id` or `match` is specified, only returns log lines from `job_id`
     or when `matcher` is true.
