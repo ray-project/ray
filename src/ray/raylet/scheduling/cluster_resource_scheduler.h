@@ -30,8 +30,8 @@
 #include "ray/raylet/scheduling/fixed_point.h"
 #include "ray/raylet/scheduling/internal.h"
 #include "ray/raylet/scheduling/local_resource_manager.h"
+#include "ray/raylet/scheduling/policy/composite_scheduling_policy.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
-#include "ray/raylet/scheduling/scheduling_policy.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -172,7 +172,7 @@ class ClusterResourceScheduler {
   /// Resources of the entire cluster.
   std::unique_ptr<ClusterResourceManager> cluster_resource_manager_;
   /// The scheduling policy to use.
-  std::unique_ptr<raylet_scheduling_policy::SchedulingPolicy> scheduling_policy_;
+  std::unique_ptr<raylet_scheduling_policy::ISchedulingPolicy> scheduling_policy_;
 
   friend class ClusterResourceSchedulerTest;
   FRIEND_TEST(ClusterResourceSchedulerTest, PopulatePredefinedResources);
