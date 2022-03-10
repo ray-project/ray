@@ -14,7 +14,7 @@ from ray._private.client_mode_hook import client_mode_convert_function
 from ray._private.client_mode_hook import client_mode_should_convert
 from ray.util.placement_group import configure_placement_group_based_on_context
 import ray._private.signature
-from ray.runtime_env import get_runtime_env_info, parse_runtime_env
+from ray.utils import get_runtime_env_info, parse_runtime_env
 from ray.util.tracing.tracing_helper import (
     _tracing_task_invocation,
     _inject_tracing_into_function,
