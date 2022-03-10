@@ -563,6 +563,7 @@ def create_redis_client(redis_address, password=None):
         A Redis client.
     """
     import redis
+
     if not hasattr(create_redis_client, "instances"):
         create_redis_client.instances = {}
 
@@ -829,6 +830,7 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
         Exception: An exception is raised if we could not connect with Redis.
     """
     import redis
+
     redis_client = redis.StrictRedis(
         host=redis_ip_address, port=redis_port, password=password
     )
@@ -971,6 +973,7 @@ def start_redis(
             started.
     """
     import redis
+
     processes = []
 
     if external_addresses is not None:
@@ -1138,6 +1141,8 @@ def _start_redis_instance(
     Raises:
         Exception: An exception is raised if Redis could not be started.
     """
+    import redis
+
     assert os.path.isfile(executable)
     counter = 0
 

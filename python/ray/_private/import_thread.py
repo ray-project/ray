@@ -39,6 +39,7 @@ class ImportThread:
             self.exception_type = grpc.RpcError
         else:
             import redis
+
             self.subscriber = worker.redis_client.pubsub()
             self.subscriber.subscribe(
                 b"__keyspace@0__:"

@@ -169,6 +169,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                     )
         else:
             from aioredis.pubsub import Receiver
+
             receiver = Receiver()
             aioredis_client = self._dashboard_head.aioredis_client
             reporter_key = "{}*".format(reporter_consts.REPORTER_PREFIX)
