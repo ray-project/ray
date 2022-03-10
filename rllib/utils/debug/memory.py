@@ -181,7 +181,7 @@ def check_memory_leaks(
             init=None,
             code=code,
             # How many times to repeat the function call?
-            repeats=repeats or 400,
+            repeats=repeats or 200,
             # How many times to re-try if we find a suspicious memory
             # allocation?
             max_num_trials=max_num_trials,
@@ -292,14 +292,10 @@ def _take_snapshot(table, suspicious=None):
     # Then sort groups by size, then count, then trace.
     top_stats = snapshot.statistics("traceback")
 
-    # Always loop only through n largest sizes and store these in our
-    # table, no matter what.
-    for stat in top_stats[:10]:
-        table[stat.traceback].append(stat.size)
-    # For the next m largest sizes, keep if a) first trial or b) those
+    # For the first m largest increases, keep only, if a) first trial or b) those
     # that are already in the `suspicious` set.
-    for stat in top_stats[10:100]:
-        if suspicious is None or stat.traceback in suspicious:
+    for stat in top_stats[:100]:
+        if not suspicious or stat.traceback in suspicious:
             table[stat.traceback].append(stat.size)
 
 
@@ -309,42 +305,45 @@ def _find_memory_leaks_in_table(table):
     for traceback, hist in table.items():
         # Do a quick mem increase check.
         memory_increase = hist[-1] - hist[0]
+
         # Only if memory increased, do we check further.
-        if memory_increase > 0.0:
-            # Ignore this very module here (we are collecting lots of data
-            # so an increase is expected).
-            top_stack = str(traceback[-1])
-            if any(
-                s in top_stack
-                for s in [
-                    "tracemalloc",
-                    "pycharm",
-                    "thirdparty_files/psutil",
-                    re.sub("\\.", "/", __name__) + ".py",
-                ]
-            ):
-                continue
+        if memory_increase <= 0.0:
+            continue
 
-            # Do a linear regression to get the slope and R-value.
-            line = scipy.stats.linregress(x=np.arange(len(hist)), y=np.array(hist))
+        # Ignore this very module here (we are collecting lots of data
+        # so an increase is expected).
+        top_stack = str(traceback[-1])
+        if any(
+            s in top_stack
+            for s in [
+                "tracemalloc",
+                "pycharm",
+                "thirdparty_files/psutil",
+                re.sub("\\.", "/", __name__) + ".py",
+            ]
+        ):
+            continue
 
-            # - If weak positive slope and some confidence and
-            #   increase > n bytes -> error.
-            # - If stronger positive slope -> error.
-            if memory_increase > 1000 and (
-                (line.slope > 20.0 and line.rvalue > 0.4)
-                or (line.slope > 10.0 and line.rvalue > 0.7)
-                or (line.slope > 5.0 and line.rvalue > 0.85)
-            ):
-                suspects.append(
-                    Suspect(
-                        traceback=traceback,
-                        memory_increase=memory_increase,
-                        slope=line.slope,
-                        rvalue=line.rvalue,
-                        hist=hist,
-                    )
+        # Do a linear regression to get the slope and R-value.
+        line = scipy.stats.linregress(x=np.arange(len(hist)), y=np.array(hist))
+
+        # - If weak positive slope and some confidence and
+        #   increase > n bytes -> error.
+        # - If stronger positive slope -> error.
+        if memory_increase > 1000 and (
+            (line.slope > 40.0 and line.rvalue > 0.85)
+            or (line.slope > 20.0 and line.rvalue > 0.9)
+            or (line.slope > 10.0 and line.rvalue > 0.95)
+        ):
+            suspects.append(
+                Suspect(
+                    traceback=traceback,
+                    memory_increase=memory_increase,
+                    slope=line.slope,
+                    rvalue=line.rvalue,
+                    hist=hist,
                 )
+            )
 
     return suspects
 
