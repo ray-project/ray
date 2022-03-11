@@ -24,7 +24,7 @@ PyTorch
 * :doc:`/train/examples/transformers/transformers_example`:
   End-to-end example for HuggingFace Transformers (PyTorch).
 
-* :doc:`/train/examples/torch_data_prefetch_benchmark/auto_pipeline_for_host_to_device_data_transfer`:
+* :doc:`/train/examples/torch_data_prefetch_benchmark/benchmark_example`:
   Benchmark example for the data transfer auto pipeline.
 
 TensorFlow
