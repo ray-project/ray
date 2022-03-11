@@ -11,13 +11,11 @@ from functools import wraps
 from typing import Any, Callable, Dict, Optional, Tuple, Type, Union, List, overload
 
 from fastapi import APIRouter, FastAPI
-from google.protobuf.json_format import MessageToDict
 from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
 from ray.actor import ActorHandle
-from ray.serialization import _actor_handle_deserializer
 from ray.serve.common import (
     DeploymentInfo,
     DeploymentStatus,
@@ -39,7 +37,7 @@ from ray.serve.constants import (
 )
 from ray.serve.controller import ServeController
 from ray.serve.exceptions import RayServeException
-from ray.serve.generated.serve_pb2 import ActorHandleList, DeploymentRoute, DeploymentRouteList, \
+from ray.serve.generated.serve_pb2 import DeploymentRoute, DeploymentRouteList, \
     DeploymentStatusInfoList
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view

@@ -21,7 +21,7 @@ from ray.serve.common import (
 from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY
 from ray.serve.endpoint_state import EndpointState
-from ray.serve.generated.serve_pb2 import ActorHandleList, DeploymentRouteList, DeploymentStatusInfoList, ActorNameList
+from ray.serve.generated.serve_pb2 import DeploymentRouteList, DeploymentStatusInfoList, ActorNameList
 from ray.serve.http_state import HTTPState
 from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.long_poll import LongPollHost
