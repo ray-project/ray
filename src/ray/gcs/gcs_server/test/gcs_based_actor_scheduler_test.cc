@@ -595,7 +595,7 @@ TEST_F(GcsBasedActorSchedulerTest, TestReleaseUnusedWorkers) {
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   // Send a `ReleaseUnusedWorkers` request to the node.
-  std::unordered_map<NodeID, std::vector<WorkerID>> node_to_workers;
+  absl::flat_hash_map<NodeID, std::vector<WorkerID>> node_to_workers;
   node_to_workers[node_id].push_back({WorkerID::FromRandom()});
   gcs_actor_scheduler_->ReleaseUnusedWorkers(node_to_workers);
   ASSERT_EQ(1, raylet_client_->num_release_unused_workers);

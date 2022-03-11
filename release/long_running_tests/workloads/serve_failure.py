@@ -68,7 +68,7 @@ class RandomKiller:
         self.kill_period_s = kill_period_s
 
     def _get_all_serve_actors(self):
-        controller = serve.api._get_global_client()._controller
+        controller = serve.api.internal_get_global_client()._controller
         routers = list(ray.get(controller.get_http_proxies.remote()).values())
         all_handles = routers + [controller]
         worker_handle_dict = ray.get(controller._all_running_replicas.remote())

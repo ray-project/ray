@@ -23,7 +23,7 @@ def test_build_simple_func_dag(serve_instance):
 
     for _ in range(5):
         resp = requests.get("http://127.0.0.1:8000/ingress", data=json.dumps([1, 2]))
-        assert resp.text == "4"
+        assert resp.text == "4", resp.text
 
 
 def test_build_simple_class_with_class_method_dag(serve_instance):

@@ -106,7 +106,7 @@ rpc::Event GetEventFromString(std::string seq, json *custom_fields) {
     }
   }
 
-  std::unordered_map<std::string, std::string> mutable_custom_fields;
+  absl::flat_hash_map<std::string, std::string> mutable_custom_fields;
   *custom_fields = j["custom_fields"];
   for (auto const &pair : (*custom_fields).items()) {
     if (pair.key() == "job_id" || pair.key() == "node_id" || pair.key() == "task_id") {
@@ -189,7 +189,7 @@ TEST_F(EventTest, TestBasic) {
 
   RayEventContext::Instance().SetEventContext(
       rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
-      std::unordered_map<std::string, std::string>(
+      absl::flat_hash_map<std::string, std::string>(
           {{"node_id", "node 1"}, {"job_id", "job 1"}, {"task_id", "task 1"}}));
 
   RAY_EVENT(INFO, "label 1") << "send message 1";
@@ -198,7 +198,7 @@ TEST_F(EventTest, TestBasic) {
 
   RayEventContext::Instance().SetEventContext(
       rpc::Event_SourceType::Event_SourceType_RAYLET,
-      std::unordered_map<std::string, std::string>(
+      absl::flat_hash_map<std::string, std::string>(
           {{"node_id", "node 2"}, {"job_id", "job 2"}}));
   RAY_EVENT(ERROR, "label 2") << "send message 2 "
                               << "send message again";
@@ -230,7 +230,7 @@ TEST_F(EventTest, TestUpdateCustomFields) {
 
   RayEventContext::Instance().SetEventContext(
       rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
-      std::unordered_map<std::string, std::string>(
+      absl::flat_hash_map<std::string, std::string>(
           {{"node_id", "node 1"}, {"job_id", "job 1"}}));
 
   RAY_EVENT(INFO, "label 1") << "send message 1";
@@ -238,7 +238,7 @@ TEST_F(EventTest, TestUpdateCustomFields) {
   // Replace the value of existing key: "job_id"
   // Insert new item of key: "task_id"
   RayEventContext::Instance().UpdateCustomFields(
-      std::unordered_map<std::string, std::string>(
+      absl::flat_hash_map<std::string, std::string>(
           {{"node_id", "node 1"}, {"job_id", "job 2"}, {"task_id", "task 2"}}));
   RAY_EVENT(ERROR, "label 2") << "send message 2 "
                               << "send message again";
@@ -257,7 +257,7 @@ TEST_F(EventTest, TestUpdateCustomFields) {
 TEST_F(EventTest, TestLogOneThread) {
   RayEventContext::Instance().SetEventContext(
       rpc::Event_SourceType::Event_SourceType_RAYLET,
-      std::unordered_map<std::string, std::string>(
+      absl::flat_hash_map<std::string, std::string>(
           {{"node_id", "node 1"}, {"job_id", "job 1"}, {"task_id", "task 1"}}));
 
   EventManager::Instance().AddReporter(std::make_shared<LogEventReporter>(
@@ -288,7 +288,7 @@ TEST_F(EventTest, TestMultiThreadContextCopy) {
   RAY_EVENT(INFO, "label 0") << "send message 0";
 
   std::thread private_thread = std::thread(std::bind([&]() {
-    auto custom_fields = std::unordered_map<std::string, std::string>();
+    auto custom_fields = absl::flat_hash_map<std::string, std::string>();
     custom_fields.emplace("node_id", "node 1");
     custom_fields.emplace("job_id", "job 1");
     custom_fields.emplace("task_id", "task 1");
@@ -340,7 +340,7 @@ TEST_F(EventTest, TestLogMultiThread) {
       []() {
         RayEventContext::Instance().SetEventContext(
             rpc::Event_SourceType::Event_SourceType_GCS,
-            std::unordered_map<std::string, std::string>(
+            absl::flat_hash_map<std::string, std::string>(
                 {{"node_id", "node 2"}, {"job_id", "job 2"}, {"task_id", "task 2"}}));
       },
       [](int loop_i) {
@@ -373,7 +373,7 @@ TEST_F(EventTest, TestLogMultiThread) {
 TEST_F(EventTest, TestLogRotate) {
   RayEventContext::Instance().SetEventContext(
       rpc::Event_SourceType::Event_SourceType_RAYLET,
-      std::unordered_map<std::string, std::string>(
+      absl::flat_hash_map<std::string, std::string>(
           {{"node_id", "node 1"}, {"job_id", "job 1"}, {"task_id", "task 1"}}));
 
   EventManager::Instance().AddReporter(std::make_shared<LogEventReporter>(
@@ -398,7 +398,7 @@ TEST_F(EventTest, TestLogRotate) {
 TEST_F(EventTest, TestWithField) {
   RayEventContext::Instance().SetEventContext(
       rpc::Event_SourceType::Event_SourceType_RAYLET,
-      std::unordered_map<std::string, std::string>(
+      absl::flat_hash_map<std::string, std::string>(
           {{"node_id", "node 1"}, {"job_id", "job 1"}, {"task_id", "task 1"}}));
 
   EventManager::Instance().AddReporter(std::make_shared<LogEventReporter>(
@@ -431,7 +431,7 @@ TEST_F(EventTest, TestWithField) {
 }
 
 TEST_F(EventTest, TestRayCheckAbort) {
-  auto custom_fields = std::unordered_map<std::string, std::string>();
+  auto custom_fields = absl::flat_hash_map<std::string, std::string>();
   custom_fields.emplace("node_id", "node 1");
   custom_fields.emplace("job_id", "job 1");
   custom_fields.emplace("task_id", "task 1");
@@ -458,7 +458,7 @@ TEST_F(EventTest, TestRayCheckAbort) {
 }
 
 TEST_F(EventTest, TestRayEventInit) {
-  auto custom_fields = std::unordered_map<std::string, std::string>();
+  auto custom_fields = absl::flat_hash_map<std::string, std::string>();
   custom_fields.emplace("node_id", "node 1");
   custom_fields.emplace("job_id", "job 1");
   custom_fields.emplace("task_id", "task 1");
