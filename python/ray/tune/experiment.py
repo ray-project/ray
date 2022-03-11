@@ -1,6 +1,6 @@
 from functools import partial
 from pathlib import Path
-from typing import Dict, Sequence, Any
+from typing import Any, Dict, Optional, Sequence
 import copy
 import inspect
 import logging
@@ -92,6 +92,12 @@ class Experiment:
             local_dir="~/ray_results",
             checkpoint_freq=10,
             max_failures=2)
+
+    Attributes:
+        TODO(xwjiang): Add the whole list.
+        _experiment_checkpoint_dir: Internal use only. If present, use this
+            as the root directory for experiment checkpoint. If not present,
+            the directory path will be deduced from trainable name instead.
     """
 
     # Keys that will be present in `public_spec` dict.
@@ -107,7 +113,7 @@ class Experiment:
         resources_per_trial=None,
         num_samples=1,
         local_dir=None,
-        experiment_checkpoint_dir=None,
+        _experiment_checkpoint_dir: Optional[str] = None,
         sync_config=None,
         trial_name_creator=None,
         trial_dirname_creator=None,
@@ -122,16 +128,16 @@ class Experiment:
     ):
 
         local_dir = _get_local_dir_with_expand_user(local_dir)
-        # `experiment_checkpoint_dir` is for internal use only for better
+        # `_experiment_checkpoint_dir` is for internal use only for better
         # support of Tuner API.
         # If set, it should be a subpath under `local_dir`. Also deduce `dir_name`.
-        if experiment_checkpoint_dir:
-            experiment_checkpoint_dir_path = Path(experiment_checkpoint_dir)
+        if _experiment_checkpoint_dir:
+            experiment_checkpoint_dir_path = Path(_experiment_checkpoint_dir)
             local_dir_path = Path(local_dir)
             assert local_dir_path in experiment_checkpoint_dir_path.parents
-            self.experiment_checkpoint_dir = experiment_checkpoint_dir
+            self.experiment_checkpoint_dir = _experiment_checkpoint_dir
             # `dir_name` is set by `experiment_checkpoint_dir` indirectly.
-            self.dir_name = os.path.relpath(experiment_checkpoint_dir, local_dir)
+            self.dir_name = os.path.relpath(_experiment_checkpoint_dir, local_dir)
 
         config = config or {}
         sync_config = sync_config or SyncConfig()

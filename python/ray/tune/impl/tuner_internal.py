@@ -28,6 +28,11 @@ class TunerInternal:
 
     In Ray client mode, external Tuner wraps ``_TunerInternal`` into a remote actor,
     which is guaranteed to be placed on head node.
+
+    TunerInternal can be constructed from fresh, in which case, `trainable` needs to
+    be provided, together with optional `param_space`, `tune_config` and `run_config`.
+
+    It can also be restored from a previous failed run (given `restore_path`).
     """
 
     def __init__(
@@ -46,16 +51,6 @@ class TunerInternal:
         tune_config: Optional[TuneConfig] = None,
         run_config: Optional[RunConfig] = None,
     ):
-        """For initialization, there are two scenarios.
-        1. fresh run. ``_TunerInternal`` is constructed from fresh.
-            In this case, `trainable` needs to be provided, together
-            with optional `param_space`, `tune_algo_config`, `name`,
-            and `local_dir`.
-        2. resume run. ``_TunerInternal`` is restored from Tuner checkpoint.
-            In this case, `restore_path` needs to be provided.
-        In either case, `callbacks` is considered a run time thing. It should be
-        supplied across both fresh run and resume run.
-        """
         # Restored from Tuner checkpoint.
         if restore_path:
             trainable_ckpt = os.path.join(restore_path, "trainable.pkl")
@@ -73,7 +68,8 @@ class TunerInternal:
             return
 
         # Start from fresh
-        assert trainable
+        if not trainable:
+            raise TuneError("You need to provide a trainable to tune.")
 
         self.is_restored = False
         self.trainable = trainable

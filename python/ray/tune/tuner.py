@@ -121,7 +121,7 @@ class Tuner:
                Note: depending on whether ray client mode is used or not,
                this path may or may not exist on your local machine.
         """
-    # TODO(xwjiang): Add some comments to clarify the config behavior across
+        # TODO(xwjiang): Add some comments to clarify the config behavior across
         #  retored runs.
         #  For example, is callbacks supposed to be automatically applied
         #  when a Tuner is restored and fit again?
@@ -179,4 +179,3 @@ class Tuner:
                     f'Please use tuner = Tuner.restore("'
                     f'{experiment_checkpoint_dir}") to resume.'
                 )
-
