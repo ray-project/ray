@@ -5,6 +5,8 @@ from typing import Dict, Set, List, Tuple, Union, Optional, Any, TYPE_CHECKING
 import time
 
 import ray
+from ray.experimental.dag.input_node import DAGInputData
+
 from ray.workflow import execution
 from ray.workflow.step_function import WorkflowStepFunction
 
@@ -32,6 +34,7 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.workflow.virtual_actor_class import VirtualActorClass, VirtualActor
+    from ray.experimental.dag import DAGNode
 
 logger = logging.getLogger(__name__)
 
@@ -570,6 +573,21 @@ def wait(
         user_metadata={},
     )
     return Workflow(workflow_data)
+
+
+@PublicAPI(stability="beta")
+def create(dag_node: "DAGNode", *args, **kwargs) -> Workflow:
+    """Converts a DAG into a workflow.
+
+    Args:
+        dag_node: The DAG to be converted.
+        args: Positional arguments of the DAG input node.
+        kwargs: Keyword arguments of the DAG input node.
+    """
+    from ray.workflow.dag_to_workflow import transform_ray_dag_to_workflow
+
+    input_context = DAGInputData(*args, **kwargs)
+    return transform_ray_dag_to_workflow(dag_node, input_context)
 
 
 __all__ = (
