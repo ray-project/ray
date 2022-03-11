@@ -1,7 +1,5 @@
 from typing import Optional, List, Union
 
-import pandas as pd
-import numpy as np
 import xgboost
 
 from ray.ml.checkpoint import Checkpoint
