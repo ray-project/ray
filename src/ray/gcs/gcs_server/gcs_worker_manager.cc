@@ -104,7 +104,7 @@ void GcsWorkerManager::HandleGetAllWorkerInfo(
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting all worker info.";
   auto on_done = [reply, send_reply_callback](
-                     const std::unordered_map<WorkerID, WorkerTableData> &result) {
+                     const absl::flat_hash_map<WorkerID, WorkerTableData> &result) {
     for (auto &data : result) {
       reply->add_worker_table_data()->CopyFrom(data.second);
     }
@@ -113,7 +113,7 @@ void GcsWorkerManager::HandleGetAllWorkerInfo(
   };
   Status status = gcs_table_storage_->WorkerTable().GetAll(on_done);
   if (!status.ok()) {
-    on_done(std::unordered_map<WorkerID, WorkerTableData>());
+    on_done(absl::flat_hash_map<WorkerID, WorkerTableData>());
   }
 }
 

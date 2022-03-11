@@ -25,6 +25,7 @@
 #include <sstream>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "nlohmann/json.hpp"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
@@ -122,7 +123,7 @@ class EventManager final {
   const EventManager &operator=(const EventManager &manager) = delete;
 
  private:
-  std::unordered_map<std::string, std::shared_ptr<BaseEventReporter>> reporter_map_;
+  absl::flat_hash_map<std::string, std::shared_ptr<BaseEventReporter>> reporter_map_;
 };
 
 // store the event context. Different workers of a process in core_worker have different
@@ -133,9 +134,10 @@ class RayEventContext final {
 
   RayEventContext() {}
 
-  void SetEventContext(rpc::Event_SourceType source_type,
-                       const std::unordered_map<std::string, std::string> &custom_fields =
-                           std::unordered_map<std::string, std::string>());
+  void SetEventContext(
+      rpc::Event_SourceType source_type,
+      const absl::flat_hash_map<std::string, std::string> &custom_fields =
+          absl::flat_hash_map<std::string, std::string>());
 
   // Only for test, isn't thread-safe with SetEventContext.
   void ResetEventContext();
@@ -146,7 +148,7 @@ class RayEventContext final {
   // Update the `custom_fields` into the existing items.
   // If the key already exists, replace the value. Otherwise, insert a new item.
   void UpdateCustomFields(
-      const std::unordered_map<std::string, std::string> &custom_fields);
+      const absl::flat_hash_map<std::string, std::string> &custom_fields);
 
   inline void SetSourceType(rpc::Event_SourceType source_type) {
     source_type_ = source_type;
@@ -158,7 +160,7 @@ class RayEventContext final {
 
   inline int32_t GetSourcePid() const { return source_pid_; }
 
-  inline const std::unordered_map<std::string, std::string> &GetCustomFields() const {
+  inline const absl::flat_hash_map<std::string, std::string> &GetCustomFields() const {
     return custom_fields_;
   }
 
@@ -176,7 +178,7 @@ class RayEventContext final {
   rpc::Event_SourceType source_type_ = rpc::Event_SourceType::Event_SourceType_COMMON;
   std::string source_hostname_ = boost::asio::ip::host_name();
   int32_t source_pid_ = getpid();
-  std::unordered_map<std::string, std::string> custom_fields_;
+  absl::flat_hash_map<std::string, std::string> custom_fields_;
 
   static thread_local std::unique_ptr<RayEventContext> context_;
 
@@ -270,7 +272,7 @@ class RayEvent {
 /// "error" and "fatal". You can also use capital letters for the options above.
 /// \return void.
 void RayEventInit(rpc::Event_SourceType source_type,
-                  const std::unordered_map<std::string, std::string> &custom_fields,
+                  const absl::flat_hash_map<std::string, std::string> &custom_fields,
                   const std::string &log_dir, const std::string &event_level = "warning");
 
 }  // namespace ray

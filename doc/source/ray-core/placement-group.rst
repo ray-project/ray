@@ -13,12 +13,10 @@ Here are some use cases:
 - **Maximizing data locality**: You'd like to place or schedule your tasks and actors close to your data to avoid object transfer overheads.
 - **Load balancing**: To improve application availability and avoid resource overload, you'd like to place your actors or tasks into different physical machines as much as possible.
 
-To learn more about production use cases, check out the :ref:`examples <ray-placement-group-examples-ref>`.
-
 Key Concepts
 ------------
 
-A **bundle** is a collection of "resources", i.e. {"GPU": 4}.
+A **bundle** is a collection of "resources", i.e. `{"GPU": 4}`.
 
 - A bundle must be able to fit on a single node on the Ray cluster.
 - Bundles are then placed according to the "placement group strategy" across nodes on the cluster.
@@ -701,7 +699,7 @@ Tips for Using Placement Groups
 -------------------------------
 - Learn the :ref:`lifecycle <ray-placement-group-lifecycle-ref>` of placement groups.
 - Learn the :ref:`fault tolerance <ray-placement-group-ft-ref>` of placement groups.
-- See more :ref:`examples <ray-placement-group-examples-ref>` to learn real world use cases of placement group APIs.
+
 
 Lifecycle
 ---------

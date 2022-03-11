@@ -94,7 +94,7 @@ RAY_CONFIG(size_t, free_objects_batch_size, 100)
 /// the task's recursive dependencies. If this is set to true, then the system
 /// will attempt to reconstruct the object from its lineage if the object is
 /// lost.
-RAY_CONFIG(bool, lineage_pinning_enabled, false)
+RAY_CONFIG(bool, lineage_pinning_enabled, true)
 
 /// Objects that require recovery are added to a local cache. This is the
 /// duration between attempts to flush and recover the objects in the local

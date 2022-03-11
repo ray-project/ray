@@ -58,37 +58,37 @@ class SmokeTest(ReleaseTest):
 
 CORE_NIGHTLY_TESTS = {
     "~/ray/release/nightly_tests/nightly_tests.yaml": [
-        "shuffle_10gb",
-        "shuffle_50gb",
-        "shuffle_50gb_large_partition",
-        "shuffle_100gb",
-        "non_streaming_shuffle_100gb",
-        "non_streaming_shuffle_50gb_large_partition",
-        "non_streaming_shuffle_50gb",
-        SmokeTest("dask_on_ray_large_scale_test_no_spilling"),
-        SmokeTest("dask_on_ray_large_scale_test_spilling"),
-        "stress_test_placement_group",
-        "shuffle_1tb_1000_partition",
-        "non_streaming_shuffle_1tb_1000_partition",
-        "shuffle_1tb_5000_partitions",
+        # "shuffle_10gb",
+        # "shuffle_50gb",
+        # "shuffle_50gb_large_partition",
+        # "shuffle_100gb",
+        # "non_streaming_shuffle_100gb",
+        # "non_streaming_shuffle_50gb_large_partition",
+        # "non_streaming_shuffle_50gb",
+        # SmokeTest("dask_on_ray_large_scale_test_no_spilling"),
+        # SmokeTest("dask_on_ray_large_scale_test_spilling"),
+        # "stress_test_placement_group",
+        # "shuffle_1tb_1000_partition",
+        # "non_streaming_shuffle_1tb_1000_partition",
+        # "shuffle_1tb_5000_partitions",
         # TODO(sang): It doesn't even work without spilling
         # as it hits the scalability limit.
         # "non_streaming_shuffle_1tb_5000_partitions",
-        "decision_tree_autoscaling",
-        "decision_tree_autoscaling_20_runs",
-        "autoscaling_shuffle_1tb_1000_partitions",
-        SmokeTest("stress_test_many_tasks"),
-        SmokeTest("stress_test_dead_actors"),
-        SmokeTest("threaded_actors_stress_test"),
-        "pg_long_running_performance_test",
+        # "decision_tree_autoscaling",
+        # "decision_tree_autoscaling_20_runs",
+        # "autoscaling_shuffle_1tb_1000_partitions",
+        # SmokeTest("stress_test_many_tasks"),
+        # SmokeTest("stress_test_dead_actors"),
+        # SmokeTest("threaded_actors_stress_test"),
+        # "pg_long_running_performance_test",
     ],
-    "~/ray/benchmarks/benchmark_tests.yaml": [
-        "single_node",
-        "object_store",
-        "many_actors_smoke_test",
-        "many_tasks_smoke_test",
-        "many_pgs_smoke_test",
-    ],
+    # "~/ray/benchmarks/benchmark_tests.yaml": [
+    #     "single_node",
+    #     "object_store",
+    #     "many_actors_smoke_test",
+    #     "many_tasks_smoke_test",
+    #     "many_pgs_smoke_test",
+    # ],
     "~/ray/release/nightly_tests/dataset/dataset_test.yaml": [
         "inference",
         "shuffle_data_loader",
@@ -104,9 +104,9 @@ CORE_NIGHTLY_TESTS = {
         "chaos_many_tasks_no_object_store",
         "chaos_pipelined_ingestion_1500_gb_15_windows",
     ],
-    "~/ray/release/microbenchmark/microbenchmark.yaml": [
-        "microbenchmark",
-    ],
+    # "~/ray/release/microbenchmark/microbenchmark.yaml": [
+    #     "microbenchmark",
+    # ],
 }
 
 SERVE_NIGHTLY_TESTS = {
@@ -114,29 +114,29 @@ SERVE_NIGHTLY_TESTS = {
         SmokeTest("serve"),
         SmokeTest("serve_failure"),
     ],
-    "~/ray/release/serve_tests/serve_tests.yaml": [
-        "single_deployment_1k_noop_replica",
-        "multi_deployment_1k_noop_replica",
-        "autoscaling_single_deployment",
-        "autoscaling_multi_deployment",
-        "serve_micro_benchmark",
-        # TODO(architkulkarni) Reenable after K8s migration.  Currently failing
-        # "serve_micro_benchmark_k8s",
-        "serve_cluster_fault_tolerance",
-    ],
+    # "~/ray/release/serve_tests/serve_tests.yaml": [
+    #     "single_deployment_1k_noop_replica",
+    #     "multi_deployment_1k_noop_replica",
+    #     "autoscaling_single_deployment",
+    #     "autoscaling_multi_deployment",
+    #     "serve_micro_benchmark",
+    #     # TODO(architkulkarni) Reenable after K8s migration.  Currently failing
+    #     # "serve_micro_benchmark_k8s",
+    #     "serve_cluster_fault_tolerance",
+    # ],
 }
 
 CORE_DAILY_TESTS = {
-    "~/ray/release/nightly_tests/nightly_tests.yaml": [
-        "k8s_dask_on_ray_large_scale_test_no_spilling",
-        "dask_on_ray_large_scale_test_no_spilling",
-        "dask_on_ray_large_scale_test_spilling",
-        "pg_autoscaling_regression_test",
-        "threaded_actors_stress_test",
-        "k8s_threaded_actors_stress_test",
-        "stress_test_many_tasks",
-        "stress_test_dead_actors",
-    ],
+    # "~/ray/release/nightly_tests/nightly_tests.yaml": [
+    #     "k8s_dask_on_ray_large_scale_test_no_spilling",
+    #     "dask_on_ray_large_scale_test_no_spilling",
+    #     "dask_on_ray_large_scale_test_spilling",
+    #     "pg_autoscaling_regression_test",
+    #     "threaded_actors_stress_test",
+    #     "k8s_threaded_actors_stress_test",
+    #     "stress_test_many_tasks",
+    #     "stress_test_dead_actors",
+    # ],
     "~/ray/release/nightly_tests/chaos_test.yaml": [
         "chaos_dask_on_ray_large_scale_test_no_spilling",
         "chaos_dask_on_ray_large_scale_test_spilling",
@@ -144,29 +144,29 @@ CORE_DAILY_TESTS = {
 }
 
 CORE_SCALABILITY_TESTS_DAILY = {
-    "~/ray/benchmarks/benchmark_tests.yaml": [
-        "many_actors",
-        "many_tasks",
-        "many_pgs",
-        "many_nodes",
-    ],
+    # "~/ray/benchmarks/benchmark_tests.yaml": [
+    #     "many_actors",
+    #     "many_tasks",
+    #     "many_pgs",
+    #     "many_nodes",
+    # ],
 }
 
 CORE_SCHEDULING_DAILY = {
-    "~/ray/benchmarks/benchmark_tests.yaml": [
-        "scheduling_test_many_0s_tasks_single_node",
-        "scheduling_test_many_0s_tasks_many_nodes",
-        # Reenable these two once we got right setup
-        # "scheduling_test_many_5s_tasks_single_node",
-        # "scheduling_test_many_5s_tasks_many_nodes",
-    ],
-    "~/ray/release/nightly_tests/nightly_tests.yaml": [
-        "many_nodes_actor_test",
-        "dask_on_ray_10gb_sort",
-        "dask_on_ray_100gb_sort",
-        "dask_on_ray_1tb_sort",
-        "placement_group_performance_test",
-    ],
+    # "~/ray/benchmarks/benchmark_tests.yaml": [
+    #     "scheduling_test_many_0s_tasks_single_node",
+    #     "scheduling_test_many_0s_tasks_many_nodes",
+    #     # Reenable these two once we got right setup
+    #     # "scheduling_test_many_5s_tasks_single_node",
+    #     # "scheduling_test_many_5s_tasks_many_nodes",
+    # ],
+    # "~/ray/release/nightly_tests/nightly_tests.yaml": [
+    #     "many_nodes_actor_test",
+    #     "dask_on_ray_10gb_sort",
+    #     "dask_on_ray_100gb_sort",
+    #     "dask_on_ray_1tb_sort",
+    #     "placement_group_performance_test",
+    # ],
 }
 
 NIGHTLY_TESTS = {
@@ -205,9 +205,9 @@ NIGHTLY_TESTS = {
         "serve",
         "serve_failure",
     ],
-    "~/ray/release/sgd_tests/sgd_tests.yaml": [
-        "sgd_gpu",
-    ],
+    # "~/ray/release/sgd_tests/sgd_tests.yaml": [
+    #     "sgd_gpu",
+    # ],
     # "~/ray/release/tune_tests/cloud_tests/tune_cloud_tests.yaml": [
     #     "aws_no_sync_down",
     #     "aws_ssh_sync",
@@ -235,27 +235,27 @@ NIGHTLY_TESTS = {
     #     "ft_small_non_elastic",
     #     "distributed_api_test",
     # ],
-    "~/ray/release/rllib_tests/rllib_tests.yaml": [
-        SmokeTest("learning_tests"),
-        SmokeTest("stress_tests"),
-        "performance_tests",
-        "multi_gpu_learning_tests",
-        "multi_gpu_with_lstm_learning_tests",
-        "multi_gpu_with_attention_learning_tests",
-        # We'll have these as per-PR tests soon.
-        # "example_scripts_on_gpu_tests",
-    ],
-    "~/ray/release/runtime_env_tests/runtime_env_tests.yaml": [
-        "rte_many_tasks_actors",
-        "wheel_urls",
-        "rte_ray_client",
-    ],
+    # "~/ray/release/rllib_tests/rllib_tests.yaml": [
+    #     SmokeTest("learning_tests"),
+    #     SmokeTest("stress_tests"),
+    #     "performance_tests",
+    #     "multi_gpu_learning_tests",
+    #     "multi_gpu_with_lstm_learning_tests",
+    #     "multi_gpu_with_attention_learning_tests",
+    #     # We'll have these as per-PR tests soon.
+    #     # "example_scripts_on_gpu_tests",
+    # ],
+    # "~/ray/release/runtime_env_tests/runtime_env_tests.yaml": [
+    #     "rte_many_tasks_actors",
+    #     "wheel_urls",
+    #     "rte_ray_client",
+    # ],
 }
 
 WEEKLY_TESTS = {
-    "~/ray/release/horovod_tests/horovod_tests.yaml": [
-        "horovod_test",
-    ],
+    # "~/ray/release/horovod_tests/horovod_tests.yaml": [
+    #     "horovod_test",
+    # ],
     "~/ray/release/long_running_distributed_tests"
     "/long_running_distributed.yaml": [
         "pytorch_pbt_failure",
@@ -265,10 +265,10 @@ WEEKLY_TESTS = {
     #     "long_running_large_checkpoints",
     #     "xgboost_sweep",
     # ],
-    "~/ray/release/rllib_tests/rllib_tests.yaml": [
-        "learning_tests",
-        "stress_tests",
-    ],
+    # "~/ray/release/rllib_tests/rllib_tests.yaml": [
+    #     "learning_tests",
+    #     "stress_tests",
+    # ],
 }
 
 # This test suite holds "user" tests to test important user workflows
