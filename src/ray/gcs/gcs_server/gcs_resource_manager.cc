@@ -15,7 +15,6 @@
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 
 #include "ray/common/ray_config.h"
-#include "ray/gcs/gcs_server/ray_syncer.h"
 #include "ray/stats/metric_defs.h"
 
 namespace ray {
@@ -23,12 +22,10 @@ namespace gcs {
 
 GcsResourceManager::GcsResourceManager(
     instrumented_io_context &main_io_service, std::shared_ptr<GcsPublisher> gcs_publisher,
-    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-    syncer::RaySyncer *ray_syncer)
+    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
     : periodical_runner_(main_io_service),
       gcs_publisher_(gcs_publisher),
-      gcs_table_storage_(gcs_table_storage),
-      ray_syncer_(ray_syncer) {}
+      gcs_table_storage_(gcs_table_storage) {}
 
 void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &request,
                                             rpc::GetResourcesReply *reply,
@@ -91,19 +88,12 @@ void GcsResourceManager::UpdateResources(
     }
 
     auto start = absl::GetCurrentTimeNanos();
-    auto on_done = [this, node_id, start,
-                    changed_resources =
-                        std::move(changed_resources)](const Status &status) {
+    auto on_done = [node_id, start](const Status &status) {
       auto end = absl::GetCurrentTimeNanos();
       ray::stats::STATS_gcs_new_resource_creation_latency_ms.Record(
           absl::Nanoseconds(end - start) / absl::Milliseconds(1));
       RAY_CHECK_OK(status);
       RAY_LOG(DEBUG) << "Finished updating resources, node id = " << node_id;
-      rpc::NodeResourceChange node_resource_change;
-      node_resource_change.set_node_id(node_id.Binary());
-      node_resource_change.mutable_updated_resources()->insert(changed_resources.begin(),
-                                                               changed_resources.end());
-      ray_syncer_->Update(std::move(node_resource_change));
     };
 
     RAY_CHECK_OK(
@@ -156,16 +146,7 @@ void GcsResourceManager::DeleteResources(const NodeID &node_id,
           resource_value.Double());
     }
 
-    auto on_done = [this, node_id,
-                    resource_names = std::move(resource_names)](const Status &status) {
-      RAY_CHECK_OK(status);
-      rpc::NodeResourceChange node_resource_change;
-      node_resource_change.set_node_id(node_id.Binary());
-      for (const auto &resource_name : resource_names) {
-        node_resource_change.add_deleted_resources(resource_name);
-      }
-      ray_syncer_->Update(std::move(node_resource_change));
-    };
+    auto on_done = [](const Status &status) { RAY_CHECK_OK(status); };
     RAY_CHECK_OK(
         gcs_table_storage_->NodeResourceTable().Put(node_id, resource_map, on_done));
   } else {
@@ -220,12 +201,6 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
   }
 
   UpdateNodeResourceUsage(node_id, data);
-
-  // TODO (iycheng): This will only happen in testing. We'll clean this code path
-  // in follow up PRs.
-  if (ray_syncer_ != nullptr) {
-    ray_syncer_->Update(data);
-  }
 }
 
 void GcsResourceManager::HandleReportResourceUsage(
