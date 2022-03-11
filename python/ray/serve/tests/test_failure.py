@@ -7,8 +7,6 @@ import pytest
 import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
-from ray.serialization import _actor_handle_deserializer
-from ray.serve.generated.serve_pb2 import ActorHandleList
 
 
 def request_with_retries(endpoint, timeout=30):
@@ -71,13 +69,9 @@ def test_controller_failure(serve_instance):
 
 
 def _kill_http_proxies():
-    proxy_handles_bytes = ray.get(
+    http_proxies = ray.get(
         serve.api._global_client._controller.get_http_proxies.remote()
     )
-    proto = ActorHandleList.FromString(ray.get(serve.api._global_client._controller.get_http_proxies.remote()))
-    http_proxies = []
-    for handle_bytes in proto.handles:
-        http_proxies.append(_actor_handle_deserializer(handle_bytes))
     for http_proxy in http_proxies.values():
         ray.kill(http_proxy, no_restart=False)
 

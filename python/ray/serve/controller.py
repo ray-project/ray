@@ -21,7 +21,7 @@ from ray.serve.common import (
 from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY
 from ray.serve.endpoint_state import EndpointState
-from ray.serve.generated.serve_pb2 import ActorHandleList, DeploymentRouteList, DeploymentStatusInfoList
+from ray.serve.generated.serve_pb2 import ActorHandleList, DeploymentRouteList, DeploymentStatusInfoList, ActorNameList
 from ray.serve.http_state import HTTPState
 from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.long_poll import LongPollHost
@@ -138,12 +138,15 @@ class ServeController:
         """Returns a dictionary of deployment name to config."""
         return self.endpoint_state.get_endpoints()
 
-    def get_http_proxies(self) -> bytes:
-        """Returns the http_proxy actor handle list serialized by protobuf."""
-        actor_handle_list = ActorHandleList()
-        for handle in self._proxy_actors.values():
-            actor_handle_list.handles.append(msgpack_serialize(handle))
-        return actor_handle_list.SerializeToString()
+    def get_http_proxies(self) -> Dict[NodeId, ActorHandle]:
+        """Returns a dictionary of node ID to http_proxy actor handles."""
+        return self.http_state.get_http_proxy_handles()
+
+    def get_http_proxy_names(self) -> bytes:
+        """Returns the http_proxy actor name list serialized by protobuf."""
+        actor_name_list = ActorNameList(
+            names=self.http_state.get_http_proxy_names().values())
+        return actor_name_list.SerializeToString()
 
     def autoscale(self) -> None:
         """Updates autoscaling deployments with calculated num_replicas."""
@@ -385,7 +388,8 @@ class ServeController:
 
         route = self.endpoint_state.get_endpoint_route(name)
 
-        deployment_route = DeploymentRoute(deployment_info = deployment_info.to_proto(), route = route)
+        deployment_route = DeploymentRoute(
+            deployment_info=deployment_info.to_proto(), route=route)
         return deployment_route.SerializeToString()
 
     def list_deployments_internal(
@@ -434,13 +438,15 @@ class ServeController:
         for deployment_name, (deployment_info, route_prefix) in self.list_deployments_internal(
             include_deleted=True
         ).items():
-            deployment_route_list.deployment_routes.append(DeploymentRoute(deployment_info = deployment_info.to_proto(), route = route_prefix))
+            deployment_route_list.deployment_routes.append(DeploymentRoute(
+                deployment_info=deployment_info.to_proto(), route=route_prefix))
         return deployment_route_list.SerializeToString()
 
     def get_deployment_statuses(self) -> bytes:
         deployment_status_info_list = DeploymentStatusInfoList()
         for name, deployment_status_info in self.deployment_state_manager.get_deployment_statuses():
             deployment_status_info_proto = deployment_status_info.to_proto()
-            deployment_status_info_proto.name = name;
-            deployment_status_info_list.deployment_status_infos.append(deployment_status_info_proto)
+            deployment_status_info_proto.name = name
+            deployment_status_info_list.deployment_status_infos.append(
+                deployment_status_info_proto)
         return deployment_status_info_list.SerializeToString()

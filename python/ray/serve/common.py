@@ -129,7 +129,8 @@ class DeploymentInfo:
         )
 
         if "deployment_config" in data:
-            data["deployment_config"] = DeploymentConfig.from_proto(proto.deployment_config)
+            data["deployment_config"] = DeploymentConfig.from_proto(
+                proto.deployment_config)
         if "replica_config" in data:
             data["replica_config"] = ReplicaConfig.from_proto(proto.replica_config)
 

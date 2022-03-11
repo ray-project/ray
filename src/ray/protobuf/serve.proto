@@ -157,10 +157,6 @@ message ReplicaConfig {
   map<string, double> ray_actor_options = 4;
 }
 
-message ActorHandleList {
-  repeated bytes handles = 1;
-}
-
 message DeploymentInfo {
   DeploymentConfig deployment_config = 1;
   ReplicaConfig replica_config = 2;

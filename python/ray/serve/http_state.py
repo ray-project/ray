@@ -36,6 +36,7 @@ class HTTPState:
         self._detached = detached
         self._config = config
         self._proxy_actors: Dict[NodeId, ActorHandle] = dict()
+        self._proxy_actor_names: Dict[NodeId, str] = dict()
 
         # Will populate self.proxy_actors with existing actors.
         if _start_proxies_on_init:
@@ -50,6 +51,9 @@ class HTTPState:
 
     def get_http_proxy_handles(self) -> Dict[NodeId, ActorHandle]:
         return self._proxy_actors
+
+    def get_http_proxy_names(self) -> Dict[NodeId, str]:
+        return self._proxy_actor_names
 
     def update(self):
         self._start_proxies_if_needed()
@@ -124,6 +128,7 @@ class HTTPState:
                 )
 
             self._proxy_actors[node_id] = proxy
+            self._proxy_actor_names[node_id] = name
 
     def _stop_proxies_if_needed(self) -> bool:
         """Removes proxy actors from any nodes that no longer exist."""
@@ -136,6 +141,7 @@ class HTTPState:
 
         for node_id in to_stop:
             proxy = self._proxy_actors.pop(node_id)
+            del self._proxy_actor_names[node_id]
             ray.kill(proxy, no_restart=True)
 
     async def ensure_http_route_exists(self, endpoint: EndpointTag, timeout_s: float):

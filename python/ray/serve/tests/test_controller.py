@@ -17,8 +17,10 @@ def test_redeploy_start_time(serve_instance):
         return "1"
 
     test.deploy()
-    proto = DeploymentRoute.ParseString(ray.get(controller.get_deployment_info.remote("test")))
-    deployment_info_1, route_1 = DeploymentInfo.from_proto(proto.deployment_info), proto.route
+    proto = DeploymentRoute.ParseString(
+        ray.get(controller.get_deployment_info.remote("test")))
+    deployment_info_1, route_1 = DeploymentInfo.from_proto(
+        proto.deployment_info), proto.route
     start_time_ms_1 = deployment_info_1.start_time_ms
 
     time.sleep(0.1)
@@ -28,8 +30,10 @@ def test_redeploy_start_time(serve_instance):
         return "2"
 
     test.deploy()
-    proto = DeploymentRoute.ParseString(ray.get(controller.get_deployment_info.remote("test")))
-    deployment_info_2, route_2 = DeploymentInfo.from_proto(proto.deployment_info), proto.route
+    proto = DeploymentRoute.ParseString(
+        ray.get(controller.get_deployment_info.remote("test")))
+    deployment_info_2, route_2 = DeploymentInfo.from_proto(
+        proto.deployment_info), proto.route
     start_time_ms_2 = deployment_info_2.start_time_ms
 
     assert start_time_ms_1 == start_time_ms_2
