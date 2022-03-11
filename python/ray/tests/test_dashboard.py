@@ -196,6 +196,8 @@ conflict_port = 34567
 
 
 def run_tasks_without_runtime_env():
+    assert ray.is_initialized()
+
     @ray.remote
     def f():
         pass
@@ -206,6 +208,8 @@ def run_tasks_without_runtime_env():
 
 
 def run_tasks_with_runtime_env():
+    assert ray.is_initialized()
+
     @ray.remote(runtime_env={"pip": ["pip-install-test==0.5"]})
     def f():
         import pip_install_test  # noqa
@@ -236,7 +240,10 @@ def test_dashboard_agent_grpc_port_conflict(listen_port, call_ray_start):
     # Tasks without runtime env still work when dashboard agent grpc port conflicts.
     run_tasks_without_runtime_env()
     # Tasks with runtime env couldn't work.
-    with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
+    with pytest.raises(
+        ray.exceptions.RuntimeEnvSetupError,
+        match="the grpc service of agent is invalid",
+    ):
         run_tasks_with_runtime_env()
 
 
