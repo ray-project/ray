@@ -51,7 +51,7 @@ class TensorflowPredictor(Predictor):
         self,
         data: DataBatchType,
         column_names: Optional[List[str]] = None,
-        feature_columns: Optional[Union[List[str], List[List[str]]]] = None,
+        feature_columns: Optional[List[str]] = None,
         dtype: Optional[tf.dtypes.DType] = None,
     ) -> DataBatchType:
         """Run inference on data batch.
@@ -63,11 +63,8 @@ class TensorflowPredictor(Predictor):
             data: A batch of input data. Either a pandas DataFrame or numpy
                 array.
             feature_columns: The names or indices of the columns in the
-                data to use as features to predict on. If this arg is a
-                list of lists, then the data batch will be converted into a
-                multiple tensors which are then concatenated before feeding
-                into the model. This is useful for multi-input models. If
-                None, then use all columns in ``data``.
+                data to use as features to predict on. If None, then use
+                all columns in ``data``.
             dtype: The TensorFlow dtype to use when creating the TensorFlow tensor.
                 If set to None, then automatically infer the dtype.
 
