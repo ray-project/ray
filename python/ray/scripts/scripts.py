@@ -1469,6 +1469,8 @@ def submit(
         cli_logger.newline()
 
     if start:
+        usage_lib.print_usage_stats_heads_up_message()
+
         create_or_update_cluster(
             config_file=cluster_config_file,
             override_min_workers=None,
@@ -1574,6 +1576,9 @@ def exec(
 ):
     """Execute a command via SSH on a Ray cluster."""
     port_forward = [(port, port) for port in list(port_forward)]
+
+    if start:
+        usage_lib.print_usage_stats_heads_up_message()
 
     exec_cluster(
         cluster_config_file,

@@ -126,16 +126,6 @@ def _usage_stats_prompt_disabled():
     return int(os.getenv("RAY_USAGE_STATS_PROMPT_DISABLED", "0")) == 1
 
 
-def _is_in_third_party_library():
-    stack = inspect.stack()
-    for frame_info in reversed(stack):
-        path = Path(frame_info.filename)
-        for i, part in enumerate(path.parts):
-            if part == "site-packages" and i < (len(path.parts) - 1):
-                return path.parts[i + 1] != "ray"
-    return False
-
-
 def _generate_cluster_metadata():
     """Return a dictionary of cluster metadata."""
     ray_version, python_version = ray._private.utils.compute_version_info()
@@ -163,9 +153,6 @@ def _generate_cluster_metadata():
 def print_usage_stats_heads_up_message() -> None:
     try:
         if _usage_stats_prompt_disabled() or _usage_stats_enabled():
-            return
-
-        if _is_in_third_party_library():
             return
 
         print(usage_constant.USAGE_STATS_HEADS_UP_MESSAGE, file=sys.stderr)
