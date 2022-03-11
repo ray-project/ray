@@ -19,7 +19,9 @@ class FormatDumper(yaml.SafeDumper):
 
 def replace_prepare(dt: Dict):
     if "prepare" in dt and "wait_cluster" in dt["prepare"]:
-        _, _, nodes, timeout = dt.pop("prepare").split(" ")
+        wait_for_nodes, chaos = dt.pop("prepare").split("; ")
+        dt["prepare"] = chaos
+        _, _, nodes, timeout = wait_for_nodes.split(" ")
         dt["wait_for_nodes"] = {"num_nodes": int(nodes), "timeout": int(timeout)}
 
 
@@ -35,7 +37,8 @@ def main(legacy_config: str, prefix: str, group: str, alert: str):
     tests = []
     for old in config:
         test = {}
-        test["name"] = f"{prefix}_{old['name']}"
+        # test["name"] = f"{prefix}_{old['name']}"
+        test["name"] = old["name"]
 
         test["group"] = group
         test["working_dir"] = os.path.basename(os.path.dirname(legacy_config))
@@ -75,9 +78,9 @@ def main(legacy_config: str, prefix: str, group: str, alert: str):
 
         test["run"]["type"] = "sdk_command" if not use_connect else "client"
         if not use_connect:
-            test["run"]["file_manager"] = "job"
+            test["run"]["file_manager"] = "sdk"
 
-        test["alert"] = alert
+        # test["alert"] = alert
 
         tests.append(test)
 
