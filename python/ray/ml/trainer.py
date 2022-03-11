@@ -65,7 +65,7 @@ class Trainer(abc.ABC):
         """Function to define the training logic.
 
         `self.train_dataset` and the Dataset values in `self.extra_datasets`
-        have already been preprocessed.
+        have already been preprocessed by `self.preprocessor`.
 
         Args:
             config: Configurations for training logic specific implementation.
