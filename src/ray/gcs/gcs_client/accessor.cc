@@ -426,7 +426,6 @@ Status NodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info,
   RAY_CHECK(local_node_info.state() == GcsNodeInfo::ALIVE);
   rpc::RegisterNodeRequest request;
   request.mutable_node_info()->CopyFrom(local_node_info);
-
   client_impl_->GetGcsRpcClient().RegisterNode(
       request, [this, node_id, local_node_info, callback](
                    const Status &status, const rpc::RegisterNodeReply &reply) {
@@ -718,34 +717,6 @@ Status NodeResourceInfoAccessor::AsyncGetAllAvailableResources(
   return Status::OK();
 }
 
-Status NodeResourceInfoAccessor::AsyncUpdateResources(const NodeID &node_id,
-                                                      const ResourceMap &resources,
-                                                      const StatusCallback &callback) {
-  RAY_LOG(DEBUG) << "Updating node resources, node id = " << node_id;
-  rpc::UpdateResourcesRequest request;
-  request.set_node_id(node_id.Binary());
-  for (auto &resource : resources) {
-    (*request.mutable_resources())[resource.first] = *resource.second;
-  }
-
-  auto operation = [this, request, node_id,
-                    callback](const SequencerDoneCallback &done_callback) {
-    client_impl_->GetGcsRpcClient().UpdateResources(
-        request, [node_id, callback, done_callback](
-                     const Status &status, const rpc::UpdateResourcesReply &reply) {
-          if (callback) {
-            callback(status);
-          }
-          RAY_LOG(DEBUG) << "Finished updating node resources, status = " << status
-                         << ", node id = " << node_id;
-          done_callback();
-        });
-  };
-
-  sequencer_.Post(node_id, std::move(operation));
-  return Status::OK();
-}
-
 Status NodeResourceInfoAccessor::AsyncReportResourceUsage(
     const std::shared_ptr<rpc::ResourcesData> &data_ptr, const StatusCallback &callback) {
   absl::MutexLock lock(&mutex_);
@@ -814,34 +785,6 @@ Status NodeResourceInfoAccessor::AsyncSubscribeBatchedResourceUsage(
     return client_impl_->GetGcsSubscriber().SubscribeResourcesBatch(subscribe, done);
   };
   return subscribe_batch_resource_usage_operation_(done);
-}
-
-Status NodeResourceInfoAccessor::AsyncDeleteResources(
-    const NodeID &node_id, const std::vector<std::string> &resource_names,
-    const StatusCallback &callback) {
-  RAY_LOG(DEBUG) << "Deleting node resources, node id = " << node_id;
-  rpc::DeleteResourcesRequest request;
-  request.set_node_id(node_id.Binary());
-  for (auto &resource_name : resource_names) {
-    request.add_resource_name_list(resource_name);
-  }
-
-  auto operation = [this, request, node_id,
-                    callback](const SequencerDoneCallback &done_callback) {
-    client_impl_->GetGcsRpcClient().DeleteResources(
-        request, [node_id, callback, done_callback](
-                     const Status &status, const rpc::DeleteResourcesReply &reply) {
-          if (callback) {
-            callback(status);
-          }
-          RAY_LOG(DEBUG) << "Finished deleting node resources, status = " << status
-                         << ", node id = " << node_id;
-          done_callback();
-        });
-  };
-
-  sequencer_.Post(node_id, operation);
-  return Status::OK();
 }
 
 Status NodeResourceInfoAccessor::AsyncSubscribeToResources(

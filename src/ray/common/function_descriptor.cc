@@ -44,10 +44,12 @@ FunctionDescriptor FunctionDescriptorBuilder::BuildPython(
   return ray::FunctionDescriptor(new PythonFunctionDescriptor(std::move(descriptor)));
 }
 
-FunctionDescriptor FunctionDescriptorBuilder::BuildCpp(const std::string &function_name) {
+FunctionDescriptor FunctionDescriptorBuilder::BuildCpp(const std::string &function_name,
+                                                       const std::string &caller) {
   rpc::FunctionDescriptor descriptor;
   auto typed_descriptor = descriptor.mutable_cpp_function_descriptor();
   typed_descriptor->set_function_name(function_name);
+  typed_descriptor->set_caller(caller);
   return ray::FunctionDescriptor(new CppFunctionDescriptor(std::move(descriptor)));
 }
 
@@ -85,9 +87,10 @@ FunctionDescriptor FunctionDescriptorBuilder::FromVector(
         function_descriptor_list[3]   // function hash
     );
   } else if (language == rpc::Language::CPP) {
-    RAY_CHECK(function_descriptor_list.size() == 1);
+    RAY_CHECK(function_descriptor_list.size() == 2);
     return FunctionDescriptorBuilder::BuildCpp(
-        function_descriptor_list[0]  // function name
+        function_descriptor_list[0],  // function name
+        function_descriptor_list[1]   // caller
     );
   } else {
     RAY_LOG(FATAL) << "Unspported language " << language;

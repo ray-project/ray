@@ -12,7 +12,7 @@ from ray import serve
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray._private.test_utils import wait_for_condition
 from ray.dashboard.optional_utils import RAY_INTERNAL_DASHBOARD_NAMESPACE
-from ray.serve.scripts import process_args_and_kwargs
+from ray.serve.scripts import _process_args_and_kwargs, _configure_runtime_env
 
 
 def ping_endpoint(endpoint: str, params: str = ""):
@@ -39,7 +39,7 @@ class TestProcessArgsAndKwargs:
             "--kwarg2",
             "kwval2",
         )
-        args, kwargs = process_args_and_kwargs(args_and_kwargs)
+        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
         assert args == ["argval1", "argval2"]
         assert kwargs == {"kwarg1": "kwval1", "kwarg2": "kwval2"}
 
@@ -53,7 +53,7 @@ class TestProcessArgsAndKwargs:
             "kwval2",
         )
         with pytest.raises(ValueError):
-            process_args_and_kwargs(args_and_kwargs)
+            _process_args_and_kwargs(args_and_kwargs)
 
     def test_mixed_kwargs(self):
         args_and_kwargs = (
@@ -68,7 +68,7 @@ class TestProcessArgsAndKwargs:
             "--kwarg5",
             "kwval5",
         )
-        args, kwargs = process_args_and_kwargs(args_and_kwargs)
+        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
         assert args == ["argval1", "argval2"]
         assert kwargs == {
             "kwarg1": "=kw==val1",
@@ -86,11 +86,11 @@ class TestProcessArgsAndKwargs:
             "kwval2",
         )
         with pytest.raises(ValueError):
-            process_args_and_kwargs(args_and_kwargs)
+            _process_args_and_kwargs(args_and_kwargs)
 
         args_and_kwargs = ("--empty_kwarg_only",)
         with pytest.raises(ValueError):
-            process_args_and_kwargs(args_and_kwargs)
+            _process_args_and_kwargs(args_and_kwargs)
 
     def test_empty_equals_kwarg(self):
         args_and_kwargs = (
@@ -98,7 +98,7 @@ class TestProcessArgsAndKwargs:
             "--kwarg1=--hello",
             "--kwarg2=",
         )
-        args, kwargs = process_args_and_kwargs(args_and_kwargs)
+        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
         assert args == ["argval1"]
         assert kwargs == {
             "kwarg1": "--hello",
@@ -106,18 +106,18 @@ class TestProcessArgsAndKwargs:
         }
 
         args_and_kwargs = ("--empty_kwarg_only=",)
-        args, kwargs = process_args_and_kwargs(args_and_kwargs)
+        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
         assert args == []
         assert kwargs == {"empty_kwarg_only": ""}
 
     def test_only_args(self):
         args_and_kwargs = ("argval1", "argval2", "argval3")
-        args, kwargs = process_args_and_kwargs(args_and_kwargs)
+        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
         assert args == ["argval1", "argval2", "argval3"]
         assert kwargs == {}
 
         args_and_kwargs = ("single_arg",)
-        args, kwargs = process_args_and_kwargs(args_and_kwargs)
+        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
         assert args == ["single_arg"]
         assert kwargs == {}
 
@@ -130,7 +130,7 @@ class TestProcessArgsAndKwargs:
             "--kwarg3",
             "kwval3",
         )
-        args, kwargs = process_args_and_kwargs(args_and_kwargs)
+        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
         assert args == []
         assert kwargs == {"kwarg1": "kwval1", "kwarg2": "kwval2", "kwarg3": "kwval3"}
 
@@ -138,15 +138,81 @@ class TestProcessArgsAndKwargs:
             "--single_kwarg",
             "single_kwval",
         )
-        args, kwargs = process_args_and_kwargs(args_and_kwargs)
+        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
         assert args == []
         assert kwargs == {"single_kwarg": "single_kwval"}
 
     def test_empty_args_and_kwargs(self):
         for empty_val in [None, ()]:
-            args, kwargs = process_args_and_kwargs(empty_val)
+            args, kwargs = _process_args_and_kwargs(empty_val)
             assert args == []
             assert kwargs == {}
+
+
+class TestConfigureRuntimeEnv:
+    @serve.deployment
+    def f():
+        pass
+
+    @pytest.mark.parametrize("ray_actor_options", [None, {}])
+    def test_empty_ray_actor_options(self, ray_actor_options):
+        runtime_env = {
+            "working_dir": "http://test.com",
+            "pip": ["requests", "pendulum==2.1.2"],
+        }
+        deployment = TestConfigureRuntimeEnv.f.options(
+            ray_actor_options=ray_actor_options
+        )
+        _configure_runtime_env(deployment, runtime_env)
+        assert deployment.ray_actor_options["runtime_env"] == runtime_env
+
+    def test_no_overwrite_all_options(self):
+        old_runtime_env = {
+            "working_dir": "http://test.com",
+            "pip": ["requests", "pendulum==2.1.2"],
+        }
+        new_runtime_env = {
+            "working_dir": "http://new.com",
+            "pip": [],
+            "env_vars": {"test_var": "test"},
+        }
+        updated_env = {
+            "working_dir": "http://test.com",
+            "pip": ["requests", "pendulum==2.1.2"],
+            "env_vars": {"test_var": "test"},
+        }
+        deployment = TestConfigureRuntimeEnv.f.options(
+            ray_actor_options={"runtime_env": old_runtime_env}
+        )
+        _configure_runtime_env(deployment, new_runtime_env)
+        assert deployment.ray_actor_options["runtime_env"] == updated_env
+
+    def test_no_overwrite_some_options(self):
+        old_runtime_env = {
+            "working_dir": "http://new.com",
+            "pip": [],
+            "env_vars": {"test_var": "test"},
+        }
+        new_runtime_env = {
+            "working_dir": "http://test.com",
+            "pip": ["requests", "pendulum==2.1.2"],
+        }
+        deployment = TestConfigureRuntimeEnv.f.options(
+            ray_actor_options={"runtime_env": old_runtime_env}
+        )
+        _configure_runtime_env(deployment, new_runtime_env)
+        assert deployment.ray_actor_options["runtime_env"] == old_runtime_env
+
+    def test_overwrite_no_options(self):
+        runtime_env = {
+            "working_dir": "http://test.com",
+            "pip": ["requests", "pendulum==2.1.2"],
+        }
+        deployment = TestConfigureRuntimeEnv.f.options(
+            ray_actor_options={"runtime_env": runtime_env}
+        )
+        _configure_runtime_env(deployment, {})
+        assert deployment.ray_actor_options["runtime_env"] == runtime_env
 
 
 def test_start_shutdown(ray_start_stop):
@@ -159,10 +225,10 @@ def test_start_shutdown(ray_start_stop):
 
 def test_start_shutdown_in_namespace(ray_start_stop):
     with pytest.raises(subprocess.CalledProcessError):
-        subprocess.check_output(["serve", "-n", "test", "shutdown"])
+        subprocess.check_output(["serve", "shutdown", "-n", "test"])
 
-    subprocess.check_output(["serve", "-n", "test", "start"])
-    subprocess.check_output(["serve", "-n", "test", "shutdown"])
+    subprocess.check_output(["serve", "start", "-n", "test"])
+    subprocess.check_output(["serve", "shutdown", "-n", "test"])
 
 
 class A:
@@ -195,14 +261,14 @@ def test_create_deployment(ray_start_stop, tmp_working_dir, class_name):  # noqa
     subprocess.check_output(
         [
             "serve",
+            "create-deployment",
+            f"ray.serve.tests.test_cli.{class_name}",
             "--runtime-env-json",
             json.dumps(
                 {
                     "working_dir": tmp_working_dir,
                 }
             ),
-            "create-deployment",
-            f"ray.serve.tests.test_cli.{class_name}",
             "--options-json",
             json.dumps(
                 {
@@ -334,7 +400,7 @@ def test_info(ray_start_stop):
     deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
     assert success_message_fragment in deploy_response
 
-    info_response = subprocess.check_output(["serve", "info"]).decode("utf-8")
+    info_response = subprocess.check_output(["serve", "info", "-j"]).decode("utf-8")
     info = json.loads(info_response)
 
     assert "deployments" in info
@@ -404,7 +470,7 @@ def test_delete(ray_start_stop):
     # Deploys a config file and deletes it
 
     def get_num_deployments():
-        info_response = subprocess.check_output(["serve", "info"])
+        info_response = subprocess.check_output(["serve", "info", "-j"])
         info = json.loads(info_response)
         return len(info["deployments"])
 
@@ -559,6 +625,84 @@ def test_run_simultaneous(ray_start_stop):
     p2.wait()
     assert ping_endpoint("parrot") == "connection error"
     assert ping_endpoint("Macaw") == "connection error"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run_runtime_env(ray_start_stop):
+    # Tests serve run with runtime_envs specified
+
+    # Use local working_dir with import path
+    p = subprocess.Popen(
+        [
+            "serve",
+            "run",
+            "test_cli.Macaw",
+            "--working-dir",
+            os.path.dirname(__file__),
+            "--",
+            "green",
+            "--name=Molly",
+        ]
+    )
+    wait_for_condition(lambda: ping_endpoint("Macaw") == "Molly is green!", timeout=10)
+    p.send_signal(signal.SIGINT)
+    p.wait()
+
+    # Use local working_dir with config file
+    p = subprocess.Popen(
+        [
+            "serve",
+            "run",
+            os.path.join(
+                os.path.dirname(__file__), "test_config_files", "scarlet.yaml"
+            ),
+            "--working-dir",
+            os.path.dirname(__file__),
+        ]
+    )
+    wait_for_condition(
+        lambda: ping_endpoint("Scarlet") == "Scarlet is red!", timeout=10
+    )
+    p.send_signal(signal.SIGINT)
+    p.wait()
+
+    # Use remote working_dir
+    p = subprocess.Popen(
+        [
+            "serve",
+            "run",
+            "test_module.test.one",
+            "--working-dir",
+            "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip",
+        ]
+    )
+    wait_for_condition(lambda: ping_endpoint("one") == "2", timeout=10)
+    p.send_signal(signal.SIGINT)
+    p.wait()
+
+    # Use runtime env
+    p = subprocess.Popen(
+        [
+            "serve",
+            "run",
+            os.path.join(
+                os.path.dirname(__file__),
+                "test_config_files",
+                "missing_runtime_env.yaml",
+            ),
+            "--runtime-env-json",
+            (
+                '{"py_modules": ["https://github.com/shrekris-anyscale/'
+                'test_deploy_group/archive/HEAD.zip"],'
+                '"working_dir": "http://nonexistentlink-q490123950ni34t"}'
+            ),
+            "--working-dir",
+            "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip",
+        ]
+    )
+    wait_for_condition(lambda: ping_endpoint("one") == "2", timeout=10)
+    p.send_signal(signal.SIGINT)
+    p.wait()
 
 
 if __name__ == "__main__":

@@ -168,7 +168,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
     def __len__(self) -> int:
         """Returns the number of items currently stored in this buffer."""
-        return sum([len(buffer._storage) for buffer in self.replay_buffers.values()])
+        return sum(len(buffer._storage) for buffer in self.replay_buffers.values())
 
     @ExperimentalAPI
     @override(ReplayBuffer)
@@ -299,9 +299,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                 samples = {}
                 for policy_id, replay_buffer in self.replay_buffers.items():
                     samples[policy_id] = replay_buffer.sample(num_items, **kwargs)
-                return MultiAgentBatch(
-                    samples, sum([s.count for s in samples.values()])
-                )
+                return MultiAgentBatch(samples, sum(s.count for s in samples.values()))
 
     @ExperimentalAPI
     @override(ReplayBuffer)

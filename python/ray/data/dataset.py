@@ -85,7 +85,7 @@ logger = logging.getLogger(__name__)
 _epoch_warned = False
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 class Dataset(Generic[T]):
     """Implements a distributed Arrow dataset.
 
@@ -167,7 +167,7 @@ class Dataset(Generic[T]):
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
-        fn = cache_wrapper(fn)
+        fn = cache_wrapper(fn, compute)
         context = DatasetContext.get_current()
 
         def transform(block: Block) -> Iterable[Block]:
@@ -240,7 +240,7 @@ class Dataset(Generic[T]):
         import pyarrow as pa
         import pandas as pd
 
-        fn = cache_wrapper(fn)
+        fn = cache_wrapper(fn, compute)
         context = DatasetContext.get_current()
 
         def transform(block: Block) -> Iterable[Block]:
@@ -370,7 +370,7 @@ class Dataset(Generic[T]):
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
-        fn = cache_wrapper(fn)
+        fn = cache_wrapper(fn, compute)
         context = DatasetContext.get_current()
 
         def transform(block: Block) -> Iterable[Block]:
@@ -417,7 +417,7 @@ class Dataset(Generic[T]):
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
-        fn = cache_wrapper(fn)
+        fn = cache_wrapper(fn, compute)
         context = DatasetContext.get_current()
 
         def transform(block: Block) -> Iterable[Block]:
@@ -504,8 +504,6 @@ class Dataset(Generic[T]):
         *,
         seed: Optional[int] = None,
         num_blocks: Optional[int] = None,
-        _spread_resource_prefix: Optional[str] = None,
-        _move: bool = False,  # TODO: deprecate.
     ) -> "Dataset[T]":
         """Randomly shuffle the elements of this dataset.
 
@@ -534,7 +532,7 @@ class Dataset(Generic[T]):
             num_blocks = block_list.executed_num_blocks()  # Blocking.
             if num_blocks == 0:
                 return block_list, {}
-            if _move or clear_input_blocks:
+            if clear_input_blocks:
                 blocks = block_list.copy()
                 block_list.clear()
             else:
@@ -545,7 +543,6 @@ class Dataset(Generic[T]):
                 num_blocks,
                 random_shuffle=True,
                 random_seed=seed,
-                _spread_resource_prefix=_spread_resource_prefix,
                 map_ray_remote_args=remote_args,
                 reduce_ray_remote_args=remote_args,
             )
@@ -2188,8 +2185,8 @@ Dict[str, List[str]]]): The names of the columns
     def to_tf(
         self,
         *,
-        label_column: str,
-        output_signature: Tuple["tf.TypeSpec", "tf.TypeSpec"],
+        output_signature: Union["tf.TypeSpec", Tuple["tf.TypeSpec", "tf.TypeSpec"]],
+        label_column: Optional[str] = None,
         feature_columns: Optional[List[str]] = None,
         prefetch_blocks: int = 0,
         batch_size: int = 1,
@@ -2214,11 +2211,14 @@ Dict[str, List[str]]]): The names of the columns
         Time complexity: O(1)
 
         Args:
-            label_column (str): The name of the column used as the label
-                (second element of the output tuple).
-            output_signature (Tuple[tf.TypeSpec, tf.TypeSpec]): A 2-element
-                tuple of `tf.TypeSpec` objects corresponding to
-                (features, label).
+            output_signature (Union[tf.TypeSpec, Tuple[tf.TypeSpec, tf.TypeSpec]]):
+                If ``label_column`` is specified, a 2-element
+                tuple of ``tf.TypeSpec`` objects corresponding to
+                (features, label). Otherwise, a single ``tf.TypeSpec``
+                corresponding to features tensor.
+            label_column (Optional[str]): The name of the column used as the label
+                (second element of the output tuple). If not specified, output
+                will be just one tensor instead of a tuple.
             feature_columns (Optional[List[str]]): List of columns in datasets
                 to use. If None, all columns will be used.
             prefetch_blocks: The number of blocks to prefetch ahead of the
@@ -2242,12 +2242,16 @@ Dict[str, List[str]]]): The names of the columns
                 batch_size=batch_size,
                 batch_format="pandas",
             ):
-                target_col = batch.pop(label_column)
+                if label_column:
+                    target_col = batch.pop(label_column)
                 if feature_columns:
                     batch = batch[feature_columns]
                 # TODO(Clark): Support batches containing our extension array
                 # TensorArray.
-                yield batch.values, target_col.values
+                if label_column:
+                    yield batch.values, target_col.values
+                else:
+                    yield batch.values
 
         dataset = tf.data.Dataset.from_generator(
             make_generator, output_signature=output_signature
@@ -2523,11 +2527,6 @@ Dict[str, List[str]]]): The names of the columns
             )
         return pipe
 
-    def pipeline(self, *, parallelism: int = 10) -> "DatasetPipeline[T]":
-        raise DeprecationWarning(
-            "Use .window(blocks_per_window=n) instead of " ".pipeline(parallelism=n)"
-        )
-
     def window(
         self,
         *,
@@ -2670,21 +2669,6 @@ Dict[str, List[str]]]): The names of the columns
             )
         return pipe
 
-    @DeveloperAPI
-    def get_internal_block_refs(self) -> List[ObjectRef[Block]]:
-        """Get a list of references to the underlying blocks of this dataset.
-
-        This function can be used for zero-copy access to the data. It blocks
-        until the underlying blocks are computed.
-
-        Time complexity: O(1)
-
-        Returns:
-            A list of references to this dataset's blocks.
-        """
-        return self._plan.execute().get_blocks()
-
-    @DeveloperAPI
     def fully_executed(self) -> "Dataset[T]":
         """Force full evaluation of the blocks of this dataset.
 
@@ -2709,10 +2693,23 @@ Dict[str, List[str]]]): The names of the columns
         ds._set_uuid(self._get_uuid())
         return ds
 
-    @DeveloperAPI
     def stats(self) -> str:
         """Returns a string containing execution timing information."""
         return self._plan.stats().summary_string()
+
+    @DeveloperAPI
+    def get_internal_block_refs(self) -> List[ObjectRef[Block]]:
+        """Get a list of references to the underlying blocks of this dataset.
+
+        This function can be used for zero-copy access to the data. It blocks
+        until the underlying blocks are computed.
+
+        Time complexity: O(1)
+
+        Returns:
+            A list of references to this dataset's blocks.
+        """
+        return self._plan.execute().get_blocks()
 
     def _experimental_lazy(self) -> "Dataset[T]":
         """Enable lazy evaluation (experimental)."""

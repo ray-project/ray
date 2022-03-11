@@ -31,6 +31,14 @@ class Serializer {
     return buffer;
   }
 
+  static msgpack::sbuffer Serialize(const char *data, size_t size) {
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> packer(&buffer);
+    packer.pack_bin(size);
+    packer.pack_bin_body(data, size);
+    return buffer;
+  }
+
   template <typename T>
   static T Deserialize(const char *data, size_t size) {
     msgpack::unpacked unpacked;
