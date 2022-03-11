@@ -35,7 +35,7 @@ from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 from ray.core.generated import gcs_pb2
 import ray.ray_constants as ray_constants
 from ray._private.ray_logging import setup_component_logger
-from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher
+from ray._private.gcs_pubsub import GcsPublisher
 from ray._private.gcs_utils import GcsClient
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
