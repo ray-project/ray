@@ -178,12 +178,6 @@ def _build_docker_image(
             f" {image_type.keys()}"
         )
 
-    # TODO(https://github.com/ray-project/ray/issues/16599):
-    # remove below after supporting ray-ml images with Python 3.9
-    if image_name == "ray-ml" and py_version == "py39":
-        print(f"{image_name} image is currently unsupported with " "Python 3.9")
-        return
-
     build_args = {}
     build_args["PYTHON_VERSION"] = PY_MATRIX[py_version]
     # I.e. "py36"[-1] == 6
