@@ -40,7 +40,9 @@ Flower |flower|
 
 Flower is a friendly federated learning framework with a unified approach that can federate any workload, any machine learning framework, and any programming language. It can perform multi-machine simulations of federated learning pipelines for different research settings and it enables users to later deploy these pipelines in real-world cross-device or cross-silo environments. Details, code examples, docs, and the Slack community can be found on `flower.dev <https://flower.dev/>`_. 
 
-GitHub: `https://github.com/adap/flower` 
+GitHub: `https://github.com/adap/flower <https://github.com/adap/flower>`_ 
+
+[`Link to documentation <https://flower.dev/>`__]
 
 Horovod |horovod|
 -----------------
