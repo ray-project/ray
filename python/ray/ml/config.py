@@ -25,8 +25,6 @@ class ScalingConfig(TypedDict):
         defined in this Dict will be reserved for each worker. The
         ``CPU`` and ``GPU`` keys (case-sensitive) can be defined to
         override the number of CPU/GPUs used by each worker.
-    max_retries (int): Number of retries when Ray actors fail.
-        Defaults to 3. Set to -1 for unlimited retries.
     placement_strategy (str): The placement strategy to use for the
         placement group of the Ray actors.
     """
@@ -34,7 +32,6 @@ class ScalingConfig(TypedDict):
     num_workers: int
     use_gpu: bool
     resources_per_worker: Optional[Dict]
-    max_retries: int
     placement_strategy: str
 
 
@@ -45,7 +42,6 @@ class _ScalingConfigDataClass:
     num_workers: int
     use_gpu: bool = False
     resources_per_worker: Optional[Dict] = None
-    max_retries: int = 3
     placement_strategy: str = "PACK"
 
     @property
