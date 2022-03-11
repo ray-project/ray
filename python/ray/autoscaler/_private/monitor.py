@@ -145,7 +145,6 @@ class Monitor:
         retry_on_failure: bool = True,
     ):
         gcs_address = address
-
         options = (("grpc.enable_http_proxy", 0),)
         gcs_channel = ray._private.utils.init_grpc_channel(gcs_address, options)
         # TODO: Use gcs client for this
@@ -155,7 +154,8 @@ class Monitor:
         self.gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
             gcs_channel
         )
-
+        if redis_password is not None:
+            logger.warning("redis_password has been deprecated.")
         # Set the redis client and mode so _internal_kv works for autoscaler.
         worker = ray.worker.global_worker
         gcs_client = GcsClient(address=gcs_address)

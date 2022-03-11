@@ -259,12 +259,10 @@ def init_ray_and_catch_exceptions(connect_to_serve: bool = False) -> Callable:
                 if not ray.is_initialized():
                     try:
                         address = self._dashboard_head.gcs_address
-                        redis_pw = None
                         logger.info(f"Connecting to ray with address={address}")
                         ray.init(
                             address=address,
                             namespace=RAY_INTERNAL_DASHBOARD_NAMESPACE,
-                            _redis_password=redis_pw,
                         )
                     except Exception as e:
                         ray.shutdown()
