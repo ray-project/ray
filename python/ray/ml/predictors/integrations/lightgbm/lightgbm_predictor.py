@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Union
 
 import pandas as pd
 import numpy as np
@@ -38,7 +38,7 @@ class LightGBMPredictor(Predictor):
     def predict(
         self,
         data: DataBatchType,
-        feature_columns: Optional[List[str]] = None,
+        feature_columns: Optional[Union[List[str], List[int]]] = None,
         **lgbm_dataset_kwargs,
     ) -> DataBatchType:
         """Run inference on data batch.
