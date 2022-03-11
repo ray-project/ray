@@ -977,10 +977,7 @@ def init(
         logger.info(
             "Connecting to existing Ray cluster at address: " f"{bootstrap_address}"
         )
-        if gcs_utils.use_gcs_for_bootstrap():
-            gcs_address = bootstrap_address
-        else:
-            redis_address = bootstrap_address
+        gcs_address = bootstrap_address
 
     if configure_logging:
         setup_logger(logging_level, logging_format)
@@ -1538,21 +1535,12 @@ def connect(
     # The Redis client can safely be shared between threads. However,
     # that is not true of Redis pubsub clients. See the documentation at
     # https://github.com/andymccurdy/redis-py#thread-safety.
-    if not gcs_utils.use_gcs_for_bootstrap():
-        worker.redis_client = node.create_redis_client()
     worker.gcs_client = node.get_gcs_client()
     assert worker.gcs_client is not None
     _initialize_internal_kv(worker.gcs_client)
-    if gcs_utils.use_gcs_for_bootstrap():
-        ray.state.state._initialize_global_state(
-            ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
-        )
-    else:
-        ray.state.state._initialize_global_state(
-            ray._raylet.GcsClientOptions.from_redis_address(
-                node.redis_address, redis_password=node.redis_password
-            )
-        )
+    ray.state.state._initialize_global_state(
+        ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
+    )
     worker.gcs_pubsub_enabled = gcs_pubsub_enabled()
     worker.gcs_publisher = None
     if worker.gcs_pubsub_enabled:
@@ -1625,19 +1613,7 @@ def connect(
     elif not LOCAL_MODE:
         raise ValueError("Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
 
-    if gcs_utils.use_gcs_for_bootstrap():
-        gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
-    else:
-        # As the synchronous and the asynchronous context of redis client is
-        # not used in this gcs client. We would not open connection for it
-        # by setting `enable_sync_conn` and `enable_async_conn` as false.
-        gcs_options = ray._raylet.GcsClientOptions.from_redis_address(
-            node.redis_address,
-            node.redis_password,
-            enable_sync_conn=False,
-            enable_async_conn=False,
-            enable_subscribe_conn=True,
-        )
+    gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 
