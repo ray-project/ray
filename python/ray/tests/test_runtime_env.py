@@ -301,6 +301,10 @@ def set_agent_failure_env_var():
     del os.environ["_RAY_AGENT_FAILING"]
 
 
+# TODO(SongGuyang): Fail the agent which is in different node from driver.
+@pytest.mark.skip(
+    reason="Agent failure will lead to raylet failure and driver failure."
+)
 @pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
 def test_runtime_env_broken(
     set_agent_failure_env_var, runtime_env_class, ray_start_cluster_head
