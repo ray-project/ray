@@ -42,7 +42,6 @@ Flower is a friendly federated learning framework with a unified approach that c
 
 GitHub: `https://github.com/adap/flower <https://github.com/adap/flower>`_ 
 
-[`Link to documentation <https://flower.dev/>`__]
 
 Horovod |horovod|
 -----------------
