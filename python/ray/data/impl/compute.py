@@ -96,7 +96,7 @@ class TaskPoolStrategy(ComputeStrategy):
 class ActorPoolStrategy(ComputeStrategy):
     """Specify the compute strategy for a Dataset transform.
 
-    ActorPool specifies that an autoscaling pool of actors should be used for a given
+    ActorPoolStrategy specifies that an autoscaling pool of actors should be used for a given
     Dataset transform. This is useful for stateful setup of callable classes.
 
     To autoscale from ``m`` to ``n`` actors, specify ``compute=ActorPoolStrategy(m, n)``.
