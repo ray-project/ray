@@ -1,12 +1,12 @@
 import abc
 import logging
-from typing import Dict, Union, Callable, Optional, TYPE_CHECKING, Type
+from typing import Dict, Union, Callable, Optional, TYPE_CHECKING, Type, Any
 
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.result import Result
 from ray.ml.config import ScalingConfig, RunConfig
-from ray.tune import Trainable
+from ray.tune import Trainable, PlacementGroupFactory
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:
@@ -35,9 +35,13 @@ class Trainer(abc.ABC):
         scaling_config: Configuration for how to scale training.
         run_config: Configuration for the execution of the training run.
         train_dataset: Either a distributed Ray :ref:`Dataset <dataset-api>`
-            or a Callable that returns a Dataset to use for training.
+            or a Callable that returns a Dataset, to use for training. If a
+            ``preprocessor`` is also provided, it will be fit on this
+            dataset and this dataset will be transformed.
         extra_datasets: Any extra Datasets (such as validation or test
-            datasets) to use for training.
+            datasets) to use for training. If a ``preprocessor`` is
+            provided, the datasets specified here will only be transformed,
+            and not fit on.
         preprocessor: A preprocessor to preprocess the provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
     """
@@ -54,6 +58,21 @@ class Trainer(abc.ABC):
 
         raise NotImplementedError
 
+    @abc.abstractmethod
+    def training_function(
+        self, config: Dict[str, Any], checkpoint: Optional[Checkpoint] = None
+    ):
+        """Function to define the training logic.
+
+        `self.train_dataset` and the Dataset values in `self.extra_datasets`
+        have already been preprocessed.
+
+        Args:
+            config: Configurations for training logic specific implementation.
+            checkpoint: A checkpoint to resume from, if applicable.
+        """
+        raise NotImplementedError
+
     def fit(self) -> Result:
         """Runs training.
 
@@ -66,7 +85,20 @@ class Trainer(abc.ABC):
         """
         raise NotImplementedError
 
-    @abc.abstractmethod
+    def resource_func(
+        self,
+        scaling_config: Dict,
+    ) -> PlacementGroupFactory:
+        """Converts ``scaling_config`` to ``PlacementGroupFactory``.
+
+        If this method is not overridden, then the Trainable produced by
+        ``self.as_trainable()`` will just use the default resource request.
+
+        Args:
+            scaling_config: The scaling config to convert.
+        """
+        raise NotImplementedError
+
     def as_trainable(self) -> Type[Trainable]:
         """Convert self to a ``tune.Trainable`` class."""
         raise NotImplementedError
