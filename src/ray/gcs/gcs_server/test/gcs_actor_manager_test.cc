@@ -36,7 +36,7 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
   void Schedule(std::shared_ptr<gcs::GcsActor> actor) { actors.push_back(actor); }
   void Reschedule(std::shared_ptr<gcs::GcsActor> actor) {}
   void ReleaseUnusedWorkers(
-      const std::unordered_map<NodeID, std::vector<WorkerID>> &node_to_workers) {}
+      const absl::flat_hash_map<NodeID, std::vector<WorkerID>> &node_to_workers) {}
   void OnActorDestruction(std::shared_ptr<gcs::GcsActor> actor) {}
 
   MOCK_CONST_METHOD0(DebugString, std::string());
@@ -224,7 +224,7 @@ class GcsActorManagerTest : public ::testing::Test {
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<MockActorScheduler> mock_actor_scheduler_;
   std::shared_ptr<MockWorkerClient> worker_client_;
-  std::unordered_map<JobID, std::string> job_namespace_table_;
+  absl::flat_hash_map<JobID, std::string> job_namespace_table_;
   std::unique_ptr<gcs::GcsActorManager> gcs_actor_manager_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
   std::shared_ptr<gcs::RedisClient> redis_client_;

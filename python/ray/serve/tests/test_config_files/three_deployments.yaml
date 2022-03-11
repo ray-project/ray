@@ -43,7 +43,6 @@ deployments:
     init_kwargs: null
     import_path: "test_module.test.one"
     num_replicas: 2
-    route_prefix: "/one"
     max_concurrent_queries: null
     user_config: null
     autoscaling_config: null

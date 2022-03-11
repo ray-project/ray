@@ -283,8 +283,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           absl::MutexLock lock(&mutex_);
           to_resubmit_.push_back(std::make_pair(current_time_ms() + delay, spec));
         } else {
-          RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object: "
-                        << spec.DebugString();
+          RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object, attempt #"
+                        << spec.AttemptNumber() + 1 << ": " << spec.DebugString();
           if (spec.IsActorTask()) {
             auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
             actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
@@ -454,17 +454,23 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   periodical_runner_.RunFnPeriodically(
       [this] {
         const auto lost_objects = reference_counter_->FlushObjectsToRecover();
-        // Delete the objects from the in-memory store to indicate that they are not
-        // available. The object recovery manager will guarantee that a new value
-        // will eventually be stored for the objects (either an
-        // UnreconstructableError or a value reconstructed from lineage).
-        memory_store_->Delete(lost_objects);
-        for (const auto &object_id : lost_objects) {
-          // NOTE(swang): There is a race condition where this can return false if
-          // the reference went out of scope since the call to the ref counter to get
-          // the lost objects. It's okay to not mark the object as failed or recover
-          // the object since there are no reference holders.
-          RAY_UNUSED(object_recovery_manager_->RecoverObject(object_id));
+        if (!lost_objects.empty()) {
+          // Keep :info_message: in sync with LOG_PREFIX_INFO_MESSAGE in ray_constants.py.
+          RAY_LOG(ERROR) << ":info_message: Attempting to recover " << lost_objects.size()
+                         << " lost objects by resubmitting their tasks. To disable "
+                         << "object reconstruction, set @ray.remote(max_tries=0).";
+          // Delete the objects from the in-memory store to indicate that they are not
+          // available. The object recovery manager will guarantee that a new value
+          // will eventually be stored for the objects (either an
+          // UnreconstructableError or a value reconstructed from lineage).
+          memory_store_->Delete(lost_objects);
+          for (const auto &object_id : lost_objects) {
+            // NOTE(swang): There is a race condition where this can return false if
+            // the reference went out of scope since the call to the ref counter to get
+            // the lost objects. It's okay to not mark the object as failed or recover
+            // the object since there are no reference holders.
+            RAY_UNUSED(object_recovery_manager_->RecoverObject(object_id));
+          }
         }
       },
       100);
@@ -483,6 +489,13 @@ void CoreWorker::Shutdown() {
   is_shutdown_ = true;
   if (options_.worker_type == WorkerType::WORKER) {
     // Running in a main thread.
+    // Asyncio coroutines could still run after CoreWorker is removed because it is
+    // running in a different thread. This can cause segfault because coroutines try to
+    // access CoreWorker methods that are already garbage collected. We should complete
+    // all coroutines before shutting down in order to prevent this.
+    if (worker_context_.CurrentActorIsAsync()) {
+      options_.terminate_asyncio_thread();
+    }
     direct_task_receiver_->Stop();
     task_execution_service_.stop();
   }
@@ -509,15 +522,6 @@ void CoreWorker::Shutdown() {
   // it up.
   gcs_client_.reset();
 
-  if (options_.worker_type == WorkerType::WORKER) {
-    // Asyncio coroutines could still run after CoreWorker is removed because it is
-    // running in a different thread. This can cause segfault because coroutines try to
-    // access CoreWorker methods that are already garbage collected. We should complete
-    // all coroutines before shutting down in order to prevent this.
-    if (worker_context_.CurrentActorIsAsync()) {
-      options_.terminate_asyncio_thread();
-    }
-  }
   RAY_LOG(INFO) << "Core worker ready to be deallocated.";
 }
 
@@ -1436,56 +1440,72 @@ static std::vector<std::string> GetUrisFromRuntimeEnv(
   return result;
 }
 
-static std::vector<std::string> GetUrisFromSerializedRuntimeEnv(
-    const std::string &serialized_runtime_env) {
-  rpc::RuntimeEnv runtime_env;
-  if (!google::protobuf::util::JsonStringToMessage(serialized_runtime_env, &runtime_env)
-           .ok()) {
-    RAY_LOG(WARNING) << "Parse runtime env failed for " << serialized_runtime_env;
-    // TODO(SongGuyang): We pass the raw string here and the task will fail after an
-    // exception raised in runtime env agent. Actually, we can fail the task here.
-    return {};
-  }
-  return GetUrisFromRuntimeEnv(&runtime_env);
-}
-
-std::string CoreWorker::OverrideTaskOrActorRuntimeEnv(
-    const std::string &serialized_runtime_env,
-    std::vector<std::string> *runtime_env_uris) {
+std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvInfo(
+    const std::string &serialized_runtime_env_info) {
+  // TODO(Catch-Bull,SongGuyang): task runtime env not support the field eager_install
+  // yet, we will overwrite the filed eager_install when it did.
   std::shared_ptr<rpc::RuntimeEnv> parent = nullptr;
+  std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr;
+  runtime_env_info.reset(new rpc::RuntimeEnvInfo());
+
+  if (!IsRuntimeEnvInfoEmpty(serialized_runtime_env_info)) {
+    RAY_CHECK(google::protobuf::util::JsonStringToMessage(serialized_runtime_env_info,
+                                                          runtime_env_info.get())
+                  .ok());
+  }
+
   if (options_.worker_type == WorkerType::DRIVER) {
-    if (IsRuntimeEnvEmpty(serialized_runtime_env)) {
-      *runtime_env_uris = GetUrisFromRuntimeEnv(job_runtime_env_.get());
-      return job_config_->runtime_env_info().serialized_runtime_env();
+    if (IsRuntimeEnvEmpty(runtime_env_info->serialized_runtime_env())) {
+      runtime_env_info->set_serialized_runtime_env(
+          job_config_->runtime_env_info().serialized_runtime_env());
+      runtime_env_info->clear_uris();
+      for (const std::string &uri : GetUrisFromRuntimeEnv(job_runtime_env_.get())) {
+        runtime_env_info->add_uris(uri);
+      }
+
+      return runtime_env_info;
     }
     parent = job_runtime_env_;
   } else {
-    if (IsRuntimeEnvEmpty(serialized_runtime_env)) {
-      *runtime_env_uris =
-          GetUrisFromRuntimeEnv(worker_context_.GetCurrentRuntimeEnv().get());
-      return worker_context_.GetCurrentSerializedRuntimeEnv();
+    if (IsRuntimeEnvEmpty(runtime_env_info->serialized_runtime_env())) {
+      runtime_env_info->set_serialized_runtime_env(
+          worker_context_.GetCurrentSerializedRuntimeEnv());
+      runtime_env_info->clear_uris();
+      for (const std::string &uri :
+           GetUrisFromRuntimeEnv(worker_context_.GetCurrentRuntimeEnv().get())) {
+        runtime_env_info->add_uris(uri);
+      }
+
+      return runtime_env_info;
     }
     parent = worker_context_.GetCurrentRuntimeEnv();
   }
   if (parent) {
+    std::string serialized_runtime_env = runtime_env_info->serialized_runtime_env();
     rpc::RuntimeEnv child_runtime_env;
     if (!google::protobuf::util::JsonStringToMessage(serialized_runtime_env,
                                                      &child_runtime_env)
              .ok()) {
-      RAY_LOG(WARNING) << "Parse runtime env failed for " << serialized_runtime_env;
+      RAY_LOG(WARNING) << "Parse runtime env failed for " << serialized_runtime_env
+                       << ". serialized runtime env info: "
+                       << serialized_runtime_env_info;
       // TODO(SongGuyang): We pass the raw string here and the task will fail after an
       // exception raised in runtime env agent. Actually, we can fail the task here.
-      return serialized_runtime_env;
+      return runtime_env_info;
     }
     auto override_runtime_env = OverrideRuntimeEnv(child_runtime_env, parent);
-    std::string result;
-    RAY_CHECK(
-        google::protobuf::util::MessageToJsonString(override_runtime_env, &result).ok());
-    *runtime_env_uris = GetUrisFromRuntimeEnv(&override_runtime_env);
-    return result;
+    std::string serialized_override_runtime_env;
+    RAY_CHECK(google::protobuf::util::MessageToJsonString(
+                  override_runtime_env, &serialized_override_runtime_env)
+                  .ok());
+    runtime_env_info->set_serialized_runtime_env(serialized_override_runtime_env);
+    runtime_env_info->clear_uris();
+    for (const std::string &uri : GetUrisFromRuntimeEnv(&override_runtime_env)) {
+      runtime_env_info->add_uris(uri);
+    }
+    return runtime_env_info;
   } else {
-    *runtime_env_uris = GetUrisFromSerializedRuntimeEnv(serialized_runtime_env);
-    return serialized_runtime_env;
+    return runtime_env_info;
   }
 }
 
@@ -1497,17 +1517,16 @@ void CoreWorker::BuildCommonTaskSpec(
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     const std::string &debugger_breakpoint, int64_t depth,
-    const std::string &serialized_runtime_env,
+    const std::string &serialized_runtime_env_info,
     const std::string &concurrency_group_name) {
   // Build common task spec.
-  std::vector<std::string> runtime_env_uris;
-  auto override_runtime_env =
-      OverrideTaskOrActorRuntimeEnv(serialized_runtime_env, &runtime_env_uris);
+  auto override_runtime_env_info =
+      OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);
   builder.SetCommonTaskSpec(
       task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
-      required_placement_resources, debugger_breakpoint, depth, override_runtime_env,
-      runtime_env_uris, concurrency_group_name);
+      required_placement_resources, debugger_breakpoint, depth, override_runtime_env_info,
+      concurrency_group_name);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -1540,7 +1559,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, task_options.num_returns,
                       constrained_resources, required_resources, debugger_breakpoint,
-                      depth, task_options.serialized_runtime_env);
+                      depth, task_options.serialized_runtime_env_info);
   builder.SetNormalTaskSpec(max_retries, retry_exceptions, scheduling_strategy);
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submitting normal task " << task_spec.DebugString();
@@ -1608,7 +1627,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, 1, new_resource,
                       new_placement_resources, "" /* debugger_breakpoint */, depth,
-                      actor_creation_options.serialized_runtime_env);
+                      actor_creation_options.serialized_runtime_env_info);
 
   // If the namespace is not specified, get it from the job.
   const auto &ray_namespace = (actor_creation_options.ray_namespace.empty()
@@ -1797,7 +1816,7 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
                       rpc_address_, function, args, num_returns, task_options.resources,
                       required_resources, "", /* debugger_breakpoint */
                       depth,                  /*depth*/
-                      "{}",                   /* serialized_runtime_env */
+                      "{}",                   /* serialized_runtime_env_info */
                       task_options.concurrency_group_name);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
@@ -2648,7 +2667,7 @@ void CoreWorker::HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &re
                                          rpc::SendReplyCallback send_reply_callback) {
   const auto subscriber_id = NodeID::FromBinary(request.subscriber_id());
   RAY_LOG(DEBUG) << "Got a long polling request from a node " << subscriber_id;
-  object_info_publisher_->ConnectToSubscriber(subscriber_id, reply,
+  object_info_publisher_->ConnectToSubscriber(request, reply,
                                               std::move(send_reply_callback));
 }
 

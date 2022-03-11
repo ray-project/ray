@@ -6,14 +6,18 @@ from typing import Tuple, Optional, Dict
 from ray_release.config import Test, RELEASE_PACKAGE_DIR, load_test_cluster_compute
 from ray_release.logger import logger
 
+# Keep 10% for the buffer.
+limit = int(15784 * 0.9)
+
 
 CONCURRENY_GROUPS = {
-    "small": 64,
-    "medium": 16,
-    "large": 8,
-    "small-gpu": 8,
-    "large-gpu": 4,
+    "small": 16,
+    "medium": 4,
+    "large": 2,
+    "small-gpu": 4,
+    "large-gpu": 2,
 }
+
 
 Condition = namedtuple(
     "Condition", ["min_gpu", "max_gpu", "min_cpu", "max_cpu", "group"]

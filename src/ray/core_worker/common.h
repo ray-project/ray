@@ -59,12 +59,12 @@ struct TaskOptions {
   TaskOptions(std::string name, int num_returns,
               std::unordered_map<std::string, double> &resources,
               const std::string &concurrency_group_name = "",
-              const std::string &serialized_runtime_env = "{}")
+              const std::string &serialized_runtime_env_info = "{}")
       : name(name),
         num_returns(num_returns),
         resources(resources),
         concurrency_group_name(concurrency_group_name),
-        serialized_runtime_env(serialized_runtime_env) {}
+        serialized_runtime_env_info(serialized_runtime_env_info) {}
 
   /// The name of this task.
   std::string name;
@@ -74,8 +74,10 @@ struct TaskOptions {
   std::unordered_map<std::string, double> resources;
   /// The name of the concurrency group in which this task will be executed.
   std::string concurrency_group_name;
-  // Runtime Env used by this task. Propagated to child actors and tasks.
-  std::string serialized_runtime_env;
+  /// Runtime Env Info used by this task. It includes Runtime Env and some
+  /// fields which not contained in Runtime Env, such as eager_install.
+  /// Propagated to child actors and tasks.
+  std::string serialized_runtime_env_info;
 };
 
 /// Options for actor creation tasks.
@@ -89,7 +91,7 @@ struct ActorCreationOptions {
                        std::optional<bool> is_detached, std::string &name,
                        std::string &ray_namespace, bool is_asyncio,
                        const rpc::SchedulingStrategy &scheduling_strategy,
-                       const std::string &serialized_runtime_env = "{}",
+                       const std::string &serialized_runtime_env_info = "{}",
                        const std::vector<ConcurrencyGroup> &concurrency_groups = {},
                        bool execute_out_of_order = false, int32_t max_pending_calls = -1)
       : max_restarts(max_restarts),
@@ -102,7 +104,7 @@ struct ActorCreationOptions {
         name(name),
         ray_namespace(ray_namespace),
         is_asyncio(is_asyncio),
-        serialized_runtime_env(serialized_runtime_env),
+        serialized_runtime_env_info(serialized_runtime_env_info),
         concurrency_groups(concurrency_groups.begin(), concurrency_groups.end()),
         execute_out_of_order(execute_out_of_order),
         max_pending_calls(max_pending_calls),
@@ -138,8 +140,10 @@ struct ActorCreationOptions {
   const std::string ray_namespace;
   /// Whether to use async mode of direct actor call.
   const bool is_asyncio = false;
-  // Runtime Env used by this actor.  Propagated to child actors and tasks.
-  std::string serialized_runtime_env;
+  /// Runtime Env Info used by this task. It includes Runtime Env and some
+  /// fields which not contained in Runtime Env, such as eager_install.
+  /// Propagated to child actors and tasks.
+  std::string serialized_runtime_env_info;
   /// The actor concurrency groups to indicate how this actor perform its
   /// methods concurrently.
   const std::vector<ConcurrencyGroup> concurrency_groups;

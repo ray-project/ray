@@ -107,7 +107,7 @@ class SlateEpsilonGreedy(EpsilonGreedy):
 
             # Pick either random or greedy.
             action = torch.where(
-                torch.empty((batch_size,)).uniform_().to(self.device) < epsilon,
+                torch.empty((batch_size,)).uniform_() < epsilon,
                 random_actions,
                 exploit_action,
             )

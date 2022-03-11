@@ -94,7 +94,7 @@ RAY_CONFIG(size_t, free_objects_batch_size, 100)
 /// the task's recursive dependencies. If this is set to true, then the system
 /// will attempt to reconstruct the object from its lineage if the object is
 /// lost.
-RAY_CONFIG(bool, lineage_pinning_enabled, false)
+RAY_CONFIG(bool, lineage_pinning_enabled, true)
 
 /// Objects that require recovery are added to a local cache. This is the
 /// duration between attempts to flush and recover the objects in the local
@@ -140,7 +140,7 @@ RAY_CONFIG(float, scheduler_spread_threshold, 0.5);
 /// Whether to only report the usage of pinned copies of objects in the
 /// object_store_memory resource. This means nodes holding secondary copies only
 /// will become eligible for removal in the autoscaler.
-RAY_CONFIG(bool, scheduler_report_pinned_bytes_only, true)
+RAY_CONFIG(bool, scheduler_report_pinned_bytes_only, false)
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.

@@ -1,4 +1,3 @@
-import itertools
 import os
 import logging
 from typing import (
@@ -58,14 +57,14 @@ from ray.data.impl.lazy_block_list import LazyBlockList
 from ray.data.impl.plan import ExecutionPlan
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.stats import DatasetStats, get_or_create_stats_actor
-from ray.data.impl.util import _get_spread_resources_iter, _lazy_import_pyarrow_dataset
+from ray.data.impl.util import _lazy_import_pyarrow_dataset
 
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
     """Create a dataset from a list of local Python objects.
 
@@ -109,7 +108,7 @@ def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
     )
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 def range(n: int, *, parallelism: int = 200) -> Dataset[int]:
     """Create a dataset from a range of integers [0..n).
 
@@ -129,7 +128,7 @@ def range(n: int, *, parallelism: int = 200) -> Dataset[int]:
     )
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 def range_arrow(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from a range of integers [0..n).
 
@@ -153,7 +152,7 @@ def range_arrow(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
     )
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 def range_tensor(
     n: int, *, shape: Tuple = (1,), parallelism: int = 200
 ) -> Dataset[ArrowRow]:
@@ -184,13 +183,12 @@ def range_tensor(
     )
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 def read_datasource(
     datasource: Datasource[T],
     *,
     parallelism: int = 200,
     ray_remote_args: Dict[str, Any] = None,
-    _spread_resource_prefix: Optional[str] = None,
     **read_args,
 ) -> Dataset[T]:
     """Read a dataset from a custom data source.
@@ -263,30 +261,14 @@ def read_datasource(
         ray_remote_args["scheduling_strategy"] = "SPREAD"
     remote_read = cached_remote_fn(remote_read)
 
-    if _spread_resource_prefix is not None:
-        if context.optimize_fuse_stages:
-            logger.warning(
-                "_spread_resource_prefix has no effect when optimize_fuse_stages "
-                "is enabled. Tasks are spread by default."
-            )
-        # Use given spread resource prefix for round-robin resource-based
-        # scheduling.
-        nodes = ray.nodes()
-        resource_iter = _get_spread_resources_iter(
-            nodes, _spread_resource_prefix, ray_remote_args
-        )
-    else:
-        # If no spread resource prefix given, yield an empty dictionary.
-        resource_iter = itertools.repeat({})
-
     calls: List[Callable[[], ObjectRef[MaybeBlockPartition]]] = []
     metadata: List[BlockPartitionMetadata] = []
 
     for i, task in enumerate(read_tasks):
         calls.append(
-            lambda i=i, task=task, resources=next(resource_iter): remote_read.options(
-                **ray_remote_args, resources=resources
-            ).remote(i, task, stats_actor)
+            lambda i=i, task=task: remote_read.options(**ray_remote_args).remote(
+                i, task, stats_actor
+            )
         )
         metadata.append(task.get_metadata())
 
@@ -312,7 +294,7 @@ def read_datasource(
     )
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 def read_parquet(
     paths: Union[str, List[str]],
     *,
@@ -320,7 +302,7 @@ def read_parquet(
     columns: Optional[List[str]] = None,
     parallelism: int = 200,
     ray_remote_args: Dict[str, Any] = None,
-    _tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
+    tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
     **arrow_parquet_args,
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from parquet files.
@@ -339,7 +321,7 @@ def read_parquet(
         parallelism: The requested parallelism of the read. Parallelism may be
             limited by the number of files of the dataset.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
-        _tensor_column_schema: A dict of column name --> tensor dtype and shape
+        tensor_column_schema: A dict of column name --> tensor dtype and shape
             mappings for converting a Parquet column containing serialized
             tensors (ndarrays) as their elements to our tensor column extension
             type. This assumes that the tensors were serialized in the raw
@@ -350,13 +332,13 @@ def read_parquet(
     Returns:
         Dataset holding Arrow records read from the specified paths.
     """
-    if _tensor_column_schema is not None:
+    if tensor_column_schema is not None:
         existing_block_udf = arrow_parquet_args.pop("_block_udf", None)
 
         def _block_udf(block: "pyarrow.Table") -> "pyarrow.Table":
             from ray.data.extensions import ArrowTensorArray
 
-            for tensor_col_name, (dtype, shape) in _tensor_column_schema.items():
+            for tensor_col_name, (dtype, shape) in tensor_column_schema.items():
                 # NOTE(Clark): We use NumPy to consolidate these potentially
                 # non-contiguous buffers, and to do buffer bookkeeping in
                 # general.
@@ -390,7 +372,7 @@ def read_parquet(
     )
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 def read_json(
     paths: Union[str, List[str]],
     *,
@@ -437,7 +419,7 @@ def read_json(
     )
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 def read_csv(
     paths: Union[str, List[str]],
     *,
@@ -484,7 +466,7 @@ def read_csv(
     )
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 def read_text(
     paths: Union[str, List[str]],
     *,
@@ -533,7 +515,7 @@ def read_text(
     ).flat_map(to_text)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 def read_numpy(
     paths: Union[str, List[str]],
     *,
@@ -577,7 +559,7 @@ def read_numpy(
     )
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 def read_binary_files(
     paths: Union[str, List[str]],
     *,
@@ -623,7 +605,7 @@ def read_binary_files(
     )
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 def from_dask(df: "dask.DataFrame") -> Dataset[ArrowRow]:
     """Create a dataset from a Dask DataFrame.
 
@@ -656,7 +638,7 @@ def from_dask(df: "dask.DataFrame") -> Dataset[ArrowRow]:
     )
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 def from_mars(df: "mars.DataFrame") -> Dataset[ArrowRow]:
     """Create a dataset from a MARS dataframe.
 
@@ -669,7 +651,7 @@ def from_mars(df: "mars.DataFrame") -> Dataset[ArrowRow]:
     raise NotImplementedError  # P1
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 def from_modin(df: "modin.DataFrame") -> Dataset[ArrowRow]:
     """Create a dataset from a Modin dataframe.
 
@@ -685,7 +667,7 @@ def from_modin(df: "modin.DataFrame") -> Dataset[ArrowRow]:
     return from_pandas_refs(parts)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 def from_pandas(
     dfs: Union["pandas.DataFrame", List["pandas.DataFrame"]]
 ) -> Dataset[ArrowRow]:
@@ -779,7 +761,7 @@ def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[ArrowRow]:
     )
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 def from_arrow(
     tables: Union["pyarrow.Table", bytes, List[Union["pyarrow.Table", bytes]]]
 ) -> Dataset[ArrowRow]:
@@ -830,7 +812,7 @@ def from_arrow_refs(
     )
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 def from_spark(
     df: "pyspark.sql.DataFrame", *, parallelism: Optional[int] = None
 ) -> Dataset[ArrowRow]:
