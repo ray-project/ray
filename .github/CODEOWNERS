@@ -7,9 +7,9 @@
 # ==== Ray core ====
 
 # API compatibility
-/src/ray/protobuf/common.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen
-/src/ray/protobuf/gcs.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen
-/src/ray/protobuf/gcs_service.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen
+/src/ray/protobuf/common.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @iycheng @scv119 @mwtian
+/src/ray/protobuf/gcs.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @iycheng @scv119 @mwtian
+/src/ray/protobuf/gcs_service.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @iycheng @scv119 @mwtian
 /dashboard/modules/snapshot @wuisawesome @ijrsvt @edoakes @alanwguo @architkulkarni
 /python/ray/autoscaler/_private/monitor.py @wuisawesome @DmitriGekhtman
 
@@ -56,8 +56,8 @@
 /doc/source/data/ @ericl @scv119 @clarkzinzow @jjyao
 
 # Ray workflows.
-/python/ray/workflow/ @ericl @iycheng
-/doc/source/workflows/ @ericl @iycheng
+/python/ray/workflow/ @ericl @iycheng @stephanie-wang
+/doc/source/workflows/ @ericl @iycheng @stephanie-wang
 
 # RLlib.
 /rllib/ @sven1977 @gjoliver @avnishn
