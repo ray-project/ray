@@ -30,7 +30,7 @@ message PipRuntimeEnv {
     string pip_version = 3;
   }
   oneof pip_runtime_env {
-    /// The pip packages config, serialized by json.
+    /// The pip packages config.
     Config config = 1;
     /// The name of a local virtual env.
     string virtual_env_name = 2;
