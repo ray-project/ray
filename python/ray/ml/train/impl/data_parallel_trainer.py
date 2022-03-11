@@ -2,7 +2,7 @@ import logging
 from dataclasses import dataclass
 from typing import Dict, Callable, Optional
 
-from ray.ml.train.impl.function_trainer import FunctionTrainer
+from ray.ml.trainer import Trainer
 from ray.ml.config import ScalingConfig, RunConfig
 from ray.ml.train.trainer import GenDataset
 from ray.ml.preprocessor import Preprocessor
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-class DataParallelFunctionTrainer(FunctionTrainer):
+class DataParallelFunctionTrainer(Trainer):
     """A Trainer for data parallel training.
 
     This Trainer runs the provided function on multiple Ray Actors. The
