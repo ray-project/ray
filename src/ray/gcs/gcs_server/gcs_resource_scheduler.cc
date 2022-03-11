@@ -155,7 +155,7 @@ std::vector<int> GcsResourceScheduler::SortRequiredResources(
     const std::vector<ResourceRequest> &required_resources) {
   std::vector<int> sorted_index(required_resources.size());
   std::iota(sorted_index.begin(), sorted_index.end(), 0);
-  
+
   // Here we sort in reverse order:
   // sort(_, _, a < b) would result in the vector [a < b < c]
   // sort(_, _, a > b) would result in the vector [c > b > a] which leads to our desired
@@ -183,10 +183,10 @@ std::vector<int> GcsResourceScheduler::SortRequiredResources(
     // resource at the given level of priority. If tied, we attempt to resolve based on
     // the resource at the next level of priority.
     //
-    // The order of priority is: `ResourceRequest`s with GPU requirements first, then extra resources,
-    // then object store memory, memory and finally CPU requirements. If two `ResourceRequest`s
-    // require a resource under consideration, the one requiring more of the resource is
-    // prioritized.
+    // The order of priority is: `ResourceRequest`s with GPU requirements first, then
+    // extra resources, then object store memory, memory and finally CPU requirements. If
+    // two `ResourceRequest`s require a resource under consideration, the one requiring
+    // more of the resource is prioritized.
 
     if (a.predefined_resources[GPU] != b.predefined_resources[GPU]) {
       return a.predefined_resources[GPU] < b.predefined_resources[GPU];
