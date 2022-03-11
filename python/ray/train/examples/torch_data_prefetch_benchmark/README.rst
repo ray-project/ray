@@ -1,5 +1,5 @@
 Torch Data Prefetching Benchmark Example
-=================================================
+========================================
 
 We provide a benchmark example to show how the auto pipeline for host to device data transfer speeds up training on GPUs.
 Running the following command gives the actual runtime of a small model training with and without the auto pipeline functionality.
