@@ -1526,9 +1526,11 @@ void WorkerPool::DeleteRuntimeEnvIfNeeded(const std::string &serialized_runtime_
   RAY_LOG(DEBUG) << "DeleteRuntimeEnvIfNeeded " << serialized_runtime_env;
   if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
     agent_manager_->DeleteRuntimeEnvIfNeeded(
-        serialized_runtime_env, [serialized_runtime_env](bool success) {
-          RAY_LOG(ERROR) << "Delete runtime env failed for " << serialized_runtime_env
-                         << ".";
+        serialized_runtime_env, [serialized_runtime_env](bool successful) {
+          if (!successful) {
+            RAY_LOG(ERROR) << "Delete runtime env failed for " << serialized_runtime_env
+                           << ".";
+          }
         });
   }
 }
