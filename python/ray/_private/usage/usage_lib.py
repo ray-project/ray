@@ -43,13 +43,11 @@ folder (e.g., /tmp/ray/session_[id]/*).
 """
 import asyncio
 import os
-import re
 import uuid
 import sys
 import json
 import logging
 import time
-import inspect
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, asdict
@@ -122,8 +120,8 @@ def _usage_stats_enabled():
     return int(os.getenv("RAY_USAGE_STATS_ENABLED", "0")) == 1
 
 
-def _usage_stats_prompt_disabled():
-    return int(os.getenv("RAY_USAGE_STATS_PROMPT_DISABLED", "0")) == 1
+def _usage_stats_prompt_enabled():
+    return int(os.getenv("RAY_USAGE_STATS_PROMPT_ENABLED", "1")) == 1
 
 
 def _generate_cluster_metadata():
@@ -152,7 +150,7 @@ def _generate_cluster_metadata():
 
 def print_usage_stats_heads_up_message() -> None:
     try:
-        if _usage_stats_prompt_disabled() or _usage_stats_enabled():
+        if (not _usage_stats_prompt_enabled()) or _usage_stats_enabled():
             return
 
         print(usage_constant.USAGE_STATS_HEADS_UP_MESSAGE, file=sys.stderr)

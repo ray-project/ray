@@ -12,7 +12,6 @@ from jsonschema import validate
 
 import ray._private.usage.usage_lib as ray_usage_lib
 import ray._private.usage.usage_constants as usage_constants
-from ray.cluster_utils import Cluster
 
 from ray._private.test_utils import wait_for_condition
 
@@ -67,7 +66,24 @@ def print_dashboard_log():
     pprint(contents)
 
 
-def test_usage_stats_heads_up_message(capsys, shutdown_only):
+def test_usage_stats_heads_up_message():
+    """
+    Test usage stats heads-up message is shown in the proper cases.
+    """
+    result = subprocess.run(
+        "RAY_USAGE_STATS_PROMPT_ENABLED=0 ray start --head; ray stop --force",
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert result.returncode == 0
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
+        "utf-8"
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stderr.decode(
+        "utf-8"
+    )
+
     result = subprocess.run(
         "ray start --head",
         shell=True,
@@ -139,6 +155,19 @@ def test_usage_stats_heads_up_message(capsys, shutdown_only):
 
     result = subprocess.run(
         "ray submit xxx.yml yyy.py",
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
+        "utf-8"
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stderr.decode(
+        "utf-8"
+    )
+
+    result = subprocess.run(
+        "python -c 'import ray; ray.init()'",
         shell=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
