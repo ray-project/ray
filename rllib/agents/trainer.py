@@ -364,7 +364,7 @@ COMMON_CONFIG: TrainerConfigDict = {
 
     # === Replay Buffer Settings ===
     # Provide a dict specifying the ReplayBuffer's config.
-    "replay_buffer_config": {
+    # "replay_buffer_config": {
         # The ReplayBuffer class to use. Any class that obeys the
         # ReplayBuffer API can be used here. In the simplest case, this is the
         # name (str) of any class present in the `rllib.utils.replay_buffers`
@@ -379,7 +379,7 @@ COMMON_CONFIG: TrainerConfigDict = {
         # 'timesteps'.
         # "storage_unit": "timesteps",
         # Add constructor kwargs here (if any).
-    },
+    # },
 
     # Number of parallel workers to use for evaluation. Note that this is set
     # to zero by default, which means evaluation will be run in the trainer
@@ -2752,7 +2752,8 @@ class Trainer(Trainable):
             None, if local replay buffer is not needed.
         """
         # Some agents do not need a replay buffer
-        if "replay_buffer_config" not in config or config["replay_buffer_config"].get(
+        if "replay_buffer_config" not in config or config[
+            "replay_buffer_config"].get(
             "no_local_replay_buffer", False
         ):
             return None
