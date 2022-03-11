@@ -660,6 +660,9 @@ def test_runtime_env_retry(set_runtime_env_retry_times, ray_start_regular):
             )
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="conda in runtime_env unsupported on Windows."
+)
 @pytest.mark.parametrize(
     "option",
     ["pip_list", "conda_name", "conda_dict", "container", "plugins"],
@@ -700,13 +703,13 @@ def test_runtime_env_interface():
 
     # Test the interface related to working_dir
     default_working_dir = "s3://bucket/key.zip"
-    modify_workeing_dir = "s3://bucket/key_A.zip"
+    modify_working_dir = "s3://bucket/key_A.zip"
     runtime_env = RuntimeEnv(working_dir=default_working_dir)
     runtime_env_dict = runtime_env.to_dict()
     assert runtime_env.working_dir_uri() == default_working_dir
-    runtime_env["working_dir"] = modify_workeing_dir
-    runtime_env_dict["working_dir"] = modify_workeing_dir
-    assert runtime_env.working_dir_uri() == modify_workeing_dir
+    runtime_env["working_dir"] = modify_working_dir
+    runtime_env_dict["working_dir"] = modify_working_dir
+    assert runtime_env.working_dir_uri() == modify_working_dir
     assert runtime_env.to_dict() == runtime_env_dict
     # Test that the modification of working_dir also works on
     # proto serialization
@@ -853,7 +856,7 @@ def test_runtime_env_interface():
     assert runtime_env.py_container_image() == container_copy["image"]
     assert runtime_env.py_container_worker_path() == container_copy["worker_path"]
     assert runtime_env.py_container_run_options() == container_copy["run_options"]
-    # Test that the modification of concontainerda also works on
+    # Test that the modification of container also works on
     # proto serialization
     assert runtime_env_dict == RuntimeEnv.from_proto(
         runtime_env.build_proto_runtime_env()

@@ -246,9 +246,7 @@ class RuntimeEnv(dict):
         for option, validate_fn in OPTION_TO_VALIDATION_FN.items():
             option_val = runtime_env.get(option)
             if option_val is not None:
-                validated_option_val = validate_fn(option_val)
-                if validated_option_val is not None:
-                    self[option] = validated_option_val
+                self[option] = option_val
 
         if "_ray_release" in runtime_env:
             self["_ray_release"] = runtime_env["_ray_release"]
