@@ -18,11 +18,11 @@ class TensorflowTrainer(DataParallelTrainer):
     the training function.
 
     Args:
-        train_func (Callable): The training function to execute.
+        train_func: The training function to execute.
             This can either take in no arguments or a ``config`` dict.
-        train_func_config (Optional[Dict]): Configurations to pass into
+        train_func_config: Configurations to pass into
             ``train_func`` if it accepts an argument.
-        tensorflow_config (Optional[TensorflowConfig]): Configuration
+        tensorflow_config: Configuration
             for setting up the TensorFlow backend. If set to None, use the
             default configuration.
         scaling_config: Configuration for how to scale training.
