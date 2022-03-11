@@ -2,7 +2,6 @@ from collections import defaultdict
 import threading
 import traceback
 
-import redis
 import grpc
 
 import ray
@@ -37,7 +36,10 @@ class ImportThread:
         if worker.gcs_pubsub_enabled:
             self.subscriber = worker.gcs_function_key_subscriber
             self.subscriber.subscribe()
+            self.exception_type = grpc.RpcError
         else:
+            import redis
+
             self.subscriber = worker.redis_client.pubsub()
             self.subscriber.subscribe(
                 b"__keyspace@0__:"
@@ -45,6 +47,7 @@ class ImportThread:
                     self.worker.current_job_id
                 )
             )
+            self.exception_type = redis.exceptions.ConnectionError
         self.threads_stopped = threads_stopped
         self.imported_collision_identifiers = defaultdict(int)
         # Keep track of the number of imports that we've imported.
@@ -84,7 +87,7 @@ class ImportThread:
                         continue
 
                 self._do_importing()
-        except (OSError, redis.exceptions.ConnectionError, grpc.RpcError) as e:
+        except (OSError, self.exception_type) as e:
             logger.error(f"ImportThread: {e}")
         finally:
             # Close the Redis / GCS subscriber to avoid leaking file

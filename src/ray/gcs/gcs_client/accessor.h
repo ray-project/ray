@@ -184,11 +184,11 @@ class ActorInfoAccessor {
   absl::Mutex mutex_;
 
   /// Resubscribe operations for actors.
-  std::unordered_map<ActorID, SubscribeOperation> resubscribe_operations_
+  absl::flat_hash_map<ActorID, SubscribeOperation> resubscribe_operations_
       GUARDED_BY(mutex_);
 
   /// Save the fetch data operation of actors.
-  std::unordered_map<ActorID, FetchDataOperation> fetch_data_operations_
+  absl::flat_hash_map<ActorID, FetchDataOperation> fetch_data_operations_
       GUARDED_BY(mutex_);
 
   GcsClient *client_impl_;
@@ -349,7 +349,7 @@ class NodeInfoAccessor {
   /// is called before.
   ///
   /// \return All nodes in cache.
-  virtual const std::unordered_map<NodeID, rpc::GcsNodeInfo> &GetAll() const;
+  virtual const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &GetAll() const;
 
   /// Search the local cache to find out if the given node is removed.
   /// Non-thread safe.
@@ -410,7 +410,7 @@ class NodeInfoAccessor {
   NodeChangeCallback node_change_callback_{nullptr};
 
   /// A cache for information about all nodes.
-  std::unordered_map<NodeID, rpc::GcsNodeInfo> node_cache_;
+  absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_cache_;
   /// The set of removed nodes.
   std::unordered_set<NodeID> removed_nodes_;
 };
@@ -425,7 +425,7 @@ class NodeResourceInfoAccessor {
   explicit NodeResourceInfoAccessor(GcsClient *client_impl);
   virtual ~NodeResourceInfoAccessor() = default;
   // TODO(micafan) Define ResourceMap in GCS proto.
-  typedef std::unordered_map<std::string, std::shared_ptr<rpc::ResourceTableData>>
+  typedef absl::flat_hash_map<std::string, std::shared_ptr<rpc::ResourceTableData>>
       ResourceMap;
 
   /// Get node's resources from GCS asynchronously.
@@ -442,23 +442,6 @@ class NodeResourceInfoAccessor {
   /// \return Status
   virtual Status AsyncGetAllAvailableResources(
       const MultiItemCallback<rpc::AvailableResources> &callback);
-
-  /// Update resources of node in GCS asynchronously.
-  ///
-  /// \param node_id The ID of node to update dynamic resources.
-  /// \param resources The dynamic resources of node to be updated.
-  /// \param callback Callback that will be called after update finishes.
-  virtual Status AsyncUpdateResources(const NodeID &node_id, const ResourceMap &resources,
-                                      const StatusCallback &callback);
-
-  /// Delete resources of a node from GCS asynchronously.
-  ///
-  /// \param node_id The ID of node to delete resources from GCS.
-  /// \param resource_names The names of resource to be deleted.
-  /// \param callback Callback that will be called after delete finishes.
-  virtual Status AsyncDeleteResources(const NodeID &node_id,
-                                      const std::vector<std::string> &resource_names,
-                                      const StatusCallback &callback);
 
   /// Subscribe to node resource changes.
   ///

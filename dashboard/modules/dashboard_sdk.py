@@ -18,8 +18,10 @@ except ImportError:
 from ray._private.runtime_env.packaging import (
     create_package,
     get_uri_for_directory,
-    parse_uri,
 )
+from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
+from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
+
 from ray.dashboard.modules.job.common import uri_to_http_components
 
 from ray.ray_constants import DEFAULT_DASHBOARD_PORT
@@ -74,7 +76,8 @@ class ClusterInfo:
     headers: Optional[Dict[str, Any]] = None
 
 
-def get_submission_client_cluster_info(
+# TODO (shrekris-anyscale): renaming breaks compatibility, do NOT rename
+def get_job_submission_client_cluster_info(
     address: str,
     # For backwards compatibility
     *,
@@ -134,7 +137,7 @@ def parse_cluster_info(
 
     # If user passes http(s):// or ray://, go through normal parsing.
     if module_string in {"http", "https", "ray"}:
-        return get_submission_client_cluster_info(
+        return get_job_submission_client_cluster_info(
             inner_address,
             create_cluster_if_needed=create_cluster_if_needed,
             cookies=cookies,
@@ -151,12 +154,12 @@ def parse_cluster_info(
                 f"Module: {module_string} does not exist.\n"
                 f"This module was parsed from Address: {address}"
             ) from None
-        assert "get_submission_client_cluster_info" in dir(module), (
+        assert "get_job_submission_client_cluster_info" in dir(module), (
             f"Module: {module_string} does "
-            "not have `get_submission_client_cluster_info`."
+            "not have `get_job_submission_client_cluster_info`."
         )
 
-        return module.get_submission_client_cluster_info(
+        return module.get_job_submission_client_cluster_info(
             inner_address,
             create_cluster_if_needed=create_cluster_if_needed,
             cookies=cookies,
@@ -279,32 +282,40 @@ class SubmissionClient:
                 package_file.unlink()
 
     def _upload_package_if_needed(
-        self, package_path: str, excludes: Optional[List[str]] = None
+        self,
+        package_path: str,
+        include_parent_dir: Optional[bool] = False,
+        excludes: Optional[List[str]] = None,
     ) -> str:
         package_uri = get_uri_for_directory(package_path, excludes=excludes)
+
         if not self._package_exists(package_uri):
-            self._upload_package(package_uri, package_path, excludes=excludes)
+            self._upload_package(
+                package_uri,
+                package_path,
+                include_parent_dir=include_parent_dir,
+                excludes=excludes,
+            )
         else:
             logger.info(f"Package {package_uri} already exists, skipping upload.")
 
         return package_uri
 
     def _upload_working_dir_if_needed(self, runtime_env: Dict[str, Any]):
-        if "working_dir" in runtime_env:
-            working_dir = runtime_env["working_dir"]
-            try:
-                parse_uri(working_dir)
-                is_uri = True
-                logger.debug("working_dir is already a valid URI.")
-            except ValueError:
-                is_uri = False
+        def _upload_fn(working_dir, excludes):
+            self._upload_package_if_needed(
+                working_dir, include_parent_dir=False, excludes=excludes
+            )
 
-            if not is_uri:
-                logger.debug("working_dir is not a URI, attempting to upload.")
-                package_uri = self._upload_package_if_needed(
-                    working_dir, excludes=runtime_env.get("excludes", None)
-                )
-                runtime_env["working_dir"] = package_uri
+        upload_working_dir_if_needed(runtime_env, upload_fn=_upload_fn)
+
+    def _upload_py_modules_if_needed(self, runtime_env: Dict[str, Any]):
+        def _upload_fn(module_path, excludes):
+            self._upload_package_if_needed(
+                module_path, include_parent_dir=True, excludes=excludes
+            )
+
+        upload_py_modules_if_needed(runtime_env, "", upload_fn=_upload_fn)
 
     @PublicAPI(stability="beta")
     def get_version(self) -> str:
