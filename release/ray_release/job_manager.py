@@ -23,7 +23,7 @@ class JobManager:
         self.counter += 1
         command_id = self.counter
         env = os.environ.copy()
-        env["RAY_ADDRESS"] = self.cluster_manager.get_cluster_address(full=False)
+        env["RAY_ADDRESS"] = self.cluster_manager.get_cluster_address()
         env.setdefault("ANYSCALE_HOST", ANYSCALE_HOST)
 
         full_cmd = " ".join(f"{k}={v}" for k, v in env_vars.items()) + " " + cmd_to_run
@@ -72,7 +72,7 @@ class JobManager:
     def run_and_wait(self, cmd_to_run, env_vars, timeout: int = 120) -> Tuple[int, int]:
         if not self.job_client:
             self.job_client = JobSubmissionClient(
-                self.cluster_manager.get_cluster_address(full=False)
+                self.cluster_manager.get_cluster_address()
             )
         cid = self._run_job(cmd_to_run, env_vars)
         return self._wait_job(cid, timeout)
@@ -81,6 +81,6 @@ class JobManager:
         # return None
         if not self.job_client:
             self.job_client = JobSubmissionClient(
-                self.cluster_manager.get_cluster_address(full=False)
+                self.cluster_manager.get_cluster_address()
             )
         return self.job_client.get_job_logs(self.last_job_id)
