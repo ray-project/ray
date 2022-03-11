@@ -177,11 +177,6 @@ class RuntimeEnvAgent(
         # Maps a serialized runtime env to a lock that is used
         # to prevent multiple concurrent installs of the same env.
         self._env_locks: Dict[str, asyncio.Lock] = dict()
-        # # Keeps track of the URIs contained within each env so we can
-        # # invalidate the env cache when a URI is deleted.
-        # # This is a temporary mechanism until we have per-URI caching.
-        # self._uris_to_envs: Dict[str, Set[str]] = defaultdict(set)
-        # Initialize internal KV to be used by the working_dir setup code.
         _initialize_internal_kv(self._dashboard_agent.gcs_client)
         assert _internal_kv_initialized()
 
