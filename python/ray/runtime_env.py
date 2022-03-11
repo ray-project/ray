@@ -565,7 +565,7 @@ class RuntimeEnv(dict):
                     pip_config["pip_check"]
                 )
                 if "pip_version" in pip_config:
-                    runtime_env.python_runtime_env.pip_runtime_env.config.pip_version = pip_config[
+                    runtime_env.python_runtime_env.pip_runtime_env.config.pip_version = pip_config[  # noqa: E501
                         "pip_version"
                     ]
             else:
