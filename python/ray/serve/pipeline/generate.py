@@ -2,7 +2,6 @@ from typing import Any, Dict, List
 import threading
 import json
 
-from ray import serve
 from ray.experimental.dag import (
     DAGNode,
     ClassNode,
@@ -13,8 +12,8 @@ from ray.experimental.dag.input_node import InputNode
 from ray.serve.api import Deployment
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_node import DeploymentNode
+from ray.serve.pipeline.ingress import make_ingress_deployment
 from ray.serve.pipeline.json_serde import DAGNodeEncoder
-from ray.serve.pipeline.ingress import Ingress
 from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
 
 DEFAULT_INGRESS_DEPLOYMENT_NAME = "ingress"
@@ -187,12 +186,9 @@ def get_ingress_deployment(
     """
     serve_dag_root_json = json.dumps(serve_dag_root_node, cls=DAGNodeEncoder)
     preprocessor_import_path = pipeline_input_node.get_preprocessor_import_path()
-    serve_dag_root_deployment = serve.deployment(Ingress).options(
-        name=DEFAULT_INGRESS_DEPLOYMENT_NAME,
-        init_args=(
-            serve_dag_root_json,
-            preprocessor_import_path,
-        ),
+    serve_dag_root_deployment = make_ingress_deployment(
+        DEFAULT_INGRESS_DEPLOYMENT_NAME,
+        serve_dag_root_json,
+        preprocessor_import_path,
     )
-
     return serve_dag_root_deployment
