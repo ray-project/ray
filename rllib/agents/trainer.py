@@ -2752,7 +2752,9 @@ class Trainer(Trainable):
             None, if local replay buffer is not needed.
         """
         # Some agents do not need a replay buffer
-        if "replay_buffer_config" not in config or not config["replay_buffer_config"]:
+        if "replay_buffer_config" not in config or config["replay_buffer_config"].get(
+            "no_local_replay_buffer", False
+        ):
             return None
 
         replay_buffer_config = config["replay_buffer_config"]
@@ -2857,7 +2859,7 @@ class Trainer(Trainable):
 
             # If no prioritized replay, old-style replay buffer should
             # not be handed the following parameters:
-            if not config.get("prioritized_replay"):
+            if config.get("prioritized_replay", False) is False:
                 for p in [
                     "prioritized_replay_alpha",
                     "prioritized_replay_beta",

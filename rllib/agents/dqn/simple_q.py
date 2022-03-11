@@ -81,8 +81,10 @@ DEFAULT_CONFIG = with_common_config({
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
     "buffer_size": DEPRECATED_VALUE,
-    # For now we don't use the new ReplayBuffer API here
+    # Use the new ReplayBuffer API here
     "_replay_buffer_api": True,
+    # Deprecated for Simple Q because of new ReplayBuffer API
+    "prioritized_replay": DEPRECATED_VALUE,
     "replay_buffer_config": {
         "type": "MultiAgentPrioritizedReplayBuffer",
         "capacity": 50000,
@@ -165,7 +167,9 @@ class SimpleQTrainer(Trainer):
                     " used at the same time!"
                 )
 
-        if config.get("prioritized_replay"):
+        if config.get("prioritized_replay") or config.get(
+            "replay_buffer_config", {}
+        ).get("prioritized_replay"):
             if config["multiagent"]["replay_mode"] == "lockstep":
                 raise ValueError(
                     "Prioritized replay is not supported when " "replay_mode=lockstep."

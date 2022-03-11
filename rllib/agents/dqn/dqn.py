@@ -71,6 +71,9 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         "buffer_size": DEPRECATED_VALUE,
         # For now we don't use the new ReplayBuffer API here
         "_replay_buffer_api": False,
+        # Prioritized replay is here since this algo uses the old replay
+        # buffer api
+        "prioritized_replay": True,
         "replay_buffer_config": {
             "type": "MultiAgentReplayBuffer",
             "capacity": 50000,
