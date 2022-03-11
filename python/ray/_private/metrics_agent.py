@@ -83,6 +83,9 @@ class MetricsAgent:
                 )
             )
         except Exception:
+            # TODO(SongGuyang): Catch the exception here because there is
+            # port conflict issue which brought from static port. We should
+            # remove this after we find better port resolution.
             logger.exception(
                 "Failed to start prometheus stats exporter. Agent will stay "
                 "alive but disable the stats."

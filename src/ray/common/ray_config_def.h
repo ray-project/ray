@@ -343,9 +343,6 @@ RAY_CONFIG(uint64_t, max_pending_lease_requests_per_scheduling_category, 10)
 /// Wait timeout for dashboard agent register.
 RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
 
-/// Whether to fail raylet when agent fails.
-RAY_CONFIG(bool, raylet_shares_fate_with_agent, true)
-
 /// If the agent manager fails to communicate with the dashboard agent, we will retry
 /// after this interval.
 RAY_CONFIG(uint32_t, agent_manager_retry_interval_ms, 1000);

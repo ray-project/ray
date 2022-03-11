@@ -142,10 +142,7 @@ def test_basic(ray_start_with_dashboard):
 def test_raylet_and_agent_share_fate(shutdown_only):
     """Test raylet and agent share fate."""
 
-    system_config = {
-        "raylet_shares_fate_with_agent": True,
-    }
-    ray.init(include_dashboard=True, _system_config=system_config)
+    ray.init(include_dashboard=True)
 
     all_processes = ray.worker._global_node.all_processes
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
@@ -164,7 +161,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
 
     ray.shutdown()
 
-    ray.init(include_dashboard=True, _system_config=system_config)
+    ray.init(include_dashboard=True)
     all_processes = ray.worker._global_node.all_processes
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)

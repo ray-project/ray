@@ -3,10 +3,8 @@ import asyncio
 import logging
 import logging.handlers
 import os
-import platform
 import sys
 import json
-import traceback
 
 try:
     from grpc import aio as aiogrpc
@@ -20,7 +18,6 @@ import ray.dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
-from ray._private.gcs_pubsub import GcsPublisher
 from ray._private.gcs_utils import GcsClient
 from ray.core.generated import agent_manager_pb2
 from ray.core.generated import agent_manager_pb2_grpc
@@ -99,6 +96,9 @@ class DashboardAgent(object):
                 self.server, f"{grpc_ip}:{self.dashboard_agent_port}"
             )
         except Exception:
+            # TODO(SongGuyang): Catch the exception here because there is
+            # port conflict issue which brought from static port. We should
+            # remove this after we find better port resolution.
             logger.exception(
                 "Failed to add port to grpc server. Agent will stay alive but "
                 "disable the grpc service."
@@ -176,6 +176,9 @@ class DashboardAgent(object):
             try:
                 self.http_server = await self._configure_http_server(modules)
             except Exception:
+                # TODO(SongGuyang): Catch the exception here because there is
+                # port conflict issue which brought from static port. We should
+                # remove this after we find better port resolution.
                 logger.exception(
                     "Failed to start http server. Agent will stay alive but "
                     "disable the http service."
@@ -378,30 +381,6 @@ if __name__ == "__main__":
 
         loop = asyncio.get_event_loop()
         loop.run_until_complete(agent.run())
-    except Exception as e:
-        # All these env vars should be available because
-        # they are provided by the parent raylet.
-        raylet_pid = os.environ["RAY_RAYLET_PID"]
-        node_ip = args.node_ip_address
-        # Agent is failed to be started many times.
-        # Push an error to all drivers, so that users can know the
-        # impact of the issue.
-        redis_client = None
-        gcs_publisher = GcsPublisher(address=args.gcs_address)
-
-        traceback_str = ray._private.utils.format_error_message(traceback.format_exc())
-        message = (
-            f"(ip={node_ip}) "
-            f"The agent on node {platform.uname()[1]} failed to "
-            "be started. Check out the `dashboard_agent.log` to see the"
-            "detailed failure messages."
-        )
-        ray._private.utils.publish_error_to_driver(
-            ray_constants.DASHBOARD_AGENT_DIED_ERROR,
-            message,
-            redis_client=None,
-            gcs_publisher=gcs_publisher,
-        )
-        logger.error(message)
-        logger.exception(e)
+    except Exception:
+        logger.exception("Agent is working abnormally. It will exit immediately.")
         exit(1)

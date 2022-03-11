@@ -39,9 +39,9 @@ void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
     RAY_LOG(INFO) << "HandleRegisterAgent, ip: " << agent_ip_address_
                   << ", port: " << agent_port_ << ", pid: " << agent_pid_;
   } else {
-    RAY_LOG(ERROR) << "The grpc port of agent is invalid (be 0), ip: "
-                   << agent_ip_address_ << ", pid: " << agent_pid_
-                   << ". Disable the agent client in raylet.";
+    RAY_LOG(WARNING) << "The grpc port of agent is invalid (be 0), ip: "
+                     << agent_ip_address_ << ", pid: " << agent_pid_
+                     << ". Disable the agent client in raylet.";
     disable_agent_client_ = true;
   }
   reply->set_status(rpc::AGENT_RPC_STATUS_OK);
@@ -103,14 +103,11 @@ void AgentManager::StartAgent() {
     RAY_LOG(WARNING) << "Agent process with pid " << child.GetId()
                      << " exit, return value " << exit_code << ". ip "
                      << agent_ip_address_ << ". pid " << agent_pid_;
-    agent_failed_ = true;
-    if (RayConfig::instance().raylet_shares_fate_with_agent()) {
-      RAY_LOG(ERROR) << "Raylet exits immediately because the ray agent has failed. "
-                        "Raylet fate shares with the agent. It can happen because the "
-                        "Ray agent is unexpectedly killed or failed. See "
-                        "`dashboard_agent.log` for the root cause.";
-      QuickExit();
-    }
+    RAY_LOG(ERROR) << "Raylet exits immediately because the ray agent has failed. "
+                      "Raylet fate shares with the agent. It can happen because the "
+                      "Ray agent is unexpectedly killed or failed. See "
+                      "`dashboard_agent.log` for the root cause.";
+    QuickExit();
   });
   monitor_thread.detach();
 }
@@ -141,8 +138,8 @@ void AgentManager::CreateRuntimeEnv(
   }
 
   if (runtime_env_agent_client_ == nullptr) {
-    // If the agent cannot be restarted anymore, fail the request.
-    if (disable_agent_client_ || agent_failed_) {
+    // If the grpc service of agent is invalid, fail the request.
+    if (disable_agent_client_) {
       std::stringstream str_stream;
       str_stream << "Runtime environment " << serialized_runtime_env
                  << " cannot be created on this node because the grpc service of agent "
