@@ -137,14 +137,6 @@ class MockNodeResourceInfoAccessor : public NodeResourceInfoAccessor {
               (override));
   MOCK_METHOD(Status, AsyncGetAllAvailableResources,
               (const MultiItemCallback<rpc::AvailableResources> &callback), (override));
-  MOCK_METHOD(Status, AsyncUpdateResources,
-              (const NodeID &node_id, const ResourceMap &resources,
-               const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(Status, AsyncDeleteResources,
-              (const NodeID &node_id, const std::vector<std::string> &resource_names,
-               const StatusCallback &callback),
-              (override));
   MOCK_METHOD(Status, AsyncSubscribeToResources,
               (const ItemCallback<rpc::NodeResourceChange> &subscribe,
                const StatusCallback &done),
