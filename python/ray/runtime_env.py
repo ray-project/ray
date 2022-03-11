@@ -565,9 +565,9 @@ class RuntimeEnv(dict):
                     pip_config["pip_check"]
                 )
                 if "pip_version" in pip_config:
-                    runtime_env.python_runtime_env.pip_runtime_env.config.pip_version = (
-                        pip_config["pip_version"]
-                    )
+                    runtime_env.python_runtime_env.pip_runtime_env.config.pip_version = pip_config[
+                        "pip_version"
+                    ]
             else:
                 runtime_env.python_runtime_env.pip_runtime_env.virtual_env_name = (
                     virtualenv_name
