@@ -156,7 +156,12 @@ class NodeProvider:
         """
         for node_id in node_ids:
             logger.info("NodeProvider: " "{}: Terminating node".format(node_id))
-            self.terminate_node(node_id)
+            try:
+                self.terminate_node(node_id)
+            except Exception as e:
+                logger.error(
+                    "NodeProvider: Error while terminating node {}. Assuming it is already down.".format(node_id)
+                )
         return None
 
     @property
