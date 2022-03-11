@@ -82,6 +82,24 @@ bool ClusterResourceManager::UpdateNode(scheduling::NodeID node_id,
     local_view.object_pulls_queued = resource_data.object_pulls_queued();
   }
 
+  if (resource_data.resources_normal_task_changed() &&
+      resource_data.resources_normal_task_timestamp() >
+          local_view.latest_resources_normal_task_timestamp) {
+    auto normal_task_resources = ResourceMapToResourceRequest(
+        MapFromProtobuf(resource_data.resources_normal_task()),
+        /*requires_object_store_memory=*/false);
+    auto &local_normal_task_resources = local_view.normal_task_resources;
+    local_normal_task_resources.predefined_resources.resize(PredefinedResources_MAX);
+    for (size_t i = 0; i < PredefinedResources_MAX; ++i) {
+      local_normal_task_resources.predefined_resources[i] =
+          normal_task_resources.predefined_resources[i];
+    }
+    local_normal_task_resources.custom_resources =
+        std::move(normal_task_resources.custom_resources);
+    local_view.latest_resources_normal_task_timestamp =
+        resource_data.resources_normal_task_timestamp();
+  }
+
   AddOrUpdateNode(node_id, local_view);
   return true;
 }
@@ -270,6 +288,39 @@ bool ClusterResourceManager::HasSufficientResource(
   }
 
   return true;
+}
+
+bool ClusterResourceManager::AddNodeAvailableResources(
+    scheduling::NodeID node_id, const ResourceRequest &resource_request) {
+  auto it = nodes_.find(node_id);
+  if (it == nodes_.end()) {
+    return false;
+  }
+
+  auto node_resources = it->second.GetMutableLocalView();
+  RAY_CHECK(resource_request.predefined_resources.size() <=
+            node_resources->predefined_resources.size());
+
+  for (size_t i = 0; i < resource_request.predefined_resources.size(); ++i) {
+    node_resources->predefined_resources[i].available +=
+        resource_request.predefined_resources[i];
+    node_resources->predefined_resources[i].available =
+        std::min(node_resources->predefined_resources[i].available,
+                 node_resources->predefined_resources[i].total);
+  }
+  for (auto &entry : resource_request.custom_resources) {
+    auto it = node_resources->custom_resources.find(entry.first);
+    if (it != node_resources->custom_resources.end()) {
+      it->second.available += entry.second;
+      it->second.available = std::min(it->second.available, it->second.total);
+    }
+  }
+
+  return true;
+}
+
+bool ClusterResourceManager::ContainsNode(scheduling::NodeID node_id) const {
+  return nodes_.contains(node_id);
 }
 
 void ClusterResourceManager::DebugString(std::stringstream &buffer) const {

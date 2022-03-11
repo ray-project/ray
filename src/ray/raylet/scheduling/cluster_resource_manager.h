@@ -81,7 +81,7 @@ class ClusterResourceManager {
   const NodeResources &GetNodeResources(scheduling::NodeID node_id) const;
 
   /// Subtract available resource from a given node.
-  //// Return false if such node doesn't exist.
+  /// Return false if such node doesn't exist.
   bool SubtractNodeAvailableResources(scheduling::NodeID node_id,
                                       const ResourceRequest &resource_request);
 
@@ -94,6 +94,14 @@ class ClusterResourceManager {
   bool HasSufficientResource(scheduling::NodeID node_id,
                              const ResourceRequest &resource_request,
                              bool ignore_object_store_memory_requirement) const;
+
+  /// Add available resource to a given node.
+  /// Return false if such node doesn't exist.
+  bool AddNodeAvailableResources(scheduling::NodeID node_id,
+                                 const ResourceRequest &resource_request);
+
+  /// Return false if the specified node doesn't exist.
+  bool ContainsNode(scheduling::NodeID node_id) const;
 
   void DebugString(std::stringstream &buffer) const;
 
