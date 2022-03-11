@@ -155,7 +155,6 @@ import ray.internal  # noqa: E402
 # some functions in the worker.
 import ray.actor  # noqa: E402,F401
 from ray.actor import method  # noqa: E402
-from ray.cross_language import java_function, java_actor_class  # noqa: E402
 from ray.runtime_context import get_runtime_context  # noqa: E402
 from ray import autoscaler  # noqa:E402
 from ray import data  # noqa: E402,F401
@@ -186,6 +185,7 @@ __all__ = [
     "is_initialized",
     "java_actor_class",
     "java_function",
+    "cpp_function",
     "kill",
     "Language",
     "method",

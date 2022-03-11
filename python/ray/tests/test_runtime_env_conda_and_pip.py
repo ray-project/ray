@@ -15,6 +15,7 @@ from ray.runtime_env import RuntimeEnv
 import yaml
 import tempfile
 from pathlib import Path
+import subprocess
 
 import ray
 
@@ -193,6 +194,21 @@ class TestGC:
         ray.kill(a)
 
         wait_for_condition(lambda: check_local_files_gced(cluster), timeout=30)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="_PathHelper.get_virtual_activate not supported on Windows.",
+)
+def test_import_in_subprocess(shutdown_only):
+
+    ray.init()
+
+    @ray.remote(runtime_env={"pip": ["pip-install-test==0.5"]})
+    def f():
+        return subprocess.run(["python", "-c", "import pip_install_test"]).returncode
+
+    assert ray.get(f.remote()) == 0
 
 
 if __name__ == "__main__":

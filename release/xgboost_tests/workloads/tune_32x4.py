@@ -25,7 +25,7 @@ from ray.util.xgboost.release_test_util import train_ray
 def train_wrapper(config, ray_params):
     train_ray(
         path="/data/classification.parquet",
-        num_workers=4,
+        num_workers=None,
         num_boost_rounds=100,
         num_files=64,
         regression=False,
