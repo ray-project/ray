@@ -654,11 +654,10 @@ def test_recursive_resolve(ray_start_shared_local_modes):
     assert ray.get(ref) == 42
 
 
-def test_serialization_before_init(ray_start_regular):
+def test_serialization_before_init(shutdown_only):
     """This test checks if serializers registered before initializing Ray
     works after initialization."""
     # make sure ray is shutdown
-    ray.shutdown()
     assert ray.worker.global_worker.current_job_id.is_nil()
 
     import threading
