@@ -131,11 +131,11 @@ class Experiment:
         # `_experiment_checkpoint_dir` is for internal use only for better
         # support of Tuner API.
         # If set, it should be a subpath under `local_dir`. Also deduce `dir_name`.
+        self._experiment_checkpoint_dir = _experiment_checkpoint_dir
         if _experiment_checkpoint_dir:
             experiment_checkpoint_dir_path = Path(_experiment_checkpoint_dir)
             local_dir_path = Path(local_dir)
             assert local_dir_path in experiment_checkpoint_dir_path.parents
-            self._experiment_checkpoint_dir = _experiment_checkpoint_dir
             # `dir_name` is set by `_experiment_checkpoint_dir` indirectly.
             self.dir_name = os.path.relpath(_experiment_checkpoint_dir, local_dir)
 
@@ -162,8 +162,10 @@ class Experiment:
         self._run_identifier = Experiment.register_if_needed(run)
         self.name = name or self._run_identifier
 
-        if not self.dir_name:
+        if not _experiment_checkpoint_dir:
             self.dir_name = _get_dir_name(run, self.name)
+
+        assert self.dir_name
 
         if sync_config.upload_dir:
             self.remote_checkpoint_dir = os.path.join(
@@ -285,10 +287,7 @@ class Experiment:
         Raises:
             TuneError: if `run_object` passed in is invalid.
         """
-        if isinstance(run_object, str):
-            return run_object
-        elif isinstance(run_object, Domain):
-            logger.warning("Not registering trainable. Resolving as variant.")
+        if isinstance(run_object, str) or isinstance(run_object, Domain):
             return run_object
         elif isinstance(run_object, type) or callable(run_object):
             name = "DEFAULT"
@@ -329,7 +328,11 @@ class Experiment:
         Returns:
             A string representing the trainable identifier.
         """
-
+        if isinstance(run_object, str):
+            return run_object
+        elif isinstance(run_object, Domain):
+            logger.warning("Not registering trainable. Resolving as variant.")
+            return run_object
         name = cls.get_trainable_name(run_object)
         try:
             register_trainable(name, run_object)
