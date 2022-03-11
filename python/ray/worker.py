@@ -142,6 +142,9 @@ class Worker:
         # running on.
         self.ray_debugger_external = False
         self._load_code_from_local = False
+        # Create the lock here because the serializer will use it before
+        # initializing Ray.
+        self.lock = threading.RLock()
 
     @property
     def connected(self):
@@ -206,12 +209,8 @@ class Worker:
         """Get the runtime env in json format"""
         return self.core_worker.get_current_runtime_env()
 
-    def get_serialization_context(self, job_id=None):
+    def get_serialization_context(self):
         """Get the SerializationContext of the job that this worker is processing.
-
-        Args:
-            job_id: The ID of the job that indicates which job to get
-                the serialization context for.
 
         Returns:
             The serialization context of the given job.
@@ -220,14 +219,17 @@ class Worker:
         # called by`register_class_for_serialization`, as well as the import
         # thread, from different threads. Also, this function will recursively
         # call itself, so we use RLock here.
-        if job_id is None:
-            job_id = self.current_job_id
+        job_id = self.current_job_id
+        context_map = self.serialization_context_map
         with self.lock:
-            if job_id not in self.serialization_context_map:
-                self.serialization_context_map[
-                    job_id
-                ] = serialization.SerializationContext(self)
-            return self.serialization_context_map[job_id]
+            if job_id not in context_map:
+                # The job ID is nil before initializing Ray.
+                if JobID.nil() in context_map:
+                    # Transfer the serializer context used before initializing Ray.
+                    context_map[job_id] = context_map.pop(JobID.nil())
+                else:
+                    context_map[job_id] = serialization.SerializationContext(self)
+            return context_map[job_id]
 
     def check_connected(self):
         """Check if the worker is connected.
@@ -1595,8 +1597,6 @@ def connect(
                 redis_client=worker.redis_client,
                 gcs_publisher=worker.gcs_publisher,
             )
-
-    worker.lock = threading.RLock()
 
     driver_name = ""
     log_stdout_file_path = ""
