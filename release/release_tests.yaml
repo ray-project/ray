@@ -990,7 +990,7 @@
     run:
       timeout: 3600
 
-  alert: long_running
+  alert: long_running_tests
 
 - name: long_running_apex
   group: Long running tests
@@ -1022,7 +1022,7 @@
     run:
       timeout: 3600
 
-  alert: long_running
+  alert: long_running_tests
 
 - name: long_running_impala
   group: Long running tests
@@ -1050,7 +1050,7 @@
     run:
       timeout: 3600
 
-  alert: long_running
+  alert: long_running_tests
 
 - name: long_running_many_actor_tasks
   group: Long running tests
@@ -1079,7 +1079,7 @@
     run:
       timeout: 3600
 
-  alert: long_running
+  alert: long_running_tests
 
 - name: long_running_many_drivers
   group: Long running tests
@@ -1108,7 +1108,7 @@
     run:
       timeout: 3600
 
-  alert: long_running
+  alert: long_running_tests
 
 - name: long_running_many_ppo
   group: Long running tests
@@ -1140,7 +1140,7 @@
     run:
       timeout: 3600
 
-  alert: long_running
+  alert: long_running_tests
 
 - name: long_running_many_tasks
   group: Long running tests
@@ -1169,7 +1169,7 @@
     run:
       timeout: 3600
 
-  alert: long_running
+  alert: long_running_tests
 
 - name: long_running_many_tasks_serialized_ids
   group: Long running tests
@@ -1198,7 +1198,7 @@
     run:
       timeout: 3600
 
-  alert: long_running
+  alert: long_running_tests
 
 - name: long_running_node_failures
   group: Long running tests
@@ -1227,7 +1227,7 @@
     run:
       timeout: 3600
 
-  alert: long_running
+  alert: long_running_tests
 
 - name: long_running_pbt
   group: Long running tests
@@ -1256,7 +1256,7 @@
     run:
       timeout: 3600
 
-  alert: long_running
+  alert: long_running_tests
 
 - name: long_running_serve
   group: Long running tests
@@ -1285,7 +1285,7 @@
     run:
       timeout: 3600
 
-  alert: long_running
+  alert: long_running_tests
 
 - name: long_running_serve_failure
   group: Long running tests
@@ -1315,7 +1315,7 @@
     run:
       timeout: 600
 
-  alert: long_running
+  alert: long_running_tests
 
 - name: long_running_distributed_pytorch_pbt_failure
   group: Long running tests
@@ -1343,7 +1343,7 @@
     run:
       timeout: 3600
 
-  alert: long_running
+  alert: long_running_tests
 
 
 ########################
