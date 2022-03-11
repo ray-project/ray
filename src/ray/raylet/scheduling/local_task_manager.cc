@@ -242,9 +242,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
         // it.
         std::string allocated_instances_serialized_json = "{}";
         if (RayConfig::instance().worker_resource_limits_enabled()) {
-          allocated_instances_serialized_json =
-              cluster_resource_scheduler_->GetLocalResourceManager()
-                  .SerializedTaskResourceInstances(allocated_instances);
+          allocated_instances_serialized_json = allocated_instances->SerializeAsJson();
         }
         work->allocated_instances = allocated_instances;
         work->SetStateWaitingForWorker();
