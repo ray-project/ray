@@ -173,7 +173,7 @@ RayEventContext &RayEventContext::GlobalInstance() {
 
 void RayEventContext::SetEventContext(
     rpc::Event_SourceType source_type,
-    const std::unordered_map<std::string, std::string> &custom_fields) {
+    const absl::flat_hash_map<std::string, std::string> &custom_fields) {
   SetSourceType(source_type);
   UpdateCustomFields(custom_fields);
 
@@ -200,7 +200,7 @@ void RayEventContext::UpdateCustomField(const std::string &key,
 }
 
 void RayEventContext::UpdateCustomFields(
-    const std::unordered_map<std::string, std::string> &custom_fields) {
+    const absl::flat_hash_map<std::string, std::string> &custom_fields) {
   // This method should be used while source type has been set.
   RAY_CHECK(GetInitialzed());
   for (const auto &pair : custom_fields) {
@@ -315,7 +315,7 @@ void RayEvent::SendMessage(const std::string &message) {
 static absl::once_flag init_once_;
 
 void RayEventInit(rpc::Event_SourceType source_type,
-                  const std::unordered_map<std::string, std::string> &custom_fields,
+                  const absl::flat_hash_map<std::string, std::string> &custom_fields,
                   const std::string &log_dir, const std::string &event_level) {
   absl::call_once(init_once_, [&source_type, &custom_fields, &log_dir, &event_level]() {
     RayEventContext::Instance().SetEventContext(source_type, custom_fields);

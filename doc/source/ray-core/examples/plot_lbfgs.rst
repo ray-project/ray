@@ -1,6 +1,10 @@
 Batch L-BFGS
 ============
 
+.. note::
+    For an overview of Ray's distributed training library,
+    see :ref:`Ray Train <train-docs>`.
+
 This document provides a walkthrough of the L-BFGS example. To run the
 application, first install these dependencies.
 

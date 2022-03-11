@@ -22,6 +22,7 @@ DEFAULT_WHEEL_WAIT_TIMEOUT = 7200  # Two hours
 DEFAULT_COMMAND_TIMEOUT = 1800
 DEFAULT_BUILD_TIMEOUT = 1800
 DEFAULT_CLUSTER_TIMEOUT = 1800
+DEFAULT_AUTOSUSPEND_MINS = 120
 
 DEFAULT_CLOUD_ID = "cld_4F7k8814aZzGG8TNUGPKnc"
 
@@ -177,7 +178,7 @@ def load_and_render_yaml_template(
         render_env.update(env)
 
     try:
-        content = jinja2.Template(content).render(env=env)
+        content = jinja2.Template(content).render(env=render_env)
         return yaml.safe_load(content)
     except Exception as e:
         raise ReleaseTestConfigError(

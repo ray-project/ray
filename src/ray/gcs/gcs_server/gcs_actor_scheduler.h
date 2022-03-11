@@ -77,7 +77,7 @@ class GcsActorSchedulerInterface {
   ///
   /// \param node_to_workers Workers used by each node.
   virtual void ReleaseUnusedWorkers(
-      const std::unordered_map<NodeID, std::vector<WorkerID>> &node_to_workers) = 0;
+      const absl::flat_hash_map<NodeID, std::vector<WorkerID>> &node_to_workers) = 0;
 
   /// Handle the destruction of an actor.
   ///
@@ -154,7 +154,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   ///
   /// \param node_to_workers Workers used by each node.
   void ReleaseUnusedWorkers(
-      const std::unordered_map<NodeID, std::vector<WorkerID>> &node_to_workers) override;
+      const absl::flat_hash_map<NodeID, std::vector<WorkerID>> &node_to_workers) override;
 
   /// Handle the destruction of an actor.
   ///
