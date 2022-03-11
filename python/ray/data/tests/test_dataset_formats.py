@@ -807,6 +807,17 @@ def test_read_binary_snappy(ray_start_regular_shared, tmp_path):
     assert sorted(ds.take()) == [byte_str]
 
 
+def test_read_binary_snappy_inferred(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test_binary_snappy_inferred")
+    os.mkdir(path)
+    with open(os.path.join(path, "file.snappy"), "wb") as f:
+        byte_str = "hello, world".encode()
+        bytes = BytesIO(byte_str)
+        snappy.stream_compress(bytes, f)
+    ds = ray.data.read_binary_files(path)
+    assert sorted(ds.take()) == [byte_str]
+
+
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_write_datasource(ray_start_regular_shared, pipelined):
     output = DummyOutputDatasource()

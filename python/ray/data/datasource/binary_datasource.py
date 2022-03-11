@@ -17,7 +17,6 @@ class BinaryDatasource(FileBasedDatasource):
     """
 
     def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
-        import pyarrow
         from pyarrow.fs import HadoopFileSystem
 
         include_paths = reader_args.pop("include_paths", False)
@@ -27,7 +26,7 @@ class BinaryDatasource(FileBasedDatasource):
             filesystem = reader_args.get("filesystem", None)
             rawbytes = BytesIO()
 
-            if isinstance(filesystem, pyarrow.fs.HadoopFileSystem):
+            if isinstance(filesystem, HadoopFileSystem):
                 snappy.hadoop_snappy.stream_decompress(src=f, dst=rawbytes)
             else:
                 snappy.stream_decompress(src=f, dst=rawbytes)
