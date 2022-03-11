@@ -26,7 +26,7 @@ Condition = namedtuple(
 
 gpu_cpu_to_concurrency_groups = [
     Condition(min_gpu=9, max_gpu=-1, min_cpu=0, max_cpu=-1, group="large-gpu"),
-    Condition(min_gpu=1, max_gpu=9, min_cpu=0, max_cpu=-1, group="small-gpu"),
+    Condition(min_gpu=1, max_gpu=9, min_cpu=0, max_cpu=-128, group="small-gpu"),
     Condition(min_gpu=0, max_gpu=0, min_cpu=513, max_cpu=-1, group="large"),
     Condition(min_gpu=0, max_gpu=0, min_cpu=129, max_cpu=512, group="medium"),
     Condition(min_gpu=0, max_gpu=0, min_cpu=0, max_cpu=32, group="tiny"),
