@@ -1802,7 +1802,6 @@
     cluster:
       app_config: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
       compute_template: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
-      cloud_id: cld_17WvYIBBkdgLwEUNcLeRAE
 
     run:
       timeout: 7200
@@ -1843,7 +1842,6 @@
     cluster:
       app_config: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
       compute_template: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
-      cloud_id: cld_17WvYIBBkdgLwEUNcLeRAE
 
     run:
       timeout: 7200
