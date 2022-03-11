@@ -552,9 +552,6 @@ def test_deployment_to_schema_to_deployment():
     serve.shutdown()
 
 
-pytest.mark.parametrize()
-
-
 def test_unset_fields_schema_to_deployment_ray_actor_options():
     # Ensure unset fields are excluded from ray_actor_options
 
