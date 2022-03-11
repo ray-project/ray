@@ -27,17 +27,22 @@ double LeastResourceScorer::Score(const ResourceRequest &required_resources,
   NodeResources new_node_resources;
   if (!node_resources.normal_task_resources.IsEmpty()) {
     new_node_resources = node_resources;
-    for (size_t i = 0; i < required_resources.predefined_resources.size(); ++i) {
+    for (size_t i = 0;
+         i < node_resources.normal_task_resources.predefined_resources.size(); ++i) {
       new_node_resources.predefined_resources[i].available -=
-          required_resources.predefined_resources[i];
+          node_resources.normal_task_resources.predefined_resources[i];
       if (new_node_resources.predefined_resources[i].available < 0) {
         new_node_resources.predefined_resources[i].available = 0;
       }
     }
-    for (const auto &request_resource_entry : required_resources.custom_resources) {
+    for (const auto &request_resource_entry :
+         node_resources.normal_task_resources.custom_resources) {
       auto iter = new_node_resources.custom_resources.find(request_resource_entry.first);
       if (iter != new_node_resources.custom_resources.end()) {
         iter->second.available -= request_resource_entry.second;
+        if (iter->second.available < 0) {
+          iter->second.available = 0;
+        }
       }
     }
     node_resources_ptr = &new_node_resources;
