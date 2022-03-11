@@ -503,10 +503,49 @@ class TaskResourceInstances {
   bool operator==(const TaskResourceInstances &other);
 
   TaskResourceInstances &Set(const ResourceID resource_id, const std::vector<FixedPoint> &instances) {
+     GetMutable(resource_id) = instances;
+  }
+
+  std::vector<FixedPoint> &GetMutable(const ResourceID resource_id) {
+     if (IsPredefinedResource(resource_id)) {
+       return predefined_resources[resource_id];
+     } else {
+       return custom_resources[resource_id];
+     }
+  }
+
+  void Add(const ResourceID resource_id, const std::vector<FixedPoint> &delta) {
+    auto &instances = GetMutable(resource_id);
+    if (instances.size() <= delta.size()) {
+      instances.resize(delta.size());
+    }
+    for (size_t i = 0; i < instances.size(); ++i) {
+      instances[i] += delta[i];
+    }
+  }
+
+  void Clear() {
+    for (auto resource_id : GetAllResourceIds()) {
+      auto &instances = GetMutable(resource_id);
+      for (size_t i = 0; i < instances.size(); ++i) {
+        instances[i] = 0;
+      }
+    }
+  }
+
+  FixedPiont Sum(const ResourceId resource_id) const {
+    return FixedPoint::Sum(Get(resource_id));
+  }
+
+  FixedPoint SumCPU() const {
+    return FixedPoint::Sum(predefined_resources[CPU]);
   }
 
   /// Get instances based on the string.
-  const std::vector<FixedPoint> &Get(const std::string &resource_name) const;
+  const std::vector<FixedPoint> &Get(const ResourceId resource_id) const {
+    return GetMutable(resource_id);
+  }
+
   /// For each resource of this request aggregate its instances.
   ResourceRequest ToResourceRequest() const;
   /// Get CPU instances only.
@@ -530,6 +569,10 @@ class TaskResourceInstances {
   std::vector<double> GetMemInstancesDouble() const {
     return VectorFixedPointToVectorDouble(this->predefined_resources[MEM]);
   };
+
+  std::vector<FixedPoint> GetObjectStoreMemory() const {
+    return this->predefined_resources[OBJECT_STORE_MEM];
+  }
   /// Clear only the CPU instances field.
   void ClearCPUInstances();
   /// Check whether there are no resource instances.

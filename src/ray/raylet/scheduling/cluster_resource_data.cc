@@ -108,23 +108,6 @@ ResourceRequest ResourceMapToResourceRequest(
   return resource_request;
 }
 
-const std::vector<FixedPoint> &TaskResourceInstances::Get(
-    const std::string &resource_name) const {
-  if (ray::kCPU_ResourceLabel == resource_name) {
-    return predefined_resources[CPU];
-  } else if (ray::kGPU_ResourceLabel == resource_name) {
-    return predefined_resources[GPU];
-  } else if (ray::kObjectStoreMemory_ResourceLabel == resource_name) {
-    return predefined_resources[OBJECT_STORE_MEM];
-  } else if (ray::kMemory_ResourceLabel == resource_name) {
-    return predefined_resources[MEM];
-  } else {
-    auto it = custom_resources.find(ResourceID(resource_name).ToInt());
-    RAY_CHECK(it != custom_resources.end());
-    return it->second;
-  }
-}
-
 ResourceRequest TaskResourceInstances::ToResourceRequest() const {
   ResourceRequest resource_request;
 
