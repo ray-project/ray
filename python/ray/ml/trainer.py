@@ -6,7 +6,7 @@ from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.result import Result
 from ray.ml.config import ScalingConfig, RunConfig
-from ray.tune import Trainable, PlacementGroupFactory
+from ray.tune import Trainable
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:
@@ -82,20 +82,6 @@ class Trainer(abc.ABC):
         Raises:
             TrainingFailedError: If any failures during the execution of
             ``self.as_trainable()``.
-        """
-        raise NotImplementedError
-
-    def resource_func(
-        self,
-        scaling_config: Dict,
-    ) -> PlacementGroupFactory:
-        """Converts ``scaling_config`` to ``PlacementGroupFactory``.
-
-        If this method is not overridden, then the Trainable produced by
-        ``self.as_trainable()`` will just use the default resource request.
-
-        Args:
-            scaling_config: The scaling config to convert.
         """
         raise NotImplementedError
 
