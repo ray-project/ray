@@ -135,8 +135,8 @@ class Experiment:
             experiment_checkpoint_dir_path = Path(_experiment_checkpoint_dir)
             local_dir_path = Path(local_dir)
             assert local_dir_path in experiment_checkpoint_dir_path.parents
-            self.experiment_checkpoint_dir = _experiment_checkpoint_dir
-            # `dir_name` is set by `experiment_checkpoint_dir` indirectly.
+            self._experiment_checkpoint_dir = _experiment_checkpoint_dir
+            # `dir_name` is set by `_experiment_checkpoint_dir` indirectly.
             self.dir_name = os.path.relpath(_experiment_checkpoint_dir, local_dir)
 
         config = config or {}
@@ -378,8 +378,8 @@ class Experiment:
     @property
     def checkpoint_dir(self):
         # Provided when initializing Experiment, if so, return directly.
-        if self.experiment_checkpoint_dir:
-            return self.experiment_checkpoint_dir
+        if self._experiment_checkpoint_dir:
+            return self._experiment_checkpoint_dir
         assert self.local_dir
         return os.path.join(self.local_dir, self.dir_name)
 

@@ -18,6 +18,10 @@ from ray.tune.tune_config import TuneConfig
 _TRAIN_DATASET = "train_dataset"
 _EXTRA_DATASETS = "extra_datasets"
 _DATASET_KEYS = (_TRAIN_DATASET, _EXTRA_DATASETS)
+_TRAINABLE_PKL = "trainable.pkl"
+_TUNER_PKL = "tuner.pkl"
+_TRAINABLE_KEY = "_trainable"
+_PARAM_SPACE_KEY = "_param_space"
 
 
 class TunerInternal:
@@ -53,34 +57,34 @@ class TunerInternal:
     ):
         # Restored from Tuner checkpoint.
         if restore_path:
-            trainable_ckpt = os.path.join(restore_path, "trainable.pkl")
+            trainable_ckpt = os.path.join(restore_path, _TRAINABLE_PKL)
             with open(trainable_ckpt, "rb") as fp:
                 trainable = pickle.load(fp)
 
-            tuner_ckpt = os.path.join(restore_path, "tuner.pkl")
+            tuner_ckpt = os.path.join(restore_path, _TUNER_PKL)
             with open(tuner_ckpt, "rb") as fp:
                 tuner = pickle.load(fp)
                 self.__dict__.update(tuner.__dict__)
 
-            self.is_restored = True
-            self.trainable = trainable
-            self.experiment_checkpoint_dir = restore_path
+            self._is_restored = True
+            self._trainable = trainable
+            self._experiment_checkpoint_dir = restore_path
             return
 
         # Start from fresh
         if not trainable:
             raise TuneError("You need to provide a trainable to tune.")
 
-        self.is_restored = False
-        self.trainable = trainable
-        self.tune_config = tune_config
-        self.run_config = run_config
-        self.experiment_checkpoint_dir = self._get_or_create_experiment_checkpoint_dir(
-            self.run_config
+        self._is_restored = False
+        self._trainable = trainable
+        self._tune_config = tune_config
+        self._run_config = run_config
+        self._experiment_checkpoint_dir = self._get_or_create_experiment_checkpoint_dir(
+            self._run_config
         )
 
         # Not used for restored Tuner.
-        self.param_space = param_space
+        self._param_space = param_space
         self._process_dataset_param()
 
         # This needs to happen before `tune.run()` is kicked in.
@@ -89,13 +93,13 @@ class TunerInternal:
         # without allowing for checkpointing tuner and trainable.
         # Thus this has to happen before tune.run() so that we can have something
         # to restore from.
-        tuner_ckpt = os.path.join(self.experiment_checkpoint_dir, "tuner.pkl")
+        tuner_ckpt = os.path.join(self._experiment_checkpoint_dir, _TUNER_PKL)
         with open(tuner_ckpt, "wb") as fp:
             pickle.dump(self, fp)
 
-        trainable_ckpt = os.path.join(self.experiment_checkpoint_dir, "trainable.pkl")
+        trainable_ckpt = os.path.join(self._experiment_checkpoint_dir, _TRAINABLE_PKL)
         with open(trainable_ckpt, "wb") as fp:
-            pickle.dump(self.trainable, fp)
+            pickle.dump(self._trainable, fp)
 
     def _process_dataset_param(self):
         """Dataset needs to be fully executed before sent over to trainables.
@@ -129,10 +133,10 @@ class TunerInternal:
                     raise TuneError("Unexpected dataset param passed in.")
 
         for key in _DATASET_KEYS:
-            if key in self.param_space:
-                ds = self.param_space[key]
+            if key in self._param_space:
+                ds = self._param_space[key]
                 if isinstance(ds, Dataset):
-                    self.param_space[key] = ds.fully_executed()
+                    self._param_space[key] = ds.fully_executed()
                 elif isinstance(ds, dict):
                     _helper(ds)
                 else:
@@ -141,7 +145,7 @@ class TunerInternal:
     def _get_or_create_experiment_checkpoint_dir(self, run_config: Optional[RunConfig]):
         """Get experiment checkpoint dir before actually running the experiment."""
         path = Experiment.get_experiment_checkpoint_dir(
-            self._convert_trainable(self.trainable),
+            self._convert_trainable(self._trainable),
             run_config.local_dir,
             run_config.name,
         )
@@ -151,7 +155,7 @@ class TunerInternal:
 
     # This has to be done through a function signature (@property won't do).
     def experiment_checkpoint_dir(self):
-        return self.experiment_checkpoint_dir
+        return self._experiment_checkpoint_dir
 
     @staticmethod
     def _convert_trainable(trainable: Any):
@@ -162,10 +166,10 @@ class TunerInternal:
         return trainable
 
     def fit(self) -> ResultGrid:
-        trainable = self._convert_trainable(self.trainable)
-        assert self.experiment_checkpoint_dir
-        if not self.is_restored:
-            param_space = copy.deepcopy(self.param_space)
+        trainable = self._convert_trainable(self._trainable)
+        assert self._experiment_checkpoint_dir
+        if not self._is_restored:
+            param_space = copy.deepcopy(self._param_space)
             analysis = self._fit_internal(trainable, param_space)
         else:
             analysis = self._fit_resume(trainable)
@@ -177,14 +181,14 @@ class TunerInternal:
         analysis = run(
             trainable,
             config={**param_space},
-            mode=self.tune_config.mode,
-            metric=self.tune_config.metric,
-            num_samples=self.tune_config.num_samples,
-            search_alg=self.tune_config.search_alg,
-            scheduler=self.tune_config.scheduler,
-            name=self.run_config.name,
-            callbacks=self.run_config.callbacks,
-            _experiment_checkpoint_dir=self.experiment_checkpoint_dir,
+            mode=self._tune_config.mode,
+            metric=self._tune_config.metric,
+            num_samples=self._tune_config.num_samples,
+            search_alg=self._tune_config.search_alg,
+            scheduler=self._tune_config.scheduler,
+            name=self._run_config.name,
+            callbacks=self._run_config.callbacks,
+            _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
         )
         return analysis
 
@@ -193,17 +197,17 @@ class TunerInternal:
         analysis = run(
             trainable,
             resume=True,
-            mode=self.tune_config.mode,
-            metric=self.tune_config.metric,
-            callbacks=self.run_config.callbacks,
-            _experiment_checkpoint_dir=self.experiment_checkpoint_dir,
+            mode=self._tune_config.mode,
+            metric=self._tune_config.metric,
+            callbacks=self._run_config.callbacks,
+            _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
         )
         return analysis
 
     def __getstate__(self):
         state = self.__dict__.copy()
-        state.pop("trainable", None)
-        state.pop("param_space", None)
+        state.pop(_TRAINABLE_KEY, None)
+        state.pop(_PARAM_SPACE_KEY, None)
         return state
 
     def __setstate__(self, state):

@@ -476,7 +476,7 @@ def run(
                 resources_per_trial=resources_per_trial,
                 num_samples=num_samples,
                 local_dir=local_dir,
-                experiment_checkpoint_dir=_experiment_checkpoint_dir,
+                _experiment_checkpoint_dir=_experiment_checkpoint_dir,
                 sync_config=sync_config,
                 trial_name_creator=trial_name_creator,
                 trial_dirname_creator=trial_dirname_creator,
