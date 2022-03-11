@@ -1,4 +1,4 @@
-from typing import Optional, Union, List, Type
+from typing import Callable, Optional, Union, List, Type
 
 import tensorflow as tf
 
@@ -24,7 +24,7 @@ class TensorflowPredictor(Predictor):
 
     def __init__(
         self,
-        model_definition: Type[tf.keras.Model],
+        model_definition: Union[Callable[[], tf.keras.Model], Type[tf.keras.Model]],
         preprocessor: Preprocessor,
         model_weights: Optional[list] = None,
     ):
@@ -32,7 +32,9 @@ class TensorflowPredictor(Predictor):
 
     @classmethod
     def from_checkpoint(
-        cls, checkpoint: Checkpoint, model_definition: Type[tf.keras.Model]
+        cls,
+        checkpoint: Checkpoint,
+        model_definition: Union[Callable[[], tf.keras.Model], Type[tf.keras.Model]],
     ) -> "TensorflowPredictor":
         """Instantiate the predictor from a Checkpoint.
 
