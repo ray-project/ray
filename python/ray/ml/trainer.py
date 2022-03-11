@@ -5,8 +5,7 @@ from typing import Dict, Union, Callable, Optional, TYPE_CHECKING, Type
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.result import Result
-from ray.ml.config import ScalingConfig
-from ray.ml.config import RunConfig
+from ray.ml.config import RunConfig, ScalingConfig
 from ray.tune import Trainable
 from ray.util import PublicAPI
 
