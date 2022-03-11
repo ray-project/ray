@@ -1,5 +1,4 @@
 import logging
-from dataclasses import dataclass
 from typing import Dict, Callable, Optional
 
 from ray.ml.trainer import Trainer
@@ -8,14 +7,13 @@ from ray.ml.train.trainer import GenDataset
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.train import BackendConfig
-from ray.tune import PlacementGroupFactory
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-class DataParallelFunctionTrainer(Trainer):
+class DataParallelTrainer(Trainer):
     """A Trainer for data parallel training.
 
     This Trainer runs the provided function on multiple Ray Actors. The
@@ -56,55 +54,4 @@ class DataParallelFunctionTrainer(Trainer):
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
-        raise NotImplementedError
-
-
-@dataclass
-class _DataParallelScalingConfig:
-    """Configuration for scaling data parallel training.
-
-    num_workers (int): The number of workers (Ray actors) to launch.
-        Each worker will reserve 1 CPU by default. The number of CPUs
-        reserved by each worker can be overridden with the
-        ``resources_per_worker`` argument.
-    use_gpu (bool): If True, training will be done on GPUs (1 per
-        worker). Defaults to False. The number of GPUs reserved by each
-        worker can be overridden with the ``resources_per_worker``
-        argument.
-    resources_per_worker (Optional[Dict]): If specified, the resources
-        defined in this Dict will be reserved for each worker. The
-        ``CPU`` and ``GPU`` keys (case-sensitive) can be defined to
-        override the number of CPU/GPUs used by each worker.
-    max_retries (int): Number of retries when Ray actors fail.
-        Defaults to 3. Set to -1 for unlimited retries.
-    placement_strategy (str): The placement strategy to use for the
-        placement group of the Ray actors.
-    """
-
-    num_workers: int
-    use_gpu: bool = False
-    resources_per_worker: Optional[Dict] = None
-    max_retries: int = 3
-    placement_strategy: str = "PACK"
-
-    def __post_init__(self):
-        raise NotImplementedError
-
-    @property
-    def num_cpus_per_worker(self):
-        """The number of CPUs to set per worker."""
-        raise NotImplementedError
-
-    @property
-    def num_gpus_per_worker(self):
-        """The number of GPUs to set per worker."""
-        raise NotImplementedError
-
-    @property
-    def additional_resources_per_worker(self):
-        """Resources per worker, not including CPU or GPU resources."""
-        raise NotImplementedError
-
-    def get_placement_group_factory(self) -> PlacementGroupFactory:
-        """Returns a PlacementGroupFactory to specify resources for Tune."""
         raise NotImplementedError
