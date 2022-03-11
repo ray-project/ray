@@ -265,23 +265,20 @@ class Experiment:
         return exp
 
     @classmethod
-    def register_if_needed(cls, run_object, dry_run: bool = False):
-        """Registers Trainable or Function at runtime.
+    def get_trainable_name(cls, run_object):
+        """Get Trainable name.
 
-        Assumes already registered if run_object is a string.
-        Also, does not inspect interface of given run_object.
-
-        Arguments:
+        Args:
             run_object (str|function|class): Trainable to run. If string,
                 assumes it is an ID and does not modify it. Otherwise,
                 returns a string corresponding to the run_object name.
-            dry_run (bool): True means only going through this method to get
-                experiment name without registering any run_object.
 
         Returns:
             A string representing the trainable identifier.
-        """
 
+        Raises:
+            TuneError: if `run_object` passed in is invalid.
+        """
         if isinstance(run_object, str):
             return run_object
         elif isinstance(run_object, Domain):
@@ -307,21 +304,39 @@ class Experiment:
                 name = run_object.func.__name__
             else:
                 logger.warning("No name detected on trainable. Using {}.".format(name))
-            if not dry_run:
-                try:
-                    register_trainable(name, run_object)
-                except (TypeError, PicklingError) as e:
-                    extra_msg = (
-                        "Other options: "
-                        "\n-Try reproducing the issue by calling "
-                        "`pickle.dumps(trainable)`. "
-                        "\n-If the error is typing-related, try removing "
-                        "the type annotations and try again."
-                    )
-                    raise type(e)(str(e) + " " + extra_msg) from None
             return name
         else:
             raise TuneError("Improper 'run' - not string nor trainable.")
+
+    @classmethod
+    def register_if_needed(cls, run_object):
+        """Registers Trainable or Function at runtime.
+
+        Assumes already registered if run_object is a string.
+        Also, does not inspect interface of given run_object.
+
+        Arguments:
+            run_object (str|function|class): Trainable to run. If string,
+                assumes it is an ID and does not modify it. Otherwise,
+                returns a string corresponding to the run_object name.
+
+        Returns:
+            A string representing the trainable identifier.
+        """
+
+        name = cls.get_trainable_name(run_object)
+        try:
+            register_trainable(name, run_object)
+        except (TypeError, PicklingError) as e:
+            extra_msg = (
+                "Other options: "
+                "\n-Try reproducing the issue by calling "
+                "`pickle.dumps(trainable)`. "
+                "\n-If the error is typing-related, try removing "
+                "the type annotations and try again."
+            )
+            raise type(e)(str(e) + " " + extra_msg) from None
+        return name
 
     @classmethod
     def get_experiment_checkpoint_dir(cls, run_obj, local_dir=None, name=None):
@@ -339,7 +354,7 @@ class Experiment:
         """
         assert run_obj
         local_dir = _get_local_dir_with_expand_user(local_dir)
-        run_identifier = cls.register_if_needed(run_obj, dry_run=True)
+        run_identifier = cls.get_trainable_name(run_obj)
         name = name or run_identifier
 
         dir_name = _get_dir_name(run_obj, name)

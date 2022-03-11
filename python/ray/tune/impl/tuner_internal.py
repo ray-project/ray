@@ -6,8 +6,8 @@ import ray.cloudpickle as pickle
 from ray.data import Dataset
 
 from ray.ml.run_config import RunConfig
+from ray.ml.trainer import Trainer
 from ray.tune import Experiment, TuneError
-from ray.tune.api_v2.convertible_to_trainable import ConvertibleToTrainable
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.tune import run
@@ -15,7 +15,9 @@ from ray.tune.tune_config import TuneConfig
 
 
 # The key that denotes the dataset config in param space.
-_DATASETS = "datasets"
+_TRAIN_DATASET = "train_dataset"
+_EXTRA_DATASETS = "extra_datasets"
+_DATASET_KEYS = (_TRAIN_DATASET, _EXTRA_DATASETS)
 
 
 class TunerInternal:
@@ -36,8 +38,8 @@ class TunerInternal:
                 str,
                 Callable,
                 Type[Trainable],
-                Type[ConvertibleToTrainable],
-                ConvertibleToTrainable,
+                Type[Trainer],
+                Trainer,
             ]
         ] = None,
         param_space: Optional[Dict[str, Any]] = None,
@@ -130,15 +132,15 @@ class TunerInternal:
                 else:
                     raise TuneError("Unexpected dataset param passed in.")
 
-        if _DATASETS in self.param_space:
-            ds = self.param_space[_DATASETS]
-            if isinstance(ds, Dataset):
-                self.param_space[_DATASETS] = ds.fully_executed()
-            elif isinstance(ds, dict):
-                _helper(ds)
-            else:
-                # We shouldn't be expecting anything here.
-                raise TuneError("Unexpected dataset param passed in.")
+        for key in _DATASET_KEYS:
+            if key in self.param_space:
+                ds = self.param_space[key]
+                if isinstance(ds, Dataset):
+                    self.param_space[key] = ds.fully_executed()
+                elif isinstance(ds, dict):
+                    _helper(ds)
+                else:
+                    raise TuneError("Unexpected dataset param passed in.")
 
     def _get_or_create_experiment_checkpoint_dir(self, run_config: Optional[RunConfig]):
         """Get experiment checkpoint dir before actually running the experiment."""
@@ -157,7 +159,7 @@ class TunerInternal:
 
     @staticmethod
     def _convert_trainable(trainable: Any):
-        if isinstance(trainable, ConvertibleToTrainable):
+        if isinstance(trainable, Trainer):
             trainable = trainable.as_trainable()
         else:
             trainable = trainable

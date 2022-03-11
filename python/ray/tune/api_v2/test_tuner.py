@@ -3,7 +3,9 @@ from typing import Callable, Dict, List, Type, Union
 
 from ray import tune
 from ray.data import Dataset
+from ray.ml.run_config import RunConfig as MLRunConfig
 from ray.train.trainer import wrap_function
+from ray.tune.tune_config import TuneConfig
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.trainable import Trainable
 from ray.tune.integration.xgboost import TuneReportCheckpointCallback
@@ -588,7 +590,13 @@ class TestDatasource(Datasource):
             dataset_df["target"] = data_raw["target"]
             return [pa.Table.from_pandas(dataset_df)]
 
-        meta = BlockMetadata(num_rows=None, size_bytes=None, schema=None, input_files=None, exec_stats=None)
+        meta = BlockMetadata(
+            num_rows=None,
+            size_bytes=None,
+            schema=None,
+            input_files=None,
+            exec_stats=None,
+        )
         return [ReadTask(load_data, meta)]
 
 
@@ -603,6 +611,7 @@ def gen_dataset_func() -> Dataset:
 #     dataset_df["target"] = data_raw["target"]
 #     dataset = ray.data.from_pandas(dataset_df)
 #     return dataset
+
 
 def test_xgboost_tuner(fail_after_finished: int = 0):
     shutil.rmtree("/Users/xwjiang/ray_results/tuner_resume", ignore_errors=True)
@@ -650,11 +659,17 @@ def test_xgboost_tuner(fail_after_finished: int = 0):
         },
     }
 
-    if fail_after_finished > 0:
-        callbacks = [StopperCallback(fail_after_finished=fail_after_finished)]
-    else:
-        callbacks = None
+    from ray.tune.callback import Callback
 
+    class StopperCallback(Callback):
+        def on_trial_result(self, iteration, trials, trial, result, **info):
+            print("========={iteration}============")
+            if iteration == 10:
+                raise RuntimeError("This is a simulated error!")
+
+    tune_config = TuneConfig(mode="max", metric="training_iteration")
+
+    run_config = MLRunConfig(name="tuner_resume", callbacks=[StopperCallback()])
     tuner = Tuner(
         trainable=XGBoostTrainer(
             run_config={"max_actor_restarts": 1},
@@ -663,12 +678,14 @@ def test_xgboost_tuner(fail_after_finished: int = 0):
             label="target",
         ),
         param_space=param_space,
-        name="tuner_resume",
-        callbacks=callbacks,
+        tune_config=tune_config,
+        run_config=run_config,
     )
 
     results = tuner.fit()
-    import ipdb; ipdb.set_trace()
+    import ipdb
+
+    ipdb.set_trace()
 
 
 def test_xgboost_resume():
@@ -678,6 +695,9 @@ def test_xgboost_resume():
     tuner = Tuner.restore("/Users/xwjiang/ray_results/tuner_resume")
 
     results = tuner.fit()
+    import ipdb
+
+    ipdb.set_trace()
     print(results.results)
 
     # best_result = results.results[0]

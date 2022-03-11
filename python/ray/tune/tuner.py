@@ -4,8 +4,8 @@ from typing import Any, Callable, Dict, Optional, Type, Union
 import ray
 
 from ray.ml.run_config import RunConfig
+from ray.ml.trainer import Trainer
 from ray.tune import TuneError
-from ray.tune.api_v2.convertible_to_trainable import ConvertibleToTrainable
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.impl.tuner_internal import TunerInternal
@@ -46,7 +46,7 @@ class Tuner:
             },
             "preprocessor": tune.grid_search([prep_v1, prep_v2]),
             "datasets": {
-                "train_dataset": tune.grid_search([ds1, ds2]),
+                "train_datasetTu": tune.grid_search([ds1, ds2]),
             },
             "params": {
                 "objective": "binary:logistic",
@@ -82,8 +82,8 @@ class Tuner:
                 str,
                 Callable,
                 Type[Trainable],
-                Type[ConvertibleToTrainable],
-                ConvertibleToTrainable,
+                Type[Trainer],
+                Trainer,
             ]
         ] = None,
         param_space: Optional[Dict[str, Any]] = None,
@@ -112,7 +112,7 @@ class Tuner:
 
     @classmethod
     def restore(cls, path: str) -> "Tuner":
-        """Restore Tuner after a previously failed run.
+        """Restores Tuner after a previously failed run.
 
         Args:
            path: The path where the previous failed run is checkpointed.
@@ -121,7 +121,7 @@ class Tuner:
                Note: depending on whether ray client mode is used or not,
                this path may or may not exist on your local machine.
         """
-	# TODO(xwjiang): Add some comments to clarify the config behavior across
+    # TODO(xwjiang): Add some comments to clarify the config behavior across
         #  retored runs.
         #  For example, is callbacks supposed to be automatically applied
         #  when a Tuner is restored and fit again?
