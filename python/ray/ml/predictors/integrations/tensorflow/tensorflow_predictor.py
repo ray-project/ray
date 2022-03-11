@@ -50,8 +50,7 @@ class TensorflowPredictor(Predictor):
     def predict(
         self,
         data: DataBatchType,
-        column_names: Optional[List[str]] = None,
-        feature_columns: Optional[List[str]] = None,
+        feature_columns: Optional[List[str], List[int]] = None,
         dtype: Optional[tf.dtypes.DType] = None,
     ) -> DataBatchType:
         """Run inference on data batch.
