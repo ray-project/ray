@@ -1878,6 +1878,7 @@
     file_manager: sdk
 
   smoke_test:
+    frequency: multi
     cluster:
       app_config: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
       compute_template: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
@@ -1917,6 +1918,7 @@
     file_manager: sdk
 
   smoke_test:
+    frequency: multi
     cluster:
       app_config: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
       compute_template: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
@@ -1950,6 +1952,7 @@
     file_manager: sdk
 
   smoke_test:
+    frequency: multi
     cluster:
       app_config: stress_tests/stress_tests_app_config.yaml
       compute_template: stress_tests/smoke_test_compute.yaml
@@ -1978,6 +1981,7 @@
     file_manager: sdk
 
   smoke_test:
+    frequency: multi
     cluster:
       app_config: stress_tests/stress_tests_app_config.yaml
       compute_template: stress_tests/smoke_test_compute.yaml
@@ -2013,6 +2017,7 @@
     file_manager: sdk
 
   smoke_test:
+    frequency: nightly
     cluster:
       app_config: stress_tests/stress_tests_app_config.yaml
       compute_template: stress_tests/smoke_test_compute.yaml
@@ -2116,8 +2121,6 @@
 
     type: sdk_command
     file_manager: sdk
-
-  alert: ''
 
 
 #########################
