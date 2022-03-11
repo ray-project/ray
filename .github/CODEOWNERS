@@ -56,8 +56,8 @@
 /doc/source/data/ @ericl @scv119 @clarkzinzow @jjyao
 
 # Ray workflows.
-/python/ray/workflow/ @ericl @iycheng @stephanie-wang
-/doc/source/workflows/ @ericl @iycheng @stephanie-wang
+/python/ray/workflow/ @ericl @iycheng @stephanie-wang @suquark
+/doc/source/workflows/ @ericl @iycheng @stephanie-wang @suquark
 
 # RLlib.
 /rllib/ @sven1977 @gjoliver @avnishn
