@@ -1,6 +1,6 @@
-.. include:: /_includes/rllib_announcement.rst
+.. include:: /_includes/rllib/announcement.rst
 
-.. include:: /_includes/rllib_we_are_hiring.rst
+.. include:: /_includes/rllib/we_are_hiring.rst
 
 Sample Collections and Trajectory Views
 =======================================
@@ -341,4 +341,4 @@ used by the Policy for training. It will not feed the "next_action"
 to the Model's ``compute_action`` calls (it can't b/c the next action is of course not known
 at that point).
 
-.. include:: /_includes/rllib_announcement_bottom.rst
+.. include:: /_includes/rllib/announcement_bottom.rst

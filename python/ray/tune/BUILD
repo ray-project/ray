@@ -1,3 +1,5 @@
+load("//bazel:python.bzl", "py_test_module_list")
+
 # --------------------------------------------------------------------
 # Tests from the python/ray/tune/tests directory.
 # Covers all tests starting with `test_`.
@@ -372,6 +374,16 @@ py_test(
     srcs = ["tests/test_tune_server.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_T"],
+)
+
+py_test_module_list(
+  files = [
+      "tests/test_trial_executor_inheritance.py",
+  ],
+  size = "large",
+  extra_srcs = [],
+  tags = ["exclusive", "manual", "team:ml"],
+  deps = ["//:tune_lib"],
 )
 
 # --------------------------------------------------------------------

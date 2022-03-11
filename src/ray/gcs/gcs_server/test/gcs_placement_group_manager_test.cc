@@ -47,10 +47,10 @@ class MockPlacementGroupScheduler : public gcs::GcsPlacementGroupSchedulerInterf
 
   MOCK_METHOD1(
       ReleaseUnusedBundles,
-      void(const std::unordered_map<NodeID, std::vector<rpc::Bundle>> &node_to_bundles));
+      void(const absl::flat_hash_map<NodeID, std::vector<rpc::Bundle>> &node_to_bundles));
 
   MOCK_METHOD1(Initialize,
-               void(const std::unordered_map<
+               void(const absl::flat_hash_map<
                     PlacementGroupID, std::vector<std::shared_ptr<BundleSpecification>>>
                         &group_to_bundles));
 
@@ -154,7 +154,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
 
   std::shared_ptr<MockPlacementGroupScheduler> mock_placement_group_scheduler_;
   std::unique_ptr<gcs::GcsPlacementGroupManager> gcs_placement_group_manager_;
-  std::unordered_map<JobID, std::string> job_namespace_table_;
+  absl::flat_hash_map<JobID, std::string> job_namespace_table_;
 
  private:
   std::unique_ptr<std::thread> thread_io_service_;
