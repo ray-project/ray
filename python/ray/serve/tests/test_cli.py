@@ -688,12 +688,14 @@ def test_run_runtime_env(ray_start_stop):
 def global_f(*args):
     return "wonderful world"
 
+
 if sys.platform != "win32":
     app_config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
     )
     with open(app_config_file_name, "r") as f:
         test_build_app = Application.from_yaml(f)
+
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_build(ray_start_stop):
