@@ -61,7 +61,7 @@ class TestRayActorOptionsSchema:
         # Test different runtime_env configurations
 
         ray_actor_options_schema = {
-            "runtime_env": None,
+            "runtime_env": {},
             "num_cpus": 0.2,
             "num_gpus": 50,
             "memory": 3,
@@ -107,12 +107,12 @@ class TestRayActorOptionsSchema:
         # Undefined fields should be forbidden in the schema
 
         ray_actor_options_schema = {
-            "runtime_env": None,
+            "runtime_env": {},
             "num_cpus": None,
             "num_gpus": None,
             "memory": None,
             "object_store_memory": None,
-            "resources": None,
+            "resources": {},
             "accelerator_type": None,
         }
 
@@ -123,6 +123,15 @@ class TestRayActorOptionsSchema:
         ray_actor_options_schema["fake_field"] = None
         with pytest.raises(ValidationError):
             RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+
+    def test_dict_defaults_ray_actor_options(self):
+        # Dictionary fields should have empty dictionaries as defaults, not None
+
+        ray_actor_options_schema = {}
+        schema = RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+        d = schema.dict()
+        assert d["runtime_env"] == {}
+        assert d["resources"] == {}
 
 
 class TestDeploymentSchema:
@@ -144,12 +153,12 @@ class TestDeploymentSchema:
             "health_check_period_s": None,
             "health_check_timeout_s": None,
             "ray_actor_options": {
-                "runtime_env": None,
+                "runtime_env": {},
                 "num_cpus": None,
                 "num_gpus": None,
                 "memory": None,
                 "object_store_memory": None,
-                "resources": None,
+                "resources": {},
                 "accelerator_type": None,
             },
         }
@@ -372,12 +381,12 @@ class TestServeApplicationSchema:
                     "health_check_period_s": None,
                     "health_check_timeout_s": None,
                     "ray_actor_options": {
-                        "runtime_env": None,
+                        "runtime_env": {},
                         "num_cpus": None,
                         "num_gpus": None,
                         "memory": None,
                         "object_store_memory": None,
-                        "resources": None,
+                        "resources": {},
                         "accelerator_type": None,
                     },
                 },
@@ -541,6 +550,27 @@ def test_deployment_to_schema_to_deployment():
     assert ray.get(deployment.get_handle().remote()) == "Hello world!"
     assert requests.get("http://localhost:8000/hello").text == "Hello world!"
     serve.shutdown()
+
+
+pytest.mark.parametrize()
+
+
+def test_unset_fields_schema_to_deployment_ray_actor_options():
+    # Ensure unset fields are excluded from ray_actor_options
+
+    @serve.deployment(
+        num_replicas=3,
+        route_prefix="/hello",
+        ray_actor_options={},
+    )
+    def f():
+        pass
+
+    f._func_or_class = "ray.serve.tests.test_schema.global_f"
+
+    deployment = schema_to_deployment(deployment_to_schema(f))
+
+    assert len(deployment.ray_actor_options) == 0
 
 
 def test_serve_application_to_schema_to_serve_application():
