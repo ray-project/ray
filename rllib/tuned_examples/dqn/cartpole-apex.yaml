@@ -32,5 +32,4 @@ cartpole-apex-dqn:
               - 42
               - 512
               - 144
-        _disable_execution_plan_api: True
         training_intensity: 8

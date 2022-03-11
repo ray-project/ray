@@ -5,6 +5,7 @@ A multi-agent, distributed multi-GPU, league-capable asynch. PPO
 from collections import defaultdict
 import gym
 from typing import DefaultDict, Optional, Type
+import tree
 
 import ray
 from ray.actor import ActorHandle
@@ -331,7 +332,13 @@ class AlphaStarTrainer(appo.APPOTrainer):
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             train_infos = {}
             policy_weights = {}
-            for pol_actor, policy_result in train_results.items():
+            for pol_actor, policy_results in train_results.items():
+                if len(policy_results) > 1:
+                    policy_result = tree.map_structure(
+                        lambda *_args: sum(_args) / len(policy_results), *policy_results
+                    )
+                else:
+                    policy_result = policy_results[0]
                 if policy_result:
                     pid = self.distributed_learners.get_policy_id(pol_actor)
                     train_infos[pid] = policy_result
