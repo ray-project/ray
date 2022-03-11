@@ -151,26 +151,6 @@ class GcsServerTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool UpdateResources(const rpc::UpdateResourcesRequest &request) {
-    std::promise<bool> promise;
-    client_->UpdateResources(request, [&promise](const Status &status,
-                                                 const rpc::UpdateResourcesReply &reply) {
-      RAY_CHECK_OK(status);
-      promise.set_value(true);
-    });
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  bool DeleteResources(const rpc::DeleteResourcesRequest &request) {
-    std::promise<bool> promise;
-    client_->DeleteResources(request, [&promise](const Status &status,
-                                                 const rpc::DeleteResourcesReply &reply) {
-      RAY_CHECK_OK(status);
-      promise.set_value(true);
-    });
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   std::map<std::string, gcs::ResourceTableData> GetResources(const std::string &node_id) {
     rpc::GetResourcesRequest request;
     request.set_node_id(node_id);
@@ -338,25 +318,6 @@ TEST_F(GcsServerTest, TestNodeInfo) {
   rpc::ReportHeartbeatRequest report_heartbeat_request;
   report_heartbeat_request.mutable_heartbeat()->set_node_id(gcs_node_info->node_id());
   ASSERT_TRUE(ReportHeartbeat(report_heartbeat_request));
-
-  // Update node resources
-  rpc::UpdateResourcesRequest update_resources_request;
-  update_resources_request.set_node_id(gcs_node_info->node_id());
-  rpc::ResourceTableData resource_table_data;
-  resource_table_data.set_resource_capacity(1.0);
-  std::string resource_name = "CPU";
-  (*update_resources_request.mutable_resources())[resource_name] = resource_table_data;
-  ASSERT_TRUE(UpdateResources(update_resources_request));
-  auto resources = GetResources(gcs_node_info->node_id());
-  ASSERT_TRUE(resources.size() == 1);
-
-  // Delete node resources
-  rpc::DeleteResourcesRequest delete_resources_request;
-  delete_resources_request.set_node_id(gcs_node_info->node_id());
-  delete_resources_request.add_resource_name_list(resource_name);
-  ASSERT_TRUE(DeleteResources(delete_resources_request));
-  resources = GetResources(gcs_node_info->node_id());
-  ASSERT_TRUE(resources.empty());
 
   // Unregister node info
   rpc::DrainNodeRequest unregister_node_info_request;
