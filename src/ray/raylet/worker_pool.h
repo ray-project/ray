@@ -466,8 +466,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     int num_workers;
     /// The number of pending registration workers in the worker process.
     int num_starting_workers;
-    /// The number of registered workers in the worker process.
-    int num_registered_workers;
+    /// The started workers which is alive.
+    std::unordered_set<std::shared_ptr<WorkerInterface>> alive_started_workers;
     /// The type of the worker.
     rpc::WorkerType worker_type;
     /// The worker process instance.
@@ -627,11 +627,12 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       bool *worker_used /* output */, TaskID *task_id /* output */);
 
   /// We manage all runtime env resources locally by the two methods:
-  /// `CreateRuntimeEnvIfNeeded` and `DeleteRuntimeEnvIfNeeded`.
+  /// `CreateRuntimeEnvOrGet` and `DeleteRuntimeEnvIfPossible`.
   ///
-  /// `CreateRuntimeEnvIfNeeded` means increasing the reference count for the runtime env
-  /// and `DeleteRuntimeEnvIfNeeded` means decreasing the reference count. We increase or
-  /// decrease runtime env reference in the cases below:
+  /// `CreateRuntimeEnvOrGet` means increasing the reference count for the runtime env
+  /// and `DeleteRuntimeEnvIfPossible` means decreasing the reference count. Note, The
+  /// actual ref counting happens in runtime env agent.
+  /// We increase or decrease runtime env reference in the cases below:
   /// For the job with an eager installed runtime env:
   /// - Increase reference when job started.
   /// - Decrease reference when job finished.
@@ -657,13 +658,13 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// assume that the worker process has tree worker instances totally.
 
   /// Create runtime env asynchronously by runtime env agent.
-  void CreateRuntimeEnvIfNeeded(
+  void CreateRuntimeEnvOrGet(
       const std::string &serialized_runtime_env, const JobID &job_id,
-      const CreateRuntimeEnvIfNeededCallback &callback,
+      const CreateRuntimeEnvOrGetCallback &callback,
       const std::string &serialized_allocated_resource_instances = "{}");
 
   /// Delete runtime env asynchronously by runtime env agent.
-  void DeleteRuntimeEnvIfNeeded(const std::string &serialized_runtime_env);
+  void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env);
 
   void AddWorkerProcess(State &state, const int workers_to_start,
                         const rpc::WorkerType worker_type, const Process &proc,

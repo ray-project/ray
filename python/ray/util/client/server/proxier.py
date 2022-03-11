@@ -233,7 +233,7 @@ class ProxyManager:
             f"Serialized runtime env is {serialized_runtime_env}."
         )
 
-        create_env_request = runtime_env_agent_pb2.CreateRuntimeEnvIfNeededRequest(
+        create_env_request = runtime_env_agent_pb2.CreateRuntimeEnvOrGetRequest(
             serialized_runtime_env=serialized_runtime_env,
             job_id=f"ray_client_server_{specific_server.port}".encode("utf-8"),
             source_process="client_server",
@@ -244,7 +244,7 @@ class ProxyManager:
         wait_time_s = 0.5
         while retries <= max_retries:
             try:
-                r = self._runtime_env_stub.CreateRuntimeEnvIfNeeded(create_env_request)
+                r = self._runtime_env_stub.CreateRuntimeEnvOrGet(create_env_request)
                 if r.status == agent_manager_pb2.AgentRpcStatus.AGENT_RPC_STATUS_OK:
                     return r.serialized_runtime_env_context
                 elif (
@@ -268,7 +268,7 @@ class ProxyManager:
                     raise e
 
                 logger.warning(
-                    f"CreateRuntimeEnvIfNeeded request failed: {e}. "
+                    f"CreateRuntimeEnvOrGet request failed: {e}. "
                     f"Retrying after {wait_time_s}s. "
                     f"{max_retries-retries} retries remaining."
                 )
@@ -279,7 +279,7 @@ class ProxyManager:
             wait_time_s *= 2
 
         raise TimeoutError(
-            f"CreateRuntimeEnvIfNeeded request failed after {max_retries} attempts."
+            f"CreateRuntimeEnvOrGet request failed after {max_retries} attempts."
         )
 
     def start_specific_server(self, client_id: str, job_config: JobConfig) -> bool:

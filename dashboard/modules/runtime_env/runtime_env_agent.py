@@ -86,7 +86,7 @@ class ReferenceTable:
         self._unused_uris_callback = unused_uris_callback
         self._unused_runtime_env_callback = unused_runtime_env_callback
         # Don't change URI reference for `client_server` because `client_server` doesn't
-        # send the `DeleteRuntimeEnvIfNeeded` RPC when the client exits.
+        # send the `DeleteRuntimeEnvIfPossible` RPC when the client exits.
         self._reference_exclude_sources: Set[str] = {
             "client_server",
         }
@@ -252,7 +252,7 @@ class RuntimeEnvAgent(
             self._per_job_logger_cache[job_id] = per_job_logger
         return self._per_job_logger_cache[job_id]
 
-    async def CreateRuntimeEnvIfNeeded(self, request, context):
+    async def CreateRuntimeEnvOrGet(self, request, context):
         self._logger.info(
             f"Got request from {request.source_process} to increase "
             "reference for runtime env: "
@@ -384,7 +384,7 @@ class RuntimeEnvAgent(
             self._logger.exception(
                 "[Increase] Failed to parse runtime env: " f"{serialized_env}"
             )
-            return runtime_env_agent_pb2.CreateRuntimeEnvIfNeededReply(
+            return runtime_env_agent_pb2.CreateRuntimeEnvOrGetReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
                 error_message="".join(
                     traceback.format_exception(type(e), e, e.__traceback__)
@@ -411,7 +411,7 @@ class RuntimeEnvAgent(
                         f"successfully. Env: {serialized_env}, "
                         f"context: {context}"
                     )
-                    return runtime_env_agent_pb2.CreateRuntimeEnvIfNeededReply(
+                    return runtime_env_agent_pb2.CreateRuntimeEnvOrGetReply(
                         status=agent_manager_pb2.AGENT_RPC_STATUS_OK,
                         serialized_runtime_env_context=context,
                     )
@@ -425,7 +425,7 @@ class RuntimeEnvAgent(
                     self._reference_table.decrease_reference(
                         runtime_env, serialized_env, request.source_process
                     )
-                    return runtime_env_agent_pb2.CreateRuntimeEnvIfNeededReply(
+                    return runtime_env_agent_pb2.CreateRuntimeEnvOrGetReply(
                         status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
                         error_message=error_message,
                     )
@@ -453,7 +453,7 @@ class RuntimeEnvAgent(
                 successful, serialized_context if successful else error_message
             )
             # Reply the RPC
-            return runtime_env_agent_pb2.CreateRuntimeEnvIfNeededReply(
+            return runtime_env_agent_pb2.CreateRuntimeEnvOrGetReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_OK
                 if successful
                 else agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
@@ -461,7 +461,7 @@ class RuntimeEnvAgent(
                 error_message=error_message,
             )
 
-    async def DeleteRuntimeEnvIfNeeded(self, request, context):
+    async def DeleteRuntimeEnvIfPossible(self, request, context):
         self._logger.info(
             f"Got request from {request.source_process} to decrease "
             "reference for runtime env: "
@@ -475,7 +475,7 @@ class RuntimeEnvAgent(
                 "[Decrease] Failed to parse runtime env: "
                 f"{request.serialized_runtime_env}"
             )
-            return runtime_env_agent_pb2.CreateRuntimeEnvIfNeededReply(
+            return runtime_env_agent_pb2.CreateRuntimeEnvOrGetReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
                 error_message="".join(
                     traceback.format_exception(type(e), e, e.__traceback__)
@@ -486,7 +486,7 @@ class RuntimeEnvAgent(
             runtime_env, request.serialized_runtime_env, request.source_process
         )
 
-        return runtime_env_agent_pb2.DeleteRuntimeEnvIfNeededReply(
+        return runtime_env_agent_pb2.DeleteRuntimeEnvIfPossibleReply(
             status=agent_manager_pb2.AGENT_RPC_STATUS_OK
         )
 

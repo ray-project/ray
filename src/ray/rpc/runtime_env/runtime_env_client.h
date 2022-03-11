@@ -23,12 +23,12 @@ namespace rpc {
 
 class RuntimeEnvAgentClientInterface {
  public:
-  virtual void CreateRuntimeEnvIfNeeded(
-      const rpc::CreateRuntimeEnvIfNeededRequest &request,
-      const rpc::ClientCallback<rpc::CreateRuntimeEnvIfNeededReply> &callback) = 0;
-  virtual void DeleteRuntimeEnvIfNeeded(
-      const rpc::DeleteRuntimeEnvIfNeededRequest &request,
-      const rpc::ClientCallback<rpc::DeleteRuntimeEnvIfNeededReply> &callback) = 0;
+  virtual void CreateRuntimeEnvOrGet(
+      const rpc::CreateRuntimeEnvOrGetRequest &request,
+      const rpc::ClientCallback<rpc::CreateRuntimeEnvOrGetReply> &callback) = 0;
+  virtual void DeleteRuntimeEnvIfPossible(
+      const rpc::DeleteRuntimeEnvIfPossibleRequest &request,
+      const rpc::ClientCallback<rpc::DeleteRuntimeEnvIfPossibleReply> &callback) = 0;
   virtual ~RuntimeEnvAgentClientInterface(){};
 };
 
@@ -50,14 +50,14 @@ class RuntimeEnvAgentClient : public RuntimeEnvAgentClientInterface {
   ///
   /// \param request The request message
   /// \param callback  The callback function that handles reply
-  VOID_RPC_CLIENT_METHOD(RuntimeEnvService, CreateRuntimeEnvIfNeeded, grpc_client_,
+  VOID_RPC_CLIENT_METHOD(RuntimeEnvService, CreateRuntimeEnvOrGet, grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
   /// Delete URIs.
   ///
   /// \param request The request message
   /// \param callback  The callback function that handles reply
-  VOID_RPC_CLIENT_METHOD(RuntimeEnvService, DeleteRuntimeEnvIfNeeded, grpc_client_,
+  VOID_RPC_CLIENT_METHOD(RuntimeEnvService, DeleteRuntimeEnvIfPossible, grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
  private:

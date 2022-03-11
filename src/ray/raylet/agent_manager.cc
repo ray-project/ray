@@ -135,10 +135,10 @@ void AgentManager::StartAgent() {
   monitor_thread.detach();
 }
 
-void AgentManager::CreateRuntimeEnvIfNeeded(
+void AgentManager::CreateRuntimeEnvOrGet(
     const JobID &job_id, const std::string &serialized_runtime_env,
     const std::string &serialized_allocated_resource_instances,
-    CreateRuntimeEnvIfNeededCallback callback) {
+    CreateRuntimeEnvOrGetCallback callback) {
   // If the agent cannot be started, fail the request.
   if (!should_start_agent_) {
     std::stringstream str_stream;
@@ -181,28 +181,27 @@ void AgentManager::CreateRuntimeEnvIfNeeded(
 
     RAY_LOG_EVERY_MS(INFO, 3 * 10 * 1000)
         << "Runtime env agent is not registered yet. Will retry "
-           "CreateRuntimeEnvIfNeeded later: "
+           "CreateRuntimeEnvOrGet later: "
         << serialized_runtime_env;
     delay_executor_(
         [this, job_id, serialized_runtime_env, serialized_allocated_resource_instances,
          callback = std::move(callback)] {
-          CreateRuntimeEnvIfNeeded(job_id, serialized_runtime_env,
-                                   serialized_allocated_resource_instances, callback);
+          CreateRuntimeEnvOrGet(job_id, serialized_runtime_env,
+                                serialized_allocated_resource_instances, callback);
         },
         RayConfig::instance().agent_manager_retry_interval_ms());
     return;
   }
-  rpc::CreateRuntimeEnvIfNeededRequest request;
+  rpc::CreateRuntimeEnvOrGetRequest request;
   request.set_job_id(job_id.Hex());
   request.set_serialized_runtime_env(serialized_runtime_env);
   request.set_serialized_allocated_resource_instances(
       serialized_allocated_resource_instances);
   request.set_source_process("raylet");
-  runtime_env_agent_client_->CreateRuntimeEnvIfNeeded(
-      request,
-      [this, job_id, serialized_runtime_env, serialized_allocated_resource_instances,
-       callback = std::move(callback)](const Status &status,
-                                       const rpc::CreateRuntimeEnvIfNeededReply &reply) {
+  runtime_env_agent_client_->CreateRuntimeEnvOrGet(
+      request, [this, job_id, serialized_runtime_env,
+                serialized_allocated_resource_instances, callback = std::move(callback)](
+                   const Status &status, const rpc::CreateRuntimeEnvOrGetReply &reply) {
         if (status.ok()) {
           if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
             callback(true, reply.serialized_runtime_env_context(),
@@ -223,33 +222,33 @@ void AgentManager::CreateRuntimeEnvIfNeeded(
           delay_executor_(
               [this, job_id, serialized_runtime_env,
                serialized_allocated_resource_instances, callback = std::move(callback)] {
-                CreateRuntimeEnvIfNeeded(job_id, serialized_runtime_env,
-                                         serialized_allocated_resource_instances,
-                                         callback);
+                CreateRuntimeEnvOrGet(job_id, serialized_runtime_env,
+                                      serialized_allocated_resource_instances, callback);
               },
               RayConfig::instance().agent_manager_retry_interval_ms());
         }
       });
 }
 
-void AgentManager::DeleteRuntimeEnvIfNeeded(const std::string &serialized_runtime_env,
-                                            DeleteRuntimeEnvIfNeededCallback callback) {
+void AgentManager::DeleteRuntimeEnvIfPossible(
+    const std::string &serialized_runtime_env,
+    DeleteRuntimeEnvIfPossibleCallback callback) {
   if (runtime_env_agent_client_ == nullptr) {
     RAY_LOG(INFO) << "Runtime env agent is not registered yet. Will retry "
-                     "DeleteRuntimeEnvIfNeeded later.";
+                     "DeleteRuntimeEnvIfPossible later.";
     delay_executor_(
         [this, serialized_runtime_env, callback] {
-          DeleteRuntimeEnvIfNeeded(serialized_runtime_env, callback);
+          DeleteRuntimeEnvIfPossible(serialized_runtime_env, callback);
         },
         RayConfig::instance().agent_manager_retry_interval_ms());
     return;
   }
-  rpc::DeleteRuntimeEnvIfNeededRequest request;
+  rpc::DeleteRuntimeEnvIfPossibleRequest request;
   request.set_serialized_runtime_env(serialized_runtime_env);
   request.set_source_process("raylet");
-  runtime_env_agent_client_->DeleteRuntimeEnvIfNeeded(
+  runtime_env_agent_client_->DeleteRuntimeEnvIfPossible(
       request, [this, serialized_runtime_env, callback](
-                   Status status, const rpc::DeleteRuntimeEnvIfNeededReply &reply) {
+                   Status status, const rpc::DeleteRuntimeEnvIfPossibleReply &reply) {
         if (status.ok()) {
           if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
             callback(true);
@@ -268,7 +267,7 @@ void AgentManager::DeleteRuntimeEnvIfNeeded(const std::string &serialized_runtim
               << ", maybe there are some network problems, will retry it later.";
           delay_executor_(
               [this, serialized_runtime_env, callback] {
-                DeleteRuntimeEnvIfNeeded(serialized_runtime_env, callback);
+                DeleteRuntimeEnvIfPossible(serialized_runtime_env, callback);
               },
               RayConfig::instance().agent_manager_retry_interval_ms());
         }

@@ -87,10 +87,10 @@ static int GetReferenceCount(const std::string serialized_runtime_env) {
 
 class MockRuntimeEnvAgentClient : public rpc::RuntimeEnvAgentClientInterface {
  public:
-  void CreateRuntimeEnvIfNeeded(
-      const rpc::CreateRuntimeEnvIfNeededRequest &request,
-      const rpc::ClientCallback<rpc::CreateRuntimeEnvIfNeededReply> &callback) {
-    rpc::CreateRuntimeEnvIfNeededReply reply;
+  void CreateRuntimeEnvOrGet(
+      const rpc::CreateRuntimeEnvOrGetRequest &request,
+      const rpc::ClientCallback<rpc::CreateRuntimeEnvOrGetReply> &callback) {
+    rpc::CreateRuntimeEnvOrGetReply reply;
     if (request.serialized_runtime_env() == BAD_RUNTIME_ENV) {
       reply.set_status(rpc::AGENT_RPC_STATUS_FAILED);
       reply.set_error_message(BAD_RUNTIME_ENV_ERROR_MSG);
@@ -112,14 +112,14 @@ class MockRuntimeEnvAgentClient : public rpc::RuntimeEnvAgentClientInterface {
     callback(Status::OK(), reply);
   };
 
-  void DeleteRuntimeEnvIfNeeded(
-      const rpc::DeleteRuntimeEnvIfNeededRequest &request,
-      const rpc::ClientCallback<rpc::DeleteRuntimeEnvIfNeededReply> &callback) {
+  void DeleteRuntimeEnvIfPossible(
+      const rpc::DeleteRuntimeEnvIfPossibleRequest &request,
+      const rpc::ClientCallback<rpc::DeleteRuntimeEnvIfPossibleReply> &callback) {
     auto it = runtime_env_reference.find(request.serialized_runtime_env());
     RAY_CHECK(it != runtime_env_reference.end());
     runtime_env_reference[request.serialized_runtime_env()] -= 1;
     RAY_CHECK(runtime_env_reference[request.serialized_runtime_env()] >= 0);
-    rpc::DeleteRuntimeEnvIfNeededReply reply;
+    rpc::DeleteRuntimeEnvIfPossibleReply reply;
     reply.set_status(rpc::AGENT_RPC_STATUS_OK);
     callback(Status::OK(), reply);
   };
