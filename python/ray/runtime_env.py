@@ -21,19 +21,6 @@ from ray.util.annotations import PublicAPI
 logger = logging.getLogger(__name__)
 
 
-def _build_proto_pip_runtime_env(runtime_env_dict: dict, runtime_env: ProtoRuntimeEnv):
-    """Construct pip runtime env protobuf from runtime env dict."""
-    if runtime_env_dict.get("pip"):
-        if isinstance(runtime_env_dict["pip"], list):
-            runtime_env.python_runtime_env.pip_runtime_env.config.packages.extend(
-                runtime_env_dict["pip"]
-            )
-        else:
-            runtime_env.python_runtime_env.pip_runtime_env.virtual_env_name = (
-                runtime_env_dict["pip"]
-            )
-
-
 def _parse_proto_pip_runtime_env(runtime_env: ProtoRuntimeEnv, runtime_env_dict: dict):
     """Parse pip runtime env protobuf to runtime env dict."""
     if runtime_env.python_runtime_env.HasField("pip_runtime_env"):
@@ -45,21 +32,6 @@ def _parse_proto_pip_runtime_env(runtime_env: ProtoRuntimeEnv, runtime_env_dict:
             runtime_env_dict[
                 "pip"
             ] = runtime_env.python_runtime_env.pip_runtime_env.virtual_env_name
-
-
-def _build_proto_conda_runtime_env(
-    runtime_env_dict: dict, runtime_env: ProtoRuntimeEnv
-):
-    """Construct conda runtime env protobuf from runtime env dict."""
-    if runtime_env_dict.get("conda"):
-        if isinstance(runtime_env_dict["conda"], str):
-            runtime_env.python_runtime_env.conda_runtime_env.conda_env_name = (
-                runtime_env_dict["conda"]
-            )
-        else:
-            runtime_env.python_runtime_env.conda_runtime_env.config = json.dumps(
-                runtime_env_dict["conda"], sort_keys=True
-            )
 
 
 def _parse_proto_conda_runtime_env(
@@ -77,23 +49,6 @@ def _parse_proto_conda_runtime_env(
             )
 
 
-def _build_proto_container_runtime_env(
-    runtime_env_dict: dict, runtime_env: ProtoRuntimeEnv
-):
-    """Construct container runtime env protobuf from runtime env dict."""
-    if runtime_env_dict.get("container"):
-        container = runtime_env_dict["container"]
-        runtime_env.python_runtime_env.container_runtime_env.image = container.get(
-            "image", ""
-        )
-        runtime_env.python_runtime_env.container_runtime_env.worker_path = (
-            container.get("worker_path", "")
-        )
-        runtime_env.python_runtime_env.container_runtime_env.run_options.extend(
-            container.get("run_options", [])
-        )
-
-
 def _parse_proto_container_runtime_env(
     runtime_env: ProtoRuntimeEnv, runtime_env_dict: dict
 ):
@@ -109,17 +64,6 @@ def _parse_proto_container_runtime_env(
         runtime_env_dict["container"]["run_options"] = list(
             runtime_env.python_runtime_env.container_runtime_env.run_options
         )
-
-
-def _build_proto_plugin_runtime_env(
-    runtime_env_dict: dict, runtime_env: ProtoRuntimeEnv
-):
-    """Construct plugin runtime env protobuf from runtime env dict."""
-    if runtime_env_dict.get("plugins"):
-        for class_path, plugin_field in runtime_env_dict["plugins"].items():
-            plugin = runtime_env.python_runtime_env.plugin_runtime_env.plugins.add()
-            plugin.class_path = class_path
-            plugin.config = json.dumps(plugin_field, sort_keys=True)
 
 
 def _parse_proto_plugin_runtime_env(
@@ -244,6 +188,12 @@ class RuntimeEnv(dict):
         "eager_install",
     }
 
+    extensions_fields: Set[str] = {
+        "_ray_release",
+        "_ray_commit",
+        "_inject_current_ray",
+    }
+
     def __init__(
         self,
         *,
@@ -257,8 +207,6 @@ class RuntimeEnv(dict):
         **kwargs,
     ):
         super().__init__()
-        self._cached_pb = None
-        self.__proto_runtime_env = None
 
         runtime_env = kwargs
         if py_modules is not None:
@@ -298,9 +246,7 @@ class RuntimeEnv(dict):
         for option, validate_fn in OPTION_TO_VALIDATION_FN.items():
             option_val = runtime_env.get(option)
             if option_val is not None:
-                validated_option_val = validate_fn(option_val)
-                if validated_option_val is not None:
-                    self[option] = validated_option_val
+                self[option] = option_val
 
         if "_ray_release" in runtime_env:
             self["_ray_release"] = runtime_env["_ray_release"]
@@ -367,58 +313,82 @@ class RuntimeEnv(dict):
 
         return plugin_uris
 
+    def __setitem__(self, key: str, value: Any) -> None:
+        if key not in RuntimeEnv.known_fields:
+            logger.warning(
+                "The following unknown entries in the runtime_env dictionary "
+                f"will be ignored: {key}. If you intended to use "
+                "them as plugins, they must be nested in the `plugins` field."
+            )
+            return
+        res_value = value
+        if key in OPTION_TO_VALIDATION_FN:
+            res_value = OPTION_TO_VALIDATION_FN[key](value)
+        return super().__setitem__(key, res_value)
+
     @classmethod
     def deserialize(cls, serialized_runtime_env: str) -> "RuntimeEnv":  # noqa: F821
         proto_runtime_env = json_format.Parse(serialized_runtime_env, ProtoRuntimeEnv())
         return cls.from_proto(proto_runtime_env)
 
     def serialize(self) -> str:
-
+        # To ensure the accuracy of Proto, `__setitem__` can only guarantee the
+        # accuracy of a certain field, not the overall accuracy
+        runtime_env = type(self)(_validate=True, **self)
+        proto_runtime_env = runtime_env.build_proto_runtime_env()
         return json.dumps(
-            json.loads(json_format.MessageToJson(self._proto_runtime_env)),
+            json.loads(json_format.MessageToJson(proto_runtime_env)),
             sort_keys=True,
         )
 
     def to_dict(self) -> Dict:
         return dict(deepcopy(self))
 
-    @property
-    def _proto_runtime_env(self):
-        if self.__proto_runtime_env:
-            return self.__proto_runtime_env
+    def build_proto_runtime_env(self):
         proto_runtime_env = ProtoRuntimeEnv()
-        proto_runtime_env.working_dir = self.get("working_dir", "")
-        if "working_dir" in self:
-            proto_runtime_env.uris.working_dir_uri = self["working_dir"]
-        if "py_modules" in self:
-            proto_runtime_env.python_runtime_env.py_modules.extend(self["py_modules"])
-            for uri in self["py_modules"]:
-                proto_runtime_env.uris.py_modules_uris.append(uri)
-        if "conda" in self:
-            uri = get_conda_uri(self)
-            if uri is not None:
-                proto_runtime_env.uris.conda_uri = uri
-        if "pip" in self:
-            uri = get_pip_uri(self)
-            if uri is not None:
-                proto_runtime_env.uris.pip_uri = uri
-        env_vars = self.get("env_vars", {})
-        proto_runtime_env.env_vars.update(env_vars.items())
-        if "_ray_release" in self:
-            proto_runtime_env.extensions["_ray_release"] = str(self["_ray_release"])
-        if "_ray_commit" in self:
-            proto_runtime_env.extensions["_ray_commit"] = str(self["_ray_commit"])
-        if "_inject_current_ray" in self:
-            proto_runtime_env.extensions["_inject_current_ray"] = str(
-                self["_inject_current_ray"]
-            )
-        _build_proto_pip_runtime_env(self, proto_runtime_env)
-        _build_proto_conda_runtime_env(self, proto_runtime_env)
-        _build_proto_container_runtime_env(self, proto_runtime_env)
-        _build_proto_plugin_runtime_env(self, proto_runtime_env)
 
-        self.__proto_runtime_env = proto_runtime_env
-        return self.__proto_runtime_env
+        # set working_dir
+        proto_runtime_env.working_dir = self.working_dir()
+
+        # set working_dir uri
+        working_dir_uri = self.working_dir_uri()
+        if working_dir_uri is not None:
+            proto_runtime_env.uris.working_dir_uri = working_dir_uri
+
+        # set py_modules
+        py_modules_uris = self.py_modules_uris()
+        if py_modules_uris:
+            proto_runtime_env.python_runtime_env.py_modules.extend(py_modules_uris)
+            # set py_modules uris
+            proto_runtime_env.uris.py_modules_uris.extend(py_modules_uris)
+
+        # set conda uri
+        conda_uri = self.conda_uri()
+        if conda_uri is not None:
+            proto_runtime_env.uris.conda_uri = conda_uri
+
+        # set pip uri
+        pip_uri = self.pip_uri()
+        if pip_uri is not None:
+            proto_runtime_env.uris.pip_uri = pip_uri
+
+        # set env_vars
+        env_vars = self.env_vars()
+        proto_runtime_env.env_vars.update(env_vars.items())
+
+        # set extensions
+        for extensions_field in RuntimeEnv.extensions_fields:
+            if extensions_field in self:
+                proto_runtime_env.extensions[extensions_field] = str(
+                    self[extensions_field]
+                )
+
+        self._build_proto_pip_runtime_env(proto_runtime_env)
+        self._build_proto_conda_runtime_env(proto_runtime_env)
+        self._build_proto_container_runtime_env(proto_runtime_env)
+        self._build_proto_plugin_runtime_env(proto_runtime_env)
+
+        return proto_runtime_env
 
     @classmethod
     def from_proto(cls, proto_runtime_env: ProtoRuntimeEnv):
@@ -440,98 +410,168 @@ class RuntimeEnv(dict):
         return cls(_validate=False, **initialize_dict)
 
     def has_uris(self) -> bool:
-        uris = self._proto_runtime_env.uris
         if (
-            uris.working_dir_uri
-            or uris.py_modules_uris
-            or uris.conda_uri
-            or uris.pip_uri
-            or uris.plugin_uris
+            self.working_dir_uri()
+            or self.py_modules_uris()
+            or self.conda_uri()
+            or self.pip_uri()
+            or self.plugin_uris()
         ):
             return True
         return False
 
-    def working_dir_uri(self) -> str:
-        return self._proto_runtime_env.uris.working_dir_uri
+    def working_dir_uri(self) -> Optional[str]:
+        return self.get("working_dir")
 
     def py_modules_uris(self) -> List[str]:
-        return list(self._proto_runtime_env.uris.py_modules_uris)
+        if "py_modules" in self:
+            return list(self["py_modules"])
+        return []
 
-    def conda_uri(self) -> str:
-        return self._proto_runtime_env.uris.conda_uri
+    def conda_uri(self) -> Optional[str]:
+        if "conda" in self:
+            return get_conda_uri(self)
+        return None
 
-    def pip_uri(self) -> str:
-        return self._proto_runtime_env.uris.pip_uri
+    def pip_uri(self) -> Optional[str]:
+        if "pip" in self:
+            return get_pip_uri(self)
+        return None
 
     def plugin_uris(self) -> List[str]:
-        return list(self._proto_runtime_env.uris.plugin_uris)
+        """Not implemented yet, always return a empty list"""
+        return []
 
     def working_dir(self) -> str:
-        return self._proto_runtime_env.working_dir
+        return self.get("working_dir", "")
 
     def py_modules(self) -> List[str]:
-        return list(self._proto_runtime_env.python_runtime_env.py_modules)
+        if "py_modules" in self:
+            return list(self["py_modules"])
+        return []
 
     def env_vars(self) -> Dict:
-        return dict(self._proto_runtime_env.env_vars)
-
-    def plugins(self) -> List[Tuple[str, str]]:
-        result = list()
-        for (
-            plugin
-        ) in self._proto_runtime_env.python_runtime_env.plugin_runtime_env.plugins:
-            result.append((plugin.class_path, plugin.config))
-        return result
+        return self.get("env_vars", {})
 
     def has_conda(self) -> str:
-        return self._proto_runtime_env.python_runtime_env.HasField("conda_runtime_env")
+        if self.get("conda"):
+            return True
+        return False
 
     def conda_env_name(self) -> str:
-        if not self.has_conda():
+        if not self.has_conda() or not isinstance(self["conda"], str):
             return None
-        if not self._proto_runtime_env.python_runtime_env.conda_runtime_env.HasField(
-            "conda_env_name"
-        ):
-            return None
-        return (
-            self._proto_runtime_env.python_runtime_env.conda_runtime_env.conda_env_name
-        )
+        return self["conda"]
 
     def conda_config(self) -> str:
-        if not self.has_conda():
+        if not self.has_conda() or not isinstance(self["conda"], dict):
             return None
-        if not self._proto_runtime_env.python_runtime_env.conda_runtime_env.HasField(
-            "config"
-        ):
-            return None
-        return self._proto_runtime_env.python_runtime_env.conda_runtime_env.config
+        return json.dumps(self["conda"], sort_keys=True)
 
     def has_pip(self) -> bool:
-        return self._proto_runtime_env.python_runtime_env.HasField("pip_runtime_env")
+        if self.get("pip"):
+            return True
+        return False
 
     def pip_packages(self) -> List:
-        if not self.has_pip():
+        if not self.has_pip() or not isinstance(self["pip"], list):
             return []
-        return list(
-            self._proto_runtime_env.python_runtime_env.pip_runtime_env.config.packages
-        )
+        return self["pip"]
 
-    def get_extension(self, key) -> str:
-        return self._proto_runtime_env.extensions.get(key)
+    def virtualenv_name(self) -> Optional[str]:
+        if not self.has_pip() or not isinstance(self["pip"], str):
+            return None
+        return self["pip"]
+
+    def get_extension(self, key) -> Optional[str]:
+        if key not in RuntimeEnv.extensions_fields:
+            raise ValueError(
+                f"Extension key must be one of {RuntimeEnv.extensions_fields}, "
+                f"got: {key}"
+            )
+        return self.get(key)
 
     def has_py_container(self) -> bool:
-        return self._proto_runtime_env.python_runtime_env.HasField(
-            "container_runtime_env"
-        )
+        if self.get("container"):
+            return True
+        return False
 
-    def py_container_image(self) -> str:
+    def py_container_image(self) -> Optional[str]:
         if not self.has_py_container():
             return None
-        return self._proto_runtime_env.python_runtime_env.container_runtime_env.image
+        return self["container"].get("image", "")
+
+    def py_container_worker_path(self) -> Optional[str]:
+        if not self.has_py_container():
+            return None
+        return self["container"].get("worker_path", "")
 
     def py_container_run_options(self) -> List:
         if not self.has_py_container():
             return None
-        return list(
-            self._proto_runtime_env.python_runtime_env.container_runtime_env.run_options
-        )
+        return self["container"].get("run_options", [])
+
+    def has_plugins(self) -> bool:
+        if self.get("plugins"):
+            return True
+        return False
+
+    def plugins(self) -> List[Tuple[str, str]]:
+        result = list()
+        if self.has_plugins():
+            for class_path, plugin_field in self["plugins"].items():
+                result.append((class_path, json.dumps(plugin_field, sort_keys=True)))
+        return result
+
+    def _build_proto_pip_runtime_env(self, runtime_env: ProtoRuntimeEnv):
+        """Construct pip runtime env protobuf from runtime env dict."""
+        if self.has_pip():
+            pip_packages = self.pip_packages()
+            virtualenv_name = self.virtualenv_name()
+            # It is impossible for pip_packages and virtualenv_name
+            # to be non-null at the same time
+            if pip_packages:
+                runtime_env.python_runtime_env.pip_runtime_env.config.packages.extend(
+                    pip_packages
+                )
+            else:
+                # It is impossible for virtualenv_name is None
+                runtime_env.python_runtime_env.pip_runtime_env.virtual_env_name = (
+                    virtualenv_name
+                )
+
+    def _build_proto_conda_runtime_env(self, runtime_env: ProtoRuntimeEnv):
+        """Construct conda runtime env protobuf from runtime env dict."""
+        if self.has_conda():
+            conda_env_name = self.conda_env_name()
+            conda_config = self.conda_config()
+            # It is impossible for conda_env_name and conda_config
+            # to be non-null at the same time
+            if conda_env_name:
+                runtime_env.python_runtime_env.conda_runtime_env.conda_env_name = (
+                    conda_env_name
+                )
+            else:
+                # It is impossible for conda_config is None
+                runtime_env.python_runtime_env.conda_runtime_env.config = conda_config
+
+    def _build_proto_container_runtime_env(self, runtime_env: ProtoRuntimeEnv):
+        """Construct container runtime env protobuf from runtime env dict."""
+        if self.has_py_container():
+            runtime_env.python_runtime_env.container_runtime_env.image = (
+                self.py_container_image()
+            )
+            runtime_env.python_runtime_env.container_runtime_env.worker_path = (
+                self.py_container_worker_path()
+            )
+            runtime_env.python_runtime_env.container_runtime_env.run_options.extend(
+                self.py_container_run_options()
+            )
+
+    def _build_proto_plugin_runtime_env(self, runtime_env: ProtoRuntimeEnv):
+        """Construct plugin runtime env protobuf from runtime env dict."""
+        if self.has_plugins():
+            for class_path, plugin_field in self.plugins():
+                plugin = runtime_env.python_runtime_env.plugin_runtime_env.plugins.add()
+                plugin.class_path = class_path
+                plugin.config = plugin_field

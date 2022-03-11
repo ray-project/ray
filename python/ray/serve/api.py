@@ -496,9 +496,11 @@ class Client:
 
         curr_job_env = ray.get_runtime_context().runtime_env
         if "runtime_env" in ray_actor_options:
-            ray_actor_options["runtime_env"].setdefault(
-                "working_dir", curr_job_env.get("working_dir")
-            )
+            # It is illegal to set field working_dir to None.
+            if curr_job_env.get("working_dir") is not None:
+                ray_actor_options["runtime_env"].setdefault(
+                    "working_dir", curr_job_env.get("working_dir")
+                )
         else:
             ray_actor_options["runtime_env"] = curr_job_env
 
