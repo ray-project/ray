@@ -97,6 +97,7 @@ class DatasetPipeline(Generic[T]):
         self._executed = _executed or [False]
         self._dataset_iter = None
         self._first_dataset = None
+        self._schema = None
         self._stats = DatasetPipelineStats()
 
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
@@ -486,7 +487,9 @@ class DatasetPipeline(Generic[T]):
         For datasets of Arrow records, this will return the Arrow schema.
         For dataset of Python objects, this returns their Python type.
 
-        Note: schema can only be access before the execution of DatasetPipeline.
+        Note: This is intended to be a method for peeking schema before
+        the execution of DatasetPipeline. If execution has already started,
+        it will simply return the cached schema from the previous call.
 
         Time complexity: O(1)
 
@@ -499,9 +502,9 @@ class DatasetPipeline(Generic[T]):
             The Python type or Arrow schema of the records, or None if the
             schema is not known.
         """
-        if self._executed[0]:
-            raise RuntimeError("Pipeline cannot read schema after execution.")
-        return self._peek().schema(fetch_if_missing)
+        if not self._executed[0]:
+            self._schema = self._peek().schema(fetch_if_missing)
+        return self._schema
 
     def count(self) -> int:
         """Count the number of records in the dataset pipeline.

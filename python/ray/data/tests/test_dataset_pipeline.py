@@ -263,30 +263,33 @@ def test_schema(ray_start_regular_shared):
     assert pipe.schema() == int
 
 
-def test_schema_peak(ray_start_regular_shared):
+def test_schema_peek(ray_start_regular_shared):
     # Multiple datasets
     pipe = ray.data.range(6).window(blocks_per_window=2)
     assert pipe.schema() == int
+    assert pipe._first_dataset is not None
     dss = list(pipe.iter_datasets())
     assert len(dss) == 3, dss
-    with pytest.raises(RuntimeError):
-        pipe.schema()
+    assert pipe._first_dataset is None
+    assert pipe.schema() == int
 
     # Only 1 dataset
     pipe = ray.data.range(1).window(blocks_per_window=2)
     assert pipe.schema() == int
+    assert pipe._first_dataset is not None
     dss = list(pipe.iter_datasets())
     assert len(dss) == 1, dss
-    with pytest.raises(RuntimeError):
-        pipe.schema()
+    assert pipe._first_dataset is None
+    assert pipe.schema() == int
 
     # Empty datasets
     pipe = ray.data.range(6).filter(lambda x: x < 0).window(blocks_per_window=2)
     assert pipe.schema() is None
+    assert pipe._first_dataset is not None
     dss = list(pipe.iter_datasets())
     assert len(dss) == 3, dss
-    with pytest.raises(RuntimeError):
-        pipe.schema()
+    assert pipe._first_dataset is None
+    assert pipe.schema() is None
 
 
 def test_split(ray_start_regular_shared):
