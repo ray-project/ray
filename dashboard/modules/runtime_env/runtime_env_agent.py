@@ -6,9 +6,10 @@ import json
 import logging
 import os
 import time
+import async_timeout
 from typing import Dict, Set
-from ray._private.utils import import_attr
 
+from ray._private.utils import import_attr
 from ray.core.generated import runtime_env_agent_pb2
 from ray.core.generated import runtime_env_agent_pb2_grpc
 from ray.core.generated import agent_manager_pb2
@@ -27,7 +28,7 @@ from ray._private.runtime_env.working_dir import WorkingDirManager
 from ray._private.runtime_env.container import ContainerManager
 from ray._private.runtime_env.plugin import decode_plugin_uri
 from ray._private.runtime_env.uri_cache import URICache
-from ray.runtime_env import RuntimeEnv
+from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 
 default_logger = logging.getLogger(__name__)
 
@@ -217,6 +218,7 @@ class RuntimeEnvAgent(
             return context
 
         serialized_env = request.serialized_runtime_env
+        serialized_env_config = request.serialized_runtime_env_config
 
         if serialized_env not in self._env_locks:
             # async lock to prevent the same env being concurrently installed
@@ -231,6 +233,7 @@ class RuntimeEnvAgent(
                     self._logger.info(
                         "Runtime env already created "
                         f"successfully. Env: {serialized_env}, "
+                        f" Env Config: {serialized_env_config}"
                         f"context: {context}"
                     )
                     return runtime_env_agent_pb2.CreateRuntimeEnvReply(
@@ -241,7 +244,9 @@ class RuntimeEnvAgent(
                     error_message = result.result
                     self._logger.info(
                         "Runtime env already failed. "
-                        f"Env: {serialized_env}, err: {error_message}"
+                        f"Env: {serialized_env}, "
+                        f"Env Config: {serialized_env_config}, "
+                        f"err: {error_message}"
                     )
                     return runtime_env_agent_pb2.CreateRuntimeEnvReply(
                         status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
@@ -252,15 +257,23 @@ class RuntimeEnvAgent(
                 self._logger.info(f"Sleeping for {SLEEP_FOR_TESTING_S}s.")
                 time.sleep(int(SLEEP_FOR_TESTING_S))
 
-            self._logger.info(f"Creating runtime env: {serialized_env}")
+            self._logger.info(
+                f"Creating runtime env: {serialized_env}, "
+                f"runtime env config: {serialized_env_config}"
+            )
             runtime_env_context: RuntimeEnvContext = None
             error_message = None
+            runtime_env_config = RuntimeEnvConfig.deserialize(serialized_env_config)
             for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
                 try:
-                    runtime_env_context = await _setup_runtime_env(
-                        serialized_env, request.serialized_allocated_resource_instances
-                    )
-                    error_message = None
+                    with async_timeout.timeout(
+                        runtime_env_config.setup_timeout_seconds
+                    ):
+                        runtime_env_context = await _setup_runtime_env(
+                            serialized_env,
+                            request.serialized_allocated_resource_instances,
+                        )
+                        error_message = None
                     break
                 except Exception as e:
                     err_msg = f"Failed to create runtime env {serialized_env}."

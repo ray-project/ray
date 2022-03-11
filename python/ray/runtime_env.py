@@ -6,7 +6,10 @@ from google.protobuf import json_format
 from copy import deepcopy
 
 import ray
-from ray.core.generated.runtime_env_common_pb2 import RuntimeEnv as ProtoRuntimeEnv
+from ray.core.generated.runtime_env_common_pb2 import (
+    RuntimeEnv as ProtoRuntimeEnv,
+    RuntimeEnvConfig as ProtoRuntimeEnvConfig,
+)
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin, encode_plugin_uri
 from ray._private.runtime_env.validation import OPTION_TO_VALIDATION_FN
 from ray._private.utils import import_attr
@@ -74,6 +77,81 @@ def _parse_proto_plugin_runtime_env(
         runtime_env_dict["plugins"] = dict()
         for plugin in runtime_env.python_runtime_env.plugin_runtime_env.plugins:
             runtime_env_dict["plugins"][plugin.class_path] = json.loads(plugin.config)
+
+
+@PublicAPI(stability="beta")
+class RuntimeEnvConfig:
+    known_fields: Set[str] = {"setup_timeout_seconds"}
+
+    default_config: Dict = {
+        "setup_timeout_seconds": 10 * 60,
+    }
+
+    def __init__(self, setup_timeout_seconds: int):
+        if not isinstance(setup_timeout_seconds, int):
+            raise TypeError(
+                "setup_timeout_seconds must be of type int, "
+                f"got: {type(setup_timeout_seconds)}"
+            )
+        elif setup_timeout_seconds <= 0:
+            raise ValueError(
+                "setup_timeout_seconds must be greater than zero, "
+                f"got: {setup_timeout_seconds}"
+            )
+        self.setup_timeout_seconds = setup_timeout_seconds
+
+    @staticmethod
+    def parse_and_validate_runtime_env_condig(
+        config: Union[Dict, "RuntimeEnvConfig"]
+    ) -> "RuntimeEnvConfig":
+        if isinstance(config, "RuntimeEnvConfig"):
+            return config
+        elif isinstance(config, Dict):
+            unknown_fields = set(config.keys()) - RuntimeEnvConfig.known_fields
+            if len(unknown_fields):
+                logger.warning(
+                    "The following unknown entries in the runtime_env_config "
+                    f"dictionary will be ignored: {unknown_fields}."
+                )
+            config_dict = dict()
+            for field in RuntimeEnvConfig.known_fields:
+                if field in config:
+                    config_dict[field] = config[field]
+            return RuntimeEnvConfig(**config_dict)
+        else:
+            raise TypeError(
+                "runtime_env['config'] must be of type dict or RuntimeEnvConfig, "
+                f"got: {type(config)}"
+            )
+
+    def build_proto_runtime_env_config(self) -> ProtoRuntimeEnvConfig:
+        runtime_env_config = ProtoRuntimeEnvConfig()
+        runtime_env_config.setup_timeout_seconds = (
+            RuntimeEnvConfig.parse_and_validate_runtime_env_condig(
+                self.setup_timeout_seconds
+            )
+        )
+        return runtime_env_config
+
+    def serialize(self) -> str:
+        proto_runtime_env_config = self.build_proto_runtime_env_config()
+        return json.dumps(
+            json.loads(json_format.MessageToJson(proto_runtime_env_config)),
+            sort_keys=True,
+        )
+
+    @classmethod
+    def deserialize(cls, serialized_runtime_env_config: str) -> "RuntimeEnvConfig":
+        proto_runtime_env_config = json_format.Parse(
+            serialized_runtime_env_config, ProtoRuntimeEnvConfig()
+        )
+        return cls(proto_runtime_env_config.setup_timeout_seconds)
+
+
+# Due to circular reference, field config can only be assigned a value here
+OPTION_TO_VALIDATION_FN[
+    "config"
+] = RuntimeEnvConfig.parse_and_validate_runtime_env_condig
 
 
 @PublicAPI
@@ -575,13 +653,3 @@ class RuntimeEnv(dict):
                 plugin = runtime_env.python_runtime_env.plugin_runtime_env.plugins.add()
                 plugin.class_path = class_path
                 plugin.config = plugin_field
-
-    def __getstate__(self):
-        # When pickle serialization, exclude some fields
-        # which can't be serialized by pickle
-        return dict(**self)
-
-    def __setstate__(self, state):
-        for k, v in state.items():
-            self[k] = v
-        self.__proto_runtime_env = None

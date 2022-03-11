@@ -178,6 +178,13 @@ message RuntimeEnv {
   RuntimeEnvUris uris = 7;
 }
 
+/// The runtime env config, include some fields that do not
+/// participate in the calculation of the runtime_env hash.
+message RuntimeEnvConfig {
+  /// The timeout of runtime env creation.
+  uint32 setup_timeout_seconds = 1;
+}
+
 /// The runtime env information which is transfered between ray core processes.
 message RuntimeEnvInfo {
   /// The serialized runtime env passed from the user.
@@ -186,4 +193,6 @@ message RuntimeEnvInfo {
   repeated string uris = 2;
   /// Indicates whether to install runtime env eagerly before the workers are leased.
   bool runtime_env_eager_install = 3;
+  /// The serialized runtime env config passed from the user.
+  string serialized_runtime_env_config = 4;
 }
