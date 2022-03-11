@@ -35,7 +35,6 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
           new boost::asio::io_service::work(io_service_));
       io_service_.run();
     }));
-    ray_syncer_ = std::make_shared<ray::syncer::RaySyncer>(io_service_, nullptr, nullptr);
     for (int index = 0; index < 3; ++index) {
       raylet_clients_.push_back(std::make_shared<GcsServerMocker::MockRayletClient>());
     }
@@ -44,6 +43,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         std::make_unique<GcsServerMocker::MockGcsPubSub>(redis_client_));
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
         io_service_, nullptr, gcs_table_storage_);
+    ray_syncer_ = std::make_shared<ray::syncer::RaySyncer>(io_service_, nullptr,
+                                                           *gcs_resource_manager_);
     gcs_resource_scheduler_ =
         std::make_shared<gcs::GcsResourceScheduler>(*gcs_resource_manager_);
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
