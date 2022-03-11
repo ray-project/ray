@@ -38,12 +38,12 @@ class TensorflowPredictor(Predictor):
     ) -> "TensorflowPredictor":
         """Instantiate the predictor from a Checkpoint.
 
-        The checkpoint is expected to be a result of ``TorchTrainer``.
+        The checkpoint is expected to be a result of ``TensorflowTrainer``.
 
         Args:
             checkpoint: The checkpoint to load the model and
                 preprocessor from. It is expected to be from the result of a
-                ``TorchTrainer`` run.
+                ``TensorflowTrainer`` run.
             model_definition: A callable that returns a TensorFlow Keras model
                 to use. Model weights will be loaded from the checkpoint.
         """
