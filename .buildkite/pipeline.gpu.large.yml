@@ -9,6 +9,15 @@
     - ./ci/travis/env_info.sh
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=gpu,gpu_only python/ray/train/...
 
+- label: ":tv: :database: :steam_locomotive: Datasets Train Integration GPU Tests and Examples (Python 3.7)"
+  conditions: ["RAY_CI_TRAIN_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - PYTHON=3.7 TRAIN_TESTING=1 DATA_PROCESSING_TESTING=1 ./ci/travis/install-dependencies.sh
+    - pip install -Ur ./python/requirements_ml_docker.txt
+    - ./ci/travis/env_info.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=datasets_train doc/...
+
 - label: ":tv: :brain: RLlib: Multi-GPU Tests"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
