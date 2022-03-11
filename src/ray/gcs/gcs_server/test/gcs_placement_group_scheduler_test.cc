@@ -1105,7 +1105,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPGCancelledDuringReschedulingCommitPr
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestReleaseUnusedBundles) {
   SchedulePlacementGroupSuccessTest(rpc::PlacementStrategy::SPREAD);
-  std::unordered_map<NodeID, std::vector<rpc::Bundle>> node_to_bundle;
+  absl::flat_hash_map<NodeID, std::vector<rpc::Bundle>> node_to_bundle;
   scheduler_->ReleaseUnusedBundles(node_to_bundle);
   ASSERT_EQ(1, raylet_clients_[0]->num_release_unused_bundles_requested);
 }
@@ -1123,7 +1123,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestInitialize) {
   placement_group->GetMutableBundle(0)->set_node_id(node0->node_id());
   placement_group->GetMutableBundle(1)->set_node_id(node1->node_id());
 
-  std::unordered_map<PlacementGroupID, std::vector<std::shared_ptr<BundleSpecification>>>
+  absl::flat_hash_map<PlacementGroupID, std::vector<std::shared_ptr<BundleSpecification>>>
       group_to_bundles;
   group_to_bundles[placement_group->GetPlacementGroupID()].emplace_back(
       std::make_shared<BundleSpecification>(*placement_group->GetMutableBundle(0)));

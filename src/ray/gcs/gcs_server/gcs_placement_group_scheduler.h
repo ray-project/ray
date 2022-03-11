@@ -47,7 +47,7 @@ struct pair_hash {
     return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
   }
 };
-using ScheduleMap = std::unordered_map<BundleID, NodeID, pair_hash>;
+using ScheduleMap = absl::flat_hash_map<BundleID, NodeID, pair_hash>;
 using ScheduleResult = std::pair<SchedulingResultStatus, ScheduleMap>;
 using BundleLocations = absl::flat_hash_map<
     BundleID, std::pair<NodeID, std::shared_ptr<const BundleSpecification>>, pair_hash>;
@@ -88,15 +88,15 @@ class GcsPlacementGroupSchedulerInterface {
   ///
   /// \param node_to_bundles Bundles used by each node.
   virtual void ReleaseUnusedBundles(
-      const std::unordered_map<NodeID, std::vector<rpc::Bundle>> &node_to_bundles) = 0;
+      const absl::flat_hash_map<NodeID, std::vector<rpc::Bundle>> &node_to_bundles) = 0;
 
   /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
   ///
   /// \param node_to_bundles Bundles used by each node.
   virtual void Initialize(
-      const std::unordered_map<PlacementGroupID,
-                               std::vector<std::shared_ptr<BundleSpecification>>>
+      const absl::flat_hash_map<PlacementGroupID,
+                                std::vector<std::shared_ptr<BundleSpecification>>>
           &group_to_bundles) = 0;
 
   virtual ~GcsPlacementGroupSchedulerInterface() {}
@@ -311,7 +311,7 @@ class LeaseStatusTracker {
   std::shared_ptr<BundleLocations> preparing_bundle_locations_;
 
   /// Location of bundles grouped by node.
-  std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
+  absl::flat_hash_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
       grouped_preparing_bundle_locations_;
 
   /// Number of prepare requests that are returned.
@@ -463,14 +463,14 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Notify raylets to release unused bundles.
   ///
   /// \param node_to_bundles Bundles used by each node.
-  void ReleaseUnusedBundles(const std::unordered_map<NodeID, std::vector<rpc::Bundle>>
+  void ReleaseUnusedBundles(const absl::flat_hash_map<NodeID, std::vector<rpc::Bundle>>
                                 &node_to_bundles) override;
 
   /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
   ///
   /// \param node_to_bundles Bundles used by each node.
-  void Initialize(const std::unordered_map<
+  void Initialize(const absl::flat_hash_map<
                   PlacementGroupID, std::vector<std::shared_ptr<BundleSpecification>>>
                       &group_to_bundles) override;
 

@@ -64,8 +64,8 @@ void GcsResourceManager::UpdateResources(
     // Update `cluster_scheduling_resources_`.
 
     auto node_resources = iter->second->GetMutableLocalView();
-    for (const auto &entry : changed_resources) {
-      UpdateResourceCapacity(node_resources, entry.first, entry.second);
+    for (const auto &[name, capacity] : changed_resources) {
+      UpdateResourceCapacity(node_resources, name, capacity);
     }
 
     // Update gcs storage.
@@ -80,9 +80,9 @@ void GcsResourceManager::UpdateResources(
       (*resource_map.mutable_items())[resource_name].set_resource_capacity(
           resource_value.Double());
     }
-    for (const auto &entry : node_resources->custom_resources) {
-      const auto &resource_name = scheduling::ResourceID(entry.first).Binary();
-      const auto &resource_value = entry.second.total;
+    for (const auto &[id, capacity] : node_resources->custom_resources) {
+      const auto &resource_name = scheduling::ResourceID(id).Binary();
+      const auto &resource_value = capacity.total;
       (*resource_map.mutable_items())[resource_name].set_resource_capacity(
           resource_value.Double());
     }
