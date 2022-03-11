@@ -100,7 +100,7 @@ class RedisStoreClient : public StoreClient {
     absl::flat_hash_set<std::string> keys_;
 
     /// The scan cursor for each shard.
-    std::unordered_map<size_t, size_t> shard_to_cursor_;
+    absl::flat_hash_map<size_t, size_t> shard_to_cursor_;
 
     /// The pending shard scan count.
     std::atomic<size_t> pending_request_count_{0};
@@ -116,7 +116,7 @@ class RedisStoreClient : public StoreClient {
 
   /// The return value is a map, whose key is the shard and the value is a list of batch
   /// operations.
-  static std::unordered_map<RedisContext *, std::list<std::vector<std::string>>>
+  static absl::flat_hash_map<RedisContext *, std::list<std::vector<std::string>>>
   GenCommandsByShards(const std::shared_ptr<RedisClient> &redis_client,
                       const std::string &command, const std::vector<std::string> &keys,
                       int *count);

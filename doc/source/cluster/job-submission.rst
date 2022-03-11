@@ -86,10 +86,6 @@ We provide three APIs for Job submission: SDK, CLI and HTTP. Both the SDK and CL
     - :code:`working_dir` as a local directory: It will be automatically zipped and uploaded to the target Ray cluster, then unpacked to where your submitted application runs.  This option has a size limit of 100 MB and is recommended for quick iteration and experimentation.
     - :code:`working_dir` as a remote URI hosted on S3, GitHub or others: It will be downloaded and unpacked to where your submitted application runs.  This option has no size limit and is recommended for production use.  For details, see :ref:`remote-uris`.
 
-.. warning::
-
-    We currently don't support passing in :code:`requirements.txt` in :code:`pip` yet in job submission so you still need to pass in a list of packages. It will be supported in later releases.
-
 
 Job CLI API
 -----------

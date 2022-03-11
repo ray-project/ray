@@ -791,9 +791,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaInherit);
   FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaOverride);
 
-  std::string OverrideTaskOrActorRuntimeEnv(
-      const std::string &serialized_runtime_env,
-      std::vector<std::string> *runtime_env_uris /* output */);
+  std::shared_ptr<rpc::RuntimeEnvInfo> OverrideTaskOrActorRuntimeEnvInfo(
+      const std::string &serialized_runtime_env_info);
 
   void BuildCommonTaskSpec(
       TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
@@ -803,7 +802,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
       const std::string &debugger_breakpoint, int64_t depth,
-      const std::string &serialized_runtime_env,
+      const std::string &serialized_runtime_env_info,
       const std::string &concurrency_group_name = "");
   void SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number);
 

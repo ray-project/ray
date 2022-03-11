@@ -90,18 +90,10 @@ py_test(
     tags = ["exclusive", "team:ml"]
 )
 
-py_test(
-    name = "progress_bar",
-    main = "test_myst_doc.py",
-    srcs = ["test_myst_doc.py"],
-    size = "small",
-    args = ["--path", "doc/source/ray-core/examples/progress_bar.ipynb"],
-    data = ["//doc/source/ray-core/examples:core_examples"],
-    tags = ["exclusive", "team:ml"]
-)
+# --------------------------------------------------------------------
+# Test all doc/source/ray-core/doc_code code included in rst/md files.
+# --------------------------------------------------------------------
 
-
-# Directory: source/ray-core/doc_code
 py_test(
     name = "doc_code_tf_example",
     size = "small",

@@ -156,7 +156,6 @@ class Trainer:
 
         # Incremental unique run ID.
         self._run_id = 0
-
         self.logdir = self.create_logdir(logdir)
 
         # Setup executor.

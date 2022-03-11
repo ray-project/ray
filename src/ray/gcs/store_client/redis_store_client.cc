@@ -87,7 +87,7 @@ Status RedisStoreClient::AsyncGetAll(
   std::string match_pattern = GenRedisMatchPattern(table_name);
   auto scanner = std::make_shared<RedisScanner>(redis_client_, table_name);
   auto on_done = [callback,
-                  scanner](std::unordered_map<std::string, std::string> &&result) {
+                  scanner](absl::flat_hash_map<std::string, std::string> &&result) {
     callback(std::move(result));
   };
   return scanner->ScanKeysAndValues(match_pattern, on_done);
@@ -167,7 +167,7 @@ Status RedisStoreClient::AsyncGetByIndex(
 
       RAY_CHECK_OK(MGetValues(redis_client_, table_name, keys, callback));
     } else {
-      callback(std::unordered_map<std::string, std::string>());
+      callback(absl::flat_hash_map<std::string, std::string>());
     }
   };
   return scanner->ScanKeys(match_pattern, on_done);
@@ -244,11 +244,11 @@ Status RedisStoreClient::DeleteByKeys(const std::vector<std::string> &keys,
   return Status::OK();
 }
 
-std::unordered_map<RedisContext *, std::list<std::vector<std::string>>>
+absl::flat_hash_map<RedisContext *, std::list<std::vector<std::string>>>
 RedisStoreClient::GenCommandsByShards(const std::shared_ptr<RedisClient> &redis_client,
                                       const std::string &command,
                                       const std::vector<std::string> &keys, int *count) {
-  std::unordered_map<RedisContext *, std::list<std::vector<std::string>>>
+  absl::flat_hash_map<RedisContext *, std::list<std::vector<std::string>>>
       commands_by_shards;
   for (auto &key : keys) {
     auto shard_context = redis_client->GetShardContext(key).get();
@@ -325,7 +325,7 @@ Status RedisStoreClient::MGetValues(
   auto mget_commands_by_shards =
       GenCommandsByShards(redis_client, "MGET", keys, &total_count);
   auto finished_count = std::make_shared<int>(0);
-  auto key_value_map = std::make_shared<std::unordered_map<std::string, std::string>>();
+  auto key_value_map = std::make_shared<absl::flat_hash_map<std::string, std::string>>();
   for (auto &command_list : mget_commands_by_shards) {
     for (auto &command : command_list.second) {
       auto mget_keys = std::move(command);
@@ -367,7 +367,7 @@ Status RedisStoreClient::RedisScanner::ScanKeysAndValues(
   auto on_done = [this, callback](const Status &status,
                                   const std::vector<std::string> &result) {
     if (result.empty()) {
-      callback(std::unordered_map<std::string, std::string>());
+      callback(absl::flat_hash_map<std::string, std::string>());
     } else {
       RAY_CHECK_OK(MGetValues(redis_client_, table_name_, result, callback));
     }
