@@ -46,7 +46,7 @@ class Tuner:
             },
             "preprocessor": tune.grid_search([prep_v1, prep_v2]),
             "datasets": {
-                "train_datasetTu": tune.grid_search([ds1, ds2]),
+                "train_dataset": tune.grid_search([ds1, ds2]),
             },
             "params": {
                 "objective": "binary:logistic",

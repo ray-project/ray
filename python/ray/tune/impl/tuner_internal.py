@@ -30,7 +30,7 @@ class TunerInternal:
     The external facing ``Tuner`` multiplexes between local Tuner and remote Tuner
     depending on whether in Ray client mode.
 
-    In Ray client mode, external Tuner wraps ``_TunerInternal`` into a remote actor,
+    In Ray client mode, external Tuner wraps ``TunerInternal`` into a remote actor,
     which is guaranteed to be placed on head node.
 
     TunerInternal can be constructed from fresh, in which case, `trainable` needs to
