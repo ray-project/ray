@@ -41,10 +41,9 @@ class SubscriberServiceImpl final : public rpc::SubscriberService::CallbackServi
   grpc::ServerUnaryReactor *PubsubLongPolling(
       grpc::CallbackServerContext *context, const rpc::PubsubLongPollingRequest *request,
       rpc::PubsubLongPollingReply *reply) override {
-    const auto subscriber_id = UniqueID::FromBinary(request->subscriber_id());
     auto *reactor = context->DefaultReactor();
     publisher_->ConnectToSubscriber(
-        subscriber_id, reply,
+        *request, reply,
         [reactor](ray::Status status, std::function<void()> success_cb,
                   std::function<void()> failure_cb) {
           // Long polling should always succeed.

@@ -7,7 +7,6 @@ import io
 import json
 import logging
 import os
-import redis
 import sys
 import threading
 import time
@@ -453,11 +452,17 @@ class Worker:
     def print_logs(self):
         """Prints log messages from workers on all nodes in the same job."""
         if self.gcs_pubsub_enabled:
+            import grpc
+
             subscriber = self.gcs_log_subscriber
             subscriber.subscribe()
+            exception_type = grpc.RpcError
         else:
+            import redis
+
             subscriber = self.redis_client.pubsub(ignore_subscribe_messages=True)
             subscriber.subscribe(gcs_utils.LOG_FILE_CHANNEL)
+            exception_type = redis.exceptions.ConnectionError
         localhost = services.get_node_ip_address()
         try:
             # Keep track of the number of consecutive log messages that have
@@ -523,7 +528,7 @@ class Worker:
                         "'ray.init(log_to_driver=False)'."
                     )
 
-        except (OSError, redis.exceptions.ConnectionError) as e:
+        except (OSError, exception_type) as e:
             logger.error(f"print_logs: {e}")
         finally:
             # Close the pubsub client to avoid leaking file descriptors.
@@ -1305,9 +1310,18 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                 res = data["task_name"] + " " + res
             return res
 
+    def message_for(data: Dict[str, str], line: str) -> str:
+        """The printed message of this log line."""
+        if ray_constants.LOG_PREFIX_INFO_MESSAGE in line:
+            return line.split(ray_constants.LOG_PREFIX_INFO_MESSAGE)[1]
+        return line
+
     def color_for(data: Dict[str, str], line: str) -> str:
         """The color for this log line."""
-        if data.get("pid") == "raylet":
+        if (
+            data.get("pid") == "raylet"
+            and ray_constants.LOG_PREFIX_INFO_MESSAGE not in line
+        ):
             return colorama.Fore.YELLOW
         elif data.get("pid") == "autoscaler":
             if "Error:" in line or "Warning:" in line:
@@ -1333,7 +1347,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                     prefix_for(data),
                     pid,
                     colorama.Style.RESET_ALL,
-                    line,
+                    message_for(data, line),
                 ),
                 file=print_file,
             )
@@ -1347,7 +1361,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                     pid,
                     data.get("ip"),
                     colorama.Style.RESET_ALL,
-                    line,
+                    message_for(data, line),
                 ),
                 file=print_file,
             )
@@ -1364,6 +1378,8 @@ def listen_error_messages_raylet(worker, threads_stopped):
         threads_stopped (threading.Event): A threading event used to signal to
             the thread that it should exit.
     """
+    import redis
+
     worker.error_message_pubsub_client = worker.redis_client.pubsub(
         ignore_subscribe_messages=True
     )

@@ -233,14 +233,6 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, GetResources,
                              node_resource_info_grpc_client_, /*method_timeout_ms*/ -1, )
 
-  /// Update resources of a node in GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, UpdateResources,
-                             node_resource_info_grpc_client_, /*method_timeout_ms*/ -1, )
-
-  /// Delete resources of a node in GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, DeleteResources,
-                             node_resource_info_grpc_client_, /*method_timeout_ms*/ -1, )
-
   /// Get available resources of all nodes from the GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, GetAllAvailableResources,
                              node_resource_info_grpc_client_, /*method_timeout_ms*/ -1, )
