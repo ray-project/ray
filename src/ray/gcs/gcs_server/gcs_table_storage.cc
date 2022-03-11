@@ -46,8 +46,8 @@ Status GcsTable<Key, Data>::Get(const Key &key,
 
 template <typename Key, typename Data>
 Status GcsTable<Key, Data>::GetAll(const MapCallback<Key, Data> &callback) {
-  auto on_done = [callback](std::unordered_map<std::string, std::string> &&result) {
-    std::unordered_map<Key, Data> values;
+  auto on_done = [callback](absl::flat_hash_map<std::string, std::string> &&result) {
+    absl::flat_hash_map<Key, Data> values;
     for (auto &item : result) {
       if (!item.second.empty()) {
         values[Key::FromBinary(item.first)].ParseFromString(item.second);
@@ -86,8 +86,8 @@ Status GcsTableWithJobId<Key, Data>::Put(const Key &key, const Data &value,
 template <typename Key, typename Data>
 Status GcsTableWithJobId<Key, Data>::GetByJobId(const JobID &job_id,
                                                 const MapCallback<Key, Data> &callback) {
-  auto on_done = [callback](std::unordered_map<std::string, std::string> &&result) {
-    std::unordered_map<Key, Data> values;
+  auto on_done = [callback](absl::flat_hash_map<std::string, std::string> &&result) {
+    absl::flat_hash_map<Key, Data> values;
     for (auto &item : result) {
       if (!item.second.empty()) {
         values[Key::FromBinary(item.first)].ParseFromString(item.second);

@@ -50,13 +50,15 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     const gcs::GcsNodeManager &gcs_node_manager, GcsResourceManager &gcs_resource_manager,
     GcsResourceScheduler &gcs_resource_scheduler,
-    std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool)
+    std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
+    syncer::RaySyncer &ray_syncer)
     : return_timer_(io_context),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_node_manager_(gcs_node_manager),
       gcs_resource_manager_(gcs_resource_manager),
       gcs_resource_scheduler_(gcs_resource_scheduler),
-      raylet_client_pool_(raylet_client_pool) {
+      raylet_client_pool_(raylet_client_pool),
+      ray_syncer_(ray_syncer) {
   scheduler_strategies_.push_back(std::make_shared<GcsPackStrategy>());
   scheduler_strategies_.push_back(std::make_shared<GcsSpreadStrategy>());
   scheduler_strategies_.push_back(std::make_shared<GcsStrictPackStrategy>());
@@ -319,10 +321,14 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
         RAY_LOG(DEBUG) << "Finished cancelling the resource reserved for bundle: "
                        << bundle_spec->DebugString() << " at node " << node_id;
         std::vector<std::string> resource_names;
+        rpc::NodeResourceChange node_resource_change;
         auto &resources = bundle_spec->GetFormattedResources();
         for (const auto &iter : resources) {
           resource_names.push_back(iter.first);
+          node_resource_change.add_deleted_resources(iter.first);
         }
+        node_resource_change.set_node_id(node_id.Binary());
+        ray_syncer_.Update(std::move(node_resource_change));
         gcs_resource_manager_.DeleteResources(node_id, std::move(resource_names));
       });
 }
@@ -372,6 +378,13 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
         // Update the resource in gcs resource manager
         auto &resources = bundle->GetFormattedResources();
         gcs_resource_manager_.UpdateResources(node_id, resources);
+
+        // Push the message to syncer so that it can be broadcasted to all other nodes
+        rpc::NodeResourceChange node_resource_change;
+        node_resource_change.set_node_id(node_id.Binary());
+        node_resource_change.mutable_updated_resources()->insert(resources.begin(),
+                                                                 resources.end());
+        ray_syncer_.Update(std::move(node_resource_change));
       }
       if (lease_status_tracker->AllCommitRequestReturned()) {
         OnAllBundleCommitRequestReturned(lease_status_tracker, schedule_failure_handler,
@@ -532,7 +545,7 @@ GcsPlacementGroupScheduler::GetBundlesOnNode(const NodeID &node_id) {
 }
 
 void GcsPlacementGroupScheduler::ReleaseUnusedBundles(
-    const std::unordered_map<NodeID, std::vector<rpc::Bundle>> &node_to_bundles) {
+    const absl::flat_hash_map<NodeID, std::vector<rpc::Bundle>> &node_to_bundles) {
   // The purpose of this function is to release bundles that may be leaked.
   // When GCS restarts, it doesn't know which bundles it has scheduled in the
   // previous lifecycle. In this case, GCS will send a list of bundle ids that
@@ -560,8 +573,8 @@ void GcsPlacementGroupScheduler::ReleaseUnusedBundles(
 }
 
 void GcsPlacementGroupScheduler::Initialize(
-    const std::unordered_map<PlacementGroupID,
-                             std::vector<std::shared_ptr<BundleSpecification>>>
+    const absl::flat_hash_map<PlacementGroupID,
+                              std::vector<std::shared_ptr<BundleSpecification>>>
         &group_to_bundles) {
   // We need to reinitialize the `committed_bundle_location_index_`, otherwise,
   // it will get an empty bundle set when raylet fo occurred after GCS server restart.

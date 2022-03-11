@@ -1798,6 +1798,7 @@
     file_manager: sdk
 
   smoke_test:
+    frequency: multi
     cluster:
       app_config: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
       compute_template: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
@@ -1837,6 +1838,7 @@
     file_manager: sdk
 
   smoke_test:
+    frequency: multi
     cluster:
       app_config: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
       compute_template: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
@@ -1870,6 +1872,7 @@
     file_manager: sdk
 
   smoke_test:
+    frequency: multi
     cluster:
       app_config: stress_tests/stress_tests_app_config.yaml
       compute_template: stress_tests/smoke_test_compute.yaml
@@ -1898,6 +1901,7 @@
     file_manager: sdk
 
   smoke_test:
+    frequency: multi
     cluster:
       app_config: stress_tests/stress_tests_app_config.yaml
       compute_template: stress_tests/smoke_test_compute.yaml
@@ -1933,6 +1937,7 @@
     file_manager: sdk
 
   smoke_test:
+    frequency: nightly
     cluster:
       app_config: stress_tests/stress_tests_app_config.yaml
       compute_template: stress_tests/smoke_test_compute.yaml
@@ -2037,7 +2042,43 @@
     type: sdk_command
     file_manager: sdk
 
-  alert: ''
+
+#########################
+# Horovod tests
+#########################
+- name: horovod_tune_test
+  group: Horovod tests
+  working_dir: horovod_tests
+
+  legacy:
+    test_name: horovod_test
+    test_suite: horovod_tests
+
+  frequency: weekly
+  team: ml
+
+  cluster:
+    cluster_env: app_config_master.yaml
+    cluster_compute: compute_tpl.yaml
+
+  run:
+    timeout: 36000
+    script: python workloads/horovod_tune_test.py
+    long_running: true
+    wait_for_nodes:
+      num_nodes: 3
+      timeout: 600
+
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 1800
+
+  alert: default
 
 
 #########################

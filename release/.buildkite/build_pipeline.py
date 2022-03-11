@@ -253,9 +253,9 @@ NIGHTLY_TESTS = {
 }
 
 WEEKLY_TESTS = {
-    "~/ray/release/horovod_tests/horovod_tests.yaml": [
-        "horovod_test",
-    ],
+    # "~/ray/release/horovod_tests/horovod_tests.yaml": [
+    #     "horovod_test",
+    # ],
     "~/ray/release/long_running_distributed_tests"
     "/long_running_distributed.yaml": [
         "pytorch_pbt_failure",
