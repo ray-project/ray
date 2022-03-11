@@ -51,7 +51,7 @@ def test_disallow_binding_deployments():
         AttributeError,
         match="DAG building API should only be used for @ray.remote decorated",
     ):
-        _ = ServeActor._bind(10)
+        _ = ServeActor.bind(10)
 
 
 @pytest.mark.asyncio
@@ -151,7 +151,7 @@ def test_invalid_use_sync_handle():
     )
     with pytest.raises(
         ValueError,
-        match="use_sync_handle should only be set with a boolean value",
+        match=f"{USE_SYNC_HANDLE_KEY} should only be set with a boolean value",
     ):
         _ = DeploymentNode(
             Actor,
@@ -163,7 +163,7 @@ def test_invalid_use_sync_handle():
         )
     with pytest.raises(
         ValueError,
-        match="use_sync_handle should only be set with a boolean value",
+        match=f"{USE_SYNC_HANDLE_KEY} should only be set with a boolean value",
     ):
         _ = DeploymentMethodNode(
             deployment,

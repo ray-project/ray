@@ -51,6 +51,12 @@ class _PathHelper:
         virtualenv_path = cls.get_virtualenv_path(target_dir)
         return os.path.join(virtualenv_path, "bin/python")
 
+    @classmethod
+    def get_virtualenv_activate_command(cls, target_dir: str) -> str:
+        virtualenv_path = cls.get_virtualenv_path(target_dir)
+        # TODO(SongGuyang): Support Windows
+        return "source %s 1>&2" % (os.path.join(virtualenv_path, "bin/activate"))
+
     @staticmethod
     def get_requirements_file(target_dir: str) -> str:
         return os.path.join(target_dir, "requirements.txt")
@@ -198,6 +204,7 @@ class PipProcessor:
         path: str,
         pip_packages: List[str],
         cwd: str,
+        env_vars: Dict,
         logger: logging.Logger,
     ):
         virtualenv_path = _PathHelper.get_virtualenv_path(path)
@@ -234,7 +241,9 @@ class PipProcessor:
             pip_requirements_file,
         ]
         logger.info("Installing python requirements to %s", virtualenv_path)
-        await check_output_cmd(pip_install_cmd, logger=logger, cwd=cwd, env={})
+        pip_env = os.environ.copy()
+        pip_env.update(env_vars)
+        await check_output_cmd(pip_install_cmd, logger=logger, cwd=cwd, env=pip_env)
 
     async def _run(self):
         path = self._target_dir
@@ -249,7 +258,9 @@ class PipProcessor:
             await self._create_or_get_virtualenv(path, exec_cwd, logger)
             python = _PathHelper.get_virtualenv_python(path)
             async with self._check_ray(python, exec_cwd, logger):
-                await self._install_pip_packages(path, pip_packages, exec_cwd, logger)
+                await self._install_pip_packages(
+                    path, pip_packages, exec_cwd, self._runtime_env.env_vars(), logger
+                )
             # TODO(fyrestone): pip check.
         except Exception:
             logger.info("Delete incomplete virtualenv: %s", path)
@@ -356,3 +367,6 @@ class PipManager:
                 "installing the runtime_env `pip` packages."
             )
         context.py_executable = virtualenv_python
+        context.command_prefix += [
+            _PathHelper.get_virtualenv_activate_command(target_dir)
+        ]

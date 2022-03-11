@@ -43,15 +43,9 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
       absl::flat_hash_map<std::string, double> &unit_resource) {
     cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
         scheduling::NodeID("local"), unit_resource, *gcs_client_);
-    new_placement_group_resource_manager_.reset(
-        new raylet::NewPlacementGroupResourceManager(
-            cluster_resource_scheduler_,
-            [this](const ray::gcs::NodeResourceInfoAccessor::ResourceMap &resources) {
-              update_called_ = true;
-            },
-            [this](const std::vector<std::string> &resource_names) {
-              delete_called_ = true;
-            }));
+    new_placement_group_resource_manager_ =
+        std::make_unique<raylet::NewPlacementGroupResourceManager>(
+            cluster_resource_scheduler_);
   }
 
   void CheckAvailableResoueceEmpty(const std::string &resource) {
@@ -75,9 +69,6 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
         std::make_shared<const BundleSpecification>(std::move(bundle_spec)));
     return bundle_specs;
   }
-
-  bool update_called_ = false;
-  bool delete_called_ = false;
 };
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewPrepareBundleResource) {
@@ -119,9 +110,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewCommitBundleResource) {
   InitLocalAvailableResource(unit_resource);
   /// 3. prepare and commit bundle resource.
   ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(bundle_specs));
-  ASSERT_FALSE(update_called_);
   new_placement_group_resource_manager_->CommitBundles(bundle_specs);
-  ASSERT_TRUE(update_called_);
   /// 4. check remaining resources is correct.
   absl::flat_hash_map<std::string, double> remaining_resources = {
       {"CPU_group_" + group_id.Hex(), 1.0},
@@ -153,14 +142,10 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewReturnBundleResource) {
   /// 3. prepare and commit bundle resource.
   ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(
       ConvertSingleSpecToVectorPtrs(bundle_spec)));
-  ASSERT_FALSE(update_called_);
   new_placement_group_resource_manager_->CommitBundles(
       ConvertSingleSpecToVectorPtrs(bundle_spec));
-  ASSERT_TRUE(update_called_);
   /// 4. return bundle resource.
-  ASSERT_FALSE(delete_called_);
   new_placement_group_resource_manager_->ReturnBundle(bundle_spec);
-  ASSERT_TRUE(delete_called_);
   /// 5. check remaining resources is correct.
   auto remaining_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
       scheduling::NodeID("remaining"), unit_resource, *gcs_client_);
@@ -186,14 +171,10 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndRetu
       ConvertSingleSpecToVectorPtrs(first_bundle_spec)));
   ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(
       ConvertSingleSpecToVectorPtrs(second_bundle_spec)));
-  ASSERT_FALSE(update_called_);
-  ASSERT_FALSE(delete_called_);
   new_placement_group_resource_manager_->CommitBundles(
       ConvertSingleSpecToVectorPtrs(first_bundle_spec));
   new_placement_group_resource_manager_->CommitBundles(
       ConvertSingleSpecToVectorPtrs(second_bundle_spec));
-  ASSERT_TRUE(update_called_);
-  ASSERT_FALSE(delete_called_);
   /// 4. check remaining resources is correct after commit phase.
   absl::flat_hash_map<std::string, double> remaining_resources = {
       {"CPU_group_" + group_id.Hex(), 2.0},
@@ -216,11 +197,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndRetu
 
   CheckRemainingResourceCorrect(remaining_resource_instance);
   /// 5. return second bundle.
-  ASSERT_TRUE(update_called_);
-  ASSERT_FALSE(delete_called_);
   new_placement_group_resource_manager_->ReturnBundle(second_bundle_spec);
-  ASSERT_TRUE(update_called_);
-  ASSERT_TRUE(delete_called_);
   /// 6. check remaining resources is correct after return second bundle.
   remaining_resources = {{"CPU_group_" + group_id.Hex(), 2.0},
                          {"CPU_group_1_" + group_id.Hex(), 1.0},
@@ -248,8 +225,6 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndRetu
   remaining_resource_instance =
       remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
           scheduling::NodeID("remaining"));
-  ASSERT_TRUE(update_called_);
-  ASSERT_TRUE(delete_called_);
   CheckRemainingResourceCorrect(remaining_resource_instance);
 }
 

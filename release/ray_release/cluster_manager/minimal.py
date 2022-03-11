@@ -287,5 +287,5 @@ class MinimalClusterManager(ClusterManager):
     def terminate_cluster(self):
         pass
 
-    def get_cluster_address(self) -> str:
+    def get_cluster_address(self, full: bool = True) -> str:
         return f"anyscale://{self.cluster_name}"
