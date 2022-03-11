@@ -49,6 +49,9 @@ class TorchPredictor(Predictor):
     ) -> DataBatchType:
         """Run inference on data batch.
 
+        The data is converted into a torch Tensor before being inputted to
+        the model.
+
         Args:
             data: A batch of input data. Either a pandas DataFrame or numpy
                 array.
