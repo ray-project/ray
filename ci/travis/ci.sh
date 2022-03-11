@@ -211,6 +211,8 @@ test_cpp() {
   # run cluster mode test with external cluster
   bazel test //cpp:cluster_mode_test --test_arg=--external_cluster=true --test_arg=--redis_password="1234" \
     --test_arg=--ray_redis_password="1234"
+  
+  bazel test --test_output=all //cpp:test_python_call_cpp
 
   # run the cpp example
   rm -rf ray-template && mkdir ray-template
