@@ -275,7 +275,7 @@ class SimpleQTrainer(Trainer):
         num_agent_steps += sum(
             len(s) if isinstance(s, SampleBatch) else s.agent_steps()
             for s in new_sample_batches
-            )
+        )
         self._counters[NUM_ENV_STEPS_SAMPLED] += num_env_steps
         self._counters[NUM_AGENT_STEPS_SAMPLED] += num_agent_steps
 
