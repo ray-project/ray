@@ -333,7 +333,8 @@ cdef class CppFunctionDescriptor(FunctionDescriptor):
 
     def __cinit__(self,
                   function_name, caller, class_name=""):
-        self.descriptor = CFunctionDescriptorBuilder.BuildCpp(function_name, caller, class_name)
+        self.descriptor = CFunctionDescriptorBuilder.BuildCpp(
+            function_name, caller, class_name)
         self.typed_descriptor = <CCppFunctionDescriptor*>(
             self.descriptor.get())
 
