@@ -346,7 +346,8 @@ class TrialCheckpoint(Checkpoint, _TrialCheckpoint):
         if local_path:
             # Add _tcp to not conflict with Checkpoint._local_path
             self._local_path_tcp = local_path
-            self._local_path = local_path
+            if os.path.exists(local_path):
+                self._local_path = local_path
             locations.add(local_path)
         if cloud_path:
             self._cloud_path_tcp = cloud_path
