@@ -452,16 +452,13 @@ class Monitor:
             _internal_kv_put(
                 ray_constants.DEBUG_AUTOSCALING_ERROR, message, overwrite=True
             )
-        redis_client = None
-        gcs_publisher = None
-        if gcs_pubsub_enabled():
-            gcs_publisher = GcsPublisher(address=args.gcs_address)
+        gcs_publisher = GcsPublisher(address=args.gcs_address)
         from ray._private.utils import publish_error_to_driver
 
         publish_error_to_driver(
             ray_constants.MONITOR_DIED_ERROR,
             message,
-            redis_client=redis_client,
+            redis_client=None,
             gcs_publisher=gcs_publisher,
         )
 

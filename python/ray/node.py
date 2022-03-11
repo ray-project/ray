@@ -501,6 +501,7 @@ class Node:
         assert self._gcs_address is not None, "Gcs address is not set"
         return self._gcs_address
 
+    @property
     def redis_address(self):
         """Get the cluster Redis address."""
         return self._redis_address
@@ -1114,8 +1115,8 @@ class Node:
         # on this node and spilled objects remain on disk.
         if not self.head:
             # Get the system config from GCS first if this is a non-head node.
-            gcs_options = ray._raylet.GcsClientOptions.from_redis_address(
-                self.redis_address, self.redis_password
+            gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(
+                self.gcs_address
             )
             global_state = ray.state.GlobalState()
             global_state._initialize_global_state(gcs_options)
