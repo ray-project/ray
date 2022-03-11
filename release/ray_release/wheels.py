@@ -7,6 +7,7 @@ import time
 import urllib.request
 from typing import Optional, List
 
+from ray_release.buildkite.wheels import find_wheel_for_pr
 from ray_release.config import set_test_env_var
 from ray_release.exception import (
     RayWheelsUnspecifiedError,
@@ -91,21 +92,41 @@ def get_latest_commits(
     return commits
 
 
+def get_wheels_filename(ray_version: str) -> str:
+    return f"ray-{ray_version}-cp37-cp37m-manylinux2014_x86_64.whl"
+
+
+def get_branch_wheels_url(
+    repo_url: str, branch: str, commit: str, ray_version: str
+) -> str:
+    if repo_url.startswith("https://"):
+        matched = re.match(r"https://github.com/([^/]+)/.+", repo_url)
+        if not matched:
+            raise RayWheelsNotFoundError(
+                f"Could not parse git username from repo URL: {repo_url}"
+            )
+        repo = matched.groups()[0]
+    else:
+        # Already a repo
+        repo = repo_url
+
+    branch_and_repo = f"{repo}:{branch}"
+
+    return find_wheel_for_pr(
+        branch_and_repo, wheel_name=get_wheels_filename(ray_version), commit=commit
+    )
+
+
 def get_ray_wheels_url(
     repo_url: str, branch: str, commit: str, ray_version: str
 ) -> str:
     if not repo_url.startswith("https://github.com/ray-project/ray"):
-        raise RayWheelsNotFoundError(
-            f"Automatically retrieving Ray wheels URLs is currently not "
-            f"implemented for PRs or foreign repositories. Got repository "
-            f"{repo_url}, branch {branch}, commit {commit}, "
-            f"version {ray_version}"
-        )
+        return get_branch_wheels_url(repo_url, branch, commit, ray_version)
 
+    # Else, ray repo
     return (
         f"https://s3-us-west-2.amazonaws.com/ray-wheels/"
-        f"{branch}/{commit}/"
-        f"ray-{ray_version}-cp37-cp37m-manylinux2014_x86_64.whl"
+        f"{branch}/{commit}/{get_wheels_filename(ray_version)}"
     )
 
 

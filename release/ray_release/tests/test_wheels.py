@@ -6,18 +6,20 @@ from unittest.mock import patch
 from freezegun import freeze_time
 
 from ray_release.exception import RayWheelsNotFoundError, RayWheelsTimeoutError
+from ray_release.tests.test_buildkite import MockBuildkitePythonAPI
 from ray_release.wheels import (
     get_ray_version,
     DEFAULT_REPO,
     get_ray_wheels_url,
     find_ray_wheels_url,
     find_and_wait_for_ray_wheels_url,
+    get_wheels_filename,
 )
 
 
 class WheelsFinderTest(unittest.TestCase):
     def setUp(self) -> None:
-        pass
+        self.buildkite_api = MockBuildkitePythonAPI()
 
     def testGetRayVersion(self):
         init_file = os.path.join(
@@ -36,14 +38,6 @@ class WheelsFinderTest(unittest.TestCase):
             get_ray_version(DEFAULT_REPO, commit="fake")
 
     def testGetRayWheelsURL(self):
-        with self.assertRaises(RayWheelsNotFoundError):
-            get_ray_wheels_url(
-                repo_url="https://github.com/unknown/ray.git",
-                branch="master",
-                commit="1234",
-                ray_version="2.0.0.dev0",
-            )
-
         url = get_ray_wheels_url(
             repo_url="https://github.com/ray-project/ray.git",
             branch="master",
@@ -78,6 +72,8 @@ class WheelsFinderTest(unittest.TestCase):
 
     @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.0.0.dev0")
     def testFindRayWheelsCommitOnly(self):
+        os.environ.pop("BUILDKITE_BRANCH")
+
         repo = DEFAULT_REPO
         branch = "master"
         commit = "1234" * 10
@@ -132,9 +128,36 @@ class WheelsFinderTest(unittest.TestCase):
             repo, branch, commit, version, search_str="ray-project:master"
         )
 
-        with self.assertRaises(RayWheelsNotFoundError):
+    @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.0.0.dev0")
+    def testFindRayWheelsPRRepoBranch(self):
+        # Todo: Remove previous commit Buildkite token etc
+
+        repo = "user"
+        branch = "dev-branch"
+        commit = "1234" * 10
+        version = "2.0.0.dev0"
+
+        self.buildkite_api.return_dict["list_all_for_pipeline"] = [
+            {"commit": "9999" * 10, "number": 1},
+            {"commit": commit, "number": 2},
+        ]
+        self.buildkite_api.return_dict["list_artifacts_for_build"] = [
+            {"filename": "invalid", "download_url": "invalid"},
+            {"filename": get_wheels_filename(version), "download_url": "invalid"},
+        ]
+
+        with patch(
+            "ray_release.buildkite.wheels.get_buildkite", lambda: self.buildkite_api
+        ):
             self._testFindRayWheelsCheckout(
-                repo, branch, commit, version, search_str="remote:master"
+                repo, branch, commit, version, search_str="user:dev-branch"
+            )
+            self._testFindRayWheelsCheckout(
+                f"https://github.com/{repo}/ray-fork.git",
+                branch,
+                commit,
+                version,
+                search_str="user:dev-branch",
             )
 
     @patch("time.sleep", lambda *a, **kw: None)
