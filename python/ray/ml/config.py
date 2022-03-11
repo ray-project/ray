@@ -26,7 +26,8 @@ class ScalingConfig(TypedDict):
         ``CPU`` and ``GPU`` keys (case-sensitive) can be defined to
         override the number of CPU/GPUs used by each worker.
     placement_strategy (str): The placement strategy to use for the
-        placement group of the Ray actors.
+        placement group of the Ray actors. See :ref:`Placement Group
+        Strategies <pgroup-strategy>` for the possible options.
     """
 
     num_workers: int
