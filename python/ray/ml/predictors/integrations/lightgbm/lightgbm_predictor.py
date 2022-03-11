@@ -67,7 +67,7 @@ class LightGBMPredictor(Predictor):
             train_y = np.array([0, 1])
 
             model = lgbm.LGBMClassifier().fit(train_X, train_y)
-            predictor = LightGBMPredictor(model=model.get_booster())
+            predictor = LightGBMPredictor(model=model.booster_)
 
             data = np.array([[1, 2], [3, 4]])
             predictions = predictor.predict(data)
@@ -86,7 +86,7 @@ class LightGBMPredictor(Predictor):
             train_y = pd.Series([0, 1])
 
             model = lgbm.LGBMClassifier().fit(train_X, train_y)
-            predictor = LightGBMPredictor(model=model.get_booster())
+            predictor = LightGBMPredictor(model=model.booster_)
 
             # Pandas dataframe.
             data = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
