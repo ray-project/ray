@@ -59,28 +59,28 @@ class SmokeTest(ReleaseTest):
 CORE_NIGHTLY_TESTS = {
     "~/ray/release/nightly_tests/nightly_tests.yaml": [
         # "shuffle_10gb",
-        "shuffle_50gb",
-        "shuffle_50gb_large_partition",
-        "shuffle_100gb",
-        "non_streaming_shuffle_100gb",
-        "non_streaming_shuffle_50gb_large_partition",
-        "non_streaming_shuffle_50gb",
-        SmokeTest("dask_on_ray_large_scale_test_no_spilling"),
-        SmokeTest("dask_on_ray_large_scale_test_spilling"),
-        "stress_test_placement_group",
-        "shuffle_1tb_1000_partition",
-        "non_streaming_shuffle_1tb_1000_partition",
-        "shuffle_1tb_5000_partitions",
+        # "shuffle_50gb",
+        # "shuffle_50gb_large_partition",
+        # "shuffle_100gb",
+        # "non_streaming_shuffle_100gb",
+        # "non_streaming_shuffle_50gb_large_partition",
+        # "non_streaming_shuffle_50gb",
+        # SmokeTest("dask_on_ray_large_scale_test_no_spilling"),
+        # SmokeTest("dask_on_ray_large_scale_test_spilling"),
+        # "stress_test_placement_group",
+        # "shuffle_1tb_1000_partition",
+        # "non_streaming_shuffle_1tb_1000_partition",
+        # "shuffle_1tb_5000_partitions",
         # TODO(sang): It doesn't even work without spilling
         # as it hits the scalability limit.
         # "non_streaming_shuffle_1tb_5000_partitions",
-        "decision_tree_autoscaling",
-        "decision_tree_autoscaling_20_runs",
-        "autoscaling_shuffle_1tb_1000_partitions",
-        SmokeTest("stress_test_many_tasks"),
-        SmokeTest("stress_test_dead_actors"),
-        SmokeTest("threaded_actors_stress_test"),
-        "pg_long_running_performance_test",
+        # "decision_tree_autoscaling",
+        # "decision_tree_autoscaling_20_runs",
+        # "autoscaling_shuffle_1tb_1000_partitions",
+        # SmokeTest("stress_test_many_tasks"),
+        # SmokeTest("stress_test_dead_actors"),
+        # SmokeTest("threaded_actors_stress_test"),
+        # "pg_long_running_performance_test",
     ],
     # "~/ray/benchmarks/benchmark_tests.yaml": [
     #     "single_node",
@@ -127,16 +127,16 @@ SERVE_NIGHTLY_TESTS = {
 }
 
 CORE_DAILY_TESTS = {
-    "~/ray/release/nightly_tests/nightly_tests.yaml": [
-        "k8s_dask_on_ray_large_scale_test_no_spilling",
-        "dask_on_ray_large_scale_test_no_spilling",
-        "dask_on_ray_large_scale_test_spilling",
-        "pg_autoscaling_regression_test",
-        "threaded_actors_stress_test",
-        "k8s_threaded_actors_stress_test",
-        "stress_test_many_tasks",
-        "stress_test_dead_actors",
-    ],
+    # "~/ray/release/nightly_tests/nightly_tests.yaml": [
+    #     "k8s_dask_on_ray_large_scale_test_no_spilling",
+    #     "dask_on_ray_large_scale_test_no_spilling",
+    #     "dask_on_ray_large_scale_test_spilling",
+    #     "pg_autoscaling_regression_test",
+    #     "threaded_actors_stress_test",
+    #     "k8s_threaded_actors_stress_test",
+    #     "stress_test_many_tasks",
+    #     "stress_test_dead_actors",
+    # ],
     "~/ray/release/nightly_tests/chaos_test.yaml": [
         "chaos_dask_on_ray_large_scale_test_no_spilling",
         "chaos_dask_on_ray_large_scale_test_spilling",
@@ -160,13 +160,13 @@ CORE_SCHEDULING_DAILY = {
     #     # "scheduling_test_many_5s_tasks_single_node",
     #     # "scheduling_test_many_5s_tasks_many_nodes",
     # ],
-    "~/ray/release/nightly_tests/nightly_tests.yaml": [
-        "many_nodes_actor_test",
-        "dask_on_ray_10gb_sort",
-        "dask_on_ray_100gb_sort",
-        "dask_on_ray_1tb_sort",
-        "placement_group_performance_test",
-    ],
+    # "~/ray/release/nightly_tests/nightly_tests.yaml": [
+    #     "many_nodes_actor_test",
+    #     "dask_on_ray_10gb_sort",
+    #     "dask_on_ray_100gb_sort",
+    #     "dask_on_ray_1tb_sort",
+    #     "placement_group_performance_test",
+    # ],
 }
 
 NIGHTLY_TESTS = {

@@ -578,6 +578,9 @@ class _CliLogger:
         """
         self._print(_format_msg(msg, *args, **kwargs), _level_str=_level_str, end=end)
 
+    def info(self, msg: str, no_format=True, *args, **kwargs):
+        self.print(msg, no_format=no_format, *args, **kwargs)
+
     def abort(
         self, msg: Optional[str] = None, *args: Any, exc: Any = None, **kwargs: Any
     ):
