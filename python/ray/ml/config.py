@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, Any, TypedDict, Optional, TYPE_CHECKING
+from typing import Dict, Any, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ray.tune.trainable import PlacementGroupFactory
@@ -9,8 +9,11 @@ if TYPE_CHECKING:
 # TODO(xwjiang): After Tuner is implemented, define the schema
 RunConfig = Dict[str, Any]
 
+ScalingConfig = Dict[str, Any]
 
-class ScalingConfig(TypedDict):
+
+@dataclass
+class _ScalingConfigDataClass:
     """Configuration for scaling data parallel training.
 
     num_workers (int): The number of workers (Ray actors) to launch.
@@ -29,16 +32,6 @@ class ScalingConfig(TypedDict):
         placement group of the Ray actors. See :ref:`Placement Group
         Strategies <pgroup-strategy>` for the possible options.
     """
-
-    num_workers: int
-    use_gpu: bool
-    resources_per_worker: Optional[Dict]
-    placement_strategy: str
-
-
-@dataclass
-class _ScalingConfigDataClass:
-    """Internal dataclass for ScalingConfig."""
 
     num_workers: int
     use_gpu: bool = False
