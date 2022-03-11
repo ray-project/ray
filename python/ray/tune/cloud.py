@@ -350,8 +350,8 @@ class TrialCheckpoint(Checkpoint, _TrialCheckpoint):
             locations.add(local_path)
         if cloud_path:
             self._cloud_path_tcp = cloud_path
-            locations.add(cloud_path)
             self._uri = cloud_path
+            locations.add(cloud_path)
         self._locations = locations
 
     @property
