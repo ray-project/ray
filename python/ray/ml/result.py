@@ -9,7 +9,7 @@ class Result:
     This is the class produced by Trainer.fit() or Tuner.fit() (through ResultGrid).
     It contains a checkpoint, which can be used for resuming training and for
     creating a Predictor object. It also contains a metrics object describing
-    training metrics. `status` and `error` are included so that non successful runs
+    training metrics. `error` is included so that non successful runs
     and trials can be represented as well.
 
     The constructor is a private API.

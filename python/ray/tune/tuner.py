@@ -6,7 +6,7 @@ from ray.util import PublicAPI
 class Tuner:
     """Tuner is the recommended way of launching hyperparameter tuning jobs with Ray Tune.
 
-    Args:
+    Attributes:
         trainable: The trainable to be tuned.
         param_space: Search space of the tuning job.
             One thing to note is that both preprocessor and dataset can be tuned here.
@@ -88,12 +88,12 @@ class Tuner:
 
         Please use tuner = Tuner.restore("/Users/xwjiang/ray_results/tuner_resume")
         to resume.
-        ```
 
         Exception that happens in non-essential integration blocks like during invoking
         callbacks will not crash the whole run.
 
         Raises:
-            TuneError
+            TuneError: If errors occur executing the experiment that originate from
+                Tune.
         """
         raise NotImplementedError

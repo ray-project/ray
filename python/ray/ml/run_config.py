@@ -35,7 +35,6 @@ class RunConfig:
             Defaults to ``~/ray_results``.
         callbacks: Callbacks to invoke.
             Refer to ray.tune.callback.Callback for more info.
-
     """
 
     # TODO(xwjiang): Clarify RunConfig behavior across resume. Is one supposed to
@@ -45,4 +44,4 @@ class RunConfig:
     name: Optional[str] = None
     local_dir: Optional[str] = None
     callbacks: Optional[List[Callback]] = None
-    failure_config: Optional[FailureConfig] = None
+    failure: Optional[FailureConfig] = None
