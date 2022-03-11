@@ -443,23 +443,6 @@ class NodeResourceInfoAccessor {
   virtual Status AsyncGetAllAvailableResources(
       const MultiItemCallback<rpc::AvailableResources> &callback);
 
-  /// Update resources of node in GCS asynchronously.
-  ///
-  /// \param node_id The ID of node to update dynamic resources.
-  /// \param resources The dynamic resources of node to be updated.
-  /// \param callback Callback that will be called after update finishes.
-  virtual Status AsyncUpdateResources(const NodeID &node_id, const ResourceMap &resources,
-                                      const StatusCallback &callback);
-
-  /// Delete resources of a node from GCS asynchronously.
-  ///
-  /// \param node_id The ID of node to delete resources from GCS.
-  /// \param resource_names The names of resource to be deleted.
-  /// \param callback Callback that will be called after delete finishes.
-  virtual Status AsyncDeleteResources(const NodeID &node_id,
-                                      const std::vector<std::string> &resource_names,
-                                      const StatusCallback &callback);
-
   /// Subscribe to node resource changes.
   ///
   /// \param subscribe Callback that will be called when any resource is updated.

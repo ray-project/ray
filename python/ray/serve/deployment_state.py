@@ -292,7 +292,9 @@ class ActorReplicaWrapper:
             == DeploymentLanguage.JAVA
         ):
             self._is_cross_language = True
-            actor_def = ray.java_actor_class("io.ray.serve.RayServeWrappedReplica")
+            actor_def = ray.cross_language.java_actor_class(
+                "io.ray.serve.RayServeWrappedReplica"
+            )
             init_args = (
                 # String deploymentName,
                 self.deployment_name,

@@ -169,7 +169,7 @@ test_python() {
     # Shard the args.
     BUILDKITE_PARALLEL_JOB=${BUILDKITE_PARALLEL_JOB:-'0'}
     BUILDKITE_PARALLEL_JOB_COUNT=${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}
-    test_shard_selection=$(python ./scripts/bazel-sharding.py --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}")
+    test_shard_selection=$(python ./scripts/bazel-sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}")
 
     # TODO(mehrdadn): We set PYTHONPATH here to let Python find our pickle5 under pip install -e.
     # It's unclear to me if this should be necessary, but this is to make tests run for now.
@@ -211,6 +211,8 @@ test_cpp() {
   # run cluster mode test with external cluster
   bazel test //cpp:cluster_mode_test --test_arg=--external_cluster=true --test_arg=--redis_password="1234" \
     --test_arg=--ray_redis_password="1234"
+  
+  bazel test --test_output=all //cpp:test_python_call_cpp
 
   # run the cpp example
   rm -rf ray-template && mkdir ray-template
@@ -537,6 +539,9 @@ _lint() {
        bazel query 'kind("cc_test", //...)' --output=xml | python "${ROOT_DIR}"/check-bazel-team-owner.py
        bazel query 'kind("py_test", //...)' --output=xml | python "${ROOT_DIR}"/check-bazel-team-owner.py
     popd
+
+    # Make sure tests will be run by CI.
+    python "${ROOT_DIR}"/check-test-run.py
   fi
 }
 
