@@ -14,7 +14,7 @@ ScalingConfig = Dict[str, Any]
 
 @dataclass
 class _ScalingConfigDataClass:
-    """Configuration for scaling data parallel training.
+    """Configuration for scaling training.
 
     num_workers (int): The number of workers (Ray actors) to launch.
         Each worker will reserve 1 CPU by default. The number of CPUs
