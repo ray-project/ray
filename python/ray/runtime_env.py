@@ -171,7 +171,7 @@ class RuntimeEnv(dict):
             file that will be unpacked in the directory of each task/actor.
         pip (dict | List[str] | str): Either a list of pip packages, a string
             containing the path to a pip requirements.txt file, or a python
-            dictionary that has three fields: 1) ``packages`` (require, List[str]): a
+            dictionary that has three fields: 1) ``packages`` (required, List[str]): a
             list of pip packages, 2) ``pip_check`` (optional, bool): whether enable
             pip check at the end of pip install, default True.
             3) ``pip_version`` (optional, str): the version of pip, ray will spell
