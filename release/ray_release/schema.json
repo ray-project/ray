@@ -170,9 +170,24 @@
 		},
 		"SmokeTest": {
 			"type": "object",
-			"additionalProperties": true,
+			"additionalProperties": false,
 			"title": "SmokeTest",
 			"properties": {
+				"working_dir": {
+					"type": "string"
+				},
+                "driver_setup": {
+					"type": "string"
+				},
+				"cluster": {
+					"type": "object"
+				},
+				"run": {
+					"type": "object"
+				},
+                "alert": {
+					"type": "string"
+				},
 				"frequency": {
 					"type": "string",
 					"enum": [
