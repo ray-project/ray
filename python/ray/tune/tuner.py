@@ -20,53 +20,46 @@ _TUNER_INTERNAL = "_tuner_internal"
 _SELF = "self"
 
 
-# Change to alpha
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class Tuner:
-    """The external facing Tuner class as part of Ray MLC effort.
+    """Tuner is the recommended way of launching hyperparameter tuning jobs with Ray Tune.
 
-    Args:
+    Attributes:
         trainable: The trainable to be tuned.
-        param_space: Search space to run tuning on.
+        param_space: Search space of the tuning job.
             One thing to note is that both preprocessor and dataset can be tuned here.
-        tune_config: Tune algo specific configs.
+        tune_config: Tuning algorithm specific configs.
             Refer to ray.tune.tune_config.TuneConfig for more info.
-        run_config: Run time configuration that is universal between
-            Tune and Train.
-
-    Returns:
-        ``ResultGrid`` object.
+        run_config: Runtime configuration that is specific to individual trials.
+            Refer to ray.ml.run_config.RunConfig for more info.
 
     Usage pattern:
     .. code-block:: python
 
-    # TODO(xwjiang): Make this runnable. Add imports.
-    # Only do the following, if you want to run in ray client mode.
-    # This means the tune driver code will be running on head node of your cluster.
-    ray.init("ray://127.0.0.1:10001")
+        # TODO(xwjiang): Make this runnable. Add imports.
 
-    param_space = {
-        "scaling_config": {
-            "num_actors": tune.grid_search([2, 4]),
-            "cpus_per_actor": 2,
-            "gpus_per_actor": 0,
-        },
-        "preprocessor": tune.grid_search([prep_v1, prep_v2]),
-        "datasets": {
-            "train_dataset": tune.grid_search([ds1, ds2]),
-        },
-        "params": {
-            "objective": "binary:logistic",
-            "tree_method": "approx",
-            "eval_metric": ["logloss", "error"],
-            "eta": tune.loguniform(1e-4, 1e-1),
-            "subsample": tune.uniform(0.5, 1.0),
-            "max_depth": tune.randint(1, 9),
-        },
-    }
-    tuner = Tuner(trainable=trainer, param_space=param_space,
-        run_config(name="my_tune_run"))
-    analysis = tuner.fit()
+        param_space = {
+            "scaling_config": {
+                "num_actors": tune.grid_search([2, 4]),
+                "cpus_per_actor": 2,
+                "gpus_per_actor": 0,
+            },
+            "preprocessor": tune.grid_search([prep_v1, prep_v2]),
+            "datasets": {
+                "train_dataset": tune.grid_search([ds1, ds2]),
+            },
+            "params": {
+                "objective": "binary:logistic",
+                "tree_method": "approx",
+                "eval_metric": ["logloss", "error"],
+                "eta": tune.loguniform(1e-4, 1e-1),
+                "subsample": tune.uniform(0.5, 1.0),
+                "max_depth": tune.randint(1, 9),
+            },
+        }
+        tuner = Tuner(trainable=trainer, param_space=param_space,
+            run_config(name="my_tune_run"))
+        analysis = tuner.fit()
 
     To retry a failed tune run, you can then do
     .. code-block:: python
@@ -128,6 +121,10 @@ class Tuner:
                Note: depending on whether ray client mode is used or not,
                this path may or may not exist on your local machine.
         """
+	# TODO(xwjiang): Add some comments to clarify the config behavior across
+        #  retored runs.
+        #  For example, is callbacks supposed to be automatically applied
+        #  when a Tuner is restored and fit again?
         if not ray.util.client.ray.is_connected():
             tuner_internal = TunerInternal(restore_path=path)
             return Tuner(tuner_internal=tuner_internal)
@@ -138,7 +135,29 @@ class Tuner:
             return Tuner(tuner_internal=tuner_internal)
 
     def fit(self) -> ResultGrid:
-        """Runs the tune run."""
+        """Executes hyperparameter tuning job as configured and returns result.
+
+        Failure handling:
+        For the kind of exception that happens during the execution of a trial,
+        one may inspect it together with stacktrace through the returned result grid.
+        See ``ResultGrid`` for reference. Each trial may fail up to a certain number.
+        This is configured by `RunConfig.FailureConfig.max_failures`.
+
+        Exception that happens beyond trials will be thrown by this method as well.
+        In such cases, there will be instruction like the following printed out
+        at the end of console output to inform users on how to resume.
+
+        Please use tuner = Tuner.restore("/Users/xwjiang/ray_results/tuner_resume")
+        to resume.
+
+        Exception that happens in non-essential integration blocks like during invoking
+        callbacks will not crash the whole run.
+
+        Raises:
+            TuneError: If errors occur executing the experiment that originate from
+                Tune.
+        """
+
         if not self._is_ray_client:
             try:
                 return self._local_tuner.fit()
@@ -160,3 +179,4 @@ class Tuner:
                     f'Please use tuner = Tuner.restore("'
                     f'{experiment_checkpoint_dir}") to resume.'
                 )
+

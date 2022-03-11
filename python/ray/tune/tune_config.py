@@ -6,12 +6,10 @@ from ray.tune.suggest import Searcher
 from ray.util import PublicAPI
 
 
-# Change to alpha
 @dataclass
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class TuneConfig:
-    """Tune specific config, related to how hyperparameter tuning algorithms
-    are set up.
+    """Tune specific configs.
 
     Args:
         metric: Metric to optimize. This metric should be reported
@@ -22,8 +20,8 @@ class TuneConfig:
             passed to the search algorithm and scheduler.
         search_alg: Search algorithm for optimization. Default to
             random search.
-        scheduler: Scheduler for executing
-            the experiment. Choose among FIFO (default), MedianStopping,
+        scheduler: Scheduler for executing the experiment.
+            Choose among FIFO (default), MedianStopping,
             AsyncHyperBand, HyperBand and PopulationBasedTraining. Refer to
             ray.tune.schedulers for more options.
         num_samples: Number of times to sample from the

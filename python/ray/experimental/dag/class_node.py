@@ -93,7 +93,18 @@ class ClassNode(DAGNode):
 
     def to_json(self, encoder_cls) -> Dict[str, Any]:
         json_dict = super().to_json_base(encoder_cls, ClassNode.__name__)
-        json_dict["import_path"] = self.get_import_path()
+        import_path = self.get_import_path()
+        error_message = (
+            "Class used in DAG should not be in-line defined when exporting"
+            "import path for deployment. Please ensure it has fully "
+            "qualified name with valid __module__ and __qualname__ for "
+            "import path, with no __main__ or <locals>. \n"
+            f"Current import path: {import_path}"
+        )
+        assert "__main__" not in import_path, error_message
+        assert "<locals>" not in import_path, error_message
+
+        json_dict["import_path"] = import_path
         return json_dict
 
     @classmethod
@@ -117,7 +128,7 @@ class _UnboundClassMethodNode(object):
         self._method_name = method_name
         self._options = {}
 
-    def _bind(self, *args, **kwargs):
+    def bind(self, *args, **kwargs):
         other_args_to_resolve = {
             PARENT_CLASS_NODE_KEY: self._actor,
             PREV_CLASS_METHOD_CALL_KEY: self._actor._last_call,
