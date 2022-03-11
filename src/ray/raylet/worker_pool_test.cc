@@ -473,7 +473,9 @@ class WorkerPoolTest : public ::testing::Test {
               new MockRuntimeEnvAgentClient());
         },
         false);
-    const rpc::RegisterAgentRequest request;
+    rpc::RegisterAgentRequest request;
+    // Set agent port to a nonzero value to avoid invalid agent client.
+    request.set_agent_port(12345);
     rpc::RegisterAgentReply reply;
     auto send_reply_callback = [](ray::Status status, std::function<void()> f1,
                                   std::function<void()> f2) {};
