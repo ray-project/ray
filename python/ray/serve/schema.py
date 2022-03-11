@@ -8,7 +8,7 @@ from ray.serve.utils import DEFAULT
 
 class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
     runtime_env: dict = Field(
-        default=None,
+        default={},
         description=(
             "This deployment's runtime_env. working_dir and "
             "py_modules may contain only remote URIs."
@@ -48,7 +48,7 @@ class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
         ge=0,
     )
     resources: Dict = Field(
-        default=None, description=("The custom resources required by each replica.")
+        default={}, description=("The custom resources required by each replica.")
     )
     accelerator_type: str = Field(
         default=None,
@@ -341,7 +341,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     if s.ray_actor_options is None:
         ray_actor_options = None
     else:
-        ray_actor_options = s.ray_actor_options.dict()
+        ray_actor_options = s.ray_actor_options.dict(exclude_unset=True)
 
     return deployment(
         name=s.name,
