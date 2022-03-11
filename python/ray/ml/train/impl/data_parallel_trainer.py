@@ -38,7 +38,8 @@ class DataParallelTrainer(Trainer):
             datasets) to use for training. If a ``preprocessor`` is
             provided, the datasets specified here will only be transformed,
             and not fit on.
-        preprocessor: A preprocessor to preprocess the provided datasets.
+        preprocessor: A ray.ml.preprocessor.Preprocessor to preprocess the
+            provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
     """
 

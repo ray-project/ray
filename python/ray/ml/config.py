@@ -48,9 +48,6 @@ class _ScalingConfigDataClass:
     max_retries: int = 3
     placement_strategy: str = "PACK"
 
-    def __post_init__(self):
-        raise NotImplementedError
-
     @property
     def num_cpus_per_worker(self):
         """The number of CPUs to set per worker."""
