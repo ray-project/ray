@@ -113,9 +113,6 @@ class RaySyncer {
     if constexpr (std::is_same_v<T, rpc::NodeResourceChange>) {
       resources_buffer_proto_.add_batch()->mutable_change()->Swap(&update);
     } else if constexpr (std::is_same_v<T, rpc::ResourcesData>) {
-      if (!alive_nodes_.contains(update.node_id())) {
-        return;
-      }
       gcs_resource_manager_.UpdateFromResourceReport(update);
       if (update.should_global_gc() || update.resources_total_size() > 0 ||
           update.resources_available_changed() || update.resource_load_changed()) {
@@ -140,7 +137,6 @@ class RaySyncer {
   void AddNode(const rpc::GcsNodeInfo &node_info) {
     broadcaster_->HandleNodeAdded(node_info);
     poller_->HandleNodeAdded(node_info);
-    alive_nodes_.insert(node_info.node_id());
   }
 
   /// Handle a node removal.
@@ -151,7 +147,6 @@ class RaySyncer {
     broadcaster_->HandleNodeRemoved(node_info);
     poller_->HandleNodeRemoved(node_info);
     resources_buffer_.erase(node_info.node_id());
-    alive_nodes_.erase(node_info.node_id());
   }
 
   std::string DebugString() { return broadcaster_->DebugString(); }
@@ -185,7 +180,6 @@ class RaySyncer {
   // it'll be copied to resources_buffer_proto_ and sent to other nodes.
   // resources_buffer_proto_ will be cleared after each broadcasting.
   absl::flat_hash_map<std::string, rpc::ResourcesData> resources_buffer_;
-  absl::flat_hash_set<std::string> alive_nodes_;
   rpc::ResourceUsageBroadcastData resources_buffer_proto_;
   friend class ray::GcsPlacementGroupSchedulerTest;
 };
