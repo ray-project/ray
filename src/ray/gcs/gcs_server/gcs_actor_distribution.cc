@@ -63,15 +63,15 @@ std::unique_ptr<GcsActorWorkerAssignment>
 GcsBasedActorScheduler::AllocateActorWorkerAssignment(
     const TaskSpecification &task_spec) {
   auto required_placement_resources = ResourceMapToResourceRequest(
-      task_spec.GetRequiredPlacementResources().GetResourceMap());
-  auto required_resources =
-      ResourceMapToResourceRequest(task_spec.GetRequiredResources().GetResourceMap());
+      task_spec.GetRequiredPlacementResources().GetResourceMap(), false);
+  auto required_resources = ResourceMapToResourceRequest(
+      task_spec.GetRequiredResources().GetResourceMap(), false);
 
   // Allocate resources from cluster.
   auto selected_node_id =
       AllocateResources(required_placement_resources, required_resources);
   if (selected_node_id.IsNil()) {
-    WarnResourceAllocationFailure(task_spec);
+    WarnResourceAllocationFailure(task_spec, required_placement_resources);
     return nullptr;
   }
 
@@ -130,9 +130,7 @@ NodeID GcsBasedActorScheduler::GetHighestScoreNodeResource(
 }
 
 void GcsBasedActorScheduler::WarnResourceAllocationFailure(
-    const TaskSpecification &task_spec) const {
-  const auto &required_resources =
-      ResourceMapToResourceRequest(task_spec.GetRequiredPlacementResources());
+    const TaskSpecification &task_spec, const ResourceRequest &required_resources) const {
   auto scheduling_node_id = GetHighestScoreNodeResource(required_resources);
   const NodeResources *scheduling_resource = nullptr;
   auto iter = gcs_resource_manager_->GetClusterResources().find(scheduling_node_id);

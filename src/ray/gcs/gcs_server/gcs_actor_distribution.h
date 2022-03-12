@@ -133,7 +133,8 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
 
   NodeID GetHighestScoreNodeResource(const ResourceRequest &required_resources) const;
 
-  void WarnResourceAllocationFailure(const TaskSpecification &task_spec) const;
+  void WarnResourceAllocationFailure(const TaskSpecification &task_spec,
+                                     const ResourceRequest &required_resources) const;
 
   /// A rejected rely means resources were preempted by normal tasks. Then
   /// update the the cluster resource view and reschedule immediately.
