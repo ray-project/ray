@@ -12,11 +12,9 @@ import time
 import urllib
 import urllib.parse
 import yaml
-from socket import socket
 
 import ray
 import psutil
-from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray._private.usage import usage_lib
 import ray._private.services as services
 import ray.ray_constants as ray_constants
@@ -545,7 +543,7 @@ def start(
     ray_debugger_external,
 ):
     """Start Ray processes manually on the local machine."""
-    if use_gcs_for_bootstrap() and gcs_server_port is not None:
+    if gcs_server_port is not None:
         cli_logger.error(
             "`{}` is deprecated and ignored. Use {} to specify "
             "GCS server port on head node.",
@@ -621,15 +619,7 @@ def start(
         # Set bootstrap port.
         assert ray_params.redis_port is None
         assert ray_params.gcs_server_port is None
-        if use_gcs_for_bootstrap():
-            ray_params.gcs_server_port = port
-        else:
-            if port == 0:
-                with socket() as s:
-                    s.bind(("", 0))
-                    port = s.getsockname()[1]
-            ray_params.redis_port = port
-            ray_params.gcs_server_port = gcs_server_port
+        ray_params.gcs_server_port = port
 
         if os.environ.get("RAY_FAKE_CLUSTER"):
             ray_params.env_vars = {
@@ -850,16 +840,7 @@ def start(
             )
             raise Exception("Cannot canonicalize address " f"`--address={address}`.")
 
-        if use_gcs_for_bootstrap():
-            ray_params.gcs_address = bootstrap_address
-        else:
-            ray_params.redis_address = bootstrap_address
-            address_ip, address_port = services.extract_ip_port(bootstrap_address)
-            # Wait for the Redis server to be started. And throw an exception
-            # if we can't connect to it.
-            services.wait_for_redis_to_start(
-                address_ip, address_port, password=redis_password
-            )
+        ray_params.gcs_address = bootstrap_address
 
         # Get the node IP address if one is not provided.
         ray_params.update_if_absent(
@@ -1775,13 +1756,7 @@ def memory(
 def status(address, redis_password):
     """Print cluster status, including autoscaling info."""
     address = services.canonicalize_bootstrap_address(address)
-    if use_gcs_for_bootstrap():
-        gcs_client = ray._private.gcs_utils.GcsClient(address=address)
-    else:
-        redis_client = ray._private.services.create_redis_client(
-            address, redis_password
-        )
-        gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(redis_client)
+    gcs_client = ray._private.gcs_utils.GcsClient(address=address)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     status = ray.experimental.internal_kv._internal_kv_get(
         ray_constants.DEBUG_AUTOSCALING_STATUS
@@ -2077,16 +2052,7 @@ def healthcheck(address, redis_password, component):
 
     address = services.canonicalize_bootstrap_address(address)
 
-    if use_gcs_for_bootstrap():
-        gcs_address = address
-    else:
-        # If client creation or ping fails, this will exit with a non-zero
-        # exit code.
-        redis_client = ray._private.services.create_redis_client(
-            address, redis_password
-        )
-        redis_client.ping()
-        gcs_address = redis_client.get("GcsServerAddress").decode()
+    gcs_address = address
 
     if not component:
         try:
