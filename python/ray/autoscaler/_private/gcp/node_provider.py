@@ -4,6 +4,8 @@ from threading import RLock
 import time
 import logging
 
+import googleapiclient
+
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler._private.gcp.config import (
     bootstrap_gcp,
@@ -175,9 +177,17 @@ class GCPNodeProvider(NodeProvider):
     def terminate_node(self, node_id: str):
         with self.lock:
             resource = self._get_resource_depending_on_node_name(node_id)
-            result = resource.delete_instance(
-                node_id=node_id,
-            )
+            try:
+                result = resource.delete_instance(
+                    node_id=node_id,
+                )
+            except googleapiclient.errors.HttpError as e:
+                if e.status_code == 404:
+                    logger.warning(
+                        f"Tried to delete the node with id {node_id} but it was already gone."
+                    )
+                else:
+                    raise e from None
             return result
 
     @_retry
