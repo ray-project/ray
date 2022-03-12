@@ -130,8 +130,6 @@ class WheelsFinderTest(unittest.TestCase):
 
     @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.0.0.dev0")
     def testFindRayWheelsPRRepoBranch(self):
-        # Todo: Remove previous commit Buildkite token etc
-
         repo = "user"
         branch = "dev-branch"
         commit = "1234" * 10
