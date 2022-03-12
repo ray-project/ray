@@ -267,6 +267,7 @@ class RuntimeEnv(dict):
         "_inject_current_ray",
         "plugins",
         "eager_install",
+        "config",
     }
 
     extensions_fields: Set[str] = {
@@ -284,6 +285,7 @@ class RuntimeEnv(dict):
         conda: Optional[Union[Dict[str, str], str]] = None,
         container: Optional[Dict[str, str]] = None,
         env_vars: Optional[Dict[str, str]] = None,
+        config: Optional[Union[Dict, RuntimeEnvConfig]] = None,
         _validate: bool = True,
         **kwargs,
     ):
@@ -302,6 +304,9 @@ class RuntimeEnv(dict):
             runtime_env["container"] = container
         if env_vars is not None:
             runtime_env["env_vars"] = env_vars
+        if config is None:
+            config = RuntimeEnvConfig.default_config()
+        runtime_env["config"] = config
 
         # Blindly trust that the runtime_env has already been validated.
         # This is dangerous and should only be used internally (e.g., on the
