@@ -2534,6 +2534,7 @@
     file_manager: sdk
 
   smoke_test:
+    frequency: multi
     cluster:
       app_config: ray_sgd_training_app.yaml
       compute_template: ray_sgd_training_smoke_compute.yaml
