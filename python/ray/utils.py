@@ -52,11 +52,7 @@ def get_runtime_env_info(
     runtime_env_config = runtime_env.get("config")
     serialized_runtime_env_config = None
     if runtime_env_config is None:
-        serialized_runtime_env_config = (
-            RuntimeEnvConfig.parse_and_validate_runtime_env_condig(
-                RuntimeEnvConfig.default_config
-            ).serialize()
-        )
+        serialized_runtime_env_config = RuntimeEnvConfig.default_config().serialize()
     else:
         serialized_runtime_env_config = (
             RuntimeEnvConfig.parse_and_validate_runtime_env_condig(

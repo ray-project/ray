@@ -83,7 +83,7 @@ def _parse_proto_plugin_runtime_env(
 class RuntimeEnvConfig:
     known_fields: Set[str] = {"setup_timeout_seconds"}
 
-    default_config: Dict = {
+    _default_config_config: Dict = {
         "setup_timeout_seconds": 10 * 60,
     }
 
@@ -104,7 +104,7 @@ class RuntimeEnvConfig:
     def parse_and_validate_runtime_env_condig(
         config: Union[Dict, "RuntimeEnvConfig"]
     ) -> "RuntimeEnvConfig":
-        if isinstance(config, "RuntimeEnvConfig"):
+        if isinstance(config, RuntimeEnvConfig):
             return config
         elif isinstance(config, Dict):
             unknown_fields = set(config.keys()) - RuntimeEnvConfig.known_fields
@@ -124,13 +124,13 @@ class RuntimeEnvConfig:
                 f"got: {type(config)}"
             )
 
+    @classmethod
+    def default_config(cls):
+        return RuntimeEnvConfig(**cls._default_config_config)
+
     def build_proto_runtime_env_config(self) -> ProtoRuntimeEnvConfig:
         runtime_env_config = ProtoRuntimeEnvConfig()
-        runtime_env_config.setup_timeout_seconds = (
-            RuntimeEnvConfig.parse_and_validate_runtime_env_condig(
-                self.setup_timeout_seconds
-            )
-        )
+        runtime_env_config.setup_timeout_seconds = self.setup_timeout_seconds
         return runtime_env_config
 
     def serialize(self) -> str:
@@ -142,6 +142,9 @@ class RuntimeEnvConfig:
 
     @classmethod
     def deserialize(cls, serialized_runtime_env_config: str) -> "RuntimeEnvConfig":
+        # If serialized_runtime_env_config is empty, return default_config
+        if serialized_runtime_env_config == "" or serialized_runtime_env_config == "{}":
+            return cls.default_config()
         proto_runtime_env_config = json_format.Parse(
             serialized_runtime_env_config, ProtoRuntimeEnvConfig()
         )
