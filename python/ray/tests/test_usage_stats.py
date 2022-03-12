@@ -1,3 +1,4 @@
+import os
 import pytest
 import sys
 import ray
@@ -70,11 +71,14 @@ def test_usage_stats_heads_up_message():
     """
     Test usage stats heads-up message is shown in the proper cases.
     """
+    env = os.environ.copy()
+    env["RAY_USAGE_STATS_PROMPT_ENABLED"] = "0"
     result = subprocess.run(
-        "RAY_USAGE_STATS_PROMPT_ENABLED=0 ray start --head; ray stop --force",
+        "ray start --head",
         shell=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        env=env,
     )
     assert result.returncode == 0
     assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
@@ -83,6 +87,8 @@ def test_usage_stats_heads_up_message():
     assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stderr.decode(
         "utf-8"
     )
+
+    subprocess.run("ray stop --force", shell=True)
 
     result = subprocess.run(
         "ray start --head",
@@ -97,7 +103,7 @@ def test_usage_stats_heads_up_message():
     assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE in result.stderr.decode("utf-8")
 
     result = subprocess.run(
-        "ray start --address='127.0.0.1:6379'; ray stop --force",
+        'ray start --address="127.0.0.1:6379"',
         shell=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -109,6 +115,8 @@ def test_usage_stats_heads_up_message():
     assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stderr.decode(
         "utf-8"
     )
+
+    subprocess.run("ray stop --force", shell=True)
 
     result = subprocess.run(
         "ray up xxx.yml", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
@@ -167,7 +175,7 @@ def test_usage_stats_heads_up_message():
     )
 
     result = subprocess.run(
-        "python -c 'import ray; ray.init()'",
+        'python -c "import ray; ray.init()"',
         shell=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
