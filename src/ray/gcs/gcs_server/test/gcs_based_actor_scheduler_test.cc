@@ -235,7 +235,7 @@ TEST_F(GcsBasedActorSchedulerTest, TestBalancedSchedule) {
   }
 }
 
-TEST_F(GcsBasedActorSchedulerTest, DISABLED_TestRejectedRequestWorkerLeaseReply) {
+TEST_F(GcsBasedActorSchedulerTest, TestRejectedRequestWorkerLeaseReply) {
   // Add a node with 64 memory units and 8 CPU.
   std::unordered_map<std::string, double> node_resources_1 = {{kMemory_ResourceLabel, 64},
                                                               {kCPU_ResourceLabel, 8}};
