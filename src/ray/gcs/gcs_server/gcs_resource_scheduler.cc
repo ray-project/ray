@@ -14,6 +14,10 @@
 
 #include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
 
+#include <numeric>
+
+#include "ray/raylet/scheduling/scheduling_ids.h"
+
 namespace ray {
 namespace gcs {
 
@@ -77,6 +81,19 @@ double LeastResourceScorer::Calculate(const FixedPoint &requested,
 
 /////////////////////////////////////////////////////////////////////////////////////////
 
+SchedulingResult SortSchedulingResult(const SchedulingResult &result,
+                                      const std::vector<int> &sorted_index) {
+  if (result.first == SchedulingResultStatus::SUCCESS) {
+    std::vector<NodeID> sorted_nodes(result.second.size());
+    for (int i = 0; i < (int)sorted_index.size(); i++) {
+      sorted_nodes[sorted_index[i]] = result.second[i];
+    }
+    return std::make_pair(result.first, sorted_nodes);
+  } else {
+    return result;
+  }
+}
+
 SchedulingResult GcsResourceScheduler::Schedule(
     const std::vector<ResourceRequest> &required_resources_list,
     const SchedulingType &scheduling_type,
@@ -88,30 +105,36 @@ SchedulingResult GcsResourceScheduler::Schedule(
     return std::make_pair(SchedulingResultStatus::INFEASIBLE, std::vector<NodeID>());
   }
 
+  // If scheduling type is strict pack, we do not need to sort resources of each placement
+  // group since they must exist on the same node
+  if (scheduling_type == SchedulingType::STRICT_PACK) {
+    return StrictPackSchedule(required_resources_list, candidate_nodes);
+  }
+
   // First schedule scarce resources (such as GPU) and large capacity resources to improve
   // the scheduling success rate.
-  const auto &to_schedule_resources = SortRequiredResources(required_resources_list);
+  const auto &sorted_index = SortRequiredResources(required_resources_list);
+
+  std::vector<ResourceRequest> sorted_resources(required_resources_list);
+  for (int i = 0; i < (int)sorted_index.size(); i++) {
+    sorted_resources[i] = required_resources_list[sorted_index[i]];
+  }
 
   // Score and rank nodes.
-  SchedulingResult result;
   switch (scheduling_type) {
-  case SPREAD:
-    result = SpreadSchedule(to_schedule_resources, candidate_nodes);
-    break;
-  case STRICT_SPREAD:
-    result = StrictSpreadSchedule(to_schedule_resources, candidate_nodes);
-    break;
   case PACK:
-    result = PackSchedule(to_schedule_resources, candidate_nodes);
-    break;
-  case STRICT_PACK:
-    result = StrictPackSchedule(to_schedule_resources, candidate_nodes);
-    break;
+    return SortSchedulingResult(PackSchedule(sorted_resources, candidate_nodes),
+                                sorted_index);
+  case SPREAD:
+    return SortSchedulingResult(SpreadSchedule(sorted_resources, candidate_nodes),
+                                sorted_index);
+  case STRICT_SPREAD:
+    return SortSchedulingResult(StrictSpreadSchedule(sorted_resources, candidate_nodes),
+                                sorted_index);
   default:
     RAY_LOG(FATAL) << "Unsupported scheduling type: " << scheduling_type;
-    break;
   }
-  return result;
+  UNREACHABLE;
 }
 
 absl::flat_hash_set<NodeID> GcsResourceScheduler::FilterCandidateNodes(
@@ -128,12 +151,63 @@ absl::flat_hash_set<NodeID> GcsResourceScheduler::FilterCandidateNodes(
   return result;
 }
 
-const std::vector<ResourceRequest> &GcsResourceScheduler::SortRequiredResources(
+std::vector<int> GcsResourceScheduler::SortRequiredResources(
     const std::vector<ResourceRequest> &required_resources) {
-  // TODO(ffbin): A bundle may require special resources, such as GPU. We need to
-  // schedule bundles with special resource requirements first, which will be implemented
-  // in the next pr.
-  return required_resources;
+  std::vector<int> sorted_index(required_resources.size());
+  std::iota(sorted_index.begin(), sorted_index.end(), 0);
+
+  // Here we sort in reverse order:
+  // sort(_, _, a < b) would result in the vector [a < b < c]
+  // sort(_, _, a > b) would result in the vector [c > b > a] which leads to our desired
+  // outcome of having highest priority `ResourceRequest` being scheduled first.
+
+  std::sort(sorted_index.begin(), sorted_index.end(), [&](int b_idx, int a_idx) {
+    const auto &a = required_resources[a_idx];
+    const auto &b = required_resources[b_idx];
+
+    RAY_CHECK(a.predefined_resources.size() == (int)PredefinedResources_MAX);
+    RAY_CHECK(b.predefined_resources.size() == (int)PredefinedResources_MAX);
+
+    // Make sure that resources are always sorted in the same order
+    std::set<uint64_t> extra_resources_set;
+    for (auto r : a.custom_resources) {
+      extra_resources_set.insert(r.first);
+    }
+    for (auto r : b.custom_resources) {
+      extra_resources_set.insert(r.first);
+    }
+
+    // TODO (jon-chuang): the exact resource priority defined here needs to be revisted.
+
+    // Notes: This is a comparator for sorting in c++. We return true if a < b based on a
+    // resource at the given level of priority. If tied, we attempt to resolve based on
+    // the resource at the next level of priority.
+    //
+    // The order of priority is: `ResourceRequest`s with GPU requirements first, then
+    // extra resources, then object store memory, memory and finally CPU requirements. If
+    // two `ResourceRequest`s require a resource under consideration, the one requiring
+    // more of the resource is prioritized.
+
+    if (a.predefined_resources[GPU] != b.predefined_resources[GPU]) {
+      return a.predefined_resources[GPU] < b.predefined_resources[GPU];
+    }
+    for (auto r : extra_resources_set) {
+      auto a_iter = a.custom_resources.find(r);
+      const auto &a_resource = a_iter != a.custom_resources.end() ? a_iter->second : 0;
+      auto b_iter = a.custom_resources.find(r);
+      const auto &b_resource = b_iter != b.custom_resources.end() ? b_iter->second : 0;
+      if (a_resource != b_resource) {
+        return a_resource < b_resource;
+      }
+    }
+    for (auto idx : std::vector({OBJECT_STORE_MEM, MEM, CPU})) {
+      if (a.predefined_resources[idx] != b.predefined_resources[idx]) {
+        return a.predefined_resources[idx] < b.predefined_resources[idx];
+      }
+    }
+    return false;
+  });
+  return sorted_index;
 }
 
 SchedulingResult GcsResourceScheduler::StrictSpreadSchedule(
