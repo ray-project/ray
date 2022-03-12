@@ -2640,6 +2640,7 @@
       script: python dask_on_ray/large_scale_test.py --num_workers 4 --worker_obj_store_size_in_gb 20 --error_rate 0  --data_save_path /tmp/ray
       type: job
       file_manager: job
+  stable: false
 
 - name: k8s_threaded_actors_stress_test
   group: k8s-core-nightly-test
@@ -2691,6 +2692,7 @@
     script: python single_node/test_single_node.py
     type: job
     file_manager: job
+  stable: false
 
 - name: k8s_object_store
   group: core-scalability-test
@@ -2715,6 +2717,7 @@
 
     type: job
     file_manager: job
+  stable: false
 
 - name: k8s_many_actors
   group: core-scalability-test
@@ -2739,6 +2742,7 @@
 
     type: job
     file_manager: job
+  stable: false
 
 - name: k8s_many_actors_smoke_test
   group: core-scalability-test
@@ -2763,6 +2767,7 @@
 
     type: job
     file_manager: job
+  stable: false
 
 - name: k8s_many_tasks
   group: core-scalability-test
@@ -2787,6 +2792,7 @@
 
     type: job
     file_manager: job
+  stable: false
 
 - name: k8s_many_tasks_smoke_test
   group: core-scalability-test
@@ -2811,6 +2817,7 @@
 
     type: job
     file_manager: job
+  stable: false
 
 - name: k8s_many_pgs
   group: core-scalability-test
@@ -2835,6 +2842,7 @@
 
     type: job
     file_manager: job
+  stable: false
 
 - name: k8s_many_pgs_smoke_test
   group: core-scalability-test
@@ -2859,6 +2867,7 @@
 
     type: job
     file_manager: job
+  stable: false
 
 - name: k8s_many_nodes
   group: core-scalability-test
@@ -2883,6 +2892,7 @@
 
     type: job
     file_manager: job
+  stable: false
 
 - name: k8s_scheduling_test_many_0s_tasks_single_node
   group: core-scalability-test
@@ -2909,6 +2919,7 @@
 
     type: job
     file_manager: job
+  stable: false
 
 - name: k8s_scheduling_test_many_0s_tasks_many_nodes
   group: core-scalability-test
