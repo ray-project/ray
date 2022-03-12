@@ -101,7 +101,7 @@ def delete_object(namespace: str, path: str) -> bool:
         return False
 
 
-def get_object_info(namespace: str, path: str) -> List["pyarrow.fs.FileInfo"]:
+def get_object_info(namespace: str, path: str) -> "pyarrow.fs.FileInfo":
     fs, prefix = get_filesystem()
     base = os.path.join(prefix, namespace)
     full_path = os.path.join(base, path)

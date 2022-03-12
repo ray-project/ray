@@ -175,7 +175,7 @@ if __name__ == "__main__":
             object_spilling_config = base64.b64decode(args.object_spilling_config)
             object_spilling_config = json.loads(object_spilling_config)
             with open("/tmp/output", "a") as f:
-                f.write("WORKER {}\n".format(object_spilling_config))
+                f.write("WORKER {}\n".format(args.storage))
         else:
             object_spilling_config = {}
         external_storage.setup_external_storage(object_spilling_config)
