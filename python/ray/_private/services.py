@@ -1563,6 +1563,7 @@ def start_raylet(
     plasma_store_name,
     worker_path,
     setup_worker_path,
+    storage,
     temp_dir,
     session_dir,
     resource_dir,
@@ -1607,6 +1608,7 @@ def start_raylet(
             processes will execute.
         setup_worker_path (str): The path of the Python file that will set up
             the environment for the worker process.
+        storage (str): The persistent storage URI.
         temp_dir (str): The path of the temporary directory Ray will use.
         session_dir (str): The path of this session.
         resource_dir(str): The path of resource of this session .
@@ -1716,6 +1718,7 @@ def start_raylet(
         f"--object-store-name={plasma_store_name}",
         f"--raylet-name={raylet_name}",
         f"--redis-address={redis_address}",
+        f"--storage={storage}",
         f"--temp-dir={temp_dir}",
         f"--metrics-agent-port={metrics_agent_port}",
         f"--logging-rotate-bytes={max_bytes}",

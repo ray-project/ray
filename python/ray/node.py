@@ -1018,6 +1018,7 @@ class Node:
             self._ray_params.worker_path,
             self._ray_params.setup_worker_path,
             self._temp_dir,
+            self._storage,
             self._session_dir,
             self._runtime_env_dir,
             self._logs_dir,

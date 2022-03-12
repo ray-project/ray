@@ -365,7 +365,7 @@ class ExternalStorageRayStorageImpl(ExternalStorage):
     def __init__(self):
         self._fs, storage_prefix = ray.storage.impl._get_or_init_filesystem()
         # TODO: add job_id here.
-        self._prefix = os.path.join(storage_prefix, "spill/job_00000")
+        self._prefix = os.path.join(storage_prefix, "spilled_objects/job_00000")
         self._fs.create_dir(self._prefix)
 
     def spill_objects(self, object_refs, owner_addresses) -> List[str]:

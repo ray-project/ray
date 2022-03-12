@@ -1,4 +1,4 @@
-from typing import Dict, Union, Optional, Any, List, TYPE_CHECKING
+from typing import Dict, Union, Any, List, TYPE_CHECKING
 import os
 
 import ray
@@ -47,7 +47,7 @@ def _init_filesystem(storage_uri: str, create_valid_file: bool = False):
         with _filesystem.open_output_stream(valid_file):
             pass
     else:
-        valid = _filesystem.get_file_info([valid_file + "x"])[0]
+        valid = _filesystem.get_file_info([valid_file])[0]
         if valid.type == pyarrow.fs.FileType.NotFound:
             raise RuntimeError(
                 "Unable to initialize storage: {} flag not found. "

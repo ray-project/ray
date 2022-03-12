@@ -363,6 +363,8 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
         absl::Base64Escape(RayConfig::instance().object_spilling_config()));
   }
 
+  worker_command_args.push_back("--storage=" + RayConfig::instance().storage());
+
   ProcessEnvironment env;
   if (!IsIOWorkerType(worker_type)) {
     // We pass the job ID to worker processes via an environment variable, so we don't
