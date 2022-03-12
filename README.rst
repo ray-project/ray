@@ -368,7 +368,7 @@ More Information
 - `Tutorial`_
 - `Blog`_
 - `Ray 1.0 Architecture whitepaper`_ **(new)**
-- `Exoshuffle Paper`_ **(new)**
+- `Exoshuffle paper`_ **(new)**
 - `RLlib paper`_
 - `RLlib flow paper`_
 - `Tune paper`_
