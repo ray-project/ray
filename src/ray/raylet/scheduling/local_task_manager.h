@@ -157,7 +157,7 @@ class LocalTaskManager {
   bool ReturnCpuResourcesToBlockedWorker(std::shared_ptr<WorkerInterface> worker);
 
   /// Calculate normal task resources.
-  ResourceSet CalcNormalTaskResources() const;
+  absl::flat_hash_map<std::string, double> CalcNormalTaskResources() const;
 
   void SetWorkerBacklog(SchedulingClass scheduling_class, const WorkerID &worker_id,
                         int64_t backlog_size);

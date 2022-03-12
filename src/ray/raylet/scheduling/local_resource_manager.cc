@@ -608,7 +608,7 @@ std::string LocalResourceManager::SerializedTaskResourceInstances(
 }
 
 void LocalResourceManager::ResetLastReportResourceUsage(
-    const SchedulingResources &replacement) {
+    const NodeResources &replacement) {
   last_report_resources_ = std::make_unique<NodeResources>(
       ResourceMapToNodeResources(replacement.GetTotalResources().GetResourceMap(),
                                  replacement.GetAvailableResources().GetResourceMap()));

@@ -310,11 +310,10 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       next_resource_seq_no_(0) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
-  SchedulingResources local_resources(config.resource_config);
   cluster_resource_scheduler_ =
       std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
-          scheduling::NodeID(self_node_id_.Binary()),
-          local_resources.GetTotalResources().GetResourceMap(), *gcs_client_,
+          scheduling::NodeID(self_node_id_.Binary()), config.resource_config,
+          *gcs_client_,
           [this]() {
             if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
               return local_object_manager_.GetPinnedBytes();
@@ -437,9 +436,9 @@ ray::Status NodeManager::RegisterGcs() {
             return;
           }
           if (resource_notification.updated_resources_size() != 0) {
-            ResourceSet resource_set(
+            auto resource_map =
                 MapFromProtobuf(resource_notification.updated_resources()));
-            ResourceCreateUpdated(id, resource_set);
+            ResourceCreateUpdated(id, resource_map);
           }
 
           if (resource_notification.deleted_resources_size() != 0) {
@@ -580,17 +579,17 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
 
 void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data) {
   auto last_heartbeat_resources = gcs_client_->NodeResources().GetLastResourceUsage();
-  ResourceSet normal_task_resources = local_task_manager_->CalcNormalTaskResources();
-  if (!last_heartbeat_resources->GetNormalTaskResources().IsEqual(
-          normal_task_resources)) {
-    RAY_LOG(DEBUG) << "normal_task_resources = " << normal_task_resources.ToString();
-    resources_data.set_resources_normal_task_changed(true);
-    auto &normal_task_map = *(resources_data.mutable_resources_normal_task());
-    normal_task_map = {normal_task_resources.GetResourceMap().begin(),
-                       normal_task_resources.GetResourceMap().end()};
-    resources_data.set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
-    last_heartbeat_resources->SetNormalTaskResources(normal_task_resources);
-  }
+  auto normal_task_resources_map = local_task_manager_->CalcNormalTaskResources();
+  auto normal_task_resources =
+      ResourceMapToResourceRequest(normal_task_resources_map, false);
+  if (last_heartbeat_resources->normal_task_resources != normal_task_resources)) {
+      RAY_LOG(DEBUG) << "normal_task_resources = " << normal_task_resources.DebugString();
+      resources_data.set_resources_normal_task_changed(true);
+      auto &normal_task_map = *(resources_data.mutable_resources_normal_task());
+      normal_task_map = {normal_task_resources.begin(), normal_task_resources.end()};
+      resources_data.set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
+      last_heartbeat_resources->normal_task_resources = normal_task_resources;
+    }
 }
 
 void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
@@ -809,12 +808,11 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
           Status status,
           const boost::optional<gcs::NodeResourceInfoAccessor::ResourceMap> &data) {
         if (data) {
-          ResourceSet resource_set;
+          absl::flat_hash_map<std::string, double> resource_map;
           for (auto &resource_entry : *data) {
-            resource_set.AddOrUpdateResource(resource_entry.first,
-                                             resource_entry.second->resource_capacity());
+            resource_map[resource_entry.first] = resource_entry.second->resource_capacity());
           }
-          ResourceCreateUpdated(node_id, resource_set);
+          ResourceCreateUpdated(node_id, resource_map);
         }
       }));
 }
@@ -913,12 +911,15 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data
   }
 }
 
-void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
-                                        const ResourceSet &createUpdatedResources) {
-  RAY_LOG(DEBUG) << "[ResourceCreateUpdated] received callback from node id " << node_id
-                 << " with created or updated resources: "
-                 << createUpdatedResources.ToString() << ". Updating resource map."
-                 << " skip=" << (node_id == self_node_id_);
+void NodeManager::ResourceCreateUpdated(
+    const NodeID &node_id,
+    const absl::flat_hash_map<std::string, double> &createUpdatedResources) {
+  RAY_LOG(DEBUG)
+      << "[ResourceCreateUpdated] received callback from node id " << node_id
+      << " with created or updated resources: "
+      << ResourceMapToResourceRequest(createUpdatedResources, false).DebugString()
+      << ". Updating resource map."
+      << " skip=" << (node_id == self_node_id_);
 
   // Skip updating local node since local node always has the latest information.
   // Updating local node could result in a inconsistence view in cluster resource
@@ -929,7 +930,7 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
   }
 
   // Update local_available_resources_ and SchedulingResources
-  for (const auto &resource_pair : createUpdatedResources.GetResourceMap()) {
+  for (const auto &resource_pair : createUpdatedResources) {
     const std::string &resource_label = resource_pair.first;
     const double &new_resource_capacity = resource_pair.second;
     cluster_resource_scheduler_->GetClusterResourceManager().UpdateResourceCapacity(
@@ -1525,9 +1526,9 @@ void NodeManager::HandleUpdateResourceUsage(
       const auto &resource_notification = resource_change_or_data.change();
       auto node_id = NodeID::FromBinary(resource_notification.node_id());
       if (resource_notification.updated_resources_size() != 0) {
-        ResourceSet resource_set(
+        auto resource_map = 
             MapFromProtobuf(resource_notification.updated_resources()));
-        ResourceCreateUpdated(node_id, resource_set);
+        ResourceCreateUpdated(node_id, resource_map);
       }
 
       if (resource_notification.deleted_resources_size() != 0) {
@@ -1600,20 +1601,19 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     // with normal task resource usages so GCS can update
     // its resource view of this raylet.
     if (reply->rejected() && is_actor_creation_task) {
-      ResourceSet normal_task_resources = local_task_manager_->CalcNormalTaskResources();
-      RAY_LOG(DEBUG) << "Reject leasing as the raylet has no enough resources."
-                     << " actor_id = " << actor_id
-                     << ", normal_task_resources = " << normal_task_resources.ToString()
-                     << ", local_resoruce_view = "
-                     << cluster_resource_scheduler_->GetClusterResourceManager()
-                            .GetNodeResourceViewString(
-                                scheduling::NodeID(self_node_id_.Binary()));
+      auto normal_task_resources = local_task_manager_->CalcNormalTaskResources();
+      RAY_LOG(DEBUG)
+          << "Reject leasing as the raylet has no enough resources."
+          << " actor_id = " << actor_id << ", normal_task_resources = "
+          << ResourceMapToResourceRequest(normal_task_resources, false).DebugString()
+          << ", local_resoruce_view = "
+          << cluster_resource_scheduler_->GetClusterResourceManager()
+                 .GetNodeResourceViewString(scheduling::NodeID(self_node_id_.Binary()));
       auto resources_data = reply->mutable_resources_data();
       resources_data->set_node_id(self_node_id_.Binary());
       resources_data->set_resources_normal_task_changed(true);
       auto &normal_task_map = *(resources_data->mutable_resources_normal_task());
-      normal_task_map = {normal_task_resources.GetResourceMap().begin(),
-                         normal_task_resources.GetResourceMap().end()};
+      normal_task_map = {normal_task_resources.begin(), normal_task_resources.end()};
       resources_data->set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
     }
 
@@ -2082,7 +2082,9 @@ std::string NodeManager::DebugString() const {
   std::stringstream result;
   uint64_t now_ms = current_time_ms();
   result << "NodeManager:";
-  result << "\nInitialConfigResources: " << initial_config_.resource_config.ToString();
+  result << "\nInitialConfigResources: "
+         << ResourceMapToResourceRequest(initial_config_.resource_config, false)
+                .DebugString();
   if (cluster_task_manager_ != nullptr) {
     result << "\nClusterTaskManager:\n";
     result << cluster_task_manager_->DebugStr();

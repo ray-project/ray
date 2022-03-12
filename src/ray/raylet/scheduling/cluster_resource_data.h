@@ -154,6 +154,7 @@ class NodeResources {
   /// Map containing custom resources. The key of each entry represents the
   /// custom resource ID.
   absl::flat_hash_map<int64_t, ResourceCapacity> custom_resources;
+  ResourceRequest load;
   bool object_pulls_queued = false;
 
   /// Amongst CPU, memory, and object store memory, calculate the utilization percentage

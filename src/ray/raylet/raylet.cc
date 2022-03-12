@@ -79,7 +79,7 @@ Raylet::Raylet(instrumented_io_context &main_service, const std::string &socket_
   self_node_info_.set_node_manager_port(node_manager_.GetServerPort());
   self_node_info_.set_node_manager_hostname(boost::asio::ip::host_name());
   self_node_info_.set_metrics_export_port(metrics_export_port);
-  const auto &resource_map = node_manager_config.resource_config.GetResourceMap();
+  const auto &resource_map = node_manager_config.resource_config;
   self_node_info_.mutable_resources_total()->insert(resource_map.begin(),
                                                     resource_map.end());
 }
@@ -113,8 +113,7 @@ ray::Status Raylet::RegisterGcs() {
     // Add resource information.
     const NodeManagerConfig &node_manager_config = node_manager_.GetInitialConfig();
     std::unordered_map<std::string, std::shared_ptr<rpc::ResourceTableData>> resources;
-    for (const auto &resource_pair :
-         node_manager_config.resource_config.GetResourceMap()) {
+    for (const auto &resource_pair : node_manager_config.resource_config) {
       auto resource = std::make_shared<rpc::ResourceTableData>();
       resource->set_resource_capacity(resource_pair.second);
       resources.emplace(resource_pair.first, resource);
