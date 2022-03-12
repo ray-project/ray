@@ -8,6 +8,7 @@ from ray_release.util import ANYSCALE_HOST
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import CommandTimeout
 from ray.job_submission import JobSubmissionClient, JobStatus
+from ray_release.util import exponential_backoff_retry
 
 
 class JobManager:
@@ -47,9 +48,16 @@ class JobManager:
         self.start_time[command_id] = time.time()
         return command_id
 
-    def _wait_job(self, command_id: int, timeout: int):
+    def _get_job_status_with_retry(self, command_id):
         job_client = self._get_job_client()
+        return exponential_backoff_retry(
+            lambda: job_client.get_job_status(self.job_id_pool[command_id]),
+            retry_exceptions=Exception,
+            initial_retry_delay_s=1,
+            max_retries=3,
+        )
 
+    def _wait_job(self, command_id: int, timeout: int):
         start_time = time.monotonic()
         timeout_at = start_time + timeout
         next_status = start_time + 30
@@ -67,11 +75,11 @@ class JobManager:
                     f"({int(now - start_time)} seconds) ..."
                 )
                 next_status += 30
-            status = job_client.get_job_status(self.job_id_pool[command_id])
+            status = self._get_job_status_with_retry(command_id)
             if status in {JobStatus.SUCCEEDED, JobStatus.STOPPED, JobStatus.FAILED}:
                 break
             time.sleep(1)
-        status = job_client.get_job_status(self.job_id_pool[command_id])
+        status = self._get_job_status_with_retry(command_id)
         # TODO(sang): Propagate JobInfo.error_type
         if status == JobStatus.SUCCEEDED:
             retcode = 0
