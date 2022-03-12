@@ -18,7 +18,6 @@
 
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/common/task/scheduling_resources.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
@@ -41,17 +40,18 @@ class GcsActorWorkerAssignment
   ///
   /// \param node_id ID of node on which this gcs actor worker assignment is allocated.
   /// \param acquired_resources Resources owned by this gcs actor worker assignment.
-  GcsActorWorkerAssignment(const NodeID &node_id, const ResourceSet &acquired_resources);
+  GcsActorWorkerAssignment(const NodeID &node_id,
+                           const ResourceRequest &acquired_resources);
 
   const NodeID &GetNodeID() const;
 
-  const ResourceSet &GetResources() const;
+  const ResourceRequest &GetResources() const;
 
  private:
   /// ID of node on which this actor worker assignment is allocated.
   const NodeID node_id_;
   /// Resources owned by this actor worker assignment.
-  const ResourceSet acquired_resources_;
+  const ResourceRequest acquired_resources_;
 };
 
 /// GcsBasedActorScheduler inherits from GcsActorScheduler. Its scheduling strategy is
@@ -121,13 +121,17 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
   std::unique_ptr<GcsActorWorkerAssignment> AllocateActorWorkerAssignment(
       const TaskSpecification &task_spec);
 
+  /// TODO(Chong-Li): This is to accommodate the Raylet scheduling's behavior (different
+  /// resources for scheduling and allocation). We need to unify these two at the end.
   /// Allocate resources for the actor.
   ///
-  /// \param task_spec The specification of the task.
-  /// \return ID of the node from which the resources are allocated.
-  NodeID AllocateResources(const TaskSpecification &task_spec);
+  /// \param required_placement_resources The required resources of the task for
+  /// scheduling. \param required_resources The required resources of the task for
+  /// allocation. \return ID of the node from which the resources are allocated.
+  NodeID AllocateResources(const ResourceRequest &required_placement_resources,
+                           const ResourceRequest &required_resources);
 
-  NodeID GetHighestScoreNodeResource(const ResourceSet &required_resources) const;
+  NodeID GetHighestScoreNodeResource(const ResourceRequest &required_resources) const;
 
   void WarnResourceAllocationFailure(const TaskSpecification &task_spec) const;
 

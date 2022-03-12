@@ -325,7 +325,7 @@ void GcsActorManager::HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest &r
   // jobs, so fetch it from redis.
   Status status = gcs_table_storage_->ActorTable().GetAll(
       [reply, send_reply_callback](
-          const std::unordered_map<ActorID, rpc::ActorTableData> &result) {
+          const absl::flat_hash_map<ActorID, rpc::ActorTableData> &result) {
         for (const auto &pair : result) {
           // TODO yic: Fix const cast
           reply->mutable_actor_table_data()->UnsafeArenaAddAllocated(
@@ -1141,7 +1141,7 @@ void GcsActorManager::SetSchedulePendingActorsPosted(bool posted) {
 
 void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
   const auto &jobs = gcs_init_data.Jobs();
-  std::unordered_map<NodeID, std::vector<WorkerID>> node_to_workers;
+  absl::flat_hash_map<NodeID, std::vector<WorkerID>> node_to_workers;
   for (const auto &entry : gcs_init_data.Actors()) {
     auto job_iter = jobs.find(entry.first.JobId());
     auto is_job_dead = (job_iter == jobs.end() || job_iter->second.is_dead());
@@ -1209,7 +1209,7 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
 
 void GcsActorManager::OnJobFinished(const JobID &job_id) {
   auto on_done = [this,
-                  job_id](const std::unordered_map<ActorID, ActorTableData> &result) {
+                  job_id](const absl::flat_hash_map<ActorID, ActorTableData> &result) {
     if (!result.empty()) {
       std::vector<ActorID> non_detached_actors;
       for (auto &item : result) {

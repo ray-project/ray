@@ -1027,7 +1027,7 @@ cc_test(
     name = "scheduling_policy_test",
     size = "small",
     srcs = [
-        "src/ray/raylet/scheduling/scheduling_policy_test.cc",
+        "src/ray/raylet/scheduling/policy/scheduling_policy_test.cc",
     ],
     copts = COPTS,
     tags = ["team:core"],
@@ -2095,6 +2095,7 @@ cc_library(
         "@boost//:asio",
         "@boost//:filesystem",
         "@com_github_spdlog//:spdlog",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/debugging:failure_signal_handler",
         "@com_google_absl//absl/debugging:stacktrace",
         "@com_google_absl//absl/debugging:symbolize",

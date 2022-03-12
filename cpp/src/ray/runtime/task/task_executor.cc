@@ -139,6 +139,7 @@ Status TaskExecutor::ExecuteTask(
             ray::FunctionDescriptorType::kCppFunctionDescriptor);
   auto typed_descriptor = function_descriptor->As<ray::CppFunctionDescriptor>();
   std::string func_name = typed_descriptor->FunctionName();
+  bool cross_lang = !typed_descriptor->Caller().empty();
 
   Status status{};
   std::shared_ptr<msgpack::sbuffer> data = nullptr;
@@ -146,7 +147,13 @@ Status TaskExecutor::ExecuteTask(
   for (size_t i = 0; i < args_buffer.size(); i++) {
     auto &arg = args_buffer.at(i);
     msgpack::sbuffer sbuf;
-    sbuf.write((const char *)(arg->GetData()->Data()), arg->GetData()->Size());
+    if (cross_lang) {
+      sbuf.write((const char *)(arg->GetData()->Data()) + XLANG_HEADER_LEN,
+                 arg->GetData()->Size() - XLANG_HEADER_LEN);
+    } else {
+      sbuf.write((const char *)(arg->GetData()->Data()), arg->GetData()->Size());
+    }
+
     ray_args_buffer.push_back(std::move(sbuf));
   }
   if (task_type == ray::TaskType::ACTOR_CREATION_TASK) {
@@ -176,8 +183,16 @@ Status TaskExecutor::ExecuteTask(
         reinterpret_cast<uint8_t *>(&meta_str[0]), meta_str.size(), true);
 
     msgpack::sbuffer buf;
-    std::string msg = status.ToString();
-    buf.write(msg.data(), msg.size());
+    if (cross_lang) {
+      ray::rpc::RayException ray_exception{};
+      ray_exception.set_language(ray::rpc::Language::CPP);
+      ray_exception.set_formatted_exception_string(status.ToString());
+      auto msg = ray_exception.SerializeAsString();
+      buf = Serializer::Serialize(msg.data(), msg.size());
+    } else {
+      std::string msg = status.ToString();
+      buf.write(msg.data(), msg.size());
+    }
     data = std::make_shared<msgpack::sbuffer>(std::move(buf));
   }
 
@@ -187,14 +202,34 @@ Status TaskExecutor::ExecuteTask(
     auto &result_id = return_ids[0];
     auto result_ptr = &(*results)[0];
     int64_t task_output_inlined_bytes = 0;
+
+    if (cross_lang && meta_buffer == nullptr) {
+      meta_buffer = std::make_shared<ray::LocalMemoryBuffer>(
+          (uint8_t *)(&METADATA_STR_XLANG[0]), METADATA_STR_XLANG.size(), true);
+    }
+
+    size_t total = cross_lang ? (XLANG_HEADER_LEN + data_size) : data_size;
     RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
-        result_id, data_size, meta_buffer, std::vector<ray::ObjectID>(),
+        result_id, total, meta_buffer, std::vector<ray::ObjectID>(),
         &task_output_inlined_bytes, result_ptr));
 
     auto result = *result_ptr;
     if (result != nullptr) {
       if (result->HasData()) {
-        memcpy(result->GetData()->Data(), data->data(), data_size);
+        if (cross_lang) {
+          auto len_buf = Serializer::Serialize(data_size);
+
+          msgpack::sbuffer buffer(XLANG_HEADER_LEN + data_size);
+          buffer.write(len_buf.data(), len_buf.size());
+          for (size_t i = 0; i < XLANG_HEADER_LEN - len_buf.size(); ++i) {
+            buffer.write("", 1);
+          }
+          buffer.write(data->data(), data_size);
+
+          memcpy(result->GetData()->Data(), buffer.data(), buffer.size());
+        } else {
+          memcpy(result->GetData()->Data(), data->data(), data_size);
+        }
       }
     }
 

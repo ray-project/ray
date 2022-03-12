@@ -255,6 +255,7 @@ def run_wrk_on_all_nodes(
     http_host: str,
     http_port: str,
     all_endpoints: List[str] = None,
+    ignore_output: bool = False,
 ):
     """
     Use ray task to run one wrk trial on each node alive, picked randomly
@@ -279,6 +280,14 @@ def run_wrk_on_all_nodes(
                     num_cpus=0, resources={node_resource: 0.01}
                 ).remote(trial_length, num_connections, http_host, http_port, endpoint)
             )
+
+    print("Waiting for wrk trials to finish...")
+    ray.wait(rst_ray_refs, num_returns=len(rst_ray_refs))
+    print("Trials finished!")
+
+    if ignore_output:
+        return
+
     for decoded_output in ray.get(rst_ray_refs):
         all_wrk_stdout.append(decoded_output)
         parsed_metrics = parse_wrk_decoded_stdout(decoded_output)

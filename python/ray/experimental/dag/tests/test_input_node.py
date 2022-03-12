@@ -21,13 +21,13 @@ def test_no_args_to_input_node(shared_ray_instance):
         ValueError, match="InputNode should not take any args or kwargs"
     ):
         with InputNode(0) as dag_input:
-            f._bind(dag_input)
+            f.bind(dag_input)
     with pytest.raises(
         ValueError,
         match="InputNode should not take any args or kwargs",
     ):
         with InputNode(key=1) as dag_input:
-            f._bind(dag_input)
+            f.bind(dag_input)
 
 
 def test_simple_func(shared_ray_instance):
@@ -42,8 +42,8 @@ def test_simple_func(shared_ray_instance):
 
     # input -> a - > b -> ouput
     with InputNode() as dag_input:
-        a_node = a._bind(dag_input)
-        dag = b._bind(a_node)
+        a_node = a.bind(dag_input)
+        dag = b.bind(a_node)
 
     assert ray.get(dag.execute("input")) == "input -> a -> b"
     assert ray.get(dag.execute("test")) == "test -> a -> b"
@@ -67,13 +67,13 @@ def test_func_dag(shared_ray_instance):
         return x + y
 
     with InputNode() as dag_input:
-        a_ref = a._bind(dag_input)
-        b_ref = b._bind(a_ref)
-        c_ref = c._bind(a_ref)
-        d_ref = d._bind(b_ref, c_ref)
-        d1_ref = d._bind(d_ref, d_ref)
-        d2_ref = d._bind(d1_ref, d_ref)
-        dag = d._bind(d2_ref, d_ref)
+        a_ref = a.bind(dag_input)
+        b_ref = b.bind(a_ref)
+        c_ref = c.bind(a_ref)
+        d_ref = d.bind(b_ref, c_ref)
+        d1_ref = d.bind(d_ref, d_ref)
+        d2_ref = d.bind(d1_ref, d_ref)
+        dag = d.bind(d2_ref, d_ref)
 
     # [(2*2 + 2+1) + (2*2 + 2+1)] + [(2*2 + 2+1) + (2*2 + 2+1)]
     assert ray.get(dag.execute(2)) == 28
@@ -95,9 +95,9 @@ def test_multi_input_func_dag(shared_ray_instance):
         return x + y
 
     with InputNode() as dag_input:
-        a_ref = a._bind(dag_input)
-        b_ref = b._bind(dag_input)
-        dag = c._bind(a_ref, b_ref)
+        a_ref = a.bind(dag_input)
+        b_ref = b.bind(dag_input)
+        dag = c.bind(a_ref, b_ref)
 
     # (2*2) + (2*1)
     assert ray.get(dag.execute(2)) == 7
@@ -124,7 +124,7 @@ def test_invalid_input_node_as_class_constructor(shared_ray_instance):
         ),
     ):
         with InputNode() as dag_input:
-            Actor._bind(dag_input)
+            Actor.bind(dag_input)
 
 
 def test_class_method_input(shared_ray_instance):
@@ -145,10 +145,10 @@ def test_class_method_input(shared_ray_instance):
             return input * self.scale
 
     with InputNode() as dag_input:
-        preprocess = FeatureProcessor._bind(0.5)
-        feature = preprocess.process._bind(dag_input)
-        model = Model._bind(4)
-        dag = model.forward._bind(feature)
+        preprocess = FeatureProcessor.bind(0.5)
+        feature = preprocess.process.bind(dag_input)
+        model = Model.bind(4)
+        dag = model.forward.bind(feature)
 
     # 2 * 0.5 * 4
     assert ray.get(dag.execute(2)) == 4
@@ -174,13 +174,13 @@ def test_multi_class_method_input(shared_ray_instance):
         return m1 + m2
 
     with InputNode() as dag_input:
-        m1 = Model._bind(2)
-        m2 = Model._bind(3)
+        m1 = Model.bind(2)
+        m2 = Model.bind(3)
 
-        m1_output = m1.forward._bind(dag_input)
-        m2_output = m2.forward._bind(dag_input)
+        m1_output = m1.forward.bind(dag_input)
+        m2_output = m2.forward.bind(dag_input)
 
-        dag = combine._bind(m1_output, m2_output)
+        dag = combine.bind(m1_output, m2_output)
 
     # 1*2 + 1*3
     assert ray.get(dag.execute(1)) == 5
@@ -211,11 +211,11 @@ def test_func_class_mixed_input(shared_ray_instance):
         return m1 + m2
 
     with InputNode() as dag_input:
-        m1 = Model._bind(3)
-        m1_output = m1.forward._bind(dag_input)
-        m2_output = model_func._bind(dag_input)
+        m1 = Model.bind(3)
+        m1_output = m1.forward.bind(dag_input)
+        m2_output = model_func.bind(dag_input)
 
-    dag = combine._bind(m1_output, m2_output)
+    dag = combine.bind(m1_output, m2_output)
     # 2*3 + 2*2
     assert ray.get(dag.execute(2)) == 10
     # 3*3 + 3*2
@@ -240,11 +240,11 @@ def test_input_attr_partial_access(shared_ray_instance):
 
     # 1) Test default wrapping of args and kwargs into internal python object
     with InputNode() as dag_input:
-        m1 = Model._bind(1)
-        m2 = Model._bind(2)
-        m1_output = m1.forward._bind(dag_input[0])
-        m2_output = m2.forward._bind(dag_input[1])
-        dag = combine._bind(m1_output, m2_output, dag_input.m3, dag_input.m4)
+        m1 = Model.bind(1)
+        m2 = Model.bind(2)
+        m1_output = m1.forward.bind(dag_input[0])
+        m2_output = m2.forward.bind(dag_input[1])
+        dag = combine.bind(m1_output, m2_output, dag_input.m3, dag_input.m4)
     # 1*1 + 2*2 + 3 + 4 = 12
     assert ray.get(dag.execute(1, 2, m3=3, m4={"deep": {"nested": 4}})) == 12
 
@@ -262,32 +262,32 @@ def test_input_attr_partial_access(shared_ray_instance):
             self.field_3 = field_3
 
     with InputNode() as dag_input:
-        m1 = Model._bind(1)
-        m2 = Model._bind(2)
-        m1_output = m1.forward._bind(dag_input.user_object_field_0)
-        m2_output = m2.forward._bind(dag_input.user_object_field_1)
-        dag = combine._bind(m1_output, m2_output, dag_input.field_3)
+        m1 = Model.bind(1)
+        m2 = Model.bind(2)
+        m1_output = m1.forward.bind(dag_input.user_object_field_0)
+        m2_output = m2.forward.bind(dag_input.user_object_field_1)
+        dag = combine.bind(m1_output, m2_output, dag_input.field_3)
 
     # 1*1 + 2*2 + 3
     assert ray.get(dag.execute(UserDataObj(1, 2, 3))) == 8
 
     # 3) Test user passed only one list object with regular list index accessor
     with InputNode() as dag_input:
-        m1 = Model._bind(1)
-        m2 = Model._bind(2)
-        m1_output = m1.forward._bind(dag_input[0])
-        m2_output = m2.forward._bind(dag_input[1])
-        dag = combine._bind(m1_output, m2_output, dag_input[2])
+        m1 = Model.bind(1)
+        m2 = Model.bind(2)
+        m1_output = m1.forward.bind(dag_input[0])
+        m2_output = m2.forward.bind(dag_input[1])
+        dag = combine.bind(m1_output, m2_output, dag_input[2])
     # 1*1 + 2*2 + 3 + 4 = 12
     assert ray.get(dag.execute([1, 2, 3])) == 8
 
     # 4) Test user passed only one dict object with key str accessor
     with InputNode() as dag_input:
-        m1 = Model._bind(1)
-        m2 = Model._bind(2)
-        m1_output = m1.forward._bind(dag_input["m1"])
-        m2_output = m2.forward._bind(dag_input["m2"])
-        dag = combine._bind(m1_output, m2_output, dag_input["m3"])
+        m1 = Model.bind(1)
+        m2 = Model.bind(2)
+        m1_output = m1.forward.bind(dag_input["m1"])
+        m2_output = m2.forward.bind(dag_input["m2"])
+        dag = combine.bind(m1_output, m2_output, dag_input["m3"])
     # 1*1 + 2*2 + 3 + 4 = 12
     assert ray.get(dag.execute({"m1": 1, "m2": 2, "m3": 3})) == 8
 
@@ -296,8 +296,8 @@ def test_input_attr_partial_access(shared_ray_instance):
         match="Please only use int index or str as first-level key",
     ):
         with InputNode() as dag_input:
-            m1 = Model._bind(1)
-            dag = m1.forward._bind(dag_input[(1, 2)])
+            m1 = Model.bind(1)
+            dag = m1.forward.bind(dag_input[(1, 2)])
 
 
 def test_ensure_in_context_manager(shared_ray_instance):
@@ -317,7 +317,7 @@ def test_ensure_in_context_manager(shared_ray_instance):
         return input
 
     # No enforcement on creation given __enter__ executes after __init__
-    dag = f._bind(InputNode())
+    dag = f.bind(InputNode())
     with pytest.raises(
         AssertionError,
         match=(
@@ -338,10 +338,10 @@ def test_ensure_input_node_singleton(shared_ray_instance):
         return a + b
 
     with InputNode() as input_1:
-        a = f._bind(input_1)
+        a = f.bind(input_1)
     with InputNode() as input_2:
-        b = f._bind(input_2)
-        dag = combine._bind(a, b)
+        b = f.bind(input_2)
+        dag = combine.bind(a, b)
 
     with pytest.raises(
         AssertionError, match="Each DAG should only have one unique InputNode"

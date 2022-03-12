@@ -19,6 +19,13 @@ class TrialCheckpointApiTest(unittest.TestCase):
     def tearDown(self) -> None:
         shutil.rmtree(self.local_dir)
 
+    def testConstructTrialCheckpoint(self):
+        # All these constructions should work
+        TrialCheckpoint(None, None)
+        TrialCheckpoint("/tmp", None)
+        TrialCheckpoint(None, "s3://invalid")
+        TrialCheckpoint("/remote/node/dir", None)
+
     def ensureCheckpointFile(self):
         with open(os.path.join(self.local_dir, "checkpoint.txt"), "wt") as f:
             f.write("checkpoint\n")
@@ -531,7 +538,7 @@ class TrialCheckpointEndToEndTest(unittest.TestCase):
     def testCheckpointDownload(self):
         analysis = tune.run(
             train,
-            config={"train_id": tune.grid_search([0, 1, 2, 3])},
+            config={"train_id": tune.grid_search([0, 1, 2, 3, 4])},
             local_dir=self.local_experiment_dir,
             verbose=2,
         )
@@ -543,23 +550,29 @@ class TrialCheckpointEndToEndTest(unittest.TestCase):
         shutil.rmtree(self.fake_cloud_dir, ignore_errors=True)
         shutil.copytree(self.local_experiment_dir, self.fake_cloud_dir)
 
-        # Pretend we don't have two trials on local storage
+        # Pretend we don't have these on local storage
         shutil.rmtree(analysis.trials[1].logdir)
         shutil.rmtree(analysis.trials[2].logdir)
         shutil.rmtree(analysis.trials[3].logdir)
+        shutil.rmtree(analysis.trials[4].logdir)
 
         cp0 = analysis.get_best_checkpoint(analysis.trials[0], "score", "max")
         cp1 = analysis.get_best_checkpoint(analysis.trials[1], "score", "max")
         cp2 = analysis.get_best_checkpoint(analysis.trials[2], "score", "max")
         cp3 = analysis.get_best_checkpoint(analysis.trials[3], "score", "max")
+        cp4 = analysis.get_best_checkpoint(analysis.trials[4], "score", "max")
 
         def _load_cp(cd):
             with open(os.path.join(cd, "checkpoint.json"), "rt") as f:
                 return json.load(f)
 
-        with patch("ray.tune.cloud._clear_bucket", self._clear_bucket), patch(
-            "ray.tune.cloud._download_from_bucket", self._fake_download_from_bucket
-        ), patch("ray.tune.cloud._upload_to_bucket", self._fake_upload_to_bucket):
+        with patch("ray.tune.cloud.clear_bucket", self._clear_bucket), patch(
+            "ray.tune.cloud.download_from_bucket", self._fake_download_from_bucket
+        ), patch(
+            "ray.ml.checkpoint.download_from_bucket", self._fake_download_from_bucket
+        ), patch(
+            "ray.tune.cloud.upload_to_bucket", self._fake_upload_to_bucket
+        ):
             #######
             # Case: Checkpoint exists on local dir. Copy to other local dir.
             other_local_dir = tempfile.mkdtemp()
@@ -638,6 +651,17 @@ class TrialCheckpointEndToEndTest(unittest.TestCase):
             cp_content = _load_cp(self.second_fake_cloud_dir)
             self.assertEqual(cp_content["train_id"], 3)
             self.assertEqual(cp_content["score"], 9)
+
+            #######
+            # Case: Checkpoint does not exist on local dir, download from cloud
+            # store into local dir. Use new checkpoint abstractions for this.
+
+            temp_dir = cp4.to_directory(tempfile.mkdtemp())
+            cp_content = _load_cp(temp_dir)
+            self.assertEqual(cp_content["train_id"], 4)
+            self.assertEqual(cp_content["score"], 9)
+
+            shutil.rmtree(temp_dir)
 
 
 if __name__ == "__main__":
