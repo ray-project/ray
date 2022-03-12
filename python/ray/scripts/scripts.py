@@ -549,6 +549,9 @@ def start(
     ray_debugger_external,
 ):
     """Start Ray processes manually on the local machine."""
+
+    storage = storage or os.environ.get("RAY_STORAGE")
+
     if use_gcs_for_bootstrap() and gcs_server_port is not None:
         cli_logger.error(
             "`{}` is deprecated and ignored. Use {} to specify "

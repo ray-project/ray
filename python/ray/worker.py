@@ -836,6 +836,7 @@ def init(
         storage: Specify a URI for persistent cluster-wide storage. This storage path
             must be accessible by all nodes of the cluster, otherwise an error will be
             raised. This config must be specified to use the ``ray.storage`` APIs.
+            This option can also be specified as the RAY_STORAGE env var.
         _enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
@@ -876,6 +877,8 @@ def init(
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+
+    storage = storage or os.environ.get("RAY_STORAGE")
 
     # If available, use RAY_ADDRESS to override if the address was left
     # unspecified, or set to "auto" in the call to init
