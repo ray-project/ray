@@ -333,12 +333,19 @@ class AlphaStarTrainer(appo.APPOTrainer):
             train_infos = {}
             policy_weights = {}
             for pol_actor, policy_results in train_results.items():
-                if len(policy_results) > 1:
+                results_have_same_structure = True
+                for result1, result2 in zip(policy_results, policy_results[1:]):
+                    try:
+                        tree.assert_same_structure(result1, result2)
+                    except (ValueError, TypeError):
+                        results_have_same_structure = False
+                        break
+                if len(policy_results) > 1 and results_have_same_structure:
                     policy_result = tree.map_structure(
                         lambda *_args: sum(_args) / len(policy_results), *policy_results
                     )
                 else:
-                    policy_result = policy_results[0]
+                    policy_result = policy_results[-1]
                 if policy_result:
                     pid = self.distributed_learners.get_policy_id(pol_actor)
                     train_infos[pid] = policy_result
