@@ -81,6 +81,18 @@ def _parse_proto_plugin_runtime_env(
 
 @PublicAPI(stability="beta")
 class RuntimeEnvConfig:
+    """This class is used to define a config for runtime environment.
+
+    Config does not participate in the calculation of the runtime
+    environment hash value, which means that the runtime_env is also
+    considered to be the same runtime_env when all fields except
+    config are the same but the config is different.
+
+    Args:
+        setup_timeout_seconds (int): The timeout of runtime environment
+            creation,  timeout is in seconds.
+    """
+
     known_fields: Set[str] = {"setup_timeout_seconds"}
 
     _default_config_config: Dict = {
@@ -252,6 +264,9 @@ class RuntimeEnv(dict):
             The `run_options` list spec is here:
             https://docs.docker.com/engine/reference/run/
         env_vars (dict): Environment variables to set.
+        config (dict | RuntimeEnvConfig): config for runtime environment. Either
+            a dict or a RuntimeEnvConfig. Field: (1) setup_timeout_seconds, the
+            timeout of runtime environment creation,  timeout is in seconds.
     """
 
     known_fields: Set[str] = {

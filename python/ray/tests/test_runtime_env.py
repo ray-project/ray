@@ -883,7 +883,7 @@ def test_runtime_env_config(start_cluster):
 
     def raise_exception_run(fun, *args, **kwargs):
         try:
-            fun(*args, **kwars)
+            fun(*args, **kwargs)
         except Exception:
             pass
         else:

@@ -6,6 +6,7 @@ import pytest
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.test_utils import wait_for_condition
+from ray.exceptions import RuntimeEnvSetupError
 
 import ray
 
@@ -132,6 +133,59 @@ def test_plugin_hang(ray_start_regular):
                 print(f"Got error: {error}")
                 pass
         return False
+
+    wait_for_condition(condition, timeout=60)
+
+
+DUMMY_PLUGIN_CLASS_PATH = "ray.tests.test_runtime_env_plugin.DummyPlugin"
+HANG_PLUGIN_CLASS_PATH = "ray.tests.test_runtime_env_plugin.HangPlugin"
+
+
+class DummyPlugin(RuntimeEnvPlugin):
+    @staticmethod
+    def validate(runtime_env_dict: dict) -> str:
+        return 1
+
+
+class HangPlugin(DummyPlugin):
+    def create(
+        uri: str, runtime_env: "RuntimeEnv", ctx: RuntimeEnvContext  # noqa: F821
+    ) -> float:
+        sleep(3600)
+
+
+def test_plugin_timeout(start_cluster):
+    @ray.remote(num_cpus=0.1)
+    def f():
+        return True
+
+    refs = [
+        f.options(
+            runtime_env={
+                "plugins": {
+                    HANG_PLUGIN_CLASS_PATH: {"name": "f1"},
+                },
+                "config": {"setup_timeout_seconds": 10},
+            }
+        ).remote(),
+        f.options(
+            runtime_env={"plugins": {DUMMY_PLUGIN_CLASS_PATH: {"name": "f2"}}}
+        ).remote(),
+    ]
+
+    def condition():
+        good_fun = False
+        bad_fun = False
+        for ref in refs:
+            try:
+                res = ray.get(ref, timeout=1)
+                print("result:", res)
+                if res:
+                    good_fun = True
+                return True
+            except RuntimeEnvSetupError:
+                bad_fun = True
+        return bad_fun and good_fun
 
     wait_for_condition(condition, timeout=60)
 
