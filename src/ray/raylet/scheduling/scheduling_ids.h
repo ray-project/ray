@@ -144,8 +144,16 @@ inline ThreadPrivate<StringIdMap> &BaseSchedulingID<SchedulingIDTag::Resource>::
 
 namespace scheduling {
 /// The actual scheduling id definitions which are used in scheduler.
-using ResourceID = BaseSchedulingID<SchedulingIDTag::Resource>;
 using NodeID = BaseSchedulingID<SchedulingIDTag::Node>;
+
+class ResourceID : public BaseSchedulingID<SchedulingIDTag::Resource> {
+ public:
+  explicit ResourceID(const std::string &name) : BaseSchedulingID(name) {}
+  explicit ResourceID(int64_t id) : BaseSchedulingID(id) {}
+
+  static ResourceID CPU() { return ResourceID(PredefinedResourcesEnum::CPU); }
+  static ResourceID ObjectStoreMemory() { return ResourceID(PredefinedResourcesEnum::OBJECT_STORE_MEM); }
+};
 
 const ResourceID kCPUResource{CPU};
 const ResourceID kGPUResource{GPU};
@@ -157,6 +165,12 @@ namespace std {
 template <ray::SchedulingIDTag T>
 struct hash<ray::BaseSchedulingID<T>> {
   std::size_t operator()(const ray::BaseSchedulingID<T> &id) const {
+    return std::hash<int64_t>()(id.ToInt());
+  }
+};
+template<>
+struct hash<ray::scheduling::ResourceID> {
+  std::size_t operator()(const ray::scheduling::ResourceID &id) const {
     return std::hash<int64_t>()(id.ToInt());
   }
 };

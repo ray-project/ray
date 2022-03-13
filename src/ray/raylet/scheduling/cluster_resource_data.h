@@ -45,12 +45,6 @@ std::vector<FixedPoint> VectorDoubleToVectorFixedPoint(const std::vector<double>
 std::vector<double> VectorFixedPointToVectorDouble(
     const std::vector<FixedPoint> &vector_fp);
 
-/// Capacities of each instance of a resource.
-struct ResourceInstanceCapacities {
-  std::vector<FixedPoint> total;
-  std::vector<FixedPoint> available;
-};
-
 class ResourceRequest;
 
 class PredefinedResources {
@@ -514,6 +508,15 @@ class TaskResourceInstances {
   absl::flat_hash_map<int64_t, std::vector<FixedPoint>> custom_resources;
   bool operator==(const TaskResourceInstances &other);
 
+  bool Has(ResourceID resource_id) const {
+    if (IsPredefinedResource(resource_id)) {
+      return predefined_resources[resource_id.ToInt()].size() > 0;
+    } else {
+      auto it = custom_resources.find(resource_id.ToInt());
+      return it != custom_resources.end() && it->second.size() > 0;
+    }
+  }
+
   TaskResourceInstances &Set(const ResourceID resource_id, const std::vector<FixedPoint> &instances) {
      GetMutable(resource_id) = instances;
      return *this;
@@ -537,26 +540,20 @@ class TaskResourceInstances {
     }
   }
 
-  void Clear() {
-    for (auto resource_id : ResourceIds()) {
-      auto &instances = GetMutable(resource_id);
-      for (size_t i = 0; i < instances.size(); ++i) {
-        instances[i] = 0;
-      }
+  void Clear(ResourceID resource_id) {
+    auto &instances = GetMutable(resource_id);
+    for (size_t i = 0; i < instances.size(); ++i) {
+      instances[i] = 0;
     }
   }
 
   absl::flat_hash_set<ResourceID> ResourceIds() const {
     absl::flat_hash_set<ResourceID> res;
     for (size_t i = 0; i < predefined_resources.size(); i++) {
-      if (predefined_resources[i] > 0) {
-        res.insert(ResourceID(i));
-      }
+      res.insert(ResourceID(i));
     }
     for (auto &entry : custom_resources) {
-      if (entry.second > 0) {
-        res.insert(ResourceID(entry.first));
-      }
+      res.insert(ResourceID(entry.first));
     }
     return res;
   }
@@ -571,7 +568,11 @@ class TaskResourceInstances {
 
   /// Get instances based on the string.
   const std::vector<FixedPoint> &Get(const ResourceID resource_id) const {
-    return GetMutable(resource_id);
+     if (IsPredefinedResource(resource_id)) {
+       return predefined_resources[resource_id.ToInt()];
+     } else {
+       return custom_resources.at(resource_id.ToInt());
+     }
   }
 
   /// For each resource of this request aggregate its instances.
@@ -621,9 +622,7 @@ class TaskResourceInstances {
       }
       std::string resource_name = ResourceEnumToString(static_cast<PredefinedResourcesEnum>(i));
       buffer << "\"" << resource_name << "\":";
-      bool is_unit_instance = predefined_unit_instance_resources_.find(i) !=
-                              predefined_unit_instance_resources_.end();
-      if (!is_unit_instance) {
+      if (!ResourceID(i).IsUnitInstanceResource()) {
         buffer << resource[0];
       } else {
         buffer << "[";
@@ -678,11 +677,8 @@ class NodeResources {
 /// This is used to describe the resources of the local node.
 class NodeResourceInstances {
  public:
-  /// Available and total capacities for each instance of a predefined resource.
-  std::vector<ResourceInstanceCapacities> predefined_resources;
-  /// Map containing custom resources. The key of each entry represents the
-  /// custom resource ID.
-  absl::flat_hash_map<int64_t, ResourceInstanceCapacities> custom_resources;
+  TaskResourceInstances available;
+  TaskResourceInstances total;
   /// Extract available resource instances.
   TaskResourceInstances GetAvailableResourceInstances();
   /// Returns if this equals another node resources.
@@ -691,8 +687,6 @@ class NodeResourceInstances {
   [[nodiscard]] std::string DebugString() const;
   /// Returns true if it contains this resource.
   bool Contains(scheduling::ResourceID id) const;
-  /// Returns the resource instance of a given resource id.
-  ResourceInstanceCapacities &GetMutable(scheduling::ResourceID id);
 };
 
 struct Node {

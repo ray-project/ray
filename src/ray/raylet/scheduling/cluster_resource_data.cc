@@ -99,7 +99,7 @@ ResourceRequest ResourceMapToResourceRequest(
   ResourceRequest resource_request;
   resource_request.requires_object_store_memory = requires_object_store_memory;
   for (auto const &resource : resource_map) {
-      resource_request.Set(ResourceID(resource.first).ToInt(), resource.second);
+      resource_request.Set(ResourceID(resource.first), resource.second);
   }
   return resource_request;
 }
@@ -108,12 +108,12 @@ ResourceRequest TaskResourceInstances::ToResourceRequest() const {
   ResourceRequest resource_request;
 
   for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
-    resource_request.Set(i, FixedPoint::Sum(this->predefined_resources[i]));
+    resource_request.Set(ResourceID(i), FixedPoint::Sum(this->predefined_resources[i]));
   }
 
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    resource_request.Set(it->first, FixedPoint::Sum(it->second));
+    resource_request.Set(ResourceID(it->first), FixedPoint::Sum(it->second));
   }
   return resource_request;
 }
@@ -137,11 +137,11 @@ NodeResources ResourceMapToNodeResources(
 float NodeResources::CalculateCriticalResourceUtilization() const {
   float highest = 0;
   for (const auto &i : {CPU, MEM, OBJECT_STORE_MEM}) {
-    const auto &total = this->total.Get(i);
+    const auto &total = this->total.Get(ResourceID(i));
     if (total == 0) {
       continue;
     }
-    const auto &available = this->available.Get(i);
+    const auto &available = this->available.Get(ResourceID(i));
 
     float utilization = 1 - (available.Double() / total.Double());
     if (utilization > highest) {
@@ -227,35 +227,7 @@ std::string NodeResources::DictString() const {
 }
 
 bool NodeResourceInstances::operator==(const NodeResourceInstances &other) {
-  for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
-    if (!EqualVectors(this->predefined_resources[i].total,
-                      other.predefined_resources[i].total)) {
-      return false;
-    }
-    if (!EqualVectors(this->predefined_resources[i].available,
-                      other.predefined_resources[i].available)) {
-      return false;
-    }
-  }
-
-  if (this->custom_resources.size() != other.custom_resources.size()) {
-    return false;
-  }
-
-  for (auto it1 = this->custom_resources.begin(); it1 != this->custom_resources.end();
-       ++it1) {
-    auto it2 = other.custom_resources.find(it1->first);
-    if (it2 == other.custom_resources.end()) {
-      return false;
-    }
-    if (!EqualVectors(it1->second.total, it2->second.total)) {
-      return false;
-    }
-    if (!EqualVectors(it1->second.available, it2->second.available)) {
-      return false;
-    }
-  }
-  return true;
+  return this->total == other.total && this->available == other.available;
 }
 
 void TaskResourceInstances::ClearCPUInstances() {
@@ -267,63 +239,45 @@ void TaskResourceInstances::ClearCPUInstances() {
 
 std::string NodeResourceInstances::DebugString() const {
   std::stringstream buffer;
-  buffer << "{\n";
-  for (size_t i = 0; i < this->predefined_resources.size(); i++) {
-    buffer << "\t";
-    switch (i) {
-    case CPU:
-      buffer << "CPU: ";
-      break;
-    case MEM:
-      buffer << "MEM: ";
-      break;
-    case GPU:
-      buffer << "GPU: ";
-      break;
-    case OBJECT_STORE_MEM:
-      buffer << "OBJECT_STORE_MEM: ";
-      break;
-    default:
-      RAY_CHECK(false) << "This should never happen.";
-      break;
-    }
-    buffer << "(" << VectorToString(predefined_resources[i].total) << ":"
-           << VectorToString(this->predefined_resources[i].available) << ")\n";
-  }
-  for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
-       ++it) {
-    buffer << "\t" << ResourceID(it->first).Binary() << ":("
-           << VectorToString(it->second.total) << ":"
-           << VectorToString(it->second.available) << ")\n";
-  }
-  buffer << "}" << std::endl;
+  // buffer << "{\n";
+  // for (size_t i = 0; i < this->predefined_resources.size(); i++) {
+  //   buffer << "\t";
+  //   switch (i) {
+  //   case CPU:
+  //     buffer << "CPU: ";
+  //     break;
+  //   case MEM:
+  //     buffer << "MEM: ";
+  //     break;
+  //   case GPU:
+  //     buffer << "GPU: ";
+  //     break;
+  //   case OBJECT_STORE_MEM:
+  //     buffer << "OBJECT_STORE_MEM: ";
+  //     break;
+  //   default:
+  //     RAY_CHECK(false) << "This should never happen.";
+  //     break;
+  //   }
+  //   buffer << "(" << VectorToString(predefined_resources[i].total) << ":"
+  //          << VectorToString(this->predefined_resources[i].available) << ")\n";
+  // }
+  // for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
+  //      ++it) {
+  //   buffer << "\t" << ResourceID(it->first).Binary() << ":("
+  //          << VectorToString(it->second.total) << ":"
+  //          << VectorToString(it->second.available) << ")\n";
+  // }
+  // buffer << "}" << std::endl;
   return buffer.str();
 };
 
 TaskResourceInstances NodeResourceInstances::GetAvailableResourceInstances() {
-  TaskResourceInstances task_resources;
-  task_resources.predefined_resources.resize(PredefinedResourcesEnum_MAX);
-
-  for (size_t i = 0; i < this->predefined_resources.size(); i++) {
-    task_resources.predefined_resources[i] = this->predefined_resources[i].available;
-  }
-
-  for (const auto &it : this->custom_resources) {
-    task_resources.custom_resources.emplace(it.first, it.second.available);
-  }
-  return task_resources;
+  return this->available;
 };
 
 bool NodeResourceInstances::Contains(scheduling::ResourceID id) const {
-  return IsPredefinedResource(id) || custom_resources.contains(id.ToInt());
-}
-
-ResourceInstanceCapacities &NodeResourceInstances::GetMutable(scheduling::ResourceID id) {
-  RAY_CHECK(Contains(id));
-  if (IsPredefinedResource(id)) {
-    return predefined_resources.at(id.ToInt());
-  }
-  return custom_resources.at(id.ToInt());
+  return total.Has(id);
 }
 
 bool ResourceRequest::IsEmpty() const {
