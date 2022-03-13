@@ -87,7 +87,8 @@ struct ConcurrencyGroup {
 
   ConcurrencyGroup() = default;
 
-  ConcurrencyGroup(const std::string &name, uint32_t max_concurrency,
+  ConcurrencyGroup(const std::string &name,
+                   uint32_t max_concurrency,
                    const std::vector<ray::FunctionDescriptor> &fds)
       : name(name), max_concurrency(max_concurrency), function_descriptors(fds) {}
 
@@ -347,7 +348,8 @@ class WorkerCacheKey {
   ///         resource type isolation between workers is enabled.
   WorkerCacheKey(const std::string serialized_runtime_env,
                  const absl::flat_hash_map<std::string, double> &required_resources,
-                 bool is_actor, bool is_gpu);
+                 bool is_actor,
+                 bool is_gpu);
 
   bool operator==(const WorkerCacheKey &k) const;
 

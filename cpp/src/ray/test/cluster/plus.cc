@@ -38,5 +38,15 @@ Student GetStudent(Student student) { return student; }
 
 std::map<int, Student> GetStudents(std::map<int, Student> students) { return students; }
 
-RAY_REMOTE(Return1, Plus1, Plus, ThrowTask, ReturnLargeArray, Echo, GetMap, GetArray,
-           GetList, GetTuple, GetStudent, GetStudents);
+RAY_REMOTE(Return1,
+           Plus1,
+           Plus,
+           ThrowTask,
+           ReturnLargeArray,
+           Echo,
+           GetMap,
+           GetArray,
+           GetList,
+           GetTuple,
+           GetStudent,
+           GetStudents);

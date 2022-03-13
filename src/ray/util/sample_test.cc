@@ -44,8 +44,8 @@ TEST_F(RandomSampleTest, TestEmpty) {
 }
 
 TEST_F(RandomSampleTest, TestSmallerThanSampleSize) {
-  random_sample(test_vector->begin(), test_vector->end(), test_vector->size() + 1,
-                sample);
+  random_sample(
+      test_vector->begin(), test_vector->end(), test_vector->size() + 1, sample);
   ASSERT_EQ(sample->size(), test_vector->size());
 }
 
@@ -55,8 +55,8 @@ TEST_F(RandomSampleTest, TestEqualToSampleSize) {
 }
 
 TEST_F(RandomSampleTest, TestLargerThanSampleSize) {
-  random_sample(test_vector->begin(), test_vector->end(), test_vector->size() - 1,
-                sample);
+  random_sample(
+      test_vector->begin(), test_vector->end(), test_vector->size() - 1, sample);
   ASSERT_EQ(sample->size(), test_vector->size() - 1);
 }
 
@@ -64,8 +64,8 @@ TEST_F(RandomSampleTest, TestEqualOccurrenceChance) {
   int trials = 1000000;
   std::vector<int> occurrences(test_vector->size(), 0);
   for (int i = 0; i < trials; i++) {
-    random_sample(test_vector->begin(), test_vector->end(), test_vector->size() / 2,
-                  sample);
+    random_sample(
+        test_vector->begin(), test_vector->end(), test_vector->size() / 2, sample);
     for (int idx : *sample) {
       occurrences[idx]++;
     }

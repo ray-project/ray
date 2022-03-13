@@ -29,7 +29,8 @@ namespace internal {
 
 struct RemoteFunctionHolder {
   RemoteFunctionHolder() = default;
-  RemoteFunctionHolder(const std::string &module_name, const std::string &function_name,
+  RemoteFunctionHolder(const std::string &module_name,
+                       const std::string &function_name,
                        const std::string &class_name = "",
                        LangType lang_type = LangType::CPP) {
     this->module_name = module_name;
@@ -61,7 +62,8 @@ class RayRuntime {
   virtual std::vector<std::shared_ptr<msgpack::sbuffer>> Get(
       const std::vector<std::string> &ids) = 0;
 
-  virtual std::vector<bool> Wait(const std::vector<std::string> &ids, int num_objects,
+  virtual std::vector<bool> Wait(const std::vector<std::string> &ids,
+                                 int num_objects,
                                  int timeout_ms) = 0;
 
   virtual std::string Call(const RemoteFunctionHolder &remote_function_holder,
@@ -71,7 +73,8 @@ class RayRuntime {
                                   std::vector<TaskArg> &args,
                                   const ActorCreationOptions &create_options) = 0;
   virtual std::string CallActor(const RemoteFunctionHolder &remote_function_holder,
-                                const std::string &actor, std::vector<TaskArg> &args,
+                                const std::string &actor,
+                                std::vector<TaskArg> &args,
                                 const CallOptions &call_options) = 0;
   virtual void AddLocalReference(const std::string &id) = 0;
   virtual void RemoveLocalReference(const std::string &id) = 0;

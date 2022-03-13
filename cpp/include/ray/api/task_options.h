@@ -64,7 +64,8 @@ struct PlacementGroupCreationOptions {
 class PlacementGroup {
  public:
   PlacementGroup() = default;
-  PlacementGroup(std::string id, PlacementGroupCreationOptions options,
+  PlacementGroup(std::string id,
+                 PlacementGroupCreationOptions options,
                  PlacementGroupState state = PlacementGroupState::UNRECOGNIZED)
       : id_(std::move(id)), options_(std::move(options)), state_(state) {}
   std::string GetID() const { return id_; }

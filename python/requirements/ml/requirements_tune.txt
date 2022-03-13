@@ -1,6 +1,5 @@
 -r requirements_dl.txt
 
-autogluon.core==0.1.0
 ax-platform==0.1.9; python_version < '3.7'
 ax-platform==0.2.1; python_version >= '3.7'
 bayesian-optimization==1.2.0
