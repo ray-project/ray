@@ -178,7 +178,7 @@ bool LocalResourceManager::AllocateTaskResourceInstances(
     const ResourceRequest &resource_request,
     std::shared_ptr<TaskResourceInstances> task_allocation) {
   RAY_CHECK(task_allocation != nullptr);
-  for (auto resource_id : task_request.AllResourceIds()) {
+  for (auto resource_id : task_request.ResourceIds()) {
     auto demand = resource_request.Get(resource_id);
     auto available = local_resources_.GetMutable(resource_id);
     std::vector<FixedPoint> allocation;
@@ -197,7 +197,7 @@ bool LocalResourceManager::AllocateTaskResourceInstances(
 void LocalResourceManager::FreeTaskResourceInstances(
     std::shared_ptr<TaskResourceInstances> task_allocation) {
   RAY_CHECK(task_allocation != nullptr);
-  for (auto resource_id : task_allocation.GetAllResourceIds()) {
+  for (auto resource_id : task_allocation.ResourceIds()) {
     AddAvailableResourceInstances(task_allocation.Get(resource_id),
                                   local_resources_.available.GetMutable(resource_id),
                                   local_resources_.total.GetMutable(resource_id));
@@ -304,7 +304,7 @@ void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data)
     NodeResources node_resources = ResourceMapToNodeResources({{}}, {{}});
     last_report_resources_.reset(new NodeResources(node_resources));
   }
-  for(auto entry : resources.total.ToMapWithResourceId()) {
+  for(auto entry : resources.total.ToMap()) {
     auto resource_id = entry.first;
     auto label = ResourceID(resource_id).Binary();
     auto total = entry.second;
@@ -347,7 +347,7 @@ ray::gcs::NodeResourceInfoAccessor::ResourceMap LocalResourceManager::GetResourc
     const absl::flat_hash_map<std::string, double> &resource_map_filter) const {
   ray::gcs::NodeResourceInfoAccessor::ResourceMap map;
   for (auto entry : local_resources_.total.ToMap()) {
-    auto resource_name = entry.first;
+    auto resource_name = entry.first.Binary();
     auto resource_value = entry.second;
     if (!resource_map_filter.contains(resource_name)) {
       continue;

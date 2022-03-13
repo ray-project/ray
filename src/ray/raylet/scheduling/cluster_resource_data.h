@@ -27,11 +27,11 @@
 
 namespace ray {
 
+using scheduling::ResourceID;
+
 const std::string ResourceEnumToString(PredefinedResourcesEnum resource);
 
 const PredefinedResourcesEnum ResourceStringToEnum(const std::string &resource);
-
-bool IsPredefinedResource(int64_t id);
 
 bool IsPredefinedResource(scheduling::ResourceID resource_id);
 
@@ -61,17 +61,17 @@ class PredefinedResources {
     }
   }
 
-  const FixedPoint &Get(int64_t resource_id) const {
-    return this->values_[resource_id];
+  const FixedPoint &Get(ResourceID resource_id) const {
+    return this->values_[resource_id.ToInt()];
   }
 
-  PredefinedResources &Set(int64_t resource_id, const FixedPoint & value) {
-    this->values_[resource_id] = value;
+  PredefinedResources &Set(ResourceID resource_id, const FixedPoint & value) {
+    this->values_[resource_id.ToInt()] = value;
     return *this;
   }
 
-  const bool Has(int64_t resource_id) const {
-    return this->values_[resource_id] != 0;
+  const bool Has(ResourceID resource_id) const {
+    return this->values_[resource_id.ToInt()] != 0;
   }
 
   const FixedPoint &GetCPU() const { return this->values_[CPU]; }
@@ -199,27 +199,27 @@ class PredefinedResources {
 
 class CustomResources {
  public:
-  const FixedPoint &Get(int64_t resource_id) const {
-    auto it = this->values_.find(resource_id);
+  const FixedPoint &Get(ResourceID resource_id) const {
+    auto it = this->values_.find(resource_id.ToInt());
     RAY_CHECK(it != this->values_.end());
     return it->second;
   }
 
-  const FixedPoint GetOrZero(int64_t resource_id) const {
-    auto it = this->values_.find(resource_id);
+  const FixedPoint GetOrZero(ResourceID resource_id) const {
+    auto it = this->values_.find(resource_id.ToInt());
     if (it == this->values_.end()) {
       return 0;
     }
     return it->second;
   }
 
-  CustomResources &Set(int64_t resource_id, const FixedPoint & value) {
-    this->values_[resource_id] = value;
+  CustomResources &Set(ResourceID resource_id, const FixedPoint & value) {
+    this->values_[resource_id.ToInt()] = value;
     return *this;
   }
 
-  const bool Has(int64_t resource_id) const {
-    return this->values_.find(resource_id) != this->values_.end();
+  const bool Has(ResourceID resource_id) const {
+    return this->values_.find(resource_id.ToInt()) != this->values_.end();
   }
 
   size_t Size() const { return values_.size(); }
@@ -231,10 +231,10 @@ class CustomResources {
   CustomResources operator+(const CustomResources &other) {
     CustomResources res;
     for (auto entry: values_) {
-      res.values_[entry.first] = entry.second + other.GetOrZero(entry.first);
+      res.values_[entry.first] = entry.second + other.GetOrZero(ResourceID(entry.first));
     }
     for (auto entry: other.values_) {
-      if (!Has(entry.first)) {
+      if (!Has(ResourceID(entry.first))) {
         res.values_[entry.first] = entry.second;
       }
     }
@@ -244,10 +244,10 @@ class CustomResources {
   CustomResources operator-(const CustomResources &other) {
     CustomResources res;
     for (auto entry: values_) {
-      res.values_[entry.first] = entry.second - other.GetOrZero(entry.first);
+      res.values_[entry.first] = entry.second - other.GetOrZero(ResourceID(entry.first));
     }
     for (auto entry: other.values_) {
-      if (!Has(entry.first)) {
+      if (!Has(ResourceID(entry.first))) {
         res.values_[entry.first] = -entry.second;
       }
     }
@@ -261,10 +261,10 @@ class CustomResources {
 
   CustomResources &operator+=(const CustomResources &other) {
     for (auto entry: values_) {
-      entry.second += other.GetOrZero(entry.first);
+      entry.second += other.GetOrZero(ResourceID(entry.first));
     }
     for (auto entry: other.values_) {
-      if (!Has(entry.first)) {
+      if (!Has(ResourceID(entry.first))) {
         values_[entry.first] = entry.second;
       }
     }
@@ -273,10 +273,10 @@ class CustomResources {
 
   CustomResources &operator-=(const CustomResources &other) {
     for (auto entry: values_) {
-      entry.second -= other.GetOrZero(entry.first);
+      entry.second -= other.GetOrZero(ResourceID(entry.first));
     }
     for (auto entry: other.values_) {
-      if (!Has(entry.first)) {
+      if (!Has(ResourceID(entry.first))) {
         values_[entry.first] = -entry.second;
       }
     }
@@ -336,7 +336,7 @@ class ResourceRequest {
   /// Returns human-readable string for this task request.
   std::string DebugString() const;
 
-  const FixedPoint &Get(int64_t resource_id) const {
+  const FixedPoint &Get(ResourceID resource_id) const {
     if (IsPredefinedResource(resource_id)) {
       return this->predefined_resources.Get(resource_id);
     } else {
@@ -344,7 +344,7 @@ class ResourceRequest {
     }
   }
 
-  const FixedPoint GetOrZero(int64_t resource_id) const {
+  const FixedPoint GetOrZero(ResourceID resource_id) const {
     if (IsPredefinedResource(resource_id)) {
       return this->predefined_resources.Get(resource_id);
     } else {
@@ -352,7 +352,7 @@ class ResourceRequest {
     }
   }
 
-  ResourceRequest &Set(int64_t resource_id, const FixedPoint & value) {
+  ResourceRequest &Set(ResourceID resource_id, const FixedPoint & value) {
     if (IsPredefinedResource(resource_id)) {
       this->predefined_resources.Set(resource_id, value);
     } else {
@@ -361,7 +361,7 @@ class ResourceRequest {
     return *this;
   }
 
-  const bool Has(int64_t resource_id) const {
+  const bool Has(ResourceID resource_id) const {
     if (IsPredefinedResource(resource_id)) {
       return this->predefined_resources.Has(resource_id);
     } else {
@@ -408,20 +408,32 @@ class ResourceRequest {
     }
   }
 
-  absl::flat_hash_map<std::string, FixedPoint> ToMap() {
-    absl::flat_hash_map<std::string, FixedPoint> res;
+  absl::flat_hash_set<ResourceID> ResourceIds() const {
+    absl::flat_hash_set<ResourceID> res;
+    for (size_t i = 0; i < predefined_resources.values_.size(); i++) {
+      res.insert(ResourceID(i));
+    }
+    for (auto &entry : custom_resources.values_) {
+      res.insert(ResourceID(entry.first));
+    }
+    return res;
+  }
+
+  absl::flat_hash_map<ResourceID, FixedPoint> ToMap() const {
+    absl::flat_hash_map<ResourceID, FixedPoint> res;
     for (size_t i = 0; i < predefined_resources.values_.size(); i++) {
       if (predefined_resources.values_[i] > 0) {
-        res.emplace(scheduling::ResourceID(i).Binary(), predefined_resources.values_[i]);
+        res.emplace(ResourceID(i), predefined_resources.values_[i]);
       }
     }
     for (auto &entry : custom_resources.values_) {
       if (entry.second > 0) {
-        res.emplace(scheduling::ResourceID(entry.first).Binary(), entry.second);
+        res.emplace(ResourceID(entry.first), entry.second);
       }
     }
     return res;
   }
+
 
   ResourceRequest operator+(const ResourceRequest &other) {
     ResourceRequest res;
@@ -475,12 +487,12 @@ class TaskResourceInstances {
  public:
   TaskResourceInstances() {
     for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
-      predefined_resources.push_back({});
+      this->predefined_resources.push_back({});
     }
   }
-  TaskResourceInstances(const TaskRequest &request) {
+  TaskResourceInstances(const ResourceRequest &request) {
     for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
-      predefined_resources.push_back({}};
+      this->predefined_resources.push_back({});
     }
     for (auto resource_id : request.ResourceIds()) {
       std::vector<FixedPoint> instances;
@@ -504,13 +516,14 @@ class TaskResourceInstances {
 
   TaskResourceInstances &Set(const ResourceID resource_id, const std::vector<FixedPoint> &instances) {
      GetMutable(resource_id) = instances;
+     return *this;
   }
 
   std::vector<FixedPoint> &GetMutable(const ResourceID resource_id) {
      if (IsPredefinedResource(resource_id)) {
-       return predefined_resources[resource_id];
+       return predefined_resources[resource_id.ToInt()];
      } else {
-       return custom_resources[resource_id];
+       return custom_resources[resource_id.ToInt()];
      }
   }
 
@@ -525,7 +538,7 @@ class TaskResourceInstances {
   }
 
   void Clear() {
-    for (auto resource_id : GetAllResourceIds()) {
+    for (auto resource_id : ResourceIds()) {
       auto &instances = GetMutable(resource_id);
       for (size_t i = 0; i < instances.size(); ++i) {
         instances[i] = 0;
@@ -533,7 +546,22 @@ class TaskResourceInstances {
     }
   }
 
-  FixedPiont Sum(const ResourceId resource_id) const {
+  absl::flat_hash_set<ResourceID> ResourceIds() const {
+    absl::flat_hash_set<ResourceID> res;
+    for (size_t i = 0; i < predefined_resources.size(); i++) {
+      if (predefined_resources[i] > 0) {
+        res.insert(ResourceID(i));
+      }
+    }
+    for (auto &entry : custom_resources) {
+      if (entry.second > 0) {
+        res.insert(ResourceID(entry.first));
+      }
+    }
+    return res;
+  }
+
+  FixedPoint Sum(const ResourceID resource_id) const {
     return FixedPoint::Sum(Get(resource_id));
   }
 
@@ -542,7 +570,7 @@ class TaskResourceInstances {
   }
 
   /// Get instances based on the string.
-  const std::vector<FixedPoint> &Get(const ResourceId resource_id) const {
+  const std::vector<FixedPoint> &Get(const ResourceID resource_id) const {
     return GetMutable(resource_id);
   }
 

@@ -43,10 +43,6 @@ const PredefinedResourcesEnum ResourceStringToEnum(const std::string &resource) 
   return PredefinedResourcesEnum_MAX;
 }
 
-bool IsPredefinedResource(int64_t id) {
-  return id >= 0 && id < PredefinedResourcesEnum_MAX;
-}
-
 bool IsPredefinedResource(scheduling::ResourceID resource) {
   return resource.ToInt() >= 0 && resource.ToInt() < PredefinedResourcesEnum_MAX;
 }

@@ -1000,7 +1000,9 @@ ResourceSet LocalTaskManager::CalcNormalTaskResources() const {
 
     if (auto allocated_instances = worker->GetAllocatedInstances()) {
       auto resource_request = allocated_instances->ToResourceRequest();
-      total_normal_task_resources = resource_request.ToMap();
+      for (auto entry : resource_request.ToMap()) {
+          total_normal_task_resources.emplace(entry.first.Binary(), entry.second);
+      }
     }
   }
   return ResourceSet(total_normal_task_resources);

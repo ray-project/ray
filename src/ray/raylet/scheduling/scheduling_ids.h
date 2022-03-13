@@ -102,6 +102,8 @@ class BaseSchedulingID {
 
   bool IsNil() const { return id_ == -1; }
 
+  bool IsUnitInstanceResource() const { return false; } // TODO
+
   static BaseSchedulingID Nil() { return BaseSchedulingID(-1); }
 
  private:
