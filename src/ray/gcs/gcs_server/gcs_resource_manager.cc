@@ -332,7 +332,7 @@ void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
           node_id, scheduling::ResourceID(entry.first), entry.second);
     }
   } else {
-    RAY_LOG(WARNING) << "The registered node " << NodeID(node.node_id())
+    RAY_LOG(WARNING) << "The registered node " << NodeID::FromBinary(node.node_id())
                      << " doesn't set the total resources.";
   }
 }
