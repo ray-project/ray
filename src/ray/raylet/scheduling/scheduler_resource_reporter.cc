@@ -28,10 +28,12 @@ const int kMaxPendingActorsToReport = 20;
 };  // namespace
 
 SchedulerResourceReporter::SchedulerResourceReporter(
-    const absl::flat_hash_map<
-        SchedulingClass, std::deque<std::shared_ptr<internal::Work>>> &tasks_to_schedule,
-    const absl::flat_hash_map<
-        SchedulingClass, std::deque<std::shared_ptr<internal::Work>>> &infeasible_tasks,
+    const absl::flat_hash_map<SchedulingClass,
+                              std::deque<std::shared_ptr<internal::Work>>>
+        &tasks_to_schedule,
+    const absl::flat_hash_map<SchedulingClass,
+                              std::deque<std::shared_ptr<internal::Work>>>
+        &infeasible_tasks,
     const LocalTaskManager &local_task_manager)
     : max_resource_shapes_per_load_report_(
           RayConfig::instance().max_resource_shapes_per_load_report()),

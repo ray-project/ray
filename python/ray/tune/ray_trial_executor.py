@@ -11,12 +11,12 @@ import time
 import traceback
 from contextlib import contextmanager
 from typing import (
+    Any,
     Callable,
     Dict,
     Iterable,
     List,
     Optional,
-    Union,
     Set,
 )
 
@@ -170,7 +170,7 @@ class ExecutorEvent:
         self,
         event_type: ExecutorEventType,
         trial: Optional[Trial] = None,
-        result: Optional[Union[str, Dict]] = None,
+        result: Optional[Any] = None,
     ):
         self.type = event_type
         self.trial = trial
@@ -1011,9 +1011,9 @@ class RayTrialExecutor(TrialExecutor):
                         return ExecutorEvent(result_type, trial, result=future_result)
                     else:
                         raise TuneError(f"Unexpected future type - [{result_type}]")
-                except Exception:
+                except Exception as e:
                     return ExecutorEvent(
-                        ExecutorEventType.ERROR, trial, traceback.format_exc()
+                        ExecutorEventType.ERROR, trial, (e, traceback.format_exc())
                     )
 
 

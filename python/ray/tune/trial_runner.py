@@ -739,7 +739,7 @@ class TrialRunner:
                         self._on_saving_result(trial, result)
                     self._post_process_on_training_saving_result(trial)
         except Exception as e:
-            if e is TuneError:
+            if e is TuneError or self._fail_fast == TrialRunner.RAISE:
                 raise e
             else:
                 raise TuneError(traceback.format_exc())
@@ -868,10 +868,12 @@ class TrialRunner:
         error_msg = f"Trial {trial}: Error processing event."
         if self._fail_fast == TrialRunner.RAISE:
             logger.error(error_msg)
-            raise
+            assert isinstance(result[0], Exception)
+            raise result[0]
         else:
             logger.exception(error_msg)
-        self._process_trial_failure(trial, result)
+            assert isinstance(result[1], str)
+            self._process_trial_failure(trial, result[1])
 
     def get_trial(self, tid):
         trial = [t for t in self._trials if t.trial_id == tid]
