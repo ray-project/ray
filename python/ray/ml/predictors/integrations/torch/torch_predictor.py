@@ -118,7 +118,7 @@ class TorchPredictor(Predictor):
             # If numpy array, then convert to pandas dataframe.
             data = pd.DataFrame(data)
 
-        # TODO(amog): Add `_convert_numpy_tp_torch_tensor to use based on input type.
+        # TODO(amog): Add `_convert_numpy_to_torch_tensor to use based on input type.
         # Reduce conversion cost if input is in Numpy
         tensor = convert_pandas_to_torch_tensor(
             data, columns=feature_columns, column_dtypes=dtype
