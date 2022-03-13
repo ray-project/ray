@@ -27,7 +27,7 @@ class _TrialCheckpoint(os.PathLike):
         self, local_path: Optional[str] = None, cloud_path: Optional[str] = None
     ):
         self._local_path = local_path
-        self._cloud_path = cloud_path
+        self._cloud_path_tcp = cloud_path
 
     @property
     def local_path(self):
@@ -39,11 +39,11 @@ class _TrialCheckpoint(os.PathLike):
 
     @property
     def cloud_path(self):
-        return self._cloud_path
+        return self._cloud_path_tcp
 
     @cloud_path.setter
     def cloud_path(self, path: str):
-        self._cloud_path = path
+        self._cloud_path_tcp = path
 
     # The following magic methods are implemented to keep backwards
     # compatibility with the old path-based return values.
@@ -331,27 +331,28 @@ class TrialCheckpoint(Checkpoint, _TrialCheckpoint):
 
         # Checkpoint does not allow empty data, but TrialCheckpoint
         # did. To keep backwards compatibility, we use a placeholder URI
-        # here, and manually set self._uri to empty later if it's not
-        # overwritten.
+        # here, and manually set self._uri and self._local_dir later.
         PLACEHOLDER = "s3://placeholder"
-        uri = PLACEHOLDER
+        Checkpoint.__init__(self, uri=PLACEHOLDER)
 
-        self._cloud_path = None
+        # Reset local variables
+        self._uri = None
+        self._local_path = None
+
+        self._cloud_path_tcp = None
         self._local_path_tcp = None
 
         locations = set()
         if local_path:
             # Add _tcp to not conflict with Checkpoint._local_path
             self._local_path_tcp = local_path
+            if os.path.exists(local_path):
+                self._local_path = local_path
             locations.add(local_path)
-            uri = f"file://{local_path}"
         if cloud_path:
-            self._cloud_path = cloud_path
+            self._cloud_path_tcp = cloud_path
+            self._uri = cloud_path
             locations.add(cloud_path)
-            uri = cloud_path
-        Checkpoint.__init__(self, uri=uri)
-        if self._uri == PLACEHOLDER:
-            self._uri = None
         self._locations = locations
 
     @property
@@ -379,11 +380,11 @@ class TrialCheckpoint(Checkpoint, _TrialCheckpoint):
                 cloud_path = _get_external_path(candidate)
                 if cloud_path:
                     break
-        return cloud_path or self._cloud_path
+        return cloud_path or self._cloud_path_tcp
 
     @cloud_path.setter
     def cloud_path(self, path: str):
-        self._cloud_path = path
+        self._cloud_path_tcp = path
         if not self._uri:
             self._uri = path
         self._locations.add(path)

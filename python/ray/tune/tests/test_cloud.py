@@ -19,6 +19,13 @@ class TrialCheckpointApiTest(unittest.TestCase):
     def tearDown(self) -> None:
         shutil.rmtree(self.local_dir)
 
+    def testConstructTrialCheckpoint(self):
+        # All these constructions should work
+        TrialCheckpoint(None, None)
+        TrialCheckpoint("/tmp", None)
+        TrialCheckpoint(None, "s3://invalid")
+        TrialCheckpoint("/remote/node/dir", None)
+
     def ensureCheckpointFile(self):
         with open(os.path.join(self.local_dir, "checkpoint.txt"), "wt") as f:
             f.write("checkpoint\n")
