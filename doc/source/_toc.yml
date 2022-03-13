@@ -114,23 +114,14 @@ parts:
       - file: ray-core/using-ray
         title: "User Guide"
       - file: ray-core/examples/overview
-        title: "Tutorials and Examples"
+        title: "Examples"
         sections:
-          - file: ray-core/examples/placement-group
           - file: ray-core/examples/plot_example-a3c
           - file: ray-core/examples/plot_example-lm
           - file: ray-core/examples/plot_hyperparameter
           - file: ray-core/examples/plot_lbfgs
-          - file: ray-core/examples/plot_newsreader
           - file: ray-core/examples/plot_parameter_server
           - file: ray-core/examples/plot_pong_example
-          - file: ray-core/examples/plot_streaming
-          - file: ray-core/examples/progress_bar
-          - file: ray-core/examples/testing-tips
-          - file: ray-core/examples/tips-for-first-time
-          - file: ray-core/examples/using-ray-with-pytorch-lightning
-          - file: ray-core/examples/dask_xgboost/dask_xgboost
-          - file: ray-core/examples/modin_xgboost/modin_xgboost
       - file: ray-core/package-ref
 
   - caption: Ray Clusters
@@ -152,6 +143,7 @@ parts:
           - file: ray-contribute/development
           - file: ray-contribute/docs
           - file: ray-contribute/fake-autoscaler
+          - file: ray-core/examples/testing-tips
       - file: ray-core/configure
       - file: ray-observability/index
       - file: ray-design-patterns/index

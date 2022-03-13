@@ -1,9 +1,11 @@
+import os
 import pytest
 import sys
 import ray
 import pathlib
 import json
 import time
+import subprocess
 
 from dataclasses import asdict
 from pathlib import Path
@@ -63,6 +65,127 @@ def print_dashboard_log():
     from pprint import pprint
 
     pprint(contents)
+
+
+def test_usage_stats_heads_up_message():
+    """
+    Test usage stats heads-up message is shown in the proper cases.
+    """
+    env = os.environ.copy()
+    env["RAY_USAGE_STATS_PROMPT_ENABLED"] = "0"
+    result = subprocess.run(
+        "ray start --head",
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+    )
+    assert result.returncode == 0
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
+        "utf-8"
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stderr.decode(
+        "utf-8"
+    )
+
+    subprocess.run("ray stop --force", shell=True)
+
+    result = subprocess.run(
+        "ray start --head",
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert result.returncode == 0
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
+        "utf-8"
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE in result.stderr.decode("utf-8")
+
+    result = subprocess.run(
+        'ray start --address="127.0.0.1:6379"',
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert result.returncode == 0
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
+        "utf-8"
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stderr.decode(
+        "utf-8"
+    )
+
+    subprocess.run("ray stop --force", shell=True)
+
+    result = subprocess.run(
+        "ray up xxx.yml", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
+        "utf-8"
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE in result.stderr.decode("utf-8")
+
+    result = subprocess.run(
+        "ray exec xxx.yml ls --start",
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
+        "utf-8"
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE in result.stderr.decode("utf-8")
+
+    result = subprocess.run(
+        "ray exec xxx.yml ls",
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
+        "utf-8"
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stderr.decode(
+        "utf-8"
+    )
+
+    result = subprocess.run(
+        "ray submit xxx.yml yyy.py --start",
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
+        "utf-8"
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE in result.stderr.decode("utf-8")
+
+    result = subprocess.run(
+        "ray submit xxx.yml yyy.py",
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
+        "utf-8"
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stderr.decode(
+        "utf-8"
+    )
+
+    result = subprocess.run(
+        'python -c "import ray; ray.init()"',
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
+        "utf-8"
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stderr.decode(
+        "utf-8"
+    )
 
 
 def test_usage_lib_cluster_metadata_generation(monkeypatch, shutdown_only):

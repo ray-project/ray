@@ -19,7 +19,8 @@ namespace ray {
 namespace gcs {
 
 Status InMemoryStoreClient::AsyncPut(const std::string &table_name,
-                                     const std::string &key, const std::string &data,
+                                     const std::string &key,
+                                     const std::string &data,
                                      const StatusCallback &callback) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
@@ -72,7 +73,7 @@ Status InMemoryStoreClient::AsyncGetAll(
   RAY_CHECK(callback);
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
-  auto result = std::unordered_map<std::string, std::string>();
+  auto result = absl::flat_hash_map<std::string, std::string>();
   result.insert(table->records_.begin(), table->records_.end());
   main_io_service_.post(
       [result = std::move(result), callback]() mutable { callback(std::move(result)); },
@@ -136,8 +137,10 @@ Status InMemoryStoreClient::AsyncBatchDelete(const std::string &table_name,
 }
 
 Status InMemoryStoreClient::AsyncBatchDeleteWithIndex(
-    const std::string &table_name, const std::vector<std::string> &keys,
-    const std::vector<std::string> &index_keys, const StatusCallback &callback) {
+    const std::string &table_name,
+    const std::vector<std::string> &keys,
+    const std::vector<std::string> &index_keys,
+    const StatusCallback &callback) {
   RAY_CHECK(keys.size() == index_keys.size());
 
   auto table = GetOrCreateTable(table_name);
@@ -169,13 +172,14 @@ Status InMemoryStoreClient::AsyncBatchDeleteWithIndex(
 }
 
 Status InMemoryStoreClient::AsyncGetByIndex(
-    const std::string &table_name, const std::string &index_key,
+    const std::string &table_name,
+    const std::string &index_key,
     const MapCallback<std::string, std::string> &callback) {
   RAY_CHECK(callback);
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   auto iter = table->index_keys_.find(index_key);
-  auto result = std::unordered_map<std::string, std::string>();
+  auto result = absl::flat_hash_map<std::string, std::string>();
   if (iter != table->index_keys_.end()) {
     for (auto &key : iter->second) {
       auto kv_iter = table->records_.find(key);
