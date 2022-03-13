@@ -321,10 +321,15 @@ const absl::flat_hash_map<scheduling::NodeID, Node> &GcsResourceManager::GetReso
 }
 
 void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
-  scheduling::NodeID node_id(node.node_id());
-  for (const auto &entry : node.resources_total()) {
-    cluster_resource_manager_.UpdateResourceCapacity(
-        node_id, scheduling::ResourceID(entry.first), entry.second);
+  if (!node.resources_total().empty()) {
+    scheduling::NodeID node_id(node.node_id());
+    for (const auto &entry : node.resources_total()) {
+      cluster_resource_manager_.UpdateResourceCapacity(
+          node_id, scheduling::ResourceID(entry.first), entry.second);
+    }
+  } else {
+    RAY_LOG(WARNING) << "The registered node " << NodeID(node.node_id())
+                     << " doesn't set the total resources.";
   }
 }
 
