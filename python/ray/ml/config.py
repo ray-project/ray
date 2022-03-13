@@ -16,6 +16,9 @@ ScalingConfig = Dict[str, Any]
 class _ScalingConfigDataClass:
     """Configuration for scaling training.
 
+    This is the schema for the scaling_config dict, and after beta, this will be the
+    actual representation for Scaling config objects.
+
     num_workers (int): The number of workers (Ray actors) to launch.
         Each worker will reserve 1 CPU by default. The number of CPUs
         reserved by each worker can be overridden with the

@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Callable, Optional
+from typing import Dict, Callable, Optional, TYPE_CHECKING
 
 from ray.ml.trainer import Trainer
 from ray.ml.config import ScalingConfig, RunConfig
@@ -9,6 +9,9 @@ from ray.ml.checkpoint import Checkpoint
 from ray.train import BackendConfig
 from ray.util.annotations import DeveloperAPI
 
+if TYPE_CHECKING:
+    from ray.data import Dataset
+
 logger = logging.getLogger(__name__)
 
 
@@ -16,14 +19,44 @@ logger = logging.getLogger(__name__)
 class DataParallelTrainer(Trainer):
     """A Trainer for data parallel training.
 
-    This Trainer runs the provided function on multiple Ray Actors. The
+    This Trainer runs the provided function ``train_loop_for_rank`` on multiple Ray Actors. The
     provided datasets are automatically sharded to each Ray actor running
     the training function.
 
+    The provided ``train_func`` is expected to take on the following form with anywhere from 0
+    to 4 arguments:
+
+    .. code-block:: python
+
+        def train_loop_for_rank(
+            config: Optional[Dict] = None,
+            train_dataset_shard: Optional[Dataset] = None,
+            extra_datasets:  Optional[str, Dataset] = None,
+            rank: Optional[int] = None
+            )
+
+    If ``train_loop_config``
+    If a ``train_dataset`` argument is provided to the Trainer, it will be preprocessed and
+    sharded, and the shard will be passed in as the second argument.
+
+    If ``extra_datasets`` or ``train_loop_config`` are provided to the Trainer, they will be
+    directly passed in as the third and fourth arguments respectively. ``extra_datasets`` will
+    be preprocessed prior to being passed into the ``train_loop_for_rank``.
+
+
+    Example:
+
+        .. code-block:: python
+
+        # Training loop for each worker.
+        def train_loop_for_rank(rank, train_dataset_shard):
+
+
+
     Args:
-        train_func: The training function to execute.
+        train_loop_for_rank: The training function to execute.
             This can either take in no arguments or a ``config`` dict.
-        train_func_config: Configurations to pass into
+        train_loop_config: Configurations to pass into
             ``train_func`` if it accepts an argument.
         backend_config: Used to specify which backend to setup on the
             workers enable distributed communication, for example torch or
@@ -45,7 +78,9 @@ class DataParallelTrainer(Trainer):
 
     def __init__(
         self,
-        train_func: Callable,
+        train_loop_for_rank: Callable[
+            [int, Optional[Dataset], Optional[Dict[str, Dataset]], Optional[Dict]], None
+        ],
         train_func_config: Optional[Dict] = None,
         backend_config: Optional[BackendConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
