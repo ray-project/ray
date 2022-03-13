@@ -365,20 +365,20 @@ COMMON_CONFIG: TrainerConfigDict = {
     # === Replay Buffer Settings ===
     # Provide a dict specifying the ReplayBuffer's config.
     # "replay_buffer_config": {
-        # The ReplayBuffer class to use. Any class that obeys the
-        # ReplayBuffer API can be used here. In the simplest case, this is the
-        # name (str) of any class present in the `rllib.utils.replay_buffers`
-        # package. You can also provide the python class directly or the
-        # full location of your class (e.g.
-        # "ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer").
-        # "type": "ReplayBuffer",
-        # The capacity of units that can be stored in one ReplayBuffer
-        # instance before eviction.
-        # "capacity": 10000,
-        # Specifies how experiences are stored. Either 'sequences' or
-        # 'timesteps'.
-        # "storage_unit": "timesteps",
-        # Add constructor kwargs here (if any).
+    #     The ReplayBuffer class to use. Any class that obeys the
+    #     ReplayBuffer API can be used here. In the simplest case, this is the
+    #     name (str) of any class present in the `rllib.utils.replay_buffers`
+    #     package. You can also provide the python class directly or the
+    #     full location of your class (e.g.
+    #     "ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer").
+    #     "type": "ReplayBuffer",
+    #     The capacity of units that can be stored in one ReplayBuffer
+    #     instance before eviction.
+    #     "capacity": 10000,
+    #     Specifies how experiences are stored. Either 'sequences' or
+    #     'timesteps'.
+    #     "storage_unit": "timesteps",
+    #     Add constructor kwargs here (if any).
     # },
 
     # Number of parallel workers to use for evaluation. Note that this is set
