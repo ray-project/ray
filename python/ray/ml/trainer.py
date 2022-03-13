@@ -8,6 +8,7 @@ from ray.ml.result import Result
 from ray.ml.config import ScalingConfig, RunConfig
 from ray.tune import Trainable
 from ray.util import PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.data import Dataset
@@ -30,6 +31,25 @@ class TrainingFailedError(RuntimeError):
 @PublicAPI(stability="alpha")
 class Trainer(abc.ABC):
     """Defines interface for distributed training on Ray.
+
+    How does a trainer work?
+        - First, initialize the Trainer. The initialization runs locally,
+        so heavyweight setup should not be done in __init__
+        - Then, when you call ``trainer.fit()``, the Trainer is serialized
+        and copied to a remote Ray actor. The following methods are then
+        called in sequence on the remote actor.
+            - ``trainer.setup()``: Any heavyweight Trainer setup should be
+            specified here.
+            - ``trainer.preprocess_datasets()``: The provided
+            ray.data.Dataset are preprocessed with the provided
+            ray.ml.preprocessor.
+            - ``trainer.train_loop()``: Executes the main training logic.
+
+    End User Example:
+        ...
+
+    Developer Example:
+        ...
 
     Args:
         scaling_config: Configuration for how to scale training.
@@ -58,14 +78,58 @@ class Trainer(abc.ABC):
 
         raise NotImplementedError
 
+    @DeveloperAPI
+    def setup(self) -> None:
+        """Perform initial setup on the Trainer.
+
+        Note: this method is run on a remote process.
+
+        This method will not be called on the driver, so any expensive setup
+        operations should be placed here and not in ``__init__``.
+
+        This method is called prior to ``_preprocess_datasets`` and
+        ``training_loop``.
+
+        Example:
+            ...
+        """
+        raise NotImplementedError
+
+    def _preprocess_datasets(self) -> None:
+        """Preprocess dataset attributes with provided preprocessor.
+
+        Note: This method is run on a remote process.
+
+        This method is called prior to entering the training_loop.
+
+        If the ``Trainer`` has both a train_dataset and
+        preprocessor, and the preprocessor has not yet been fit, then it
+        will be fit on the train_dataset.
+
+        Then, the Trainer's train_dataset and any extra_datasets
+        will be transformed by its preprocessor.
+
+        The transformed datasets will be set back in the
+        ``self.train_dataset`` and ``self.extra_datasets`` attributes to be
+        used when overriding ``training_loop``.
+        """
+        raise NotImplementedError
+
+    @DeveloperAPI
     @abc.abstractmethod
-    def training_function(
-        self, config: Dict[str, Any], checkpoint: Optional[Checkpoint] = None
-    ):
-        """Function to define the training logic.
+    def training_loop(self) -> None:
+        """Loop for distributed training and result reporting.
+
+        Note: this method runs on a remote process.
 
         `self.train_dataset` and the Dataset values in `self.extra_datasets`
-        have already been preprocessed by `self.preprocessor`.
+        have already been preprocessed by `self.preprocessor`.'
+
+        You can use ``tune.report()`` and ``tune.save_checkpoint()`` inside
+        this training loop.
+
+        Example:
+
 
         Args:
             config: Configurations for training logic specific implementation.
@@ -73,6 +137,7 @@ class Trainer(abc.ABC):
         """
         raise NotImplementedError
 
+    @PublicAPI(stability="alpha")
     def fit(self) -> Result:
         """Runs training.
 
@@ -85,6 +150,7 @@ class Trainer(abc.ABC):
         """
         raise NotImplementedError
 
+    @PublicAPI(stability="alpha")
     def as_trainable(self) -> Type[Trainable]:
         """Convert self to a ``tune.Trainable`` class."""
         raise NotImplementedError
