@@ -101,7 +101,6 @@ class Trainer(abc.ABC):
                             # results.
                             tune.report(loss=loss, epoch=epoch_idx)
 
-
     How do I use an existing ``Trainer`` or one of my custom Trainers?
 
     Initialize the Trainer, and call Trainer.fit()
