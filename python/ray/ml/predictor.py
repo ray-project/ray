@@ -30,7 +30,8 @@ class Predictor(abc.ABC):
         """Perform inference on a batch of data.
 
         Args:
-            data: A batch of input data.
+            data: A batch of input data. Either a pandas Dataframe or numpy
+                array.
             kwargs: Arguments specific to predictor implementations.
 
         Returns:

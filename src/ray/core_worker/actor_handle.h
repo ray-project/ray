@@ -32,13 +32,19 @@ class ActorHandle {
       : inner_(inner), actor_cursor_(ObjectID::FromBinary(inner_.actor_cursor())) {}
 
   // Constructs a new ActorHandle as part of the actor creation process.
-  ActorHandle(const ActorID &actor_id, const TaskID &owner_id,
-              const rpc::Address &owner_address, const JobID &job_id,
-              const ObjectID &initial_cursor, const Language actor_language,
+  ActorHandle(const ActorID &actor_id,
+              const TaskID &owner_id,
+              const rpc::Address &owner_address,
+              const JobID &job_id,
+              const ObjectID &initial_cursor,
+              const Language actor_language,
               const FunctionDescriptor &actor_creation_task_function_descriptor,
-              const std::string &extension_data, int64_t max_task_retries,
-              const std::string &name, const std::string &ray_namespace,
-              int32_t max_pending_calls, bool execute_out_of_order = false);
+              const std::string &extension_data,
+              int64_t max_task_retries,
+              const std::string &name,
+              const std::string &ray_namespace,
+              int32_t max_pending_calls,
+              bool execute_out_of_order = false);
 
   /// Constructs an ActorHandle from a serialized string.
   explicit ActorHandle(const std::string &serialized);
