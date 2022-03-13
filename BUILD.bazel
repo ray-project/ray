@@ -535,23 +535,23 @@ cc_library(
             "src/ray/gcs/gcs_server/test/*.cc",
         ],
     ) + [
-            "src/ray/raylet/scheduling/local_resource_manager.cc",
-            "src/ray/raylet/scheduling/cluster_resource_manager.cc",
+        "src/ray/raylet/scheduling/local_resource_manager.cc",
+        "src/ray/raylet/scheduling/cluster_resource_manager.cc",
     ],
     hdrs = glob(
         [
             "src/ray/gcs/gcs_server/*.h",
         ],
     ) + [
-            "src/ray/raylet/scheduling/local_resource_manager.h",
-            "src/ray/raylet/scheduling/cluster_resource_manager.h",
+        "src/ray/raylet/scheduling/local_resource_manager.h",
+        "src/ray/raylet/scheduling/cluster_resource_manager.h",
     ],
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
-        ":gcs_client_lib",
         ":agent_manager_rpc",
         ":gcs",
+        ":gcs_client_lib",
         ":gcs_pub_sub_lib",
         ":gcs_service_rpc",
         ":gcs_table_storage_lib",
