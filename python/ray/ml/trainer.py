@@ -179,7 +179,7 @@ class Trainer(abc.ABC):
     @DeveloperAPI
     @abc.abstractmethod
     def training_loop(self) -> None:
-        """Loop for distributed training and result reporting.
+        """Loop for distributed training and result reporting to Tune.
 
         Note: this method runs on a remote process.
 
