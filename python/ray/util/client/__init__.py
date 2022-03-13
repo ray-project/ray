@@ -167,7 +167,7 @@ class _ClientContext:
             return lambda: False
         else:
             raise Exception(
-                "Ray Client is not connected. " "Please connect by calling `ray.init`."
+                "Ray Client is not connected. Please connect by calling `ray.init`."
             )
 
     def is_connected(self) -> bool:
