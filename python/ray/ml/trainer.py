@@ -1,6 +1,6 @@
 import abc
 import logging
-from typing import Dict, Union, Callable, Optional, TYPE_CHECKING, Type, Any
+from typing import Dict, Union, Callable, Optional, TYPE_CHECKING, Type
 
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
@@ -32,6 +32,9 @@ class TrainingFailedError(RuntimeError):
 class Trainer(abc.ABC):
     """Defines interface for distributed training on Ray.
 
+    Note: The base ``Trainer`` class cannot be instantiated directly. Only
+    one of its subclasses can be used.
+
     How does a trainer work?
         - First, initialize the Trainer. The initialization runs locally,
         so heavyweight setup should not be done in __init__
@@ -44,12 +47,73 @@ class Trainer(abc.ABC):
             ray.data.Dataset are preprocessed with the provided
             ray.ml.preprocessor.
             - ``trainer.train_loop()``: Executes the main training logic.
+        - Calling ``trainer.fit()`` will return a ``ray.result.Result``
+        object where you can access metrics from your training run, as well
+        as any checkpoints that may have been saved.
 
-    End User Example:
-        ...
+    How do I create a new ``Trainer``?
 
-    Developer Example:
-        ...
+    Subclass ``ray.train.Trainer``, and override the ``training_loop``
+    method, and optionally ``setup``.
+
+        Example:
+
+            .. code-block:: python
+
+                import torch
+
+                from ray.ml.trainer import Trainer
+                from ray import tune
+
+
+                class MyPytorchTrainer(Trainer):
+                    def setup(self):
+                        self.model = torch.nn.Linear(1, 1)
+                        self.optimizer = torch.optim.SGD(
+                            self.model.parameters(), lr=0.1)
+
+                    def training_loop(self):
+                        # You can access any Trainer attributes directly in this method.
+                        # self.train_dataset has already been preprocessed by
+                        # self.preprocessor
+                        dataset = self.train_dataset
+
+                        torch_ds = dataset.to_torch()
+
+                        for epoch_idx in range(10):
+                            loss = 0
+                            num_batches = 0
+                            for X, y in iter(torch_ds):
+                                # Compute prediction error
+                                pred = self.model(X)
+                                batch_loss = torch.nn.MSELoss(pred, y)
+
+                                # Backpropagation
+                                self.optimizer.zero_grad()
+                                batch_loss.backward()
+                                self.optimizer.step()
+
+                                loss += batch_loss.item()
+                                num_batches += 1
+                            loss /= num_batches
+
+                            # Use Tune functions to report intermediate
+                            # results.
+                            tune.report(loss=loss, epoch=epoch_idx)
+
+
+    How do I use an existing ``Trainer`` or one of my custom Trainers?
+
+    Initialize the Trainer, and call Trainer.fit()
+
+        Example:
+              .. code-block:: python
+
+                import ray
+
+                train_dataset = ray.data.from_items([1, 2, 3])
+                my_trainer = MyPytorchTrainer(train_dataset=train_dataset)
+                result = my_trainer.fit()
 
     Args:
         scaling_config: Configuration for how to scale training.
@@ -89,9 +153,6 @@ class Trainer(abc.ABC):
 
         This method is called prior to ``_preprocess_datasets`` and
         ``training_loop``.
-
-        Example:
-            ...
         """
         raise NotImplementedError
 
@@ -125,15 +186,21 @@ class Trainer(abc.ABC):
         `self.train_dataset` and the Dataset values in `self.extra_datasets`
         have already been preprocessed by `self.preprocessor`.'
 
-        You can use ``tune.report()`` and ``tune.save_checkpoint()`` inside
+        You can use the :ref:`Tune Function API functions <tune-function-docstring>`
+        (``tune.report()`` and ``tune.save_checkpoint()``) inside
         this training loop.
 
         Example:
+            .. code-block: python
 
+                from ray.ml.trainer import Trainer
 
-        Args:
-            config: Configurations for training logic specific implementation.
-            checkpoint: A checkpoint to resume from, if applicable.
+                class MyTrainer(Trainer):
+                    def training_loop(self):
+                        for epoch_idx in range(5):
+                            ...
+                            tune.report(epoch=epoch_idx)
+
         """
         raise NotImplementedError
 
