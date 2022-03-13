@@ -90,7 +90,7 @@ class ClusterResourceScheduler {
   /// False otherwise.
   bool AllocateRemoteTaskResources(
       scheduling::NodeID node_id,
-      const absl::flat_hash_map<std::string, double> &task_resources);
+      const absl::flat_hash_map<std::string, double> &resource_request);
 
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;

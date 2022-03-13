@@ -265,14 +265,6 @@ class NodeResourceInfoGcsServiceHandler {
                                   GetResourcesReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleUpdateResources(const UpdateResourcesRequest &request,
-                                     UpdateResourcesReply *reply,
-                                     SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleDeleteResources(const DeleteResourcesRequest &request,
-                                     DeleteResourcesReply *reply,
-                                     SendReplyCallback send_reply_callback) = 0;
-
   virtual void HandleGetAllAvailableResources(
       const rpc::GetAllAvailableResourcesRequest &request,
       rpc::GetAllAvailableResourcesReply *reply,
@@ -304,8 +296,6 @@ class NodeResourceInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetResources);
-    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(UpdateResources);
-    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(DeleteResources);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllAvailableResources);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(ReportResourceUsage);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllResourceUsage);

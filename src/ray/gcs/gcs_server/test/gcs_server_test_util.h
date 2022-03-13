@@ -440,8 +440,8 @@ struct GcsServerMocker {
       return nullptr;
     }
 
-    const std::unordered_map<NodeID, rpc::GcsNodeInfo> &GetAll() const override {
-      static std::unordered_map<NodeID, rpc::GcsNodeInfo> node_info_list;
+    const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &GetAll() const override {
+      static absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_info_list;
       return node_info_list;
     }
 

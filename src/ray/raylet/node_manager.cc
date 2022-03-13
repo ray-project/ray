@@ -387,17 +387,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       announce_infeasible_task,
       local_task_manager_);
   placement_group_resource_manager_ = std::make_shared<NewPlacementGroupResourceManager>(
-      std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
-      // TODO (Alex): Ideally we could do these in a more robust way (retry
-      // them, do them with the lightweight heartbeat, etc).
-      [this](const ray::gcs::NodeResourceInfoAccessor::ResourceMap &resources) {
-        RAY_CHECK_OK(gcs_client_->NodeResources().AsyncUpdateResources(
-            self_node_id_, resources, nullptr));
-      },
-      [this](const std::vector<std::string> &resource_names) {
-        RAY_CHECK_OK(gcs_client_->NodeResources().AsyncDeleteResources(
-            self_node_id_, resource_names, nullptr));
-      });
+      std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_));
 
   periodical_runner_.RunFnPeriodically(
       [this]() { cluster_task_manager_->ScheduleAndDispatchTasks(); },

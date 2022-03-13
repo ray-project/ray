@@ -1,3 +1,5 @@
+.. include:: /_includes/serve/announcement.rst
+
 .. _rayserve:
 
 ========================================
@@ -6,7 +8,6 @@ Serve: Scalable and Programmable Serving
 
 .. tip::
    Get in touch with us if you're using or considering using `Ray Serve <https://docs.google.com/forms/d/1l8HT35jXMPtxVUtQPeGoe09VGp5jcvSv0TqPgyz6lGU>`_.
-
 
 
 .. image:: logo.svg
@@ -221,3 +222,5 @@ For more, see the following blog posts about Ray Serve:
 - `How to Scale Up Your FastAPI Application Using Ray Serve <https://medium.com/distributed-computing-with-ray/how-to-scale-up-your-fastapi-application-using-ray-serve-c9a7b69e786>`_ by Archit Kulkarni
 - `Machine Learning is Broken <https://medium.com/distributed-computing-with-ray/machine-learning-serving-is-broken-f59aff2d607f>`_ by Simon Mo
 - `The Simplest Way to Serve your NLP Model in Production with Pure Python <https://medium.com/distributed-computing-with-ray/the-simplest-way-to-serve-your-nlp-model-in-production-with-pure-python-d42b6a97ad55>`_ by Edward Oakes and Bill Chambers
+
+.. include:: /_includes/serve/announcement_bottom.rst

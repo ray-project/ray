@@ -63,8 +63,6 @@ class LocalTaskManager {
   /// \param is_owner_alive: A callback which returns if the owner process is alive
   ///                        (according to our ownership model).
   /// \param get_node_info: Function that returns the node info for a node.
-  /// \param announce_infeasible_task: Callback that informs the user if a task
-  ///                                  is infeasible.
   /// \param worker_pool: A reference to the worker pool.
   /// \param leased_workers: A reference to the leased workers map.
   /// \param get_task_arguments: A callback for getting a tasks' arguments by
@@ -101,7 +99,7 @@ class LocalTaskManager {
   /// Move tasks from waiting to ready for dispatch. Called when a task's
   /// dependencies are resolved.
   ///
-  /// \param readyIds: The tasks which are now ready to be dispatched.
+  /// \param ready_ids: The tasks which are now ready to be dispatched.
   void TasksUnblocked(const std::vector<TaskID> &ready_ids);
 
   /// Return the finished task and release the worker resources.
@@ -126,12 +124,12 @@ class LocalTaskManager {
 
   /// Return if any tasks are pending resource acquisition.
   ///
-  /// \param[out] exemplar: An example task that is deadlocking.
+  /// \param[out] example: An example task that is deadlocking.
+  /// \param[in,out] any_pending: True if there's any pending example.
   /// \param[in,out] num_pending_actor_creation: Number of pending actor creation tasks.
   /// \param[in,out] num_pending_tasks: Number of pending tasks.
-  /// \param[in,out] any_pending: True if there's any pending exemplar.
   /// \return True if any progress is any tasks are pending.
-  bool AnyPendingTasksForResourceAcquisition(RayTask *exemplar,
+  bool AnyPendingTasksForResourceAcquisition(RayTask *example,
                                              bool *any_pending,
                                              int *num_pending_actor_creation,
                                              int *num_pending_tasks) const;
@@ -158,6 +156,8 @@ class LocalTaskManager {
   /// false.
   bool ReturnCpuResourcesToBlockedWorker(std::shared_ptr<WorkerInterface> worker);
 
+  /// TODO(Chong-Li): Removing this and maintaining normal task resources by local
+  /// resource manager.
   /// Calculate normal task resources.
   ResourceSet CalcNormalTaskResources() const;
 

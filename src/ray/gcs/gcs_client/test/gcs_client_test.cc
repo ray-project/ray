@@ -352,29 +352,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return resource_map;
   }
 
-  bool UpdateResources(const NodeID &node_id, const std::string &key) {
-    std::promise<bool> promise;
-    gcs::NodeResourceInfoAccessor::ResourceMap resource_map;
-    auto resource = std::make_shared<rpc::ResourceTableData>();
-    resource->set_resource_capacity(1.0);
-    resource_map[key] = resource;
-    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncUpdateResources(
-        node_id, resource_map, [&promise](Status status) {
-          promise.set_value(status.ok());
-        }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  bool DeleteResources(const NodeID &node_id,
-                       const std::vector<std::string> &resource_names) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncDeleteResources(
-        node_id, resource_names, [&promise](Status status) {
-          promise.set_value(status.ok());
-        }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   bool ReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> heartbeat) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportHeartbeat(
@@ -820,7 +797,6 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
   ASSERT_TRUE(RegisterNode(*node_info));
   NodeID node_id = NodeID::FromBinary(node_info->node_id());
   std::string key = "CPU";
-  ASSERT_TRUE(UpdateResources(node_id, key));
   auto resources = std::make_shared<rpc::ResourcesData>();
   resources->set_node_id(node_info->node_id());
   // Set this flag because GCS won't publish unchanged resources.
@@ -832,7 +808,6 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
   node_info = Mocker::GenNodeInfo(1);
   ASSERT_TRUE(RegisterNode(*node_info));
   node_id = NodeID::FromBinary(node_info->node_id());
-  ASSERT_TRUE(UpdateResources(node_id, key));
   resources->set_node_id(node_info->node_id());
   ASSERT_TRUE(ReportResourceUsage(resources));
 

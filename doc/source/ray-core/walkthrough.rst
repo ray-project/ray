@@ -1,3 +1,5 @@
+.. include:: /_includes/core/announcement.rst
+
 .. _core-walkthrough:
 
 Ray Core Walkthrough
@@ -825,3 +827,5 @@ Methods called on different actors can execute in parallel, and methods called o
         }
 
 To learn more about Ray Actors, see the `Actors section <actors.html>`__.
+
+.. include:: /_includes/core/announcement_bottom.rst

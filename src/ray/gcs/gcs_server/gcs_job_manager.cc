@@ -150,7 +150,7 @@ void GcsJobManager::HandleGetAllJobInfo(const rpc::GetAllJobInfoRequest &request
                                         rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(INFO) << "Getting all job info.";
   auto on_done = [reply, send_reply_callback](
-                     const std::unordered_map<JobID, JobTableData> &result) {
+                     const absl::flat_hash_map<JobID, JobTableData> &result) {
     for (auto &data : result) {
       reply->add_job_info_list()->CopyFrom(data.second);
     }
@@ -159,7 +159,7 @@ void GcsJobManager::HandleGetAllJobInfo(const rpc::GetAllJobInfoRequest &request
   };
   Status status = gcs_table_storage_->JobTable().GetAll(on_done);
   if (!status.ok()) {
-    on_done(std::unordered_map<JobID, JobTableData>());
+    on_done(absl::flat_hash_map<JobID, JobTableData>());
   }
 }
 

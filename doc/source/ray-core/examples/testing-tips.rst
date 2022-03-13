@@ -1,7 +1,8 @@
 Tips for testing Ray programs
 =============================
 
-Ray programs can be a little tricky to test due to the nature of parallel programs. We've put together a list of tips and tricks for common testing practices for Ray programs.
+Ray programs can be a little tricky to test due to the nature of parallel programs.
+We've put together a list of tips and tricks for common testing practices for Ray programs.
 
 .. contents::
   :local:

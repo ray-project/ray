@@ -134,7 +134,7 @@ class GcsResourceReportPoller {
   // and polling thread, so we should be mindful about how long we hold it.
   absl::Mutex mutex_;
   // All the state regarding how to and when to send a new pull request to a raylet.
-  std::unordered_map<NodeID, std::shared_ptr<PullState>> nodes_ GUARDED_BY(mutex_);
+  absl::flat_hash_map<NodeID, std::shared_ptr<PullState>> nodes_ GUARDED_BY(mutex_);
   // The set of all nodes which we are allowed to pull from. We can't necessarily pull
   // from this list immediately because we limit the number of concurrent pulls. This
   // queue should be sorted by time. The front should contain the first item to pull.

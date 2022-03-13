@@ -21,6 +21,7 @@
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/ray_syncer.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
@@ -46,7 +47,7 @@ struct pair_hash {
     return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
   }
 };
-using ScheduleMap = std::unordered_map<BundleID, NodeID, pair_hash>;
+using ScheduleMap = absl::flat_hash_map<BundleID, NodeID, pair_hash>;
 using ScheduleResult = std::pair<SchedulingResultStatus, ScheduleMap>;
 using BundleLocations =
     absl::flat_hash_map<BundleID,
@@ -89,15 +90,15 @@ class GcsPlacementGroupSchedulerInterface {
   ///
   /// \param node_to_bundles Bundles used by each node.
   virtual void ReleaseUnusedBundles(
-      const std::unordered_map<NodeID, std::vector<rpc::Bundle>> &node_to_bundles) = 0;
+      const absl::flat_hash_map<NodeID, std::vector<rpc::Bundle>> &node_to_bundles) = 0;
 
   /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
   ///
   /// \param node_to_bundles Bundles used by each node.
   virtual void Initialize(
-      const std::unordered_map<PlacementGroupID,
-                               std::vector<std::shared_ptr<BundleSpecification>>>
+      const absl::flat_hash_map<PlacementGroupID,
+                                std::vector<std::shared_ptr<BundleSpecification>>>
           &group_to_bundles) = 0;
 
   virtual ~GcsPlacementGroupSchedulerInterface() {}
@@ -314,7 +315,7 @@ class LeaseStatusTracker {
   std::shared_ptr<BundleLocations> preparing_bundle_locations_;
 
   /// Location of bundles grouped by node.
-  std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
+  absl::flat_hash_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
       grouped_preparing_bundle_locations_;
 
   /// Number of prepare requests that are returned.
@@ -423,7 +424,8 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       const GcsNodeManager &gcs_node_manager,
       GcsResourceManager &gcs_resource_manager,
       GcsResourceScheduler &gcs_resource_scheduler,
-      std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
+      std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
+      syncer::RaySyncer &ray_syncer);
 
   virtual ~GcsPlacementGroupScheduler() = default;
 
@@ -466,7 +468,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Notify raylets to release unused bundles.
   ///
   /// \param node_to_bundles Bundles used by each node.
-  void ReleaseUnusedBundles(const std::unordered_map<NodeID, std::vector<rpc::Bundle>>
+  void ReleaseUnusedBundles(const absl::flat_hash_map<NodeID, std::vector<rpc::Bundle>>
                                 &node_to_bundles) override;
 
   /// Initialize with the gcs tables data synchronously.
@@ -474,8 +476,8 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   ///
   /// \param node_to_bundles Bundles used by each node.
   void Initialize(
-      const std::unordered_map<PlacementGroupID,
-                               std::vector<std::shared_ptr<BundleSpecification>>>
+      const absl::flat_hash_map<PlacementGroupID,
+                                std::vector<std::shared_ptr<BundleSpecification>>>
           &group_to_bundles) override;
 
  protected:
@@ -596,6 +598,10 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
 
   /// The nodes which are releasing unused bundles.
   absl::flat_hash_set<NodeID> nodes_of_releasing_unused_bundles_;
+
+  /// The syncer of resource. This is used to report placement group updates.
+  /// TODO (iycheng): Remove this one from pg once we finish the refactor
+  syncer::RaySyncer &ray_syncer_;
 };
 
 }  // namespace gcs

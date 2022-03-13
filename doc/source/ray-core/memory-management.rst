@@ -277,7 +277,7 @@ usage across multiple physical devices if needed (e.g., SSD devices):
   
   To optimize the performance, it is recommended to use SSD instead of HDD when using object spilling for memory intensive workloads.
 
-If you are using an HDD, it is recommended that you specify a large buffer size (> 1MB) to lower IO requests during spilling.
+If you are using an HDD, it is recommended that you specify a large buffer size (> 1MB) to reduce IO requests during spilling.
 
 .. code-block:: python
 
@@ -288,7 +288,7 @@ If you are using an HDD, it is recommended that you specify a large buffer size 
                   "type": "filesystem", 
                   "params": {
                     "directory_path": "/tmp/spill",
-                    "buffer_size": 1000000
+                    "buffer_size": 1_000_000
                   }
                 },
             )
@@ -304,7 +304,35 @@ To enable object spilling to remote storage (any URI supported by `smart_open <h
             "max_io_workers": 4,  # More IO workers for remote storage.
             "min_spilling_size": 100 * 1024 * 1024,  # Spill at least 100MB at a time.
             "object_spilling_config": json.dumps(
-                {"type": "smart_open", "params": {"uri": "s3:///bucket/path"}},
+                {
+                  "type": "smart_open", 
+                  "params": {
+                    "uri": "s3://bucket/path"
+                  },
+                  "buffer_size": 100 * 1024 * 1024 # Use a 100MB buffer for writes
+                },
+            )
+        },
+    )
+
+It is recommended that you specify a large buffer size (> 1MB) to reduce IO requests during spilling.
+
+Spilling to multiple remote storages is also supported.
+
+.. code-block:: python
+
+    ray.init(
+        _system_config={
+            "max_io_workers": 4,  # More IO workers for remote storage.
+            "min_spilling_size": 100 * 1024 * 1024,  # Spill at least 100MB at a time.
+            "object_spilling_config": json.dumps(
+                {
+                  "type": "smart_open", 
+                  "params": {
+                    "uri": ["s3://bucket/path1", "s3://bucket/path2, "s3://bucket/path3"]
+                  },
+                  "buffer_size": 100 * 1024 * 1024 # Use a 100MB buffer for writes
+                },
             )
         },
     )

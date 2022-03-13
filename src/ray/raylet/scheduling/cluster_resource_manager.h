@@ -47,14 +47,14 @@ class ClusterResourceManager {
 
   /// Update node resources. This hanppens when a node resource usage udpated.
   ///
-  /// \param node_id_string ID of the node which resoruces need to be udpated.
+  /// \param node_id ID of the node which resoruces need to be udpated.
   /// \param resource_data The node resource data.
   bool UpdateNode(scheduling::NodeID node_id, const rpc::ResourcesData &resource_data);
 
   /// Remove node from the cluster data structure. This happens
   /// when a node fails or it is removed from the cluster.
   ///
-  /// \param node_id_string ID of the node to be removed.
+  /// \param node_id ID of the node to be removed.
   bool RemoveNode(scheduling::NodeID node_id);
 
   /// Get number of nodes in the cluster.
@@ -62,8 +62,8 @@ class ClusterResourceManager {
 
   /// Update total capacity of a given resource of a given node.
   ///
-  /// \param node_name: Node whose resource we want to update.
-  /// \param resource_name: Resource which we want to update.
+  /// \param node_id: Node whose resource we want to update.
+  /// \param resource_id: Resource which we want to update.
   /// \param resource_total: New capacity of the resource.
   void UpdateResourceCapacity(scheduling::NodeID node_id,
                               scheduling::ResourceID resource_id,
@@ -71,8 +71,8 @@ class ClusterResourceManager {
 
   /// Delete a given resource from a given node.
   ///
-  /// \param node_name: Node whose resource we want to delete.
-  /// \param resource_name: Resource we want to delete
+  /// \param node_id: Node whose resource we want to delete.
+  /// \param resource_id: Resource we want to delete
   void DeleteResource(scheduling::NodeID node_id, scheduling::ResourceID resource_id);
 
   /// Return local resources in human-readable string form.

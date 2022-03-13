@@ -49,22 +49,11 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param self_node_id: ID of local node.
   /// \param cluster_resource_scheduler: The resource scheduler which contains
   ///                                    the state of the cluster.
-  /// \param task_dependency_manager_ Used to fetch task's dependencies.
-  /// \param is_owner_alive: A callback which returns if the owner process is alive
-  ///                        (according to our ownership model).
   /// \param get_node_info: Function that returns the node info for a node.
   /// \param announce_infeasible_task: Callback that informs the user if a task
   ///                                  is infeasible.
-  /// \param worker_pool: A reference to the worker pool.
-  /// \param leased_workers: A reference to the leased workers map.
-  /// \param get_task_arguments: A callback for getting a tasks' arguments by
-  ///                            their ids.
-  /// \param max_pinned_task_arguments_bytes: The cap on pinned arguments.
+  /// \param local_task_manager: Manages local tasks.
   /// \param get_time_ms: A callback which returns the current time in milliseconds.
-  /// \param sched_cls_cap_interval_ms: The time before we increase the cap
-  ///                                   on the number of tasks that can run per
-  ///                                   scheduling class. If set to 0, there is no
-  ///                                   cap. If it's a large number, the cap is hard.
   ClusterTaskManager(
       const NodeID &self_node_id,
       std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
@@ -75,12 +64,12 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
         return (int64_t)(absl::GetCurrentTimeNanos() / 1e6);
       });
 
-  /// (Step 1) Queue tasks and schedule.
   /// Queue task and schedule. This hanppens when processing the worker lease request.
   ///
   /// \param task: The incoming task to be queued and scheduled.
   /// \param grant_or_reject: True if we we should either grant or reject the request
   ///                         but no spillback.
+  /// \param is_selected_based_on_locality : should schedule on local node if possible.
   /// \param reply: The reply of the lease request.
   /// \param send_reply_callback: The function used during dispatching.
   void QueueAndScheduleTask(const RayTask &task,
@@ -122,12 +111,12 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   /// Return if any tasks are pending resource acquisition.
   ///
-  /// \param[out] exemplar: An example task that is deadlocking.
+  /// \param[out] example: An example task that is deadlocking.
+  /// \param[in,out] any_pending: True if there's any pending example.
   /// \param[in,out] num_pending_actor_creation: Number of pending actor creation tasks.
   /// \param[in,out] num_pending_tasks: Number of pending tasks.
-  /// \param[in,out] any_pending: True if there's any pending exemplar.
   /// \return True if any progress is any tasks are pending.
-  bool AnyPendingTasksForResourceAcquisition(RayTask *exemplar,
+  bool AnyPendingTasksForResourceAcquisition(RayTask *example,
                                              bool *any_pending,
                                              int *num_pending_actor_creation,
                                              int *num_pending_tasks) const override;

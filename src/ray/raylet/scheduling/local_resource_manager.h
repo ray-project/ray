@@ -50,19 +50,19 @@ class LocalResourceManager {
 
   /// Add a local resource that is available.
   ///
-  /// \param resource_name: Resource which we want to update.
+  /// \param resource_id: Resource which we want to update.
   /// \param resource_total: New capacity of the resource.
   void AddLocalResourceInstances(scheduling::ResourceID resource_id,
                                  const std::vector<FixedPoint> &instances);
 
   /// Delete a given resource from the local node.
   ///
-  /// \param resource_name: Resource we want to delete
+  /// \param resource_id: Resource we want to delete
   void DeleteLocalResource(scheduling::ResourceID resource_id);
 
   /// Check whether the available resources are empty.
   ///
-  /// \param resource_name: Resource which we want to check.
+  /// \param resource_id: Resource which we want to check.
   bool IsAvailableResourceEmpty(scheduling::ResourceID resource_id) const;
 
   /// Return local resources.
@@ -85,7 +85,7 @@ class LocalResourceManager {
   ///
   /// \return Underflow capacities of reousrce instances after subtracting the resources.
   std::vector<double> SubtractResourceInstances(scheduling::ResourceID resource_id,
-                                                const std::vector<double> &cpu_instances,
+                                                const std::vector<double> &instances,
                                                 bool allow_going_negative = false);
 
   /// Subtract the resources required by a given resource request (resource_request) from

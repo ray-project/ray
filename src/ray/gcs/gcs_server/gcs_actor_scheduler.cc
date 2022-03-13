@@ -176,7 +176,7 @@ ActorID GcsActorScheduler::CancelOnWorker(const NodeID &node_id,
 }
 
 void GcsActorScheduler::ReleaseUnusedWorkers(
-    const std::unordered_map<NodeID, std::vector<WorkerID>> &node_to_workers) {
+    const absl::flat_hash_map<NodeID, std::vector<WorkerID>> &node_to_workers) {
   // The purpose of this function is to release leased workers that may be leaked.
   // When GCS restarts, it doesn't know which workers it has leased in the previous
   // lifecycle. In this case, GCS will send a list of worker ids that are still needed.

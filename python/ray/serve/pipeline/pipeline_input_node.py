@@ -30,7 +30,7 @@ class PipelineInputNode(InputNode):
 
     def __init__(
         self,
-        preprocessor: Union[Callable, str],
+        preprocessor: Union[Callable, str] = "ray.serve.http_adapters.array_to_batch",
         _other_args_to_resolve=None,
     ):
         """InputNode should only take attributes of validating and converting

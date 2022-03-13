@@ -145,7 +145,7 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               Get,
               (const NodeID &node_id, bool filter_dead_nodes),
               (const, override));
-  MOCK_METHOD((const std::unordered_map<NodeID, rpc::GcsNodeInfo> &),
+  MOCK_METHOD((const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &),
               GetAll,
               (),
               (const, override));
@@ -177,18 +177,6 @@ class MockNodeResourceInfoAccessor : public NodeResourceInfoAccessor {
   MOCK_METHOD(Status,
               AsyncGetAllAvailableResources,
               (const MultiItemCallback<rpc::AvailableResources> &callback),
-              (override));
-  MOCK_METHOD(Status,
-              AsyncUpdateResources,
-              (const NodeID &node_id,
-               const ResourceMap &resources,
-               const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(Status,
-              AsyncDeleteResources,
-              (const NodeID &node_id,
-               const std::vector<std::string> &resource_names,
-               const StatusCallback &callback),
               (override));
   MOCK_METHOD(Status,
               AsyncSubscribeToResources,

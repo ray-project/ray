@@ -49,11 +49,11 @@ class MockGcsPlacementGroupSchedulerInterface
   MOCK_METHOD(
       void,
       ReleaseUnusedBundles,
-      ((const std::unordered_map<NodeID, std::vector<rpc::Bundle>> &node_to_bundles)),
+      ((const absl::flat_hash_map<NodeID, std::vector<rpc::Bundle>> &node_to_bundles)),
       (override));
   MOCK_METHOD(void,
               Initialize,
-              ((const std::unordered_map<
+              ((const absl::flat_hash_map<
                   PlacementGroupID,
                   std::vector<std::shared_ptr<BundleSpecification>>> &group_to_bundles)),
               (override));
@@ -203,7 +203,7 @@ class MockGcsPlacementGroupScheduler : public GcsPlacementGroupScheduler {
   MOCK_METHOD(
       void,
       ReleaseUnusedBundles,
-      ((const std::unordered_map<NodeID, std::vector<rpc::Bundle>> &node_to_bundles)),
+      ((const absl::flat_hash_map<NodeID, std::vector<rpc::Bundle>> &node_to_bundles)),
       (override));
 };
 

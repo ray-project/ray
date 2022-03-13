@@ -246,7 +246,7 @@ TEST_F(GcsBasedActorSchedulerTest, TestBalancedSchedule) {
   }
 }
 
-TEST_F(GcsBasedActorSchedulerTest, DISABLED_TestRejectedRequestWorkerLeaseReply) {
+TEST_F(GcsBasedActorSchedulerTest, TestRejectedRequestWorkerLeaseReply) {
   // Add a node with 64 memory units and 8 CPU.
   std::unordered_map<std::string, double> node_resources_1 = {{kMemory_ResourceLabel, 64},
                                                               {kCPU_ResourceLabel, 8}};
@@ -627,7 +627,7 @@ TEST_F(GcsBasedActorSchedulerTest, TestReleaseUnusedWorkers) {
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   // Send a `ReleaseUnusedWorkers` request to the node.
-  std::unordered_map<NodeID, std::vector<WorkerID>> node_to_workers;
+  absl::flat_hash_map<NodeID, std::vector<WorkerID>> node_to_workers;
   node_to_workers[node_id].push_back({WorkerID::FromRandom()});
   gcs_actor_scheduler_->ReleaseUnusedWorkers(node_to_workers);
   ASSERT_EQ(1, raylet_client_->num_release_unused_workers);

@@ -166,7 +166,7 @@ class RedisCallbackManager {
   mutable std::mutex mutex_;
 
   int64_t num_callbacks_ = 0;
-  std::unordered_map<int64_t, std::shared_ptr<CallbackItem>> callback_items_;
+  absl::flat_hash_map<int64_t, std::shared_ptr<CallbackItem>> callback_items_;
 };
 
 class RedisContext {
