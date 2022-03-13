@@ -57,31 +57,31 @@ class SmokeTest(ReleaseTest):
 
 
 CORE_NIGHTLY_TESTS = {
-    "~/ray/release/nightly_tests/nightly_tests.yaml": [
-        # "shuffle_10gb",
-        # "shuffle_50gb",
-        # "shuffle_50gb_large_partition",
-        # "shuffle_100gb",
-        # "non_streaming_shuffle_100gb",
-        # "non_streaming_shuffle_50gb_large_partition",
-        # "non_streaming_shuffle_50gb",
-        # SmokeTest("dask_on_ray_large_scale_test_no_spilling"),
-        # SmokeTest("dask_on_ray_large_scale_test_spilling"),
-        # "stress_test_placement_group",
-        # "shuffle_1tb_1000_partition",
-        # "non_streaming_shuffle_1tb_1000_partition",
-        # "shuffle_1tb_5000_partitions",
-        # TODO(sang): It doesn't even work without spilling
-        # as it hits the scalability limit.
-        # "non_streaming_shuffle_1tb_5000_partitions",
-        # "decision_tree_autoscaling",
-        # "decision_tree_autoscaling_20_runs",
-        # "autoscaling_shuffle_1tb_1000_partitions",
-        # SmokeTest("stress_test_many_tasks"),
-        # SmokeTest("stress_test_dead_actors"),
-        # SmokeTest("threaded_actors_stress_test"),
-        # "pg_long_running_performance_test",
-    ],
+    # "~/ray/release/nightly_tests/nightly_tests.yaml": [
+    # "shuffle_10gb",
+    # "shuffle_50gb",
+    # "shuffle_50gb_large_partition",
+    # "shuffle_100gb",
+    # "non_streaming_shuffle_100gb",
+    # "non_streaming_shuffle_50gb_large_partition",
+    # "non_streaming_shuffle_50gb",
+    # SmokeTest("dask_on_ray_large_scale_test_no_spilling"),
+    # SmokeTest("dask_on_ray_large_scale_test_spilling"),
+    # "stress_test_placement_group",
+    # "shuffle_1tb_1000_partition",
+    # "non_streaming_shuffle_1tb_1000_partition",
+    # "shuffle_1tb_5000_partitions",
+    # TODO(sang): It doesn't even work without spilling
+    # as it hits the scalability limit.
+    # "non_streaming_shuffle_1tb_5000_partitions",
+    # "decision_tree_autoscaling",
+    # "decision_tree_autoscaling_20_runs",
+    # "autoscaling_shuffle_1tb_1000_partitions",
+    # SmokeTest("stress_test_many_tasks"),
+    # SmokeTest("stress_test_dead_actors"),
+    # SmokeTest("threaded_actors_stress_test"),
+    # "pg_long_running_performance_test",
+    # ],
     # "~/ray/benchmarks/benchmark_tests.yaml": [
     #     "single_node",
     #     "object_store",
@@ -89,31 +89,31 @@ CORE_NIGHTLY_TESTS = {
     #     "many_tasks_smoke_test",
     #     "many_pgs_smoke_test",
     # ],
-    "~/ray/release/nightly_tests/dataset/dataset_test.yaml": [
-        "inference",
-        "shuffle_data_loader",
-        "parquet_metadata_resolution",
-        "pipelined_training_50_gb",
-        "pipelined_ingestion_1500_gb",
-        "datasets_preprocess_ingest",
-        "datasets_ingest_400G",
-        SmokeTest("datasets_ingest_train_infer"),
-    ],
-    "~/ray/release/nightly_tests/chaos_test.yaml": [
-        "chaos_many_actors",
-        "chaos_many_tasks_no_object_store",
-        "chaos_pipelined_ingestion_1500_gb_15_windows",
-    ],
+    # "~/ray/release/nightly_tests/dataset/dataset_test.yaml": [
+    #     "inference",
+    #     "shuffle_data_loader",
+    #     "parquet_metadata_resolution",
+    #     "pipelined_training_50_gb",
+    #     "pipelined_ingestion_1500_gb",
+    #     "datasets_preprocess_ingest",
+    #     "datasets_ingest_400G",
+    #     SmokeTest("datasets_ingest_train_infer"),
+    # ],
+    # "~/ray/release/nightly_tests/chaos_test.yaml": [
+    #     "chaos_many_actors",
+    #     "chaos_many_tasks_no_object_store",
+    #     "chaos_pipelined_ingestion_1500_gb_15_windows",
+    # ],
     # "~/ray/release/microbenchmark/microbenchmark.yaml": [
     #     "microbenchmark",
     # ],
 }
 
 SERVE_NIGHTLY_TESTS = {
-    "~/ray/release/long_running_tests/long_running_tests.yaml": [
-        SmokeTest("serve"),
-        SmokeTest("serve_failure"),
-    ],
+    # "~/ray/release/long_running_tests/long_running_tests.yaml": [
+    #     SmokeTest("serve"),
+    #     SmokeTest("serve_failure"),
+    # ],
     # "~/ray/release/serve_tests/serve_tests.yaml": [
     #     "single_deployment_1k_noop_replica",
     #     "multi_deployment_1k_noop_replica",
@@ -137,10 +137,10 @@ CORE_DAILY_TESTS = {
     #     "stress_test_many_tasks",
     #     "stress_test_dead_actors",
     # ],
-    "~/ray/release/nightly_tests/chaos_test.yaml": [
-        "chaos_dask_on_ray_large_scale_test_no_spilling",
-        "chaos_dask_on_ray_large_scale_test_spilling",
-    ],
+    # "~/ray/release/nightly_tests/chaos_test.yaml": [
+    #     "chaos_dask_on_ray_large_scale_test_no_spilling",
+    #     "chaos_dask_on_ray_large_scale_test_spilling",
+    # ],
 }
 
 CORE_SCALABILITY_TESTS_DAILY = {
@@ -178,33 +178,33 @@ NIGHTLY_TESTS = {
         "modin_xgboost_test",
         "torch_tune_serve_test",
     ],
-    "~/ray/release/long_running_tests/long_running_tests.yaml": [
-        SmokeTest("actor_deaths"),
-        SmokeTest("apex"),
-        SmokeTest("impala"),
-        SmokeTest("many_actor_tasks"),
-        SmokeTest("many_drivers"),
-        SmokeTest("many_ppo"),
-        SmokeTest("many_tasks"),
-        SmokeTest("many_tasks_serialized_ids"),
-        SmokeTest("node_failures"),
-        SmokeTest("pbt"),
-        # SmokeTest("serve"),
-        # SmokeTest("serve_failure"),
-        # Full long running tests (1 day runtime)
-        "actor_deaths",
-        "apex",
-        "impala",
-        "many_actor_tasks",
-        "many_drivers",
-        "many_ppo",
-        "many_tasks",
-        "many_tasks_serialized_ids",
-        "node_failures",
-        "pbt",
-        "serve",
-        "serve_failure",
-    ],
+    # "~/ray/release/long_running_tests/long_running_tests.yaml": [
+    #     SmokeTest("actor_deaths"),
+    #     SmokeTest("apex"),
+    #     SmokeTest("impala"),
+    #     SmokeTest("many_actor_tasks"),
+    #     SmokeTest("many_drivers"),
+    #     SmokeTest("many_ppo"),
+    #     SmokeTest("many_tasks"),
+    #     SmokeTest("many_tasks_serialized_ids"),
+    #     SmokeTest("node_failures"),
+    #     SmokeTest("pbt"),
+    #     # SmokeTest("serve"),
+    #     # SmokeTest("serve_failure"),
+    #     # Full long running tests (1 day runtime)
+    #     "actor_deaths",
+    #     "apex",
+    #     "impala",
+    #     "many_actor_tasks",
+    #     "many_drivers",
+    #     "many_ppo",
+    #     "many_tasks",
+    #     "many_tasks_serialized_ids",
+    #     "node_failures",
+    #     "pbt",
+    #     "serve",
+    #     "serve_failure",
+    # ],
     # "~/ray/release/sgd_tests/sgd_tests.yaml": [
     #     "sgd_gpu",
     # ],
@@ -253,13 +253,13 @@ NIGHTLY_TESTS = {
 }
 
 WEEKLY_TESTS = {
-    "~/ray/release/horovod_tests/horovod_tests.yaml": [
-        "horovod_test",
-    ],
+    # "~/ray/release/horovod_tests/horovod_tests.yaml": [
+    #     "horovod_test",
+    # ],
     "~/ray/release/long_running_distributed_tests"
-    "/long_running_distributed.yaml": [
-        "pytorch_pbt_failure",
-    ],
+    # "/long_running_distributed.yaml": [
+    #     "pytorch_pbt_failure",
+    # ],
     # "~/ray/release/tune_tests/scalability_tests/tune_tests.yaml": [
     #     "network_overhead",
     #     "long_running_large_checkpoints",

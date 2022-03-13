@@ -24,7 +24,8 @@ void MetricPointExporter::ExportToPoints(
     const opencensus::stats::ViewData::DataMap<opencensus::stats::Distribution>
         &view_data,
     const opencensus::stats::MeasureDescriptor &measure_descriptor,
-    std::vector<std::string> &keys, std::vector<MetricPoint> &points) {
+    std::vector<std::string> &keys,
+    std::vector<MetricPoint> &points) {
   // Return if no raw data found in view map.
   if (view_data.size() == 0) {
     return;
@@ -55,12 +56,12 @@ void MetricPointExporter::ExportToPoints(
     }
   }
   hist_mean /= view_data.size();
-  MetricPoint mean_point = {metric_name + ".mean", current_sys_time_ms(), hist_mean, tags,
-                            measure_descriptor};
-  MetricPoint max_point = {metric_name + ".max", current_sys_time_ms(), hist_max, tags,
-                           measure_descriptor};
-  MetricPoint min_point = {metric_name + ".min", current_sys_time_ms(), hist_min, tags,
-                           measure_descriptor};
+  MetricPoint mean_point = {
+      metric_name + ".mean", current_sys_time_ms(), hist_mean, tags, measure_descriptor};
+  MetricPoint max_point = {
+      metric_name + ".max", current_sys_time_ms(), hist_max, tags, measure_descriptor};
+  MetricPoint min_point = {
+      metric_name + ".min", current_sys_time_ms(), hist_min, tags, measure_descriptor};
   points.push_back(std::move(mean_point));
   points.push_back(std::move(max_point));
   points.push_back(std::move(min_point));
@@ -94,8 +95,8 @@ void MetricPointExporter::ExportViewData(
       ExportToPoints<int64_t>(view_data.int_data(), measure_descriptor, keys, points);
       break;
     case opencensus::stats::ViewData::Type::kDistribution:
-      ExportToPoints<opencensus::stats::Distribution>(view_data.distribution_data(),
-                                                      measure_descriptor, keys, points);
+      ExportToPoints<opencensus::stats::Distribution>(
+          view_data.distribution_data(), measure_descriptor, keys, points);
       break;
     default:
       RAY_LOG(FATAL) << "Unknown view data type.";
