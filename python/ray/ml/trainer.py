@@ -37,7 +37,7 @@ class Trainer(abc.ABC):
 
     How does a trainer work?
         - First, initialize the Trainer. The initialization runs locally,
-        so heavyweight setup should not be done in __init__
+        so heavyweight setup should not be done in __init__.
         - Then, when you call ``trainer.fit()``, the Trainer is serialized
         and copied to a remote Ray actor. The following methods are then
         called in sequence on the remote actor.
