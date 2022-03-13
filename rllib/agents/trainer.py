@@ -2752,9 +2752,9 @@ class Trainer(Trainable):
             None, if local replay buffer is not needed.
         """
         # Some agents do not need a replay buffer
-        if config.get("replay_buffer_config") is None or \
-                config.get("replay_buffer_config", {}).get(
-                "no_local_replay_buffer", False):
+        if config.get("replay_buffer_config") is None or config.get(
+            "no_local_replay_buffer", False
+        ):
             return None
 
         if config["replay_buffer_config"] is None:

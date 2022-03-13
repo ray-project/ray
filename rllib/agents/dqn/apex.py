@@ -66,9 +66,7 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         "buffer_size": 2000000,
         # TODO(jungong) : add proper replay_buffer_config after
         #     DistributedReplayBuffer type is supported.
-        "replay_buffer_config": {
-            "no_local_replay_buffer": True,
-        },
+        "no_local_replay_buffer": True,
         # Whether all shards of the replay buffer must be co-located
         # with the learner process (running the execution plan).
         # This is preferred b/c the learner process should have quick
