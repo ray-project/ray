@@ -177,7 +177,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
       if (ray_syncer_->resources_buffer_proto_.batch().size() == n) {
         break;
       }
-      sleep(1);
+      std::this_thread::sleep_for(std::chrono::microseconds(1));
     }
   }
 
