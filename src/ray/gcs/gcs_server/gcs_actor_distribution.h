@@ -43,7 +43,8 @@ class GcsActorWorkerAssignment
   /// \param acquired_resources Resources owned by this gcs actor worker assignment.
   /// \param is_shared A flag to represent that whether the worker process can be shared.
   GcsActorWorkerAssignment(const NodeID &node_id,
-                           const ResourceRequest &acquired_resources, bool is_shared);
+                           const ResourceRequest &acquired_resources,
+                           bool is_shared);
 
   const NodeID &GetNodeID() const;
 
@@ -80,7 +81,8 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
   /// \param client_factory Factory to create remote core worker client, default factor
   /// will be used if not set.
   explicit GcsBasedActorScheduler(
-      instrumented_io_context &io_context, GcsActorTable &gcs_actor_table,
+      instrumented_io_context &io_context,
+      GcsActorTable &gcs_actor_table,
       const GcsNodeManager &gcs_node_manager,
       std::shared_ptr<GcsResourceScheduler> gcs_resource_scheduler,
       GcsActorSchedulerFailureCallback schedule_failure_handler,
@@ -131,7 +133,8 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
   /// \param is_shared If the worker is shared by multiple actors or not.
   /// \param task_spec The specification of the task.
   std::unique_ptr<GcsActorWorkerAssignment> AllocateNewActorWorkerAssignment(
-      const ResourceRequest &required_resources, bool is_shared,
+      const ResourceRequest &required_resources,
+      bool is_shared,
       const TaskSpecification &task_spec);
 
   /// Allocate resources for the actor.

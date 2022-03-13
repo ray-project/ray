@@ -21,7 +21,8 @@ namespace ray {
 namespace gcs {
 
 GcsResourceManager::GcsResourceManager(
-    instrumented_io_context &main_io_service, std::shared_ptr<GcsPublisher> gcs_publisher,
+    instrumented_io_context &main_io_service,
+    std::shared_ptr<GcsPublisher> gcs_publisher,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     ClusterResourceManager &cluster_resource_manager)
     : periodical_runner_(main_io_service),
@@ -217,7 +218,8 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
 }
 
 void GcsResourceManager::HandleReportResourceUsage(
-    const rpc::ReportResourceUsageRequest &request, rpc::ReportResourceUsageReply *reply,
+    const rpc::ReportResourceUsageRequest &request,
+    rpc::ReportResourceUsageReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   UpdateFromResourceReport(request.resources());
 
@@ -226,7 +228,8 @@ void GcsResourceManager::HandleReportResourceUsage(
 }
 
 void GcsResourceManager::HandleGetAllResourceUsage(
-    const rpc::GetAllResourceUsageRequest &request, rpc::GetAllResourceUsageReply *reply,
+    const rpc::GetAllResourceUsageRequest &request,
+    rpc::GetAllResourceUsageReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   if (!node_resource_usages_.empty()) {
     auto batch = std::make_shared<rpc::ResourceUsageBatchData>();
@@ -309,7 +312,8 @@ void GcsResourceManager::Initialize(const GcsInitData &gcs_init_data) {
     scheduling::NodeID node_id(entry.first.Binary());
     for (const auto &resource : entry.second.items()) {
       cluster_resource_manager_.UpdateResourceCapacity(
-          node_id, scheduling::ResourceID(resource.first),
+          node_id,
+          scheduling::ResourceID(resource.first),
           resource.second.resource_capacity());
     }
   }

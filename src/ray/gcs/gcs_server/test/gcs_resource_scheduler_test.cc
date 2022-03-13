@@ -41,7 +41,8 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     }
   }
 
-  void AddClusterResources(const NodeID &node_id, const std::string &resource_name,
+  void AddClusterResources(const NodeID &node_id,
+                           const std::string &resource_name,
                            double resource_value) {
     auto node = Mocker::GenNodeInfo();
     node->set_node_id(node_id.Binary());
@@ -201,16 +202,18 @@ TEST_F(GcsResourceSchedulerTest, TestNodeFilter) {
   resource_map[cpu_resource] = 1;
   required_resources_list.emplace_back(
       ResourceMapToResourceRequest(resource_map, /*requires_object_store_memory=*/false));
-  const auto &result1 = gcs_resource_scheduler_->Schedule(
-      required_resources_list, gcs::SchedulingType::STRICT_SPREAD,
-      [](const scheduling::NodeID &) { return false; });
+  const auto &result1 =
+      gcs_resource_scheduler_->Schedule(required_resources_list,
+                                        gcs::SchedulingType::STRICT_SPREAD,
+                                        [](const scheduling::NodeID &) { return false; });
   ASSERT_TRUE(result1.first == gcs::SchedulingResultStatus::INFEASIBLE);
   ASSERT_EQ(result1.second.size(), 0);
 
   // Scheduling succeeded.
-  const auto &result2 = gcs_resource_scheduler_->Schedule(
-      required_resources_list, gcs::SchedulingType::STRICT_SPREAD,
-      [](const scheduling::NodeID &) { return true; });
+  const auto &result2 =
+      gcs_resource_scheduler_->Schedule(required_resources_list,
+                                        gcs::SchedulingType::STRICT_SPREAD,
+                                        [](const scheduling::NodeID &) { return true; });
   ASSERT_TRUE(result2.first == gcs::SchedulingResultStatus::SUCCESS);
   ASSERT_EQ(result2.second.size(), 1);
 }

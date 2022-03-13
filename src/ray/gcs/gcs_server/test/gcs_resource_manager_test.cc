@@ -57,12 +57,14 @@ TEST_F(GcsResourceManagerTest, TestBasic) {
 
   // Test `AcquireResources`.
   ASSERT_TRUE(cluster_resource_manager_.HasSufficientResource(
-      scheduling_node_id, resource_request,
+      scheduling_node_id,
+      resource_request,
       /*ignore_object_store_memory_requirement=*/true));
   ASSERT_TRUE(cluster_resource_manager_.SubtractNodeAvailableResources(scheduling_node_id,
                                                                        resource_request));
   ASSERT_FALSE(cluster_resource_manager_.HasSufficientResource(
-      scheduling_node_id, resource_request,
+      scheduling_node_id,
+      resource_request,
       /*ignore_object_store_memory_requirement=*/true));
 
   // Test `ReleaseResources`.
@@ -75,10 +77,10 @@ TEST_F(GcsResourceManagerTest, TestResourceUsageAPI) {
   auto node_id = NodeID::FromBinary(node->node_id());
   rpc::GetAllResourceUsageRequest get_all_request;
   rpc::GetAllResourceUsageReply get_all_reply;
-  auto send_reply_callback = [](ray::Status status, std::function<void()> f1,
-                                std::function<void()> f2) {};
-  gcs_resource_manager_->HandleGetAllResourceUsage(get_all_request, &get_all_reply,
-                                                   send_reply_callback);
+  auto send_reply_callback =
+      [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
+  gcs_resource_manager_->HandleGetAllResourceUsage(
+      get_all_request, &get_all_reply, send_reply_callback);
   ASSERT_EQ(get_all_reply.resource_usage_data().batch().size(), 0);
 
   rpc::ReportResourceUsageRequest report_request;
@@ -86,14 +88,14 @@ TEST_F(GcsResourceManagerTest, TestResourceUsageAPI) {
   (*report_request.mutable_resources()->mutable_resources_total())["CPU"] = 2;
   gcs_resource_manager_->UpdateNodeResourceUsage(node_id, report_request.resources());
 
-  gcs_resource_manager_->HandleGetAllResourceUsage(get_all_request, &get_all_reply,
-                                                   send_reply_callback);
+  gcs_resource_manager_->HandleGetAllResourceUsage(
+      get_all_request, &get_all_reply, send_reply_callback);
   ASSERT_EQ(get_all_reply.resource_usage_data().batch().size(), 1);
 
   gcs_resource_manager_->OnNodeDead(node_id);
   rpc::GetAllResourceUsageReply get_all_reply2;
-  gcs_resource_manager_->HandleGetAllResourceUsage(get_all_request, &get_all_reply2,
-                                                   send_reply_callback);
+  gcs_resource_manager_->HandleGetAllResourceUsage(
+      get_all_request, &get_all_reply2, send_reply_callback);
   ASSERT_EQ(get_all_reply2.resource_usage_data().batch().size(), 0);
 }
 

@@ -2397,7 +2397,7 @@
 
 - name: inference
   group: core-dataset-tests
-  working_dir: dataset
+  working_dir: nightly_tests/dataset
   legacy:
     test_name: inference
     test_suite: dataset_test
@@ -2420,7 +2420,7 @@
 
 - name: shuffle_data_loader
   group: core-dataset-tests
-  working_dir: dataset
+  working_dir: nightly_tests/dataset
   legacy:
     test_name: shuffle_data_loader
     test_suite: dataset_test
@@ -2439,7 +2439,7 @@
 
 - name: parquet_metadata_resolution
   group: core-dataset-tests
-  working_dir: dataset
+  working_dir: nightly_tests/dataset
   legacy:
     test_name: parquet_metadata_resolution
     test_suite: dataset_test
@@ -2462,7 +2462,7 @@
 
 - name: pipelined_training_50_gb
   group: core-dataset-tests
-  working_dir: dataset
+  working_dir: nightly_tests/dataset
   legacy:
     test_name: pipelined_training_50_gb
     test_suite: dataset_test
@@ -2485,7 +2485,7 @@
 
 - name: pipelined_ingestion_1500_gb
   group: core-dataset-tests
-  working_dir: dataset
+  working_dir: nightly_tests/dataset
   legacy:
     test_name: pipelined_ingestion_1500_gb
     test_suite: dataset_test
@@ -2510,7 +2510,7 @@
 
 - name: datasets_ingest_train_infer
   group: core-dataset-tests
-  working_dir: dataset
+  working_dir: nightly_tests/dataset
   legacy:
     test_name: datasets_ingest_train_infer
     test_suite: dataset_test
@@ -2548,7 +2548,7 @@
 
 - name: datasets_preprocess_ingest
   group: core-dataset-tests
-  working_dir: dataset
+  working_dir: nightly_tests/dataset
   legacy:
     test_name: datasets_preprocess_ingest
     test_suite: dataset_test
@@ -2573,7 +2573,7 @@
 
 - name: datasets_ingest_400G
   group: core-dataset-tests
-  working_dir: dataset
+  working_dir: nightly_tests/dataset
   legacy:
     test_name: datasets_ingest_400G
     test_suite: dataset_test

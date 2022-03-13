@@ -40,9 +40,12 @@ class GcsPlacementGroupManagerMockTest : public Test {
     resource_manager_ = std::make_shared<MockGcsResourceManager>(
         io_context_, nullptr, nullptr, cluster_resource_manager_);
 
-    gcs_placement_group_manager_ = std::make_unique<GcsPlacementGroupManager>(
-        io_context_, gcs_placement_group_scheduler_, gcs_table_storage_,
-        *resource_manager_, [](auto &) { return ""; });
+    gcs_placement_group_manager_ =
+        std::make_unique<GcsPlacementGroupManager>(io_context_,
+                                                   gcs_placement_group_scheduler_,
+                                                   gcs_table_storage_,
+                                                   *resource_manager_,
+                                                   [](auto &) { return ""; });
   }
 
   std::unique_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;

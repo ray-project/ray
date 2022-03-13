@@ -304,7 +304,8 @@ class ExponentialBackOff {
   /// \param[in] multiplier The multiplier for this counter.
   /// \param[in] max_value The maximum value for this counter. By default it's
   ///    infinite double.
-  ExponentialBackOff(uint64_t initial_value, double multiplier,
+  ExponentialBackOff(uint64_t initial_value,
+                     double multiplier,
                      uint64_t max_value = std::numeric_limits<uint64_t>::max())
       : curr_value_(initial_value),
         initial_value_(initial_value),

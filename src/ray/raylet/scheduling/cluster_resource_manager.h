@@ -66,7 +66,8 @@ class ClusterResourceManager {
   /// \param resource_id: Resource which we want to update.
   /// \param resource_total: New capacity of the resource.
   void UpdateResourceCapacity(scheduling::NodeID node_id,
-                              scheduling::ResourceID resource_id, double resource_total);
+                              scheduling::ResourceID resource_id,
+                              double resource_total);
 
   /// Delete a given resource from a given node.
   ///

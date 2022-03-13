@@ -33,7 +33,8 @@ const ResourceRequest &GcsActorWorkerAssignment::GetResources() const {
 bool GcsActorWorkerAssignment::IsShared() const { return is_shared_; }
 
 GcsBasedActorScheduler::GcsBasedActorScheduler(
-    instrumented_io_context &io_context, GcsActorTable &gcs_actor_table,
+    instrumented_io_context &io_context,
+    GcsActorTable &gcs_actor_table,
     const GcsNodeManager &gcs_node_manager,
     std::shared_ptr<GcsResourceScheduler> gcs_resource_scheduler,
     GcsActorSchedulerFailureCallback schedule_failure_handler,
@@ -42,9 +43,13 @@ GcsBasedActorScheduler::GcsBasedActorScheduler(
     rpc::ClientFactoryFn client_factory,
     std::function<void(const NodeID &, const rpc::ResourcesData &)>
         normal_task_resources_changed_callback)
-    : GcsActorScheduler(io_context, gcs_actor_table, gcs_node_manager,
-                        schedule_failure_handler, schedule_success_handler,
-                        raylet_client_pool, client_factory),
+    : GcsActorScheduler(io_context,
+                        gcs_actor_table,
+                        gcs_node_manager,
+                        schedule_failure_handler,
+                        schedule_success_handler,
+                        raylet_client_pool,
+                        client_factory),
       gcs_resource_scheduler_(std::move(gcs_resource_scheduler)),
       normal_task_resources_changed_callback_(normal_task_resources_changed_callback) {}
 
@@ -72,15 +77,16 @@ GcsBasedActorScheduler::SelectOrAllocateActorWorkerAssignment(
       /*requires_object_store_memory=*/false);
 
   // If the task needs a sole actor worker assignment then allocate a new one.
-  return AllocateNewActorWorkerAssignment(required_resources, /*is_shared=*/false,
-                                          task_spec);
+  return AllocateNewActorWorkerAssignment(
+      required_resources, /*is_shared=*/false, task_spec);
 
   // TODO(Chong-Li): code path for actors that do not need a sole assignment.
 }
 
 std::unique_ptr<GcsActorWorkerAssignment>
 GcsBasedActorScheduler::AllocateNewActorWorkerAssignment(
-    const ResourceRequest &required_resources, bool is_shared,
+    const ResourceRequest &required_resources,
+    bool is_shared,
     const TaskSpecification &task_spec) {
   // Allocate resources from cluster.
   auto selected_node_id = AllocateResources(required_resources);
@@ -168,8 +174,10 @@ void GcsBasedActorScheduler::WarnResourceAllocationFailure(
 }
 
 void GcsBasedActorScheduler::HandleWorkerLeaseReply(
-    std::shared_ptr<GcsActor> actor, std::shared_ptr<rpc::GcsNodeInfo> node,
-    const Status &status, const rpc::RequestWorkerLeaseReply &reply) {
+    std::shared_ptr<GcsActor> actor,
+    std::shared_ptr<rpc::GcsNodeInfo> node,
+    const Status &status,
+    const rpc::RequestWorkerLeaseReply &reply) {
   auto node_id = NodeID::FromBinary(node->node_id());
   // If the actor is still in the leasing map and the status is ok, remove the actor
   // from the leasing map and handle the reply. Otherwise, lease again, because it
@@ -200,7 +208,9 @@ void GcsBasedActorScheduler::HandleWorkerLeaseReply(
       }
       if (reply.canceled()) {
         // TODO(sang): Should properly update the failure message.
-        HandleRequestWorkerLeaseCanceled(actor, node_id, reply.failure_type(),
+        HandleRequestWorkerLeaseCanceled(actor,
+                                         node_id,
+                                         reply.failure_type(),
                                          /*scheduling_failure_message*/ "");
       } else if (reply.rejected()) {
         RAY_LOG(INFO) << "Failed to lease worker from node " << node_id << " for actor "
