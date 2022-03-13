@@ -62,9 +62,10 @@ if "TEST_OUTPUT_JSON" in os.environ:
         "num_nodes": NUM_NODES,
         "success": "1",
     }
+    perf_metric_name = f"time_to_broadcast_{OBJECT_SIZE}_bytes_to_{NUM_NODES}_nodes"
     results["perf_metrics"] = [
         {
-            "perf_metric_name": f"time_to_broadcast_{OBJECT_SIZE}_bytes_to_{NUM_NODES}_nodes",
+            "perf_metric_name": perf_metric_name,
             "perf_metric_value": end - start,
             "perf_metric_type": "LATENCY",
         }
