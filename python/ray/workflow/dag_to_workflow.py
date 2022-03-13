@@ -30,4 +30,4 @@ def transform_ray_dag_to_workflow(dag_node: DAGNode, input_context: DAGInputData
             return node  # return normal objects
         raise TypeError(f"Unsupported DAG node: {node}")
 
-    return dag_node._apply_recursive(_node_visitor)
+    return dag_node.apply_recursive(_node_visitor)

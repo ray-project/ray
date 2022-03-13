@@ -70,7 +70,7 @@ class ClusterManager(abc.ABC):
     def terminate_cluster(self):
         raise NotImplementedError
 
-    def get_cluster_address(self, full: bool = True) -> str:
+    def get_cluster_address(self) -> str:
         raise NotImplementedError
 
     def get_cluster_url(self) -> Optional[str]:
