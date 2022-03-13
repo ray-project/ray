@@ -143,7 +143,7 @@ class Trainer(abc.ABC):
 
     @DeveloperAPI
     def setup(self) -> None:
-        """Perform initial setup on the Trainer.
+        """Called during fit() to perform initial setup on the Trainer.
 
         Note: this method is run on a remote process.
 
@@ -156,7 +156,7 @@ class Trainer(abc.ABC):
         raise NotImplementedError
 
     def _preprocess_datasets(self) -> None:
-        """Preprocess dataset attributes with provided preprocessor.
+        """Called during fit() to preprocess dataset attributes with preprocessor.
 
         Note: This method is run on a remote process.
 
@@ -178,7 +178,7 @@ class Trainer(abc.ABC):
     @DeveloperAPI
     @abc.abstractmethod
     def training_loop(self) -> None:
-        """Loop for distributed training and result reporting to Tune.
+        """Loop called by fit() to run training and report results to Tune.
 
         Note: this method runs on a remote process.
 
