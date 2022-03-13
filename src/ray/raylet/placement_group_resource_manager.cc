@@ -67,8 +67,9 @@ bool NewPlacementGroupResourceManager::PrepareBundle(
   auto bundle_state =
       std::make_shared<BundleTransactionState>(CommitState::PREPARED, resource_instances);
   pg_bundles_[bundle_spec.BundleId()] = bundle_state;
-  bundle_spec_map_.emplace(bundle_spec.BundleId(), std::make_shared<BundleSpecification>(
-                                                       bundle_spec.GetMessage()));
+  bundle_spec_map_.emplace(
+      bundle_spec.BundleId(),
+      std::make_shared<BundleSpecification>(bundle_spec.GetMessage()));
 
   return true;
 }

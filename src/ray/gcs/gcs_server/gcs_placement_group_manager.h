@@ -244,7 +244,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param placement_group The placement_group whose creation task is infeasible.
   /// \param is_feasible whether the scheduler can be retry or not currently.
   void OnPlacementGroupCreationFailed(std::shared_ptr<GcsPlacementGroup> placement_group,
-                                      ExponentialBackOff backoff, bool is_feasible);
+                                      ExponentialBackOff backoff,
+                                      bool is_feasible);
 
   /// Handle placement_group creation task success. This should be called when the
   /// placement_group creation task has been scheduled successfully.

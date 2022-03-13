@@ -28,10 +28,10 @@ def test_dag_to_workflow_execution(workflow_start_regular_shared):
         return f"{lf},{rt};{b}"
 
     with InputNode() as dag_input:
-        f = begin._bind(2, dag_input[1], a=dag_input.a)
-        lf = left._bind(f, "hello", dag_input.a)
-        rt = right._bind(f, b=dag_input.b, pos=dag_input[0])
-        b = end._bind(lf, rt, b=dag_input.b)
+        f = begin.bind(2, dag_input[1], a=dag_input.a)
+        lf = left.bind(f, "hello", dag_input.a)
+        rt = right.bind(f, b=dag_input.b, pos=dag_input[0])
+        b = end.bind(lf, rt, b=dag_input.b)
 
     wf = workflow.create(b, 2, 3.14, a=10, b="ok")
     assert len(list(wf._iter_workflows_in_dag())) == 4, "incorrect amount of steps"
@@ -47,7 +47,7 @@ def test_dag_to_workflow_options(workflow_start_regular_shared):
 
     # TODO(suquark): The current Ray DAG is buggy, it failed to return the
     # "original" options, we need to override "num_returns" to pass workflow check.
-    dag = no_resource.options(num_gpus=100, num_returns=1)._bind()
+    dag = no_resource.options(num_gpus=100, num_returns=1).bind()
 
     wf = workflow.create(dag)
     assert wf.data.step_options.ray_options["num_gpus"] == 100
@@ -74,10 +74,10 @@ def test_dedupe_serialization_dag(workflow_start_regular_shared):
 
     assert get_num_uploads() == 0
 
-    single = identity._bind((ref,))
-    double = identity._bind(list_of_refs)
+    single = identity.bind((ref,))
+    double = identity.bind(list_of_refs)
 
-    result_ref, result_list = workflow.create(gather._bind(single, double)).run()
+    result_ref, result_list = workflow.create(gather.bind(single, double)).run()
 
     for result in result_list:
         assert ray.get(*result_ref) == ray.get(result)
@@ -98,10 +98,10 @@ def test_same_object_many_dags(workflow_start_regular_shared):
 
     x = {0: ray.put(10)}
 
-    result1 = workflow.create(f._bind(x)).run()
-    result2 = workflow.create(f._bind(x)).run()
+    result1 = workflow.create(f.bind(x)).run()
+    result2 = workflow.create(f.bind(x)).run()
     with InputNode() as dag_input:
-        result3 = workflow.create(f._bind(dag_input.x), x=x).run()
+        result3 = workflow.create(f.bind(dag_input.x), x=x).run()
 
     assert ray.get(*result1) == 10
     assert ray.get(*result2) == 10
