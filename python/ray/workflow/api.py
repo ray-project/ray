@@ -70,10 +70,10 @@ def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
         # we have to use the 'else' branch because we would raise a
         # runtime error, but we do not want to be captured by 'except'
         if _storage.storage_url == storage.storage_url:
-            logger.warning("Calling 'workflow.init()' again with the same " "storage.")
+            logger.warning("Calling 'workflow.init()' again with the same storage.")
         else:
             raise RuntimeError(
-                "Calling 'workflow.init()' again with a " "different storage"
+                "Calling 'workflow.init()' again with a different storage"
             )
     storage_base.set_global_storage(storage)
     workflow_access.init_management_actor()
@@ -549,9 +549,7 @@ def wait(
 
     for w in workflows:
         if not isinstance(w, Workflow):
-            raise TypeError(
-                "The input of workflow.wait should be a list " "of workflows."
-            )
+            raise TypeError("The input of workflow.wait should be a list of workflows.")
     wait_inputs = serialization_context.make_workflow_inputs(workflows)
     step_options = WorkflowStepRuntimeOptions.make(
         step_type=StepType.WAIT,

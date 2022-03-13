@@ -62,9 +62,9 @@ class _PyObjScanner(ray.cloudpickle.CloudPickler):
 
     def find_nodes(self, obj: Any) -> List["DAGNode"]:
         """Find top-level DAGNodes."""
-        assert self._found is None, (
-            "find_nodes cannot be called twice on the same " "PyObjScanner instance."
-        )
+        assert (
+            self._found is None
+        ), "find_nodes cannot be called twice on the same PyObjScanner instance."
         self._found = []
         self.dump(obj)
         return self._found

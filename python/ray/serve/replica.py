@@ -253,7 +253,7 @@ class RayServeReplica:
         self.request_counter = metrics.Counter(
             "serve_deployment_request_counter",
             description=(
-                "The number of queries that have been " "processed in this replica."
+                "The number of queries that have been processed in this replica."
             ),
             tag_keys=("deployment", "replica"),
         )
@@ -264,7 +264,7 @@ class RayServeReplica:
         self.error_counter = metrics.Counter(
             "serve_deployment_error_counter",
             description=(
-                "The number of exceptions that have " "occurred in this replica."
+                "The number of exceptions that have occurred in this replica."
             ),
             tag_keys=("deployment", "replica"),
         )
@@ -275,7 +275,7 @@ class RayServeReplica:
         self.restart_counter = metrics.Counter(
             "serve_deployment_replica_starts",
             description=(
-                "The number of times this replica " "has been restarted due to failure."
+                "The number of times this replica has been restarted due to failure."
             ),
             tag_keys=("deployment", "replica"),
         )

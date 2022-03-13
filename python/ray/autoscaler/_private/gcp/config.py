@@ -120,7 +120,7 @@ def wait_for_compute_global_operation(project_name, operation, compute):
             raise Exception(result["error"])
 
         if result["status"] == "DONE":
-            logger.info("wait_for_compute_global_operation: " "Operation done.")
+            logger.info("wait_for_compute_global_operation: Operation done.")
             break
 
         time.sleep(POLL_INTERVAL)
@@ -445,7 +445,7 @@ def _configure_key_pair(config, compute):
         # Create a key since it doesn't exist locally or in GCP
         if not key_found and not os.path.exists(private_key_path):
             logger.info(
-                "_configure_key_pair: " "Creating new key pair {}".format(key_name)
+                "_configure_key_pair: Creating new key pair {}".format(key_name)
             )
             public_key, private_key = generate_rsa_key_pair()
 
@@ -480,7 +480,7 @@ def _configure_key_pair(config, compute):
     )
     assert os.path.exists(
         private_key_path
-    ), "Private key file {} not found for user {}" "".format(private_key_path, ssh_user)
+    ), "Private key file {} not found for user {}".format(private_key_path, ssh_user)
 
     logger.info(
         "_configure_key_pair: "
@@ -599,7 +599,7 @@ def _create_project(project_id, crm):
 
 def _get_service_account(account, config, iam):
     project_id = config["provider"]["project_id"]
-    full_name = "projects/{project_id}/serviceAccounts/{account}" "".format(
+    full_name = "projects/{project_id}/serviceAccounts/{account}".format(
         project_id=project_id, account=account
     )
     try:

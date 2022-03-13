@@ -1392,7 +1392,7 @@ def get_deployment(name: str) -> Deployment:
         ) = internal_get_global_client().get_deployment_info(name)
     except KeyError:
         raise KeyError(
-            f"Deployment {name} was not found. " "Did you call Deployment.deploy()?"
+            f"Deployment {name} was not found. Did you call Deployment.deploy()?"
         )
     return Deployment(
         cloudpickle.loads(deployment_info.replica_config.serialized_deployment_def),
