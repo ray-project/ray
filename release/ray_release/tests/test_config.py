@@ -37,7 +37,7 @@ class ConfigTest(unittest.TestCase):
                     "wait_for_nodes": {"num_nodes": 2, "timeout": 100},
                     "type": "client",
                 },
-                "smoke_test": {"timeout": 20, "frequency": "multi"},
+                "smoke_test": {"run": {"timeout": 20}, "frequency": "multi"},
                 "alert": "default",
             }
         )
