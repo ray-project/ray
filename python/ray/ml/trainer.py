@@ -28,7 +28,7 @@ class TrainingFailedError(RuntimeError):
     pass
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 class Trainer(abc.ABC):
     """Defines interface for distributed training on Ray.
 
@@ -141,7 +141,6 @@ class Trainer(abc.ABC):
 
         raise NotImplementedError
 
-    @DeveloperAPI
     def setup(self) -> None:
         """Called during fit() to perform initial setup on the Trainer.
 
@@ -150,12 +149,12 @@ class Trainer(abc.ABC):
         This method will not be called on the driver, so any expensive setup
         operations should be placed here and not in ``__init__``.
 
-        This method is called prior to ``_preprocess_datasets`` and
+        This method is called prior to ``preprocess_datasets`` and
         ``training_loop``.
         """
         raise NotImplementedError
 
-    def _preprocess_datasets(self) -> None:
+    def preprocess_datasets(self) -> None:
         """Called during fit() to preprocess dataset attributes with preprocessor.
 
         Note: This method is run on a remote process.
@@ -175,7 +174,6 @@ class Trainer(abc.ABC):
         """
         raise NotImplementedError
 
-    @DeveloperAPI
     @abc.abstractmethod
     def training_loop(self) -> None:
         """Loop called by fit() to run training and report results to Tune.
@@ -216,7 +214,6 @@ class Trainer(abc.ABC):
         """
         raise NotImplementedError
 
-    @PublicAPI(stability="alpha")
     def as_trainable(self) -> Type[Trainable]:
         """Convert self to a ``tune.Trainable`` class."""
         raise NotImplementedError
