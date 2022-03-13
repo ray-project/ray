@@ -118,11 +118,16 @@ class RuntimeContext(object):
 
     @property
     def namespace(self):
+        """Get the current namespace of this worker.
+
+        Returns:
+            The current namespace of this worker.
+        """
         return self.worker.namespace
 
     @property
     def was_current_actor_reconstructed(self):
-        """Check whether this actor has been restarted
+        """Check whether this actor has been restarted.
 
         Returns:
             Whether this actor has been ever restarted.
