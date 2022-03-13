@@ -239,6 +239,7 @@ class ReplicaConfig:
                     f"Specifying {option} in ray_actor_options is not allowed."
                 )
 
+        # TODO(suquark): reuse options validation of remote function/actor.
         # Ray defaults to zero CPUs for placement, we default to one here.
         if self.ray_actor_options.get("num_cpus", None) is None:
             self.ray_actor_options["num_cpus"] = 1
