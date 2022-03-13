@@ -282,7 +282,7 @@ def test_ray_stack(ray_start_2_cpus):
             break
 
     if not success:
-        raise Exception("Failed to find necessary information with " "'ray stack'")
+        raise Exception("Failed to find necessary information with 'ray stack'")
 
 
 def test_raylet_is_robust_to_random_messages(ray_start_regular):

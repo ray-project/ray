@@ -141,7 +141,7 @@ class LogMonitor:
                 except (IOError, OSError) as e:
                     if e.errno == errno.ENOENT:
                         logger.warning(
-                            f"Warning: The file {file_info.filename} " "was not found."
+                            f"Warning: The file {file_info.filename} was not found."
                         )
                     else:
                         raise e
@@ -234,7 +234,7 @@ class LogMonitor:
                 # Catch "file not found" errors.
                 if e.errno == errno.ENOENT:
                     logger.warning(
-                        f"Warning: The file {file_info.filename} " "was not found."
+                        f"Warning: The file {file_info.filename} was not found."
                     )
                     self.log_filenames.remove(file_info.filename)
                     continue
@@ -248,7 +248,7 @@ class LogMonitor:
                 except (IOError, OSError) as e:
                     if e.errno == errno.ENOENT:
                         logger.warning(
-                            f"Warning: The file {file_info.filename} " "was not found."
+                            f"Warning: The file {file_info.filename} was not found."
                         )
                         self.log_filenames.remove(file_info.filename)
                         continue
@@ -383,7 +383,7 @@ class LogMonitor:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description=("Parse Redis server for the " "log monitor to connect " "to.")
+        description=("Parse Redis server for the log monitor to connect to.")
     )
     parser.add_argument(
         "--gcs-address", required=False, type=str, help="The address (ip:port) of GCS."
@@ -426,7 +426,7 @@ if __name__ == "__main__":
         "--logs-dir",
         required=True,
         type=str,
-        help="Specify the path of the temporary directory used by Ray " "processes.",
+        help="Specify the path of the temporary directory used by Ray processes.",
     )
     parser.add_argument(
         "--logging-rotate-bytes",
