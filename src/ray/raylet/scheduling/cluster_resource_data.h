@@ -29,10 +29,6 @@ namespace ray {
 
 using scheduling::ResourceID;
 
-const std::string ResourceEnumToString(PredefinedResourcesEnum resource);
-
-const PredefinedResourcesEnum ResourceStringToEnum(const std::string &resource);
-
 bool IsPredefinedResource(scheduling::ResourceID resource_id);
 
 /// Helper function to compare two vectors with FixedPoint values.
@@ -620,7 +616,7 @@ class TaskResourceInstances {
       if (has_added_resource) {
         buffer << ",";
       }
-      std::string resource_name = ResourceEnumToString(static_cast<PredefinedResourcesEnum>(i));
+      std::string resource_name = ResourceID(i).Binary();
       buffer << "\"" << resource_name << "\":";
       if (!ResourceID(i).IsUnitInstanceResource()) {
         buffer << resource[0];

@@ -183,7 +183,7 @@ bool LocalResourceManager::AllocateTaskResourceInstances(
     auto demand = resource_request.Get(resource_id);
     auto available = local_resources_.available.GetMutable(resource_id);
     std::vector<FixedPoint> allocation;
-    bool success = AllocateResourceInstances(demand, available, allocation);
+    bool success = AllocateResourceInstances(demand, available, &allocation);
     task_allocation->Set(resource_id, allocation);
     if (!success) {
       // Allocation failed. Restore node's local resources by freeing the resources
@@ -342,7 +342,7 @@ void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data)
 }
 
 double LocalResourceManager::GetLocalAvailableCpus() const {
-  return local_available_.SumCPU().Double();
+  return local_resources_.available.Sum(ResourceID::CPU()).Double();
 }
 
 ray::gcs::NodeResourceInfoAccessor::ResourceMap LocalResourceManager::GetResourceTotals(
@@ -353,10 +353,10 @@ ray::gcs::NodeResourceInfoAccessor::ResourceMap LocalResourceManager::GetResourc
     if (!resource_map_filter.contains(resource_name)) {
       continue;
     }
-    auto resource_total = local_resources_.local.Sum(resource_id);
+    auto resource_total = local_resources_.total.Sum(resource_id);
     if (resource_total > 0) {
       auto data = std::make_shared<rpc::ResourceTableData>();
-      data->set_resource_capacity(resource_total);
+      data->set_resource_capacity(resource_total.Double());
       map.emplace(resource_name, std::move(data));
     }
   }

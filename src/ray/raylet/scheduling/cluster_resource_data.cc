@@ -20,29 +20,6 @@
 namespace ray {
 using namespace ::ray::scheduling;
 
-const std::string resource_labels[] = {
-    ray::kCPU_ResourceLabel, ray::kMemory_ResourceLabel, ray::kGPU_ResourceLabel,
-    ray::kObjectStoreMemory_ResourceLabel};
-
-const std::string ResourceEnumToString(PredefinedResourcesEnum resource) {
-  // TODO (Alex): We should replace this with a protobuf enum.
-  RAY_CHECK(resource < PredefinedResourcesEnum_MAX)
-      << "Something went wrong. Please file a bug report with this stack "
-         "trace: https://github.com/ray-project/ray/issues/new.";
-  std::string label = resource_labels[resource];
-  return label;
-}
-
-const PredefinedResourcesEnum ResourceStringToEnum(const std::string &resource) {
-  for (std::size_t i = 0; i < resource_labels->size(); i++) {
-    if (resource_labels[i] == resource) {
-      return static_cast<PredefinedResourcesEnum>(i);
-    }
-  }
-  // The resource is invalid.
-  return PredefinedResourcesEnum_MAX;
-}
-
 bool IsPredefinedResource(scheduling::ResourceID resource) {
   return resource.ToInt() >= 0 && resource.ToInt() < PredefinedResourcesEnum_MAX;
 }
