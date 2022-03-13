@@ -110,10 +110,10 @@ CORE_NIGHTLY_TESTS = {
 }
 
 SERVE_NIGHTLY_TESTS = {
-    "~/ray/release/long_running_tests/long_running_tests.yaml": [
-        SmokeTest("serve"),
-        SmokeTest("serve_failure"),
-    ],
+    # "~/ray/release/long_running_tests/long_running_tests.yaml": [
+    #     SmokeTest("serve"),
+    #     SmokeTest("serve_failure"),
+    # ],
     # "~/ray/release/serve_tests/serve_tests.yaml": [
     #     "single_deployment_1k_noop_replica",
     #     "multi_deployment_1k_noop_replica",
@@ -178,33 +178,33 @@ NIGHTLY_TESTS = {
         "modin_xgboost_test",
         "torch_tune_serve_test",
     ],
-    "~/ray/release/long_running_tests/long_running_tests.yaml": [
-        SmokeTest("actor_deaths"),
-        SmokeTest("apex"),
-        SmokeTest("impala"),
-        SmokeTest("many_actor_tasks"),
-        SmokeTest("many_drivers"),
-        SmokeTest("many_ppo"),
-        SmokeTest("many_tasks"),
-        SmokeTest("many_tasks_serialized_ids"),
-        SmokeTest("node_failures"),
-        SmokeTest("pbt"),
-        # SmokeTest("serve"),
-        # SmokeTest("serve_failure"),
-        # Full long running tests (1 day runtime)
-        "actor_deaths",
-        "apex",
-        "impala",
-        "many_actor_tasks",
-        "many_drivers",
-        "many_ppo",
-        "many_tasks",
-        "many_tasks_serialized_ids",
-        "node_failures",
-        "pbt",
-        "serve",
-        "serve_failure",
-    ],
+    # "~/ray/release/long_running_tests/long_running_tests.yaml": [
+    #     SmokeTest("actor_deaths"),
+    #     SmokeTest("apex"),
+    #     SmokeTest("impala"),
+    #     SmokeTest("many_actor_tasks"),
+    #     SmokeTest("many_drivers"),
+    #     SmokeTest("many_ppo"),
+    #     SmokeTest("many_tasks"),
+    #     SmokeTest("many_tasks_serialized_ids"),
+    #     SmokeTest("node_failures"),
+    #     SmokeTest("pbt"),
+    #     # SmokeTest("serve"),
+    #     # SmokeTest("serve_failure"),
+    #     # Full long running tests (1 day runtime)
+    #     "actor_deaths",
+    #     "apex",
+    #     "impala",
+    #     "many_actor_tasks",
+    #     "many_drivers",
+    #     "many_ppo",
+    #     "many_tasks",
+    #     "many_tasks_serialized_ids",
+    #     "node_failures",
+    #     "pbt",
+    #     "serve",
+    #     "serve_failure",
+    # ],
     # "~/ray/release/sgd_tests/sgd_tests.yaml": [
     #     "sgd_gpu",
     # ],
@@ -257,9 +257,9 @@ WEEKLY_TESTS = {
     #     "horovod_test",
     # ],
     "~/ray/release/long_running_distributed_tests"
-    "/long_running_distributed.yaml": [
-        "pytorch_pbt_failure",
-    ],
+    # "/long_running_distributed.yaml": [
+    #     "pytorch_pbt_failure",
+    # ],
     # "~/ray/release/tune_tests/scalability_tests/tune_tests.yaml": [
     #     "network_overhead",
     #     "long_running_large_checkpoints",
