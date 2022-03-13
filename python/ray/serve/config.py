@@ -29,6 +29,7 @@ from ray.serve.generated.serve_pb2 import (
     AutoscalingConfig as AutoscalingConfigProto,
     ReplicaConfig as ReplicaConfigProto,
 )
+from ray.serve.utils import msgpack_serialize
 
 
 class AutoscalingConfig(BaseModel):
@@ -130,7 +131,6 @@ class DeploymentConfig(BaseModel):
     # the deploymnent use.
     deployment_language: Any = DeploymentLanguage.PYTHON
 
-    name: str
     version: Optional[str]
     prev_version: Optional[str]
 
@@ -177,19 +177,25 @@ class DeploymentConfig(BaseModel):
                 data["user_config"] = None
         if "autoscaling_config" in data:
             data["autoscaling_config"] = AutoscalingConfig(**data["autoscaling_config"])
+        if "prev_version" in data:
+            if data["prev_version"] == "":
+                data["prev_version"] = None
+        if "version" in data:
+            if data["version"] == "":
+                data["version"] = None
 
         return cls(**data)
 
     @classmethod
     def from_proto_bytes(cls, proto_bytes: bytes):
         proto = DeploymentConfigProto.FromString(proto_bytes)
-        return cls.from_proto(cls, proto)
+        return cls.from_proto(proto)
 
 
 class ReplicaConfig:
     def __init__(
         self,
-        deployment_def: Union[Callable, str],
+        deployment_def: Union[Callable, str] = None,
         init_args: Optional[Tuple[Any]] = None,
         init_kwargs: Optional[Dict[Any, Any]] = None,
         ray_actor_options=None,
@@ -298,38 +304,67 @@ class ReplicaConfig:
         self.resource_dict.update(custom_resources)
 
     @classmethod
-    def from_proto(cls, proto: ReplicaConfigProto):
+    def from_proto(cls, proto: ReplicaConfigProto, deployment_language: DeploymentLanguage):
         data = MessageToDict(
             proto,
             including_default_value_fields=True,
             preserving_proto_field_name=True,
             use_integers_for_enums=True,
         )
+
+        if "serialized_deployment_def" in data:
+            if data["serialized_deployment_def"] != "":
+                if deployment_language == DeploymentLanguage.PYTHON:
+                    deployment_def = cloudpickle.loads(proto.serialized_deployment_def)
+                else:
+                    # TODO use messagepack
+                    deployment_def = cloudpickle.loads(proto.serialized_deployment_def)
+
         if "init_args" in data:
             if data["init_args"] != "":
-                data["init_args"] = pickle.loads(proto.init_args)
+                init_args = pickle.loads(proto.init_args)
             else:
-                data["init_args"] = None
+                init_args = None
+
         if "init_kwargs" in data:
             if data["init_kwargs"] != "":
-                data["init_kwargs"] = pickle.loads(proto.init_args)
+                init_kwargs = pickle.loads(proto.init_kwargs)
             else:
-                data["init_kwargs"] = None
+                init_kwargs = None
 
-        return cls(**data)
+        if "ray_actor_options" in data:
+            if data["ray_actor_options"] != "":
+                ray_actor_options = pickle.loads(proto.ray_actor_options)
+            else:
+                ray_actor_options = {}
+
+        if "resource_dict" in data:
+            if data["resource_dict"] != "":
+                resource_dict = pickle.loads(proto.ray_actor_options)
+            else:
+                resource_dict = {}
+
+        return ReplicaConfig(deployment_def, init_args, init_kwargs, ray_actor_options)
 
     @classmethod
-    def from_proto_bytes(cls, proto_bytes: bytes):
+    def from_proto_bytes(cls, proto_bytes: bytes, deployment_language: DeploymentLanguage):
         proto = ReplicaConfigProto.FromString(proto_bytes)
-        return cls.from_proto(cls, proto)
+        return cls.from_proto(proto, deployment_language)
 
     def to_proto(self):
-        data = self.dict()
-        if data.get("init_args"):
-            data["init_args"] = pickle.dumps(data["init_args"])
-        if data.get("init_kwargs"):
-            data["init_kwargs"] = pickle.dumps(data["init_kwargs"])
+        data = {
+            "serialized_deployment_def": self.serialized_deployment_def,
+        }
+        if self.init_args:
+            data["init_args"] = pickle.dumps(self.init_args)
+        if self.init_kwargs:
+            data["init_kwargs"] = pickle.dumps(self.init_kwargs)
+        if self.ray_actor_options:
+            data["ray_actor_options"] = pickle.dumps(self.ray_actor_options)
         return ReplicaConfigProto(**data)
+
+    def to_proto_bytes(self):
+        return self.to_proto().SerializeToString()
 
 
 class DeploymentMode(str, Enum):

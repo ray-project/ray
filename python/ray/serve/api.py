@@ -364,30 +364,26 @@ class Client:
     def get_deployment_info(self, name: str) -> Tuple[DeploymentInfo, str]:
         deployment_route_bytes = ray.get(
             self._controller.get_deployment_info.remote(name))
-        proto = DeploymentRoute.ParseString(deployment_route_bytes)
-        return DeploymentInfo.from_proto(proto.deployment_info), proto.route
+        deployment_route_proto = DeploymentRoute.FromString(deployment_route_bytes)
+        return DeploymentInfo.from_proto(deployment_route_proto.deployment_info), deployment_route_proto.route
 
     @_ensure_connected
     def list_deployments(self) -> Dict[str, Tuple[DeploymentInfo, str]]:
-        deployment_route_list_bytes = ray.get(
-            self._controller.list_deployments.remote())
-        proto = DeploymentRouteList.FromString(deployment_route_list_bytes)
+        proto = DeploymentRouteList.FromString(ray.get(
+            self._controller.list_deployments.remote()))
         return {
-            deployment_route.deployment_info.deployment_config.name: (
+            deployment_route.deployment_info.name: (
                 DeploymentInfo.from_proto(deployment_route.deployment_info), deployment_route.route)
             for deployment_route in proto.deployment_routes
         }
 
     @_ensure_connected
     def get_deployment_statuses(self) -> Dict[str, DeploymentStatusInfo]:
-        deployment_status_info_list_bytes = ray.get(
-            self._controller.get_deployment_statuses.remote())
-        proto = DeploymentStatusInfoList.FromString(deployment_status_info_list_bytes)
+        proto = DeploymentStatusInfoList.FromString(ray.get(self._controller.get_deployment_statuses.remote()))
         return {
-            deployment_status_info.name: DeploymentStatusInfo.from_proto_bytes(proto)
+            deployment_status_info.name: DeploymentStatusInfo.from_proto(deployment_status_info)
             for deployment_status_info in proto.deployment_status_infos
         }
-        return ray.get(self._controller.get_deployment_statuses.remote())
 
     @_ensure_connected
     def get_handle(
@@ -524,6 +520,9 @@ class Client:
         else:
             raise TypeError("config must be a DeploymentConfig or a dictionary.")
 
+        deployment_config.version = version
+        deployment_config.prev_version = prev_version
+
         if (
             deployment_config.autoscaling_config is not None
             and deployment_config.max_concurrent_queries
@@ -538,9 +537,7 @@ class Client:
         controller_deploy_args = {
             "name": name,
             "deployment_config_proto_bytes": deployment_config.to_proto_bytes(),
-            "replica_config": replica_config,
-            "version": version,
-            "prev_version": prev_version,
+            "replica_config_proto_bytes": replica_config.to_proto_bytes(),
             "route_prefix": route_prefix,
             "deployer_job_id": ray.get_runtime_context().job_id,
         }

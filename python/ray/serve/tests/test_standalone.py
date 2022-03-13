@@ -18,6 +18,7 @@ from ray import serve
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.serve.constants import SERVE_ROOT_URL_ENV_KEY, SERVE_PROXY_NAME
 from ray.serve.exceptions import RayServeException
+from ray.serve.generated.serve_pb2 import ActorNameList
 from ray.serve.utils import block_until_http_ready, get_all_node_ids, format_actor_name
 from ray.serve.config import HTTPOptions
 from ray.serve.api import _get_global_client
@@ -446,6 +447,10 @@ def test_fixed_number_proxies(ray_cluster):
     controller_handle = _get_global_client()._controller
     node_to_http_actors = ray.get(controller_handle.get_http_proxies.remote())
     assert len(node_to_http_actors) == 2
+
+    proxy_names_bytes = ray.get(controller_handle.get_http_proxy_names.remote())
+    proxy_names_proto = ActorNameList.FromString(proxy_names_bytes)
+    assert len(proxy_names_proto.names) == 2
 
     serve.shutdown()
     ray.shutdown()

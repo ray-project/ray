@@ -21,14 +21,12 @@ from ray.serve.common import (
 from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY
 from ray.serve.endpoint_state import EndpointState
-from ray.serve.generated.serve_pb2 import DeploymentRouteList, DeploymentStatusInfoList, ActorNameList
 from ray.serve.http_state import HTTPState
 from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.long_poll import LongPollHost
 from ray.serve.storage.kv_store import RayInternalKVStore
-from ray.serve.utils import logger, msgpack_serialize
+from ray.serve.utils import logger
 from ray.serve.autoscaling_metrics import InMemoryMetricsStore
-from ray.serve.generated.serve_pb2 import DeploymentRoute
 
 # Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
@@ -144,6 +142,7 @@ class ServeController:
 
     def get_http_proxy_names(self) -> bytes:
         """Returns the http_proxy actor name list serialized by protobuf."""
+        from ray.serve.generated.serve_pb2 import ActorNameList
         actor_name_list = ActorNameList(
             names=self.http_state.get_http_proxy_names().values())
         return actor_name_list.SerializeToString()
@@ -290,6 +289,7 @@ class ServeController:
 
     def deploy(
         self,
+        name: str,
         deployment_config_proto_bytes: bytes,
         replica_config_proto_bytes: bytes,
         route_prefix: Optional[str],
@@ -301,11 +301,9 @@ class ServeController:
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
         )
-        name = deployment_config.name
         version = deployment_config.version
         prev_version = deployment_config.prev_version
-
-        replica_config = ReplicaConfig.from_proto_bytes(replica_config_proto_bytes)
+        replica_config = ReplicaConfig.from_proto_bytes(replica_config_proto_bytes, deployment_config.deployment_language)
 
         if prev_version is not None:
             existing_deployment_info = self.deployment_state_manager.get_deployment(
@@ -388,6 +386,7 @@ class ServeController:
 
         route = self.endpoint_state.get_endpoint_route(name)
 
+        from ray.serve.generated.serve_pb2 import DeploymentRoute
         deployment_route = DeploymentRoute(
             deployment_info=deployment_info.to_proto(), route=route)
         return deployment_route.SerializeToString()
@@ -434,6 +433,7 @@ class ServeController:
         Raises:
             KeyError if the deployment doesn't exist.
         """
+        from ray.serve.generated.serve_pb2 import DeploymentRouteList, DeploymentRoute
         deployment_route_list = DeploymentRouteList()
         for deployment_name, (deployment_info, route_prefix) in self.list_deployments_internal(
             include_deleted=True
@@ -443,8 +443,9 @@ class ServeController:
         return deployment_route_list.SerializeToString()
 
     def get_deployment_statuses(self) -> bytes:
+        from ray.serve.generated.serve_pb2 import DeploymentStatusInfoList
         deployment_status_info_list = DeploymentStatusInfoList()
-        for name, deployment_status_info in self.deployment_state_manager.get_deployment_statuses():
+        for name, deployment_status_info in self.deployment_state_manager.get_deployment_statuses().items():
             deployment_status_info_proto = deployment_status_info.to_proto()
             deployment_status_info_proto.name = name
             deployment_status_info_list.deployment_status_infos.append(

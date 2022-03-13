@@ -15,6 +15,7 @@ from ray.serve.generated.serve_pb2 import (
     DeploymentInfo as DeploymentInfoProto,
     ReplicaConfig as ReplicaConfigProto,
     DeploymentStatusInfo as DeploymentStatusInfoProto,
+    DeploymentStatus as DeploymentStatusProto,
 )
 
 EndpointTag = str
@@ -40,18 +41,11 @@ class DeploymentStatusInfo:
     message: str = ""
 
     def to_proto(self):
-        data = self.dict()
-        return DeploymentStatusInfoProto(**data)
+        return DeploymentStatusInfoProto(status=self.status, message=self.message)
 
     @classmethod
     def from_proto(cls, proto: DeploymentStatusInfoProto):
-        data = MessageToDict(
-            proto,
-            including_default_value_fields=True,
-            preserving_proto_field_name=True,
-            use_integers_for_enums=True,
-        )
-        return cls(**data)
+        return cls(status=DeploymentStatus(DeploymentStatusProto.Name(proto.status)), message=proto.message)
 
 
 class DeploymentInfo:
@@ -121,38 +115,26 @@ class DeploymentInfo:
 
     @classmethod
     def from_proto(cls, proto: DeploymentInfoProto):
-        data = MessageToDict(
-            proto,
-            including_default_value_fields=True,
-            preserving_proto_field_name=True,
-            use_integers_for_enums=True,
-        )
-
-        if "deployment_config" in data:
-            data["deployment_config"] = DeploymentConfig.from_proto(
-                proto.deployment_config)
-        if "replica_config" in data:
-            data["replica_config"] = ReplicaConfig.from_proto(proto.replica_config)
-
-        return cls(**data)
-
-    @classmethod
-    def from_proto_bytes(cls, proto_bytes: bytes):
-        proto = DeploymentInfoProto.FromString(proto_bytes)
-        data = MessageToDict(
-            proto,
-            including_default_value_fields=True,
-            preserving_proto_field_name=True,
-            use_integers_for_enums=True,
-        )
-
-        if "deployment_config" in data:
-            data["deployment_config"] = DeploymentConfig.from_proto_bytes()
+        data = {
+            "deployment_config": DeploymentConfig.from_proto(proto.deployment_config),
+            "replica_config": ReplicaConfig.from_proto(proto.replica_config),
+            "start_time_ms": proto.start_time_ms,
+            "actor_name": proto.actor_name,
+            "serialized_deployment_def": proto.serialized_deployment_def,
+            "version": proto.version,
+            "end_time_ms": proto.end_time_ms,
+        }
 
         return cls(**data)
 
     def to_proto(self):
-        data = self.dict()
+        data = {
+            "start_time_ms": self.start_time_ms,
+            "actor_name": self.actor_name,
+            "serialized_deployment_def": self.serialized_deployment_def,
+            "version": self.version,
+            "end_time_ms": self.end_time_ms,
+        }
         if data.get("deployment_config"):
             data["deployment_config"] = data["deployment_config"].to_proto()
         if data.get("replica_config"):
