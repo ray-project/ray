@@ -113,7 +113,7 @@ class DataParallelTrainer(Trainer):
 
     For 1, you can set a predefined training loop in __init__
 
-    ..code-block:: python
+    .. code-block:: python
 
         from ray.ml.train.data_parallel_trainer import DataParallelTrainer
 
@@ -126,7 +126,7 @@ class DataParallelTrainer(Trainer):
     For 2, you can implement the ``ray.train.Backend`` and ``ray.train.BackendConfig``
     interfaces.
 
-    ..code-block:: python
+    .. code-block:: python
 
         from dataclasses import dataclass
         from ray.train.backend import Backend, BackendConfig
