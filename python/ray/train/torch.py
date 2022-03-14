@@ -546,7 +546,8 @@ def enable_reproducibility(seed: int = 0) -> None:
 
     .. warning:: ``train.torch.enable_reproducibility()`` can't guarantee
         completely reproducible results across executions. To learn more, read
-        the `PyTorch notes on randomness <https://pytorch.org/docs/stable/notes/randomness.html>`_.
+        the `PyTorch notes on randomness
+        <https://pytorch.org/docs/stable/notes/randomness.html>`_.
     """
     get_accelerator(TorchAccelerator).enable_reproducibility(seed)
 
