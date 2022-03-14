@@ -1,19 +1,49 @@
-from typing import Any, Dict, Optional, Tuple, List, Union
+from typing import Any, Dict, Optional, Tuple, List, Union, TYPE_CHECKING
 
 from ray.experimental.dag import DAGNode
 from ray.experimental.dag.format_utils import get_dag_node_str
 from ray.serve.handle import RayServeSyncHandle, RayServeHandle
 from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
-from ray.serve.api import Deployment, DeploymentConfig
+if TYPE_CHECKING:
+    from ray.serve.api import Deployment
+from ray.serve.config import DeploymentConfig
 
+
+class UnboundDeploymentMethodNode(DAGNode):
+    def __init__(
+        self,
+        deployment: "Deployment",
+        method_name: str,
+        other_args_to_resolve: Dict[str, Any] = None,
+    ):
+        print("Entering init")
+        self._deployment = deployment
+        self._method_name = method_name
+        self._options = {}
+        self._bound_other_args_to_resolve = other_args_to_resolve
+
+    def bind(self, *args, **kwargs):
+        node = DeploymentMethodNode(
+            self._deployment,
+            self._method_name,
+            args,
+            kwargs,
+            self._options,
+            other_args_to_resolve=self._bound_other_args_to_resolve,
+        )
+        return node
+
+    def options(self, **options):
+        self._options = options
+        return self
 
 class DeploymentMethodNode(DAGNode):
     """Represents a deployment method invocation of a DeploymentNode in DAG."""
 
     def __init__(
         self,
-        deployment: Deployment,
+        deployment: "Deployment",
         deployment_method_name: str,
         method_args: Tuple[Any],
         method_kwargs: Dict[str, Any],
@@ -60,7 +90,7 @@ class DeploymentMethodNode(DAGNode):
 
     def _get_serve_deployment_handle(
         self,
-        deployment: Deployment,
+        deployment: "Deployment",
         bound_other_args_to_resolve: Dict[str, Any],
     ) -> Union[RayServeHandle, RayServeSyncHandle]:
         """

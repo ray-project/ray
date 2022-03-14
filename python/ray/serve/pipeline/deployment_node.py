@@ -1,13 +1,17 @@
-from typing import Any, Callable, Dict, Optional, List, Tuple, Union
+from typing import Any, Callable, Dict, Optional, List, Tuple, Union, TYPE_CHECKING
 
 from ray.experimental.dag import DAGNode, InputNode
 from ray.serve.handle import RayServeSyncHandle, RayServeHandle
-from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
+from ray.serve.pipeline.deployment_method_node import (
+    DeploymentMethodNode,
+    UnboundDeploymentMethodNode,
+)
 from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 from ray.experimental.dag.format_utils import get_dag_node_str
-from ray.serve.api import Deployment, DeploymentConfig
-
+from ray.serve.config import DeploymentConfig
+if TYPE_CHECKING:
+    from ray.serve.api import Deployment
 
 class DeploymentNode(DAGNode):
     """Represents a deployment node in a DAG authored Ray DAG API."""
@@ -50,16 +54,16 @@ class DeploymentNode(DAGNode):
         (
             replaced_deployment_init_args,
             replaced_deployment_init_kwargs,
-        ) = self.apply_functional(
+        ) = self._apply_functional(
             [deployment_init_args, deployment_init_kwargs],
             predictate_fn=lambda node: isinstance(
                 node, (DeploymentNode, DeploymentMethodNode)
             ),
             apply_fn=lambda node: node._get_serve_deployment_handle(
-                node._deployment, node._bound_other_args_to_resolve
+                node.deployment, node._bound_other_args_to_resolve
             ),
         )
-        self._deployment: Deployment = Deployment(
+        self._deployment: "Deployment" = Deployment(
             func_or_class,
             deployment_name,
             # TODO: (jiaodong) Support deployment config from user input
@@ -71,7 +75,9 @@ class DeploymentNode(DAGNode):
         )
         self._deployment_handle: Union[
             RayServeHandle, RayServeSyncHandle
-        ] = self._get_serve_deployment_handle(self._deployment, other_args_to_resolve)
+        ] = self._get_serve_deployment_handle(
+            self.deployment, other_args_to_resolve
+        )
 
     def _copy_impl(
         self,
@@ -81,8 +87,8 @@ class DeploymentNode(DAGNode):
         new_other_args_to_resolve: Dict[str, Any],
     ):
         return DeploymentNode(
-            self._deployment.func_or_class,
-            self._deployment.name,
+            self.deployment.func_or_class,
+            self.deployment.name,
             new_args,
             new_kwargs,
             new_options,
@@ -97,7 +103,7 @@ class DeploymentNode(DAGNode):
 
     def _get_serve_deployment_handle(
         self,
-        deployment: Deployment,
+        deployment: "Deployment",
         bound_other_args_to_resolve: Dict[str, Any],
     ) -> Union[RayServeHandle, RayServeSyncHandle]:
         """
@@ -140,9 +146,15 @@ class DeploymentNode(DAGNode):
 
     def __getattr__(self, method_name: str):
         # Raise an error if the method is invalid.
-        getattr(self._deployment.func_or_class, method_name)
+        getattr(self.deployment.func_or_class, method_name)
+        # self.deployment.func_or_class.__getattr__(method_name)
+        # call_node = UnboundDeploymentMethodNode(
+        #     self.deployment,
+        #     method_name,
+        #     other_args_to_resolve=self._bound_other_args_to_resolve,
+        # )
         call_node = DeploymentMethodNode(
-            self._deployment,
+            self.deployment,
             method_name,
             (),
             {},
@@ -152,36 +164,41 @@ class DeploymentNode(DAGNode):
         return call_node
 
     def __str__(self) -> str:
-        return get_dag_node_str(self, str(self._deployment))
+        return get_dag_node_str(self, str(self.deployment))
 
-    def get_deployment_name(self):
+    @property
+    def deployment(self):
+        return self._deployment
+
+    @property
+    def deployment_name(self):
         return self._deployment.name
 
-    def get_import_path(self):
-        if isinstance(self._deployment._func_or_class, str):
+    @property
+    def import_path(self):
+        if isinstance(self.deployment._func_or_class, str):
             # We're processing a deserilized JSON node where import_path
             # is dag_node body.
-            return self._deployment._func_or_class
+            return self.deployment._func_or_class
         else:
-            body = self._deployment._func_or_class.__ray_actor_class__
+            body = self.deployment._func_or_class.__ray_actor_class__
             return f"{body.__module__}.{body.__qualname__}"
 
     def to_json(self, encoder_cls) -> Dict[str, Any]:
         json_dict = super().to_json_base(encoder_cls, DeploymentNode.__name__)
-        json_dict["deployment_name"] = self.get_deployment_name()
-        import_path = self.get_import_path()
+        json_dict["deployment_name"] = self.deployment_name
 
         error_message = (
             "Class used in DAG should not be in-line defined when exporting"
             "import path for deployment. Please ensure it has fully "
             "qualified name with valid __module__ and __qualname__ for "
             "import path, with no __main__ or <locals>. \n"
-            f"Current import path: {import_path}"
+            f"Current import path: {self.import_path}"
         )
-        assert "__main__" not in import_path, error_message
-        assert "<locals>" not in import_path, error_message
+        assert "__main__" not in self.import_path, error_message
+        assert "<locals>" not in self.import_path, error_message
 
-        json_dict["import_path"] = import_path
+        json_dict["import_path"] = self.import_path
 
         return json_dict
 

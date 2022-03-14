@@ -58,6 +58,7 @@ from ray.serve.utils import (
     logger,
     DEFAULT,
 )
+from ray.serve.pipeline.deployment_node import DeploymentNode
 from ray.util.annotations import PublicAPI
 import ray
 from ray import cloudpickle
@@ -1182,11 +1183,38 @@ class Deployment:
             _internal=True,
         )
 
+    @PublicAPI
     def bind(self, *args, **kwargs):
-        raise AttributeError(
-            "DAG building API should only be used for @ray.remote decorated "
-            "class or function, not in serve deployment or library "
-            "specific API."
+        """Construct a node in DAG using current deployment.
+
+        Args and kwargs in .bind() are used to initialize deployment class in
+        each serve replica.
+
+        Examples:
+            >>> @serve.deployment
+            ... class MyDeployment:
+            ...    def __init__(self, val):
+            ...        self.val = val
+            ...    def forward(self, input):
+            ...       return self.val * input
+
+            # This DAG is executeable as long as MyDeployment is deployed
+            >>> with ServeInputNode() as dag_input:
+            ...     d1 = MyDeployment.bind(1)
+            ...     dag = d1.forward.bind()
+
+            # This DAG is invalid however, we should not directly bind
+            # classmethod.
+            >>> with ServeInputNode() as dag_input:
+            ...     # INVALID, bind MyDeployment first
+            ...     dag = MyDeployment.forward.bind()
+        """
+        return DeploymentNode(
+            self._func_or_class,
+            self._name,
+            args,
+            kwargs,
+            self._ray_actor_options
         )
 
     def __eq__(self, other):
