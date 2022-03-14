@@ -137,14 +137,11 @@ class TorchAccelerator(Accelerator):
                 # SequentialSampler.
                 shuffle = not isinstance(loader.sampler, SequentialSampler)
 
-                def seed_worker(worker_id):
-                    worker_seed = torch.initial_seed() % 2 ** 32
-                    np.random.seed(worker_seed)
-                    random.seed(worker_seed)
-
                 def seeded_worker_init_fn(worker_init_fn):
                     def wrapper(worker_id):
-                        seed_worker(worker_id)
+                        worker_seed = torch.initial_seed() % 2 ** 32
+                        np.random.seed(worker_seed)
+                        random.seed(worker_seed)
                         worker_init_fn(worker_id)
 
                     return wrapper
