@@ -116,7 +116,7 @@ def test_enable_reproducibility(ray_start_4_cpus_2_gpus, use_gpu):
                 loss.backward()
                 optimizer.step()
 
-        return loss
+        return loss.item()
 
     trainer = Trainer("torch", num_workers=2, use_gpu=use_gpu)
     trainer.start()
