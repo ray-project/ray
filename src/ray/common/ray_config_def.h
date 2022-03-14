@@ -245,7 +245,8 @@ RAY_CONFIG(uint64_t, object_manager_default_chunk_size, 5 * 1024 * 1024)
 
 /// The maximum number of outbound bytes to allow to be outstanding. This avoids
 /// excessive memory usage during object broadcast to many receivers.
-RAY_CONFIG(uint64_t, object_manager_max_bytes_in_flight,
+RAY_CONFIG(uint64_t,
+           object_manager_max_bytes_in_flight,
            ((uint64_t)2) * 1024 * 1024 * 1024)
 
 /// Maximum number of ids in one batch to send to GCS to delete keys.
@@ -478,7 +479,8 @@ RAY_CONFIG(bool, enable_light_weight_resource_report, true)
 // The number of seconds to wait for the Raylet to start. This is normally
 // fast, but when RAY_preallocate_plasma_memory=1 is set, it may take some time
 // (a few GB/s) to populate all the pages on Raylet startup.
-RAY_CONFIG(uint32_t, raylet_start_wait_time_s,
+RAY_CONFIG(uint32_t,
+           raylet_start_wait_time_s,
            std::getenv("RAY_preallocate_plasma_memory") != nullptr &&
                    std::getenv("RAY_preallocate_plasma_memory") == std::string("1")
                ? 120

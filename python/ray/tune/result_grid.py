@@ -66,6 +66,6 @@ class ResultGrid:
         result = Result(
             checkpoint=trial.checkpoint,
             metrics=trial.last_result,
-            error=self._get_error_msg(trial),
+            error=self._populate_exception(trial),
         )
         return result

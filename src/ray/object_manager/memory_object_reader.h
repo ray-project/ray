@@ -32,7 +32,8 @@ class MemoryObjectReader : public IObjectReader {
   const rpc::Address &GetOwnerAddress() const override;
 
   bool ReadFromDataSection(uint64_t offset, uint64_t size, char *output) const override;
-  bool ReadFromMetadataSection(uint64_t offset, uint64_t size,
+  bool ReadFromMetadataSection(uint64_t offset,
+                               uint64_t size,
                                char *output) const override;
 
  private:

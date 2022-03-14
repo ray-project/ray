@@ -13,8 +13,10 @@
 // limitations under the License.
 
 #include "util.h"
+
 #include <boost/algorithm/string.hpp>
 #include <boost/asio.hpp>
+
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -27,8 +29,8 @@ std::string GetNodeIpAddress(const std::string &address) {
   try {
     boost::asio::io_service netService;
     boost::asio::ip::udp::resolver resolver(netService);
-    boost::asio::ip::udp::resolver::query query(boost::asio::ip::udp::v4(), parts[0],
-                                                parts[1]);
+    boost::asio::ip::udp::resolver::query query(
+        boost::asio::ip::udp::v4(), parts[0], parts[1]);
     boost::asio::ip::udp::resolver::iterator endpoints = resolver.resolve(query);
     boost::asio::ip::udp::endpoint ep = *endpoints;
     boost::asio::ip::udp::socket socket(netService);

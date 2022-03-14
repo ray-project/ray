@@ -53,7 +53,8 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
     std::vector<std::string> agent_commands;
   };
 
-  explicit AgentManager(Options options, DelayExecutorFn delay_executor,
+  explicit AgentManager(Options options,
+                        DelayExecutorFn delay_executor,
                         RuntimeEnvAgentClientFactoryFn runtime_env_agent_client_factory,
                         bool start_agent = true /* for test */)
       : options_(std::move(options)),
@@ -75,7 +76,8 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   /// instances.
   /// \param[in] callback The callback function.
   virtual void CreateRuntimeEnvOrGet(
-      const JobID &job_id, const std::string &serialized_runtime_env,
+      const JobID &job_id,
+      const std::string &serialized_runtime_env,
       const std::string &serialized_allocated_resource_instances,
       CreateRuntimeEnvOrGetCallback callback);
 

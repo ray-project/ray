@@ -73,8 +73,11 @@ class Process {
   /// \param[in] decouple True iff the parent will not wait for the child to exit.
   /// \param[in] env Additional environment variables to be set on this process besides
   /// the environment variables of the parent process.
-  explicit Process(const char *argv[], void *io_service, std::error_code &ec,
-                   bool decouple = false, const ProcessEnvironment &env = {});
+  explicit Process(const char *argv[],
+                   void *io_service,
+                   std::error_code &ec,
+                   bool decouple = false,
+                   const ProcessEnvironment &env = {});
   /// Convenience function to run the given command line and wait for it to finish.
   static std::error_code Call(const std::vector<std::string> &args,
                               const ProcessEnvironment &env = {});
@@ -93,8 +96,10 @@ class Process {
   /// Convenience function to start a process in the background.
   /// \param pid_file A file to write the PID of the spawned process in.
   static std::pair<Process, std::error_code> Spawn(
-      const std::vector<std::string> &args, bool decouple,
-      const std::string &pid_file = std::string(), const ProcessEnvironment &env = {});
+      const std::vector<std::string> &args,
+      bool decouple,
+      const std::string &pid_file = std::string(),
+      const ProcessEnvironment &env = {});
   /// Waits for process to terminate. Not supported for unowned processes.
   /// \return The process's exit code. Returns 0 for a dummy process, -1 for a null one.
   int Wait() const;

@@ -161,7 +161,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
                        const std::vector<std::string> &resource_names);
 
   void UpdateResourceCapacity(NodeResources *node_resources,
-                              const std::string &resource_name, double capacity);
+                              const std::string &resource_name,
+                              double capacity);
 
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;

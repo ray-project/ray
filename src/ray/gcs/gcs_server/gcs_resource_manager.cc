@@ -21,7 +21,8 @@ namespace ray {
 namespace gcs {
 
 GcsResourceManager::GcsResourceManager(
-    instrumented_io_context &main_io_service, std::shared_ptr<GcsPublisher> gcs_publisher,
+    instrumented_io_context &main_io_service,
+    std::shared_ptr<GcsPublisher> gcs_publisher,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
     : periodical_runner_(main_io_service),
       gcs_publisher_(gcs_publisher),
@@ -204,7 +205,8 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
 }
 
 void GcsResourceManager::HandleReportResourceUsage(
-    const rpc::ReportResourceUsageRequest &request, rpc::ReportResourceUsageReply *reply,
+    const rpc::ReportResourceUsageRequest &request,
+    rpc::ReportResourceUsageReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   UpdateFromResourceReport(request.resources());
 
@@ -213,7 +215,8 @@ void GcsResourceManager::HandleReportResourceUsage(
 }
 
 void GcsResourceManager::HandleGetAllResourceUsage(
-    const rpc::GetAllResourceUsageRequest &request, rpc::GetAllResourceUsageReply *reply,
+    const rpc::GetAllResourceUsageRequest &request,
+    rpc::GetAllResourceUsageReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   if (!node_resource_usages_.empty()) {
     auto batch = std::make_shared<rpc::ResourceUsageBatchData>();
@@ -299,8 +302,8 @@ void GcsResourceManager::Initialize(const GcsInitData &gcs_init_data) {
     if (iter != cluster_scheduling_resources_.end()) {
       auto node_resources = iter->second->GetMutableLocalView();
       for (const auto &resource : entry.second.items()) {
-        UpdateResourceCapacity(node_resources, resource.first,
-                               resource.second.resource_capacity());
+        UpdateResourceCapacity(
+            node_resources, resource.first, resource.second.resource_capacity());
       }
     }
   }
@@ -361,8 +364,9 @@ void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
         node.resources_total().begin(), node.resources_total().end());
     // Update the cluster scheduling resources as new node is added.
     cluster_scheduling_resources_.emplace(
-        node_id, std::make_shared<Node>(
-                     ResourceMapToNodeResources(resource_mapping, resource_mapping)));
+        node_id,
+        std::make_shared<Node>(
+            ResourceMapToNodeResources(resource_mapping, resource_mapping)));
   }
 }
 
@@ -452,9 +456,32 @@ void GcsResourceManager::AddResourcesChangedListener(std::function<void()> liste
 
 void GcsResourceManager::UpdateNodeNormalTaskResources(
     const NodeID &node_id, const rpc::ResourcesData &heartbeat) {
-  // TODO(Shanly): To be implemented.
-  // This method is breaked by the refactoring of new resource structure, just remove the
-  // implementation for the time being.
+  auto iter = cluster_scheduling_resources_.find(node_id);
+  if (iter == cluster_scheduling_resources_.end()) {
+    return;
+  }
+
+  auto normal_task_resources =
+      ResourceMapToResourceRequest(MapFromProtobuf(heartbeat.resources_normal_task()),
+                                   /*requires_object_store_memory=*/false);
+  auto &local_normal_task_resources =
+      iter->second->GetMutableLocalView()->normal_task_resources;
+  if (heartbeat.resources_normal_task_changed() &&
+      heartbeat.resources_normal_task_timestamp() >
+          latest_resources_normal_task_timestamp_[node_id] &&
+      local_normal_task_resources != normal_task_resources) {
+    local_normal_task_resources.predefined_resources.resize(PredefinedResources_MAX);
+    for (size_t i = 0; i < PredefinedResources_MAX; ++i) {
+      local_normal_task_resources.predefined_resources[i] =
+          normal_task_resources.predefined_resources[i];
+    }
+    local_normal_task_resources.custom_resources = normal_task_resources.custom_resources;
+    latest_resources_normal_task_timestamp_[node_id] =
+        heartbeat.resources_normal_task_timestamp();
+    for (const auto &listener : resources_changed_listeners_) {
+      listener();
+    }
+  }
 }
 
 std::string GcsResourceManager::ToString() const {
