@@ -21,6 +21,14 @@ py_test(
 )
 
 py_test(
+    name = "test_torch_predictor",
+    size = "small",
+    srcs = ["tests/test_torch_predictor.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_torch_utils",
     size = "small",
     srcs = ["tests/test_torch_utils.py"],
