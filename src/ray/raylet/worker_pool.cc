@@ -651,7 +651,7 @@ void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job
                   << ". The runtime environment was " << runtime_env
                   << ", The runtime environment config was " << runtime_env_config;
     CreateRuntimeEnv(runtime_env,
-					 runtime_env_config,
+                     runtime_env_config,
                      job_id,
                      [job_id](bool successful,
                               const std::string &serialized_runtime_env_context,
@@ -1203,7 +1203,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
         // create runtime env.
         CreateRuntimeEnv(
             task_spec.SerializedRuntimeEnv(),
-			task_spec.SerializedRuntimeEnvConfig(),
+            task_spec.SerializedRuntimeEnvConfig(),
             task_spec.JobId(),
             [this, start_worker_process_fn, callback, &state, task_spec, dynamic_options](
                 bool successful,
@@ -1228,8 +1228,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
             },
             allocated_instances_serialized_json);
       } else {
-        start_worker_process_fn(
-            task_spec, state, dynamic_options, true, "", callback);
+        start_worker_process_fn(task_spec, state, dynamic_options, true, "", callback);
       }
     }
   } else {
@@ -1271,7 +1270,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
         // create runtime env.
         CreateRuntimeEnv(
             task_spec.SerializedRuntimeEnv(),
-			task_spec.SerializedRuntimeEnvConfig(),
+            task_spec.SerializedRuntimeEnvConfig(),
             task_spec.JobId(),
             [this, start_worker_process_fn, callback, &state, task_spec](
                 bool successful,
@@ -1581,7 +1580,7 @@ WorkerPool::IOWorkerState &WorkerPool::GetIOWorkerStateFromWorkerType(
 
 void WorkerPool::CreateRuntimeEnv(
     const std::string &serialized_runtime_env,
-	const std::string &serialized_runtime_env_config,
+    const std::string &serialized_runtime_env_config,
     const JobID &job_id,
     const CreateRuntimeEnvCallback &callback,
     const std::string &serialized_allocated_resource_instances) {
@@ -1589,12 +1588,14 @@ void WorkerPool::CreateRuntimeEnv(
   agent_manager_->CreateRuntimeEnv(
       job_id,
       serialized_runtime_env,
-	  serialized_runtime_env_config,
+      serialized_runtime_env_config,
       serialized_allocated_resource_instances,
-      [job_id, serialized_runtime_env = std::move(serialized_runtime_env), serialized_runtime_env_config = std::move(serialized_runtime_env_config), callback](
-          bool successful,
-          const std::string &serialized_runtime_env_context,
-          const std::string &setup_error_message) {
+      [job_id,
+       serialized_runtime_env = std::move(serialized_runtime_env),
+       serialized_runtime_env_config = std::move(serialized_runtime_env_config),
+       callback](bool successful,
+                 const std::string &serialized_runtime_env_context,
+                 const std::string &setup_error_message) {
         if (successful) {
           callback(true, serialized_runtime_env_context, "");
         } else {
