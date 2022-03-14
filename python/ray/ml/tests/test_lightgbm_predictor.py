@@ -3,10 +3,8 @@ from ray.ml.predictors.integrations.lightgbm import LightGBMPredictor
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY
-import json
 
 import numpy as np
-import xgboost as xgb
 import lightgbm as lgbm
 import tempfile
 

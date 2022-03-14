@@ -7,8 +7,8 @@ import json
 
 import numpy as np
 import xgboost as xgb
-import lightgbm as lgbm
 import tempfile
+
 
 class DummyPreprocessor(Preprocessor):
     def transform_batch(self, df):
@@ -20,9 +20,8 @@ dummy_target = np.array([0, 1, 0])
 
 
 predictor_cls = XGBoostPredictor
-model = (
-    xgb.XGBClassifier(n_estimators=10).fit(dummy_data, dummy_target).get_booster()
-)
+model = xgb.XGBClassifier(n_estimators=10).fit(dummy_data, dummy_target).get_booster()
+
 
 def get_num_trees(booster: xgb.Booster) -> int:
     data = [json.loads(d) for d in booster.get_dump(dump_format="json")]
