@@ -1,10 +1,14 @@
-from typing import Optional, List, Union
+from typing import Optional, List, Union, Dict, Any
+import os
+import shutil
+import numpy as np
 
 import xgboost
 
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.predictor import Predictor, DataBatchType
 from ray.ml.preprocessor import Preprocessor
+from ray.ml.constants import PREPROCESSOR_KEY
 
 
 class XGBoostPredictor(Predictor):
@@ -17,7 +21,8 @@ class XGBoostPredictor(Predictor):
     """
 
     def __init__(self, model: xgboost.Booster, preprocessor: Preprocessor):
-        raise NotImplementedError
+        self.model = model
+        self.preprocessor = preprocessor
 
     @classmethod
     def from_checkpoint(cls, checkpoint: Checkpoint) -> "XGBoostPredictor":
@@ -31,13 +36,20 @@ class XGBoostPredictor(Predictor):
                 ``XGBoostTrainer`` run.
 
         """
-        raise NotImplementedError
+        path = checkpoint.to_directory()
+        bst = xgboost.Booster()
+        bst.load_model(os.path.join(path, "model.xgb"))
+        shutil.rmtree(path)
+        return XGBoostPredictor(
+            model=bst, preprocessor=checkpoint.to_dict()[PREPROCESSOR_KEY]
+        )
 
     def predict(
         self,
         data: DataBatchType,
         feature_columns: Optional[Union[List[str], List[int]]] = None,
-        **dmatrix_kwargs,
+        dmatrix_kwargs: Optional[Dict[str, Any]] = None,
+        predict_kwargs: Optional[Dict[str, Any]] = None,
     ) -> DataBatchType:
         """Run inference on data batch.
 
@@ -50,7 +62,9 @@ class XGBoostPredictor(Predictor):
             feature_columns: The names or indices of the columns in the
                 data to use as features to predict on. If None, then use
                 all columns in ``data``.
-            **dmatrix_kwargs: Keyword arguments passed to ``xgboost.DMatrix``.
+            dmatrix_kwargs: Dict of keyword arguments passed to ``xgboost.DMatrix``.
+            predict_kwargs: Dict of keyword arguments passed to
+                ``xgboost.Booster.predict``.
 
         Examples:
 
@@ -98,4 +112,15 @@ class XGBoostPredictor(Predictor):
             DataBatchType: Prediction result.
 
         """
-        raise NotImplementedError
+        dmatrix_kwargs = dmatrix_kwargs or {}
+        predict_kwargs = predict_kwargs or {}
+
+        data = self.preprocessor.transform_batch(data)
+
+        if feature_columns:
+            if isinstance(data, np.ndarray):
+                data = data[:, feature_columns]
+            else:
+                data = data[feature_columns]
+        matrix = xgboost.DMatrix(data, **dmatrix_kwargs)
+        return self.model.predict(matrix, **predict_kwargs)

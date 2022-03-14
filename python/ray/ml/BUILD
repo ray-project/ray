@@ -36,6 +36,14 @@ py_test(
     deps = [":ml_lib"]
 )
 
+py_test(
+    name = "test_xgboost_lightgbm_predictors.py",
+    size = "small",
+    srcs = ["tests/test_xgboost_lightgbm_predictors.py.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.
 py_library(

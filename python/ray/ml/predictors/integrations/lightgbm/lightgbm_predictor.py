@@ -1,10 +1,14 @@
-from typing import Optional, List, Union
+from typing import Optional, List, Union, Dict, Any
+import os
+import shutil
+import numpy as np
 
 import lightgbm
 
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.predictor import Predictor, DataBatchType
 from ray.ml.preprocessor import Preprocessor
+from ray.ml.constants import PREPROCESSOR_KEY
 
 
 class LightGBMPredictor(Predictor):
@@ -17,7 +21,8 @@ class LightGBMPredictor(Predictor):
     """
 
     def __init__(self, model: lightgbm.Booster, preprocessor: Preprocessor):
-        raise NotImplementedError
+        self.model = model
+        self.preprocessor = preprocessor
 
     @classmethod
     def from_checkpoint(cls, checkpoint: Checkpoint) -> "LightGBMPredictor":
@@ -31,18 +36,20 @@ class LightGBMPredictor(Predictor):
                 ``LightGBMTrainer`` run.
 
         """
-        raise NotImplementedError
+        path = checkpoint.to_directory()
+        bst = lightgbm.Booster(model_file=os.path.join(path, "model.xgb"))
+        shutil.rmtree(path)
+        return LightGBMPredictor(
+            model=bst, preprocessor=checkpoint.to_dict()[PREPROCESSOR_KEY]
+        )
 
     def predict(
         self,
         data: DataBatchType,
         feature_columns: Optional[Union[List[str], List[int]]] = None,
-        **lgbm_dataset_kwargs,
+        predict_kwargs: Optional[Dict[str, Any]] = None,
     ) -> DataBatchType:
         """Run inference on data batch.
-
-        The data is converted into a LightGBM Dataset before being inputted to
-        the model.
 
         Args:
             data: A batch of input data. Either a pandas DataFrame or numpy
@@ -50,8 +57,8 @@ class LightGBMPredictor(Predictor):
             feature_columns: The names or indices of the columns in the
                 data to use as features to predict on. If None, then use
                 all columns in ``data``.
-            **lgbm_dataset_kwargs: Keyword arguments passed to
-                ``lightgbm.Dataset``.
+            predict_kwargs: Keyword arguments passed to
+                ``lightgbm.Booster.predict``.
 
         Examples:
 
@@ -99,4 +106,13 @@ class LightGBMPredictor(Predictor):
             DataBatchType: Prediction result.
 
         """
-        raise NotImplementedError
+        predict_kwargs = predict_kwargs or {}
+
+        data = self.preprocessor.transform_batch(data)
+
+        if feature_columns:
+            if isinstance(data, np.ndarray):
+                data = data[:, feature_columns]
+            else:
+                data = data[feature_columns]
+        return self.model.predict(data, **predict_kwargs)
