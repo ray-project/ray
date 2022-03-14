@@ -2751,6 +2751,31 @@ class Trainer(Trainable):
             MultiAgentReplayBuffer instance based on trainer config.
             None, if local replay buffer is not needed.
         """
+        # Deprecation of old-style replay buffer args
+        # Warnings before checking of we need local buffer so that algorithms
+        # Without local buffer also get warned
+        deprecated_replay_buffer_keys = [
+            "prioritized_replay_alpha",
+            "prioritized_replay_beta",
+            "prioritized_replay_eps",
+            "learning_starts",
+        ]
+
+        for k in deprecated_replay_buffer_keys:
+            if config.get(k) is not None:
+                deprecation_warning(
+                    old="config[{}]".format(k),
+                    help="config['replay_buffer_config'][{}] should be used "
+                         "for Q-Learning algorithms. Ignore this warning if "
+                         "you are not using a Q-Learning algorithm and still "
+                         "provide {}."
+                         "".format(k, k),
+                    error=False,
+                )
+                # Copy values over to new location in config to support new
+                # and old configuration style
+                config["replay_buffer_config"][k] = config[k]
+
         # Some agents do not need a replay buffer
         if config.get("replay_buffer_config") is None or config.get(
             "no_local_replay_buffer", False
@@ -2772,24 +2797,6 @@ class Trainer(Trainable):
                 new="config['replay_buffer_config']['capacity']",
                 error=False,
             )
-
-        # Deprecation of old-style replay buffer args
-        deprecated_replay_buffer_keys = [
-            "prioritized_replay_alpha",
-            "prioritized_replay_beta",
-            "prioritized_replay_eps",
-            "learning_starts",
-        ]
-        for k in deprecated_replay_buffer_keys:
-            if config.get(k) is not None:
-                deprecation_warning(
-                    old="config[{}]".format(k),
-                    new="config['replay_buffer_config'][{}]".format(k),
-                    error=False,
-                )
-                # Copy values over to new location in config to support new
-                # and old configuration style
-                config["replay_buffer_config"][k] = config[k]
 
         # Check if old replay buffer should be instantiated
         buffer_type = config["replay_buffer_config"]["type"]
