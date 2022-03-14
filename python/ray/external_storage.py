@@ -363,7 +363,7 @@ class ExternalStorageRayStorageImpl(ExternalStorage):
     """Implements the external storage interface using the ray.storage API."""
 
     def __init__(self):
-        self._fs, storage_prefix = ray.storage.impl._get_or_init_filesystem()
+        self._fs, storage_prefix = ray.storage.impl._get_filesystem_internal()
         # TODO: add job_id here.
         self._prefix = os.path.join(storage_prefix, "spilled_objects/job_00000")
         self._fs.create_dir(self._prefix)

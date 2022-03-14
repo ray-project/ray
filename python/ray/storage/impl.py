@@ -44,7 +44,7 @@ def get_filesystem() -> ("pyarrow.fs.FileSystem", str):
     Raises:
         RuntimeError if storage has not been configured or init failed.
     """
-    return _get_or_init_filesystem()
+    return _get_filesystem_internal()
 
 
 @DeveloperAPI
@@ -201,6 +201,15 @@ def list(
 
 
 def _init_storage(storage_uri: str, is_head: bool):
+    """Init global storage.
+
+    On the head (ray start) process, this also creates a _valid file under the given
+    storage path to validate the storage is writable. This file is also checked on each
+    worker process to validate the storage is readable. This catches common errors
+    like using a non-NFS filesystem path on a multi-node cluster.
+
+    On worker nodes, the actual filesystem is lazily initialized on first use.
+    """
     global _storage_uri
     _storage_uri = storage_uri
 
@@ -208,8 +217,24 @@ def _init_storage(storage_uri: str, is_head: bool):
         _init_filesystem(storage_uri, create_valid_file=True)
 
 
-def _init_filesystem(storage_uri: str, create_valid_file: bool = False):
+def _get_filesystem_internal() -> ("pyarrow.fs.FileSystem", str):
+    """Internal version of get_filesystem() that doesn't hit Ray client hooks.
+
+    This forces full (non-lazy) init of the filesystem.
+    """
+
     global _filesystem, _storage_prefix
+    if _filesystem is None:
+        _init_filesystem(_storage_uri)
+    return _filesystem, _storage_prefix
+
+
+def _init_filesystem(storage_uri: str, create_valid_file: bool = False):
+    """Fully initialize the filesystem at the given storage URI."""
+
+    global _filesystem, _storage_prefix
+    assert _filesystem is None, "Init can only be called once."
+
     if not storage_uri:
         raise RuntimeError(
             "No storage URI has been configured for the cluster. "
@@ -234,11 +259,4 @@ def _init_filesystem(storage_uri: str, create_valid_file: bool = False):
                 "worker nodes of the cluster.".format(valid_file)
             )
 
-    return _filesystem, _storage_prefix
-
-
-def _get_or_init_filesystem() -> ("pyarrow.fs.FileSystem", str):
-    global _filesystem, _storage_prefix
-    if _filesystem is None:
-        _init_filesystem(_storage_uri)
     return _filesystem, _storage_prefix
