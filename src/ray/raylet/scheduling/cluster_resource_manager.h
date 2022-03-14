@@ -106,7 +106,12 @@ class ClusterResourceManager {
   /// nonexistent resources will be filtered out, whitch is different from `UpdateNode`.
   /// Return false if such node doesn't exist.
   bool UpdateNodeAvailableResources(scheduling::NodeID node_id,
-                                    const ResourceRequest &resources);
+                                    const rpc::ResourcesData &resource_data);
+
+  /// Update node normal task resources.
+  /// Return false if such node doesn't exist.
+  bool UpdateNodeNormalTaskResources(scheduling::NodeID node_id,
+                                     const rpc::ResourcesData &resource_data);
 
   /// Return false if the specified node doesn't exist.
   bool ContainsNode(scheduling::NodeID node_id) const;

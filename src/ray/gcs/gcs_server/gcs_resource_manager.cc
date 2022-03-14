@@ -205,13 +205,10 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     UpdateNodeNormalTaskResources(node_id, data);
   } else {
-    auto resources =
-        ResourceMapToResourceRequest(MapFromProtobuf(data.resources_available()),
-                                     /*requires_object_store_memory=*/false);
     if (!cluster_resource_manager_.UpdateNodeAvailableResources(
-            scheduling::NodeID(node_id.Binary()), resources)) {
+            scheduling::NodeID(node_id.Binary()), data)) {
       RAY_LOG(INFO)
-          << "[UpdateResourceUsage]: received resource usage from unknown node id "
+          << "[UpdateFromResourceReport]: received resource usage from unknown node id "
           << node_id;
     }
   }
@@ -404,7 +401,8 @@ void GcsResourceManager::UpdateNodeNormalTaskResources(
           node_resources.latest_resources_normal_task_timestamp &&
       normal_task_resources != local_normal_task_resources) {
     // Update normal task resources.
-    cluster_resource_manager_.UpdateNode(scheduling_node_id, heartbeat);
+    cluster_resource_manager_.UpdateNodeNormalTaskResources(scheduling_node_id,
+                                                            heartbeat);
     for (const auto &listener : resources_changed_listeners_) {
       listener();
     }

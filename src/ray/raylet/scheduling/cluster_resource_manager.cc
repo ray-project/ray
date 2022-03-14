@@ -82,24 +82,6 @@ bool ClusterResourceManager::UpdateNode(scheduling::NodeID node_id,
     local_view.object_pulls_queued = resource_data.object_pulls_queued();
   }
 
-  if (resource_data.resources_normal_task_changed() &&
-      resource_data.resources_normal_task_timestamp() >
-          local_view.latest_resources_normal_task_timestamp) {
-    auto normal_task_resources = ResourceMapToResourceRequest(
-        MapFromProtobuf(resource_data.resources_normal_task()),
-        /*requires_object_store_memory=*/false);
-    auto &local_normal_task_resources = local_view.normal_task_resources;
-    local_normal_task_resources.predefined_resources.resize(PredefinedResources_MAX);
-    for (size_t i = 0; i < PredefinedResources_MAX; ++i) {
-      local_normal_task_resources.predefined_resources[i] =
-          normal_task_resources.predefined_resources[i];
-    }
-    local_normal_task_resources.custom_resources =
-        std::move(normal_task_resources.custom_resources);
-    local_view.latest_resources_normal_task_timestamp =
-        resource_data.resources_normal_task_timestamp();
-  }
-
   AddOrUpdateNode(node_id, local_view);
   return true;
 }
@@ -322,12 +304,19 @@ bool ClusterResourceManager::AddNodeAvailableResources(
 }
 
 bool ClusterResourceManager::UpdateNodeAvailableResources(
-    scheduling::NodeID node_id, const ResourceRequest &resources) {
+    scheduling::NodeID node_id, const rpc::ResourcesData &resource_data) {
   auto iter = nodes_.find(node_id);
   if (iter == nodes_.end()) {
     return false;
   }
 
+  if (!resource_data.resources_available_changed()) {
+    return true;
+  }
+
+  auto resources =
+      ResourceMapToResourceRequest(MapFromProtobuf(resource_data.resources_available()),
+                                   /*requires_object_store_memory=*/false);
   auto node_resources = iter->second.GetMutableLocalView();
   for (size_t i = 0; i < node_resources->predefined_resources.size(); ++i) {
     node_resources->predefined_resources[i].available = resources.predefined_resources[i];
@@ -340,6 +329,39 @@ bool ClusterResourceManager::UpdateNodeAvailableResources(
       entry.second.available = 0.;
     }
   }
+
+  return true;
+}
+
+bool ClusterResourceManager::UpdateNodeNormalTaskResources(
+    scheduling::NodeID node_id, const rpc::ResourcesData &resource_data) {
+  if (!nodes_.contains(node_id)) {
+    return false;
+  }
+
+  NodeResources local_view;
+  RAY_CHECK(GetNodeResources(node_id, &local_view));
+
+  if (resource_data.resources_normal_task_changed() &&
+      resource_data.resources_normal_task_timestamp() >
+          local_view.latest_resources_normal_task_timestamp) {
+    auto normal_task_resources = ResourceMapToResourceRequest(
+        MapFromProtobuf(resource_data.resources_normal_task()),
+        /*requires_object_store_memory=*/false);
+    auto &local_normal_task_resources = local_view.normal_task_resources;
+    local_normal_task_resources.predefined_resources.resize(PredefinedResources_MAX);
+    for (size_t i = 0; i < PredefinedResources_MAX; ++i) {
+      local_normal_task_resources.predefined_resources[i] =
+          normal_task_resources.predefined_resources[i];
+    }
+    local_normal_task_resources.custom_resources =
+        std::move(normal_task_resources.custom_resources);
+    local_view.latest_resources_normal_task_timestamp =
+        resource_data.resources_normal_task_timestamp();
+
+    AddOrUpdateNode(node_id, local_view);
+  }
+
   return true;
 }
 
