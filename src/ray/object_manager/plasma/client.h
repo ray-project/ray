@@ -60,7 +60,8 @@ class ClientImplInterface {
   /// \param num_retries number of attempts to connect to IPC socket, default 50
   /// \return The return status.
   virtual Status Connect(const std::string &store_socket_name,
-                         const std::string &manager_socket_name, int release_delay = 0,
+                         const std::string &manager_socket_name,
+                         int release_delay = 0,
                          int num_retries = -1) = 0;
 
   /// Create an object in the Plasma Store. Any metadata for this object must be
@@ -91,7 +92,8 @@ class ClientImplInterface {
   /// be either sealed or aborted.
   virtual Status CreateAndSpillIfNeeded(const ObjectID &object_id,
                                         const ray::rpc::Address &owner_address,
-                                        int64_t data_size, const uint8_t *metadata,
+                                        int64_t data_size,
+                                        const uint8_t *metadata,
                                         int64_t metadata_size,
                                         std::shared_ptr<Buffer> *data,
                                         plasma::flatbuf::ObjectSource source,
@@ -126,7 +128,8 @@ class ClientImplInterface {
 
   virtual Status TryCreateImmediately(const ObjectID &object_id,
                                       const ray::rpc::Address &owner_address,
-                                      int64_t data_size, const uint8_t *metadata,
+                                      int64_t data_size,
+                                      const uint8_t *metadata,
                                       int64_t metadata_size,
                                       std::shared_ptr<Buffer> *data,
                                       plasma::flatbuf::ObjectSource source,
@@ -147,8 +150,10 @@ class ClientImplInterface {
   /// \param[out] object_buffers The object results.
   /// \param is_from_worker Whether or not if the Get request comes from a Ray workers.
   /// \return The return status.
-  virtual Status Get(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
-                     std::vector<ObjectBuffer> *object_buffers, bool is_from_worker) = 0;
+  virtual Status Get(const std::vector<ObjectID> &object_ids,
+                     int64_t timeout_ms,
+                     std::vector<ObjectBuffer> *object_buffers,
+                     bool is_from_worker) = 0;
 
   /// Tell Plasma that the client no longer needs the object. This should be
   /// called after Get() or Create() when the client is done with the object.

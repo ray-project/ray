@@ -400,7 +400,6 @@ Status PlasmaClient::Impl::RetryCreate(const ObjectID &object_id,
                                        const uint8_t *metadata,
                                        uint64_t *retry_with_request_id,
                                        std::shared_ptr<Buffer> *data) {
-
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
   RAY_RETURN_NOT_OK(SendCreateRetryRequest(store_conn_, object_id, request_id));
   return HandleCreateReply(object_id, metadata, retry_with_request_id, data);
@@ -722,9 +721,9 @@ Status PlasmaClientImpl::Evict(int64_t num_bytes, int64_t &num_bytes_evicted) {
 }
 
 Status PlasmaClientImpl::Connect(const std::string &store_socket_name,
-                                   const std::string &manager_socket_name,
-                                   int release_delay,
-                                   int num_retries) {
+                                 const std::string &manager_socket_name,
+                                 int release_delay,
+                                 int num_retries) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
   /// The local stream socket that connects to store.
