@@ -3,9 +3,8 @@ import hashlib
 import json
 import os
 import subprocess
-import threading
 import time
-from typing import Callable, Dict, Any
+from typing import Dict, Any
 
 import requests
 from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
@@ -32,7 +31,7 @@ def dict_hash(dt: Dict[Any, Any]) -> str:
 
 
 def url_exists(url: str):
-    return requests.head(url).status_code == 200
+    return requests.head(url, allow_redirects=True).status_code == 200
 
 
 def format_link(link: str):
@@ -87,33 +86,6 @@ def get_anyscale_sdk() -> AnyscaleSDK:
 
     _anyscale_sdk = AnyscaleSDK()
     return _anyscale_sdk
-
-
-# Todo: remove to get rid of threading
-def run_with_timeout(
-    fn: Callable[[], None],
-    timeout: float,
-    status_fn: Callable[[float], None],
-    error_fn: Callable[[], None],
-    status_interval: float = 30.0,
-    *args,
-    **kwargs,
-):
-    start_time = time.monotonic()
-    next_status = start_time + status_interval
-    stop_event = threading.Event()
-    thread = threading.Thread(target=fn, args=(stop_event,) + args, kwargs=kwargs)
-    thread.start()
-
-    while thread.is_alive() and time.monotonic() < start_time + timeout:
-        if time.monotonic() > next_status:
-            next_status += status_interval
-            status_fn(time.monotonic() - start_time)
-        time.sleep(1)
-
-    if thread.is_alive():
-        stop_event.set()
-        error_fn()
 
 
 def exponential_backoff_retry(f, retry_exceptions, initial_retry_delay_s, max_retries):

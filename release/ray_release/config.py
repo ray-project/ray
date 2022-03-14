@@ -178,7 +178,7 @@ def load_and_render_yaml_template(
         render_env.update(env)
 
     try:
-        content = jinja2.Template(content).render(env=env)
+        content = jinja2.Template(content).render(env=render_env)
         return yaml.safe_load(content)
     except Exception as e:
         raise ReleaseTestConfigError(

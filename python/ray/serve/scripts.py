@@ -33,6 +33,16 @@ RAY_DASHBOARD_ADDRESS_HELP_STR = (
     "RAY_ADDRESS environment variable."
 )
 
+RAY_INIT_ADDRESS_HELP_STR = (
+    "Address to use for ray.init(). Can also be specified "
+    "using the RAY_ADDRESS environment variable."
+)
+RAY_DASHBOARD_ADDRESS_HELP_STR = (
+    "Address to use to query the Ray dashboard (defaults to "
+    "http://localhost:8265). Can also be specified using the "
+    "RAY_ADDRESS environment variable."
+)
+
 
 def _process_args_and_kwargs(
     args_and_kwargs: Tuple[str],

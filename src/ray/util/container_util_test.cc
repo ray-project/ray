@@ -24,7 +24,7 @@ TEST(ContainerUtilTest, TestDebugString) {
   ASSERT_EQ(debug_string(std::unordered_set<int>{2}), "[2]");
   ASSERT_EQ(debug_string(absl::flat_hash_set<int>{1}), "[1]");
   ASSERT_EQ(debug_string(std::map<int, int>{{1, 2}, {3, 4}}), "[(1, 2), (3, 4)]");
-  ASSERT_EQ(debug_string(std::unordered_map<int, int>{{3, 4}}), "[(3, 4)]");
+  ASSERT_EQ(debug_string(absl::flat_hash_map<int, int>{{3, 4}}), "[(3, 4)]");
   ASSERT_EQ(debug_string(absl::flat_hash_map<int, int>{{1, 2}}), "[(1, 2)]");
 }
 

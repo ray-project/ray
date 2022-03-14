@@ -142,6 +142,9 @@ class Worker:
         # running on.
         self.ray_debugger_external = False
         self._load_code_from_local = False
+        # Create the lock here because the serializer will use it before
+        # initializing Ray.
+        self.lock = threading.RLock()
 
     @property
     def connected(self):
@@ -206,12 +209,8 @@ class Worker:
         """Get the runtime env in json format"""
         return self.core_worker.get_current_runtime_env()
 
-    def get_serialization_context(self, job_id=None):
+    def get_serialization_context(self):
         """Get the SerializationContext of the job that this worker is processing.
-
-        Args:
-            job_id: The ID of the job that indicates which job to get
-                the serialization context for.
 
         Returns:
             The serialization context of the given job.
@@ -220,14 +219,17 @@ class Worker:
         # called by`register_class_for_serialization`, as well as the import
         # thread, from different threads. Also, this function will recursively
         # call itself, so we use RLock here.
-        if job_id is None:
-            job_id = self.current_job_id
+        job_id = self.current_job_id
+        context_map = self.serialization_context_map
         with self.lock:
-            if job_id not in self.serialization_context_map:
-                self.serialization_context_map[
-                    job_id
-                ] = serialization.SerializationContext(self)
-            return self.serialization_context_map[job_id]
+            if job_id not in context_map:
+                # The job ID is nil before initializing Ray.
+                if JobID.nil() in context_map:
+                    # Transfer the serializer context used before initializing Ray.
+                    context_map[job_id] = context_map.pop(JobID.nil())
+                else:
+                    context_map[job_id] = serialization.SerializationContext(self)
+            return context_map[job_id]
 
     def check_connected(self):
         """Check if the worker is connected.
@@ -977,10 +979,7 @@ def init(
         logger.info(
             "Connecting to existing Ray cluster at address: " f"{bootstrap_address}"
         )
-        if gcs_utils.use_gcs_for_bootstrap():
-            gcs_address = bootstrap_address
-        else:
-            redis_address = bootstrap_address
+        gcs_address = bootstrap_address
 
     if configure_logging:
         setup_logger(logging_level, logging_format)
@@ -1538,21 +1537,12 @@ def connect(
     # The Redis client can safely be shared between threads. However,
     # that is not true of Redis pubsub clients. See the documentation at
     # https://github.com/andymccurdy/redis-py#thread-safety.
-    if not gcs_utils.use_gcs_for_bootstrap():
-        worker.redis_client = node.create_redis_client()
     worker.gcs_client = node.get_gcs_client()
     assert worker.gcs_client is not None
     _initialize_internal_kv(worker.gcs_client)
-    if gcs_utils.use_gcs_for_bootstrap():
-        ray.state.state._initialize_global_state(
-            ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
-        )
-    else:
-        ray.state.state._initialize_global_state(
-            ray._raylet.GcsClientOptions.from_redis_address(
-                node.redis_address, redis_password=node.redis_password
-            )
-        )
+    ray.state.state._initialize_global_state(
+        ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
+    )
     worker.gcs_pubsub_enabled = gcs_pubsub_enabled()
     worker.gcs_publisher = None
     if worker.gcs_pubsub_enabled:
@@ -1608,8 +1598,6 @@ def connect(
                 gcs_publisher=worker.gcs_publisher,
             )
 
-    worker.lock = threading.RLock()
-
     driver_name = ""
     log_stdout_file_path = ""
     log_stderr_file_path = ""
@@ -1625,19 +1613,7 @@ def connect(
     elif not LOCAL_MODE:
         raise ValueError("Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
 
-    if gcs_utils.use_gcs_for_bootstrap():
-        gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
-    else:
-        # As the synchronous and the asynchronous context of redis client is
-        # not used in this gcs client. We would not open connection for it
-        # by setting `enable_sync_conn` and `enable_async_conn` as false.
-        gcs_options = ray._raylet.GcsClientOptions.from_redis_address(
-            node.redis_address,
-            node.redis_password,
-            enable_sync_conn=False,
-            enable_async_conn=False,
-            enable_subscribe_conn=True,
-        )
+    gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 
