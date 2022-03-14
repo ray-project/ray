@@ -212,7 +212,7 @@ class Client:
         """
         start = time.time()
         while time.time() - start < timeout_s:
-            statuses = get_deployment_statuses()
+            statuses = self.get_deployment_statuses()
             if len(statuses) == 0:
                 break
             else:
@@ -237,7 +237,7 @@ class Client:
         """
         start = time.time()
         while time.time() - start < timeout_s or timeout_s < 0:
-            statuses = get_deployment_statuses()
+            statuses = self.get_deployment_statuses()
             try:
                 status = statuses[name]
             except KeyError:
@@ -270,7 +270,7 @@ class Client:
         """
         start = time.time()
         while time.time() - start < timeout_s:
-            statuses = get_deployment_statuses()
+            statuses = self.get_deployment_statuses()
             if name not in statuses:
                 break
             else:
