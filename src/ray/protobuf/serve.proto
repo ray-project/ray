@@ -152,8 +152,7 @@ message ReplicaConfig {
   bytes serialized_deployment_def = 1;
   bytes init_args = 2;
   bytes init_kwargs = 3;
-  bytes ray_actor_options = 4;
-  map<string, double> resource_dict = 5;
+  string ray_actor_options = 4;
 }
 
 message DeploymentInfo {

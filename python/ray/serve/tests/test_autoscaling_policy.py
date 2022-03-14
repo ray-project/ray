@@ -156,10 +156,10 @@ def test_assert_no_replicas_deprovisioned():
 
 def get_deployment_start_time(controller: ServeController, deployment: Deployment):
     """Return start time for given deployment"""
-    deployment_route_list_bytes = ray.get(controller.list_deployments.remote())
-    proto = DeploymentRouteList.ParseFromString(deployment_route_list_bytes)
+    proto = DeploymentRouteList.FromString(
+        ray.get(controller.list_deployments.remote()))
     deployments = {
-        deployment_route.deployment_info.deployment_config.name: (
+        deployment_route.deployment_info.name: (
             DeploymentInfo.from_proto(deployment_route.deployment_info), deployment_route.route)
         for deployment_route in proto.deployment_routes
     }

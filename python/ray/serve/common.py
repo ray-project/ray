@@ -3,19 +3,14 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, Optional
 
-from google.protobuf.json_format import MessageToDict
-
 import ray
 from ray.actor import ActorHandle
 from ray.serve.config import DeploymentConfig, ReplicaConfig
 from ray.serve.autoscaling_policy import AutoscalingPolicy
 from ray.serve.generated.serve_pb2 import (
-    DeploymentConfig as DeploymentConfigProto,
-    AutoscalingConfig as AutoscalingConfigProto,
     DeploymentInfo as DeploymentInfoProto,
-    ReplicaConfig as ReplicaConfigProto,
     DeploymentStatusInfo as DeploymentStatusInfoProto,
-    DeploymentStatus as DeploymentStatusProto,
+    DeploymentStatus as DeploymentStatusProto, DeploymentLanguage,
 )
 
 EndpointTag = str
@@ -45,7 +40,8 @@ class DeploymentStatusInfo:
 
     @classmethod
     def from_proto(cls, proto: DeploymentStatusInfoProto):
-        return cls(status=DeploymentStatus(DeploymentStatusProto.Name(proto.status)), message=proto.message)
+        return cls(status=DeploymentStatus(
+            DeploymentStatusProto.Name(proto.status)), message=proto.message)
 
 
 class DeploymentInfo:
@@ -115,14 +111,17 @@ class DeploymentInfo:
 
     @classmethod
     def from_proto(cls, proto: DeploymentInfoProto):
+        deployment_config = DeploymentConfig.from_proto(
+            proto.deployment_config) if proto.deployment_config else None
         data = {
-            "deployment_config": DeploymentConfig.from_proto(proto.deployment_config),
-            "replica_config": ReplicaConfig.from_proto(proto.replica_config),
+            "deployment_config": deployment_config,
+            "replica_config": ReplicaConfig.from_proto(proto.replica_config, deployment_config.deployment_language if deployment_config else DeploymentLanguage.PYTHON),
             "start_time_ms": proto.start_time_ms,
             "actor_name": proto.actor_name,
             "serialized_deployment_def": proto.serialized_deployment_def,
             "version": proto.version,
             "end_time_ms": proto.end_time_ms,
+            "deployer_job_id": ray.get_runtime_context().job_id,
         }
 
         return cls(**data)
@@ -135,10 +134,10 @@ class DeploymentInfo:
             "version": self.version,
             "end_time_ms": self.end_time_ms,
         }
-        if data.get("deployment_config"):
-            data["deployment_config"] = data["deployment_config"].to_proto()
-        if data.get("replica_config"):
-            data["replica_config"] = data["replica_config"].to_proto()
+        if self.deployment_config:
+            data["deployment_config"] = self.deployment_config.to_proto()
+        if self.replica_config:
+            data["replica_config"] = self.replica_config.to_proto()
         return DeploymentInfoProto(**data)
 
 

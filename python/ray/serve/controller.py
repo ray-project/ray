@@ -303,7 +303,8 @@ class ServeController:
         )
         version = deployment_config.version
         prev_version = deployment_config.prev_version
-        replica_config = ReplicaConfig.from_proto_bytes(replica_config_proto_bytes, deployment_config.deployment_language)
+        replica_config = ReplicaConfig.from_proto_bytes(
+            replica_config_proto_bytes, deployment_config.deployment_language)
 
         if prev_version is not None:
             existing_deployment_info = self.deployment_state_manager.get_deployment(
@@ -436,10 +437,12 @@ class ServeController:
         from ray.serve.generated.serve_pb2 import DeploymentRouteList, DeploymentRoute
         deployment_route_list = DeploymentRouteList()
         for deployment_name, (deployment_info, route_prefix) in self.list_deployments_internal(
-            include_deleted=True
+            include_deleted=include_deleted
         ).items():
+            deployment_info_proto = deployment_info.to_proto()
+            deployment_info_proto.name = deployment_name
             deployment_route_list.deployment_routes.append(DeploymentRoute(
-                deployment_info=deployment_info.to_proto(), route=route_prefix))
+                deployment_info=deployment_info_proto, route=route_prefix))
         return deployment_route_list.SerializeToString()
 
     def get_deployment_statuses(self) -> bytes:
