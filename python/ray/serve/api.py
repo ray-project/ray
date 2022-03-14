@@ -50,7 +50,7 @@ from ray.serve.constants import (
 )
 from ray.serve.controller import ServeController
 from ray.serve.exceptions import RayServeException
-from ray.experimental.dag import ClassNode
+from ray.experimental.dag import DAGNode
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
 from ray.serve.utils import (
@@ -911,7 +911,7 @@ class DAGHandle:
 
 
 @PublicAPI(stability="alpha")
-class DeploymentMethodNode(ClassNode):
+class DeploymentMethodNode(DAGNode):
     """Represents a method call on a bound deployment node.
 
     These method calls can be composed into an optimized call DAG and passed
@@ -926,7 +926,7 @@ class DeploymentMethodNode(ClassNode):
 
 
 @PublicAPI(stability="alpha")
-class DeploymentNode(ClassNode):
+class DeploymentNode(DAGNode):
     """Represents a deployment with its bound config options and arguments.
 
     The bound deployment can be run, deployed, or built to a production config
