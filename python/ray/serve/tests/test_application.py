@@ -8,7 +8,7 @@ import requests
 
 import ray
 from ray import serve
-from ray.serve.api import Application
+from ray.serve.api import Application, deploy_group
 from ray._private.test_utils import wait_for_condition
 
 
@@ -70,7 +70,7 @@ class TestDeployGroup:
         the client to wait until the deployments finish deploying.
         """
 
-        serve.deploy(target=Application(deployments), blocking=blocking)
+        deploy_group(target=Application(deployments), blocking=blocking)
 
         def check_all_deployed():
             try:
@@ -143,7 +143,7 @@ class TestDeployGroup:
                 MutualHandles.options(name=deployment_name, init_args=(handle_name,))
             )
 
-        serve.deploy(target=Application(deployments), blocking=True)
+        deploy_group(target=Application(deployments), blocking=True)
 
         for deployment in deployments:
             assert (ray.get(deployment.get_handle().remote("hello"))) == "hello"
@@ -308,7 +308,7 @@ class TestDictTranslation:
 
         compare_specified_options(config_dict, app_dict)
 
-        serve.deploy(app)
+        deploy_group(app)
 
         assert (
             requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
@@ -334,7 +334,7 @@ class TestYAMLTranslation:
         compare_specified_options(app1.to_dict(), app2.to_dict())
 
         # Check that deployment works
-        serve.deploy(app1)
+        deploy_group(app1)
         assert (
             requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
         )

@@ -1695,12 +1695,9 @@ class Application:
         return key in self._deployments
 
 
-NodeOrApp = Union[DeploymentNode, Application]
-
-
 @PublicAPI(stability="alpha")
 def run(
-    target: NodeOrApp,
+    target: Union[DeploymentNode, Application],
     *,
     http_options: Union[Dict, HTTPOptions] = None,
     logger: Optional[logging.Logger] = None,
@@ -1719,7 +1716,10 @@ def run(
     try:
         deployments = _get_deployments_from_target(target)
 
-        deploy(target, http_options=http_options, blocking=True)
+        # TODO (shrekris-anyscale): validate ingress
+
+        start(detached=True, http_options=http_options)
+        deploy_group(target, blocking=True)
 
         logger.info("\nDeployed successfully!\n")
 
@@ -1729,6 +1729,8 @@ def run(
             ).json(indent=4)
             logger.info(f"{statuses}")
             time.sleep(10)
+
+        # TODO (shrekris-anyscale): return handle to ingress deployment
 
     except KeyboardInterrupt:
         logger.info("Got SIGINT (KeyboardInterrupt). Removing deployments.")
@@ -1740,23 +1742,8 @@ def run(
         sys.exit()
 
 
-@PublicAPI(stability="alpha")
-def deploy(
-    target: NodeOrApp, *, http_options: Union[Dict, HTTPOptions] = None, blocking=True
-) -> RayServeHandle:
-    """Deploy a Serve application async and return a handle to the ingress.
-
-    Deploys all of the deployments in the application and returns a
-    RayServeHandle to the ingress deployment.
-
-    Either a DeploymentNode or a pre-built application can be passed in.
-    If a DeploymentNode is passed in, all of the deployments it depends on
-    will be deployed.
-    """
-
-    deployments = _get_deployments_from_target(target)
-
-    # TODO (shrekris-anyscale): validate ingress
+def deploy_group(deployments: List[Deployment], *, blocking=True) -> RayServeHandle:
+    """Atomically deploys a group of deployments."""
 
     if len(deployments) == 0:
         return
@@ -1780,11 +1767,7 @@ def deploy(
 
         parameter_group.append(deployment_parameters)
 
-    start(detached=True, http_options=http_options)
-
     internal_get_global_client().deploy_group(parameter_group, _blocking=blocking)
-
-    # TODO (shrekris-anyscale): return handle to ingress deployment
 
 
 @PublicAPI(stability="alpha")
@@ -1808,7 +1791,9 @@ def build(target: DeploymentNode) -> Application:
     raise NotImplementedError()
 
 
-def _get_deployments_from_target(target: NodeOrApp) -> List[Deployment]:
+def _get_deployments_from_target(
+    target: Union[DeploymentNode, Application]
+) -> List[Deployment]:
     """Validates target and gets its deployments."""
 
     if isinstance(target, Application):

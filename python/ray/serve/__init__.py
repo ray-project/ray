@@ -7,7 +7,6 @@ try:
         deployment,
         get_deployment,
         list_deployments,
-        deploy,
         run,
     )
     from ray.serve.batching import batch
@@ -35,6 +34,5 @@ __all__ = [
     "deployment",
     "get_deployment",
     "list_deployments",
-    "deploy",
     "run",
 ]
