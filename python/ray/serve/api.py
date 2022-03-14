@@ -1518,7 +1518,7 @@ class ImmutableDeploymentDict(dict):
         """Not allowed. Modify deployment options using set_options instead."""
         raise RuntimeError(
             "Setting deployments in a built app is not allowed. Modify the "
-            'options using app["deployment"].set_options instead.'
+            'options using app.deployments["deployment"].set_options instead.'
         )
 
 
