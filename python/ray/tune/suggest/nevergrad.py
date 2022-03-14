@@ -322,7 +322,7 @@ class NevergradSearch(Searcher):
             sampler = domain.get_sampler()
             if isinstance(sampler, Quantized):
                 logger.warning(
-                    "Nevergrad does not support quantization. " "Dropped quantization."
+                    "Nevergrad does not support quantization. Dropped quantization."
                 )
                 sampler = sampler.get_sampler()
 

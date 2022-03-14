@@ -331,7 +331,7 @@ class DragonflySearch(Searcher):
             )
         else:
             logger.warning(
-                "Only non errored and non pruned points" " can be added to dragonfly."
+                "Only non errored and non pruned points can be added to dragonfly."
             )
 
     def set_search_properties(

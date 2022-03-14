@@ -171,17 +171,17 @@ class ExperimentPlateauStopper(Stopper):
 
     def __init__(self, metric, std=0.001, top=10, mode="min", patience=0):
         if mode not in ("min", "max"):
-            raise ValueError("The mode parameter can only be" " either min or max.")
+            raise ValueError("The mode parameter can only be either min or max.")
         if not isinstance(top, int) or top <= 1:
             raise ValueError(
                 "Top results to consider must be"
                 " a positive integer greater than one."
             )
         if not isinstance(patience, int) or patience < 0:
-            raise ValueError("Patience must be" " a strictly positive integer.")
+            raise ValueError("Patience must be a strictly positive integer.")
         if not isinstance(std, float) or std <= 0:
             raise ValueError(
-                "The standard deviation must be" " a strictly positive float number."
+                "The standard deviation must be a strictly positive float number."
             )
         self._mode = mode
         self._metric = metric
