@@ -23,6 +23,7 @@ def test_auto_global_gc(shutdown_only):
         def __init__(self):
             self.collected = False
             import gc
+
             gc.disable()
 
             def gc_called(phase, info):
@@ -87,26 +88,29 @@ def test_many_fractional_resources(shutdown_only):
         result_ids.append(f._remote([False, resource_set], num_gpus=rand1))
 
         resource_set = {"CPU": 1, "Custom": int(rand1 * 10000) / 10000}
-        result_ids.append(
-            f._remote([False, resource_set], resources={"Custom": rand1}))
+        result_ids.append(f._remote([False, resource_set], resources={"Custom": rand1}))
 
         resource_set = {
             "CPU": int(rand1 * 10000) / 10000,
             "GPU": int(rand2 * 10000) / 10000,
-            "Custom": int(rand3 * 10000) / 10000
+            "Custom": int(rand3 * 10000) / 10000,
         }
         result_ids.append(
             f._remote(
                 [False, resource_set],
                 num_cpus=rand1,
                 num_gpus=rand2,
-                resources={"Custom": rand3}))
+                resources={"Custom": rand3},
+            )
+        )
         result_ids.append(
             f._remote(
                 [True, resource_set],
                 num_cpus=rand1,
                 num_gpus=rand2,
-                resources={"Custom": rand3}))
+                resources={"Custom": rand3},
+            )
+        )
     assert all(ray.get(result_ids))
 
     # Check that the available resources at the end are the same as the
@@ -115,12 +119,14 @@ def test_many_fractional_resources(shutdown_only):
     correct_available_resources = False
     while time.time() < stop_time:
         available_resources = ray.available_resources()
-        if ("CPU" in available_resources
-                and ray.available_resources()["CPU"] == 2.0
-                and "GPU" in available_resources
-                and ray.available_resources()["GPU"] == 2.0
-                and "Custom" in available_resources
-                and ray.available_resources()["Custom"] == 2.0):
+        if (
+            "CPU" in available_resources
+            and ray.available_resources()["CPU"] == 2.0
+            and "GPU" in available_resources
+            and ray.available_resources()["GPU"] == 2.0
+            and "Custom" in available_resources
+            and ray.available_resources()["Custom"] == 2.0
+        ):
             correct_available_resources = True
             break
     if not correct_available_resources:

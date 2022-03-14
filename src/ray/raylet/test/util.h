@@ -70,9 +70,6 @@ class MockWorker : public WorkerInterface {
   StartupToken GetStartupToken() const { return 0; }
   void SetProcess(Process proc) { RAY_CHECK(false) << "Method unused"; }
 
-  Process GetShimProcess() const { return Process::CreateNewDummy(); }
-  void SetShimProcess(Process proc) { RAY_CHECK(false) << "Method unused"; }
-
   Language GetLanguage() const {
     RAY_CHECK(false) << "Method unused";
     return Language::PYTHON;

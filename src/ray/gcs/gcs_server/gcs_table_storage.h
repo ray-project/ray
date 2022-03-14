@@ -109,7 +109,8 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
   /// Write data to the table asynchronously.
   ///
   /// \param key The key that will be written to the table. The job id can be obtained
-  /// from the key. \param value The value of the key that will be written to the table.
+  /// from the key.
+  /// \param value The value of the key that will be written to the table.
   /// \param callback Callback that will be called after write finishes.
   /// \return Status
   Status Put(const Key &key, const Data &value, const StatusCallback &callback) override;

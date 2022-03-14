@@ -27,16 +27,22 @@ class MockActorSchedulingQueue {
   MockActorSchedulingQueue(instrumented_io_context &main_io_service,
                            DependencyWaiter &waiter)
       : queue_(main_io_service, waiter) {}
-  void Add(int64_t seq_no, int64_t client_processed_up_to,
+  void Add(int64_t seq_no,
+           int64_t client_processed_up_to,
            std::function<void(rpc::SendReplyCallback)> accept_request,
            std::function<void(rpc::SendReplyCallback)> reject_request,
            rpc::SendReplyCallback send_reply_callback = nullptr,
-           std::function<void(rpc::SendReplyCallback)> steal_request = nullptr,
            TaskID task_id = TaskID::Nil(),
            const std::vector<rpc::ObjectReference> &dependencies = {}) {
-    queue_.Add(seq_no, client_processed_up_to, std::move(accept_request),
-               std::move(reject_request), send_reply_callback, "",
-               FunctionDescriptorBuilder::Empty(), nullptr, task_id, dependencies);
+    queue_.Add(seq_no,
+               client_processed_up_to,
+               std::move(accept_request),
+               std::move(reject_request),
+               send_reply_callback,
+               "",
+               FunctionDescriptorBuilder::Empty(),
+               task_id,
+               dependencies);
   }
 
  private:
@@ -64,18 +70,15 @@ TEST(SchedulingQueueTest, TestInOrder) {
   MockActorSchedulingQueue queue(io_service, waiter);
   int n_ok = 0;
   int n_rej = 0;
-  int n_steal = 0;
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
   auto fn_rej = [&n_rej](rpc::SendReplyCallback callback) { n_rej++; };
-  auto fn_steal = [&n_steal](rpc::SendReplyCallback callback) { n_steal++; };
-  queue.Add(0, -1, fn_ok, fn_rej, nullptr, fn_steal);
-  queue.Add(1, -1, fn_ok, fn_rej, nullptr, fn_steal);
-  queue.Add(2, -1, fn_ok, fn_rej, nullptr, fn_steal);
-  queue.Add(3, -1, fn_ok, fn_rej, nullptr, fn_steal);
+  queue.Add(0, -1, fn_ok, fn_rej, nullptr);
+  queue.Add(1, -1, fn_ok, fn_rej, nullptr);
+  queue.Add(2, -1, fn_ok, fn_rej, nullptr);
+  queue.Add(3, -1, fn_ok, fn_rej, nullptr);
   io_service.run();
   ASSERT_EQ(n_ok, 4);
   ASSERT_EQ(n_rej, 0);
-  ASSERT_EQ(n_steal, 0);
 }
 
 TEST(SchedulingQueueTest, TestWaitForObjects) {
@@ -87,18 +90,13 @@ TEST(SchedulingQueueTest, TestWaitForObjects) {
   MockActorSchedulingQueue queue(io_service, waiter);
   int n_ok = 0;
   int n_rej = 0;
-  int n_steal = 0;
 
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
   auto fn_rej = [&n_rej](rpc::SendReplyCallback callback) { n_rej++; };
-  auto fn_steal = [&n_steal](rpc::SendReplyCallback callback) { n_steal++; };
-  queue.Add(0, -1, fn_ok, fn_rej, nullptr, fn_steal);
-  queue.Add(1, -1, fn_ok, fn_rej, nullptr, fn_steal, TaskID::Nil(),
-            ObjectIdsToRefs({obj1}));
-  queue.Add(2, -1, fn_ok, fn_rej, nullptr, fn_steal, TaskID::Nil(),
-            ObjectIdsToRefs({obj2}));
-  queue.Add(3, -1, fn_ok, fn_rej, nullptr, fn_steal, TaskID::Nil(),
-            ObjectIdsToRefs({obj3}));
+  queue.Add(0, -1, fn_ok, fn_rej, nullptr);
+  queue.Add(1, -1, fn_ok, fn_rej, nullptr, TaskID::Nil(), ObjectIdsToRefs({obj1}));
+  queue.Add(2, -1, fn_ok, fn_rej, nullptr, TaskID::Nil(), ObjectIdsToRefs({obj2}));
+  queue.Add(3, -1, fn_ok, fn_rej, nullptr, TaskID::Nil(), ObjectIdsToRefs({obj3}));
 
   ASSERT_EQ(n_ok, 1);
 
@@ -110,8 +108,6 @@ TEST(SchedulingQueueTest, TestWaitForObjects) {
 
   waiter.Complete(1);
   ASSERT_EQ(n_ok, 4);
-
-  ASSERT_EQ(n_steal, 0);
 }
 
 TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
@@ -121,21 +117,17 @@ TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
   MockActorSchedulingQueue queue(io_service, waiter);
   int n_ok = 0;
   int n_rej = 0;
-  int n_steal = 0;
 
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
   auto fn_rej = [&n_rej](rpc::SendReplyCallback callback) { n_rej++; };
-  auto fn_steal = [&n_steal](rpc::SendReplyCallback callback) { n_steal++; };
-  queue.Add(0, -1, fn_ok, fn_rej, nullptr, fn_steal);
-  queue.Add(1, -1, fn_ok, fn_rej, nullptr, fn_steal, TaskID::Nil(),
-            ObjectIdsToRefs({obj1}));
+  queue.Add(0, -1, fn_ok, fn_rej, nullptr);
+  queue.Add(1, -1, fn_ok, fn_rej, nullptr, TaskID::Nil(), ObjectIdsToRefs({obj1}));
 
   ASSERT_EQ(n_ok, 1);
   io_service.run();
   ASSERT_EQ(n_rej, 0);
   waiter.Complete(0);
   ASSERT_EQ(n_ok, 2);
-  ASSERT_EQ(n_steal, 0);
 }
 
 TEST(SchedulingQueueTest, TestOutOfOrder) {
@@ -144,18 +136,15 @@ TEST(SchedulingQueueTest, TestOutOfOrder) {
   MockActorSchedulingQueue queue(io_service, waiter);
   int n_ok = 0;
   int n_rej = 0;
-  int n_steal = 0;
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
   auto fn_rej = [&n_rej](rpc::SendReplyCallback callback) { n_rej++; };
-  auto fn_steal = [&n_steal](rpc::SendReplyCallback callback) { n_steal++; };
-  queue.Add(2, -1, fn_ok, fn_rej, nullptr, fn_steal);
-  queue.Add(0, -1, fn_ok, fn_rej, nullptr, fn_steal);
-  queue.Add(3, -1, fn_ok, fn_rej, nullptr, fn_steal);
-  queue.Add(1, -1, fn_ok, fn_rej, nullptr, fn_steal);
+  queue.Add(2, -1, fn_ok, fn_rej, nullptr);
+  queue.Add(0, -1, fn_ok, fn_rej, nullptr);
+  queue.Add(3, -1, fn_ok, fn_rej, nullptr);
+  queue.Add(1, -1, fn_ok, fn_rej, nullptr);
   io_service.run();
   ASSERT_EQ(n_ok, 4);
   ASSERT_EQ(n_rej, 0);
-  ASSERT_EQ(n_steal, 0);
 }
 
 TEST(SchedulingQueueTest, TestSeqWaitTimeout) {
@@ -164,23 +153,20 @@ TEST(SchedulingQueueTest, TestSeqWaitTimeout) {
   MockActorSchedulingQueue queue(io_service, waiter);
   int n_ok = 0;
   int n_rej = 0;
-  int n_steal = 0;
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
   auto fn_rej = [&n_rej](rpc::SendReplyCallback callback) { n_rej++; };
-  auto fn_steal = [&n_steal](rpc::SendReplyCallback callback) { n_steal++; };
-  queue.Add(2, -1, fn_ok, fn_rej, nullptr, fn_steal);
-  queue.Add(0, -1, fn_ok, fn_rej, nullptr, fn_steal);
-  queue.Add(3, -1, fn_ok, fn_rej, nullptr, fn_steal);
+  queue.Add(2, -1, fn_ok, fn_rej, nullptr);
+  queue.Add(0, -1, fn_ok, fn_rej, nullptr);
+  queue.Add(3, -1, fn_ok, fn_rej, nullptr);
   ASSERT_EQ(n_ok, 1);
   ASSERT_EQ(n_rej, 0);
   io_service.run();  // immediately triggers timeout
   ASSERT_EQ(n_ok, 1);
   ASSERT_EQ(n_rej, 2);
-  queue.Add(4, -1, fn_ok, fn_rej, nullptr, fn_steal);
-  queue.Add(5, -1, fn_ok, fn_rej, nullptr, fn_steal);
+  queue.Add(4, -1, fn_ok, fn_rej, nullptr);
+  queue.Add(5, -1, fn_ok, fn_rej, nullptr);
   ASSERT_EQ(n_ok, 3);
   ASSERT_EQ(n_rej, 2);
-  ASSERT_EQ(n_steal, 0);
 }
 
 TEST(SchedulingQueueTest, TestSkipAlreadyProcessedByClient) {
@@ -189,17 +175,14 @@ TEST(SchedulingQueueTest, TestSkipAlreadyProcessedByClient) {
   MockActorSchedulingQueue queue(io_service, waiter);
   int n_ok = 0;
   int n_rej = 0;
-  int n_steal = 0;
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
   auto fn_rej = [&n_rej](rpc::SendReplyCallback callback) { n_rej++; };
-  auto fn_steal = [&n_steal](rpc::SendReplyCallback callback) { n_steal++; };
-  queue.Add(2, 2, fn_ok, fn_rej, nullptr, fn_steal);
-  queue.Add(3, 2, fn_ok, fn_rej, nullptr, fn_steal);
-  queue.Add(1, 2, fn_ok, fn_rej, nullptr, fn_steal);
+  queue.Add(2, 2, fn_ok, fn_rej, nullptr);
+  queue.Add(3, 2, fn_ok, fn_rej, nullptr);
+  queue.Add(1, 2, fn_ok, fn_rej, nullptr);
   io_service.run();
   ASSERT_EQ(n_ok, 1);
   ASSERT_EQ(n_rej, 2);
-  ASSERT_EQ(n_steal, 0);
 }
 
 TEST(SchedulingQueueTest, TestCancelQueuedTask) {
@@ -207,154 +190,18 @@ TEST(SchedulingQueueTest, TestCancelQueuedTask) {
   ASSERT_TRUE(queue->TaskQueueEmpty());
   int n_ok = 0;
   int n_rej = 0;
-  int n_steal = 0;
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
   auto fn_rej = [&n_rej](rpc::SendReplyCallback callback) { n_rej++; };
-  auto fn_steal = [&n_steal](rpc::SendReplyCallback callback) { n_steal++; };
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty(),
-             fn_steal);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty(),
-             fn_steal);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty(),
-             fn_steal);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty(),
-             fn_steal);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty(),
-             fn_steal);
+  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty());
+  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty());
+  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty());
+  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty());
+  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty());
   ASSERT_TRUE(queue->CancelTaskIfFound(TaskID::Nil()));
   ASSERT_FALSE(queue->TaskQueueEmpty());
   queue->ScheduleRequests();
   ASSERT_EQ(n_ok, 4);
   ASSERT_EQ(n_rej, 0);
-  ASSERT_EQ(n_steal, 0);
-}
-
-TEST(SchedulingQueueTest, TestStealingOneTask) {
-  NormalSchedulingQueue *queue = new NormalSchedulingQueue();
-  ASSERT_TRUE(queue->TaskQueueEmpty());
-  int n_ok = 0;
-  int n_rej = 0;
-  int n_steal = 0;
-  auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
-  auto fn_rej = [&n_rej](rpc::SendReplyCallback callback) { n_rej++; };
-  auto fn_steal = [&n_steal](rpc::SendReplyCallback callback) { n_steal++; };
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty(),
-             fn_steal);
-
-  auto reply = rpc::StealTasksReply();
-  size_t n_stolen = reply.stolen_tasks_ids_size();
-  ASSERT_EQ(n_stolen, 0);
-
-  ASSERT_EQ(queue->Steal(&reply), 0);
-  n_stolen = reply.stolen_tasks_ids_size();
-  ASSERT_EQ(n_stolen, 0);
-  ASSERT_FALSE(queue->TaskQueueEmpty());
-  queue->ScheduleRequests();
-  ASSERT_TRUE(queue->TaskQueueEmpty());
-  ASSERT_EQ(n_ok, 1);
-  ASSERT_EQ(n_rej, 0);
-  ASSERT_EQ(n_steal, 0);
-}
-
-TEST(SchedulingQueueTest, TestStealingEvenNumberTasks) {
-  NormalSchedulingQueue *queue = new NormalSchedulingQueue();
-  ASSERT_TRUE(queue->TaskQueueEmpty());
-  int n_ok = 0;
-  int n_rej = 0;
-  int n_steal = 0;
-  auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
-  auto fn_rej = [&n_rej](rpc::SendReplyCallback callback) { n_rej++; };
-  auto fn_steal = [&n_steal](rpc::SendReplyCallback callback) { n_steal++; };
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty(),
-             fn_steal);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty(),
-             fn_steal);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty(),
-             fn_steal);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty(),
-             fn_steal);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty(),
-             fn_steal);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty(),
-             fn_steal);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty(),
-             fn_steal);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty(),
-             fn_steal);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty(),
-             fn_steal);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty(),
-             fn_steal);
-
-  auto reply = rpc::StealTasksReply();
-  size_t n_stolen = reply.stolen_tasks_ids_size();
-  ASSERT_EQ(n_stolen, 0);
-
-  ASSERT_EQ(queue->Steal(&reply), 5);
-  n_stolen = reply.stolen_tasks_ids_size();
-  ASSERT_EQ(n_stolen, 5);
-  ASSERT_FALSE(queue->TaskQueueEmpty());
-  queue->ScheduleRequests();
-  queue->ScheduleRequests();
-  queue->ScheduleRequests();
-  queue->ScheduleRequests();
-  queue->ScheduleRequests();
-  ASSERT_TRUE(queue->TaskQueueEmpty());
-  ASSERT_EQ(n_ok, 5);
-  ASSERT_EQ(n_rej, 0);
-  ASSERT_EQ(n_steal, 5);
-}
-
-TEST(SchedulingQueueTest, TestStealingOddNumberTasks) {
-  NormalSchedulingQueue *queue = new NormalSchedulingQueue();
-  ASSERT_TRUE(queue->TaskQueueEmpty());
-  int n_ok = 0;
-  int n_rej = 0;
-  int n_steal = 0;
-  auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
-  auto fn_rej = [&n_rej](rpc::SendReplyCallback callback) { n_rej++; };
-  auto fn_steal = [&n_steal](rpc::SendReplyCallback callback) { n_steal++; };
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty(),
-             fn_steal);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty(),
-             fn_steal);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty(),
-             fn_steal);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty(),
-             fn_steal);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty(),
-             fn_steal);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty(),
-             fn_steal);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty(),
-             fn_steal);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty(),
-             fn_steal);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty(),
-             fn_steal);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty(),
-             fn_steal);
-  queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty(),
-             fn_steal);
-
-  auto reply = rpc::StealTasksReply();
-  size_t n_stolen = reply.stolen_tasks_ids_size();
-  ASSERT_EQ(n_stolen, 0);
-
-  ASSERT_EQ(queue->Steal(&reply), 5);
-  n_stolen = reply.stolen_tasks_ids_size();
-  ASSERT_EQ(n_stolen, 5);
-  ASSERT_FALSE(queue->TaskQueueEmpty());
-  queue->ScheduleRequests();
-  queue->ScheduleRequests();
-  queue->ScheduleRequests();
-  queue->ScheduleRequests();
-  queue->ScheduleRequests();
-  queue->ScheduleRequests();
-  ASSERT_TRUE(queue->TaskQueueEmpty());
-  ASSERT_EQ(n_ok, 6);
-  ASSERT_EQ(n_rej, 0);
-  ASSERT_EQ(n_steal, 5);
 }
 
 }  // namespace core

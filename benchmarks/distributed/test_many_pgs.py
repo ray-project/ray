@@ -59,7 +59,7 @@ def test_many_placement_groups():
 
 
 def no_resource_leaks():
-    return ray.available_resources() == ray.cluster_resources()
+    return test_utils.no_resource_leaks_excluding_node_resources()
 
 
 ray.init(address="auto")
@@ -77,8 +77,10 @@ del monitor_actor
 test_utils.wait_for_condition(no_resource_leaks)
 
 rate = MAX_PLACEMENT_GROUPS / (end_time - start_time)
-print(f"Success! Started {MAX_PLACEMENT_GROUPS} pgs in "
-      f"{end_time - start_time}s. ({rate} pgs/s)")
+print(
+    f"Success! Started {MAX_PLACEMENT_GROUPS} pgs in "
+    f"{end_time - start_time}s. ({rate} pgs/s)"
+)
 
 if "TEST_OUTPUT_JSON" in os.environ:
     out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
@@ -88,6 +90,6 @@ if "TEST_OUTPUT_JSON" in os.environ:
         "time": end_time - start_time,
         "success": "1",
         "_peak_memory": round(used_gb, 2),
-        "_peak_process_memory": usage
+        "_peak_process_memory": usage,
     }
     json.dump(results, out_file)

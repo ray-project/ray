@@ -61,10 +61,18 @@ enum PopWorkerStatus {
   RuntimeEnvCreationFailed = 4,
 };
 
-/// \Return true if the worker was used. Otherwise, return false and the worker will be
-/// returned to the worker pool.
-using PopWorkerCallback = std::function<bool(
-    const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status)>;
+/// \param[in] worker The started worker instance. Nullptr if worker is not started.
+/// \param[in] status The pop worker status. OK if things go well. Otherwise, it will
+/// contain the error status.
+/// \param[in] runtime_env_setup_error_message The error message
+/// when runtime env setup is failed. This should be empty unless status ==
+/// RuntimeEnvCreationFailed.
+/// \return true if the worker was used. Otherwise, return false
+/// and the worker will be returned to the worker pool.
+using PopWorkerCallback =
+    std::function<bool(const std::shared_ptr<WorkerInterface> worker,
+                       PopWorkerStatus status,
+                       const std::string &runtime_env_setup_error_message)>;
 
 /// \class WorkerPoolInterface
 ///
@@ -94,7 +102,8 @@ class WorkerPoolInterface {
   /// resource value will be {"CPU":20000}.
   /// \return Void.
   virtual void PopWorker(
-      const TaskSpecification &task_spec, const PopWorkerCallback &callback,
+      const TaskSpecification &task_spec,
+      const PopWorkerCallback &callback,
       const std::string &allocated_instances_serialized_json = "{}") = 0;
   /// Add an idle worker to the pool.
   ///
@@ -172,16 +181,21 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param ray_debugger_external Ray debugger in workers will be started in a way
   /// that they are accessible from outside the node.
   /// \param get_time A callback to get the current time.
-  WorkerPool(instrumented_io_context &io_service, const NodeID node_id,
-             const std::string node_address, int num_workers_soft_limit,
+  WorkerPool(instrumented_io_context &io_service,
+             const NodeID node_id,
+             const std::string node_address,
+             int num_workers_soft_limit,
              int num_initial_python_workers_for_first_job,
-             int maximum_startup_concurrency, int min_worker_port, int max_worker_port,
+             int maximum_startup_concurrency,
+             int min_worker_port,
+             int max_worker_port,
              const std::vector<int> &worker_ports,
              std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
              const std::string &native_library_path,
              std::function<void()> starting_worker_timeout_callback,
-             int ray_debugger_external, const std::function<double()> get_time);
+             int ray_debugger_external,
+             const std::function<double()> get_time);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();
@@ -217,15 +231,15 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///
   /// \param[in] worker The worker to be registered.
   /// \param[in] pid The PID of the worker.
-  /// \param[in] worker_shim_pid The PID of the process for setup worker runtime env.
   /// \param[in] worker_startup_token The startup token of the process assigned to
   /// it during startup as a command line argument.
   /// \param[in] send_reply_callback The callback to invoke after registration is
   /// finished/failed.
   /// Returns 0 if the worker should bind on a random port.
   /// \return If the registration is successful.
-  Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker, pid_t pid,
-                        pid_t worker_shim_pid, StartupToken worker_startup_token,
+  Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
+                        pid_t pid,
+                        StartupToken worker_startup_token,
                         std::function<void(Status, int)> send_reply_callback);
 
   /// To be invoked when a worker is started. This method should be called when the worker
@@ -321,7 +335,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   void PushWorker(const std::shared_ptr<WorkerInterface> &worker);
 
   /// See interface.
-  void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback &callback,
+  void PopWorker(const TaskSpecification &task_spec,
+                 const PopWorkerCallback &callback,
                  const std::string &allocated_instances_serialized_json = "{}");
 
   /// Try to prestart a number of workers suitable the given task spec. Prestarting
@@ -332,7 +347,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param backlog_size The number of tasks in the client backlog of this shape.
   /// \param num_available_cpus The number of CPUs that are currently unused.
   /// We aim to prestart 1 worker per CPU, up to the the backlog size.
-  void PrestartWorkers(const TaskSpecification &task_spec, int64_t backlog_size,
+  void PrestartWorkers(const TaskSpecification &task_spec,
+                       int64_t backlog_size,
                        int64_t num_available_cpus);
 
   /// Return the current size of the worker pool for the requested language. Counts only
@@ -410,7 +426,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \return The process that we started and a token. If the token is less than 0,
   /// we didn't start a process.
   std::tuple<Process, StartupToken> StartWorkerProcess(
-      const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
+      const Language &language,
+      const rpc::WorkerType worker_type,
+      const JobID &job_id,
       PopWorkerStatus *status /*output*/,
       const std::vector<std::string> &dynamic_options = {},
       const int runtime_env_hash = 0,
@@ -539,7 +557,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// (due to worker process crash or any other reasons), remove them
   /// from `starting_worker_processes`. Otherwise if we'll mistakenly
   /// think there are unregistered workers, and won't start new workers.
-  void MonitorStartingWorkerProcess(const Process &proc, StartupToken proc_startup_token,
+  void MonitorStartingWorkerProcess(const Process &proc,
+                                    StartupToken proc_startup_token,
                                     const Language &language,
                                     const rpc::WorkerType worker_type);
 
@@ -615,19 +634,26 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param task_id  The related task id.
   void InvokePopWorkerCallbackForProcess(
       absl::flat_hash_map<StartupToken, TaskWaitingForWorkerInfo> &workers_to_tasks,
-      StartupToken startup_token, const std::shared_ptr<WorkerInterface> &worker,
-      const PopWorkerStatus &status, bool *found /* output */,
-      bool *worker_used /* output */, TaskID *task_id /* output */);
+      StartupToken startup_token,
+      const std::shared_ptr<WorkerInterface> &worker,
+      const PopWorkerStatus &status,
+      bool *found /* output */,
+      bool *worker_used /* output */,
+      TaskID *task_id /* output */);
 
   /// Create runtime env asynchronously by runtime env agent.
   void CreateRuntimeEnv(
-      const std::string &serialized_runtime_env, const JobID &job_id,
-      const std::function<void(bool, const std::string &)> &callback,
+      const std::string &serialized_runtime_env,
+      const JobID &job_id,
+      const CreateRuntimeEnvCallback &callback,
       const std::string &serialized_allocated_resource_instances = "{}");
 
   void AddStartingWorkerProcess(
-      State &state, const int workers_to_start, const rpc::WorkerType worker_type,
-      const Process &proc, const std::chrono::high_resolution_clock::time_point &start,
+      State &state,
+      const int workers_to_start,
+      const rpc::WorkerType worker_type,
+      const Process &proc,
+      const std::chrono::high_resolution_clock::time_point &start,
       const rpc::RuntimeEnvInfo &runtime_env_info);
 
   void RemoveStartingWorkerProcess(State &state, const StartupToken &proc_startup_token);

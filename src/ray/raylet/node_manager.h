@@ -34,6 +34,7 @@
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/raylet/scheduling/cluster_task_manager_interface.h"
 #include "ray/raylet/dependency_manager.h"
+#include "ray/raylet/wait_manager.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/ordered_set.h"
@@ -142,7 +143,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///
   /// \param resource_config The initial set of node resources.
   /// \param object_manager A reference to the local object manager.
-  NodeManager(instrumented_io_context &io_service, const NodeID &self_node_id,
+  NodeManager(instrumented_io_context &io_service,
+              const NodeID &self_node_id,
               const NodeManagerConfig &config,
               const ObjectManagerConfig &object_manager_config,
               std::shared_ptr<gcs::GcsClient> gcs_client);
@@ -162,7 +164,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param message_data A pointer to the message data.
   /// \return Void.
   void ProcessClientMessage(const std::shared_ptr<ClientConnection> &client,
-                            int64_t message_type, const uint8_t *message_data);
+                            int64_t message_type,
+                            const uint8_t *message_data);
 
   /// Subscribe to the relevant GCS tables and set up handlers.
   ///
@@ -295,7 +298,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void AsyncResolveObjects(const std::shared_ptr<ClientConnection> &client,
                            const std::vector<rpc::ObjectReference> &required_object_refs,
-                           const TaskID &current_task_id, bool ray_get,
+                           const TaskID &current_task_id,
+                           bool ray_get,
                            bool mark_worker_blocked);
 
   /// Handle end of a blocking object get. This could be a task assigned to a
@@ -310,7 +314,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///                           blocked in AsyncResolveObjects().
   /// \return Void.
   void AsyncResolveObjectsFinish(const std::shared_ptr<ClientConnection> &client,
-                                 const TaskID &current_task_id, bool was_blocked);
+                                 const TaskID &current_task_id,
+                                 bool was_blocked);
 
   /// Handle a direct call task that is blocked. Note that this callback may
   /// arrive after the worker lease has been returned to the node manager.
@@ -526,7 +531,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                           rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `GlobalGC` request.
-  void HandleGlobalGC(const rpc::GlobalGCRequest &request, rpc::GlobalGCReply *reply,
+  void HandleGlobalGC(const rpc::GlobalGCRequest &request,
+                      rpc::GlobalGCReply *reply,
                       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `FormatGlobalMemoryInfo`` request.
@@ -655,6 +661,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// called `ray.get` or `ray.wait`.
   DependencyManager dependency_manager_;
 
+  /// A manager for wait requests.
+  WaitManager wait_manager_;
+
   std::shared_ptr<AgentManager> agent_manager_;
 
   /// The RPC server.
@@ -709,7 +718,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// responsible for maintaining a view of the cluster state w.r.t resource
   /// usage. ClusterTaskManager is responsible for queuing, spilling back, and
   /// dispatching tasks.
-  std::shared_ptr<ClusterResourceSchedulerInterface> cluster_resource_scheduler_;
+  std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
+  std::shared_ptr<LocalTaskManager> local_task_manager_;
   std::shared_ptr<ClusterTaskManagerInterface> cluster_task_manager_;
 
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
@@ -756,4 +766,4 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
 }  // namespace raylet
 
-}  // end namespace ray
+}  // namespace ray

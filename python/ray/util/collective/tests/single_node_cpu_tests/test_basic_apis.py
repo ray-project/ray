@@ -3,18 +3,16 @@ import pytest
 import ray
 
 from ray.util.collective.types import Backend
-from ray.util.collective.tests.cpu_util import Worker, \
-    create_collective_workers
+from ray.util.collective.tests.cpu_util import Worker, create_collective_workers
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("group_name", ["default", "test", "123?34!"])
 def test_init_two_actors(ray_start_single_node, group_name, backend):
     world_size = 2
-    actors, results = create_collective_workers(
-        world_size, group_name, backend=backend)
+    actors, results = create_collective_workers(world_size, group_name, backend=backend)
     for i in range(world_size):
-        assert (results[i])
+        assert results[i]
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
@@ -24,11 +22,14 @@ def test_init_multiple_groups(ray_start_single_node, backend):
     actors = [Worker.remote() for i in range(world_size)]
     for i in range(num_groups):
         group_name = str(i)
-        init_results = ray.get([
-            actor.init_group.remote(
-                world_size, k, group_name=group_name, backend=backend)
-            for k, actor in enumerate(actors)
-        ])
+        init_results = ray.get(
+            [
+                actor.init_group.remote(
+                    world_size, k, group_name=group_name, backend=backend
+                )
+                for k, actor in enumerate(actors)
+            ]
+        )
         for j in range(world_size):
             assert init_results[j]
 
@@ -45,13 +46,17 @@ def test_get_rank(ray_start_single_node, backend):
     # create a second group with a different name,
     # and different order of ranks.
     new_group_name = "default2"
-    ray.get([
-        actor.init_group.remote(
-            world_size,
-            world_size - 1 - i,
-            group_name=new_group_name,
-            backend=backend) for i, actor in enumerate(actors)
-    ])
+    ray.get(
+        [
+            actor.init_group.remote(
+                world_size,
+                world_size - 1 - i,
+                group_name=new_group_name,
+                backend=backend,
+            )
+            for i, actor in enumerate(actors)
+        ]
+    )
     actor0_rank = ray.get(actors[0].report_rank.remote(new_group_name))
     assert actor0_rank == 1
     actor1_rank = ray.get(actors[1].report_rank.remote(new_group_name))
@@ -74,16 +79,13 @@ def test_is_group_initialized(ray_start_single_node, backend):
     # check group is_init
     actor0_is_init = ray.get(actors[0].report_is_group_initialized.remote())
     assert actor0_is_init
-    actor0_is_init = ray.get(
-        actors[0].report_is_group_initialized.remote("random"))
+    actor0_is_init = ray.get(actors[0].report_is_group_initialized.remote("random"))
     assert not actor0_is_init
-    actor0_is_init = ray.get(
-        actors[0].report_is_group_initialized.remote("123"))
+    actor0_is_init = ray.get(actors[0].report_is_group_initialized.remote("123"))
     assert not actor0_is_init
     actor1_is_init = ray.get(actors[0].report_is_group_initialized.remote())
     assert actor1_is_init
-    actor1_is_init = ray.get(
-        actors[0].report_is_group_initialized.remote("456"))
+    actor1_is_init = ray.get(actors[0].report_is_group_initialized.remote("456"))
     assert not actor1_is_init
 
 
@@ -109,10 +111,9 @@ def test_destroy_group(ray_start_single_node, backend):
     assert not actor1_is_init
 
     # Now reconstruct the group using the same name
-    init_results = ray.get([
-        actor.init_group.remote(world_size, i)
-        for i, actor in enumerate(actors)
-    ])
+    init_results = ray.get(
+        [actor.init_group.remote(world_size, i) for i, actor in enumerate(actors)]
+    )
     for i in range(world_size):
         assert init_results[i]
     actor0_is_init = ray.get(actors[0].report_is_group_initialized.remote())
@@ -124,4 +125,5 @@ def test_destroy_group(ray_start_single_node, backend):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", "-x", __file__]))

@@ -33,11 +33,14 @@ struct CoreWorkerOptions {
   // Callback that must be implemented and provided by the language-specific worker
   // frontend to execute tasks and return their results.
   using TaskExecutionCallback = std::function<Status(
-      TaskType task_type, const std::string task_name, const RayFunction &ray_function,
+      TaskType task_type,
+      const std::string task_name,
+      const RayFunction &ray_function,
       const std::unordered_map<std::string, double> &required_resources,
       const std::vector<std::shared_ptr<RayObject>> &args,
       const std::vector<rpc::ObjectReference> &arg_refs,
-      const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
+      const std::vector<ObjectID> &return_ids,
+      const std::string &debugger_breakpoint,
       std::vector<std::shared_ptr<RayObject>> *results,
       std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes,
       bool *is_application_level_error,
@@ -78,8 +81,7 @@ struct CoreWorkerOptions {
         serialized_job_config(""),
         metrics_agent_port(-1),
         connect_on_start(true),
-        runtime_env_hash(0),
-        worker_shim_pid(0) {}
+        runtime_env_hash(0) {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -161,8 +163,6 @@ struct CoreWorkerOptions {
   bool connect_on_start;
   /// The hash of the runtime env for this worker.
   int runtime_env_hash;
-  /// The PID of the process for setup worker runtime env.
-  pid_t worker_shim_pid;
   /// The startup token of the process assigned to it
   /// during startup via command line arguments.
   /// This is needed because the actual core worker process

@@ -18,18 +18,16 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
-#include "ray/common/task/scheduling_resources.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
-#include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
+#include "ray/raylet/scheduling/cluster_resource_data.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace gcs {
-
 /// Gcs resource manager interface.
 /// It is responsible for handing node resource related rpc requests and it is used for
 /// actor and placement group scheduling. It obtains the available resources of nodes
@@ -43,8 +41,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// \param gcs_table_storage GCS table external storage accessor.
   explicit GcsResourceManager(instrumented_io_context &main_io_service,
                               std::shared_ptr<GcsPublisher> gcs_publisher,
-                              std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                              bool redis_broadcast_enabled);
+                              std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
 
   virtual ~GcsResourceManager() {}
 
@@ -52,16 +49,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   void HandleGetResources(const rpc::GetResourcesRequest &request,
                           rpc::GetResourcesReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle update resource rpc request.
-  void HandleUpdateResources(const rpc::UpdateResourcesRequest &request,
-                             rpc::UpdateResourcesReply *reply,
-                             rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle delete resource rpc request.
-  void HandleDeleteResources(const rpc::DeleteResourcesRequest &request,
-                             rpc::DeleteResourcesReply *reply,
-                             rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle get available resources of all nodes.
   void HandleGetAllAvailableResources(
@@ -82,7 +69,19 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// Get the resources of all nodes in the cluster.
   ///
   /// \return The resources of all nodes in the cluster.
-  const absl::flat_hash_map<NodeID, SchedulingResources> &GetClusterResources() const;
+  const absl::flat_hash_map<NodeID, std::shared_ptr<Node>> &GetClusterResources() const;
+
+  /// Update resources of a node
+  /// \param node_id Id of a node.
+  /// \param changed_resources The newly added resources for the node. Usually it's
+  /// placement group resources.
+  void UpdateResources(const NodeID &node_id,
+                       absl::flat_hash_map<std::string, double> changed_resources);
+
+  /// Delete resource of a node
+  /// \param node_id Id of a node.
+  /// \param resource_names The resources to be deleted from the node.
+  void DeleteResources(const NodeID &node_id, std::vector<std::string> resource_names);
 
   /// Handle a node registration.
   ///
@@ -98,7 +97,9 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   ///
   /// \param node_id Id of a node.
   /// \param resources Available resources of a node.
-  void SetAvailableResources(const NodeID &node_id, const ResourceSet &resources);
+  void SetAvailableResources(
+      const NodeID &node_id,
+      const absl::flat_hash_map<std::string, double> &resource_map);
 
   /// Acquire resources from the specified node. It will deduct directly from the node
   /// resources.
@@ -106,7 +107,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// \param node_id Id of a node.
   /// \param required_resources Resources to apply for.
   /// \return True if acquire resources successfully. False otherwise.
-  bool AcquireResources(const NodeID &node_id, const ResourceSet &required_resources);
+  bool AcquireResources(const NodeID &node_id, const ResourceRequest &required_resources);
 
   /// Release the resources of the specified node. It will be added directly to the node
   /// resources.
@@ -114,7 +115,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// \param node_id Id of a node.
   /// \param acquired_resources Resources to release.
   /// \return True if release resources successfully. False otherwise.
-  bool ReleaseResources(const NodeID &node_id, const ResourceSet &acquired_resources);
+  bool ReleaseResources(const NodeID &node_id, const ResourceRequest &acquired_resources);
 
   /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
@@ -125,14 +126,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   std::string ToString() const;
 
   std::string DebugString() const;
-
-  /// Update the total resources and available resources of the specified node.
-  ///
-  /// \param node_id Id of a node.
-  /// \param changed_resources Changed resources of a node.
-  void UpdateResourceCapacity(
-      const NodeID &node_id,
-      const absl::flat_hash_map<std::string, double> &changed_resources);
 
   /// Add resources changed listener.
   void AddResourcesChangedListener(std::function<void()> listener);
@@ -159,52 +152,29 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   void UpdatePlacementGroupLoad(
       const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
 
-  /// Move the lightweight heartbeat information for broadcast into the buffer. This
-  /// method MOVES the information, clearing an internal buffer, so it is NOT idempotent.
-  ///
-  /// \param buffer return parameter
-  void GetResourceUsageBatchForBroadcast(rpc::ResourceUsageBroadcastData &buffer)
-      LOCKS_EXCLUDED(resource_buffer_mutex_);
-
  private:
   /// Delete the scheduling resources of the specified node.
   ///
-  /// \param node_id Id of a node.
-  /// \param deleted_resources Deleted resources of a node.
-  void DeleteResources(const NodeID &node_id,
-                       const std::vector<std::string> &deleted_resources);
+  /// \param node_resources Id of a node.
+  /// \param resource_names Deleted resources of a node.
+  void DeleteResources(NodeResources *node_resources,
+                       const std::vector<std::string> &resource_names);
 
-  /// Send any buffered resource usage as a single publish.
-  void SendBatchedResourceUsage();
-
-  /// Prelocked version of GetResourceUsageBatchForBroadcast. This is necessary for need
-  /// the functionality as part of a larger transaction.
-  void GetResourceUsageBatchForBroadcast_Locked(rpc::ResourceUsageBatchData &buffer)
-      EXCLUSIVE_LOCKS_REQUIRED(resource_buffer_mutex_);
+  void UpdateResourceCapacity(NodeResources *node_resources,
+                              const std::string &resource_name,
+                              double capacity);
 
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;
   /// Newest resource usage of all nodes.
   absl::flat_hash_map<NodeID, rpc::ResourcesData> node_resource_usages_;
 
-  /// Protect the lightweight heartbeat deltas which are accessed by different threads.
-  absl::Mutex resource_buffer_mutex_;
-  // TODO (Alex): This buffer is only needed for the legacy redis based broadcast.
-  /// A buffer containing the lightweight heartbeats since the last broadcast.
-  absl::flat_hash_map<NodeID, rpc::ResourcesData> resources_buffer_
-      GUARDED_BY(resource_buffer_mutex_);
-  /// A buffer containing the lightweight heartbeats since the last broadcast.
-  rpc::ResourceUsageBroadcastData resources_buffer_proto_
-      GUARDED_BY(resource_buffer_mutex_);
-
   /// A publisher for publishing gcs messages.
   std::shared_ptr<GcsPublisher> gcs_publisher_;
   /// Storage for GCS tables.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  /// Whether or not to broadcast resource usage via redis.
-  const bool redis_broadcast_enabled_;
   /// Map from node id to the scheduling resources of the node.
-  absl::flat_hash_map<NodeID, SchedulingResources> cluster_scheduling_resources_;
+  absl::flat_hash_map<NodeID, std::shared_ptr<Node>> cluster_scheduling_resources_;
   /// Placement group load information that is used for autoscaler.
   absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
   /// Normal task resources could be uploaded by 1) Raylets' periodical reporters; 2)
@@ -213,8 +183,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   absl::flat_hash_map<NodeID, int64_t> latest_resources_normal_task_timestamp_;
   /// The resources changed listeners.
   std::vector<std::function<void()>> resources_changed_listeners_;
-  /// Max batch size for broadcasting
-  size_t max_broadcasting_batch_size_;
 
   /// Debug info.
   enum CountType {
@@ -231,3 +199,34 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
 
 }  // namespace gcs
 }  // namespace ray
+
+namespace std {
+template <>
+struct hash<google::protobuf::Map<std::string, double>> {
+  size_t operator()(google::protobuf::Map<std::string, double> const &k) const {
+    size_t seed = k.size();
+    for (auto &elem : k) {
+      seed ^= std::hash<std::string>()(elem.first);
+      seed ^= std::hash<double>()(elem.second);
+    }
+    return seed;
+  }
+};
+
+template <>
+struct equal_to<google::protobuf::Map<std::string, double>> {
+  bool operator()(const google::protobuf::Map<std::string, double> &left,
+                  const google::protobuf::Map<std::string, double> &right) const {
+    if (left.size() != right.size()) {
+      return false;
+    }
+    for (const auto &entry : left) {
+      auto iter = right.find(entry.first);
+      if (iter == right.end() || iter->second != entry.second) {
+        return false;
+      }
+    }
+    return true;
+  }
+};
+}  // namespace std

@@ -45,21 +45,28 @@ class GcsClientOptions {
   /// \param ip redis service ip.
   /// \param port redis service port.
   /// \param password redis service password.
-  GcsClientOptions(const std::string &redis_ip, int redis_port,
-                   const std::string &password, bool enable_sync_conn = true,
-                   bool enable_async_conn = true, bool enable_subscribe_conn = true)
+  GcsClientOptions(const std::string &redis_ip,
+                   int redis_port,
+                   const std::string &password,
+                   bool enable_sync_conn = true,
+                   bool enable_async_conn = true,
+                   bool enable_subscribe_conn = true)
       : redis_ip_(redis_ip),
         redis_port_(redis_port),
         password_(password),
         enable_sync_conn_(enable_sync_conn),
         enable_async_conn_(enable_async_conn),
-        enable_subscribe_conn_(enable_subscribe_conn) {}
+        enable_subscribe_conn_(enable_subscribe_conn) {
+    RAY_LOG(DEBUG) << "Connect to gcs server via redis: " << redis_ip << ":"
+                   << redis_port;
+  }
 
   /// Constructor of GcsClientOptions from gcs address
   ///
   /// \param gcs_address gcs address, including port
   GcsClientOptions(const std::string &gcs_address) {
     std::vector<std::string> address = absl::StrSplit(gcs_address, ':');
+    RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address;
     RAY_CHECK(address.size() == 2);
     gcs_address_ = address[0];
     gcs_port_ = std::stoi(address[1]);
@@ -184,7 +191,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   GcsClientOptions options_;
 
   /// Whether this client is connected to GCS.
-  bool is_connected_{false};
+  std::atomic<bool> is_connected_{false};
 
   std::unique_ptr<ActorInfoAccessor> actor_accessor_;
   std::unique_ptr<JobInfoAccessor> job_accessor_;

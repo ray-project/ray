@@ -16,15 +16,17 @@ class GeneticSearch(AutoMLSearcher):
     the top population would increase generation by generation.
     """
 
-    def __init__(self,
-                 search_space,
-                 reward_attr,
-                 max_generation=2,
-                 population_size=10,
-                 population_decay=0.95,
-                 keep_top_ratio=0.2,
-                 selection_bound=0.4,
-                 crossover_bound=0.4):
+    def __init__(
+        self,
+        search_space,
+        reward_attr,
+        max_generation=2,
+        population_size=10,
+        population_decay=0.95,
+        keep_top_ratio=0.2,
+        selection_bound=0.4,
+        crossover_bound=0.4,
+    ):
         """
         Initialize GeneticSearcher.
 
@@ -55,13 +57,16 @@ class GeneticSearch(AutoMLSearcher):
             one_hot = self.search_space.generate_random_one_hot_encoding()
             self._cur_encoding_list.append(one_hot)
             self._cur_config_list.append(
-                self.search_space.apply_one_hot_encoding(one_hot))
+                self.search_space.apply_one_hot_encoding(one_hot)
+            )
 
     def _select(self):
         population_size = len(self._cur_config_list)
         logger.info(
             LOGGING_PREFIX + "Generate the %sth generation, population=%s",
-            self._cur_generation, population_size)
+            self._cur_generation,
+            population_size,
+        )
         return self._cur_config_list, self._cur_encoding_list
 
     def _feedback(self, trials):
@@ -70,14 +75,14 @@ class GeneticSearch(AutoMLSearcher):
             return AutoMLSearcher.TERMINATE
 
         sorted_trials = sorted(
-            trials,
-            key=lambda t: t.best_result[self.reward_attr],
-            reverse=True)
+            trials, key=lambda t: t.best_result[self.reward_attr], reverse=True
+        )
         self._cur_encoding_list = self._next_generation(sorted_trials)
         self._cur_config_list = []
         for one_hot in self._cur_encoding_list:
             self._cur_config_list.append(
-                self.search_space.apply_one_hot_encoding(one_hot))
+                self.search_space.apply_one_hot_encoding(one_hot)
+            )
 
         return AutoMLSearcher.CONTINUE
 
@@ -164,7 +169,10 @@ class GeneticSearch(AutoMLSearcher):
         select_index = np.random.choice(len(sample_1))
         logger.info(
             LOGGING_PREFIX + "Perform selection from %sth to %sth at index=%s",
-            sample_index2, sample_index1, select_index)
+            sample_index2,
+            sample_index1,
+            select_index,
+        )
 
         next_gen = []
         for i in range(len(sample_1)):
@@ -202,9 +210,11 @@ class GeneticSearch(AutoMLSearcher):
         sample_2 = candidate[sample_index2]
         cross_index = int(len(sample_1) * np.random.uniform(low=0.3, high=0.7))
         logger.info(
-            LOGGING_PREFIX +
-            "Perform crossover between %sth and %sth at index=%s",
-            sample_index1, sample_index2, cross_index)
+            LOGGING_PREFIX + "Perform crossover between %sth and %sth at index=%s",
+            sample_index1,
+            sample_index2,
+            cross_index,
+        )
 
         next_gen = []
         for i in range(len(sample_1)):
@@ -246,6 +256,9 @@ class GeneticSearch(AutoMLSearcher):
             bit = np.random.choice(field.shape[0])
             field[bit] = 1
 
-        logger.info(LOGGING_PREFIX + "Perform mutation on %sth at index=%s",
-                    sample_index, str(idx_list))
+        logger.info(
+            LOGGING_PREFIX + "Perform mutation on %sth at index=%s",
+            sample_index,
+            str(idx_list),
+        )
         return sample

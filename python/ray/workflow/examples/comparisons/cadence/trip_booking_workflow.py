@@ -12,6 +12,7 @@ def make_request(*args) -> None:
 @workflow.step
 def generate_request_id():
     import uuid
+
     return uuid.uuid4().hex
 
 
@@ -53,8 +54,11 @@ def book_all(car_req_id: str, hotel_req_id: str, flight_req_id: str) -> str:
 
 @workflow.step
 def handle_errors(
-        car_req_id: str, hotel_req_id: str, flight_req_id: str,
-        final_result: Tuple[Optional[str], Optional[Exception]]) -> str:
+    car_req_id: str,
+    hotel_req_id: str,
+    flight_req_id: str,
+    final_result: Tuple[Optional[str], Optional[Exception]],
+) -> str:
     result, error = final_result
 
     @workflow.step
@@ -63,8 +67,10 @@ def handle_errors(
 
     if error:
         return wait_all.step(
-            cancel.step(car_req_id), cancel.step(hotel_req_id),
-            cancel.step(flight_req_id))
+            cancel.step(car_req_id),
+            cancel.step(hotel_req_id),
+            cancel.step(flight_req_id),
+        )
     else:
         return result
 
@@ -76,8 +82,10 @@ if __name__ == "__main__":
     flight_req_id = generate_request_id.step()
     # TODO(ekl) we could create a Saga helper function that automates this
     # pattern of compensation workflows.
-    saga_result = book_all.options(catch_exceptions=True) \
-        .step(car_req_id, hotel_req_id, flight_req_id)
-    final_result = handle_errors.step(car_req_id, hotel_req_id, flight_req_id,
-                                      saga_result)
+    saga_result = book_all.options(catch_exceptions=True).step(
+        car_req_id, hotel_req_id, flight_req_id
+    )
+    final_result = handle_errors.step(
+        car_req_id, hotel_req_id, flight_req_id, saga_result
+    )
     print(final_result.run())

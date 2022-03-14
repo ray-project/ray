@@ -12,6 +12,7 @@ import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
 import io.ray.api.function.RayFunc;
+import io.ray.api.function.RayFuncR;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.PlacementGroupId;
@@ -20,6 +21,7 @@ import io.ray.api.options.CallOptions;
 import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.runtimecontext.RuntimeContext;
+import io.ray.api.runtimeenv.RuntimeEnv;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.config.RunMode;
 import io.ray.runtime.context.RuntimeContextImpl;
@@ -32,12 +34,15 @@ import io.ray.runtime.generated.Common;
 import io.ray.runtime.generated.Common.Language;
 import io.ray.runtime.object.ObjectRefImpl;
 import io.ray.runtime.object.ObjectStore;
+import io.ray.runtime.runtimeenv.RuntimeEnvImpl;
 import io.ray.runtime.task.ArgumentsBuilder;
 import io.ray.runtime.task.FunctionArg;
 import io.ray.runtime.task.TaskExecutor;
 import io.ray.runtime.task.TaskSubmitter;
+import io.ray.runtime.util.ConcurrencyGroupUtils;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
@@ -74,7 +79,10 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
       LOGGER.debug("Putting Object in Task {}.", workerContext.getCurrentTaskId());
     }
     ObjectId objectId = objectStore.put(obj);
-    return new ObjectRefImpl<T>(objectId, (Class<T>) (obj == null ? Object.class : obj.getClass()));
+    return new ObjectRefImpl<T>(
+        objectId,
+        (Class<T>) (obj == null ? Object.class : obj.getClass()),
+        /*skipAddingLocalRef=*/ true);
   }
 
   @Override
@@ -86,7 +94,10 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
           ownerActor.getId());
     }
     ObjectId objectId = objectStore.put(obj, ownerActor.getId());
-    return new ObjectRefImpl<T>(objectId, (Class<T>) (obj == null ? Object.class : obj.getClass()));
+    return new ObjectRefImpl<T>(
+        objectId,
+        (Class<T>) (obj == null ? Object.class : obj.getClass()),
+        /*skipAddingLocalRef=*/ true);
   }
 
   @Override
@@ -272,6 +283,16 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     return new ConcurrencyGroupImpl(name, maxConcurrency, funcs);
   }
 
+  @Override
+  public List<ConcurrencyGroup> extractConcurrencyGroups(RayFuncR<?> actorConstructorLambda) {
+    return ConcurrencyGroupUtils.extractConcurrencyGroupsByAnnotations(actorConstructorLambda);
+  }
+
+  @Override
+  public RuntimeEnv createRuntimeEnv(Map<String, String> envVars) {
+    return new RuntimeEnvImpl(envVars);
+  }
+
   private ObjectRef callNormalFunction(
       FunctionDescriptor functionDescriptor,
       Object[] args,
@@ -288,7 +309,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     if (returnIds.isEmpty()) {
       return null;
     } else {
-      return new ObjectRefImpl(returnIds.get(0), returnType.get());
+      return new ObjectRefImpl(returnIds.get(0), returnType.get(), /*skipAddingLocalRef=*/ true);
     }
   }
 
@@ -310,7 +331,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     if (returnIds.isEmpty()) {
       return null;
     } else {
-      return new ObjectRefImpl(returnIds.get(0), returnType.get());
+      return new ObjectRefImpl(returnIds.get(0), returnType.get(), /*skipAddingLocalRef=*/ true);
     }
   }
 
@@ -333,6 +354,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     if (functionDescriptor.getLanguage() != Language.JAVA && options != null) {
       Preconditions.checkState(options.jvmOptions == null || options.jvmOptions.size() == 0);
     }
+
     BaseActorHandle actor = taskSubmitter.createActor(functionDescriptor, functionArgs, options);
     return actor;
   }

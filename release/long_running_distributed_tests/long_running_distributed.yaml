@@ -1,4 +1,5 @@
 - name: pytorch_pbt_failure
+  team: ml
   cluster:
     app_config: app_config.yaml
     compute_template: compute_tpl.yaml

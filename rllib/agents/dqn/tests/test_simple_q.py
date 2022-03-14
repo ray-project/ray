@@ -4,13 +4,16 @@ import unittest
 import ray
 import ray.rllib.agents.dqn as dqn
 from ray.rllib.agents.dqn.simple_q_tf_policy import build_q_losses as loss_tf
-from ray.rllib.agents.dqn.simple_q_torch_policy import build_q_losses as \
-    loss_torch
+from ray.rllib.agents.dqn.simple_q_torch_policy import build_q_losses as loss_torch
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import fc, one_hot, huber_loss
-from ray.rllib.utils.test_utils import check, check_compute_single_action, \
-    check_train_results, framework_iterator
+from ray.rllib.utils.test_utils import (
+    check,
+    check_compute_single_action,
+    check_train_results,
+    framework_iterator,
+)
 
 tf1, tf, tfv = try_import_tf()
 
@@ -60,20 +63,23 @@ class TestSimpleQ(unittest.TestCase):
             trainer = dqn.SimpleQTrainer(config=config, env="CartPole-v0")
             policy = trainer.get_policy()
             # Batch of size=2.
-            input_ = SampleBatch({
-                SampleBatch.CUR_OBS: np.random.random(size=(2, 4)),
-                SampleBatch.ACTIONS: np.array([0, 1]),
-                SampleBatch.REWARDS: np.array([0.4, -1.23]),
-                SampleBatch.DONES: np.array([False, False]),
-                SampleBatch.NEXT_OBS: np.random.random(size=(2, 4)),
-                SampleBatch.EPS_ID: np.array([1234, 1234]),
-                SampleBatch.AGENT_INDEX: np.array([0, 0]),
-                SampleBatch.ACTION_LOGP: np.array([-0.1, -0.1]),
-                SampleBatch.ACTION_DIST_INPUTS: np.array([[0.1, 0.2],
-                                                          [-0.1, -0.2]]),
-                SampleBatch.ACTION_PROB: np.array([0.1, 0.2]),
-                "q_values": np.array([[0.1, 0.2], [0.2, 0.1]]),
-            })
+            input_ = SampleBatch(
+                {
+                    SampleBatch.CUR_OBS: np.random.random(size=(2, 4)),
+                    SampleBatch.ACTIONS: np.array([0, 1]),
+                    SampleBatch.REWARDS: np.array([0.4, -1.23]),
+                    SampleBatch.DONES: np.array([False, False]),
+                    SampleBatch.NEXT_OBS: np.random.random(size=(2, 4)),
+                    SampleBatch.EPS_ID: np.array([1234, 1234]),
+                    SampleBatch.AGENT_INDEX: np.array([0, 0]),
+                    SampleBatch.ACTION_LOGP: np.array([-0.1, -0.1]),
+                    SampleBatch.ACTION_DIST_INPUTS: np.array(
+                        [[0.1, 0.2], [-0.1, -0.2]]
+                    ),
+                    SampleBatch.ACTION_PROB: np.array([0.1, 0.2]),
+                    "q_values": np.array([[0.1, 0.2], [0.2, 0.1]]),
+                }
+            )
             # Get model vars for computing expected model outs (q-vals).
             # 0=layer-kernel; 1=layer-bias; 2=q-val-kernel; 3=q-val-bias
             vars = policy.get_weights()
@@ -86,27 +92,39 @@ class TestSimpleQ(unittest.TestCase):
 
             # Q(s,a) outputs.
             q_t = np.sum(
-                one_hot(input_[SampleBatch.ACTIONS], 2) * fc(
-                    fc(input_[SampleBatch.CUR_OBS],
-                       vars[0 if fw != "torch" else 2],
-                       vars[1 if fw != "torch" else 3],
-                       framework=fw),
+                one_hot(input_[SampleBatch.ACTIONS], 2)
+                * fc(
+                    fc(
+                        input_[SampleBatch.CUR_OBS],
+                        vars[0 if fw != "torch" else 2],
+                        vars[1 if fw != "torch" else 3],
+                        framework=fw,
+                    ),
                     vars[2 if fw != "torch" else 0],
                     vars[3 if fw != "torch" else 1],
-                    framework=fw), 1)
+                    framework=fw,
+                ),
+                1,
+            )
             # max[a'](Qtarget(s',a')) outputs.
             q_target_tp1 = np.max(
-                fc(fc(
-                    input_[SampleBatch.NEXT_OBS],
-                    vars_t[0 if fw != "torch" else 2],
-                    vars_t[1 if fw != "torch" else 3],
-                    framework=fw),
-                   vars_t[2 if fw != "torch" else 0],
-                   vars_t[3 if fw != "torch" else 1],
-                   framework=fw), 1)
+                fc(
+                    fc(
+                        input_[SampleBatch.NEXT_OBS],
+                        vars_t[0 if fw != "torch" else 2],
+                        vars_t[1 if fw != "torch" else 3],
+                        framework=fw,
+                    ),
+                    vars_t[2 if fw != "torch" else 0],
+                    vars_t[3 if fw != "torch" else 1],
+                    framework=fw,
+                ),
+                1,
+            )
             # TD-errors (Bellman equation).
-            td_error = q_t - config["gamma"] * input_[SampleBatch.REWARDS] + \
-                q_target_tp1
+            td_error = (
+                q_t - config["gamma"] * input_[SampleBatch.REWARDS] + q_target_tp1
+            )
             # Huber/Square loss on TD-error.
             expected_loss = huber_loss(td_error).mean()
 
@@ -116,15 +134,17 @@ class TestSimpleQ(unittest.TestCase):
             if fw == "tf":
                 out = policy.get_session().run(
                     policy._loss,
-                    feed_dict=policy._get_loss_inputs_dict(
-                        input_, shuffle=False))
+                    feed_dict=policy._get_loss_inputs_dict(input_, shuffle=False),
+                )
             else:
-                out = (loss_torch if fw == "torch" else
-                       loss_tf)(policy, policy.model, None, input_)
+                out = (loss_torch if fw == "torch" else loss_tf)(
+                    policy, policy.model, None, input_
+                )
             check(out, expected_loss, decimals=1)
 
 
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

@@ -3,8 +3,9 @@ from ray._raylet import ObjectRef
 from typing import Any, Dict, List
 
 
-def get_object_locations(obj_refs: List[ObjectRef], timeout_ms: int = -1
-                         ) -> Dict[ObjectRef, Dict[str, Any]]:
+def get_object_locations(
+    obj_refs: List[ObjectRef], timeout_ms: int = -1
+) -> Dict[ObjectRef, Dict[str, Any]]:
     """Lookup the locations for a list of objects.
 
     It returns a dict maps from an object to its location. The dict excludes
@@ -34,4 +35,5 @@ def get_object_locations(obj_refs: List[ObjectRef], timeout_ms: int = -1
     if not ray.is_initialized():
         raise RuntimeError("Ray hasn't been initialized.")
     return ray.worker.global_worker.core_worker.get_object_locations(
-        obj_refs, timeout_ms)
+        obj_refs, timeout_ms
+    )

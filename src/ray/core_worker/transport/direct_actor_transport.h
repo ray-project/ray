@@ -69,7 +69,8 @@ class CoreWorkerDirectTaskReceiver {
         pool_manager_(std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>()) {}
 
   /// Initialize this receiver. This must be called prior to use.
-  void Init(std::shared_ptr<rpc::CoreWorkerClientPool>, rpc::Address rpc_address,
+  void Init(std::shared_ptr<rpc::CoreWorkerClientPool>,
+            rpc::Address rpc_address,
             std::shared_ptr<DependencyWaiter> dependency_waiter);
 
   /// Handle a `PushTask` request. If it's an actor request, this function will enqueue
@@ -79,20 +80,12 @@ class CoreWorkerDirectTaskReceiver {
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
-  void HandleTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
+  void HandleTask(const rpc::PushTaskRequest &request,
+                  rpc::PushTaskReply *reply,
                   rpc::SendReplyCallback send_reply_callback);
 
   /// Pop tasks from the queue and execute them sequentially
   void RunNormalTasksFromQueue();
-
-  /// Handle a `StealTask` request.
-  ///
-  /// \param[in] request The request message.
-  /// \param[out] reply The reply message.
-  /// \param[in] send_reply_callback The callback to be called when the request is done.
-  void HandleStealTasks(const rpc::StealTasksRequest &request,
-                        rpc::StealTasksReply *reply,
-                        rpc::SendReplyCallback send_reply_callback);
 
   bool CancelQueuedNormalTask(TaskID task_id);
 

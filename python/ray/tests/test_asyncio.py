@@ -8,9 +8,12 @@ import time
 import pytest
 
 import ray
-from ray._private.test_utils import (SignalActor,
-                                     kill_actor_and_wait_for_failure,
-                                     wait_for_condition, wait_for_pid_to_exit)
+from ray._private.test_utils import (
+    SignalActor,
+    kill_actor_and_wait_for_failure,
+    wait_for_condition,
+    wait_for_pid_to_exit,
+)
 
 
 def test_asyncio_actor(ray_start_regular_shared):
@@ -49,9 +52,7 @@ def test_asyncio_actor_same_thread(ray_start_regular_shared):
             return threading.current_thread().ident
 
     a = Actor.remote()
-    sync_id, async_id = ray.get(
-        [a.sync_thread_id.remote(),
-         a.async_thread_id.remote()])
+    sync_id, async_id = ray.get([a.sync_thread_id.remote(), a.async_thread_id.remote()])
     assert sync_id == async_id
 
 
@@ -105,8 +106,9 @@ def test_asyncio_actor_high_concurrency(ray_start_regular_shared):
             return sorted(self.batch)
 
     batch_size = sys.getrecursionlimit() * 4
-    actor = AsyncConcurrencyBatcher.options(max_concurrency=batch_size *
-                                            2).remote(batch_size)
+    actor = AsyncConcurrencyBatcher.options(max_concurrency=batch_size * 2).remote(
+        batch_size
+    )
     result = ray.get([actor.add.remote(i) for i in range(batch_size)])
     assert result[0] == list(range(batch_size))
     assert result[-1] == list(range(batch_size))
@@ -216,13 +218,14 @@ async def test_asyncio_exit_actor(ray_start_regular_shared):
             ray.actor.exit_actor()
 
         async def ping(self):
-            return "pong"
+            return os.getpid()
 
         async def loop_forever(self):
             while True:
                 await asyncio.sleep(5)
 
     a = Actor.options(max_task_retries=0).remote()
+    pid = ray.get(a.ping.remote())
     a.loop_forever.remote()
     # Make sure exit_actor exits immediately, not once all tasks completed.
     with pytest.raises(ray.exceptions.RayError):
@@ -243,17 +246,26 @@ async def test_asyncio_exit_actor(ray_start_regular_shared):
 
     ray.get(check_actor_gone_now.remote())
 
+    # Make sure there is no process leak
+    wait_for_pid_to_exit(pid)
 
-def test_asyncio_exit_actor_no_process_leak(ray_start_regular_shared):
-    @ray.remote
+
+def test_asyncio_exit_actor_with_concurrency_group(ray_start_regular_shared):
+    @ray.remote(concurrency_groups={"async": 2})
     class Actor:
-        def getpid(self):
+        async def getpid(self):
             return os.getpid()
 
         async def exit(self):
             ray.actor.exit_actor()
 
+        @ray.method(concurrency_group="async")
+        async def loop_forever(self):
+            while True:
+                await asyncio.sleep(5)
+
     a = Actor.remote()
+    a.loop_forever.remote()
     pid = ray.get(a.getpid.remote())
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.exit.remote())
@@ -332,12 +344,11 @@ def test_asyncio_actor_with_large_concurrency(ray_start_regular_shared):
             return threading.current_thread().ident
 
     a = Actor.options(max_concurrency=100000).remote()
-    sync_id, async_id = ray.get(
-        [a.sync_thread_id.remote(),
-         a.async_thread_id.remote()])
+    sync_id, async_id = ray.get([a.sync_thread_id.remote(), a.async_thread_id.remote()])
     assert sync_id == async_id
 
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

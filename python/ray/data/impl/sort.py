@@ -21,7 +21,7 @@ from typing import List, Any, Callable, TypeVar, Tuple, Union
 import numpy as np
 import ray
 from ray.types import ObjectRef
-from ray.data.block import Block, BlockAccessor
+from ray.data.block import Block, BlockMetadata, BlockAccessor, BlockExecStats
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.progress_bar import ProgressBar
@@ -35,8 +35,9 @@ T = TypeVar("T")
 SortKeyT = Union[None, List[Tuple[str, str]], Callable[[T], Any]]
 
 
-def sample_boundaries(blocks: List[ObjectRef[Block]], key: SortKeyT,
-                      num_reducers: int) -> List[T]:
+def sample_boundaries(
+    blocks: List[ObjectRef[Block]], key: SortKeyT, num_reducers: int
+) -> List[T]:
     """
     Return (num_reducers - 1) items in ascending order from the blocks that
     partition the domain into ranges with approximately equally many elements.
@@ -49,9 +50,7 @@ def sample_boundaries(blocks: List[ObjectRef[Block]], key: SortKeyT,
 
     sample_block = cached_remote_fn(_sample_block)
 
-    sample_results = [
-        sample_block.remote(block, n_samples, key) for block in blocks
-    ]
+    sample_results = [sample_block.remote(block, n_samples, key) for block in blocks]
     sample_bar = ProgressBar("Sort Sample", len(sample_results))
     sample_bar.block_until_complete(sample_results)
     sample_bar.close()
@@ -75,11 +74,15 @@ def sample_boundaries(blocks: List[ObjectRef[Block]], key: SortKeyT,
     return ret[1:]
 
 
-def sort_impl(blocks: BlockList, key: SortKeyT,
-              descending: bool = False) -> BlockList:
+# Note: currently the map_groups() API relies on this implementation
+# to partition the same key into the same block.
+def sort_impl(
+    blocks: BlockList, key: SortKeyT, descending: bool = False
+) -> Tuple[BlockList, dict]:
+    stage_info = {}
     blocks = blocks.get_blocks()
     if len(blocks) == 0:
-        return BlockList([], [])
+        return BlockList([], []), stage_info
 
     if isinstance(key, str):
         key = [(key, "descending" if descending else "ascending")]
@@ -93,30 +96,40 @@ def sort_impl(blocks: BlockList, key: SortKeyT,
     if descending:
         boundaries.reverse()
 
-    sort_block = cached_remote_fn(_sort_block).options(
-        num_returns=num_reducers)
+    sort_block = cached_remote_fn(_sort_block).options(num_returns=num_reducers + 1)
     merge_sorted_blocks = cached_remote_fn(_merge_sorted_blocks, num_returns=2)
 
     map_results = np.empty((num_mappers, num_reducers), dtype=object)
+    map_meta = []
     for i, block in enumerate(blocks):
-        map_results[i, :] = sort_block.remote(block, boundaries, key,
-                                              descending)
+        result = sort_block.remote(block, boundaries, key, descending)
+        map_results[i, :] = result[:-1]
+        map_meta.append(result[-1])
+
+    # Early release memory.
+    del blocks
+
     map_bar = ProgressBar("Sort Map", len(map_results))
-    map_bar.block_until_complete([ret[0] for ret in map_results])
+    map_bar.block_until_complete(map_meta)
     map_bar.close()
+    stage_info["map"] = ray.get(map_meta)
 
     reduce_results = []
     for j in range(num_reducers):
-        ret = merge_sorted_blocks.remote(key, descending,
-                                         *map_results[:, j].tolist())
+        ret = merge_sorted_blocks.remote(key, descending, *map_results[:, j].tolist())
         reduce_results.append(ret)
+
+    # Early release memory.
+    del map_results
+
     merge_bar = ProgressBar("Sort Merge", len(reduce_results))
     merge_bar.block_until_complete([ret[0] for ret in reduce_results])
     merge_bar.close()
 
     blocks = [b for b, _ in reduce_results]
     metadata = ray.get([m for _, m in reduce_results])
-    return BlockList(blocks, metadata)
+    stage_info["merge"] = metadata
+    return BlockList(blocks, metadata), stage_info
 
 
 def _sample_block(block: Block[T], n_samples: int, key: SortKeyT) -> Block[T]:
@@ -124,12 +137,17 @@ def _sample_block(block: Block[T], n_samples: int, key: SortKeyT) -> Block[T]:
 
 
 def _sort_block(block, boundaries, key, descending):
-    return BlockAccessor.for_block(block).sort_and_partition(
-        boundaries, key, descending)
+    stats = BlockExecStats.builder()
+    out = BlockAccessor.for_block(block).sort_and_partition(boundaries, key, descending)
+    meta = BlockAccessor.for_block(block).get_metadata(
+        input_files=None, exec_stats=stats.build()
+    )
+    return out + [meta]
 
 
-def _merge_sorted_blocks(key, descending, *blocks: List[Block[T]]) -> Block[T]:
-    if len(blocks) == 1:
-        blocks = blocks[0]  # Python weirdness
+def _merge_sorted_blocks(
+    key, descending, *blocks: List[Block[T]]
+) -> Tuple[Block[T], BlockMetadata]:
     return BlockAccessor.for_block(blocks[0]).merge_sorted_blocks(
-        list(blocks), key, descending)
+        list(blocks), key, descending
+    )

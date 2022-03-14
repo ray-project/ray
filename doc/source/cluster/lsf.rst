@@ -8,7 +8,7 @@ Deploying on LSF
 This document describes a couple high-level steps to run ray cluster on LSF.
 
 1) Obtain desired nodes from LSF scheduler using bsub directives.
-2) Obtain free ports on the desired nodes to start ray services like dashboard, redis etc.
+2) Obtain free ports on the desired nodes to start ray services like dashboard, GCS etc.
 3) Start ray head node on one of the available nodes.
 4) Connect all the worker nodes to the head node.
 5) Perform port forwarding to access ray dashboard.

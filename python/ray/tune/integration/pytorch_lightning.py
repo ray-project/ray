@@ -11,13 +11,29 @@ logger = logging.getLogger(__name__)
 
 class TuneCallback(Callback):
     """Base class for Tune's PyTorch Lightning callbacks."""
+
     _allowed = [
-        "init_start", "init_end", "fit_start", "fit_end", "sanity_check_start",
-        "sanity_check_end", "epoch_start", "epoch_end", "batch_start",
-        "validation_batch_start", "validation_batch_end", "test_batch_start",
-        "test_batch_end", "batch_end", "train_start", "train_end",
-        "validation_start", "validation_end", "test_start", "test_end",
-        "keyboard_interrupt"
+        "init_start",
+        "init_end",
+        "fit_start",
+        "fit_end",
+        "sanity_check_start",
+        "sanity_check_end",
+        "epoch_start",
+        "epoch_end",
+        "batch_start",
+        "validation_batch_start",
+        "validation_batch_end",
+        "test_batch_start",
+        "test_batch_end",
+        "batch_end",
+        "train_start",
+        "train_end",
+        "validation_start",
+        "validation_end",
+        "test_start",
+        "test_end",
+        "keyboard_interrupt",
     ]
 
     def __init__(self, on: Union[str, List[str]] = "validation_end"):
@@ -26,7 +42,9 @@ class TuneCallback(Callback):
         if any(w not in self._allowed for w in on):
             raise ValueError(
                 "Invalid trigger time selected: {}. Must be one of {}".format(
-                    on, self._allowed))
+                    on, self._allowed
+                )
+            )
         self._on = on
 
     def _handle(self, trainer: Trainer, pl_module: Optional[LightningModule]):
@@ -40,25 +58,21 @@ class TuneCallback(Callback):
         if "init_end" in self._on:
             self._handle(trainer, None)
 
-    def on_fit_start(self,
-                     trainer: Trainer,
-                     pl_module: Optional[LightningModule] = None):
+    def on_fit_start(
+        self, trainer: Trainer, pl_module: Optional[LightningModule] = None
+    ):
         if "fit_start" in self._on:
             self._handle(trainer, None)
 
-    def on_fit_end(self,
-                   trainer: Trainer,
-                   pl_module: Optional[LightningModule] = None):
+    def on_fit_end(self, trainer: Trainer, pl_module: Optional[LightningModule] = None):
         if "fit_end" in self._on:
             self._handle(trainer, None)
 
-    def on_sanity_check_start(self, trainer: Trainer,
-                              pl_module: LightningModule):
+    def on_sanity_check_start(self, trainer: Trainer, pl_module: LightningModule):
         if "sanity_check_start" in self._on:
             self._handle(trainer, pl_module)
 
-    def on_sanity_check_end(self, trainer: Trainer,
-                            pl_module: LightningModule):
+    def on_sanity_check_end(self, trainer: Trainer, pl_module: LightningModule):
         if "sanity_check_end" in self._on:
             self._handle(trainer, pl_module)
 
@@ -74,25 +88,49 @@ class TuneCallback(Callback):
         if "batch_start" in self._on:
             self._handle(trainer, pl_module)
 
-    def on_validation_batch_start(self, trainer: Trainer,
-                                  pl_module: LightningModule, batch, batch_idx,
-                                  dataloader_idx):
+    def on_validation_batch_start(
+        self,
+        trainer: Trainer,
+        pl_module: LightningModule,
+        batch,
+        batch_idx,
+        dataloader_idx,
+    ):
         if "validation_batch_start" in self._on:
             self._handle(trainer, pl_module)
 
-    def on_validation_batch_end(self, trainer: Trainer,
-                                pl_module: LightningModule, outputs, batch,
-                                batch_idx, dataloader_idx):
+    def on_validation_batch_end(
+        self,
+        trainer: Trainer,
+        pl_module: LightningModule,
+        outputs,
+        batch,
+        batch_idx,
+        dataloader_idx,
+    ):
         if "validation_batch_end" in self._on:
             self._handle(trainer, pl_module)
 
-    def on_test_batch_start(self, trainer: Trainer, pl_module: LightningModule,
-                            batch, batch_idx, dataloader_idx):
+    def on_test_batch_start(
+        self,
+        trainer: Trainer,
+        pl_module: LightningModule,
+        batch,
+        batch_idx,
+        dataloader_idx,
+    ):
         if "test_batch_start" in self._on:
             self._handle(trainer, pl_module)
 
-    def on_test_batch_end(self, trainer: Trainer, pl_module: LightningModule,
-                          outputs, batch, batch_idx, dataloader_idx):
+    def on_test_batch_end(
+        self,
+        trainer: Trainer,
+        pl_module: LightningModule,
+        outputs,
+        batch,
+        batch_idx,
+        dataloader_idx,
+    ):
         if "test_batch_end" in self._on:
             self._handle(trainer, pl_module)
 
@@ -108,8 +146,7 @@ class TuneCallback(Callback):
         if "train_end" in self._on:
             self._handle(trainer, pl_module)
 
-    def on_validation_start(self, trainer: Trainer,
-                            pl_module: LightningModule):
+    def on_validation_start(self, trainer: Trainer, pl_module: LightningModule):
         if "validation_start" in self._on:
             self._handle(trainer, pl_module)
 
@@ -125,8 +162,7 @@ class TuneCallback(Callback):
         if "test_end" in self._on:
             self._handle(trainer, pl_module)
 
-    def on_keyboard_interrupt(self, trainer: Trainer,
-                              pl_module: LightningModule):
+    def on_keyboard_interrupt(self, trainer: Trainer, pl_module: LightningModule):
         if "keyboard_interrupt" in self._on:
             self._handle(trainer, pl_module)
 
@@ -164,9 +200,11 @@ class TuneReportCallback(TuneCallback):
 
     """
 
-    def __init__(self,
-                 metrics: Union[None, str, List[str], Dict[str, str]] = None,
-                 on: Union[str, List[str]] = "validation_end"):
+    def __init__(
+        self,
+        metrics: Union[None, str, List[str], Dict[str, str]] = None,
+        on: Union[str, List[str]] = "validation_end",
+    ):
         super(TuneReportCallback, self).__init__(on)
         if isinstance(metrics, str):
             metrics = [metrics]
@@ -174,13 +212,10 @@ class TuneReportCallback(TuneCallback):
 
     def _get_report_dict(self, trainer: Trainer, pl_module: LightningModule):
         # Don't report if just doing initial validation sanity checks.
-        if trainer.running_sanity_check:
+        if trainer.sanity_checking:
             return
         if not self._metrics:
-            report_dict = {
-                k: v.item()
-                for k, v in trainer.callback_metrics.items()
-            }
+            report_dict = {k: v.item() for k, v in trainer.callback_metrics.items()}
         else:
             report_dict = {}
             for key in self._metrics:
@@ -191,8 +226,10 @@ class TuneReportCallback(TuneCallback):
                 if metric in trainer.callback_metrics:
                     report_dict[key] = trainer.callback_metrics[metric].item()
                 else:
-                    logger.warning(f"Metric {metric} does not exist in "
-                                   "`trainer.callback_metrics.")
+                    logger.warning(
+                        f"Metric {metric} does not exist in "
+                        "`trainer.callback_metrics."
+                    )
 
         return report_dict
 
@@ -221,19 +258,18 @@ class _TuneCheckpointCallback(TuneCallback):
 
     """
 
-    def __init__(self,
-                 filename: str = "checkpoint",
-                 on: Union[str, List[str]] = "validation_end"):
+    def __init__(
+        self, filename: str = "checkpoint", on: Union[str, List[str]] = "validation_end"
+    ):
         super(_TuneCheckpointCallback, self).__init__(on)
         self._filename = filename
 
     def _handle(self, trainer: Trainer, pl_module: LightningModule):
-        if trainer.running_sanity_check:
+        if trainer.sanity_checking:
             return
         step = f"epoch={trainer.current_epoch}-step={trainer.global_step}"
         with tune.checkpoint_dir(step=step) as checkpoint_dir:
-            trainer.save_checkpoint(
-                os.path.join(checkpoint_dir, self._filename))
+            trainer.save_checkpoint(os.path.join(checkpoint_dir, self._filename))
 
 
 class TuneReportCheckpointCallback(TuneCallback):
@@ -275,10 +311,12 @@ class TuneReportCheckpointCallback(TuneCallback):
     _checkpoint_callback_cls = _TuneCheckpointCallback
     _report_callbacks_cls = TuneReportCallback
 
-    def __init__(self,
-                 metrics: Union[None, str, List[str], Dict[str, str]] = None,
-                 filename: str = "checkpoint",
-                 on: Union[str, List[str]] = "validation_end"):
+    def __init__(
+        self,
+        metrics: Union[None, str, List[str], Dict[str, str]] = None,
+        filename: str = "checkpoint",
+        on: Union[str, List[str]] = "validation_end",
+    ):
         super(TuneReportCheckpointCallback, self).__init__(on)
         self._checkpoint = self._checkpoint_callback_cls(filename, on)
         self._report = self._report_callbacks_cls(metrics, on)

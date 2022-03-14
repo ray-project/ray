@@ -35,8 +35,10 @@ DEFINE_string(node_ip_address, "", "The ip address of the node.");
 
 int main(int argc, char *argv[]) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
-                                         ray::RayLog::ShutDownRayLog, argv[0],
-                                         ray::RayLogLevel::INFO, /*log_dir=*/"");
+                                         ray::RayLog::ShutDownRayLog,
+                                         argv[0],
+                                         ray::RayLogLevel::INFO,
+                                         /*log_dir=*/"");
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
 
   gflags::ParseCommandLineFlags(&argc, &argv, true);
@@ -70,7 +72,8 @@ int main(int argc, char *argv[]) {
   // Initialize event framework.
   if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
     ray::RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_GCS,
-                      std::unordered_map<std::string, std::string>(), log_dir,
+                      absl::flat_hash_map<std::string, std::string>(),
+                      log_dir,
                       RayConfig::instance().event_level());
   }
 
@@ -84,8 +87,6 @@ int main(int argc, char *argv[]) {
   gcs_server_config.redis_password = redis_password;
   gcs_server_config.retry_redis = retry_redis;
   gcs_server_config.node_ip_address = node_ip_address;
-  gcs_server_config.grpc_based_resource_broadcast =
-      RayConfig::instance().grpc_based_resource_broadcast();
   gcs_server_config.grpc_pubsub_enabled = RayConfig::instance().gcs_grpc_based_pubsub();
   gcs_server_config.log_dir = log_dir;
   gcs_server_config.raylet_config_list = config_list;

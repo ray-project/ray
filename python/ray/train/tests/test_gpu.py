@@ -1,15 +1,23 @@
 import os
 import pytest
+
 import torch
+from torch.nn.parallel import DistributedDataParallel
+from torch.utils.data import DataLoader, DistributedSampler
 
 import ray
+import ray.train as train
 from ray.train import Trainer, TrainingCallback
-from ray.train.examples.horovod.horovod_example import train_func as \
-    horovod_torch_train_func
-from ray.train.examples.tensorflow_mnist_example import train_func as \
-    tensorflow_mnist_train_func
-from ray.train.examples.train_fashion_mnist_example import train_func \
-    as fashion_mnist_train_func
+from ray.train.examples.horovod.horovod_example import (
+    train_func as horovod_torch_train_func,
+)
+from ray.train.examples.tensorflow_mnist_example import (
+    train_func as tensorflow_mnist_train_func,
+)
+from ray.train.examples.train_fashion_mnist_example import (
+    train_func as fashion_mnist_train_func,
+)
+from ray.train.examples.train_linear_example import LinearDataset
 from test_tune import torch_fashion_mnist, tune_tensorflow_mnist
 
 
@@ -19,6 +27,57 @@ def ray_start_4_cpus_2_gpus():
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_1_cpu_1_gpu():
+    address_info = ray.init(num_cpus=1, num_gpus=1)
+    yield address_info
+    ray.shutdown()
+
+
+def test_torch_prepare_model(ray_start_4_cpus_2_gpus):
+    """Tests if ``prepare_model`` correctly wraps in DDP."""
+
+    def train_fn():
+        model = torch.nn.Linear(1, 1)
+
+        # Wrap in DDP.
+        model = train.torch.prepare_model(model)
+
+        # Make sure model is wrapped in DDP.
+        assert isinstance(model, DistributedDataParallel)
+
+        # Make sure model is on cuda.
+        assert next(model.parameters()).is_cuda
+
+    trainer = Trainer("torch", num_workers=2, use_gpu=True)
+    trainer.start()
+    trainer.run(train_fn)
+    trainer.shutdown()
+
+
+def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus):
+    data_loader = DataLoader(LinearDataset(a=1, b=2, size=10))
+
+    def train_fn():
+        wrapped_data_loader = train.torch.prepare_data_loader(data_loader)
+
+        # Check that DistributedSampler has been added to the data loader.
+        assert isinstance(wrapped_data_loader.sampler, DistributedSampler)
+
+        # Make sure you can properly iterate through the DataLoader.
+        for batch in wrapped_data_loader:
+            X = batch[0]
+            y = batch[1]
+
+            # Make sure the data is on the correct device.
+            assert X.is_cuda and y.is_cuda
+
+    trainer = Trainer("torch", num_workers=2, use_gpu=True)
+    trainer.start()
+    trainer.run(train_fn)
+    trainer.shutdown()
 
 
 def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
@@ -136,11 +195,8 @@ def test_horovod_torch_mnist_gpu(ray_start_4_cpus_2_gpus):
     trainer = Trainer("horovod", num_workers, use_gpu=True)
     trainer.start()
     results = trainer.run(
-        horovod_torch_train_func,
-        config={
-            "num_epochs": num_epochs,
-            "lr": 1e-3
-        })
+        horovod_torch_train_func, config={"num_epochs": num_epochs, "lr": 1e-3}
+    )
     trainer.shutdown()
 
     assert len(results) == num_workers
@@ -158,8 +214,7 @@ def test_tune_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
 
 
 def test_train_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
-    from ray.train.examples.train_linear_dataset_example import \
-        train_linear
+    from ray.train.examples.train_linear_dataset_example import train_linear
 
     results = train_linear(num_workers=2, use_gpu=True)
     for result in results:
@@ -167,12 +222,65 @@ def test_train_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
 
 
 def test_tensorflow_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
-    from ray.train.examples.tensorflow_linear_dataset_example import \
-        train_tensorflow_linear
+    from ray.train.examples.tensorflow_linear_dataset_example import (
+        train_tensorflow_linear,
+    )
 
     results = train_tensorflow_linear(num_workers=2, use_gpu=True)
     for result in results:
         assert result[-1]["loss"] < result[0]["loss"]
+
+
+@pytest.mark.parametrize(
+    ("device_choice", "auto_transfer"),
+    [
+        ("cpu", True),
+        ("cpu", False),
+        ("cuda", True),
+        ("cuda", False),
+    ],
+)
+def test_auto_transfer_data_from_host_to_device(
+    ray_start_1_cpu_1_gpu, device_choice, auto_transfer
+):
+    import torch
+    import numpy as np
+
+    def compute_average_runtime(func):
+        device = torch.device(device_choice)
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+        runtime = []
+        for _ in range(10):
+            torch.cuda.synchronize()
+            start.record()
+            func(device)
+            end.record()
+            torch.cuda.synchronize()
+        runtime.append(start.elapsed_time(end))
+        return np.mean(runtime)
+
+    small_dataloader = [
+        (torch.randn((1024 * 4, 1024 * 4), device="cpu"),) for _ in range(10)
+    ]
+
+    def host_to_device(device):
+        for (x,) in small_dataloader:
+            x = x.to(device)
+            torch.matmul(x, x)
+
+    def host_to_device_auto_pipeline(device):
+        wrapped_dataloader = ray.train.torch._WrappedDataLoader(
+            small_dataloader, device, auto_transfer
+        )
+        for (x,) in wrapped_dataloader:
+            torch.matmul(x, x)
+
+    # test if all four configurations are okay
+    with_auto_transfer = compute_average_runtime(host_to_device_auto_pipeline)
+
+    if device_choice == "cuda" and auto_transfer:
+        assert compute_average_runtime(host_to_device) >= with_auto_transfer
 
 
 if __name__ == "__main__":

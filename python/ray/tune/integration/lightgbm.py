@@ -10,6 +10,7 @@ from lightgbm.basic import Booster
 
 class TuneCallback:
     """Base class for Tune's LightGBM callbacks."""
+
     pass
 
 
@@ -46,10 +47,10 @@ class TuneReportCallback(TuneCallback):
             verbose_eval=False,
             callbacks=[TuneReportCallback({"loss": "eval-binary_logloss"})])
     """
+
     order = 20
 
-    def __init__(self,
-                 metrics: Union[None, str, List[str], Dict[str, str]] = None):
+    def __init__(self, metrics: Union[None, str, List[str], Dict[str, str]] = None):
         if isinstance(metrics, str):
             metrics = [metrics]
         self._metrics = metrics
@@ -98,6 +99,7 @@ class _TuneCheckpointCallback(TuneCallback):
             checkpoint is saved every five iterations.
 
     """
+
     order = 19
 
     def __init__(self, filename: str = "checkpoint", frequency: int = 5):
@@ -105,16 +107,16 @@ class _TuneCheckpointCallback(TuneCallback):
         self._frequency = frequency
 
     @staticmethod
-    def _create_checkpoint(model: Booster, epoch: int, filename: str,
-                           frequency: int):
+    def _create_checkpoint(model: Booster, epoch: int, filename: str, frequency: int):
         if epoch % frequency > 0:
             return
         with tune.checkpoint_dir(step=epoch) as checkpoint_dir:
             model.save_model(os.path.join(checkpoint_dir, filename))
 
     def __call__(self, env: CallbackEnv) -> None:
-        self._create_checkpoint(env.model, env.iteration, self._filename,
-                                self._frequency)
+        self._create_checkpoint(
+            env.model, env.iteration, self._filename, self._frequency
+        )
 
 
 class TuneReportCheckpointCallback(TuneCallback):
@@ -162,15 +164,18 @@ class TuneReportCheckpointCallback(TuneCallback):
                 {"loss": "eval-binary_logloss"}, "lightgbm.mdl)])
 
     """
+
     order = 21
 
     _checkpoint_callback_cls = _TuneCheckpointCallback
     _report_callback_cls = TuneReportCallback
 
-    def __init__(self,
-                 metrics: Union[None, str, List[str], Dict[str, str]] = None,
-                 filename: str = "checkpoint",
-                 frequency: int = 5):
+    def __init__(
+        self,
+        metrics: Union[None, str, List[str], Dict[str, str]] = None,
+        filename: str = "checkpoint",
+        frequency: int = 5,
+    ):
         self._checkpoint = self._checkpoint_callback_cls(filename, frequency)
         self._report = self._report_callback_cls(metrics)
 
