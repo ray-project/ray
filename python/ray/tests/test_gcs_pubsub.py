@@ -15,11 +15,6 @@ from ray.core.generated.gcs_pb2 import ErrorTableData
 import pytest
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular",
-    [{"_system_config": {"gcs_grpc_based_pubsub": True}}],
-    indirect=True,
-)
 def test_publish_and_subscribe_error_info(ray_start_regular):
     address_info = ray_start_regular
     gcs_server_addr = address_info["gcs_address"]
@@ -39,12 +34,6 @@ def test_publish_and_subscribe_error_info(ray_start_regular):
     subscriber.close()
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "ray_start_regular",
-    [{"_system_config": {"gcs_grpc_based_pubsub": True}}],
-    indirect=True,
-)
 async def test_aio_publish_and_subscribe_error_info(ray_start_regular):
     address_info = ray_start_regular
     gcs_server_addr = address_info["gcs_address"]
@@ -64,11 +53,6 @@ async def test_aio_publish_and_subscribe_error_info(ray_start_regular):
     await subscriber.close()
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular",
-    [{"_system_config": {"gcs_grpc_based_pubsub": True}}],
-    indirect=True,
-)
 def test_publish_and_subscribe_logs(ray_start_regular):
     address_info = ray_start_regular
     gcs_server_addr = address_info["gcs_address"]
@@ -95,12 +79,6 @@ def test_publish_and_subscribe_logs(ray_start_regular):
     subscriber.close()
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "ray_start_regular",
-    [{"_system_config": {"gcs_grpc_based_pubsub": True}}],
-    indirect=True,
-)
 async def test_aio_publish_and_subscribe_logs(ray_start_regular):
     address_info = ray_start_regular
     gcs_server_addr = address_info["gcs_address"]
@@ -125,11 +103,6 @@ async def test_aio_publish_and_subscribe_logs(ray_start_regular):
     await subscriber.close()
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular",
-    [{"_system_config": {"gcs_grpc_based_pubsub": True}}],
-    indirect=True,
-)
 def test_publish_and_subscribe_function_keys(ray_start_regular):
     address_info = ray_start_regular
     gcs_server_addr = address_info["gcs_address"]
@@ -147,12 +120,6 @@ def test_publish_and_subscribe_function_keys(ray_start_regular):
     subscriber.close()
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "ray_start_regular",
-    [{"_system_config": {"gcs_grpc_based_pubsub": True}}],
-    indirect=True,
-)
 async def test_aio_publish_and_subscribe_resource_usage(ray_start_regular):
     address_info = ray_start_regular
     gcs_server_addr = address_info["gcs_address"]
@@ -170,11 +137,6 @@ async def test_aio_publish_and_subscribe_resource_usage(ray_start_regular):
     await subscriber.close()
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular",
-    [{"_system_config": {"gcs_grpc_based_pubsub": True}}],
-    indirect=True,
-)
 def test_two_subscribers(ray_start_regular):
     """Tests concurrently subscribing to two channels work."""
 

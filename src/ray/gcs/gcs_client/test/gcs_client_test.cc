@@ -35,14 +35,12 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   "gcs_rpc_server_reconnect_timeout_s": 60,
   "maximum_gcs_destroyed_actor_cached_count": 10,
   "maximum_gcs_dead_node_cached_count": 10,
-  "gcs_grpc_based_pubsub": $0,
   "gcs_storage": $1,
   "bootstrap_with_gcs": $2
 }
   )",
                          enable_gcs_bootstrap_ ? "true" : "false",
-                         enable_gcs_bootstrap_ ? "\"memory\"" : "\"redis\"",
-                         enable_gcs_bootstrap_ ? "true" : "false"));
+                         enable_gcs_bootstrap_ ? "\"memory\"" : "\"redis\""));
     if (!enable_gcs_bootstrap_) {
       TestSetupUtil::StartUpRedisServers(std::vector<int>());
     }
@@ -690,12 +688,8 @@ TEST_P(GcsClientTest, TestErrorInfo) {
   ASSERT_TRUE(ReportJobError(error_table_data));
 }
 
-TEST_P(GcsClientTest, TestJobTableResubscribe) {
-  // TODO: Support resubscribing with GCS pubsub.
-  if (RayConfig::instance().gcs_grpc_based_pubsub()) {
-    return;
-  }
-
+// TODO: Support resubscribing with GCS pubsub.
+TEST_P(GcsClientTest, Disabled_TestJobTableResubscribe) {
   // Test that subscription of the job table can still work when GCS server restarts.
   JobID job_id = JobID::FromInt(1);
   auto job_table_data = Mocker::GenJobTableData(job_id);
@@ -719,12 +713,8 @@ TEST_P(GcsClientTest, TestJobTableResubscribe) {
   WaitForExpectedCount(job_update_count, 3);
 }
 
-TEST_P(GcsClientTest, TestActorTableResubscribe) {
-  // TODO: Support resubscribing with GCS pubsub.
-  if (RayConfig::instance().gcs_grpc_based_pubsub()) {
-    return;
-  }
-
+// TODO: Support resubscribing with GCS pubsub.
+TEST_P(GcsClientTest, Disabled_TestActorTableResubscribe) {
   // Test that subscription of the actor table can still work when GCS server restarts.
   JobID job_id = JobID::FromInt(1);
   AddJob(job_id);
@@ -778,12 +768,8 @@ TEST_P(GcsClientTest, TestActorTableResubscribe) {
   EXPECT_TRUE(WaitForCondition(condition_subscribe_one_restart, timeout_ms_.count()));
 }
 
-TEST_P(GcsClientTest, TestNodeTableResubscribe) {
-  // TODO: Support resubscribing with GCS pubsub.
-  if (RayConfig::instance().gcs_grpc_based_pubsub()) {
-    return;
-  }
-
+// TODO: Support resubscribing with GCS pubsub.
+TEST_P(GcsClientTest, Disabled_TestNodeTableResubscribe) {
   // Test that subscription of the node table can still work when GCS server restarts.
   // Subscribe to node addition and removal events from GCS and cache those information.
   std::atomic<int> node_change_count(0);
@@ -814,12 +800,8 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
   WaitForExpectedCount(node_change_count, 2);
 }
 
-TEST_P(GcsClientTest, TestWorkerTableResubscribe) {
-  // TODO: Support resubscribing with GCS pubsub.
-  if (RayConfig::instance().gcs_grpc_based_pubsub()) {
-    return;
-  }
-
+// TODO: Support resubscribing with GCS pubsub.
+TEST_P(GcsClientTest, Disabled_TestWorkerTableResubscribe) {
   // Subscribe to all unexpected failure of workers from GCS.
   std::atomic<int> worker_failure_count(0);
   auto on_subscribe = [&worker_failure_count](const rpc::WorkerDeltaData &result) {

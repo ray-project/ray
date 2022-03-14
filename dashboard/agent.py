@@ -388,7 +388,6 @@ if __name__ == "__main__":
             ray._private.utils.publish_error_to_driver(
                 ray_constants.DASHBOARD_AGENT_DIED_ERROR,
                 message,
-                redis_client=None,
                 gcs_publisher=gcs_publisher,
             )
             logger.error(message)

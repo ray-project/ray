@@ -14,7 +14,6 @@ from ray.ray_constants import DEBUG_AUTOSCALING_ERROR
 import ray._private.utils
 import ray.ray_constants as ray_constants
 from ray.cluster_utils import cluster_not_supported
-import ray._private.gcs_pubsub as gcs_pubsub
 from ray._private.test_utils import (
     init_error_pubsub,
     get_error_message,
@@ -430,11 +429,11 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
     [{"_system_config": {"gcs_rpc_server_reconnect_timeout_s": 100}}],
     indirect=True,
 )
-@pytest.mark.skipif(
-    gcs_pubsub.gcs_pubsub_enabled(),
+@pytest.mark.skip(
     reason="Logs are streamed via GCS pubsub when it is enabled, so logs "
     "cannot be delivered after GCS is killed.",
 )
+# TODO: re-enable for GCS FT work.
 def test_gcs_server_failiure_report(ray_start_regular, log_pubsub):
     # Get gcs server pid to send a signal.
     all_processes = ray.worker._global_node.all_processes

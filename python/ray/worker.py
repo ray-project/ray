@@ -30,7 +30,6 @@ import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
 from ray.util.scheduling_strategies import SchedulingStrategyT
 from ray._private.gcs_pubsub import (
-    gcs_pubsub_enabled,
     GcsPublisher,
     GcsErrorSubscriber,
     GcsLogSubscriber,
@@ -453,31 +452,17 @@ class Worker:
 
     def print_logs(self):
         """Prints log messages from workers on all nodes in the same job."""
-        if self.gcs_pubsub_enabled:
-            import grpc
+        import grpc
 
-            subscriber = self.gcs_log_subscriber
-            subscriber.subscribe()
-            exception_type = grpc.RpcError
-        else:
-            import redis
-
-            subscriber = self.redis_client.pubsub(ignore_subscribe_messages=True)
-            subscriber.subscribe(gcs_utils.LOG_FILE_CHANNEL)
-            exception_type = redis.exceptions.ConnectionError
+        subscriber = self.gcs_log_subscriber
+        subscriber.subscribe()
+        exception_type = grpc.RpcError
         localhost = services.get_node_ip_address()
         try:
-            # Keep track of the number of consecutive log messages that have
-            # been received with no break in between. If this number grows
-            # continually, then the worker is probably not able to process the
-            # log messages as rapidly as they are coming in.
-            # This is meaningful only for Redis subscriber.
-            num_consecutive_messages_received = 0
             # Number of messages received from the last polling. When the batch
             # size exceeds 100 and keeps increasing, the worker and the user
             # probably will not be able to consume the log messages as rapidly
             # as they are coming in.
-            # This is meaningful only for GCS subscriber.
             last_polling_batch_size = 0
             job_id_hex = self.current_job_id.hex()
             while True:
@@ -485,43 +470,23 @@ class Worker:
                 if self.threads_stopped.is_set():
                     return
 
-                if self.gcs_pubsub_enabled:
-                    msg = subscriber.poll()
-                else:
-                    msg = subscriber.get_message()
+                data = subscriber.poll()
                 # GCS subscriber only returns None on unavailability.
-                # Redis subscriber returns None when there is no new message.
-                if msg is None:
-                    num_consecutive_messages_received = 0
+                if data is None:
                     last_polling_batch_size = 0
-                    self.threads_stopped.wait(timeout=0.01)
                     continue
-
-                if self.gcs_pubsub_enabled:
-                    data = msg
-                else:
-                    data = json.loads(ray._private.utils.decode(msg["data"]))
 
                 # Don't show logs from other drivers.
                 if data["job"] and data["job"] != job_id_hex:
-                    num_consecutive_messages_received = 0
                     last_polling_batch_size = 0
                     continue
 
                 data["localhost"] = localhost
                 global_worker_stdstream_dispatcher.emit(data)
 
-                if self.gcs_pubsub_enabled:
-                    lagging = (
-                        100 <= last_polling_batch_size < subscriber.last_batch_size
-                    )
-                    last_polling_batch_size = subscriber.last_batch_size
-                else:
-                    num_consecutive_messages_received += 1
-                    lagging = (
-                        num_consecutive_messages_received % 100 == 0
-                        and num_consecutive_messages_received > 0
-                    )
+                lagging = 100 <= last_polling_batch_size < subscriber.last_batch_size
+                last_polling_batch_size = subscriber.last_batch_size
+
                 if lagging:
                     logger.warning(
                         "The driver may not be able to keep up with the "
@@ -1366,72 +1331,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             )
 
 
-def listen_error_messages_raylet(worker, threads_stopped):
-    """Listen to error messages in the background on the driver.
-
-    This runs in a separate thread on the driver and pushes (error, time)
-    tuples to the output queue.
-
-    Args:
-        worker: The worker class that this thread belongs to.
-        threads_stopped (threading.Event): A threading event used to signal to
-            the thread that it should exit.
-    """
-    import redis
-
-    worker.error_message_pubsub_client = worker.redis_client.pubsub(
-        ignore_subscribe_messages=True
-    )
-    # Exports that are published after the call to
-    # error_message_pubsub_client.subscribe and before the call to
-    # error_message_pubsub_client.listen will still be processed in the loop.
-
-    # Really we should just subscribe to the errors for this specific job.
-    # However, currently all errors seem to be published on the same channel.
-    error_pubsub_channel = gcs_utils.RAY_ERROR_PUBSUB_PATTERN
-    worker.error_message_pubsub_client.psubscribe(error_pubsub_channel)
-
-    try:
-        if _internal_kv_initialized():
-            # Get any autoscaler errors that occurred before the call to
-            # subscribe.
-            error_message = _internal_kv_get(ray_constants.DEBUG_AUTOSCALING_ERROR)
-            if error_message is not None:
-                logger.warning(error_message.decode())
-
-        while True:
-            # Exit if we received a signal that we should stop.
-            if threads_stopped.is_set():
-                return
-
-            msg = worker.error_message_pubsub_client.get_message()
-            if msg is None:
-                threads_stopped.wait(timeout=0.01)
-                continue
-            pubsub_msg = gcs_utils.PubSubMessage.FromString(msg["data"])
-            error_data = gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
-            job_id = error_data.job_id
-            if job_id not in [
-                worker.current_job_id.binary(),
-                JobID.nil().binary(),
-            ]:
-                continue
-
-            error_message = error_data.error_message
-            if error_data.type == ray_constants.TASK_PUSH_ERROR:
-                # TODO(ekl) remove task push errors entirely now that we have
-                # the separate unhandled exception handler.
-                pass
-            else:
-                logger.warning(error_message)
-    except (OSError, redis.exceptions.ConnectionError) as e:
-        logger.error(f"listen_error_messages_raylet: {e}")
-    finally:
-        # Close the pubsub client to avoid leaking file descriptors.
-        worker.error_message_pubsub_client.close()
-
-
-def listen_error_messages_from_gcs(worker, threads_stopped):
+def listen_error_messages(worker, threads_stopped):
     """Listen to error messages in the background on the driver.
 
     This runs in a separate thread on the driver and pushes (error, time)
@@ -1476,7 +1376,7 @@ def listen_error_messages_from_gcs(worker, threads_stopped):
             else:
                 logger.warning(error_message)
     except (OSError, ConnectionError) as e:
-        logger.error(f"listen_error_messages_from_gcs: {e}")
+        logger.error(f"listen_error_messages: {e}")
 
 
 @PublicAPI
@@ -1543,17 +1443,12 @@ def connect(
     ray.state.state._initialize_global_state(
         ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
     )
-    worker.gcs_pubsub_enabled = gcs_pubsub_enabled()
-    worker.gcs_publisher = None
-    if worker.gcs_pubsub_enabled:
-        worker.gcs_publisher = GcsPublisher(address=worker.gcs_client.address)
-        worker.gcs_error_subscriber = GcsErrorSubscriber(
-            address=worker.gcs_client.address
-        )
-        worker.gcs_log_subscriber = GcsLogSubscriber(address=worker.gcs_client.address)
-        worker.gcs_function_key_subscriber = GcsFunctionKeySubscriber(
-            address=worker.gcs_client.address
-        )
+    worker.gcs_publisher = GcsPublisher(address=worker.gcs_client.address)
+    worker.gcs_error_subscriber = GcsErrorSubscriber(address=worker.gcs_client.address)
+    worker.gcs_log_subscriber = GcsLogSubscriber(address=worker.gcs_client.address)
+    worker.gcs_function_key_subscriber = GcsFunctionKeySubscriber(
+        address=worker.gcs_client.address
+    )
 
     # Initialize some fields.
     if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
@@ -1593,8 +1488,6 @@ def connect(
             ray._private.utils.publish_error_to_driver(
                 ray_constants.VERSION_MISMATCH_PUSH_ERROR,
                 traceback_str,
-                job_id=None,
-                redis_client=worker.redis_client,
                 gcs_publisher=worker.gcs_publisher,
             )
 
@@ -1701,9 +1594,7 @@ def connect(
     # scheduler for new error messages.
     if mode == SCRIPT_MODE:
         worker.listener_thread = threading.Thread(
-            target=listen_error_messages_from_gcs
-            if worker.gcs_pubsub_enabled
-            else listen_error_messages_raylet,
+            target=listen_error_messages,
             name="ray_listen_error_messages",
             args=(worker, worker.threads_stopped),
         )
@@ -1775,10 +1666,9 @@ def disconnect(exiting_interpreter=False):
         # should be handled cleanly in the worker object's destructor and not
         # in this disconnect method.
         worker.threads_stopped.set()
-        if worker.gcs_pubsub_enabled:
-            worker.gcs_function_key_subscriber.close()
-            worker.gcs_error_subscriber.close()
-            worker.gcs_log_subscriber.close()
+        worker.gcs_function_key_subscriber.close()
+        worker.gcs_error_subscriber.close()
+        worker.gcs_log_subscriber.close()
         if hasattr(worker, "import_thread"):
             worker.import_thread.join_import_thread()
         if hasattr(worker, "listener_thread"):

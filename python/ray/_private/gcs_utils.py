@@ -58,16 +58,6 @@ __all__ = [
     "PlacementGroupTableData",
 ]
 
-LOG_FILE_CHANNEL = "RAY_LOG_CHANNEL"
-
-# Actor pub/sub updates
-RAY_ACTOR_PUBSUB_PATTERN = "ACTOR:*".encode("ascii")
-
-RAY_ERROR_PUBSUB_PATTERN = "ERROR_INFO:*".encode("ascii")
-
-# These prefixes must be kept up-to-date with the TablePrefix enum in
-# gcs.proto.
-TablePrefix_ACTOR_string = "ACTOR"
 
 WORKER = 0
 DRIVER = 1
@@ -94,13 +84,7 @@ _GRPC_OPTIONS = [
 
 
 def use_gcs_for_bootstrap():
-    from ray._private.gcs_pubsub import gcs_pubsub_enabled
-    from ray._raylet import Config
-
-    ret = Config.bootstrap_with_gcs()
-    if ret:
-        assert gcs_pubsub_enabled()
-    return ret
+    return True
 
 
 def get_gcs_address_from_redis(redis) -> str:

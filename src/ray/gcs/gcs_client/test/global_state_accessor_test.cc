@@ -29,11 +29,9 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
     if (GetParam()) {
       RayConfig::instance().bootstrap_with_gcs() = true;
       RayConfig::instance().gcs_storage() = "memory";
-      RayConfig::instance().gcs_grpc_based_pubsub() = true;
     } else {
       RayConfig::instance().bootstrap_with_gcs() = false;
       RayConfig::instance().gcs_storage() = "redis";
-      RayConfig::instance().gcs_grpc_based_pubsub() = false;
     }
 
     if (!RayConfig::instance().bootstrap_with_gcs()) {

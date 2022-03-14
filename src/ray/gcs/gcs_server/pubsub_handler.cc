@@ -32,14 +32,6 @@ InternalPubSubHandler::InternalPubSubHandler(
 void InternalPubSubHandler::HandleGcsPublish(const rpc::GcsPublishRequest &request,
                                              rpc::GcsPublishReply *reply,
                                              rpc::SendReplyCallback send_reply_callback) {
-  if (gcs_publisher_ == nullptr) {
-    send_reply_callback(
-        Status::NotImplemented("GCS pubsub is not yet enabled. Please enable it with "
-                               "system config `gcs_grpc_based_pubsub=True`"),
-        nullptr,
-        nullptr);
-    return;
-  }
   for (const auto &msg : request.pub_messages()) {
     gcs_publisher_->GetPublisher()->Publish(msg);
   }
@@ -53,14 +45,6 @@ void InternalPubSubHandler::HandleGcsSubscriberPoll(
     const rpc::GcsSubscriberPollRequest &request,
     rpc::GcsSubscriberPollReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  if (gcs_publisher_ == nullptr) {
-    send_reply_callback(
-        Status::NotImplemented("GCS pubsub is not yet enabled. Please enable it with "
-                               "system config `gcs_grpc_based_pubsub=True`"),
-        nullptr,
-        nullptr);
-    return;
-  }
   rpc::PubsubLongPollingRequest pubsub_req;
   pubsub_req.set_subscriber_id(request.subscriber_id());
   auto pubsub_reply = std::make_shared<rpc::PubsubLongPollingReply>();
@@ -85,14 +69,6 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
     const rpc::GcsSubscriberCommandBatchRequest &request,
     rpc::GcsSubscriberCommandBatchReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  if (gcs_publisher_ == nullptr) {
-    send_reply_callback(
-        Status::NotImplemented("GCS pubsub is not yet enabled. Please enable it with "
-                               "system config `gcs_grpc_based_pubsub=True`"),
-        nullptr,
-        nullptr);
-    return;
-  }
   const auto subscriber_id = UniqueID::FromBinary(request.subscriber_id());
   for (const auto &command : request.commands()) {
     if (command.has_unsubscribe_message()) {
