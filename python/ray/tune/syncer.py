@@ -487,10 +487,8 @@ class SyncerCallback(Callback):
                 # Errors occurring during this wait are not fatal for this
                 # checkpoint, so it should just be logged.
                 logger.error(
-                    "Trial %s: An error occurred during the "
-                    "checkpoint pre-sync wait - %s",
-                    trial,
-                    str(e),
+                    f"Trial {trial}: An error occurred during the "
+                    f"checkpoint pre-sync wait: {e}"
                 )
             # Force sync down and wait before tracking the new checkpoint.
             try:
@@ -498,14 +496,14 @@ class SyncerCallback(Callback):
                     trial_syncer.wait()
                 else:
                     logger.error(
-                        "Trial %s: Checkpoint sync skipped. " "This should not happen.",
-                        trial,
+                        f"Trial {trial}: Checkpoint sync skipped. "
+                        f"This should not happen."
                     )
             except TuneError as e:
                 if trial.uses_cloud_checkpointing:
                     # Even though rsync failed the trainable can restore
                     # from remote durable storage.
-                    logger.error("Trial %s: Sync error - %s", trial, str(e))
+                    logger.error(f"Trial {trial}: Sync error: {e}")
                 else:
                     # If the trainable didn't have remote storage to upload
                     # to then this checkpoint may have been lost, so we
