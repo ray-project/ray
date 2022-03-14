@@ -94,7 +94,7 @@ def set_pythonpath_in_context(python_path: str, context: RuntimeEnvContext):
     and is also compatible with the existing PYTHONPATH in the cluster.
 
     The import priority is as follows:
-    working_dir > env_vars PYTHONPATH > existing cluster environment PYTHONPATH.
+    this python_path arg > env_vars PYTHONPATH > existing cluster env PYTHONPATH.
     """
     if "PYTHONPATH" in context.env_vars:
         python_path += os.pathsep + context.env_vars["PYTHONPATH"]
