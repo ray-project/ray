@@ -13,6 +13,7 @@ from ray.core.generated import runtime_env_agent_pb2
 from ray.core.generated import runtime_env_agent_pb2_grpc
 from ray.core.generated import agent_manager_pb2
 import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules.runtime_env.runtime_env_consts as runtime_env_consts
 from ray.experimental.internal_kv import (
     _internal_kv_initialized,
@@ -234,8 +235,20 @@ class RuntimeEnvAgent(
                 self._pip_uri_cache.mark_unused(uri)
 
     def unused_runtime_env_processor(self, unused_runtime_env: str) -> None:
-        if unused_runtime_env in self._env_cache:
+        def delete_runtime_env():
             del self._env_cache[unused_runtime_env]
+            self._logger.info("Runtime env %s deleted.", unused_runtime_env)
+
+        if unused_runtime_env in self._env_cache:
+            if not self._env_cache[unused_runtime_env].success:
+                loop = asyncio.get_event_loop()
+                # Cache the bad runtime env result by ttl seconds.
+                loop.call_later(
+                    dashboard_consts.BAD_RUNTIME_ENV_CACHE_TTL_SECONDS,
+                    delete_runtime_env,
+                )
+            else:
+                delete_runtime_env()
 
     def get_or_create_logger(self, job_id: bytes):
         job_id = job_id.decode()

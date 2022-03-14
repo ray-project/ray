@@ -145,11 +145,23 @@ def test_container_option_serialize(runtime_env_class):
     assert job_config_serialized.count(b"--name=test") == 1
 
 
+bad_runtime_env_cache_ttl_seconds = 10
+
+
 @pytest.mark.skipif(
     sys.platform == "win32", reason="conda in runtime_env unsupported on Windows."
 )
 @pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
-def test_invalid_conda_env(shutdown_only, runtime_env_class):
+@pytest.mark.parametrize(
+    "set_bad_runtime_env_cache_ttl_seconds",
+    [
+        str(bad_runtime_env_cache_ttl_seconds),
+    ],
+    indirect=True,
+)
+def test_invalid_conda_env(
+    shutdown_only, runtime_env_class, set_bad_runtime_env_cache_ttl_seconds
+):
     ray.init()
 
     @ray.remote
@@ -186,6 +198,16 @@ def test_invalid_conda_env(shutdown_only, runtime_env_class):
         ray.get(f.options(runtime_env=bad_env).remote())
 
     assert (time.time() - start) < (first_time / 2.0)
+
+    # Sleep to wait bad runtime env cache removed.
+    time.sleep(bad_runtime_env_cache_ttl_seconds)
+
+    # The third time this runs it should be slower as the error isn't cached.
+    start = time.time()
+    with pytest.raises(RuntimeEnvSetupError, match="ResolvePackageNotFound"):
+        ray.get(f.options(runtime_env=bad_env).remote())
+
+    assert (time.time() - start) > (first_time / 2.0)
 
 
 @pytest.mark.skipif(
