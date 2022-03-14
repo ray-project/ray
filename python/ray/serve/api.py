@@ -124,7 +124,11 @@ def _set_internal_replica_context(
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
-        deployment, replica_tag, controller_name, controller_namespace, servable_object
+        deployment,
+        replica_tag,
+        controller_name,
+        controller_namespace,
+        servable_object,
     )
 
 
@@ -140,13 +144,18 @@ def _ensure_connected(f: Callable) -> Callable:
 
 class Client:
     def __init__(
-        self, controller: ActorHandle, controller_name: str, detached: bool = False
+        self,
+        controller: ActorHandle,
+        controller_name: str,
+        detached: bool = False,
     ):
         self._controller: ServeController = controller
         self._controller_name = controller_name
         self._detached = detached
         self._shutdown = False
-        self._http_config: HTTPOptions = ray.get(controller.get_http_config.remote())
+        self._http_config: HTTPOptions = ray.get(
+            controller.get_http_config.remote()
+        )
         self._root_url = ray.get(controller.get_root_url.remote())
         self._checkpoint_path = ray.get(controller.get_checkpoint_path.remote())
 
@@ -204,8 +213,12 @@ class Client:
             started = time.time()
             while True:
                 try:
-                    controller_namespace = _get_controller_namespace(self._detached)
-                    ray.get_actor(self._controller_name, namespace=controller_namespace)
+                    controller_namespace = _get_controller_namespace(
+                        self._detached
+                    )
+                    ray.get_actor(
+                        self._controller_name, namespace=controller_namespace
+                    )
                     if time.time() - started > 5:
                         logger.warning(
                             "Waited 5s for Serve to shutdown gracefully but "
@@ -226,7 +239,9 @@ class Client:
         """
         start = time.time()
         while time.time() - start < timeout_s:
-            statuses = ray.get(self._controller.get_deployment_statuses.remote())
+            statuses = ray.get(
+                self._controller.get_deployment_statuses.remote()
+            )
             if len(statuses) == 0:
                 break
             else:
@@ -251,7 +266,9 @@ class Client:
         """
         start = time.time()
         while time.time() - start < timeout_s or timeout_s < 0:
-            statuses = ray.get(self._controller.get_deployment_statuses.remote())
+            statuses = ray.get(
+                self._controller.get_deployment_statuses.remote()
+            )
             try:
                 status = statuses[name]
             except KeyError:
@@ -263,7 +280,9 @@ class Client:
             if status.status == DeploymentStatus.HEALTHY:
                 break
             elif status.status == DeploymentStatus.UNHEALTHY:
-                raise RuntimeError(f"Deployment {name} is UNHEALTHY: {status.message}")
+                raise RuntimeError(
+                    f"Deployment {name} is UNHEALTHY: {status.message}"
+                )
             else:
                 # Guard against new unhandled statuses being added.
                 assert status.status == DeploymentStatus.UPDATING
@@ -284,7 +303,9 @@ class Client:
         """
         start = time.time()
         while time.time() - start < timeout_s:
-            statuses = ray.get(self._controller.get_deployment_statuses.remote())
+            statuses = ray.get(
+                self._controller.get_deployment_statuses.remote()
+            )
             if name not in statuses:
                 break
             else:
@@ -294,7 +315,9 @@ class Client:
                 )
             time.sleep(_CLIENT_POLLING_INTERVAL_S)
         else:
-            raise TimeoutError(f"Deployment {name} wasn't deleted after {timeout_s}s.")
+            raise TimeoutError(
+                f"Deployment {name} wasn't deleted after {timeout_s}s."
+            )
 
     @_ensure_connected
     def deploy(
@@ -324,7 +347,9 @@ class Client:
             route_prefix=route_prefix,
         )
 
-        updating = ray.get(self._controller.deploy.remote(**controller_deploy_args))
+        updating = ray.get(
+            self._controller.deploy.remote(**controller_deploy_args)
+        )
 
         tag = self.log_deployment_update_status(name, version, updating)
 
@@ -359,7 +384,9 @@ class Client:
             deployment = deployments[i]
             name, version = deployment["name"], deployment["version"]
 
-            tags.append(self.log_deployment_update_status(name, version, updating))
+            tags.append(
+                self.log_deployment_update_status(name, version, updating)
+            )
 
         for i, deployment in enumerate(deployments):
             name = deployment["name"]
@@ -521,7 +548,9 @@ class Client:
         elif isinstance(config, DeploymentConfig):
             deployment_config = config
         else:
-            raise TypeError("config must be a DeploymentConfig or a dictionary.")
+            raise TypeError(
+                "config must be a DeploymentConfig or a dictionary."
+            )
 
         if (
             deployment_config.autoscaling_config is not None
@@ -566,7 +595,9 @@ class Client:
         return tag
 
     @_ensure_connected
-    def log_deployment_ready(self, name: str, version: str, url: str, tag: str) -> None:
+    def log_deployment_ready(
+        self, name: str, version: str, url: str, tag: str
+    ) -> None:
         if url is not None:
             url_part = f" at `{url}`"
         else:
@@ -599,7 +630,9 @@ def _check_http_and_checkpoint_options(
         different_fields = []
         all_http_option_fields = new_http_options.__dict__
         for field in all_http_option_fields:
-            if getattr(new_http_options, field) != getattr(client_http_options, field):
+            if getattr(new_http_options, field) != getattr(
+                client_http_options, field
+            ):
                 different_fields.append(field)
 
         if len(different_fields):
@@ -677,7 +710,9 @@ def start(
             f"'{controller_namespace}'."
         )
 
-        _check_http_and_checkpoint_options(client, http_options, _checkpoint_path)
+        _check_http_and_checkpoint_options(
+            client, http_options, _checkpoint_path
+        )
         return client
     except RayServeException:
         pass
@@ -685,7 +720,9 @@ def start(
     if detached:
         controller_name = SERVE_CONTROLLER_NAME
     else:
-        controller_name = format_actor_name(get_random_letters(), SERVE_CONTROLLER_NAME)
+        controller_name = format_actor_name(
+            get_random_letters(), SERVE_CONTROLLER_NAME
+        )
 
     if isinstance(http_options, dict):
         http_options = HTTPOptions.parse_obj(http_options)
@@ -752,11 +789,15 @@ def _connect() -> Client:
         controller_namespace = _get_controller_namespace(detached=True)
     else:
         controller_name = _INTERNAL_REPLICA_CONTEXT._internal_controller_name
-        controller_namespace = _INTERNAL_REPLICA_CONTEXT._internal_controller_namespace
+        controller_namespace = (
+            _INTERNAL_REPLICA_CONTEXT._internal_controller_namespace
+        )
 
     # Try to get serve controller if it exists
     try:
-        controller = ray.get_actor(controller_name, namespace=controller_namespace)
+        controller = ray.get_actor(
+            controller_name, namespace=controller_namespace
+        )
     except ValueError:
         raise RayServeException(
             "There is no "
@@ -923,7 +964,9 @@ class Deployment:
                 "directly. Use `@serve.deployment` instead."
             )
         if not callable(func_or_class) and not isinstance(func_or_class, str):
-            raise TypeError("@serve.deployment must be called on a class or function.")
+            raise TypeError(
+                "@serve.deployment must be called on a class or function."
+            )
         if not isinstance(name, str):
             raise TypeError("name must be a string.")
         if not (version is None or isinstance(version, str)):
@@ -945,7 +988,9 @@ class Deployment:
                 )
             if "{" in route_prefix or "}" in route_prefix:
                 raise ValueError("route_prefix may not contain wildcards.")
-        if not (ray_actor_options is None or isinstance(ray_actor_options, dict)):
+        if not (
+            ray_actor_options is None or isinstance(ray_actor_options, dict)
+        ):
             raise TypeError("ray_actor_options must be a dict.")
 
         if init_args is None:
@@ -1163,10 +1208,14 @@ class Deployment:
             new_config.autoscaling_config = _autoscaling_config
 
         if _graceful_shutdown_wait_loop_s is not None:
-            new_config.graceful_shutdown_wait_loop_s = _graceful_shutdown_wait_loop_s
+            new_config.graceful_shutdown_wait_loop_s = (
+                _graceful_shutdown_wait_loop_s
+            )
 
         if _graceful_shutdown_timeout_s is not None:
-            new_config.graceful_shutdown_timeout_s = _graceful_shutdown_timeout_s
+            new_config.graceful_shutdown_timeout_s = (
+                _graceful_shutdown_timeout_s
+            )
 
         if _health_check_period_s is not None:
             new_config.health_check_period_s = _health_check_period_s
@@ -1188,7 +1237,7 @@ class Deployment:
         )
 
     @PublicAPI
-    def bind(self, *args, **kwargs):
+    def bind(self, *args, other_args_to_resolve=None, **kwargs):
         """Construct a node in DAG using current deployment.
         Args and kwargs in .bind() are used to initialize deployment class in
         each serve replica.
@@ -1210,7 +1259,12 @@ class Deployment:
             ...     dag = MyDeployment.forward.bind()
         """
         return DeploymentNode(
-            self._func_or_class, self._name, args, kwargs, self._ray_actor_options
+            self._func_or_class,
+            self._name,
+            args,
+            kwargs,
+            self._ray_actor_options,
+            other_args_to_resolve=other_args_to_resolve,
         )
 
     def __eq__(self, other):
@@ -1416,10 +1470,13 @@ def get_deployment(name: str) -> Deployment:
         ) = internal_get_global_client().get_deployment_info(name)
     except KeyError:
         raise KeyError(
-            f"Deployment {name} was not found. " "Did you call Deployment.deploy()?"
+            f"Deployment {name} was not found. "
+            "Did you call Deployment.deploy()?"
         )
     return Deployment(
-        cloudpickle.loads(deployment_info.replica_config.serialized_deployment_def),
+        cloudpickle.loads(
+            deployment_info.replica_config.serialized_deployment_def
+        ),
         name,
         deployment_info.deployment_config,
         version=deployment_info.version,
@@ -1442,7 +1499,9 @@ def list_deployments() -> Dict[str, Deployment]:
     deployments = {}
     for name, (deployment_info, route_prefix) in infos.items():
         deployments[name] = Deployment(
-            cloudpickle.loads(deployment_info.replica_config.serialized_deployment_def),
+            cloudpickle.loads(
+                deployment_info.replica_config.serialized_deployment_def
+            ),
             name,
             deployment_info.deployment_config,
             version=deployment_info.version,
@@ -1539,7 +1598,9 @@ class DeploymentNode(DAGNode):
         )
         self._deployment_handle: Union[
             RayServeHandle, RayServeSyncHandle
-        ] = self._get_serve_deployment_handle(self._deployment, other_args_to_resolve)
+        ] = self._get_serve_deployment_handle(
+            self._deployment, other_args_to_resolve
+        )
 
     def _copy_impl(
         self,
@@ -1609,12 +1670,9 @@ class DeploymentNode(DAGNode):
     def __getattr__(self, method_name: str):
         # Raise an error if the method is invalid.
         getattr(self._deployment.func_or_class, method_name)
-        call_node = DeploymentMethodNode(
+        call_node = UnboundDeploymentMethodNode(
             self._deployment,
             method_name,
-            (),
-            {},
-            {},
             other_args_to_resolve=self._bound_other_args_to_resolve,
         )
         return call_node
@@ -1622,8 +1680,14 @@ class DeploymentNode(DAGNode):
     def __str__(self) -> str:
         return get_dag_node_str(self, str(self._deployment))
 
+    def get_deployment(self) -> Deployment:
+        return self._deployment
+
     def get_deployment_name(self):
         return self._deployment.name
+
+    def get_deployment_handle(self):
+        return self._deployment_handle
 
     def get_import_path(self):
         if isinstance(self._deployment._func_or_class, str):
@@ -1665,6 +1729,34 @@ class DeploymentNode(DAGNode):
             args_dict["options"],
             other_args_to_resolve=args_dict["other_args_to_resolve"],
         )
+
+
+class UnboundDeploymentMethodNode(DAGNode):
+    def __init__(
+        self,
+        deployment: Deployment,
+        method_name: str,
+        other_args_to_resolve: Dict[str, Any] = None,
+    ):
+        self._deployment = deployment
+        self._method_name = method_name
+        self._options = {}
+        self._bound_other_args_to_resolve = other_args_to_resolve
+
+    def bind(self, *args, **kwargs):
+        node = DeploymentMethodNode(
+            self._deployment,
+            self._method_name,
+            args,
+            kwargs,
+            self._options,
+            other_args_to_resolve=self._bound_other_args_to_resolve,
+        )
+        return node
+
+    def options(self, **options):
+        self._options = options
+        return self
 
 
 class DeploymentMethodNode(DAGNode):
@@ -1710,7 +1802,9 @@ class DeploymentMethodNode(DAGNode):
     def _execute_impl(self, *args):
         """Executor of DeploymentMethodNode by ray.remote()"""
         # Execute with bound args.
-        method_body = getattr(self._deployment_handle, self._deployment_method_name)
+        method_body = getattr(
+            self._deployment_handle, self._deployment_method_name
+        )
 
         return method_body.options(**self._bound_options).remote(
             *self._bound_args,
@@ -1772,7 +1866,9 @@ class DeploymentMethodNode(DAGNode):
             return f"{body.__module__}.{body.__qualname__}"
 
     def to_json(self, encoder_cls) -> Dict[str, Any]:
-        json_dict = super().to_json_base(encoder_cls, DeploymentMethodNode.__name__)
+        json_dict = super().to_json_base(
+            encoder_cls, DeploymentMethodNode.__name__
+        )
         json_dict["deployment_name"] = self.get_deployment_name()
         json_dict["deployment_method_name"] = self.get_deployment_method_name()
         json_dict["import_path"] = self.get_import_path()
