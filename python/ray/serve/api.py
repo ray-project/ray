@@ -6,6 +6,7 @@ import logging
 import random
 import re
 import time
+import yaml
 from dataclasses import dataclass
 from functools import wraps
 from typing import (
@@ -65,6 +66,12 @@ from ray.serve.utils import (
 from ray.util.annotations import PublicAPI
 import ray
 from ray import cloudpickle
+from ray.serve.schema import (
+    ServeApplicationSchema,
+    serve_application_to_schema,
+    schema_to_serve_application,
+    serve_application_status_to_schema,
+)
 
 
 _INTERNAL_REPLICA_CONTEXT = None
@@ -1529,7 +1536,11 @@ class Application:
     # At the very least, it should be a simple dictionary.
 
     def __init__(self):
-        raise NotImplementedError()
+        deployments = deployments or []
+
+        self._deployments = dict()
+        for d in deployments:
+            self._add_deployment(d)
 
     def to_dict(self) -> Dict:
         """Returns this Application's deployments as a dictionary.
@@ -1540,7 +1551,8 @@ class Application:
         Returns:
             Dict: The Application's deployments formatted in a dictionary.
         """
-        raise NotImplementedError()
+        
+        return serve_application_to_schema(self._deployments.values()).dict()
 
     @classmethod
     def from_dict(cls, d: Dict) -> "Application":
@@ -1556,7 +1568,9 @@ class Application:
         Returns:
             Application: a new Application object containing the deployments.
         """
-        raise NotImplementedError()
+        
+        schema = ServeApplicationSchema.parse_obj(d)
+        return cls(schema_to_serve_application(schema))
 
     def to_yaml(self, f: Optional[TextIO] = None) -> Optional[str]:
         """Returns this Application's deployments as a YAML string.
@@ -1578,7 +1592,12 @@ class Application:
             Optional[String]: The deployments' YAML string. The output is from
                 yaml.safe_dump(). Returned only if no file pointer is passed in.
         """
-        raise NotImplementedError()
+        
+        deployment_dict = serve_application_to_schema(self._deployments.values()).dict()
+
+        if f:
+            yaml.safe_dump(deployment_dict, f, default_flow_style=False)
+        return yaml.safe_dump(deployment_dict, default_flow_style=False)
 
     @classmethod
     def from_yaml(cls, str_or_file: Union[str, TextIO]) -> "Application":
@@ -1604,7 +1623,44 @@ class Application:
         Returns:
             Application: a new Application object containing the deployments.
         """
-        raise NotImplementedError()
+        
+        deployments_json = yaml.safe_load(str_or_file)
+        schema = ServeApplicationSchema.parse_obj(deployments_json)
+        return cls(schema_to_serve_application(schema))
+
+    def _add_deployment(self, deployment: Deployment):
+        """Adds the deployment to this Serve application.
+
+        Validates that a deployment with the same name doesn't already exist.
+        To overwrite an existing deployment, use index notation. For example:
+
+        app[deployment_name] = deployment
+
+        Args:
+            deployment (Deployment): deployment to add to this Application.
+
+        Raises:
+            ValueError: If a deployment with deployment.name already exists in
+                this Application.
+        """
+
+        if not isinstance(deployment, Deployment):
+            raise TypeError(f"Got {type(deployment)}. Expected deployment.")
+        elif deployment.name in self._deployments:
+            raise ValueError(
+                f'Deployment with name "{deployment.name}" already '
+                "exists in this application. To overwrite this "
+                "deployment, use attribute or index notation. "
+                "For example:\n\napp.deployment_name = "
+                "new_deployment"
+            )
+
+        self._deployments[deployment.name] = deployment
+    
+    def _get_deployments(self) -> List[Deployment]:
+        """Gets a list of this Application's deployments."""
+
+        return self._deployments.values()
 
     def __getitem__(self, key: str):
         """Fetch a deployment by name using dict syntax: app["name"]
@@ -1612,36 +1668,29 @@ class Application:
         Raises:
             KeyError: if the name is not in this Application.
         """
-        raise NotImplementedError()
-
-    def __setitem__(self, key: str, value: Deployment):
-        """Set a deployment by name with dict syntax: app[name]=new_deployment
-
-        Use this to overwrite existing deployments.
-
-        Args:
-            key (String): name
-            value (Deployment): the deployment that the name maps to
-
-        Raises:
-            TypeError: if the key is not a String or the value is not a deployment.
-        """
-        raise NotImplementedError()
+        
+        if key in self._deployments:
+            return self._deployments[key]
+        else:
+            raise KeyError(f'Serve application does not contain a "{key}" deployment.')
 
     def __iter__(self):
         """Iterator over Application's deployments.
 
         Enables "for deployment in Application" pattern.
         """
-        raise NotImplementedError()
+
+        return iter(self._deployments.values())
 
     def __len__(self):
         """Number of deployments in this Application."""
-        raise NotImplementedError()
+        
+        return len(self._deployments)
 
     def __contains__(self, key: str):
         """Checks if the key exists in self._deployments."""
-        raise NotImplementedError()
+        
+        return key in self._deployments
 
 
 NodeOrApp = Union[DeploymentNode, Application]
