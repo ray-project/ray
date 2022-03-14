@@ -7,7 +7,7 @@ from ray.serve.api import DeployedCallGraph
 
 
 @serve.deployment
-class PipelineDriver:
+class PipelineDriverDeployment:
     def __init__(
         self,
         call_graph: DeployedCallGraph,
