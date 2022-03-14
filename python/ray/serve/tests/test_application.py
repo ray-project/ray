@@ -8,7 +8,7 @@ import requests
 
 import ray
 from ray import serve
-from ray.serve.application import Application
+from ray.serve.api import Application
 from ray._private.test_utils import wait_for_condition
 
 
@@ -24,8 +24,8 @@ class TestAddDeployment:
 
     def test_add_deployment_valid(self):
         app = Application()
-        app.add_deployment(self.f)
-        app.add_deployment(self.C)
+        app._add_deployment(self.f)
+        app._add_deployment(self.C)
 
         assert len(app) == 2
         assert "f" in app
@@ -34,8 +34,8 @@ class TestAddDeployment:
     def test_add_deployment_repeat_name(self):
         with pytest.raises(ValueError):
             app = Application()
-            app.add_deployment(self.f)
-            app.add_deployment(self.C.options(name="f"))
+            app._add_deployment(self.f)
+            app._add_deployment(self.C.options(name="f"))
 
         with pytest.raises(ValueError):
             Application([self.C, self.f.options(name="C")])
@@ -70,7 +70,7 @@ class TestDeployGroup:
         the client to wait until the deployments finish deploying.
         """
 
-        Application(deployments).deploy(blocking=blocking)
+        serve.deploy(target=Application(deployments), blocking=blocking)
 
         def check_all_deployed():
             try:
@@ -143,7 +143,7 @@ class TestDeployGroup:
                 MutualHandles.options(name=deployment_name, init_args=(handle_name,))
             )
 
-        Application(deployments).deploy(blocking=True)
+        serve.deploy(target=Application(deployments), blocking=True)
 
         for deployment in deployments:
             assert (ray.get(deployment.get_handle().remote("hello"))) == "hello"
@@ -308,7 +308,7 @@ class TestDictTranslation:
 
         compare_specified_options(config_dict, app_dict)
 
-        app.deploy()
+        serve.deploy(app)
 
         assert (
             requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
@@ -334,7 +334,7 @@ class TestYAMLTranslation:
         compare_specified_options(app1.to_dict(), app2.to_dict())
 
         # Check that deployment works
-        app1.deploy()
+        serve.deploy(app1)
         assert (
             requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
         )
@@ -354,7 +354,7 @@ class TestYAMLTranslation:
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_get_set_item(serve_instance):
+def test_get_item(serve_instance):
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
     )

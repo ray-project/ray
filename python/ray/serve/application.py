@@ -8,14 +8,14 @@ from ray.serve.api import (
     Deployment,
     internal_get_global_client,
 )
-from ray.serve.schema import (
-    ServeApplicationSchema,
+from ray.serve.schema import ServeApplicationSchema
+from ray.serve.utils import logger
+from ray.serve.api import (
+    get_deployment_statuses,
     serve_application_to_schema,
     schema_to_serve_application,
     serve_application_status_to_schema,
 )
-from ray.serve.utils import logger
-from ray.serve.api import get_deployment_statuses
 from ray.autoscaler._private.cli_logger import _CliLogger
 from logging import Logger
 

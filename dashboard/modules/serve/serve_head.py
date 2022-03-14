@@ -6,11 +6,11 @@ import ray.dashboard.optional_utils as optional_utils
 
 from ray import serve
 from ray.serve.application import Application
-from ray.serve.schema import (
+from ray.serve.api import (
+    get_deployment_statuses,
     serve_application_to_schema,
     serve_application_status_to_schema,
 )
-from ray.serve.api import get_deployment_statuses
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

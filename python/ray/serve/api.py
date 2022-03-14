@@ -66,12 +66,14 @@ from ray.util.annotations import PublicAPI
 import ray
 from ray import cloudpickle
 from ray.serve.schema import (
+    RayActorOptionsSchema,
+    DeploymentSchema,
+    DeploymentStatusSchema,
     ServeApplicationSchema,
-    serve_application_to_schema,
-    schema_to_serve_application,
-    serve_application_status_to_schema,
+    ServeApplicationStatusSchema,
 )
-from ray.serve.pipeline.api import extract_deployments_from_serve_dag
+
+# from ray.serve.pipeline.api import extract_deployments_from_serve_dag
 
 
 _INTERNAL_REPLICA_CONTEXT = None
@@ -1535,7 +1537,7 @@ class Application:
     # TODO(edoakes): should this literally just be the REST pydantic schema?
     # At the very least, it should be a simple dictionary.
 
-    def __init__(self, deployments: List[Deployment]=None):
+    def __init__(self, deployments: List[Deployment] = None):
         deployments = deployments or []
 
         self._deployments = dict()
@@ -1812,10 +1814,99 @@ def _get_deployments_from_target(target: NodeOrApp) -> List[Deployment]:
     if isinstance(target, Application):
         return target._get_deployments()
     elif isinstance(target, DeploymentNode):
-        return extract_deployments_from_serve_dag(target)
+        return []
+        # return extract_deployments_from_serve_dag(target)
     else:
         raise TypeError(
             "Expected a DeploymentNode or "
             "Application as target. Got unexpected type "
             f'"{type(target)}" instead.'
         )
+
+
+def deployment_to_schema(d: Deployment) -> DeploymentSchema:
+    if d.ray_actor_options is not None:
+        ray_actor_options_schema = RayActorOptionsSchema.parse_obj(d.ray_actor_options)
+    else:
+        ray_actor_options_schema = None
+
+    return DeploymentSchema(
+        name=d.name,
+        import_path=d.func_or_class,
+        init_args=d.init_args,
+        init_kwargs=d.init_kwargs,
+        num_replicas=d.num_replicas,
+        route_prefix=d.route_prefix,
+        max_concurrent_queries=d.max_concurrent_queries,
+        user_config=d.user_config,
+        autoscaling_config=d._config.autoscaling_config,
+        graceful_shutdown_wait_loop_s=d._config.graceful_shutdown_wait_loop_s,
+        graceful_shutdown_timeout_s=d._config.graceful_shutdown_timeout_s,
+        health_check_period_s=d._config.health_check_period_s,
+        health_check_timeout_s=d._config.health_check_timeout_s,
+        ray_actor_options=ray_actor_options_schema,
+    )
+
+
+def schema_to_deployment(s: DeploymentSchema) -> Deployment:
+    if s.ray_actor_options is None:
+        ray_actor_options = None
+    else:
+        ray_actor_options = s.ray_actor_options.dict(exclude_unset=True)
+
+    return deployment(
+        name=s.name,
+        num_replicas=s.num_replicas,
+        init_args=s.init_args,
+        init_kwargs=s.init_kwargs,
+        route_prefix=s.route_prefix,
+        ray_actor_options=ray_actor_options,
+        max_concurrent_queries=s.max_concurrent_queries,
+        _autoscaling_config=s.autoscaling_config,
+        _graceful_shutdown_wait_loop_s=s.graceful_shutdown_wait_loop_s,
+        _graceful_shutdown_timeout_s=s.graceful_shutdown_timeout_s,
+        _health_check_period_s=s.health_check_period_s,
+        _health_check_timeout_s=s.health_check_timeout_s,
+    )(s.import_path)
+
+
+def serve_application_to_schema(
+    deployments: List[Deployment],
+) -> ServeApplicationSchema:
+    schemas = [deployment_to_schema(d) for d in deployments]
+    return ServeApplicationSchema(deployments=schemas)
+
+
+def schema_to_serve_application(schema: ServeApplicationSchema) -> List[Deployment]:
+    return [schema_to_deployment(s) for s in schema.deployments]
+
+
+def status_info_to_schema(
+    deployment_name: str, status_info: Union[DeploymentStatusInfo, Dict]
+) -> DeploymentStatusSchema:
+    if isinstance(status_info, DeploymentStatusInfo):
+        return DeploymentStatusSchema(
+            name=deployment_name, status=status_info.status, message=status_info.message
+        )
+    elif isinstance(status_info, dict):
+        return DeploymentStatusSchema(
+            name=deployment_name,
+            status=status_info["status"],
+            message=status_info["message"],
+        )
+    else:
+        raise TypeError(
+            f"Got {type(status_info)} as status_info's "
+            "type. Expected status_info to be either a "
+            "DeploymentStatusInfo or a dictionary."
+        )
+
+
+def serve_application_status_to_schema(
+    status_infos: Dict[str, Union[DeploymentStatusInfo, Dict]]
+) -> ServeApplicationStatusSchema:
+    schemas = [
+        status_info_to_schema(deployment_name, status_info)
+        for deployment_name, status_info in status_infos.items()
+    ]
+    return ServeApplicationStatusSchema(statuses=schemas)
