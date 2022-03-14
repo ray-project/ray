@@ -255,9 +255,7 @@ class RuntimeEnvAgent(
                 self._logger.info(f"Sleeping for {SLEEP_FOR_TESTING_S}s.")
                 time.sleep(int(SLEEP_FOR_TESTING_S))
 
-            self._logger.info(
-                f"Creating runtime env: {serialized_env}."
-            )
+            self._logger.info(f"Creating runtime env: {serialized_env}.")
             runtime_env_context: RuntimeEnvContext = None
             error_message = None
             runtime_env_config = RuntimeEnvConfig.from_proto(runtime_env_config)
