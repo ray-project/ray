@@ -516,30 +516,6 @@ class SearcherTest(unittest.TestCase):
         assert searcher_2.data == original_data
 
 
-class ResourceExhaustedTest(unittest.TestCase):
-    def test_resource_exhausted_info(self):
-        """This is to test if helpful information is displayed when
-        the objects captured in trainable/training function are too
-        large and RESOURCES_EXHAUSTED error of gRPC is triggered."""
-
-        # generate some random data to be captured implicitly in training func.
-        from sklearn.datasets import fetch_olivetti_faces
-
-        a_large_array = []
-        for i in range(10):
-            a_large_array.append(fetch_olivetti_faces())
-
-        def training_func(config):
-            for item in a_large_array:
-                assert item
-
-        with self.assertRaisesRegex(
-            TuneError,
-            "The Trainable/training function is too large for grpc resource limit.",
-        ):
-            tune.run(training_func)
-
-
 class WorkingDirectoryTest(unittest.TestCase):
     def testWorkingDir(self):
         """Trainables should know the original working dir on driver through env
@@ -564,6 +540,34 @@ class TrainableCrashWithFailFast(unittest.TestCase):
 
         with self.assertRaisesRegex(RayTaskError, "Error happens in trainable!!"):
             tune.run(f, fail_fast=TrialRunner.RAISE)
+
+
+# For some reason, different tests are coupled through tune.registry.
+# After running `ResourceExhaustedTest`, there is always a super huge `training_func` to
+# be put through GCS, which will fail subsequent tests.
+# tldr, make sure that this test is the last test in the file.
+class ResourceExhaustedTest(unittest.TestCase):
+    def test_resource_exhausted_info(self):
+        """This is to test if helpful information is displayed when
+        the objects captured in trainable/training function are too
+        large and RESOURCES_EXHAUSTED error of gRPC is triggered."""
+
+        # generate some random data to be captured implicitly in training func.
+        from sklearn.datasets import fetch_olivetti_faces
+
+        a_large_array = []
+        for i in range(10):
+            a_large_array.append(fetch_olivetti_faces())
+
+        def training_func(config):
+            for item in a_large_array:
+                assert item
+
+        with self.assertRaisesRegex(
+            TuneError,
+            "The Trainable/training function is too large for grpc resource limit.",
+        ):
+            tune.run(training_func)
 
 
 if __name__ == "__main__":
