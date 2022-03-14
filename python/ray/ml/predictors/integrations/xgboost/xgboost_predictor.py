@@ -49,7 +49,7 @@ class XGBoostPredictor(Predictor):
         data: DataBatchType,
         feature_columns: Optional[Union[List[str], List[int]]] = None,
         dmatrix_kwargs: Optional[Dict[str, Any]] = None,
-        predict_kwargs: Optional[Dict[str, Any]] = None,
+        **predict_kwargs
     ) -> DataBatchType:
         """Run inference on data batch.
 
@@ -63,8 +63,7 @@ class XGBoostPredictor(Predictor):
                 data to use as features to predict on. If None, then use
                 all columns in ``data``.
             dmatrix_kwargs: Dict of keyword arguments passed to ``xgboost.DMatrix``.
-            predict_kwargs: Dict of keyword arguments passed to
-                ``xgboost.Booster.predict``.
+            **predict_kwargs: Keyword arguments passed to ``xgboost.Booster.predict``.
 
         Examples:
 
@@ -113,7 +112,6 @@ class XGBoostPredictor(Predictor):
 
         """
         dmatrix_kwargs = dmatrix_kwargs or {}
-        predict_kwargs = predict_kwargs or {}
 
         data = self.preprocessor.transform_batch(data)
 

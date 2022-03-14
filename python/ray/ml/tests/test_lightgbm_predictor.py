@@ -11,6 +11,7 @@ import tempfile
 
 class DummyPreprocessor(Preprocessor):
     def transform_batch(self, df):
+        self._batch_transformed = True
         return df * 2
 
 
@@ -55,6 +56,7 @@ def test_predict():
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
+    assert hasattr(predictor.preprocessor, "_batch_transformed")
 
 
 def test_predict_feature_columns():
@@ -65,3 +67,4 @@ def test_predict_feature_columns():
     predictions = predictor.predict(data_batch, feature_columns=[0, 1])
 
     assert len(predictions) == 3
+    assert hasattr(predictor.preprocessor, "_batch_transformed")

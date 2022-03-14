@@ -1,4 +1,4 @@
-from typing import Optional, List, Union, Dict, Any
+from typing import Optional, List, Union
 import os
 import shutil
 import numpy as np
@@ -47,7 +47,7 @@ class LightGBMPredictor(Predictor):
         self,
         data: DataBatchType,
         feature_columns: Optional[Union[List[str], List[int]]] = None,
-        predict_kwargs: Optional[Dict[str, Any]] = None,
+        **predict_kwargs
     ) -> DataBatchType:
         """Run inference on data batch.
 
@@ -57,7 +57,7 @@ class LightGBMPredictor(Predictor):
             feature_columns: The names or indices of the columns in the
                 data to use as features to predict on. If None, then use
                 all columns in ``data``.
-            predict_kwargs: Keyword arguments passed to
+            **predict_kwargs: Keyword arguments passed to
                 ``lightgbm.Booster.predict``.
 
         Examples:
