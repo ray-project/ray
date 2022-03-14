@@ -2,11 +2,13 @@ import abc
 import logging
 from typing import Dict, Union, Callable, Optional, TYPE_CHECKING, Type
 
+import ray
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.result import Result
-from ray.ml.config import RunConfig, ScalingConfig
+from ray.ml.config import RunConfig, ScalingConfig, ScalingConfigDataClass
 from ray.tune import Trainable
+from ray.tune.function_runner import wrap_function
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
 
@@ -24,7 +26,6 @@ logger = logging.getLogger(__name__)
 @PublicAPI(stability="alpha")
 class TrainingFailedError(RuntimeError):
     """An error indicating that training has failed."""
-
     pass
 
 
@@ -139,7 +140,14 @@ class Trainer(abc.ABC):
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
 
-        raise NotImplementedError
+        self.scaling_config = scaling_config
+        self.run_config = run_config
+        self.train_dataset = train_dataset
+        self.extra_datasets = extra_datasets
+        self.preprocessor = preprocessor
+        self.resume_from_checkpoint = resume_from_checkpoint
+        self._has_preprocessed_datasets = False
+        self._scaling_config_datclass = ScalingConfigDataClass(**self.scaling_config)
 
     def setup(self) -> None:
         """Called during fit() to perform initial setup on the Trainer.
@@ -152,7 +160,7 @@ class Trainer(abc.ABC):
         This method is called prior to ``preprocess_datasets`` and
         ``training_loop``.
         """
-        raise NotImplementedError
+        pass
 
     def preprocess_datasets(self) -> None:
         """Called during fit() to preprocess dataset attributes with preprocessor.
@@ -172,7 +180,32 @@ class Trainer(abc.ABC):
         ``self.train_dataset`` and ``self.extra_datasets`` attributes to be
         used when overriding ``training_loop``.
         """
-        raise NotImplementedError
+        # Transform all datasets concurrently in remote tasks.
+        transform_task_dict = {}
+
+        transform_task = ray.remote(lambda preprocessor, dataset:
+                                    preprocessor.transform(dataset))
+
+        if self.preprocessor and not self._has_preprocessed_datasets:
+            if self.train_dataset and not self.preprocessor.check_is_fitted():
+                self.preprocessor.fit(self.train_dataset)
+
+            if self.train_dataset:
+                transform_task_dict["__train_dataset"] = transform_task.remote(
+                    self.preprocessor, self.train_dataset)
+
+            for key, dataset in self.extra_datasets:
+                transform_task_dict[key] = transform_task.remote(dataset)
+
+            ray.get(list(transform_task_dict.values()))
+
+            self.train_dataset = transform_task_dict.pop("__train_dataset", None)
+
+            for key, transformed_dataset in transform_task_dict.items():
+                self.extra_datasets[key] = ray.get(transformed_dataset)
+
+            self._has_preprocessed_datasets = True
+
 
     @abc.abstractmethod
     def training_loop(self) -> None:
@@ -212,8 +245,51 @@ class Trainer(abc.ABC):
             TrainingFailedError: If any failures during the execution of
             ``self.as_trainable()``.
         """
-        raise NotImplementedError
+        trainable = self.as_trainable()
+
+        from ray import tune
+        from ray.tune import TuneError
+
+        # Copied from initial prototyping.
+        # TODO(amog/xwjiang): Replace with Tuner.
+        try:
+            analysis = tune.run(run_or_experiment=trainable, **self.run_config)
+        except TuneError:
+            raise TrainingFailedError
+        else:
+            assert len(analysis.trials) == 1
+
+            trial = analysis.trials[0]
+
+            result = Result(
+                metrics=trial.last_result,
+                checkpoint=Checkpoint.from_directory(trial.checkpoint.value)
+                if trial.checkpoint.value
+                else None,
+            )
+
+            return result
 
     def as_trainable(self) -> Type[Trainable]:
         """Convert self to a ``tune.Trainable`` class."""
-        raise NotImplementedError
+
+        def train_func(_, checkpoint_dir=None):
+            if checkpoint_dir:
+                self.resume_from_checkpoint = Checkpoint.from_directory(checkpoint_dir)
+
+            self.setup()
+            self.preprocess_datasets()
+            self.training_loop()
+
+        trainable_cls = wrap_function(train_func)
+
+        class TrainTrainable(trainable_cls):
+            """Add default resources to the Trainable."""
+
+            @classmethod
+            def default_resource_request(cls, config):
+                return self._scaling_config_datclass.get_placement_group_factory()
+
+        return TrainTrainable
+
+
