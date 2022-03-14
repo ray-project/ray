@@ -355,13 +355,19 @@ class TestYAMLTranslation:
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_get_item(serve_instance):
+def test_immutable_deployment_list(serve_instance):
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
     )
 
     with open(config_file_name, "r") as f:
         app = Application.from_yaml(f)
+
+    assert len(app.deployments) == 2
+
+    for i in range(len(app.deployments)):
+        with pytest.raises(RuntimeError):
+            app.deployments[i] = app.deployments[i].options(name="sneaky")
 
     for deployment in app.deployments:
         deployment.deploy()
