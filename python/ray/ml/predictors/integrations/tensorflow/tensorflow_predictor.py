@@ -53,7 +53,7 @@ class TensorflowPredictor(Predictor):
             raise RuntimeError(
                 f"No item with key: {MODEL_KEY} is found in the "
                 f"Checkpoint. Make sure this key exists when saving the "
-                f"checkpoint in ``TorchTrainer``."
+                f"checkpoint in ``TensorflowTrainer``."
             )
         model_weights = checkpoint_dict[MODEL_KEY]
         return TensorflowPredictor(
