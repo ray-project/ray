@@ -63,7 +63,6 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
     RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
     Preconditions.checkState(workerId == null);
 
-    /// TODO(qwang): Take a review for this.
     if (!skipAddingLocalRef) {
       runtime.getObjectStore().addLocalReference(workerId, id);
     }
