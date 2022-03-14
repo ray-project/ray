@@ -184,7 +184,8 @@ class GCPNodeProvider(NodeProvider):
             except googleapiclient.errors.HttpError as e:
                 if e.status_code == 404:
                     logger.warning(
-                        f"Tried to delete the node with id {node_id} but it was already gone."
+                        f"Tried to delete the node with id {node_id}"
+                        "but it was already gone."
                     )
                 else:
                     raise e from None

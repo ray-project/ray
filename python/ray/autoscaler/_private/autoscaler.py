@@ -311,7 +311,7 @@ class StandardAutoscaler:
         # Query the provider to update the list of non-terminated nodes
         self.non_terminated_nodes = NonTerminatedNodes(self.provider)
 
-        # This list will accumulate the nodes we need to terminate during an autoscaling update.
+        # This will accumulate the nodes we need to terminate.
         self.nodes_to_terminate = []
 
         # Update running nodes gauge
