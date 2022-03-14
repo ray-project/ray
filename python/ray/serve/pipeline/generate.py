@@ -9,9 +9,7 @@ from ray.experimental.dag import (
     PARENT_CLASS_NODE_KEY,
 )
 from ray.experimental.dag.input_node import InputNode
-from ray.serve.api import Deployment
-from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
-from ray.serve.pipeline.deployment_node import DeploymentNode
+from ray.serve.api import Deployment, DeploymentNode, DeploymentMethodNode
 from ray.serve.pipeline.ingress import make_ingress_deployment
 from ray.serve.pipeline.json_serde import DAGNodeEncoder
 from ray.serve.pipeline.pipeline_input_node import PipelineInputNode

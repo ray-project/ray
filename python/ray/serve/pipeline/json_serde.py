@@ -12,8 +12,7 @@ from ray.experimental.dag import (
     InputAtrributeNode,
     DAGNODE_TYPE_KEY,
 )
-from ray.serve.pipeline.deployment_node import DeploymentNode
-from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
+from ray.serve.api import DeploymentNode, DeploymentMethodNode
 from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
 from ray.serve.utils import parse_import_path
 from ray.serve.handle import RayServeHandle
