@@ -977,6 +977,7 @@ the disk that from which your script was executed from.
     # View the PyTorch Profiler traces.
     $ open http://localhost:6006/#pytorch_profiler
 
+.. _train-reproducibility:
 
 Reproducibility
 ---------------
