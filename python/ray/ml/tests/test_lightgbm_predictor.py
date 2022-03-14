@@ -17,8 +17,6 @@ class DummyPreprocessor(Preprocessor):
 
 dummy_data = np.array([[1, 2], [3, 4], [5, 6]])
 dummy_target = np.array([0, 1, 0])
-
-predictor_cls = LightGBMPredictor
 model = lgbm.LGBMClassifier(n_estimators=10).fit(dummy_data, dummy_target).booster_
 
 
@@ -29,7 +27,7 @@ def get_num_trees(booster: lgbm.Booster) -> int:
 def test_init():
     preprocessor = DummyPreprocessor()
     preprocessor.attr = 1
-    predictor = predictor_cls(model=model, preprocessor=preprocessor)
+    predictor = LightGBMPredictor(model=model, preprocessor=preprocessor)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         # This somewhat convoluted procedure is the same as in the
@@ -42,7 +40,7 @@ def test_init():
         checkpoint.to_directory(path=tmpdir)
 
         checkpoint = Checkpoint.from_directory(tmpdir)
-        checkpoint_predictor = predictor_cls.from_checkpoint(checkpoint)
+        checkpoint_predictor = LightGBMPredictor.from_checkpoint(checkpoint)
 
     assert get_num_trees(checkpoint_predictor.model) == get_num_trees(predictor.model)
     assert checkpoint_predictor.preprocessor.attr == predictor.preprocessor.attr
@@ -50,7 +48,7 @@ def test_init():
 
 def test_predict():
     preprocessor = DummyPreprocessor()
-    predictor = predictor_cls(model=model, preprocessor=preprocessor)
+    predictor = LightGBMPredictor(model=model, preprocessor=preprocessor)
 
     data_batch = np.array([[1, 2], [3, 4], [5, 6]])
     predictions = predictor.predict(data_batch)
@@ -61,7 +59,7 @@ def test_predict():
 
 def test_predict_feature_columns():
     preprocessor = DummyPreprocessor()
-    predictor = predictor_cls(model=model, preprocessor=preprocessor)
+    predictor = LightGBMPredictor(model=model, preprocessor=preprocessor)
 
     data_batch = np.array([[1, 2, 7], [3, 4, 8], [5, 6, 9]])
     predictions = predictor.predict(data_batch, feature_columns=[0, 1])
