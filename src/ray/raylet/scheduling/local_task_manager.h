@@ -78,7 +78,8 @@ class LocalTaskManager {
       std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
       TaskDependencyManagerInterface &task_dependency_manager,
       std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive,
-      internal::NodeInfoGetter get_node_info, WorkerPoolInterface &worker_pool,
+      internal::NodeInfoGetter get_node_info,
+      WorkerPoolInterface &worker_pool,
       absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
       std::function<bool(const std::vector<ObjectID> &object_ids,
                          std::vector<std::unique_ptr<RayObject>> *results)>
@@ -128,7 +129,8 @@ class LocalTaskManager {
   /// \param[in,out] num_pending_actor_creation: Number of pending actor creation tasks.
   /// \param[in,out] num_pending_tasks: Number of pending tasks.
   /// \return True if any progress is any tasks are pending.
-  bool AnyPendingTasksForResourceAcquisition(RayTask *example, bool *any_pending,
+  bool AnyPendingTasksForResourceAcquisition(RayTask *example,
+                                             bool *any_pending,
                                              int *num_pending_actor_creation,
                                              int *num_pending_tasks) const;
 
@@ -154,10 +156,13 @@ class LocalTaskManager {
   /// false.
   bool ReturnCpuResourcesToBlockedWorker(std::shared_ptr<WorkerInterface> worker);
 
+  /// TODO(Chong-Li): Removing this and maintaining normal task resources by local
+  /// resource manager.
   /// Calculate normal task resources.
   ResourceSet CalcNormalTaskResources() const;
 
-  void SetWorkerBacklog(SchedulingClass scheduling_class, const WorkerID &worker_id,
+  void SetWorkerBacklog(SchedulingClass scheduling_class,
+                        const WorkerID &worker_id,
                         int64_t backlog_size);
 
   void ClearWorkerBacklog(const WorkerID &worker_id);
@@ -169,10 +174,12 @@ class LocalTaskManager {
 
   /// Handle the popped worker from worker pool.
   bool PoppedWorkerHandler(const std::shared_ptr<WorkerInterface> worker,
-                           PopWorkerStatus status, const TaskID &task_id,
+                           PopWorkerStatus status,
+                           const TaskID &task_id,
                            SchedulingClass scheduling_class,
                            const std::shared_ptr<internal::Work> &work,
-                           bool is_detached_actor, const rpc::Address &owner_address,
+                           bool is_detached_actor,
+                           const rpc::Address &owner_address,
                            const std::string &runtime_env_setup_error_message);
 
   /// Attempts to dispatch all tasks which are ready to run. A task
@@ -220,7 +227,8 @@ class LocalTaskManager {
       std::shared_ptr<WorkerInterface> worker,
       absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_,
       const std::shared_ptr<TaskResourceInstances> &allocated_instances,
-      const RayTask &task, rpc::RequestWorkerLeaseReply *reply,
+      const RayTask &task,
+      rpc::RequestWorkerLeaseReply *reply,
       std::function<void(void)> send_reply_callback);
 
   void Spillback(const NodeID &spillback_to, const std::shared_ptr<internal::Work> &work);

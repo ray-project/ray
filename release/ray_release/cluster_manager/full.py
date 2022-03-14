@@ -26,7 +26,7 @@ class FullClusterManager(MinimalClusterManager):
 
     def start_cluster(self, timeout: float = 600.0):
         logger.info(f"Creating cluster {self.cluster_name}")
-        logger.info(f"Autosuspend time: {self.autosuspend_minutes}")
+        logger.info(f"Autosuspend time: {self.autosuspend_minutes} minutes")
         try:
             result = self.sdk.create_cluster(
                 dict(
@@ -125,9 +125,3 @@ class FullClusterManager(MinimalClusterManager):
             while result.result.state != "Terminated":
                 time.sleep(1)
                 result = self.sdk.get_cluster(self.cluster_id)
-
-    def get_cluster_address(self, full: bool = True) -> str:
-        if full:
-            return f"anyscale://{self.project_name}/{self.cluster_name}"
-        else:
-            return f"anyscale://{self.cluster_name}"
