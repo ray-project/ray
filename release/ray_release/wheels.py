@@ -7,13 +7,13 @@ import time
 import urllib.request
 from typing import Optional, List
 
-from ray_release.buildkite.wheels import find_wheel_for_pr
 from ray_release.config import set_test_env_var
 from ray_release.exception import (
     RayWheelsUnspecifiedError,
     RayWheelsNotFoundError,
     RayWheelsTimeoutError,
     ReleaseTestSetupError,
+    RayWheelsNoPRError,
 )
 from ray_release.logger import logger
 from ray_release.util import url_exists
@@ -96,32 +96,14 @@ def get_wheels_filename(ray_version: str) -> str:
     return f"ray-{ray_version}-cp37-cp37m-manylinux2014_x86_64.whl"
 
 
-def get_branch_wheels_url(
-    repo_url: str, branch: str, commit: str, ray_version: str
-) -> str:
-    if repo_url.startswith("https://"):
-        matched = re.match(r"https://github.com/([^/]+)/.+", repo_url)
-        if not matched:
-            raise RayWheelsNotFoundError(
-                f"Could not parse git username from repo URL: {repo_url}"
-            )
-        repo = matched.groups()[0]
-    else:
-        # Already a repo
-        repo = repo_url
-
-    branch_and_repo = f"{repo}:{branch}"
-
-    return find_wheel_for_pr(
-        branch_and_repo, wheel_name=get_wheels_filename(ray_version), commit=commit
-    )
-
-
 def get_ray_wheels_url(
     repo_url: str, branch: str, commit: str, ray_version: str
 ) -> str:
     if not repo_url.startswith("https://github.com/ray-project/ray"):
-        return get_branch_wheels_url(repo_url, branch, commit, ray_version)
+        return (
+            f"https://ray-ci-artifact-pr-public.s3.amazonaws.com/"
+            f"{commit}/tmp/artifacts/.whl/{get_wheels_filename(ray_version)}"
+        )
 
     # Else, ray repo
     return (
@@ -226,11 +208,19 @@ def find_ray_wheels_url(ray_wheels: Optional[str] = None) -> str:
         ray_version = get_ray_version(repo_url, latest_commits[0])
 
         for commit in latest_commits:
-            wheels_url = get_ray_wheels_url(repo_url, branch, commit, ray_version)
+            try:
+                wheels_url = get_ray_wheels_url(repo_url, branch, commit, ray_version)
+            except RayWheelsNoPRError as e:
+                logger.info(f"Commit not found for PR: {e}")
+                continue
             if url_exists(wheels_url):
                 set_test_env_var("RAY_COMMIT", commit)
 
                 return wheels_url
+            else:
+                logger.info(
+                    f"Wheels URL for commit {commit} does not exist: " f"{wheels_url}"
+                )
 
         raise RayWheelsNotFoundError(
             f"Couldn't find latest available wheels for repo "
