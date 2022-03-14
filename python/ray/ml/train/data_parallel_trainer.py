@@ -47,7 +47,7 @@ class DataParallelTrainer(Trainer):
     will not be sharded.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
-    :ref:`Ray Train function utils <train-api-func-utils>`
+    :ref:`Ray Train function utils <train-api-func-utils>`.
 
     .. code-block:: python
 
