@@ -29,10 +29,6 @@ class RayWheelsUnspecifiedError(RayWheelsError):
     exit_code = ExitCode.CLI_ERROR
 
 
-class RayWheelsNoPRError(RayWheelsError):
-    exit_code = ExitCode.CLI_ERROR
-
-
 class RayWheelsNotFoundError(RayWheelsError):
     exit_code = ExitCode.CLI_ERROR
 

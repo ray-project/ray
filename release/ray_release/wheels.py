@@ -13,7 +13,6 @@ from ray_release.exception import (
     RayWheelsNotFoundError,
     RayWheelsTimeoutError,
     ReleaseTestSetupError,
-    RayWheelsNoPRError,
 )
 from ray_release.logger import logger
 from ray_release.util import url_exists
@@ -210,7 +209,7 @@ def find_ray_wheels_url(ray_wheels: Optional[str] = None) -> str:
         for commit in latest_commits:
             try:
                 wheels_url = get_ray_wheels_url(repo_url, branch, commit, ray_version)
-            except RayWheelsNoPRError as e:
+            except Exception as e:
                 logger.info(f"Commit not found for PR: {e}")
                 continue
             if url_exists(wheels_url):
