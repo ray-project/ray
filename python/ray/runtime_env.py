@@ -349,6 +349,8 @@ class RuntimeEnv(dict):
         res_value = value
         if key in OPTION_TO_VALIDATION_FN:
             res_value = OPTION_TO_VALIDATION_FN[key](value)
+            if res_value is None:
+                return
         return super().__setitem__(key, res_value)
 
     @classmethod
