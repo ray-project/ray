@@ -6,7 +6,7 @@ import itertools
 import json
 import os
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 import logging
 
 import boto3
@@ -434,32 +434,30 @@ def _key_assert_msg(node_type: str) -> str:
         )
 
 
-def _check_subnets_match_azs(
-    ec2, availability_zones: Optional[List[str]], subnet_ids: List[str]
-) -> bool:
-    if availability_zones is None:
-        return True
-    subnets = _get_subnets_or_die(ec2, tuple(subnet_ids))
-    return all(s.availability_zone in availability_zones for s in subnets)
+def _usable_subnet_ids(
+    user_specified_subnets: Optional[List[Any]],
+    all_subnets: List[Any],
+    azs: Optional[str],
+    vpc_id_of_sg: Optional[str],
+    use_internal_ips: bool,
+    node_type_key: str,
+) -> List[str]:
+    def _are_user_subnets_pruned(current_subnets: List[Any]) -> bool:
+        return user_specified_subnets is not None and len(current_subnets) != len(
+            user_specified_subnets
+        )
 
-
-def _configure_subnet(config):
-    ec2 = _resource("ec2", config)
-    use_internal_ips = config["provider"].get("use_internal_ips", False)
-
-    # If head or worker security group is specified, filter down to subnets
-    # belonging to the same VPC as the security group.
-    sg_ids = []
-    for node_type in config["available_node_types"].values():
-        node_config = node_type["node_config"]
-        sg_ids.extend(node_config.get("SecurityGroupIds", []))
-    if sg_ids:
-        vpc_id_of_sg = _get_vpc_id_of_sg(sg_ids, config)
-    else:
-        vpc_id_of_sg = None
+    def _get_pruned_subnets(current_subnets: List[Any]) -> Set[str]:
+        current_subnet_ids = {s.subnet_id for s in subnets}
+        user_specified_subnet_ids = {s.subnet_id for s in user_specified_subnets}
+        return user_specified_subnet_ids - current_subnet_ids
 
     try:
-        candidate_subnets = ec2.subnets.all()
+        candidate_subnets = (
+            user_specified_subnets
+            if user_specified_subnets is not None
+            else all_subnets
+        )
         if vpc_id_of_sg:
             candidate_subnets = [
                 s for s in candidate_subnets if s.vpc_id == vpc_id_of_sg
@@ -480,15 +478,18 @@ def _configure_subnet(config):
 
     if not subnets:
         cli_logger.abort(
-            "No usable subnets found, try manually creating an instance in "
-            "your specified region to populate the list of subnets "
-            "and trying this again.\n"
+            f"No usable subnets found for node type {node_type_key}, try "
+            "manually creating an instance in your specified region to "
+            "populate the list of subnets and trying this again.\n"
             "Note that the subnet must map public IPs "
             "on instance launch unless you set `use_internal_ips: true` in "
             "the `provider` config."
         )
-
-    azs = config["provider"].get("availability_zone")
+    elif _are_user_subnets_pruned(subnets):
+        cli_logger.abort(
+            f"The specified subnets for node type {node_type_key} are not "
+            f"usable: {_get_pruned_subnets(subnets)}"
+        )
 
     if azs is not None:
         azs = azs.split(",")
@@ -500,11 +501,19 @@ def _configure_subnet(config):
         ]
         if not subnets:
             cli_logger.abort(
-                "No usable subnets matching availability zone {} found.\n"
-                "Choose a different availability zone or try "
-                "manually creating an instance in your specified region "
-                "to populate the list of subnets and trying this again.",
-                config["provider"]["availability_zone"],
+                f"No usable subnets matching availability zone {azs} found "
+                f"for node type {node_type_key}.\nChoose a different "
+                "availability zone or try manually creating an instance in "
+                "your specified region to populate the list of subnets and "
+                "trying this again."
+            )
+        elif _are_user_subnets_pruned(subnets):
+            cli_logger.abort(
+                f"MISMATCH between specified subnets and Availability Zones! "
+                "The following Availability Zones were specified in the "
+                f"`provider section`: {azs}.\n The following subnets for node "
+                f"type `{node_type_key}` have no matching availability zone: "
+                f"{_get_pruned_subnets(subnets)}. "
             )
 
     # Use subnets in only one VPC, so that _configure_security_groups only
@@ -512,27 +521,47 @@ def _configure_subnet(config):
     # to set up security groups in all of the user's VPCs and set up networking
     # rules to allow traffic between these groups.
     # See https://github.com/ray-project/ray/pull/14868.
-    subnet_ids = [s.subnet_id for s in subnets if s.vpc_id == subnets[0].vpc_id]
+    return [s.subnet_id for s in subnets if s.vpc_id == subnets[0].vpc_id]
+
+
+def _configure_subnet(config):
+    ec2 = _resource("ec2", config)
+
+    # If head or worker security group is specified, filter down to subnets
+    # belonging to the same VPC as the security group.
+    sg_ids = []
+    for node_type in config["available_node_types"].values():
+        node_config = node_type["node_config"]
+        sg_ids.extend(node_config.get("SecurityGroupIds", []))
+    if sg_ids:
+        vpc_id_of_sg = _get_vpc_id_of_sg(sg_ids, config)
+    else:
+        vpc_id_of_sg = None
+
     # map from node type key -> source of SubnetIds field
     subnet_src_info = {}
     _set_config_info(subnet_src=subnet_src_info)
+    all_subnets = list(ec2.subnets.all())
     for key, node_type in config["available_node_types"].items():
         node_config = node_type["node_config"]
-        if "SubnetIds" not in node_config:
+        contains_user_subnet_ids = "SubnetIds" in node_config
+
+        subnet_ids = _usable_subnet_ids(
+            _get_subnets_or_die(ec2, tuple(node_config.get("SubnetIds")))
+            if contains_user_subnet_ids
+            else None,
+            all_subnets,
+            azs=config["provider"].get("availability_zone"),
+            vpc_id_of_sg=vpc_id_of_sg,
+            use_internal_ips=config["provider"].get("use_internal_ips", False),
+            node_type_key=key,
+        )
+
+        if contains_user_subnet_ids:
+            subnet_src_info[key] = "config"
+        else:
             subnet_src_info[key] = "default"
             node_config["SubnetIds"] = subnet_ids
-        else:
-            node_type_subnets = node_config["SubnetIds"]
-            if not _check_subnets_match_azs(ec2, azs, subnet_ids):
-                # assert False
-                cli_logger.abort(
-                    "MISMATCH between specified subnets and Availability Zones!\n"
-                    "The following Availability Zones were specified in the "
-                    f"`provider section`: {azs}.\n"
-                    f"Node type ({key}) specifies some subnets not in "
-                    f"these zones: {node_type_subnets}"
-                )
-            subnet_src_info[key] = "config"
 
     return config
 
@@ -677,7 +706,8 @@ def _get_or_create_vpc_security_groups(conf, node_types):
 def _get_vpc_id_or_die(ec2, subnet_id: str):
     subnets = _get_subnets_or_die(ec2, (subnet_id,))
     cli_logger.doassert(
-        len(subnets) == 1, f"Expected 1 subnet with ID `{subnet_id}` but found {len(subnets)}"
+        len(subnets) == 1,
+        f"Expected 1 subnet with ID `{subnet_id}` but found {len(subnets)}",
     )
     return subnets[0].vpc_id
 

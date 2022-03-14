@@ -52,7 +52,7 @@ def test_use_subnets_in_only_one_vpc(iam_client_stub, ec2_client_stub):
     stubs.describe_a_thousand_subnets_in_different_vpcs(ec2_client_stub)
 
     # describe the subnet in use while determining its vpc
-    stubs.describe_subnets_echo(ec2_client_stub, DEFAULT_SUBNET)
+    stubs.describe_subnets_echo(ec2_client_stub, [DEFAULT_SUBNET])
     # given no existing security groups within the VPC...
     stubs.describe_no_security_groups(ec2_client_stub)
     # expect to create a security group on the VPC
@@ -107,9 +107,9 @@ def test_create_sg_different_vpc_same_rules(
 
     # given head and worker nodes with custom subnets defined...
     # expect to second describe the head subnet ID
-    stubs.describe_subnets_echo(ec2_client_stub, default_subnet)
+    stubs.describe_subnets_echo(ec2_client_stub, [default_subnet])
     # expect to first describe the worker subnet ID
-    stubs.describe_subnets_echo(ec2_client_stub, AUX_SUBNET)
+    stubs.describe_subnets_echo(ec2_client_stub, [AUX_SUBNET])
     # given no existing security groups within the VPC...
     stubs.describe_no_security_groups(ec2_client_stub)
     # expect to first create a security group on the worker node VPC
@@ -181,7 +181,7 @@ def test_create_sg_with_custom_inbound_rules_and_name(iam_client_stub, ec2_clien
     stubs.skip_to_configure_sg(ec2_client_stub, iam_client_stub)
 
     # expect to describe the head subnet ID
-    stubs.describe_subnets_echo(ec2_client_stub, DEFAULT_SUBNET)
+    stubs.describe_subnets_echo(ec2_client_stub, [DEFAULT_SUBNET])
     # given no existing security groups within the VPC...
     stubs.describe_no_security_groups(ec2_client_stub)
     # expect to create a security group on the head node VPC
@@ -388,7 +388,7 @@ def test_create_sg_multinode(iam_client_stub, ec2_client_stub):
     # test_create_sg_with_custom_inbound_rules_and_name.
 
     # expect to describe the head subnet ID
-    stubs.describe_subnets_echo(ec2_client_stub, DEFAULT_SUBNET)
+    stubs.describe_subnets_echo(ec2_client_stub, [DEFAULT_SUBNET])
     # given no existing security groups within the VPC...
     stubs.describe_no_security_groups(ec2_client_stub)
     # expect to create a security group on the head node VPC
@@ -548,6 +548,16 @@ def test_network_interfaces(
 
     # use a default stub to skip subnet configuration
     stubs.configure_subnet_default(ec2_client_stub)
+    stubs.describe_subnets_echo(
+        ec2_client_stub,
+        [DEFAULT_SUBNET, {**DEFAULT_SUBNET, "SubnetId": "subnet-11111111"}],
+    )
+    stubs.describe_subnets_echo(
+        ec2_client_stub, [{**DEFAULT_SUBNET, "SubnetId": "subnet-22222222"}]
+    )
+    stubs.describe_subnets_echo(
+        ec2_client_stub, [{**DEFAULT_SUBNET, "SubnetId": "subnet-33333333"}]
+    )
 
     # given our mocks and an example config file as input...
     # expect the config to be loaded, validated, and bootstrapped successfully
