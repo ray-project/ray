@@ -1519,10 +1519,16 @@ def get_deployment_statuses() -> Dict[str, DeploymentStatusInfo]:
     return internal_get_global_client().get_deployment_statuses()
 
 
+<<<<<<< HEAD
 class ImmutableDeploymentList(list):
     def __init__(self, deployments: Iterable[Deployment]):
         super().__init__()
         [self.append(deployment) for deployment in deployments]
+=======
+class ImmutableDeploymentDict(dict):
+    def __init__(self, deployments: List[Deployment]):
+        raise NotImplementedError()
+>>>>>>> f646d3fc312f63a6cf3e59a00ae1b3d6ab40393a
 
     def __setitem__(self, *args):
         """Not allowed. Modify deployment options using set_options instead."""
@@ -1550,6 +1556,7 @@ class Application:
     to production using the Serve CLI or REST API.
     """
 
+<<<<<<< HEAD
     def __init__(self, deployments: List[Deployment], ingress: Deployment = None):
 
         # TODO (shrekris-anyscale): validate ingress
@@ -1568,6 +1575,18 @@ class Application:
     @property
     def deployments(self) -> ImmutableDeploymentList:
         return ImmutableDeploymentList(self._deployments.values())
+=======
+    def __init__(self, ingress: Deployment, deployments: List[Deployment]):
+        raise NotImplementedError()
+
+    @property
+    def ingress(self) -> Deployment:
+        raise NotImplementedError()
+
+    @property
+    def deployments(self) -> ImmutableDeploymentDict:
+        raise NotImplementedError()
+>>>>>>> f646d3fc312f63a6cf3e59a00ae1b3d6ab40393a
 
     def to_dict(self) -> Dict:
         """Returns this Application's deployments as a dictionary.
@@ -1578,8 +1597,12 @@ class Application:
         Returns:
             Dict: The Application's deployments formatted in a dictionary.
         """
+<<<<<<< HEAD
 
         return serve_application_to_schema(self._deployments.values()).dict()
+=======
+        raise NotImplementedError()
+>>>>>>> f646d3fc312f63a6cf3e59a00ae1b3d6ab40393a
 
     @classmethod
     def from_dict(cls, d: Dict) -> "Application":
@@ -1595,9 +1618,13 @@ class Application:
         Returns:
             Application: a new application object containing the deployments.
         """
+<<<<<<< HEAD
 
         schema = ServeApplicationSchema.parse_obj(d)
         return cls(schema_to_serve_application(schema))
+=======
+        raise NotImplementedError()
+>>>>>>> f646d3fc312f63a6cf3e59a00ae1b3d6ab40393a
 
     def to_yaml(self, f: Optional[TextIO] = None) -> Optional[str]:
         """Returns this application's deployments as a YAML string.
@@ -1619,12 +1646,16 @@ class Application:
             Optional[String]: The deployments' YAML string. The output is from
                 yaml.safe_dump(). Returned only if no file pointer is passed in.
         """
+<<<<<<< HEAD
 
         deployment_dict = serve_application_to_schema(self._deployments.values()).dict()
 
         if f:
             yaml.safe_dump(deployment_dict, f, default_flow_style=False)
         return yaml.safe_dump(deployment_dict, default_flow_style=False)
+=======
+        raise NotImplementedError()
+>>>>>>> f646d3fc312f63a6cf3e59a00ae1b3d6ab40393a
 
     @classmethod
     def from_yaml(cls, str_or_file: Union[str, TextIO]) -> "Application":
@@ -1648,6 +1679,7 @@ class Application:
                 Serve YAML config files.
 
         Returns:
+<<<<<<< HEAD
             Application: a new Application object containing the deployments.
         """
 
@@ -1683,6 +1715,11 @@ class Application:
             )
 
         self._deployments[deployment.name] = deployment
+=======
+            Application: a new application object containing the deployments.
+        """
+        raise NotImplementedError()
+>>>>>>> f646d3fc312f63a6cf3e59a00ae1b3d6ab40393a
 
 
 @PublicAPI(stability="alpha")
@@ -1698,6 +1735,7 @@ def run(
     If a DeploymentNode is passed in, all of the deployments it depends on
     will be deployed.
     """
+<<<<<<< HEAD
 
     deployments = _get_deployments_from_target(target)
 
@@ -1735,6 +1773,9 @@ def deploy_group(deployments: List[Deployment], *, blocking=True) -> RayServeHan
         parameter_group.append(deployment_parameters)
 
     internal_get_global_client().deploy_group(parameter_group, _blocking=blocking)
+=======
+    raise NotImplementedError()
+>>>>>>> f646d3fc312f63a6cf3e59a00ae1b3d6ab40393a
 
 
 @PublicAPI(stability="alpha")
@@ -1756,6 +1797,7 @@ def build(target: DeploymentNode) -> Application:
     # TODO(edoakes): this should accept host and port, but we don't
     # currently support them in the REST API.
     raise NotImplementedError()
+<<<<<<< HEAD
 
 
 def _get_deployments_from_target(
@@ -1862,3 +1904,5 @@ def serve_application_status_to_schema(
         for deployment_name, status_info in status_infos.items()
     ]
     return ServeApplicationStatusSchema(statuses=schemas)
+=======
+>>>>>>> f646d3fc312f63a6cf3e59a00ae1b3d6ab40393a
