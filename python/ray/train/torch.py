@@ -90,14 +90,15 @@ class TorchAccelerator(Accelerator):
         def wrap_forward(forward):
             @functools.wraps(forward)
             def wrapper(*args, **kwargs):
-                with autocast(enabled=self.amp):
+                with autocast():
                     outputs = forward(*args, **kwargs)
                 assert isinstance(outputs, torch.Tensor)
                 return outputs.float()
 
             return wrapper
 
-        model.forward = wrap_forward(model.forward)
+        if self.amp:
+            model.forward = wrap_forward(model.forward)
 
         if wrap_ddp and train.world_size() > 1:
             logger.info("Wrapping provided model in DDP.")
