@@ -1,3 +1,4 @@
+Usage stats collection will be enabled by default in the next release\. See https://github.com/ray-project/ray/issues/20857 for more details\.
 .+\.py.*Cluster: test-cli
 .+\.py.*Checking AWS environment settings
 .+\.py.*Creating new IAM instance profile ray-autoscaler-v1 for use as the default\.

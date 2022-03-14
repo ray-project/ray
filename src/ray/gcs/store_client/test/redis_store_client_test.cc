@@ -33,7 +33,9 @@ class RedisStoreClientTest : public StoreClientTestBase {
   static void TearDownTestCase() { TestSetupUtil::ShutDownRedisServers(); }
 
   void InitStoreClient() override {
-    RedisClientOptions options("127.0.0.1", TEST_REDIS_SERVER_PORTS.front(), "",
+    RedisClientOptions options("127.0.0.1",
+                               TEST_REDIS_SERVER_PORTS.front(),
+                               "",
                                /*enable_sharding_conn=*/false);
     redis_client_ = std::make_shared<RedisClient>(options);
     RAY_CHECK_OK(redis_client_->Connect(io_service_pool_->GetAll()));
@@ -69,7 +71,8 @@ TEST_F(RedisStoreClientTest, TestAsyncBatchDeleteWithIndex) {
 
 int main(int argc, char **argv) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
-                                         ray::RayLog::ShutDownRayLog, argv[0],
+                                         ray::RayLog::ShutDownRayLog,
+                                         argv[0],
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
   ::testing::InitGoogleTest(&argc, argv);

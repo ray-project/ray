@@ -69,7 +69,7 @@ typedef ArrayNotification<rpc::ObjectTableData> ObjectChangeNotification;
 
 template <typename key, typename Value>
 using MapNotification =
-    EntryChangeNotification<std::unordered_map<key, std::shared_ptr<Value>>>;
+    EntryChangeNotification<absl::flat_hash_map<key, std::shared_ptr<Value>>>;
 
 typedef MapNotification<std::string, rpc::ResourceTableData> ResourceChangeNotification;
 

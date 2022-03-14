@@ -29,8 +29,10 @@ const int64_t kTaskFailureThrottlingThreshold = 50;
 const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
 std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
-    const rpc::Address &caller_address, const TaskSpecification &spec,
-    const std::string &call_site, int max_retries) {
+    const rpc::Address &caller_address,
+    const TaskSpecification &spec,
+    const std::string &call_site,
+    int max_retries) {
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId() << " with " << max_retries
                  << " retries";
 
@@ -75,7 +77,10 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
       // language frontend. Note that the language bindings should set
       // skip_adding_local_ref=True to avoid double referencing the object.
       reference_counter_->AddOwnedObject(return_id,
-                                         /*inner_ids=*/{}, caller_address, call_site, -1,
+                                         /*inner_ids=*/{},
+                                         caller_address,
+                                         call_site,
+                                         -1,
                                          /*is_reconstructable=*/is_reconstructable,
                                          /*add_local_ref=*/true);
     }
@@ -378,7 +383,8 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id) {
   }
 }
 
-void TaskManager::FailPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
+void TaskManager::FailPendingTask(const TaskID &task_id,
+                                  rpc::ErrorType error_type,
                                   const Status *status,
                                   const rpc::RayErrorInfo *ray_error_info,
                                   bool mark_task_object_failed) {
@@ -419,7 +425,9 @@ void TaskManager::FailPendingTask(const TaskID &task_id, rpc::ErrorType error_ty
 
   // The worker failed to execute the task, so it cannot be borrowing any
   // objects.
-  RemoveFinishedTaskReferences(spec, /*release_lineage=*/true, rpc::Address(),
+  RemoveFinishedTaskReferences(spec,
+                               /*release_lineage=*/true,
+                               rpc::Address(),
                                ReferenceCounter::ReferenceTableProto());
   if (mark_task_object_failed) {
     MarkTaskReturnObjectsFailed(spec, error_type, ray_error_info);
@@ -428,7 +436,8 @@ void TaskManager::FailPendingTask(const TaskID &task_id, rpc::ErrorType error_ty
   ShutdownIfNeeded();
 }
 
-bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
+bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id,
+                                         rpc::ErrorType error_type,
                                          const Status *status,
                                          const rpc::RayErrorInfo *ray_error_info,
                                          bool mark_task_object_failed) {
@@ -469,12 +478,15 @@ void TaskManager::OnTaskDependenciesInlined(
   reference_counter_->UpdateSubmittedTaskReferences(
       /*return_ids=*/{},
       /*argument_ids_to_add=*/contained_ids,
-      /*argument_ids_to_remove=*/inlined_dependency_ids, &deleted);
+      /*argument_ids_to_remove=*/inlined_dependency_ids,
+      &deleted);
   in_memory_store_->Delete(deleted);
 }
 
 void TaskManager::RemoveFinishedTaskReferences(
-    TaskSpecification &spec, bool release_lineage, const rpc::Address &borrower_addr,
+    TaskSpecification &spec,
+    bool release_lineage,
+    const rpc::Address &borrower_addr,
     const ReferenceCounter::ReferenceTableProto &borrowed_refs) {
   std::vector<ObjectID> plasma_dependencies;
   for (size_t i = 0; i < spec.NumArgs(); i++) {
@@ -502,9 +514,12 @@ void TaskManager::RemoveFinishedTaskReferences(
   }
 
   std::vector<ObjectID> deleted;
-  reference_counter_->UpdateFinishedTaskReferences(return_ids, plasma_dependencies,
-                                                   release_lineage, borrower_addr,
-                                                   borrowed_refs, &deleted);
+  reference_counter_->UpdateFinishedTaskReferences(return_ids,
+                                                   plasma_dependencies,
+                                                   release_lineage,
+                                                   borrower_addr,
+                                                   borrowed_refs,
+                                                   &deleted);
   in_memory_store_->Delete(deleted);
 }
 

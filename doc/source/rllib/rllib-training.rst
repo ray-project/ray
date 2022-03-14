@@ -1,6 +1,6 @@
-.. include:: /_includes/rllib_announcement.rst
+.. include:: /_includes/rllib/announcement.rst
 
-.. include:: /_includes/rllib_we_are_hiring.rst
+.. include:: /_includes/rllib/we_are_hiring.rst
 
 Training APIs
 =============
@@ -1089,4 +1089,4 @@ In some cases (i.e., when interacting with an externally hosted simulator or pro
 .. autoclass:: ray.rllib.env.policy_server_input.PolicyServerInput
     :members:
 
-.. include:: /_includes/rllib_announcement_bottom.rst
+.. include:: /_includes/rllib/announcement_bottom.rst

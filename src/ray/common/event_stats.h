@@ -71,7 +71,8 @@ struct StatsHandle {
   std::shared_ptr<GuardedGlobalStats> global_stats;
   std::atomic<bool> execution_recorded;
 
-  StatsHandle(std::string event_name_, int64_t start_time_,
+  StatsHandle(std::string event_name_,
+              int64_t start_time_,
               std::shared_ptr<GuardedEventStats> handler_stats_,
               std::shared_ptr<GuardedGlobalStats> global_stats_)
       : event_name(std::move(event_name_)),

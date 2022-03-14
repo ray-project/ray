@@ -33,7 +33,8 @@
 
   run:
     timeout: 7200
-    prepare: python wait_cluster.py 21 600
+    # Total run time without failures is about 300-400s.
+    prepare: python wait_cluster.py 21 600; python setup_chaos.py --node-kill-interval 100
     script: python dask_on_ray/large_scale_test.py --num_workers 20 --worker_obj_store_size_in_gb 20 --error_rate 0  --data_save_path /tmp/ray
 
 # Test large scale dask on ray test with spilling.
@@ -45,7 +46,8 @@
 
   run:
     timeout: 7200
-    prepare: python wait_cluster.py 21 600
+    # Total run time without failures is about 300-400s.
+    prepare: python wait_cluster.py 21 600; python setup_chaos.py --node-kill-interval 100
     script: python dask_on_ray/large_scale_test.py --num_workers 150 --worker_obj_store_size_in_gb 70 --error_rate 0  --data_save_path /tmp/ray
 
 - name: chaos_pipelined_ingestion_1500_gb_15_windows
