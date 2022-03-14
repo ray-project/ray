@@ -52,22 +52,26 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
   private byte[] rawData = null;
 
   public ObjectRefImpl(ObjectId id, Class<T> type, boolean skipAddingLocalRef) {
+    init(id, type, skipAddingLocalRef);
+  }
+
+  public ObjectRefImpl(ObjectId id, Class<T> type) {
+    this(id, type, /*skipAddingLocalRef=*/ false);
+  }
+  
+  public void init(ObjectId id, Class<?> type, boolean skipAddingLocalRef) {
     this.id = id;
-    this.type = type;
+    this.type = (Class<T>) type;
     RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
     Preconditions.checkState(workerId == null);
-	
-	/// TODO(qwang): Take a review for this.
+
+    /// TODO(qwang): Take a review for this.
     if (!skipAddingLocalRef) {
       runtime.getObjectStore().addLocalReference(workerId, id);
     }
     // We still add the reference so that the local ref count will be properly
     // decremented once this object is GCed.
     new ObjectRefImplReference(this);
-
-    /// Note that registerObjectRefImpl() must be invoked before addLocalReference().
-    /// Because addLocalReference() may take a long time.
-    registerObjectRefImpl(id, this);
   }
 
   private void setRawData(byte[] rawData) {
@@ -171,19 +175,20 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
     Preconditions.checkState(data != null);
     LOG.debug("onMemoryStoreObjectAllocated: {} , data.length is {}.", objectId, data.length);
     if (!allObjects.containsKey(objectId)) {
-      LOG.debug("The object {} doesn't exist in the weak reference pool", objectId);
+      LOG.info("The object {} doesn't exist in the weak reference pool", objectId);
       return;
     }
     WeakReference<ObjectRefImpl<?>> weakRef = allObjects.get(objectId);
     ObjectRefImpl<?> objImpl = weakRef.get();
     if (objImpl == null) {
-      LOG.debug("The object {} has already been cleaned.", objectId);
+      LOG.info("The object {} has already been cleaned.", objectId);
       allObjects.remove(objectId);
     } else {
+      // LOG.debug("The object {} set with a byte array data.", objectId);
       objImpl.setRawData(data);
     }
   }
-  private static <T> void registerObjectRefImpl(ObjectId objectId, ObjectRefImpl<T> obj) {
+  public static <T> void registerObjectRefImpl(ObjectId objectId, ObjectRefImpl<T> obj) {
     if (allObjects.containsKey(objectId)) {
       /// This is due to testLocalRefCounts() create 2 ObjectRefImpl objects for 1 id.
       LOG.warn("Duplicated object {}", objectId);
