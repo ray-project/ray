@@ -608,13 +608,3 @@ class RuntimeEnv(dict):
                 plugin = runtime_env.python_runtime_env.plugin_runtime_env.plugins.add()
                 plugin.class_path = class_path
                 plugin.config = plugin_field
-
-    def __getstate__(self):
-        # When pickle serialization, exclude some fields
-        # which can't be serialized by pickle
-        return dict(**self)
-
-    def __setstate__(self, state):
-        for k, v in state.items():
-            self[k] = v
-        self.__proto_runtime_env = None
