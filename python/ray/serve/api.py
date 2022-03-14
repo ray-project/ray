@@ -1510,6 +1510,18 @@ def get_deployment_statuses() -> Dict[str, DeploymentStatusInfo]:
     return internal_get_global_client().get_deployment_statuses()
 
 
+class ImmutableDeploymentDict(dict):
+    def __init__(self, deployments: List[Deployment]):
+        raise NotImplementedError()
+
+    def __setitem__(self, *args):
+        """Not allowed. Modify deployment options using set_options instead."""
+        raise RuntimeError(
+            "Setting deployments in a built app is not allowed. Modify the "
+            'options using app["deployment"].set_options instead.'
+        )
+
+
 class Application:
     """A static, pre-built Serve application.
 
@@ -1518,17 +1530,20 @@ class Application:
     meaning that it receives external traffic and is the entrypoint to the
     application.
 
-    The config options of each deployment can be modified by accessing the
-    deployment by name (e.g., app["my_deployment"].update(...)).
+    The ingress deployment can be accessed via app.ingress and a dictionary of
+    all deployments can be accessed via app.deployments.
+
+    The config options of each deployment can be modified using set_options:
+    app.deployments["name"].set_options(...).
 
     This application object can be written to a config file and later deployed
     to production using the Serve CLI or REST API.
     """
 
-    # TODO(edoakes): should this literally just be the REST pydantic schema?
-    # At the very least, it should be a simple dictionary.
+    def __init__(self, ingress: Deployment, deployments: List[Deployment]):
+        raise NotImplementedError()
 
-    def __init__(self):
+    def deployments(self) -> ImmutableDeploymentDict:
         raise NotImplementedError()
 
     def to_dict(self) -> Dict:
@@ -1544,22 +1559,22 @@ class Application:
 
     @classmethod
     def from_dict(cls, d: Dict) -> "Application":
-        """Converts a dictionary of deployment data to an Application.
+        """Converts a dictionary of deployment data to an application.
 
         Takes in a dictionary matching the Serve REST API schema and converts
-        it to an Application containing those deployments.
+        it to an application containing those deployments.
 
         Args:
             d (Dict): A dictionary containing the deployments' data that matches
                 the Serve REST API schema.
 
         Returns:
-            Application: a new Application object containing the deployments.
+            Application: a new application object containing the deployments.
         """
         raise NotImplementedError()
 
     def to_yaml(self, f: Optional[TextIO] = None) -> Optional[str]:
-        """Returns this Application's deployments as a YAML string.
+        """Returns this application's deployments as a YAML string.
 
         Optionally writes the YAML string to a file as well. To write to a
         file, use this pattern:
@@ -1582,11 +1597,11 @@ class Application:
 
     @classmethod
     def from_yaml(cls, str_or_file: Union[str, TextIO]) -> "Application":
-        """Converts YAML data to deployments for an Application.
+        """Converts YAML data to deployments for an application.
 
         Takes in a string or a file pointer to a file containing deployment
         definitions in YAML. These definitions are converted to a new
-        Application object containing the deployments.
+        application object containing the deployments.
 
         To read from a file, use the following pattern:
 
@@ -1602,45 +1617,8 @@ class Application:
                 Serve YAML config files.
 
         Returns:
-            Application: a new Application object containing the deployments.
+            Application: a new application object containing the deployments.
         """
-        raise NotImplementedError()
-
-    def __getitem__(self, key: str):
-        """Fetch a deployment by name using dict syntax: app["name"]
-
-        Raises:
-            KeyError: if the name is not in this Application.
-        """
-        raise NotImplementedError()
-
-    def __setitem__(self, key: str, value: Deployment):
-        """Set a deployment by name with dict syntax: app[name]=new_deployment
-
-        Use this to overwrite existing deployments.
-
-        Args:
-            key (String): name
-            value (Deployment): the deployment that the name maps to
-
-        Raises:
-            TypeError: if the key is not a String or the value is not a deployment.
-        """
-        raise NotImplementedError()
-
-    def __iter__(self):
-        """Iterator over Application's deployments.
-
-        Enables "for deployment in Application" pattern.
-        """
-        raise NotImplementedError()
-
-    def __len__(self):
-        """Number of deployments in this Application."""
-        raise NotImplementedError()
-
-    def __contains__(self, key: str):
-        """Checks if the key exists in self._deployments."""
         raise NotImplementedError()
 
 
