@@ -241,7 +241,7 @@
       test_shard_selection=$(
       python ./scripts/bazel-sharding.py
       --exclude_manual
-      --index "${BUILDKITE_PARALLEL_JOB:-'0'}" --count "${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}"
+      --index "${BUILDKITE_PARALLEL_JOB:-0}" --count "${BUILDKITE_PARALLEL_JOB_COUNT:-1}"
       --test_tag_filters=-post_wheel_build
       python/ray/serve/...
       )
