@@ -49,21 +49,21 @@ def _validate_log_to_file(log_to_file):
     return stdout_file, stderr_file
 
 
-def _get_local_dir_with_expand_user(local_dir: None):
+def _get_local_dir_with_expand_user(local_dir: Optional[str]):
     return os.path.abspath(os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR))
 
 
-def _get_dir_name(run, name):
+def _get_dir_name(run, explicit_name: Optional[str], combined_name: str):
     # If the name has been set explicitly, we don't want to create
     # dated directories. The same is true for string run identifiers.
     if (
         int(os.environ.get("TUNE_DISABLE_DATED_SUBDIR", 0)) == 1
-        or name
+        or explicit_name
         or isinstance(run, str)
     ):
-        dir_name = name
+        dir_name = combined_name
     else:
-        dir_name = "{}_{}".format(name, date_str())
+        dir_name = "{}_{}".format(combined_name, date_str())
     return dir_name
 
 
@@ -163,7 +163,7 @@ class Experiment:
         self.name = name or self._run_identifier
 
         if not _experiment_checkpoint_dir:
-            self.dir_name = _get_dir_name(run, self.name)
+            self.dir_name = _get_dir_name(run, name, self.name)
 
         assert self.dir_name
 
@@ -354,19 +354,19 @@ class Experiment:
         This is only used internally for better support of Tuner API.
 
         Arguments:
-            run (str|function|class): Trainable to run.
+            run_obj (str|function|class): Trainable to run.
             name (str): The name of the experiment specified by user.
             local_dir (str): The local_dir path.
 
         Returns:
-            A string representing the trainable identifier.
+            Checkpoint directory for experiment.
         """
         assert run_obj
         local_dir = _get_local_dir_with_expand_user(local_dir)
         run_identifier = cls.get_trainable_name(run_obj)
-        name = name or run_identifier
+        combined_name = name or run_identifier
 
-        dir_name = _get_dir_name(run_obj, name)
+        dir_name = _get_dir_name(run_obj, name, combined_name)
 
         return os.path.join(local_dir, dir_name)
 
