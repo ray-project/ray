@@ -1,5 +1,6 @@
 import pytest
 import os
+import sys
 
 import ray
 import ray.cluster_utils
@@ -428,3 +429,7 @@ def test_infeasible_pg(ray_start_cluster):
     # Add a new node. PG can now be scheduled.
     cluster.add_node(num_cpus=4, num_gpus=1)
     assert ray.get(pg.ready(), timeout=10)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))
