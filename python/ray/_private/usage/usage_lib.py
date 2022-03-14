@@ -33,7 +33,7 @@ Or `RAY_USAGE_STATS_ENABLED=1 python [drivers with ray.init()]`.
 
 "Ray API server (currently a dashboard server)" reports the usage data to https://usage-stats.ray.io/.
 
-Data is reported ever hour by default.
+Data is reported every hour by default.
 
 Note that it is also possible to configure the interval using the environment variable,
 `RAY_USAGE_STATS_REPORT_INTERVAL_S`.
@@ -48,6 +48,7 @@ import sys
 import json
 import logging
 import time
+import yaml
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, asdict
@@ -79,6 +80,15 @@ class UsageStatsToReport:
     os: str
     collect_timestamp_ms: int
     session_start_timestamp_ms: int
+    cloud_provider: str
+    min_workers: int
+    max_workers: int
+    head_node_instance_type: str
+    worker_node_instance_types: list
+    num_cpus: int
+    num_gpus: int
+    total_memory_gb: float
+    total_object_store_memory_gb: float
     # The total number of successful reports for the lifetime of the cluster.
     total_success: int
     # The total number of failed reports for the lifetime of the cluster.
@@ -182,6 +192,90 @@ def put_cluster_metadata(gcs_client, num_retries) -> None:
     return metadata
 
 
+def get_cluster_status(gcs_client, num_retries) -> dict:
+    """Get the current status of this cluster."""
+    cluster_status = ray._private.utils.internal_kv_get_with_retry(
+        gcs_client,
+        ray.ray_constants.DEBUG_AUTOSCALING_STATUS,
+        namespace=None,
+        num_retries=num_retries,
+    )
+    if not cluster_status:
+        return {}
+
+    result = {}
+    to_GiB = 1 / 2 ** 30
+    cluster_status = json.loads(cluster_status.decode("utf-8"))
+    usage = cluster_status["load_metrics_report"]["usage"]
+    if "CPU" in usage:
+        result["num_cpus"] = usage["CPU"][1]
+    if "GPU" in usage:
+        result["num_gpus"] = usage["GPU"][1]
+    if "memory" in usage:
+        result["total_memory_gb"] = usage["memory"][1] * to_GiB
+    if "object_store_memory" in usage:
+        result["total_object_store_memory_gb"] = (
+            usage["object_store_memory"][1] * to_GiB
+        )
+    return result
+
+
+def get_cluster_config() -> dict:
+    """Get the static cluster (autoscaler) config used to launch this cluster."""
+
+    def get_instance_type(node_config):
+        if "InstanceType" in node_config:
+            # aws
+            return node_config["InstanceType"]
+        if "machineType" in node_config:
+            # gcp
+            return node_config["machineType"]
+        if "azure_arm_parameters" in node_config:
+            if "vmSize" in node_config["azure_arm_parameters"]:
+                return node_config["azure_arm_parameters"]["vmSize"]
+        return None
+
+    try:
+        with open(os.path.expanduser("~/ray_bootstrap_config.yaml")) as f:
+            config = yaml.safe_load(f)
+            result = {}
+            result["min_workers"] = config.get("min_workers")
+            result["max_workers"] = config.get("max_workers")
+
+            result["cloud_provider"] = config["provider"]["type"]
+
+            if "head_node_type" not in config:
+                return result
+            if "available_node_types" not in config:
+                return result
+            head_node_type = config["head_node_type"]
+            available_node_types = config["available_node_types"]
+            for available_node_type in available_node_types:
+                if available_node_type == head_node_type:
+                    head_node_instance_type = get_instance_type(
+                        available_node_types[available_node_type]["node_config"]
+                    )
+                    if head_node_instance_type:
+                        result["head_node_instance_type"] = head_node_instance_type
+                else:
+                    worker_node_instance_type = get_instance_type(
+                        available_node_types[available_node_type]["node_config"]
+                    )
+                    if worker_node_instance_type:
+                        result["worker_node_instance_types"] = result.get(
+                            "worker_node_instance_types", set()
+                        ).add(worker_node_instance_type)
+            if "worker_node_instance_types" in result:
+                result["worker_node_instance_types"] = list(
+                    result["worker_node_instance_types"]
+                )
+            return result
+    except Exception:
+        # If the file doesn't exist or the config file is invalid,
+        # then it's not a ray cluster.
+        return {}
+
+
 def get_cluster_metadata(gcs_client, num_retries) -> dict:
     """Get the cluster metadata from GCS.
 
@@ -210,13 +304,19 @@ def get_cluster_metadata(gcs_client, num_retries) -> dict:
 
 
 def generate_report_data(
-    cluster_metadata: dict, total_success: int, total_failed: int, seq_number: int
+    cluster_metadata: dict,
+    cluster_config: dict,
+    total_success: int,
+    total_failed: int,
+    seq_number: int,
 ) -> UsageStatsToReport:
     """Generate the report data.
 
     Params:
         cluster_metadata (dict): The cluster metadata of the system generated by
             `_generate_cluster_metadata`.
+        cluster_config (dcit): The cluster (autoscaler) config generated by
+            `get_cluster_config`.
         total_success(int): The total number of successful report
             for the lifetime of the cluster.
         total_failed(int): The total number of failed report
@@ -227,6 +327,10 @@ def generate_report_data(
     Returns:
         UsageStats
     """
+    cluster_status = get_cluster_status(
+        ray.experimental.internal_kv.internal_kv_get_gcs_client(),
+        num_retries=20,
+    )
     data = UsageStatsToReport(
         ray_version=cluster_metadata["ray_version"],
         python_version=cluster_metadata["python_version"],
@@ -237,6 +341,15 @@ def generate_report_data(
         os=cluster_metadata["os"],
         collect_timestamp_ms=int(time.time() * 1000),
         session_start_timestamp_ms=cluster_metadata["session_start_timestamp_ms"],
+        cloud_provider=cluster_config.get("cloud_provider"),
+        min_workers=cluster_config.get("min_workers"),
+        max_workers=cluster_config.get("max_workers"),
+        head_node_instance_type=cluster_config.get("head_node_instance_type"),
+        worker_node_instance_types=cluster_config.get("worker_node_instance_types"),
+        num_cpus=cluster_status.get("num_cpus"),
+        num_gpus=cluster_status.get("num_gpus"),
+        total_memory_gb=cluster_status.get("total_memory_gb"),
+        total_object_store_memory_gb=cluster_status.get("total_object_store_memory_gb"),
         total_success=total_success,
         total_failed=total_failed,
         seq_number=seq_number,

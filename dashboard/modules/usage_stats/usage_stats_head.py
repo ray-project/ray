@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import random
+from concurrent.futures import ThreadPoolExecutor
 
 import ray
 
@@ -19,6 +20,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
             ray.experimental.internal_kv.internal_kv_get_gcs_client(),
             num_retries=20,
         )
+        self.cluster_config = ray_usage_lib.get_cluster_config()
         self.session_dir = dashboard_head.session_dir
         self.client = ray_usage_lib.UsageReportClient()
         # The total number of report succeeded.
@@ -39,12 +41,17 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
             usage_stats.json won't be written.
         """
         try:
-            data = ray_usage_lib.generate_report_data(
-                self.cluster_metadata,
-                self.total_success,
-                self.total_failed,
-                self.seq_no,
-            )
+            loop = asyncio.get_event_loop()
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                data = await loop.run_in_executor(
+                    executor,
+                    ray_usage_lib.generate_report_data,
+                    self.cluster_metadata,
+                    self.cluster_config,
+                    self.total_success,
+                    self.total_failed,
+                    self.seq_no,
+                )
             error = None
             try:
                 await self.client.report_usage_data_async(
