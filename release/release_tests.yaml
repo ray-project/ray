@@ -108,7 +108,6 @@
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small.yaml
-    autosuspend_mins: 10
 
   run:
     timeout: 600
@@ -362,7 +361,6 @@
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small.yaml
-    autosuspend_mins: 10
 
   run:
     timeout: 600
@@ -557,7 +555,6 @@
   cluster:
     cluster_env: horovod/app_config.yaml
     cluster_compute: horovod/compute_tpl.yaml
-    autosuspend_mins: 10
 
   driver_setup: horovod/driver_setup_latest.sh
   run:
@@ -581,7 +578,6 @@
   cluster:
     cluster_env: ../horovod_tests/app_config_master.yaml
     cluster_compute: horovod/compute_tpl.yaml
-    autosuspend_mins: 10
 
   driver_setup: horovod/driver_setup_master.sh
   run:
@@ -695,7 +691,6 @@
   cluster:
     cluster_env: ray-lightning/app_config.yaml
     cluster_compute: ray-lightning/compute_tpl.yaml
-    autosuspend_mins: 10
 
   driver_setup: ray-lightning/driver_setup.sh
   run:
@@ -719,7 +714,6 @@
   cluster:
     cluster_env: ray-lightning/app_config_master.yaml
     cluster_compute: ray-lightning/compute_tpl.yaml
-    autosuspend_mins: 10
 
   driver_setup: ray-lightning/driver_setup.sh
   run:
@@ -743,7 +737,6 @@
   cluster:
     cluster_env: ../rllib_tests/app_config.yaml
     cluster_compute: tune_rllib/compute_tpl.yaml
-    autosuspend_mins: 10
 
   driver_setup: tune_rllib/driver_setup.sh
   run:
@@ -1190,7 +1183,6 @@
   cluster:
     cluster_env: dask_xgboost_app_config.yaml
     cluster_compute: compute_tpl.yaml
-    autosuspend_mins: 10
 
   run:
     timeout: 1800
@@ -1217,7 +1209,6 @@
   cluster:
     cluster_env: modin_xgboost_app_config.yaml
     cluster_compute: compute_tpl.yaml
-    autosuspend_mins: 10
 
   run:
     timeout: 1800
@@ -1244,7 +1235,6 @@
   cluster:
     cluster_env: torch_tune_serve_app_config.yaml
     cluster_compute: gpu_tpl.yaml
-    autosuspend_mins: 10
 
   run:
     timeout: 1800
@@ -1713,7 +1703,6 @@
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: rte_minimal.yaml
-    autosuspend_mins: 10
 
   run:
     timeout: 600
