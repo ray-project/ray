@@ -382,27 +382,8 @@ void GcsResourceManager::AddResourcesChangedListener(std::function<void()> liste
 
 void GcsResourceManager::UpdateNodeNormalTaskResources(
     const NodeID &node_id, const rpc::ResourcesData &heartbeat) {
-  if (!heartbeat.resources_normal_task_changed()) {
-    return;
-  }
-
-  scheduling::NodeID scheduling_node_id(node_id.Binary());
-  if (!cluster_resource_manager_.ContainsNode(scheduling_node_id)) {
-    return;
-  }
-
-  auto normal_task_resources =
-      ResourceMapToResourceRequest(MapFromProtobuf(heartbeat.resources_normal_task()),
-                                   /*requires_object_store_memory=*/false);
-  const auto &node_resources =
-      cluster_resource_manager_.GetNodeResources(scheduling_node_id);
-  const auto &local_normal_task_resources = node_resources.normal_task_resources;
-  if (heartbeat.resources_normal_task_timestamp() >
-          node_resources.latest_resources_normal_task_timestamp &&
-      normal_task_resources != local_normal_task_resources) {
-    // Update normal task resources.
-    cluster_resource_manager_.UpdateNodeNormalTaskResources(scheduling_node_id,
-                                                            heartbeat);
+  if (cluster_resource_manager_.UpdateNodeNormalTaskResources(
+          scheduling::NodeID(node_id.Binary()), heartbeat)) {
     for (const auto &listener : resources_changed_listeners_) {
       listener();
     }

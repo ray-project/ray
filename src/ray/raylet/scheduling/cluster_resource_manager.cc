@@ -335,34 +335,32 @@ bool ClusterResourceManager::UpdateNodeAvailableResources(
 
 bool ClusterResourceManager::UpdateNodeNormalTaskResources(
     scheduling::NodeID node_id, const rpc::ResourcesData &resource_data) {
-  if (!nodes_.contains(node_id)) {
-    return false;
-  }
-
-  NodeResources local_view;
-  RAY_CHECK(GetNodeResources(node_id, &local_view));
-
-  if (resource_data.resources_normal_task_changed() &&
-      resource_data.resources_normal_task_timestamp() >
-          local_view.latest_resources_normal_task_timestamp) {
-    auto normal_task_resources = ResourceMapToResourceRequest(
-        MapFromProtobuf(resource_data.resources_normal_task()),
-        /*requires_object_store_memory=*/false);
-    auto &local_normal_task_resources = local_view.normal_task_resources;
-    local_normal_task_resources.predefined_resources.resize(PredefinedResources_MAX);
-    for (size_t i = 0; i < PredefinedResources_MAX; ++i) {
-      local_normal_task_resources.predefined_resources[i] =
-          normal_task_resources.predefined_resources[i];
+  auto iter = nodes_.find(node_id);
+  if (iter != nodes_.end()) {
+    auto node_resources = iter->second.GetMutableLocalView();
+    if (resource_data.resources_normal_task_changed() &&
+        resource_data.resources_normal_task_timestamp() >
+            node_resources->latest_resources_normal_task_timestamp) {
+      auto normal_task_resources = ResourceMapToResourceRequest(
+          MapFromProtobuf(resource_data.resources_normal_task()),
+          /*requires_object_store_memory=*/false);
+      auto &local_normal_task_resources = node_resources->normal_task_resources;
+      if (normal_task_resources != local_normal_task_resources) {
+        local_normal_task_resources.predefined_resources.resize(PredefinedResources_MAX);
+        for (size_t i = 0; i < PredefinedResources_MAX; ++i) {
+          local_normal_task_resources.predefined_resources[i] =
+              normal_task_resources.predefined_resources[i];
+        }
+        local_normal_task_resources.custom_resources =
+            std::move(normal_task_resources.custom_resources);
+        node_resources->latest_resources_normal_task_timestamp =
+            resource_data.resources_normal_task_timestamp();
+        return true;
+      }
     }
-    local_normal_task_resources.custom_resources =
-        std::move(normal_task_resources.custom_resources);
-    local_view.latest_resources_normal_task_timestamp =
-        resource_data.resources_normal_task_timestamp();
-
-    AddOrUpdateNode(node_id, local_view);
   }
 
-  return true;
+  return false;
 }
 
 bool ClusterResourceManager::ContainsNode(scheduling::NodeID node_id) const {
