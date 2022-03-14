@@ -510,6 +510,9 @@ def test_spill_worker_failure(ray_start_regular):
                 # for macOS
                 if proc.cmdline() and name in proc.cmdline()[0]:
                     return proc
+                # for Windows
+                if proc.cmdline() and "--worker-type=SPILL_WORKER" in proc.cmdline():
+                    return proc
             except psutil.AccessDenied:
                 pass
             except psutil.NoSuchProcess:
