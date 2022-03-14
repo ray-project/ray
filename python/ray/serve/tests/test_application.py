@@ -70,7 +70,7 @@ class TestDeployGroup:
         the client to wait until the deployments finish deploying.
         """
 
-        deploy_group(target=Application(deployments), blocking=blocking)
+        deploy_group(Application(deployments)._get_deployments(), blocking=blocking)
 
         def check_all_deployed():
             try:
@@ -143,7 +143,7 @@ class TestDeployGroup:
                 MutualHandles.options(name=deployment_name, init_args=(handle_name,))
             )
 
-        deploy_group(target=Application(deployments), blocking=True)
+        deploy_group(Application(deployments)._get_deployments(), blocking=True)
 
         for deployment in deployments:
             assert (ray.get(deployment.get_handle().remote("hello"))) == "hello"
@@ -308,7 +308,7 @@ class TestDictTranslation:
 
         compare_specified_options(config_dict, app_dict)
 
-        deploy_group(app)
+        deploy_group(app._get_deployments())
 
         assert (
             requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
@@ -334,7 +334,7 @@ class TestYAMLTranslation:
         compare_specified_options(app1.to_dict(), app2.to_dict())
 
         # Check that deployment works
-        deploy_group(app1)
+        deploy_group(app1._get_deployments)
         assert (
             requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
         )
