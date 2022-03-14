@@ -334,7 +334,7 @@ class TestYAMLTranslation:
         compare_specified_options(app1.to_dict(), app2.to_dict())
 
         # Check that deployment works
-        deploy_group(app1._get_deployments)
+        deploy_group(app1._get_deployments())
         assert (
             requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
         )
