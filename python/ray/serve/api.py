@@ -7,6 +7,7 @@ import random
 import re
 import time
 import yaml
+import sys
 from dataclasses import dataclass
 from functools import wraps
 from typing import (
@@ -46,8 +47,6 @@ from ray.serve.constants import (
     SERVE_CONTROLLER_NAME,
     MAX_CACHED_HANDLES,
     CONTROLLER_MAX_CONCURRENCY,
-    DEFAULT_HTTP_HOST,
-    DEFAULT_HTTP_PORT,
 )
 from ray.serve.controller import ServeController
 from ray.serve.exceptions import RayServeException
@@ -72,6 +71,7 @@ from ray.serve.schema import (
     schema_to_serve_application,
     serve_application_status_to_schema,
 )
+from ray.serve.pipeline.api import extract_deployments_from_serve_dag
 
 
 _INTERNAL_REPLICA_CONTEXT = None
@@ -1535,7 +1535,7 @@ class Application:
     # TODO(edoakes): should this literally just be the REST pydantic schema?
     # At the very least, it should be a simple dictionary.
 
-    def __init__(self):
+    def __init__(self, deployments: List[Deployment]=None):
         deployments = deployments or []
 
         self._deployments = dict()
@@ -1551,7 +1551,7 @@ class Application:
         Returns:
             Dict: The Application's deployments formatted in a dictionary.
         """
-        
+
         return serve_application_to_schema(self._deployments.values()).dict()
 
     @classmethod
@@ -1568,7 +1568,7 @@ class Application:
         Returns:
             Application: a new Application object containing the deployments.
         """
-        
+
         schema = ServeApplicationSchema.parse_obj(d)
         return cls(schema_to_serve_application(schema))
 
@@ -1592,7 +1592,7 @@ class Application:
             Optional[String]: The deployments' YAML string. The output is from
                 yaml.safe_dump(). Returned only if no file pointer is passed in.
         """
-        
+
         deployment_dict = serve_application_to_schema(self._deployments.values()).dict()
 
         if f:
@@ -1623,7 +1623,7 @@ class Application:
         Returns:
             Application: a new Application object containing the deployments.
         """
-        
+
         deployments_json = yaml.safe_load(str_or_file)
         schema = ServeApplicationSchema.parse_obj(deployments_json)
         return cls(schema_to_serve_application(schema))
@@ -1656,7 +1656,7 @@ class Application:
             )
 
         self._deployments[deployment.name] = deployment
-    
+
     def _get_deployments(self) -> List[Deployment]:
         """Gets a list of this Application's deployments."""
 
@@ -1668,7 +1668,7 @@ class Application:
         Raises:
             KeyError: if the name is not in this Application.
         """
-        
+
         if key in self._deployments:
             return self._deployments[key]
         else:
@@ -1684,12 +1684,12 @@ class Application:
 
     def __len__(self):
         """Number of deployments in this Application."""
-        
+
         return len(self._deployments)
 
     def __contains__(self, key: str):
         """Checks if the key exists in self._deployments."""
-        
+
         return key in self._deployments
 
 
@@ -1700,8 +1700,7 @@ NodeOrApp = Union[DeploymentNode, Application]
 def run(
     target: NodeOrApp,
     *,
-    host: str = DEFAULT_HTTP_HOST,
-    port: int = DEFAULT_HTTP_PORT,
+    http_options: Union[Dict, HTTPOptions] = None,
     logger: Optional[logging.Logger] = None,
 ):
     """Run a Serve application (blocking).
@@ -1714,12 +1713,34 @@ def run(
     If a DeploymentNode is passed in, all of the deployments it depends on
     will be deployed.
     """
-    raise NotImplementedError()
+
+    try:
+        deployments = _get_deployments_from_target(target)
+
+        deploy(target, http_options=http_options, blocking=True)
+
+        logger.info("\nDeployed successfully!\n")
+
+        while True:
+            statuses = serve_application_status_to_schema(
+                get_deployment_statuses()
+            ).json(indent=4)
+            logger.info(f"{statuses}")
+            time.sleep(10)
+
+    except KeyboardInterrupt:
+        logger.info("Got SIGINT (KeyboardInterrupt). Removing deployments.")
+        for deployment in deployments.values():
+            deployment.delete()
+        if len(list_deployments()) == 0:
+            logger.info("No deployments left. Shutting down Serve.")
+            shutdown()
+        sys.exit()
 
 
 @PublicAPI(stability="alpha")
 def deploy(
-    target: NodeOrApp, *, host: str = DEFAULT_HTTP_HOST, port: int = DEFAULT_HTTP_PORT
+    target: NodeOrApp, *, http_options: Union[Dict, HTTPOptions] = None, blocking=True
 ) -> RayServeHandle:
     """Deploy a Serve application async and return a handle to the ingress.
 
@@ -1730,7 +1751,38 @@ def deploy(
     If a DeploymentNode is passed in, all of the deployments it depends on
     will be deployed.
     """
-    raise NotImplementedError()
+
+    deployments = _get_deployments_from_target(target)
+
+    # TODO (shrekris-anyscale): validate ingress
+
+    if len(deployments) == 0:
+        return
+
+    parameter_group = []
+
+    for deployment in deployments.values():
+
+        deployment_parameters = {
+            "name": deployment._name,
+            "func_or_class": deployment._func_or_class,
+            "init_args": deployment.init_args,
+            "init_kwargs": deployment.init_kwargs,
+            "ray_actor_options": deployment._ray_actor_options,
+            "config": deployment._config,
+            "version": deployment._version,
+            "prev_version": deployment._prev_version,
+            "route_prefix": deployment.route_prefix,
+            "url": deployment.url,
+        }
+
+        parameter_group.append(deployment_parameters)
+
+    start(detached=True, http_options=http_options)
+
+    internal_get_global_client().deploy_group(parameter_group, _blocking=blocking)
+
+    # TODO (shrekris-anyscale): return handle to ingress deployment
 
 
 @PublicAPI(stability="alpha")
@@ -1752,3 +1804,18 @@ def build(target: DeploymentNode) -> Application:
     # TODO(edoakes): this should accept host and port, but we don't
     # currently support them in the REST API.
     raise NotImplementedError()
+
+
+def _get_deployments_from_target(target: NodeOrApp) -> List[Deployment]:
+    """Validates target and gets its deployments."""
+
+    if isinstance(target, Application):
+        return target._get_deployments()
+    elif isinstance(target, DeploymentNode):
+        return extract_deployments_from_serve_dag(target)
+    else:
+        raise TypeError(
+            "Expected a DeploymentNode or "
+            "Application as target. Got unexpected type "
+            f'"{type(target)}" instead.'
+        )
