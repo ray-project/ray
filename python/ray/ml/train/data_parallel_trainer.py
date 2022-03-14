@@ -139,7 +139,7 @@ class DataParallelTrainer(Trainer):
 
                 worker_group.execute(set_env_var, backend_config.env_var)
 
-        @dataclasses
+        @dataclass
         class MyBackendConfig(BackendConfig):
             env_var: str = "default_value"
 
