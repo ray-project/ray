@@ -24,20 +24,6 @@ bool IsPredefinedResource(scheduling::ResourceID resource) {
   return resource.ToInt() >= 0 && resource.ToInt() < PredefinedResourcesEnum_MAX;
 }
 
-std::string VectorToString(const std::vector<FixedPoint> &vector) {
-  std::stringstream buffer;
-
-  buffer << "[";
-  for (size_t i = 0; i < vector.size(); i++) {
-    buffer << vector[i];
-    if (i < vector.size() - 1) {
-      buffer << ", ";
-    }
-  }
-  buffer << "]";
-  return buffer.str();
-}
-
 std::string UnorderedMapToString(const absl::flat_hash_map<std::string, double> &map) {
   std::stringstream buffer;
 
@@ -49,45 +35,11 @@ std::string UnorderedMapToString(const absl::flat_hash_map<std::string, double> 
   return buffer.str();
 }
 
-/// Convert a vector of doubles to a vector of resource units.
-std::vector<FixedPoint> VectorDoubleToVectorFixedPoint(
-    const std::vector<double> &vector) {
-  std::vector<FixedPoint> vector_fp(vector.size());
-  for (size_t i = 0; i < vector.size(); i++) {
-    vector_fp[i] = vector[i];
-  }
-  return vector_fp;
-}
-
-/// Convert a vector of resource units to a vector of doubles.
-std::vector<double> VectorFixedPointToVectorDouble(
-    const std::vector<FixedPoint> &vector_fp) {
-  std::vector<double> vector(vector_fp.size());
-  for (size_t i = 0; i < vector_fp.size(); i++) {
-    vector[i] = FixedPoint(vector_fp[i]).Double();
-  }
-  return vector;
-}
-
 /// Convert a map of resources to a ResourceRequest data structure.
 ResourceRequest ResourceMapToResourceRequest(
     const absl::flat_hash_map<std::string, double> &resource_map,
     bool requires_object_store_memory) {
   return ResourceMapToResourceRequest(resource_map, requires_object_store_memory);
-}
-
-ResourceRequest TaskResourceInstances::ToResourceRequest() const {
-  ResourceRequest resource_request;
-
-  for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
-    resource_request.Set(ResourceID(i), FixedPoint::Sum(this->predefined_resources[i]));
-  }
-
-  for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
-       ++it) {
-    resource_request.Set(ResourceID(it->first), FixedPoint::Sum(it->second));
-  }
-  return resource_request;
 }
 
 /// Convert a map of resources to a ResourceRequest data structure.
@@ -202,13 +154,6 @@ bool NodeResourceInstances::operator==(const NodeResourceInstances &other) {
   return this->total == other.total && this->available == other.available;
 }
 
-void TaskResourceInstances::ClearCPUInstances() {
-  if (predefined_resources.size() >= CPU) {
-    predefined_resources[CPU].clear();
-    predefined_resources[CPU].clear();
-  }
-}
-
 std::string NodeResourceInstances::DebugString() const {
   std::stringstream buffer;
   // buffer << "{\n";
@@ -250,72 +195,6 @@ TaskResourceInstances NodeResourceInstances::GetAvailableResourceInstances() {
 
 bool NodeResourceInstances::Contains(scheduling::ResourceID id) const {
   return total.Has(id);
-}
-
-bool TaskResourceInstances::IsEmpty() const {
-  // Check whether all resource instances of a task are zero.
-  for (const auto &predefined_resource : predefined_resources) {
-    for (const auto &predefined_resource_instance : predefined_resource) {
-      if (predefined_resource_instance != 0) {
-        return false;
-      }
-    }
-  }
-
-  for (const auto &custom_resource : custom_resources) {
-    for (const auto &custom_resource_instances : custom_resource.second) {
-      if (custom_resource_instances != 0) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
-std::string TaskResourceInstances::DebugString() const {
-  std::stringstream buffer;
-  buffer << std::endl << "  Allocation: {";
-  for (size_t i = 0; i < this->predefined_resources.size(); i++) {
-    buffer << VectorToString(this->predefined_resources[i]);
-  }
-  buffer << "}";
-
-  buffer << "  [";
-  for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
-       ++it) {
-    buffer << ResourceID(it->first).Binary() << ":" << VectorToString(it->second) << ", ";
-  }
-
-  buffer << "]" << std::endl;
-  return buffer.str();
-}
-
-bool EqualVectors(const std::vector<FixedPoint> &v1, const std::vector<FixedPoint> &v2) {
-  return (v1.size() == v2.size() && std::equal(v1.begin(), v1.end(), v2.begin()));
-}
-
-bool TaskResourceInstances::operator==(const TaskResourceInstances &other) {
-  for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
-    if (!EqualVectors(this->predefined_resources[i], other.predefined_resources[i])) {
-      return false;
-    }
-  }
-
-  if (this->custom_resources.size() != other.custom_resources.size()) {
-    return false;
-  }
-
-  for (auto it1 = this->custom_resources.begin(); it1 != this->custom_resources.end();
-       ++it1) {
-    auto it2 = other.custom_resources.find(it1->first);
-    if (it2 == other.custom_resources.end()) {
-      return false;
-    }
-    if (!EqualVectors(it1->second, it2->second)) {
-      return false;
-    }
-  }
-  return true;
 }
 
 }  // namespace ray

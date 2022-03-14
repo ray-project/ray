@@ -31,16 +31,6 @@ using scheduling::ResourceID;
 
 bool IsPredefinedResource(scheduling::ResourceID resource_id);
 
-/// Helper function to compare two vectors with FixedPoint values.
-bool EqualVectors(const std::vector<FixedPoint> &v1, const std::vector<FixedPoint> &v2);
-
-/// Convert a vector of doubles to a vector of resource units.
-std::vector<FixedPoint> VectorDoubleToVectorFixedPoint(const std::vector<double> &vector);
-
-/// Convert a vector of resource units to a vector of doubles.
-std::vector<double> VectorFixedPointToVectorDouble(
-    const std::vector<FixedPoint> &vector_fp);
-
 // Data structure specifying the capacity of each resource requested by a task.
 class ResourceRequest {
  public:
@@ -180,7 +170,7 @@ class ResourceRequest {
   }
 
   bool operator==(const ResourceRequest &other) const {
-    return EqualVectors(predefined_resources_, other.predefined_resources_) &&
+    return FixedPointEqualVectors(predefined_resources_, other.predefined_resources_) &&
            this->custom_resources_ == other.custom_resources_;
   }
 
@@ -212,6 +202,7 @@ class ResourceRequest {
       if (!first) {
         buffer << ", ";
       }
+      first = false;
       buffer << resource_id.Binary() << ": " << Get(resource_id);
     }
     buffer << "}";
@@ -252,12 +243,12 @@ class TaskResourceInstances {
  public:
   TaskResourceInstances() {
     for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
-      this->predefined_resources.push_back({});
+      this->predefined_resources_.push_back({});
     }
   }
   TaskResourceInstances(const ResourceRequest &request) {
     for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
-      this->predefined_resources.push_back({});
+      this->predefined_resources_.push_back({});
     }
     for (auto resource_id : request.ResourceIds()) {
       std::vector<FixedPoint> instances;
@@ -273,32 +264,31 @@ class TaskResourceInstances {
       Set(resource_id, instances);
     }
   }
-  /// The list of instances of each predifined resource allocated to a task.
-  std::vector<std::vector<FixedPoint>> predefined_resources;
-  /// The list of instances of each custom resource allocated to a task.
-  absl::flat_hash_map<int64_t, std::vector<FixedPoint>> custom_resources;
-  bool operator==(const TaskResourceInstances &other);
+
+  const std::vector<FixedPoint> &Get(const ResourceID resource_id) const {
+    auto ptr = GetPointer(resource_id);
+    RAY_CHECK(ptr != nullptr) << "Resource ID not found " << resource_id;
+    return *ptr;
+  }
+
+  std::vector<double> GetDouble(const ResourceID resource_id) const {
+    return VectorFixedPointToVectorDouble(Get(resource_id));
+  }
+
+  std::vector<FixedPoint> &GetMutable(const ResourceID resource_id) {
+    auto ptr = GetPointer(resource_id);
+    RAY_CHECK(ptr != nullptr) << "Resource ID not found " << resource_id;
+    return *ptr;
+  }
 
   bool Has(ResourceID resource_id) const {
-    if (IsPredefinedResource(resource_id)) {
-      return predefined_resources[resource_id.ToInt()].size() > 0;
-    } else {
-      auto it = custom_resources.find(resource_id.ToInt());
-      return it != custom_resources.end() && it->second.size() > 0;
-    }
+    auto ptr = GetPointer(resource_id);
+    return ptr != nullptr && ptr->size() > 0;
   }
 
   TaskResourceInstances &Set(const ResourceID resource_id, const std::vector<FixedPoint> &instances) {
      GetMutable(resource_id) = instances;
      return *this;
-  }
-
-  std::vector<FixedPoint> &GetMutable(const ResourceID resource_id) {
-     if (IsPredefinedResource(resource_id)) {
-       return predefined_resources[resource_id.ToInt()];
-     } else {
-       return custom_resources[resource_id.ToInt()];
-     }
   }
 
   void Add(const ResourceID resource_id, const std::vector<FixedPoint> &delta) {
@@ -312,19 +302,25 @@ class TaskResourceInstances {
   }
 
   void Clear(ResourceID resource_id) {
-    auto &instances = GetMutable(resource_id);
-    for (size_t i = 0; i < instances.size(); ++i) {
-      instances[i] = 0;
+    if (IsPredefinedResource(resource_id)) {
+      auto &instances = GetMutable(resource_id);
+      instances.clear();
+    } else {
+      custom_resources_.erase(resource_id.ToInt());
     }
   }
 
   absl::flat_hash_set<ResourceID> ResourceIds() const {
     absl::flat_hash_set<ResourceID> res;
-    for (size_t i = 0; i < predefined_resources.size(); i++) {
-      res.insert(ResourceID(i));
+    for (size_t i = 0; i < predefined_resources_.size(); i++) {
+      if (predefined_resources_[i].size() > 0) {
+        res.insert(ResourceID(i));
+      }
     }
-    for (auto &entry : custom_resources) {
-      res.insert(ResourceID(entry.first));
+    for (auto &entry : custom_resources_) {
+      if (entry.second.size() > 0) {
+        res.insert(ResourceID(entry.first));
+      }
     }
     return res;
   }
@@ -333,58 +329,51 @@ class TaskResourceInstances {
     return FixedPoint::Sum(Get(resource_id));
   }
 
-  FixedPoint SumCPU() const {
-    return FixedPoint::Sum(predefined_resources[CPU]);
-  }
+  size_t Size() const { return ResourceIds().size(); }
 
-  /// Get instances based on the string.
-  const std::vector<FixedPoint> &Get(const ResourceID resource_id) const {
-     if (IsPredefinedResource(resource_id)) {
-       return predefined_resources[resource_id.ToInt()];
-     } else {
-       return custom_resources.at(resource_id.ToInt());
-     }
+  /// Check whether there are no resource instances.
+  bool IsEmpty() const { return Size() == 0; }
+
+  bool operator==(const TaskResourceInstances &other) const {
+    for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
+      if (!FixedPointEqualVectors(this->predefined_resources_[i], other.predefined_resources_[i])) {
+        return false;
+      }
+    }
+    return this->custom_resources_ == other.custom_resources_;
   }
 
   /// For each resource of this request aggregate its instances.
-  ResourceRequest ToResourceRequest() const;
-  /// Get CPU instances only.
-  std::vector<FixedPoint> GetCPUInstances() const {
-    return this->predefined_resources[CPU];
-  };
-  std::vector<double> GetCPUInstancesDouble() const {
-    return VectorFixedPointToVectorDouble(this->predefined_resources[CPU]);
-  };
-  /// Get GPU instances only.
-  std::vector<FixedPoint> GetGPUInstances() const {
-    return this->predefined_resources[GPU];
-  };
-  std::vector<double> GetGPUInstancesDouble() const {
-    return VectorFixedPointToVectorDouble(this->predefined_resources[GPU]);
-  };
-  /// Get mem instances only.
-  std::vector<FixedPoint> GetMemInstances() const {
-    return this->predefined_resources[MEM];
-  };
-  std::vector<double> GetMemInstancesDouble() const {
-    return VectorFixedPointToVectorDouble(this->predefined_resources[MEM]);
-  };
-
-  std::vector<FixedPoint> GetObjectStoreMemory() const {
-    return this->predefined_resources[OBJECT_STORE_MEM];
+  ResourceRequest ToResourceRequest() const {
+    ResourceRequest resource_request;
+    for (auto resource_id : ResourceIds()) {
+      resource_request.Set(resource_id, Sum(resource_id));
+    }
+    return resource_request;
   }
-  /// Clear only the CPU instances field.
-  void ClearCPUInstances();
-  /// Check whether there are no resource instances.
-  bool IsEmpty() const;
+
   /// Returns human-readable string for these resources.
-  [[nodiscard]] std::string DebugString() const;
+  [[nodiscard]] std::string DebugString() const {
+    std::stringstream buffer;
+    buffer << "{";
+    bool first = true;
+    for (auto resource_id : ResourceIds()) {
+      if (!first) {
+        buffer << ", ";
+      }
+      first = false;
+      buffer << resource_id.Binary() << ": " << FixedPointVectorToString(Get(resource_id));
+    }
+    buffer << "}";
+    return buffer.str();
+  }
+
   std::string SerializeAsJson() const {
     bool has_added_resource = false;
     std::stringstream buffer;
     buffer << "{";
     for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
-      std::vector<FixedPoint> resource = predefined_resources[i];
+      std::vector<FixedPoint> resource = predefined_resources_[i];
       if (resource.empty()) {
         continue;
       }
@@ -407,10 +396,33 @@ class TaskResourceInstances {
       }
       has_added_resource = true;
     }
-    // TODO (chenk008): add custom_resources
+    // TODO (chenk008): add custom_resources_
     buffer << "}";
     return buffer.str();
   }
+
+ private:
+  std::vector<FixedPoint> *GetPointer(ResourceID id) {
+    if (IsPredefinedResource(id)) {
+      return &predefined_resources_[id.ToInt()];
+    } else {
+      auto it = custom_resources_.find(id.ToInt());
+      if (it == custom_resources_.end()) {
+        return nullptr;
+      } else {
+        return &it->second;
+      }
+    }
+  }
+
+  const std::vector<FixedPoint> *GetPointer(ResourceID id) const {
+    return const_cast<TaskResourceInstances *>(this)->GetPointer(id);
+  }
+
+  /// The list of instances of each predifined resource allocated to a task.
+  std::vector<std::vector<FixedPoint>> predefined_resources_;
+  /// The list of instances of each custom resource allocated to a task.
+  absl::flat_hash_map<int64_t, std::vector<FixedPoint>> custom_resources_;
 };
 
 /// Total and available capacities of each resource of a node.

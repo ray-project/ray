@@ -60,7 +60,7 @@ std::string LocalResourceManager::DebugString(void) const {
 }
 
 uint64_t LocalResourceManager::GetNumCpus() const {
-  return static_cast<uint64_t>(local_resources_.total.SumCPU().Double());
+  return static_cast<uint64_t>(local_resources_.total.Sum(ResourceID::CPU()).Double());
 }
 
 std::vector<FixedPoint> LocalResourceManager::AddAvailableResourceInstances(
@@ -286,7 +286,7 @@ void LocalResourceManager::UpdateAvailableObjectStoreMemResource() {
     return;
   }
 
-  auto total_instances = local_resources_.total.GetObjectStoreMemory();
+  auto &total_instances = local_resources_.total.Get(ResourceID::ObjectStoreMemory());
   RAY_CHECK_EQ(total_instances.size(), 1u);
   const double used = get_used_object_store_memory_();
   const double total = total_instances[0].Double();

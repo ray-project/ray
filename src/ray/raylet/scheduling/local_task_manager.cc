@@ -832,41 +832,21 @@ void LocalTaskManager::Dispatch(
   } else {
     allocated_resources = worker->GetAllocatedInstances();
   }
-  auto predefined_resources = allocated_resources->predefined_resources;
   ::ray::rpc::ResourceMapEntry *resource;
-  for (size_t res_idx = 0; res_idx < predefined_resources.size(); res_idx++) {
+  for (auto resource_id : allocated_resources->ResourceIds()) {
     bool first = true;  // Set resource name only if at least one of its
                         // instances has available capacity.
-    for (size_t inst_idx = 0; inst_idx < predefined_resources[res_idx].size();
-         inst_idx++) {
-      if (predefined_resources[res_idx][inst_idx] > 0.) {
+    auto instances = allocated_resources->Get(resource_id);
+    for (size_t inst_idx = 0; inst_idx < instances.size(); inst_idx++) {
+      if (instances[inst_idx] > 0.) {
         if (first) {
           resource = reply->add_resource_mapping();
-          resource->set_name(cluster_resource_scheduler_->GetClusterResourceManager()
-                                 .GetResourceNameFromIndex(res_idx));
+          resource->set_name(resource_id.Binary());
           first = false;
         }
         auto rid = resource->add_resource_ids();
         rid->set_index(inst_idx);
-        rid->set_quantity(predefined_resources[res_idx][inst_idx].Double());
-      }
-    }
-  }
-  auto custom_resources = allocated_resources->custom_resources;
-  for (auto it = custom_resources.begin(); it != custom_resources.end(); ++it) {
-    bool first = true;  // Set resource name only if at least one of its
-                        // instances has available capacity.
-    for (size_t inst_idx = 0; inst_idx < it->second.size(); inst_idx++) {
-      if (it->second[inst_idx] > 0.) {
-        if (first) {
-          resource = reply->add_resource_mapping();
-          resource->set_name(cluster_resource_scheduler_->GetClusterResourceManager()
-                                 .GetResourceNameFromIndex(it->first));
-          first = false;
-        }
-        auto rid = resource->add_resource_ids();
-        rid->set_index(inst_idx);
-        rid->set_quantity(it->second[inst_idx].Double());
+        rid->set_quantity(instances[inst_idx].Double());
       }
     }
   }
@@ -918,7 +898,7 @@ void LocalTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> w
     if (worker->IsBlocked()) {
       // If the worker is blocked, its CPU instances have already been released. We clear
       // the CPU instances to avoid double freeing.
-      allocated_instances->ClearCPUInstances();
+      allocated_instances->Clear(ResourceID::CPU());
     }
     cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
         worker->GetAllocatedInstances());
@@ -931,7 +911,7 @@ void LocalTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> w
     if (worker->IsBlocked()) {
       // If the worker is blocked, its CPU instances have already been released. We clear
       // the CPU instances to avoid double freeing.
-      lifetime_allocated_instances->ClearCPUInstances();
+      lifetime_allocated_instances->Clear(ResourceID::CPU());
     }
     cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
         worker->GetLifetimeAllocatedInstances());
@@ -946,7 +926,7 @@ bool LocalTaskManager::ReleaseCpuResourcesFromUnblockedWorker(
   }
 
   if (worker->GetAllocatedInstances() != nullptr) {
-    auto cpu_instances = worker->GetAllocatedInstances()->GetCPUInstancesDouble();
+    auto cpu_instances = worker->GetAllocatedInstances()->GetDouble(ResourceID::CPU());
     if (cpu_instances.size() > 0) {
       std::vector<double> overflow_cpu_instances =
           cluster_resource_scheduler_->GetLocalResourceManager().AddResourceInstances(
@@ -968,7 +948,7 @@ bool LocalTaskManager::ReturnCpuResourcesToBlockedWorker(
     return false;
   }
   if (worker->GetAllocatedInstances() != nullptr) {
-    auto cpu_instances = worker->GetAllocatedInstances()->GetCPUInstancesDouble();
+    auto cpu_instances = worker->GetAllocatedInstances()->GetDouble(ResourceID::CPU());
     if (cpu_instances.size() > 0) {
       // Important: we allow going negative here, since otherwise you can use infinite
       // CPU resources by repeatedly blocking / unblocking a task. By allowing it to go
