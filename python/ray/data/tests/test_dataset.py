@@ -1565,7 +1565,8 @@ def test_to_tf(ray_start_regular_shared, pipelined):
     assert np.array_equal(df.values, combined_iterations)
 
 
-def test_to_tf_feature_columns(ray_start_regular_shared):
+@pytest.mark.parametrize("label_column", [None, "label"])
+def test_to_tf_feature_columns(ray_start_regular_shared, label_column):
     import tensorflow as tf
 
     df1 = pd.DataFrame(
@@ -1577,17 +1578,29 @@ def test_to_tf_feature_columns(ray_start_regular_shared):
     df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
     df = pd.concat([df1, df2, df3]).drop("two", axis=1)
     ds = ray.data.from_pandas([df1, df2, df3])
-    tfd = ds.to_tf(
-        label_column="label",
-        feature_columns=["one"],
-        output_signature=(
+
+    if label_column:
+        output_signature = (
             tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
             tf.TensorSpec(shape=(None), dtype=tf.float32),
-        ),
+        )
+    else:
+        output_signature = tf.TensorSpec(shape=(None, 1), dtype=tf.float32)
+        df = df.drop("label", axis=1)
+
+    tfd = ds.to_tf(
+        label_column=label_column,
+        feature_columns=["one"],
+        output_signature=output_signature,
     )
     iterations = []
     for batch in tfd.as_numpy_iterator():
-        iterations.append(np.concatenate((batch[0], batch[1].reshape(-1, 1)), axis=1))
+        if label_column:
+            iterations.append(
+                np.concatenate((batch[0], batch[1].reshape(-1, 1)), axis=1)
+            )
+        else:
+            iterations.append(batch)
     combined_iterations = np.concatenate(iterations)
     assert np.array_equal(df.values, combined_iterations)
 

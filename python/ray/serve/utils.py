@@ -1,3 +1,5 @@
+from functools import wraps
+import importlib
 from itertools import groupby
 import json
 import logging
@@ -5,7 +7,7 @@ import pickle
 import random
 import string
 import time
-from typing import Iterable, Tuple, Dict, Any
+from typing import Iterable, List, Tuple, Dict, Any
 import os
 import traceback
 from enum import Enum
@@ -147,7 +149,7 @@ def serve_handle_object_hook(ray_serve_handle_json: Dict[str, Any]):
             if ray_serve_handle_json[SERVE_HANDLE_JSON_KEY] == ServeHandleType.SYNC
             else False
         )
-        return serve.api._get_global_client().get_handle(
+        return serve.api.internal_get_global_client().get_handle(
             ray_serve_handle_json["deployment_name"],
             sync=is_sync,
             missing_ok=True,
@@ -344,3 +346,40 @@ class JavaActorHandleProxy:
             components = key.split("_")
             camel_case_key = components[0] + "".join(x.title() for x in components[1:])
         return getattr(self.handle, camel_case_key)
+
+
+def require_packages(packages: List[str]):
+    """Decorator making sure function run in specified environments
+
+    Examples:
+        >>> @require_packages(["numpy", "package_a"])
+            def func():
+                import numpy as np
+        >>> func()
+            ImportError: func requires ["numpy", "package_a"] but
+            ["package_a"] are not available, please pip install them.
+    """
+
+    def decorator(func):
+        @wraps(func)
+        def wrapped(*args, **kwargs):
+            if not hasattr(func, "_require_packages_checked"):
+                missing_packages = []
+                for package in packages:
+                    try:
+                        importlib.import_module(package)
+                    except ModuleNotFoundError:
+                        missing_packages.append(package)
+                if len(missing_packages) > 0:
+                    raise ImportError(
+                        f"{func} requires packages {packages} to run but "
+                        f"{missing_packages} are missing. Please "
+                        "`pip install` them or add them to "
+                        "`runtime_env`."
+                    )
+                setattr(func, "_require_packages_checked", True)
+            return func(*args, **kwargs)
+
+        return wrapped
+
+    return decorator

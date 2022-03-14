@@ -29,8 +29,10 @@ class InboundRequest {
   InboundRequest();
   InboundRequest(std::function<void(rpc::SendReplyCallback)> accept_callback,
                  std::function<void(rpc::SendReplyCallback)> reject_callback,
-                 rpc::SendReplyCallback send_reply_callback, TaskID task_id,
-                 bool has_dependencies, const std::string &concurrency_group_name,
+                 rpc::SendReplyCallback send_reply_callback,
+                 TaskID task_id,
+                 bool has_dependencies,
+                 const std::string &concurrency_group_name,
                  const ray::FunctionDescriptor &function_descriptor);
 
   void Accept();
