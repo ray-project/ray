@@ -216,6 +216,7 @@ class TorchAccelerator(Accelerator):
 
         torch.use_deterministic_algorithms(True)
         torch.backends.cudnn.benchmark = False
+        os.environ["CUBLAS_WORKSPACE_CONFIG"]=":4096:8"
 
 
 @PublicAPI(stability="beta")
