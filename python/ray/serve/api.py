@@ -1644,42 +1644,24 @@ class Application:
         raise NotImplementedError()
 
 
-NodeOrApp = Union[DeploymentNode, Application]
-
-
 @PublicAPI(stability="alpha")
 def run(
-    target: NodeOrApp,
+    target: Union[DeploymentNode, Application],
     *,
+    blocking: bool = False,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
     logger: Optional[logging.Logger] = None,
-):
-    """Run a Serve application (blocking).
-
-    Deploys all of the deployments in the application then blocks,
-    periodically logging the status. Upon a KeyboardInterrupt, the application
-    will be torn down and all of its deployments deleted.
-
-    Either a DeploymentNode or a pre-built application can be passed in.
-    If a DeploymentNode is passed in, all of the deployments it depends on
-    will be deployed.
-    """
-    raise NotImplementedError()
-
-
-@PublicAPI(stability="alpha")
-def deploy(
-    target: NodeOrApp, *, host: str = DEFAULT_HTTP_HOST, port: int = DEFAULT_HTTP_PORT
 ) -> RayServeHandle:
-    """Deploy a Serve application async and return a handle to the ingress.
-
-    Deploys all of the deployments in the application and returns a
-    RayServeHandle to the ingress deployment.
+    """Run a Serve application and return a ServeHandle to the ingress.
 
     Either a DeploymentNode or a pre-built application can be passed in.
     If a DeploymentNode is passed in, all of the deployments it depends on
     will be deployed.
+
+    If blocking=True, this command will block and periodically print the
+    status of the deployments. On shutdown (KeyboardInterrupt or exit), all
+    deployments will be torn down.
     """
     raise NotImplementedError()
 
