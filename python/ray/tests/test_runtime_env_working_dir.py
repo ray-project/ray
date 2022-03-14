@@ -11,11 +11,16 @@ import ray
 import time
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.utils import get_directory_size_bytes
-from ray._private.runtime_env.working_dir import WorkingDirManager
+from ray._private.runtime_env.working_dir import (
+    WorkingDirManager,
+    set_pythonpath_in_context,
+)
 from ray._private.runtime_env.packaging import (
     get_uri_for_directory,
     upload_package_if_needed,
 )
+from unittest import mock
+
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -28,6 +33,18 @@ HTTPS_PACKAGE_URI = (
 )
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
+TEST_IMPORT_DIR = "test_import_dir"
+
+
+# Set scope to "module" to force this to run before start_cluster, whose scope
+# is "function".  We need these env vars to be set before Ray is started.
+@pytest.fixture(scope="class")
+def insert_test_dir_in_pythonpath():
+    with mock.patch.dict(
+        os.environ,
+        {"PYTHONPATH": TEST_IMPORT_DIR + os.pathsep + os.environ.get("PYTHONPATH", "")},
+    ):
+        yield
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
@@ -56,15 +73,32 @@ async def test_create_delete_size_equal(tmpdir, ray_start_regular):
     assert created_size_bytes == deleted_size_bytes
 
 
+def test_inherit_cluster_env_pythonpath(monkeypatch):
+    monkeypatch.setenv(
+        "PYTHONPATH", "last" + os.pathsep + os.environ.get("PYTHONPATH", "")
+    )
+    context = RuntimeEnvContext(env_vars={"PYTHONPATH": "middle"})
+
+    set_pythonpath_in_context("first", context)
+
+    assert context.env_vars["PYTHONPATH"].startswith(
+        os.pathsep.join(["first", "middle", "last"])
+    )
+
+
 @pytest.mark.parametrize(
     "option", ["failure", "working_dir", "working_dir_zip", "py_modules"]
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
+def test_lazy_reads(
+    insert_test_dir_in_pythonpath, start_cluster, tmp_working_dir, option: str
+):
     """Tests the case where we lazily read files or import inside a task/actor.
 
     This tests both that this fails *without* the working_dir and that it
-    passes with it.
+    passes with it.  Also tests that the existing PYTHONPATH is preserved,
+    so packages preinstalled on the cluster are still importable when using
+    py_modules or working_dir.
     """
     cluster, address = start_cluster
 
@@ -112,6 +146,7 @@ def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
     def test_import():
         import test_module
 
+        assert TEST_IMPORT_DIR in os.environ.get("PYTHONPATH", "")
         return test_module.one()
 
     if option == "failure":
@@ -139,9 +174,11 @@ def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
         def test_import(self):
             import test_module
 
+            assert TEST_IMPORT_DIR in os.environ.get("PYTHONPATH", "")
             return test_module.one()
 
         def test_read(self):
+            assert TEST_IMPORT_DIR in os.environ.get("PYTHONPATH", "")
             return open("hello").read()
 
     a = Actor.remote()
