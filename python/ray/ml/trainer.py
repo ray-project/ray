@@ -62,7 +62,7 @@ class Trainer(abc.ABC):
 
                 import torch
 
-                from ray.ml.trainer import Trainer
+                from ray.ml.train import Trainer, TRAIN_DATASET_KEY
                 from ray import tune
 
 
@@ -74,9 +74,9 @@ class Trainer(abc.ABC):
 
                     def training_loop(self):
                         # You can access any Trainer attributes directly in this method.
-                        # self.train_dataset has already been preprocessed by
-                        # self.preprocessor
-                        dataset = self.train_dataset
+                        # self.datasets[TRAIN_DATASET_KEY] has already been
+                        # preprocessed by self.preprocessor
+                        dataset = self.datasets[TRAIN_DATASET_KEY]
 
                         torch_ds = dataset.to_torch()
 
@@ -109,9 +109,11 @@ class Trainer(abc.ABC):
               .. code-block:: python
 
                 import ray
+                from ray.ml.train import TRAIN_DATASET_KEY
 
                 train_dataset = ray.data.from_items([1, 2, 3])
-                my_trainer = MyPytorchTrainer(train_dataset=train_dataset)
+                my_trainer = MyPytorchTrainer(datasets={TRAIN_DATASET_KEY:
+                    train_dataset})
                 result = my_trainer.fit()
 
     Args:
@@ -121,10 +123,11 @@ class Trainer(abc.ABC):
             or a Callable that returns a Dataset, to use for training. If a
             ``preprocessor`` is also provided, it will be fit on this
             dataset and this dataset will be transformed.
-        extra_datasets: Any extra Datasets (such as validation or test
-            datasets) to use for training. If a ``preprocessor`` is
-            provided, the datasets specified here will only be transformed,
-            and not fit on.
+        datasets: Any Ray Datasets to use for training. Use
+            ``ray.ml.train.TRAIN_DATASET_KEY``. to denote which dataset is the training
+            dataset. If a ``preprocessor`` is provided and has not already been fit,
+            it will be fit on the training dataset. All datasets will be transformed
+            by the ``preprocessor`` if one is provided.
         preprocessor: A preprocessor to preprocess the provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
     """
@@ -133,8 +136,7 @@ class Trainer(abc.ABC):
         self,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
-        train_dataset: Optional[GenDataset] = None,
-        extra_datasets: Optional[Dict[str, GenDataset]] = None,
+        datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
@@ -161,16 +163,15 @@ class Trainer(abc.ABC):
 
         This method is called prior to entering the training_loop.
 
-        If the ``Trainer`` has both a train_dataset and
-        preprocessor, and the preprocessor has not yet been fit, then it
-        will be fit on the train_dataset.
+        If the ``Trainer`` has both a datasets dict and
+        a preprocessor, the datasets dict contains a training dataset (denoted by
+        the ``ray.ml.train.TRAIN_DATASET_KEY``), and the preprocessor has not yet
+        been fit, then it will be fit on the train.
 
-        Then, the Trainer's train_dataset and any extra_datasets
-        will be transformed by its preprocessor.
+        Then, the Trainer's datasets will be transformed by the preprocessor.
 
-        The transformed datasets will be set back in the
-        ``self.train_dataset`` and ``self.extra_datasets`` attributes to be
-        used when overriding ``training_loop``.
+        The transformed datasets will be set back in the ``self.datasets`` attribute
+        of the Trainer to be used when overriding ``training_loop``.
         """
         raise NotImplementedError
 
@@ -180,8 +181,7 @@ class Trainer(abc.ABC):
 
         Note: this method runs on a remote process.
 
-        `self.train_dataset` and the Dataset values in `self.extra_datasets`
-        have already been preprocessed by `self.preprocessor`.'
+        ``self.datasets`` have already been preprocessed by ``self.preprocessor``.
 
         You can use the :ref:`Tune Function API functions <tune-function-docstring>`
         (``tune.report()`` and ``tune.save_checkpoint()``) inside
