@@ -821,6 +821,8 @@ def test_runtime_env_interface():
         assert runtime_env.virtualenv_name() is None
         runtime_env["pip"]["packages"].extend(addition_pip_packages)
         runtime_env_dict["pip"]["packages"].extend(addition_pip_packages)
+        # The default value of pip_check is True
+        runtime_env_dict["pip"]["pip_check"] = True
         assert runtime_env_dict == runtime_env.to_dict()
         assert runtime_env.has_pip()
         assert set(runtime_env.pip_config()["packages"]) == set(
@@ -832,6 +834,8 @@ def test_runtime_env_interface():
         assert runtime_env.has_pip()
         assert set(runtime_env.pip_config()["packages"]) == set(requirement_packages)
         assert runtime_env.virtualenv_name() is None
+        # The default value of pip_check is True
+        runtime_env_dict["pip"] = dict(packages=runtime_env_dict["pip"], pip_check=True)
         assert runtime_env_dict == runtime_env.to_dict()
         # Test that the modification of pip also works on
         # proto serialization

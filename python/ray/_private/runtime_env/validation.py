@@ -124,6 +124,12 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
     """
     assert pip is not None
 
+    def _handle_local_pip_requirement_file(pip_file: str):
+        pip_path = Path(pip_file)
+        if not pip_path.is_file():
+            raise ValueError(f"{pip_path} is not a valid file")
+        return pip_path.read_text().strip().split("\n")
+
     result = None
     if sys.platform == "win32":
         raise NotImplementedError(
@@ -133,10 +139,7 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
         )
     elif isinstance(pip, str):
         # We have been given a path to a requirements.txt file.
-        pip_file = Path(pip)
-        if not pip_file.is_file():
-            raise ValueError(f"{pip_file} is not a valid file")
-        pip_list = pip_file.read_text().strip().split("\n")
+        pip_list = _handle_local_pip_requirement_file(pip)
         result = dict(packages=pip_list, pip_check=True)
     elif isinstance(pip, list) and all(isinstance(dep, str) for dep in pip):
         result = dict(packages=pip, pip_check=True)
@@ -148,10 +151,6 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
                 f"{list(pip.keys())}"
             )
 
-        if "packages" not in pip:
-            raise ValueError(
-                f"runtime_env['pip'] must include field 'packages', but got {pip}"
-            )
         if "pip_check" in pip and not isinstance(pip["pip_check"], bool):
             raise TypeError(
                 "runtime_env['pip']['pip_check'] must be of type bool, "
@@ -167,6 +166,17 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
         result["pip_check"] = (
             True if pip.get("pip_check") is None else pip.get("pip_check")
         )
+        if "packages" not in pip:
+            raise ValueError(
+                f"runtime_env['pip'] must include field 'packages', but got {pip}"
+            )
+        elif isinstance(pip["packages"], str):
+            result["packages"] = _handle_local_pip_requirement_file(pip["packages"])
+        elif not isinstance(pip["packages"], list):
+            raise ValueError(
+                "runtime_env['pip']['packages'] must be of type str of list, "
+                f"got: {type(pip['packages'])}"
+            )
     else:
         raise TypeError(
             "runtime_env['pip'] must be of type str or " f"List[str], got {type(pip)}"
