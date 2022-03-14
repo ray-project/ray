@@ -5,10 +5,11 @@ from typing import Any, Callable, Dict, Optional, Type, Union
 import ray.cloudpickle as pickle
 from ray.data import Dataset
 
-from ray.ml.run_config import RunConfig
+from ray.ml.config import RunConfig
 from ray.ml.trainer import Trainer
 from ray.tune import Experiment, TuneError
 from ray.tune.result_grid import ResultGrid
+from ray.tune.sample import Categorical
 from ray.tune.trainable import Trainable
 from ray.tune.tune import run
 from ray.tune.tune_config import TuneConfig
@@ -110,10 +111,10 @@ class TunerInternal:
         },
         """
 
-        def _helper(dataset_dict: dict):
+        def _helper_dict(dataset_dict: dict):
             for k, v in dataset_dict.items():
                 if isinstance(v, dict):
-                    _helper(v)
+                    _helper_dict(v)
                 elif isinstance(v, Dataset):
                     dataset_dict[k] = v.fully_executed()
                 # TODO(xwjiang): Consider CV config for beta.
@@ -138,7 +139,13 @@ class TunerInternal:
                 if isinstance(ds, Dataset):
                     self._param_space[key] = ds.fully_executed()
                 elif isinstance(ds, dict):
-                    _helper(ds)
+                    # grid search is turned into {"grid_search": []}
+                    _helper_dict(ds)
+                elif isinstance(ds, Categorical):
+                    # tune.choice is turned into Categorical object.
+                    for c in ds.categories:
+                        assert isinstance(c, Dataset)
+                        c.fully_executed()
                 else:
                     raise TuneError("Unexpected dataset param passed in.")
 

@@ -3,7 +3,7 @@ from typing import Any, Callable, Dict, Optional, Type, Union
 
 import ray
 
-from ray.ml.run_config import RunConfig
+from ray.ml.config import RunConfig
 from ray.ml.trainer import Trainer
 from ray.tune import TuneError
 from ray.tune.result_grid import ResultGrid
