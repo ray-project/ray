@@ -193,9 +193,9 @@ void AgentManager::CreateRuntimeEnvOrGet(
          serialized_allocated_resource_instances,
          callback = std::move(callback)] {
           CreateRuntimeEnvOrGet(job_id,
-                           serialized_runtime_env,
-                           serialized_allocated_resource_instances,
-                           callback);
+                                serialized_runtime_env,
+                                serialized_allocated_resource_instances,
+                                callback);
         },
         RayConfig::instance().agent_manager_retry_interval_ms());
     return;
@@ -239,9 +239,9 @@ void AgentManager::CreateRuntimeEnvOrGet(
                serialized_allocated_resource_instances,
                callback = std::move(callback)] {
                 CreateRuntimeEnvOrGet(job_id,
-                                 serialized_runtime_env,
-                                 serialized_allocated_resource_instances,
-                                 callback);
+                                      serialized_runtime_env,
+                                      serialized_allocated_resource_instances,
+                                      callback);
               },
               RayConfig::instance().agent_manager_retry_interval_ms());
         }
@@ -265,7 +265,9 @@ void AgentManager::DeleteRuntimeEnvIfPossible(
   request.set_serialized_runtime_env(serialized_runtime_env);
   request.set_source_process("raylet");
   runtime_env_agent_client_->DeleteRuntimeEnvIfPossible(
-      request, [this, serialized_runtime_env, callback](Status status, const rpc::DeleteRuntimeEnvIfPossibleReply &reply) {
+      request,
+      [this, serialized_runtime_env, callback](
+          Status status, const rpc::DeleteRuntimeEnvIfPossibleReply &reply) {
         if (status.ok()) {
           if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
             callback(true);
