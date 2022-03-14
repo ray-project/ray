@@ -185,9 +185,7 @@ void AgentManager::CreateRuntimeEnv(
       serialized_allocated_resource_instances);
   runtime_env_agent_client_->CreateRuntimeEnv(
       request,
-      [this,
-       job_id,
-       serialized_runtime_env,
+      [serialized_runtime_env,
        serialized_allocated_resource_instances,
        callback = std::move(callback)](const Status &status,
                                        const rpc::CreateRuntimeEnvReply &reply) {
@@ -236,7 +234,7 @@ void AgentManager::DeleteURIs(const std::vector<std::string> &uris,
     request.add_uris(uri);
   }
   runtime_env_agent_client_->DeleteURIs(
-      request, [this, uris, callback](Status status, const rpc::DeleteURIsReply &reply) {
+      request, [callback](Status status, const rpc::DeleteURIsReply &reply) {
         if (status.ok()) {
           if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
             callback(true);
