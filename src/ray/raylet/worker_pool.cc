@@ -402,6 +402,9 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
 #elif defined(__linux__)
       static const std::string kLibraryPathEnvName = "LD_LIBRARY_PATH";
 #elif defined(_WIN32)
+      // USERPROFILE is used in pathlib.Path.home()
+      auto userprofile_p = std::getenv("USERPROFILE");
+      env.emplace("USERPROFILE", userprofile_p);
       static const std::string kLibraryPathEnvName = "PATH";
 #endif
       auto path_env_p = std::getenv(kLibraryPathEnvName.c_str());
