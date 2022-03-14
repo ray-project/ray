@@ -321,6 +321,28 @@ bool ClusterResourceManager::AddNodeAvailableResources(
   return true;
 }
 
+bool ClusterResourceManager::UpdateNodeAvailableResources(
+    scheduling::NodeID node_id, const ResourceRequest &resources) {
+  auto iter = nodes_.find(node_id);
+  if (iter == nodes_.end()) {
+    return false;
+  }
+
+  auto node_resources = iter->second.GetMutableLocalView();
+  for (size_t i = 0; i < node_resources->predefined_resources.size(); ++i) {
+    node_resources->predefined_resources[i].available = resources.predefined_resources[i];
+  }
+  for (auto &entry : node_resources->custom_resources) {
+    auto it = resources.custom_resources.find(entry.first);
+    if (it != resources.custom_resources.end()) {
+      entry.second.available = it->second;
+    } else {
+      entry.second.available = 0.;
+    }
+  }
+  return true;
+}
+
 bool ClusterResourceManager::ContainsNode(scheduling::NodeID node_id) const {
   return nodes_.contains(node_id);
 }
