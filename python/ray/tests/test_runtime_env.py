@@ -819,8 +819,8 @@ def test_runtime_env_interface():
         assert runtime_env.has_pip()
         assert set(runtime_env.pip_config()["packages"]) == set(pip_packages)
         assert runtime_env.virtualenv_name() is None
-        runtime_env["pip"].extend(addition_pip_packages)
-        runtime_env_dict["pip"].extend(addition_pip_packages)
+        runtime_env["pip"]["packages"].extend(addition_pip_packages)
+        runtime_env_dict["pip"]["packages"].extend(addition_pip_packages)
         assert runtime_env_dict == runtime_env.to_dict()
         assert runtime_env.has_pip()
         assert set(runtime_env.pip_config()["packages"]) == set(
