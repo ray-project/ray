@@ -895,6 +895,37 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
 
 
 @PublicAPI(stability="alpha")
+class DeployedCallGraph:
+    """Resolved from a BoundDeploymentMethodNode at runtime.
+
+    This can be used to call the DAG from a driver deployment to efficiently
+    orchestrate a multi-deployment pipeline.
+    """
+
+    def __init__(self, serialized_dag_json: str):
+        raise NotImplementedError()
+
+    def remote(self, *args, **kwargs) -> ray.ObjectRef:
+        """Call the DAG."""
+        raise NotImplementedError()
+
+
+@PublicAPI(stability="alpha")
+class BoundDeploymentMethodNode(ClassNode):
+    """Represents a method call on a bound deployment node.
+
+    These method calls can be composed into an optimized call DAG and passed
+    to a "driver" deployment that will orchestrate the calls at runtime.
+
+    This class cannot be called directly. Instead, when it is bound to a
+    deployment node, it will be resolved to a DeployedCallGraph at runtime.
+    """
+
+    def __init__(self):
+        raise NotImplementedError()
+
+
+@PublicAPI(stability="alpha")
 class BoundDeploymentNode(ClassNode):
     """Represents a deployment with its bound config options and arguments.
 
@@ -905,6 +936,9 @@ class BoundDeploymentNode(ClassNode):
     to build a multi-deployment application. When the application is deployed, the
     bound deployments passed into a constructor will be converted to
     RayServeHandles that can be used to send requests.
+
+    Calling deployment.method.bind() will return a BoundDeploymentMethodNode
+    that can be used to compose an optimized call graph.
     """
 
     def __init__(self):
