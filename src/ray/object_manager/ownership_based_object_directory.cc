@@ -554,28 +554,12 @@ void OwnershipBasedObjectDirectory::HandleNodeRemoved(const NodeID &node_id) {
       for (const auto &[_, func] : listener.callbacks) {
         // It is safe to call the callback directly since this is already running
         // in the subscription callback stack.
-<<<<<<< HEAD
         func(object_id,
              listener.current_object_locations,
              listener.spilled_url,
              listener.spilled_node_id,
              listener.pending_creation,
              listener.object_size);
-||||||| b621dc099
-        callback_pair.second(object_id,
-                             listener.second.current_object_locations,
-                             listener.second.spilled_url,
-                             listener.second.spilled_node_id,
-                             listener.second.pending_creation,
-                             listener.second.object_size);
-=======
-        callback_pair.second(object_id,
-                             listener.second.current_object_locations,
-                             listener.second.spilled_url,
-                             listener.second.spilled_node_id,
-                             listener.second.pending_creation,
-                             listener.second.object_size);
->>>>>>> master
       }
     }
   }
