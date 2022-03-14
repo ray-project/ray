@@ -178,6 +178,7 @@ test_python() {
     # shellcheck disable=SC2046,SC2086
     bazel test --config=ci \
       --build_tests_only $(./scripts/bazel_export_options) \
+      --test_env=USERPROFILE=${USERPROFILE} \
       --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" \
       -- \
       ${test_shard_selection};
