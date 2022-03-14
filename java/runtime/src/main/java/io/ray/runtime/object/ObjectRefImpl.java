@@ -177,6 +177,13 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
       return;
     }
     WeakReference<ObjectRefImpl<?>> weakRef = allObjects.get(objectId);
+    if (weakRef == null) {
+      /// This will happen when a race condition occurs that at this moment,
+      /// the item is being removed from map in another thread.
+      LOG.info("The object {} has already been cleaned.", objectId);
+      allObjects.remove(objectId);
+      return;
+    }
     ObjectRefImpl<?> objImpl = weakRef.get();
     if (objImpl == null) {
       LOG.info("The object {} has already been cleaned.", objectId);
