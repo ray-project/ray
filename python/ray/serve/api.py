@@ -13,6 +13,7 @@ from typing import (
     Callable,
     Dict,
     Optional,
+    TextIO,
     Tuple,
     Type,
     Union,
@@ -44,9 +45,12 @@ from ray.serve.constants import (
     SERVE_CONTROLLER_NAME,
     MAX_CACHED_HANDLES,
     CONTROLLER_MAX_CONCURRENCY,
+    DEFAULT_HTTP_HOST,
+    DEFAULT_HTTP_PORT,
 )
 from ray.serve.controller import ServeController
 from ray.serve.exceptions import RayServeException
+from ray.experimental.dag import ClassNode
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
 from ray.serve.utils import (
@@ -890,6 +894,57 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
     return decorator
 
 
+@PublicAPI(stability="alpha")
+class DAGHandle:
+    """Resolved from a DeploymentMethodNode at runtime.
+
+    This can be used to call the DAG from a driver deployment to efficiently
+    orchestrate a multi-deployment pipeline.
+    """
+
+    def __init__(self, serialized_dag_json: str):
+        raise NotImplementedError()
+
+    def remote(self, *args, **kwargs) -> ray.ObjectRef:
+        """Call the DAG."""
+        raise NotImplementedError()
+
+
+@PublicAPI(stability="alpha")
+class DeploymentMethodNode(ClassNode):
+    """Represents a method call on a bound deployment node.
+
+    These method calls can be composed into an optimized call DAG and passed
+    to a "driver" deployment that will orchestrate the calls at runtime.
+
+    This class cannot be called directly. Instead, when it is bound to a
+    deployment node, it will be resolved to a DeployedCallGraph at runtime.
+    """
+
+    def __init__(self):
+        raise NotImplementedError()
+
+
+@PublicAPI(stability="alpha")
+class DeploymentNode(ClassNode):
+    """Represents a deployment with its bound config options and arguments.
+
+    The bound deployment can be run, deployed, or built to a production config
+    using serve.run, serve.deploy, and serve.build, respectively.
+
+    A bound deployment can be passed as an argument to other bound deployments
+    to build a multi-deployment application. When the application is deployed, the
+    bound deployments passed into a constructor will be converted to
+    RayServeHandles that can be used to send requests.
+
+    Calling deployment.method.bind() will return a DeploymentMethodNode
+    that can be used to compose an optimized call graph.
+    """
+
+    def __init__(self):
+        raise NotImplementedError()
+
+
 @PublicAPI
 class Deployment:
     def __init__(
@@ -1046,6 +1101,15 @@ class Deployment:
             "Use `deployment.deploy() instead.`"
         )
 
+    @PublicAPI(stability="alpha")
+    def bind(self, *args, **kwargs) -> DeploymentNode:
+        """Bind the provided arguments and return a DeploymentNode.
+
+        The returned bound deployment can be deployed or bound to other
+        deployments to create a multi-deployment application.
+        """
+        raise NotImplementedError()
+
     @PublicAPI
     def deploy(self, *init_args, _blocking=True, **init_kwargs):
         """Deploy or update this deployment.
@@ -1180,13 +1244,6 @@ class Deployment:
             route_prefix=route_prefix,
             ray_actor_options=ray_actor_options,
             _internal=True,
-        )
-
-    def bind(self, *args, **kwargs):
-        raise AttributeError(
-            "DAG building API should only be used for @ray.remote decorated "
-            "class or function, not in serve deployment or library "
-            "specific API."
         )
 
     def __eq__(self, other):
@@ -1451,3 +1508,198 @@ def get_deployment_statuses() -> Dict[str, DeploymentStatusInfo]:
     """
 
     return internal_get_global_client().get_deployment_statuses()
+
+
+class Application:
+    """A static, pre-built Serve application.
+
+    An application consists of a number of Serve deployments that can send
+    requests to each other. One of the deployments acts as the "ingress,"
+    meaning that it receives external traffic and is the entrypoint to the
+    application.
+
+    The config options of each deployment can be modified by accessing the
+    deployment by name (e.g., app["my_deployment"].update(...)).
+
+    This application object can be written to a config file and later deployed
+    to production using the Serve CLI or REST API.
+    """
+
+    # TODO(edoakes): should this literally just be the REST pydantic schema?
+    # At the very least, it should be a simple dictionary.
+
+    def __init__(self):
+        raise NotImplementedError()
+
+    def to_dict(self) -> Dict:
+        """Returns this Application's deployments as a dictionary.
+
+        This dictionary adheres to the Serve REST API schema. It can be deployed
+        via the Serve REST API.
+
+        Returns:
+            Dict: The Application's deployments formatted in a dictionary.
+        """
+        raise NotImplementedError()
+
+    @classmethod
+    def from_dict(cls, d: Dict) -> "Application":
+        """Converts a dictionary of deployment data to an Application.
+
+        Takes in a dictionary matching the Serve REST API schema and converts
+        it to an Application containing those deployments.
+
+        Args:
+            d (Dict): A dictionary containing the deployments' data that matches
+                the Serve REST API schema.
+
+        Returns:
+            Application: a new Application object containing the deployments.
+        """
+        raise NotImplementedError()
+
+    def to_yaml(self, f: Optional[TextIO] = None) -> Optional[str]:
+        """Returns this Application's deployments as a YAML string.
+
+        Optionally writes the YAML string to a file as well. To write to a
+        file, use this pattern:
+
+        with open("file_name.txt", "w") as f:
+            app.to_yaml(f=f)
+
+        This file is formatted as a Serve YAML config file. It can be deployed
+        via the Serve CLI.
+
+        Args:
+            f (Optional[TextIO]): A pointer to the file where the YAML should
+                be written.
+
+        Returns:
+            Optional[String]: The deployments' YAML string. The output is from
+                yaml.safe_dump(). Returned only if no file pointer is passed in.
+        """
+        raise NotImplementedError()
+
+    @classmethod
+    def from_yaml(cls, str_or_file: Union[str, TextIO]) -> "Application":
+        """Converts YAML data to deployments for an Application.
+
+        Takes in a string or a file pointer to a file containing deployment
+        definitions in YAML. These definitions are converted to a new
+        Application object containing the deployments.
+
+        To read from a file, use the following pattern:
+
+        with open("file_name.txt", "w") as f:
+            app = app.from_yaml(str_or_file)
+
+        Args:
+            str_or_file (Union[String, TextIO]): Either a string containing
+                YAML deployment definitions or a pointer to a file containing
+                YAML deployment definitions. The YAML format must adhere to the
+                ServeApplicationSchema JSON Schema defined in
+                ray.serve.schema. This function works with
+                Serve YAML config files.
+
+        Returns:
+            Application: a new Application object containing the deployments.
+        """
+        raise NotImplementedError()
+
+    def __getitem__(self, key: str):
+        """Fetch a deployment by name using dict syntax: app["name"]
+
+        Raises:
+            KeyError: if the name is not in this Application.
+        """
+        raise NotImplementedError()
+
+    def __setitem__(self, key: str, value: Deployment):
+        """Set a deployment by name with dict syntax: app[name]=new_deployment
+
+        Use this to overwrite existing deployments.
+
+        Args:
+            key (String): name
+            value (Deployment): the deployment that the name maps to
+
+        Raises:
+            TypeError: if the key is not a String or the value is not a deployment.
+        """
+        raise NotImplementedError()
+
+    def __iter__(self):
+        """Iterator over Application's deployments.
+
+        Enables "for deployment in Application" pattern.
+        """
+        raise NotImplementedError()
+
+    def __len__(self):
+        """Number of deployments in this Application."""
+        raise NotImplementedError()
+
+    def __contains__(self, key: str):
+        """Checks if the key exists in self._deployments."""
+        raise NotImplementedError()
+
+
+NodeOrApp = Union[DeploymentNode, Application]
+
+
+@PublicAPI(stability="alpha")
+def run(
+    target: NodeOrApp,
+    *,
+    host: str = DEFAULT_HTTP_HOST,
+    port: int = DEFAULT_HTTP_PORT,
+    logger: Optional[logging.Logger] = None,
+):
+    """Run a Serve application (blocking).
+
+    Deploys all of the deployments in the application then blocks,
+    periodically logging the status. Upon a KeyboardInterrupt, the application
+    will be torn down and all of its deployments deleted.
+
+    Either a DeploymentNode or a pre-built application can be passed in.
+    If a DeploymentNode is passed in, all of the deployments it depends on
+    will be deployed.
+    """
+    raise NotImplementedError()
+
+
+@PublicAPI(stability="alpha")
+def deploy(
+    target: NodeOrApp, *, host: str = DEFAULT_HTTP_HOST, port: int = DEFAULT_HTTP_PORT
+) -> RayServeHandle:
+    """Deploy a Serve application async and return a handle to the ingress.
+
+    Deploys all of the deployments in the application and returns a
+    RayServeHandle to the ingress deployment.
+
+    Either a DeploymentNode or a pre-built application can be passed in.
+    If a DeploymentNode is passed in, all of the deployments it depends on
+    will be deployed.
+    """
+    raise NotImplementedError()
+
+
+@PublicAPI(stability="alpha")
+def build(target: DeploymentNode) -> Application:
+    """Builds a Serve application into a static configuration.
+
+    Takes in a DeploymentNode and converts it to a Serve application
+    consisting of one or more deployments. This is intended to be used for
+    production scenarios and deployed via the Serve REST API or CLI, so there
+    are some restrictions placed on the deployments:
+        1) All of the deployments must be importable. That is, they cannot be
+           defined in __main__ or inline defined. The deployments will be
+           imported in production using the same import path they were here.
+        2) All arguments bound to the deployment must be JSON-serializable.
+
+    The returned Application object can be exported to a dictionary or YAML
+    config.
+    """
+    # TODO(edoakes): this should accept host and port, but we don't
+    # currently support them in the REST API.
+    raise NotImplementedError()
