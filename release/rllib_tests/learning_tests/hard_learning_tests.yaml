@@ -461,13 +461,18 @@ slateq-interest-evolution-recsim-env:
     env: ray.rllib.examples.env.recommender_system_envs_with_recsim.InterestEvolutionRecSimEnv
     run: SlateQ
     stop:
-        episode_reward_mean: 162.0
+        episode_reward_mean: 155.0
         timesteps_total: 300000
     config:
         # RLlib/RecSim wrapper specific settings:
         env_config:
             # Env class specified above takes one `config` arg in its c'tor:
             config:
+                # GPU support currently does not work for tensorflow. For the learning
+                # test for now, we'll use pytorch, and investigate why tensorflow is not working.
+                # One indication of the issue is that the loss inputs are not flattened from the
+                # original dictionary spaces.
+                framework: torch
                 # Each step, sample `num_candidates` documents using the env-internal
                 # document sampler model (a logic that creates n documents to select
                 # the slate from).
