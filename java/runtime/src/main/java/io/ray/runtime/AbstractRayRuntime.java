@@ -449,15 +449,12 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
       for (int i = 0; i < preparedReturnIds.size(); ++i) {
         ObjectId prepared = preparedReturnIds.get(i);
         Object real = realReturnIds.get(i);
-        LOG.info("prepared={}", prepared);
-        LOG.info("real={}", real);
         Preconditions.checkState(
-          prepared.equals(real),
-          "The prepared object id {} is not equal to the real return id {}",
-          prepared,
-          real);
+            prepared.equals(real),
+            "The prepared object id {} is not equal to the real return id {}",
+            prepared,
+            real);
       }
     }
   }
-
 }

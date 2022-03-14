@@ -9,9 +9,6 @@ import io.ray.api.Ray;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.RayRuntimeInternal;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
@@ -21,6 +18,8 @@ import java.lang.ref.WeakReference;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Implementation of {@link ObjectRef}. */
 public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
@@ -35,7 +34,7 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
   /// The key is the object ID in raw bytes, and the value is a weak reference to the ObjectRefImpl
   // object.
   private static ConcurrentHashMap<ObjectId, WeakReference<ObjectRefImpl<?>>> allObjects =
-    new ConcurrentHashMap<>(1024);
+      new ConcurrentHashMap<>(1024);
 
   private ObjectId id;
 
@@ -44,7 +43,6 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
   private transient UniqueId workerId;
 
   private Class<T> type;
-
 
   // Raw data of this object.
   // This is currently used by only the memory store objects.
@@ -58,7 +56,7 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
   public ObjectRefImpl(ObjectId id, Class<T> type) {
     this(id, type, /*skipAddingLocalRef=*/ false);
   }
-  
+
   public void init(ObjectId id, Class<?> type, boolean skipAddingLocalRef) {
     this.id = id;
     this.type = (Class<T>) type;
@@ -188,6 +186,7 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
       objImpl.setRawData(data);
     }
   }
+
   public static <T> void registerObjectRefImpl(ObjectId objectId, ObjectRefImpl<T> obj) {
     if (allObjects.containsKey(objectId)) {
       /// This is due to testLocalRefCounts() create 2 ObjectRefImpl objects for 1 id.
@@ -197,5 +196,4 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
     allObjects.put(objectId, new WeakReference<>(obj));
     LOG.debug("Putting object {} to weak reference pool.", objectId);
   }
-
 }
