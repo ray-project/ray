@@ -2,7 +2,6 @@ anyscale
 click
 boto3
 jinja2
-pybuildkite
 pydantic
 pyyaml
 requests
