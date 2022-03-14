@@ -8,10 +8,6 @@ from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY
 
-# TensorFlow model objects cannot be pickled, therefore we use
-# a callable that returns the model, instead of a model object
-# itself.
-
 
 class TensorflowPredictor(Predictor):
     """A predictor for TensorFlow models.
@@ -143,6 +139,9 @@ class TensorflowPredictor(Predictor):
 
         tensor = tf.convert_to_tensor(data, dtype=dtype)
 
+        # TensorFlow model objects cannot be pickled, therefore we use
+        # a callable that returns the model and initialize it here,
+        # instead of having an initialized model object as an attribute.
         model = self.model_definition()
         if self.model_weights:
             model.set_weights(self.model_weights)
