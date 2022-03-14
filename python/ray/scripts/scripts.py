@@ -15,6 +15,7 @@ import yaml
 
 import ray
 import psutil
+from ray._private.usage import usage_lib
 import ray._private.services as services
 import ray.ray_constants as ray_constants
 import ray._private.utils
@@ -610,6 +611,8 @@ def start(
     if head:
         # Start head node.
 
+        usage_lib.print_usage_stats_heads_up_message()
+
         if port is None:
             port = ray_constants.DEFAULT_PORT
 
@@ -1126,6 +1129,8 @@ def up(
     use_login_shells,
 ):
     """Create or update a Ray cluster."""
+    usage_lib.print_usage_stats_heads_up_message()
+
     if restart_only or no_restart:
         cli_logger.doassert(
             restart_only != no_restart,
@@ -1446,6 +1451,8 @@ def submit(
         cli_logger.newline()
 
     if start:
+        usage_lib.print_usage_stats_heads_up_message()
+
         create_or_update_cluster(
             config_file=cluster_config_file,
             override_min_workers=None,
@@ -1551,6 +1558,9 @@ def exec(
 ):
     """Execute a command via SSH on a Ray cluster."""
     port_forward = [(port, port) for port in list(port_forward)]
+
+    if start:
+        usage_lib.print_usage_stats_heads_up_message()
 
     exec_cluster(
         cluster_config_file,

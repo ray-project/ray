@@ -12,9 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/redis_context.h"
-
 #include "gtest/gtest.h"
+#include "ray/gcs/redis_context.h"
 
 extern "C" {
 #include "hiredis/hiredis.h"
@@ -70,10 +69,11 @@ TEST(TestCallbackReply, TestParseAsStringArray) {
     redis_reply_array_elements[2] = &redis_reply_nil2;
     redis_reply_array.element = redis_reply_array_elements;
     CallbackReply callback_reply(&redis_reply_array);
-    ASSERT_EQ(callback_reply.ReadAsStringArray(),
-              (std::vector<std::optional<std::string>>{
-                  std::optional<std::string>(), std::optional<std::string>(string1),
-                  std::optional<std::string>()}));
+    ASSERT_EQ(
+        callback_reply.ReadAsStringArray(),
+        (std::vector<std::optional<std::string>>{std::optional<std::string>(),
+                                                 std::optional<std::string>(string1),
+                                                 std::optional<std::string>()}));
   }
 }
 }  // namespace ray::gcs

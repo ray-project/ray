@@ -18,11 +18,12 @@ namespace ray {
 namespace core {
 
 GcsServerAddressUpdater::GcsServerAddressUpdater(
-    const std::string raylet_ip_address, const int port,
+    const std::string raylet_ip_address,
+    const int port,
     std::function<void(std::string, int)> update_func)
     : client_call_manager_(updater_io_service_),
-      raylet_client_(rpc::NodeManagerWorkerClient::make(raylet_ip_address, port,
-                                                        client_call_manager_)),
+      raylet_client_(rpc::NodeManagerWorkerClient::make(
+          raylet_ip_address, port, client_call_manager_)),
       update_func_(update_func),
       updater_runner_(updater_io_service_),
       updater_thread_([this] {

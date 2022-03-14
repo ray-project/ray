@@ -67,11 +67,11 @@ class StoreClientTestBase : public ::testing::Test {
     };
     for (const auto &[key, value] : key_to_value_) {
       ++pending_count_;
-      RAY_CHECK_OK(store_client_->AsyncPut(table_name_, key.Binary(),
-                                           value.SerializeAsString(), put_calllback));
+      RAY_CHECK_OK(store_client_->AsyncPut(
+          table_name_, key.Binary(), value.SerializeAsString(), put_calllback));
       // Make sure no-op callback is handled well
-      RAY_CHECK_OK(store_client_->AsyncPut(table_name_, key.Binary(),
-                                           value.SerializeAsString(), nullptr));
+      RAY_CHECK_OK(store_client_->AsyncPut(
+          table_name_, key.Binary(), value.SerializeAsString(), nullptr));
     }
     WaitPendingDone();
   }
@@ -130,13 +130,17 @@ class StoreClientTestBase : public ::testing::Test {
     auto put_calllback = [this](const Status &status) { --pending_count_; };
     for (const auto &[key, value] : key_to_value_) {
       ++pending_count_;
-      RAY_CHECK_OK(store_client_->AsyncPutWithIndex(
-          table_name_, key.Binary(), key_to_index_[key].Hex(), value.SerializeAsString(),
-          put_calllback));
-      // Make sure no-op callback is handled well
-      RAY_CHECK_OK(store_client_->AsyncPutWithIndex(table_name_, key.Binary(),
+      RAY_CHECK_OK(store_client_->AsyncPutWithIndex(table_name_,
+                                                    key.Binary(),
                                                     key_to_index_[key].Hex(),
-                                                    value.SerializeAsString(), nullptr));
+                                                    value.SerializeAsString(),
+                                                    put_calllback));
+      // Make sure no-op callback is handled well
+      RAY_CHECK_OK(store_client_->AsyncPutWithIndex(table_name_,
+                                                    key.Binary(),
+                                                    key_to_index_[key].Hex(),
+                                                    value.SerializeAsString(),
+                                                    nullptr));
     }
     WaitPendingDone();
   }
@@ -240,8 +244,8 @@ class StoreClientTestBase : public ::testing::Test {
       keys.push_back(key.Binary());
       index_keys.push_back(key_to_index_[key].Hex());
     }
-    RAY_CHECK_OK(store_client_->AsyncBatchDeleteWithIndex(table_name_, keys, index_keys,
-                                                          delete_calllback));
+    RAY_CHECK_OK(store_client_->AsyncBatchDeleteWithIndex(
+        table_name_, keys, index_keys, delete_calllback));
     // Make sure no-op callback is handled well
     RAY_CHECK_OK(
         store_client_->AsyncBatchDeleteWithIndex(table_name_, keys, index_keys, nullptr));
