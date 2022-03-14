@@ -16,7 +16,7 @@ ScalingConfig = Dict[str, Any]
 class ScalingConfig:
     """Configuration for scaling training.
 
-    num_workers (int): The number of workers (Ray actors) to launch.
+    num_workers: The number of workers (Ray actors) to launch.
         Each worker will reserve 1 CPU by default. The number of CPUs
         reserved by each worker can be overridden with the
         ``resources_per_worker`` argument.
