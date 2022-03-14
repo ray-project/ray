@@ -7,7 +7,7 @@ from ray.serve.api import DAGHandle
 
 
 @serve.deployment
-class PipelineDriverDeployment:
+class DAGDriverIngress:
     def __init__(
         self,
         dag_handle: DAGHandle,
