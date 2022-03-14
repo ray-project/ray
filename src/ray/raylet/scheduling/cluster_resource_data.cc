@@ -257,10 +257,6 @@ bool NodeResourceInstances::Contains(scheduling::ResourceID id) const {
   return total.Has(id);
 }
 
-bool ResourceRequest::IsEmpty() const {
-  return this->predefined_resources.IsEmpty() && this->custom_resources.IsEmpty();
-}
-
 std::string ResourceRequest::DebugString() const {
   return this->predefined_resources.DebugString() + ", " + this->custom_resources.DebugString();
 }

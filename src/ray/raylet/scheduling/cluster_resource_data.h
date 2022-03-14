@@ -41,357 +41,102 @@ std::vector<FixedPoint> VectorDoubleToVectorFixedPoint(const std::vector<double>
 std::vector<double> VectorFixedPointToVectorDouble(
     const std::vector<FixedPoint> &vector_fp);
 
-class ResourceRequest;
-
-class PredefinedResources {
- public:
-  PredefinedResources() {
-    for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
-      values_.push_back(0);
-    }
-  }
-
-  const FixedPoint &Get(ResourceID resource_id) const {
-    return this->values_[resource_id.ToInt()];
-  }
-
-  PredefinedResources &Set(ResourceID resource_id, const FixedPoint & value) {
-    this->values_[resource_id.ToInt()] = value;
-    return *this;
-  }
-
-  const bool Has(ResourceID resource_id) const {
-    return this->values_[resource_id.ToInt()] != 0;
-  }
-
-  const FixedPoint &GetCPU() const { return this->values_[CPU]; }
-
-  const FixedPoint &GetMemory() const { return this->values_[MEM]; }
-
-  const FixedPoint &GetGPU() const { return this->values_[GPU]; }
-
-  const FixedPoint &GetObjectStoreMemory() const { return this->values_[OBJECT_STORE_MEM]; }
-
-  PredefinedResources &SetCPU(const FixedPoint &value) { this->values_[CPU] = value; return *this; }
-
-  PredefinedResources &SetMemory(const FixedPoint &value) { this->values_[MEM] = value; return *this; }
-
-  PredefinedResources &SetGPU(const FixedPoint &value) { this->values_[GPU] = value; return *this; }
-
-  PredefinedResources &SetObjectStoreMemory(const FixedPoint &value) { this->values_[OBJECT_STORE_MEM] = value; return *this; }
-
-  bool HasCPU() const { return this->GetCPU() > 0; }
-
-  bool HasMemory() const { return this->GetMemory() > 0; }
-
-  bool HasGPU() const { return this->GetGPU() > 0; }
-
-  bool HasObjectStoreMemory() const { return this->GetObjectStoreMemory() > 0; }
-
-  size_t Size() const {
-    size_t size = 0;
-    for (auto value : values_) {
-      if (value != 0) {
-        size += 1;
-      }
-    }
-    return size;
-  }
-
-  bool IsEmpty() const {
-    for (auto value : values_) {
-      if (value != 0) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  void Clear() {
-    for (size_t i = 0; i < values_.size(); i++) {
-      this->values_[i] = 0;
-    }
-  }
-
-  PredefinedResources operator+(const PredefinedResources &other) {
-    PredefinedResources res;
-    for (size_t i = 0; i < this->values_.size(); i++) {
-      res.values_[i] = this->values_[i] + other.values_[i];
-    }
-    return res;
-  }
-
-  PredefinedResources operator-(const PredefinedResources &other) {
-    PredefinedResources res;
-    for (size_t i = 0; i < this->values_.size(); i++) {
-      res.values_[i] = this->values_[i] - other.values_[i];
-    }
-    return res;
-  }
-
-  PredefinedResources &operator=(const PredefinedResources &other) {
-    for (size_t i = 0; i < this->values_.size(); i++) {
-      this->values_[i] = other.values_[i];
-    }
-    return *this;
-  }
-
-  PredefinedResources &operator+=(const PredefinedResources &other) {
-    for (size_t i = 0; i < this->values_.size(); i++) {
-      this->values_[i] += other.values_[i];
-    }
-    return *this;
-  }
-
-  PredefinedResources &operator-=(const PredefinedResources &other) {
-    for (size_t i = 0; i < this->values_.size(); i++) {
-      this->values_[i] -= other.values_[i];
-    }
-    return *this;
-  }
-
-  bool operator==(const PredefinedResources &other) const {
-    return std::equal(std::begin(this->values_), std::end(this->values_), std::begin(other.values_));
-  }
-
-  bool operator<=(const PredefinedResources &other) const {
-    for (size_t i = 0; i < this->values_.size(); i++) {
-      if (this->values_[i] > other.values_[i]) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  bool operator>=(const PredefinedResources &other) const {
-    return other <= *this;
-  }
-
- std::string DebugString() const {
-  std::stringstream buffer;
-  buffer << "{";
-  for (size_t i = 0; i < this->values_.size(); i++) {
-    buffer << "(" << this->values_[i] << ") ";
-  }
-  buffer << "}";
-  return buffer.str();
-  }
-
-  static size_t NumAllPredefinedResources() {
-    return PredefinedResourcesEnum_MAX;
-  }
-
- private:
-  std::vector<FixedPoint> values_;
-
-  friend class ResourceRequest;
-};
-
-class CustomResources {
- public:
-  const FixedPoint &Get(ResourceID resource_id) const {
-    auto it = this->values_.find(resource_id.ToInt());
-    RAY_CHECK(it != this->values_.end());
-    return it->second;
-  }
-
-  const FixedPoint GetOrZero(ResourceID resource_id) const {
-    auto it = this->values_.find(resource_id.ToInt());
-    if (it == this->values_.end()) {
-      return 0;
-    }
-    return it->second;
-  }
-
-  CustomResources &Set(ResourceID resource_id, const FixedPoint & value) {
-    this->values_[resource_id.ToInt()] = value;
-    return *this;
-  }
-
-  const bool Has(ResourceID resource_id) const {
-    return this->values_.find(resource_id.ToInt()) != this->values_.end();
-  }
-
-  size_t Size() const { return values_.size(); }
-
-  bool IsEmpty() const { return values_.size() == 0; }
-
-  void Clear() { this->values_.clear(); }
-
-  CustomResources operator+(const CustomResources &other) {
-    CustomResources res;
-    for (auto entry: values_) {
-      res.values_[entry.first] = entry.second + other.GetOrZero(ResourceID(entry.first));
-    }
-    for (auto entry: other.values_) {
-      if (!Has(ResourceID(entry.first))) {
-        res.values_[entry.first] = entry.second;
-      }
-    }
-    return res;
-  }
-
-  CustomResources operator-(const CustomResources &other) {
-    CustomResources res;
-    for (auto entry: values_) {
-      res.values_[entry.first] = entry.second - other.GetOrZero(ResourceID(entry.first));
-    }
-    for (auto entry: other.values_) {
-      if (!Has(ResourceID(entry.first))) {
-        res.values_[entry.first] = -entry.second;
-      }
-    }
-    return res;
-  }
-
-  CustomResources &operator=(const CustomResources &other) {
-    this->values_ = other.values_;
-    return *this;
-  }
-
-  CustomResources &operator+=(const CustomResources &other) {
-    for (auto entry: values_) {
-      entry.second += other.GetOrZero(ResourceID(entry.first));
-    }
-    for (auto entry: other.values_) {
-      if (!Has(ResourceID(entry.first))) {
-        values_[entry.first] = entry.second;
-      }
-    }
-    return *this;
-  }
-
-  CustomResources &operator-=(const CustomResources &other) {
-    for (auto entry: values_) {
-      entry.second -= other.GetOrZero(ResourceID(entry.first));
-    }
-    for (auto entry: other.values_) {
-      if (!Has(ResourceID(entry.first))) {
-        values_[entry.first] = -entry.second;
-      }
-    }
-    return *this;
-  }
-
-  bool operator==(const CustomResources &other) const {
-    return this->values_ == other.values_;
-  }
-
-  bool operator<=(const CustomResources &other) const {
-    for (auto entry: values_) {
-      auto it = other.values_.find(entry.first);
-      if (it == other.values_.end()) {
-        return false;
-      }
-      if (entry.second > it->second) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  bool operator>=(const CustomResources &other) const {
-    return other <= *this;
-  }
-
-  std::string DebugString() const {
-    std::stringstream buffer;
-    buffer << "[";
-    for (auto &it : this->values_) {
-      buffer << it.first << ":"
-             << "(" << it.second << ") ";
-    }
-    buffer << "]" << std::endl;
-    return buffer.str();
-  }
-
- private:
-  absl::flat_hash_map<int64_t, FixedPoint> values_;
-
-  friend class ResourceRequest;
-};
-
 // Data structure specifying the capacity of each resource requested by a task.
 class ResourceRequest {
- public:
+ private:
+
+  FixedPoint *GetPointer(ResourceID id, bool insert_if_missing = false) const {
+    if (IsPredefinedResource(resource_id)) {
+      return &predefined_resources_[id.ToInt()];
+    } else {
+      if (insert_if_missing) {
+        return &custom_resources_[id];
+      } else {
+        auto it = custom_resources_.find(id);
+        if (it == custom_.end()) {
+          return nullptr;
+        } else {
+          return &it->second;
+        }
+      }
+    }
+  }
+
+  FixedPoint *GetPointerOrCrash(ResourceID id) const {
+    auto ptr = GetPointer(id);
+    RAY_CHECK(ptr) << "Resource not found: " << resource_id;
+    return ptr;
+  }
+
+  ebsl::flat_hash_set<ResourceID> ResourceIdsInternal(bool only_positive) const {
+    absl::flat_hash_set<ResourceID> res;
+    for (size_t i = 0; i < predefined_resources_.size(); i++) {
+      auto value = predefined_resources_[i];
+      if (!only_positive || value > 0) {
+        res.insert(ResourceID(i));
+      }
+    e
+    for (auto &entry : custom_resources_) {
+      auto value = entry.second;
+      if (!only_positive || value > 0) {
+        res.insert(ResourceID(entry.first));
+      }
+    }
+    return res;
+  }
+
   /// List of predefined resources required by the task.
-  PredefinedResources predefined_resources;
+  std::vector<FixedPoint> predefined_resources_;
   /// List of custom resources required by the task.
-  CustomResources custom_resources;
+  absl::flat_hash_map<int64_t, FixedPoint> custom_resources_;
   /// Whether this task requires object store memory.
   /// TODO(swang): This should be a quantity instead of a flag.
   bool requires_object_store_memory = false;
-  /// Check whether the request contains no resources.
-  bool IsEmpty() const;
-  /// Returns human-readable string for this task request.
-  std::string DebugString() const;
 
-  const FixedPoint &Get(ResourceID resource_id) const {
-    if (IsPredefinedResource(resource_id)) {
-      return this->predefined_resources.Get(resource_id);
-    } else {
-      return this->custom_resources.Get(resource_id);
-    }
+ public:
+  ResourceRequest(absl::flat_hash_map<ResourceID, FixedPoint> resource_map)
+      : ResourceRequest(resource_map, false){};
+
+  ResourceRequest(absl::flat_hash_map<ResourceID, FixedPoint> resource_map, bool requires_object_store_memory);
+
+  FixedPoint Get(ResourceID resource_id) const {
+    auto ptr = GetPointerOrCrash(resource_id);
+    return *ptr;
   }
 
-  const FixedPoint GetOrZero(ResourceID resource_id) const {
-    if (IsPredefinedResource(resource_id)) {
-      return this->predefined_resources.Get(resource_id);
+  FixedPoint GetOrZero(ResourceID resource_id) const {
+    auto ptr = GetPointer(resource_id);
+    if (ptr == nullptr) {
+      return FixedPoint(0);
     } else {
-      return this->custom_resources.GetOrZero(resource_id);
+      return *ptr;
     }
   }
 
   ResourceRequest &Set(ResourceID resource_id, const FixedPoint & value) {
-    if (IsPredefinedResource(resource_id)) {
-      this->predefined_resources.Set(resource_id, value);
-    } else {
-      this->custom_resources.Set(resource_id, value);
-    }
+    auto ptr = GetPointer(resource_id, true);
+    *ptr = value;
     return *this;
   }
 
   const bool Has(ResourceID resource_id) const {
-    if (IsPredefinedResource(resource_id)) {
-      return this->predefined_resources.Has(resource_id);
-    } else {
-      return this->custom_resources.Has(resource_id);
-    }
+    return GetOrZero(resource_id) > 0;
   }
 
-  const FixedPoint &GetCPU() const { return this->predefined_resources.GetCPU(); }
-
-  const FixedPoint &GetMemory() const { return this->predefined_resources.GetMemory(); }
-
-  const FixedPoint &GetGPU() const { return this->predefined_resources.GetGPU(); }
-
-  const FixedPoint &GetObjectStoreMemory() const { return this->predefined_resources.GetObjectStoreMemory(); }
-
-  ResourceRequest &SetCPU(const FixedPoint &value) { this->predefined_resources.SetCPU(value); return *this; }
-
-  ResourceRequest &SetMemory(const FixedPoint &value) { this->predefined_resources.SetMemory(value); return *this; }
-
-  ResourceRequest &SetGPU(const FixedPoint &value) { this->predefined_resources.SetGPU(value); return *this; }
-
-  ResourceRequest &SetObjectStoreMemory(const FixedPoint &value) { this->predefined_resources.SetObjectStoreMemory(value); return *this; }
-
-  bool HasCPU() const { return this->predefined_resources.HasCPU(); }
-
-  bool HasMemory() const { return this->predefined_resources.HasMemory(); }
-
-  bool HasGPU() const { return this->predefined_resources.HasGPU(); }
-
-  bool HasObjectStoreMemory() const { return this->predefined_resources.HasObjectStoreMemory(); }
-
-  void Clear() { this->predefined_resources.Clear(); this->custom_resources.Clear(); }
+  void Clear() {
+    for (size_t i = 0; i < predefined_resources_.size(); i++) {
+      predefined_resources_[i] = 0;
+    }
+    custom_resources_.erase();
+  }
 
   void Normalize() {
-    for (size_t i = 0; i < predefined_resources.values_.size(); i++) {
-      if (predefined_resources.values_[i] < 0) {
-        predefined_resources.values_[i] = 0;
+    for (size_t i = 0; i < predefined_resources_.size(); i++) {
+      if (predefined_resources_[i] < 0) {
+        predefined_resources_[i] = 0;
       }
     }
-    for (auto &entry : custom_resources.values_) {
+    for (auto &entry : custom_resources_) {
       if (entry.second < 0) {
         entry.second = 0;
       }
@@ -399,74 +144,103 @@ class ResourceRequest {
   }
 
   absl::flat_hash_set<ResourceID> ResourceIds() const {
-    absl::flat_hash_set<ResourceID> res;
-    for (size_t i = 0; i < predefined_resources.values_.size(); i++) {
-      res.insert(ResourceID(i));
-    }
-    for (auto &entry : custom_resources.values_) {
-      res.insert(ResourceID(entry.first));
-    }
-    return res;
+    return ResourceIdsInternal(false);
   }
 
   absl::flat_hash_map<ResourceID, FixedPoint> ToMap() const {
     absl::flat_hash_map<ResourceID, FixedPoint> res;
-    for (size_t i = 0; i < predefined_resources.values_.size(); i++) {
-      if (predefined_resources.values_[i] > 0) {
-        res.emplace(ResourceID(i), predefined_resources.values_[i]);
-      }
-    }
-    for (auto &entry : custom_resources.values_) {
-      if (entry.second > 0) {
-        res.emplace(ResourceID(entry.first), entry.second);
-      }
+    for (auto resource_id : ResourceIds()) {
+        res.emplace(resource_id, Get(resource_id));
     }
     return res;
   }
 
+  ResourceRequest &operator=(const ResourceRequest &other) {
+    this->predefined_resources_ = other.predefined_resources_;
+    this->custom_resources_ = other.custom_resources_;
+    this->requires_object_store_memory = other.requires_object_store_memory_;
+    return *this;
+  }
 
   ResourceRequest operator+(const ResourceRequest &other) {
-    ResourceRequest res;
-    res.predefined_resources = this->predefined_resources + other.predefined_resources;
-    res.custom_resources = this->custom_resources + other.custom_resources;
+    ResourceRequest res = *this;
+    res += other;
     return res;
   }
 
   ResourceRequest operator-(const ResourceRequest &other) {
-    ResourceRequest res;
-    res.predefined_resources = this->predefined_resources - other.predefined_resources;
-    res.custom_resources = this->custom_resources - other.custom_resources;
+    ResourceRequest res = *this;
+    res -= other;
     return res;
  }
 
-  ResourceRequest &operator=(const ResourceRequest &other) {
-    this->predefined_resources = other.predefined_resources;
-    this->custom_resources = other.custom_resources;
-    return *this;
-  }
-
   ResourceRequest &operator+=(const ResourceRequest &other) {
-    this->predefined_resources += other.predefined_resources;
-    this->custom_resources += other.custom_resources;
+    for (auto resource_id : ResourceIds()) {
+      *GetPointer(resource_id) += other.GetOrZero(resource_id);
+    }
+    for (auto &resource_id : other.ResourceIds()) {
+      if (!Has(resource_id)) {
+        Set(resource_id, other.Get(resource_id));
+      }
+    }
     return *this;
   }
 
   ResourceRequest &operator-=(const ResourceRequest &other) {
-    this->predefined_resources -= other.predefined_resources;
-    this->custom_resources -= other.custom_resources;
+    for (auto resource_id : ResourceIds()) {
+      *GetPointer(resource_id) -= other.GetOrZero(resource_id);
+    }
+    for (auto &resource_id : other.ResourceIds()) {
+      if (!Has(resource_id)) {
+        Set(resource_id, -other.Get(resource_id));
+      }
+    }
     return *this;
   }
 
   bool operator==(const ResourceRequest &other) const {
-    return this->predefined_resources == other.predefined_resources && this->custom_resources == other.custom_resources;
+    return EqualVectors(predefined_resources_, other.predefined_resources_) &&
+           this->custom_resources == other.custom_resources;
   }
 
   bool operator<=(const ResourceRequest &other) const {
-    return predefined_resources <= other.predefined_resources && custom_resources <= other.custom_resources;
+    if (Size() > other.Size()) {
+      return false;
+    }
+    for (auto resource_id : ResourceIds()) {
+      if (Get(resource_id) > other.GetOrZero(resource_id)) {
+        return false;
+      }
+    }
+    return true;
   }
 
   bool operator>=(const ResourceRequest &other) const {
     return other <= *this;
+  }
+
+  size_t Size() const {
+    return ResourceIds().size();
+  }
+
+  /// Check whether the request contains no resources.
+  bool IsEmpty() const {
+    return Size() == 0;
+  }
+
+  /// Returns human-readable string for this task request.
+  std::string DebugString() const {
+    std::stringstream buffer;
+    buffer << "{";
+    bool first = true;
+    for (auto resource_id : ResourceIds()) {
+      if (!first) {
+        buffer << ", ";
+      }
+      buffer << resource_id.Binary() << ": " << Get(resource_id);
+    }
+    buffer << "}";
+    return buffer.str();
   }
 };
 
