@@ -5,7 +5,7 @@ import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as optional_utils
 
 from ray import serve
-from ray.serve.application import Application
+from ray.serve.api import Application
 from ray.serve.api import (
     get_deployment_statuses,
     serve_application_to_schema,

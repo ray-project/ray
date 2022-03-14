@@ -19,7 +19,7 @@ from ray.serve.schema import ServeApplicationSchema
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.autoscaler._private.cli_logger import cli_logger
-from ray.serve.application import Application
+from ray.serve.api import Application
 from ray.serve.api import Deployment
 
 RAY_INIT_ADDRESS_HELP_STR = (
