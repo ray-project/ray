@@ -1557,7 +1557,7 @@ class Application:
 
         deployments = deployments or []
 
-        self._deployments = dict()
+        self._deployments: Dict[str, Deployment] = dict()
         for d in deployments:
             self._add_deployment(d)
 
