@@ -49,8 +49,10 @@ struct pair_hash {
 };
 using ScheduleMap = absl::flat_hash_map<BundleID, NodeID, pair_hash>;
 using ScheduleResult = std::pair<SchedulingResultStatus, ScheduleMap>;
-using BundleLocations = absl::flat_hash_map<
-    BundleID, std::pair<NodeID, std::shared_ptr<const BundleSpecification>>, pair_hash>;
+using BundleLocations =
+    absl::flat_hash_map<BundleID,
+                        std::pair<NodeID, std::shared_ptr<const BundleSpecification>>,
+                        pair_hash>;
 
 class GcsPlacementGroupSchedulerInterface {
  public:
@@ -140,7 +142,8 @@ class GcsScheduleStrategy {
   /// \return The scheduling result from the required resource.
   ScheduleResult GenerateScheduleResult(
       const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
-      const std::vector<NodeID> &selected_nodes, const SchedulingResultStatus &status);
+      const std::vector<NodeID> &selected_nodes,
+      const SchedulingResultStatus &status);
 };
 
 /// The `GcsPackStrategy` is that pack all bundles in one node as much as possible.
@@ -219,7 +222,8 @@ class LeaseStatusTracker {
   /// \param status Status of the prepare response.
   /// \param void
   void MarkPrepareRequestReturned(
-      const NodeID &node_id, const std::shared_ptr<const BundleSpecification> &bundle,
+      const NodeID &node_id,
+      const std::shared_ptr<const BundleSpecification> &bundle,
       const Status &status);
 
   /// Used to know if all prepare requests are returned.
@@ -417,7 +421,8 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   GcsPlacementGroupScheduler(
       instrumented_io_context &io_context,
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-      const GcsNodeManager &gcs_node_manager, GcsResourceManager &gcs_resource_manager,
+      const GcsNodeManager &gcs_node_manager,
+      GcsResourceManager &gcs_resource_manager,
       GcsResourceScheduler &gcs_resource_scheduler,
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
       syncer::RaySyncer &ray_syncer);
@@ -470,9 +475,10 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// This should be called when GCS server restarts after a failure.
   ///
   /// \param node_to_bundles Bundles used by each node.
-  void Initialize(const absl::flat_hash_map<
-                  PlacementGroupID, std::vector<std::shared_ptr<BundleSpecification>>>
-                      &group_to_bundles) override;
+  void Initialize(
+      const absl::flat_hash_map<PlacementGroupID,
+                                std::vector<std::shared_ptr<BundleSpecification>>>
+          &group_to_bundles) override;
 
  protected:
   /// Send bundles PREPARE requests to a node. The PREPARE requests will lock resources

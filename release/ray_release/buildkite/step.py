@@ -1,4 +1,5 @@
 import copy
+import os
 from typing import Optional, Dict
 
 from ray_release.buildkite.concurrency import CONCURRENY_GROUPS, get_concurrency_group
@@ -47,7 +48,11 @@ def get_step(
 
     step = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
 
-    cmd = f"./release/run_release_test.sh \"{test['name']}\" --report"
+    cmd = f"./release/run_release_test.sh \"{test['name']}\" "
+
+    if not bool(int(os.environ.get("NO_REPORT_OVERRIDE", "0"))):
+        cmd += " --report"
+
     if smoke_test:
         cmd += " --smoke-test"
 

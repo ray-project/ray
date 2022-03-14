@@ -60,7 +60,8 @@ inline static int RegisterRemoteFunctions(const T &t, U... u) {
   (void)std::initializer_list<int>{
       (FunctionManager::Instance().RegisterRemoteFunction(
            std::string(func_names[index].data(), func_names[index].length()), u),
-       index++, 0)...};
+       index++,
+       0)...};
   return 0;
 }
 
