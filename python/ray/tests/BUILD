@@ -246,6 +246,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_runtime_env.py",
+    "test_runtime_env_2.py",
     "test_runtime_env_working_dir.py",
     "test_runtime_env_working_dir_2.py",
     "test_runtime_env_working_dir_remote_uri.py"
