@@ -1,13 +1,15 @@
 import os
 import time
 
-from typing import Dict, Tuple
+from typing import Dict, Tuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ray.job_submission import JobSubmissionClient, JobStatus  # noqa: F401
 
 from ray_release.logger import logger
 from ray_release.util import ANYSCALE_HOST
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import CommandTimeout
-from ray.job_submission import JobSubmissionClient, JobStatus
 from ray_release.util import exponential_backoff_retry
 
 
@@ -20,7 +22,9 @@ class JobManager:
         self.job_client = None
         self.last_job_id = None
 
-    def _get_job_client(self) -> JobSubmissionClient:
+    def _get_job_client(self) -> "JobSubmissionClient":
+        from ray.job_submission import JobSubmissionClient  # noqa: F811
+
         if not self.job_client:
             self.job_client = JobSubmissionClient(
                 self.cluster_manager.get_cluster_address()
@@ -58,6 +62,7 @@ class JobManager:
         )
 
     def _wait_job(self, command_id: int, timeout: int):
+        from ray.job_submission import JobStatus  # noqa: F811
         start_time = time.monotonic()
         timeout_at = start_time + timeout
         next_status = start_time + 30

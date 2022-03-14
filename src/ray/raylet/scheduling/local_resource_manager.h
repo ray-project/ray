@@ -40,7 +40,8 @@ namespace ray {
 class LocalResourceManager {
  public:
   LocalResourceManager(
-      scheduling::NodeID local_node_id, const NodeResources &node_resources,
+      scheduling::NodeID local_node_id,
+      const NodeResources &node_resources,
       std::function<int64_t(void)> get_used_object_store_memory,
       std::function<bool(void)> get_pull_manager_at_capacity,
       std::function<void(const NodeResources &)> resource_change_subscriber);
@@ -167,7 +168,8 @@ class LocalResourceManager {
   /// \param unit_instances: If true, we split the resource in unit-size instances.
   /// If false, we create a single instance of capacity "total".
   /// \param instance_list: The list of capacities this resource instances.
-  void InitResourceInstances(FixedPoint total, bool unit_instances,
+  void InitResourceInstances(FixedPoint total,
+                             bool unit_instances,
                              ResourceInstanceCapacities *instance_list);
 
   /// Init the information about which resources are unit_instance.
@@ -197,7 +199,8 @@ class LocalResourceManager {
   /// capacities in "available", i.e.,.
   /// max(available - reasource_instances.available, 0)
   std::vector<FixedPoint> SubtractAvailableResourceInstances(
-      std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances,
+      std::vector<FixedPoint> available,
+      ResourceInstanceCapacities *resource_instances,
       bool allow_going_negative = false) const;
 
   /// Allocate enough capacity across the instances of a resource to satisfy "demand".
@@ -231,7 +234,8 @@ class LocalResourceManager {
   /// \return true, if allocation successful. In this case, the sum of the elements in
   /// "allocation" is equal to "demand".
 
-  bool AllocateResourceInstances(FixedPoint demand, std::vector<FixedPoint> &available,
+  bool AllocateResourceInstances(FixedPoint demand,
+                                 std::vector<FixedPoint> &available,
                                  std::vector<FixedPoint> *allocation) const;
 
   /// Allocate local resources to satisfy a given request (resource_request).
