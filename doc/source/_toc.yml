@@ -18,6 +18,7 @@ parts:
           - file: data/key-concepts
           - file: data/examples/big_data_ingestion
           - file: data/package-ref
+          - file: data/integration
 
       - file: train/train
         title: Ray Train
