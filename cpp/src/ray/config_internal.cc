@@ -25,11 +25,15 @@ ABSL_FLAG(std::string, ray_address, "", "The address of the Ray cluster to conne
 
 /// absl::flags does not provide a IsDefaultValue method, so use a non-empty dummy default
 /// value to support empty redis password.
-ABSL_FLAG(std::string, ray_redis_password, "absl::flags dummy default value",
+ABSL_FLAG(std::string,
+          ray_redis_password,
+          "absl::flags dummy default value",
           "Prevents external clients without the password from connecting to Redis "
           "if provided.");
 
-ABSL_FLAG(std::string, ray_code_search_path, "",
+ABSL_FLAG(std::string,
+          ray_code_search_path,
+          "",
           "A list of directories or files of dynamic libraries that specify the "
           "search path for user code. Only searching the top level under a directory. "
           "':' is used as the separator.");
@@ -38,10 +42,14 @@ ABSL_FLAG(std::string, ray_job_id, "", "Assigned job id.");
 
 ABSL_FLAG(int32_t, ray_node_manager_port, 0, "The port to use for the node manager.");
 
-ABSL_FLAG(std::string, ray_raylet_socket_name, "",
+ABSL_FLAG(std::string,
+          ray_raylet_socket_name,
+          "",
           "It will specify the socket name used by the raylet if provided.");
 
-ABSL_FLAG(std::string, ray_plasma_store_socket_name, "",
+ABSL_FLAG(std::string,
+          ray_plasma_store_socket_name,
+          "",
           "It will specify the socket name used by the plasma store if provided.");
 
 ABSL_FLAG(std::string, ray_session_dir, "", "The path of this session.");
@@ -50,12 +58,16 @@ ABSL_FLAG(std::string, ray_logs_dir, "", "Logs dir for workers.");
 
 ABSL_FLAG(std::string, ray_node_ip_address, "", "The ip address for this node.");
 
-ABSL_FLAG(std::string, ray_head_args, "",
+ABSL_FLAG(std::string,
+          ray_head_args,
+          "",
           "The command line args to be appended as parameters of the `ray start` "
           "command. It takes effect only if Ray head is started by a driver. Run `ray "
           "start --help` for details.");
 
-ABSL_FLAG(int64_t, startup_token, -1,
+ABSL_FLAG(int64_t,
+          startup_token,
+          -1,
           "The startup token assigned to this worker process by the raylet.");
 
 namespace ray {
@@ -81,8 +93,8 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
 
     if (!FLAGS_ray_code_search_path.CurrentValue().empty()) {
       // Code search path like this "/path1/xxx.so:/path2".
-      code_search_path = absl::StrSplit(FLAGS_ray_code_search_path.CurrentValue(), ':',
-                                        absl::SkipEmpty());
+      code_search_path = absl::StrSplit(
+          FLAGS_ray_code_search_path.CurrentValue(), ':', absl::SkipEmpty());
     }
     if (!FLAGS_ray_address.CurrentValue().empty()) {
       SetBootstrapAddress(FLAGS_ray_address.CurrentValue());
@@ -150,8 +162,8 @@ void ConfigInternal::SetBootstrapAddress(std::string_view address) {
   auto pos = address.find(':');
   RAY_CHECK(pos != std::string::npos);
   bootstrap_ip = address.substr(0, pos);
-  auto ret = std::from_chars(address.data() + pos + 1, address.data() + address.size(),
-                             bootstrap_port);
+  auto ret = std::from_chars(
+      address.data() + pos + 1, address.data() + address.size(), bootstrap_port);
   RAY_CHECK(ret.ec == std::errc());
 }
 }  // namespace internal

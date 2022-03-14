@@ -113,7 +113,8 @@ void AgentManager::StartAgent() {
 }
 
 void AgentManager::CreateRuntimeEnv(
-    const JobID &job_id, const std::string &serialized_runtime_env,
+    const JobID &job_id,
+    const std::string &serialized_runtime_env,
     const std::string &serialized_allocated_resource_instances,
     CreateRuntimeEnvCallback callback) {
   // If the agent cannot be started, fail the request.
@@ -130,7 +131,8 @@ void AgentManager::CreateRuntimeEnv(
     // and causing a segfault.
     delay_executor_(
         [callback = std::move(callback), error_message] {
-          callback(/*successful=*/false, /*serialized_runtime_env_context=*/"",
+          callback(/*successful=*/false,
+                   /*serialized_runtime_env_context=*/"",
                    /*setup_error_message*/ error_message);
         },
         0);
@@ -148,7 +150,8 @@ void AgentManager::CreateRuntimeEnv(
       RAY_LOG(WARNING) << error_message;
       delay_executor_(
           [callback = std::move(callback),
-           serialized_runtime_env = std::move(serialized_runtime_env), error_message] {
+           serialized_runtime_env = std::move(serialized_runtime_env),
+           error_message] {
             callback(/*successful=*/false,
                      /*serialized_runtime_env_context=*/serialized_runtime_env,
                      /*setup_error_message*/ error_message);
@@ -161,10 +164,15 @@ void AgentManager::CreateRuntimeEnv(
         << "Runtime env agent is not registered yet. Will retry CreateRuntimeEnv later: "
         << serialized_runtime_env;
     delay_executor_(
-        [this, job_id, serialized_runtime_env, serialized_allocated_resource_instances,
+        [this,
+         job_id,
+         serialized_runtime_env,
+         serialized_allocated_resource_instances,
          callback = std::move(callback)] {
-          CreateRuntimeEnv(job_id, serialized_runtime_env,
-                           serialized_allocated_resource_instances, callback);
+          CreateRuntimeEnv(job_id,
+                           serialized_runtime_env,
+                           serialized_allocated_resource_instances,
+                           callback);
         },
         RayConfig::instance().agent_manager_retry_interval_ms());
     return;
@@ -175,17 +183,23 @@ void AgentManager::CreateRuntimeEnv(
   request.set_serialized_allocated_resource_instances(
       serialized_allocated_resource_instances);
   runtime_env_agent_client_->CreateRuntimeEnv(
-      request, [this, job_id, serialized_runtime_env,
-                serialized_allocated_resource_instances, callback = std::move(callback)](
-                   const Status &status, const rpc::CreateRuntimeEnvReply &reply) {
+      request,
+      [this,
+       job_id,
+       serialized_runtime_env,
+       serialized_allocated_resource_instances,
+       callback = std::move(callback)](const Status &status,
+                                       const rpc::CreateRuntimeEnvReply &reply) {
         if (status.ok()) {
           if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
-            callback(true, reply.serialized_runtime_env_context(),
+            callback(true,
+                     reply.serialized_runtime_env_context(),
                      /*setup_error_message*/ "");
           } else {
             RAY_LOG(INFO) << "Failed to create runtime env: " << serialized_runtime_env
                           << ", error message: " << reply.error_message();
-            callback(false, reply.serialized_runtime_env_context(),
+            callback(false,
+                     reply.serialized_runtime_env_context(),
                      /*setup_error_message*/ reply.error_message());
           }
 
@@ -196,10 +210,15 @@ void AgentManager::CreateRuntimeEnv(
               << ", status = " << status
               << ", maybe there are some network problems, will retry it later.";
           delay_executor_(
-              [this, job_id, serialized_runtime_env,
-               serialized_allocated_resource_instances, callback = std::move(callback)] {
-                CreateRuntimeEnv(job_id, serialized_runtime_env,
-                                 serialized_allocated_resource_instances, callback);
+              [this,
+               job_id,
+               serialized_runtime_env,
+               serialized_allocated_resource_instances,
+               callback = std::move(callback)] {
+                CreateRuntimeEnv(job_id,
+                                 serialized_runtime_env,
+                                 serialized_allocated_resource_instances,
+                                 callback);
               },
               RayConfig::instance().agent_manager_retry_interval_ms());
         }
@@ -224,27 +243,27 @@ void AgentManager::DeleteURIs(const std::vector<std::string> &uris,
   for (const auto &uri : uris) {
     request.add_uris(uri);
   }
-  runtime_env_agent_client_->DeleteURIs(request, [this, uris, callback](
-                                                     Status status,
-                                                     const rpc::DeleteURIsReply &reply) {
-    if (status.ok()) {
-      if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
-        callback(true);
-      } else {
-        // TODO(sang): Find a better way to delivering error messages in this case.
-        RAY_LOG(ERROR) << "Failed to delete URIs"
-                       << ", error message: " << reply.error_message();
-        callback(false);
-      }
+  runtime_env_agent_client_->DeleteURIs(
+      request, [this, uris, callback](Status status, const rpc::DeleteURIsReply &reply) {
+        if (status.ok()) {
+          if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
+            callback(true);
+          } else {
+            // TODO(sang): Find a better way to delivering error messages in this case.
+            RAY_LOG(ERROR) << "Failed to delete URIs"
+                           << ", error message: " << reply.error_message();
+            callback(false);
+          }
 
-    } else {
-      RAY_LOG(ERROR) << "Failed to delete URIs"
-                     << ", status = " << status
-                     << ", maybe there are some network problems, will retry it later.";
-      delay_executor_([this, uris, callback] { DeleteURIs(uris, callback); },
-                      RayConfig::instance().agent_manager_retry_interval_ms());
-    }
-  });
+        } else {
+          RAY_LOG(ERROR)
+              << "Failed to delete URIs"
+              << ", status = " << status
+              << ", maybe there are some network problems, will retry it later.";
+          delay_executor_([this, uris, callback] { DeleteURIs(uris, callback); },
+                          RayConfig::instance().agent_manager_retry_interval_ms());
+        }
+      });
 }
 
 }  // namespace raylet

@@ -33,8 +33,10 @@ class MockInMemoryStoreClient : public gcs::InMemoryStoreClient {
   explicit MockInMemoryStoreClient(instrumented_io_context &main_io_service)
       : gcs::InMemoryStoreClient(main_io_service) {}
 
-  Status AsyncPut(const std::string &table_name, const std::string &key,
-                  const std::string &data, const gcs::StatusCallback &callback) override {
+  Status AsyncPut(const std::string &table_name,
+                  const std::string &key,
+                  const std::string &data,
+                  const gcs::StatusCallback &callback) override {
     callback(Status::OK());
     return Status::OK();
   }
@@ -79,8 +81,8 @@ class GcsJobManagerTest : public ::testing::Test {
 };
 
 TEST_F(GcsJobManagerTest, TestGetJobConfig) {
-  gcs::GcsJobManager gcs_job_manager(gcs_table_storage_, gcs_publisher_,
-                                     runtime_env_manager_, *function_manager_);
+  gcs::GcsJobManager gcs_job_manager(
+      gcs_table_storage_, gcs_publisher_, runtime_env_manager_, *function_manager_);
 
   auto job_id1 = JobID::FromInt(1);
   auto job_id2 = JobID::FromInt(2);
@@ -91,11 +93,13 @@ TEST_F(GcsJobManagerTest, TestGetJobConfig) {
   rpc::AddJobReply empty_reply;
 
   gcs_job_manager.HandleAddJob(
-      *add_job_request1, &empty_reply,
+      *add_job_request1,
+      &empty_reply,
       [](Status, std::function<void()>, std::function<void()>) {});
   auto add_job_request2 = Mocker::GenAddJobRequest(job_id2, "namespace_2", 8);
   gcs_job_manager.HandleAddJob(
-      *add_job_request2, &empty_reply,
+      *add_job_request2,
+      &empty_reply,
       [](Status, std::function<void()>, std::function<void()>) {});
 
   auto job_config1 = gcs_job_manager.GetJobConfig(job_id1);

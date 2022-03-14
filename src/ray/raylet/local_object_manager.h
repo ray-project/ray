@@ -37,10 +37,16 @@ namespace raylet {
 class LocalObjectManager {
  public:
   LocalObjectManager(
-      const NodeID &node_id, std::string self_node_address, int self_node_port,
-      size_t free_objects_batch_size, int64_t free_objects_period_ms,
-      IOWorkerPoolInterface &io_worker_pool, rpc::CoreWorkerClientPool &owner_client_pool,
-      int max_io_workers, int64_t min_spilling_size, bool is_external_storage_type_fs,
+      const NodeID &node_id,
+      std::string self_node_address,
+      int self_node_port,
+      size_t free_objects_batch_size,
+      int64_t free_objects_period_ms,
+      IOWorkerPoolInterface &io_worker_pool,
+      rpc::CoreWorkerClientPool &owner_client_pool,
+      int max_io_workers,
+      int64_t min_spilling_size,
+      bool is_external_storage_type_fs,
       int64_t max_fused_object_count,
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
       std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable,
@@ -99,7 +105,8 @@ class LocalObjectManager {
   /// \param object_url The URL where the object is spilled.
   /// \param callback A callback to call when the restoration is done.
   /// Status will contain the error during restoration, if any.
-  void AsyncRestoreSpilledObject(const ObjectID &object_id, const std::string &object_url,
+  void AsyncRestoreSpilledObject(const ObjectID &object_id,
+                                 const std::string &object_url,
                                  std::function<void(const ray::Status &)> callback);
 
   /// Clear any freed objects. This will trigger the callback for freed

@@ -206,4 +206,31 @@ if "TEST_OUTPUT_JSON" in os.environ:
         "large_object_size": MAX_RAY_GET_SIZE,
         "success": "1",
     }
+    results["perf_metrics"] = [
+        {
+            "perf_metric_name": f"{MAX_ARGS}_args_time",
+            "perf_metric_value": args_time,
+            "perf_metric_type": "LATENCY",
+        },
+        {
+            "perf_metric_name": f"{MAX_RETURNS}_returns_time",
+            "perf_metric_value": returns_time,
+            "perf_metric_type": "LATENCY",
+        },
+        {
+            "perf_metric_name": f"{MAX_RAY_GET_ARGS}_get_time",
+            "perf_metric_value": get_time,
+            "perf_metric_type": "LATENCY",
+        },
+        {
+            "perf_metric_name": f"{MAX_QUEUED_TASKS}_queued_time",
+            "perf_metric_value": queued_time,
+            "perf_metric_type": "LATENCY",
+        },
+        {
+            "perf_metric_name": f"{MAX_RAY_GET_SIZE}_large_object_time",
+            "perf_metric_value": large_object_time,
+            "perf_metric_type": "LATENCY",
+        },
+    ]
     json.dump(results, out_file)

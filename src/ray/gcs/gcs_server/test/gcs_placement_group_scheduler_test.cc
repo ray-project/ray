@@ -35,7 +35,6 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
           new boost::asio::io_service::work(io_service_));
       io_service_.run();
     }));
-    ray_syncer_ = std::make_shared<ray::syncer::RaySyncer>(io_service_, nullptr, nullptr);
     for (int index = 0; index < 3; ++index) {
       raylet_clients_.push_back(std::make_shared<GcsServerMocker::MockRayletClient>());
     }
@@ -43,7 +42,9 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
         std::make_unique<GcsServerMocker::MockGcsPubSub>(redis_client_));
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
-        io_service_, nullptr, gcs_table_storage_, ray_syncer_.get());
+        io_service_, nullptr, gcs_table_storage_);
+    ray_syncer_ = std::make_shared<ray::syncer::RaySyncer>(
+        io_service_, nullptr, *gcs_resource_manager_);
     gcs_resource_scheduler_ =
         std::make_shared<gcs::GcsResourceScheduler>(*gcs_resource_manager_);
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
@@ -52,8 +53,13 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
         gcs_publisher_, gcs_table_storage_, raylet_client_pool_);
     scheduler_ = std::make_shared<GcsServerMocker::MockedGcsPlacementGroupScheduler>(
-        io_service_, gcs_table_storage_, *gcs_node_manager_, *gcs_resource_manager_,
-        *gcs_resource_scheduler_, raylet_client_pool_);
+        io_service_,
+        gcs_table_storage_,
+        *gcs_node_manager_,
+        *gcs_resource_manager_,
+        *gcs_resource_scheduler_,
+        raylet_client_pool_,
+        *ray_syncer_);
   }
 
   void TearDown() override {
@@ -233,15 +239,15 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     // Failed to schedule the placement group, because the node resources is not enough.
     auto request = Mocker::GenCreatePlacementGroupRequest("", strategy);
     auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request, "");
-    scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler,
-                                        success_handler);
+    scheduler_->ScheduleUnplacedBundles(
+        placement_group, failure_handler, success_handler);
     WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
     CheckPlacementGroupSize(0, GcsPlacementGroupStatus::SUCCESS);
 
     // A new node is added, and the rescheduling is successful.
     AddNode(Mocker::GenNodeInfo(0), 2);
-    scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler,
-                                        success_handler);
+    scheduler_->ScheduleUnplacedBundles(
+        placement_group, failure_handler, success_handler);
     ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
     WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
     ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
@@ -413,8 +419,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictPackStrategyBalancedScheduling)
     auto request =
         Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::STRICT_PACK);
     auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request, "");
-    scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler,
-                                        success_handler);
+    scheduler_->ScheduleUnplacedBundles(
+        placement_group, failure_handler, success_handler);
 
     node_index = !raylet_clients_[0]->lease_callbacks.empty() ? 0 : 1;
     ++node_select_count[node_index];
@@ -1104,7 +1110,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPGCancelledDuringReschedulingCommitPr
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestReleaseUnusedBundles) {
   SchedulePlacementGroupSuccessTest(rpc::PlacementStrategy::SPREAD);
-  std::unordered_map<NodeID, std::vector<rpc::Bundle>> node_to_bundle;
+  absl::flat_hash_map<NodeID, std::vector<rpc::Bundle>> node_to_bundle;
   scheduler_->ReleaseUnusedBundles(node_to_bundle);
   ASSERT_EQ(1, raylet_clients_[0]->num_release_unused_bundles_requested);
 }
@@ -1122,7 +1128,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestInitialize) {
   placement_group->GetMutableBundle(0)->set_node_id(node0->node_id());
   placement_group->GetMutableBundle(1)->set_node_id(node1->node_id());
 
-  std::unordered_map<PlacementGroupID, std::vector<std::shared_ptr<BundleSpecification>>>
+  absl::flat_hash_map<PlacementGroupID, std::vector<std::shared_ptr<BundleSpecification>>>
       group_to_bundles;
   group_to_bundles[placement_group->GetPlacementGroupID()].emplace_back(
       std::make_shared<BundleSpecification>(*placement_group->GetMutableBundle(0)));
