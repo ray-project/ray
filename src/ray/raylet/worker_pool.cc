@@ -658,7 +658,7 @@ void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job
                              << job_id << ". The result context was "
                              << serialized_runtime_env_context << ".";
                        } else {
-                         RAY_LOG(ERROR)
+                         RAY_LOG(WARNING)
                              << "[Eagerly] Couldn't create a runtime environment for job "
                              << job_id << ". Error message: " << setup_error_message;
                        }

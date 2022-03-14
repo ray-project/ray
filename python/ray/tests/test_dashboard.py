@@ -10,8 +10,6 @@ import requests
 from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_condition,
-    get_error_message,
-    get_log_batch,
 )
 
 import ray
@@ -157,39 +155,6 @@ def set_agent_failure_env_var():
     os.environ["_RAY_AGENT_FAILING"] = "1"
     yield
     del os.environ["_RAY_AGENT_FAILING"]
-
-
-# TODO(SongGuyang): Fail the agent which is in different node from driver.
-@pytest.mark.skip(
-    reason="Agent failure will lead to raylet failure and driver failure."
-)
-def test_dashboard_agent_restart(
-    set_agent_failure_env_var, ray_start_cluster_head, error_pubsub, log_pubsub
-):
-    """Test that when the agent fails to start if the error message
-    is suppressed correctly without spamming the driver.
-    """
-    # Choose a duplicated port for the agent so that it will crash.
-    errors = get_error_message(
-        error_pubsub, 1, ray_constants.DASHBOARD_AGENT_DIED_ERROR, timeout=10
-    )
-    assert len(errors) == 1
-    for e in errors:
-        assert "Check out the `dashboard_agent.log`" in e.error_message
-    # Make sure the agent process is not started anymore.
-    cluster = ray_start_cluster_head
-    wait_for_condition(lambda: search_agents(cluster) is None)
-
-    # Make sure there's no spammy message for 5 seconds.
-    def matcher(log_batch):
-        return log_batch["pid"] == "raylet" and any(
-            "Agent process with pid" in line for line in log_batch["lines"]
-        )
-
-    match = get_log_batch(log_pubsub, 1, timeout=5, matcher=matcher)
-    assert len(match) == 0, (
-        "There are spammy logs during Ray agent restart process. " f"Logs: {match}"
-    )
 
 
 conflict_port = 34567

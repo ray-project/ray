@@ -32,6 +32,7 @@ void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
   agent_ip_address_ = request.agent_ip_address();
   agent_port_ = request.agent_port();
   agent_pid_ = request.agent_pid();
+  // TODO(SongGuyang): We should remove this after we find better port resolution.
   // Note: `agent_port_` should be 0 if the grpc port of agent is in conflict.
   if (agent_port_ != 0) {
     runtime_env_agent_client_ =
@@ -143,17 +144,17 @@ void AgentManager::CreateRuntimeEnv(
     // If the grpc service of agent is invalid, fail the request.
     if (disable_agent_client_) {
       std::stringstream str_stream;
-      str_stream << "Runtime environment " << serialized_runtime_env
-                 << " cannot be created on this node because the grpc service of agent "
-                    "is invalid.";
+      str_stream
+          << "Runtime environment " << serialized_runtime_env
+          << " cannot be created on this node because the agent client is disabled. You "
+             "see this error message maybe because the grpc port of agent came into "
+             "conflict. Please see `dashboard_agent.log` to get more details.";
       const auto &error_message = str_stream.str();
-      RAY_LOG(WARNING) << error_message;
+      RAY_LOG(ERROR) << error_message;
       delay_executor_(
-          [callback = std::move(callback),
-           serialized_runtime_env = std::move(serialized_runtime_env),
-           error_message] {
+          [callback = std::move(callback), error_message] {
             callback(/*successful=*/false,
-                     /*serialized_runtime_env_context=*/serialized_runtime_env,
+                     /*serialized_runtime_env_context=*/"{}",
                      /*setup_error_message*/ error_message);
           },
           0);
@@ -204,23 +205,11 @@ void AgentManager::CreateRuntimeEnv(
           }
 
         } else {
-          // TODO(sang): Invoke a callback if it fails more than X times.
           RAY_LOG(INFO)
               << "Failed to create the runtime env: " << serialized_runtime_env
               << ", status = " << status
-              << ", maybe there are some network problems, will retry it later.";
-          delay_executor_(
-              [this,
-               job_id,
-               serialized_runtime_env,
-               serialized_allocated_resource_instances,
-               callback = std::move(callback)] {
-                CreateRuntimeEnv(job_id,
-                                 serialized_runtime_env,
-                                 serialized_allocated_resource_instances,
-                                 callback);
-              },
-              RayConfig::instance().agent_manager_retry_interval_ms());
+              << ", maybe there are some network problems, will fail the request.";
+          callback(false, "", "Failed to request agent.");
         }
       });
 }
@@ -228,7 +217,10 @@ void AgentManager::CreateRuntimeEnv(
 void AgentManager::DeleteURIs(const std::vector<std::string> &uris,
                               DeleteURIsCallback callback) {
   if (disable_agent_client_) {
-    RAY_LOG(ERROR) << "Failed to delete URIs because the agent client is disabled.";
+    RAY_LOG(ERROR)
+        << "Failed to delete runtime env URIs because the agent client is disabled. You "
+           "see this error message maybe because the grpc port of agent came into "
+           "conflict. Please see `dashboard_agent.log` to get more details.";
     delay_executor_([callback] { callback(false); }, 0);
     return;
   }
@@ -259,9 +251,8 @@ void AgentManager::DeleteURIs(const std::vector<std::string> &uris,
           RAY_LOG(ERROR)
               << "Failed to delete URIs"
               << ", status = " << status
-              << ", maybe there are some network problems, will retry it later.";
-          delay_executor_([this, uris, callback] { DeleteURIs(uris, callback); },
-                          RayConfig::instance().agent_manager_retry_interval_ms());
+              << ", maybe there are some network problems, will fail the request.";
+          callback(false);
         }
       });
 }
