@@ -304,7 +304,9 @@ class TestGC:
         # For a local directory, the package should be in the GCS.
         # For an S3 URI, there should be nothing in the GCS because
         # it will be downloaded from S3 directly on each node.
-        # In the "py_modules" case, a local wheel file will be in the GCS.
+        # In the "py_modules" case, we have specified a local wheel
+        # file to be uploaded to the GCS, so we do not expect the
+        # internal KV to be empty.
         if source == S3_PACKAGE_URI and option != "py_modules":
             assert check_internal_kv_gced()
         else:
