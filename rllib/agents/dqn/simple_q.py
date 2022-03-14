@@ -89,6 +89,9 @@ DEFAULT_CONFIG = with_common_config({
         "type": "MultiAgentPrioritizedReplayBuffer",
         "capacity": 50000,
         "replay_batch_size": 32,
+        # The number of contiguous environment steps to replay at once. This
+        # may be set to greater than 1 to support recurrent models.
+        "replay_sequence_length": 1,
     },
     # Set this to True, if you want the contents of your buffer(s) to be
     # stored in any saved checkpoints as well.
@@ -98,9 +101,6 @@ DEFAULT_CONFIG = with_common_config({
     # - This is False AND restoring from a checkpoint that does contain
     #   buffer data.
     "store_buffer_in_checkpoints": False,
-    # The number of contiguous environment steps to replay at once. This may
-    # be set to greater than 1 to support recurrent models.
-    "replay_sequence_length": 1,
 
     # === Optimization ===
     # Learning rate for adam optimizer

@@ -2766,15 +2766,16 @@ class Trainer(Trainable):
                 deprecation_warning(
                     old="config[{}]".format(k),
                     help="config['replay_buffer_config'][{}] should be used "
-                         "for Q-Learning algorithms. Ignore this warning if "
-                         "you are not using a Q-Learning algorithm and still "
-                         "provide {}."
-                         "".format(k, k),
+                    "for Q-Learning algorithms. Ignore this warning if "
+                    "you are not using a Q-Learning algorithm and still "
+                    "provide {}."
+                    "".format(k, k),
                     error=False,
                 )
                 # Copy values over to new location in config to support new
                 # and old configuration style
-                config["replay_buffer_config"][k] = config[k]
+                if config.get("replay_buffer_config") is not None:
+                    config["replay_buffer_config"][k] = config[k]
 
         # Some agents do not need a replay buffer
         if config.get("replay_buffer_config") is None or config.get(
