@@ -62,8 +62,11 @@ class Work {
   rpc::RequestWorkerLeaseReply *reply;
   std::function<void(void)> callback;
   std::shared_ptr<TaskResourceInstances> allocated_instances;
-  Work(RayTask task, bool grant_or_reject, bool is_selected_based_on_locality,
-       rpc::RequestWorkerLeaseReply *reply, std::function<void(void)> callback,
+  Work(RayTask task,
+       bool grant_or_reject,
+       bool is_selected_based_on_locality,
+       rpc::RequestWorkerLeaseReply *reply,
+       std::function<void(void)> callback,
        WorkStatus status = WorkStatus::WAITING)
       : task(task),
         grant_or_reject(grant_or_reject),

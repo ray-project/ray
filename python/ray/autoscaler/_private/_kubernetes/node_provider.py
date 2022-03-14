@@ -9,7 +9,7 @@ from ray.autoscaler._private.command_runner import KubernetesCommandRunner
 from ray.autoscaler._private._kubernetes import (
     core_api,
     log_prefix,
-    extensions_beta_api,
+    networking_api,
 )
 from ray.autoscaler._private._kubernetes.config import (
     bootstrap_kubernetes,
@@ -177,9 +177,7 @@ class KubernetesNodeProvider(NodeProvider):
                 ingress_spec = _add_service_name_to_service_port(
                     ingress_spec, new_svc.metadata.name
                 )
-                extensions_beta_api().create_namespaced_ingress(
-                    self.namespace, ingress_spec
-                )
+                networking_api().create_namespaced_ingress(self.namespace, ingress_spec)
 
     def terminate_node(self, node_id):
         logger.info(log_prefix + "calling delete_namespaced_pod")
@@ -198,7 +196,7 @@ class KubernetesNodeProvider(NodeProvider):
         except ApiException:
             pass
         try:
-            extensions_beta_api().delete_namespaced_ingress(
+            networking_api().delete_namespaced_ingress(
                 node_id,
                 self.namespace,
             )

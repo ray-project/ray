@@ -38,7 +38,8 @@ class GcsJobManager : public rpc::JobInfoHandler {
 
   void Initialize(const GcsInitData &gcs_init_data);
 
-  void HandleAddJob(const rpc::AddJobRequest &request, rpc::AddJobReply *reply,
+  void HandleAddJob(const rpc::AddJobRequest &request,
+                    rpc::AddJobReply *reply,
                     rpc::SendReplyCallback send_reply_callback) override;
 
   void HandleMarkJobFinished(const rpc::MarkJobFinishedRequest &request,

@@ -68,7 +68,11 @@ struct Allocation {
 
  private:
   // Only created by Allocator
-  Allocation(void *address, int64_t size, MEMFD_TYPE fd, ptrdiff_t offset, int device_num,
+  Allocation(void *address,
+             int64_t size,
+             MEMFD_TYPE fd,
+             ptrdiff_t offset,
+             int device_num,
              int64_t mmap_size)
       : address(address),
         size(size),

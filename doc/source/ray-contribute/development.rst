@@ -246,7 +246,6 @@ correctly. `Sphinx <http://sphinx-doc.org/>`_ is used to generate the documentat
 
     cd doc
     pip install -r requirements-doc.txt
-    pip install -U -r requirements-rtd.txt # important for reproducing the deployment environment
     make html
 
 Once done, the docs will be in ``doc/_build/html``. For example, on Mac

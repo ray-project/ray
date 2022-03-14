@@ -21,7 +21,23 @@ py_test(
 )
 
 py_test(
+    name = "test_application",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_deploy",
+    size = "large",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_deploy_2",
     size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -211,6 +227,14 @@ py_test(
 )
 
 py_test(
+    name = "test_schema",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_standalone",
     size = "large",
     srcs = serve_tests_srcs,
@@ -269,7 +293,7 @@ py_test(
 
 py_test(
     name = "test_cli",
-    size = "medium",
+    size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -282,6 +306,31 @@ py_test(
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
+
+py_test(
+    name = "test_cross_langauge",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_model_wrappers",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_http_adapters",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
 
 # Runs test_api and test_failure with injected failures in the controller.
 py_test(
@@ -414,6 +463,22 @@ py_test(
 
 py_test(
     name = "test_generate",
+    size = "medium",
+    srcs = pipeline_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_json_serde",
+    size = "medium",
+    srcs = pipeline_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_build",
     size = "medium",
     srcs = pipeline_tests_srcs,
     tags = ["exclusive", "team:serve"],

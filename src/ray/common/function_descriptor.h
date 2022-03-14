@@ -255,6 +255,8 @@ class CppFunctionDescriptor : public FunctionDescriptorInterface {
 
   const std::string &FunctionName() const { return typed_message_->function_name(); }
 
+  const std::string &Caller() const { return typed_message_->caller(); }
+
  private:
   const rpc::CppFunctionDescriptor *typed_message_;
 };
@@ -320,7 +322,8 @@ class FunctionDescriptorBuilder {
   /// Build a CppFunctionDescriptor.
   ///
   /// \return a ray::CppFunctionDescriptor
-  static FunctionDescriptor BuildCpp(const std::string &function_name);
+  static FunctionDescriptor BuildCpp(const std::string &function_name,
+                                     const std::string &caller = "");
 
   /// Build a ray::FunctionDescriptor according to input message.
   ///
