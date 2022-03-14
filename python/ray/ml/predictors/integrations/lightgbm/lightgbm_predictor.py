@@ -8,7 +8,7 @@ import lightgbm
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.predictor import Predictor, DataBatchType
 from ray.ml.preprocessor import Preprocessor
-from ray.ml.constants import PREPROCESSOR_KEY
+from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY
 
 
 class LightGBMPredictor(Predictor):
@@ -37,7 +37,7 @@ class LightGBMPredictor(Predictor):
 
         """
         path = checkpoint.to_directory()
-        bst = lightgbm.Booster(model_file=os.path.join(path, "model.xgb"))
+        bst = lightgbm.Booster(model_file=os.path.join(path, MODEL_KEY))
         shutil.rmtree(path)
         return LightGBMPredictor(
             model=bst, preprocessor=checkpoint.to_dict()[PREPROCESSOR_KEY]

@@ -8,7 +8,7 @@ import xgboost
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.predictor import Predictor, DataBatchType
 from ray.ml.preprocessor import Preprocessor
-from ray.ml.constants import PREPROCESSOR_KEY
+from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY
 
 
 class XGBoostPredictor(Predictor):
@@ -38,7 +38,7 @@ class XGBoostPredictor(Predictor):
         """
         path = checkpoint.to_directory()
         bst = xgboost.Booster()
-        bst.load_model(os.path.join(path, "model.xgb"))
+        bst.load_model(os.path.join(path, MODEL_KEY))
         shutil.rmtree(path)
         return XGBoostPredictor(
             model=bst, preprocessor=checkpoint.to_dict()[PREPROCESSOR_KEY]
