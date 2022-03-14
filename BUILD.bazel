@@ -650,7 +650,7 @@ cc_library(
 )
 
 cc_library(
-   name = "scheduler",
+    name = "scheduler",
     srcs = glob(
         [
             "src/ray/raylet/scheduling/**/*.cc",
@@ -693,7 +693,7 @@ cc_library(
         "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
         "@io_opencensus_cpp//opencensus/stats",
         "@io_opencensus_cpp//opencensus/tags",
-    ], 
+    ],
 )
 
 cc_library(
@@ -739,9 +739,9 @@ cc_library(
         ":ray_common",
         ":ray_util",
         ":runtime_env_rpc",
+        ":scheduler",
         ":stats_lib",
         ":worker_rpc",
-        ":scheduler",
         "//src/ray/protobuf:common_cc_proto",
         "@boost//:asio",
         "@boost//:filesystem",
