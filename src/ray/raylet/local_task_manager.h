@@ -178,7 +178,11 @@ class LocalTaskManager : public ILocalTaskManager {
     return backlog_tracker_;
   }
 
-  void DebugStr(std::stringstream & /*unused*/) const override {}
+  void RecordMetrics() const override;
+
+  void DebugStr(std::stringstream &buffer) const override;
+
+  size_t GetNumTaskSpilled() const override { return num_task_spilled_; }
 
  private:
   struct SchedulingClassInfo;

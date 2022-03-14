@@ -24,6 +24,9 @@
 namespace ray {
 namespace raylet {
 
+/// Manages the lifetime of a task on the local node. It receives request from
+/// cluster_task_manager and tries to execute the task locally.
+/// Read raylet/local_task_manager.h for more information.
 class ILocalTaskManager {
  public:
   virtual ~ILocalTaskManager() = 0;
@@ -34,6 +37,19 @@ class ILocalTaskManager {
   // Schedule and dispatch tasks.
   virtual void ScheduleAndDispatchTasks() = 0;
 
+  /// Attempt to cancel an already queued task.
+  ///
+  /// \param task_id: The id of the task to remove.
+  /// \param failure_type: The failure type.
+  ///
+  /// \return True if task was successfully removed. This function will return
+  /// false if the task is already running.
+  virtual bool CancelTask(
+      const TaskID &task_id,
+      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
+          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
+      const std::string &scheduling_failure_message = "") = 0;
+
   virtual const absl::flat_hash_map<SchedulingClass,
                                     std::deque<std::shared_ptr<internal::Work>>>
       &GetTaskToDispatch() const = 0;
@@ -42,17 +58,16 @@ class ILocalTaskManager {
                                     absl::flat_hash_map<WorkerID, int64_t>>
       &GetBackLogTracker() const = 0;
 
-  virtual bool AnyPendingTasksForResourceAcquisition(RayTask *example, bool *any_pending,
+  virtual bool AnyPendingTasksForResourceAcquisition(RayTask *example,
+                                                     bool *any_pending,
                                                      int *num_pending_actor_creation,
                                                      int *num_pending_tasks) const = 0;
 
-  virtual bool CancelTask(
-      const TaskID &task_id,
-      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
-          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
-      const std::string &scheduling_failure_message = "") = 0;
+  virtual void RecordMetrics() const = 0;
 
   virtual void DebugStr(std::stringstream &buffer) const = 0;
+
+  virtual size_t GetNumTaskSpilled() const = 0;
 };
 }  // namespace raylet
 }  // namespace ray

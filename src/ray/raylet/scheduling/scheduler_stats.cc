@@ -94,11 +94,11 @@ void SchedulerStats::ComputeStats() {
                       cluster_task_manager_.tasks_to_schedule_.end(),
                       (size_t)0,
                       per_work_accumulator);
-  // size_t num_tasks_to_dispatch =
-  //     std::accumulate(local_task_manager_.tasks_to_dispatch_.begin(),
-  //                     local_task_manager_.tasks_to_dispatch_.end(),
-  //                     (size_t)0,
-  //                     per_work_accumulator);
+  size_t num_tasks_to_dispatch =
+      std::accumulate(local_task_manager_.GetTaskToDispatch().begin(),
+                      local_task_manager_.GetTaskToDispatch().end(),
+                      (size_t)0,
+                      per_work_accumulator);
 
   /// Update the internal states.
   num_waiting_for_resource_ = num_waiting_for_resource;
@@ -114,15 +114,16 @@ void SchedulerStats::ComputeStats() {
   num_cancelled_tasks_ = num_cancelled_tasks;
   num_infeasible_tasks_ = num_infeasible_tasks;
   num_tasks_to_schedule_ = num_tasks_to_schedule;
-  // num_tasks_to_dispatch_ = num_tasks_to_dispatch;
+  num_tasks_to_dispatch_ = num_tasks_to_dispatch;
 }
 
 void SchedulerStats::RecordMetrics() const {
   /// This method intentionally doesn't call ComputeStats() because
   /// that function is expensive. ComputeStats is called by ComputeAndReportDebugStr
   /// method and they are always periodically called by node manager.
-  // stats::NumSpilledTasks.Record(metric_tasks_spilled_ +
-  //                               local_task_manager_.num_task_spilled_);
+  stats::NumSpilledTasks.Record(metric_tasks_spilled_ +
+                                local_task_manager_.GetNumTaskSpilled());
+  local_task_manager_.RecordMetrics();
   stats::NumInfeasibleSchedulingClasses.Record(
       cluster_task_manager_.infeasible_tasks_.size());
   /// Worker startup failure
@@ -135,10 +136,6 @@ void SchedulerStats::RecordMetrics() const {
 
   /// Queued tasks.
   ray::stats::STATS_scheduler_tasks.Record(num_cancelled_tasks_, "Cancelled");
-  // ray::stats::STATS_scheduler_tasks.Record(
-  //     local_task_manager_.executing_task_args_.size(), "Executing");
-  // ray::stats::STATS_scheduler_tasks.Record(
-  //     local_task_manager_.waiting_tasks_index_.size(), "Waiting");
   ray::stats::STATS_scheduler_tasks.Record(num_tasks_to_dispatch_, "Dispatched");
   ray::stats::STATS_scheduler_tasks.Record(num_tasks_to_schedule_, "Received");
 
@@ -183,59 +180,6 @@ std::string SchedulerStats::ComputeAndReportDebugStr() {
   buffer << "cluster_resource_scheduler state: "
          << cluster_task_manager_.cluster_resource_scheduler_->DebugString() << "\n";
   local_task_manager_.DebugStr(buffer);
-  // buffer << "Waiting tasks size: " << local_task_manager_.waiting_tasks_index_.size()
-  //        << "\n";
-  // buffer << "Number of executing tasks: "
-  //        << local_task_manager_.executing_task_args_.size() << "\n";
-  // buffer << "Number of pinned task arguments: "
-  //        << local_task_manager_.pinned_task_arguments_.size() << "\n";
-  buffer << "Resource usage {\n";
-
-  // // Calculates how much resources are occupied by tasks or actors.
-  // // Only iterate upto this number to avoid excessive CPU usage.
-  // auto max_iteration = RayConfig::instance().worker_max_resource_analysis_iteration();
-  // uint32_t iteration = 0;
-  // for (const auto &worker : local_task_manager_.worker_pool_.GetAllRegisteredWorkers(
-  //          /*filter_dead_workers*/ true)) {
-  //   if (max_iteration < iteration++) {
-  //     break;
-  //   }
-  //   if (worker->IsDead()        // worker is dead
-  //       || worker->IsBlocked()  // worker is blocked by blocking Ray API
-  //       || (worker->GetAssignedTaskId().IsNil() &&
-  //           worker->GetActorId().IsNil())) {  // Tasks or actors not assigned
-  //     // Then this shouldn't have allocated resources.
-  //     continue;
-  //   }
-
-  //   const auto &task_or_actor_name = worker->GetAssignedTask()
-  //                                        .GetTaskSpecification()
-  //                                        .FunctionDescriptor()
-  //                                        ->CallString();
-  //   buffer << "    - ("
-  //          << "language="
-  //          <<
-  //          rpc::Language_descriptor()->FindValueByNumber(worker->GetLanguage())->name()
-  //          << " "
-  //          << "actor_or_task=" << task_or_actor_name << " "
-  //          << "pid=" << worker->GetProcess().GetId() << "): "
-  //          << worker->GetAssignedTask()
-  //                 .GetTaskSpecification()
-  //                 .GetRequiredResources()
-  //                 .ToString()
-  //          << "\n";
-  // }
-  // buffer << "}\n";
-  // buffer << "Running tasks by scheduling class:\n";
-
-  // for (const auto &pair : local_task_manager_.info_by_sched_cls_) {
-  //   const auto &sched_cls = pair.first;
-  //   const auto &info = pair.second;
-  //   const auto &descriptor =
-  //   TaskSpecification::GetSchedulingClassDescriptor(sched_cls); buffer << "    - " <<
-  //   descriptor.DebugString() << ": " << info.running_tasks.size()
-  //          << "/" << info.capacity << "\n";
-  // }
 
   buffer << "==================================================\n";
   return buffer.str();

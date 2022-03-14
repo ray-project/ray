@@ -1050,5 +1050,61 @@ uint64_t LocalTaskManager::MaxRunningTasksPerSchedulingClass(
   return static_cast<uint64_t>(std::round(total_cpus / cpu_req));
 }
 
+void LocalTaskManager::RecordMetrics() const {
+  ray::stats::STATS_scheduler_tasks.Record(executing_task_args_.size(), "Executing");
+  ray::stats::STATS_scheduler_tasks.Record(waiting_tasks_index_.size(), "Waiting");
+}
+
+void LocalTaskManager::DebugStr(std::stringstream &buffer) const {
+  buffer << "Waiting tasks size: " << waiting_tasks_index_.size() << "\n";
+  buffer << "Number of executing tasks: " << executing_task_args_.size() << "\n";
+  buffer << "Number of pinned task arguments: " << pinned_task_arguments_.size() << "\n";
+  buffer << "Resource usage {\n";
+
+  // Calculates how much resources are occupied by tasks or actors.
+  // Only iterate upto this number to avoid excessive CPU usage.
+  auto max_iteration = RayConfig::instance().worker_max_resource_analysis_iteration();
+  uint32_t iteration = 0;
+  for (const auto &worker : worker_pool_.GetAllRegisteredWorkers(
+           /*filter_dead_workers*/ true)) {
+    if (max_iteration < iteration++) {
+      break;
+    }
+    if (worker->IsDead()        // worker is dead
+        || worker->IsBlocked()  // worker is blocked by blocking Ray API
+        || (worker->GetAssignedTaskId().IsNil() &&
+            worker->GetActorId().IsNil())) {  // Tasks or actors not assigned
+      // Then this shouldn't have allocated resources.
+      continue;
+    }
+
+    const auto &task_or_actor_name = worker->GetAssignedTask()
+                                         .GetTaskSpecification()
+                                         .FunctionDescriptor()
+                                         ->CallString();
+    buffer << "    - ("
+           << "language="
+           << rpc::Language_descriptor()->FindValueByNumber(worker->GetLanguage())->name()
+           << " "
+           << "actor_or_task=" << task_or_actor_name << " "
+           << "pid=" << worker->GetProcess().GetId() << "): "
+           << worker->GetAssignedTask()
+                  .GetTaskSpecification()
+                  .GetRequiredResources()
+                  .ToString()
+           << "\n";
+  }
+  buffer << "}\n";
+  buffer << "Running tasks by scheduling class:\n";
+
+  for (const auto &pair : info_by_sched_cls_) {
+    const auto &sched_cls = pair.first;
+    const auto &info = pair.second;
+    const auto &descriptor = TaskSpecification::GetSchedulingClassDescriptor(sched_cls);
+    buffer << "    - " << descriptor.DebugString() << ": " << info.running_tasks.size()
+           << "/" << info.capacity << "\n";
+  }
+}
+
 }  // namespace raylet
 }  // namespace ray
