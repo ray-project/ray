@@ -35,7 +35,7 @@ from ray._raylet import (
     MessagePackSerializer,
     MessagePackSerializedObject,
     RawSerializedObject,
-    ArrowSerializedObject
+    ArrowSerializedObject,
 )
 from ray import serialization_addons
 
@@ -239,9 +239,9 @@ class SerializationContext:
                 if data is None:
                     return b""
                 return data.to_pybytes()
-            elif metadata_fields[
-                    0] == ray_constants.OBJECT_METADATA_TYPE_ARROW:
+            elif metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_ARROW:
                 import pyarrow as pa
+
                 reader = pa.BufferReader(data)
                 return pa.ipc.open_stream(reader).read_all()
             elif metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE:
@@ -419,8 +419,8 @@ class SerializationContext:
             # check if arrow is installed and if so use Arrow IPC format
             # to serialize it so that this object can also be read by Java.
             import pyarrow as pa
-            if isinstance(value, pa.Table) or isinstance(
-                    value, pa.RecordBatch):
+
+            if isinstance(value, pa.Table) or isinstance(value, pa.RecordBatch):
                 return ArrowSerializedObject(value)
         except Exception:
             pass
