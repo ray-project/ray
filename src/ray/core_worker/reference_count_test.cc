@@ -66,11 +66,12 @@ class ReferenceCountLineageEnabledTest : public ::testing::Test {
     rpc::Address addr;
     publisher_ = std::make_shared<mock_pubsub::MockPublisher>();
     subscriber_ = std::make_shared<mock_pubsub::MockSubscriber>();
-    rc = std::make_unique<ReferenceCounter>(addr,
-                                            publisher_.get(),
-                                            subscriber_.get(),
-                                            [](const NodeID &node_id) { return true; },
-                                            /*lineage_pinning_enabled=*/true);
+    rc = std::make_unique<ReferenceCounter>(
+        addr,
+        publisher_.get(),
+        subscriber_.get(),
+        [](const NodeID &node_id) { return true; },
+        /*lineage_pinning_enabled=*/true);
   }
 
   virtual void TearDown() {
@@ -295,7 +296,8 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
             &subscription_failure_callback_map,
             WorkerID::FromBinary(address_.worker_id()),
             client_factory)),
-        rc_(rpc::WorkerAddress(address_),
+        rc_(
+            rpc::WorkerAddress(address_),
             publisher_.get(),
             subscriber_.get(),
             [](const NodeID &node_id) { return true; },
