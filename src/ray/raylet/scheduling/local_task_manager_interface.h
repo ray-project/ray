@@ -29,7 +29,7 @@ namespace raylet {
 /// Read raylet/local_task_manager.h for more information.
 class ILocalTaskManager {
  public:
-  virtual ~ILocalTaskManager() = 0;
+  virtual ~ILocalTaskManager() = default;
 
   /// Queue task and schedule.
   virtual void QueueAndScheduleTask(std::shared_ptr<internal::Work> work) = 0;
