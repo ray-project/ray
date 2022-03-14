@@ -13,7 +13,7 @@ ScalingConfig = Dict[str, Any]
 
 
 @dataclass
-class _ScalingConfigDataClass:
+class ScalingConfig:
     """Configuration for scaling training.
 
     num_workers (int): The number of workers (Ray actors) to launch.
