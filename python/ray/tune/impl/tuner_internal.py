@@ -3,22 +3,16 @@ import os
 from typing import Any, Callable, Dict, Optional, Type, Union
 
 import ray.cloudpickle as pickle
-from ray.data import Dataset
-
 from ray.ml.config import RunConfig
 from ray.ml.trainer import Trainer
 from ray.tune import Experiment, TuneError
+from ray.tune.impl.utils import execute_dataset
 from ray.tune.result_grid import ResultGrid
-from ray.tune.sample import Categorical
 from ray.tune.trainable import Trainable
 from ray.tune.tune import run
 from ray.tune.tune_config import TuneConfig
 
 
-# The key that denotes the dataset config in param space.
-_TRAIN_DATASET = "train_dataset"
-_EXTRA_DATASETS = "extra_datasets"
-_DATASET_KEYS = (_TRAIN_DATASET, _EXTRA_DATASETS)
 _TRAINABLE_PKL = "trainable.pkl"
 _TUNER_PKL = "tuner.pkl"
 _TRAINABLE_KEY = "_trainable"
@@ -110,44 +104,7 @@ class TunerInternal:
             "train_dataset": tune.grid_search([ds1, ds2]),
         },
         """
-
-        def _helper_dict(dataset_dict: dict):
-            for k, v in dataset_dict.items():
-                if isinstance(v, dict):
-                    _helper_dict(v)
-                elif isinstance(v, Dataset):
-                    dataset_dict[k] = v.fully_executed()
-                # TODO(xwjiang): Consider CV config for beta.
-                # elif isinstance(v, int):
-                #     # CV settings
-                #     pass
-                elif isinstance(v, list):
-                    if not all([isinstance(v_item, int) for v_item in v]) and not all(
-                        [isinstance(v_item, Dataset) for v_item in v]
-                    ):
-                        raise TuneError(
-                            "Wrongly formatted dataset param passed in Tune!"
-                        )
-                    if len(v) > 0 and isinstance(v[0], Dataset):
-                        dataset_dict[k] = [v_item.fully_executed() for v_item in v]
-                else:
-                    raise TuneError("Unexpected dataset param passed in.")
-
-        for key in _DATASET_KEYS:
-            if key in self._param_space:
-                ds = self._param_space[key]
-                if isinstance(ds, Dataset):
-                    self._param_space[key] = ds.fully_executed()
-                elif isinstance(ds, dict):
-                    # grid search is turned into {"grid_search": []}
-                    _helper_dict(ds)
-                elif isinstance(ds, Categorical):
-                    # tune.choice is turned into Categorical object.
-                    for c in ds.categories:
-                        assert isinstance(c, Dataset)
-                        c.fully_executed()
-                else:
-                    raise TuneError("Unexpected dataset param passed in.")
+        execute_dataset(self._param_space)
 
     def _get_or_create_experiment_checkpoint_dir(self, run_config: Optional[RunConfig]):
         """Get experiment checkpoint dir before actually running the experiment."""
