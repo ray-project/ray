@@ -173,11 +173,11 @@ NIGHTLY_TESTS = {
     # "~/ray/release/horovod_tests/horovod_tests.yaml": [
     #     SmokeTest("horovod_test"),
     # ],  # Should we enable this?
-    "~/ray/release/golden_notebook_tests/golden_notebook_tests.yaml": [
-        "dask_xgboost_test",
-        "modin_xgboost_test",
-        "torch_tune_serve_test",
-    ],
+    # "~/ray/release/golden_notebook_tests/golden_notebook_tests.yaml": [
+    #     "dask_xgboost_test",
+    #     "modin_xgboost_test",
+    #     "torch_tune_serve_test",
+    # ],
     # "~/ray/release/long_running_tests/long_running_tests.yaml": [
     #     SmokeTest("actor_deaths"),
     #     SmokeTest("apex"),
@@ -279,17 +279,17 @@ WEEKLY_TESTS = {
 #   3. Use GPUs if applicable
 #   4. Have the `use_connect` flag set.
 USER_TESTS = {
-    "~/ray/release/ml_user_tests/ml_user_tests.yaml": [
-        "train_tensorflow_mnist_test",
-        "train_torch_linear_test",
-        "ray_lightning_user_test_latest",
-        "ray_lightning_user_test_master",
-        "horovod_user_test_latest",
-        "horovod_user_test_master",
-        "xgboost_gpu_connect_latest",
-        "xgboost_gpu_connect_master",
-        "tune_rllib_connect_test",
-    ]
+    # "~/ray/release/ml_user_tests/ml_user_tests.yaml": [
+    #     "train_tensorflow_mnist_test",
+    #     "train_torch_linear_test",
+    #     "ray_lightning_user_test_latest",
+    #     "ray_lightning_user_test_master",
+    #     "horovod_user_test_latest",
+    #     "horovod_user_test_master",
+    #     "xgboost_gpu_connect_latest",
+    #     "xgboost_gpu_connect_master",
+    #     "tune_rllib_connect_test",
+    # ]
 }
 
 SUITES = {
