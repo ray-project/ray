@@ -9,6 +9,15 @@ from ray._private.test_utils import (
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 
 
+def are_pairwise_unique(g):
+    s = set()
+    for x in g:
+        if x in s:
+            return False
+        s.add(x)
+    return True
+
+
 @pytest.mark.parametrize("connect_to_client", [True, False])
 def test_placement_ready(ray_start_regular, connect_to_client):
     @ray.remote
@@ -221,7 +230,7 @@ def test_placement_group_strict_pack(ray_start_cluster, connect_to_client):
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
 def test_placement_group_spread(ray_start_cluster, connect_to_client):
-    @ray.remote(num_cpus=2)
+    @ray.remote
     class Actor(object):
         def __init__(self):
             self.n = 0
@@ -237,38 +246,37 @@ def test_placement_group_spread(ray_start_cluster, connect_to_client):
 
     with connect_to_client_or_not(connect_to_client):
         placement_group = ray.util.placement_group(
-            name="name", strategy="SPREAD", bundles=[{"CPU": 2}, {"CPU": 2}]
+            name="name",
+            strategy="STRICT_SPREAD",
+            bundles=[{"CPU": 2}, {"CPU": 2}],
         )
         ray.get(placement_group.ready())
-        actor_1 = Actor.options(
-            placement_group=placement_group, placement_group_bundle_index=0
-        ).remote()
-        actor_2 = Actor.options(
-            placement_group=placement_group, placement_group_bundle_index=1
-        ).remote()
+        actors = [
+            Actor.options(
+                placement_group=placement_group,
+                placement_group_bundle_index=i,
+                num_cpus=2,
+            ).remote()
+            for i in range(num_nodes)
+        ]
 
-        ray.get(actor_1.value.remote())
-        ray.get(actor_2.value.remote())
+        [ray.get(actor.value.remote()) for actor in actors]
 
         # Get all actors.
         actor_infos = ray.state.actors()
 
         # Make sure all actors in counter_list are located in separate nodes.
-        actor_info_1 = actor_infos.get(actor_1._actor_id.hex())
-        actor_info_2 = actor_infos.get(actor_2._actor_id.hex())
-
-        assert actor_info_1 and actor_info_2
-
-        node_of_actor_1 = actor_info_1["Address"]["NodeID"]
-        node_of_actor_2 = actor_info_2["Address"]["NodeID"]
-        assert node_of_actor_1 != node_of_actor_2
+        actor_info_objs = [actor_infos.get(actor._actor_id.hex()) for actor in actors]
+        assert are_pairwise_unique(
+            [info_obj["Address"]["NodeID"] for info_obj in actor_info_objs]
+        )
 
         placement_group_assert_no_leak([placement_group])
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
 def test_placement_group_strict_spread(ray_start_cluster, connect_to_client):
-    @ray.remote(num_cpus=2)
+    @ray.remote
     class Actor(object):
         def __init__(self):
             self.n = 0
@@ -289,36 +297,25 @@ def test_placement_group_strict_spread(ray_start_cluster, connect_to_client):
             bundles=[{"CPU": 2}, {"CPU": 2}, {"CPU": 2}],
         )
         ray.get(placement_group.ready())
-        actor_1 = Actor.options(
-            placement_group=placement_group, placement_group_bundle_index=0
-        ).remote()
-        actor_2 = Actor.options(
-            placement_group=placement_group, placement_group_bundle_index=1
-        ).remote()
-        actor_3 = Actor.options(
-            placement_group=placement_group, placement_group_bundle_index=2
-        ).remote()
+        actors = [
+            Actor.options(
+                placement_group=placement_group,
+                placement_group_bundle_index=i,
+                num_cpus=2,
+            ).remote()
+            for i in range(num_nodes)
+        ]
 
-        ray.get(actor_1.value.remote())
-        ray.get(actor_2.value.remote())
-        ray.get(actor_3.value.remote())
+        [ray.get(actor.value.remote()) for actor in actors]
 
         # Get all actors.
         actor_infos = ray.state.actors()
 
         # Make sure all actors in counter_list are located in separate nodes.
-        actor_info_1 = actor_infos.get(actor_1._actor_id.hex())
-        actor_info_2 = actor_infos.get(actor_2._actor_id.hex())
-        actor_info_3 = actor_infos.get(actor_3._actor_id.hex())
-
-        assert actor_info_1 and actor_info_2 and actor_info_3
-
-        node_of_actor_1 = actor_info_1["Address"]["NodeID"]
-        node_of_actor_2 = actor_info_2["Address"]["NodeID"]
-        node_of_actor_3 = actor_info_3["Address"]["NodeID"]
-        assert node_of_actor_1 != node_of_actor_2
-        assert node_of_actor_1 != node_of_actor_3
-        assert node_of_actor_2 != node_of_actor_3
+        actor_info_objs = [actor_infos.get(actor._actor_id.hex()) for actor in actors]
+        assert are_pairwise_unique(
+            [info_obj["Address"]["NodeID"] for info_obj in actor_info_objs]
+        )
 
         placement_group_assert_no_leak([placement_group])
 

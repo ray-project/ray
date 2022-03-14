@@ -88,7 +88,6 @@ if __name__ == "__main__":
     do_link("tests", force=args.yes)
     do_link("experimental", force=args.yes)
     do_link("util", force=args.yes)
-    do_link("serve", force=args.yes)
     do_link("workflow", force=args.yes)
     do_link("_private", force=args.yes)
     do_link("node.py", force=args.yes)

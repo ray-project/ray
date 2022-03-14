@@ -41,8 +41,8 @@ void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
   NodeID node_id = NodeID::FromBinary(request.node_info().node_id());
   RAY_LOG(INFO) << "Registering node info, node id = " << node_id
                 << ", address = " << request.node_info().node_manager_address();
-  auto on_done = [this, node_id, request, reply,
-                  send_reply_callback](const Status &status) {
+  auto on_done = [this, node_id, request, reply, send_reply_callback](
+                     const Status &status) {
     RAY_CHECK_OK(status);
     RAY_LOG(INFO) << "Finished registering node info, node id = " << node_id
                   << ", address = " << request.node_info().node_manager_address();
@@ -92,34 +92,39 @@ void GcsNodeManager::DrainNode(const NodeID &node_id) {
   remote_address.set_raylet_id(node->node_id());
   remote_address.set_ip_address(node->node_manager_address());
   remote_address.set_port(node->node_manager_port());
-  auto on_put_done = [this, remote_address = remote_address, node_id,
+  auto on_put_done = [this,
+                      remote_address = remote_address,
+                      node_id,
                       node_info_delta = node_info_delta](const Status &status) {
-    auto on_resource_update_done =
-        [this, remote_address = std::move(remote_address), node_id,
-         node_info_delta = node_info_delta](const Status &status) {
-          auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
-          RAY_CHECK(raylet_client);
-          // NOTE(sang): Drain API is not supposed to kill the raylet, but we are doing
-          // this until the proper "drain" behavior is implemented. Currently, before
-          // raylet is killed, it sends a drain request to GCS. That said, this can
-          // happen;
-          // - GCS updates the drain state and kills a raylet gracefully.
-          // - Raylet kills itself and send a drain request of itself to GCS.
-          // - Drain request will become a no-op in GCS.
-          // This behavior is redundant, but harmless. We'll keep this behavior until we
-          // implement the right drain behavior for the simplicity. Check
-          // https://github.com/ray-project/ray/pull/19350 for more details.
-          raylet_client->ShutdownRaylet(
-              node_id, /*graceful*/ true,
-              [this, node_id, node_info_delta = node_info_delta](
-                  const Status &status, const rpc::ShutdownRayletReply &reply) {
-                RAY_LOG(INFO) << "Raylet " << node_id << " is drained. Status " << status
-                              << ". The information will be published to the cluster.";
-                /// Once the raylet is shutdown, inform all nodes that the raylet is dead.
-                RAY_CHECK_OK(
-                    gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
-              });
-        };
+    auto on_resource_update_done = [this,
+                                    remote_address = std::move(remote_address),
+                                    node_id,
+                                    node_info_delta =
+                                        node_info_delta](const Status &status) {
+      auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
+      RAY_CHECK(raylet_client);
+      // NOTE(sang): Drain API is not supposed to kill the raylet, but we are doing
+      // this until the proper "drain" behavior is implemented. Currently, before
+      // raylet is killed, it sends a drain request to GCS. That said, this can
+      // happen;
+      // - GCS updates the drain state and kills a raylet gracefully.
+      // - Raylet kills itself and send a drain request of itself to GCS.
+      // - Drain request will become a no-op in GCS.
+      // This behavior is redundant, but harmless. We'll keep this behavior until we
+      // implement the right drain behavior for the simplicity. Check
+      // https://github.com/ray-project/ray/pull/19350 for more details.
+      raylet_client->ShutdownRaylet(
+          node_id,
+          /*graceful*/ true,
+          [this, node_id, node_info_delta = node_info_delta](
+              const Status &status, const rpc::ShutdownRayletReply &reply) {
+            RAY_LOG(INFO) << "Raylet " << node_id << " is drained. Status " << status
+                          << ". The information will be published to the cluster.";
+            /// Once the raylet is shutdown, inform all nodes that the raylet is dead.
+            RAY_CHECK_OK(
+                gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
+          });
+    };
     RAY_CHECK_OK(
         gcs_table_storage_->NodeResourceTable().Delete(node_id, on_resource_update_done));
   };

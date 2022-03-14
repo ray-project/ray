@@ -209,8 +209,9 @@ bool ClusterResourceManager::SubtractNodeAvailableResources(
 
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     resources->predefined_resources[i].available =
-        std::max(FixedPoint(0), resources->predefined_resources[i].available -
-                                    resource_request.predefined_resources[i]);
+        std::max(FixedPoint(0),
+                 resources->predefined_resources[i].available -
+                     resource_request.predefined_resources[i]);
   }
 
   for (const auto &task_req_custom_resource : resource_request.custom_resources) {
@@ -229,7 +230,8 @@ bool ClusterResourceManager::SubtractNodeAvailableResources(
 }
 
 bool ClusterResourceManager::HasSufficientResource(
-    scheduling::NodeID node_id, const ResourceRequest &resource_request,
+    scheduling::NodeID node_id,
+    const ResourceRequest &resource_request,
     bool ignore_object_store_memory_requirement) const {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {

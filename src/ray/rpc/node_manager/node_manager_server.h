@@ -115,7 +115,8 @@ class NodeManagerServiceHandler {
                                   GetNodeStatsReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGlobalGC(const GlobalGCRequest &request, GlobalGCReply *reply,
+  virtual void HandleGlobalGC(const GlobalGCRequest &request,
+                              GlobalGCReply *reply,
                               SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleFormatGlobalMemoryInfo(const FormatGlobalMemoryInfoRequest &request,

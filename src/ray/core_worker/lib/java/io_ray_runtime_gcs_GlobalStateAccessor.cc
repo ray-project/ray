@@ -38,8 +38,8 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeCreateGlobalStateAccessor(
     std::vector<std::string> results;
     boost::split(results, bootstrap_address, boost::is_any_of(":"));
     RAY_CHECK(results.size() == 2);
-    ray::gcs::GcsClientOptions client_options(results[0], std::stoi(results[1]),
-                                              redis_password);
+    ray::gcs::GcsClientOptions client_options(
+        results[0], std::stoi(results[1]), redis_password);
     gcs_accessor = new gcs::GlobalStateAccessor(client_options);
   }
   return reinterpret_cast<jlong>(gcs_accessor);
@@ -69,7 +69,8 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetA
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetNextJobID(JNIEnv *env, jobject o,
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetNextJobID(JNIEnv *env,
+                                                               jobject o,
                                                                jlong gcs_accessor_ptr) {
   auto *gcs_accessor = reinterpret_cast<gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
   const auto &job_id = gcs_accessor->GetNextJobID();
@@ -77,7 +78,8 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetNextJobID(JNIEnv *env, jobj
 }
 
 JNIEXPORT jobject JNICALL
-Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllNodeInfo(JNIEnv *env, jobject o,
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllNodeInfo(JNIEnv *env,
+                                                                 jobject o,
                                                                  jlong gcs_accessor_ptr) {
   auto *gcs_accessor = reinterpret_cast<gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
   auto node_info_list = gcs_accessor->GetAllNodeInfo();
@@ -108,7 +110,8 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllActorInfo(
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetActorInfo(JNIEnv *env, jobject o,
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetActorInfo(JNIEnv *env,
+                                                               jobject o,
                                                                jlong gcs_accessor_ptr,
                                                                jbyteArray actorId) {
   const auto actor_id = JavaByteArrayToId<ActorID>(env, actorId);
@@ -158,9 +161,8 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllPlacementGroupInfo(
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetInternalKV(JNIEnv *env, jobject o,
-                                                                jlong gcs_accessor_ptr,
-                                                                jstring n, jstring k) {
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetInternalKV(
+    JNIEnv *env, jobject o, jlong gcs_accessor_ptr, jstring n, jstring k) {
   std::string key = JavaStringToNativeString(env, k);
   std::string ns = JavaStringToNativeString(env, n);
   auto *gcs_accessor = reinterpret_cast<gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
