@@ -1650,7 +1650,6 @@ def run(
     *,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
-    logger: Optional[logging.Logger] = None,
 ) -> RayServeHandle:
     """Run a Serve application and return a ServeHandle to the ingress.
 
