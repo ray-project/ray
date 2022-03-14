@@ -1,4 +1,3 @@
-import abc
 from contextlib import redirect_stdout, redirect_stderr
 import copy
 from datetime import datetime
@@ -9,7 +8,7 @@ import shutil
 import sys
 import tempfile
 import time
-from typing import Any, Dict, Optional, Union, Callable, Type
+from typing import Any, Dict, Optional, Union, Callable
 import uuid
 
 import ray
@@ -1028,12 +1027,3 @@ class DistributedTrainable(Trainable):
         new_config[STDOUT_FILE] = self._stdout_file
         new_config[STDERR_FILE] = self._stderr_file
         return new_config
-
-
-class ConvertibleToTrainable(abc.ABC):
-    """A class that can be converted to a ``tune.Trainable``."""
-
-    @abc.abstractmethod
-    def as_trainable(self) -> Type[Trainable]:
-        """Convert self to a ``tune.Trainable`` class."""
-        raise NotImplementedError
