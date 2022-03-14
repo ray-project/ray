@@ -1268,3 +1268,14 @@ def check_spilled_mb(address, spilled=None, restored=None, fallback=None):
         return True
 
     wait_for_condition(ok, timeout=3, retry_interval_ms=1000)
+
+
+def no_resource_leaks_excluding_node_resources():
+    cluster_resources = ray.cluster_resources()
+    available_resources = ray.available_resources()
+    for r in ray.cluster_resources():
+        if "node" in r:
+            del cluster_resources[r]
+            del available_resources[r]
+
+    return ray.available_resources() == ray.cluster_resources()

@@ -27,9 +27,6 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
-namespace syncer {
-class RaySyncer;
-}
 namespace gcs {
 /// Gcs resource manager interface.
 /// It is responsible for handing node resource related rpc requests and it is used for
@@ -44,9 +41,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// \param gcs_table_storage GCS table external storage accessor.
   explicit GcsResourceManager(instrumented_io_context &main_io_service,
                               std::shared_ptr<GcsPublisher> gcs_publisher,
-                              std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                              // TODO(iycheng): Remove sync from GcsResourceManager
-                              syncer::RaySyncer *ray_syncer = nullptr);
+                              std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
 
   virtual ~GcsResourceManager() {}
 
@@ -166,7 +161,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
                        const std::vector<std::string> &resource_names);
 
   void UpdateResourceCapacity(NodeResources *node_resources,
-                              const std::string &resource_name, double capacity);
+                              const std::string &resource_name,
+                              double capacity);
 
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;
@@ -199,11 +195,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
     CountType_MAX = 6,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
-
-  // For the updates from placement group, it needs to report to the syncer
-  // so it can be broadcasted to other nodes.
-  // TODO (iycheng): remove this one once we change how pg is reported.
-  syncer::RaySyncer *ray_syncer_;
 };
 
 }  // namespace gcs
