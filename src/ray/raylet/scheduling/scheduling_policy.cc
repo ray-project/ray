@@ -24,11 +24,11 @@ namespace raylet_scheduling_policy {
 namespace {
 
 bool IsGPURequest(const ResourceRequest &resource_request) {
-  return resource_request.HasGPU();
+  return resource_request.Has(ResourceID::GPU());
 }
 
 bool DoesNodeHaveGPUs(const NodeResources &resources) {
-  return resources.total.HasGPU();
+  return resources.total.Has(ResourceID::GPU());
 }
 }  // namespace
 

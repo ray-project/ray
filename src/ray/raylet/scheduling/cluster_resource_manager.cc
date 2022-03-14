@@ -181,7 +181,7 @@ bool ClusterResourceManager::HasSufficientResource(
   const NodeResources &resources = it->second.GetLocalView();
 
   if (!ignore_object_store_memory_requirement && resources.object_pulls_queued &&
-      resource_request.requires_object_store_memory) {
+      resource_request.RequiresObjectStoreMemory()) {
     return false;
   }
 

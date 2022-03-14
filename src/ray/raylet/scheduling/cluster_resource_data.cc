@@ -73,12 +73,7 @@ std::vector<double> VectorFixedPointToVectorDouble(
 ResourceRequest ResourceMapToResourceRequest(
     const absl::flat_hash_map<std::string, double> &resource_map,
     bool requires_object_store_memory) {
-  ResourceRequest resource_request;
-  resource_request.requires_object_store_memory = requires_object_store_memory;
-  for (auto const &resource : resource_map) {
-      resource_request.Set(ResourceID(resource.first), resource.second);
-  }
-  return resource_request;
+  return ResourceMapToResourceRequest(resource_map, requires_object_store_memory);
 }
 
 ResourceRequest TaskResourceInstances::ToResourceRequest() const {
@@ -130,7 +125,7 @@ float NodeResources::CalculateCriticalResourceUtilization() const {
 
 bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
                                 bool ignore_pull_manager_at_capacity) const {
-  if (!ignore_pull_manager_at_capacity && resource_request.requires_object_store_memory &&
+  if (!ignore_pull_manager_at_capacity && resource_request.RequiresObjectStoreMemory() &&
       object_pulls_queued) {
     RAY_LOG(DEBUG) << "At pull manager capacity";
     return false;
@@ -255,10 +250,6 @@ TaskResourceInstances NodeResourceInstances::GetAvailableResourceInstances() {
 
 bool NodeResourceInstances::Contains(scheduling::ResourceID id) const {
   return total.Has(id);
-}
-
-std::string ResourceRequest::DebugString() const {
-  return this->predefined_resources.DebugString() + ", " + this->custom_resources.DebugString();
 }
 
 bool TaskResourceInstances::IsEmpty() const {

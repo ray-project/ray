@@ -155,6 +155,8 @@ class ResourceID : public BaseSchedulingID<SchedulingIDTag::Resource> {
   bool IsUnitInstanceResource() const { return UnitInstanceResources().count(id_) > 0; }
 
   static ResourceID CPU() { return ResourceID(PredefinedResourcesEnum::CPU); }
+  static ResourceID Memory() { return ResourceID(PredefinedResourcesEnum::MEM); }
+  static ResourceID GPU() { return ResourceID(PredefinedResourcesEnum::GPU); }
   static ResourceID ObjectStoreMemory() { return ResourceID(PredefinedResourcesEnum::OBJECT_STORE_MEM); }
 
  private:

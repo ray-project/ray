@@ -43,69 +43,37 @@ std::vector<double> VectorFixedPointToVectorDouble(
 
 // Data structure specifying the capacity of each resource requested by a task.
 class ResourceRequest {
- private:
-
-  FixedPoint *GetPointer(ResourceID id, bool insert_if_missing = false) const {
-    if (IsPredefinedResource(resource_id)) {
-      return &predefined_resources_[id.ToInt()];
-    } else {
-      if (insert_if_missing) {
-        return &custom_resources_[id];
-      } else {
-        auto it = custom_resources_.find(id);
-        if (it == custom_.end()) {
-          return nullptr;
-        } else {
-          return &it->second;
-        }
-      }
-    }
-  }
-
-  FixedPoint *GetPointerOrCrash(ResourceID id) const {
-    auto ptr = GetPointer(id);
-    RAY_CHECK(ptr) << "Resource not found: " << resource_id;
-    return ptr;
-  }
-
-  ebsl::flat_hash_set<ResourceID> ResourceIdsInternal(bool only_positive) const {
-    absl::flat_hash_set<ResourceID> res;
-    for (size_t i = 0; i < predefined_resources_.size(); i++) {
-      auto value = predefined_resources_[i];
-      if (!only_positive || value > 0) {
-        res.insert(ResourceID(i));
-      }
-    e
-    for (auto &entry : custom_resources_) {
-      auto value = entry.second;
-      if (!only_positive || value > 0) {
-        res.insert(ResourceID(entry.first));
-      }
-    }
-    return res;
-  }
-
-  /// List of predefined resources required by the task.
-  std::vector<FixedPoint> predefined_resources_;
-  /// List of custom resources required by the task.
-  absl::flat_hash_map<int64_t, FixedPoint> custom_resources_;
-  /// Whether this task requires object store memory.
-  /// TODO(swang): This should be a quantity instead of a flag.
-  bool requires_object_store_memory = false;
-
  public:
-  ResourceRequest(absl::flat_hash_map<ResourceID, FixedPoint> resource_map)
+  ResourceRequest(): ResourceRequest({}, false) {}
+
+  ResourceRequest(absl::flat_hash_map<std::string, FixedPoint> resource_map)
       : ResourceRequest(resource_map, false){};
 
-  ResourceRequest(absl::flat_hash_map<ResourceID, FixedPoint> resource_map, bool requires_object_store_memory);
+  ResourceRequest(absl::flat_hash_map<std::string, FixedPoint> resource_map,
+                  bool requires_object_store_memory)
+      : requires_object_store_memory_(requires_object_store_memory) {
+    for (int i = 0; i < PredefinedResourcesEnum_MAX; i++) {
+      predefined_resources_.push_back(0);
+    }
+    for (auto entry : resource_map) {
+      Set(ResourceID(entry.first), entry.second);
+    }
+  }
+
+  bool RequiresObjectStoreMemory() const {
+    return requires_object_store_memory_;
+  }
 
   FixedPoint Get(ResourceID resource_id) const {
-    auto ptr = GetPointerOrCrash(resource_id);
+    auto ptr = GetPointer(resource_id);
+    // FixedPoint *ptr;
+    RAY_CHECK(ptr) << "Resource not found: " << resource_id;
     return *ptr;
   }
 
   FixedPoint GetOrZero(ResourceID resource_id) const {
     auto ptr = GetPointer(resource_id);
+    // FixedPoint *ptr;
     if (ptr == nullptr) {
       return FixedPoint(0);
     } else {
@@ -113,21 +81,23 @@ class ResourceRequest {
     }
   }
 
-  ResourceRequest &Set(ResourceID resource_id, const FixedPoint & value) {
-    auto ptr = GetPointer(resource_id, true);
-    *ptr = value;
+  ResourceRequest &Set(ResourceID resource_id, const FixedPoint &value) {
+    auto ptr = GetPointer(resource_id);
+    if (ptr == nullptr) {
+      custom_resources_[resource_id.ToInt()] = value;
+    } else {
+      *ptr = value;
+    }
     return *this;
   }
 
-  const bool Has(ResourceID resource_id) const {
-    return GetOrZero(resource_id) > 0;
-  }
+  const bool Has(ResourceID resource_id) const { return GetOrZero(resource_id) > 0; }
 
   void Clear() {
     for (size_t i = 0; i < predefined_resources_.size(); i++) {
       predefined_resources_[i] = 0;
     }
-    custom_resources_.erase();
+    custom_resources_.clear();
   }
 
   void Normalize() {
@@ -144,13 +114,24 @@ class ResourceRequest {
   }
 
   absl::flat_hash_set<ResourceID> ResourceIds() const {
-    return ResourceIdsInternal(false);
+    absl::flat_hash_set<ResourceID> res;
+    for (size_t i = 0; i < predefined_resources_.size(); i++) {
+      if (predefined_resources_[i] > 0) {
+        res.insert(ResourceID(i));
+      }
+    }
+    for (auto &entry : custom_resources_) {
+      if (entry.second > 0) {
+        res.insert(ResourceID(entry.first));
+      }
+    }
+    return res;
   }
 
   absl::flat_hash_map<ResourceID, FixedPoint> ToMap() const {
     absl::flat_hash_map<ResourceID, FixedPoint> res;
     for (auto resource_id : ResourceIds()) {
-        res.emplace(resource_id, Get(resource_id));
+      res.emplace(resource_id, Get(resource_id));
     }
     return res;
   }
@@ -158,7 +139,7 @@ class ResourceRequest {
   ResourceRequest &operator=(const ResourceRequest &other) {
     this->predefined_resources_ = other.predefined_resources_;
     this->custom_resources_ = other.custom_resources_;
-    this->requires_object_store_memory = other.requires_object_store_memory_;
+    this->requires_object_store_memory_ = other.requires_object_store_memory_;
     return *this;
   }
 
@@ -172,7 +153,7 @@ class ResourceRequest {
     ResourceRequest res = *this;
     res -= other;
     return res;
- }
+  }
 
   ResourceRequest &operator+=(const ResourceRequest &other) {
     for (auto resource_id : ResourceIds()) {
@@ -200,7 +181,7 @@ class ResourceRequest {
 
   bool operator==(const ResourceRequest &other) const {
     return EqualVectors(predefined_resources_, other.predefined_resources_) &&
-           this->custom_resources == other.custom_resources;
+           this->custom_resources_ == other.custom_resources_;
   }
 
   bool operator<=(const ResourceRequest &other) const {
@@ -215,18 +196,12 @@ class ResourceRequest {
     return true;
   }
 
-  bool operator>=(const ResourceRequest &other) const {
-    return other <= *this;
-  }
+  bool operator>=(const ResourceRequest &other) const { return other <= *this; }
 
-  size_t Size() const {
-    return ResourceIds().size();
-  }
+  size_t Size() const { return ResourceIds().size(); }
 
   /// Check whether the request contains no resources.
-  bool IsEmpty() const {
-    return Size() == 0;
-  }
+  bool IsEmpty() const { return Size() == 0; }
 
   /// Returns human-readable string for this task request.
   std::string DebugString() const {
@@ -242,6 +217,32 @@ class ResourceRequest {
     buffer << "}";
     return buffer.str();
   }
+
+ private:
+  FixedPoint *GetPointer(ResourceID id) {
+    if (IsPredefinedResource(id)) {
+      return &predefined_resources_[id.ToInt()];
+    } else {
+      auto it = custom_resources_.find(id.ToInt());
+      if (it == custom_resources_.end()) {
+        return nullptr;
+      } else {
+        return &it->second;
+      }
+    }
+  }
+
+  const FixedPoint *GetPointer(ResourceID id) const {
+    return const_cast<ResourceRequest *>(this)->GetPointer(id);
+  }
+
+  /// List of predefined resources required by the task.
+  std::vector<FixedPoint> predefined_resources_;
+  /// List of custom resources required by the task.
+  absl::flat_hash_map<int64_t, FixedPoint> custom_resources_;
+  /// Whether this task requires object store memory.
+  /// TODO(swang): This should be a quantity instead of a flag.
+  bool requires_object_store_memory_ = false;
 };
 
 
