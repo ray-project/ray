@@ -1,6 +1,7 @@
 import ray
 import ray.cluster_utils
 from ray.exceptions import CrossLanguageError
+from ray.exceptions import RayActorError
 import pytest
 
 
@@ -68,6 +69,13 @@ def test_cross_language_cpp_actor():
     actor = ray.cross_language.cpp_actor_class("CreateCounter", "Counter").remote()
     obj = actor.Plus1.remote()
     assert 1 == ray.get(obj)
+
+    actor1 = ray.cross_language.cpp_actor_class(
+        "RAY_FUNC(Counter::FactoryCreate)", "Counter"
+    ).remote("invalid arg")
+    obj = actor1.Plus1.remote()
+    with pytest.raises(RayActorError):
+        ray.get(obj)
 
     actor1 = ray.cross_language.cpp_actor_class(
         "RAY_FUNC(Counter::FactoryCreate)", "Counter"
