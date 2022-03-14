@@ -7,7 +7,6 @@ import random
 import re
 import time
 import yaml
-import sys
 from dataclasses import dataclass
 from functools import wraps
 from typing import (
@@ -75,8 +74,6 @@ from ray.serve.schema import (
     ServeApplicationSchema,
     ServeApplicationStatusSchema,
 )
-
-# from ray.serve.pipeline.api import extract_deployments_from_serve_dag
 
 
 _INTERNAL_REPLICA_CONTEXT = None
@@ -1702,33 +1699,14 @@ def run(
     will be deployed.
     """
 
-    try:
-        deployments = _get_deployments_from_target(target)
+    deployments = _get_deployments_from_target(target)
 
-        # TODO (shrekris-anyscale): validate ingress
+    # TODO (shrekris-anyscale): validate ingress
 
-        start(detached=True, http_options={"host": host, "port": port})
-        deploy_group(deployments, blocking=True)
+    start(detached=True, http_options={"host": host, "port": port})
+    deploy_group(deployments, blocking=True)
 
-        # logger.info("\nDeployed successfully!\n")
-
-        while True:
-            statuses = serve_application_status_to_schema(
-                get_deployment_statuses()
-            ).json(indent=4)
-            logger.info(f"{statuses}")
-            time.sleep(10)
-
-        # TODO (shrekris-anyscale): return handle to ingress deployment
-
-    except KeyboardInterrupt:
-        # logger.info("Got SIGINT (KeyboardInterrupt). Removing deployments.")
-        for deployment in deployments:
-            deployment.delete()
-        if len(list_deployments()) == 0:
-            # logger.info("No deployments left. Shutting down Serve.")
-            shutdown()
-        sys.exit()
+    # TODO (shrekris-anyscale): return handle to ingress deployment
 
 
 def deploy_group(deployments: List[Deployment], *, blocking=True) -> RayServeHandle:

@@ -4,6 +4,8 @@ import yaml
 import os
 import pathlib
 import click
+import time
+import sys
 from typing import Tuple, List, Dict
 import argparse
 
@@ -19,8 +21,12 @@ from ray.serve.schema import ServeApplicationSchema
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.autoscaler._private.cli_logger import cli_logger
-from ray.serve.api import Application
-from ray.serve.api import Deployment
+from ray.serve.api import (
+    Application,
+    Deployment,
+    get_deployment_statuses,
+    serve_application_status_to_schema,
+)
 
 RAY_INIT_ADDRESS_HELP_STR = (
     "Address to use for ray.init(). Can also be specified "
@@ -356,7 +362,25 @@ def run(
     for deployment in app.deployments:
         _configure_runtime_env(deployment, runtime_env_updates)
 
-    serve.run(app)
+    try:
+        serve.run(app)
+        cli_logger.success("Deployed successfully!\n")
+
+        while True:
+            statuses = serve_application_status_to_schema(
+                get_deployment_statuses()
+            ).json(indent=4)
+            cli_logger.info(f"{statuses}")
+            time.sleep(10)
+
+    except KeyboardInterrupt:
+        cli_logger.info("Got SIGINT (KeyboardInterrupt). Removing deployments.")
+        for deployment in app.deployments:
+            deployment.delete()
+        if len(serve.list_deployments()) == 0:
+            cli_logger.info("No deployments left. Shutting down Serve.")
+            serve.shutdown()
+        sys.exit()
 
 
 @cli.command(
