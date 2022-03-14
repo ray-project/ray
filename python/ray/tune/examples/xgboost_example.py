@@ -16,42 +16,48 @@ from ray.tune.integration.xgboost import (
 
 def train_breast_cancer(config: dict):
     # This is a simple training function to be passed into Tune
+
     # Load dataset
     data, labels = sklearn.datasets.load_breast_cancer(return_X_y=True)
 
-    if config.pop("use_cv", False):
-        # For CV, we need to average over a list of results form folds
-        def average_cv_folds(results_dict: Dict[str, List[float]]) -> Dict[str, float]:
-            return {k: np.mean(v) for k, v in results_dict.items()}
+    # Split into train and test set
+    train_x, test_x, train_y, test_y = train_test_split(data, labels, test_size=0.25)
+    # Build input matrices for XGBoost
+    train_set = xgb.DMatrix(train_x, label=train_y)
+    test_set = xgb.DMatrix(test_x, label=test_y)
 
-        train_set = xgb.DMatrix(data, label=labels)
+    # Train the classifier, using the Tune callback
+    xgb.train(
+        config,
+        train_set,
+        evals=[(test_set, "test")],
+        verbose_eval=False,
+        callbacks=[TuneReportCheckpointCallback(filename="model.xgb")],
+    )
 
-        # Run CV, using the Tune callback
-        xgb.cv(
-            config,
-            train_set,
-            verbose_eval=False,
-            stratified=True,
-            # Checkpointing is not supported for CV
-            callbacks=[TuneReportCallback(results_postprocessing_fn=average_cv_folds)],
-        )
-    else:
-        # Split into train and test set
-        train_x, test_x, train_y, test_y = train_test_split(
-            data, labels, test_size=0.25
-        )
-        # Build input matrices for XGBoost
-        train_set = xgb.DMatrix(train_x, label=train_y)
-        test_set = xgb.DMatrix(test_x, label=test_y)
 
-        # Train the classifier, using the Tune callback
-        xgb.train(
-            config,
-            train_set,
-            evals=[(test_set, "test")],
-            verbose_eval=False,
-            callbacks=[TuneReportCheckpointCallback(filename="model.xgb")],
-        )
+def train_breast_cancer_cv(config: dict):
+    # This is a simple training function to be passed into Tune
+    # using xgboost's cross validation functionality
+
+    # Load dataset
+    data, labels = sklearn.datasets.load_breast_cancer(return_X_y=True)
+
+    # For CV, we need to average over a list of results form folds
+    def average_cv_folds(results_dict: Dict[str, List[float]]) -> Dict[str, float]:
+        return {k: np.mean(v) for k, v in results_dict.items()}
+
+    train_set = xgb.DMatrix(data, label=labels)
+
+    # Run CV, using the Tune callback
+    xgb.cv(
+        config,
+        train_set,
+        verbose_eval=False,
+        stratified=True,
+        # Checkpointing is not supported for CV
+        callbacks=[TuneReportCallback(results_postprocessing_fn=average_cv_folds)],
+    )
 
 
 def get_best_model_checkpoint(analysis):
@@ -68,7 +74,6 @@ def tune_xgboost(use_cv: bool = False):
         # You can mix constants with search space objects.
         "objective": "binary:logistic",
         "eval_metric": ["logloss", "error"],
-        "use_cv": use_cv,
         "max_depth": tune.randint(1, 9),
         "min_child_weight": tune.choice([1, 2, 3]),
         "subsample": tune.uniform(0.5, 1.0),
@@ -80,7 +85,7 @@ def tune_xgboost(use_cv: bool = False):
     )
 
     analysis = tune.run(
-        train_breast_cancer,
+        train_breast_cancer if not use_cv else train_breast_cancer_cv,
         metric="test-logloss",
         mode="min",
         # You can add "gpu": 0.1 to allocate GPUs
