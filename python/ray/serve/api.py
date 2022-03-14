@@ -1543,6 +1543,11 @@ class Application:
     def __init__(self, ingress: Deployment, deployments: List[Deployment]):
         raise NotImplementedError()
 
+    @property
+    def ingress(self) -> Deployment:
+        raise NotImplementedError()
+
+    @property
     def deployments(self) -> ImmutableDeploymentDict:
         raise NotImplementedError()
 
