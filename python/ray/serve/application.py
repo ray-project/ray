@@ -14,7 +14,7 @@ from ray.serve.schema import (
     schema_to_serve_application,
     serve_application_status_to_schema,
 )
-from ray.serve.utils import logger, get_deployment_import_path
+from ray.serve.utils import logger
 from ray.serve.api import get_deployment_statuses
 from ray.autoscaler._private.cli_logger import _CliLogger
 from logging import Logger
@@ -155,8 +155,6 @@ class Application:
             Dict: The Application's deployments formatted in a dictionary.
         """
 
-        self._convert_to_import_paths()
-
         return serve_application_to_schema(self._deployments.values()).dict()
 
     @classmethod
@@ -201,8 +199,6 @@ class Application:
                 yaml.safe_dump(). Returned only if no file pointer is passed in.
         """
 
-        self._convert_to_import_paths()
-
         deployment_dict = serve_application_to_schema(self._deployments.values()).dict()
 
         if f:
@@ -237,18 +233,6 @@ class Application:
         deployments_json = yaml.safe_load(str_or_file)
         schema = ServeApplicationSchema.parse_obj(deployments_json)
         return cls(schema_to_serve_application(schema))
-
-    def _convert_to_import_paths(self):
-        """Convert all func_or_classes to import paths.
-
-        If any deployment's func_or_class is a function or class (and not an
-        import path), it overwrites it with that function or class's import path.
-        """
-
-        for name, deployment in self._deployments.items():
-            self._deployments[name] = deployment.options(
-                func_or_class=get_deployment_import_path(deployment, replace_main=True)
-            )
 
     def __getitem__(self, key: str):
         """Fetch a deployment by name using dict syntax: app["name"]

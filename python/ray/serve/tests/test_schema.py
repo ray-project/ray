@@ -618,5 +618,15 @@ def test_serve_application_to_schema_to_serve_application():
     serve.shutdown()
 
 
+@serve.deployment
+def decorated_f(*args):
+    return "reached decorated_f"
+
+
+def test_convert_deployment_to_import_path():
+    d = schema_to_deployment(deployment_to_schema(decorated_f))
+    assert d.func_or_class == "ray.serve.tests.test_schema.decorated_f"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
