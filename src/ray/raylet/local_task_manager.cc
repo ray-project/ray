@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/raylet/scheduling/local_task_manager.h"
+#include "ray/raylet/local_task_manager.h"
 
 #include <google/protobuf/map.h>
 

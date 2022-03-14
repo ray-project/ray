@@ -650,6 +650,53 @@ cc_library(
 )
 
 cc_library(
+   name = "scheduler",
+    srcs = glob(
+        [
+            "src/ray/raylet/scheduling/**/*.cc",
+        ],
+        exclude = [
+            "src/ray/raylet/scheduling/**/*_test.cc",
+        ],
+    ),
+    hdrs = glob(
+        [
+            "src/ray/raylet/scheduling/**/*.h",
+            "src/ray/core_worker/common.h",
+        ],
+    ),
+    copts = COPTS,
+    linkopts = select({
+        "@bazel_tools//src/conditions:windows": [
+        ],
+        "//conditions:default": [
+            "-lpthread",
+        ],
+    }),
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":gcs_client_lib",
+        ":ray_common",
+        ":ray_util",
+        ":stats_lib",
+        "//src/ray/protobuf:common_cc_proto",
+        "@boost//:asio",
+        "@boost//:filesystem",
+        "@boost//:system",
+        "@com_github_jupp0r_prometheus_cpp//pull",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
+        "@io_opencensus_cpp//opencensus/stats",
+        "@io_opencensus_cpp//opencensus/tags",
+    ], 
+)
+
+cc_library(
     name = "raylet_lib",
     srcs = glob(
         [
@@ -657,13 +704,17 @@ cc_library(
         ],
         exclude = [
             "src/ray/raylet/**/*_test.cc",
+            "src/ray/raylet/scheduling/**/*.cc",
             "src/ray/raylet/main.cc",
         ],
     ),
     hdrs = glob(
         [
             "src/ray/raylet/**/*.h",
-            "src/ray/core_worker/common.h",
+        ],
+        exclude = [
+            "src/ray/raylet/scheduling/**/*.h",
+            "src/ray/raylet/main.cc",
         ],
     ),
     copts = COPTS,
@@ -690,6 +741,7 @@ cc_library(
         ":runtime_env_rpc",
         ":stats_lib",
         ":worker_rpc",
+        ":scheduler",
         "//src/ray/protobuf:common_cc_proto",
         "@boost//:asio",
         "@boost//:filesystem",
