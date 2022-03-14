@@ -70,11 +70,27 @@ class AzureNodeProvider(NodeProvider):
 
     @synchronized
     def _get_filtered_nodes(self, tag_filters):
+        """In addition to tag_filters, here add an extra filter tag: TAG_RAY_CLUSTER_NAME
+        to filter some specific cluster. """
+
+        update_tag_filters = [
+            {
+                TAG_RAY_CLUSTER_NAME: self.cluster_name,
+            },
+        ]
+        for key, value in tag_filters.items():
+            update_tag_filters.append(
+                {
+                    key: value
+                }
+            )
+
         def match_tags(vm):
-            for k, v in tag_filters.items():
-                if vm.tags.get(k) != v:
-                    return False
-            return True
+            for each_tag_filter in update_tag_filters:
+                for k, v in each_tag_filter.items():
+                    if vm.tags.get(k) != v:
+                        return False
+                return True
 
         vms = self.compute_client.virtual_machines.list(
             resource_group_name=self.provider_config["resource_group"]
@@ -136,11 +152,9 @@ class AzureNodeProvider(NodeProvider):
         nodes() must be called again to refresh results.
 
         Examples:
-            >>> provider.non_terminated_nodes({TAG_RAY_NODE_KIND: "worker", TAG_RAY_CLUSTER_NAME: "cluster_name"})
+            >>> provider.non_terminated_nodes({TAG_RAY_NODE_KIND: "worker"})
             ["node-1", "node-2"]
         """
-        tag_cluster_name = {TAG_RAY_CLUSTER_NAME: self.cluster_name}
-        tag_filters.update(tag_cluster_name)
         nodes = self._get_filtered_nodes(tag_filters=tag_filters)
         return [k for k, v in nodes.items() if not v["status"].startswith("deallocat")]
 
