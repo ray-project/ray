@@ -23,7 +23,7 @@ class TensorflowPredictor(Predictor):
     def __init__(
         self,
         model_definition: Union[Callable[[], tf.keras.Model], Type[tf.keras.Model]],
-        preprocessor: Preprocessor,
+        preprocessor: Optional[Preprocessor] = None,
         model_weights: Optional[list] = None,
     ):
         self.model_definition = model_definition
@@ -48,7 +48,13 @@ class TensorflowPredictor(Predictor):
                 to use. Model weights will be loaded from the checkpoint.
         """
         checkpoint_dict = checkpoint.to_dict()
-        preprocessor = checkpoint_dict[PREPROCESSOR_KEY]
+        preprocessor = checkpoint_dict.get(PREPROCESSOR_KEY, None)
+        if MODEL_KEY not in checkpoint_dict:
+            raise RuntimeError(
+                f"No item with key: {MODEL_KEY} is found in the "
+                f"Checkpoint. Make sure this key exists when saving the "
+                f"checkpoint in ``TorchTrainer``."
+            )
         model_weights = checkpoint_dict[MODEL_KEY]
         return TensorflowPredictor(
             model_definition=model_definition,
@@ -128,7 +134,8 @@ class TensorflowPredictor(Predictor):
         Returns:
             DataBatchType: Prediction result.
         """
-        data = self.preprocessor.transform_batch(data)
+        if self.preprocessor:
+            data = self.preprocessor.transform_batch(data)
 
         if isinstance(data, pd.DataFrame):
             if feature_columns:

@@ -69,3 +69,16 @@ def test_predict_feature_columns():
     assert len(predictions) == 3
     assert predictions.to_numpy().flatten().round().tolist() == [2, 4, 6]
     assert hasattr(predictor.preprocessor, "_batch_transformed")
+
+
+def test_predict_no_preprocessor():
+    checkpoint = {MODEL_KEY: weights}
+    predictor = TensorflowPredictor.from_checkpoint(
+        Checkpoint.from_dict(checkpoint), build_model
+    )
+
+    data_batch = np.array([[1], [2], [3]])
+    predictions = predictor.predict(data_batch)
+
+    assert len(predictions) == 3
+    assert predictions.to_numpy().flatten().tolist() == [1, 2, 3]
