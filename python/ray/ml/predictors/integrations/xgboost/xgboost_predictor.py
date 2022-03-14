@@ -20,7 +20,9 @@ class XGBoostPredictor(Predictor):
             to prediction.
     """
 
-    def __init__(self, model: xgboost.Booster, preprocessor: Preprocessor):
+    def __init__(
+        self, model: xgboost.Booster, preprocessor: Optional[Preprocessor] = None
+    ):
         self.model = model
         self.preprocessor = preprocessor
 
@@ -41,7 +43,7 @@ class XGBoostPredictor(Predictor):
         bst.load_model(os.path.join(path, MODEL_KEY))
         shutil.rmtree(path)
         return XGBoostPredictor(
-            model=bst, preprocessor=checkpoint.to_dict()[PREPROCESSOR_KEY]
+            model=bst, preprocessor=checkpoint.to_dict().get(PREPROCESSOR_KEY, None)
         )
 
     def predict(
@@ -113,7 +115,8 @@ class XGBoostPredictor(Predictor):
         """
         dmatrix_kwargs = dmatrix_kwargs or {}
 
-        data = self.preprocessor.transform_batch(data)
+        if self.preprocessor:
+            data = self.preprocessor.transform_batch(data)
 
         if feature_columns:
             if isinstance(data, np.ndarray):

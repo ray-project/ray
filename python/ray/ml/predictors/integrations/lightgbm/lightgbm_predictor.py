@@ -20,7 +20,9 @@ class LightGBMPredictor(Predictor):
             to prediction.
     """
 
-    def __init__(self, model: lightgbm.Booster, preprocessor: Preprocessor):
+    def __init__(
+        self, model: lightgbm.Booster, preprocessor: Optional[Preprocessor] = None
+    ):
         self.model = model
         self.preprocessor = preprocessor
 
@@ -40,7 +42,7 @@ class LightGBMPredictor(Predictor):
         bst = lightgbm.Booster(model_file=os.path.join(path, MODEL_KEY))
         shutil.rmtree(path)
         return LightGBMPredictor(
-            model=bst, preprocessor=checkpoint.to_dict()[PREPROCESSOR_KEY]
+            model=bst, preprocessor=checkpoint.to_dict().get(PREPROCESSOR_KEY, None)
         )
 
     def predict(
@@ -108,7 +110,8 @@ class LightGBMPredictor(Predictor):
         """
         predict_kwargs = predict_kwargs or {}
 
-        data = self.preprocessor.transform_batch(data)
+        if self.preprocessor:
+            data = self.preprocessor.transform_batch(data)
 
         if feature_columns:
             if isinstance(data, np.ndarray):

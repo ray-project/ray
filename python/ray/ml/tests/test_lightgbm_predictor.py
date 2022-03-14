@@ -66,3 +66,21 @@ def test_predict_feature_columns():
 
     assert len(predictions) == 3
     assert hasattr(predictor.preprocessor, "_batch_transformed")
+
+
+def test_predict_no_preprocessor():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # This somewhat convoluted procedure is the same as in the
+        # Trainers. The reason for saving model to disk instead
+        # of directly to the dict as bytes is due to all callbacks
+        # following save to disk logic. GBDT models are small
+        # enough that IO should not be an issue.
+        model.save_model(os.path.join(tmpdir, MODEL_KEY))
+
+        checkpoint = Checkpoint.from_directory(tmpdir)
+        predictor = LightGBMPredictor.from_checkpoint(checkpoint)
+
+    data_batch = np.array([[1, 2], [3, 4], [5, 6]])
+    predictions = predictor.predict(data_batch)
+
+    assert len(predictions) == 3
