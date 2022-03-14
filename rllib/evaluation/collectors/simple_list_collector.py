@@ -734,7 +734,6 @@ class SimpleListCollector(SampleCollector):
                 if data_col
                 in [
                     SampleBatch.OBS,
-                    SampleBatch.INFOS,
                     SampleBatch.ENV_ID,
                     SampleBatch.EPS_ID,
                     SampleBatch.AGENT_INDEX,
