@@ -222,7 +222,6 @@ def _get_filesystem_internal() -> ("pyarrow.fs.FileSystem", str):
 
     This forces full (non-lazy) init of the filesystem.
     """
-
     global _filesystem, _storage_prefix
     if _filesystem is None:
         _init_filesystem(_storage_uri)
@@ -231,7 +230,6 @@ def _get_filesystem_internal() -> ("pyarrow.fs.FileSystem", str):
 
 def _init_filesystem(storage_uri: str, create_valid_file: bool = False):
     """Fully initialize the filesystem at the given storage URI."""
-
     global _filesystem, _storage_prefix
     assert _filesystem is None, "Init can only be called once."
 
