@@ -27,23 +27,25 @@ def test_numpy_encoding():
 
 @serve.deployment
 def decorated_f(*args):
-    "reached decorated_f"
+    return "reached decorated_f"
+
 
 @ray.remote
 class DecoratedActor:
-
     def __call__(self, *args):
         return "reached decorated_actor"
 
-class TestGetDeploymentImportPath:
 
+class TestGetDeploymentImportPath:
     def test_get_import_path_basic(self):
         d = decorated_f.options()
         assert get_deployment_import_path(d) == "ray.serve.tests.test_util.decorated_f"
-    
+
     def test_get_import_path_nested_actor(self):
         d = serve.deployment(name="actor")(DecoratedActor)
-        assert get_deployment_import_path(d) == "ray.serve.tests.test_util.DecoratedActor"
+        assert (
+            get_deployment_import_path(d) == "ray.serve.tests.test_util.DecoratedActor"
+        )
 
 
 if __name__ == "__main__":
