@@ -1,14 +1,16 @@
 #!/usr/bin/env python
+import click
 import json
-import yaml
 import os
 import pathlib
-import click
+import time
+import yaml
 
 import ray
 from ray._private.utils import import_attr
 from ray.serve.config import DeploymentMode
 from ray import serve
+from ray.serve import get_deployment_statuses
 from ray.serve.constants import (
     DEFAULT_CHECKPOINT_PATH,
     DEFAULT_HTTP_HOST,
@@ -150,10 +152,6 @@ def shutdown(address: str, namespace: str):
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
-@click.option(
-    "--blocking/--non-blocking",
-    default=False,
-)
 def deploy(config_file_name: str, address: str):
     with open(config_file_name, "r") as config_file:
         config = yaml.safe_load(config_file)
@@ -172,12 +170,11 @@ def deploy(config_file_name: str, address: str):
 
 
 @cli.command(
-    short_help="Run a Serve app in a blocking way.",
+    short_help="Run a Serve app.",
     help=(
-        "Runs the Serve app from the specified YAML config file or import path "
-        "to a bound deployment node or built application object.\n"
-        "Blocks after deploying and logs status periodically. If you Ctrl-C "
-        "this command, it tears down the app."
+        "Runs the Serve app from the specified import path or YAML config.\n"
+        "By default, this will block and periodically log status. If you "
+        "Ctrl-C the command, it will tear down the app."
     ),
 )
 @click.argument("config_or_import_path")
@@ -187,15 +184,15 @@ def deploy(config_file_name: str, address: str):
     default=None,
     required=False,
     help="Path to a local YAML file containing a runtime_env definition. "
-    "Overrides runtime_envs specified in the config file.",
+    "This will be passed to ray.init() as the default for deployments.",
 )
 @click.option(
     "--runtime-env-json",
     type=str,
     default=None,
     required=False,
-    help="JSON-serialized runtime_env dictionary. Overrides runtime_envs "
-    "specified in the config file.",
+    help="JSON-serialized runtime_env dictionary. This will be passed to "
+    "ray.init() as the default for deployments.",
 )
 @click.option(
     "--working-dir",
@@ -206,7 +203,8 @@ def deploy(config_file_name: str, address: str):
         "Directory containing files that your job will run in. Can be a "
         "local directory or a remote URI to a .zip file (S3, GS, HTTP). "
         "This overrides the working_dir in --runtime-env if both are "
-        "specified. Overrides working_dirs specified in the config file."
+        "specified. This will be passed to ray.init() as the default for "
+        "deployments."
     ),
 )
 @click.option(
@@ -272,7 +270,18 @@ def run(
 
     # Setting the runtime_env here will set defaults for the deployments.
     ray.init(address=address, namespace="serve", runtime_env=final_runtime_env)
-    serve.run(app_or_node, host=host, port=port, logger=cli_logger)
+
+    try:
+        serve.run(app_or_node, host=host, port=port)
+        cli_logger.success("Application deployed successfully.")
+        if blocking:
+            cli_logger.print("Watching deployment statuses:\n")
+            while True:
+                print(get_deployment_statuses())
+                time.sleep(10)
+    except KeyboardInterrupt:
+        cli_logger.info("Got KeyboardInterrupt), shutting down...")
+        serve.shutdown()
 
 
 @cli.command(
