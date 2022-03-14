@@ -31,11 +31,11 @@ def main():
     results_per_second = 0.5
     trial_length_s = 100
 
-    max_runtime = 120
+    max_runtime = 130
 
     if is_ray_cluster():
         # Add constant overhead for SSH connection
-        max_runtime = 120
+        max_runtime = 130
 
     timed_tune_run(
         name="result throughput cluster",

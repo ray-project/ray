@@ -65,7 +65,7 @@ def main(bucket):
     results_per_second = 10 / 60
     trial_length_s = 300
 
-    max_runtime = 500
+    max_runtime = 650
 
     timed_tune_run(
         name="durable trainable",
@@ -74,7 +74,7 @@ def main(bucket):
         trial_length_s=trial_length_s,
         max_runtime=max_runtime,
         checkpoint_freq_s=10,  # Once every 10 seconds
-        checkpoint_size_b=int(10 * 1000 ** 2),  # 10 MB
+        checkpoint_size_b=int(10 * 1000**2),  # 10 MB
         keep_checkpoints_num=2,
         resources_per_trial={"cpu": 2},
         sync_config=tune.SyncConfig(

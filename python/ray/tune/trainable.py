@@ -145,6 +145,7 @@ class Trainable:
         self._time_since_restore = 0.0
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
+        self._last_result = None
         self._restored = False
         self._trial_info = trial_info
         self._stdout_file = stdout_file
@@ -399,6 +400,8 @@ class Trainable:
         if self._stderr_context:
             self._stderr_stream.flush()
 
+        self._last_result = result
+
         return result
 
     def get_state(self):
@@ -408,6 +411,7 @@ class Trainable:
             "timesteps_total": self._timesteps_total,
             "time_total": self._time_total,
             "episodes_total": self._episodes_total,
+            "last_result": self._last_result,
             "ray_version": ray.__version__,
         }
 

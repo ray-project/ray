@@ -374,6 +374,18 @@ class Trial:
         self.restoring_from = None
         self.num_failures = 0
 
+        if self.restore_path:
+            checkpoint_metadata = TrainableUtil.load_checkpoint_metadata(
+                self.restore_path
+            )
+
+            checkpoint = _TuneCheckpoint(
+                _TuneCheckpoint.PERSISTENT,
+                self.restore_path,
+                checkpoint_metadata["last_result"],
+            )
+            self.checkpoint_manager.on_checkpoint(checkpoint)
+
         # AutoML fields
         self.results = None
         self.best_result = None
@@ -456,8 +468,7 @@ class Trial:
             checkpoint = self.checkpoint_manager.newest_persistent_checkpoint
         else:
             checkpoint = self.checkpoint_manager.newest_checkpoint
-        if checkpoint.value is None:
-            checkpoint = _TuneCheckpoint(_TuneCheckpoint.PERSISTENT, self.restore_path)
+
         return checkpoint
 
     @classmethod
