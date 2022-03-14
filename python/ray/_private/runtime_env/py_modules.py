@@ -150,6 +150,38 @@ class PyModulesManager:
     def get_uris(self, runtime_env: dict) -> Optional[List[str]]:
         return runtime_env.py_modules()
 
+    def _download_and_install_wheel(
+        self, uri: str, logger: Optional[logging.Logger] = default_logger
+    ):
+        """Download and install a wheel URI, and then delete the local wheel file."""
+        wheel_file = download_and_unpack_package(
+            uri, self._resources_dir, logger=logger
+        )
+        module_dir = self._get_local_dir_from_uri(uri)
+
+        pip_install_cmd = [
+            "pip",
+            "install",
+            wheel_file,
+            f"--target={module_dir}",
+        ]
+        logger.info(
+            "Running py_modules wheel install command: %s", str(pip_install_cmd)
+        )
+        try:
+            exit_code, output = exec_cmd_stream_to_logger(pip_install_cmd, logger)
+        finally:
+            if Path(wheel_file).exists():
+                Path(wheel_file).unlink()
+
+            if exit_code != 0:
+                if Path(module_dir).exists():
+                    Path(module_dir).unlink()
+                raise RuntimeError(
+                    f"Failed to install py_modules wheel {wheel_file}"
+                    f"to {module_dir}:\n{output}"
+                )
+
     async def create(
         self,
         uri: str,
@@ -163,33 +195,7 @@ class PyModulesManager:
         # make this method running in current loop.
         def _create():
             if is_whl_uri(uri):
-                # Download and install the wheel, and then delete the wheel file.
-                wheel_file = download_and_unpack_package(
-                    uri, self._resources_dir, logger=logger
-                )
-                module_dir = self._get_local_dir_from_uri(uri)
-
-                pip_install_cmd = [
-                    "pip",
-                    "install",
-                    wheel_file,
-                    f"--target={module_dir}",
-                ]
-                logger.info(
-                    "Running py_modules wheel install command: %s", str(pip_install_cmd)
-                )
-                exit_code, output = exec_cmd_stream_to_logger(pip_install_cmd, logger)
-
-                if Path(wheel_file).exists():
-                    Path(wheel_file).unlink()
-
-                if exit_code != 0:
-                    if Path(module_dir).exists():
-                        Path(module_dir).unlink()
-                    raise RuntimeError(
-                        f"Failed to install py_modules wheel {wheel_file}"
-                        f"to {module_dir}:\n{output}"
-                    )
+                self._download_and_install_wheel(uri=uri, logger=logger)
 
             else:
                 module_dir = download_and_unpack_package(
