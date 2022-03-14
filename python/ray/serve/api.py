@@ -895,8 +895,8 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
 
 
 @PublicAPI(stability="alpha")
-class DeployedCallGraph:
-    """Resolved from a BoundDeploymentMethodNode at runtime.
+class DAGHandle:
+    """Resolved from a DeploymentMethodNode at runtime.
 
     This can be used to call the DAG from a driver deployment to efficiently
     orchestrate a multi-deployment pipeline.
@@ -911,7 +911,7 @@ class DeployedCallGraph:
 
 
 @PublicAPI(stability="alpha")
-class BoundDeploymentMethodNode(ClassNode):
+class DeploymentMethodNode(ClassNode):
     """Represents a method call on a bound deployment node.
 
     These method calls can be composed into an optimized call DAG and passed
@@ -926,7 +926,7 @@ class BoundDeploymentMethodNode(ClassNode):
 
 
 @PublicAPI(stability="alpha")
-class BoundDeploymentNode(ClassNode):
+class DeploymentNode(ClassNode):
     """Represents a deployment with its bound config options and arguments.
 
     The bound deployment can be run, deployed, or built to a production config
@@ -937,7 +937,7 @@ class BoundDeploymentNode(ClassNode):
     bound deployments passed into a constructor will be converted to
     RayServeHandles that can be used to send requests.
 
-    Calling deployment.method.bind() will return a BoundDeploymentMethodNode
+    Calling deployment.method.bind() will return a DeploymentMethodNode
     that can be used to compose an optimized call graph.
     """
 
@@ -1102,8 +1102,8 @@ class Deployment:
         )
 
     @PublicAPI(stability="alpha")
-    def bind(self, *args, **kwargs) -> BoundDeploymentNode:
-        """Bind the provided arguments and return a BoundDeploymentNode.
+    def bind(self, *args, **kwargs) -> DeploymentNode:
+        """Bind the provided arguments and return a DeploymentNode.
 
         The returned bound deployment can be deployed or bound to other
         deployments to create a multi-deployment application.
@@ -1644,7 +1644,7 @@ class Application:
         raise NotImplementedError()
 
 
-NodeOrApp = Union[BoundDeploymentNode, Application]
+NodeOrApp = Union[DeploymentNode, Application]
 
 
 @PublicAPI(stability="alpha")
@@ -1661,8 +1661,8 @@ def run(
     periodically logging the status. Upon a KeyboardInterrupt, the application
     will be torn down and all of its deployments deleted.
 
-    Either a BoundDeploymentNode or a pre-built application can be passed in.
-    If a BoundDeploymentNode is passed in, all of the deployments it depends on
+    Either a DeploymentNode or a pre-built application can be passed in.
+    If a DeploymentNode is passed in, all of the deployments it depends on
     will be deployed.
     """
     raise NotImplementedError()
@@ -1677,8 +1677,8 @@ def deploy(
     Deploys all of the deployments in the application and returns a
     RayServeHandle to the ingress deployment.
 
-    Either a BoundDeploymentNode or a pre-built application can be passed in.
-    If a BoundDeploymentNode is passed in, all of the deployments it depends on
+    Either a DeploymentNode or a pre-built application can be passed in.
+    If a DeploymentNode is passed in, all of the deployments it depends on
     will be deployed.
     """
     raise NotImplementedError()
@@ -1686,14 +1686,14 @@ def deploy(
 
 @PublicAPI(stability="alpha")
 def build(
-    target: BoundDeploymentNode,
+    target: DeploymentNode,
     *,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
 ) -> Application:
     """Builds a Serve application into a static configuration.
 
-    Takes in a BoundDeploymentNode and converts it to a Serve application
+    Takes in a DeploymentNode and converts it to a Serve application
     consisting of one or more deployments. This is intended to be used for
     production scenarios and deployed via the Serve REST API or CLI, so there
     are some restrictions placed on the deployments:
