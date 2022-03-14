@@ -162,6 +162,7 @@ class TorchAccelerator(Accelerator):
                     worker_init_fn = seeded_worker_init_fn(loader.worker_init_fn)
                     generator = torch.Generator()
                     generator.manual_seed(self._seed)
+
                 using_default_sampler = isinstance(
                     loader.sampler, (SequentialSampler, RandomSampler)
                 )
