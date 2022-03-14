@@ -137,10 +137,10 @@ class JobConfig:
         """Return the JSON-serialized parsed runtime env dict"""
         return self._validate_runtime_env().serialize()
 
-    def get_serialized_runtime_env_config(self) -> str:
+    def get_proto_runtime_env_config(self) -> str:
         """Return the JSON-serialized parsed runtime env info"""
         return (
-            self.get_proto_job_config().runtime_env_info.serialized_runtime_env_config
+            self.get_proto_job_config().runtime_env_info.runtime_env_config
         )
 
     @classmethod

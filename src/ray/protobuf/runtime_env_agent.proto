@@ -17,11 +17,13 @@ option cc_enable_arenas = true;
 
 package ray.rpc;
 
+import "src/ray/protobuf/runtime_env_common.proto";
+
 import "src/ray/protobuf/agent_manager.proto";
 
 message CreateRuntimeEnvRequest {
   string serialized_runtime_env = 1;
-  string serialized_runtime_env_config = 2;
+  RuntimeEnvConfig runtime_env_config = 2;
   bytes job_id = 3;
   // Serialized allocated resource instances. Key is resource type, value is allocated
   // instances. For example,{"CPU":20000,"memory":40000,"GPU":[10000, 10000]} means 2 cpu

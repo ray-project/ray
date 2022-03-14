@@ -138,7 +138,7 @@ void AgentManager::StartAgent() {
 void AgentManager::CreateRuntimeEnv(
     const JobID &job_id,
     const std::string &serialized_runtime_env,
-    const std::string &serialized_runtime_env_config,
+    const rpc::RuntimeEnvConfig &runtime_env_config,
     const std::string &serialized_allocated_resource_instances,
     CreateRuntimeEnvCallback callback) {
   // If the agent cannot be started, fail the request.
@@ -168,7 +168,6 @@ void AgentManager::CreateRuntimeEnv(
     if (agent_restart_count_ >= RayConfig::instance().agent_max_restart_count()) {
       std::stringstream str_stream;
       str_stream << "Runtime environment " << serialized_runtime_env
-                 << " Runtime environment config " << serialized_runtime_env_config
                  << " cannot be created on this node because the agent is dead.";
       const auto &error_message = str_stream.str();
       RAY_LOG(WARNING) << error_message;
@@ -186,18 +185,17 @@ void AgentManager::CreateRuntimeEnv(
 
     RAY_LOG_EVERY_MS(INFO, 3 * 10 * 1000)
         << "Runtime env agent is not registered yet. Will retry CreateRuntimeEnv later: "
-        << serialized_runtime_env
-        << " with runtime env config: " << serialized_runtime_env_config;
+        << serialized_runtime_env;
     delay_executor_(
         [this,
          job_id,
          serialized_runtime_env,
-         serialized_runtime_env_config,
+         runtime_env_config,
          serialized_allocated_resource_instances,
          callback = std::move(callback)] {
           CreateRuntimeEnv(job_id,
                            serialized_runtime_env,
-                           serialized_runtime_env_config,
+                           runtime_env_config,
                            serialized_allocated_resource_instances,
                            callback);
         },
@@ -207,7 +205,7 @@ void AgentManager::CreateRuntimeEnv(
   rpc::CreateRuntimeEnvRequest request;
   request.set_job_id(job_id.Hex());
   request.set_serialized_runtime_env(serialized_runtime_env);
-  request.set_serialized_runtime_env_config(serialized_runtime_env_config);
+  request.mutable_runtime_env_config()->CopyFrom(runtime_env_config);
   request.set_serialized_allocated_resource_instances(
       serialized_allocated_resource_instances);
   runtime_env_agent_client_->CreateRuntimeEnv(
@@ -215,7 +213,7 @@ void AgentManager::CreateRuntimeEnv(
       [this,
        job_id,
        serialized_runtime_env,
-       serialized_runtime_env_config,
+       runtime_env_config,
        serialized_allocated_resource_instances,
        callback = std::move(callback)](const Status &status,
                                        const rpc::CreateRuntimeEnvReply &reply) {
@@ -226,7 +224,6 @@ void AgentManager::CreateRuntimeEnv(
                      /*setup_error_message*/ "");
           } else {
             RAY_LOG(INFO) << "Failed to create runtime env: " << serialized_runtime_env
-                          << ", runtime env config: " << serialized_runtime_env_config
                           << ", error message: " << reply.error_message();
             callback(false,
                      reply.serialized_runtime_env_context(),
@@ -237,19 +234,18 @@ void AgentManager::CreateRuntimeEnv(
           // TODO(sang): Invoke a callback if it fails more than X times.
           RAY_LOG(INFO)
               << "Failed to create the runtime env: " << serialized_runtime_env
-              << ", runtime env config: " << serialized_runtime_env_config
               << ", status = " << status
               << ", maybe there are some network problems, will retry it later.";
           delay_executor_(
               [this,
                job_id,
                serialized_runtime_env,
-               serialized_runtime_env_config,
+               runtime_env_config,
                serialized_allocated_resource_instances,
                callback = std::move(callback)] {
                 CreateRuntimeEnv(job_id,
                                  serialized_runtime_env,
-                                 serialized_runtime_env_config,
+                                 runtime_env_config,
                                  serialized_allocated_resource_instances,
                                  callback);
               },

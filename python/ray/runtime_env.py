@@ -90,7 +90,7 @@ class RuntimeEnvConfig(dict):
 
     Args:
         setup_timeout_seconds (int): The timeout of runtime environment
-            creation,  timeout is in seconds.
+            creation, timeout is in seconds.
     """
 
     known_fields: Set[str] = {"setup_timeout_seconds"}
@@ -146,22 +146,9 @@ class RuntimeEnvConfig(dict):
         runtime_env_config.setup_timeout_seconds = self["setup_timeout_seconds"]
         return runtime_env_config
 
-    def serialize(self) -> str:
-        proto_runtime_env_config = self.build_proto_runtime_env_config()
-        return json.dumps(
-            json.loads(json_format.MessageToJson(proto_runtime_env_config)),
-            sort_keys=True,
-        )
-
     @classmethod
-    def deserialize(cls, serialized_runtime_env_config: str) -> "RuntimeEnvConfig":
-        # If serialized_runtime_env_config is empty, return default_config
-        if serialized_runtime_env_config == "" or serialized_runtime_env_config == "{}":
-            return cls.default_config()
-        proto_runtime_env_config = json_format.Parse(
-            serialized_runtime_env_config, ProtoRuntimeEnvConfig()
-        )
-        return cls(proto_runtime_env_config.setup_timeout_seconds)
+    def from_proto(cls, runtime_env_config: ProtoRuntimeEnvConfig):
+        return cls(setup_timeout_seconds=runtime_env_config.setup_timeout_seconds)
 
 
 # Due to circular reference, field config can only be assigned a value here

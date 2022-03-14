@@ -50,17 +50,16 @@ def get_runtime_env_info(
         proto_runtime_env_info.runtime_env_eager_install = eager_install
 
     runtime_env_config = runtime_env.get("config")
-    serialized_runtime_env_config = None
     if runtime_env_config is None:
-        serialized_runtime_env_config = "{}"
+        runtime_env_config = RuntimeEnvConfig.default_config()
     else:
-        serialized_runtime_env_config = (
-            RuntimeEnvConfig.parse_and_validate_runtime_env_condig(
-                runtime_env_config
-            ).serialize()
+        runtime_env_config = RuntimeEnvConfig.parse_and_validate_runtime_env_condig(
+            runtime_env_config
         )
 
-    proto_runtime_env_info.serialized_runtime_env_config = serialized_runtime_env_config
+    proto_runtime_env_info.runtime_env_config.CopyFrom(
+        runtime_env_config.build_proto_runtime_env_config()
+    )
 
     proto_runtime_env_info.serialized_runtime_env = runtime_env.serialize()
 

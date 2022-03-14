@@ -218,7 +218,7 @@ class RuntimeEnvAgent(
             return context
 
         serialized_env = request.serialized_runtime_env
-        serialized_env_config = request.serialized_runtime_env_config
+        runtime_env_config = request.runtime_env_config
 
         if serialized_env not in self._env_locks:
             # async lock to prevent the same env being concurrently installed
@@ -233,7 +233,6 @@ class RuntimeEnvAgent(
                     self._logger.info(
                         "Runtime env already created "
                         f"successfully. Env: {serialized_env}, "
-                        f" Env Config: {serialized_env_config}"
                         f"context: {context}"
                     )
                     return runtime_env_agent_pb2.CreateRuntimeEnvReply(
@@ -245,7 +244,6 @@ class RuntimeEnvAgent(
                     self._logger.info(
                         "Runtime env already failed. "
                         f"Env: {serialized_env}, "
-                        f"Env Config: {serialized_env_config}, "
                         f"err: {error_message}"
                     )
                     return runtime_env_agent_pb2.CreateRuntimeEnvReply(
@@ -258,12 +256,11 @@ class RuntimeEnvAgent(
                 time.sleep(int(SLEEP_FOR_TESTING_S))
 
             self._logger.info(
-                f"Creating runtime env: {serialized_env}, "
-                f"runtime env config: {serialized_env_config}"
+                f"Creating runtime env: {serialized_env}."
             )
             runtime_env_context: RuntimeEnvContext = None
             error_message = None
-            runtime_env_config = RuntimeEnvConfig.deserialize(serialized_env_config)
+            runtime_env_config = RuntimeEnvConfig.from_proto(runtime_env_config)
             for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
                 try:
                     with async_timeout.timeout(

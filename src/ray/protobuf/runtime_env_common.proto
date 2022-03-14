@@ -194,5 +194,5 @@ message RuntimeEnvInfo {
   /// Indicates whether to install runtime env eagerly before the workers are leased.
   bool runtime_env_eager_install = 3;
   /// The serialized runtime env config passed from the user.
-  string serialized_runtime_env_config = 4;
+  RuntimeEnvConfig runtime_env_config = 4;
 }
