@@ -1734,7 +1734,7 @@ def run(
 
     except KeyboardInterrupt:
         logger.info("Got SIGINT (KeyboardInterrupt). Removing deployments.")
-        for deployment in deployments.values():
+        for deployment in deployments:
             deployment.delete()
         if len(list_deployments()) == 0:
             logger.info("No deployments left. Shutting down Serve.")

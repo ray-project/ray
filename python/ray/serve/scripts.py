@@ -356,7 +356,7 @@ def run(
     for deployment in app:
         _configure_runtime_env(deployment, runtime_env_updates)
 
-    app.run(logger=cli_logger)
+    serve.run(app, logger=cli_logger)
 
 
 @cli.command(
