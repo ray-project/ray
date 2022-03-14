@@ -14,10 +14,13 @@
 
 #pragma once
 
+#include <boost/algorithm/string.hpp>
 #include <functional>
 #include <string>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/flat_hash_map.h"
+#include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 
@@ -102,11 +105,9 @@ class BaseSchedulingID {
 
   bool IsNil() const { return id_ == -1; }
 
-  bool IsUnitInstanceResource() const { return false; } // TODO
-
   static BaseSchedulingID Nil() { return BaseSchedulingID(-1); }
 
- private:
+ protected:
   /// Meyer's singleton to store the StringIdMap.
   static ThreadPrivate<StringIdMap> &GetMap() {
     static ThreadPrivate<StringIdMap> map;
@@ -151,8 +152,43 @@ class ResourceID : public BaseSchedulingID<SchedulingIDTag::Resource> {
   explicit ResourceID(const std::string &name) : BaseSchedulingID(name) {}
   explicit ResourceID(int64_t id) : BaseSchedulingID(id) {}
 
+  bool IsUnitInstanceResource() const { return UnitInstanceResources().count(id_) > 0; }
+
   static ResourceID CPU() { return ResourceID(PredefinedResourcesEnum::CPU); }
   static ResourceID ObjectStoreMemory() { return ResourceID(PredefinedResourcesEnum::OBJECT_STORE_MEM); }
+
+ private:
+  static absl::flat_hash_set<int64_t> UnitInstanceResources() {
+    static absl::flat_hash_set<int64_t> set{[]() {
+      absl::flat_hash_set<int64_t> res;
+
+      std::string predefined_unit_instance_resources =
+          RayConfig::instance().predefined_unit_instance_resources();
+      if (!predefined_unit_instance_resources.empty()) {
+        std::vector<std::string> results;
+        boost::split(results, predefined_unit_instance_resources, boost::is_any_of(","));
+        for (std::string &result : results) {
+          int64_t resource_id = ResourceID(result).ToInt();
+          RAY_CHECK(resource_id < PredefinedResourcesEnum_MAX)
+              << result << " is not a valid predefined resource.";
+          res.insert(resource_id);
+        }
+      }
+
+      std::string custom_unit_instance_resources =
+          RayConfig::instance().custom_unit_instance_resources();
+      if (!custom_unit_instance_resources.empty()) {
+        std::vector<std::string> results;
+        boost::split(results, custom_unit_instance_resources, boost::is_any_of(","));
+        for (std::string &result : results) {
+          int64_t resource_id = scheduling::ResourceID(result).ToInt();
+          res.insert(resource_id);
+        }
+      }
+      return res;
+    }()};
+    return set;
+  }
 };
 
 const ResourceID kCPUResource{CPU};
