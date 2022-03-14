@@ -142,9 +142,16 @@ class ProcessFD {
         (void)cmd.c_str();  // We'll need this to be null-terminated (but mutable) below
         TCHAR *cmdline = &*cmd.begin();
         STARTUPINFO si = {sizeof(si)};
-        RAY_UNUSED(
-            new_env_block.c_str());  // Ensure there's a final terminator for Windows
-        char *const envp = &new_env_block[0];
+        LPVOID envp = NULL;
+        if (!new_env_block.empty()) {
+            if (new_env.find("PATH") == new_env.end() ) {
+                RAY_LOG(ERROR) << "Calling spawnvpe with invalid env";
+                break;
+            }
+            RAY_UNUSED(
+                new_env_block.c_str());  // Ensure there's a final terminator for Windows
+            envp = &new_env_block[0];
+        }
         if (CreateProcessA(NULL, cmdline, NULL, NULL, FALSE, 0, envp, NULL, &si, &pi)) {
           succeeded = true;
           break;
