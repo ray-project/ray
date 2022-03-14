@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
 #pragma once
 
 #include "absl/container/flat_hash_map.h"
@@ -39,6 +40,8 @@ struct BundleSchedulingContext : public SchedulingContext {
   const std::shared_ptr<absl::flat_hash_map<NodeID, int64_t>> node_to_bundles_;
   /// The locations of existing bundles for this placement group.
   const absl::optional<std::shared_ptr<BundleLocations>> bundle_locations_;
+  // The nodes successfully scheduled during current scheduling.
+  absl::flat_hash_set<scheduling::NodeID> selected_nodes_;
 };
 
 }  // namespace raylet_scheduling_policy

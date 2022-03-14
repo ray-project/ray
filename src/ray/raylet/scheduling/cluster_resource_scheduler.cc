@@ -40,7 +40,18 @@ ClusterResourceScheduler::ClusterResourceScheduler()
       std::make_unique<raylet_scheduling_policy::CompositeSchedulingPolicy>(
           local_node_id_,
           cluster_resource_manager_->GetResourceView(),
-          [this](auto node_id) { return this->NodeAlive(node_id); });
+          /*is_node_available_fn*/
+          [this](auto node_id) { return this->NodeAlive(node_id); },
+          /*add_node_available_resources_fn*/
+          [this](scheduling::NodeID node_id, const ResourceRequest &resource_request) {
+            return cluster_resource_manager_->AddNodeAvailableResources(node_id,
+                                                                        resource_request);
+          },
+          /*subtract_node_available_resources_fn*/
+          [this](scheduling::NodeID node_id, const ResourceRequest &resource_request) {
+            return cluster_resource_manager_->SubtractNodeAvailableResources(
+                node_id, resource_request);
+          });
 }
 
 ClusterResourceScheduler::ClusterResourceScheduler(
@@ -62,7 +73,18 @@ ClusterResourceScheduler::ClusterResourceScheduler(
       std::make_unique<raylet_scheduling_policy::CompositeSchedulingPolicy>(
           local_node_id_,
           cluster_resource_manager_->GetResourceView(),
-          [this](auto node_id) { return this->NodeAlive(node_id); });
+          /*is_node_available_fn*/
+          [this](auto node_id) { return this->NodeAlive(node_id); },
+          /*add_node_available_resources_fn*/
+          [this](scheduling::NodeID node_id, const ResourceRequest &resource_request) {
+            return cluster_resource_manager_->AddNodeAvailableResources(node_id,
+                                                                        resource_request);
+          },
+          /*subtract_node_available_resources_fn*/
+          [this](scheduling::NodeID node_id, const ResourceRequest &resource_request) {
+            return cluster_resource_manager_->SubtractNodeAvailableResources(
+                node_id, resource_request);
+          });
 }
 
 ClusterResourceScheduler::ClusterResourceScheduler(
@@ -88,7 +110,18 @@ ClusterResourceScheduler::ClusterResourceScheduler(
       std::make_unique<raylet_scheduling_policy::CompositeSchedulingPolicy>(
           local_node_id_,
           cluster_resource_manager_->GetResourceView(),
-          [this](auto node_id) { return this->NodeAlive(node_id); });
+          /*is_node_available_fn*/
+          [this](auto node_id) { return this->NodeAlive(node_id); },
+          /*add_node_available_resources_fn*/
+          [this](scheduling::NodeID node_id, const ResourceRequest &resource_request) {
+            return cluster_resource_manager_->AddNodeAvailableResources(node_id,
+                                                                        resource_request);
+          },
+          /*subtract_node_available_resources_fn*/
+          [this](scheduling::NodeID node_id, const ResourceRequest &resource_request) {
+            return cluster_resource_manager_->SubtractNodeAvailableResources(
+                node_id, resource_request);
+          });
 }
 
 bool ClusterResourceScheduler::NodeAlive(scheduling::NodeID node_id) const {
@@ -245,4 +278,5 @@ SchedulingResult ClusterResourceScheduler::Schedule(
     SchedulingContext *context) {
   return scheduling_policy_->Schedule(resource_request_list, options, context);
 }
+
 }  // namespace ray

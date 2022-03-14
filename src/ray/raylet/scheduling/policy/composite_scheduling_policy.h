@@ -16,6 +16,10 @@
 
 #include <vector>
 
+#include "ray/raylet/scheduling/policy/bundle_pack_scheduling_policy.h"
+#include "ray/raylet/scheduling/policy/bundle_spread_scheduling_policy.h"
+#include "ray/raylet/scheduling/policy/bundle_strict_pack_scheduling_policy.h"
+#include "ray/raylet/scheduling/policy/bundle_strict_spread_scheduling_policy.h"
 #include "ray/raylet/scheduling/policy/hybrid_scheduling_policy.h"
 #include "ray/raylet/scheduling/policy/random_scheduling_policy.h"
 #include "ray/raylet/scheduling/policy/spread_scheduling_policy.h"
@@ -27,12 +31,30 @@ namespace raylet_scheduling_policy {
 /// scheduling_policy according to the scheduling_type.
 class CompositeSchedulingPolicy : public ISchedulingPolicy {
  public:
-  CompositeSchedulingPolicy(scheduling::NodeID local_node_id,
-                            const absl::flat_hash_map<scheduling::NodeID, Node> &nodes,
-                            std::function<bool(scheduling::NodeID)> is_node_available)
+  CompositeSchedulingPolicy(
+      scheduling::NodeID local_node_id,
+      const absl::flat_hash_map<scheduling::NodeID, Node> &nodes,
+      std::function<bool(scheduling::NodeID)> is_node_available,
+      std::function<bool(scheduling::NodeID, const ResourceRequest &)>
+          add_node_available_resources_fn,
+      std::function<bool(scheduling::NodeID, const ResourceRequest &)>
+          subtract_node_available_resources_fn)
       : hybrid_policy_(local_node_id, nodes, is_node_available),
         random_policy_(local_node_id, nodes, is_node_available),
-        spread_policy_(local_node_id, nodes, is_node_available) {}
+        spread_policy_(local_node_id, nodes, is_node_available),
+        bundle_pack_policy_(nodes,
+                            is_node_available,
+                            add_node_available_resources_fn,
+                            subtract_node_available_resources_fn),
+        bundle_spread_policy_(nodes,
+                              is_node_available,
+                              add_node_available_resources_fn,
+                              subtract_node_available_resources_fn),
+        bundle_strict_spread_policy_(nodes,
+                                     is_node_available,
+                                     add_node_available_resources_fn,
+                                     subtract_node_available_resources_fn),
+        bundle_strict_pack_policy_(nodes, is_node_available) {}
 
   scheduling::NodeID Schedule(const ResourceRequest &resource_request,
                               SchedulingOptions options) override;
@@ -46,6 +68,10 @@ class CompositeSchedulingPolicy : public ISchedulingPolicy {
   HybridSchedulingPolicy hybrid_policy_;
   RandomSchedulingPolicy random_policy_;
   SpreadSchedulingPolicy spread_policy_;
+  BundlePackSchedulingPolicy bundle_pack_policy_;
+  BundleSpreadSchedulingPolicy bundle_spread_policy_;
+  BundleStrictSpreadSchedulingPolicy bundle_strict_spread_policy_;
+  BundleStrictPackSchedulingPolicy bundle_strict_pack_policy_;
 };
 
 }  // namespace raylet_scheduling_policy

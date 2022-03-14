@@ -13,12 +13,15 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_actor_distribution.h"
+#include "ray/raylet/scheduling/policy/scorer.h"
 
 #include "ray/util/event.h"
 
 namespace ray {
 
 namespace gcs {
+
+using raylet_scheduling_policy::LeastResourceScorer;
 
 GcsActorWorkerAssignment::GcsActorWorkerAssignment(
     const NodeID &node_id, const ResourceRequest &acquired_resources, bool is_shared)
@@ -104,8 +107,11 @@ GcsBasedActorScheduler::AllocateNewActorWorkerAssignment(
 
 scheduling::NodeID GcsBasedActorScheduler::AllocateResources(
     const ResourceRequest &required_resources) {
-  auto scheduling_result =
-      cluster_resource_scheduler_->Schedule({required_resources}, SchedulingType::SPREAD);
+  auto scheduling_options = SchedulingOptions::Spread(
+      /*avoid_local_node*/ false,
+      /*require_node_available*/ true);
+  auto scheduling_result = cluster_resource_scheduler_->Schedule(
+      {&required_resources}, scheduling_options, /*scheduling_context*/ nullptr);
 
   if (!scheduling_result.status.IsSuccess()) {
     RAY_LOG(INFO)
