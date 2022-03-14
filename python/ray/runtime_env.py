@@ -80,7 +80,7 @@ def _parse_proto_plugin_runtime_env(
 
 
 @PublicAPI(stability="beta")
-class RuntimeEnvConfig:
+class RuntimeEnvConfig(dict):
     """This class is used to define a config for runtime environment.
 
     Config does not participate in the calculation of the runtime
@@ -100,6 +100,7 @@ class RuntimeEnvConfig:
     }
 
     def __init__(self, setup_timeout_seconds: int):
+        super().__init__()
         if not isinstance(setup_timeout_seconds, int):
             raise TypeError(
                 "setup_timeout_seconds must be of type int, "
@@ -110,7 +111,7 @@ class RuntimeEnvConfig:
                 "setup_timeout_seconds must be greater than zero, "
                 f"got: {setup_timeout_seconds}"
             )
-        self.setup_timeout_seconds = setup_timeout_seconds
+        self["setup_timeout_seconds"] = setup_timeout_seconds
 
     @staticmethod
     def parse_and_validate_runtime_env_condig(
@@ -142,7 +143,7 @@ class RuntimeEnvConfig:
 
     def build_proto_runtime_env_config(self) -> ProtoRuntimeEnvConfig:
         runtime_env_config = ProtoRuntimeEnvConfig()
-        runtime_env_config.setup_timeout_seconds = self.setup_timeout_seconds
+        runtime_env_config.setup_timeout_seconds = self["setup_timeout_seconds"]
         return runtime_env_config
 
     def serialize(self) -> str:
@@ -319,9 +320,8 @@ class RuntimeEnv(dict):
             runtime_env["container"] = container
         if env_vars is not None:
             runtime_env["env_vars"] = env_vars
-        if config is None:
-            config = RuntimeEnvConfig.default_config()
-        runtime_env["config"] = config
+        if config is not None:
+            runtime_env["config"] = config
 
         # Blindly trust that the runtime_env has already been validated.
         # This is dangerous and should only be used internally (e.g., on the
@@ -425,6 +425,8 @@ class RuntimeEnv(dict):
         res_value = value
         if key in OPTION_TO_VALIDATION_FN:
             res_value = OPTION_TO_VALIDATION_FN[key](value)
+            if res_value is None:
+                return
         return super().__setitem__(key, res_value)
 
     @classmethod

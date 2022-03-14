@@ -267,7 +267,7 @@ class RuntimeEnvAgent(
             for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
                 try:
                     with async_timeout.timeout(
-                        runtime_env_config.setup_timeout_seconds
+                        runtime_env_config["setup_timeout_seconds"]
                     ):
                         runtime_env_context = await _setup_runtime_env(
                             serialized_env,
