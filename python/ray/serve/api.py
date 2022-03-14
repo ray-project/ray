@@ -1763,7 +1763,7 @@ def deploy(
 
     parameter_group = []
 
-    for deployment in deployments.values():
+    for deployment in deployments:
 
         deployment_parameters = {
             "name": deployment._name,
