@@ -23,17 +23,18 @@ class TestAddDeployment:
             return "got C"
 
     def test_add_deployment_valid(self):
-        app = Application()
+        app = Application([])
         app._add_deployment(self.f)
         app._add_deployment(self.C)
 
-        assert len(app) == 2
-        assert "f" in app
-        assert "C" in app
+        assert len(app.deployments) == 2
+        app_deployment_names = {d.name for d in app.deployments}
+        assert "f" in app_deployment_names
+        assert "C" in app_deployment_names
 
     def test_add_deployment_repeat_name(self):
         with pytest.raises(ValueError):
-            app = Application()
+            app = Application([])
             app._add_deployment(self.f)
             app._add_deployment(self.C.options(name="f"))
 
@@ -70,7 +71,7 @@ class TestDeployGroup:
         the client to wait until the deployments finish deploying.
         """
 
-        deploy_group(Application(deployments)._get_deployments(), blocking=blocking)
+        deploy_group(Application(deployments).deployments, blocking=blocking)
 
         def check_all_deployed():
             try:
@@ -143,7 +144,7 @@ class TestDeployGroup:
                 MutualHandles.options(name=deployment_name, init_args=(handle_name,))
             )
 
-        deploy_group(Application(deployments)._get_deployments(), blocking=True)
+        deploy_group(Application(deployments).deployments, blocking=True)
 
         for deployment in deployments:
             assert (ray.get(deployment.get_handle().remote("hello"))) == "hello"
@@ -308,7 +309,7 @@ class TestDictTranslation:
 
         compare_specified_options(config_dict, app_dict)
 
-        deploy_group(app._get_deployments())
+        deploy_group(app.deployments)
 
         assert (
             requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
@@ -334,7 +335,7 @@ class TestYAMLTranslation:
         compare_specified_options(app1.to_dict(), app2.to_dict())
 
         # Check that deployment works
-        deploy_group(app1._get_deployments())
+        deploy_group(app1.deployments)
         assert (
             requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
         )
@@ -361,8 +362,9 @@ def test_get_item(serve_instance):
 
     with open(config_file_name, "r") as f:
         app = Application.from_yaml(f)
-    app["shallow"].deploy()
-    app["one"].deploy()
+
+    for deployment in app.deployments:
+        deployment.deploy()
 
     assert requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
     assert requests.get("http://localhost:8000/one").text == "2"

@@ -353,10 +353,10 @@ def run(
 
     ray.init(address=address, namespace="serve", runtime_env=ray_runtime_env)
 
-    for deployment in app:
+    for deployment in app.deployments:
         _configure_runtime_env(deployment, runtime_env_updates)
 
-    serve.run(app, logger=cli_logger)
+    serve.run(app)
 
 
 @cli.command(

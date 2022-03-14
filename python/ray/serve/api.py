@@ -20,6 +20,7 @@ from typing import (
     Type,
     Union,
     List,
+    Iterable,
     overload,
 )
 
@@ -47,10 +48,12 @@ from ray.serve.constants import (
     SERVE_CONTROLLER_NAME,
     MAX_CACHED_HANDLES,
     CONTROLLER_MAX_CONCURRENCY,
+    DEFAULT_HTTP_HOST,
+    DEFAULT_HTTP_PORT,
 )
 from ray.serve.controller import ServeController
 from ray.serve.exceptions import RayServeException
-from ray.experimental.dag import ClassNode
+from ray.experimental.dag import DAGNode
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
 from ray.serve.utils import (
@@ -920,7 +923,7 @@ class DAGHandle:
 
 
 @PublicAPI(stability="alpha")
-class DeploymentMethodNode(ClassNode):
+class DeploymentMethodNode(DAGNode):
     """Represents a method call on a bound deployment node.
 
     These method calls can be composed into an optimized call DAG and passed
@@ -935,7 +938,7 @@ class DeploymentMethodNode(ClassNode):
 
 
 @PublicAPI(stability="alpha")
-class DeploymentNode(ClassNode):
+class DeploymentNode(DAGNode):
     """Represents a deployment with its bound config options and arguments.
 
     The bound deployment can be run, deployed, or built to a production config
@@ -1519,6 +1522,19 @@ def get_deployment_statuses() -> Dict[str, DeploymentStatusInfo]:
     return internal_get_global_client().get_deployment_statuses()
 
 
+class ImmutableDeploymentList(list):
+    def __init__(self, deployments: Iterable[Deployment]):
+        super().__init__()
+        [self.append(deployment) for deployment in deployments]
+
+    def __setitem__(self, *args):
+        """Not allowed. Modify deployment options using set_options instead."""
+        raise RuntimeError(
+            "Setting deployments in a built app is not allowed. Modify the "
+            'options using app.deployments["deployment"].set_options instead.'
+        )
+
+
 class Application:
     """A static, pre-built Serve application.
 
@@ -1527,22 +1543,34 @@ class Application:
     meaning that it receives external traffic and is the entrypoint to the
     application.
 
-    The config options of each deployment can be modified by accessing the
-    deployment by name (e.g., app["my_deployment"].update(...)).
+    The ingress deployment can be accessed via app.ingress and a dictionary of
+    all deployments can be accessed via app.deployments.
+
+    The config options of each deployment can be modified using set_options:
+    app.deployments["name"].set_options(...).
 
     This application object can be written to a config file and later deployed
     to production using the Serve CLI or REST API.
     """
 
-    # TODO(edoakes): should this literally just be the REST pydantic schema?
-    # At the very least, it should be a simple dictionary.
+    def __init__(self, deployments: List[Deployment], ingress: Deployment = None):
 
-    def __init__(self, deployments: List[Deployment] = None):
+        # TODO (shrekris-anyscale): validate ingress
+        self._ingress = ingress
+
         deployments = deployments or []
 
         self._deployments = dict()
         for d in deployments:
             self._add_deployment(d)
+
+    @property
+    def ingress(self) -> Deployment:
+        return self._ingress
+
+    @property
+    def deployments(self) -> ImmutableDeploymentList:
+        return ImmutableDeploymentList(self._deployments.values())
 
     def to_dict(self) -> Dict:
         """Returns this Application's deployments as a dictionary.
@@ -1558,24 +1586,24 @@ class Application:
 
     @classmethod
     def from_dict(cls, d: Dict) -> "Application":
-        """Converts a dictionary of deployment data to an Application.
+        """Converts a dictionary of deployment data to an application.
 
         Takes in a dictionary matching the Serve REST API schema and converts
-        it to an Application containing those deployments.
+        it to an application containing those deployments.
 
         Args:
             d (Dict): A dictionary containing the deployments' data that matches
                 the Serve REST API schema.
 
         Returns:
-            Application: a new Application object containing the deployments.
+            Application: a new application object containing the deployments.
         """
 
         schema = ServeApplicationSchema.parse_obj(d)
         return cls(schema_to_serve_application(schema))
 
     def to_yaml(self, f: Optional[TextIO] = None) -> Optional[str]:
-        """Returns this Application's deployments as a YAML string.
+        """Returns this application's deployments as a YAML string.
 
         Optionally writes the YAML string to a file as well. To write to a
         file, use this pattern:
@@ -1603,11 +1631,11 @@ class Application:
 
     @classmethod
     def from_yaml(cls, str_or_file: Union[str, TextIO]) -> "Application":
-        """Converts YAML data to deployments for an Application.
+        """Converts YAML data to deployments for an application.
 
         Takes in a string or a file pointer to a file containing deployment
         definitions in YAML. These definitions are converted to a new
-        Application object containing the deployments.
+        application object containing the deployments.
 
         To read from a file, use the following pattern:
 
@@ -1659,54 +1687,15 @@ class Application:
 
         self._deployments[deployment.name] = deployment
 
-    def _get_deployments(self) -> List[Deployment]:
-        """Gets a list of this Application's deployments."""
-
-        return self._deployments.values()
-
-    def __getitem__(self, key: str):
-        """Fetch a deployment by name using dict syntax: app["name"]
-
-        Raises:
-            KeyError: if the name is not in this Application.
-        """
-
-        if key in self._deployments:
-            return self._deployments[key]
-        else:
-            raise KeyError(f'Serve application does not contain a "{key}" deployment.')
-
-    def __iter__(self):
-        """Iterator over Application's deployments.
-
-        Enables "for deployment in Application" pattern.
-        """
-
-        return iter(self._deployments.values())
-
-    def __len__(self):
-        """Number of deployments in this Application."""
-
-        return len(self._deployments)
-
-    def __contains__(self, key: str):
-        """Checks if the key exists in self._deployments."""
-
-        return key in self._deployments
-
 
 @PublicAPI(stability="alpha")
 def run(
     target: Union[DeploymentNode, Application],
     *,
-    http_options: Union[Dict, HTTPOptions] = None,
-    logger: Optional[logging.Logger] = None,
-):
-    """Run a Serve application (blocking).
-
-    Deploys all of the deployments in the application then blocks,
-    periodically logging the status. Upon a KeyboardInterrupt, the application
-    will be torn down and all of its deployments deleted.
+    host: str = DEFAULT_HTTP_HOST,
+    port: int = DEFAULT_HTTP_PORT,
+) -> RayServeHandle:
+    """Run a Serve application and return a ServeHandle to the ingress.
 
     Either a DeploymentNode or a pre-built application can be passed in.
     If a DeploymentNode is passed in, all of the deployments it depends on
@@ -1718,10 +1707,10 @@ def run(
 
         # TODO (shrekris-anyscale): validate ingress
 
-        start(detached=True, http_options=http_options)
-        deploy_group(target, blocking=True)
+        start(detached=True, http_options={"host": host, "port": port})
+        deploy_group(deployments, blocking=True)
 
-        logger.info("\nDeployed successfully!\n")
+        # logger.info("\nDeployed successfully!\n")
 
         while True:
             statuses = serve_application_status_to_schema(
@@ -1733,11 +1722,11 @@ def run(
         # TODO (shrekris-anyscale): return handle to ingress deployment
 
     except KeyboardInterrupt:
-        logger.info("Got SIGINT (KeyboardInterrupt). Removing deployments.")
+        # logger.info("Got SIGINT (KeyboardInterrupt). Removing deployments.")
         for deployment in deployments:
             deployment.delete()
         if len(list_deployments()) == 0:
-            logger.info("No deployments left. Shutting down Serve.")
+            # logger.info("No deployments left. Shutting down Serve.")
             shutdown()
         sys.exit()
 
@@ -1797,7 +1786,7 @@ def _get_deployments_from_target(
     """Validates target and gets its deployments."""
 
     if isinstance(target, Application):
-        return target._get_deployments()
+        return target.deployments
     elif isinstance(target, DeploymentNode):
         return []
         # return extract_deployments_from_serve_dag(target)
