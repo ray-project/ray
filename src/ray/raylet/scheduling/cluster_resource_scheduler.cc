@@ -239,4 +239,12 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
       is_infeasible);
 }
 
+SchedulingResult ClusterResourceScheduler::Schedule(
+    const std::vector<const ResourceRequest *> &resource_request_list,
+    SchedulingOptions schedule_options,
+    SchedulingContext *schedule_context) {
+  return scheduling_policy_->Schedule(
+      resource_request_list, schedule_options, schedule_context);
+}
+
 }  // namespace ray

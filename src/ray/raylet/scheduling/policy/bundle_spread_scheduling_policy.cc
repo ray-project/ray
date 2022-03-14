@@ -12,35 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/raylet/scheduling/policy/composite_scheduling_policy.h"
-
-#include <functional>
-
-#include "ray/util/container_util.h"
-#include "ray/util/util.h"
+#include "ray/raylet/scheduling/policy/bundle_spread_scheduling_policy.h"
 
 namespace ray {
-
 namespace raylet_scheduling_policy {
 
-scheduling::NodeID CompositeSchedulingPolicy::Schedule(
-    const ResourceRequest &resource_request, SchedulingOptions options) {
-  switch (options.scheduling_type) {
-  case SchedulingType::SPREAD:
-    return spread_policy_.Schedule(resource_request, options);
-  case SchedulingType::RANDOM:
-    return random_policy_.Schedule(resource_request, options);
-  case SchedulingType::HYBRID:
-    return hybrid_policy_.Schedule(resource_request, options);
-  default:
-    RAY_LOG(FATAL) << "Unsupported scheduling type: "
-                   << static_cast<typename std::underlying_type<SchedulingType>::type>(
-                          options.scheduling_type);
-  }
-  UNREACHABLE;
-}
-
-SchedulingResult CompositeSchedulingPolicy::Schedule(
+SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
     SchedulingOptions schedule_options,
     SchedulingContext *schedule_context) {

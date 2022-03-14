@@ -37,6 +37,9 @@
 
 namespace ray {
 
+using raylet_scheduling_policy::SchedulingContext;
+using raylet_scheduling_policy::SchedulingOptions;
+using raylet_scheduling_policy::SchedulingResult;
 using rpc::HeartbeatTableData;
 
 /// Class encapsulating the cluster resources and the logic to assign
@@ -60,6 +63,20 @@ class ClusterResourceScheduler {
       gcs::GcsClient &gcs_client,
       std::function<int64_t(void)> get_used_object_store_memory = nullptr,
       std::function<bool(void)> get_pull_manager_at_capacity = nullptr);
+
+  /// Schedule the specified resources to the cluster nodes.
+  ///
+  /// \param resource_request_list The resource request list we're attempting to schedule.
+  /// \param scheduling_options: scheduling options.
+  /// \param schedule_context: The context of current scheduling. Each policy can
+  /// correspond to a different type of context.
+  /// \return `SchedulingResult`, including the
+  /// selected nodes if schedule successful, otherwise, it will return an empty vector and
+  /// a flag to indicate whether this request can be retry or not.
+  SchedulingResult Schedule(
+      const std::vector<const ResourceRequest *> &resource_request_list,
+      SchedulingOptions schedule_options,
+      SchedulingContext *schedule_context);
 
   ///  Find a node in the cluster on which we can schedule a given resource request.
   ///  In hybrid mode, see `scheduling_policy.h` for a description of the policy.

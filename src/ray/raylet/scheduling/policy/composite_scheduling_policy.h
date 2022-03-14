@@ -37,10 +37,16 @@ class CompositeSchedulingPolicy : public ISchedulingPolicy {
   scheduling::NodeID Schedule(const ResourceRequest &resource_request,
                               SchedulingOptions options) override;
 
+  SchedulingResult Schedule(
+      const std::vector<const ResourceRequest *> &resource_request_list,
+      SchedulingOptions schedule_options,
+      SchedulingContext *schedule_context) override;
+
  private:
   HybridSchedulingPolicy hybrid_policy_;
   RandomSchedulingPolicy random_policy_;
   SpreadSchedulingPolicy spread_policy_;
+
 };
 
 }  // namespace raylet_scheduling_policy

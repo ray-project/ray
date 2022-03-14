@@ -19,6 +19,7 @@
 #include "ray/common/id.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+#include "ray/util/util.h"
 
 namespace ray {
 
@@ -29,13 +30,6 @@ enum CommitState {
   PREPARED,
   /// Resources are COMMITTED.
   COMMITTED
-};
-
-struct pair_hash {
-  template <class T1, class T2>
-  std::size_t operator()(const std::pair<T1, T2> &pair) const {
-    return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
-  }
 };
 
 struct BundleTransactionState {

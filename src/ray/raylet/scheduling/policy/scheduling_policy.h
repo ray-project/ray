@@ -17,11 +17,36 @@
 #include <vector>
 
 #include "ray/raylet/scheduling/cluster_resource_data.h"
+#include "ray/raylet/scheduling/policy/scheduling_context.h"
 #include "ray/raylet/scheduling/policy/scheduling_options.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 
 namespace ray {
 namespace raylet_scheduling_policy {
+
+// Status of resource scheduling result.
+struct SchedulingResultStatus {
+  bool IsFailed() const { return code == SchedulingResultStatusCode::FAILED; }
+  bool IsInfeasible() const { return code == SchedulingResultStatusCode::INFEASIBLE; }
+  bool IsSuccess() const { return code == SchedulingResultStatusCode::SUCCESS; }
+
+  enum class SchedulingResultStatusCode {
+    // Scheduling failed but retryable.
+    FAILED = 0,
+    // Scheduling failed and non-retryable.
+    INFEASIBLE = 1,
+    // Scheduling successful.
+    SUCCESS = 2,
+  };
+  SchedulingResultStatusCode code = SchedulingResultStatusCode::SUCCESS;
+};
+
+struct SchedulingResult {
+  // The status of scheduling.
+  SchedulingResultStatus status;
+  // The nodes successfully scheduled.
+  std::vector<scheduling::NodeID> selected_nodes;
+};
 
 /// ISchedulingPolicy picks a node to from the cluster, according to the resource
 /// requirment as well as the scheduling options.
@@ -34,7 +59,25 @@ class ISchedulingPolicy {
   /// \return NodeID::Nil() if the task is unfeasible, otherwise the node id
   /// to schedule on.
   virtual scheduling::NodeID Schedule(const ResourceRequest &resource_request,
-                                      SchedulingOptions options) = 0;
+                                      SchedulingOptions options) {
+    return scheduling::NodeID();
+  }
+
+  /// Schedule the specified resources to the cluster nodes.
+  ///
+  /// \param resource_request_list The resource request list we're attempting to schedule.
+  /// \param scheduling_options: scheduling options.
+  /// \param schedule_context: The context of current scheduling. Each policy can
+  /// correspond to a different type of context.
+  /// \return `SchedulingResult`, including the
+  /// selected nodes if schedule successful, otherwise, it will return an empty vector and
+  /// a flag to indicate whether this request can be retry or not.
+  virtual SchedulingResult Schedule(
+      const std::vector<const ResourceRequest *> &resource_request_list,
+      SchedulingOptions schedule_options,
+      SchedulingContext *schedule_context) {
+    return SchedulingResult();
+  }
 };
 }  // namespace raylet_scheduling_policy
 }  // namespace ray
