@@ -36,7 +36,7 @@ inline const RayFunction &ToRayFunction(JNIEnv *env,
                                         jobject functionDescriptor,
                                         jint hash) {
   auto &fd_vector = submitter_function_descriptor_cache[hash];
-  for (auto &[obj, func]: fd_vector) {
+  for (auto &[obj, func] : fd_vector) {
     if (env->CallBooleanMethod(obj, java_object_equals, functionDescriptor)) {
       return func;
     }
