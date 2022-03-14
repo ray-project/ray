@@ -59,7 +59,7 @@ As seen in the example above, workflow steps can be composed by passing ``Workfl
     def get_val() -> int:
         return 10
 
-    ret = add.step(get_val1.step(), 20)
+    ret = add.step(get_val.step(), 20)
     assert ret.run("add_example") == 30
 
 Here we can see though ``get_val1.step()`` returns a ``Workflow[int]``, when passed to the ``add`` step, the ``add`` function will see its resolved value.
