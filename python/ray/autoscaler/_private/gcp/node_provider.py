@@ -181,14 +181,14 @@ class GCPNodeProvider(NodeProvider):
                 result = resource.delete_instance(
                     node_id=node_id,
                 )
-            except googleapiclient.errors.HttpError as e:
-                if e.status_code == 404:
+            except googleapiclient.errors.HttpError as http_error:
+                if http_error.resp.status == 404:
                     logger.warning(
-                        f"Tried to delete the node with id {node_id}"
+                        f"Tried to delete the node with id {node_id} "
                         "but it was already gone."
                     )
                 else:
-                    raise e from None
+                    raise http_error from None
             return result
 
     @_retry
