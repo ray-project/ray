@@ -4,8 +4,6 @@ import yaml
 import os
 import pathlib
 import click
-from typing import Tuple, List, Dict
-import argparse
 
 import ray
 from ray._private.utils import import_attr
@@ -21,7 +19,6 @@ from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.serve.application import Application
-from ray.serve.api import Deployment
 
 RAY_INIT_ADDRESS_HELP_STR = (
     "Address to use for ray.init(). Can also be specified "
@@ -107,7 +104,7 @@ def start(
     )
 
 
-@cli.command(help="Shut down the running Serve instance on the Ray cluster.")
+@cli.command(help="Shut down the running Serve app on the Ray cluster.")
 @click.option(
     "--address",
     "-a",
@@ -153,22 +150,23 @@ def shutdown(address: str, namespace: str):
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
+@click.option(
+    "--blocking/--non-blocking",
+    default=False,
+)
 def deploy(config_file_name: str, address: str):
-
     with open(config_file_name, "r") as config_file:
         config = yaml.safe_load(config_file)
 
-    # Schematize config to validate format
+    # Schematize config to validate format.
     ServeApplicationSchema.parse_obj(config)
-
     ServeSubmissionClient(address).deploy_application(config)
 
     cli_logger.newline()
     cli_logger.success(
         "\nSent deploy request successfully!\n "
-        "* Use `serve status` to check your deployments' statuses.\n "
-        "* Use `serve info` to see your running Serve "
-        "application's configuration.\n"
+        "* Use `serve status` to check deployments' statuses.\n "
+        "* Use `serve config` to see the running app's config.\n"
     )
     cli_logger.newline()
 
@@ -219,13 +217,35 @@ def deploy(config_file_name: str, address: str):
     type=str,
     help=RAY_INIT_ADDRESS_HELP_STR,
 )
+@click.option(
+    "--host",
+    "-h",
+    default=DEFAULT_HTTP_HOST,
+    required=False,
+    type=str,
+    help=f"Host for HTTP server to listen on. Defaults to {DEFAULT_HTTP_HOST}.",
+)
+@click.option(
+    "--port",
+    "-p",
+    default=DEFAULT_HTTP_PORT,
+    required=False,
+    type=int,
+    help=f"Port for HTTP servers to listen on. Defaults to {DEFAULT_HTTP_PORT}.",
+)
+@click.option(
+    "--blocking/--non-blocking",
+    default=True,
+)
 def run(
     config_or_import_path: str,
-    args_and_kwargs: Tuple[str],
     runtime_env: str,
     runtime_env_json: str,
     working_dir: str,
     address: str,
+    host: str,
+    port: int,
+    blocking: bool,
 ):
     final_runtime_env = parse_runtime_env_args(
         runtime_env=runtime_env,
@@ -256,8 +276,7 @@ def run(
 
 
 @cli.command(
-    short_help="Get the current config of the running Serve app.",
-    help=("Prints the configurations of all running deployments in the Serve app."),
+    help="Get the current config of the running Serve app.",
 )
 @click.option(
     "--address",
@@ -267,24 +286,15 @@ def run(
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
-@click.option(
-    "--json_format",
-    "-j",
-    is_flag=True,
-    help="Print info as json. If omitted, info is printed as YAML.",
-)
-def info(address: str, json_format=bool):
+def config(address: str, json_format=bool):
 
     app_info = ServeSubmissionClient(address).get_info()
     if app_info is not None:
-        if json_format:
-            print(json.dumps(app_info, indent=4))
-        else:
-            print(yaml.dump(app_info))
+        print(yaml.dump(app_info))
 
 
 @cli.command(
-    short_help="Get the current status of the Serve app.",
+    short_help="Get the current status of the running Serve app.",
     help=(
         "Prints status information about all deployments in the Serve app.\n\n"
         "Deployments may be:\n\n"
@@ -310,8 +320,7 @@ def status(address: str):
 
 
 @cli.command(
-    short_help=("Deletes all running deployments in the Serve app."),
-    help="Deletes all running deployments in the Serve app.",
+    help="Deletes all deployments in the Serve app.",
 )
 @click.option(
     "--address",
@@ -323,7 +332,6 @@ def status(address: str):
 )
 @click.option("--yes", "-y", is_flag=True, help="Bypass confirmation prompt.")
 def delete(address: str, yes: bool):
-
     if not yes:
         click.confirm(
             f"\nThis will shutdown the Serve application at address "

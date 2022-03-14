@@ -12,7 +12,6 @@ from ray import serve
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray._private.test_utils import wait_for_condition
 from ray.dashboard.optional_utils import RAY_INTERNAL_DASHBOARD_NAMESPACE
-from ray.serve.scripts import _process_args_and_kwargs, _configure_runtime_env
 
 
 def ping_endpoint(endpoint: str, params: str = ""):
