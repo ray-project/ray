@@ -1648,7 +1648,6 @@ class Application:
 def run(
     target: Union[DeploymentNode, Application],
     *,
-    blocking: bool = False,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
     logger: Optional[logging.Logger] = None,
@@ -1658,10 +1657,6 @@ def run(
     Either a DeploymentNode or a pre-built application can be passed in.
     If a DeploymentNode is passed in, all of the deployments it depends on
     will be deployed.
-
-    If blocking=True, this command will block and periodically print the
-    status of the deployments. On shutdown (KeyboardInterrupt or exit), all
-    deployments will be torn down.
     """
     raise NotImplementedError()
 
