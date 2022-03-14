@@ -1685,12 +1685,7 @@ def deploy(
 
 
 @PublicAPI(stability="alpha")
-def build(
-    target: DeploymentNode,
-    *,
-    host: str = DEFAULT_HTTP_HOST,
-    port: int = DEFAULT_HTTP_PORT,
-) -> Application:
+def build(target: DeploymentNode) -> Application:
     """Builds a Serve application into a static configuration.
 
     Takes in a DeploymentNode and converts it to a Serve application
