@@ -38,7 +38,7 @@ TEST_IMPORT_DIR = "test_import_dir"
 
 # Set scope to "module" to force this to run before start_cluster, whose scope
 # is "function".  We need these env vars to be set before Ray is started.
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="module")
 def insert_test_dir_in_pythonpath():
     with mock.patch.dict(
         os.environ,
