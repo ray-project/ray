@@ -12,14 +12,13 @@ from typing import List
 DEFAULT_BLACKLIST = [
     "aiohttp",
     "aiohttp_cors",
-    "aioredis",
     "colorful",
     "py-spy",
     # "requests",
     "gpustat",
     "opencensus",
     "prometheus_client",
-    "smart_open"
+    "smart_open",
 ]
 
 
@@ -29,19 +28,20 @@ def assert_packages_not_installed(blacklist: List[str]):
     except ImportError:  # pip < 10.0
         from pip.operations import freeze
 
-    installed_packages = [
-        p.split("==")[0].split(" @ ")[0] for p in freeze.freeze()
-    ]
+    installed_packages = [p.split("==")[0].split(" @ ")[0] for p in freeze.freeze()]
 
-    assert not any(p in installed_packages for p in blacklist), \
-        f"Found blacklisted packages in installed python packages: " \
-        f"{[p for p in blacklist if p in installed_packages]}. " \
-        f"Minimal dependency tests could be tainted by this. " \
-        f"Check the install logs and primary dependencies if any of these " \
+    assert not any(p in installed_packages for p in blacklist), (
+        f"Found blacklisted packages in installed python packages: "
+        f"{[p for p in blacklist if p in installed_packages]}. "
+        f"Minimal dependency tests could be tainted by this. "
+        f"Check the install logs and primary dependencies if any of these "
         f"packages were installed as part of another install step."
+    )
 
-    print(f"Confirmed that blacklisted packages are not installed in "
-          f"current Python environment: {blacklist}")
+    print(
+        f"Confirmed that blacklisted packages are not installed in "
+        f"current Python environment: {blacklist}"
+    )
 
 
 if __name__ == "__main__":

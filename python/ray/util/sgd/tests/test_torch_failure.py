@@ -14,10 +14,15 @@ from ray.util.sgd.torch.worker_group import RemoteWorkerGroup
 from ray.util.sgd.torch.training_operator import TrainingOperator
 
 from ray.util.sgd.torch.examples.train_example import (
-    model_creator, optimizer_creator, data_creator, LinearDataset)
+    model_creator,
+    optimizer_creator,
+    data_creator,
+    LinearDataset,
+)
 
 Operator = TrainingOperator.from_creators(
-    model_creator, optimizer_creator, data_creator, loss_creator=nn.MSELoss)
+    model_creator, optimizer_creator, data_creator, loss_creator=nn.MSELoss
+)
 
 
 @pytest.fixture
@@ -42,8 +47,7 @@ def ray_start_4_cpus():
         dist.destroy_process_group()
 
 
-def remote_worker_train_with_fail(self, num_steps, profile, info,
-                                  dataset=None):
+def remote_worker_train_with_fail(self, num_steps, profile, info, dataset=None):
     remote_worker_stats = []
     for i, w in enumerate(self.remote_workers):
         params = dict(num_steps=num_steps, profile=profile, info=info)
@@ -64,8 +68,11 @@ def gen_start_with_fail(num_fails):
     def start_with_fail(self, *args, **kwargs):
         success = start_workers(self, *args, **kwargs)
         fail = self._num_failures < num_fails
-        fail_worker_group = self.worker_group.remote_worker_group if \
-            self.use_local else self.worker_group
+        fail_worker_group = (
+            self.worker_group.remote_worker_group
+            if self.use_local
+            else self.worker_group
+        )
         fail_worker_group.should_fail = fail
         return success
 
@@ -88,13 +95,15 @@ def test_resize(ray_start_2_cpus, use_local):  # noqa: F811
         model_creator,
         optimizer_creator,
         single_loader,
-        loss_creator=lambda config: nn.MSELoss())
+        loss_creator=lambda config: nn.MSELoss(),
+    )
     with patch.object(TorchTrainer, "_start_workers", start_with_fail):
         trainer1 = TorchTrainer(
             training_operator_cls=TestOperator,
             config={"batch_size": 100000},
             use_local=use_local,
-            num_workers=2)
+            num_workers=2,
+        )
 
         # we use placement_group to occupy resources
         bundle = {
@@ -139,7 +148,8 @@ def test_fail_twice(ray_start_2_cpus, use_local):  # noqa: F811
         model_creator,
         optimizer_creator,
         single_loader,
-        loss_creator=lambda config: nn.MSELoss())
+        loss_creator=lambda config: nn.MSELoss(),
+    )
 
     start_with_fail = gen_start_with_fail(2)
 
@@ -148,7 +158,8 @@ def test_fail_twice(ray_start_2_cpus, use_local):  # noqa: F811
             training_operator_cls=TestOperator,
             config={"batch_size": 100000},
             use_local=use_local,
-            num_workers=2)
+            num_workers=2,
+        )
 
         # MAX RETRIES SHOULD BE ON BY DEFAULT
         trainer1.train()
@@ -172,7 +183,8 @@ def test_fail_with_recover(ray_start_2_cpus, use_local):  # noqa: F811
         model_creator,
         optimizer_creator,
         single_loader,
-        loss_creator=lambda config: nn.MSELoss())
+        loss_creator=lambda config: nn.MSELoss(),
+    )
 
     start_with_fail = gen_start_with_fail(3)
 
@@ -182,7 +194,8 @@ def test_fail_with_recover(ray_start_2_cpus, use_local):  # noqa: F811
             config={"batch_size": 100000},
             timeout_s=5,
             use_local=use_local,
-            num_workers=2)
+            num_workers=2,
+        )
 
         with pytest.raises(RuntimeError):
             trainer1.train(max_retries=1)
@@ -206,7 +219,8 @@ def test_fail_state(ray_start_2_cpus):  # noqa: F811
         model_creator,
         optimizer_creator,
         single_loader,
-        loss_creator=lambda config: nn.MSELoss())
+        loss_creator=lambda config: nn.MSELoss(),
+    )
 
     def init_hook():
         torch.manual_seed(0)
@@ -216,7 +230,8 @@ def test_fail_state(ray_start_2_cpus):  # noqa: F811
         config={"batch_size": 100000},
         timeout_s=5,
         initialization_hook=init_hook,
-        num_workers=2)
+        num_workers=2,
+    )
     initial_state = trainer1.state_dict()
     trainer1.train()
     trainer1_state = trainer1.state_dict()
@@ -228,7 +243,8 @@ def test_fail_state(ray_start_2_cpus):  # noqa: F811
         config={"batch_size": 100000},
         timeout_s=5,
         initialization_hook=init_hook,
-        num_workers=2)
+        num_workers=2,
+    )
     trainer2.load_state_dict(initial_state)
     trainer2.train()
     assert trainer2.state_dict() == trainer1_state
@@ -241,7 +257,8 @@ def test_fail_state(ray_start_2_cpus):  # noqa: F811
             config={"batch_size": 100000},
             timeout_s=5,
             initialization_hook=init_hook,
-            num_workers=2)
+            num_workers=2,
+        )
         trainer3.load_state_dict(initial_state)
         trainer3.train()
         assert trainer3.state_dict() == trainer1_state
@@ -256,6 +273,7 @@ def gen_start_with_startup_fail(num_fails):
             # Fail during worker start just during the first training attempt.
             def _raise():
                 import sys
+
                 sys.exit(1)
 
             if not self.initialization_hook:
@@ -281,7 +299,8 @@ def test_failure_during_resize(ray_start_2_cpus):  # noqa: F811
         model_creator,
         optimizer_creator,
         single_loader,
-        loss_creator=lambda config: nn.MSELoss())
+        loss_creator=lambda config: nn.MSELoss(),
+    )
 
     start_with_fail = gen_start_with_startup_fail(1)
     with patch.object(TorchTrainer, "_start_workers", start_with_fail):
@@ -290,7 +309,8 @@ def test_failure_during_resize(ray_start_2_cpus):  # noqa: F811
             config={"batch_size": 100000},
             timeout_s=5,
             use_local=False,
-            num_workers=2)
+            num_workers=2,
+        )
         trainer1.train()
 
     trainer1.shutdown()

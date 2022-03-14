@@ -32,7 +32,8 @@ inline jint GetHashCodeOfJavaObject(JNIEnv *env, jobject java_object) {
 thread_local std::unordered_map<jint, std::vector<std::pair<jobject, RayFunction>>>
     submitter_function_descriptor_cache;
 
-inline const RayFunction &ToRayFunction(JNIEnv *env, jobject functionDescriptor,
+inline const RayFunction &ToRayFunction(JNIEnv *env,
+                                        jobject functionDescriptor,
                                         jint hash) {
   auto &fd_vector = submitter_function_descriptor_cache[hash];
   for (auto &pair : fd_vector) {
@@ -89,7 +90,8 @@ inline std::vector<std::unique_ptr<TaskArg>> ToTaskArgs(JNIEnv *env, jobject arg
 inline std::unordered_map<std::string, double> ToResources(JNIEnv *env,
                                                            jobject java_resources) {
   return JavaMapToNativeMap<std::string, double>(
-      env, java_resources,
+      env,
+      java_resources,
       [](JNIEnv *env, jobject java_key) {
         return JavaStringToNativeString(env, (jstring)java_key);
       },
@@ -144,12 +146,14 @@ inline TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptio
 inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
                                                    jobject actorCreationOptions) {
   std::string name = "";
+  std::optional<bool> is_detached = std::nullopt;
   int64_t max_restarts = 0;
   std::unordered_map<std::string, double> resources;
   std::vector<std::string> dynamic_worker_options;
   uint64_t max_concurrency = 1;
   auto placement_options = std::make_pair(PlacementGroupID::Nil(), -1);
   std::vector<ConcurrencyGroup> concurrency_groups;
+  std::string serialized_runtime_env = "";
   int32_t max_pending_calls = -1;
 
   if (actorCreationOptions) {
@@ -158,6 +162,13 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
     if (java_name) {
       name = JavaStringToNativeString(env, java_name);
     }
+    auto java_actor_lifetime = (jobject)env->GetObjectField(
+        actorCreationOptions, java_actor_creation_options_lifetime);
+    if (java_actor_lifetime != nullptr) {
+      is_detached = std::make_optional<bool>(
+          env->IsSameObject(java_actor_lifetime, STATUS_DETACHED));
+    }
+
     max_restarts =
         env->GetIntField(actorCreationOptions, java_actor_creation_options_max_restarts);
     jobject java_resources =
@@ -188,7 +199,9 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
         actorCreationOptions, java_actor_creation_options_concurrency_groups);
     RAY_CHECK(java_concurrency_groups_field != nullptr);
     JavaListToNativeVector<ray::ConcurrencyGroup>(
-        env, java_concurrency_groups_field, &concurrency_groups,
+        env,
+        java_concurrency_groups_field,
+        &concurrency_groups,
         [](JNIEnv *env, jobject java_concurrency_group_impl) {
           RAY_CHECK(java_concurrency_group_impl != nullptr);
           jobject java_func_descriptors =
@@ -197,7 +210,9 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
           RAY_CHECK_JAVA_EXCEPTION(env);
           std::vector<ray::FunctionDescriptor> native_func_descriptors;
           JavaListToNativeVector<ray::FunctionDescriptor>(
-              env, java_func_descriptors, &native_func_descriptors,
+              env,
+              java_func_descriptors,
+              &native_func_descriptors,
               [](JNIEnv *env, jobject java_func_descriptor) {
                 RAY_CHECK(java_func_descriptor != nullptr);
                 const jint hashcode = GetHashCodeOfJavaObject(env, java_func_descriptor);
@@ -208,13 +223,20 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
               });
           // Put func_descriptors into this task group.
           const std::string concurrency_group_name = JavaStringToNativeString(
-              env, (jstring)env->GetObjectField(java_concurrency_group_impl,
-                                                java_concurrency_group_impl_name));
+              env,
+              (jstring)env->GetObjectField(java_concurrency_group_impl,
+                                           java_concurrency_group_impl_name));
           const uint32_t max_concurrency = env->GetIntField(
               java_concurrency_group_impl, java_concurrency_group_impl_max_concurrency);
-          return ray::ConcurrencyGroup{concurrency_group_name, max_concurrency,
-                                       native_func_descriptors};
+          return ray::ConcurrencyGroup{
+              concurrency_group_name, max_concurrency, native_func_descriptors};
         });
+    auto java_serialized_runtime_env = (jstring)env->GetObjectField(
+        actorCreationOptions, java_actor_creation_options_serialized_runtime_env);
+    if (java_serialized_runtime_env) {
+      serialized_runtime_env = JavaStringToNativeString(env, java_serialized_runtime_env);
+    }
+
     max_pending_calls = static_cast<int32_t>(env->GetIntField(
         actorCreationOptions, java_actor_creation_options_max_pending_calls));
   }
@@ -240,12 +262,12 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       resources,
       resources,
       dynamic_worker_options,
-      /*is_detached=*/false,
+      is_detached,
       name,
       ray_namespace,
       /*is_asyncio=*/false,
       /*scheduling_strategy=*/scheduling_strategy,
-      /*serialized_runtime_env=*/"{}",
+      serialized_runtime_env,
       concurrency_groups,
       /*execute_out_of_order*/ false,
       max_pending_calls};
@@ -284,7 +306,8 @@ inline PlacementGroupCreationOptions ToPlacementGroupCreationOptions(
   JavaListToNativeVector<std::unordered_map<std::string, double>>(
       env, java_bundles, &bundles, [](JNIEnv *env, jobject java_bundle) {
         return JavaMapToNativeMap<std::string, double>(
-            env, java_bundle,
+            env,
+            java_bundle,
             [](JNIEnv *env, jobject java_key) {
               return JavaStringToNativeString(env, (jstring)java_key);
             },
@@ -294,7 +317,9 @@ inline PlacementGroupCreationOptions ToPlacementGroupCreationOptions(
               return value;
             });
       });
-  return PlacementGroupCreationOptions(name, ConvertStrategy(java_strategy), bundles,
+  return PlacementGroupCreationOptions(name,
+                                       ConvertStrategy(java_strategy),
+                                       bundles,
                                        /*is_detached=*/false);
 }
 
@@ -302,9 +327,14 @@ inline PlacementGroupCreationOptions ToPlacementGroupCreationOptions(
 extern "C" {
 #endif
 
-JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitTask(
-    JNIEnv *env, jclass p, jobject functionDescriptor, jint functionDescriptorHash,
-    jobject args, jint numReturns, jobject callOptions) {
+JNIEXPORT jobject JNICALL
+Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitTask(JNIEnv *env,
+                                                              jclass p,
+                                                              jobject functionDescriptor,
+                                                              jint functionDescriptorHash,
+                                                              jobject args,
+                                                              jint numReturns,
+                                                              jobject callOptions) {
   const auto &ray_function =
       ToRayFunction(env, functionDescriptor, functionDescriptorHash);
   auto task_args = ToTaskArgs(env, args);
@@ -324,7 +354,9 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSub
   }
   // TODO (kfstorm): Allow setting `max_retries` via `CallOptions`.
   auto return_refs =
-      CoreWorkerProcess::GetCoreWorker().SubmitTask(ray_function, task_args, task_options,
+      CoreWorkerProcess::GetCoreWorker().SubmitTask(ray_function,
+                                                    task_args,
+                                                    task_options,
                                                     /*max_retries=*/0,
                                                     /*retry_exceptions=*/false,
                                                     /*scheduling_strategy=*/
@@ -345,17 +377,23 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSub
 
 JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(
-    JNIEnv *env, jclass p, jobject functionDescriptor, jint functionDescriptorHash,
-    jobject args, jobject actorCreationOptions) {
+    JNIEnv *env,
+    jclass p,
+    jobject functionDescriptor,
+    jint functionDescriptorHash,
+    jobject args,
+    jobject actorCreationOptions) {
   const auto &ray_function =
       ToRayFunction(env, functionDescriptor, functionDescriptorHash);
   auto task_args = ToTaskArgs(env, args);
   auto actor_creation_options = ToActorCreationOptions(env, actorCreationOptions);
 
   ActorID actor_id;
-  auto status = CoreWorkerProcess::GetCoreWorker().CreateActor(
-      ray_function, task_args, actor_creation_options,
-      /*extension_data*/ "", &actor_id);
+  auto status = CoreWorkerProcess::GetCoreWorker().CreateActor(ray_function,
+                                                               task_args,
+                                                               actor_creation_options,
+                                                               /*extension_data*/ "",
+                                                               &actor_id);
 
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   return IdToJavaByteArray<ActorID>(env, actor_id);
@@ -363,8 +401,14 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(
 
 JNIEXPORT jobject JNICALL
 Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
-    JNIEnv *env, jclass p, jbyteArray actorId, jobject functionDescriptor,
-    jint functionDescriptorHash, jobject args, jint numReturns, jobject callOptions) {
+    JNIEnv *env,
+    jclass p,
+    jbyteArray actorId,
+    jobject functionDescriptor,
+    jint functionDescriptorHash,
+    jobject args,
+    jint numReturns,
+    jobject callOptions) {
   auto actor_id = JavaByteArrayToId<ActorID>(env, actorId);
   const auto &ray_function =
       ToRayFunction(env, functionDescriptor, functionDescriptorHash);

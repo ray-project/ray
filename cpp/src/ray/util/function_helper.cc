@@ -86,6 +86,14 @@ std::string FunctionHelper::LoadAllRemoteFunctions(const std::string lib_path,
                      << "' not found in " << lib_path;
     return "";
   }
+  // Both default worker and user dynamic library static link libray_api.so which has a
+  // singleton class RayRuntimeHolder, the user dynamic library will get a new un-init
+  // instance of RayRuntimeHolder, so we need to init the RayRuntimeHolder singleton when
+  // loading the user dynamic library to make sure the new instance valid.
+  auto init_func =
+      boost::dll::import_alias<void(std::shared_ptr<RayRuntime>)>(lib, "InitRayRuntime");
+  init_func(RayRuntimeHolder::Instance().Runtime());
+
   auto get_remote_func = boost::dll::import_alias<
       std::pair<const RemoteFunctionMap_t &, const RemoteMemberFunctionMap_t &>()>(
       lib, internal_function_name);

@@ -19,11 +19,7 @@ exit_with_error = False
 
 
 def check_import(file):
-    check_to_lines = {
-        "import ray": -1,
-        "import psutil": -1,
-        "import setproctitle": -1
-    }
+    check_to_lines = {"import ray": -1, "import psutil": -1, "import setproctitle": -1}
 
     with io.open(file, "r", encoding="utf-8") as f:
         for i, line in enumerate(f):
@@ -37,8 +33,10 @@ def check_import(file):
                 # It will not match the following
                 # - submodule import: `import ray.constants as ray_constants`
                 # - submodule import: `from ray import xyz`
-                if re.search(r"^\s*" + check + r"(\s*|\s+# noqa F401.*)$",
-                             line) and check_to_lines[check] == -1:
+                if (
+                    re.search(r"^\s*" + check + r"(\s*|\s+# noqa F401.*)$", line)
+                    and check_to_lines[check] == -1
+                ):
                     check_to_lines[check] = i
 
     for import_lib in ["import psutil", "import setproctitle"]:
@@ -48,8 +46,8 @@ def check_import(file):
             if import_ray_line == -1 or import_ray_line > import_psutil_line:
                 print(
                     "{}:{}".format(str(file), import_psutil_line + 1),
-                    "{} without explicitly import ray before it.".format(
-                        import_lib))
+                    "{} without explicitly import ray before it.".format(import_lib),
+                )
                 global exit_with_error
                 exit_with_error = True
 
@@ -59,8 +57,7 @@ if __name__ == "__main__":
     parser.add_argument("path", help="File path to check. e.g. '.' or './src'")
     # TODO(simon): For the future, consider adding a feature to explicitly
     # white-list the path instead of skipping them.
-    parser.add_argument(
-        "-s", "--skip", action="append", help="Skip certian directory")
+    parser.add_argument("-s", "--skip", action="append", help="Skip certian directory")
     args = parser.parse_args()
 
     file_path = Path(args.path)

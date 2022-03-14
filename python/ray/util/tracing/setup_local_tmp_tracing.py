@@ -20,4 +20,6 @@ def setup_tracing() -> None:
             ConsoleSpanExporter(
                 out=open(f"{spans_dir}{os.getpid()}.txt", "w"),
                 formatter=lambda span: span.to_json(indent=None) + os.linesep,
-            )))
+            )
+        )
+    )

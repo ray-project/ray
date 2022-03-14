@@ -28,11 +28,14 @@ def wait_multiple_steps():
 
 @pytest.mark.parametrize(
     "workflow_start_regular_shared",
-    [{
-        "num_cpus": 8
-        # We need more CPUs, otherwise task execution could be blocked.
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 8
+            # We need more CPUs, otherwise task execution could be blocked.
+        }
+    ],
+    indirect=True,
+)
 def test_wait_basics(workflow_start_regular_shared):
     # This tests basic usage of 'workflow.wait':
     # 1. It returns ready tasks precisely and preserves the original order.
@@ -78,11 +81,14 @@ def test_wait_basics(workflow_start_regular_shared):
 
 @pytest.mark.parametrize(
     "workflow_start_regular_shared",
-    [{
-        "num_cpus": 8
-        # We need more CPUs, otherwise task execution could be blocked.
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 8
+            # We need more CPUs, otherwise task execution could be blocked.
+        }
+    ],
+    indirect=True,
+)
 def test_wait_basics_2(workflow_start_regular_shared):
     # Test "workflow.wait" running in the top level DAG,
     # or running "workflow.wait" directly.
@@ -116,11 +122,14 @@ def test_wait_basics_2(workflow_start_regular_shared):
 
 @pytest.mark.parametrize(
     "workflow_start_regular_shared",
-    [{
-        "num_cpus": 8
-        # We need more CPUs, otherwise task execution could be blocked.
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 8
+            # We need more CPUs, otherwise task execution could be blocked.
+        }
+    ],
+    indirect=True,
+)
 def test_wait_recursive(workflow_start_regular_shared):
     # This tests that we can 'workflow.wait' the remaining pending workflow
     # returned by another 'workflow.wait' recursively.
@@ -144,11 +153,14 @@ def test_wait_recursive(workflow_start_regular_shared):
 
 @pytest.mark.parametrize(
     "workflow_start_regular_shared",
-    [{
-        "num_cpus": 8
-        # We need more CPUs, otherwise task execution could be blocked.
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 8
+            # We need more CPUs, otherwise task execution could be blocked.
+        }
+    ],
+    indirect=True,
+)
 def test_wait_failure_recovery_1(workflow_start_regular_shared):
     # This tests that if a step using the output of "workflow.wait" as its
     # input, it can be recovered after failure.
@@ -183,11 +195,14 @@ def test_wait_failure_recovery_1(workflow_start_regular_shared):
 
 @pytest.mark.parametrize(
     "workflow_start_regular_shared",
-    [{
-        "num_cpus": 8
-        # We need more CPUs, otherwise task execution could be blocked.
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 8
+            # We need more CPUs, otherwise task execution could be blocked.
+        }
+    ],
+    indirect=True,
+)
 def test_wait_failure_recovery_2(workflow_start_regular_shared):
     # Test failing "workflow.wait" and its input steps.
 
@@ -219,6 +234,45 @@ def test_wait_failure_recovery_2(workflow_start_regular_shared):
     utils.set_global_mark()
     ready, unready = ray.get(workflow.resume("wait_failure_recovery_2"))
     assert ready == [2, 1]
+
+
+@pytest.mark.parametrize(
+    "workflow_start_regular_shared",
+    [
+        {
+            "num_cpus": 2
+            # We need more CPUs, otherwise task execution could be blocked.
+        }
+    ],
+    indirect=True,
+)
+def test_wait_recovery_step_id(workflow_start_regular_shared):
+    # This test ensures workflow reuse the original directory and
+    # step id for "workflow.wait" during recovery.
+
+    @workflow.step
+    def identity(x: int):
+        # block the step by a global mark
+        assert utils.check_global_mark()
+        return x
+
+    w = workflow.wait([identity.step(42)], num_returns=1, timeout=None)
+    utils.unset_global_mark()
+    with pytest.raises(RaySystemError):
+        _ = w.run(workflow_id="test_wait_recovery_step_id")
+    utils.set_global_mark()
+    ready, unready = ray.get(workflow.resume("test_wait_recovery_step_id"))
+    assert ready == [42]
+
+    from ray.workflow import storage, workflow_storage
+
+    global_storage = storage.get_global_storage()
+    wf_storage = workflow_storage.WorkflowStorage(
+        "test_wait_recovery_step_id", global_storage
+    )
+    index = wf_storage.gen_step_id("workflow.wait")
+    # no new step id
+    assert index <= 1
 
 
 if __name__ == "__main__":

@@ -52,21 +52,18 @@ time_to_run = "20s"
 # Wait until the expected number of nodes have joined the cluster.
 while True:
     num_nodes = len(list(filter(lambda node: node["Alive"], ray.nodes())))
-    logger.info("Waiting for nodes {}/{}".format(num_nodes,
-                                                 expected_num_nodes))
+    logger.info("Waiting for nodes {}/{}".format(num_nodes, expected_num_nodes))
     if num_nodes >= expected_num_nodes:
         break
     time.sleep(5)
 
-logger.info("Nodes have all joined. There are %s resources.",
-            ray.cluster_resources())
+logger.info("Nodes have all joined. There are %s resources.", ray.cluster_resources())
 
 serve.start()
 
 pg = placement_group(
-    [{
-        "CPU": 1
-    } for _ in range(expected_num_nodes)], strategy="STRICT_SPREAD")
+    [{"CPU": 1} for _ in range(expected_num_nodes)], strategy="STRICT_SPREAD"
+)
 ray.get(pg.ready())
 
 
@@ -107,11 +104,12 @@ def run_wrk():
     return result.stdout.decode()
 
 
-results = ray.get([
-    run_wrk.options(placement_group=pg,
-                    placement_group_bundle_index=i).remote()
-    for i in range(expected_num_nodes)
-])
+results = ray.get(
+    [
+        run_wrk.options(placement_group=pg, placement_group_bundle_index=i).remote()
+        for i in range(expected_num_nodes)
+    ]
+)
 
 for i in range(expected_num_nodes):
     logger.info("Results for node %i of %i:", i + 1, expected_num_nodes)

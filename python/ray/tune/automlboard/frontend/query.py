@@ -60,7 +60,7 @@ def query_job(request):
             "running_trials": running_num,
             "total_trials": total_num,
             "best_trial_id": job.best_trial_id,
-            "progress": progress
+            "progress": progress,
         }
         resp = json.dumps(result)
     return HttpResponse(resp, content_type="application/json;charset=utf-8")
@@ -86,9 +86,7 @@ def query_trial(request):
     }
     """
     trial_id = request.GET.get("trial_id")
-    trials = TrialRecord.objects \
-        .filter(trial_id=trial_id) \
-        .order_by("-start_time")
+    trials = TrialRecord.objects.filter(trial_id=trial_id).order_by("-start_time")
     if len(trials) == 0:
         resp = "Unkonwn trial id %s.\n" % trials
     else:
@@ -99,7 +97,7 @@ def query_trial(request):
             "trial_status": trial.trial_status,
             "start_time": trial.start_time,
             "end_time": trial.end_time,
-            "params": trial.params
+            "params": trial.params,
         }
         resp = json.dumps(result)
     return HttpResponse(resp, content_type="application/json;charset=utf-8")

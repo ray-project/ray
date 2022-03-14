@@ -8,6 +8,7 @@ import ray.train as train
 from ray.data import Dataset
 from ray.data.dataset_pipeline import DatasetPipeline
 from ray.train import Trainer
+from ray.train.tensorflow import prepare_dataset_shard
 
 
 class TrainReportCallback(Callback):
@@ -18,10 +19,7 @@ class TrainReportCallback(Callback):
 def get_dataset_pipeline(a=5, b=10, size=1000) -> DatasetPipeline:
     def get_dataset(a, b, size) -> Dataset:
         items = [i / size for i in range(size)]
-        dataset = ray.data.from_items([{
-            "x": x,
-            "y": a * x + b
-        } for x in items])
+        dataset = ray.data.from_items([{"x": x, "y": a * x + b} for x in items])
         return dataset
 
     dataset = get_dataset(a, b, size)
@@ -31,28 +29,20 @@ def get_dataset_pipeline(a=5, b=10, size=1000) -> DatasetPipeline:
     return dataset_pipeline
 
 
-def prepare_dataset_shard(dataset_shard: tf.data.Dataset):
-    # Disable Tensorflow autosharding since the dataset has already been
-    # sharded.
-    options = tf.data.Options()
-    options.experimental_distribute.auto_shard_policy = \
-        tf.data.experimental.AutoShardPolicy.OFF
-    dataset = dataset_shard.with_options(options)
-    return dataset
-
-
 def build_and_compile_model(config):
-    model = tf.keras.Sequential([
-        tf.keras.layers.InputLayer(input_shape=(1, )),
-        tf.keras.layers.Dense(10),
-        tf.keras.layers.Dense(1)
-    ])
+    model = tf.keras.Sequential(
+        [
+            tf.keras.layers.InputLayer(input_shape=(1,)),
+            tf.keras.layers.Dense(10),
+            tf.keras.layers.Dense(1),
+        ]
+    )
 
     model.compile(
-        optimizer=tf.keras.optimizers.SGD(
-            learning_rate=config.get("lr", 1e-3)),
+        optimizer=tf.keras.optimizers.SGD(learning_rate=config.get("lr", 1e-3)),
         loss=tf.keras.losses.mean_squared_error,
-        metrics=[tf.keras.metrics.mean_squared_error])
+        metrics=[tf.keras.metrics.mean_squared_error],
+    )
     return model
 
 
@@ -74,30 +64,27 @@ def train_func(config):
         tf_dataset = prepare_dataset_shard(
             dataset.to_tf(
                 label_column="y",
-                output_signature=(tf.TensorSpec(
-                    shape=(None, 1), dtype=tf.float32),
-                                  tf.TensorSpec(
-                                      shape=(None), dtype=tf.float32)),
-                batch_size=batch_size))
-        history = multi_worker_model.fit(
-            tf_dataset, callbacks=[TrainReportCallback()])
+                output_signature=(
+                    tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
+                    tf.TensorSpec(shape=(None), dtype=tf.float32),
+                ),
+                batch_size=batch_size,
+            )
+        )
+        history = multi_worker_model.fit(tf_dataset, callbacks=[TrainReportCallback()])
         results.append(history.history)
     return results
 
 
 def train_tensorflow_linear(num_workers=2, use_gpu=False):
     dataset_pipeline = get_dataset_pipeline()
-    trainer = Trainer(
-        backend="tensorflow", num_workers=num_workers, use_gpu=use_gpu)
+    trainer = Trainer(backend="tensorflow", num_workers=num_workers, use_gpu=use_gpu)
     trainer.start()
     results = trainer.run(
         train_func=train_func,
         dataset=dataset_pipeline,
-        config={
-            "lr": 1e-3,
-            "batch_size": 32,
-            "epochs": 4
-        })
+        config={"lr": 1e-3, "batch_size": 32, "epochs": 4},
+    )
     trainer.shutdown()
     print(f"Results: {results[0]}")
     return results
@@ -106,26 +93,24 @@ def train_tensorflow_linear(num_workers=2, use_gpu=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--address",
-        required=False,
-        type=str,
-        help="the address to use for Ray")
+        "--address", required=False, type=str, help="the address to use for Ray"
+    )
     parser.add_argument(
         "--num-workers",
         "-n",
         type=int,
         default=2,
-        help="Sets number of workers for training.")
+        help="Sets number of workers for training.",
+    )
     parser.add_argument(
-        "--use-gpu",
-        action="store_true",
-        default=False,
-        help="Enables GPU training")
+        "--use-gpu", action="store_true", default=False, help="Enables GPU training"
+    )
     parser.add_argument(
         "--smoke-test",
         action="store_true",
         default=False,
-        help="Finish quickly for testing.")
+        help="Finish quickly for testing.",
+    )
 
     args, _ = parser.parse_known_args()
 

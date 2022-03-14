@@ -8,11 +8,17 @@ from typing import Dict, List, Tuple, Type, Union
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.agents.sac.sac_tf_policy import postprocess_trajectory, \
-    validate_spaces
-from ray.rllib.agents.sac.sac_torch_policy import _get_dist_class, stats, \
-    build_sac_model_and_action_dist, optimizer_fn, ComputeTDErrorMixin, \
-    TargetNetworkMixin, setup_late_mixins, action_distribution_fn
+from ray.rllib.agents.sac.sac_tf_policy import postprocess_trajectory, validate_spaces
+from ray.rllib.agents.sac.sac_torch_policy import (
+    _get_dist_class,
+    stats,
+    build_sac_model_and_action_dist,
+    optimizer_fn,
+    ComputeTDErrorMixin,
+    TargetNetworkMixin,
+    setup_late_mixins,
+    action_distribution_fn,
+)
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.models.modelv2 import ModelV2
@@ -20,10 +26,12 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
-from ray.rllib.utils.typing import LocalOptimizer, TensorType, \
-    TrainerConfigDict
-from ray.rllib.utils.torch_utils import apply_grad_clipping, \
-    convert_to_torch_tensor, concat_multi_gpu_td_errors
+from ray.rllib.utils.typing import LocalOptimizer, TensorType, TrainerConfigDict
+from ray.rllib.utils.torch_utils import (
+    apply_grad_clipping,
+    convert_to_torch_tensor,
+    concat_multi_gpu_td_errors,
+)
 
 torch, nn = try_import_torch()
 F = nn.functional
@@ -36,8 +44,11 @@ MEAN_MAX = 9.0
 
 # Returns policy tiled actions and log probabilities for CQL Loss
 def policy_actions_repeat(model, action_dist, obs, num_repeat=1):
-    obs_temp = obs.unsqueeze(1).repeat(1, num_repeat, 1).view(
-        obs.shape[0] * num_repeat, obs.shape[1])
+    obs_temp = (
+        obs.unsqueeze(1)
+        .repeat(1, num_repeat, 1)
+        .view(obs.shape[0] * num_repeat, obs.shape[1])
+    )
     logits = model.get_policy_output(obs_temp)
     policy_dist = action_dist(logits, model)
     actions, logp_ = policy_dist.sample_logp()
@@ -49,8 +60,11 @@ def q_values_repeat(model, obs, actions, twin=False):
     action_shape = actions.shape[0]
     obs_shape = obs.shape[0]
     num_repeat = int(action_shape / obs_shape)
-    obs_temp = obs.unsqueeze(1).repeat(1, num_repeat, 1).view(
-        obs.shape[0] * num_repeat, obs.shape[1])
+    obs_temp = (
+        obs.unsqueeze(1)
+        .repeat(1, num_repeat, 1)
+        .view(obs.shape[0] * num_repeat, obs.shape[1])
+    )
     if not twin:
         preds_ = model.get_q_values(obs_temp, actions)
     else:
@@ -59,9 +73,12 @@ def q_values_repeat(model, obs, actions, twin=False):
     return preds
 
 
-def cql_loss(policy: Policy, model: ModelV2,
-             dist_class: Type[TorchDistributionWrapper],
-             train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
+def cql_loss(
+    policy: Policy,
+    model: ModelV2,
+    dist_class: Type[TorchDistributionWrapper],
+    train_batch: SampleBatch,
+) -> Union[TensorType, List[TensorType]]:
     logger.info(f"Current iteration = {policy.cur_iter}")
     policy.cur_iter += 1
 
@@ -92,23 +109,22 @@ def cql_loss(policy: Policy, model: ModelV2,
 
     model_out_t, _ = model(SampleBatch(obs=obs, _is_training=True), [], None)
 
-    model_out_tp1, _ = model(
-        SampleBatch(obs=next_obs, _is_training=True), [], None)
+    model_out_tp1, _ = model(SampleBatch(obs=next_obs, _is_training=True), [], None)
 
     target_model_out_tp1, _ = target_model(
-        SampleBatch(obs=next_obs, _is_training=True), [], None)
+        SampleBatch(obs=next_obs, _is_training=True), [], None
+    )
 
-    action_dist_class = _get_dist_class(policy, policy.config,
-                                        policy.action_space)
+    action_dist_class = _get_dist_class(policy, policy.config, policy.action_space)
     action_dist_t = action_dist_class(
-        model.get_policy_output(model_out_t), policy.model)
+        model.get_policy_output(model_out_t), policy.model
+    )
     policy_t, log_pis_t = action_dist_t.sample_logp()
     log_pis_t = torch.unsqueeze(log_pis_t, -1)
 
     # Unlike original SAC, Alpha and Actor Loss are computed first.
     # Alpha Loss
-    alpha_loss = -(model.log_alpha *
-                   (log_pis_t + model.target_entropy).detach()).mean()
+    alpha_loss = -(model.log_alpha * (log_pis_t + model.target_entropy).detach()).mean()
 
     if obs.shape[0] == policy.config["train_batch_size"]:
         policy.alpha_optim.zero_grad()
@@ -137,21 +153,22 @@ def cql_loss(policy: Policy, model: ModelV2,
     # SAC Loss:
     # Q-values for the batched actions.
     action_dist_tp1 = action_dist_class(
-        model.get_policy_output(model_out_tp1), policy.model)
+        model.get_policy_output(model_out_tp1), policy.model
+    )
     policy_tp1, _ = action_dist_tp1.sample_logp()
 
     q_t = model.get_q_values(model_out_t, train_batch[SampleBatch.ACTIONS])
     q_t_selected = torch.squeeze(q_t, dim=-1)
     if twin_q:
-        twin_q_t = model.get_twin_q_values(model_out_t,
-                                           train_batch[SampleBatch.ACTIONS])
+        twin_q_t = model.get_twin_q_values(
+            model_out_t, train_batch[SampleBatch.ACTIONS]
+        )
         twin_q_t_selected = torch.squeeze(twin_q_t, dim=-1)
 
     # Target q network evaluation.
     q_tp1 = target_model.get_q_values(target_model_out_tp1, policy_tp1)
     if twin_q:
-        twin_q_tp1 = target_model.get_twin_q_values(target_model_out_tp1,
-                                                    policy_tp1)
+        twin_q_tp1 = target_model.get_twin_q_values(target_model_out_tp1, policy_tp1)
         # Take min over both twin-NNs.
         q_tp1 = torch.min(q_tp1, twin_q_tp1)
 
@@ -160,8 +177,8 @@ def cql_loss(policy: Policy, model: ModelV2,
 
     # compute RHS of bellman equation
     q_t_target = (
-        rewards +
-        (discount**policy.config["n_step"]) * q_tp1_best_masked).detach()
+        rewards + (discount ** policy.config["n_step"]) * q_tp1_best_masked
+    ).detach()
 
     # Compute the TD-error (potentially clipped), for priority replay buffer
     base_td_error = torch.abs(q_t_selected - q_t_target)
@@ -177,13 +194,17 @@ def cql_loss(policy: Policy, model: ModelV2,
 
     # CQL Loss (We are using Entropy version of CQL (the best version))
     rand_actions = convert_to_torch_tensor(
-        torch.FloatTensor(actions.shape[0] * num_actions,
-                          actions.shape[-1]).uniform_(action_low, action_high),
-        policy.device)
-    curr_actions, curr_logp = policy_actions_repeat(model, action_dist_class,
-                                                    model_out_t, num_actions)
-    next_actions, next_logp = policy_actions_repeat(model, action_dist_class,
-                                                    model_out_tp1, num_actions)
+        torch.FloatTensor(actions.shape[0] * num_actions, actions.shape[-1]).uniform_(
+            action_low, action_high
+        ),
+        policy.device,
+    )
+    curr_actions, curr_logp = policy_actions_repeat(
+        model, action_dist_class, model_out_t, num_actions
+    )
+    next_actions, next_logp = policy_actions_repeat(
+        model, action_dist_class, model_out_tp1, num_actions
+    )
 
     q1_rand = q_values_repeat(model, model_out_t, rand_actions)
     q1_curr_actions = q_values_repeat(model, model_out_t, curr_actions)
@@ -191,33 +212,42 @@ def cql_loss(policy: Policy, model: ModelV2,
 
     if twin_q:
         q2_rand = q_values_repeat(model, model_out_t, rand_actions, twin=True)
-        q2_curr_actions = q_values_repeat(
-            model, model_out_t, curr_actions, twin=True)
-        q2_next_actions = q_values_repeat(
-            model, model_out_t, next_actions, twin=True)
+        q2_curr_actions = q_values_repeat(model, model_out_t, curr_actions, twin=True)
+        q2_next_actions = q_values_repeat(model, model_out_t, next_actions, twin=True)
 
-    random_density = np.log(0.5**curr_actions.shape[-1])
-    cat_q1 = torch.cat([
-        q1_rand - random_density, q1_next_actions - next_logp.detach(),
-        q1_curr_actions - curr_logp.detach()
-    ], 1)
+    random_density = np.log(0.5 ** curr_actions.shape[-1])
+    cat_q1 = torch.cat(
+        [
+            q1_rand - random_density,
+            q1_next_actions - next_logp.detach(),
+            q1_curr_actions - curr_logp.detach(),
+        ],
+        1,
+    )
     if twin_q:
-        cat_q2 = torch.cat([
-            q2_rand - random_density, q2_next_actions - next_logp.detach(),
-            q2_curr_actions - curr_logp.detach()
-        ], 1)
+        cat_q2 = torch.cat(
+            [
+                q2_rand - random_density,
+                q2_next_actions - next_logp.detach(),
+                q2_curr_actions - curr_logp.detach(),
+            ],
+            1,
+        )
 
-    min_qf1_loss_ = torch.logsumexp(
-        cat_q1 / cql_temp, dim=1).mean() * min_q_weight * cql_temp
+    min_qf1_loss_ = (
+        torch.logsumexp(cat_q1 / cql_temp, dim=1).mean() * min_q_weight * cql_temp
+    )
     min_qf1_loss = min_qf1_loss_ - (q_t.mean() * min_q_weight)
     if twin_q:
-        min_qf2_loss_ = torch.logsumexp(
-            cat_q2 / cql_temp, dim=1).mean() * min_q_weight * cql_temp
+        min_qf2_loss_ = (
+            torch.logsumexp(cat_q2 / cql_temp, dim=1).mean() * min_q_weight * cql_temp
+        )
         min_qf2_loss = min_qf2_loss_ - (twin_q_t.mean() * min_q_weight)
 
     if use_lagrange:
-        alpha_prime = torch.clamp(
-            model.log_alpha_prime.exp(), min=0.0, max=1000000.0)[0]
+        alpha_prime = torch.clamp(model.log_alpha_prime.exp(), min=0.0, max=1000000.0)[
+            0
+        ]
         min_qf1_loss = alpha_prime * (min_qf1_loss - target_action_gap)
         if twin_q:
             min_qf2_loss = alpha_prime * (min_qf2_loss - target_action_gap)
@@ -273,64 +303,74 @@ def cql_loss(policy: Policy, model: ModelV2,
             policy.alpha_prime_optim.step()
 
     # Return all loss terms corresponding to our optimizers.
-    return tuple([actor_loss] + critic_loss + [alpha_loss] +
-                 ([alpha_prime_loss] if use_lagrange else []))
+    return tuple(
+        [actor_loss]
+        + critic_loss
+        + [alpha_loss]
+        + ([alpha_prime_loss] if use_lagrange else [])
+    )
 
 
-def cql_stats(policy: Policy,
-              train_batch: SampleBatch) -> Dict[str, TensorType]:
+def cql_stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     # Get SAC loss stats.
     stats_dict = stats(policy, train_batch)
 
     # Add CQL loss stats to the dict.
     stats_dict["cql_loss"] = torch.mean(
-        torch.stack(*policy.get_tower_stats("cql_loss")))
+        torch.stack(*policy.get_tower_stats("cql_loss"))
+    )
 
     if policy.config["lagrangian"]:
         stats_dict["log_alpha_prime_value"] = torch.mean(
-            torch.stack(policy.get_tower_stats("log_alpha_prime_value")))
+            torch.stack(policy.get_tower_stats("log_alpha_prime_value"))
+        )
         stats_dict["alpha_prime_value"] = torch.mean(
-            torch.stack(policy.get_tower_stats("alpha_prime_value")))
+            torch.stack(policy.get_tower_stats("alpha_prime_value"))
+        )
         stats_dict["alpha_prime_loss"] = torch.mean(
-            torch.stack(policy.get_tower_stats("alpha_prime_loss")))
+            torch.stack(policy.get_tower_stats("alpha_prime_loss"))
+        )
     return stats_dict
 
 
-def cql_optimizer_fn(policy: Policy, config: TrainerConfigDict) -> \
-        Tuple[LocalOptimizer]:
+def cql_optimizer_fn(
+    policy: Policy, config: TrainerConfigDict
+) -> Tuple[LocalOptimizer]:
     policy.cur_iter = 0
     opt_list = optimizer_fn(policy, config)
     if config["lagrangian"]:
-        log_alpha_prime = nn.Parameter(
-            torch.zeros(1, requires_grad=True).float())
+        log_alpha_prime = nn.Parameter(torch.zeros(1, requires_grad=True).float())
         policy.model.register_parameter("log_alpha_prime", log_alpha_prime)
         policy.alpha_prime_optim = torch.optim.Adam(
             params=[policy.model.log_alpha_prime],
             lr=config["optimization"]["critic_learning_rate"],
             eps=1e-7,  # to match tf.keras.optimizers.Adam's epsilon default
         )
-        return tuple([policy.actor_optim] + policy.critic_optims +
-                     [policy.alpha_optim] + [policy.alpha_prime_optim])
+        return tuple(
+            [policy.actor_optim]
+            + policy.critic_optims
+            + [policy.alpha_optim]
+            + [policy.alpha_prime_optim]
+        )
     return opt_list
 
 
-def cql_setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
-                          action_space: gym.spaces.Space,
-                          config: TrainerConfigDict) -> None:
+def cql_setup_late_mixins(
+    policy: Policy,
+    obs_space: gym.spaces.Space,
+    action_space: gym.spaces.Space,
+    config: TrainerConfigDict,
+) -> None:
     setup_late_mixins(policy, obs_space, action_space, config)
     if config["lagrangian"]:
-        policy.model.log_alpha_prime = policy.model.log_alpha_prime.to(
-            policy.device)
+        policy.model.log_alpha_prime = policy.model.log_alpha_prime.to(policy.device)
 
 
 def compute_gradients_fn(policy, postprocessed_batch):
     batches = [policy._lazy_tensor_dict(postprocessed_batch)]
     model = policy.model
     policy._loss(policy, model, policy.dist_class, batches[0])
-    stats = {
-        LEARNER_STATS_KEY: policy._convert_to_numpy(
-            cql_stats(policy, batches[0]))
-    }
+    stats = {LEARNER_STATS_KEY: policy._convert_to_numpy(cql_stats(policy, batches[0]))}
     return [None, stats]
 
 

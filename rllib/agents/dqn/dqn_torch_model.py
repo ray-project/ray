@@ -12,30 +12,30 @@ torch, nn = try_import_torch()
 
 
 class DQNTorchModel(TorchModelV2, nn.Module):
-    """Extension of standard TorchModelV2 to provide dueling-Q functionality.
-    """
+    """Extension of standard TorchModelV2 to provide dueling-Q functionality."""
 
     def __init__(
-            self,
-            obs_space: gym.spaces.Space,
-            action_space: gym.spaces.Space,
-            num_outputs: int,
-            model_config: ModelConfigDict,
-            name: str,
-            *,
-            q_hiddens: Sequence[int] = (256, ),
-            dueling: bool = False,
-            dueling_activation: str = "relu",
-            num_atoms: int = 1,
-            use_noisy: bool = False,
-            v_min: float = -10.0,
-            v_max: float = 10.0,
-            sigma0: float = 0.5,
-            # TODO(sven): Move `add_layer_norm` into ModelCatalog as
-            #  generic option, then error if we use ParameterNoise as
-            #  Exploration type and do not have any LayerNorm layers in
-            #  the net.
-            add_layer_norm: bool = False):
+        self,
+        obs_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        num_outputs: int,
+        model_config: ModelConfigDict,
+        name: str,
+        *,
+        q_hiddens: Sequence[int] = (256,),
+        dueling: bool = False,
+        dueling_activation: str = "relu",
+        num_atoms: int = 1,
+        use_noisy: bool = False,
+        v_min: float = -10.0,
+        v_max: float = 10.0,
+        sigma0: float = 0.5,
+        # TODO(sven): Move `add_layer_norm` into ModelCatalog as
+        #  generic option, then error if we use ParameterNoise as
+        #  Exploration type and do not have any LayerNorm layers in
+        #  the net.
+        add_layer_norm: bool = False
+    ):
         """Initialize variables of this model.
 
         Extra model kwargs:
@@ -58,8 +58,9 @@ class DQNTorchModel(TorchModelV2, nn.Module):
             add_layer_norm (bool): Enable layer norm (for param noise).
         """
         nn.Module.__init__(self)
-        super(DQNTorchModel, self).__init__(obs_space, action_space,
-                                            num_outputs, model_config, name)
+        super(DQNTorchModel, self).__init__(
+            obs_space, action_space, num_outputs, model_config, name
+        )
 
         self.dueling = dueling
         self.num_atoms = num_atoms
@@ -77,30 +78,30 @@ class DQNTorchModel(TorchModelV2, nn.Module):
                 advantage_module.add_module(
                     "dueling_A_{}".format(i),
                     NoisyLayer(
-                        ins,
-                        n,
-                        sigma0=self.sigma0,
-                        activation=dueling_activation))
+                        ins, n, sigma0=self.sigma0, activation=dueling_activation
+                    ),
+                )
                 value_module.add_module(
                     "dueling_V_{}".format(i),
                     NoisyLayer(
-                        ins,
-                        n,
-                        sigma0=self.sigma0,
-                        activation=dueling_activation))
+                        ins, n, sigma0=self.sigma0, activation=dueling_activation
+                    ),
+                )
             else:
                 advantage_module.add_module(
                     "dueling_A_{}".format(i),
-                    SlimFC(ins, n, activation_fn=dueling_activation))
+                    SlimFC(ins, n, activation_fn=dueling_activation),
+                )
                 value_module.add_module(
                     "dueling_V_{}".format(i),
-                    SlimFC(ins, n, activation_fn=dueling_activation))
+                    SlimFC(ins, n, activation_fn=dueling_activation),
+                )
                 # Add LayerNorm after each Dense.
                 if add_layer_norm:
-                    advantage_module.add_module("LayerNorm_A_{}".format(i),
-                                                nn.LayerNorm(n))
-                    value_module.add_module("LayerNorm_V_{}".format(i),
-                                            nn.LayerNorm(n))
+                    advantage_module.add_module(
+                        "LayerNorm_A_{}".format(i), nn.LayerNorm(n)
+                    )
+                    value_module.add_module("LayerNorm_V_{}".format(i), nn.LayerNorm(n))
             ins = n
 
         # Actual Advantages layer (nodes=num-actions).
@@ -108,15 +109,13 @@ class DQNTorchModel(TorchModelV2, nn.Module):
             advantage_module.add_module(
                 "A",
                 NoisyLayer(
-                    ins,
-                    self.action_space.n * self.num_atoms,
-                    sigma0,
-                    activation=None))
+                    ins, self.action_space.n * self.num_atoms, sigma0, activation=None
+                ),
+            )
         elif q_hiddens:
             advantage_module.add_module(
-                "A",
-                SlimFC(
-                    ins, action_space.n * self.num_atoms, activation_fn=None))
+                "A", SlimFC(ins, action_space.n * self.num_atoms, activation_fn=None)
+            )
 
         self.advantage_module = advantage_module
 
@@ -124,11 +123,12 @@ class DQNTorchModel(TorchModelV2, nn.Module):
         if self.dueling:
             if use_noisy:
                 value_module.add_module(
-                    "V",
-                    NoisyLayer(ins, self.num_atoms, sigma0, activation=None))
+                    "V", NoisyLayer(ins, self.num_atoms, sigma0, activation=None)
+                )
             elif q_hiddens:
                 value_module.add_module(
-                    "V", SlimFC(ins, self.num_atoms, activation_fn=None))
+                    "V", SlimFC(ins, self.num_atoms, activation_fn=None)
+                )
             self.value_module = value_module
 
     def get_q_value_distributions(self, model_out):
@@ -148,16 +148,17 @@ class DQNTorchModel(TorchModelV2, nn.Module):
         if self.num_atoms > 1:
             # Distributional Q-learning uses a discrete support z
             # to represent the action value distribution
-            z = torch.range(
-                0.0, self.num_atoms - 1,
-                dtype=torch.float32).to(action_scores.device)
-            z = self.v_min + \
-                z * (self.v_max - self.v_min) / float(self.num_atoms - 1)
+            z = torch.range(0.0, self.num_atoms - 1, dtype=torch.float32).to(
+                action_scores.device
+            )
+            z = self.v_min + z * (self.v_max - self.v_min) / float(self.num_atoms - 1)
 
             support_logits_per_action = torch.reshape(
-                action_scores, shape=(-1, self.action_space.n, self.num_atoms))
+                action_scores, shape=(-1, self.action_space.n, self.num_atoms)
+            )
             support_prob_per_action = nn.functional.softmax(
-                support_logits_per_action, dim=-1)
+                support_logits_per_action, dim=-1
+            )
             action_scores = torch.sum(z * support_prob_per_action, dim=-1)
             logits = support_logits_per_action
             probs = support_prob_per_action

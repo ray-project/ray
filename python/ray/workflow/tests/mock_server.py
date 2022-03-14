@@ -19,17 +19,17 @@ def start_service(service_name, host, port):
     # For debugging
     # args = '{0} {1} -H {2} -p {3} 2>&1 | tee -a /tmp/moto.log'.format(moto_svr_path, service_name, host, port)
     process = sp.Popen(
-        args, stdin=sp.PIPE, stdout=sp.DEVNULL,
-        stderr=sp.DEVNULL)  # shell=True
+        args, stdin=sp.PIPE, stdout=sp.DEVNULL, stderr=sp.DEVNULL
+    )  # shell=True
     url = "http://{host}:{port}".format(host=host, port=port)
 
     for i in range(0, 30):
         output = process.poll()
         if output is not None:
-            print('moto_server exited status {0}'.format(output))
+            print("moto_server exited status {0}".format(output))
             stdout, stderr = process.communicate()
-            print('moto_server stdout: {0}'.format(stdout))
-            print('moto_server stderr: {0}'.format(stderr))
+            print("moto_server stdout: {0}".format(stdout))
+            print("moto_server stderr: {0}".format(stderr))
             pytest.fail("Can not start service: {}".format(service_name))
 
         try:
@@ -53,8 +53,9 @@ def stop_process(process):
         process.kill()
         outs, errors = process.communicate(timeout=20)
         exit_code = process.returncode
-        msg = "Child process finished {} not in clean way: {} {}" \
-            .format(exit_code, outs, errors)
+        msg = "Child process finished {} not in clean way: {} {}".format(
+            exit_code, outs, errors
+        )
         raise RuntimeError(msg)
 
 
@@ -63,7 +64,7 @@ def dynamodb2_server():
     host = "localhost"
     port = 5001
     url = "http://{host}:{port}".format(host=host, port=port)
-    process = start_service('dynamodb2', host, port)
+    process = start_service("dynamodb2", host, port)
     yield url
     stop_process(process)
 
@@ -73,7 +74,7 @@ def s3_server():
     host = "localhost"
     port = 5002
     url = "http://{host}:{port}".format(host=host, port=port)
-    process = start_service('s3', host, port)
+    process = start_service("s3", host, port)
     yield url
     stop_process(process)
 
@@ -83,7 +84,7 @@ def kms_server():
     host = "localhost"
     port = 5003
     url = "http://{host}:{port}".format(host=host, port=port)
-    process = start_service('kms', host, port)
+    process = start_service("kms", host, port)
 
     yield url
     stop_process(process)

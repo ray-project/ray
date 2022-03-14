@@ -39,19 +39,15 @@ class NormalSchedulingQueue : public SchedulingQueue {
 
   /// Add a new task's callbacks to the worker queue.
   void Add(
-      int64_t seq_no, int64_t client_processed_up_to,
+      int64_t seq_no,
+      int64_t client_processed_up_to,
       std::function<void(rpc::SendReplyCallback)> accept_request,
       std::function<void(rpc::SendReplyCallback)> reject_request,
       rpc::SendReplyCallback send_reply_callback,
       const std::string &concurrency_group_name = "",
       const FunctionDescriptor &function_descriptor = FunctionDescriptorBuilder::Empty(),
-      std::function<void(rpc::SendReplyCallback)> steal_request = nullptr,
       TaskID task_id = TaskID::Nil(),
       const std::vector<rpc::ObjectReference> &dependencies = {}) override;
-
-  /// Steal up to max_tasks tasks by removing them from the queue and responding to the
-  /// owner.
-  size_t Steal(rpc::StealTasksReply *reply) override;
 
   // Search for an InboundRequest associated with the task that we are trying to cancel.
   // If found, remove the InboundRequest from the queue and return true. Otherwise,

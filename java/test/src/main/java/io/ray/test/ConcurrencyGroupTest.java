@@ -5,6 +5,8 @@ import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.concurrencygroup.ConcurrencyGroup;
 import io.ray.api.concurrencygroup.ConcurrencyGroupBuilder;
+import io.ray.api.concurrencygroup.annotations.DefConcurrencyGroup;
+import io.ray.api.concurrencygroup.annotations.UseConcurrencyGroup;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
@@ -188,5 +190,55 @@ public class ConcurrencyGroupTest extends BaseTest {
         Ray.actor(ConcurrencyActor2::new).setConcurrencyGroups(group).remote();
     myActor.task(ConcurrencyActor2::f1).remote();
     Assert.assertEquals(myActor.task(ConcurrencyActor2::f2).remote().get(), "ok");
+  }
+
+  @DefConcurrencyGroup(name = "io", maxConcurrency = 1)
+  @DefConcurrencyGroup(name = "compute", maxConcurrency = 1)
+  private static class StaticDefinedConcurrentActor {
+    @UseConcurrencyGroup(name = "io")
+    public long f1() {
+      return Thread.currentThread().getId();
+    }
+
+    @UseConcurrencyGroup(name = "io")
+    public long f2() {
+      return Thread.currentThread().getId();
+    }
+
+    @UseConcurrencyGroup(name = "compute")
+    public long f3(int a, int b) {
+      return Thread.currentThread().getId();
+    }
+
+    @UseConcurrencyGroup(name = "compute")
+    public long f4() {
+      return Thread.currentThread().getId();
+    }
+
+    public long f5() {
+      return Thread.currentThread().getId();
+    }
+
+    public long f6() {
+      return Thread.currentThread().getId();
+    }
+  }
+
+  private static class ChildActor extends StaticDefinedConcurrentActor {}
+
+  public void testLimitMethodsInOneGroupOfStaticDefinition() {
+    ActorHandle<ChildActor> myActor = Ray.actor(ChildActor::new).remote();
+    long threadId1 = myActor.task(StaticDefinedConcurrentActor::f1).remote().get();
+    long threadId2 = myActor.task(StaticDefinedConcurrentActor::f2).remote().get();
+    long threadId3 = myActor.task(StaticDefinedConcurrentActor::f3, 3, 5).remote().get();
+    long threadId4 = myActor.task(StaticDefinedConcurrentActor::f4).remote().get();
+    long threadId5 = myActor.task(StaticDefinedConcurrentActor::f5).remote().get();
+    long threadId6 = myActor.task(StaticDefinedConcurrentActor::f6).remote().get();
+    Assert.assertEquals(threadId1, threadId2);
+    Assert.assertEquals(threadId3, threadId4);
+    Assert.assertEquals(threadId5, threadId6);
+    Assert.assertNotEquals(threadId1, threadId3);
+    Assert.assertNotEquals(threadId1, threadId5);
+    Assert.assertNotEquals(threadId3, threadId5);
   }
 }

@@ -15,7 +15,7 @@
 #pragma once
 
 #include <ray/api/common_types.h>
-#include <ray/api/function_manager.h>
+#include <ray/api/ray_runtime_holder.h>
 
 #include <boost/dll.hpp>
 #include <memory>

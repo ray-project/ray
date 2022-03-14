@@ -1,5 +1,5 @@
 import ray
-from ray.util.dask import ray_dask_get
+from ray.util.dask import enable_dask_on_ray
 import dask
 import dask.array as da
 
@@ -7,9 +7,9 @@ import dask.array as da
 # Tip: If connecting to an existing cluster, use ray.init(address="auto").
 ray.init()
 
-# Set the scheduler to ray_dask_get in your config so you don't
-# have to specify it on each compute call.
-dask.config.set(scheduler=ray_dask_get)
+# Use our Dask config helper to set the scheduler to ray_dask_get globally,
+# without having to specify it on each compute call.
+enable_dask_on_ray()
 
 d_arr = da.ones(100)
 print(dask.base.collections_to_dsk([d_arr]))

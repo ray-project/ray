@@ -14,9 +14,9 @@ public class GlobalStateAccessor {
   private static GlobalStateAccessor globalStateAccessor;
 
   public static synchronized GlobalStateAccessor getInstance(
-      String redisAddress, String redisPassword) {
+      String bootstrapAddress, String redisPassword) {
     if (null == globalStateAccessor) {
-      globalStateAccessor = new GlobalStateAccessor(redisAddress, redisPassword);
+      globalStateAccessor = new GlobalStateAccessor(bootstrapAddress, redisPassword);
     }
     return globalStateAccessor;
   }
@@ -28,8 +28,9 @@ public class GlobalStateAccessor {
     }
   }
 
-  private GlobalStateAccessor(String redisAddress, String redisPassword) {
-    globalStateAccessorNativePointer = nativeCreateGlobalStateAccessor(redisAddress, redisPassword);
+  private GlobalStateAccessor(String bootstrapAddress, String redisPassword) {
+    globalStateAccessorNativePointer =
+        nativeCreateGlobalStateAccessor(bootstrapAddress, redisPassword);
     validateGlobalStateAccessorPointer();
     connect();
   }
@@ -106,10 +107,10 @@ public class GlobalStateAccessor {
     }
   }
 
-  public byte[] getInternalKV(String k) {
+  public byte[] getInternalKV(String n, String k) {
     synchronized (GlobalStateAccessor.class) {
       validateGlobalStateAccessorPointer();
-      return this.nativeGetInternalKV(globalStateAccessorNativePointer, k);
+      return this.nativeGetInternalKV(globalStateAccessorNativePointer, n, k);
     }
   }
 
@@ -175,7 +176,7 @@ public class GlobalStateAccessor {
 
   private native List<byte[]> nativeGetAllPlacementGroupInfo(long nativePtr);
 
-  private native byte[] nativeGetInternalKV(long nativePtr, String k);
+  private native byte[] nativeGetInternalKV(long nativePtr, String n, String k);
 
   private native byte[] nativeGetNodeToConnectForDriver(long nativePtr, String nodeIpAddress);
 }

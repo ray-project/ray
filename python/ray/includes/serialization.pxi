@@ -354,29 +354,29 @@ cdef class Pickle5Writer:
             uint64_t buffer_len
             int i
             int64_t protobuf_size = self.python_object.GetCachedSize()
+        if self._total_bytes < 0:
+            raise ValueError("Must call 'get_total_bytes()' first "
+                             "to get the actual size")
+        # Write inband data & protobuf size for deserialization.
+        (<int64_t*>ptr)[0] = len(inband)
+        (<int64_t*>ptr)[1] = protobuf_size
+        # Write inband data.
+        ptr += sizeof(int64_t) * 2
         with nogil:
-            if self._total_bytes < 0:
-                raise ValueError("Must call 'get_total_bytes()' first "
-                                 "to get the actual size")
-            # Write inband data & protobuf size for deserialization.
-            (<int64_t*>ptr)[0] = len(inband)
-            (<int64_t*>ptr)[1] = protobuf_size
-            # Write inband data.
-            ptr += sizeof(int64_t) * 2
             memcpy(ptr, &inband[0], len(inband))
-            # Write protobuf data.
-            ptr += len(inband)
-            self.python_object.SerializeWithCachedSizesToArray(ptr)
-            ptr += protobuf_size
-            if self._curr_buffer_addr <= 0:
-                # End of serialization.
-                # Writing more stuff will corrupt the memory.
-                return
-            # aligned to 64 bytes
-            ptr = aligned_address(ptr, kMajorBufferAlign)
-            for i in range(self.python_object.buffer_size()):
-                buffer_addr = self.python_object.buffer(i).address()
-                buffer_len = self.python_object.buffer(i).length()
+        # Write protobuf data.
+        ptr += len(inband)
+        self.python_object.SerializeWithCachedSizesToArray(ptr)
+        ptr += protobuf_size
+        if self._curr_buffer_addr <= 0:
+            # End of serialization. Writing more stuff will corrupt the memory.
+            return
+        # aligned to 64 bytes
+        ptr = aligned_address(ptr, kMajorBufferAlign)
+        for i in range(self.python_object.buffer_size()):
+            buffer_addr = self.python_object.buffer(i).address()
+            buffer_len = self.python_object.buffer(i).length()
+            with nogil:
                 if (memcopy_threads > 1 and
                         buffer_len > kMemcopyDefaultThreshold):
                     parallel_memcopy(ptr + buffer_addr,
@@ -483,13 +483,21 @@ cdef class MessagePackSerializedObject(SerializedObject):
     def total_bytes(self):
         return self._total_bytes
 
+    def to_bytes(self) -> bytes:
+        cdef shared_ptr[CBuffer] data = \
+          dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
+            make_shared[LocalMemoryBuffer](self._total_bytes))
+        buffer = Buffer.make(data)
+        self.write_to(buffer)
+        return buffer.to_pybytes()
+
     @cython.boundscheck(False)
     @cython.wraparound(False)
     cdef void write_to(self, uint8_t[:] buffer):
         cdef uint8_t *ptr = &buffer[0]
 
+        # Write msgpack data first.
         with nogil:
-            # Write msgpack data first.
             memcpy(ptr, self.msgpack_header_ptr, self._msgpack_header_bytes)
             memcpy(ptr + kMessagePackOffset,
                    self.msgpack_data_ptr, self._msgpack_data_bytes)

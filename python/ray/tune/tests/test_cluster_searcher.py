@@ -11,7 +11,7 @@ from ray.cluster_utils import Cluster
 from ray.tune import register_trainable
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
-from ray.tune.utils.mock import (MockDurableTrainer, MockRemoteTrainer)
+from ray.tune.utils.mock import MockDurableTrainer, MockRemoteTrainer
 from ray.tune.utils.mock_trainable import MyTrainableClass
 
 
@@ -21,10 +21,9 @@ def _start_new_cluster():
         connect=True,
         head_node_args={
             "num_cpus": 1,
-            "_system_config": {
-                "num_heartbeats_timeout": 10
-            }
-        })
+            "_system_config": {"num_heartbeats_timeout": 10},
+        },
+    )
     # Pytest doesn't play nicely with imports
     register_trainable("__fake_remote", MockRemoteTrainer)
     register_trainable("__fake_durable", MockDurableTrainer)
@@ -56,16 +55,22 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir, searcher):
     dirpath = str(tmpdir)
     local_checkpoint_dir = os.path.join(dirpath, "experiment")
     from ray.tune import register_trainable
+
     register_trainable("trainable", MyTrainableClass)
 
     def execute_script_with_args(*args):
         current_dir = os.path.dirname(__file__)
-        script = os.path.join(current_dir,
-                              "_test_cluster_interrupt_searcher.py")
+        script = os.path.join(current_dir, "_test_cluster_interrupt_searcher.py")
         subprocess.Popen([sys.executable, script] + list(args))
 
-    args = ("--ray-address", cluster.address, "--local-dir", dirpath,
-            "--searcher", searcher)
+    args = (
+        "--ray-address",
+        cluster.address,
+        "--local-dir",
+        dirpath,
+        "--searcher",
+        searcher,
+    )
     execute_script_with_args(*args)
     # Wait until the right checkpoint is saved.
     # The trainable returns every 0.5 seconds, so this should not miss
@@ -75,24 +80,26 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir, searcher):
         if TrialRunner.checkpoint_exists(local_checkpoint_dir):
             # Inspect the internal trialrunner
             runner = TrialRunner(
-                resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
+                resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir
+            )
             trials = runner.get_trials()
             if trials and len(trials) >= 10:
                 break
-        time.sleep(.5)
+        time.sleep(0.5)
     else:
         raise ValueError(f"Didn't generate enough trials: {len(trials)}")
 
     if not TrialRunner.checkpoint_exists(local_checkpoint_dir):
         raise RuntimeError(
             f"Checkpoint file didn't appear in {local_checkpoint_dir}. "
-            f"Current list: {os.listdir(local_checkpoint_dir)}.")
+            f"Current list: {os.listdir(local_checkpoint_dir)}."
+        )
 
     ray.shutdown()
     cluster.shutdown()
 
     cluster = _start_new_cluster()
-    execute_script_with_args(*(args + ("--resume", )))
+    execute_script_with_args(*(args + ("--resume",)))
 
     time.sleep(2)
 
@@ -102,7 +109,8 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir, searcher):
         if TrialRunner.checkpoint_exists(local_checkpoint_dir):
             # Inspect the internal trialrunner
             runner = TrialRunner(
-                resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
+                resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir
+            )
             trials = runner.get_trials()
 
             if len(trials) == 0:
@@ -116,7 +124,7 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir, searcher):
             else:
                 stop_fn = runner.trial_executor.stop_trial
                 [stop_fn(t) for t in trials if t.status is not Trial.ERROR]
-        time.sleep(.5)
+        time.sleep(0.5)
     assert reached is True
 
     ray.shutdown()
@@ -125,4 +133,5 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir, searcher):
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

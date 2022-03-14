@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Union
 
 try:
     import sigopt as sgo
+
     Connection = sgo.Connection
 except ImportError:
     sgo = None
@@ -118,34 +119,30 @@ class SigOptSearch(Searcher):
             space, name="SigOpt Multi Objective Example Experiment",
             max_concurrent=1, metric=["average", "std"], mode=["max", "min"])
     """
+
     OBJECTIVE_MAP = {
-        "max": {
-            "objective": "maximize",
-            "strategy": "optimize"
-        },
-        "min": {
-            "objective": "minimize",
-            "strategy": "optimize"
-        },
-        "obs": {
-            "strategy": "store"
-        }
+        "max": {"objective": "maximize", "strategy": "optimize"},
+        "min": {"objective": "minimize", "strategy": "optimize"},
+        "obs": {"strategy": "store"},
     }
 
-    def __init__(self,
-                 space: List[Dict] = None,
-                 name: str = "Default Tune Experiment",
-                 max_concurrent: int = 1,
-                 connection: Optional[Connection] = None,
-                 experiment_id: Optional[str] = None,
-                 observation_budget: Optional[int] = None,
-                 project: Optional[str] = None,
-                 metric: Union[None, str, List[str]] = "episode_reward_mean",
-                 mode: Union[None, str, List[str]] = "max",
-                 points_to_evaluate: Optional[List[Dict]] = None,
-                 **kwargs):
-        assert (experiment_id is
-                None) ^ (space is None), "space xor experiment_id must be set"
+    def __init__(
+        self,
+        space: List[Dict] = None,
+        name: str = "Default Tune Experiment",
+        max_concurrent: int = 1,
+        connection: Optional[Connection] = None,
+        experiment_id: Optional[str] = None,
+        observation_budget: Optional[int] = None,
+        project: Optional[str] = None,
+        metric: Union[None, str, List[str]] = "episode_reward_mean",
+        mode: Union[None, str, List[str]] = "max",
+        points_to_evaluate: Optional[List[Dict]] = None,
+        **kwargs,
+    ):
+        assert (experiment_id is None) ^ (
+            space is None
+        ), "space xor experiment_id must be set"
         assert type(max_concurrent) is int and max_concurrent > 0
 
         self._experiment_id = experiment_id
@@ -172,8 +169,7 @@ class SigOptSearch(Searcher):
             self._metric = DEFAULT_METRIC
 
         if self._mode is None:
-            raise ValueError(
-                "`mode` argument passed to SigOptSearch must be set.")
+            raise ValueError("`mode` argument passed to SigOptSearch must be set.")
 
         if isinstance(self._metric, str):
             self._metric = [self._metric]
@@ -183,12 +179,14 @@ class SigOptSearch(Searcher):
         if self._connection is not None:
             self.conn = self._connection
         else:
-            assert sgo is not None, """SigOpt must be installed!
+            assert (
+                sgo is not None
+            ), """SigOpt must be installed!
                 You can install SigOpt with the command:
                 `pip install -U sigopt`."""
-            assert "SIGOPT_KEY" in os.environ, \
-                "SigOpt API key must be stored as " \
-                "environ variable at SIGOPT_KEY"
+            assert "SIGOPT_KEY" in os.environ, (
+                "SigOpt API key must be stored as " "environ variable at SIGOPT_KEY"
+            )
             # Create a connection with SigOpt API, requires API key
             self.conn = sgo.Connection(client_token=os.environ["SIGOPT_KEY"])
 
@@ -196,7 +194,8 @@ class SigOptSearch(Searcher):
             sigopt_params = dict(
                 name=self._name,
                 parameters=self._space,
-                parallel_bandwidth=self._max_concurrent)
+                parallel_bandwidth=self._max_concurrent,
+            )
 
             if self._observation_budget is not None:
                 sigopt_params["observation_budget"] = self._observation_budget
@@ -207,17 +206,17 @@ class SigOptSearch(Searcher):
             if len(self._metric) > 1 and self._observation_budget is None:
                 raise ValueError(
                     "observation_budget is required for an"
-                    "experiment with more than one optimized metric")
-            sigopt_params["metrics"] = self.serialize_metric(
-                self._metric, self._mode)
+                    "experiment with more than one optimized metric"
+                )
+            sigopt_params["metrics"] = self.serialize_metric(self._metric, self._mode)
 
             self.experiment = self.conn.experiments().create(**sigopt_params)
         else:
-            self.experiment = self.conn.experiments(
-                self._experiment_id).fetch()
+            self.experiment = self.conn.experiments(self._experiment_id).fetch()
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict, **spec) -> bool:
+    def set_search_properties(
+        self, metric: Optional[str], mode: Optional[str], config: Dict, **spec
+    ) -> bool:
         if config or self.experiment:
             # no automatic conversion of search space just yet
             return False
@@ -251,17 +250,19 @@ class SigOptSearch(Searcher):
             suggestion_kwargs = {"assignments": config}
 
         # Get new suggestion from SigOpt
-        suggestion = self.conn.experiments(
-            self.experiment.id).suggestions().create(**suggestion_kwargs)
+        suggestion = (
+            self.conn.experiments(self.experiment.id)
+            .suggestions()
+            .create(**suggestion_kwargs)
+        )
 
         self._live_trial_mapping[trial_id] = suggestion.id
 
         return copy.deepcopy(suggestion.assignments)
 
-    def on_trial_complete(self,
-                          trial_id: str,
-                          result: Optional[Dict] = None,
-                          error: bool = False):
+    def on_trial_complete(
+        self, trial_id: str, result: Optional[Dict] = None, error: bool = False
+    ):
         """Notification for the completion of trial.
 
         If a trial fails, it will be reported as a failed Observation, telling
@@ -273,15 +274,16 @@ class SigOptSearch(Searcher):
         if result:
             payload = dict(
                 suggestion=self._live_trial_mapping[trial_id],
-                values=self.serialize_result(result))
-            self.conn.experiments(
-                self.experiment.id).observations().create(**payload)
+                values=self.serialize_result(result),
+            )
+            self.conn.experiments(self.experiment.id).observations().create(**payload)
             # Update the experiment object
             self.experiment = self.conn.experiments(self.experiment.id).fetch()
         elif error:
             # Reports a failed Observation
             self.conn.experiments(self.experiment.id).observations().create(
-                failed=True, suggestion=self._live_trial_mapping[trial_id])
+                failed=True, suggestion=self._live_trial_mapping[trial_id]
+            )
         del self._live_trial_mapping[trial_id]
 
     @staticmethod
@@ -292,7 +294,8 @@ class SigOptSearch(Searcher):
         serialized_metric = []
         for metric, mode in zip(metrics, modes):
             serialized_metric.append(
-                dict(name=metric, **SigOptSearch.OBJECTIVE_MAP[mode].copy()))
+                dict(name=metric, **SigOptSearch.OBJECTIVE_MAP[mode].copy())
+            )
         return serialized_metric
 
     def serialize_result(self, result: Dict):
@@ -300,14 +303,13 @@ class SigOptSearch(Searcher):
         Converts experiments results to
         https://app.sigopt.com/docs/objects/metric_evaluation
         """
-        missing_scores = [
-            metric for metric in self._metric if metric not in result
-        ]
+        missing_scores = [metric for metric in self._metric if metric not in result]
 
         if missing_scores:
             raise ValueError(
                 f"Some metrics specified during initialization are missing. "
-                f"Missing metrics: {missing_scores}, provided result {result}")
+                f"Missing metrics: {missing_scores}, provided result {result}"
+            )
 
         values = []
         for metric in self._metric:
@@ -316,15 +318,21 @@ class SigOptSearch(Searcher):
         return values
 
     def save(self, checkpoint_path: str):
-        trials_object = (self.experiment.id, self._live_trial_mapping,
-                         self._points_to_evaluate)
+        trials_object = (
+            self.experiment.id,
+            self._live_trial_mapping,
+            self._points_to_evaluate,
+        )
         with open(checkpoint_path, "wb") as outputFile:
             pickle.dump(trials_object, outputFile)
 
     def restore(self, checkpoint_path: str):
         with open(checkpoint_path, "rb") as inputFile:
             trials_object = pickle.load(inputFile)
-        experiment_id, self._live_trial_mapping, self._points_to_evaluate = \
-            trials_object
+        (
+            experiment_id,
+            self._live_trial_mapping,
+            self._points_to_evaluate,
+        ) = trials_object
 
         self.experiment = self.conn.experiments(experiment_id).fetch()

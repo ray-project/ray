@@ -6,10 +6,15 @@ from typing import Dict, Tuple
 import gym
 import ray
 from ray.rllib.agents.dqn.simple_q_tf_policy import (
-    build_q_models, compute_q_values, get_distribution_inputs_and_class)
+    build_q_models,
+    compute_q_values,
+    get_distribution_inputs_and_class,
+)
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
-    TorchDistributionWrapper
+from ray.rllib.models.torch.torch_action_dist import (
+    TorchCategorical,
+    TorchDistributionWrapper,
+)
 from ray.rllib.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -54,15 +59,17 @@ class TargetNetworkMixin:
 
 
 def build_q_model_and_distribution(
-        policy: Policy, obs_space: gym.spaces.Space,
-        action_space: gym.spaces.Space,
-        config: TrainerConfigDict) -> Tuple[ModelV2, TorchDistributionWrapper]:
-    return build_q_models(policy, obs_space, action_space, config), \
-        TorchCategorical
+    policy: Policy,
+    obs_space: gym.spaces.Space,
+    action_space: gym.spaces.Space,
+    config: TrainerConfigDict,
+) -> Tuple[ModelV2, TorchDistributionWrapper]:
+    return build_q_models(policy, obs_space, action_space, config), TorchCategorical
 
 
-def build_q_losses(policy: Policy, model, dist_class,
-                   train_batch: SampleBatch) -> TensorType:
+def build_q_losses(
+    policy: Policy, model, dist_class, train_batch: SampleBatch
+) -> TensorType:
     """Constructs the loss for SimpleQTorchPolicy.
 
     Args:
@@ -78,11 +85,8 @@ def build_q_losses(policy: Policy, model, dist_class,
 
     # q network evaluation
     q_t = compute_q_values(
-        policy,
-        model,
-        train_batch[SampleBatch.CUR_OBS],
-        explore=False,
-        is_training=True)
+        policy, model, train_batch[SampleBatch.CUR_OBS], explore=False, is_training=True
+    )
 
     # target q network evalution
     q_tp1 = compute_q_values(
@@ -90,23 +94,27 @@ def build_q_losses(policy: Policy, model, dist_class,
         target_model,
         train_batch[SampleBatch.NEXT_OBS],
         explore=False,
-        is_training=True)
+        is_training=True,
+    )
 
     # q scores for actions which we know were selected in the given state.
-    one_hot_selection = F.one_hot(train_batch[SampleBatch.ACTIONS].long(),
-                                  policy.action_space.n)
+    one_hot_selection = F.one_hot(
+        train_batch[SampleBatch.ACTIONS].long(), policy.action_space.n
+    )
     q_t_selected = torch.sum(q_t * one_hot_selection, 1)
 
     # compute estimate of best possible value starting from state at t + 1
     dones = train_batch[SampleBatch.DONES].float()
     q_tp1_best_one_hot_selection = F.one_hot(
-        torch.argmax(q_tp1, 1), policy.action_space.n)
+        torch.argmax(q_tp1, 1), policy.action_space.n
+    )
     q_tp1_best = torch.sum(q_tp1 * q_tp1_best_one_hot_selection, 1)
     q_tp1_best_masked = (1.0 - dones) * q_tp1_best
 
     # compute RHS of bellman equation
-    q_t_selected_target = (train_batch[SampleBatch.REWARDS] +
-                           policy.config["gamma"] * q_tp1_best_masked)
+    q_t_selected_target = (
+        train_batch[SampleBatch.REWARDS] + policy.config["gamma"] * q_tp1_best_masked
+    )
 
     # Compute the error (Square/Huber).
     td_error = q_t_selected - q_t_selected_target.detach()
@@ -126,15 +134,19 @@ def stats_fn(policy: Policy, batch: SampleBatch) -> Dict[str, TensorType]:
     return {"loss": torch.mean(torch.stack(policy.get_tower_stats("loss")))}
 
 
-def extra_action_out_fn(policy: Policy, input_dict, state_batches, model,
-                        action_dist) -> Dict[str, TensorType]:
+def extra_action_out_fn(
+    policy: Policy, input_dict, state_batches, model, action_dist
+) -> Dict[str, TensorType]:
     """Adds q-values to the action out dict."""
     return {"q_values": policy.q_values}
 
 
-def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
-                      action_space: gym.spaces.Space,
-                      config: TrainerConfigDict) -> None:
+def setup_late_mixins(
+    policy: Policy,
+    obs_space: gym.spaces.Space,
+    action_space: gym.spaces.Space,
+    config: TrainerConfigDict,
+) -> None:
     """Call all mixin classes' constructors before SimpleQTorchPolicy
     initialization.
 

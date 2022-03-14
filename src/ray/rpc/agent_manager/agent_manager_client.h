@@ -29,17 +29,20 @@ class AgentManagerClient {
   /// \param[in] address Address of the agent manager server.
   /// \param[in] port Port of the agent manager server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  AgentManagerClient(const std::string &address, const int port,
+  AgentManagerClient(const std::string &address,
+                     const int port,
                      ClientCallManager &client_call_manager) {
-    grpc_client_ = std::make_unique<GrpcClient<AgentManagerService>>(address, port,
-                                                                     client_call_manager);
+    grpc_client_ = std::make_unique<GrpcClient<AgentManagerService>>(
+        address, port, client_call_manager);
   };
 
   /// Register agent service to the agent manager server
   ///
   /// \param request The request message
   /// \param callback  The callback function that handles reply
-  VOID_RPC_CLIENT_METHOD(AgentManagerService, RegisterAgent, grpc_client_,
+  VOID_RPC_CLIENT_METHOD(AgentManagerService,
+                         RegisterAgent,
+                         grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
  private:

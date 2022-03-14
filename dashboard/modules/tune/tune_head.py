@@ -4,10 +4,11 @@ import copy
 import os
 import aiohttp.web
 
-import ray.dashboard.modules.tune.tune_consts \
-    as tune_consts
+import ray.dashboard.modules.tune.tune_consts as tune_consts
 import ray.dashboard.utils as dashboard_utils
-from ray.dashboard.utils import async_loop_forever, rest_response
+import ray.dashboard.optional_utils as dashboard_optional_utils
+from ray.dashboard.utils import async_loop_forever
+from ray.dashboard.optional_utils import rest_response
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ except (ImportError, AttributeError) as ex:
     logger.warning("tune module is not available: %s", ex)
     ExperimentAnalysis = None
 
-routes = dashboard_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.ClassMethodRouteTable
 
 
 class TuneController(dashboard_utils.DashboardHeadModule):
@@ -43,19 +44,17 @@ class TuneController(dashboard_utils.DashboardHeadModule):
     @routes.get("/tune/info")
     async def tune_info(self, req) -> aiohttp.web.Response:
         stats = self.get_stats()
-        return rest_response(
-            success=True, message="Fetched tune info", result=stats)
+        return rest_response(success=True, message="Fetched tune info", result=stats)
 
     @routes.get("/tune/availability")
     async def get_availability(self, req) -> aiohttp.web.Response:
         availability = {
             "available": ExperimentAnalysis is not None,
-            "trials_available": self._trials_available
+            "trials_available": self._trials_available,
         }
         return rest_response(
-            success=True,
-            message="Fetched tune availability",
-            result=availability)
+            success=True, message="Fetched tune availability", result=availability
+        )
 
     @routes.get("/tune/set_experiment")
     async def set_tune_experiment(self, req) -> aiohttp.web.Response:
@@ -64,25 +63,25 @@ class TuneController(dashboard_utils.DashboardHeadModule):
         if err:
             return rest_response(success=False, error=err)
         return rest_response(
-            success=True, message="Successfully set experiment", **experiment)
+            success=True, message="Successfully set experiment", **experiment
+        )
 
     @routes.get("/tune/enable_tensorboard")
     async def enable_tensorboard(self, req) -> aiohttp.web.Response:
         self._enable_tensorboard()
         if not self._tensor_board_dir:
-            return rest_response(
-                success=False, message="Error enabling tensorboard")
+            return rest_response(success=False, message="Error enabling tensorboard")
         return rest_response(success=True, message="Enabled tensorboard")
 
     def get_stats(self):
         tensor_board_info = {
             "tensorboard_current": self._logdir == self._tensor_board_dir,
-            "tensorboard_enabled": self._tensor_board_dir != ""
+            "tensorboard_enabled": self._tensor_board_dir != "",
         }
         return {
             "trial_records": copy.deepcopy(self._trial_records),
             "errors": copy.deepcopy(self._errors),
-            "tensorboard": tensor_board_info
+            "tensorboard": tensor_board_info,
         }
 
     def set_experiment(self, experiment):
@@ -102,7 +101,8 @@ class TuneController(dashboard_utils.DashboardHeadModule):
     def collect_errors(self, df):
         sub_dirs = os.listdir(self._logdir)
         trial_names = filter(
-            lambda d: os.path.isdir(os.path.join(self._logdir, d)), sub_dirs)
+            lambda d: os.path.isdir(os.path.join(self._logdir, d)), sub_dirs
+        )
         for trial in trial_names:
             error_path = os.path.join(self._logdir, trial, "error.txt")
             if os.path.isfile(error_path):
@@ -112,7 +112,7 @@ class TuneController(dashboard_utils.DashboardHeadModule):
                     self._errors[str(trial)] = {
                         "text": text,
                         "job_id": os.path.basename(self._logdir),
-                        "trial_id": "No Trial ID"
+                        "trial_id": "No Trial ID",
                     }
                     other_data = df[df["logdir"].str.contains(trial)]
                     if len(other_data) > 0:
@@ -173,12 +173,25 @@ class TuneController(dashboard_utils.DashboardHeadModule):
 
         # list of static attributes for trial
         default_names = {
-            "logdir", "time_this_iter_s", "done", "episodes_total",
-            "training_iteration", "timestamp", "timesteps_total",
-            "experiment_id", "date", "timestamp", "time_total_s", "pid",
-            "hostname", "node_ip", "time_since_restore",
-            "timesteps_since_restore", "iterations_since_restore",
-            "experiment_tag", "trial_id"
+            "logdir",
+            "time_this_iter_s",
+            "done",
+            "episodes_total",
+            "training_iteration",
+            "timestamp",
+            "timesteps_total",
+            "experiment_id",
+            "date",
+            "timestamp",
+            "time_total_s",
+            "pid",
+            "hostname",
+            "node_ip",
+            "time_since_restore",
+            "timesteps_since_restore",
+            "iterations_since_restore",
+            "experiment_tag",
+            "trial_id",
         }
 
         # filter attributes into floats, metrics, and config variables
@@ -194,7 +207,8 @@ class TuneController(dashboard_utils.DashboardHeadModule):
         for trial, details in trial_details.items():
             ts = os.path.getctime(details["logdir"])
             formatted_time = datetime.datetime.fromtimestamp(ts).strftime(
-                "%Y-%m-%d %H:%M:%S")
+                "%Y-%m-%d %H:%M:%S"
+            )
             details["start_time"] = formatted_time
             details["params"] = {}
             details["metrics"] = {}
@@ -228,3 +242,7 @@ class TuneController(dashboard_utils.DashboardHeadModule):
     async def run(self, server):
         # Forever loop the collection process
         await self.collect()
+
+    @staticmethod
+    def is_minimal_module():
+        return False

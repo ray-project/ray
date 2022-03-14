@@ -10,8 +10,7 @@ from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.rollout_ops import ParallelRollouts, SelectExperiences
-from ray.rllib.examples.env.parametric_actions_cartpole import \
-    ParametricActionsCartPole
+from ray.rllib.examples.env.parametric_actions_cartpole import ParametricActionsCartPole
 from ray.rllib.models.modelv2 import restore_original_dimensions
 from ray.rllib.utils import override
 from ray.rllib.utils.typing import TrainerConfigDict
@@ -33,23 +32,25 @@ class RandomParametriclPolicy(Policy, ABC):
         self.exploration = self._create_exploration()
 
     @override(Policy)
-    def compute_actions(self,
-                        obs_batch,
-                        state_batches=None,
-                        prev_action_batch=None,
-                        prev_reward_batch=None,
-                        info_batch=None,
-                        episodes=None,
-                        **kwargs):
+    def compute_actions(
+        self,
+        obs_batch,
+        state_batches=None,
+        prev_action_batch=None,
+        prev_reward_batch=None,
+        info_batch=None,
+        episodes=None,
+        **kwargs
+    ):
 
         obs_batch = restore_original_dimensions(
-            np.array(obs_batch, dtype=np.float32),
-            self.observation_space,
-            tensorlib=np)
+            np.array(obs_batch, dtype=np.float32), self.observation_space, tensorlib=np
+        )
 
         def pick_legal_action(legal_action):
             return np.random.choice(
-                len(legal_action), 1, p=(legal_action / legal_action.sum()))[0]
+                len(legal_action), 1, p=(legal_action / legal_action.sum())
+            )[0]
 
         return [pick_legal_action(x) for x in obs_batch["action_mask"]], [], {}
 
@@ -63,13 +64,13 @@ class RandomParametriclPolicy(Policy, ABC):
         pass
 
 
-def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
-                   **kwargs) -> LocalIterator[dict]:
+def execution_plan(
+    workers: WorkerSet, config: TrainerConfigDict, **kwargs
+) -> LocalIterator[dict]:
     rollouts = ParallelRollouts(workers, mode="async")
 
     # Collect batches for the trainable policies.
-    rollouts = rollouts.for_each(
-        SelectExperiences(workers.trainable_policies()))
+    rollouts = rollouts.for_each(SelectExperiences(local_worker=workers.local_worker()))
 
     # Return training metrics.
     return StandardMetricsReporting(rollouts, workers, config)
@@ -79,7 +80,8 @@ RandomParametricTrainer = build_trainer(
     name="RandomParametric",
     default_config=DEFAULT_CONFIG,
     default_policy=RandomParametriclPolicy,
-    execution_plan=execution_plan)
+    execution_plan=execution_plan,
+)
 
 
 def main():

@@ -7,7 +7,7 @@ import time
 
 import ray
 
-from ray._private.test_utils import (Semaphore)
+from ray._private.test_utils import Semaphore
 
 
 def test_nested_tasks(shutdown_only):
@@ -42,7 +42,8 @@ def test_nested_tasks(shutdown_only):
         return res
 
     ready, _ = ray.wait(
-        [f.remote() for _ in range(1000)], timeout=60.0, num_returns=1000)
+        [f.remote() for _ in range(1000)], timeout=60.0, num_returns=1000
+    )
     assert len(ready) == 1000, len(ready)
     # Ensure the assertion in `inc` didn't fail.
     ray.get(ready)
@@ -62,12 +63,12 @@ def test_recursion(shutdown_only):
 
 def test_out_of_order_scheduling(shutdown_only):
     """Ensure that when a task runs before its dependency, and they're of the same
-       scheduling class, the dependency is eventually able to run."""
+    scheduling class, the dependency is eventually able to run."""
     ray.init(num_cpus=1)
 
     @ray.remote
     def foo(arg, path):
-        ref, = arg
+        (ref,) = arg
         should_die = not os.path.exists(path)
         with open(path, "w") as f:
             f.write("")
@@ -82,8 +83,8 @@ def test_out_of_order_scheduling(shutdown_only):
 
     with tempfile.TemporaryDirectory() as tmpdir:
         path = f"{tmpdir}/temp.txt"
-        first = foo.remote((None, ), path)
-        second = foo.remote((first, ), path)
+        first = foo.remote((None,), path)
+        second = foo.remote((first,), path)
         print(ray.get(second))
 
 
@@ -120,7 +121,6 @@ def test_limit_concurrency(shutdown_only):
     assert len(not_ready) == 1
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Times out on windows.")
 def test_zero_cpu_scheduling(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -140,7 +140,8 @@ def test_zero_cpu_scheduling(shutdown_only):
     block_driver_ref = block_driver.acquire.remote()
 
     # Both tasks should be running, so the driver should be unblocked.
-    ready, not_ready = ray.wait([block_driver_ref], timeout=1)
+    timeout_value = 5 if sys.platform == "win32" else 1
+    _, not_ready = ray.wait([block_driver_ref], timeout=timeout_value)
     assert len(not_ready) == 0
 
 
@@ -165,7 +166,7 @@ def test_exponential_wait(shutdown_only):
     @ray.remote
     def f(i, start):
         delta = time.time() - start
-        print("Launch", i, time.time() - start)
+        print("Launch", i, delta)
         ray.get(b.join.remote())
         return delta
 
@@ -182,6 +183,5 @@ def test_exponential_wait(shutdown_only):
 
 
 if __name__ == "__main__":
-    import pytest
     os.environ["RAY_worker_cap_enabled"] = "true"
     sys.exit(pytest.main(["-v", __file__]))

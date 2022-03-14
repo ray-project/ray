@@ -18,10 +18,10 @@
 #include <chrono>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "ray/common/asio/io_service_pool.h"
 #include "ray/common/id.h"
 #include "ray/common/test_util.h"
@@ -65,11 +65,13 @@ class StoreClientTestBase : public ::testing::Test {
       RAY_CHECK_OK(status);
       --pending_count_;
     };
-    for (const auto &elem : key_to_value_) {
+    for (const auto &[key, value] : key_to_value_) {
       ++pending_count_;
-      RAY_CHECK_OK(store_client_->AsyncPut(table_name_, elem.first.Binary(),
-                                           elem.second.SerializeAsString(),
-                                           put_calllback));
+      RAY_CHECK_OK(store_client_->AsyncPut(
+          table_name_, key.Binary(), value.SerializeAsString(), put_calllback));
+      // Make sure no-op callback is handled well
+      RAY_CHECK_OK(store_client_->AsyncPut(
+          table_name_, key.Binary(), value.SerializeAsString(), nullptr));
     }
     WaitPendingDone();
   }
@@ -79,10 +81,12 @@ class StoreClientTestBase : public ::testing::Test {
       RAY_CHECK_OK(status);
       --pending_count_;
     };
-    for (const auto &elem : key_to_value_) {
+    for (const auto &[key, _] : key_to_value_) {
       ++pending_count_;
       RAY_CHECK_OK(
-          store_client_->AsyncDelete(table_name_, elem.first.Binary(), delete_calllback));
+          store_client_->AsyncDelete(table_name_, key.Binary(), delete_calllback));
+      // Make sure no-op callback is handled well
+      RAY_CHECK_OK(store_client_->AsyncDelete(table_name_, key.Binary(), nullptr));
     }
     WaitPendingDone();
   }
@@ -99,17 +103,16 @@ class StoreClientTestBase : public ::testing::Test {
       RAY_CHECK(it != key_to_value_.end());
       --pending_count_;
     };
-    for (const auto &elem : key_to_value_) {
+    for (const auto &[key, _] : key_to_value_) {
       ++pending_count_;
-      RAY_CHECK_OK(
-          store_client_->AsyncGet(table_name_, elem.first.Binary(), get_callback));
+      RAY_CHECK_OK(store_client_->AsyncGet(table_name_, key.Binary(), get_callback));
     }
     WaitPendingDone();
   }
 
   void GetEmpty() {
-    for (const auto &elem : key_to_value_) {
-      auto key = elem.first.Binary();
+    for (const auto &[k, _] : key_to_value_) {
+      auto key = k.Binary();
       auto get_callback = [this, key](const Status &status,
                                       const boost::optional<std::string> &result) {
         RAY_CHECK_OK(status);
@@ -125,18 +128,26 @@ class StoreClientTestBase : public ::testing::Test {
 
   void PutWithIndex() {
     auto put_calllback = [this](const Status &status) { --pending_count_; };
-    for (const auto &elem : key_to_value_) {
+    for (const auto &[key, value] : key_to_value_) {
       ++pending_count_;
-      RAY_CHECK_OK(store_client_->AsyncPutWithIndex(
-          table_name_, elem.first.Binary(), key_to_index_[elem.first].Hex(),
-          elem.second.SerializeAsString(), put_calllback));
+      RAY_CHECK_OK(store_client_->AsyncPutWithIndex(table_name_,
+                                                    key.Binary(),
+                                                    key_to_index_[key].Hex(),
+                                                    value.SerializeAsString(),
+                                                    put_calllback));
+      // Make sure no-op callback is handled well
+      RAY_CHECK_OK(store_client_->AsyncPutWithIndex(table_name_,
+                                                    key.Binary(),
+                                                    key_to_index_[key].Hex(),
+                                                    value.SerializeAsString(),
+                                                    nullptr));
     }
     WaitPendingDone();
   }
 
   void GetByIndex() {
     auto get_calllback =
-        [this](const std::unordered_map<std::string, std::string> &result) {
+        [this](const absl::flat_hash_map<std::string, std::string> &result) {
           if (!result.empty()) {
             auto key = ActorID::FromBinary(result.begin()->first);
             auto it = key_to_index_.find(key);
@@ -157,17 +168,19 @@ class StoreClientTestBase : public ::testing::Test {
       RAY_CHECK_OK(status);
       --pending_count_;
     };
-    for (const auto &elem : index_to_keys_) {
+    for (const auto &[key, _] : index_to_keys_) {
       ++pending_count_;
-      RAY_CHECK_OK(store_client_->AsyncDeleteByIndex(table_name_, elem.first.Hex(),
-                                                     delete_calllback));
+      RAY_CHECK_OK(
+          store_client_->AsyncDeleteByIndex(table_name_, key.Hex(), delete_calllback));
+      // Make sure no-op callback is handled well
+      RAY_CHECK_OK(store_client_->AsyncDeleteByIndex(table_name_, key.Hex(), nullptr));
     }
     WaitPendingDone();
   }
 
   void GetAll() {
     auto get_all_callback =
-        [this](const std::unordered_map<std::string, std::string> &result) {
+        [this](const absl::flat_hash_map<std::string, std::string> &result) {
           static std::unordered_set<ActorID> received_keys;
           for (const auto &item : result) {
             const ActorID &actor_id = ActorID::FromBinary(item.first);
@@ -194,10 +207,12 @@ class StoreClientTestBase : public ::testing::Test {
     };
     ++pending_count_;
     std::vector<std::string> keys;
-    for (auto &elem : key_to_value_) {
-      keys.push_back(elem.first.Binary());
+    for (auto &[key, _] : key_to_value_) {
+      keys.push_back(key.Binary());
     }
     RAY_CHECK_OK(store_client_->AsyncBatchDelete(table_name_, keys, delete_calllback));
+    // Make sure no-op callback is handled well
+    RAY_CHECK_OK(store_client_->AsyncBatchDelete(table_name_, keys, nullptr));
     WaitPendingDone();
   }
 
@@ -206,11 +221,13 @@ class StoreClientTestBase : public ::testing::Test {
       RAY_CHECK_OK(status);
       --pending_count_;
     };
-    for (const auto &elem : key_to_value_) {
+    for (const auto &[key, _] : key_to_value_) {
       ++pending_count_;
-      RAY_CHECK_OK(store_client_->AsyncDeleteWithIndex(table_name_, elem.first.Binary(),
-                                                       key_to_index_[elem.first].Hex(),
-                                                       delete_calllback));
+      RAY_CHECK_OK(store_client_->AsyncDeleteWithIndex(
+          table_name_, key.Binary(), key_to_index_[key].Hex(), delete_calllback));
+      // Make sure no-op callback is handled well
+      RAY_CHECK_OK(store_client_->AsyncDeleteWithIndex(
+          table_name_, key.Binary(), key_to_index_[key].Hex(), nullptr));
     }
     WaitPendingDone();
   }
@@ -223,12 +240,15 @@ class StoreClientTestBase : public ::testing::Test {
     ++pending_count_;
     std::vector<std::string> keys;
     std::vector<std::string> index_keys;
-    for (auto &elem : key_to_value_) {
-      keys.push_back(elem.first.Binary());
-      index_keys.push_back(key_to_index_[elem.first].Hex());
+    for (auto &[key, _] : key_to_value_) {
+      keys.push_back(key.Binary());
+      index_keys.push_back(key_to_index_[key].Hex());
     }
-    RAY_CHECK_OK(store_client_->AsyncBatchDeleteWithIndex(table_name_, keys, index_keys,
-                                                          delete_calllback));
+    RAY_CHECK_OK(store_client_->AsyncBatchDeleteWithIndex(
+        table_name_, keys, index_keys, delete_calllback));
+    // Make sure no-op callback is handled well
+    RAY_CHECK_OK(
+        store_client_->AsyncBatchDeleteWithIndex(table_name_, keys, index_keys, nullptr));
     WaitPendingDone();
   }
 
@@ -343,9 +363,9 @@ class StoreClientTestBase : public ::testing::Test {
   std::string table_name_{"test_table"};
   size_t key_count_{5000};
   size_t index_count_{100};
-  std::unordered_map<ActorID, rpc::ActorTableData> key_to_value_;
-  std::unordered_map<ActorID, JobID> key_to_index_;
-  std::unordered_map<JobID, std::unordered_set<ActorID>> index_to_keys_;
+  absl::flat_hash_map<ActorID, rpc::ActorTableData> key_to_value_;
+  absl::flat_hash_map<ActorID, JobID> key_to_index_;
+  absl::flat_hash_map<JobID, std::unordered_set<ActorID>> index_to_keys_;
 
   std::atomic<int> pending_count_{0};
   std::chrono::milliseconds wait_pending_timeout_{5000};

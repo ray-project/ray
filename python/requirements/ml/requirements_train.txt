@@ -1,6 +1,7 @@
 -r requirements_dl.txt
 
 mlflow==1.21.0
+tensorboardX==2.4.1
 
 # Dependencies for Hugging Face examples:
 # `python/ray/train/examples/transformers/transformers_example.py`

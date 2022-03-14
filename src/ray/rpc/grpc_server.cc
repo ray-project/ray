@@ -27,8 +27,10 @@
 namespace ray {
 namespace rpc {
 
-GrpcServer::GrpcServer(std::string name, const uint32_t port,
-                       bool listen_to_localhost_only, int num_threads,
+GrpcServer::GrpcServer(std::string name,
+                       const uint32_t port,
+                       bool listen_to_localhost_only,
+                       int num_threads,
                        int64_t keepalive_time_ms)
     : name_(std::move(name)),
       port_(port),
@@ -169,15 +171,18 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
       // `ok == false` will occur in two situations:
 
       // First, server has sent reply to client and failed, the server call's status is
-      // SENDING_REPLY.
+      // SENDING_REPLY. This can happen, for example, when the client deadline has
+      // exceeded or the client side is dead.
       if (server_call->GetState() == ServerCallState::SENDING_REPLY) {
         server_call->OnReplyFailed();
         // A new call should be suplied.
         need_new_call = true;
       }
-
       // Second, the server has been shut down, the server call's status is PENDING.
       // And don't need to do anything other than deleting this call.
+      // See
+      // https://grpc.github.io/grpc/cpp/classgrpc_1_1_completion_queue.html#a86d9810ced694e50f7987ac90b9f8c1a
+      // for more details.
       delete_call = true;
     }
     if (delete_call) {

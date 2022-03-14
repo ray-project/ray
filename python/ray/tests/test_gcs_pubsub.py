@@ -1,29 +1,28 @@
 import sys
 import threading
 
-import ray
-import ray._private.gcs_utils as gcs_utils
-from ray._private.gcs_pubsub import GcsPublisher, GcsErrorSubscriber, \
-    GcsLogSubscriber, GcsFunctionKeySubscriber, GcsAioPublisher, \
-    GcsAioErrorSubscriber, GcsAioLogSubscriber, GcsAioResourceUsageSubscriber
+from ray._private.gcs_pubsub import (
+    GcsPublisher,
+    GcsErrorSubscriber,
+    GcsLogSubscriber,
+    GcsFunctionKeySubscriber,
+    GcsAioPublisher,
+    GcsAioErrorSubscriber,
+    GcsAioLogSubscriber,
+    GcsAioResourceUsageSubscriber,
+)
 from ray.core.generated.gcs_pb2 import ErrorTableData
 import pytest
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "_system_config": {
-            "gcs_grpc_based_pubsub": True
-        }
-    }],
-    indirect=True)
+    "ray_start_regular",
+    [{"_system_config": {"gcs_grpc_based_pubsub": True}}],
+    indirect=True,
+)
 def test_publish_and_subscribe_error_info(ray_start_regular):
     address_info = ray_start_regular
-    redis = ray._private.services.create_redis_client(
-        address_info["redis_address"],
-        password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-
-    gcs_server_addr = gcs_utils.get_gcs_address_from_redis(redis)
+    gcs_server_addr = address_info["gcs_address"]
 
     subscriber = GcsErrorSubscriber(address=gcs_server_addr)
     subscriber.subscribe()
@@ -42,19 +41,13 @@ def test_publish_and_subscribe_error_info(ray_start_regular):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "_system_config": {
-            "gcs_grpc_based_pubsub": True
-        }
-    }],
-    indirect=True)
+    "ray_start_regular",
+    [{"_system_config": {"gcs_grpc_based_pubsub": True}}],
+    indirect=True,
+)
 async def test_aio_publish_and_subscribe_error_info(ray_start_regular):
     address_info = ray_start_regular
-    redis = ray._private.services.create_redis_client(
-        address_info["redis_address"],
-        password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-
-    gcs_server_addr = gcs_utils.get_gcs_address_from_redis(redis)
+    gcs_server_addr = address_info["gcs_address"]
 
     subscriber = GcsAioErrorSubscriber(address=gcs_server_addr)
     await subscriber.subscribe()
@@ -72,19 +65,13 @@ async def test_aio_publish_and_subscribe_error_info(ray_start_regular):
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "_system_config": {
-            "gcs_grpc_based_pubsub": True
-        }
-    }],
-    indirect=True)
+    "ray_start_regular",
+    [{"_system_config": {"gcs_grpc_based_pubsub": True}}],
+    indirect=True,
+)
 def test_publish_and_subscribe_logs(ray_start_regular):
     address_info = ray_start_regular
-    redis = ray._private.services.create_redis_client(
-        address_info["redis_address"],
-        password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-
-    gcs_server_addr = gcs_utils.get_gcs_address_from_redis(redis)
+    gcs_server_addr = address_info["gcs_address"]
 
     subscriber = GcsLogSubscriber(address=gcs_server_addr)
     subscriber.subscribe()
@@ -110,19 +97,13 @@ def test_publish_and_subscribe_logs(ray_start_regular):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "_system_config": {
-            "gcs_grpc_based_pubsub": True
-        }
-    }],
-    indirect=True)
+    "ray_start_regular",
+    [{"_system_config": {"gcs_grpc_based_pubsub": True}}],
+    indirect=True,
+)
 async def test_aio_publish_and_subscribe_logs(ray_start_regular):
     address_info = ray_start_regular
-    redis = ray._private.services.create_redis_client(
-        address_info["redis_address"],
-        password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-
-    gcs_server_addr = gcs_utils.get_gcs_address_from_redis(redis)
+    gcs_server_addr = address_info["gcs_address"]
 
     subscriber = GcsAioLogSubscriber(address=gcs_server_addr)
     await subscriber.subscribe()
@@ -145,19 +126,13 @@ async def test_aio_publish_and_subscribe_logs(ray_start_regular):
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "_system_config": {
-            "gcs_grpc_based_pubsub": True
-        }
-    }],
-    indirect=True)
+    "ray_start_regular",
+    [{"_system_config": {"gcs_grpc_based_pubsub": True}}],
+    indirect=True,
+)
 def test_publish_and_subscribe_function_keys(ray_start_regular):
     address_info = ray_start_regular
-    redis = ray._private.services.create_redis_client(
-        address_info["redis_address"],
-        password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-
-    gcs_server_addr = gcs_utils.get_gcs_address_from_redis(redis)
+    gcs_server_addr = address_info["gcs_address"]
 
     subscriber = GcsFunctionKeySubscriber(address=gcs_server_addr)
     subscriber.subscribe()
@@ -174,49 +149,37 @@ def test_publish_and_subscribe_function_keys(ray_start_regular):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "_system_config": {
-            "gcs_grpc_based_pubsub": True
-        }
-    }],
-    indirect=True)
+    "ray_start_regular",
+    [{"_system_config": {"gcs_grpc_based_pubsub": True}}],
+    indirect=True,
+)
 async def test_aio_publish_and_subscribe_resource_usage(ray_start_regular):
     address_info = ray_start_regular
-    redis = ray._private.services.create_redis_client(
-        address_info["redis_address"],
-        password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-
-    gcs_server_addr = gcs_utils.get_gcs_address_from_redis(redis)
+    gcs_server_addr = address_info["gcs_address"]
 
     subscriber = GcsAioResourceUsageSubscriber(address=gcs_server_addr)
     await subscriber.subscribe()
 
     publisher = GcsAioPublisher(address=gcs_server_addr)
-    await publisher.publish_resource_usage("aaa_id", "{\"cpu\": 1}")
-    await publisher.publish_resource_usage("bbb_id", "{\"cpu\": 2}")
+    await publisher.publish_resource_usage("aaa_id", '{"cpu": 1}')
+    await publisher.publish_resource_usage("bbb_id", '{"cpu": 2}')
 
-    assert await subscriber.poll() == ("aaa_id", "{\"cpu\": 1}")
-    assert await subscriber.poll() == ("bbb_id", "{\"cpu\": 2}")
+    assert await subscriber.poll() == ("aaa_id", '{"cpu": 1}')
+    assert await subscriber.poll() == ("bbb_id", '{"cpu": 2}')
 
     await subscriber.close()
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "_system_config": {
-            "gcs_grpc_based_pubsub": True
-        }
-    }],
-    indirect=True)
+    "ray_start_regular",
+    [{"_system_config": {"gcs_grpc_based_pubsub": True}}],
+    indirect=True,
+)
 def test_two_subscribers(ray_start_regular):
     """Tests concurrently subscribing to two channels work."""
 
     address_info = ray_start_regular
-    redis = ray._private.services.create_redis_client(
-        address_info["redis_address"],
-        password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-
-    gcs_server_addr = gcs_utils.get_gcs_address_from_redis(redis)
+    gcs_server_addr = address_info["gcs_address"]
 
     num_messages = 100
 
@@ -248,17 +211,18 @@ def test_two_subscribers(ray_start_regular):
 
     publisher = GcsPublisher(address=gcs_server_addr)
     for i in range(0, num_messages):
-        publisher.publish_error(
-            b"msg_id", ErrorTableData(error_message=f"error {i}"))
-        publisher.publish_logs({
-            "ip": "127.0.0.1",
-            "pid": "gcs",
-            "job": "0001",
-            "is_err": False,
-            "lines": [f"log {i}"],
-            "actor_name": "test actor",
-            "task_name": "test task",
-        })
+        publisher.publish_error(b"msg_id", ErrorTableData(error_message=f"error {i}"))
+        publisher.publish_logs(
+            {
+                "ip": "127.0.0.1",
+                "pid": "gcs",
+                "job": "0001",
+                "is_err": False,
+                "lines": [f"log {i}"],
+                "actor_name": "test actor",
+                "task_name": "test task",
+            }
+        )
 
     t1.join(timeout=10)
     assert len(errors) == num_messages, str(errors)

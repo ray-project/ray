@@ -2,10 +2,12 @@ import concurrent.futures
 import asyncio
 import pytest
 import requests
+import json
 
 import ray
 from ray import serve
 from ray.serve.exceptions import RayServeException
+from ray.serve.utils import ServeHandleEncoder, serve_handle_object_hook
 
 
 @pytest.mark.asyncio
@@ -23,10 +25,21 @@ async def test_async_handle_serializable(serve_instance):
             output = await ref
             return output
 
+    # Test pickling via ray.remote()
     handle = f.get_handle(sync=False)
 
     task_actor = TaskActor.remote()
     result = await task_actor.task.remote(handle)
+    assert result == "hello"
+
+    # Test JSON serde
+    handle_json_serialized = json.dumps(handle, cls=ServeHandleEncoder)
+    handle_json_deserialized = json.loads(
+        handle_json_serialized, object_hook=serve_handle_object_hook
+    )
+
+    task_actor = TaskActor.remote()
+    result = await task_actor.task.remote(handle_json_deserialized)
     assert result == "hello"
 
 
@@ -41,9 +54,44 @@ def test_sync_handle_serializable(serve_instance):
     def task(handle):
         return ray.get(handle.remote())
 
+    # Test pickling via ray.remote()
     handle = f.get_handle(sync=True)
     result_ref = task.remote(handle)
     assert ray.get(result_ref) == "hello"
+
+    # Test JSON serde
+    handle_json_serialized = json.dumps(handle, cls=ServeHandleEncoder)
+    handle_json_deserialized = json.loads(
+        handle_json_serialized, object_hook=serve_handle_object_hook
+    )
+
+    result_ref = task.remote(handle_json_deserialized)
+    assert ray.get(result_ref) == "hello"
+
+
+def test_handle_serializable_in_deployment_init(serve_instance):
+    """Test that a handle can be passed into a constructor (#22110)"""
+
+    @serve.deployment
+    class RayServer1:
+        def __init__(self):
+            pass
+
+        def __call__(self, *args):
+            return {"count": self.count}
+
+    @serve.deployment
+    class RayServer2:
+        def __init__(self, handle):
+            self.handle = handle
+
+        def __call__(self, *args):
+            return {"count": self.count}
+
+    RayServer1.deploy()
+    for sync in [True, False]:
+        rs1_handle = RayServer1.get_handle(sync=sync)
+        RayServer2.deploy(rs1_handle)
 
 
 def test_sync_handle_in_thread(serve_instance):
@@ -203,7 +251,7 @@ def test_handle_across_loops(serve_instance):
 
     async def refresh_get():
         handle = A.get_handle(sync=False)
-        assert (await (await handle.exists.remote()))
+        assert await (await handle.exists.remote())
 
     for _ in range(10):
         asyncio.set_event_loop(asyncio.new_event_loop())
@@ -212,7 +260,7 @@ def test_handle_across_loops(serve_instance):
     handle = A.get_handle(sync=False)
 
     async def cache_get():
-        assert (await (await handle.exists.remote()))
+        assert await (await handle.exists.remote())
 
     for _ in range(10):
         asyncio.set_event_loop(asyncio.new_event_loop())
@@ -222,4 +270,5 @@ def test_handle_across_loops(serve_instance):
 if __name__ == "__main__":
     import sys
     import pytest
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

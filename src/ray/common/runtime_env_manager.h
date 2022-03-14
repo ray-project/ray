@@ -14,6 +14,7 @@
 #pragma once
 #include <functional>
 
+#include "absl/container/flat_hash_map.h"
 #include "ray/common/id.h"
 #include "src/ray/protobuf/common.pb.h"
 
@@ -50,12 +51,16 @@ class RuntimeEnvManager {
   /// \param[in] hex_id The id of the runtime env.
   void RemoveURIReference(const std::string &hex_id);
 
+  std::string DebugString() const;
+
  private:
+  void PrintDebugString() const;
+
   DeleteFunc deleter_;
   /// Reference counting of a URI.
-  std::unordered_map<std::string, int64_t> uri_reference_;
+  absl::flat_hash_map<std::string, int64_t> uri_reference_;
   /// A map between hex_id and URI.
-  std::unordered_map<std::string, std::vector<std::string>> id_to_uris_;
+  absl::flat_hash_map<std::string, std::vector<std::string>> id_to_uris_;
   /// A set of unused URIs
   std::unordered_set<std::string> unused_uris_;
 };

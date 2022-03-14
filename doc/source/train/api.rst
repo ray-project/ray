@@ -58,6 +58,13 @@ TrainingCallback
 .. autoclass:: ray.train.TrainingCallback
     :members:
 
+.. _train-api-print-callback:
+
+PrintCallback
+~~~~~~~~~~~~~
+
+.. autoclass:: ray.train.callbacks.PrintCallback
+
 .. _train-api-json-logger-callback:
 
 JsonLoggerCallback
@@ -71,6 +78,47 @@ TBXLoggerCallback
 ~~~~~~~~~~~~~~~~~
 
 .. autoclass:: ray.train.callbacks.TBXLoggerCallback
+
+.. _train-api-mlflow-logger-callback:
+
+MLflowLoggerCallback
+~~~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: ray.train.callbacks.MLflowLoggerCallback
+
+
+.. _train-api-torch-tensorboard-profiler-callback:
+
+TorchTensorboardProfilerCallback
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: ray.train.callbacks.TorchTensorboardProfilerCallback
+
+ResultsPreprocessors
+~~~~~~~~~~~~~~~~~~~~
+
+.. _train-api-results-preprocessor:
+
+ResultsPreprocessor
++++++++++++++++++++
+
+.. autoclass:: ray.train.callbacks.results_preprocessors.ResultsPreprocessor
+    :members:
+
+SequentialResultsPreprocessor
++++++++++++++++++++++++++++++++
+
+.. autoclass:: ray.train.callbacks.results_preprocessors.SequentialResultsPreprocessor
+
+IndexedResultsPreprocessor
++++++++++++++++++++++++++++++++
+
+.. autoclass:: ray.train.callbacks.results_preprocessors.IndexedResultsPreprocessor
+
+ExcludedKeysResultsPreprocessor
++++++++++++++++++++++++++++++++
+
+.. autoclass:: ray.train.callbacks.results_preprocessors.ExcludedKeysResultsPreprocessor
 
 Checkpointing
 -------------
@@ -134,3 +182,19 @@ train.torch.get_device
 ~~~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.train.torch.get_device
+
+.. _train-api-torch-worker-profiler:
+
+train.torch.TorchWorkerProfiler
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: ray.train.torch.TorchWorkerProfiler
+    :members:
+
+TensorFlow Training Function Utilities
+--------------------------------------
+
+train.tensorflow.prepare_dataset_shard
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.tensorflow.prepare_dataset_shard

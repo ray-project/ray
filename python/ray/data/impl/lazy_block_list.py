@@ -5,8 +5,12 @@ import numpy as np
 
 import ray
 from ray.types import ObjectRef
-from ray.data.block import Block, BlockMetadata, BlockPartitionMetadata, \
-    MaybeBlockPartition
+from ray.data.block import (
+    Block,
+    BlockMetadata,
+    BlockPartitionMetadata,
+    MaybeBlockPartition,
+)
 from ray.data.context import DatasetContext
 from ray.data.impl.block_list import BlockList
 
@@ -20,10 +24,11 @@ class LazyBlockList(BlockList):
     """
 
     def __init__(
-            self,
-            calls: Callable[[], ObjectRef[MaybeBlockPartition]],
-            metadata: List[BlockPartitionMetadata],
-            block_partitions: List[ObjectRef[MaybeBlockPartition]] = None):
+        self,
+        calls: Callable[[], ObjectRef[MaybeBlockPartition]],
+        metadata: List[BlockPartitionMetadata],
+        block_partitions: List[ObjectRef[MaybeBlockPartition]] = None,
+    ):
         self._calls = calls
         self._num_blocks = len(self._calls)
         self._metadata = metadata
@@ -35,26 +40,24 @@ class LazyBlockList(BlockList):
             if calls:
                 self._block_partitions[0] = calls[0]()
         assert len(calls) == len(metadata), (calls, metadata)
-        assert len(calls) == len(
-            self._block_partitions), (calls, self._block_partitions)
+        assert len(calls) == len(self._block_partitions), (
+            calls,
+            self._block_partitions,
+        )
 
     def copy(self) -> "LazyBlockList":
-        return LazyBlockList(self._calls.copy(), self._metadata.copy(),
-                             self._block_partitions.copy())
+        return LazyBlockList(
+            self._calls.copy(), self._metadata.copy(), self._block_partitions.copy()
+        )
 
     def clear(self) -> None:
-        self._block_partitions = None
-        self._calls = None
+        self._block_partitions = [None for _ in self._block_partitions]
 
     def _check_if_cleared(self) -> None:
-        if self._block_partitions is None:
-            raise ValueError(
-                "This Dataset's blocks have been moved, which means that you "
-                "can no longer use this Dataset.")
+        pass  # LazyBlockList can always be re-computed.
 
     # Note: does not force execution prior to splitting.
     def split(self, split_size: int) -> List["LazyBlockList"]:
-        self._check_if_cleared()
         num_splits = math.ceil(len(self._calls) / split_size)
         calls = np.array_split(self._calls, num_splits)
         meta = np.array_split(self._metadata, num_splits)
@@ -64,14 +67,42 @@ class LazyBlockList(BlockList):
             output.append(LazyBlockList(c.tolist(), m.tolist(), b.tolist()))
         return output
 
+    # Note: does not force execution prior to splitting.
+    def split_by_bytes(self, bytes_per_split: int) -> List["BlockList"]:
+        self._check_if_cleared()
+        output = []
+        cur_calls, cur_meta, cur_blocks = [], [], []
+        cur_size = 0
+        for c, m, b in zip(self._calls, self._metadata, self._block_partitions):
+            if m.size_bytes is None:
+                raise RuntimeError(
+                    "Block has unknown size, cannot use split_by_bytes()"
+                )
+            size = m.size_bytes
+            if cur_blocks and cur_size + size > bytes_per_split:
+                output.append(LazyBlockList(cur_calls, cur_meta, cur_blocks))
+                cur_calls, cur_meta, cur_blocks = [], [], []
+                cur_size = 0
+            cur_calls.append(c)
+            cur_meta.append(m)
+            cur_blocks.append(b)
+            cur_size += size
+        if cur_blocks:
+            output.append(LazyBlockList(cur_calls, cur_meta, cur_blocks))
+        return output
+
     # Note: does not force execution prior to division.
     def divide(self, part_idx: int) -> ("LazyBlockList", "LazyBlockList"):
-        self._check_if_cleared()
-        left = LazyBlockList(self._calls[:part_idx], self._metadata[:part_idx],
-                             self._block_partitions[:part_idx])
-        right = LazyBlockList(self._calls[part_idx:],
-                              self._metadata[part_idx:],
-                              self._block_partitions[part_idx:])
+        left = LazyBlockList(
+            self._calls[:part_idx],
+            self._metadata[:part_idx],
+            self._block_partitions[:part_idx],
+        )
+        right = LazyBlockList(
+            self._calls[part_idx:],
+            self._metadata[part_idx:],
+            self._block_partitions[part_idx:],
+        )
         return left, right
 
     def get_blocks(self) -> List[ObjectRef[Block]]:
@@ -80,9 +111,9 @@ class LazyBlockList(BlockList):
         return list(self.iter_blocks())
 
     def iter_blocks_with_metadata(
-            self) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
+        self,
+    ) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
         context = DatasetContext.get_current()
-        self._check_if_cleared()
         outer = self
 
         class Iter:
@@ -107,9 +138,9 @@ class LazyBlockList(BlockList):
 
         return Iter()
 
-    def _iter_block_partitions(self) -> Iterator[Tuple[ObjectRef[
-            MaybeBlockPartition], BlockPartitionMetadata]]:
-        self._check_if_cleared()
+    def _iter_block_partitions(
+        self,
+    ) -> Iterator[Tuple[ObjectRef[MaybeBlockPartition], BlockPartitionMetadata]]:
         outer = self
 
         class Iter:
@@ -122,14 +153,15 @@ class LazyBlockList(BlockList):
             def __next__(self):
                 self._pos += 1
                 if self._pos < len(outer._calls):
-                    return (outer._get_or_compute(self._pos),
-                            outer._metadata[self._pos])
+                    return (
+                        outer._get_or_compute(self._pos),
+                        outer._metadata[self._pos],
+                    )
                 raise StopIteration
 
         return Iter()
 
     def _get_or_compute(self, i: int) -> ObjectRef[MaybeBlockPartition]:
-        self._check_if_cleared()
         assert i < len(self._calls), i
         # Check if we need to compute more block_partitions.
         if not self._block_partitions[i]:

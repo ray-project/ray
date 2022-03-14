@@ -19,5 +19,5 @@ post_build_cmds:
   - pip3 install ray[all]
   # TODO (Alex): Ideally we would install all the dependencies from the new
   # version too, but pip won't be able to find the new version of ray-cpp.
-  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip3 uninstall ray -y && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
