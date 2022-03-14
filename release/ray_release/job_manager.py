@@ -63,6 +63,7 @@ class JobManager:
 
     def _wait_job(self, command_id: int, timeout: int):
         from ray.job_submission import JobStatus  # noqa: F811
+
         start_time = time.monotonic()
         timeout_at = start_time + timeout
         next_status = start_time + 30
