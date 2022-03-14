@@ -3,7 +3,9 @@ import json
 import numpy as np
 import pytest
 
-from ray.serve.utils import ServeEncoder
+import ray
+from ray import serve
+from ray.serve.utils import ServeEncoder, get_deployment_import_path
 
 
 def test_bytes_encoder():
@@ -21,6 +23,27 @@ def test_numpy_encoding():
     assert json.loads(json.dumps(floats, cls=ServeEncoder)) == data
     assert json.loads(json.dumps(ints, cls=ServeEncoder)) == data
     assert json.loads(json.dumps(uints, cls=ServeEncoder)) == data
+
+
+@serve.deployment
+def decorated_f(*args):
+    "reached decorated_f"
+
+@ray.remote
+class DecoratedActor:
+
+    def __call__(self, *args):
+        return "reached decorated_actor"
+
+class TestGetDeploymentImportPath:
+
+    def test_get_import_path_basic(self):
+        d = decorated_f.options()
+        assert get_deployment_import_path(d) == "ray.serve.tests.test_util.decorated_f"
+    
+    def test_get_import_path_nested_actor(self):
+        d = serve.deployment(name="actor")(DecoratedActor)
+        assert get_deployment_import_path(d) == "ray.serve.tests.test_util.DecoratedActor"
 
 
 if __name__ == "__main__":
