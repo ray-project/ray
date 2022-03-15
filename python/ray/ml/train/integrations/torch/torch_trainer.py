@@ -142,10 +142,9 @@ class TorchTrainer(DataParallelTrainer):
             This can either take in no arguments or a ``config`` dict.
         train_loop_config: Configurations to pass into
             ``train_loop_per_worker`` if it accepts an argument.
-        torch_config (Optional[TorchConfig]): Configuration
-            for setting up the PyTorch backend. If set to None, use the
-            default configuration. This replaces the ``backend_config`` arg of
-            ``DataParallelTrainer``.
+        torch_config: Configuration for setting up the PyTorch backend. If set to
+            None, use the default configuration. This replaces the ``backend_config``
+            arg of ``DataParallelTrainer``.
         scaling_config: Configuration for how to scale data parallel training.
         run_config: Configuration for the execution of the training run.
         datasets: Any Ray Datasets to use for training. Use
