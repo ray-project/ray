@@ -195,9 +195,6 @@ class ResourceID : public BaseSchedulingID<SchedulingIDTag::Resource> {
     return set;
   }
 };
-
-const ResourceID kCPUResource{CPU};
-const ResourceID kGPUResource{GPU};
 }  // namespace scheduling
 }  // namespace ray
 

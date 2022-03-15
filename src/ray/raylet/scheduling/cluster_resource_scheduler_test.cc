@@ -887,9 +887,9 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest2) {
     ASSERT_EQ(success, true);
     std::vector<double> cpu_instances = task_allocation->GetCPUInstancesDouble();
     resource_scheduler.GetLocalResourceManager().AddResourceInstances(
-        scheduling::kCPUResource, cpu_instances);
+        ResourceID::CPU(), cpu_instances);
     resource_scheduler.GetLocalResourceManager().SubtractResourceInstances(
-        scheduling::kCPUResource, cpu_instances);
+        ResourceID::CPU(), cpu_instances);
 
     ASSERT_EQ((resource_scheduler.GetLocalResourceManager().GetLocalResources() ==
                old_local_resources),
@@ -944,7 +944,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest) {
 
     std::vector<double> allocate_gpu_instances{0.5, 0.5, 0.5, 0.5};
     resource_scheduler.GetLocalResourceManager().SubtractResourceInstances(
-        scheduling::kGPUResource, allocate_gpu_instances);
+        ResourceID::GPU(), allocate_gpu_instances);
     std::vector<double> available_gpu_instances =
         resource_scheduler.GetLocalResourceManager()
             .GetLocalResources()
@@ -956,7 +956,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest) {
                            expected_available_gpu_instances.begin()));
 
     resource_scheduler.GetLocalResourceManager().AddResourceInstances(
-        scheduling::kGPUResource, allocate_gpu_instances);
+        ResourceID::GPU(), allocate_gpu_instances);
     available_gpu_instances = resource_scheduler.GetLocalResourceManager()
                                   .GetLocalResources()
                                   .GetAvailableResourceInstances()
@@ -969,7 +969,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest) {
     allocate_gpu_instances = {1.5, 1.5, .5, 1.5};
     std::vector<double> underflow =
         resource_scheduler.GetLocalResourceManager().SubtractResourceInstances(
-            scheduling::kGPUResource, allocate_gpu_instances);
+            ResourceID::GPU(), allocate_gpu_instances);
     std::vector<double> expected_underflow{.5, .5, 0., .5};
     ASSERT_TRUE(
         std::equal(underflow.begin(), underflow.end(), expected_underflow.begin()));
@@ -985,7 +985,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest) {
     allocate_gpu_instances = {1.0, .5, 1., .5};
     std::vector<double> overflow =
         resource_scheduler.GetLocalResourceManager().AddResourceInstances(
-            scheduling::kGPUResource, allocate_gpu_instances);
+            ResourceID::GPU(), allocate_gpu_instances);
     std::vector<double> expected_overflow{.0, .0, .5, 0.};
     ASSERT_TRUE(std::equal(overflow.begin(), overflow.end(), expected_overflow.begin()));
     available_gpu_instances = resource_scheduler.GetLocalResourceManager()
@@ -1015,7 +1015,7 @@ TEST_F(ClusterResourceSchedulerTest,
       // SubtractGPUResourceInstances() calls
       // UpdateLocalAvailableResourcesFromResourceInstances() under the hood.
       resource_scheduler.GetLocalResourceManager().SubtractResourceInstances(
-          scheduling::kGPUResource, allocate_gpu_instances);
+          ResourceID::GPU(), allocate_gpu_instances);
       std::vector<double> available_gpu_instances =
           resource_scheduler.GetLocalResourceManager()
               .GetLocalResources()
@@ -1037,7 +1037,7 @@ TEST_F(ClusterResourceSchedulerTest,
       // SubtractGPUResourceInstances() calls
       // UpdateLocalAvailableResourcesFromResourceInstances() under the hood.
       resource_scheduler.GetLocalResourceManager().AddResourceInstances(
-          scheduling::kGPUResource, allocate_gpu_instances);
+          ResourceID::GPU(), allocate_gpu_instances);
       std::vector<double> available_gpu_instances =
           resource_scheduler.GetLocalResourceManager()
               .GetLocalResources()

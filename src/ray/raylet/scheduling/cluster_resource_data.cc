@@ -24,22 +24,15 @@ bool IsPredefinedResource(scheduling::ResourceID resource) {
   return resource.ToInt() >= 0 && resource.ToInt() < PredefinedResourcesEnum_MAX;
 }
 
-std::string UnorderedMapToString(const absl::flat_hash_map<std::string, double> &map) {
-  std::stringstream buffer;
-
-  buffer << "[";
-  for (auto it = map.begin(); it != map.end(); ++it) {
-    buffer << "(" << it->first << ":" << it->second << ")";
-  }
-  buffer << "]";
-  return buffer.str();
-}
-
 /// Convert a map of resources to a ResourceRequest data structure.
 ResourceRequest ResourceMapToResourceRequest(
     const absl::flat_hash_map<std::string, double> &resource_map,
     bool requires_object_store_memory) {
-  return ResourceMapToResourceRequest(resource_map, requires_object_store_memory);
+  ResourceRequest res({}, requires_object_store_memory);
+  for (auto entry : resource_map) {
+    res.Set(ResourceID(entry.first), FixedPoint(entry.second));
+  }
+  return res;
 }
 
 /// Convert a map of resources to a ResourceRequest data structure.
@@ -56,13 +49,6 @@ NodeResources ResourceMapToNodeResources(
   node_resources.total = ResourceMapToResourceRequest(resource_map_total, false);
   node_resources.available = ResourceMapToResourceRequest(resource_map_available, false);
   return node_resources;
-}
-
-bool ResourceRequest::IsGPURequest() const {
-  if (predefined_resources.size() <= GPU) {
-    return false;
-  }
-  return predefined_resources[GPU] > 0;
 }
 
 float NodeResources::CalculateCriticalResourceUtilization() const {
@@ -97,7 +83,7 @@ bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
   return resource_request <= this->total;
 }
 
-bool NodeResources::operator==(const NodeResources &other) {
+bool NodeResources::operator==(const NodeResources &other) const {
   return this->available == other.available && this->total == other.total;
 }
 
@@ -105,65 +91,24 @@ bool NodeResources::operator!=(const NodeResources &other) const {
   return !(*this == other);
 }
 
-std::string NodeResources::DebugString() const {
-  std::stringstream buffer;
-  buffer << "{available: " << this->available.DebugString() << ",total: " << this->total.DebugString() + "}";
-  return buffer.str();
+std::string NodeResources::DebugString() const{
+    std::stringstream buffer;
+    buffer << "{";
+    bool first = true;
+    for (auto resource_id : total.ResourceIds()) {
+      if (!first) {
+        buffer << ", ";
+      }
+      first = false;
+      buffer << resource_id.Binary() << ": " << available.GetOrZero(resource_id) << "/"
+             << total.Get(resource_id);
+    }
+    buffer << "}";
+    return buffer.str();
 }
 
 std::string NodeResources::DictString() const {
   return DebugString();
-  // std::stringstream buffer;
-  // bool first = true;
-  // buffer << "{";
-  // for (size_t i = 0; i < this->predefined_resources.size(); i++) {
-  //   if (this->predefined_resources[i].total <= 0) {
-  //     continue;
-  //   }
-  //   if (first) {
-  //     first = false;
-  //   } else {
-  //     buffer << ", ";
-  //   }
-  //   std::string name = "";
-  //   switch (i) {
-  //   case CPU:
-  //     name = "CPU";
-  //     break;
-  //   case MEM:
-  //     name = "memory";
-  //     break;
-  //   case GPU:
-  //     name = "GPU";
-  //     break;
-  //   case OBJECT_STORE_MEM:
-  //     name = "object_store_memory";
-  //     break;
-  //   default:
-  //     RAY_CHECK(false) << "This should never happen.";
-  //     break;
-  //   }
-  //   buffer << format_resource(name, this->predefined_resources[i].available.Double())
-  //          << "/";
-  //   buffer << format_resource(name, this->predefined_resources[i].total.Double());
-  //   buffer << " " << name;
-  // }
-  // for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
-  //      ++it) {
-  //   auto name = ResourceID(it->first).Binary();
-  //   buffer << ", " << format_resource(name, it->second.available.Double()) << "/"
-  //          << format_resource(name, it->second.total.Double());
-  //   buffer << " " << name;
-  // }
-  // buffer << "}" << std::endl;
-  // return buffer.str();
-}
-
-bool NodeResources::HasGPU() const {
-  if (predefined_resources.size() <= GPU) {
-    return false;
-  }
-  return predefined_resources[GPU].total > 0;
 }
 
 bool NodeResourceInstances::operator==(const NodeResourceInstances &other) {
@@ -172,36 +117,18 @@ bool NodeResourceInstances::operator==(const NodeResourceInstances &other) {
 
 std::string NodeResourceInstances::DebugString() const {
   std::stringstream buffer;
-  // buffer << "{\n";
-  // for (size_t i = 0; i < this->predefined_resources.size(); i++) {
-  //   buffer << "\t";
-  //   switch (i) {
-  //   case CPU:
-  //     buffer << "CPU: ";
-  //     break;
-  //   case MEM:
-  //     buffer << "MEM: ";
-  //     break;
-  //   case GPU:
-  //     buffer << "GPU: ";
-  //     break;
-  //   case OBJECT_STORE_MEM:
-  //     buffer << "OBJECT_STORE_MEM: ";
-  //     break;
-  //   default:
-  //     RAY_CHECK(false) << "This should never happen.";
-  //     break;
-  //   }
-  //   buffer << "(" << VectorToString(predefined_resources[i].total) << ":"
-  //          << VectorToString(this->predefined_resources[i].available) << ")\n";
-  // }
-  // for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
-  //      ++it) {
-  //   buffer << "\t" << ResourceID(it->first).Binary() << ":("
-  //          << VectorToString(it->second.total) << ":"
-  //          << VectorToString(it->second.available) << ")\n";
-  // }
-  // buffer << "}" << std::endl;
+  buffer << "{";
+  bool first = true;
+  for (auto resource_id : total.ResourceIds()) {
+    if (!first) {
+      buffer << ", ";
+    }
+    first = false;
+    buffer << resource_id.Binary() << ": "
+           << FixedPointVectorToString(available.Get(resource_id)) << "/"
+           << FixedPointVectorToString(total.Get(resource_id));
+  }
+  buffer << "}";
   return buffer.str();
 };
 

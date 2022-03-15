@@ -36,17 +36,17 @@ class ResourceRequest {
  public:
   ResourceRequest(): ResourceRequest({}, false) {}
 
-  ResourceRequest(absl::flat_hash_map<std::string, FixedPoint> resource_map)
+  ResourceRequest(absl::flat_hash_map<ResourceID, FixedPoint> resource_map)
       : ResourceRequest(resource_map, false){};
 
-  ResourceRequest(absl::flat_hash_map<std::string, FixedPoint> resource_map,
+  ResourceRequest(absl::flat_hash_map<ResourceID, FixedPoint> resource_map,
                   bool requires_object_store_memory)
       : requires_object_store_memory_(requires_object_store_memory) {
     for (int i = 0; i < PredefinedResourcesEnum_MAX; i++) {
       predefined_resources_.push_back(0);
     }
     for (auto entry : resource_map) {
-      Set(ResourceID(entry.first), entry.second);
+      Set(entry.first, entry.second);
     }
   }
 
@@ -234,11 +234,6 @@ class ResourceRequest {
   /// Whether this task requires object store memory.
   /// TODO(swang): This should be a quantity instead of a flag.
   bool requires_object_store_memory_ = false;
-  bool requires_object_store_memory = false;
-  /// Check whether the request contains no resources.
-  bool IsEmpty() const;
-  /// Returns human-readable string for this task request.
-  std::string DebugString() const;
 };
 
 
@@ -461,8 +456,6 @@ class NodeResources {
   std::string DebugString() const;
   /// Returns compact dict-like string.
   std::string DictString() const;
-  /// Has GPU.
-  bool HasGPU() const;
 };
 
 /// Total and available capacities of each resource instance.
