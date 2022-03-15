@@ -101,7 +101,7 @@ class TensorflowTrainer(DataParallelTrainer):
                         1, activation="linear", input_shape=(input_size,))]
                 )
 
-            def train_loop_for_worker():
+            def train_loop_for_worker(config):
                 dataset_shard = train.get_dataset_shard("train")
                 strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
                 with strategy.scope():
