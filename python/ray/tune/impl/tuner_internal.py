@@ -33,6 +33,17 @@ class TunerInternal:
     ``run_config``.
 
     It can also be restored from a previous failed run (given ``restore_path``).
+
+    Attributes:
+        restore_path: The path from where the Tuner can be restored. If provided, None
+            of the rest args are needed.
+        trainable: The trainable to be tuned.
+        param_space: Search space of the tuning job.
+            One thing to note is that both preprocessor and dataset can be tuned here.
+        tune_config: Tuning algorithm specific configs.
+            Refer to ray.tune.tune_config.TuneConfig for more info.
+        run_config: Runtime configuration that is specific to individual trials.
+            Refer to ray.ml.config.RunConfig for more info.
     """
 
     def __init__(
