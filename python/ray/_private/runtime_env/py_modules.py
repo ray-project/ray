@@ -3,6 +3,7 @@ import os
 from types import ModuleType
 from typing import Any, Dict, List, Optional
 from pathlib import Path
+import asyncio
 
 from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -15,8 +16,8 @@ from ray._private.runtime_env.packaging import (
     Protocol,
     upload_package_if_needed,
 )
+from ray._private.runtime_env.working_dir import set_pythonpath_in_context
 from ray._private.utils import get_directory_size_bytes
-from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.utils import try_to_create_directory
 
 default_logger = logging.getLogger(__name__)
@@ -38,6 +39,7 @@ def upload_py_modules_if_needed(
     runtime_env: Dict[str, Any],
     scratch_dir: str,
     logger: Optional[logging.Logger] = default_logger,
+    upload_fn=None,
 ) -> Dict[str, Any]:
     """Uploads the entries in py_modules and replaces them with a list of URIs.
 
@@ -82,14 +84,17 @@ def upload_py_modules_if_needed(
             # module_path is a local path.
             excludes = runtime_env.get("excludes", None)
             module_uri = get_uri_for_directory(module_path, excludes=excludes)
-            upload_package_if_needed(
-                module_uri,
-                scratch_dir,
-                module_path,
-                excludes=excludes,
-                include_parent_dir=True,
-                logger=logger,
-            )
+            if upload_fn is None:
+                upload_package_if_needed(
+                    module_uri,
+                    scratch_dir,
+                    module_path,
+                    excludes=excludes,
+                    include_parent_dir=True,
+                    logger=logger,
+                )
+            else:
+                upload_fn(module_path, excludes=excludes)
 
         py_modules_uris.append(module_uri)
 
@@ -126,14 +131,22 @@ class PyModulesManager:
     async def create(
         self,
         uri: str,
-        runtime_env: RuntimeEnv,
+        runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
-        module_dir = download_and_unpack_package(
-            uri, self._resources_dir, logger=logger
-        )
-        return get_directory_size_bytes(module_dir)
+        # Currently create method is still a sync process, to avoid blocking
+        # the loop, need to run this function in another thread.
+        # TODO(Catch-Bull): Refactor method create into an async process, and
+        # make this method running in current loop.
+        def _create():
+            module_dir = download_and_unpack_package(
+                uri, self._resources_dir, logger=logger
+            )
+            return get_directory_size_bytes(module_dir)
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _create)
 
     def modify_context(
         self,
@@ -154,8 +167,4 @@ class PyModulesManager:
                     "downloading or unpacking the py_modules files."
                 )
             module_dirs.append(str(module_dir))
-        # Insert the py_modules directories into the PYTHONPATH.
-        python_path = os.pathsep.join(module_dirs)
-        if "PYTHONPATH" in context.env_vars:
-            python_path += os.pathsep + context.env_vars["PYTHONPATH"]
-        context.env_vars["PYTHONPATH"] = python_path
+        set_pythonpath_in_context(os.pathsep.join(module_dirs), context)

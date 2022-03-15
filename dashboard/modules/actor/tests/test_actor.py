@@ -6,9 +6,7 @@ import time
 import traceback
 import ray
 import pytest
-import redis
 import ray.dashboard.utils as dashboard_utils
-import ray.ray_constants as ray_constants
 import ray._private.gcs_utils as gcs_utils
 import ray._private.gcs_pubsub as gcs_pubsub
 from ray.dashboard.tests.conftest import *  # noqa
@@ -215,22 +213,8 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     address_info = ray_start_with_dashboard
 
-    if gcs_pubsub.gcs_pubsub_enabled():
-        sub = gcs_pubsub.GcsActorSubscriber(address=address_info["gcs_address"])
-        sub.subscribe()
-    else:
-        address = address_info["redis_address"]
-        address = address.split(":")
-        assert len(address) == 2
-
-        client = redis.StrictRedis(
-            host=address[0],
-            port=int(address[1]),
-            password=ray_constants.REDIS_DEFAULT_PASSWORD,
-        )
-
-        sub = client.pubsub(ignore_subscribe_messages=True)
-        sub.psubscribe(gcs_utils.RAY_ACTOR_PUBSUB_PATTERN)
+    sub = gcs_pubsub.GcsActorSubscriber(address=address_info["gcs_address"])
+    sub.subscribe()
 
     @ray.remote
     class DummyActor:

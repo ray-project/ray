@@ -6,6 +6,17 @@ import click
 import yaml
 
 
+class FormatDumper(yaml.SafeDumper):
+    last_indent = 0
+
+    def write_line_break(self, data=None):
+        if (self.indent or 0) < self.last_indent:
+            super().write_line_break()
+
+        super().write_line_break(data)
+        self.last_indent = self.indent or 0
+
+
 def replace_prepare(dt: Dict):
     if "prepare" in dt and "wait_cluster" in dt["prepare"]:
         _, _, nodes, timeout = dt.pop("prepare").split(" ")
@@ -42,8 +53,13 @@ def main(legacy_config: str, prefix: str, group: str, alert: str):
             "cluster_compute": old["cluster"]["compute_template"],
         }
 
+        if "cloud_id" in old["cluster"]:
+            test["cluster"]["cloud_id"] = old["cluster"]["cloud_id"]
+        if "cloud_name" in old["cluster"]:
+            test["cluster"]["cloud_name"] = old["cluster"]["cloud_name"]
+
         if "driver_setup" in old:
-            test["driver_setup"] = "driver_setup"
+            test["driver_setup"] = old["driver_setup"]
 
         use_connect = old["run"].pop("use_connect", False)
         autosuspend = old["run"].pop("autosuspend_mins", None)
@@ -65,7 +81,7 @@ def main(legacy_config: str, prefix: str, group: str, alert: str):
 
         tests.append(test)
 
-    yaml.dump(tests, sys.stdout, sort_keys=False)
+    yaml.dump(tests, sys.stdout, Dumper=FormatDumper, sort_keys=False)
     sys.stdout.flush()
 
 

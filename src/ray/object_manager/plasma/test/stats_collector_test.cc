@@ -15,7 +15,6 @@
 #include <limits>
 
 #include "absl/random/random.h"
-
 #include "ray/object_manager/plasma/object_lifecycle_manager.h"
 
 using namespace ray;
@@ -174,9 +173,10 @@ struct ObjectStatsCollectorTest : public Test {
 };
 
 TEST_F(ObjectStatsCollectorTest, CreateAndAbort) {
-  std::vector<ObjectSource> sources = {
-      ObjectSource::CreatedByWorker, ObjectSource::RestoredFromStorage,
-      ObjectSource::ReceivedFromRemoteRaylet, ObjectSource::ErrorStoredByRaylet};
+  std::vector<ObjectSource> sources = {ObjectSource::CreatedByWorker,
+                                       ObjectSource::RestoredFromStorage,
+                                       ObjectSource::ReceivedFromRemoteRaylet,
+                                       ObjectSource::ErrorStoredByRaylet};
 
   for (auto source : sources) {
     int64_t size = Random(100);
@@ -193,9 +193,10 @@ TEST_F(ObjectStatsCollectorTest, CreateAndAbort) {
 }
 
 TEST_F(ObjectStatsCollectorTest, CreateAndDelete) {
-  std::vector<ObjectSource> sources = {
-      ObjectSource::CreatedByWorker, ObjectSource::RestoredFromStorage,
-      ObjectSource::ReceivedFromRemoteRaylet, ObjectSource::ErrorStoredByRaylet};
+  std::vector<ObjectSource> sources = {ObjectSource::CreatedByWorker,
+                                       ObjectSource::RestoredFromStorage,
+                                       ObjectSource::ReceivedFromRemoteRaylet,
+                                       ObjectSource::ErrorStoredByRaylet};
 
   for (auto source : sources) {
     int64_t size = Random(100);
@@ -219,9 +220,10 @@ TEST_F(ObjectStatsCollectorTest, CreateAndDelete) {
 }
 
 TEST_F(ObjectStatsCollectorTest, Eviction) {
-  std::vector<ObjectSource> sources = {
-      ObjectSource::CreatedByWorker, ObjectSource::RestoredFromStorage,
-      ObjectSource::ReceivedFromRemoteRaylet, ObjectSource::ErrorStoredByRaylet};
+  std::vector<ObjectSource> sources = {ObjectSource::CreatedByWorker,
+                                       ObjectSource::RestoredFromStorage,
+                                       ObjectSource::ReceivedFromRemoteRaylet,
+                                       ObjectSource::ErrorStoredByRaylet};
 
   int64_t size = 100;
   for (auto source : sources) {

@@ -105,6 +105,7 @@ jfieldID java_actor_creation_options_max_concurrency;
 jfieldID java_actor_creation_options_group;
 jfieldID java_actor_creation_options_bundle_index;
 jfieldID java_actor_creation_options_concurrency_groups;
+jfieldID java_actor_creation_options_serialized_runtime_env;
 jfieldID java_actor_creation_options_max_pending_calls;
 
 jclass java_actor_lifetime_class;
@@ -247,7 +248,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
   java_jni_exception_util_class = LoadClass(env, "io/ray/runtime/util/JniExceptionUtil");
   java_jni_exception_util_get_stack_trace = env->GetStaticMethodID(
-      java_jni_exception_util_class, "getStackTrace",
+      java_jni_exception_util_class,
+      "getStackTrace",
       "(Ljava/lang/String;ILjava/lang/String;Ljava/lang/Throwable;)Ljava/lang/String;");
 
   java_base_id_class = LoadClass(env, "io/ray/api/id/BaseId");
@@ -262,7 +264,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_function_descriptor_class =
       LoadClass(env, "io/ray/runtime/functionmanager/FunctionDescriptor");
   java_function_descriptor_get_language =
-      env->GetMethodID(java_function_descriptor_class, "getLanguage",
+      env->GetMethodID(java_function_descriptor_class,
+                       "getLanguage",
                        "()Lio/ray/runtime/generated/Common$Language;");
   java_function_descriptor_to_list =
       env->GetMethodID(java_function_descriptor_class, "toList", "()Ljava/util/List;");
@@ -274,10 +277,11 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_function_arg_id =
       env->GetFieldID(java_function_arg_class, "id", "Lio/ray/api/id/ObjectId;");
   java_function_arg_owner_address =
-      env->GetFieldID(java_function_arg_class, "ownerAddress",
+      env->GetFieldID(java_function_arg_class,
+                      "ownerAddress",
                       "Lio/ray/runtime/generated/Common$Address;");
-  java_function_arg_value = env->GetFieldID(java_function_arg_class, "value",
-                                            "Lio/ray/runtime/object/NativeRayObject;");
+  java_function_arg_value = env->GetFieldID(
+      java_function_arg_class, "value", "Lio/ray/runtime/object/NativeRayObject;");
 
   java_base_task_options_class = LoadClass(env, "io/ray/api/options/BaseTaskOptions");
   java_base_task_options_resources =
@@ -295,8 +299,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
   java_placement_group_class =
       LoadClass(env, "io/ray/runtime/placementgroup/PlacementGroupImpl");
-  java_placement_group_id = env->GetFieldID(java_placement_group_class, "id",
-                                            "Lio/ray/api/id/PlacementGroupId;");
+  java_placement_group_id = env->GetFieldID(
+      java_placement_group_class, "id", "Lio/ray/api/id/PlacementGroupId;");
 
   java_placement_group_creation_options_class =
       LoadClass(env, "io/ray/api/options/PlacementGroupCreationOptions");
@@ -307,7 +311,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_placement_group_creation_options_bundles = env->GetFieldID(
       java_placement_group_creation_options_class, "bundles", "Ljava/util/List;");
   java_placement_group_creation_options_strategy =
-      env->GetFieldID(java_placement_group_creation_options_class, "strategy",
+      env->GetFieldID(java_placement_group_creation_options_class,
+                      "strategy",
                       "Lio/ray/api/placementgroup/PlacementStrategy;");
   java_placement_group_creation_options_strategy_value = env->GetMethodID(
       java_placement_group_creation_options_strategy_class, "value", "()I");
@@ -317,7 +322,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_actor_creation_options_name =
       env->GetFieldID(java_actor_creation_options_class, "name", "Ljava/lang/String;");
   java_actor_creation_options_lifetime =
-      env->GetFieldID(java_actor_creation_options_class, "lifetime",
+      env->GetFieldID(java_actor_creation_options_class,
+                      "lifetime",
                       "Lio/ray/api/options/ActorLifetime;");
   java_actor_creation_options_max_restarts =
       env->GetFieldID(java_actor_creation_options_class, "maxRestarts", "I");
@@ -326,12 +332,15 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_actor_creation_options_max_concurrency =
       env->GetFieldID(java_actor_creation_options_class, "maxConcurrency", "I");
   java_actor_creation_options_group =
-      env->GetFieldID(java_actor_creation_options_class, "group",
+      env->GetFieldID(java_actor_creation_options_class,
+                      "group",
                       "Lio/ray/api/placementgroup/PlacementGroup;");
   java_actor_creation_options_bundle_index =
       env->GetFieldID(java_actor_creation_options_class, "bundleIndex", "I");
   java_actor_creation_options_concurrency_groups = env->GetFieldID(
       java_actor_creation_options_class, "concurrencyGroups", "Ljava/util/List;");
+  java_actor_creation_options_serialized_runtime_env = env->GetFieldID(
+      java_actor_creation_options_class, "serializedRuntimeEnv", "Ljava/lang/String;");
   java_actor_creation_options_max_pending_calls =
       env->GetFieldID(java_actor_creation_options_class, "maxPendingCalls", "I");
 
@@ -372,7 +381,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_task_executor_parse_function_arguments = env->GetMethodID(
       java_task_executor_class, "checkByteBufferArguments", "(Ljava/util/List;)[Z");
   java_task_executor_execute =
-      env->GetMethodID(java_task_executor_class, "execute",
+      env->GetMethodID(java_task_executor_class,
+                       "execute",
                        "(Ljava/util/List;Ljava/util/List;)Ljava/util/List;");
   java_native_task_executor_class =
       LoadClass(env, "io/ray/runtime/task/NativeTaskExecutor");
