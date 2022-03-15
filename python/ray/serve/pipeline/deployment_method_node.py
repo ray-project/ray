@@ -105,7 +105,7 @@ class DeploymentMethodNode(DAGNode):
 
     def get_import_path(self) -> str:
         if (
-            "schema"
+            "is_from_serve_deployment"
             in self._bound_other_args_to_resolve[
                 "parent_class_node"
             ]._bound_other_args_to_resolve

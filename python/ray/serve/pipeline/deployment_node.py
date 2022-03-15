@@ -69,17 +69,27 @@ class DeploymentNode(DAGNode):
             ),
             apply_fn=replace_with_handle,
         )
-        # TODO(simon): configure this using DeploymentNode.other_args.schema object
-        self._deployment: Deployment = Deployment(
-            func_or_class,
-            deployment_name,
-            # TODO: (jiaodong) Support deployment config from user input
-            DeploymentConfig(),
-            init_args=replaced_deployment_init_args,
-            init_kwargs=replaced_deployment_init_kwargs,
-            ray_actor_options=ray_actor_options,
-            _internal=True,
-        )
+
+        if "deployment_self" in self._bound_other_args_to_resolve:
+            original_deployment: Deployment = self._bound_other_args_to_resolve.pop(
+                "deployment_self"
+            )
+            self._deployment = original_deployment.options(
+                name=deployment_name,
+                init_args=replaced_deployment_init_args,
+                init_kwargs=replaced_deployment_init_kwargs,
+            )
+        else:
+            self._deployment: Deployment = Deployment(
+                func_or_class,
+                deployment_name,
+                # TODO: (jiaodong) Support deployment config from user input
+                DeploymentConfig(),
+                init_args=replaced_deployment_init_args,
+                init_kwargs=replaced_deployment_init_kwargs,
+                ray_actor_options=ray_actor_options,
+                _internal=True,
+            )
         self._deployment_handle: Union[
             RayServeHandle, RayServeSyncHandle
         ] = self._get_serve_deployment_handle(self._deployment, other_args_to_resolve)
@@ -170,7 +180,7 @@ class DeploymentNode(DAGNode):
 
     def get_import_path(self):
         if (
-            "schema" in self._bound_other_args_to_resolve
+            "is_from_serve_deployment" in self._bound_other_args_to_resolve
         ):  # built by serve top level api, this is ignored for serve.run
             return "dummy"
         elif isinstance(self._deployment._func_or_class, str):

@@ -1115,16 +1115,19 @@ class Deployment:
         from ray.serve.schema import deployment_to_schema
 
         copied_self = copy(self)
-        copied_self._func_or_class = json.dumps(
-            serialize_to_path_or_base64(self._func_or_class)
+        copied_self._func_or_class = "dummy"
+        other_args_to_resolve = dict(
+            deployment_self=self,
+            is_from_serve_deployment=True,
+            # deployment_def=self._func_or_class,
+            # schema=deployment_to_schema()
         )
-        other_args_to_resolve = dict(schema=deployment_to_schema(copied_self).dict())
 
         return DeploymentNode(
             self._func_or_class,
             args,
             kwargs,
-            cls_options=dict(),
+            cls_options=self._ray_actor_options or dict(),
             other_args_to_resolve=other_args_to_resolve,
         )
 

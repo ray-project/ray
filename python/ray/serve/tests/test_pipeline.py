@@ -38,9 +38,7 @@ def test_single_node_driver_sucess(serve_instance):
     m2 = Adder.bind(2)
     with PipelineInputNode() as input_node:
         out = m1.forward.bind(input_node)
-        out = m2.forward.bind(m1)
+        out = m2.forward.bind(out)
     driver = Driver.bind(out)
     handle = serve.run(driver)
-    # TODO(simon): somehow i'm not getting the right number here, but all models were
-    # called at least!
-    assert ray.get(handle.remote(39)) > 0
+    assert ray.get(handle.remote(39)) == 42
