@@ -231,7 +231,10 @@ def test_get_status_info(ray_start_stop):
 
 
 def test_serve_namespace(ray_start_stop):
-    # Check that dashboard starts Serve in the Serve namespace
+    """
+    Check that the Dashboard's Serve can interact with the Python API
+    when they both start in the "serve namespace"
+    """
 
     one = dict(
         name="one",
