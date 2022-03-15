@@ -13,6 +13,11 @@ from ray.train.session import TrainingResult
 from ray.train.utils import construct_path
 from ray.util import PublicAPI
 
+
+from ray.ml.preprocessor import Preprocessor
+from ray.ml.constants import PREPROCESSOR_KEY
+from ray.ml.checkpoint import Checkpoint
+
 if TUNE_INSTALLED:
     from ray import tune
 else:
@@ -118,7 +123,7 @@ class CheckpointManager:
             checkpoint may not be saved to disk.
     """
 
-    def on_init(self):
+    def on_init(self, **kwargs):
         """Checkpoint code executed during BackendExecutor init."""
         self.latest_checkpoint = None
 
@@ -135,7 +140,7 @@ class CheckpointManager:
     def on_start_training(
         self,
         checkpoint_strategy: Optional[CheckpointStrategy],
-        run_dir: Path,
+        run_dir: Optional[Path] = None,
         latest_checkpoint_id: Optional[int] = None,
     ):
         """Checkpoint code executed during BackendExecutor start_training."""
@@ -308,14 +313,6 @@ class CheckpointManager:
 
 
 class TuneCheckpointManager(CheckpointManager):
-    def create_logdir(self, log_dir: Optional[Union[str, Path]]):
-        # Don't create logdir when using with Tune.
-        pass
-
-    def create_run_dir(self):
-        # Don't create run_dir when using with Tune.
-        pass
-
     def _load_checkpoint(
         self, checkpoint_to_load: Optional[Union[Dict, str, Path]]
     ) -> Optional[Dict]:
@@ -339,6 +336,25 @@ class TuneCheckpointManager(CheckpointManager):
             file_path = path.joinpath(TUNE_CHECKPOINT_FILE_NAME)
             with file_path.open("wb") as f:
                 cloudpickle.dump(checkpoint, f)
+
+# TODO(team-ml): Refactor checkpoint management along with Tune.
+class MLTuneCheckpointManager(TuneCheckpointManager):
+    def on_init(self, preprocessor: Preprocessor):
+        self.preprocessor = preprocessor
+        super(MLTuneCheckpointManager, self).on_init()
+
+    def write_checkpoint(self, checkpoint: Dict):
+        # Store the checkpoint_id in the file so that the Tune trial can be
+        # resumed after failure or cancellation.
+        checkpoint[TUNE_CHECKPOINT_ID] = self._latest_checkpoint_id
+
+        # Add the preprocessor to the checkpoint.
+        checkpoint[PREPROCESSOR_KEY] = self.preprocessor
+
+        checkpoint_obj = Checkpoint.from_dict(checkpoint)
+        # If inside a Tune Trainable, then checkpoint with Tune.
+        with tune.checkpoint_dir(step=self._latest_checkpoint_id) as checkpoint_dir:
+            checkpoint_obj.to_directory(path=checkpoint_dir)
 
 
 def construct_checkpoint_file_name(checkpoint_id: int) -> str:

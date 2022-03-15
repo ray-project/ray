@@ -1,15 +1,26 @@
 import logging
+import os
 from typing import Dict, Callable, Optional, Union
 
+import ray
 from ray.ml.trainer import Trainer
 from ray.ml.config import ScalingConfig, RunConfig
 from ray.ml.trainer import GenDataset
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.train import BackendConfig
+from ray.train.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
+    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
+
+# The environment variables that need to be propagated from the driver to the
+# `BackendExecutor` actor via runtime env.
+_BACKEND_ENV_VARS = {
+    ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
+    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
+}
 
 
 @DeveloperAPI
@@ -181,4 +192,41 @@ class DataParallelTrainer(Trainer):
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
-        raise NotImplementedError
+        if not ray.is_initialized():
+            ray.init()
+
+        if (
+            "GPU" in ray.available_resources()
+            and scaling_config.num_gpus_per_worker <= 0
+        ):
+            logger.info(
+                "GPUs are detected in your Ray cluster, but GPU "
+                "training is not enabled for Ray Train. To enable "
+                "GPU training, make sure to set `use_gpu` to True "
+                "when instantiating your Trainer."
+            )
+
+        self.train_loop_per_worker = train_loop_per_worker
+        self.train_loop_config = train_loop_config
+
+        super(DataParallelTrainer, self).__init__(
+            scaling_config=scaling_config,
+            run_config=run_config,
+            datasets=datasets,
+            preprocessor=preprocessor,
+            resume_from_checkpoint=resume_from_checkpoint,
+        )
+
+        backend_config = backend_config if backend_config else BackendConfig()
+        self.backend_config = backend_config
+
+        self.train_env_var_values = {
+            var_name: os.environ[var_name]
+            for var_name in _BACKEND_ENV_VARS
+            if var_name in os.environ
+        }
+
+    def training_loop(self) -> None:
+        scaling_config_dataclass = ScalingConfigDataClass()
+
+
