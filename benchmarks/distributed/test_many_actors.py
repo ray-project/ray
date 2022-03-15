@@ -33,7 +33,7 @@ def test_max_actors():
 
 
 def no_resource_leaks():
-    return ray.available_resources() == ray.cluster_resources()
+    return test_utils.no_resource_leaks_excluding_node_resources()
 
 
 ray.init(address="auto")

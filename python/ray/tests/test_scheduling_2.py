@@ -3,13 +3,16 @@ import platform
 import pytest
 import sys
 import time
+import os
 
 import ray
+import ray._private.gcs_utils as gcs_utils
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 import ray.experimental.internal_kv as internal_kv
 from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
 )
+from ray._private.test_utils import wait_for_condition, make_global_state_accessor
 
 
 @pytest.mark.skipif(
@@ -302,6 +305,80 @@ def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
         internal_kv._internal_kv_del("test_task1")
         internal_kv._internal_kv_del("test_task2")
         assert set(ray.get(locations)) == worker_node_ids
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="FakeAutoscaler doesn't work on Windows"
+)
+@pytest.mark.skipif(os.environ.get("ASAN_OPTIONS") is not None, reason="ASAN is slow")
+def test_demand_report_when_scale_up(shutdown_only):
+    # https://github.com/ray-project/ray/issues/22122
+    from ray.cluster_utils import AutoscalingCluster
+
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 0},
+        worker_node_types={
+            "cpu_node": {
+                "resources": {
+                    "CPU": 1,
+                    "object_store_memory": 1024 * 1024 * 1024,
+                },
+                "node_config": {},
+                "min_workers": 10,
+                "max_workers": 10,
+            },
+        },
+    )
+
+    cluster.start()
+
+    info = ray.init("auto")
+
+    @ray.remote
+    def f():
+        time.sleep(10000)
+
+    @ray.remote
+    def g():
+        ray.get(h.remote())
+
+    @ray.remote
+    def h():
+        time.sleep(10000)
+
+    tasks = [f.remote() for _ in range(5000)].extend(  # noqa: F841
+        [g.remote() for _ in range(5000)]
+    )
+
+    global_state_accessor = make_global_state_accessor(info)
+
+    def check_backlog_info():
+        message = global_state_accessor.get_all_resource_usage()
+        if message is None:
+            return 0
+
+        resource_usage = gcs_utils.ResourceUsageBatchData.FromString(message)
+        aggregate_resource_load = resource_usage.resource_load_by_shape.resource_demands
+
+        if len(aggregate_resource_load) != 1:
+            return False
+
+        (backlog_size, num_ready_requests_queued, shape) = (
+            aggregate_resource_load[0].backlog_size,
+            aggregate_resource_load[0].num_ready_requests_queued,
+            aggregate_resource_load[0].shape,
+        )
+        if backlog_size + num_ready_requests_queued != 9990:
+            return False
+
+        if shape != {"CPU": 1.0}:
+            return False
+        return True
+
+    # In ASAN test it's slow.
+    # Wait for 20s for the cluster to be up
+    wait_for_condition(check_backlog_info, 20)
+    cluster.shutdown()
 
 
 if __name__ == "__main__":

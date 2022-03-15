@@ -27,6 +27,7 @@
 #include <sys/_types.h> /* __darwin_mach_port_t */
 typedef __darwin_mach_port_t mach_port_t;
 #include <pthread.h>
+
 #include <utility>
 mach_port_t pthread_mach_thread_np(pthread_t);
 #endif /* _MACH_PORT_T */

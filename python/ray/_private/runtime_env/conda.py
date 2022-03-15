@@ -59,10 +59,6 @@ def _resolve_install_from_source_ray_dependencies():
     return _get_ray_setup_spec().install_requires
 
 
-def _resolve_install_from_source_ray_extras() -> Dict[str, List[str]]:
-    return _get_ray_setup_spec().extras
-
-
 def _inject_ray_to_conda_site(
     conda_path, logger: Optional[logging.Logger] = default_logger
 ):

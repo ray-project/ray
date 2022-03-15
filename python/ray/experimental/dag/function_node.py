@@ -41,8 +41,14 @@ class FunctionNode(DAGNode):
             other_args_to_resolve=new_other_args_to_resolve,
         )
 
-    def _execute_impl(self, *args):
-        """Executor of FunctionNode by ray.remote()"""
+    def _execute_impl(self, *args, **kwargs):
+        """Executor of FunctionNode by ray.remote().
+
+        Args and kwargs are to match base class signature, but not in the
+        implementation. All args and kwargs should be resolved and replaced
+        with value in bound_args and bound_kwargs via bottom-up recursion when
+        current node is executed.
+        """
         return (
             ray.remote(self._body)
             .options(**self._bound_options)
@@ -57,17 +63,29 @@ class FunctionNode(DAGNode):
 
     def to_json(self, encoder_cls) -> Dict[str, Any]:
         json_dict = super().to_json_base(encoder_cls, FunctionNode.__name__)
-        json_dict["import_path"] = self.get_import_path()
+        import_path = self.get_import_path()
+        error_message = (
+            "Function used in DAG should not be in-line defined when exporting"
+            "import path for deployment. Please ensure it has fully "
+            "qualified name with valid __module__ and __qualname__ for "
+            "import path, with no __main__ or <locals>. \n"
+            f"Current import path: {import_path}"
+        )
+        assert "__main__" not in import_path, error_message
+        assert "<locals>" not in import_path, error_message
+        json_dict["import_path"] = import_path
         return json_dict
 
     @classmethod
     def from_json(cls, input_json, module, object_hook=None):
         assert input_json[DAGNODE_TYPE_KEY] == FunctionNode.__name__
         args_dict = super().from_json_base(input_json, object_hook=object_hook)
-        return cls(
+        node = cls(
             module._function,
             args_dict["args"],
             args_dict["kwargs"],
             args_dict["options"],
             other_args_to_resolve=args_dict["other_args_to_resolve"],
         )
+        node._stable_uuid = args_dict["uuid"]
+        return node

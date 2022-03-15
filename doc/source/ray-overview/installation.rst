@@ -53,10 +53,6 @@ You can install the nightly Ray wheels via the following links. These daily rele
 
 .. note::
 
-  Python 3.9 support is currently experimental.
-
-.. note::
-
   On Windows, support for multi-node Ray clusters is currently experimental and untested.
   If you run into issues please file a report at https://github.com/ray-project/ray/issues.
 

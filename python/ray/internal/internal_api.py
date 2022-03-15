@@ -5,7 +5,6 @@ import ray._private.profiling as profiling
 import ray._private.utils as utils
 from ray import ray_constants
 from ray.state import GlobalState
-from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray._raylet import GcsClientOptions
 
 __all__ = ["free", "global_gc"]
@@ -34,10 +33,7 @@ def memory_summary(
     address = services.canonicalize_bootstrap_address(address)
 
     state = GlobalState()
-    if use_gcs_for_bootstrap():
-        options = GcsClientOptions.from_gcs_address(address)
-    else:
-        options = GcsClientOptions.from_redis_address(address, redis_password)
+    options = GcsClientOptions.from_gcs_address(address)
     state._initialize_global_state(options)
     if stats_only:
         return get_store_stats(state)
