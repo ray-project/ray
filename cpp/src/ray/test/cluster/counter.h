@@ -50,7 +50,7 @@ class Counter {
   bool is_restared = false;
 };
 
-static inline Counter *CreateCounter() { return new Counter(0); }
+inline Counter *CreateCounter() { return new Counter(0); }
 RAY_REMOTE(CreateCounter);
 
 class CountDownLatch {

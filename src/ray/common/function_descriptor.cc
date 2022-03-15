@@ -91,9 +91,9 @@ FunctionDescriptor FunctionDescriptorBuilder::FromVector(
   } else if (language == rpc::Language::CPP) {
     RAY_CHECK(function_descriptor_list.size() == 3);
     return FunctionDescriptorBuilder::BuildCpp(
-        function_descriptor_list[0],  // function name
-        function_descriptor_list[1],  // caller
-        function_descriptor_list[2]);
+        function_descriptor_list[0],   // function name
+        function_descriptor_list[1],   // caller
+        function_descriptor_list[2]);  // class name
   } else {
     RAY_LOG(FATAL) << "Unspported language " << language;
     return FunctionDescriptorBuilder::Empty();

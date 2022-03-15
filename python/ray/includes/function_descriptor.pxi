@@ -371,7 +371,8 @@ cdef class CppFunctionDescriptor(FunctionDescriptor):
 
     @property
     def class_name(self):
-        """Get the class name of current function descriptor.
+        """Get the class name of current function descriptor,
+        when it is empty, it is a non-member function.
 
         Returns:
             The class name of the function descriptor.
