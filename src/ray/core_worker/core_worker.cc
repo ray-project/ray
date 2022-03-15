@@ -3451,11 +3451,13 @@ std::vector<ObjectID> CoreWorker::GetCurrentReturnIds(int num_returns,
   if (callee_actor_id.IsNil()) {
     /// Return ids for normal task call.
     task_id = TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
-                                    worker_context_.GetCurrentInternalTaskId(), next_task_index);
+                                    worker_context_.GetCurrentInternalTaskId(),
+                                    next_task_index);
   } else {
     /// Return ids for actor task call.
     task_id = TaskID::ForActorTask(worker_context_.GetCurrentJobID(),
-                                   worker_context_.GetCurrentInternalTaskId(), next_task_index,
+                                   worker_context_.GetCurrentInternalTaskId(),
+                                   next_task_index,
                                    callee_actor_id);
   }
   for (int i = 0; i < num_returns; i++) {
