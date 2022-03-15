@@ -53,15 +53,25 @@ LocalTaskManager::LocalTaskManager(
       sched_cls_cap_max_ms_(RayConfig::instance().worker_cap_max_backoff_delay_ms()) {}
 
 void LocalTaskManager::QueueAndScheduleTask(std::shared_ptr<internal::Work> work) {
-  if (work->grant_or_reject &&
-      !cluster_resource_scheduler_->IsSchedulableOnLocalNode(
-          work->task.GetTaskSpecification().GetRequiredResources().GetResourceMap())) {
-    work->reply->set_rejected(true);
-    work->callback();
-    return;
-  }
   WaitForTaskArgsRequests(work);
   ScheduleAndDispatchTasks();
+}
+
+void LocalTaskManager::QueueAndScheduleTask(const RayTask &task, bool grant_or_reject,
+                                            bool is_selected_based_on_locality,
+                                            rpc::RequestWorkerLeaseReply *reply,
+                                            rpc::SendReplyCallback send_reply_callback) {
+  if (grant_or_reject &&
+      !cluster_resource_scheduler_->IsSchedulableOnLocalNode(
+          task.GetTaskSpecification().GetRequiredResources().GetResourceMap())) {
+    reply->set_rejected(true);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
+  auto work = std::make_shared<internal::Work>(
+      task, grant_or_reject, is_selected_based_on_locality, reply,
+      [send_reply_callback] { send_reply_callback(Status::OK(), nullptr, nullptr); });
+  QueueAndScheduleTask(work);
 }
 
 bool LocalTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> work) {

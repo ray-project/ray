@@ -1612,10 +1612,10 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     send_reply_callback(status, success, failure);
   };
   if (request.grant_or_reject() && local_task_manager_) {
-    auto work = std::make_shared<internal::Work>(
-        task, request.grant_or_reject(), request.is_selected_based_on_locality(), reply,
-        [send_reply_callback] { send_reply_callback(Status::OK(), nullptr, nullptr); });
-    local_task_manager_->QueueAndScheduleTask(work);
+    local_task_manager_->QueueAndScheduleTask(task, request.grant_or_reject(),
+                                              request.is_selected_based_on_locality(),
+                                              reply, send_reply_callback_wrapper);
+    return;
   }
 
   cluster_task_manager_->QueueAndScheduleTask(task, request.grant_or_reject(),
