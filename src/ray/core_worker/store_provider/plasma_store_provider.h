@@ -35,7 +35,8 @@ class TrackedBuffer;
 class BufferTracker {
  public:
   // Track an object.
-  void Record(const ObjectID &object_id, TrackedBuffer *buffer,
+  void Record(const ObjectID &object_id,
+              TrackedBuffer *buffer,
               const std::string &call_site);
   // Release an object from tracking.
   void Release(const ObjectID &object_id, TrackedBuffer *buffer);
@@ -58,7 +59,8 @@ class BufferTracker {
 class TrackedBuffer : public Buffer {
  public:
   TrackedBuffer(std::shared_ptr<Buffer> buffer,
-                const std::shared_ptr<BufferTracker> &tracker, const ObjectID &object_id)
+                const std::shared_ptr<BufferTracker> &tracker,
+                const ObjectID &object_id)
       : buffer_(buffer), tracker_(tracker), object_id_(object_id) {}
 
   uint8_t *Data() const override { return buffer_->Data(); }
@@ -89,7 +91,8 @@ class CoreWorkerPlasmaStoreProvider {
       const std::string &store_socket,
       const std::shared_ptr<raylet::RayletClient> raylet_client,
       const std::shared_ptr<ReferenceCounter> reference_counter,
-      std::function<Status()> check_signals, bool warmup,
+      std::function<Status()> check_signals,
+      bool warmup,
       std::function<std::string()> get_current_call_site = nullptr);
 
   ~CoreWorkerPlasmaStoreProvider();
@@ -105,8 +108,10 @@ class CoreWorkerPlasmaStoreProvider {
   /// \param[out] object_exists Optional. Returns whether an object with the
   /// same ID already exists. If this is true, then the Put does not write any
   /// object data.
-  Status Put(const RayObject &object, const ObjectID &object_id,
-             const rpc::Address &owner_address, bool *object_exists);
+  Status Put(const RayObject &object,
+             const ObjectID &object_id,
+             const rpc::Address &owner_address,
+             bool *object_exists);
 
   /// Create an object in plasma and return a mutable buffer to it. The buffer should be
   /// subsequently written to and then sealed using Seal().
@@ -116,9 +121,12 @@ class CoreWorkerPlasmaStoreProvider {
   /// \param[in] object_id The ID of the object.
   /// \param[in] owner_address The address of the object's owner.
   /// \param[out] data The mutable object buffer in plasma that can be written to.
-  Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
-                const ObjectID &object_id, const rpc::Address &owner_address,
-                std::shared_ptr<Buffer> *data, bool created_by_worker);
+  Status Create(const std::shared_ptr<Buffer> &metadata,
+                const size_t data_size,
+                const ObjectID &object_id,
+                const rpc::Address &owner_address,
+                std::shared_ptr<Buffer> *data,
+                bool created_by_worker);
 
   /// Seal an object buffer created with Create().
   ///
@@ -137,7 +145,8 @@ class CoreWorkerPlasmaStoreProvider {
   /// argument to Get to retrieve the object data.
   Status Release(const ObjectID &object_id);
 
-  Status Get(const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
+  Status Get(const absl::flat_hash_set<ObjectID> &object_ids,
+             int64_t timeout_ms,
              const WorkerContext &ctx,
              absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
              bool *got_exception);
@@ -156,8 +165,10 @@ class CoreWorkerPlasmaStoreProvider {
 
   Status Contains(const ObjectID &object_id, bool *has_object);
 
-  Status Wait(const absl::flat_hash_set<ObjectID> &object_ids, int num_objects,
-              int64_t timeout_ms, const WorkerContext &ctx,
+  Status Wait(const absl::flat_hash_set<ObjectID> &object_ids,
+              int num_objects,
+              int64_t timeout_ms,
+              const WorkerContext &ctx,
               absl::flat_hash_set<ObjectID> *ready);
 
   Status Delete(const absl::flat_hash_set<ObjectID> &object_ids, bool local_only);
@@ -188,8 +199,11 @@ class CoreWorkerPlasmaStoreProvider {
   /// exception.
   /// \return Status.
   Status FetchAndGetFromPlasmaStore(
-      absl::flat_hash_set<ObjectID> &remaining, const std::vector<ObjectID> &batch_ids,
-      int64_t timeout_ms, bool fetch_only, bool in_direct_call_task,
+      absl::flat_hash_set<ObjectID> &remaining,
+      const std::vector<ObjectID> &batch_ids,
+      int64_t timeout_ms,
+      bool fetch_only,
+      bool in_direct_call_task,
       const TaskID &task_id,
       absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
       bool *got_exception);

@@ -24,7 +24,8 @@ using ray::core::TaskOptions;
 
 std::vector<rpc::ObjectReference> SendInternal(const ActorID &peer_actor_id,
                                                std::shared_ptr<LocalMemoryBuffer> buffer,
-                                               RayFunction &function, int return_num) {
+                                               RayFunction &function,
+                                               int return_num) {
   std::unordered_map<std::string, double> resources;
   std::string name = function.GetFunctionDescriptor()->DefaultTaskName();
   TaskOptions options{name, return_num, resources};

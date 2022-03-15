@@ -3,10 +3,8 @@ import asyncio
 import logging
 import logging.handlers
 import os
-import platform
 import sys
 import json
-import traceback
 
 try:
     from grpc import aio as aiogrpc
@@ -20,7 +18,6 @@ import ray.dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
-from ray._private.gcs_pubsub import GcsPublisher
 from ray._private.gcs_utils import GcsClient
 from ray.core.generated import agent_manager_pb2
 from ray.core.generated import agent_manager_pb2_grpc
@@ -84,16 +81,32 @@ class DashboardAgent(object):
             self.ppid = int(os.environ["RAY_RAYLET_PID"])
             assert self.ppid > 0
             logger.info("Parent pid is %s", self.ppid)
-        self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0),))
-        grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
-        self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
-            self.server, f"{grpc_ip}:{self.dashboard_agent_port}"
-        )
-        logger.info("Dashboard agent grpc address: %s:%s", grpc_ip, self.grpc_port)
+
+        # Setup raylet channel
         options = (("grpc.enable_http_proxy", 0),)
         self.aiogrpc_raylet_channel = ray._private.utils.init_grpc_channel(
             f"{self.ip}:{self.node_manager_port}", options, asynchronous=True
         )
+
+        # Setup grpc server
+        self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0),))
+        grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
+        try:
+            self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
+                self.server, f"{grpc_ip}:{self.dashboard_agent_port}"
+            )
+        except Exception:
+            # TODO(SongGuyang): Catch the exception here because there is
+            # port conflict issue which brought from static port. We should
+            # remove this after we find better port resolution.
+            logger.exception(
+                "Failed to add port to grpc server. Agent will stay alive but "
+                "disable the grpc service."
+            )
+            self.server = None
+            self.grpc_port = None
+        else:
+            logger.info("Dashboard agent grpc address: %s:%s", grpc_ip, self.grpc_port)
 
         # If the agent is started as non-minimal version, http server should
         # be configured to communicate with the dashboard in a head node.
@@ -147,7 +160,8 @@ class DashboardAgent(object):
             check_parent_task = create_task(_check_parent())
 
         # Start a grpc asyncio server.
-        await self.server.start()
+        if self.server:
+            await self.server.start()
 
         self.gcs_client = GcsClient(address=self.gcs_address)
         modules = self._load_modules()
@@ -159,7 +173,16 @@ class DashboardAgent(object):
             # Http server is not started in the minimal version because
             # it requires additional dependencies that are not
             # included in the minimal ray package.
-            self.http_server = await self._configure_http_server(modules)
+            try:
+                self.http_server = await self._configure_http_server(modules)
+            except Exception:
+                # TODO(SongGuyang): Catch the exception here because there is
+                # port conflict issue which brought from static port. We should
+                # remove this after we find better port resolution.
+                logger.exception(
+                    "Failed to start http server. Agent will stay alive but "
+                    "disable the http service."
+                )
 
         # Write the dashboard agent port to kv.
         # TODO: Use async version if performance is an issue
@@ -358,39 +381,6 @@ if __name__ == "__main__":
 
         loop = asyncio.get_event_loop()
         loop.run_until_complete(agent.run())
-    except Exception as e:
-        # All these env vars should be available because
-        # they are provided by the parent raylet.
-        restart_count = os.environ["RESTART_COUNT"]
-        max_restart_count = os.environ["MAX_RESTART_COUNT"]
-        raylet_pid = os.environ["RAY_RAYLET_PID"]
-        node_ip = args.node_ip_address
-        if restart_count >= max_restart_count:
-            # Agent is failed to be started many times.
-            # Push an error to all drivers, so that users can know the
-            # impact of the issue.
-            gcs_publisher = GcsPublisher(args.gcs_address)
-            traceback_str = ray._private.utils.format_error_message(
-                traceback.format_exc()
-            )
-            message = (
-                f"(ip={node_ip}) "
-                f"The agent on node {platform.uname()[1]} failed to "
-                f"be restarted {max_restart_count} "
-                "times. There are 3 possible problems if you see this error."
-                "\n  1. The dashboard might not display correct "
-                "information on this node."
-                "\n  2. Metrics on this node won't be reported."
-                "\n  3. runtime_env APIs won't work."
-                "\nCheck out the `dashboard_agent.log` to see the "
-                "detailed failure messages."
-            )
-            ray._private.utils.publish_error_to_driver(
-                ray_constants.DASHBOARD_AGENT_DIED_ERROR,
-                message,
-                redis_client=None,
-                gcs_publisher=gcs_publisher,
-            )
-            logger.error(message)
-        logger.exception(e)
+    except Exception:
+        logger.exception("Agent is working abnormally. It will exit immediately.")
         exit(1)
