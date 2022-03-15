@@ -20,7 +20,7 @@ from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.serve.application import Application
-from ray.serve.api import Deployment
+from ray.serve.api import Deployment, DeploymentNode, build as build_app
 from ray._private.utils import import_attr
 
 RAY_INIT_ADDRESS_HELP_STR = (
@@ -457,19 +457,31 @@ def delete(address: str, yes: bool):
 @cli.command(
     short_help="Build a Serve config using an Application",
     help=(
-        "Imports the Serve app or deployment stored at IMPORT_PATH, and "
-        "writes a config file to the FILE_PATH."
+        "Imports the Serve app or DeploymentNode stored at IMPORT_PATH, and "
+        "writes a config file to the FILE_PATH. The FILE_PATH must have "
+        'the ".yaml" extension.'
     ),
 )
 @click.argument("import_path")
 @click.argument("file_path")
 def build(import_path: str, file_path: str):
-    app_or_deployment: Union[Application, Deployment] = import_attr(import_path)
+    if not file_path.endswith(".yaml"):
+        raise ValueError(
+            f'Got "{file_path}" as FILE_PATH. FILE_PATH must end ' 'with ".yaml".'
+        )
 
-    if isinstance(app_or_deployment, Deployment):
-        app = Application([app_or_deployment])
+    app_or_node: Union[Application, DeploymentNode] = import_attr(import_path)
+
+    if isinstance(app_or_node, DeploymentNode):
+        app = build_app(app_or_node)
+    elif isinstance(app, Application):
+        app = app_or_node
     else:
-        app = app_or_deployment
+        raise ValueError(
+            f'Got IMPORT_PATH "{import_path}", which contains '
+            f'"{type(app_or_node)}" object. Expected either an Application or '
+            "DeploymentNode."
+        )
 
     with open(file_path, "w+") as f:
         app.to_yaml(f)
