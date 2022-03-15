@@ -1,7 +1,8 @@
+import json
 from typing import Any, Callable, Dict, Optional, List, Tuple, Union
 
 from ray.experimental.dag import DAGNode, InputNode
-from ray.serve.handle import RayServeSyncHandle, RayServeHandle
+from ray.serve.handle import PipelineHandle, RayServeSyncHandle, RayServeHandle
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
@@ -47,6 +48,17 @@ class DeploymentNode(DAGNode):
         # Thus we need convert all DeploymentNode used in init args into
         # deployment handles (executable and picklable) in ray serve DAG to make
         # serve DAG end to end executable.
+        def replace_with_handle(node):
+            if isinstance(node, DeploymentNode):
+                return node._get_serve_deployment_handle(
+                    node._deployment, node._bound_other_args_to_resolve
+                )
+            elif isinstance(node, DeploymentMethodNode):
+                from ray.serve.pipeline.json_serde import DAGNodeEncoder
+
+                serve_dag_root_json = json.dumps(node, cls=DAGNodeEncoder)
+                return PipelineHandle(serve_dag_root_json)
+
         (
             replaced_deployment_init_args,
             replaced_deployment_init_kwargs,
@@ -55,10 +67,9 @@ class DeploymentNode(DAGNode):
             predictate_fn=lambda node: isinstance(
                 node, (DeploymentNode, DeploymentMethodNode)
             ),
-            apply_fn=lambda node: node._get_serve_deployment_handle(
-                node._deployment, node._bound_other_args_to_resolve
-            ),
+            apply_fn=replace_with_handle,
         )
+        # TODO(simon): configure this using DeploymentNode.other_args.schema object
         self._deployment: Deployment = Deployment(
             func_or_class,
             deployment_name,
@@ -158,7 +169,11 @@ class DeploymentNode(DAGNode):
         return self._deployment.name
 
     def get_import_path(self):
-        if isinstance(self._deployment._func_or_class, str):
+        if (
+            "schema" in self._bound_other_args_to_resolve
+        ):  # built by serve top level api, this is ignored for serve.run
+            return "dummy"
+        elif isinstance(self._deployment._func_or_class, str):
             # We're processing a deserilized JSON node where import_path
             # is dag_node body.
             return self._deployment._func_or_class

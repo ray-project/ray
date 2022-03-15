@@ -1,7 +1,9 @@
 import asyncio
 import atexit
 import collections
+from copy import copy
 import inspect
+import json
 import logging
 import random
 import re
@@ -22,6 +24,8 @@ from typing import (
 )
 
 from fastapi import APIRouter, FastAPI
+from ray.experimental.dag.class_node import ClassNode
+from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
 from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
@@ -61,6 +65,7 @@ from ray.serve.utils import (
     get_random_letters,
     logger,
     DEFAULT,
+    serialize_to_path_or_base64,
 )
 from ray.util.annotations import PublicAPI
 import ray
@@ -926,7 +931,7 @@ class DeploymentMethodNode(DAGNode):
 
 
 @PublicAPI(stability="alpha")
-class DeploymentNode(DAGNode):
+class DeploymentNode(ClassNode):
     """Represents a deployment with its bound config options and arguments.
 
     The bound deployment can be run, deployed, or built to a production config
@@ -941,8 +946,7 @@ class DeploymentNode(DAGNode):
     that can be used to compose an optimized call graph.
     """
 
-    def __init__(self):
-        raise NotImplementedError()
+    pass
 
 
 @PublicAPI
@@ -1108,7 +1112,21 @@ class Deployment:
         The returned bound deployment can be deployed or bound to other
         deployments to create a multi-deployment application.
         """
-        raise NotImplementedError()
+        from ray.serve.schema import deployment_to_schema
+
+        copied_self = copy(self)
+        copied_self._func_or_class = json.dumps(
+            serialize_to_path_or_base64(self._func_or_class)
+        )
+        other_args_to_resolve = dict(schema=deployment_to_schema(copied_self).dict())
+
+        return DeploymentNode(
+            self._func_or_class,
+            args,
+            kwargs,
+            cls_options=dict(),
+            other_args_to_resolve=other_args_to_resolve,
+        )
 
     @PublicAPI
     def deploy(self, *init_args, _blocking=True, **init_kwargs):
@@ -1640,7 +1658,18 @@ def run(
     If a DeploymentNode is passed in, all of the deployments it depends on
     will be deployed.
     """
-    raise NotImplementedError()
+    from ray.serve.pipeline.api import build as pipeline_build
+
+    if isinstance(target, DeploymentNode):
+        with PipelineInputNode() as input_node:
+            root = target.__call__.bind(input_node)
+        deployments = pipeline_build(root, inject_ingress=False)
+
+    for d in deployments:
+        logger.debug(f"Deploying {d}")
+        d.deploy()
+
+    return deployments[-1].get_handle()
 
 
 @PublicAPI(stability="alpha")

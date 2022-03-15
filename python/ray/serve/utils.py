@@ -1,5 +1,7 @@
+import base64
 from functools import wraps
 import importlib
+import inspect
 from itertools import groupby
 import json
 import logging
@@ -13,11 +15,14 @@ import traceback
 from enum import Enum
 from ray.actor import ActorHandle
 
+
 import requests
 import numpy as np
 import pydantic
 
 import ray
+from ray._private.utils import import_attr
+from ray import cloudpickle
 import ray.serialization_addons
 from ray.exceptions import RayTaskError
 from ray.util.serialization import StandaloneSerializationContext
@@ -383,3 +388,32 @@ def require_packages(packages: List[str]):
         return wrapped
 
     return decorator
+
+
+def serialize_to_path_or_base64(obj: Any):
+    import_path = f"{obj.__module__}.{obj.__qualname__}"
+    if inspect.isclass(obj) and (
+        "__main__" in import_path or "<locals>" in import_path
+    ):
+        serialized_bytes = cloudpickle.dumps(obj)
+        encoded_obj: str = base64.b64encode(serialized_bytes).decode()
+        return {"format": "base64", "data": encoded_obj}
+    else:
+        return {"format": "import_path", "data": import_path}
+
+
+def deserialize_from_path_or_base64(serialized_data: dict):
+    assert serialized_data.keys() == {"format", "data"}
+
+    data_format = serialized_data["format"]
+    data = serialized_data["data"]
+    assert data_format in {"base64", "import_path"}
+
+    if data_format == "base64":
+        decoded_bytes = base64.b16decode(data)
+        obj = cloudpickle.loads(decoded_bytes)
+        return obj
+    elif data_format == "import_path":
+        return import_attr(data)
+    else:
+        raise ValueError("Unknown serialized_type.")

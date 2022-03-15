@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import json
 from dataclasses import dataclass
 from typing import Optional, Union, Coroutine
 import threading
@@ -234,3 +235,31 @@ class RayServeSyncHandle(RayServeHandle):
             "_internal_pickled_http_request": self._pickled_http_request,
         }
         return RayServeSyncHandle._deserialize, (serialized_data,)
+
+
+class PipelineHandle:
+    def __init__(self, dag_node_json: str) -> None:
+
+        self.dag_node_json = dag_node_json
+
+        # NOTE(simon): Making this lazy to avoid deserialization in controller for now
+        # This would overwise hang because it's trying to get handles from within
+        # the controller.
+        self.dag_node = None
+
+    @classmethod
+    def _deserialize(cls, *args):
+        """Required for this class's __reduce__ method to be picklable."""
+        return cls(*args)
+
+    def __reduce__(self):
+        return PipelineHandle._deserialize, (self.dag_node_json,)
+
+    def remote(self, *args, **kwargs):
+        from ray.serve.pipeline.json_serde import dagnode_from_json
+
+        if self.dag_node is None:
+            self.dag_node = json.loads(
+                self.dag_node_json, object_hook=dagnode_from_json
+            )
+        return self.dag_node.execute(*args, **kwargs)

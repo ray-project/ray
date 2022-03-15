@@ -104,7 +104,14 @@ class DeploymentMethodNode(DAGNode):
         return self._deployment_method_name
 
     def get_import_path(self) -> str:
-        if isinstance(self._deployment._func_or_class, str):
+        if (
+            "schema"
+            in self._bound_other_args_to_resolve[
+                "parent_class_node"
+            ]._bound_other_args_to_resolve
+        ):  # built by serve top level api, this is ignored for serve.run
+            return "dummy"
+        elif isinstance(self._deployment._func_or_class, str):
             # We're processing a deserilized JSON node where import_path
             # is dag_node body.
             return self._deployment._func_or_class
