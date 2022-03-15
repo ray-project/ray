@@ -50,7 +50,7 @@ if [ -z "${NO_INSTALL}" ]; then
 fi
 
 RETRY_NUM=0
-MAX_RETRIES=${MAX_RETRIES-3}
+MAX_RETRIES=${MAX_RETRIES-1}
 
 if [ "${BUILDKITE_RETRY_COUNT-0}" -ge 1 ]; then
   echo "This is a manually triggered retry from the Buildkite web UI, so we set the number of infra retries to 1."
@@ -108,7 +108,7 @@ if [ -z "${NO_ARTIFACTS}" ]; then
 fi
 
 echo "----------------------------------------"
-echo "release test finished with final exit code ${EXIT_CODE} after ${RETRY_NUM}/${MAX_RETRIES} tries"
+echo "Release test finished with final exit code ${EXIT_CODE} after ${RETRY_NUM}/${MAX_RETRIES} tries"
 echo "Run results:"
 
 COUNTER=1

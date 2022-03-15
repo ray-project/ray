@@ -42,7 +42,6 @@ class GcsActorWorkerAssignment
   /// \param acquired_resources Resources owned by this gcs actor worker assignment.
   GcsActorWorkerAssignment(const NodeID &node_id,
                            const ResourceRequest &acquired_resources);
-
   const NodeID &GetNodeID() const;
 
   const ResourceRequest &GetResources() const;
@@ -75,7 +74,8 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
   /// \param client_factory Factory to create remote core worker client, default factor
   /// will be used if not set.
   explicit GcsBasedActorScheduler(
-      instrumented_io_context &io_context, GcsActorTable &gcs_actor_table,
+      instrumented_io_context &io_context,
+      GcsActorTable &gcs_actor_table,
       const GcsNodeManager &gcs_node_manager,
       std::shared_ptr<GcsResourceManager> gcs_resource_manager,
       std::shared_ptr<GcsResourceScheduler> gcs_resource_scheduler,

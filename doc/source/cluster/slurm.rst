@@ -10,6 +10,12 @@ Slurm usage with Ray can be a little bit unintuitive.
 * SLURM requires multiple copies of the same program are submitted multiple times to the same cluster to do cluster programming. This is particularly well-suited for MPI-based workloads.
 * Ray, on the other hand, expects a head-worker architecture with a single point of entry. That is, you'll need to start a Ray head node, multiple Ray worker nodes, and run your Ray script on the head node.
 
+.. warning::
+
+    SLURM support is still a work in progress. SLURM users should be aware
+    of current limitations regarding networking.
+    See :ref:`here <slurm-network-ray>` for more explanations.
+
 This document aims to clarify how to run Ray on SLURM.
 
 .. contents::
@@ -141,6 +147,77 @@ Finally, you can invoke your Python script:
    :language: bash
    :start-after: __doc_script_start__
 
+.. _slurm-network-ray:
+
+SLURM networking caveats
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+There are two important networking aspects to keep in mind when working with
+SLURM and Ray:
+
+1. Ports binding.
+2. IP binding.
+
+One common use of a SLURM cluster is to have multiple users running concurrent
+jobs on the same infrastructure. This can easily conflict with Ray due to the
+way the head node communicates with its workers.
+
+Considering 2 users, if they both schedule a SLURM job using Ray
+at the same time, they are both creating a head node. In the backend, Ray will
+assign some internal ports to a few services. The issue is that as soon as the
+first head node is created, it will bind some ports and prevent them to be
+used by another head node. To prevent any conflicts, users have to manually
+specify non overlapping ranges of ports. The following ports are to be
+adjusted. For an explanation on ports, see :ref:`here <ray-ports>`::
+
+    # used for all ports
+    --node-manager-port
+    --object-manager-port
+    --min-worker-port
+    --max-worker-port
+    # used for the head node
+    --port
+    --ray-client-server-port
+    --redis-shard-ports
+
+For instance, again with 2 users, they would have to adapt the instructions
+seen above to:
+
+.. code-block:: bash
+
+  # user 1
+  # same as above
+  ...
+  srun --nodes=1 --ntasks=1 -w "$head_node" \
+      ray start --head --node-ip-address="$head_node_ip" \
+          --port=6379 \
+          --node-manager-port=6700 \
+          --object-manager-port=6701 \
+          --ray-client-server-port=10001 \
+          --redis-shard-ports=6702 \
+          --min-worker-port=10002 \
+          --max-worker-port=19999 \
+          --num-cpus "${SLURM_CPUS_PER_TASK}" --num-gpus "${SLURM_GPUS_PER_TASK}" --block &
+
+  # user 2
+  # same as above
+  ...
+  srun --nodes=1 --ntasks=1 -w "$head_node" \
+      ray start --head --node-ip-address="$head_node_ip" \
+          --port=6380 \
+          --node-manager-port=6800 \
+          --object-manager-port=6801 \
+          --ray-client-server-port=20001 \
+          --redis-shard-ports=6802 \
+          --min-worker-port=20002 \
+          --max-worker-port=29999 \
+          --num-cpus "${SLURM_CPUS_PER_TASK}" --num-gpus "${SLURM_GPUS_PER_TASK}" --block &
+
+As for the IP binding, on some cluster architecture the network interfaces
+do not allow to use external IPs between nodes. Instead, there are internal
+network interfaces (`eth0`, `eth1`, etc.). Currently, it's difficult to
+set an internal IP
+(see the open `issue <https://github.com/ray-project/ray/issues/22732>`_).
 
 Python-interface SLURM scripts
 ------------------------------

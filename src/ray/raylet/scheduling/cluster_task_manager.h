@@ -19,18 +19,12 @@
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
-#include "ray/raylet/dependency_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/cluster_task_manager_interface.h"
 #include "ray/raylet/scheduling/internal.h"
-#include "ray/raylet/scheduling/local_task_manager.h"
+#include "ray/raylet/scheduling/local_task_manager_interface.h"
 #include "ray/raylet/scheduling/scheduler_resource_reporter.h"
 #include "ray/raylet/scheduling/scheduler_stats.h"
-#include "ray/raylet/worker.h"
-#include "ray/raylet/worker_pool.h"
-#include "ray/rpc/grpc_client.h"
-#include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/rpc/node_manager/node_manager_server.h"
 
 namespace ray {
 namespace raylet {
@@ -59,7 +53,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
       internal::NodeInfoGetter get_node_info,
       std::function<void(const RayTask &)> announce_infeasible_task,
-      std::shared_ptr<LocalTaskManager> local_task_manager,
+      std::shared_ptr<ILocalTaskManager> local_task_manager,
       std::function<int64_t(void)> get_time_ms = []() {
         return (int64_t)(absl::GetCurrentTimeNanos() / 1e6);
       });
@@ -72,7 +66,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param is_selected_based_on_locality : should schedule on local node if possible.
   /// \param reply: The reply of the lease request.
   /// \param send_reply_callback: The function used during dispatching.
-  void QueueAndScheduleTask(const RayTask &task, bool grant_or_reject,
+  void QueueAndScheduleTask(const RayTask &task,
+                            bool grant_or_reject,
                             bool is_selected_based_on_locality,
                             rpc::RequestWorkerLeaseReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
@@ -115,7 +110,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param[in,out] num_pending_actor_creation: Number of pending actor creation tasks.
   /// \param[in,out] num_pending_tasks: Number of pending tasks.
   /// \return True if any progress is any tasks are pending.
-  bool AnyPendingTasksForResourceAcquisition(RayTask *example, bool *any_pending,
+  bool AnyPendingTasksForResourceAcquisition(RayTask *example,
+                                             bool *any_pending,
                                              int *num_pending_actor_creation,
                                              int *num_pending_tasks) const override;
 
@@ -150,7 +146,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// Function to announce infeasible task to GCS.
   std::function<void(const RayTask &)> announce_infeasible_task_;
 
-  std::shared_ptr<LocalTaskManager> local_task_manager_;
+  std::shared_ptr<ILocalTaskManager> local_task_manager_;
 
   /// TODO(swang): Add index from TaskID -> Work to avoid having to iterate
   /// through queues to cancel tasks, etc.

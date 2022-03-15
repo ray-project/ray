@@ -32,7 +32,8 @@ double LeastResourceScorer::Score(const ResourceRequest &required_resources,
   if (!node_resources.normal_task_resources.IsEmpty()) {
     new_node_resources = node_resources;
     for (size_t i = 0;
-         i < node_resources.normal_task_resources.predefined_resources.size(); ++i) {
+         i < node_resources.normal_task_resources.predefined_resources.size();
+         ++i) {
       new_node_resources.predefined_resources[i].available -=
           node_resources.normal_task_resources.predefined_resources[i];
       if (new_node_resources.predefined_resources[i].available < 0) {
@@ -330,7 +331,8 @@ SchedulingResult GcsResourceScheduler::StrictPackSchedule(
 
   const auto &cluster_resource = GetResourceView();
   const auto &right_node_it = std::find_if(
-      cluster_resource.begin(), cluster_resource.end(),
+      cluster_resource.begin(),
+      cluster_resource.end(),
       [&aggregated_resource_request](const auto &entry) {
         return entry.second->GetLocalView().IsAvailable(aggregated_resource_request);
       });

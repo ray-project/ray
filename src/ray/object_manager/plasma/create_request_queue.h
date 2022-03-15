@@ -19,7 +19,6 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-
 #include "ray/common/status.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/common.h"
@@ -91,8 +90,10 @@ class CreateRequestQueue {
   /// if there are other requests queued or there is not enough space left in
   /// the object store, this will return an out-of-memory error.
   std::pair<PlasmaObject, PlasmaError> TryRequestImmediately(
-      const ObjectID &object_id, const std::shared_ptr<ClientInterface> &client,
-      const CreateObjectCallback &create_callback, size_t object_size);
+      const ObjectID &object_id,
+      const std::shared_ptr<ClientInterface> &client,
+      const CreateObjectCallback &create_callback,
+      size_t object_size);
 
   /// Process requests in the queue.
   ///
@@ -115,9 +116,11 @@ class CreateRequestQueue {
 
  private:
   struct CreateRequest {
-    CreateRequest(const ObjectID &object_id, uint64_t request_id,
+    CreateRequest(const ObjectID &object_id,
+                  uint64_t request_id,
                   const std::shared_ptr<ClientInterface> &client,
-                  CreateObjectCallback create_callback, size_t object_size)
+                  CreateObjectCallback create_callback,
+                  size_t object_size)
         : object_id(object_id),
           request_id(request_id),
           client(client),
@@ -149,7 +152,8 @@ class CreateRequestQueue {
   /// Process a single request. Sets the request's error result to the error
   /// returned by the request handler inside. Returns OK if the request can be
   /// finished.
-  Status ProcessRequest(bool fallback_allocator, std::unique_ptr<CreateRequest> &request,
+  Status ProcessRequest(bool fallback_allocator,
+                        std::unique_ptr<CreateRequest> &request,
                         bool *spilling_required);
 
   /// Finish a queued request and remove it from the queue.
