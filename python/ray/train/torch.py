@@ -216,6 +216,10 @@ class TorchAccelerator(Accelerator):
 
         torch.use_deterministic_algorithms(True)
         torch.backends.cudnn.benchmark = False
+
+        # If want to use deterministic algorithms with CUDA, then you need to set the
+        # CUBLAS_WORKSPACE_CONFIG environment variable; otherwise, Torch errors.
+        # See https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility.
         os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 
 
