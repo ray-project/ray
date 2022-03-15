@@ -22,6 +22,8 @@ WorkflowOutputType = ObjectRef
 
 MANAGEMENT_ACTOR_NAMESPACE = "workflow"
 MANAGEMENT_ACTOR_NAME = "WorkflowManagementActor"
+EVENT_COORDINATOR_NAMESPACE = "workflow"
+EVENT_COORDINATOR_NAME = "EventCoordinatorActor"
 STORAGE_ACTOR_NAME = "StorageManagementActor"
 
 
