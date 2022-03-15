@@ -155,9 +155,9 @@ class DataParallelTrainer(Trainer):
             This can either take in no arguments or a ``config`` dict.
         train_loop_config: Configurations to pass into
             ``train_loop_per_worker`` if it accepts an argument.
-        backend_config: Used to specify which backend to setup on the
-            workers enable distributed communication, for example torch or
-            horovod. If no Backend should be set up, then set this to None.
+        backend_config: Configuration for setting up a Backend (e.g. Torch,
+            Tensorflow, Horovod) on each worker to enable distributed
+            communication. If no Backend should be set up, then set this to None.
         scaling_config: Configuration for how to scale data parallel training.
         run_config: Configuration for the execution of the training run.
         datasets: Any Ray Datasets to use for training. Use
