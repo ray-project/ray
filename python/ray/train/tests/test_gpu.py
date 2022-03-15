@@ -127,7 +127,7 @@ def test_checkpoint_torch_model_with_amp(ray_start_4_cpus_2_gpus, use_gpu):
         model = torchvision.models.resnet101()
         model = train.torch.prepare_model(model)
 
-        train.checkpoint(model=model)
+        train.save_checkpoint(model=model)
 
     trainer = Trainer("torch", num_workers=1, use_gpu=use_gpu)
     trainer.start()
