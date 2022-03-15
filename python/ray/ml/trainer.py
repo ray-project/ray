@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 @PublicAPI(stability="alpha")
 class TrainingFailedError(RuntimeError):
     """An error indicating that training has failed."""
+
     pass
 
 
@@ -178,8 +179,9 @@ class Trainer(abc.ABC):
         # Transform all datasets concurrently in remote tasks.
         transform_task_dict = {}
 
-        transform_task = ray.remote(lambda preprocessor, dataset:
-                                    preprocessor.transform(dataset))
+        transform_task = ray.remote(
+            lambda preprocessor, dataset: preprocessor.transform(dataset)
+        )
 
         if self.preprocessor and not self._has_preprocessed_datasets:
             if self.train_dataset and not self.preprocessor.check_is_fitted():
@@ -187,7 +189,8 @@ class Trainer(abc.ABC):
 
             if self.train_dataset:
                 transform_task_dict["__train_dataset"] = transform_task.remote(
-                    self.preprocessor, self.train_dataset)
+                    self.preprocessor, self.train_dataset
+                )
 
             for key, dataset in self.extra_datasets:
                 transform_task_dict[key] = transform_task.remote(dataset)
@@ -200,7 +203,6 @@ class Trainer(abc.ABC):
                 self.extra_datasets[key] = ray.get(transformed_dataset)
 
             self._has_preprocessed_datasets = True
-
 
     @abc.abstractmethod
     def training_loop(self) -> None:
@@ -286,5 +288,3 @@ class Trainer(abc.ABC):
                 return self._scaling_config_datclass.get_placement_group_factory()
 
         return TrainTrainable
-
-
