@@ -1,4 +1,5 @@
 import abc
+import inspect
 import logging
 from typing import Dict, Union, Callable, Optional, TYPE_CHECKING, Type
 
@@ -7,10 +8,12 @@ from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.result import Result
 from ray.ml.config import RunConfig, ScalingConfig, ScalingConfigDataClass
+from ray.ml.constants import TRAIN_DATASET_KEY, PREPROCESSOR_KEY
 from ray.tune import Trainable
 from ray.tune.function_runner import wrap_function
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
+from ray.util.ml_utils.dict import merge_dicts
 
 if TYPE_CHECKING:
     from ray.data import Dataset
@@ -31,7 +34,7 @@ class TrainingFailedError(RuntimeError):
 
 
 @DeveloperAPI
-class Trainer(abc.ABC):
+class Trainer(abc.ABC, object):
     """Defines interface for distributed training on Ray.
 
     Note: The base ``Trainer`` class cannot be instantiated directly. Only
@@ -137,13 +140,23 @@ class Trainer(abc.ABC):
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
 
-        self.scaling_config = scaling_config
-        self.run_config = run_config
-        self.datasets = datasets
+        self.scaling_config = scaling_config if scaling_config else {}
+        self.run_config = run_config if run_config else {}
+        self.datasets = datasets if datasets else {}
         self.preprocessor = preprocessor
         self.resume_from_checkpoint = resume_from_checkpoint
         self._has_preprocessed_datasets = False
-        self._scaling_config_datclass = ScalingConfigDataClass(**self.scaling_config)
+
+    def __new__(cls, *args, **kwargs):
+        """Store the init args as attributes so this can be merged with Tune hparams."""
+        trainer = super(Trainer, cls).__new__(cls)
+        parameters = inspect.signature(cls.__init__).parameters
+        parameters = list(parameters.keys())
+        # Remove self.
+        parameters = parameters[1:]
+        arg_dict = dict(zip(parameters, args))
+        trainer._param_dict = {**arg_dict, **kwargs}
+        return trainer
 
     def setup(self) -> None:
         """Called during fit() to perform initial setup on the Trainer.
@@ -176,6 +189,9 @@ class Trainer(abc.ABC):
         ``self.train_dataset`` and ``self.extra_datasets`` attributes to be
         used when overriding ``training_loop``.
         """
+        # Evaluate all datasets.
+        self.datasets = {k: d() if callable(d) else d for k, d in self.datasets.items()}
+
         # Transform all datasets concurrently in remote tasks.
         transform_task_dict = {}
 
@@ -184,23 +200,18 @@ class Trainer(abc.ABC):
         )
 
         if self.preprocessor and not self._has_preprocessed_datasets:
-            if self.train_dataset and not self.preprocessor.check_is_fitted():
-                self.preprocessor.fit(self.train_dataset)
+            train_dataset = self.datasets.get(TRAIN_DATASET_KEY, None)
+            if train_dataset and not self.preprocessor.check_is_fitted():
+                self.preprocessor.fit(train_dataset)
 
-            if self.train_dataset:
-                transform_task_dict["__train_dataset"] = transform_task.remote(
-                    self.preprocessor, self.train_dataset
-                )
-
-            for key, dataset in self.extra_datasets:
-                transform_task_dict[key] = transform_task.remote(dataset)
+            for key, dataset in self.datasets.items():
+                transform_task_dict[key] = transform_task.remote(self.preprocessor,
+                                                                 dataset)
 
             ray.get(list(transform_task_dict.values()))
 
-            self.train_dataset = transform_task_dict.pop("__train_dataset", None)
-
             for key, transformed_dataset in transform_task_dict.items():
-                self.extra_datasets[key] = ray.get(transformed_dataset)
+                self.datasets[key] = ray.get(transformed_dataset)
 
             self._has_preprocessed_datasets = True
 
@@ -247,7 +258,6 @@ class Trainer(abc.ABC):
         from ray import tune
         from ray.tune import TuneError
 
-        # Copied from initial prototyping.
         # TODO(amog/xwjiang): Replace with Tuner.
         try:
             analysis = tune.run(run_or_experiment=trainable, **self.run_config)
@@ -270,21 +280,50 @@ class Trainer(abc.ABC):
     def as_trainable(self) -> Type[Trainable]:
         """Convert self to a ``tune.Trainable`` class."""
 
-        def train_func(_, checkpoint_dir=None):
-            if checkpoint_dir:
-                self.resume_from_checkpoint = Checkpoint.from_directory(checkpoint_dir)
+        base_config = self._param_dict
+        trainer_cls = self.__class__
 
-            self.setup()
-            self.preprocess_datasets()
-            self.training_loop()
+        def train_func(config, checkpoint_dir=None):
+            # config already contains merged values.
+            # Instantiate new Trainer in Trainable.
+            trainer = trainer_cls(**config)
+
+            if checkpoint_dir:
+                trainer.resume_from_checkpoint = Checkpoint.from_directory(
+                    checkpoint_dir)
+
+            trainer.setup()
+            trainer.preprocess_datasets()
+            trainer.training_loop()
+
+            # TODO: Postprocess checkpoint.
 
         trainable_cls = wrap_function(train_func)
 
+        scaling_config = self.scaling_config
+
         class TrainTrainable(trainable_cls):
             """Add default resources to the Trainable."""
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+
+                # Create a new config by merging the dicts.
+                self._merged_config = merge_dicts(base_config, self.config)
+
+            def _trainable_func(self, config, reporter, checkpoint_dir):
+                super()._trainable_func(self._merged_config, reporter, checkpoint_dir)
 
             @classmethod
             def default_resource_request(cls, config):
-                return self._scaling_config_datclass.get_placement_group_factory()
+                updated_scaling_config = config.get("scaling_config", scaling_config)
+                scaling_config_dataclass = ScalingConfigDataClass(
+                    **updated_scaling_config)
+                return scaling_config_dataclass.get_placement_group_factory()
+
+            def _postprocess_checkpoint(self, checkpoint_dir: str):
+                preprocessor = self._merged_config.get("preprocessor", None)
+                existing_checkpoint = Checkpoint.from_directory(checkpoint_dir)
+                checkpoint_obj = Checkpoint.from_dict({PREPROCESSOR_KEY: preprocessor})
+                checkpoint_obj.to_directory(path=checkpoint_dir)
 
         return TrainTrainable

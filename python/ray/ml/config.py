@@ -3,9 +3,8 @@ from typing import Dict, Any, Optional, List, TYPE_CHECKING
 
 from ray.util import PublicAPI
 
-if TYPE_CHECKING:
-    from ray.tune.trainable import PlacementGroupFactory
-    from ray.tune.callback import Callback
+from ray.tune.trainable import PlacementGroupFactory
+from ray.tune.callback import Callback
 
 
 ScalingConfig = Dict[str, Any]
