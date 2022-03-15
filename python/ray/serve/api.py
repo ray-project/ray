@@ -636,7 +636,7 @@ def start(
     http_options: Optional[Union[dict, HTTPOptions]] = None,
     dedicated_cpu: bool = False,
     _checkpoint_path: str = DEFAULT_CHECKPOINT_PATH,
-    _override_controller_namespace: str = None,
+    _override_controller_namespace: Optional[str] = None,
     **kwargs,
 ) -> Client:
     """Initialize a serve instance.
