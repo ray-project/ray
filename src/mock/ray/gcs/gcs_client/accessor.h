@@ -194,11 +194,6 @@ class MockNodeResourceInfoAccessor : public NodeResourceInfoAccessor {
               AsyncGetAllResourceUsage,
               (const ItemCallback<rpc::ResourceUsageBatchData> &callback),
               (override));
-  MOCK_METHOD(Status,
-              AsyncSubscribeBatchedResourceUsage,
-              (const ItemCallback<rpc::ResourceUsageBatchData> &subscribe,
-               const StatusCallback &done),
-              (override));
 };
 
 }  // namespace gcs

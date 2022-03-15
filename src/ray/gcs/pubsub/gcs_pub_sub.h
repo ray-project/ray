@@ -35,16 +35,8 @@ namespace gcs {
 /// Supports publishing per-entity data and errors from GCS. Thread safe.
 class GcsPublisher {
  public:
-  /// Initializes GcsPublisher with both Redis and GCS based publishers.
-  /// Publish*() member functions below would be incrementally converted to use the GCS
-  /// based publisher, if available.
   GcsPublisher(std::unique_ptr<pubsub::Publisher> publisher)
       : publisher_(std::move(publisher)) {}
-
-  /// Test only.
-  /// Initializes GcsPublisher with GcsPubSub, usually a mock.
-  /// TODO: remove this constructor and inject mock / fake from the other constructor.
-  explicit GcsPublisher(std::unique_ptr<GcsPubSub> pubsub) : pubsub_(std::move(pubsub)) {}
 
   /// Returns the underlying pubsub::Publisher. Caller does not take ownership.
   pubsub::Publisher *GetPublisher() const { return publisher_.get(); }
@@ -59,47 +51,35 @@ class GcsPublisher {
   /// TODO: Verify GCS pubsub satisfies the streaming semantics.
   /// TODO: Implement optimization for channels where only latest data per ID is useful.
 
-  /// Uses Redis pubsub.
   Status PublishActor(const ActorID &id,
                       const rpc::ActorTableData &message,
                       const StatusCallback &done);
 
-  /// Uses Redis pubsub.
   Status PublishJob(const JobID &id,
                     const rpc::JobTableData &message,
                     const StatusCallback &done);
 
-  /// Uses Redis pubsub.
   Status PublishNodeInfo(const NodeID &id,
                          const rpc::GcsNodeInfo &message,
                          const StatusCallback &done);
 
-  /// Uses Redis pubsub.
   Status PublishNodeResource(const NodeID &id,
                              const rpc::NodeResourceChange &message,
                              const StatusCallback &done);
 
   /// Actually rpc::WorkerDeltaData is not a delta message.
-  /// Uses Redis pubsub.
   Status PublishWorkerFailure(const WorkerID &id,
                               const rpc::WorkerDeltaData &message,
                               const StatusCallback &done);
 
-  /// Uses Redis pubsub.
   Status PublishError(const std::string &id,
                       const rpc::ErrorTableData &message,
                       const StatusCallback &done);
-
-  /// TODO: remove once it is converted to GRPC-based push broadcasting.
-  /// Uses Redis pubsub.
-  Status PublishResourceBatch(const rpc::ResourceUsageBatchData &message,
-                              const StatusCallback &done);
 
   /// Prints debugging info for the publisher.
   std::string DebugString() const;
 
  private:
-  const std::unique_ptr<GcsPubSub> pubsub_;
   const std::unique_ptr<pubsub::Publisher> publisher_;
 };
 
@@ -108,7 +88,6 @@ class GcsPublisher {
 /// Supports subscribing to an entity or a channel from GCS. Thread safe.
 class GcsSubscriber {
  public:
-  /// Initializes GcsSubscriber with both Redis and GCS based GcsSubscribers.
   // TODO: Support restarted GCS publisher, at the same or a different address.
   GcsSubscriber(const rpc::Address &gcs_address,
                 std::unique_ptr<pubsub::Subscriber> subscriber)
@@ -126,33 +105,22 @@ class GcsSubscriber {
   Status UnsubscribeActor(const ActorID &id);
   bool IsActorUnsubscribed(const ActorID &id);
 
-  /// Uses Redis pubsub.
   Status SubscribeAllJobs(const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
                           const StatusCallback &done);
 
-  /// Uses Redis pubsub.
   Status SubscribeAllNodeInfo(const ItemCallback<rpc::GcsNodeInfo> &subscribe,
                               const StatusCallback &done);
 
-  /// Uses Redis pubsub.
   Status SubscribeAllNodeResources(const ItemCallback<rpc::NodeResourceChange> &subscribe,
                                    const StatusCallback &done);
 
-  /// Uses Redis pubsub.
   Status SubscribeAllWorkerFailures(const ItemCallback<rpc::WorkerDeltaData> &subscribe,
                                     const StatusCallback &done);
-
-  /// TODO: remove once it is converted to GRPC-based push broadcasting.
-  /// Uses Redis pubsub.
-  Status SubscribeResourcesBatch(
-      const ItemCallback<rpc::ResourceUsageBatchData> &subscribe,
-      const StatusCallback &done);
 
   /// Prints debugging info for the subscriber.
   std::string DebugString() const;
 
  private:
-  std::unique_ptr<GcsPubSub> pubsub_;
   const rpc::Address gcs_address_;
   const std::unique_ptr<pubsub::SubscriberInterface> subscriber_;
 };

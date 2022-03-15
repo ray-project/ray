@@ -490,16 +490,6 @@ class NodeResourceInfoAccessor {
   virtual Status AsyncGetAllResourceUsage(
       const ItemCallback<rpc::ResourceUsageBatchData> &callback);
 
-  /// Subscribe batched state of all nodes from GCS.
-  ///
-  /// \param subscribe Callback that will be called each time when batch resource usage is
-  /// updated.
-  /// \param done Callback that will be called when subscription is complete.
-  /// \return Status
-  virtual Status AsyncSubscribeBatchedResourceUsage(
-      const ItemCallback<rpc::ResourceUsageBatchData> &subscribe,
-      const StatusCallback &done);
-
   /// Fill resource fields with cached resources. Used by light resource usage report.
   virtual void FillResourceUsageRequest(rpc::ReportResourceUsageRequest &resource_usage);
 

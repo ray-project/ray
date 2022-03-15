@@ -783,17 +783,6 @@ void NodeResourceInfoAccessor::FillResourceUsageRequest(
   }
 }
 
-Status NodeResourceInfoAccessor::AsyncSubscribeBatchedResourceUsage(
-    const ItemCallback<rpc::ResourceUsageBatchData> &subscribe,
-    const StatusCallback &done) {
-  RAY_CHECK(subscribe != nullptr);
-  subscribe_batch_resource_usage_operation_ = [this,
-                                               subscribe](const StatusCallback &done) {
-    return client_impl_->GetGcsSubscriber().SubscribeResourcesBatch(subscribe, done);
-  };
-  return subscribe_batch_resource_usage_operation_(done);
-}
-
 Status NodeResourceInfoAccessor::AsyncSubscribeToResources(
     const ItemCallback<rpc::NodeResourceChange> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);

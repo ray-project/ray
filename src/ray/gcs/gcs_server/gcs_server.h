@@ -45,7 +45,6 @@ struct GcsServerConfig {
   bool retry_redis = true;
   bool enable_sharding_conn = true;
   std::string node_ip_address;
-  bool grpc_pubsub_enabled = false;
   std::string log_dir;
   // This includes the config list of raylet.
   std::string raylet_config_list;

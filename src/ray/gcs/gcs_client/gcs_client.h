@@ -204,17 +204,6 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<InternalKVAccessor> internal_kv_accessor_;
 
  private:
-  /// Get gcs server address from redis.
-  /// This address is set by GcsServer::StoreGcsServerAddressInRedis function.
-  ///
-  /// \param context The context of redis.
-  /// \param address The address of gcs server.
-  /// \param max_attempts The maximum number of times to get gcs server rpc address.
-  /// \return Returns true if gcs server address is obtained, False otherwise.
-  bool GetGcsServerAddressFromRedis(redisContext *context,
-                                    std::pair<std::string, int> *address,
-                                    int max_attempts = 1);
-
   /// Fire a periodic timer to check if GCS sever address has changed.
   void PeriodicallyCheckGcsServerAddress();
 

@@ -22,7 +22,6 @@ namespace gcs {
 Status GcsPublisher::PublishActor(const ActorID &id,
                                   const rpc::ActorTableData &message,
                                   const StatusCallback &done) {
-  if (publisher_ != nullptr) {
     rpc::PubMessage msg;
     msg.set_channel_type(rpc::ChannelType::GCS_ACTOR_CHANNEL);
     msg.set_key_id(id.Binary());
@@ -32,14 +31,11 @@ Status GcsPublisher::PublishActor(const ActorID &id,
       done(Status::OK());
     }
     return Status::OK();
-  }
-  return pubsub_->Publish(ACTOR_CHANNEL, id.Hex(), message.SerializeAsString(), done);
 }
 
 Status GcsPublisher::PublishJob(const JobID &id,
                                 const rpc::JobTableData &message,
                                 const StatusCallback &done) {
-  if (publisher_ != nullptr) {
     rpc::PubMessage msg;
     msg.set_channel_type(rpc::ChannelType::GCS_JOB_CHANNEL);
     msg.set_key_id(id.Binary());
@@ -49,14 +45,11 @@ Status GcsPublisher::PublishJob(const JobID &id,
       done(Status::OK());
     }
     return Status::OK();
-  }
-  return pubsub_->Publish(JOB_CHANNEL, id.Hex(), message.SerializeAsString(), done);
 }
 
 Status GcsPublisher::PublishNodeInfo(const NodeID &id,
                                      const rpc::GcsNodeInfo &message,
                                      const StatusCallback &done) {
-  if (publisher_ != nullptr) {
     rpc::PubMessage msg;
     msg.set_channel_type(rpc::ChannelType::GCS_NODE_INFO_CHANNEL);
     msg.set_key_id(id.Binary());
@@ -66,14 +59,11 @@ Status GcsPublisher::PublishNodeInfo(const NodeID &id,
       done(Status::OK());
     }
     return Status::OK();
-  }
-  return pubsub_->Publish(NODE_CHANNEL, id.Hex(), message.SerializeAsString(), done);
 }
 
 Status GcsPublisher::PublishNodeResource(const NodeID &id,
                                          const rpc::NodeResourceChange &message,
                                          const StatusCallback &done) {
-  if (publisher_ != nullptr) {
     rpc::PubMessage msg;
     msg.set_channel_type(rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL);
     msg.set_key_id(id.Binary());
@@ -83,20 +73,11 @@ Status GcsPublisher::PublishNodeResource(const NodeID &id,
       done(Status::OK());
     }
     return Status::OK();
-  }
-  return pubsub_->Publish(
-      NODE_RESOURCE_CHANNEL, id.Hex(), message.SerializeAsString(), done);
-}
-
-Status GcsPublisher::PublishResourceBatch(const rpc::ResourceUsageBatchData &message,
-                                          const StatusCallback &done) {
-  return pubsub_->Publish(RESOURCES_BATCH_CHANNEL, "", message.SerializeAsString(), done);
 }
 
 Status GcsPublisher::PublishWorkerFailure(const WorkerID &id,
                                           const rpc::WorkerDeltaData &message,
                                           const StatusCallback &done) {
-  if (publisher_ != nullptr) {
     rpc::PubMessage msg;
     msg.set_channel_type(rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL);
     msg.set_key_id(id.Binary());
@@ -106,14 +87,11 @@ Status GcsPublisher::PublishWorkerFailure(const WorkerID &id,
       done(Status::OK());
     }
     return Status::OK();
-  }
-  return pubsub_->Publish(WORKER_CHANNEL, id.Hex(), message.SerializeAsString(), done);
 }
 
 Status GcsPublisher::PublishError(const std::string &id,
                                   const rpc::ErrorTableData &message,
                                   const StatusCallback &done) {
-  if (publisher_ != nullptr) {
     rpc::PubMessage msg;
     msg.set_channel_type(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
     msg.set_key_id(id);
@@ -123,14 +101,9 @@ Status GcsPublisher::PublishError(const std::string &id,
       done(Status::OK());
     }
     return Status::OK();
-  }
-  return pubsub_->Publish(ERROR_INFO_CHANNEL, id, message.SerializeAsString(), done);
 }
 
 std::string GcsPublisher::DebugString() const {
-  if (pubsub_) {
-    return pubsub_->DebugString();
-  }
   return "GcsPublisher {}";
 }
 
@@ -266,14 +239,6 @@ Status GcsSubscriber::SubscribeAllNodeResources(
         "NodeResource channel already subscribed. Please unsubscribe first if it needs "
         "to be resubscribed.");
   }
-  return Status::OK();
-}
-
-Status GcsSubscriber::SubscribeResourcesBatch(
-    const ItemCallback<rpc::ResourceUsageBatchData> &subscribe,
-    const StatusCallback &done) {
-  // This channel is not used.
-  // TODO (iycheng) remove legacy code
   return Status::OK();
 }
 

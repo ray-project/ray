@@ -50,12 +50,10 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
     RayConfig::instance().gcs_max_active_rpcs_per_handler() = -1;
     if (RayConfig::instance().bootstrap_with_gcs()) {
       config.grpc_server_port = 6379;
-      config.grpc_pubsub_enabled = true;
     } else {
       config.grpc_server_port = 0;
       config.redis_address = "127.0.0.1";
       config.enable_sharding_conn = false;
-      config.grpc_pubsub_enabled = false;
       config.redis_port = TEST_REDIS_SERVER_PORTS.front();
     }
 
