@@ -467,7 +467,7 @@ def delete(address: str, yes: bool):
 def build(import_path: str, file_path: str):
     if not file_path.endswith(".yaml"):
         raise ValueError(
-            f'Got "{file_path}" as FILE_PATH. FILE_PATH must end ' 'with ".yaml".'
+            f'Got "{file_path}" as FILE_PATH. FILE_PATH must end with ".yaml".'
         )
 
     app_or_node: Union[Application, DeploymentNode] = import_attr(import_path)
