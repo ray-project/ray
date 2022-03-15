@@ -683,42 +683,6 @@ Actor Lifetimes
 
     Customizing lifetime of an actor hasn't been implemented in C++ yet.
 
-Actor Pool
-----------
-
-.. tabbed:: Python
-
-    The ``ray.util`` module contains a utility class, ``ActorPool``.
-    This class is similar to multiprocessing.Pool and lets you schedule Ray tasks over a fixed pool of actors.
-
-    .. code-block:: python
-
-        from ray.util import ActorPool
-
-        @ray.remote
-        class Actor
-        def double(self, n):
-            return n * 2
-
-        a1, a2 = Actor.remote(), Actor.remote()
-        pool = ActorPool([a1, a2])
-
-        # pool.map(..) returns a Python generator object ActorPool.map
-        gen = pool.map(lambda a, v: a.double.remote(v), [1, 2, 3, 4]))
-        print([v for v in gen])
-        # [2, 4, 6, 8]
-
-    See the `package reference <package-ref.html#ray.util.ActorPool>`_ for more information.
-
-.. tabbed:: Java
-
-    Actor pool hasn't been implemented in Java yet.
-
-.. tabbed:: C++
-
-    Actor pool hasn't been implemented in C++ yet.
-
-
 FAQ: Actors, Workers and Resources
 ----------------------------------
 
@@ -738,26 +702,3 @@ so that both all of your needed actors can run and any other tasks you
 define can run. This also implies that tasks are scheduled more flexibly,
 and that if you don't need the stateful part of an actor, you're mostly
 better off using tasks.
-
-
-Concurrency within an actor
----------------------------
-
-.. tabbed:: Python
-
-    Within a single actor process, it is possible to execute concurrent threads.
-
-    Ray offers two types of concurrency within an actor:
-
-    * :ref:`async execution <async-actors>`
-    * :ref:`threading <threaded-actors>`
-
-    See the above links for more details.
-
-.. tabbed:: Java
-
-    Actor-level concurrency hasn't been implemented in Java yet.
-
-.. tabbed:: C++
-
-    Actor-level concurrency hasn't been implemented in C++ yet.

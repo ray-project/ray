@@ -8,3 +8,4 @@ A task.
 
     tasks/foo.rst
     tasks/fault-tolerance.rst
+    tasks/using-ray-with-gpus.rst
