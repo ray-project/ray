@@ -360,6 +360,10 @@ class ServeController:
         self.endpoint_state.delete_endpoint(name)
         return self.deployment_state_manager.delete_deployment(name)
 
+    def delete_deployments(self, names: List[str]) -> None:
+        for name in names:
+            self.delete_deployment(name)
+
     def get_deployment_info(self, name: str) -> Tuple[DeploymentInfo, str]:
         """Get the current information about a deployment.
 
