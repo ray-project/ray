@@ -3,7 +3,6 @@ import inspect
 import logging
 from typing import Dict, Union, Callable, Optional, TYPE_CHECKING, Type
 
-import ray
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.result import Result
@@ -145,7 +144,6 @@ class Trainer(abc.ABC):
         self.datasets = datasets if datasets else {}
         self.preprocessor = preprocessor
         self.resume_from_checkpoint = resume_from_checkpoint
-        self._has_preprocessed_datasets = False
 
     def __new__(cls, *args, **kwargs):
         """Store the init args as attributes so this can be merged with Tune hparams."""
@@ -191,29 +189,20 @@ class Trainer(abc.ABC):
         # Evaluate all datasets.
         self.datasets = {k: d() if callable(d) else d for k, d in self.datasets.items()}
 
-        # Transform all datasets concurrently in remote tasks.
-        transform_task_dict = {}
-
-        transform_task = ray.remote(
-            lambda preprocessor, dataset: preprocessor.transform(dataset)
-        )
-
-        if self.preprocessor and not self._has_preprocessed_datasets:
+        if self.preprocessor:
             train_dataset = self.datasets.get(TRAIN_DATASET_KEY, None)
             if train_dataset and not self.preprocessor.check_is_fitted():
                 self.preprocessor.fit(train_dataset)
 
+            # Execute dataset transformations serially for now.
+            # Cannot execute them in remote tasks due to dataset ownership model:
+            # if datasets are created on a remote node, then if that node fails,
+            # we cannot recover the dataset.
+            new_datasets = {}
             for key, dataset in self.datasets.items():
-                transform_task_dict[key] = transform_task.remote(
-                    self.preprocessor, dataset
-                )
+                new_datasets[key] = self.preprocessor.transform(dataset)
 
-            ray.get(list(transform_task_dict.values()))
-
-            for key, transformed_dataset in transform_task_dict.items():
-                self.datasets[key] = ray.get(transformed_dataset)
-
-            self._has_preprocessed_datasets = True
+            self.datasets = new_datasets
 
     @abc.abstractmethod
     def training_loop(self) -> None:
@@ -310,6 +299,8 @@ class Trainer(abc.ABC):
                 self._merged_config = merge_dicts(base_config, self.config)
 
             def _trainable_func(self, config, reporter, checkpoint_dir):
+                # We ignore the config passed by Tune and instead use the merged
+                # config which includes the initial Trainer args.
                 super()._trainable_func(self._merged_config, reporter, checkpoint_dir)
 
             @classmethod

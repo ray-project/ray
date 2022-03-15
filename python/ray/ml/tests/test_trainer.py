@@ -56,6 +56,15 @@ def test_preprocess_datasets(ray_start_4_cpus):
     trainer.fit()
 
 
+def test_resources(ray_start_4_cpus):
+    def check_cpus(self):
+        assert ray.available_resources()["CPU"] == 2
+
+    assert ray.available_resources()["CPU"] == 4
+    trainer = DummyTrainer(check_cpus, scaling_config={"trainer_resources": {"CPU": 2}})
+    trainer.fit()
+
+
 @pytest.mark.parametrize("gen_dataset", [True, False])
 def test_preprocess_fit_on_train(ray_start_4_cpus, gen_dataset):
     def training_loop(self):
@@ -101,7 +110,7 @@ def test_preprocessor_already_fitted(ray_start_4_cpus):
     trainer.fit()
 
 
-def test_arg_override():
+def test_arg_override(ray_start_4_cpus):
     def check_override(self):
         assert self.scaling_config["num_workers"] == 1
         # Should do deep update.
@@ -128,7 +137,7 @@ def test_arg_override():
     tune.run(trainer.as_trainable(), config=new_config)
 
 
-def test_setup():
+def test_setup(ray_start_4_cpus):
     def check_setup(self):
         assert self._has_setup
 
