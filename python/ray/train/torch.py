@@ -378,7 +378,6 @@ class TorchBackend(Backend):
         # driver side, even if the driver does not have access to a GPU device.
         _buffer = io.BytesIO()
         torch.save(data_dict, _buffer)
-
         return _buffer.getvalue()
 
     @staticmethod
