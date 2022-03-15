@@ -241,7 +241,7 @@
       set -x;
       python ./scripts/bazel-sharding.py
       --exclude_manual
-      --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}"
+      --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}"
       python/ray/serve/...
       > test_shard.txt
     - cat test_shard.txt
