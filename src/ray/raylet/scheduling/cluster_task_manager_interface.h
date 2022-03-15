@@ -14,7 +14,6 @@
 
 #pragma once
 
-#include "ray/raylet/worker.h"
 #include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
