@@ -195,9 +195,7 @@ EXPECTED_BEST_1 = (
     "parameters={'a': 1, 'b': 2, 'n': {'k': [1, 2]}}"
 )
 
-EXPECTED_BEST_2 = (
-    "Current best trial: 00004 with metric_1=2.0 and " "parameters={'a': 4}"
-)
+EXPECTED_BEST_2 = "Current best trial: 00004 with metric_1=2.0 and parameters={'a': 4}"
 
 EXPECTED_SORT_RESULT_UNSORTED = """Number of trials: 5 (1 PENDING, 1 RUNNING, 3 TERMINATED)
 +--------------+------------+-------+-----+------------+
