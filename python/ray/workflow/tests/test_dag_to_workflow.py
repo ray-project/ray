@@ -131,7 +131,7 @@ def test_dereference_object_refs(workflow_start_regular_shared):
 
     # Run with workflow and normal Ray engine.
     workflow.create(dag).run()
-    dag.execute()
+    ray.get(dag.execute())
 
 
 if __name__ == "__main__":
