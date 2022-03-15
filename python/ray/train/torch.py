@@ -48,7 +48,7 @@ class TorchAccelerator(Accelerator):
     """
 
     def __init__(self, amp: bool = False):
-        self.amp = amp
+        self.amp_is_enabled = amp
         self.scaler = GradScaler() if amp else None
 
     def prepare_model(
@@ -97,8 +97,13 @@ class TorchAccelerator(Accelerator):
 
             return wrapper
 
-        if self.amp:
+        if self.amp_is_enabled:
+            # Pickle cannot dump a model if the forward method is wrapped. The
+            # `_unwrapped_module_forward` and `_wrapped_module_forward` attributes are
+            # needed for the workaround in `TorchBackend.encode_data`.
+            self._unwrapped_module_forward = model.forward
             model.forward = wrap_forward(model.forward)
+            self._wrapped_module_forward = model.forward
 
         if wrap_ddp and train.world_size() > 1:
             logger.info("Wrapping provided model in DDP.")
@@ -207,7 +212,7 @@ class TorchAccelerator(Accelerator):
         Args:
             tensor (torch.Tensor): Tensor of which the derivative will be computed.
         """
-        if self.amp:
+        if self.amp_is_enabled:
             self.scaler.scale(tensor).backward()
         else:
             tensor.backward()
@@ -355,11 +360,27 @@ class TorchBackend(Backend):
             if isinstance(v, DistributedDataParallel) and hasattr(v, "module"):
                 data_dict[k] = v.module
 
+        # Pickle cannot dump modules with wrapped forward methods. As a workaround,
+        # unwrap the forward method before serialization, and re-wrap the method
+        # after serialization. The references to the unwrapped and wrapped forward
+        # methods are set in `TorchAccelerator.prepare_model`.
+        modules_with_wrapped_forward = [
+            v
+            for v in data_dict.values()
+            if isinstance(v, torch.nn.Module) and hasattr(v, "_wrapped_module_forward")
+        ]
+        for module in modules_with_wrapped_forward:
+            module.forward = module._unwrapped_module_forward
+
         # Convert the checkpoint dict to bytes, so that any GPU tensors that
         # are in the checkpoint dict can be properly deserialized on the
         # driver side, even if the driver does not have access to a GPU device.
         _buffer = io.BytesIO()
         torch.save(data_dict, _buffer)
+
+        for module in modules_with_wrapped_forward:
+            module.forward = module._wrapped_module_forward
+
         return _buffer.getvalue()
 
     @staticmethod

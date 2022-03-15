@@ -117,6 +117,24 @@ def test_torch_amp(ray_start_4_cpus_2_gpus):
     assert 1.05 * latency(amp=True) < latency(amp=False)
 
 
+@pytest.mark.parametrize("use_gpu", [False, True])
+def test_checkpoint_torch_model_with_amp(ray_start_4_cpus_2_gpus, use_gpu):
+    """Test that model with AMP is serializable."""
+
+    def train_func():
+        train.torch.accelerate(amp=True)
+
+        model = torchvision.models.resnet101()
+        model = train.torch.prepare_model(model)
+
+        train.checkpoint(model=model)
+
+    trainer = Trainer("torch", num_workers=1, use_gpu=use_gpu)
+    trainer.start()
+    trainer.run(train_func)
+    trainer.shutdown()
+
+
 def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
     """Tests if GPU tensors are auto converted to CPU on driver."""
 
