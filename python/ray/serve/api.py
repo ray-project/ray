@@ -13,6 +13,7 @@ from typing import (
     Callable,
     Dict,
     Optional,
+    TextIO,
     Tuple,
     Type,
     Union,
@@ -48,11 +49,14 @@ from ray.serve.constants import (
     SERVE_CONTROLLER_NAME,
     MAX_CACHED_HANDLES,
     CONTROLLER_MAX_CONCURRENCY,
+    DEFAULT_HTTP_HOST,
+    DEFAULT_HTTP_PORT,
 )
 from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 from ray.serve.controller import ServeController
 from ray.serve.exceptions import RayServeException
+from ray.experimental.dag import DAGNode
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
 from ray.serve.utils import (
@@ -903,6 +907,57 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
     return decorator
 
 
+@PublicAPI(stability="alpha")
+class DAGHandle:
+    """Resolved from a DeploymentMethodNode at runtime.
+
+    This can be used to call the DAG from a driver deployment to efficiently
+    orchestrate a multi-deployment pipeline.
+    """
+
+    def __init__(self, serialized_dag_json: str):
+        raise NotImplementedError()
+
+    def remote(self, *args, **kwargs) -> ray.ObjectRef:
+        """Call the DAG."""
+        raise NotImplementedError()
+
+
+@PublicAPI(stability="alpha")
+class DeploymentMethodNode(DAGNode):
+    """Represents a method call on a bound deployment node.
+
+    These method calls can be composed into an optimized call DAG and passed
+    to a "driver" deployment that will orchestrate the calls at runtime.
+
+    This class cannot be called directly. Instead, when it is bound to a
+    deployment node, it will be resolved to a DeployedCallGraph at runtime.
+    """
+
+    def __init__(self):
+        raise NotImplementedError()
+
+
+@PublicAPI(stability="alpha")
+class DeploymentNode(DAGNode):
+    """Represents a deployment with its bound config options and arguments.
+
+    The bound deployment can be run, deployed, or built to a production config
+    using serve.run, serve.deploy, and serve.build, respectively.
+
+    A bound deployment can be passed as an argument to other bound deployments
+    to build a multi-deployment application. When the application is deployed, the
+    bound deployments passed into a constructor will be converted to
+    RayServeHandles that can be used to send requests.
+
+    Calling deployment.method.bind() will return a DeploymentMethodNode
+    that can be used to compose an optimized call graph.
+    """
+
+    def __init__(self):
+        raise NotImplementedError()
+
+
 @PublicAPI
 class Deployment:
     def __init__(
@@ -1063,6 +1118,15 @@ class Deployment:
             "Deployments cannot be constructed directly. "
             "Use `deployment.deploy() instead.`"
         )
+
+    @PublicAPI(stability="alpha")
+    def bind(self, *args, **kwargs) -> DeploymentNode:
+        """Bind the provided arguments and return a DeploymentNode.
+
+        The returned bound deployment can be deployed or bound to other
+        deployments to create a multi-deployment application.
+        """
+        raise NotImplementedError()
 
     @PublicAPI
     def deploy(self, *init_args, _blocking=True, **init_kwargs):
