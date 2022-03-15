@@ -390,7 +390,7 @@ class TFPolicy(Policy):
 
         if self._log_likelihood is None:
             raise ValueError(
-                "Cannot compute log-prob/likelihood w/o a " "self._log_likelihood op!"
+                "Cannot compute log-prob/likelihood w/o a self._log_likelihood op!"
             )
 
         # Exploration hook before each forward pass.

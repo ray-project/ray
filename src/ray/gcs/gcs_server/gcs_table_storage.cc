@@ -22,10 +22,11 @@ namespace ray {
 namespace gcs {
 
 template <typename Key, typename Data>
-Status GcsTable<Key, Data>::Put(const Key &key, const Data &value,
+Status GcsTable<Key, Data>::Put(const Key &key,
+                                const Data &value,
                                 const StatusCallback &callback) {
-  return store_client_->AsyncPut(table_name_, key.Binary(), value.SerializeAsString(),
-                                 callback);
+  return store_client_->AsyncPut(
+      table_name_, key.Binary(), value.SerializeAsString(), callback);
 }
 
 template <typename Key, typename Data>
@@ -46,8 +47,8 @@ Status GcsTable<Key, Data>::Get(const Key &key,
 
 template <typename Key, typename Data>
 Status GcsTable<Key, Data>::GetAll(const MapCallback<Key, Data> &callback) {
-  auto on_done = [callback](std::unordered_map<std::string, std::string> &&result) {
-    std::unordered_map<Key, Data> values;
+  auto on_done = [callback](absl::flat_hash_map<std::string, std::string> &&result) {
+    absl::flat_hash_map<Key, Data> values;
     for (auto &item : result) {
       if (!item.second.empty()) {
         values[Key::FromBinary(item.first)].ParseFromString(item.second);
@@ -71,23 +72,26 @@ Status GcsTable<Key, Data>::BatchDelete(const std::vector<Key> &keys,
   for (auto &key : keys) {
     keys_to_delete.emplace_back(std::move(key.Binary()));
   }
-  return this->store_client_->AsyncBatchDelete(this->table_name_, keys_to_delete,
-                                               callback);
+  return this->store_client_->AsyncBatchDelete(
+      this->table_name_, keys_to_delete, callback);
 }
 
 template <typename Key, typename Data>
-Status GcsTableWithJobId<Key, Data>::Put(const Key &key, const Data &value,
+Status GcsTableWithJobId<Key, Data>::Put(const Key &key,
+                                         const Data &value,
                                          const StatusCallback &callback) {
-  return this->store_client_->AsyncPutWithIndex(this->table_name_, key.Binary(),
+  return this->store_client_->AsyncPutWithIndex(this->table_name_,
+                                                key.Binary(),
                                                 GetJobIdFromKey(key).Binary(),
-                                                value.SerializeAsString(), callback);
+                                                value.SerializeAsString(),
+                                                callback);
 }
 
 template <typename Key, typename Data>
 Status GcsTableWithJobId<Key, Data>::GetByJobId(const JobID &job_id,
                                                 const MapCallback<Key, Data> &callback) {
-  auto on_done = [callback](std::unordered_map<std::string, std::string> &&result) {
-    std::unordered_map<Key, Data> values;
+  auto on_done = [callback](absl::flat_hash_map<std::string, std::string> &&result) {
+    absl::flat_hash_map<Key, Data> values;
     for (auto &item : result) {
       if (!item.second.empty()) {
         values[Key::FromBinary(item.first)].ParseFromString(item.second);
@@ -95,15 +99,15 @@ Status GcsTableWithJobId<Key, Data>::GetByJobId(const JobID &job_id,
     }
     callback(std::move(values));
   };
-  return this->store_client_->AsyncGetByIndex(this->table_name_, job_id.Binary(),
-                                              on_done);
+  return this->store_client_->AsyncGetByIndex(
+      this->table_name_, job_id.Binary(), on_done);
 }
 
 template <typename Key, typename Data>
 Status GcsTableWithJobId<Key, Data>::DeleteByJobId(const JobID &job_id,
                                                    const StatusCallback &callback) {
-  return this->store_client_->AsyncDeleteByIndex(this->table_name_, job_id.Binary(),
-                                                 callback);
+  return this->store_client_->AsyncDeleteByIndex(
+      this->table_name_, job_id.Binary(), callback);
 }
 
 template <typename Key, typename Data>
@@ -122,8 +126,8 @@ Status GcsTableWithJobId<Key, Data>::BatchDelete(const std::vector<Key> &keys,
     keys_to_delete.push_back(key.Binary());
     indexs_to_delete.push_back(GetJobIdFromKey(key).Binary());
   }
-  return this->store_client_->AsyncBatchDeleteWithIndex(this->table_name_, keys_to_delete,
-                                                        indexs_to_delete, callback);
+  return this->store_client_->AsyncBatchDeleteWithIndex(
+      this->table_name_, keys_to_delete, indexs_to_delete, callback);
 }
 
 template class GcsTable<JobID, JobTableData>;

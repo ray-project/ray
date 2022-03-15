@@ -30,6 +30,7 @@ from ray.serve.constants import (
 )
 from ray.serve.version import DeploymentVersion
 from ray.serve.utils import wrap_to_ray_error, parse_import_path
+from ray.serve.api import Deployment
 
 logger = _get_logger()
 
@@ -73,12 +74,20 @@ def create_replica_wrapper(
             if import_path is not None:
                 module_name, attr_name = parse_import_path(import_path)
                 deployment_def = getattr(import_module(module_name), attr_name)
-                # For ray decorated class or function, strip to return original
-                # body
+                # For ray or serve decorated class or function, strip to return
+                # original body
                 if isinstance(deployment_def, RemoteFunction):
                     deployment_def = deployment_def._function
                 elif isinstance(deployment_def, ActorClass):
                     deployment_def = deployment_def.__ray_metadata__.modified_class
+                elif isinstance(deployment_def, Deployment):
+                    logger.warning(
+                        f'The import path "{import_path}" contains a '
+                        "decorated Serve deployment. The decorator's settings "
+                        "are ignored when deploying via import path."
+                    )
+                    deployment_def = deployment_def.func_or_class
+
             else:
                 deployment_def = cloudpickle.loads(serialized_deployment_def)
 

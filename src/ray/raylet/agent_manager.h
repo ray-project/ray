@@ -53,7 +53,8 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
     std::vector<std::string> agent_commands;
   };
 
-  explicit AgentManager(Options options, DelayExecutorFn delay_executor,
+  explicit AgentManager(Options options,
+                        DelayExecutorFn delay_executor,
                         RuntimeEnvAgentClientFactoryFn runtime_env_agent_client_factory,
                         bool start_agent = true /* for test */)
       : options_(std::move(options)),
@@ -71,7 +72,8 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   /// Request agent to create a runtime env.
   /// \param[in] runtime_env The runtime env.
   virtual void CreateRuntimeEnv(
-      const JobID &job_id, const std::string &serialized_runtime_env,
+      const JobID &job_id,
+      const std::string &serialized_runtime_env,
       const std::string &serialized_allocated_resource_instances,
       CreateRuntimeEnvCallback callback);
 
@@ -87,8 +89,6 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   Options options_;
   pid_t agent_pid_ = 0;
   int agent_port_ = 0;
-  /// The number of times the agent is restarted.
-  std::atomic<uint32_t> agent_restart_count_ = 0;
   /// Whether or not we intend to start the agent.  This is false if we
   /// are missing Ray Dashboard dependencies, for example.
   bool should_start_agent_ = true;
@@ -96,6 +96,9 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   DelayExecutorFn delay_executor_;
   RuntimeEnvAgentClientFactoryFn runtime_env_agent_client_factory_;
   std::shared_ptr<rpc::RuntimeEnvAgentClientInterface> runtime_env_agent_client_;
+  /// When the grpc port of agent is invalid, set this flag to indicate that agent client
+  /// is disable.
+  bool disable_agent_client_ = false;
 };
 
 class DefaultAgentManagerServiceHandler : public rpc::AgentManagerServiceHandler {

@@ -20,9 +20,9 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include "ray/object_manager/plasma/allocator.h"
 
 #include "absl/types/optional.h"
+#include "ray/object_manager/plasma/allocator.h"
 #include "ray/object_manager/plasma/common.h"
 
 namespace plasma {
@@ -41,7 +41,8 @@ namespace plasma {
 class PlasmaAllocator : public IAllocator {
  public:
   PlasmaAllocator(const std::string &plasma_directory,
-                  const std::string &fallback_directory, bool hugepage_enabled,
+                  const std::string &fallback_directory,
+                  bool hugepage_enabled,
                   int64_t footprint_limit);
 
   /// On linux, it allocates memory from a pre-mmapped file from /dev/shm.

@@ -654,6 +654,36 @@ def test_recursive_resolve(ray_start_shared_local_modes):
     assert ray.get(ref) == 42
 
 
+def test_serialization_before_init(shutdown_only):
+    """This test checks if serializers registered before initializing Ray
+    works after initialization."""
+    # make sure ray is shutdown
+    ray.shutdown()
+    assert ray.worker.global_worker.current_job_id.is_nil()
+
+    import threading
+
+    class A:
+        def __init__(self, x):
+            self.x = x
+            self.lock = threading.Lock()  # could not be serialized!
+
+    def custom_serializer(a):
+        return a.x
+
+    def custom_deserializer(b):
+        return A(b)
+
+    # Register serializer and deserializer for class A:
+    ray.util.register_serializer(
+        A, serializer=custom_serializer, deserializer=custom_deserializer
+    )
+
+    # Initialize Ray later.
+    ray.init()
+    ray.get(ray.put(A(1)))  # success!
+
+
 if __name__ == "__main__":
     import pytest
 

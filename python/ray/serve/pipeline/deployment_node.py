@@ -7,6 +7,7 @@ from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 from ray.experimental.dag.format_utils import get_dag_node_str
 from ray.serve.api import Deployment, DeploymentConfig
+from ray.serve.utils import get_deployment_import_path
 
 
 class DeploymentNode(DAGNode):
@@ -50,7 +51,7 @@ class DeploymentNode(DAGNode):
         (
             replaced_deployment_init_args,
             replaced_deployment_init_kwargs,
-        ) = self._apply_functional(
+        ) = self.apply_functional(
             [deployment_init_args, deployment_init_kwargs],
             predictate_fn=lambda node: isinstance(
                 node, (DeploymentNode, DeploymentMethodNode)
@@ -158,18 +159,24 @@ class DeploymentNode(DAGNode):
         return self._deployment.name
 
     def get_import_path(self):
-        if isinstance(self._deployment._func_or_class, str):
-            # We're processing a deserilized JSON node where import_path
-            # is dag_node body.
-            return self._deployment._func_or_class
-        else:
-            body = self._deployment._func_or_class.__ray_actor_class__
-            return f"{body.__module__}.{body.__qualname__}"
+        return get_deployment_import_path(self._deployment)
 
     def to_json(self, encoder_cls) -> Dict[str, Any]:
         json_dict = super().to_json_base(encoder_cls, DeploymentNode.__name__)
         json_dict["deployment_name"] = self.get_deployment_name()
-        json_dict["import_path"] = self.get_import_path()
+        import_path = self.get_import_path()
+
+        error_message = (
+            "Class used in DAG should not be in-line defined when exporting"
+            "import path for deployment. Please ensure it has fully "
+            "qualified name with valid __module__ and __qualname__ for "
+            "import path, with no __main__ or <locals>. \n"
+            f"Current import path: {import_path}"
+        )
+        assert "__main__" not in import_path, error_message
+        assert "<locals>" not in import_path, error_message
+
+        json_dict["import_path"] = import_path
 
         return json_dict
 

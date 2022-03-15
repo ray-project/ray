@@ -6,6 +6,8 @@ import time
 import requests
 from pathlib import Path
 from unittest import mock
+import json
+import tempfile
 
 import ray
 from ray.exceptions import RuntimeEnvSetupError
@@ -13,6 +15,7 @@ from ray._private.test_utils import (
     wait_for_condition,
     get_error_message,
     get_log_sources,
+    chdir,
 )
 from ray._private.utils import (
     get_wheel_filename,
@@ -301,17 +304,9 @@ def set_agent_failure_env_var():
     del os.environ["_RAY_AGENT_FAILING"]
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster_head",
-    [
-        {
-            "_system_config": {
-                "agent_restart_interval_ms": 10,
-                "agent_max_restart_count": 5,
-            }
-        }
-    ],
-    indirect=True,
+# TODO(SongGuyang): Fail the agent which is in different node from driver.
+@pytest.mark.skip(
+    reason="Agent failure will lead to raylet failure and driver failure."
 )
 @pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
 def test_runtime_env_broken(
@@ -330,13 +325,13 @@ def test_runtime_env_broken(
     """
     Test task raises an exception.
     """
-    with pytest.raises(RuntimeEnvSetupError):
+    with pytest.raises(ray.exceptions.LocalRayletDiedError):
         ray.get(f.options(runtime_env=runtime_env).remote())
     """
     Test actor task raises an exception.
     """
     a = A.options(runtime_env=runtime_env).remote()
-    with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
+    with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.ready.remote())
 
 
@@ -657,14 +652,23 @@ def test_runtime_env_retry(set_runtime_env_retry_times, ray_start_regular):
             )
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="conda in runtime_env unsupported on Windows."
+)
 @pytest.mark.parametrize(
     "option",
-    ["pip_list", "conda_name", "conda_dict", "container", "plugins"],
+    ["pip_list", "pip_dict", "conda_name", "conda_dict", "container", "plugins"],
 )
 def test_serialize_deserialize(option):
     runtime_env = dict()
     if option == "pip_list":
         runtime_env["pip"] = ["pkg1", "pkg2"]
+    elif option == "pip_dict":
+        runtime_env["pip"] = {
+            "packages": ["pkg1", "pkg2"],
+            "pip_check": False,
+            "pip_version": "<22,>20",
+        }
     elif option == "conda_name":
         runtime_env["conda"] = "env_name"
     elif option == "conda_dict":
@@ -683,9 +687,194 @@ def test_serialize_deserialize(option):
     else:
         raise ValueError("unexpected option " + str(option))
 
-    proto_runtime_env = RuntimeEnv(**runtime_env, _validate=False)._proto_runtime_env
+    proto_runtime_env = RuntimeEnv(
+        **runtime_env, _validate=False
+    ).build_proto_runtime_env()
     cls_runtime_env = RuntimeEnv.from_proto(proto_runtime_env)
-    assert cls_runtime_env.to_dict() == runtime_env
+    cls_runtime_env_dict = cls_runtime_env.to_dict()
+
+    if "pip" in runtime_env and isinstance(runtime_env["pip"], list):
+        pip_config_in_cls_runtime_env = cls_runtime_env_dict.pop("pip")
+        pip_config_in_runtime_env = runtime_env.pop("pip")
+        assert {
+            "packages": pip_config_in_runtime_env,
+            "pip_check": True,
+        } == pip_config_in_cls_runtime_env
+
+    assert cls_runtime_env_dict == runtime_env
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="conda in runtime_env unsupported on Windows."
+)
+def test_runtime_env_interface():
+
+    # Test the interface related to working_dir
+    default_working_dir = "s3://bucket/key.zip"
+    modify_working_dir = "s3://bucket/key_A.zip"
+    runtime_env = RuntimeEnv(working_dir=default_working_dir)
+    runtime_env_dict = runtime_env.to_dict()
+    assert runtime_env.working_dir_uri() == default_working_dir
+    runtime_env["working_dir"] = modify_working_dir
+    runtime_env_dict["working_dir"] = modify_working_dir
+    assert runtime_env.working_dir_uri() == modify_working_dir
+    assert runtime_env.to_dict() == runtime_env_dict
+    # Test that the modification of working_dir also works on
+    # proto serialization
+    assert runtime_env_dict == RuntimeEnv.from_proto(
+        runtime_env.build_proto_runtime_env()
+    )
+    runtime_env.pop("working_dir")
+    assert runtime_env.to_dict() == {}
+
+    # Test the interface related to py_modules
+    init_py_modules = ["s3://bucket/key_1.zip", "s3://bucket/key_2.zip"]
+    addition_py_modules = ["s3://bucket/key_3.zip", "s3://bucket/key_4.zip"]
+    runtime_env = RuntimeEnv(py_modules=init_py_modules)
+    runtime_env_dict = runtime_env.to_dict()
+    assert set(runtime_env.py_modules_uris()) == set(init_py_modules)
+    runtime_env["py_modules"].extend(addition_py_modules)
+    runtime_env_dict["py_modules"].extend(addition_py_modules)
+    assert set(runtime_env.py_modules_uris()) == set(
+        init_py_modules + addition_py_modules
+    )
+    assert runtime_env.to_dict() == runtime_env_dict
+    # Test that the modification of py_modules also works on
+    # proto serialization
+    assert runtime_env_dict == RuntimeEnv.from_proto(
+        runtime_env.build_proto_runtime_env()
+    )
+    runtime_env.pop("py_modules")
+    assert runtime_env.to_dict() == {}
+
+    # Test the interface related to env_vars
+    init_env_vars = {"A": "a", "B": "b"}
+    update_env_vars = {"C": "c"}
+    runtime_env = RuntimeEnv(env_vars=init_env_vars)
+    runtime_env_dict = runtime_env.to_dict()
+    runtime_env["env_vars"].update(update_env_vars)
+    runtime_env_dict["env_vars"].update(update_env_vars)
+    init_env_vars_copy = init_env_vars.copy()
+    init_env_vars_copy.update(update_env_vars)
+    assert runtime_env["env_vars"] == init_env_vars_copy
+    assert runtime_env_dict == runtime_env.to_dict()
+    # Test that the modification of env_vars also works on
+    # proto serialization
+    assert runtime_env_dict == RuntimeEnv.from_proto(
+        runtime_env.build_proto_runtime_env()
+    )
+    runtime_env.pop("env_vars")
+    assert runtime_env.to_dict() == {}
+
+    # Test the interface related to conda
+    conda_name = "conda"
+    modify_conda_name = "conda_A"
+    conda_config = {"dependencies": ["dep1", "dep2"]}
+    runtime_env = RuntimeEnv(conda=conda_name)
+    runtime_env_dict = runtime_env.to_dict()
+    assert runtime_env.has_conda()
+    assert runtime_env.conda_env_name() == conda_name
+    assert runtime_env.conda_config() is None
+    runtime_env["conda"] = modify_conda_name
+    runtime_env_dict["conda"] = modify_conda_name
+    assert runtime_env_dict == runtime_env.to_dict()
+    assert runtime_env.has_conda()
+    assert runtime_env.conda_env_name() == modify_conda_name
+    assert runtime_env.conda_config() is None
+    runtime_env["conda"] = conda_config
+    runtime_env_dict["conda"] = conda_config
+    assert runtime_env_dict == runtime_env.to_dict()
+    assert runtime_env.has_conda()
+    assert runtime_env.conda_env_name() is None
+    assert runtime_env.conda_config() == json.dumps(conda_config, sort_keys=True)
+    # Test that the modification of conda also works on
+    # proto serialization
+    assert runtime_env_dict == RuntimeEnv.from_proto(
+        runtime_env.build_proto_runtime_env()
+    )
+    runtime_env.pop("conda")
+    assert runtime_env.to_dict() == {"_ray_commit": "{{RAY_COMMIT_SHA}}"}
+
+    # Test the interface related to pip
+    with tempfile.TemporaryDirectory() as tmpdir, chdir(tmpdir):
+        requirement_file = os.path.join(tmpdir, "requirements.txt")
+        requirement_packages = ["dep5", "dep6"]
+        with open(requirement_file, "wt") as f:
+            for package in requirement_packages:
+                f.write(package)
+                f.write("\n")
+
+        pip_packages = ["dep1", "dep2"]
+        addition_pip_packages = ["dep3", "dep4"]
+        runtime_env = RuntimeEnv(pip=pip_packages)
+        runtime_env_dict = runtime_env.to_dict()
+        assert runtime_env.has_pip()
+        assert set(runtime_env.pip_config()["packages"]) == set(pip_packages)
+        assert runtime_env.virtualenv_name() is None
+        runtime_env["pip"]["packages"].extend(addition_pip_packages)
+        runtime_env_dict["pip"]["packages"].extend(addition_pip_packages)
+        # The default value of pip_check is True
+        runtime_env_dict["pip"]["pip_check"] = True
+        assert runtime_env_dict == runtime_env.to_dict()
+        assert runtime_env.has_pip()
+        assert set(runtime_env.pip_config()["packages"]) == set(
+            pip_packages + addition_pip_packages
+        )
+        assert runtime_env.virtualenv_name() is None
+        runtime_env["pip"] = requirement_file
+        runtime_env_dict["pip"] = requirement_packages
+        assert runtime_env.has_pip()
+        assert set(runtime_env.pip_config()["packages"]) == set(requirement_packages)
+        assert runtime_env.virtualenv_name() is None
+        # The default value of pip_check is True
+        runtime_env_dict["pip"] = dict(packages=runtime_env_dict["pip"], pip_check=True)
+        assert runtime_env_dict == runtime_env.to_dict()
+        # Test that the modification of pip also works on
+        # proto serialization
+        assert runtime_env_dict == RuntimeEnv.from_proto(
+            runtime_env.build_proto_runtime_env()
+        )
+        runtime_env.pop("pip")
+        assert runtime_env.to_dict() == {"_ray_commit": "{{RAY_COMMIT_SHA}}"}
+
+    # Test conflict
+    with pytest.raises(ValueError):
+        RuntimeEnv(pip=pip_packages, conda=conda_name)
+
+    runtime_env = RuntimeEnv(pip=pip_packages)
+    runtime_env["conda"] = conda_name
+    with pytest.raises(ValueError):
+        runtime_env.serialize()
+
+    # Test the interface related to container
+    container_init = {
+        "image": "anyscale/ray-ml:nightly-py38-cpu",
+        "worker_path": "/root/python/ray/workers/default_worker.py",
+        "run_options": ["--cap-drop SYS_ADMIN", "--log-level=debug"],
+    }
+    update_container = {"image": "test_modify"}
+    runtime_env = RuntimeEnv(container=container_init)
+    runtime_env_dict = runtime_env.to_dict()
+    assert runtime_env.has_py_container()
+    assert runtime_env.py_container_image() == container_init["image"]
+    assert runtime_env.py_container_worker_path() == container_init["worker_path"]
+    assert runtime_env.py_container_run_options() == container_init["run_options"]
+    runtime_env["container"].update(update_container)
+    runtime_env_dict["container"].update(update_container)
+    container_copy = container_init
+    container_copy.update(update_container)
+    assert runtime_env_dict == runtime_env.to_dict()
+    assert runtime_env.has_py_container()
+    assert runtime_env.py_container_image() == container_copy["image"]
+    assert runtime_env.py_container_worker_path() == container_copy["worker_path"]
+    assert runtime_env.py_container_run_options() == container_copy["run_options"]
+    # Test that the modification of container also works on
+    # proto serialization
+    assert runtime_env_dict == RuntimeEnv.from_proto(
+        runtime_env.build_proto_runtime_env()
+    )
+    runtime_env.pop("container")
+    assert runtime_env.to_dict() == {}
 
 
 if __name__ == "__main__":
