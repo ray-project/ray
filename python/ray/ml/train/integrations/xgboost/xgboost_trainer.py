@@ -35,17 +35,17 @@ class XGBoostTrainer(Trainer):
     Args:
         label_column: Name of the label column. A column with this name
             must be present in the training dataset.
-        xgboost_config: XGBoost training parameters. Refer to
-            `XGBoost documentation <https://xgboost.readthedocs.io\
-/en/latest/parameter.html>`_ for a list of possible parameters.
-        scaling_config: Configuration for how to scale data parallel training.
-        run_config: Configuration for the execution of the training run.
-        datasets: Any Ray Datasets to use for training. Must include a
+        datasets: Ray Datasets to use for training and validation. Must include a
             "train" key denoting the training dataset. If a ``preprocessor``
             is provided and has not already been fit, it will be fit on the training
             dataset. All datasets will be transformed by the ``preprocessor`` if
             one is provided. All non-training datasets will be used as separate
             validation sets, each reporting a separate metric.
+        xgboost_config: XGBoost training parameters. Refer to
+            `XGBoost documentation <https://xgboost.readthedocs.io\
+/en/latest/parameter.html>`_ for a list of possible parameters.
+        scaling_config: Configuration for how to scale data parallel training.
+        run_config: Configuration for the execution of the training run.
         preprocessor: A ray.ml.preprocessor.Preprocessor to preprocess the
             provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
@@ -54,10 +54,10 @@ class XGBoostTrainer(Trainer):
     def __init__(
         self,
         label_column: str,
+        datasets: Dict[str, GenDataset],
         xgboost_config: Optional[Dict[str, Any]] = None,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
-        datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
