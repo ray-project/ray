@@ -14,7 +14,6 @@ def ray_start_4_cpus():
     # The code after the yield will run as teardown code.
     ray.shutdown()
 
-
 class DummyPreprocessor(Preprocessor):
     def __init__(self):
         self.fit_counter = 0
@@ -24,7 +23,6 @@ class DummyPreprocessor(Preprocessor):
 
     def transform(self, ds):
         return ds.map(lambda x: x + 1)
-
 
 class DummyTrainer(Trainer):
     def __init__(self, train_loop, custom_arg=None, **kwargs):

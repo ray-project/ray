@@ -1,16 +1,22 @@
 import logging
 import os
-from typing import Dict, Callable, Optional, Union
+from typing import Dict, Callable, Optional, Union, Type
 
 import ray
+from ray import tune
+from ray.ml.constants import TRAIN_DATASET_KEY
 from ray.ml.trainer import Trainer
-from ray.ml.config import ScalingConfig, RunConfig
+from ray.ml.config import ScalingConfig, RunConfig, ScalingConfigDataClass
 from ray.ml.trainer import GenDataset
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
-from ray.train import BackendConfig
+from ray.train import BackendConfig, TrainingIterator
+from ray.train.backend import BackendExecutor
+from ray.train.checkpoint import MLTuneCheckpointManager
 from ray.train.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV
+from ray.train.utils import construct_train_func
+from ray.tune import Trainable
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
@@ -227,6 +233,90 @@ class DataParallelTrainer(Trainer):
         }
 
     def training_loop(self) -> None:
-        scaling_config_dataclass = ScalingConfigDataClass()
+        scaling_config_dataclass = ScalingConfigDataClass(**self.scaling_config)
+
+        train_loop_per_worker = construct_train_func(self.train_loop_per_worker,
+                                                  self.train_loop_config,
+                                                     fn_arg_name="train_loop_per_worker")
+
+        runtime_env = {"env_vars": self.train_env_var_values}
+
+        remote_executor = ray.remote(num_cpus=0)(BackendExecutor)
+        additional_resources_per_worker = (
+            scaling_config_dataclass.additional_resources_per_worker
+        )
+
+        backend_executor_actor = remote_executor.options(
+            runtime_env=runtime_env
+        ).remote(
+            backend_config=self.backend_config,
+            num_workers=scaling_config_dataclass.num_workers,
+            num_cpus_per_worker=scaling_config_dataclass.num_cpus_per_worker,
+            num_gpus_per_worker=scaling_config_dataclass.num_gpus_per_worker,
+            additional_resources_per_worker=additional_resources_per_worker,
+            max_retries=0,
+        )
+
+        checkpoint_manager = MLTuneCheckpointManager()
+        checkpoint_manager.on_init(preprocessor=self.preprocessor)
+
+        # Start the remote actors.
+        ray.get(backend_executor_actor.start.remote(initialization_hook=None))
+
+        if self.resume_from_checkpoint:
+            resume_checkpoint_dict = self.resume_from_checkpoint.to_dict()
+        else:
+            resume_checkpoint_dict = None
+
+        # Tell Ray Train to only shard the train dataset and not the other datasets.
+        # This is purely an implementation detail and users do not need to know about
+        # this.
+        updated_dataset_dict = {}
+        for key, value in self.datasets.items():
+            if key == TRAIN_DATASET_KEY:
+                updated_dataset_dict[key] = value
+            else:
+                # Ray Train will strip out the added string before exposing to users.
+                updated_dataset_dict[key + "_NO-SHARD"] = value
+
+        training_iterator = TrainingIterator(
+            backend_executor_actor=backend_executor_actor,
+            backend_config=self.backend_config,
+            train_func=train_loop_per_worker,
+            dataset=updated_dataset_dict if len(updated_dataset_dict)>0 else None,
+            checkpoint_manager=checkpoint_manager,
+            checkpoint=resume_checkpoint_dict,
+            checkpoint_strategy=None,
+        )
+
+        for results in training_iterator:
+            # TODO(ml-team): add ability to report results from multiple workers.
+            first_worker_results = results[0]
+
+            tune.report(**first_worker_results)
+
+        # Shutdown workers.
+        ray.get(backend_executor_actor.shutdown.remote())
+
+
+    def as_trainable(self) -> Type[Trainable]:
+        trainable_cls = super().as_trainable()
+
+        env_vars = self.train_env_var_values
+
+        class TrainableWithEnvVars(trainable_cls):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+
+                # Have to set the environment variables again in the trainable.
+                for var_name, value in env_vars.items():
+                    os.environ[var_name] = value
+
+        return TrainableWithEnvVars
+
+
+
+
+
 
 

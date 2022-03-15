@@ -340,7 +340,12 @@ class BackendExecutor:
             # Return a smaller dict for each shard.
             dataset_shards = [{} for _ in range(len(self.worker_group))]
             for key, dataset in dataset_or_dict.items():
-                split_datasets = split_dataset(dataset)
+                if "_NO-SHARD" in key:
+                    # Do not shard this dataset.
+                    split_datasets = [dataset] * len(self.worker_group)
+                    key = key.replace("_NO-SHARD", "")
+                else:
+                    split_datasets = split_dataset(dataset)
                 assert len(split_datasets) == len(self.worker_group)
                 for i in range(len(split_datasets)):
                     dataset_shards[i][key] = split_datasets[i]
