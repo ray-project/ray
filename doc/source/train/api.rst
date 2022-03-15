@@ -191,6 +191,8 @@ train.torch.TorchWorkerProfiler
 .. autoclass:: ray.train.torch.TorchWorkerProfiler
     :members:
 
+.. _train-api-tensorflow-utils:
+
 TensorFlow Training Function Utilities
 --------------------------------------
 
