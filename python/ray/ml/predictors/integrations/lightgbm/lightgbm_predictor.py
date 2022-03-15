@@ -108,7 +108,6 @@ class LightGBMPredictor(Predictor):
             DataBatchType: Prediction result.
 
         """
-        predict_kwargs = predict_kwargs or {}
 
         if self.preprocessor:
             data = self.preprocessor.transform_batch(data)
