@@ -53,8 +53,8 @@ class GcsActor {
   explicit GcsActor(rpc::ActorTableData actor_table_data, rpc::TaskSpec task_spec)
       : actor_table_data_(std::move(actor_table_data)),
         task_spec_(std::make_unique<rpc::TaskSpec>(task_spec)) {
-            RAY_CHECK(actor_table_data_.state() != rpc::ActorTableData::DEAD);
-        }
+    RAY_CHECK(actor_table_data_.state() != rpc::ActorTableData::DEAD);
+  }
 
   /// Create a GcsActor by TaskSpec.
   ///
