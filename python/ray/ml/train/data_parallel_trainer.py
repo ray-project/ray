@@ -64,13 +64,13 @@ class DataParallelTrainer(Trainer):
             # Returns the Ray Dataset shard for the given key.
             train.get_dataset_shard("my_dataset")
 
-            # Total number of workers executing training.
+            # Returns the total number of workers executing training.
             train.get_world_size()
 
-            # Rank of this worker.
+            # Returns the rank of this worker.
             train.get_world_rank()
 
-            # Rank of the worker on the current node.
+            # Returns the rank of the worker on the current node.
             train.get_local_rank()
 
     How do I use ``DataParallelTrainer`` or any of its subclasses?
