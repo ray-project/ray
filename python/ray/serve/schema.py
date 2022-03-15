@@ -3,12 +3,12 @@ from typing import Union, Tuple, List, Dict
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve.api import Deployment, deployment
 from ray.serve.common import DeploymentStatus, DeploymentStatusInfo
-from ray.serve.utils import DEFAULT
+from ray.serve.utils import DEFAULT, get_deployment_import_path
 
 
 class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
     runtime_env: dict = Field(
-        default=None,
+        default={},
         description=(
             "This deployment's runtime_env. working_dir and "
             "py_modules may contain only remote URIs."
@@ -48,7 +48,7 @@ class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
         ge=0,
     )
     resources: Dict = Field(
-        default=None, description=("The custom resources required by each replica.")
+        default={}, description=("The custom resources required by each replica.")
     )
     accelerator_type: str = Field(
         default=None,
@@ -321,7 +321,7 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
 
     return DeploymentSchema(
         name=d.name,
-        import_path=d.func_or_class,
+        import_path=get_deployment_import_path(d),
         init_args=d.init_args,
         init_kwargs=d.init_kwargs,
         num_replicas=d.num_replicas,
@@ -341,7 +341,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     if s.ray_actor_options is None:
         ray_actor_options = None
     else:
-        ray_actor_options = s.ray_actor_options.dict()
+        ray_actor_options = s.ray_actor_options.dict(exclude_unset=True)
 
     return deployment(
         name=s.name,

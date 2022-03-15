@@ -5,7 +5,6 @@ from typing import Optional, List
 from ray_release.alerts.handle import handle_result
 from ray_release.anyscale_util import get_cluster_name
 from ray_release.cluster_manager.full import FullClusterManager
-from ray_release.cluster_manager.minimal import MinimalClusterManager
 from ray_release.command_runner.client_runner import ClientRunner
 from ray_release.command_runner.job_runner import JobRunner
 from ray_release.command_runner.sdk_runner import SDKRunner
@@ -17,6 +16,7 @@ from ray_release.config import (
     DEFAULT_CLUSTER_TIMEOUT,
     DEFAULT_COMMAND_TIMEOUT,
     RELEASE_PACKAGE_DIR,
+    DEFAULT_AUTOSUSPEND_MINS,
     validate_test,
 )
 from ray_release.exception import (
@@ -49,7 +49,7 @@ type_str_to_command_runner = {
 command_runner_to_cluster_manager = {
     SDKRunner: FullClusterManager,
     ClientRunner: FullClusterManager,
-    JobRunner: MinimalClusterManager,
+    JobRunner: FullClusterManager,
 }
 
 file_manager_str_to_file_manager = {
@@ -61,6 +61,7 @@ file_manager_str_to_file_manager = {
 command_runner_to_file_manager = {
     SDKRunner: SessionControllerFileManager,
     ClientRunner: RemoteTaskFileManager,
+    JobFileManager: JobFileManager,
 }
 
 uploader_str_to_uploader = {"client": None, "s3": None, "command_runner": None}
@@ -160,6 +161,7 @@ def run_release_test(
 
         # Install local dependencies
         command_runner.prepare_local_env(ray_wheels_url)
+        command_timeout = test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT)
 
         # Start session
         if cluster_id:
@@ -178,9 +180,13 @@ def run_release_test(
                 "session_timeout", DEFAULT_CLUSTER_TIMEOUT
             )
 
-            autosuspend_mins = test["run"].get("autosuspend_mins", None)
+            autosuspend_mins = test["cluster"].get("autosuspend_mins", None)
             if autosuspend_mins:
                 cluster_manager.autosuspend_minutes = autosuspend_mins
+            else:
+                cluster_manager.autosuspend_minutes = min(
+                    DEFAULT_AUTOSUSPEND_MINS, int(command_timeout / 60) + 10
+                )
 
             cluster_manager.start_cluster(timeout=cluster_timeout)
 
@@ -188,8 +194,6 @@ def run_release_test(
 
         # Upload files
         command_runner.prepare_remote_env()
-
-        command_timeout = test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT)
 
         wait_for_nodes = test["run"].get("wait_for_nodes", None)
         if wait_for_nodes:
@@ -230,7 +234,8 @@ def run_release_test(
         try:
             command_results = command_runner.fetch_results()
         except Exception as e:
-            logger.error(f"Could not fetch results for test command: {e}")
+            logger.error("Could not fetch results for test command")
+            logger.exception(e)
             command_results = {}
 
         # Postprocess result:
@@ -245,6 +250,7 @@ def run_release_test(
         result.status = "finished"
 
     except Exception as e:
+        logger.exception(e)
         pipeline_exception = e
 
     try:

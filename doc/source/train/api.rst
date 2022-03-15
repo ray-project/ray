@@ -46,6 +46,21 @@ HorovodConfig
 
 .. autoclass:: ray.train.horovod.HorovodConfig
 
+.. _train-api-backend-interfaces:
+
+Backend interfaces (for developers only)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Backend
++++++++
+
+.. autoclass:: ray.train.backend.Backend
+
+BackendConfig
++++++++++++++
+
+.. autoclass:: ray.train.backend.BackendConfig
+
 
 Callbacks
 ---------
@@ -130,6 +145,8 @@ CheckpointStrategy
 
 .. autoclass:: ray.train.CheckpointStrategy
 
+.. _train-api-func-utils:
+
 Training Function Utilities
 ---------------------------
 
@@ -147,6 +164,11 @@ train.save_checkpoint
 ~~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction::  ray.train.save_checkpoint
+
+train.get_dataset_shard
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction::  ray.train.get_dataset_shard
 
 train.world_rank
 ~~~~~~~~~~~~~~~~
@@ -182,6 +204,11 @@ train.torch.get_device
 ~~~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.train.torch.get_device
+
+train.torch.enable_reproducibility
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.torch.enable_reproducibility
 
 .. _train-api-torch-worker-profiler:
 

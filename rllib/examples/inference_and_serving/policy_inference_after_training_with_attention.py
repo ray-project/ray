@@ -35,13 +35,13 @@ parser.add_argument(
     "--prev-n-actions",
     type=int,
     default=0,
-    help="Feed n most recent actions to the attention net as part of its " "input.",
+    help="Feed n most recent actions to the attention net as part of its input.",
 )
 parser.add_argument(
     "--prev-n-rewards",
     type=int,
     default=0,
-    help="Feed n most recent rewards to the attention net as part of its " "input.",
+    help="Feed n most recent rewards to the attention net as part of its input.",
 )
 parser.add_argument(
     "--stop-iters",

@@ -698,9 +698,7 @@ class DynamicTFPolicy(TFPolicy):
             )
             self._input_dict[key] = get_placeholder(value=value, name=key)
             if key not in self.view_requirements:
-                logger.info(
-                    "Adding extra-action-fetch `{}` to " "view-reqs.".format(key)
-                )
+                logger.info("Adding extra-action-fetch `{}` to view-reqs.".format(key))
                 self.view_requirements[key] = ViewRequirement(
                     space=gym.spaces.Box(
                         -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype.name

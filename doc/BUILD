@@ -53,6 +53,14 @@ py_test(
 )
 
 py_test(
+    name = "datasets_train",
+    size = "medium",
+    srcs = ["source/ray-core/_examples/datasets_train/datasets_train.py"],
+    tags = ["exclusive", "team:ml", "py37", "datasets_train"],
+    args = ["--smoke-test", "--num-workers=2", "--use-gpu"]
+)
+
+py_test(
     name = "plot_hyperparameter",
     size = "small",
     main = "test_myst_doc.py",
@@ -102,6 +110,7 @@ py_test(
     tags = ["exclusive", "pytorch", "team:ml"]
 )
 
+# Ray Serve
 py_test(
     name = "doc_code_metrics_example",
     size = "small",
@@ -115,6 +124,14 @@ py_test(
     size = "small",
     main = "source/ray-core/doc_code/runtime_env_example.py",
     srcs = ["source/ray-core/doc_code/runtime_env_example.py"],
+    tags = ["exclusive", "post_wheel_build", "team:serve"]
+)
+
+py_test(
+    name = "doc_code_create_deployment_example",
+    size = "small",
+    main = "create_deployment.py",
+    srcs = ["//doc/source/serve/doc_code:serve_doc_code"],
     tags = ["exclusive", "post_wheel_build", "team:serve"]
 )
 

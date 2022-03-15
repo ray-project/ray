@@ -8,7 +8,6 @@ import time
 from collections import deque
 from typing import Optional, Dict, Any
 
-import ray
 from ray_release.anyscale_util import LAST_LOGS_LENGTH
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
@@ -22,7 +21,6 @@ from ray_release.exception import (
 )
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.logger import logger
-from ray_release.util import run_with_timeout
 from ray_release.command_runner.command_runner import CommandRunner
 
 
@@ -83,35 +81,42 @@ class ClientRunner(CommandRunner):
             raise LocalEnvSetupError(f"Error setting up local environment: {e}") from e
 
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
+        # Local import of Ray to avoid premature import (e.g. when local
+        # Ray is updated in client tests)
+        import ray
+
         ray_address = self.cluster_manager.get_cluster_address()
-        if ray.is_initialized:
-            ray.shutdown()
-
-        def _wait(should_stop: threading.Event):
-            ray.init(address=ray_address)
-            while not should_stop.is_set() and len(ray.nodes()) < num_nodes:
-                time.sleep(1)
-            ray.shutdown()
-
-        def _status_fn(time_elapsed: float):
-            logger.info(
-                f"Waiting for nodes to come up: "
-                f"{len(ray.nodes())}/{num_nodes} "
-                f"({time_elapsed:.2f} seconds, timeout: {timeout} seconds)."
-            )
-
-        def _error_fn():
-            raise ClusterNodesWaitTimeout(
-                f"Only {len(ray.nodes())}/{num_nodes} are up after "
-                f"{timeout} seconds."
-            )
-
         try:
-            run_with_timeout(
-                _wait, timeout=timeout, status_fn=_status_fn, error_fn=_error_fn
-            )
-        except ClusterNodesWaitTimeout as e:
-            raise e
+            if ray.is_initialized:
+                ray.shutdown()
+
+            ray.init(address=ray_address)
+
+            start_time = time.monotonic()
+            timeout_at = start_time + timeout
+            next_status = start_time + 30
+            nodes_up = len(ray.nodes())
+            while nodes_up < num_nodes:
+                now = time.monotonic()
+                if now >= timeout_at:
+                    raise ClusterNodesWaitTimeout(
+                        f"Only {len(ray.nodes())}/{num_nodes} are up after "
+                        f"{timeout} seconds."
+                    )
+
+                if now >= next_status:
+                    logger.info(
+                        f"Waiting for nodes to come up: "
+                        f"{len(ray.nodes())}/{num_nodes} "
+                        f"({now - start_time:.2f} seconds, "
+                        f"timeout: {timeout} seconds)."
+                    )
+                    next_status += 30
+
+                time.sleep(1)
+                nodes_up = len(ray.nodes())
+
+            ray.shutdown()
         except Exception as e:
             raise ClusterStartupError(f"Exception when waiting for nodes: {e}") from e
 
@@ -146,12 +151,24 @@ class ClientRunner(CommandRunner):
             }
         )
 
-        def _kill_after(proc: subprocess.Popen, timeout: int = 30):
+        kill_event = threading.Event()
+
+        def _kill_after(
+            proc: subprocess.Popen,
+            timeout: int = 30,
+            kill_event: Optional[threading.Event] = None,
+        ):
             timeout_at = time.monotonic() + timeout
             while time.monotonic() < timeout_at:
                 if proc.poll() is not None:
                     return
                 time.sleep(1)
+            logger.info(
+                f"Client command timed out after {timeout} seconds, "
+                f"killing subprocess."
+            )
+            if kill_event:
+                kill_event.set()
             proc.terminate()
 
         start_time = time.monotonic()
@@ -164,7 +181,9 @@ class ClientRunner(CommandRunner):
             text=True,
         )
 
-        kill_thread = threading.Thread(target=_kill_after, args=(proc, timeout))
+        kill_thread = threading.Thread(
+            target=_kill_after, args=(proc, timeout, kill_event)
+        )
         kill_thread.start()
 
         proc.stdout.reconfigure(line_buffering=True)
@@ -179,7 +198,7 @@ class ClientRunner(CommandRunner):
         self.last_logs = "\n".join(logs)
 
         return_code = proc.poll()
-        if return_code == -15 or return_code == 15:
+        if return_code == -15 or return_code == 15 or kill_event.is_set():
             # Process has been terminated
             raise CommandTimeout(f"Cluster command timed out after {timeout} seconds.")
         if return_code != 0:
