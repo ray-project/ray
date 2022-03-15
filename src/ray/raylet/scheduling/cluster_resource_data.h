@@ -429,6 +429,7 @@ class TaskResourceInstances {
 class NodeResources {
  public:
   NodeResources() {}
+  NodeResources(const ResourceRequest &request) : total(request), available(request) {}
   NodeResources(const NodeResources &other)
       : total(other.total),
         available(other.available),
