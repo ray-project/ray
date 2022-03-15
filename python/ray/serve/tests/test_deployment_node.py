@@ -3,8 +3,6 @@ import pytest
 import ray
 from ray import serve
 from ray.experimental.dag.input_node import InputNode
-from ray.serve.api import Deployment, DeploymentNode, DeploymentMethodNode
-from ray.serve.config import DeploymentConfig
 from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
 
 
@@ -38,18 +36,18 @@ async def test_simple_deployment_async(serve_instance):
 
     User should NOT directly create instances of Deployment or DeploymentNode.
     """
-    dag = Actor.options(name="test").bind(
+    dag = Actor.options(name="test", max_concurrent_queries=3).bind(
         10, other_args_to_resolve={USE_SYNC_HANDLE_KEY: False}
     )
-    dag.get_deployment().deploy()
+    deployment = dag.get_deployment()
+    assert deployment.max_concurrent_queries == 3
+    deployment.deploy()
     handle = dag.get_deployment_handle()
 
     assert ray.get(await dag.get.bind().execute()) == 10
     ray.get(await dag.inc.bind().execute())
     assert ray.get(await dag.get.bind().execute()) == 11
-    assert ray.get(await dag.get.bind().execute()) == ray.get(
-        await handle.get.remote()
-    )
+    assert ray.get(await dag.get.bind().execute()) == ray.get(await handle.get.remote())
 
 
 def test_simple_deployment_sync(serve_instance):
@@ -57,10 +55,12 @@ def test_simple_deployment_sync(serve_instance):
 
     User should NOT directly create instances of Deployment or DeploymentNode.
     """
-    dag = SyncActor.options(name="test").bind(
+    dag = SyncActor.options(name="test", max_concurrent_queries=3).bind(
         10, other_args_to_resolve={USE_SYNC_HANDLE_KEY: True}
     )
-    dag.get_deployment().deploy()
+    deployment = dag.get_deployment()
+    assert deployment.max_concurrent_queries == 3
+    deployment.deploy()
     handle = dag.get_deployment_handle()
 
     assert ray.get(dag.get.bind().execute()) == 10
@@ -99,13 +99,17 @@ def test_invalid_use_sync_handle():
         ValueError,
         match=f"{USE_SYNC_HANDLE_KEY} should only be set with a boolean value",
     ):
-        _ = Actor.options(name="test").bind(other_args_to_resolve={USE_SYNC_HANDLE_KEY: {"options_a": "hii"}})
+        _ = Actor.options(name="test").bind(
+            other_args_to_resolve={USE_SYNC_HANDLE_KEY: {"options_a": "hii"}}
+        )
 
     with pytest.raises(
         ValueError,
         match=f"{USE_SYNC_HANDLE_KEY} should only be set with a boolean value",
     ):
-        _ = Actor.options(name="test").bind(other_args_to_resolve={USE_SYNC_HANDLE_KEY: None})
+        _ = Actor.options(name="test").bind(
+            other_args_to_resolve={USE_SYNC_HANDLE_KEY: None}
+        )
 
 
 if __name__ == "__main__":
