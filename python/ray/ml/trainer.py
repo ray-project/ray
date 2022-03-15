@@ -318,6 +318,6 @@ class Trainer(abc.ABC):
                 scaling_config_dataclass = ScalingConfigDataClass(
                     **updated_scaling_config
                 )
-                return scaling_config_dataclass.get_placement_group_factory()
+                return scaling_config_dataclass.as_placement_group_factory()
 
         return TrainTrainable

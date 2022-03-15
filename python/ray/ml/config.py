@@ -81,7 +81,7 @@ class ScalingConfigDataClass:
             if k not in ["CPU", "GPU"]
         }
 
-    def get_placement_group_factory(self) -> PlacementGroupFactory:
+    def as_placement_group_factory(self) -> PlacementGroupFactory:
         """Returns a PlacementGroupFactory to specify resources for Tune."""
         trainer_bundle = [{"CPU": 0}]
         worker_resources = {
