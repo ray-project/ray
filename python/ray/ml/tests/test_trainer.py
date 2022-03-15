@@ -39,12 +39,6 @@ class DummyTrainer(Trainer):
         self.train_loop(self)
 
 
-# postprocess_checkpoint
-# overriding args
-# overriding custom args
-# test setup
-
-
 def test_trainer_fit(ray_start_4_cpus):
     def training_loop(self):
         tune.report(my_metric=1)
@@ -169,6 +163,18 @@ def test_arg_override():
     }
 
     tune.run(trainer.as_trainable(), config=new_config)
+
+
+def test_setup():
+    def check_setup(self):
+        assert self._has_setup
+
+    class DummyTrainerWithSetup(DummyTrainer):
+        def setup(self):
+            self._has_setup = True
+
+    trainer = DummyTrainerWithSetup(check_setup)
+    trainer.fit()
 
 
 if __name__ == "__main__":

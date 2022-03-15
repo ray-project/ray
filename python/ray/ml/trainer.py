@@ -34,7 +34,7 @@ class TrainingFailedError(RuntimeError):
 
 
 @DeveloperAPI
-class Trainer(abc.ABC, object):
+class Trainer(abc.ABC):
     """Defines interface for distributed training on Ray.
 
     Note: The base ``Trainer`` class cannot be instantiated directly. Only
@@ -297,8 +297,6 @@ class Trainer(abc.ABC, object):
             trainer.setup()
             trainer.preprocess_datasets()
             trainer.training_loop()
-
-            # TODO: Postprocess checkpoint.
 
         trainable_cls = wrap_function(train_func)
 
