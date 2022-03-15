@@ -279,7 +279,7 @@ if setup_spec.type == SetupType.RAY:
         "frozenlist",
         "requests",
         "virtualenv",  # For pip runtime env.
-        "async-timeout", # For runtime_env_agent set timeout.
+        "async-timeout",  # For runtime_env_agent set timeout.
     ]
 
 
