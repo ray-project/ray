@@ -115,37 +115,13 @@ inline std::ostream &operator<<(std::ostream &out, FixedPoint const &ru1) {
 }
 
 /// Helper function to compare two vectors with FixedPoint values.
-bool FixedPointEqualVectors(const std::vector<FixedPoint> &v1, const std::vector<FixedPoint> &v2) {
-  return (v1.size() == v2.size() && std::equal(v1.begin(), v1.end(), v2.begin()));
-}
+bool FixedPointEqualVectors(const std::vector<FixedPoint> &v1, const std::vector<FixedPoint> &v2);
 
 /// Convert a vector of doubles to a vector of resource units.
-std::vector<FixedPoint> VectorDoubleToVectorFixedPoint(const std::vector<double> &vector) {
-  std::vector<FixedPoint> vector_fp(vector.size());
-  for (size_t i = 0; i < vector.size(); i++) {
-    vector_fp[i] = vector[i];
-  }
-  return vector_fp;
-}
+std::vector<FixedPoint> VectorDoubleToVectorFixedPoint(const std::vector<double> &vector);
 
 /// Convert a vector of resource units to a vector of doubles.
-std::vector<double> VectorFixedPointToVectorDouble(const std::vector<FixedPoint> &vector_fp) {
-  std::vector<double> vector(vector_fp.size());
-  for (size_t i = 0; i < vector_fp.size(); i++) {
-    vector[i] = FixedPoint(vector_fp[i]).Double();
-  }
-  return vector;
-}
+std::vector<double> VectorFixedPointToVectorDouble(const std::vector<FixedPoint> &vector_fp);
 
-std::string FixedPointVectorToString(const std::vector<FixedPoint> &vector) {
-  std::stringstream buffer;
-  buffer << "[";
-  for (size_t i = 0; i < vector.size(); i++) {
-    buffer << vector[i];
-    if (i < vector.size() - 1) {
-      buffer << ", ";
-    }
-  }
-  buffer << "]";
-  return buffer.str();
-}
+/// Convert a vector of FixedPoint to string.
+std::string FixedPointVectorToString(const std::vector<FixedPoint> &vector);

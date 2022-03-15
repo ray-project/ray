@@ -273,17 +273,10 @@ SchedulingResult GcsResourceScheduler::StrictPackSchedule(
   // Aggregate required resources.
   ResourceRequest aggregated_resource_request;
   for (const auto &resource_request : required_resources_list) {
-    if (aggregated_resource_request.predefined_resources.size() <
-        resource_request.predefined_resources.size()) {
-      aggregated_resource_request.predefined_resources.resize(
-          resource_request.predefined_resources.size());
-    }
-    for (size_t i = 0; i < resource_request.predefined_resources.size(); ++i) {
-      aggregated_resource_request.predefined_resources[i] +=
-          resource_request.predefined_resources[i];
-    }
-    for (const auto &entry : resource_request.custom_resources) {
-      aggregated_resource_request.custom_resources[entry.first] += entry.second;
+    for (auto resource_id : resource_request.ResourceIds()) {
+      auto value = aggregated_resource_request.GetOrZero(resource_id) +
+                   resource_request.Get(resource_id);
+      aggregated_resource_request.Set(resource_id, value);
     }
   }
 
