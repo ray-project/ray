@@ -40,9 +40,9 @@ void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
     RAY_LOG(INFO) << "HandleRegisterAgent, ip: " << agent_ip_address_
                   << ", port: " << agent_port_ << ", pid: " << agent_pid_;
   } else {
-    RAY_LOG(WARNING) << "The grpc port of agent is invalid (be 0), ip: "
+    RAY_LOG(WARNING) << "The GRPC port of the Ray agent is invalid (0), ip: "
                      << agent_ip_address_ << ", pid: " << agent_pid_
-                     << ". Disable the agent client in raylet.";
+                     << ". The agent client in the raylet has been disabled.";
     disable_agent_client_ = true;
   }
   reply->set_status(rpc::AGENT_RPC_STATUS_OK);
@@ -92,8 +92,8 @@ void AgentManager::StartAgent() {
         [this, child]() mutable {
           if (agent_pid_ != child.GetId()) {
             RAY_LOG(WARNING) << "Agent process with pid " << child.GetId()
-                             << " has not registered, restart it. ip "
-                             << agent_ip_address_ << ". pid " << agent_pid_;
+                             << " has not registered. ip " << agent_ip_address_
+                             << ", pid " << agent_pid_;
             child.Kill();
           }
         },
@@ -104,10 +104,11 @@ void AgentManager::StartAgent() {
     RAY_LOG(WARNING) << "Agent process with pid " << child.GetId()
                      << " exit, return value " << exit_code << ". ip "
                      << agent_ip_address_ << ". pid " << agent_pid_;
-    RAY_LOG(ERROR) << "Raylet exits immediately because the ray agent has failed. "
-                      "Raylet fate shares with the agent. It can happen because the "
-                      "Ray agent is unexpectedly killed or failed. See "
-                      "`dashboard_agent.log` for the root cause.";
+    RAY_LOG(ERROR)
+        << "The raylet exited immediately because the Ray agent failed. "
+           "The raylet fate shares with the agent. This can happen because the "
+           "Ray agent was unexpectedly killed or failed. See "
+           "`dashboard_agent.log` for the root cause.";
     QuickExit();
   });
   monitor_thread.detach();
@@ -145,10 +146,11 @@ void AgentManager::CreateRuntimeEnv(
     if (disable_agent_client_) {
       std::stringstream str_stream;
       str_stream
-          << "Runtime environment " << serialized_runtime_env
-          << " cannot be created on this node because the agent client is disabled. You "
-             "see this error message maybe because the grpc port of agent came into "
-             "conflict. Please see `dashboard_agent.log` to get more details.";
+          << "Failed to create runtime environment " << serialized_runtime_env
+          << " because the Ray agent couldn't be started due to the port conflict. See "
+             "`dashboard_agent.log` for more details. To solve the problem, start Ray "
+             "with a hard-coded agent port. `ray start --dashboard-agent-grpc-port "
+             "[port]` and make sure the port is not used by other processes.";
       const auto &error_message = str_stream.str();
       RAY_LOG(ERROR) << error_message;
       delay_executor_(
@@ -216,17 +218,20 @@ void AgentManager::DeleteURIs(const std::vector<std::string> &uris,
                               DeleteURIsCallback callback) {
   if (disable_agent_client_) {
     RAY_LOG(ERROR)
-        << "Failed to delete runtime env URIs because the agent client is disabled. You "
-           "see this error message maybe because the grpc port of agent came into "
-           "conflict. Please see `dashboard_agent.log` to get more details.";
-    delay_executor_([callback] { callback(false); }, 0);
+        << "Failed to delete runtime environment URI because the Ray agent couldn't be "
+           "started due to the port conflict. See `dashboard_agent.log` for more "
+           "details. To solve the problem, start Ray with a hard-coded agent port. `ray "
+           "start --dashboard-agent-grpc-port [port]` and make sure the port is not used "
+           "by other processes.";
+    delay_executor_([callback = std::move(callback)] { callback(false); }, 0);
     return;
   }
   if (runtime_env_agent_client_ == nullptr) {
     RAY_LOG(INFO)
         << "Runtime env agent is not registered yet. Will retry DeleteURIs later.";
-    delay_executor_([this, uris, callback] { DeleteURIs(uris, callback); },
-                    RayConfig::instance().agent_manager_retry_interval_ms());
+    delay_executor_(
+        [this, uris, callback = std::move(callback)] { DeleteURIs(uris, callback); },
+        RayConfig::instance().agent_manager_retry_interval_ms());
     return;
   }
   rpc::DeleteURIsRequest request;
@@ -234,7 +239,8 @@ void AgentManager::DeleteURIs(const std::vector<std::string> &uris,
     request.add_uris(uri);
   }
   runtime_env_agent_client_->DeleteURIs(
-      request, [callback](Status status, const rpc::DeleteURIsReply &reply) {
+      request,
+      [callback = std::move(callback)](Status status, const rpc::DeleteURIsReply &reply) {
         if (status.ok()) {
           if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
             callback(true);
