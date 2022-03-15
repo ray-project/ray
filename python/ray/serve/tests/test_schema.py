@@ -624,6 +624,8 @@ def decorated_f(*args):
 
 
 def test_use_deployment_import_path():
+    """Ensure deployment func_or_class becomes import path when schematized."""
+
     d = schema_to_deployment(deployment_to_schema(decorated_f))
 
     assert isinstance(d.func_or_class, str)
