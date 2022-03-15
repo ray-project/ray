@@ -641,8 +641,7 @@ void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job
   all_jobs_[job_id] = job_config;
   if (NeedToEagerInstallRuntimeEnv(job_config)) {
     auto const &runtime_env = job_config.runtime_env_info().serialized_runtime_env();
-    auto const &runtime_env_config =
-        job_config.runtime_env_info().runtime_env_config();
+    auto const &runtime_env_config = job_config.runtime_env_info().runtime_env_config();
     // NOTE: Technically `HandleJobStarted` isn't idempotent because we'll
     // increment the ref count multiple times. This is fine because
     // `HandleJobFinished` will also decrement the ref count multiple times.
