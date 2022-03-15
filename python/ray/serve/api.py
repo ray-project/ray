@@ -13,7 +13,6 @@ from typing import (
     Callable,
     Dict,
     Optional,
-    TextIO,
     Tuple,
     Type,
     Union,
@@ -49,14 +48,11 @@ from ray.serve.constants import (
     SERVE_CONTROLLER_NAME,
     MAX_CACHED_HANDLES,
     CONTROLLER_MAX_CONCURRENCY,
-    DEFAULT_HTTP_HOST,
-    DEFAULT_HTTP_PORT,
 )
 from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 from ray.serve.controller import ServeController
 from ray.serve.exceptions import RayServeException
-from ray.experimental.dag import DAGNode
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
 from ray.serve.utils import (
@@ -923,41 +919,6 @@ class DAGHandle:
         raise NotImplementedError()
 
 
-@PublicAPI(stability="alpha")
-class DeploymentMethodNode(DAGNode):
-    """Represents a method call on a bound deployment node.
-
-    These method calls can be composed into an optimized call DAG and passed
-    to a "driver" deployment that will orchestrate the calls at runtime.
-
-    This class cannot be called directly. Instead, when it is bound to a
-    deployment node, it will be resolved to a DeployedCallGraph at runtime.
-    """
-
-    def __init__(self):
-        raise NotImplementedError()
-
-
-@PublicAPI(stability="alpha")
-class DeploymentNode(DAGNode):
-    """Represents a deployment with its bound config options and arguments.
-
-    The bound deployment can be run, deployed, or built to a production config
-    using serve.run, serve.deploy, and serve.build, respectively.
-
-    A bound deployment can be passed as an argument to other bound deployments
-    to build a multi-deployment application. When the application is deployed, the
-    bound deployments passed into a constructor will be converted to
-    RayServeHandles that can be used to send requests.
-
-    Calling deployment.method.bind() will return a DeploymentMethodNode
-    that can be used to compose an optimized call graph.
-    """
-
-    def __init__(self):
-        raise NotImplementedError()
-
-
 @PublicAPI
 class Deployment:
     def __init__(
@@ -1119,15 +1080,6 @@ class Deployment:
             "Use `deployment.deploy() instead.`"
         )
 
-    @PublicAPI(stability="alpha")
-    def bind(self, *args, **kwargs) -> DeploymentNode:
-        """Bind the provided arguments and return a DeploymentNode.
-
-        The returned bound deployment can be deployed or bound to other
-        deployments to create a multi-deployment application.
-        """
-        raise NotImplementedError()
-
     @PublicAPI
     def deploy(self, *init_args, _blocking=True, **init_kwargs):
         """Deploy or update this deployment.
@@ -1264,11 +1216,14 @@ class Deployment:
             _internal=True,
         )
 
-    @PublicAPI
+    @PublicAPI(stability="alpha")
     def bind(self, *args, other_args_to_resolve=None, **kwargs):
-        """Construct a node in DAG using current deployment.
-        Args and kwargs in .bind() are used to initialize deployment class in
-        each serve replica.
+        """Bind the provided arguments and return a DeploymentNode.
+
+        The returned bound deployment can be deployed or bound to other
+        deployments to create a multi-deployment application. Args and kwargs
+        used in bind will be applied to the constructor of deployment.
+
         Examples:
             >>> @serve.deployment
             ... class MyDeployment:
@@ -1561,8 +1516,21 @@ def get_deployment_statuses() -> Dict[str, DeploymentStatusInfo]:
     return internal_get_global_client().get_deployment_statuses()
 
 
+@PublicAPI(stability="alpha")
 class DeploymentNode(DAGNode):
-    """Represents a deployment node in a DAG authored Ray DAG API."""
+    """Represents a deployment with its bound config options and arguments.
+
+    The bound deployment can be run, deployed, or built to a production config
+    using serve.run, serve.deploy, and serve.build, respectively.
+
+    A bound deployment can be passed as an argument to other bound deployments
+    to build a multi-deployment application. When the application is deployed, the
+    bound deployments passed into a constructor will be converted to
+    RayServeHandles that can be used to send requests.
+
+    Calling deployment.method.bind() will return a DeploymentMethodNode
+    that can be used to compose an optimized call graph.
+    """
 
     def __init__(
         self,
@@ -1794,8 +1762,16 @@ class UnboundDeploymentMethodNode(DAGNode):
         return self
 
 
+@PublicAPI(stability="alpha")
 class DeploymentMethodNode(DAGNode):
-    """Represents a deployment method invocation of a DeploymentNode in DAG."""
+    """Represents a method call on a bound deployment node.
+
+    These method calls can be composed into an optimized call DAG and passed
+    to a "driver" deployment that will orchestrate the calls at runtime.
+
+    This class cannot be called directly. Instead, when it is bound to a
+    deployment node, it will be resolved to a DeployedCallGraph at runtime.
+    """
 
     def __init__(
         self,
