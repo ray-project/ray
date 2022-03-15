@@ -3,7 +3,6 @@ import inspect
 import logging
 from typing import Dict, Union, Callable, Optional, TYPE_CHECKING, Type
 
-import ray
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.result import Result
@@ -190,37 +189,20 @@ class Trainer(abc.ABC):
         # Evaluate all datasets.
         self.datasets = {k: d() if callable(d) else d for k, d in self.datasets.items()}
 
-        # Transform all datasets concurrently in remote tasks.
-        transform_task_dict = {}
-
-        transform_task = ray.remote(
-            lambda preprocessor, dataset: preprocessor.transform(dataset)
-        )
-
         if self.preprocessor:
             train_dataset = self.datasets.get(TRAIN_DATASET_KEY, None)
             if train_dataset and not self.preprocessor.check_is_fitted():
                 self.preprocessor.fit(train_dataset)
 
+            # Execute dataset transformations serially for now.
+            # Cannot execute them in remote tasks due to dataset ownership model:
+            # if datasets are created on a remote node, then if that node fails,
+            # we cannot recover the dataset.
+            new_datasets = {}
             for key, dataset in self.datasets.items():
-                transform_task_dict[key] = transform_task.remote(
-                    self.preprocessor, dataset
-                )
+                new_datasets[key] = self.preprocessor.transform(dataset)
 
-            ray.get(list(transform_task_dict.values()))
-
-            for key, transformed_dataset in transform_task_dict.items():
-                self.datasets[key] = ray.get(transformed_dataset)
-
-            # # Execute dataset transformations serially for now.
-            # # Cannot execute them in remote tasks due to dataset ownership model:
-            # # if datasets are created on a remote node, then if that node fails,
-            # # we cannot recover the dataset.
-            # new_datasets = {}
-            # for key, dataset in self.datasets.items():
-            #     new_datasets[key] = self.preprocessor.transform(dataset)
-            #
-            # self.datasets = new_datasets
+            self.datasets = new_datasets
 
     @abc.abstractmethod
     def training_loop(self) -> None:

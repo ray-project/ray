@@ -80,7 +80,7 @@ class ScalingConfigDataClass:
 
     def as_placement_group_factory(self) -> PlacementGroupFactory:
         """Returns a PlacementGroupFactory to specify resources for Tune."""
-        trainer_bundle = [{"CPU": 0}]
+        trainer_bundle = [{"CPU": 1}]
         worker_resources = {
             "CPU": self.num_cpus_per_worker,
             "GPU": self.num_gpus_per_worker,
@@ -90,7 +90,7 @@ class ScalingConfigDataClass:
         )
         worker_bundles = [
             {**worker_resources, **worker_resources_extra}
-            for _ in range(self.num_workers)
+            for _ in range(self.num_workers if self.num_workers else 0)
         ]
         bundles = trainer_bundle + worker_bundles
         return PlacementGroupFactory(bundles, strategy=self.placement_strategy)
