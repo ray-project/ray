@@ -19,7 +19,6 @@ def execute_dataset(config_dict: dict):
             _list = v if isinstance(v, list) else v.categories
             if len(_list) == 0:
                 return
-            assert all(isinstance(_item, type(_list[0])) for _item in _list)
             if isinstance(_list[0], Dataset):
                 if isinstance(v, list):
                     config_dict[k] = [_item.fully_executed() for _item in _list]
