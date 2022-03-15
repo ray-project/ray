@@ -1,6 +1,9 @@
+import json
+import os
 import sys
 import time
 import unittest
+from typing import List
 
 import ray
 from ray import tune
@@ -21,7 +24,7 @@ class MultiNodeSyncTest(unittest.TestCase):
 
     def tearDown(self):
         self.cluster.stop()
-        self.cluster.teardown()
+        self.cluster.teardown(keep_dir=True)
 
     def testClusterAutoscaling(self):
         """Sanity check that multinode tests with autoscaling are working"""
@@ -160,6 +163,126 @@ class MultiNodeSyncTest(unittest.TestCase):
             _remote=False,
             local_dir="/tmp/ray_results/",
         )
+
+    def testCheckpointSync(self):
+        """Test that checkpoints are correctly synced."""
+
+        self.cluster.update_config(
+            {
+                "provider": {"head_resources": {"CPU": 4, "GPU": 0}},
+                "available_node_types": {
+                    "ray.worker.cpu": {
+                        "resources": {"CPU": 4},
+                        "min_workers": 2,
+                        "max_workers": 2,
+                    },
+                    "ray.worker.gpu": {
+                        "min_workers": 0,
+                        "max_workers": 0,  # No GPU nodes
+                    },
+                },
+            }
+        )
+        self.cluster.start()
+        self.cluster.connect(client=True, timeout=120)
+        self.cluster.wait_for_resources({"CPU": 12})
+
+        def train(config, checkpoint_dir=None):
+            start = 0
+            if checkpoint_dir:
+                with open(os.path.join(checkpoint_dir, "checkpoint.json"), "rt") as fp:
+                    state = json.load(fp)
+                    start = state["step"] + 1
+
+            for i in range(start, start + 10):
+                with tune.checkpoint_dir(i) as d:
+                    with open(os.path.join(d, "checkpoint.json"), "wt") as fp:
+                        json.dump({"step": i}, fp)
+                tune.report(step=i)
+
+            time.sleep(6)
+
+            if start == 0:
+                raise RuntimeError("First time we fail.")
+
+        analysis = tune.run(
+            train,
+            name="checkpoint_test",
+            num_samples=3,
+            resources_per_trial={"cpu": 4},
+            max_failures=0,
+            local_dir="/cluster/node",
+            trial_name_creator=lambda trial: trial.trial_id,
+            trial_dirname_creator=lambda trial: trial.trial_id,
+            keep_checkpoints_num=2,
+            raise_on_failed_trial=False,
+        )
+
+        nodes_dir = os.path.join(self.cluster.cluster_dir, "nodes")
+
+        def get_trial_path(ip_to_trial_dir, node) -> str:
+            node_id = node["NodeID"]
+            node_ip = node["NodeManagerAddress"]
+            node_trial_id = ip_to_trial_dir[node_ip]
+
+            node_dir = os.path.join(nodes_dir, node_id)
+
+            node_trial_dir = os.path.join(node_dir, "checkpoint_test", node_trial_id)
+            return node_trial_dir
+
+        def get_checkpoint_dirs(node_trial_path: str) -> List[str]:
+            return [
+                path
+                for path in os.listdir(node_trial_path)
+                if path.startswith("checkpoint_")
+            ]
+
+        ip_to_trial_dir = {
+            trial.last_result["node_ip"]: trial.trial_id for trial in analysis.trials
+        }
+
+        for node in ray.nodes():
+            node_trial_dir = get_trial_path(ip_to_trial_dir, node)
+            checkpoint_dirs = get_checkpoint_dirs(node_trial_dir)
+
+            self.assertSequenceEqual(
+                sorted(checkpoint_dirs), ["checkpoint_000008", "checkpoint_000009"]
+            )
+
+        class UpdateMaxFailures(Callback):
+            def __init__(self, num_failures: int = 0):
+                self._num_failures = num_failures
+                self._initialized = False
+
+            def on_step_begin(self, iteration, trials, **info):
+                if not self._initialized:
+                    for trial in trials:
+                        trial.max_failures = self._num_failures
+                    self._initialized = False
+
+        analysis = tune.run(
+            train,
+            name="checkpoint_test",
+            resources_per_trial={"cpu": 4},
+            max_failures=0,
+            local_dir="/cluster/node",
+            trial_name_creator=lambda trial: trial.trial_id,
+            trial_dirname_creator=lambda trial: trial.trial_id,
+            keep_checkpoints_num=2,
+            resume="ERRORED_ONLY",
+            callbacks=[UpdateMaxFailures(num_failures=1)],
+            fail_fast=True,
+        )
+
+        ip_to_trial_dir = {
+            trial.last_result["node_ip"]: trial.trial_id for trial in analysis.trials
+        }
+
+        for node in ray.nodes():
+            node_trial_dir = get_trial_path(ip_to_trial_dir, node)
+            checkpoint_dirs = get_checkpoint_dirs(node_trial_dir)
+
+            print(node_trial_dir, checkpoint_dirs)
 
 
 if __name__ == "__main__":

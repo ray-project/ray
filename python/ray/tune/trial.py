@@ -344,6 +344,7 @@ class Trial:
         self.error_file = None
         self.error_msg = None
         self.trial_name_creator = trial_name_creator
+        self.trial_dirname_creator = trial_dirname_creator
         self.custom_trial_name = None
         self.custom_dirname = None
 
@@ -387,7 +388,7 @@ class Trial:
             self.custom_dirname = trial_dirname_creator(self)
             if os.path.sep in self.custom_dirname:
                 raise ValueError(
-                    "Trial dirname must not contain '/'. " "Got {self.custom_dirname}"
+                    "Trial dirname must not contain '/'. Got {self.custom_dirname}"
                 )
 
         self._state_json = None
@@ -497,7 +498,7 @@ class Trial:
         return Trial(
             self.trainable_name,
             config=self.config,
-            trial_id=None,
+            trial_id=self.trial_id,
             local_dir=self.local_dir,
             evaluated_params=self.evaluated_params,
             experiment_tag=self.experiment_tag,
@@ -513,6 +514,7 @@ class Trial:
             export_formats=self.export_formats,
             restore_path=self.restore_path,
             trial_name_creator=self.trial_name_creator,
+            trial_dirname_creator=self.trial_dirname_creator,
             log_to_file=self.log_to_file,
             max_failures=self.max_failures,
         )
