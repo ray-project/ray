@@ -368,7 +368,7 @@ More Information
 - `Tutorial`_
 - `Blog`_
 - `Ray 1.0 Architecture whitepaper`_ **(new)**
-- `Exoshuffle Paper`_ **(new)**
+- `Exoshuffle: large-scale data shuffle in Ray`_ **(new)**
 - `RLlib paper`_
 - `RLlib flow paper`_
 - `Tune paper`_
@@ -382,7 +382,7 @@ More Information
 .. _`Tutorial`: https://github.com/ray-project/tutorial
 .. _`Blog`: https://medium.com/distributed-computing-with-ray
 .. _`Ray 1.0 Architecture whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview
-.. _`Exoshuffle paper`: https://arxiv.org/abs/2203.05072
+.. _`Exoshuffle: large-scale data shuffle in Ray`: https://arxiv.org/abs/2203.05072
 .. _`Ray paper`: https://arxiv.org/abs/1712.05889
 .. _`Ray HotOS paper`: https://arxiv.org/abs/1703.03924
 .. _`RLlib paper`: https://arxiv.org/abs/1712.09381
