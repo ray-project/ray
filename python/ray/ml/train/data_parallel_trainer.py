@@ -201,19 +201,6 @@ class DataParallelTrainer(Trainer):
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
-        if "num_workers" not in scaling_config:
-            raise ValueError("You must specify the 'num_workers' in scaling_config.")
-
-        if scaling_config["num_worker"] < 0:
-            raise ValueError("'num_workers' must be a non-negative integer.")
-
-        num_params = len(inspect.signature(train_loop_per_worker).parameters)
-        if num_params > 1:
-            raise ValueError(
-                f"train_loop_per_worker should take in 0 or 1 arguments, "
-                f"but it accepts {num_params} arguments instead."
-            )
-
         if not ray.is_initialized():
             ray.init()
 
@@ -238,6 +225,19 @@ class DataParallelTrainer(Trainer):
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
+
+        if "num_workers" not in self.scaling_config:
+            raise ValueError("You must specify the 'num_workers' in scaling_config.")
+
+        if self.scaling_config["num_workers"] < 0:
+            raise ValueError("'num_workers' must be a non-negative integer.")
+
+        num_params = len(inspect.signature(self.train_loop_per_worker).parameters)
+        if num_params > 1:
+            raise ValueError(
+                f"train_loop_per_worker should take in 0 or 1 arguments, "
+                f"but it accepts {num_params} arguments instead."
+            )
 
         backend_config = backend_config if backend_config else BackendConfig()
         self.backend_config = backend_config
