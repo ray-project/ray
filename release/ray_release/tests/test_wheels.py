@@ -28,7 +28,7 @@ class WheelsFinderTest(unittest.TestCase):
 
         with patch("urllib.request.urlopen", lambda _: content):
             version = get_ray_version(DEFAULT_REPO, commit="fake")
-            self.assertEqual(version, "1.12.0rc0")
+            self.assertEqual(version, "2.0.0.dev0")
 
         with patch("urllib.request.urlopen", lambda _: []), self.assertRaises(
             RayWheelsNotFoundError
@@ -40,20 +40,20 @@ class WheelsFinderTest(unittest.TestCase):
             repo_url="https://github.com/ray-project/ray.git",
             branch="master",
             commit="1234",
-            ray_version="1.12.0rc0",
+            ray_version="2.0.0.dev0",
         )
         self.assertEqual(
             url,
             "https://s3-us-west-2.amazonaws.com/ray-wheels/"
-            "master/1234/ray-1.12.0rc0-cp37-cp37m-manylinux2014_x86_64.whl",
+            "master/1234/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl",
         )
 
-    @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "1.12.0rc0")
+    @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.0.0.dev0")
     def testFindRayWheelsBuildkite(self):
         repo = DEFAULT_REPO
         branch = "master"
         commit = "1234" * 10
-        version = "1.12.0rc0"
+        version = "2.0.0.dev0"
 
         os.environ["BUILDKITE_COMMIT"] = commit
 
@@ -68,14 +68,14 @@ class WheelsFinderTest(unittest.TestCase):
 
         self.assertEqual(url, get_ray_wheels_url(repo, branch, commit, version))
 
-    @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "1.12.0rc0")
+    @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.0.0.dev0")
     def testFindRayWheelsCommitOnly(self):
         os.environ.pop("BUILDKITE_BRANCH")
 
         repo = DEFAULT_REPO
         branch = "master"
         commit = "1234" * 10
-        version = "1.12.0rc0"
+        version = "2.0.0.dev0"
 
         search_str = commit
 
@@ -104,34 +104,34 @@ class WheelsFinderTest(unittest.TestCase):
 
             self.assertEqual(url, get_ray_wheels_url(repo, branch, commit, version))
 
-    @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "1.12.0rc0")
+    @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.0.0.dev0")
     def testFindRayWheelsBranch(self):
         repo = DEFAULT_REPO
         branch = "master"
         commit = "1234" * 10
-        version = "1.12.0rc0"
+        version = "2.0.0.dev0"
 
         self._testFindRayWheelsCheckout(
             repo, branch, commit, version, search_str="master"
         )
 
-    @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "1.12.0rc0")
+    @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.0.0.dev0")
     def testFindRayWheelsRepoBranch(self):
         repo = DEFAULT_REPO
         branch = "master"
         commit = "1234" * 10
-        version = "1.12.0rc0"
+        version = "2.0.0.dev0"
 
         self._testFindRayWheelsCheckout(
             repo, branch, commit, version, search_str="ray-project:master"
         )
 
-    @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "1.12.0rc0")
+    @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.0.0.dev0")
     def testFindRayWheelsPRRepoBranch(self):
         repo = "user"
         branch = "dev-branch"
         commit = "1234" * 10
-        version = "1.12.0rc0"
+        version = "2.0.0.dev0"
 
         self._testFindRayWheelsCheckout(
             repo, branch, commit, version, search_str="user:dev-branch"
@@ -145,12 +145,12 @@ class WheelsFinderTest(unittest.TestCase):
         )
 
     @patch("time.sleep", lambda *a, **kw: None)
-    @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "1.12.0rc0")
+    @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.0.0.dev0")
     def testFindAndWaitWheels(self):
         repo = DEFAULT_REPO
         branch = "master"
         commit = "1234" * 10
-        version = "1.12.0rc0"
+        version = "2.0.0.dev0"
 
         class TrueAfter:
             def __init__(self, after: float):
