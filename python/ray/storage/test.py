@@ -23,7 +23,7 @@ def test_get_filesystem_local(shutdown_only, tmp_path):
 
 def test_get_custom_filesystem(shutdown_only, tmp_path):
     ray.init(
-        storage=os.path.join("custom://ray.storage.test._custom_fs" + str(tmp_path))
+        storage=os.path.join("custom://ray.storage.test._custom_fs", str(tmp_path))
     )
     fs, prefix = ray.storage.get_filesystem()
     assert prefix == str(tmp_path), prefix
