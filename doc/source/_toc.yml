@@ -110,6 +110,8 @@ parts:
     chapters:
       - file: ray-core/walkthrough
         title: Getting Started
+      - file: ray-core/key-concepts
+        title: "Key Concepts"
       - file: ray-core/using-ray
         title: "User Guide"
       - file: ray-core/examples/overview

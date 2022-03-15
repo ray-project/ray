@@ -13,17 +13,9 @@ There are also detailed instructions on how to work with Ray concepts such as Ac
 
     tips-for-first-time
     starting-ray
-    actors
     namespaces
-    handling-dependencies
-    async_api
-    concurrency_group_api
     using-ray-with-gpus
-    serialization
-    memory-management
-    placement-group
     troubleshooting
-    fault-tolerance
     advanced
     cross-language
     using-ray-with-jupyter

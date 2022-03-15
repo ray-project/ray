@@ -10,7 +10,7 @@ Concepts
 
 There are several ways that Ray applications use memory:
 
-.. image:: images/memory.svg
+.. image:: ../images/memory.svg
 
 Ray system memory: this is memory used internally by Ray
   - **GCS**: memory used for storing the list of nodes and actors present in the cluster. The amount of memory used for these purposes is typically quite small.
