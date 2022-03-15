@@ -8,7 +8,7 @@ import starlette.responses
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.serve.api import delete_deployments
+from ray.serve.api import internal_get_global_client
 
 
 def test_e2e(serve_instance):
@@ -269,7 +269,9 @@ def test_delete_deployment_group(serve_instance, blocking):
         # Check idempotence
         for _ in range(2):
 
-            delete_deployments(["f", "g"], blocking=blocking)
+            internal_get_global_client().delete_deployments(
+                ["f", "g"], blocking=blocking
+            )
 
             wait_for_condition(
                 lambda: requests.get("http://127.0.0.1:8000/f").status_code == 404,

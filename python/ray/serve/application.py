@@ -6,7 +6,6 @@ import sys
 from ray import serve
 from ray.serve.api import (
     Deployment,
-    delete_deployments,
     internal_get_global_client,
 )
 from ray.serve.schema import (
@@ -137,7 +136,9 @@ class Application:
         except KeyboardInterrupt:
             logger.info("Got SIGINT (KeyboardInterrupt). Removing deployments.")
             deployment_names = [d.name for d in self._deployments.values()]
-            delete_deployments(deployment_names)
+            internal_get_global_client().delete_deployments(
+                deployment_names, blocking=True
+            )
             if len(serve.list_deployments()) == 0:
                 logger.info("No deployments left. Shutting down Serve.")
                 serve.shutdown()

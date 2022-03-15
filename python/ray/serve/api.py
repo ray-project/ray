@@ -1491,12 +1491,6 @@ def list_deployments() -> Dict[str, Deployment]:
     return deployments
 
 
-def delete_deployments(names: List[str], blocking: bool = True) -> None:
-    """Deletes all deployments named in names. Idempotent function."""
-
-    internal_get_global_client().delete_deployments(names, blocking=blocking)
-
-
 def get_deployment_statuses() -> Dict[str, DeploymentStatusInfo]:
     """Returns a dictionary of deployment statuses.
 
