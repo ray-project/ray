@@ -109,7 +109,7 @@ def test_same_object_many_dags(workflow_start_regular_shared):
 
 
 def test_dereference_object_refs(workflow_start_regular_shared):
-    """Ensure that object refs are dereferenced like in `ray.remote`"""
+    """Ensure that object refs are dereferenced like in ray tasks."""
 
     @ray.remote
     def f(obj_list):
