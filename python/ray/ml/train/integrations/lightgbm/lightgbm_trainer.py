@@ -35,8 +35,9 @@ class LightGBMTrainer(Trainer):
     Args:
         label_column: Name of the label column. A column with this name
             must be present in the training dataset.
-        lightgbm_config: LightGBM training params. Refer to LightGBM documentation
-            for a list of possible parameters.
+        lightgbm_config: LightGBM training parameters. Refer to
+            `LightGBM documentation <https://lightgbm.readthedocs.io/en\
+/latest/Parameters.html>`_ for a list of possible parameters.
         scaling_config: Configuration for how to scale data parallel training.
         run_config: Configuration for the execution of the training run.
         datasets: Any Ray Datasets to use for training. Use
@@ -44,7 +45,8 @@ class LightGBMTrainer(Trainer):
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
             by the ``preprocessor`` if one is provided. All non-training
-            datasets will be used for validation.
+            datasets will be used as separate validation sets, each reporting
+            a separate metric.
         preprocessor: A ray.ml.preprocessor.Preprocessor to preprocess the
             provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
