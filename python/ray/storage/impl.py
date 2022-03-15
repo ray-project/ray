@@ -49,7 +49,7 @@ def get_filesystem() -> ("pyarrow.fs.FileSystem", str):
 
 @DeveloperAPI
 @client_mode_hook(auto_init=True)
-def put(namespace: str, path: str, value: str) -> None:
+def put(namespace: str, path: str, value: bytes) -> None:
     """Save a blob in persistent storage at the given path, if possible.
 
     This is a convenience wrapper around get_filesystem() and working with files.
@@ -73,7 +73,7 @@ def put(namespace: str, path: str, value: str) -> None:
 
 @DeveloperAPI
 @client_mode_hook(auto_init=True)
-def load(namespace: str, path: str) -> str:
+def get(namespace: str, path: str) -> bytes:
     """Load a blob from persistent storage at the given path, if possible.
 
     This is a convenience wrapper around get_filesystem() and working with files.
@@ -81,20 +81,25 @@ def load(namespace: str, path: str) -> str:
 
     Examples:
         # Loads value from <storage_prefix>/my_app/path/foo.txt
-        >>> ray.storage.load("my_app", "path/foo.txt")
+        >>> ray.storage.get("my_app", "path/foo.txt")
         "bar"
+        >>> ray.storage.get("my_app", "invalid")
+        None
 
     Args:
         namespace: Namespace used to isolate blobs from different applications.
         path: Relative directory of the blobs.
 
     Returns:
-        String content of the blob.
+        String content of the blob, or None if not found.
     """
     fs, prefix = get_filesystem()
     full_path = os.path.join(os.path.join(prefix, namespace), path)
-    with fs.open_input_stream(full_path) as f:
-        return f.read()
+    try:
+        with fs.open_input_stream(full_path) as f:
+            return f.read()
+    except FileNotFoundError:
+        return None
 
 
 @DeveloperAPI
@@ -141,6 +146,7 @@ def get_info(namespace: str, path: str) -> "pyarrow.fs.FileInfo":
 
         # Non-existent blob.
         >>> ray.storage.get_info("my_app", "path/does_not_exist.txt")
+        None
         <FileInfo for '/tmp/storage/my_app/path/foo.txt': type=FileType.NotFound>
 
     Args:
@@ -148,11 +154,16 @@ def get_info(namespace: str, path: str) -> "pyarrow.fs.FileInfo":
         path: Relative directory of the blob.
 
     Returns:
-        Info about the blob.
+        Info about the blob, or None if it doesn't exist.
     """
+    import pyarrow.fs
+
     fs, prefix = get_filesystem()
     full_path = os.path.join(os.path.join(prefix, namespace), path)
-    return fs.get_file_info([full_path])[0]
+    info = fs.get_file_info([full_path])[0]
+    if info.type == pyarrow.fs.FileType.NotFound:
+        return None
+    return info
 
 
 @DeveloperAPI
@@ -211,10 +222,11 @@ def _init_storage(storage_uri: str, is_head: bool):
     On worker nodes, the actual filesystem is lazily initialized on first use.
     """
     global _storage_uri
-    _storage_uri = storage_uri
 
-    if is_head:
-        _init_filesystem(storage_uri, create_valid_file=True)
+    if storage_uri:
+        _storage_uri = storage_uri
+        if is_head:
+            _init_filesystem(create_valid_file=True)
 
 
 def _get_filesystem_internal() -> ("pyarrow.fs.FileSystem", str):
@@ -224,16 +236,16 @@ def _get_filesystem_internal() -> ("pyarrow.fs.FileSystem", str):
     """
     global _filesystem, _storage_prefix
     if _filesystem is None:
-        _init_filesystem(_storage_uri)
+        _init_filesystem()
     return _filesystem, _storage_prefix
 
 
-def _init_filesystem(storage_uri: str, create_valid_file: bool = False):
+def _init_filesystem(create_valid_file: bool = False, check_valid_file: bool = True):
     """Fully initialize the filesystem at the given storage URI."""
-    global _filesystem, _storage_prefix
+    global _filesystem, _storage_prefix, _storage_uri
     assert _filesystem is None, "Init can only be called once."
 
-    if not storage_uri:
+    if not _storage_uri:
         raise RuntimeError(
             "No storage URI has been configured for the cluster. "
             "Specify a storage URI via `ray.init(storage=<uri>)`"
@@ -241,14 +253,14 @@ def _init_filesystem(storage_uri: str, create_valid_file: bool = False):
 
     import pyarrow.fs
 
-    _filesystem, _storage_prefix = pyarrow.fs.FileSystem.from_uri(storage_uri)
+    _filesystem, _storage_prefix = pyarrow.fs.FileSystem.from_uri(_storage_uri)
 
     valid_file = os.path.join(_storage_prefix, "_valid")
     if create_valid_file:
         _filesystem.create_dir(_storage_prefix)
         with _filesystem.open_output_stream(valid_file):
             pass
-    else:
+    if check_valid_file:
         valid = _filesystem.get_file_info([valid_file])[0]
         if valid.type == pyarrow.fs.FileType.NotFound:
             raise RuntimeError(
@@ -258,3 +270,9 @@ def _init_filesystem(storage_uri: str, create_valid_file: bool = False):
             )
 
     return _filesystem, _storage_prefix
+
+
+def _reset() -> None:
+    """Resets all initialized state to None."""
+    global _storage_uri, _filesystem, _storage_prefix
+    _storage_uri = _filesystem = _storage_prefix = None

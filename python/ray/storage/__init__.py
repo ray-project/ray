@@ -3,7 +3,7 @@ from ray.storage.impl import (
     delete,
     get_info,
     list,
-    load,
+    get,
     put,
 )
 
@@ -12,6 +12,6 @@ __all__ = [
     "delete",
     "get_info",
     "list",
-    "load",
+    "get",
     "put",
 ]

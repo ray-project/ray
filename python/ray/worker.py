@@ -1173,6 +1173,7 @@ def shutdown(_exiting_interpreter: bool = False):
     if hasattr(global_worker, "gcs_client"):
         del global_worker.gcs_client
     _internal_kv_reset()
+    ray.storage.impl._reset()
 
     # We need to destruct the core worker here because after this function,
     # we will tear down any processes spawned by ray.init() and the background
