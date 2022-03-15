@@ -870,12 +870,12 @@ def test_runtime_env_config(start_cluster):
     bad_configs = []
     bad_configs.append({"setup_timeout_seconds": 10.0})
     bad_configs.append({"setup_timeout_seconds": 0})
-    bad_configs.append({"setup_timeout_seconds": -1})
     bad_configs.append({"setup_timeout_seconds": "10"})
     bad_configs.append({"bad_field": 10})
 
     good_configs = []
     good_configs.append({"setup_timeout_seconds": 10})
+    good_configs.append({"setup_timeout_seconds": -1})
 
     @ray.remote
     def f():
