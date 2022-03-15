@@ -1,4 +1,4 @@
-from typing import Callable, Optional, Dict
+from typing import Callable, Optional, Dict, Union
 
 from ray.train.tensorflow import TensorflowConfig
 from ray.ml.trainer import GenDataset
