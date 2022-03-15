@@ -62,7 +62,7 @@ class Trainer(abc.ABC):
 
                 import torch
 
-                from ray.ml.train import Trainer, TRAIN_DATASET_KEY
+                from ray.ml.train import Trainer
                 from ray import tune
 
 
@@ -74,9 +74,9 @@ class Trainer(abc.ABC):
 
                     def training_loop(self):
                         # You can access any Trainer attributes directly in this method.
-                        # self.datasets[TRAIN_DATASET_KEY] has already been
+                        # self.datasets["train"] has already been
                         # preprocessed by self.preprocessor
-                        dataset = self.datasets[TRAIN_DATASET_KEY]
+                        dataset = self.datasets["train"]
 
                         torch_ds = dataset.to_torch()
 
@@ -109,11 +109,9 @@ class Trainer(abc.ABC):
               .. code-block:: python
 
                 import ray
-                from ray.ml.train import TRAIN_DATASET_KEY
 
                 train_dataset = ray.data.from_items([1, 2, 3])
-                my_trainer = MyPytorchTrainer(datasets={TRAIN_DATASET_KEY:
-                    train_dataset})
+                my_trainer = MyPytorchTrainer(datasets={"train": train_dataset})
                 result = my_trainer.fit()
 
     Args:
@@ -123,8 +121,8 @@ class Trainer(abc.ABC):
             or a Callable that returns a Dataset, to use for training. If a
             ``preprocessor`` is also provided, it will be fit on this
             dataset and this dataset will be transformed.
-        datasets: Any Ray Datasets to use for training. Use
-            ``ray.ml.train.TRAIN_DATASET_KEY``. to denote which dataset is the training
+        datasets: Any Ray Datasets to use for training. Use the key "train"
+            to denote which dataset is the training
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
             by the ``preprocessor`` if one is provided.
@@ -165,7 +163,7 @@ class Trainer(abc.ABC):
 
         If the ``Trainer`` has both a datasets dict and
         a preprocessor, the datasets dict contains a training dataset (denoted by
-        the ``ray.ml.train.TRAIN_DATASET_KEY``), and the preprocessor has not yet
+        the "train" key), and the preprocessor has not yet
         been fit, then it will be fit on the train.
 
         Then, the Trainer's datasets will be transformed by the preprocessor.

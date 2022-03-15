@@ -42,7 +42,7 @@ class DataParallelTrainer(Trainer):
     want to tune the values in ``train_loop_config`` as hyperparameters.
 
     If the ``datasets`` dict contains a training dataset (denoted by
-    ``ray.ml.train.TRAIN_DATASET_KEY``), then it will be split into multiple dataset
+    the "train" key), then it will be split into multiple dataset
     shards that can be consumed by ``train_loop_per_worker``. All the other datasets
     will not be sharded.
 
@@ -80,18 +80,16 @@ class DataParallelTrainer(Trainer):
 
                 import ray
                 from ray import train
-                from ray.ml.train import TRAIN_DATASET_KEY
 
                 def train_loop_for_worker():
-                    dataset_shard_for_this_worker = train.get_dataset_shard(
-                        TRAIN_DATASET_KEY)
+                    dataset_shard_for_this_worker = train.get_dataset_shard("train")
 
                     assert len(dataset_shard_for_this_worker) == 1
 
                 train_dataset = ray.data.from_items([1, 2, 3])
                 assert len(train_dataset) == 3
                 trainer = DataParallelTrainer(scaling_config={"num_worker": 3},
-                    datasets={TRAIN_DATASET_KEY: train_dataset})
+                    datasets={"train": train_dataset})
                 result = trainer.fit()
 
     How do I develop on top of ``DataParallelTrainer``?
@@ -163,7 +161,7 @@ class DataParallelTrainer(Trainer):
         scaling_config: Configuration for how to scale data parallel training.
         run_config: Configuration for the execution of the training run.
         datasets: Any Ray Datasets to use for training. Use
-            ``ray.ml.train.TRAIN_DATASET_KEY``. to denote which dataset is the training
+            the key "train" to denote which dataset is the training
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
             by the ``preprocessor`` if one is provided.

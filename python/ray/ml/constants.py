@@ -6,4 +6,4 @@ MODEL_KEY = "_model"
 
 # Key to denote which dataset is the training dataset.
 # This is the dataset that the preprocessor is fit on.
-TRAIN_DATASET_KEY = "_train_dataset"
+TRAIN_DATASET_KEY = "train"
