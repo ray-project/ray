@@ -22,7 +22,8 @@
 namespace ray {
 
 LocalResourceManager::LocalResourceManager(
-    scheduling::NodeID local_node_id, const NodeResources &node_resources,
+    scheduling::NodeID local_node_id,
+    const NodeResources &node_resources,
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity,
     std::function<void(const NodeResources &)> resource_change_subscriber)
@@ -105,7 +106,8 @@ std::vector<FixedPoint> LocalResourceManager::SubtractAvailableResourceInstances
 }
 
 bool LocalResourceManager::AllocateResourceInstances(
-    FixedPoint demand, std::vector<FixedPoint> &available,
+    FixedPoint demand,
+    std::vector<FixedPoint> &available,
     std::vector<FixedPoint> *allocation) const {
   allocation->resize(available.size());
   FixedPoint remaining_demand = demand;
@@ -223,7 +225,8 @@ std::vector<double> LocalResourceManager::AddResourceInstances(
 }
 
 std::vector<double> LocalResourceManager::SubtractResourceInstances(
-    scheduling::ResourceID resource_id, const std::vector<double> &resource_instances,
+    scheduling::ResourceID resource_id,
+    const std::vector<double> &resource_instances,
     bool allow_going_negative) {
   std::vector<FixedPoint> resource_instances_fp =
       VectorDoubleToVectorFixedPoint(resource_instances);

@@ -234,6 +234,11 @@ class ResourceRequest {
   /// Whether this task requires object store memory.
   /// TODO(swang): This should be a quantity instead of a flag.
   bool requires_object_store_memory_ = false;
+  bool requires_object_store_memory = false;
+  /// Check whether the request contains no resources.
+  bool IsEmpty() const;
+  /// Returns human-readable string for this task request.
+  std::string DebugString() const;
 };
 
 
@@ -435,6 +440,8 @@ class NodeResources {
         object_pulls_queued(other.object_pulls_queued) {}
   ResourceRequest total;
   ResourceRequest available;
+  /// Resources owned by normal tasks.
+  ResourceRequest normal_task_resources;
   bool object_pulls_queued = false;
 
   /// Amongst CPU, memory, and object store memory, calculate the utilization percentage
@@ -448,12 +455,14 @@ class NodeResources {
   /// Note: This doesn't account for the binpacking of unit resources.
   bool IsFeasible(const ResourceRequest &resource_request) const;
   /// Returns if this equals another node resources.
-  bool operator==(const NodeResources &other);
-  bool operator!=(const NodeResources &other);
+  bool operator==(const NodeResources &other) const;
+  bool operator!=(const NodeResources &other) const;
   /// Returns human-readable string for these resources.
   std::string DebugString() const;
   /// Returns compact dict-like string.
   std::string DictString() const;
+  /// Has GPU.
+  bool HasGPU() const;
 };
 
 /// Total and available capacities of each resource instance.

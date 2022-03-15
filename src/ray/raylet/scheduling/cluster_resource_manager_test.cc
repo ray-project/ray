@@ -18,7 +18,8 @@
 
 namespace ray {
 
-NodeResources CreateNodeResources(double available_cpu, double total_cpu,
+NodeResources CreateNodeResources(double available_cpu,
+                                  double total_cpu,
                                   double available_custom_resource = 0,
                                   double total_custom_resource = 0,
                                   bool object_pulls_queued = false) {
@@ -37,13 +38,17 @@ struct ClusterResourceManagerTest : public ::testing::Test {
     manager = std::make_unique<ClusterResourceManager>();
     manager->AddOrUpdateNode(node0,
                              CreateNodeResources(/*available_cpu*/ 1, /*total_cpu*/ 1));
-    manager->AddOrUpdateNode(
-        node1, CreateNodeResources(/*available_cpu*/ 0, /*total_cpu*/ 0,
-                                   /*available_custom*/ 1, /*total_custom*/ 1));
-    manager->AddOrUpdateNode(
-        node2, CreateNodeResources(/*available_cpu*/ 1, /*total_cpu*/ 1,
-                                   /*available_custom*/ 1, /*total_custom*/ 1,
-                                   /*object_pulls_queued*/ true));
+    manager->AddOrUpdateNode(node1,
+                             CreateNodeResources(/*available_cpu*/ 0,
+                                                 /*total_cpu*/ 0,
+                                                 /*available_custom*/ 1,
+                                                 /*total_custom*/ 1));
+    manager->AddOrUpdateNode(node2,
+                             CreateNodeResources(/*available_cpu*/ 1,
+                                                 /*total_cpu*/ 1,
+                                                 /*available_custom*/ 1,
+                                                 /*total_custom*/ 1,
+                                                 /*object_pulls_queued*/ true));
   }
   scheduling::NodeID node0 = scheduling::NodeID(0);
   scheduling::NodeID node1 = scheduling::NodeID(1);

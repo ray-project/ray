@@ -90,15 +90,8 @@ class NewPlacementGroupResourceManager : public PlacementGroupResourceManager {
   /// Create a new placement group resource manager.
   ///
   /// \param cluster_resource_scheduler_: The resource allocator of new scheduler.
-  /// \param update_resources: Called when a new custom resource is created.
-  /// \param delete_resources: Called when a custom resource is deleted.
   NewPlacementGroupResourceManager(
-      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
-      std::function<
-          void(const ray::gcs::NodeResourceInfoAccessor::ResourceMap &resources)>
-          update_resources,
-      std::function<void(const std::vector<std::string> &resource_names)>
-          delete_resources);
+      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler);
 
   virtual ~NewPlacementGroupResourceManager() = default;
 
@@ -116,13 +109,6 @@ class NewPlacementGroupResourceManager : public PlacementGroupResourceManager {
 
  private:
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
-
-  /// Called when a new custom resource is created.
-  std::function<void(const ray::gcs::NodeResourceInfoAccessor::ResourceMap &resources)>
-      update_resources_;
-
-  /// Called when a custom resource is deleted.
-  std::function<void(const std::vector<std::string> &resource_names)> delete_resources_;
 
   /// Tracking placement group bundles and their states. This mapping is the source of
   /// truth for the new scheduler.

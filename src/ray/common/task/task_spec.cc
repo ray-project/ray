@@ -176,7 +176,8 @@ int TaskSpecification::GetRuntimeEnvHash() const {
     required_resource = GetRequiredResources().GetResourceMap();
   }
   WorkerCacheKey env = {
-      SerializedRuntimeEnv(), required_resource,
+      SerializedRuntimeEnv(),
+      required_resource,
       IsActorCreationTask() && RayConfig::instance().isolate_workers_across_task_types(),
       GetRequiredResources().GetResource("GPU") > 0 &&
           RayConfig::instance().isolate_workers_across_resource_types()};
@@ -451,7 +452,8 @@ std::string TaskSpecification::CallSiteString() const {
 
 WorkerCacheKey::WorkerCacheKey(
     const std::string serialized_runtime_env,
-    const absl::flat_hash_map<std::string, double> &required_resources, bool is_actor,
+    const absl::flat_hash_map<std::string, double> &required_resources,
+    bool is_actor,
     bool is_gpu)
     : serialized_runtime_env(serialized_runtime_env),
       required_resources(std::move(required_resources)),

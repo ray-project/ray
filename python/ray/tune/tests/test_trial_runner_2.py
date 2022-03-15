@@ -13,7 +13,7 @@ from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.resources import Resources
 from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.tests.test_trial_runner_utils import TrialResultObserver
+from ray.tune.tests.utils_for_test_trial_runner import TrialResultObserver
 
 
 def create_mock_components():

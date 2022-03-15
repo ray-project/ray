@@ -14,9 +14,11 @@ python:
 post_build_cmds:
   - pip uninstall -y ray || true
   - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip3 install ray[default] # Needed for Ray Client to work.
+  - pip3 install -U "xgboost<1.5" xgboost_ray petastorm  # Install latest releases, pin xgboost to <1.5
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
   - sudo mkdir -p /data || true
   - sudo chown ray:1000 /data || true
   - rm -rf /data/classification.parquet || true
-  - curl -o create_test_data.py https://raw.githubusercontent.com/ray-project/ray/releases/1.3.0/release/xgboost_tests/create_test_data.py  # XGBoost is intended
+  - curl -o create_test_data.py https://raw.githubusercontent.com/ray-project/ray/releases/1.3.0/release/xgboost_tests/create_test_data.py
   - python ./create_test_data.py /data/classification.parquet --seed 1234 --num-rows 1000000 --num-cols 40 --num-partitions 100 --num-classes 2
-  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

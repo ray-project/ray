@@ -171,7 +171,8 @@ bool ClusterResourceManager::SubtractNodeAvailableResources(
 }
 
 bool ClusterResourceManager::HasSufficientResource(
-    scheduling::NodeID node_id, const ResourceRequest &resource_request,
+    scheduling::NodeID node_id,
+    const ResourceRequest &resource_request,
     bool ignore_object_store_memory_requirement) const {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {

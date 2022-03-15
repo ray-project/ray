@@ -192,3 +192,5 @@
   smoke_test:
     run:
       timeout: 600
+
+  stable: False

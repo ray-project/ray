@@ -3,7 +3,6 @@ import logging
 import yaml
 import os
 import aiohttp.web
-from aioredis.pubsub import Receiver
 
 import ray
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
@@ -169,6 +168,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                         "Error receiving node physical stats " "from reporter agent."
                     )
         else:
+            from aioredis.pubsub import Receiver
+
             receiver = Receiver()
             aioredis_client = self._dashboard_head.aioredis_client
             reporter_key = "{}*".format(reporter_consts.REPORTER_PREFIX)
