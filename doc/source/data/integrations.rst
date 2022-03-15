@@ -1,8 +1,8 @@
 .. _data_integrations:
 
-===========
+============
 Integrations
-===========
+============
 
 If you’re new to Ray Datasets, we recommend starting with the :ref:`Ray Datasets Quick Start <ray_datasets_quick_start>`.
 
