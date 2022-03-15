@@ -51,7 +51,11 @@ def create_storage(storage_url: str) -> Storage:
     else:
         extra_msg = ""
         if os.name == "nt":
-            extra_msg = " Try using file://{} or file:///{} for Windows file paths.".format(storage_url, storage_url)
+            extra_msg = (
+                " Try using file://{} or file:///{} for Windows file paths.".format(
+                    storage_url, storage_url
+                )
+            )
         raise ValueError(f"Invalid url: {storage_url}." + extra_msg)
 
 
