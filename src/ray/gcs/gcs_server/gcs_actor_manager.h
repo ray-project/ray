@@ -46,17 +46,21 @@ class GcsActor {
       : actor_table_data_(std::move(actor_table_data)) {}
 
   /// Create a GcsActor by actor_table_data and task_spec.
+  /// This is only for ALIVE actors.
   ///
   /// \param actor_table_data Data of the actor (see gcs.proto).
   /// \param task_spec Task spec of the actor.
   explicit GcsActor(rpc::ActorTableData actor_table_data, rpc::TaskSpec task_spec)
       : actor_table_data_(std::move(actor_table_data)),
-        task_spec_(std::make_unique<rpc::TaskSpec>(task_spec)) {}
+        task_spec_(std::make_unique<rpc::TaskSpec>(task_spec)) {
+            RAY_CHECK(actor_table_data_.state() != rpc::ActorTableData::DEAD);
+        }
 
   /// Create a GcsActor by TaskSpec.
   ///
   /// \param task_spec Contains the actor creation task specification.
-  explicit GcsActor(const ray::rpc::TaskSpec &task_spec, std::string ray_namespace) {
+  explicit GcsActor(const ray::rpc::TaskSpec &task_spec, std::string ray_namespace)
+      : task_spec_(std::make_unique<rpc::TaskSpec>(task_spec)) {
     RAY_CHECK(task_spec.type() == TaskType::ACTOR_CREATION_TASK);
     const auto &actor_creation_task_spec = task_spec.actor_creation_task_spec();
     actor_table_data_.set_actor_id(actor_creation_task_spec.actor_id());
@@ -89,8 +93,6 @@ class GcsActor {
     actor_table_data_.mutable_address()->set_worker_id(WorkerID::Nil().Binary());
 
     actor_table_data_.set_ray_namespace(ray_namespace);
-
-    task_spec_ = std::make_unique<rpc::TaskSpec>(task_spec);
 
     // Set required resources.
     auto resource_map =
@@ -163,7 +165,7 @@ class GcsActor {
   /// The actor meta data which contains the task specification as well as the state of
   /// the gcs actor and so on (see gcs.proto).
   rpc::ActorTableData actor_table_data_;
-  std::unique_ptr<rpc::TaskSpec> task_spec_;
+  const std::unique_ptr<rpc::TaskSpec> task_spec_;
   // TODO(Chong-Li): Considering shared assignments, this pointer would be moved out.
   std::shared_ptr<GcsActorWorkerAssignment> assignment_ptr_ = nullptr;
 };

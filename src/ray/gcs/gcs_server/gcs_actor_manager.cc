@@ -1167,30 +1167,30 @@ void GcsActorManager::SetSchedulePendingActorsPosted(bool posted) {
 
 void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
   const auto &jobs = gcs_init_data.Jobs();
-  auto &actor_task_specs = gcs_init_data.ActorTaskSpecs();
+  const auto &actor_task_specs = gcs_init_data.ActorTaskSpecs();
   absl::flat_hash_map<NodeID, std::vector<WorkerID>> node_to_workers;
-  for (const auto &entry : gcs_init_data.Actors()) {
-    auto job_iter = jobs.find(entry.first.JobId());
+  for (const auto &[actor_id, actor_table_data] : gcs_init_data.Actors()) {
+    auto job_iter = jobs.find(actor_id.JobId());
     auto is_job_dead = (job_iter == jobs.end() || job_iter->second.is_dead());
-    if (entry.second.state() != ray::rpc::ActorTableData::DEAD && !is_job_dead) {
-      const auto &iter = actor_task_specs.find(entry.first);
+    if (actor_table_data.state() != ray::rpc::ActorTableData::DEAD && !is_job_dead) {
+      const auto &iter = actor_task_specs.find(actor_id);
       RAY_CHECK(iter != actor_task_specs.end());
-      auto actor = std::make_shared<GcsActor>(entry.second, iter->second);
-      registered_actors_.emplace(entry.first, actor);
+      auto actor = std::make_shared<GcsActor>(actor_table_data, iter->second);
+      registered_actors_.emplace(actor_id, actor);
       function_manager_.AddJobReference(actor->GetActorID().JobId());
       if (!actor->GetName().empty()) {
         auto &actors_in_namespace = named_actors_[actor->GetRayNamespace()];
         actors_in_namespace.emplace(actor->GetName(), actor->GetActorID());
       }
 
-      if (entry.second.state() == ray::rpc::ActorTableData::DEPENDENCIES_UNREADY) {
+      if (actor_table_data.state() == ray::rpc::ActorTableData::DEPENDENCIES_UNREADY) {
         const auto &owner = actor->GetOwnerAddress();
         const auto &owner_node = NodeID::FromBinary(owner.raylet_id());
         const auto &owner_worker = WorkerID::FromBinary(owner.worker_id());
         RAY_CHECK(unresolved_actors_[owner_node][owner_worker]
                       .emplace(actor->GetActorID())
                       .second);
-      } else if (entry.second.state() == ray::rpc::ActorTableData::ALIVE) {
+      } else if (actor_table_data.state() == ray::rpc::ActorTableData::ALIVE) {
         created_actors_[actor->GetNodeID()].emplace(actor->GetWorkerID(),
                                                     actor->GetActorID());
       }
@@ -1206,10 +1206,10 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
         node_to_workers[actor->GetNodeID()].emplace_back(actor->GetWorkerID());
       }
     } else {
-      auto actor = std::make_shared<GcsActor>(entry.second);
-      destroyed_actors_.emplace(entry.first, actor);
-      sorted_destroyed_actor_list_.emplace_back(entry.first,
-                                                (int64_t)entry.second.timestamp());
+      auto actor = std::make_shared<GcsActor>(actor_table_data);
+      destroyed_actors_.emplace(actor_id, actor);
+      sorted_destroyed_actor_list_.emplace_back(actor_id,
+                                                (int64_t)actor_table_data.timestamp());
     }
   }
   sorted_destroyed_actor_list_.sort([](const std::pair<ActorID, int64_t> &left,
