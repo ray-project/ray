@@ -33,7 +33,7 @@ def test_max_running_tasks(num_tasks):
             # comes at the same time.
             pass
         if time_up(start_time):
-            print(f"Time up for sleep {sleep_time} seconds")
+            print(f"Time up for sleeping {sleep_time} seconds")
             break
         time.sleep(0.1)
 
