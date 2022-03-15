@@ -10,7 +10,7 @@ import ray
 from ray._private.utils import import_attr
 from ray.serve.config import DeploymentMode
 from ray import serve
-from ray.serve import get_deployment_statuses
+from ray.serve.api import get_deployment_statuses
 from ray.serve.constants import (
     DEFAULT_CHECKPOINT_PATH,
     DEFAULT_HTTP_HOST,
@@ -234,6 +234,10 @@ def deploy(config_file_name: str, address: str):
 @click.option(
     "--blocking/--non-blocking",
     default=True,
+    help=(
+        "Whether or not this command should be blocking. If blocking, it "
+        "will loop and log status until Ctrl-C'd, then clean up the app."
+    ),
 )
 def run(
     config_or_import_path: str,
