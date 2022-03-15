@@ -1745,12 +1745,12 @@ def test_to_torch(ray_start_regular_shared, pipelined):
     df = pd.concat([df1, df2, df3])
     ds = ray.data.from_pandas([df1, df2, df3])
     ds = maybe_pipeline(ds, pipelined)
-    torchd = ds.to_torch(label_column="label", batch_size=3)
+    torch_dp = ds.to_torch(label_column="label", batch_size=3)
 
     num_epochs = 1 if pipelined else 2
     for _ in range(num_epochs):
         iterations = []
-        for batch in iter(torchd):
+        for batch in iter(torch_dp):
             iterations.append(torch.cat((batch[0], batch[1]), dim=1).numpy())
         combined_iterations = np.concatenate(iterations)
         assert np.array_equal(np.sort(df.values), np.sort(combined_iterations))
@@ -1806,7 +1806,7 @@ def test_to_torch_feature_columns(
     label_column = None if label_type is None else "label"
     unsqueeze_label_tensor = label_type == "unsqueezed"
 
-    torchd = ds.to_torch(
+    torch_dp = ds.to_torch(
         label_column=label_column,
         feature_columns=feature_columns,
         feature_column_dtypes=feature_column_dtypes,
@@ -1816,7 +1816,7 @@ def test_to_torch_feature_columns(
     )
     iterations = []
 
-    for batch in iter(torchd):
+    for batch in iter(torch_dp):
         features, label = batch
 
         if input == "single":
