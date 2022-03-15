@@ -128,7 +128,7 @@ class TensorflowTrainer(DataParallelTrainer):
                 [{"x": x, "y": x + 1} for x in range(32)])
             trainer = TensorflowTrainer(scaling_config={"num_workers": 3},
                 datasets={"train": train_dataset},
-                train_func_config={"num_epochs": 2})
+                train_loop_config={"num_epochs": 2})
             result = trainer.fit()
 
 
@@ -154,8 +154,8 @@ class TensorflowTrainer(DataParallelTrainer):
 
     def __init__(
         self,
-        train_func: Callable,
-        train_func_config: Optional[Dict] = None,
+        train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
+        train_loop_config: Optional[Dict] = None,
         tensorflow_config: Optional[TensorflowConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
