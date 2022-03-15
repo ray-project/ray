@@ -220,4 +220,5 @@ If you want to to specify which top-level Ray directories to mount, you can use 
 
 * ``FAKE_CLUSTER_DEV_MODULES="autoscaler,tune"``
 
-This will mount both ``ray/python/ray/autoscaler`` and ``ray/python/ray/tune`` within the node containers.
+This will mount both ``ray/python/ray/autoscaler`` and ``ray/python/ray/tune`` within the node containers. The
+list of modules should be comma separated and without spaces.
