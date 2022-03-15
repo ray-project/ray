@@ -7,7 +7,6 @@ from ray import tune
 
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.trainer import Trainer
-from ray.ml.checkpoint import Checkpoint
 from ray.ml.constants import PREPROCESSOR_KEY
 
 
@@ -39,6 +38,7 @@ class DummyTrainer(Trainer):
     def training_loop(self) -> None:
         self.train_loop(self)
 
+
 # postprocess_checkpoint
 # overriding args
 # overriding custom args
@@ -53,14 +53,17 @@ def test_trainer_fit(ray_start_4_cpus):
     result = trainer.fit()
     assert result.metrics["my_metric"] == 1
 
+
 def test_preprocess_datasets(ray_start_4_cpus):
     def training_loop(self):
         assert self.datasets["my_dataset"].take() == [2, 3, 4]
 
     datasets = {"my_dataset": ray.data.from_items([1, 2, 3])}
-    trainer = DummyTrainer(training_loop, datasets=datasets,
-                           preprocessor=DummyPreprocessor())
+    trainer = DummyTrainer(
+        training_loop, datasets=datasets, preprocessor=DummyPreprocessor()
+    )
     trainer.fit()
+
 
 @pytest.mark.parametrize("gen_dataset", [True, False])
 def test_preprocess_fit_on_train(ray_start_4_cpus, gen_dataset):
@@ -72,14 +75,20 @@ def test_preprocess_fit_on_train(ray_start_4_cpus, gen_dataset):
         assert self.datasets["my_dataset"].take() == [2, 3, 4]
 
     if gen_dataset:
-        datasets = {"train": lambda: ray.data.from_items([1, 2, 3]), "my_dataset":
-            lambda: ray.data.from_items([1, 2, 3])}
+        datasets = {
+            "train": lambda: ray.data.from_items([1, 2, 3]),
+            "my_dataset": lambda: ray.data.from_items([1, 2, 3]),
+        }
     else:
-        datasets = {"train": ray.data.from_items([1, 2, 3]), "my_dataset":
-            ray.data.from_items([1, 2, 3])}
-    trainer = DummyTrainer(training_loop, datasets=datasets,
-                           preprocessor=DummyPreprocessor())
+        datasets = {
+            "train": ray.data.from_items([1, 2, 3]),
+            "my_dataset": ray.data.from_items([1, 2, 3]),
+        }
+    trainer = DummyTrainer(
+        training_loop, datasets=datasets, preprocessor=DummyPreprocessor()
+    )
     trainer.fit()
+
 
 def test_preprocessor_already_fitted(ray_start_4_cpus):
     def training_loop(self):
@@ -89,58 +98,77 @@ def test_preprocessor_already_fitted(ray_start_4_cpus):
         assert self.datasets["train"].take() == [2, 3, 4]
         assert self.datasets["my_dataset"].take() == [2, 3, 4]
 
-    datasets = {"train": ray.data.from_items([1, 2, 3]), "my_dataset":
-    ray.data.from_items([1, 2, 3])}
+    datasets = {
+        "train": ray.data.from_items([1, 2, 3]),
+        "my_dataset": ray.data.from_items([1, 2, 3]),
+    }
     preprocessor = DummyPreprocessor()
     preprocessor.fit(ray.data.from_items([1]))
-    trainer = DummyTrainer(training_loop, datasets=datasets,
-                           preprocessor=DummyPreprocessor())
+    trainer = DummyTrainer(
+        training_loop, datasets=datasets, preprocessor=DummyPreprocessor()
+    )
     trainer.fit()
 
+
+@pytest.mark.skip("Fix postprocess_checkpoint")
 def test_preprocessor_in_checkpoint(ray_start_4_cpus):
     """Checks if preprocessor is automatically saved in checkpoint."""
     preprocessor = DummyPreprocessor()
     assert preprocessor.fit_counter == 0
 
     def training_loop(self):
-        with tune.checkpoint_dir(step=0):
-            data = {1: 1}
-            os.path.join()
+        with tune.checkpoint_dir(step=0) as dir:
+            data = {"x": 1}
+            checkpoint_path = os.path.join(dir, "checkpoint")
+            with open(checkpoint_path, "wb+") as f:
+                import cloudpickle
+
+                cloudpickle.dump(data, f)
 
     datasets = {"train": ray.data.from_items([1, 2, 3])}
-    trainer = DummyTrainer(lambda self: None, datasets=datasets,
-                           preprocessor=DummyPreprocessor())
+    trainer = DummyTrainer(
+        training_loop, datasets=datasets, preprocessor=DummyPreprocessor()
+    )
 
     result = trainer.fit()
     assert result.checkpoint
-    checkpoint_dict = Checkpoint.from_dict(result.checkpoint)
+    checkpoint_dict = result.checkpoint.to_dict()
     assert PREPROCESSOR_KEY in checkpoint_dict
+    assert "x" in checkpoint_dict
     loaded_preprocessor = checkpoint_dict[PREPROCESSOR_KEY]
 
     # The saved preprocessor should be fitted.
     assert loaded_preprocessor.fit_counter == 1
 
-    # def test_override(self):
-    #     preprocessor = DummyPreprocessor()
-    #     scale_config = {"num_workers": 2, "use_gpu": False}
-    #     trainer = DummyTrainer(
-    #         run_config={"outer": {"inner": 1}},
-    #         preprocessor=preprocessor,
-    #         scaling_config=scale_config,
-    #     )
-    #     new_config = {
-    #         "run_config": {"outer": {"inner": 2}},
-    #         "preprocessor": DummyPreprocessor(),
-    #         "scaling_config": {"use_gpu": True},
-    #     }
-    #
-    #     trainer._override_attributes_with_config(new_config)
-    #     assert trainer.preprocessor is not preprocessor
-    #
-    #     assert trainer.scaling_config == {"num_workers": 2, "use_gpu": True}
-    #
-    #     # Dicts should do deep update.
-    #     assert trainer.run_config == {"outer": {"inner": 2}}
+    # User defined checkpoint should still exist.
+    assert checkpoint_dict["x"] == 1
+
+
+def test_arg_override():
+    def check_override(self):
+        assert self.scaling_config["num_workers"] == 1
+        # Should do deep update.
+        assert not self.custom_arg["outer"]["inner"]
+        assert self.custom_arg["outer"]["fixed"] == 1
+        # Should merge with base config.
+        assert self.preprocessor.original
+
+    preprocessor = DummyPreprocessor()
+    preprocessor.original = True
+    scale_config = {"num_workers": 2}
+    trainer = DummyTrainer(
+        check_override,
+        custom_arg={"outer": {"inner": True, "fixed": 1}},
+        preprocessor=preprocessor,
+        scaling_config=scale_config,
+    )
+
+    new_config = {
+        "custom_arg": {"outer": {"inner": False}},
+        "scaling_config": {"num_workers": 1},
+    }
+
+    tune.run(trainer.as_trainable(), config=new_config)
 
 
 if __name__ == "__main__":

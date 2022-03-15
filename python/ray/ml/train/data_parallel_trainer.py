@@ -185,4 +185,3 @@ class DataParallelTrainer(Trainer):
 
     def training_loop(self) -> None:
         pass
-

@@ -205,8 +205,9 @@ class Trainer(abc.ABC, object):
                 self.preprocessor.fit(train_dataset)
 
             for key, dataset in self.datasets.items():
-                transform_task_dict[key] = transform_task.remote(self.preprocessor,
-                                                                 dataset)
+                transform_task_dict[key] = transform_task.remote(
+                    self.preprocessor, dataset
+                )
 
             ray.get(list(transform_task_dict.values()))
 
@@ -290,7 +291,8 @@ class Trainer(abc.ABC, object):
 
             if checkpoint_dir:
                 trainer.resume_from_checkpoint = Checkpoint.from_directory(
-                    checkpoint_dir)
+                    checkpoint_dir
+                )
 
             trainer.setup()
             trainer.preprocess_datasets()
@@ -304,6 +306,7 @@ class Trainer(abc.ABC, object):
 
         class TrainTrainable(trainable_cls):
             """Add default resources to the Trainable."""
+
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
 
@@ -317,13 +320,16 @@ class Trainer(abc.ABC, object):
             def default_resource_request(cls, config):
                 updated_scaling_config = config.get("scaling_config", scaling_config)
                 scaling_config_dataclass = ScalingConfigDataClass(
-                    **updated_scaling_config)
+                    **updated_scaling_config
+                )
                 return scaling_config_dataclass.get_placement_group_factory()
 
             def _postprocess_checkpoint(self, checkpoint_dir: str):
                 preprocessor = self._merged_config.get("preprocessor", None)
                 existing_checkpoint = Checkpoint.from_directory(checkpoint_dir)
-                checkpoint_obj = Checkpoint.from_dict({PREPROCESSOR_KEY: preprocessor})
-                checkpoint_obj.to_directory(path=checkpoint_dir)
+                existing_checkpoint_dict = existing_checkpoint.to_dict()
+                existing_checkpoint_dict[PREPROCESSOR_KEY] = preprocessor
+                updated_checkpoint = Checkpoint.from_dict(existing_checkpoint_dict)
+                updated_checkpoint.to_directory(checkpoint_dir)
 
         return TrainTrainable
