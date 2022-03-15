@@ -24,8 +24,8 @@ NodeResources CreateNodeResources(double available_cpu,
                                   double total_custom_resource = 0,
                                   bool object_pulls_queued = false) {
   NodeResources resources;
-  resources.available.SetCPU(available_cpu);
-  resources.total.SetCPU(total_cpu);
+  resources.available.Set(ResourceID::CPU(), available_cpu);
+  resources.total.Set(ResourceID::CPU(), total_cpu);
   resources.available.Set(scheduling::ResourceID("CUSTOM").ToInt(), available_custom_resource);
   resources.total.Set(scheduling::ResourceID("CUSTOM").ToInt(), total_custom_resource);
   resources.object_pulls_queued = object_pulls_queued;

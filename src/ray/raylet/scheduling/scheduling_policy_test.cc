@@ -30,8 +30,12 @@ NodeResources CreateNodeResources(double available_cpu,
                                   double available_gpu,
                                   double total_gpu) {
   NodeResources resources;
-  resources.available.SetCPU(available_cpu).SetMemory(available_memory).SetGPU(available_gpu);
-  resources.total.SetCPU(total_cpu).SetMemory(total_memory).SetGPU(total_gpu);
+  resources.available.Set(ResourceID::CPU(), available_cpu)
+      .Set(ResourceID::Memory(), available_memory)
+      .Set(ResourceID::GPU(), available_gpu);
+  resources.total.Set(ResourceID::CPU(), total_cpu)
+      .Set(ResourceID::Memory(), total_memory)
+      .Set(ResourceID::GPU(), total_gpu);
   return resources;
 }
 
@@ -105,7 +109,7 @@ TEST_F(SchedulingPolicyTest, FeasibleDefinitionTest) {
   auto task_req2 = ResourceMapToResourceRequest({{"CPU", 1}}, false);
 
   NodeResources resources;
-  resources.total.SetCPU(2.0);
+  resources.total.Set(ResourceID::CPU(), 2.0);
   ASSERT_FALSE(resources.IsFeasible(task_req1));
   ASSERT_TRUE(resources.IsFeasible(task_req2));
 }
@@ -116,8 +120,8 @@ TEST_F(SchedulingPolicyTest, AvailableDefinitionTest) {
   auto task_req2 = ResourceMapToResourceRequest({{"CPU", 1}}, false);
 
   NodeResources resources;
-  resources.available.SetCPU(2.0);
-  resources.total.SetCPU(2.0);
+  resources.available.Set(ResourceID::CPU(), 2.0);
+  resources.total.Set(ResourceID::CPU(), 2.0);
   ASSERT_FALSE(resources.IsAvailable(task_req1));
   ASSERT_TRUE(resources.IsAvailable(task_req2));
 }
@@ -125,23 +129,35 @@ TEST_F(SchedulingPolicyTest, AvailableDefinitionTest) {
 TEST_F(SchedulingPolicyTest, CriticalResourceUtilizationDefinitionTest) {
   {
     NodeResources resources;
-    resources.available.SetCPU(1.0);
-    resources.total.SetCPU(2.0);
+    resources.available.Set(ResourceID::CPU(), 1.0);
+    resources.total.Set(ResourceID::CPU(), 2.0);
     ASSERT_EQ(resources.CalculateCriticalResourceUtilization(), 0.5);
   }
   {
     // Basic test of max
     NodeResources resources;
-    resources.available.SetCPU(1.0).SetMemory(0.25).SetGPU(1).SetObjectStoreMemory(50);
-    resources.total.SetCPU(2.0).SetMemory(1).SetGPU(2).SetObjectStoreMemory(100);
+    resources.available.Set(ResourceID::CPU(), 1.0)
+        .Set(ResourceID::Memory(), 0.25)
+        .Set(ResourceID::GPU(), 1)
+        .Set(ResourceID::ObjectStoreMemory(), 50);
+    resources.total.Set(ResourceID::CPU(), 2.0)
+        .Set(ResourceID::Memory(), 1)
+        .Set(ResourceID::GPU(), 2)
+        .Set(ResourceID::ObjectStoreMemory(), 100);
     ASSERT_EQ(resources.CalculateCriticalResourceUtilization(), 0.75);
   }
 
   {
     // Skip GPU
     NodeResources resources;
-    resources.available.SetCPU(1.0).SetMemory(0.25).SetGPU(0).SetObjectStoreMemory(50);
-    resources.total.SetCPU(2.0).SetMemory(1).SetGPU(2).SetObjectStoreMemory(100);
+    resources.available.Set(ResourceID::CPU(), 1.0)
+        .Set(ResourceID::Memory(), 0.25)
+        .Set(ResourceID::GPU(), 0)
+        .Set(ResourceID::ObjectStoreMemory(), 50);
+    resources.total.Set(ResourceID::CPU(), 2.0)
+        .Set(ResourceID::Memory(), 1)
+        .Set(ResourceID::GPU(), 2)
+        .Set(ResourceID::ObjectStoreMemory(), 100);
     ASSERT_EQ(resources.CalculateCriticalResourceUtilization(), 0.75);
   }
 }
