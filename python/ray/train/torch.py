@@ -4,6 +4,7 @@ import functools
 import io
 import logging
 import os
+import types
 
 from datetime import timedelta
 from pathlib import Path
@@ -97,13 +98,25 @@ class TorchAccelerator(Accelerator):
 
             return wrapper
 
+        def model_get_state(self):
+            # `__getstate__` is an special method that informs pickle which attributes
+            # to serialize. This custom implementation ensures that the wrapped forward
+            # method and custom `__getstate__` method aren't serialized.
+            state = self.__dict__.copy()
+            state["forward"] = state["_unwrapped_forward"]
+            del state["_unwrapped_forward"]
+            del state["__getstate__"]
+            return state
+
         if self.amp_is_enabled:
-            # Pickle cannot dump a model if the forward method is wrapped. The
-            # `_unwrapped_module_forward` and `_wrapped_module_forward` attributes are
-            # needed for the workaround in `TorchBackend.encode_data`.
-            self._unwrapped_module_forward = model.forward
+            # Pickle cannot serialize the wrapped forward method. As a workaround,
+            # define a custom `__getstate__` method that unwraps the forward method.
+            model._unwrapped_forward = model.forward
             model.forward = wrap_forward(model.forward)
-            self._wrapped_module_forward = model.forward
+            # `__getstate__` must be a bound method rather than an callable attribute.
+            # See https://stackoverflow.com/questions/972/adding-a-method-to-an-existing-object-instance.  # noqa: E501
+            assert not hasattr(model, "__getstate__")
+            model.__getstate__ = types.MethodType(model_get_state, model)
 
         if wrap_ddp and train.world_size() > 1:
             logger.info("Wrapping provided model in DDP.")
@@ -360,26 +373,11 @@ class TorchBackend(Backend):
             if isinstance(v, DistributedDataParallel) and hasattr(v, "module"):
                 data_dict[k] = v.module
 
-        # Pickle cannot dump modules with wrapped forward methods. As a workaround,
-        # unwrap the forward method before serialization, and re-wrap the method
-        # after serialization. The references to the unwrapped and wrapped forward
-        # methods are set in `TorchAccelerator.prepare_model`.
-        modules_with_wrapped_forward = [
-            v
-            for v in data_dict.values()
-            if isinstance(v, torch.nn.Module) and hasattr(v, "_wrapped_module_forward")
-        ]
-        for module in modules_with_wrapped_forward:
-            module.forward = module._unwrapped_module_forward
-
         # Convert the checkpoint dict to bytes, so that any GPU tensors that
         # are in the checkpoint dict can be properly deserialized on the
         # driver side, even if the driver does not have access to a GPU device.
         _buffer = io.BytesIO()
         torch.save(data_dict, _buffer)
-
-        for module in modules_with_wrapped_forward:
-            module.forward = module._wrapped_module_forward
 
         return _buffer.getvalue()
 
