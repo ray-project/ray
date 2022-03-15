@@ -126,8 +126,8 @@ def extract_deployments_from_serve_dag(
     deployments = {}
 
     def extractor(dag_node):
-        if isinstance(dag_node, DeploymentNode):
-            deployment = dag_node._deployment
+        if isinstance(dag_node, (DeploymentNode, DeploymentMethodNode)):
+            deployment = dag_node.get_deployment()
             # In case same deployment is used in multiple DAGNodes
             deployments[deployment.name] = deployment
         return dag_node

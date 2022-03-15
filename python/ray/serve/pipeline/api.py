@@ -64,6 +64,7 @@ def build(ray_dag_root_node: DAGNode):
         >>> deployment_yaml = app.to_yaml()
     """
     serve_root_dag = ray_dag_root_node.apply_recursive(transform_ray_dag_to_serve_dag)
+    print(serve_root_dag)
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
     pipeline_input_node = get_pipeline_input_node(serve_root_dag)
     ingress_deployment = get_ingress_deployment(serve_root_dag, pipeline_input_node)

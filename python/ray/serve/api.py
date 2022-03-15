@@ -1217,7 +1217,7 @@ class Deployment:
         )
 
     @PublicAPI(stability="alpha")
-    def bind(self, *args, other_args_to_resolve=None, **kwargs):
+    def bind(self, *args, **kwargs):
         """Bind the provided arguments and return a DeploymentNode.
 
         The returned bound deployment can be deployed or bound to other
@@ -1241,7 +1241,6 @@ class Deployment:
             ...     # INVALID, bind MyDeployment first
             ...     dag = MyDeployment.forward.bind()
         """
-        other_args_dict = other_args_to_resolve or {}
         return DeploymentNode(
             self._func_or_class,
             self._name,
@@ -1249,7 +1248,7 @@ class Deployment:
             kwargs,
             self._ray_actor_options,
             self.config,
-            other_args_to_resolve=other_args_dict,
+            other_args_to_resolve={},
         )
 
     def __eq__(self, other):
@@ -1576,9 +1575,7 @@ class DeploymentNode(DAGNode):
             predictate_fn=lambda node: isinstance(
                 node, (DeploymentNode, DeploymentMethodNode)
             ),
-            apply_fn=lambda node: node._get_serve_deployment_handle(
-                node.get_deployment(), node.get_other_args_to_resolve()
-            ),
+            apply_fn=lambda node: node.get_deployment_handle(),
         )
         self._deployment: Deployment = Deployment(
             func_or_class,
@@ -1589,9 +1586,6 @@ class DeploymentNode(DAGNode):
             ray_actor_options=ray_actor_options,
             _internal=True,
         )
-        self._deployment_handle: Union[
-            RayServeHandle, RayServeSyncHandle
-        ] = self._get_serve_deployment_handle(self._deployment, other_args_to_resolve)
 
     def _copy_impl(
         self,
@@ -1612,42 +1606,10 @@ class DeploymentNode(DAGNode):
 
     def _execute_impl(self, *args, **kwargs):
         """Executor of DeploymentNode by ray.remote()"""
-        return self._deployment_handle.options(**self._bound_options).remote(
+        deployment_handle = self.get_deployment_handle()
+        return deployment_handle.options(**self._bound_options).remote(
             *self._bound_args, **self._bound_kwargs
         )
-
-    def _get_serve_deployment_handle(
-        self,
-        deployment: Deployment,
-        bound_other_args_to_resolve: Dict[str, Any],
-    ) -> Union[RayServeHandle, RayServeSyncHandle]:
-        """
-        Return a sync or async handle of the encapsulated Deployment based on
-        config.
-
-        Args:
-            deployment (Deployment): Deployment instance wrapped in the DAGNode.
-            bound_other_args_to_resolve (Dict[str, Any]): Contains args used
-                to configure DeploymentNode.
-
-        Returns:
-            RayServeHandle: Default and catch-all is to return sync handle.
-                return async handle only if user explicitly set
-                USE_SYNC_HANDLE_KEY with value of False.
-        """
-        if USE_SYNC_HANDLE_KEY not in bound_other_args_to_resolve:
-            # Return sync RayServeSyncHandle
-            return deployment.get_handle(sync=True)
-        elif bound_other_args_to_resolve.get(USE_SYNC_HANDLE_KEY) is True:
-            # Return sync RayServeSyncHandle
-            return deployment.get_handle(sync=True)
-        elif bound_other_args_to_resolve.get(USE_SYNC_HANDLE_KEY) is False:
-            # Return async RayServeHandle
-            return deployment.get_handle(sync=False)
-        else:
-            raise ValueError(
-                f"{USE_SYNC_HANDLE_KEY} should only be set with a boolean value."
-            )
 
     def _contains_input_node(self) -> bool:
         """Check if InputNode is used in children DAGNodes with current node
@@ -1663,9 +1625,8 @@ class DeploymentNode(DAGNode):
         # Raise an error if the method is invalid.
         getattr(self._deployment.func_or_class, method_name)
         call_node = UnboundDeploymentMethodNode(
-            self._deployment,
+            self,
             method_name,
-            other_args_to_resolve=self._bound_other_args_to_resolve,
         )
         return call_node
 
@@ -1679,7 +1640,7 @@ class DeploymentNode(DAGNode):
         return self._deployment.name
 
     def get_deployment_handle(self):
-        return self._deployment_handle
+        return self._deployment.get_handle()
 
     def get_import_path(self):
         if isinstance(self._deployment._func_or_class, str):
@@ -1697,19 +1658,7 @@ class DeploymentNode(DAGNode):
     def to_json(self, encoder_cls) -> Dict[str, Any]:
         json_dict = super().to_json_base(encoder_cls, DeploymentNode.__name__)
         json_dict["deployment_name"] = self.get_deployment_name()
-        import_path = self.get_import_path()
-
-        error_message = (
-            "Class used in DAG should not be in-line defined when exporting"
-            "import path for deployment. Please ensure it has fully "
-            "qualified name with valid __module__ and __qualname__ for "
-            "import path, with no __main__ or <locals>. \n"
-            f"Current import path: {import_path}"
-        )
-        assert "__main__" not in import_path, error_message
-        assert "<locals>" not in import_path, error_message
-
-        json_dict["import_path"] = import_path
+        json_dict["import_path"] = self.get_import_path()
         json_dict["deployment_config"] = base64.b64encode(
             self._deployment.config.to_proto_bytes()
         ).decode()
@@ -1735,25 +1684,19 @@ class DeploymentNode(DAGNode):
 
 
 class UnboundDeploymentMethodNode(DAGNode):
-    def __init__(
-        self,
-        deployment: Deployment,
-        method_name: str,
-        other_args_to_resolve: Dict[str, Any] = None,
-    ):
-        self._deployment = deployment
+    def __init__(self, deployment_node: DeploymentNode, method_name: str):
+        self._deployment_node = deployment_node
         self._method_name = method_name
         self._options = {}
-        self._bound_other_args_to_resolve = other_args_to_resolve
 
     def bind(self, *args, **kwargs):
+        other_args_to_resolve = {"parent_deployment_node": self._deployment_node}
         node = DeploymentMethodNode(
-            self._deployment,
             self._method_name,
             args,
             kwargs,
             self._options,
-            other_args_to_resolve=self._bound_other_args_to_resolve,
+            other_args_to_resolve=other_args_to_resolve,
         )
         return node
 
@@ -1775,14 +1718,13 @@ class DeploymentMethodNode(DAGNode):
 
     def __init__(
         self,
-        deployment: Deployment,
         deployment_method_name: str,
         method_args: Tuple[Any],
         method_kwargs: Dict[str, Any],
         method_options: Dict[str, Any],
         other_args_to_resolve: Optional[Dict[str, Any]] = None,
     ):
-        self._deployment = deployment
+
         self._deployment_method_name: str = deployment_method_name
         super().__init__(
             method_args,
@@ -1790,9 +1732,6 @@ class DeploymentMethodNode(DAGNode):
             method_options,
             other_args_to_resolve=other_args_to_resolve,
         )
-        self._deployment_handle: Union[
-            RayServeHandle, RayServeSyncHandle
-        ] = self._get_serve_deployment_handle(deployment, other_args_to_resolve)
 
     def _copy_impl(
         self,
@@ -1802,7 +1741,6 @@ class DeploymentMethodNode(DAGNode):
         new_other_args_to_resolve: Dict[str, Any],
     ):
         return DeploymentMethodNode(
-            self._deployment,
             self._deployment_method_name,
             new_args,
             new_kwargs,
@@ -1810,79 +1748,56 @@ class DeploymentMethodNode(DAGNode):
             other_args_to_resolve=new_other_args_to_resolve,
         )
 
-    def _execute_impl(self, *args):
+    def _execute_impl(self, *args, **kwargs):
         """Executor of DeploymentMethodNode by ray.remote()"""
+        deployment_handle = self.get_deployment_handle()
         # Execute with bound args.
-        method_body = getattr(self._deployment_handle, self._deployment_method_name)
+        method_body = getattr(deployment_handle, self._deployment_method_name)
 
         return method_body.options(**self._bound_options).remote(
             *self._bound_args,
             **self._bound_kwargs,
         )
 
-    def _get_serve_deployment_handle(
-        self,
-        deployment: Deployment,
-        bound_other_args_to_resolve: Dict[str, Any],
-    ) -> Union[RayServeHandle, RayServeSyncHandle]:
-        """
-        Return a sync or async handle of the encapsulated Deployment based on
-        config.
-
-        Args:
-            deployment (Deployment): Deployment instance wrapped in the DAGNode.
-            bound_other_args_to_resolve (Dict[str, Any]): Contains args used
-                to configure DeploymentNode.
-
-        Returns:
-            RayServeHandle: Default and catch-all is to return sync handle.
-                return async handle only if user explicitly set
-                USE_SYNC_HANDLE_KEY with value of False.
-        """
-        if USE_SYNC_HANDLE_KEY not in bound_other_args_to_resolve:
-            # Return sync RayServeSyncHandle
-            return deployment.get_handle(sync=True)
-        elif bound_other_args_to_resolve.get(USE_SYNC_HANDLE_KEY) is True:
-            # Return sync RayServeSyncHandle
-            return deployment.get_handle(sync=True)
-        elif bound_other_args_to_resolve.get(USE_SYNC_HANDLE_KEY) is False:
-            # Return async RayServeHandle
-            return deployment.get_handle(sync=False)
-        else:
-            raise ValueError(
-                f"{USE_SYNC_HANDLE_KEY} should only be set with a boolean value."
-            )
-
     def __str__(self) -> str:
         return get_dag_node_str(
             self,
-            str(self._deployment_method_name) + "() @ " + str(self._deployment),
+            str(self._deployment_method_name)
+            + "() @ "
+            + str(
+                self.get_other_args_to_resolve()[
+                    "parent_deployment_node"
+                ].get_deployment()
+            ),
         )
 
-    def get_deployment_name(self) -> str:
-        return self._deployment.name
+    def get_deployment(self):
+        other_args_to_resolve = self.get_other_args_to_resolve()
+        return other_args_to_resolve["parent_deployment_node"].get_deployment()
 
     def get_deployment_method_name(self) -> str:
         return self._deployment_method_name
 
-    def get_import_path(self) -> str:
-        if isinstance(self._deployment._func_or_class, str):
-            # We're processing a deserilized JSON node where import_path
-            # is dag_node body.
-            return self._deployment._func_or_class
-        elif "__ray_actor_class__" in self._deployment._func_or_class.__dict__:
-            # ray.remote decorated class
-            body = self._deployment._func_or_class.__ray_actor_class__
-            return f"{body.__module__}.{body.__qualname__}"
-        else:
-            body = self._deployment._func_or_class
-            return f"{body.__module__}.{body.__qualname__}"
+    def get_deployment_handle(self):
+        return self.get_deployment().get_handle()
+
+    # def get_import_path(self) -> str:
+    #     if isinstance(self._deployment._func_or_class, str):
+    #         # We're processing a deserilized JSON node where import_path
+    #         # is dag_node body.
+    #         return self._deployment._func_or_class
+    #     elif "__ray_actor_class__" in self._deployment._func_or_class.__dict__:
+    #         # ray.remote decorated class
+    #         body = self._deployment._func_or_class.__ray_actor_class__
+    #         return f"{body.__module__}.{body.__qualname__}"
+    #     else:
+    #         body = self._deployment._func_or_class
+    #         return f"{body.__module__}.{body.__qualname__}"
 
     def to_json(self, encoder_cls) -> Dict[str, Any]:
         json_dict = super().to_json_base(encoder_cls, DeploymentMethodNode.__name__)
-        json_dict["deployment_name"] = self.get_deployment_name()
         json_dict["deployment_method_name"] = self.get_deployment_method_name()
-        json_dict["import_path"] = self.get_import_path()
+        # json_dict["import_path"] = self.get_import_path()
 
         return json_dict
 
@@ -1890,17 +1805,8 @@ class DeploymentMethodNode(DAGNode):
     def from_json(cls, input_json, object_hook=None):
         assert input_json[DAGNODE_TYPE_KEY] == DeploymentMethodNode.__name__
         args_dict = super().from_json_base(input_json, object_hook=object_hook)
+
         return cls(
-            Deployment(
-                input_json["import_path"],
-                input_json["deployment_name"],
-                # TODO: (jiaodong) Support deployment config from user input
-                DeploymentConfig(),
-                init_args=args_dict["args"],
-                init_kwargs=args_dict["kwargs"],
-                ray_actor_options=args_dict["options"],
-                _internal=True,
-            ),
             input_json["deployment_method_name"],
             args_dict["args"],
             args_dict["kwargs"],
