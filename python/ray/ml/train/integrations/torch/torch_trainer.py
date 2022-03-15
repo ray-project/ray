@@ -2,7 +2,7 @@ from typing import Callable, Optional, Dict
 
 from ray.train.torch import TorchConfig
 from ray.ml.trainer import GenDataset
-from ray.ml.train.impl.data_parallel_trainer import DataParallelFunctionTrainer
+from ray.ml.train.data_parallel_trainer import DataParallelTrainer
 from ray.ml.config import ScalingConfig, RunConfig
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
@@ -10,7 +10,7 @@ from ray.util import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class TorchTrainer(DataParallelFunctionTrainer):
+class TorchTrainer(DataParallelTrainer):
     """A Trainer for data parallel PyTorch training.
 
     This Trainer runs the provided function on multiple Ray Actors. The
