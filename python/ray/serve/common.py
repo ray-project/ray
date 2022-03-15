@@ -115,7 +115,10 @@ class DeploymentInfo:
             proto.deployment_config) if proto.deployment_config else None
         data = {
             "deployment_config": deployment_config,
-            "replica_config": ReplicaConfig.from_proto(proto.replica_config, deployment_config.deployment_language if deployment_config else DeploymentLanguage.PYTHON),
+            "replica_config": ReplicaConfig.from_proto(
+                proto.replica_config,
+                deployment_config.deployment_language if deployment_config else DeploymentLanguage.PYTHON
+            ),
             "start_time_ms": proto.start_time_ms,
             "actor_name": proto.actor_name,
             "serialized_deployment_def": proto.serialized_deployment_def,

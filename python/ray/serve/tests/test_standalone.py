@@ -449,8 +449,8 @@ def test_fixed_number_proxies(ray_cluster):
     assert len(node_to_http_actors) == 2
 
     proxy_names_bytes = ray.get(controller_handle.get_http_proxy_names.remote())
-    proxy_names_proto = ActorNameList.FromString(proxy_names_bytes)
-    assert len(proxy_names_proto.names) == 2
+    proxy_names = ActorNameList.FromString(proxy_names_bytes)
+    assert len(proxy_names.names) == 2
 
     serve.shutdown()
     ray.shutdown()

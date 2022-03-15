@@ -362,20 +362,21 @@ class Client:
 
     @_ensure_connected
     def get_deployment_info(self, name: str) -> Tuple[DeploymentInfo, str]:
-        deployment_route_bytes = ray.get(
-            self._controller.get_deployment_info.remote(name))
-        deployment_route_proto = DeploymentRoute.FromString(deployment_route_bytes)
+        deployment_route_proto = DeploymentRoute.FromString(
+            ray.get(self._controller.get_deployment_info.remote(name)))
         return DeploymentInfo.from_proto(
             deployment_route_proto.deployment_info), deployment_route_proto.route
 
     @_ensure_connected
     def list_deployments(self) -> Dict[str, Tuple[DeploymentInfo, str]]:
-        proto = DeploymentRouteList.FromString(ray.get(
-            self._controller.list_deployments.remote()))
+        deployment_route_list_proto = DeploymentRouteList.FromString(
+            ray.get(self._controller.list_deployments.remote()))
         return {
             deployment_route.deployment_info.name: (
-                DeploymentInfo.from_proto(deployment_route.deployment_info), deployment_route.route)
-            for deployment_route in proto.deployment_routes
+                DeploymentInfo.from_proto(
+                    deployment_route.deployment_info),
+                deployment_route.route)
+            for deployment_route in deployment_route_list_proto.deployment_routes
         }
 
     @_ensure_connected

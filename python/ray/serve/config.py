@@ -195,7 +195,7 @@ class DeploymentConfig(BaseModel):
 class ReplicaConfig:
     def __init__(
         self,
-        deployment_def: Union[Callable, str] = None,
+        deployment_def: Union[Callable, str],
         init_args: Optional[Tuple[Any]] = None,
         init_kwargs: Optional[Dict[Any, Any]] = None,
         ray_actor_options=None,
