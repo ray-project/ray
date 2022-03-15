@@ -1,3 +1,4 @@
+import sys
 import pytest
 
 from ray.serve.api import _get_deployments_from_node
@@ -92,3 +93,7 @@ def test_passing_handle(serve_instance):
     driver = Driver.bind(parent)
     handle = serve.run(driver)
     assert ray.get(handle.remote(1)) == 2
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", "-s", __file__]))
