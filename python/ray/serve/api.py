@@ -1658,14 +1658,12 @@ class Application:
         """Adds the deployment to this Serve application.
 
         Validates that a deployment with the same name doesn't already exist.
-        To overwrite an existing deployment, use index notation. For example:
-
-        app[deployment_name] = deployment
 
         Args:
             deployment (Deployment): deployment to add to this Application.
 
         Raises:
+            TypeError: If a non-Deployment object is passed in.
             ValueError: If a deployment with deployment.name already exists in
                 this Application.
         """
@@ -1673,13 +1671,7 @@ class Application:
         if not isinstance(deployment, Deployment):
             raise TypeError(f"Got {type(deployment)}. Expected deployment.")
         elif deployment.name in self._deployments:
-            raise ValueError(
-                f'Deployment with name "{deployment.name}" already '
-                "exists in this application. To overwrite this "
-                "deployment, use attribute or index notation. "
-                "For example:\n\napp.deployment_name = "
-                "new_deployment"
-            )
+            raise ValueError(f'App already has deployment named "{deployment.name}".')
 
         self._deployments[deployment.name] = deployment
 
