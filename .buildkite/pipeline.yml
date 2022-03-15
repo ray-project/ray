@@ -237,16 +237,16 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
     - 'git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd'
-    - >-
-      export test_shard_selection=$(
+    - >- 
       python ./scripts/bazel-sharding.py
       --exclude_manual
       --index "${BUILDKITE_PARALLEL_JOB:-0}" --count "${BUILDKITE_PARALLEL_JOB_COUNT:-1}"
       python/ray/serve/...
-      )
+      > test_shard.txt
+    - cat test_shard.txt
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-post_wheel_build
-      ${test_shard_selection}
+      $(cat test_shard.txt)
 
 
 - label: ":python: Minimal install"
