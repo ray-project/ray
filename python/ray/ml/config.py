@@ -9,6 +9,7 @@ from ray.tune.callback import Callback
 
 ScalingConfig = Dict[str, Any]
 
+
 @PublicAPI(stability="alpha")
 class FailureConfig:
     """Configuration related to failure handling of each run/trial.

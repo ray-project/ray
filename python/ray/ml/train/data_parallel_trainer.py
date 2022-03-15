@@ -3,11 +3,7 @@ from typing import Dict, Callable, Optional, Union
 
 from ray.ml.trainer import Trainer
 from ray.ml.config import ScalingConfig, RunConfig
-<<<<<<< HEAD
 from ray.ml.trainer import GenDataset
-=======
-from ray.ml.train.trainer import GenDataset
->>>>>>> 99d5288bbd3ad10fc90002a67428445ef7327bab
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.train import BackendConfig
@@ -21,20 +17,11 @@ class DataParallelTrainer(Trainer):
     """A Trainer for data parallel training.
 
     You should subclass this Trainer if your Trainer follows SPMD (single program,
-<<<<<<< HEAD
-    multiple data) programming paradigm- you want multiple processes to run the same
-    function, but on different data.
-
-    This Trainer runs the function ``train_loop_per_worker`` on multiple Ray
-    Actors. The provided datasets are automatically sharded to each Ray actor running
-    the training function.
-=======
     multiple data) programming paradigm - you want multiple processes to run the same
     function, but on different data.
 
     This Trainer runs the function ``train_loop_per_worker`` on multiple Ray
     Actors.
->>>>>>> 99d5288bbd3ad10fc90002a67428445ef7327bab
 
     The ``train_loop_per_worker`` function is expected to take in either 0 or 1
     arguments:
@@ -55,14 +42,9 @@ class DataParallelTrainer(Trainer):
 
     If the ``datasets`` dict contains a training dataset (denoted by
     the "train" key), then it will be split into multiple dataset
-<<<<<<< HEAD
-    shards that can be consumed by ``train_loop_per_worker``. All the other datasets
-    will not be sharded.
-=======
     shards that can then be accessed by ``ray.train.get_dataset_shard("train")`` inside
     ``train_loop_per_worker``. All the other datasets will not be split and
     ``ray.train.get_dataset_shard(...)`` will return the the entire Dataset.
->>>>>>> 99d5288bbd3ad10fc90002a67428445ef7327bab
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
     :ref:`Ray Train function utils <train-api-func-utils>`.
@@ -73,11 +55,7 @@ class DataParallelTrainer(Trainer):
             # Report intermediate results for callbacks or logging.
             train.report(...)
 
-<<<<<<< HEAD
-            # Checkpoints the provided dict as restorable state.
-=======
             # Checkpoints the provided args as restorable state.
->>>>>>> 99d5288bbd3ad10fc90002a67428445ef7327bab
             train.save_checkpoint(...)
 
             # Returns dict of last saved checkpoint.
@@ -86,15 +64,6 @@ class DataParallelTrainer(Trainer):
             # Returns the Ray Dataset shard for the given key.
             train.get_dataset_shard("my_dataset")
 
-<<<<<<< HEAD
-            # Total number of workers executing training.
-            train.get_world_size()
-
-            # Rank of this worker.
-            train.get_world_rank()
-
-            # Rank of the worker on the current node.
-=======
             # Returns the total number of workers executing training.
             train.get_world_size()
 
@@ -102,7 +71,6 @@ class DataParallelTrainer(Trainer):
             train.get_world_rank()
 
             # Returns the rank of the worker on the current node.
->>>>>>> 99d5288bbd3ad10fc90002a67428445ef7327bab
             train.get_local_rank()
 
     How do I use ``DataParallelTrainer`` or any of its subclasses?
@@ -120,11 +88,7 @@ class DataParallelTrainer(Trainer):
 
                 train_dataset = ray.data.from_items([1, 2, 3])
                 assert len(train_dataset) == 3
-<<<<<<< HEAD
-                trainer = DataParallelTrainer(scaling_config={"num_worker": 3},
-=======
                 trainer = DataParallelTrainer(scaling_config={"num_workers": 3},
->>>>>>> 99d5288bbd3ad10fc90002a67428445ef7327bab
                     datasets={"train": train_dataset})
                 result = trainer.fit()
 
