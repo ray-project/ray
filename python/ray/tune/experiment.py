@@ -49,11 +49,11 @@ def _validate_log_to_file(log_to_file):
     return stdout_file, stderr_file
 
 
-def _get_local_dir_with_expand_user(local_dir: Optional[str]):
+def _get_local_dir_with_expand_user(local_dir: Optional[str]) -> str:
     return os.path.abspath(os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR))
 
 
-def _get_dir_name(run, explicit_name: Optional[str], combined_name: str):
+def _get_dir_name(run, explicit_name: Optional[str], combined_name: str) -> str:
     # If the name has been set explicitly, we don't want to create
     # dated directories. The same is true for string run identifiers.
     if (
@@ -285,7 +285,7 @@ class Experiment:
             A string representing the trainable identifier.
 
         Raises:
-            TuneError: if `run_object` passed in is invalid.
+            TuneError: if ``run_object`` passed in is invalid.
         """
         if isinstance(run_object, str) or isinstance(run_object, Domain):
             return run_object
@@ -320,7 +320,7 @@ class Experiment:
         Assumes already registered if run_object is a string.
         Also, does not inspect interface of given run_object.
 
-        Arguments:
+        Args:
             run_object (str|function|class): Trainable to run. If string,
                 assumes it is an ID and does not modify it. Otherwise,
                 returns a string corresponding to the run_object name.
@@ -353,7 +353,7 @@ class Experiment:
 
         This is only used internally for better support of Tuner API.
 
-        Arguments:
+        Args:
             run_obj (str|function|class): Trainable to run.
             name (str): The name of the experiment specified by user.
             local_dir (str): The local_dir path.

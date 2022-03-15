@@ -5,7 +5,7 @@ from typing import Any, Callable, Dict, Optional, Type, Union
 import ray.cloudpickle as pickle
 from ray.ml.config import RunConfig
 from ray.ml.trainer import Trainer
-from ray.tune import Experiment, TuneError
+from ray.tune import Experiment, TuneError, ExperimentAnalysis
 from ray.tune.impl.utils import execute_dataset
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
@@ -25,13 +25,14 @@ class TunerInternal:
     The external facing ``Tuner`` multiplexes between local Tuner and remote Tuner
     depending on whether in Ray client mode.
 
-    In Ray client mode, external Tuner wraps ``TunerInternal`` into a remote actor,
+    In Ray client mode, external ``Tuner`` wraps ``TunerInternal`` into a remote actor,
     which is guaranteed to be placed on head node.
 
-    TunerInternal can be constructed from fresh, in which case, `trainable` needs to
-    be provided, together with optional `param_space`, `tune_config` and `run_config`.
+    ``TunerInternal`` can be constructed from fresh, in which case, ``trainable`` needs
+    to be provided, together with optional ``param_space``, ``tune_config`` and
+    ``run_config``.
 
-    It can also be restored from a previous failed run (given `restore_path`).
+    It can also be restored from a previous failed run (given ``restore_path``).
     """
 
     def __init__(
@@ -74,7 +75,7 @@ class TunerInternal:
         self._trainable = trainable
         self._tune_config = tune_config
         self._run_config = run_config
-        self._experiment_checkpoint_dir = self._get_or_create_experiment_checkpoint_dir(
+        self._experiment_checkpoint_dir = self._setup_create_experiment_checkpoint_dir(
             self._run_config
         )
 
@@ -96,7 +97,7 @@ class TunerInternal:
         with open(trainable_ckpt, "wb") as fp:
             pickle.dump(self._trainable, fp)
 
-    def _process_dataset_param(self):
+    def _process_dataset_param(self) -> None:
         """Dataset needs to be fully executed before sent over to trainables.
 
         A valid dataset configuration in param space looks like:
@@ -106,8 +107,10 @@ class TunerInternal:
         """
         execute_dataset(self._param_space)
 
-    def _get_or_create_experiment_checkpoint_dir(self, run_config: Optional[RunConfig]):
-        """Get experiment checkpoint dir before actually running the experiment."""
+    def _setup_create_experiment_checkpoint_dir(
+        self, run_config: Optional[RunConfig]
+    ) -> str:
+        """Sets up experiment checkpoint dir before actually running the experiment."""
         path = Experiment.get_experiment_checkpoint_dir(
             self._convert_trainable(self._trainable),
             run_config.local_dir,
@@ -118,11 +121,11 @@ class TunerInternal:
         return path
 
     # This has to be done through a function signature (@property won't do).
-    def experiment_checkpoint_dir(self):
+    def experiment_checkpoint_dir(self) -> str:
         return self._experiment_checkpoint_dir
 
     @staticmethod
-    def _convert_trainable(trainable: Any):
+    def _convert_trainable(trainable: Any) -> Type[Trainable]:
         if isinstance(trainable, Trainer):
             trainable = trainable.as_trainable()
         else:
@@ -140,7 +143,7 @@ class TunerInternal:
         analysis._legacy_checkpoint = False
         return ResultGrid(analysis)
 
-    def _fit_internal(self, trainable, param_space):
+    def _fit_internal(self, trainable, param_space) -> ExperimentAnalysis:
         """Fitting for a fresh Tuner."""
         analysis = run(
             trainable,
@@ -156,7 +159,7 @@ class TunerInternal:
         )
         return analysis
 
-    def _fit_resume(self, trainable):
+    def _fit_resume(self, trainable) -> ExperimentAnalysis:
         """Fitting for a restored Tuner."""
         analysis = run(
             trainable,

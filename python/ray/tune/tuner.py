@@ -1,4 +1,3 @@
-import traceback
 from typing import Any, Callable, Dict, Optional, Type, Union
 
 import ray
@@ -67,7 +66,7 @@ class Tuner:
         tuner = Tuner.restore(experiment_checkpoint_dir)
         tuner.fit()
 
-    `experiment_checkpoint_dir` can be easily located near the end of the
+    ``experiment_checkpoint_dir`` can be easily located near the end of the
     console output of your first failed run.
     """
 
@@ -141,7 +140,7 @@ class Tuner:
         For the kind of exception that happens during the execution of a trial,
         one may inspect it together with stacktrace through the returned result grid.
         See ``ResultGrid`` for reference. Each trial may fail up to a certain number.
-        This is configured by `RunConfig.FailureConfig.max_failures`.
+        This is configured by ``RunConfig.FailureConfig.max_failures``.
 
         Exception that happens beyond trials will be thrown by this method as well.
         In such cases, there will be instruction like the following printed out
@@ -161,21 +160,21 @@ class Tuner:
         if not self._is_ray_client:
             try:
                 return self._local_tuner.fit()
-            except Exception:
+            except Exception as e:
                 raise TuneError(
-                    f"Tune run fails with {traceback.format_exc()}"
+                    f"Tune run failed."
                     f'Please use tuner = Tuner.restore("'
                     f'{self._local_tuner.experiment_checkpoint_dir}") to resume.'
-                )
+                ) from e
         else:
             experiment_checkpoint_dir = ray.get(
                 self._remote_tuner.experiment_checkpoint_dir.remote()
             )
             try:
                 return ray.get(self._remote_tuner.fit.remote())
-            except Exception:
+            except Exception as e:
                 raise TuneError(
-                    f"Tune run fails with {traceback.format_exc()}"
+                    f"Tune run failed."
                     f'Please use tuner = Tuner.restore("'
                     f'{experiment_checkpoint_dir}") to resume.'
-                )
+                ) from e
