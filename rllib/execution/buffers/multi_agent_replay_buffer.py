@@ -287,7 +287,7 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
     def apply(
         self,
         func: Callable[["MultiAgentReplayBuffer", Optional[Any], Optional[Any]], T],
-        *args,
+        *_args,
         **kwargs,
     ) -> T:
         """Calls the given function with this MultiAgentReplayBuffer instance.
@@ -298,14 +298,14 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
 
         Args:
             func: The function to call, with this MultiAgentReplayBuffer as first
-                argument, followed by args, and kwargs.
-            args: Optional additional args to pass to the function call.
+                argument, followed by _args, and kwargs.
+            _args: Optional additional _args to pass to the function call.
             kwargs: Optional additional kwargs to pass to the function call.
 
         Returns:
             The return value of the function call.
         """
-        return func(self, *args, **kwargs)
+        return func(self, *_args, **kwargs)
 
 
 ReplayActor = ray.remote(num_cpus=0)(MultiAgentReplayBuffer)
