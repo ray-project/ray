@@ -154,7 +154,7 @@ class DataParallelTrainer(Trainer):
         train_loop_per_worker: The training function to execute.
             This can either take in no arguments or a ``config`` dict.
         train_loop_config: Configurations to pass into
-            ``train_func`` if it accepts an argument.
+            ``train_loop_per_worker`` if it accepts an argument.
         backend_config: Used to specify which backend to setup on the
             workers enable distributed communication, for example torch or
             horovod. If no Backend should be set up, then set this to None.
