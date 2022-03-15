@@ -1,5 +1,4 @@
 from datetime import datetime
-import inspect
 import logging
 import os
 from pathlib import Path
@@ -639,7 +638,7 @@ class TrainingIterator:
         checkpoint_manager: CheckpointManager,
         checkpoint: Optional[Union[Dict, str, Path]],
         checkpoint_strategy: Optional[CheckpointStrategy],
-        run_dir: Optional[Path] = None
+        run_dir: Optional[Path] = None,
     ):
         self._backend_executor_actor = backend_executor_actor
         self._backend = backend_config.backend_cls()

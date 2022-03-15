@@ -5,8 +5,17 @@ import logging
 from pathlib import Path
 from threading import Thread
 
-from typing import Tuple, Dict, List, Any, TYPE_CHECKING, Union, Callable, TypeVar, \
-    Optional
+from typing import (
+    Tuple,
+    Dict,
+    List,
+    Any,
+    TYPE_CHECKING,
+    Union,
+    Callable,
+    TypeVar,
+    Optional,
+)
 
 import ray
 from ray.exceptions import RayActorError
@@ -101,9 +110,11 @@ def update_env_vars(env_vars: Dict[str, Any]):
     sanitized = {k: str(v) for k, v in env_vars.items()}
     os.environ.update(sanitized)
 
+
 def construct_train_func(
     train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
-    config: Optional[Dict[str, Any]], fn_arg_name: Optional[str] = "train_func"
+    config: Optional[Dict[str, Any]],
+    fn_arg_name: Optional[str] = "train_func",
 ) -> Callable[[], T]:
     """Validates and constructs the training function to execute.
     Args:
@@ -121,8 +132,10 @@ def construct_train_func(
     signature = inspect.signature(train_func)
     num_params = len(signature.parameters)
     if num_params > 1:
-        err_msg = f"{fn_arg_name} should take in 0 or 1 arguments, but it accepts " \
-                  f"{num_params} arguments instead."
+        err_msg = (
+            f"{fn_arg_name} should take in 0 or 1 arguments, but it accepts "
+            f"{num_params} arguments instead."
+        )
         raise ValueError(err_msg)
     elif num_params == 1:
         config = {} if config is None else config

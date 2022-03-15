@@ -1,3 +1,4 @@
+import inspect
 import logging
 import os
 from typing import Dict, Callable, Optional, Union, Type
@@ -13,8 +14,10 @@ from ray.ml.checkpoint import Checkpoint
 from ray.train import BackendConfig, TrainingIterator
 from ray.train.backend import BackendExecutor
 from ray.train.checkpoint import MLTuneCheckpointManager
-from ray.train.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
-    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV
+from ray.train.constants import (
+    ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
+    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
+)
 from ray.train.utils import construct_train_func
 from ray.tune import Trainable
 from ray.util.annotations import DeveloperAPI
@@ -198,6 +201,19 @@ class DataParallelTrainer(Trainer):
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
+        if "num_workers" not in scaling_config:
+            raise ValueError("You must specify the 'num_workers' in scaling_config.")
+
+        if scaling_config["num_worker"] < 0:
+            raise ValueError("'num_workers' must be a non-negative integer.")
+
+        num_params = len(inspect.signature(train_loop_per_worker).parameters)
+        if num_params > 1:
+            raise ValueError(
+                f"train_loop_per_worker should take in 0 or 1 arguments, "
+                f"but it accepts {num_params} arguments instead."
+            )
+
         if not ray.is_initialized():
             ray.init()
 
@@ -235,9 +251,11 @@ class DataParallelTrainer(Trainer):
     def training_loop(self) -> None:
         scaling_config_dataclass = ScalingConfigDataClass(**self.scaling_config)
 
-        train_loop_per_worker = construct_train_func(self.train_loop_per_worker,
-                                                  self.train_loop_config,
-                                                     fn_arg_name="train_loop_per_worker")
+        train_loop_per_worker = construct_train_func(
+            self.train_loop_per_worker,
+            self.train_loop_config,
+            fn_arg_name="train_loop_per_worker",
+        )
 
         runtime_env = {"env_vars": self.train_env_var_values}
 
@@ -283,7 +301,7 @@ class DataParallelTrainer(Trainer):
             backend_executor_actor=backend_executor_actor,
             backend_config=self.backend_config,
             train_func=train_loop_per_worker,
-            dataset=updated_dataset_dict if len(updated_dataset_dict)>0 else None,
+            dataset=updated_dataset_dict if len(updated_dataset_dict) > 0 else None,
             checkpoint_manager=checkpoint_manager,
             checkpoint=resume_checkpoint_dict,
             checkpoint_strategy=None,
@@ -297,7 +315,6 @@ class DataParallelTrainer(Trainer):
 
         # Shutdown workers.
         ray.get(backend_executor_actor.shutdown.remote())
-
 
     def as_trainable(self) -> Type[Trainable]:
         trainable_cls = super().as_trainable()
@@ -313,10 +330,3 @@ class DataParallelTrainer(Trainer):
                     os.environ[var_name] = value
 
         return TrainableWithEnvVars
-
-
-
-
-
-
-

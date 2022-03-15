@@ -44,9 +44,6 @@ class ScalingConfigDataClass:
             self.resources_per_worker if self.resources_per_worker else {}
         )
 
-        if self.num_workers < 0:
-            raise ValueError("`num_workers` must be a positive integer.")
-
         if self.resources_per_worker:
             # Override CPU and GPU resources and remove from dict.
             if not self.use_gpu and self.num_gpus_per_worker > 0:
