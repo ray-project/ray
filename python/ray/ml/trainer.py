@@ -212,14 +212,15 @@ class Trainer(abc.ABC):
             for key, transformed_dataset in transform_task_dict.items():
                 self.datasets[key] = ray.get(transformed_dataset)
 
-            # Execute dataset transformations serially for now.
-            # Cannot execute them in remote tasks due to dataset ownership model:
-            # TODO(@ray-dataprocessing): Execute d
-            new_datasets = {}
-            for key, dataset in self.datasets.items():
-                new_datasets[key] = self.preprocessor.transform(dataset)
-
-            self.datasets = new_datasets
+            # # Execute dataset transformations serially for now.
+            # # Cannot execute them in remote tasks due to dataset ownership model:
+            # # if datasets are created on a remote node, then if that node fails,
+            # # we cannot recover the dataset.
+            # new_datasets = {}
+            # for key, dataset in self.datasets.items():
+            #     new_datasets[key] = self.preprocessor.transform(dataset)
+            #
+            # self.datasets = new_datasets
 
     @abc.abstractmethod
     def training_loop(self) -> None:
