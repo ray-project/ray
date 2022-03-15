@@ -71,6 +71,7 @@ class TorchTrainer(DataParallelTrainer):
     <train-api-torch-utils>`.
 
     .. code-block:: python
+
         def train_loop_per_worker():
             # Prepares model for distribted training by wrapping in
             # `DistributedDataParallel` and moving to correct device.
