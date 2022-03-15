@@ -19,6 +19,7 @@ from typing import (
     List,
     overload,
 )
+import base64
 
 from fastapi import APIRouter, FastAPI
 from ray.experimental.dag.dag_node import DAGNode
@@ -48,10 +49,7 @@ from ray.serve.constants import (
     MAX_CACHED_HANDLES,
     CONTROLLER_MAX_CONCURRENCY,
 )
-from ray.serve.pipeline.constants import (
-    USE_SYNC_HANDLE_KEY,
-    DEPLOYMENT_CONFIG_KEY,
-)
+from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 from ray.serve.controller import ServeController
 from ray.serve.exceptions import RayServeException
@@ -1225,14 +1223,13 @@ class Deployment:
             ...     dag = MyDeployment.forward.bind()
         """
         other_args_dict = other_args_to_resolve or {}
-        other_args_dict[DEPLOYMENT_CONFIG_KEY] = self.config
-
         return DeploymentNode(
             self._func_or_class,
             self._name,
             args,
             kwargs,
             self._ray_actor_options,
+            self.config,
             other_args_to_resolve=other_args_dict,
         )
 
@@ -1512,6 +1509,7 @@ class DeploymentNode(DAGNode):
         deployment_init_args: Tuple[Any],
         deployment_init_kwargs: Dict[str, Any],
         ray_actor_options: Dict[str, Any],
+        deployment_config: DeploymentConfig,
         other_args_to_resolve: Optional[Dict[str, Any]] = None,
     ):
         # Assign instance variables in base class constructor.
@@ -1553,7 +1551,7 @@ class DeploymentNode(DAGNode):
         self._deployment: Deployment = Deployment(
             func_or_class,
             deployment_name,
-            other_args_to_resolve[DEPLOYMENT_CONFIG_KEY],
+            deployment_config,
             init_args=replaced_deployment_init_args,
             init_kwargs=replaced_deployment_init_kwargs,
             ray_actor_options=ray_actor_options,
@@ -1576,6 +1574,7 @@ class DeploymentNode(DAGNode):
             new_args,
             new_kwargs,
             new_options,
+            self._deployment.config,
             other_args_to_resolve=new_other_args_to_resolve,
         )
 
@@ -1679,6 +1678,9 @@ class DeploymentNode(DAGNode):
         assert "<locals>" not in import_path, error_message
 
         json_dict["import_path"] = import_path
+        json_dict["deployment_config"] = base64.b64encode(
+            self._deployment.config.to_proto_bytes()
+        ).decode()
 
         return json_dict
 
@@ -1686,12 +1688,16 @@ class DeploymentNode(DAGNode):
     def from_json(cls, input_json, object_hook=None):
         assert input_json[DAGNODE_TYPE_KEY] == DeploymentNode.__name__
         args_dict = super().from_json_base(input_json, object_hook=object_hook)
+        deployment_config = DeploymentConfig.from_proto_bytes(
+            base64.b64decode(input_json["deployment_config"])
+        )
         return cls(
             input_json["import_path"],
             input_json["deployment_name"],
             args_dict["args"],
             args_dict["kwargs"],
             args_dict["options"],
+            deployment_config,
             other_args_to_resolve=args_dict["other_args_to_resolve"],
         )
 

@@ -10,6 +10,7 @@ from ray.experimental.dag import (
 )
 from ray.experimental.dag.input_node import InputNode
 from ray.serve.api import Deployment, DeploymentNode, DeploymentMethodNode
+from ray.serve.config import DeploymentConfig
 from ray.serve.pipeline.ingress import make_ingress_deployment
 from ray.serve.pipeline.json_serde import DAGNodeEncoder
 from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
@@ -86,7 +87,8 @@ def transform_ray_dag_to_serve_dag(dag_node):
             dag_node.get_args(),
             dag_node.get_kwargs(),
             ray_actor_options,
-            # TODO: (jiaodong) Support .options(metadata=xxx) for deployment
+            # TODO (jiaodong): This is a gap between Ray DAG and Serve DAG
+            DeploymentConfig(),
             other_args_to_resolve=dag_node.get_other_args_to_resolve(),
         )
 

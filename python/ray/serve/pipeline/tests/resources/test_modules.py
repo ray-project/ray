@@ -8,13 +8,12 @@ import json
 from typing import TypeVar
 
 import ray
-from ray import serve
 
 RayHandleLike = TypeVar("RayHandleLike")
 NESTED_HANDLE_KEY = "nested_handle"
 
 
-@serve.deployment
+@ray.remote
 class ClassHello:
     def __init__(self):
         pass
@@ -23,7 +22,7 @@ class ClassHello:
         return "hello"
 
 
-@serve.deployment
+@ray.remote
 class Model:
     def __init__(self, weight: int, ratio: float = None):
         self.weight = weight
@@ -37,7 +36,7 @@ class Model:
         return self.ratio * self.weight * input_data
 
 
-@serve.deployment
+@ray.remote
 class Combine:
     def __init__(
         self,
@@ -54,7 +53,7 @@ class Combine:
         return sum(ray.get([r1_ref, r2_ref]))
 
 
-@serve.deployment
+@ray.remote
 class Counter:
     def __init__(self, val):
         self.val = val

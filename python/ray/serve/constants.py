@@ -79,6 +79,8 @@ REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
 
 # Key used to idenfity given json represents a serialized RayServeHandle
 SERVE_HANDLE_JSON_KEY = "__SerializedServeHandle__"
+# Key used to idenfity given json represents a serialized DeploymentConfig
+DEPLOYMENT_CONFIG_JSON_KEY = "__deployment_config__"
 
 
 class ServeHandleType(str, Enum):

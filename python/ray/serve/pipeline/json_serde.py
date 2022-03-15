@@ -2,6 +2,7 @@ from typing import Any, Union
 from importlib import import_module
 
 import json
+import base64
 
 from ray.experimental.dag import (
     DAGNode,
@@ -17,7 +18,8 @@ from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
 from ray.serve.utils import parse_import_path
 from ray.serve.handle import RayServeHandle
 from ray.serve.utils import ServeHandleEncoder, serve_handle_object_hook
-from ray.serve.constants import SERVE_HANDLE_JSON_KEY
+from ray.serve.constants import SERVE_HANDLE_JSON_KEY, DEPLOYMENT_CONFIG_JSON_KEY
+from ray.serve.config import DeploymentConfig
 
 
 class DAGNodeEncoder(json.JSONEncoder):
@@ -43,8 +45,10 @@ class DAGNodeEncoder(json.JSONEncoder):
         # For replaced deployment handles used as init args or kwargs.
         if isinstance(obj, RayServeHandle):
             return json.dumps(obj, cls=ServeHandleEncoder)
+        elif isinstance(obj, DeploymentConfig):
+            return {DEPLOYMENT_CONFIG_JSON_KEY: base64.b64encode(obj.to_proto_bytes())}
         # For all other DAGNode types.
-        if isinstance(obj, DAGNode):
+        elif isinstance(obj, DAGNode):
             return obj.to_json(DAGNodeEncoder)
         else:
             # Let the base class default method raise the TypeError
@@ -81,6 +85,10 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
     # Deserialize RayServeHandle type
     if SERVE_HANDLE_JSON_KEY in input_json:
         return json.loads(input_json, object_hook=serve_handle_object_hook)
+    elif DEPLOYMENT_CONFIG_JSON_KEY in input_json:
+        return DeploymentConfig.from_proto_bytes(
+            base64.b64decode(input_json[DEPLOYMENT_CONFIG_JSON_KEY])
+        )
     # Base case for plain objects
     elif DAGNODE_TYPE_KEY not in input_json:
         try:
@@ -102,7 +110,6 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
         return DeploymentMethodNode.from_json(input_json, object_hook=dagnode_from_json)
     else:
         # Class and Function nodes require original module as body.
-        print(f"import_path: {input_json['import_path']}")
         module_name, attr_name = parse_import_path(input_json["import_path"])
         module = getattr(import_module(module_name), attr_name)
         if input_json[DAGNODE_TYPE_KEY] == FunctionNode.__name__:
