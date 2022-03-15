@@ -243,7 +243,7 @@ class PipelineHandle:
         self.dag_node_json = dag_node_json
 
         # NOTE(simon): Making this lazy to avoid deserialization in controller for now
-        # This would overwise hang because it's trying to get handles from within
+        # This would otherwise hang because it's trying to get handles from within
         # the controller.
         self.dag_node = None
 

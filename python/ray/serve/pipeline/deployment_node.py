@@ -75,7 +75,6 @@ class DeploymentNode(DAGNode):
             original_deployment: Deployment = self._bound_other_args_to_resolve[
                 "deployment_self"
             ]
-            print("deployment node init", original_deployment.num_replicas)
             self._deployment = original_deployment.options(
                 name=(
                     deployment_name
@@ -86,7 +85,6 @@ class DeploymentNode(DAGNode):
                 init_args=replaced_deployment_init_args,
                 init_kwargs=replaced_deployment_init_kwargs,
             )
-            print("deployment node init", self._deployment.num_replicas)
         else:
             self._deployment: Deployment = Deployment(
                 func_or_class,

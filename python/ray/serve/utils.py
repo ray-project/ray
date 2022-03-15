@@ -14,7 +14,6 @@ from enum import Enum
 import __main__
 from ray.actor import ActorHandle
 
-
 import requests
 import numpy as np
 import pydantic

@@ -1638,6 +1638,22 @@ class Application:
         raise NotImplementedError()
 
 
+def _get_deployments_from_node(node: DeploymentNode) -> List[Deployment]:
+    """Generate a list of deployment objects from a root node.
+
+    Returns:
+        deployment_list(List[Deployment]): the list of Deployment objects. The
+          last element correspond to the node passed in to this function.
+    """
+    from ray.serve.pipeline.api import build as pipeline_build
+
+    with PipelineInputNode() as input_node:
+        root = node.__call__.bind(input_node)
+    deployments = pipeline_build(root, inject_ingress=False)
+
+    return deployments
+
+
 @PublicAPI(stability="alpha")
 def run(
     target: Union[DeploymentNode, Application],
@@ -1651,12 +1667,11 @@ def run(
     If a DeploymentNode is passed in, all of the deployments it depends on
     will be deployed.
     """
-    from ray.serve.pipeline.api import build as pipeline_build
 
     if isinstance(target, DeploymentNode):
-        with PipelineInputNode() as input_node:
-            root = target.__call__.bind(input_node)
-        deployments = pipeline_build(root, inject_ingress=False)
+        deployments = _get_deployments_from_node(target)
+    else:
+        raise NotImplementedError()
 
     for d in deployments:
         logger.debug(f"Deploying {d}")

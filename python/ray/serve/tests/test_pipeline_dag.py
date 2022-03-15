@@ -1,5 +1,6 @@
 import pytest
 
+from ray.serve.api import _get_deployments_from_node
 from ray.serve.handle import PipelineHandle
 from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
 import ray
@@ -51,26 +52,17 @@ def test_single_node_driver_sucess(serve_instance):
 
 
 def test_options_and_names(serve_instance):
-    from ray.serve.pipeline.api import build as pipeline_build
-
-    def get_built_deployment(deployment_node):
-
-        with PipelineInputNode() as input_node:
-            root = deployment_node.__call__.bind(input_node)
-
-        m1_deploy = pipeline_build(root, inject_ingress=False)[0]
-        return m1_deploy
 
     m1 = Adder.bind(1)
-    m1_built = get_built_deployment(m1)
+    m1_built = _get_deployments_from_node(m1)[-1]
     assert m1_built.name == "Adder"
 
     m1 = Adder.options(name="Adder2").bind(1)
-    m1_built = get_built_deployment(m1)
+    m1_built = _get_deployments_from_node(m1)[-1]
     assert m1_built.name == "Adder2"
 
     m1 = Adder.options(num_replicas=2).bind(1)
-    m1_built = get_built_deployment(m1)
+    m1_built = _get_deployments_from_node(m1)[-1]
     assert m1_built.num_replicas == 2
 
 
