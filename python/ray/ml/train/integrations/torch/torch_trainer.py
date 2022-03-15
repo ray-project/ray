@@ -102,6 +102,7 @@ class TorchTrainer(DataParallelTrainer):
             input_size = 1
             layer_size = 15
             output_size = 1
+            num_epochs = 3
 
             class NeuralNetwork(nn.Module):
                 def __init__(self):
