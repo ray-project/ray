@@ -144,13 +144,13 @@ class ProcessFD {
         STARTUPINFO si = {sizeof(si)};
         LPVOID envp = NULL;
         if (!new_env_block.empty()) {
-            if (new_env.find("PATH") == new_env.end() ) {
-                RAY_LOG(ERROR) << "Calling spawnvpe with invalid env";
-                break;
-            }
-            RAY_UNUSED(
-                new_env_block.c_str());  // Ensure there's a final terminator for Windows
-            envp = &new_env_block[0];
+          if (new_env.find("PATH") == new_env.end()) {
+            RAY_LOG(ERROR) << "Calling spawnvpe with invalid env";
+            break;
+          }
+          RAY_UNUSED(
+              new_env_block.c_str());  // Ensure there's a final terminator for Windows
+          envp = &new_env_block[0];
         }
         if (CreateProcessA(NULL, cmdline, NULL, NULL, FALSE, 0, envp, NULL, &si, &pi)) {
           succeeded = true;
@@ -638,8 +638,8 @@ bool equal_to<ray::Process>::operator()(const ray::Process &x,
              ? !y.IsNull()
                    ? x.IsValid()
                          ? y.IsValid() ? equal_to<pid_t>()(x.GetId(), y.GetId()) : false
-                     : y.IsValid() ? false
-                                   : equal_to<void const *>()(x.Get(), y.Get())
+                         : y.IsValid() ? false
+                                       : equal_to<void const *>()(x.Get(), y.Get())
                    : false
              : y.IsNull();
 }
