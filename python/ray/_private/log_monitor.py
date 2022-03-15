@@ -1,7 +1,6 @@
 import argparse
 import errno
 import glob
-import json
 import logging
 import logging.handlers
 import os
@@ -13,7 +12,6 @@ import traceback
 
 import ray.ray_constants as ray_constants
 import ray._private.gcs_pubsub as gcs_pubsub
-import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
 import ray._private.utils
 from ray._private.gcs_pubsub import GcsPublisher
