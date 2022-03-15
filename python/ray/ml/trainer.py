@@ -8,7 +8,7 @@ from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.result import Result
 from ray.ml.config import RunConfig, ScalingConfig, ScalingConfigDataClass
-from ray.ml.constants import TRAIN_DATASET_KEY, PREPROCESSOR_KEY
+from ray.ml.constants import TRAIN_DATASET_KEY
 from ray.tune import Trainable
 from ray.tune.function_runner import wrap_function
 from ray.util import PublicAPI
@@ -321,13 +321,5 @@ class Trainer(abc.ABC):
                     **updated_scaling_config
                 )
                 return scaling_config_dataclass.get_placement_group_factory()
-
-            def _postprocess_checkpoint(self, checkpoint_dir: str):
-                preprocessor = self._merged_config.get("preprocessor", None)
-                existing_checkpoint = Checkpoint.from_directory(checkpoint_dir)
-                existing_checkpoint_dict = existing_checkpoint.to_dict()
-                existing_checkpoint_dict[PREPROCESSOR_KEY] = preprocessor
-                updated_checkpoint = Checkpoint.from_dict(existing_checkpoint_dict)
-                updated_checkpoint.to_directory(checkpoint_dir)
 
         return TrainTrainable

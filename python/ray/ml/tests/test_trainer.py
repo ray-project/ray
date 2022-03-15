@@ -1,5 +1,3 @@
-import os
-
 import pytest
 
 import ray
@@ -7,7 +5,6 @@ from ray import tune
 
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.trainer import Trainer
-from ray.ml.constants import PREPROCESSOR_KEY
 
 
 @pytest.fixture
@@ -102,40 +99,6 @@ def test_preprocessor_already_fitted(ray_start_4_cpus):
         training_loop, datasets=datasets, preprocessor=DummyPreprocessor()
     )
     trainer.fit()
-
-
-@pytest.mark.skip("Fix postprocess_checkpoint")
-def test_preprocessor_in_checkpoint(ray_start_4_cpus):
-    """Checks if preprocessor is automatically saved in checkpoint."""
-    preprocessor = DummyPreprocessor()
-    assert preprocessor.fit_counter == 0
-
-    def training_loop(self):
-        with tune.checkpoint_dir(step=0) as dir:
-            data = {"x": 1}
-            checkpoint_path = os.path.join(dir, "checkpoint")
-            with open(checkpoint_path, "wb+") as f:
-                import cloudpickle
-
-                cloudpickle.dump(data, f)
-
-    datasets = {"train": ray.data.from_items([1, 2, 3])}
-    trainer = DummyTrainer(
-        training_loop, datasets=datasets, preprocessor=DummyPreprocessor()
-    )
-
-    result = trainer.fit()
-    assert result.checkpoint
-    checkpoint_dict = result.checkpoint.to_dict()
-    assert PREPROCESSOR_KEY in checkpoint_dict
-    assert "x" in checkpoint_dict
-    loaded_preprocessor = checkpoint_dict[PREPROCESSOR_KEY]
-
-    # The saved preprocessor should be fitted.
-    assert loaded_preprocessor.fit_counter == 1
-
-    # User defined checkpoint should still exist.
-    assert checkpoint_dict["x"] == 1
 
 
 def test_arg_override():
