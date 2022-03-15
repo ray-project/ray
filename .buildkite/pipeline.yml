@@ -238,9 +238,10 @@
     - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
     - 'git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd'
     - >- 
+      set -x;
       python ./scripts/bazel-sharding.py
       --exclude_manual
-      --index "${BUILDKITE_PARALLEL_JOB:-0}" --count "${BUILDKITE_PARALLEL_JOB_COUNT:-1}"
+      --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}"
       python/ray/serve/...
       > test_shard.txt
     - cat test_shard.txt
