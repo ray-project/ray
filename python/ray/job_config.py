@@ -139,9 +139,7 @@ class JobConfig:
 
     def get_proto_runtime_env_config(self) -> str:
         """Return the JSON-serialized parsed runtime env info"""
-        return (
-            self.get_proto_job_config().runtime_env_info.runtime_env_config
-        )
+        return self.get_proto_job_config().runtime_env_info.runtime_env_config
 
     @classmethod
     def from_json(cls, job_config_json):

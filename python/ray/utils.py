@@ -53,7 +53,7 @@ def get_runtime_env_info(
     if runtime_env_config is None:
         runtime_env_config = RuntimeEnvConfig.default_config()
     else:
-        runtime_env_config = RuntimeEnvConfig.parse_and_validate_runtime_env_condig(
+        runtime_env_config = RuntimeEnvConfig.parse_and_validate_runtime_env_config(
             runtime_env_config
         )
 

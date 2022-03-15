@@ -19,6 +19,7 @@ from ray._private.runtime_env.conda import (
 
 from ray._private.runtime_env.pip import get_uri as get_pip_uri
 from ray.util.annotations import PublicAPI
+from ray.ray_constants import DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS
 
 
 logger = logging.getLogger(__name__)
@@ -81,22 +82,23 @@ def _parse_proto_plugin_runtime_env(
 
 @PublicAPI(stability="beta")
 class RuntimeEnvConfig(dict):
-    """This class is used to define a config for runtime environment.
+    """Used to specify configuration options for a runtime environment.
 
-    Config does not participate in the calculation of the runtime
-    environment hash value, which means that the runtime_env is also
-    considered to be the same runtime_env when all fields except
-    config are the same but the config is different.
+    The config is not included when calculating the runtime_env hash,
+    which means that two runtime_envs with the same options but different
+    configs are considered the same for caching purposes.
 
     Args:
         setup_timeout_seconds (int): The timeout of runtime environment
-            creation, timeout is in seconds.
+            creation, timeout is in seconds. The value `-1` means disable
+            timeout logic, except `-1`, `setup_timeout_seconds` cannot be
+            less than or equal to 0.
     """
 
     known_fields: Set[str] = {"setup_timeout_seconds"}
 
-    _default_config_config: Dict = {
-        "setup_timeout_seconds": 10 * 60,
+    _default_config: Dict = {
+        "setup_timeout_seconds": DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
     }
 
     def __init__(self, setup_timeout_seconds: int):
@@ -106,15 +108,15 @@ class RuntimeEnvConfig(dict):
                 "setup_timeout_seconds must be of type int, "
                 f"got: {type(setup_timeout_seconds)}"
             )
-        elif setup_timeout_seconds <= 0:
+        elif setup_timeout_seconds <= 0 and setup_timeout_seconds != -1:
             raise ValueError(
-                "setup_timeout_seconds must be greater than zero, "
-                f"got: {setup_timeout_seconds}"
+                "setup_timeout_seconds must be greater than zero "
+                f"or equals to -1, got: {setup_timeout_seconds}"
             )
         self["setup_timeout_seconds"] = setup_timeout_seconds
 
     @staticmethod
-    def parse_and_validate_runtime_env_condig(
+    def parse_and_validate_runtime_env_config(
         config: Union[Dict, "RuntimeEnvConfig"]
     ) -> "RuntimeEnvConfig":
         if isinstance(config, RuntimeEnvConfig):
@@ -139,7 +141,7 @@ class RuntimeEnvConfig(dict):
 
     @classmethod
     def default_config(cls):
-        return RuntimeEnvConfig(**cls._default_config_config)
+        return RuntimeEnvConfig(**cls._default_config)
 
     def build_proto_runtime_env_config(self) -> ProtoRuntimeEnvConfig:
         runtime_env_config = ProtoRuntimeEnvConfig()
@@ -148,13 +150,21 @@ class RuntimeEnvConfig(dict):
 
     @classmethod
     def from_proto(cls, runtime_env_config: ProtoRuntimeEnvConfig):
-        return cls(setup_timeout_seconds=runtime_env_config.setup_timeout_seconds)
+        setup_timeout_seconds = runtime_env_config.setup_timeout_seconds
+        # Cause python class RuntimeEnvConfig has validate to avoid
+        # setup_timeout_seconds equals zero, so setup_timeout_seconds
+        # on RuntimeEnvConfig is zero means other Language(except python)
+        # dosn't assign value to setup_timeout_seconds. So runtime_env_agent
+        # assign the default value to setup_timeout_seconds.
+        if setup_timeout_seconds == 0:
+            setup_timeout_seconds = cls._default_config["setup_timeout_seconds"]
+        return cls(setup_timeout_seconds=setup_timeout_seconds)
 
 
 # Due to circular reference, field config can only be assigned a value here
 OPTION_TO_VALIDATION_FN[
     "config"
-] = RuntimeEnvConfig.parse_and_validate_runtime_env_condig
+] = RuntimeEnvConfig.parse_and_validate_runtime_env_config
 
 
 @PublicAPI

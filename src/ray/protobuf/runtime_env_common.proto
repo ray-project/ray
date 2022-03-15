@@ -182,7 +182,7 @@ message RuntimeEnv {
 /// participate in the calculation of the runtime_env hash.
 message RuntimeEnvConfig {
   /// The timeout of runtime env creation.
-  uint32 setup_timeout_seconds = 1;
+  int32 setup_timeout_seconds = 1;
 }
 
 /// The runtime env information which is transfered between ray core processes.

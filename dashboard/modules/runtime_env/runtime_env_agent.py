@@ -255,17 +255,20 @@ class RuntimeEnvAgent(
                 self._logger.info(f"Sleeping for {SLEEP_FOR_TESTING_S}s.")
                 time.sleep(int(SLEEP_FOR_TESTING_S))
 
-            self._logger.info(
-                f"Creating runtime env: {serialized_env}."
-            )
+            self._logger.info(f"Creating runtime env: {serialized_env}.")
             runtime_env_context: RuntimeEnvContext = None
             error_message = None
             runtime_env_config = RuntimeEnvConfig.from_proto(runtime_env_config)
+            # accroding the document of `async-timeout`,
+            # None means disable timeout logic
+            setup_timeout_seconds = (
+                None
+                if runtime_env_config["setup_timeout_seconds"] == -1
+                else runtime_env_config["setup_timeout_seconds"]
+            )
             for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
                 try:
-                    with async_timeout.timeout(
-                        runtime_env_config["setup_timeout_seconds"]
-                    ):
+                    with async_timeout.timeout(setup_timeout_seconds):
                         runtime_env_context = await _setup_runtime_env(
                             serialized_env,
                             request.serialized_allocated_resource_instances,
