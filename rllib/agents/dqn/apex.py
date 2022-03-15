@@ -178,7 +178,8 @@ class ApexTrainer(DQNTrainer):
         # Place replay buffer shards on any node(s).
         else:
             self.replay_actors = [
-                ReplayActor(*replay_actor_args) for _ in range(num_replay_buffer_shards)
+                ReplayActor.remote(*replay_actor_args)
+                for _ in range(num_replay_buffer_shards)
             ]
         self.learner_thread = LearnerThread(self.workers.local_worker())
         self.learner_thread.start()
@@ -392,10 +393,15 @@ class ApexTrainer(DQNTrainer):
                 }
                 return batch_statistics
 
-        def sample_and_store(worker: RolloutWorker, replay_actors: List[ReplayActor]):
-            # how is the replay actor seeded?
-            # maybe we should use numpy, and pass the numpy random state of the
-            # driver to this function? TODO Avnish Sven Jun
+        def remote_worker_sample_and_store(
+            worker: RolloutWorker, replay_actors: List[ReplayActor]
+        ):
+            # This function is run as a remote function on sampling workers,
+            # and should only be used with the RolloutWorker's apply function ever.
+            # It is used to gather samples, and trigger the operation to store them to
+            # replay actors from the rollout worker instead of returning the obj
+            # refs for the samples to the driver process and doing the sampling
+            # operation on there.
             _batch = worker.sample()
             _actor = random.choice(replay_actors)
             _actor.add_batch.remote(_batch)
@@ -416,7 +422,7 @@ class ApexTrainer(DQNTrainer):
                 actors=self.workers.remote_workers(),
                 ray_wait_timeout_s=0.0,
                 max_remote_requests_in_flight_per_actor=4,
-                remote_fn=sample_and_store,
+                remote_fn=remote_worker_sample_and_store,
                 remote_kwargs=[{"replay_actors": self.replay_actors}]
                 * len(self.workers.remote_workers()),
             )
@@ -473,11 +479,10 @@ class ApexTrainer(DQNTrainer):
         if self.curr_num_samples_collected > self.config["train_batch_size"]:
             self.curr_num_samples_collected = 0
             training_intensity = int(self.config["training_intensity"] or 1)
-            # for _ in range(training_intensity):
-            # rand_actor = random.choice(self.replay_actors)
+            rand_actor = random.choice(self.replay_actors)
             replay_samples_ready: Dict[ActorHandle, T] = asynchronous_parallel_requests(
                 remote_requests_in_flight=self.remote_replay_requests_in_flight,
-                actors=self.replay_actors,
+                actors=[rand_actor],
                 ray_wait_timeout_s=0.0,
                 num_requests_to_launch=training_intensity,
                 max_remote_requests_in_flight_per_actor=float("inf"),

@@ -151,11 +151,7 @@ def asynchronous_parallel_requests(
     for obj_ref in ready:
         remote_requests_in_flight[remote_to_actor[obj_ref]].remove(obj_ref)
 
-    if not return_result_obj_ref_ids:
-        # Do one ray.get()
-        results = ray.get(ready)
-    else:
-        results = ready
+    results = ready if return_result_obj_ref_ids else ray.get(ready)
     assert len(ready) == len(results)
 
     # Return mapping from (ready) actors to their results.
