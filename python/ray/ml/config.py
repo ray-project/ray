@@ -66,10 +66,12 @@ class ScalingConfigDataClass:
 
     @property
     def num_cpus_per_worker(self):
+        """The number of CPUs to set per worker."""
         return self.resources_per_worker.get("CPU", 1)
 
     @property
     def num_gpus_per_worker(self):
+        """The number of GPUs to set per worker."""
         return self.resources_per_worker.get("GPU", int(self.use_gpu))
 
     @property
