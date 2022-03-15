@@ -28,7 +28,9 @@ namespace gcs {
 /// Run redis command using specified context and store the result in `reply`. Return true
 /// if the number of attemps didn't reach `redis_db_connect_retries`.
 static bool RunRedisCommandWithRetries(
-    redisContext *context, const char *command, redisReply **reply,
+    redisContext *context,
+    const char *command,
+    redisReply **reply,
     const std::function<bool(const redisReply *)> &condition) {
   int num_attempts = 0;
   while (num_attempts < RayConfig::instance().redis_db_connect_retries()) {
@@ -62,7 +64,8 @@ static int DoGetNextJobID(redisContext *context) {
   return counter;
 }
 
-static void GetRedisShards(redisContext *context, std::vector<std::string> *addresses,
+static void GetRedisShards(redisContext *context,
+                           std::vector<std::string> *addresses,
                            std::vector<int> *ports) {
   // Get the total number of Redis shards in the system.
   redisReply *reply = nullptr;
@@ -80,7 +83,9 @@ static void GetRedisShards(redisContext *context, std::vector<std::string> *addr
 
   // Get the addresses of all of the Redis shards.
   under_retry_limit = RunRedisCommandWithRetries(
-      context, "LRANGE RedisShards 0 -1", &reply,
+      context,
+      "LRANGE RedisShards 0 -1",
+      &reply,
       [&num_redis_shards](const redisReply *reply) {
         return static_cast<int>(reply->elements) == num_redis_shards;
       });
@@ -123,11 +128,13 @@ Status RedisClient::Connect(std::vector<instrumented_io_context *> io_services) 
 
   primary_context_ = std::make_shared<RedisContext>(*io_services[0]);
 
-  RAY_CHECK_OK(primary_context_->Connect(
-      options_.server_ip_, options_.server_port_,
-      /*sharding=*/true,
-      /*password=*/options_.password_, options_.enable_sync_conn_,
-      options_.enable_async_conn_, options_.enable_subscribe_conn_));
+  RAY_CHECK_OK(primary_context_->Connect(options_.server_ip_,
+                                         options_.server_port_,
+                                         /*sharding=*/true,
+                                         /*password=*/options_.password_,
+                                         options_.enable_sync_conn_,
+                                         options_.enable_async_conn_,
+                                         options_.enable_subscribe_conn_));
 
   if (options_.enable_sharding_conn_) {
     // Moving sharding into constructor defaultly means that sharding = true.
@@ -147,19 +154,24 @@ Status RedisClient::Connect(std::vector<instrumented_io_context *> io_services) 
       // Populate shard_contexts.
       shard_contexts_.push_back(std::make_shared<RedisContext>(io_service));
       // Only async context is used in sharding context, so wen disable the other two.
-      RAY_CHECK_OK(shard_contexts_[i]->Connect(
-          addresses[i], ports[i], /*sharding=*/true,
-          /*password=*/options_.password_, /*enable_sync_conn=*/false,
-          /*enable_async_conn=*/true, /*enable_subscribe_conn=*/false));
+      RAY_CHECK_OK(shard_contexts_[i]->Connect(addresses[i],
+                                               ports[i],
+                                               /*sharding=*/true,
+                                               /*password=*/options_.password_,
+                                               /*enable_sync_conn=*/false,
+                                               /*enable_async_conn=*/true,
+                                               /*enable_subscribe_conn=*/false));
     }
   } else {
     shard_contexts_.push_back(std::make_shared<RedisContext>(*io_services[0]));
     // Only async context is used in sharding context, so wen disable the other two.
-    RAY_CHECK_OK(shard_contexts_[0]->Connect(
-        options_.server_ip_, options_.server_port_,
-        /*sharding=*/true,
-        /*password=*/options_.password_, /*enable_sync_conn=*/false,
-        /*enable_async_conn=*/true, /*enable_subscribe_conn=*/false));
+    RAY_CHECK_OK(shard_contexts_[0]->Connect(options_.server_ip_,
+                                             options_.server_port_,
+                                             /*sharding=*/true,
+                                             /*password=*/options_.password_,
+                                             /*enable_sync_conn=*/false,
+                                             /*enable_async_conn=*/true,
+                                             /*enable_subscribe_conn=*/false));
   }
 
   Attach();

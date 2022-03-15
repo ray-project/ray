@@ -13,7 +13,7 @@ class Tuner:
         tune_config: Tuning algorithm specific configs.
             Refer to ray.tune.tune_config.TuneConfig for more info.
         run_config: Runtime configuration that is specific to individual trials.
-            Refer to ray.ml.run_config.RunConfig for more info.
+            Refer to ray.ml.config.RunConfig for more info.
 
     Returns:
         ``ResultGrid`` object.
