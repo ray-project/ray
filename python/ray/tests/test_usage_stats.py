@@ -29,6 +29,18 @@ schema = {
         "python_version": {"type": "string"},
         "collect_timestamp_ms": {"type": "integer"},
         "session_start_timestamp_ms": {"type": "integer"},
+        "cloud_provider": {"type": ["null", "string"]},
+        "min_workers": {"type": ["null", "integer"]},
+        "max_workers": {"type": ["null", "integer"]},
+        "head_node_instance_type": {"type": ["null", "string"]},
+        "worker_node_instance_types": {
+            "type": ["null", "array"],
+            "items": {"type": "string"},
+        },
+        "num_cpus": {"type": ["null", "integer"]},
+        "num_gpus": {"type": ["null", "integer"]},
+        "total_memory_gb": {"type": ["null", "number"]},
+        "total_object_store_memory_gb": {"type": ["null", "number"]},
         "total_success": {"type": "integer"},
         "total_failed": {"type": "integer"},
         "seq_number": {"type": "integer"},
@@ -242,7 +254,21 @@ def test_usage_lib_report_data(monkeypatch, shutdown_only, tmp_path):
         cluster_metadata = ray_usage_lib.get_cluster_metadata(
             ray.experimental.internal_kv.internal_kv_get_gcs_client(), num_retries=20
         )
-        d = ray_usage_lib.generate_report_data(cluster_metadata, 2, 2, 2)
+        cluster_config_file_path = tmp_path / "ray_bootstrap_config.yaml"
+        cluster_config_file_path.write_text(
+            """
+cluster_name: minimal
+max_workers: 1
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+"""
+        )
+        cluster_config = ray_usage_lib.get_cluster_config(cluster_config_file_path)
+        d = ray_usage_lib.generate_report_data(
+            cluster_metadata, cluster_config, 2, 2, 2
+        )
         validate(instance=asdict(d), schema=schema)
 
         """

@@ -52,6 +52,7 @@ import yaml
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, asdict
+from typing import Optional, List
 from pathlib import Path
 
 import ray
@@ -80,15 +81,15 @@ class UsageStatsToReport:
     os: str
     collect_timestamp_ms: int
     session_start_timestamp_ms: int
-    cloud_provider: str
-    min_workers: int
-    max_workers: int
-    head_node_instance_type: str
-    worker_node_instance_types: list
-    num_cpus: int
-    num_gpus: int
-    total_memory_gb: float
-    total_object_store_memory_gb: float
+    cloud_provider: Optional[str]
+    min_workers: Optional[int]
+    max_workers: Optional[int]
+    head_node_instance_type: Optional[str]
+    worker_node_instance_types: Optional[List[str]]
+    num_cpus: Optional[int]
+    num_gpus: Optional[int]
+    total_memory_gb: Optional[float]
+    total_object_store_memory_gb: Optional[float]
     # The total number of successful reports for the lifetime of the cluster.
     total_success: int
     # The total number of failed reports for the lifetime of the cluster.
@@ -206,6 +207,12 @@ def get_cluster_status(gcs_client, num_retries) -> dict:
     result = {}
     to_GiB = 1 / 2 ** 30
     cluster_status = json.loads(cluster_status.decode("utf-8"))
+    if (
+        "load_metrics_report" not in cluster_status
+        or "usage" not in cluster_status["load_metrics_report"]
+    ):
+        return {}
+
     usage = cluster_status["load_metrics_report"]["usage"]
     if "CPU" in usage:
         result["num_cpus"] = usage["CPU"][1]
@@ -220,29 +227,36 @@ def get_cluster_status(gcs_client, num_retries) -> dict:
     return result
 
 
-def get_cluster_config() -> dict:
+def get_cluster_config(cluster_config_file_path) -> dict:
     """Get the static cluster (autoscaler) config used to launch this cluster."""
 
     def get_instance_type(node_config):
+        if not node_config:
+            return None
         if "InstanceType" in node_config:
             # aws
             return node_config["InstanceType"]
         if "machineType" in node_config:
             # gcp
             return node_config["machineType"]
-        if "azure_arm_parameters" in node_config:
-            if "vmSize" in node_config["azure_arm_parameters"]:
-                return node_config["azure_arm_parameters"]["vmSize"]
+        if (
+            "azure_arm_parameters" in node_config
+            and "vmSize" in node_config["azure_arm_parameters"]
+        ):
+            return node_config["azure_arm_parameters"]["vmSize"]
         return None
 
     try:
-        with open(os.path.expanduser("~/ray_bootstrap_config.yaml")) as f:
+        with open(cluster_config_file_path) as f:
             config = yaml.safe_load(f)
             result = {}
-            result["min_workers"] = config.get("min_workers")
-            result["max_workers"] = config.get("max_workers")
+            if "min_workers" in config:
+                result["min_workers"] = config["min_workers"]
+            if "max_workers" in config:
+                result["max_workers"] = config["max_workers"]
 
-            result["cloud_provider"] = config["provider"]["type"]
+            if "provider" in config and "type" in config["provider"]:
+                result["cloud_provider"] = config["provider"]["type"]
 
             if "head_node_type" not in config:
                 return result
@@ -253,13 +267,13 @@ def get_cluster_config() -> dict:
             for available_node_type in available_node_types:
                 if available_node_type == head_node_type:
                     head_node_instance_type = get_instance_type(
-                        available_node_types[available_node_type]["node_config"]
+                        available_node_types[available_node_type].get("node_config")
                     )
                     if head_node_instance_type:
                         result["head_node_instance_type"] = head_node_instance_type
                 else:
                     worker_node_instance_type = get_instance_type(
-                        available_node_types[available_node_type]["node_config"]
+                        available_node_types[available_node_type].get("node_config")
                     )
                     if worker_node_instance_type:
                         result["worker_node_instance_types"] = result.get(

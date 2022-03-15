@@ -1,3 +1,4 @@
+import os
 import asyncio
 import logging
 import random
@@ -20,7 +21,9 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
             ray.experimental.internal_kv.internal_kv_get_gcs_client(),
             num_retries=20,
         )
-        self.cluster_config = ray_usage_lib.get_cluster_config()
+        self.cluster_config = ray_usage_lib.get_cluster_config(
+            os.path.expanduser("~/ray_bootstrap_config.yaml")
+        )
         self.session_dir = dashboard_head.session_dir
         self.client = ray_usage_lib.UsageReportClient()
         # The total number of report succeeded.
