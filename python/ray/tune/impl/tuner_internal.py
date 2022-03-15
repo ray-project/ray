@@ -137,7 +137,7 @@ class TunerInternal:
             analysis = self._fit_internal(trainable, param_space)
         else:
             analysis = self._fit_resume(trainable)
-
+        analysis._legacy_checkpoint = False
         return ResultGrid(analysis)
 
     def _fit_internal(self, trainable, param_space):
