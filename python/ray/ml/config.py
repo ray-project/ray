@@ -34,7 +34,7 @@ class ScalingConfigDataClass:
         Strategies <pgroup-strategy>` for the possible options.
     """
 
-    num_workers: int = 1
+    num_workers: Optional[int] = None
     use_gpu: bool = False
     resources_per_worker: Optional[Dict] = None
     placement_strategy: str = "PACK"
@@ -43,12 +43,7 @@ class ScalingConfigDataClass:
         self.resources_per_worker = (
             self.resources_per_worker if self.resources_per_worker else {}
         )
-
-        if self.num_workers < 0:
-            raise ValueError("`num_workers` must be a positive integer.")
-
         if self.resources_per_worker:
-            # Override CPU and GPU resources and remove from dict.
             if not self.use_gpu and self.num_gpus_per_worker > 0:
                 raise ValueError(
                     "`use_gpu` is False but `GPU` was found in "

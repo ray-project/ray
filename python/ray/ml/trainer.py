@@ -145,7 +145,6 @@ class Trainer(abc.ABC):
         self.datasets = datasets if datasets else {}
         self.preprocessor = preprocessor
         self.resume_from_checkpoint = resume_from_checkpoint
-        self._has_preprocessed_datasets = False
 
     def __new__(cls, *args, **kwargs):
         """Store the init args as attributes so this can be merged with Tune hparams."""
@@ -198,7 +197,7 @@ class Trainer(abc.ABC):
             lambda preprocessor, dataset: preprocessor.transform(dataset)
         )
 
-        if self.preprocessor and not self._has_preprocessed_datasets:
+        if self.preprocessor:
             train_dataset = self.datasets.get(TRAIN_DATASET_KEY, None)
             if train_dataset and not self.preprocessor.check_is_fitted():
                 self.preprocessor.fit(train_dataset)
@@ -213,7 +212,14 @@ class Trainer(abc.ABC):
             for key, transformed_dataset in transform_task_dict.items():
                 self.datasets[key] = ray.get(transformed_dataset)
 
-            self._has_preprocessed_datasets = True
+            # Execute dataset transformations serially for now.
+            # Cannot execute them in remote tasks due to dataset ownership model:
+            # TODO(@ray-dataprocessing): Execute d
+            new_datasets = {}
+            for key, dataset in self.datasets.items():
+                new_datasets[key] = self.preprocessor.transform(dataset)
+
+            self.datasets = new_datasets
 
     @abc.abstractmethod
     def training_loop(self) -> None:
@@ -310,6 +316,8 @@ class Trainer(abc.ABC):
                 self._merged_config = merge_dicts(base_config, self.config)
 
             def _trainable_func(self, config, reporter, checkpoint_dir):
+                # We ignore the config passed by Tune and instead use the merged
+                # config which includes the initial Trainer args.
                 super()._trainable_func(self._merged_config, reporter, checkpoint_dir)
 
             @classmethod
