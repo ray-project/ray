@@ -238,14 +238,13 @@
     - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
     - 'git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd'
     - >-
-      set -ex;
-      test_shard_selection=$(
+      export test_shard_selection=$(
       python ./scripts/bazel-sharding.py
       --exclude_manual
       --index "${BUILDKITE_PARALLEL_JOB:-0}" --count "${BUILDKITE_PARALLEL_JOB_COUNT:-1}"
       python/ray/serve/...
       )
-      bazel test --config=ci $(./scripts/bazel_export_options)
+    - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-post_wheel_build
       ${test_shard_selection}
 
