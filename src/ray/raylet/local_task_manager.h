@@ -23,6 +23,7 @@
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/cluster_task_manager_interface.h"
 #include "ray/raylet/scheduling/internal.h"
+#include "ray/raylet/scheduling/local_task_manager_interface.h"
 #include "ray/raylet/worker.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/grpc_client.h"
@@ -54,7 +55,7 @@ namespace raylet {
 /// as it should return the request to the distributed scheduler if
 /// resource accusition failed, or a task has arguments pending resolution for too long
 /// time.
-class LocalTaskManager {
+class LocalTaskManager : public ILocalTaskManager {
  public:
   /// \param self_node_id: ID of local node.
   /// \param cluster_resource_scheduler: The resource scheduler which contains
@@ -91,10 +92,10 @@ class LocalTaskManager {
           RayConfig::instance().worker_cap_initial_backoff_delay_ms());
 
   /// Queue task and schedule.
-  void QueueAndScheduleTask(std::shared_ptr<internal::Work> work);
+  void QueueAndScheduleTask(std::shared_ptr<internal::Work> work) override;
 
   // Schedule and dispatch tasks.
-  void ScheduleAndDispatchTasks();
+  void ScheduleAndDispatchTasks() override;
 
   /// Move tasks from waiting to ready for dispatch. Called when a task's
   /// dependencies are resolved.
@@ -120,7 +121,7 @@ class LocalTaskManager {
   bool CancelTask(const TaskID &task_id,
                   rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
                       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
-                  const std::string &scheduling_failure_message = "");
+                  const std::string &scheduling_failure_message = "") override;
 
   /// Return if any tasks are pending resource acquisition.
   ///
@@ -132,7 +133,7 @@ class LocalTaskManager {
   bool AnyPendingTasksForResourceAcquisition(RayTask *example,
                                              bool *any_pending,
                                              int *num_pending_actor_creation,
-                                             int *num_pending_tasks) const;
+                                             int *num_pending_tasks) const override;
 
   /// Call once a task finishes (i.e. a worker is returned).
   ///
@@ -166,6 +167,22 @@ class LocalTaskManager {
                         int64_t backlog_size);
 
   void ClearWorkerBacklog(const WorkerID &worker_id);
+
+  const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
+      &GetTaskToDispatch() const override {
+    return tasks_to_dispatch_;
+  }
+
+  const absl::flat_hash_map<SchedulingClass, absl::flat_hash_map<WorkerID, int64_t>>
+      &GetBackLogTracker() const override {
+    return backlog_tracker_;
+  }
+
+  void RecordMetrics() const override;
+
+  void DebugStr(std::stringstream &buffer) const override;
+
+  size_t GetNumTaskSpilled() const override { return num_task_spilled_; }
 
  private:
   struct SchedulingClassInfo;

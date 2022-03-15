@@ -44,7 +44,13 @@ class TorchPredictor(Predictor):
                 ``model``.
         """
         checkpoint_dict = checkpoint.to_dict()
-        preprocessor = checkpoint_dict[PREPROCESSOR_KEY]
+        preprocessor = checkpoint_dict.get(PREPROCESSOR_KEY, None)
+        if MODEL_KEY not in checkpoint_dict:
+            raise RuntimeError(
+                f"No item with key: {MODEL_KEY} is found in the "
+                f"Checkpoint. Make sure this key exists when saving the "
+                f"checkpoint in ``TorchTrainer``."
+            )
         model = load_torch_model(
             saved_model=checkpoint_dict[MODEL_KEY], model_definition=model
         )
@@ -113,7 +119,9 @@ class TorchPredictor(Predictor):
         Returns:
             DataBatchType: Prediction result.
         """
-        data = self.preprocessor.transform_batch(data)
+        if self.preprocessor:
+            data = self.preprocessor.transform_batch(data)
+
         if isinstance(data, np.ndarray):
             # If numpy array, then convert to pandas dataframe.
             data = pd.DataFrame(data)

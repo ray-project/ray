@@ -332,9 +332,16 @@ def get_deployment_import_path(deployment, replace_main=False):
     import_path = f"{body.__module__}.{body.__qualname__}"
 
     if replace_main:
+
+        # Replaces __main__ with its file name. E.g. suppose the import path
+        # is __main__.classname and classname is defined in filename.py.
+        # Its import path becomes filename.classname.
+
         if import_path.split(".")[0] == "__main__" and hasattr(__main__, "__file__"):
             file_name = os.path.basename(__main__.__file__)
-            import_path = f"{file_name.split('.')[0]}.{import_path.split('.')[1]}"
+            extensionless_file_name = file_name.split(".")[0]
+            attribute_name = import_path.split(".")[-1]
+            import_path = f"{extensionless_file_name}.{attribute_name}"
 
     return import_path
 

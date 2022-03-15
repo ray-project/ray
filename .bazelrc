@@ -4,7 +4,7 @@ build --enable_platform_specific_config
 # On       Windows, provide: BAZEL_SH, and BAZEL_LLVM (if using clang-cl)
 # On all platforms, provide: PYTHON3_BIN_PATH=python
 ###############################################################################
-build --action_env=PATH
+build:windows --action_env=PATH
 # For --compilation_mode=dbg, consider enabling checks in the standard library as well (below).
 build --compilation_mode=opt
 # Using C++ 17 on all platforms.
@@ -20,13 +20,13 @@ build:clang-cl --compiler=clang-cl
 build:msvc-cl --compiler=msvc-cl
 # `LC_ALL` and `LANG` is needed for cpp worker tests, because they will call "ray start".
 # If we don't add them, python's `click` library will raise an error.
-build --action_env=LC_ALL
-build --action_env=LANG
+test --test_env=LC_ALL
+test --test_env=LANG
 # Allow C++ worker tests to execute "ray start" with the correct version of Python.
-build --action_env=VIRTUAL_ENV
-build --action_env=PYENV_VIRTUAL_ENV
-build --action_env=PYENV_VERSION
-build --action_env=PYENV_SHELL
+test --test_env=VIRTUAL_ENV
+test --test_env=PYENV_VIRTUAL_ENV
+test --test_env=PYENV_VERSION
+test --test_env=PYENV_SHELL
 # This is needed for some core tests to run correctly
 build:windows --enable_runfiles
 # TODO(mehrdadn): Revert the "-\\.(asm|S)$" exclusion when this Bazel bug
