@@ -1,3 +1,5 @@
+.. include:: /_includes/clusters/announcement.rst
+
 .. include:: we_are_hiring.rst
 
 .. _ref-cluster-quick-start:
