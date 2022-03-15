@@ -17,12 +17,11 @@ class DataParallelTrainer(Trainer):
     """A Trainer for data parallel training.
 
     You should subclass this Trainer if your Trainer follows SPMD (single program,
-    multiple data) programming paradigm- you want multiple processes to run the same
+    multiple data) programming paradigm - you want multiple processes to run the same
     function, but on different data.
 
     This Trainer runs the function ``train_loop_per_worker`` on multiple Ray
-    Actors. The provided datasets are automatically sharded to each Ray actor running
-    the training function.
+    Actors. 
 
     The ``train_loop_per_worker`` function is expected to take in either 0 or 1
     arguments:
@@ -65,13 +64,13 @@ class DataParallelTrainer(Trainer):
             # Returns the Ray Dataset shard for the given key.
             train.get_dataset_shard("my_dataset")
 
-            # Total number of workers executing training.
+            # Returns the total number of workers executing training.
             train.get_world_size()
 
-            # Rank of this worker.
+            # Returns the rank of this worker.
             train.get_world_rank()
 
-            # Rank of the worker on the current node.
+            # Returns the rank of the worker on the current node.
             train.get_local_rank()
 
     How do I use ``DataParallelTrainer`` or any of its subclasses?
@@ -89,7 +88,7 @@ class DataParallelTrainer(Trainer):
 
                 train_dataset = ray.data.from_items([1, 2, 3])
                 assert len(train_dataset) == 3
-                trainer = DataParallelTrainer(scaling_config={"num_worker": 3},
+                trainer = DataParallelTrainer(scaling_config={"num_workers": 3},
                     datasets={"train": train_dataset})
                 result = trainer.fit()
 
@@ -155,10 +154,10 @@ class DataParallelTrainer(Trainer):
         train_loop_per_worker: The training function to execute.
             This can either take in no arguments or a ``config`` dict.
         train_loop_config: Configurations to pass into
-            ``train_func`` if it accepts an argument.
-        backend_config: Used to specify which backend to setup on the
-            workers enable distributed communication, for example torch or
-            horovod. If no Backend should be set up, then set this to None.
+            ``train_loop_per_worker`` if it accepts an argument.
+        backend_config: Configuration for setting up a Backend (e.g. Torch,
+            Tensorflow, Horovod) on each worker to enable distributed
+            communication. If no Backend should be set up, then set this to None.
         scaling_config: Configuration for how to scale data parallel training.
         run_config: Configuration for the execution of the training run.
         datasets: Any Ray Datasets to use for training. Use
