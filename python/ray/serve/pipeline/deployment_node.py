@@ -1,11 +1,13 @@
-from typing import Any, Dict, Optional, List, Tuple, Union
+from typing import Any, Callable, Dict, Optional, List, Tuple, Union
 
 from ray.experimental.dag import DAGNode, InputNode
 from ray.serve.handle import RayServeSyncHandle, RayServeHandle
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
+from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 from ray.experimental.dag.format_utils import get_dag_node_str
 from ray.serve.api import Deployment, DeploymentConfig
+from ray.serve.utils import get_deployment_import_path
 
 
 class DeploymentNode(DAGNode):
@@ -13,7 +15,9 @@ class DeploymentNode(DAGNode):
 
     def __init__(
         self,
-        func_or_class,
+        # For serve structured deployment, deployment body can be import path
+        # to the class or function instead.
+        func_or_class: Union[Callable, str],
         deployment_name: str,
         deployment_init_args: Tuple[Any],
         deployment_init_kwargs: Dict[str, Any],
@@ -47,7 +51,7 @@ class DeploymentNode(DAGNode):
         (
             replaced_deployment_init_args,
             replaced_deployment_init_kwargs,
-        ) = self._apply_functional(
+        ) = self.apply_functional(
             [deployment_init_args, deployment_init_kwargs],
             predictate_fn=lambda node: isinstance(
                 node, (DeploymentNode, DeploymentMethodNode)
@@ -150,3 +154,41 @@ class DeploymentNode(DAGNode):
 
     def __str__(self) -> str:
         return get_dag_node_str(self, str(self._deployment))
+
+    def get_deployment_name(self):
+        return self._deployment.name
+
+    def get_import_path(self):
+        return get_deployment_import_path(self._deployment)
+
+    def to_json(self, encoder_cls) -> Dict[str, Any]:
+        json_dict = super().to_json_base(encoder_cls, DeploymentNode.__name__)
+        json_dict["deployment_name"] = self.get_deployment_name()
+        import_path = self.get_import_path()
+
+        error_message = (
+            "Class used in DAG should not be in-line defined when exporting"
+            "import path for deployment. Please ensure it has fully "
+            "qualified name with valid __module__ and __qualname__ for "
+            "import path, with no __main__ or <locals>. \n"
+            f"Current import path: {import_path}"
+        )
+        assert "__main__" not in import_path, error_message
+        assert "<locals>" not in import_path, error_message
+
+        json_dict["import_path"] = import_path
+
+        return json_dict
+
+    @classmethod
+    def from_json(cls, input_json, object_hook=None):
+        assert input_json[DAGNODE_TYPE_KEY] == DeploymentNode.__name__
+        args_dict = super().from_json_base(input_json, object_hook=object_hook)
+        return cls(
+            input_json["import_path"],
+            input_json["deployment_name"],
+            args_dict["args"],
+            args_dict["kwargs"],
+            args_dict["options"],
+            other_args_to_resolve=args_dict["other_args_to_resolve"],
+        )

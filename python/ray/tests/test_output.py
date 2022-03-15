@@ -146,6 +146,8 @@ class Foo:
         self.x = module.temporary_python_file()
 
 a = Foo.remote()
+import time
+time.sleep(3)  # Wait for actor start.
 """
     proc = run_string_as_driver_nonblocking(script)
     out_str = proc.stdout.read().decode("ascii")

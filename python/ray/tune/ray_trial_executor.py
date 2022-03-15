@@ -11,12 +11,12 @@ import time
 import traceback
 from contextlib import contextmanager
 from typing import (
+    Any,
     Callable,
     Dict,
     Iterable,
     List,
     Optional,
-    Union,
     Set,
 )
 
@@ -68,8 +68,9 @@ class _ActorClassCache:
 
     def get(self, trainable_cls):
         """Gets the wrapped trainable_cls, otherwise calls ray.remote."""
+        runtime_env = {"env_vars": {"TUNE_ORIG_WORKING_DIR": os.getcwd()}}
         if trainable_cls not in self._cache:
-            remote_cls = ray.remote(trainable_cls)
+            remote_cls = ray.remote(runtime_env=runtime_env)(trainable_cls)
             self._cache[trainable_cls] = remote_cls
         return self._cache[trainable_cls]
 
@@ -169,7 +170,7 @@ class ExecutorEvent:
         self,
         event_type: ExecutorEventType,
         trial: Optional[Trial] = None,
-        result: Optional[Union[str, Dict]] = None,
+        result: Optional[Any] = None,
     ):
         self.type = event_type
         self.trial = trial
@@ -614,7 +615,7 @@ class RayTrialExecutor(TrialExecutor):
         for i in range(num_retries):
             if i > 0:
                 logger.warning(
-                    "Cluster resources not detected or are 0. Attempt #" "%s...", i + 1
+                    "Cluster resources not detected or are 0. Attempt #%s...", i + 1
                 )
                 time.sleep(0.5)
             resources = ray.cluster_resources()
@@ -1009,9 +1010,9 @@ class RayTrialExecutor(TrialExecutor):
                         return ExecutorEvent(result_type, trial, result=future_result)
                     else:
                         raise TuneError(f"Unexpected future type - [{result_type}]")
-                except Exception:
+                except Exception as e:
                     return ExecutorEvent(
-                        ExecutorEventType.ERROR, trial, traceback.format_exc()
+                        ExecutorEventType.ERROR, trial, (e, traceback.format_exc())
                     )
 
 

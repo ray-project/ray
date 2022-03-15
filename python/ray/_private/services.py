@@ -22,8 +22,7 @@ import uuid
 import ray
 import ray.ray_constants as ray_constants
 from ray._raylet import GcsClientOptions
-from ray._private.gcs_utils import GcsClient, use_gcs_for_bootstrap
-import redis
+from ray._private.gcs_utils import GcsClient
 from ray.core.generated.common_pb2 import Language
 
 # Import psutil and colorama after ray so the packaged version is used.
@@ -92,12 +91,7 @@ ProcessInfo = collections.namedtuple(
 
 
 def _get_gcs_client_options(redis_address, redis_password, gcs_server_address):
-    if not use_gcs_for_bootstrap():
-        redis_ip_address, redis_port = redis_address.split(":")
-        wait_for_redis_to_start(redis_ip_address, redis_port, redis_password)
-        return GcsClientOptions.from_redis_address(redis_address, redis_password)
-    else:
-        return GcsClientOptions.from_gcs_address(gcs_server_address)
+    return GcsClientOptions.from_gcs_address(gcs_server_address)
 
 
 def serialize_config(config):
@@ -300,10 +294,7 @@ def find_gcs_address():
 
 
 def find_bootstrap_address():
-    if use_gcs_for_bootstrap():
-        return find_gcs_address()
-    else:
-        return find_redis_address()
+    return find_gcs_address()
 
 
 def _find_redis_address_or_die():
@@ -359,10 +350,7 @@ def get_ray_address_from_environment():
     """
     addr = os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
     if addr is None or addr == "auto":
-        if use_gcs_for_bootstrap():
-            addr = _find_gcs_address_or_die()
-        else:
-            addr = _find_redis_address_or_die()
+        addr = _find_gcs_address_or_die()
     return addr
 
 
@@ -388,12 +376,7 @@ def wait_for_node(
         TimeoutError: An exception is raised if the timeout expires before
             the node appears in the client table.
     """
-    if use_gcs_for_bootstrap():
-        gcs_options = GcsClientOptions.from_gcs_address(gcs_address)
-    else:
-        redis_ip_address, redis_port = redis_address.split(":")
-        wait_for_redis_to_start(redis_ip_address, redis_port, redis_password)
-        gcs_options = GcsClientOptions.from_redis_address(redis_address, redis_password)
+    gcs_options = GcsClientOptions.from_gcs_address(gcs_address)
     global_state = ray.state.GlobalState()
     global_state._initialize_global_state(gcs_options)
     start_time = time.time()
@@ -563,6 +546,8 @@ def create_redis_client(redis_address, password=None):
     Returns:
         A Redis client.
     """
+    import redis
+
     if not hasattr(create_redis_client, "instances"):
         create_redis_client.instances = {}
 
@@ -828,6 +813,8 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
     Raises:
         Exception: An exception is raised if we could not connect with Redis.
     """
+    import redis
+
     redis_client = redis.StrictRedis(
         host=redis_ip_address, port=redis_port, password=password
     )
@@ -969,6 +956,8 @@ def start_redis(
             addresses for the remaining shards, and the processes that were
             started.
     """
+    import redis
+
     processes = []
 
     if external_addresses is not None:
@@ -1136,6 +1125,8 @@ def _start_redis_instance(
     Raises:
         Exception: An exception is raised if Redis could not be started.
     """
+    import redis
+
     assert os.path.isfile(executable)
     counter = 0
 
@@ -1309,13 +1300,11 @@ def start_log_monitor(
 def start_dashboard(
     require_dashboard,
     host,
-    redis_address,
     gcs_address,
     temp_dir,
     logdir,
     session_dir,
     port=None,
-    redis_password=None,
     fate_share=None,
     max_bytes=0,
     backup_count=0,
@@ -1328,7 +1317,6 @@ def start_dashboard(
             fail to start the dashboard. Otherwise it will print a warning if
             we fail to start the dashboard.
         host (str): The host to bind the dashboard web server to.
-        redis_address (str): The address of the Redis instance.
         gcs_address (str): The gcs address the dashboard should connect to
         temp_dir (str): The temporary directory used for log files and
             information for this Ray session.
@@ -1337,7 +1325,6 @@ def start_dashboard(
         logdir (str): The log directory used to generate dashboard log.
         port (str): The port to bind the dashboard web server to.
             Defaults to 8265.
-        redis_password (str): The password of the redis server.
         max_bytes (int): Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count (int): Log rotation parameter. Corresponding to
@@ -1392,7 +1379,6 @@ def start_dashboard(
             f"--host={host}",
             f"--port={port}",
             f"--port-retries={port_retries}",
-            f"--redis-address={redis_address}",
             f"--temp-dir={temp_dir}",
             f"--log-dir={logdir}",
             f"--session-dir={session_dir}",
@@ -1420,8 +1406,6 @@ def start_dashboard(
         if minimal:
             command.append("--minimal")
 
-        if redis_password is not None:
-            command.append(f"--redis-password={redis_password}")
         process_info = start_ray_process(
             command,
             ray_constants.PROCESS_TYPE_DASHBOARD,
@@ -1431,13 +1415,7 @@ def start_dashboard(
         )
 
         # Retrieve the dashboard url
-        if not use_gcs_for_bootstrap():
-            redis_client = ray._private.services.create_redis_client(
-                redis_address, redis_password
-            )
-            gcs_client = GcsClient.create_from_redis(redis_client)
-        else:
-            gcs_client = GcsClient(address=gcs_address)
+        gcs_client = GcsClient(address=gcs_address)
         ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
         dashboard_url = None
         dashboard_returncode = None
@@ -1691,7 +1669,7 @@ def start_raylet(
     include_java = has_java_command and ray_java_installed
     if include_java is True:
         java_worker_command = build_java_worker_command(
-            gcs_address if use_gcs_for_bootstrap() else redis_address,
+            gcs_address,
             plasma_store_name,
             raylet_name,
             redis_password,
@@ -1705,7 +1683,7 @@ def start_raylet(
     if os.path.exists(DEFAULT_WORKER_EXECUTABLE):
         cpp_worker_command = build_cpp_worker_command(
             "",
-            gcs_address if use_gcs_for_bootstrap() else redis_address,
+            gcs_address,
             plasma_store_name,
             raylet_name,
             redis_password,
@@ -1756,7 +1734,6 @@ def start_raylet(
         "-u",
         os.path.join(RAY_PATH, "dashboard", "agent.py"),
         f"--node-ip-address={node_ip_address}",
-        f"--redis-address={redis_address}",
         f"--metrics-export-port={metrics_export_port}",
         f"--dashboard-agent-port={metrics_agent_port}",
         f"--listen-port={dashboard_agent_listen_port}",
@@ -1780,9 +1757,6 @@ def start_raylet(
             component=ray_constants.PROCESS_TYPE_DASHBOARD_AGENT
         )
         agent_command.append(f"--logging-format={logging_format}")
-
-    if redis_password is not None and len(redis_password) != 0:
-        agent_command.append("--redis-password={}".format(redis_password))
 
     if not ray._private.utils.check_dashboard_dependencies_installed():
         # If dependencies are not installed, it is the minimally packaged
@@ -1815,15 +1789,8 @@ def start_raylet(
         f"--object_store_memory={object_store_memory}",
         f"--plasma_directory={plasma_directory}",
         f"--ray-debugger-external={1 if ray_debugger_external else 0}",
+        f"--gcs-address={gcs_address}",
     ]
-    if use_gcs_for_bootstrap():
-        command.append(f"--gcs-address={gcs_address}")
-    else:
-        # TODO (iycheng): remove redis_ip_address after redis removal
-        redis_ip_address, redis_port = redis_address.split(":")
-        command.extend(
-            [f"--redis_address={redis_ip_address}", f"--redis_port={redis_port}"]
-        )
 
     if worker_port_list is not None:
         command.append(f"--worker_port_list={worker_port_list}")

@@ -1,5 +1,6 @@
 import ray
 from ray.experimental.dag.py_obj_scanner import _PyObjScanner
+from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 
 from typing import (
     Optional,
@@ -13,6 +14,7 @@ from typing import (
     Set,
 )
 import uuid
+import json
 
 T = TypeVar("T")
 
@@ -70,12 +72,19 @@ class DAGNode:
         return self._bound_options.copy()
 
     def get_other_args_to_resolve(self) -> Dict[str, Any]:
-
+        """Return the dict of other args to resolve arguments for this node."""
         return self._bound_other_args_to_resolve.copy()
 
-    def execute(self, *args) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
+    def get_stable_uuid(self) -> str:
+        """Return stable uuid for this node.
+        1) Generated only once at first instance creation
+        2) Stable across pickling, replacement and JSON serialization.
+        """
+        return self._stable_uuid
+
+    def execute(self, *args, **kwargs) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
         """Execute this DAG using the Ray default executor."""
-        return self._apply_recursive(lambda node: node._execute_impl(*args))
+        return self.apply_recursive(lambda node: node._execute_impl(*args, **kwargs))
 
     def _get_toplevel_child_nodes(self) -> Set["DAGNode"]:
         """Return the set of nodes specified as top-level args.
@@ -126,7 +135,7 @@ class DAGNode:
         """Apply and replace all immediate child nodes using a given function.
 
         This is a shallow replacement only. To recursively transform nodes in
-        the DAG, use ``_apply_recursive()``.
+        the DAG, use ``apply_recursive()``.
 
         Args:
             fn: Callable that will be applied once to each child of this node.
@@ -159,7 +168,7 @@ class DAGNode:
             new_args, new_kwargs, self.get_options(), new_other_args_to_resolve
         )
 
-    def _apply_recursive(self, fn: "Callable[[DAGNode], T]") -> T:
+    def apply_recursive(self, fn: "Callable[[DAGNode], T]") -> T:
         """Apply callable on each node in this DAG in a bottom-up tree walk.
 
         Args:
@@ -175,10 +184,18 @@ class DAGNode:
             def __init__(self, fn):
                 self.cache = {}
                 self.fn = fn
+                self.input_node_uuid = None
 
             def __call__(self, node):
                 if node._stable_uuid not in self.cache:
                     self.cache[node._stable_uuid] = self.fn(node)
+                if type(node).__name__ == "InputNode":
+                    if not self.input_node_uuid:
+                        self.input_node_uuid = node._stable_uuid
+                    elif self.input_node_uuid != node._stable_uuid:
+                        raise AssertionError(
+                            "Each DAG should only have one unique InputNode."
+                        )
                 return self.cache[node._stable_uuid]
 
         if not type(fn).__name__ == "_CachingFn":
@@ -186,11 +203,11 @@ class DAGNode:
 
         return fn(
             self._apply_and_replace_all_child_nodes(
-                lambda node: node._apply_recursive(fn)
+                lambda node: node.apply_recursive(fn)
             )
         )
 
-    def _apply_functional(
+    def apply_functional(
         self,
         source_input_list: Any,
         predictate_fn: Callable,
@@ -260,3 +277,57 @@ class DAGNode:
         serializable form.
         """
         raise ValueError(f"DAGNode cannot be serialized. DAGNode: {str(self)}")
+
+    def to_json_base(
+        self, encoder_cls: json.JSONEncoder, dag_node_type: str
+    ) -> Dict[str, Any]:
+        """
+        Base JSON serializer for DAGNode types with base info. Each DAGNode
+        subclass needs to update with its own fields.
+
+        JSON serialization is not hard requirement for functionalities of a
+        DAG authored at Ray level, therefore implementations here meant to
+        facilitate JSON encoder implemenation in other libraries such as Ray
+        Serve.
+
+        Args:
+            encoder_cls (json.JSONEncoder): JSON encoder class used to handle
+                DAGNode nested in any args or options, created and passed from
+                caller, and is expected to be the same across all DAGNode types.
+
+        Returns:
+            json_dict (Dict[str, Any]): JSON serialized DAGNode.
+        """
+        return {
+            DAGNODE_TYPE_KEY: dag_node_type,
+            # Will be overriden by build()
+            "import_path": "",
+            "args": json.dumps(self.get_args(), cls=encoder_cls),
+            "kwargs": json.dumps(self.get_kwargs(), cls=encoder_cls),
+            # .options() should not contain any DAGNode type
+            "options": json.dumps(self.get_options()),
+            "other_args_to_resolve": json.dumps(
+                self.get_other_args_to_resolve(), cls=encoder_cls
+            ),
+            "uuid": self.get_stable_uuid(),
+        }
+
+    @staticmethod
+    def from_json_base(input_json, object_hook=None):
+        # Post-order JSON deserialization
+        args = json.loads(input_json["args"], object_hook=object_hook)
+        kwargs = json.loads(input_json["kwargs"], object_hook=object_hook)
+        # .options() should not contain any DAGNode type
+        options = json.loads(input_json["options"])
+        other_args_to_resolve = json.loads(
+            input_json["other_args_to_resolve"], object_hook=object_hook
+        )
+        uuid = input_json["uuid"]
+
+        return {
+            "args": args,
+            "kwargs": kwargs,
+            "options": options,
+            "other_args_to_resolve": other_args_to_resolve,
+            "uuid": uuid,
+        }

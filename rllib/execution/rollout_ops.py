@@ -153,7 +153,7 @@ def ParallelRollouts(
         return rollouts
     else:
         raise ValueError(
-            "mode must be one of 'bulk_sync', 'async', 'raw', " "got '{}'".format(mode)
+            "mode must be one of 'bulk_sync', 'async', 'raw', got '{}'".format(mode)
         )
 
 
@@ -294,9 +294,9 @@ class SelectExperiences:
                 IDs are trainable. If not provided, must provide the
                 `policy_ids` arg.
         """
-        assert policy_ids is not None or local_worker is not None, (
-            "ERROR: Must provide either one of `policy_ids` or " "`local_worker` args!"
-        )
+        assert (
+            policy_ids is not None or local_worker is not None
+        ), "ERROR: Must provide either one of `policy_ids` or `local_worker` args!"
 
         self.local_worker = self.policy_ids = None
         if local_worker:

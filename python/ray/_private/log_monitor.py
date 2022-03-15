@@ -105,13 +105,7 @@ class LogMonitor:
         """Initialize the log monitor object."""
         self.ip = services.get_node_ip_address()
         self.logs_dir = logs_dir
-        if gcs_utils.use_gcs_for_bootstrap():
-            self.redis_client = None
-        else:
-            self.redis_client = ray._private.services.create_redis_client(
-                redis_address, password=redis_password
-            )
-            gcs_address = gcs_utils.get_gcs_address_from_redis(self.redis_client)
+        self.redis_client = None
         self.publisher = None
         if gcs_pubsub.gcs_pubsub_enabled():
             self.publisher = gcs_pubsub.GcsPublisher(address=gcs_address)
@@ -321,8 +315,7 @@ class LogMonitor:
                     next_line = next_line.decode("utf-8", "replace")
                     if next_line == "":
                         break
-                    if next_line[-1] == "\n":
-                        next_line = next_line[:-1]
+                    next_line = next_line.rstrip("\r\n")
 
                     if next_line.startswith(ray_constants.LOG_PREFIX_ACTOR_NAME):
                         flush()  # Possible change of task/actor name.
@@ -489,12 +482,7 @@ if __name__ == "__main__":
         )
         gcs_publisher = None
         if gcs_pubsub_enabled():
-            if gcs_utils.use_gcs_for_bootstrap():
-                gcs_publisher = GcsPublisher(address=args.gcs_address)
-            else:
-                gcs_publisher = GcsPublisher(
-                    address=gcs_utils.get_gcs_address_from_redis(redis_client)
-                )
+            gcs_publisher = GcsPublisher(address=args.gcs_address)
         traceback_str = ray._private.utils.format_error_message(traceback.format_exc())
         message = (
             f"The log monitor on node {platform.node()} "

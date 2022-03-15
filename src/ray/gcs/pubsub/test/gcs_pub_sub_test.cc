@@ -56,7 +56,8 @@ class GcsPubSubTest : public ::testing::Test {
     client_.reset();
   }
 
-  void Subscribe(const std::string &channel, const std::string &id,
+  void Subscribe(const std::string &channel,
+                 const std::string &id,
                  std::vector<std::string> &result) {
     std::promise<bool> promise;
     auto done = [&promise](const Status &status) { promise.set_value(status.ok()); };
@@ -84,7 +85,8 @@ class GcsPubSubTest : public ::testing::Test {
     RAY_CHECK_OK(pub_sub_->Unsubscribe(channel, id));
   }
 
-  bool Publish(const std::string &channel, const std::string &id,
+  bool Publish(const std::string &channel,
+               const std::string &id,
                const std::string &data) {
     std::promise<bool> promise;
     auto done = [&promise](const Status &status) { promise.set_value(status.ok()); };

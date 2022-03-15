@@ -10,6 +10,7 @@ from unittest import mock, skipIf
 import yaml
 
 import ray
+from ray.runtime_env import RuntimeEnv
 from ray._private.runtime_env.conda import (
     inject_dependencies,
     _inject_ray_to_conda_site,
@@ -24,7 +25,11 @@ from ray._private.test_utils import (
     wait_for_condition,
     chdir,
 )
-from ray._private.utils import get_conda_env_dir, get_conda_bin_executable
+from ray._private.utils import (
+    get_conda_env_dir,
+    get_conda_bin_executable,
+    try_to_create_directory,
+)
 
 if not os.environ.get("CI"):
     # This flags turns on the local development that link against current ray
@@ -211,16 +216,17 @@ def test_job_config_conda_env(conda_envs, shutdown_only):
     os.environ.get("CI") and sys.platform != "linux",
     reason="This test is only run on linux CI machines.",
 )
-def test_job_eager_install(shutdown_only):
+@pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
+def test_job_eager_install(shutdown_only, runtime_env_class):
     # Test enable eager install. This flag is set to True by default.
     runtime_env = {"conda": {"dependencies": ["toolz"]}}
     env_count = len(get_conda_env_list())
-    ray.init(runtime_env=runtime_env)
+    ray.init(runtime_env=runtime_env_class(**runtime_env))
     wait_for_condition(lambda: len(get_conda_env_list()) == env_count + 1, timeout=60)
     ray.shutdown()
     # Test disable eager install
     runtime_env = {"conda": {"dependencies": ["toolz"]}, "eager_install": False}
-    ray.init(runtime_env=runtime_env)
+    ray.init(runtime_env=runtime_env_class(**runtime_env))
     with pytest.raises(RuntimeError):
         wait_for_condition(
             lambda: len(get_conda_env_list()) == env_count + 2, timeout=5
@@ -229,7 +235,7 @@ def test_job_eager_install(shutdown_only):
     # Test unavailable type
     runtime_env = {"conda": {"dependencies": ["toolz"]}, "eager_install": 123}
     with pytest.raises(TypeError):
-        ray.init(runtime_env=runtime_env)
+        ray.init(runtime_env=runtime_env_class(**runtime_env))
     ray.shutdown()
 
 
@@ -721,12 +727,12 @@ def test_simultaneous_install(shutdown_only):
     # installed concurrently, leading to errors:
     # https://github.com/ray-project/ray/issues/17086
     # Now we use a global lock, so the envs are installed sequentially.
-    worker_1 = VersionWorker.options(runtime_env={"pip": ["requests==2.2.0"]}).remote(
-        key=1
-    )
-    worker_2 = VersionWorker.options(runtime_env={"pip": ["requests==2.3.0"]}).remote(
-        key=2
-    )
+    worker_1 = VersionWorker.options(
+        runtime_env={"pip": {"packages": ["requests==2.2.0"], "pip_check": False}}
+    ).remote(key=1)
+    worker_2 = VersionWorker.options(
+        runtime_env={"pip": {"packages": ["requests==2.3.0"], "pip_check": False}}
+    ).remote(key=2)
 
     assert ray.get(worker_1.get.remote()) == (1, "2.2.0")
     assert ray.get(worker_2.get.remote()) == (2, "2.3.0")
@@ -932,6 +938,76 @@ def test_runtime_env_override(call_ray_start):
         assert ray.get(child.read.remote("hello")) == "world"
 
         ray.shutdown()
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform != "linux",
+    reason="This test is only run on linux CI machines.",
+)
+def test_pip_with_env_vars(start_cluster):
+
+    with tempfile.TemporaryDirectory() as tmpdir, chdir(tmpdir):
+        TEST_ENV_NAME = "TEST_ENV_VARS"
+        TEST_ENV_VALUE = "TEST"
+        package_name = "test_package"
+        package_dir = os.path.join(tmpdir, package_name)
+        try_to_create_directory(package_dir)
+
+        setup_filename = os.path.join(package_dir, "setup.py")
+        setup_code = """import os
+from setuptools import setup, find_packages
+from setuptools.command.install import install
+
+class InstallTestPackage(install):
+    # this function will be called when pip install this package
+    def run(self):
+        assert os.environ.get('{TEST_ENV_NAME}') == '{TEST_ENV_VALUE}'
+
+setup(
+    name='test_package',
+    version='0.0.1',
+    packages=find_packages(),
+    cmdclass=dict(install=InstallTestPackage),
+    license="MIT",
+    zip_safe=False,
+)
+""".format(
+            TEST_ENV_NAME=TEST_ENV_NAME, TEST_ENV_VALUE=TEST_ENV_VALUE
+        )
+        with open(setup_filename, "wt") as f:
+            f.writelines(setup_code)
+
+        python_filename = os.path.join(package_dir, "test.py")
+        python_code = "import os; print(os.environ)"
+        with open(python_filename, "wt") as f:
+            f.writelines(python_code)
+
+        gz_filename = os.path.join(tmpdir, package_name + ".tar.gz")
+        subprocess.check_call(["tar", "-zcvf", gz_filename, package_name])
+
+        with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
+
+            @ray.remote(
+                runtime_env={
+                    "env_vars": {TEST_ENV_NAME: "failed"},
+                    "pip": [gz_filename],
+                }
+            )
+            def f1():
+                return True
+
+            ray.get(f1.remote())
+
+        @ray.remote(
+            runtime_env={
+                "env_vars": {TEST_ENV_NAME: TEST_ENV_VALUE},
+                "pip": [gz_filename],
+            }
+        )
+        def f2():
+            return True
+
+        assert ray.get(f2.remote())
 
 
 if __name__ == "__main__":

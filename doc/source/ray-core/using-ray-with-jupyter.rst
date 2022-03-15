@@ -1,11 +1,11 @@
-Best Practices: Ray with Jupyter Notebook / JupyterLab
-======================================================
+Working with Jupyter Notebooks & JupyterLab
+===========================================
 
 This document describes best practices for using Ray with Jupyter Notebook / 
-JupyterLab. We use AWS for the purpose of illustrion, but the arguments 
-should also apply to other Cloud providers.
-Feel free to contribute if you think this document is 
-missing anything.
+JupyterLab.
+We use AWS for the purpose of illustration, but the arguments should also apply to
+other Cloud providers.
+Feel free to contribute if you think this document is missing anything.
 
 Setting Up Notebook
 -------------------

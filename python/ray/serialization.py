@@ -94,6 +94,7 @@ class SerializationContext:
         self._thread_local = threading.local()
 
         def actor_handle_reducer(obj):
+            ray.worker.global_worker.check_connected()
             serialized, actor_handle_id = obj._serialization_helper()
             # Update ref counting for the actor handle
             self.add_contained_object_ref(actor_handle_id)
@@ -102,9 +103,9 @@ class SerializationContext:
         self._register_cloudpickle_reducer(ray.actor.ActorHandle, actor_handle_reducer)
 
         def object_ref_reducer(obj):
-            self.add_contained_object_ref(obj)
             worker = ray.worker.global_worker
             worker.check_connected()
+            self.add_contained_object_ref(obj)
             obj, owner_address, object_status = worker.core_worker.serialize_object_ref(
                 obj
             )

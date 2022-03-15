@@ -3,6 +3,11 @@ import unittest
 from typing import Dict
 from unittest.mock import patch
 
+from ray_release.buildkite.concurrency import (
+    get_test_resources_from_cluster_compute,
+    get_concurrency_group,
+    CONCURRENY_GROUPS,
+)
 from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import (
     split_ray_repo_str,
@@ -10,16 +15,18 @@ from ray_release.buildkite.settings import (
     update_settings_from_environment,
     Frequency,
     update_settings_from_buildkite,
+    Priority,
 )
 from ray_release.buildkite.step import get_step
 from ray_release.config import Test
 from ray_release.exception import ReleaseTestConfigError
+from ray_release.tests.test_glue import MockReturn
 from ray_release.wheels import (
     DEFAULT_BRANCH,
 )
 
 
-class MockBuildkite:
+class MockBuildkiteAgent:
     def __init__(self, return_dict: Dict):
         self.return_dict = return_dict
 
@@ -27,10 +34,18 @@ class MockBuildkite:
         return self.return_dict.get(key, None)
 
 
+class MockBuildkitePythonAPI(MockReturn):
+    def builds(self):
+        return self
+
+    def artifacts(self):
+        return self
+
+
 class BuildkiteSettingsTest(unittest.TestCase):
     def setUp(self) -> None:
         self.buildkite = {}
-        self.buildkite_mock = MockBuildkite(self.buildkite)
+        self.buildkite_mock = MockBuildkiteAgent(self.buildkite)
 
     def testSplitRayRepoStr(self):
         url, branch = split_ray_repo_str("https://github.com/ray-project/ray.git")
@@ -74,11 +89,18 @@ class BuildkiteSettingsTest(unittest.TestCase):
         with self.assertRaises(ReleaseTestConfigError):
             update_settings_from_environment(updated_settings)
 
+        # Invalid priority
+        os.environ["RELEASE_PRIORITY"] = "invalid"
+        updated_settings = settings.copy()
+        with self.assertRaises(ReleaseTestConfigError):
+            update_settings_from_environment(updated_settings)
+
         os.environ["RELEASE_FREQUENCY"] = "nightly"
         os.environ["RAY_TEST_REPO"] = "https://github.com/user/ray.git"
         os.environ["RAY_TEST_BRANCH"] = "sub/branch"
         os.environ["RAY_WHEELS"] = "custom-wheels"
         os.environ["TEST_NAME"] = "name_filter"
+        os.environ["RELEASE_PRIORITY"] = "manual"
         updated_settings = settings.copy()
         update_settings_from_environment(updated_settings)
 
@@ -90,6 +112,8 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 "ray_wheels": "custom-wheels",
                 "ray_test_repo": "https://github.com/user/ray.git",
                 "ray_test_branch": "sub/branch",
+                "priority": Priority.MANUAL,
+                "no_concurrency_limit": False,
             },
         )
 
@@ -113,10 +137,17 @@ class BuildkiteSettingsTest(unittest.TestCase):
             with self.assertRaises(ReleaseTestConfigError):
                 update_settings_from_buildkite(updated_settings)
 
+            # Invalid priority
+            self.buildkite["release-priority"] = "invalid"
+            updated_settings = settings.copy()
+            with self.assertRaises(ReleaseTestConfigError):
+                update_settings_from_buildkite(updated_settings)
+
             self.buildkite["release-frequency"] = "nightly"
             self.buildkite["release-ray-test-repo-branch"] = "user:sub/branch"
             self.buildkite["release-ray-wheels"] = "custom-wheels"
             self.buildkite["release-test-name"] = "name_filter"
+            self.buildkite["release-priority"] = "manual"
             updated_settings = settings.copy()
             update_settings_from_buildkite(updated_settings)
 
@@ -128,6 +159,8 @@ class BuildkiteSettingsTest(unittest.TestCase):
                     "ray_wheels": "custom-wheels",
                     "ray_test_repo": "https://github.com/user/ray.git",
                     "ray_test_branch": "sub/branch",
+                    "priority": Priority.MANUAL,
+                    "no_concurrency_limit": False,
                 },
             )
 
@@ -238,3 +271,80 @@ class BuildkiteSettingsTest(unittest.TestCase):
 
         step = get_step(test, smoke_test=True)
         self.assertIn("--smoke-test", step["command"])
+
+        step = get_step(test, priority_val=20)
+        self.assertEqual(step["priority"], 20)
+
+    def testInstanceResources(self):
+        # AWS instances
+        cpus, gpus = get_test_resources_from_cluster_compute(
+            {
+                "head_node_type": {"instance_type": "m5.4xlarge"},  # 16 CPUs, 0 GPUs
+                "worker_node_types": [
+                    {
+                        "instance_type": "m5.8xlarge",  # 32 CPUS, 0 GPUs
+                        "max_workers": 4,
+                    },
+                    {
+                        "instance_type": "g3.8xlarge",  # 32 CPUs, 2 GPUs
+                        "min_workers": 8,
+                    },
+                ],
+            }
+        )
+        self.assertEqual(cpus, 16 + 32 * 4 + 32 * 8)
+        self.assertEqual(gpus, 2 * 8)
+
+        cpus, gpus = get_test_resources_from_cluster_compute(
+            {
+                "head_node_type": {
+                    "instance_type": "n1-standard-16"  # 16 CPUs, 0 GPUs
+                },
+                "worker_node_types": [
+                    {
+                        "instance_type": "random-str-xxx-32",  # 32 CPUS, 0 GPUs
+                        "max_workers": 4,
+                    },
+                    {
+                        "instance_type": "a2-highgpu-2g",  # 24 CPUs, 2 GPUs
+                        "min_workers": 8,
+                    },
+                ],
+            }
+        )
+        self.assertEqual(cpus, 16 + 32 * 4 + 24 * 8)
+        self.assertEqual(gpus, 2 * 8)
+
+    def testConcurrencyGroups(self):
+        def _return(ret):
+            def _inner(*args, **kwargs):
+                return ret
+
+            return _inner
+
+        test = Test(
+            {
+                "name": "test_1",
+            }
+        )
+
+        def test_concurrency(cpu, gpu, group):
+            with patch(
+                "ray_release.buildkite.concurrency.get_test_resources",
+                _return((cpu, gpu)),
+            ):
+                group_name, limit = get_concurrency_group(test)
+                self.assertEqual(group_name, group)
+                self.assertEqual(limit, CONCURRENY_GROUPS[group_name])
+
+        test_concurrency(12800, 9, "large-gpu")
+        test_concurrency(12800, 8, "small-gpu")
+        test_concurrency(12800, 1, "small-gpu")
+        test_concurrency(12800, 0, "large")
+        test_concurrency(513, 0, "large")
+        test_concurrency(512, 0, "medium")
+        test_concurrency(129, 0, "medium")
+        test_concurrency(128, 0, "small")
+        test_concurrency(1, 0, "tiny")
+        test_concurrency(32, 0, "tiny")
+        test_concurrency(33, 0, "small")

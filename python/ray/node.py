@@ -23,11 +23,7 @@ import ray
 import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
-from ray._private.gcs_utils import (
-    GcsClient,
-    use_gcs_for_bootstrap,
-    get_gcs_address_from_redis,
-)
+from ray._private.gcs_utils import GcsClient
 from ray._private.resource_spec import ResourceSpec
 from ray._private.utils import try_to_create_directory, try_to_symlink, open_log
 import ray._private.usage.usage_lib as ray_usage_lib
@@ -324,8 +320,6 @@ class Node:
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
         self.validate_ip_port(self.gcs_address)
-        if not use_gcs_for_bootstrap():
-            self.validate_ip_port(self.redis_address)
 
     @staticmethod
     def validate_ip_port(ip_port):
@@ -383,19 +377,6 @@ class Node:
             sys.exit(1)
 
         ray._private.utils.set_sigterm_handler(sigterm_handler)
-
-    def _get_gcs_address_from_redis(self):
-        redis_cli = self.create_redis_client()
-        error = None
-        for _ in range(NUM_REDIS_GET_RETRIES):
-            try:
-                return get_gcs_address_from_redis(redis_cli)
-            except Exception as e:
-                logger.debug(f"Fetch gcs address from redis failed {e}")
-                error = e
-                time.sleep(1)
-        assert error is not None
-        logger.error(f"Fetch gcs address from redis failed {error}")
 
     def _init_temp(self):
         # Create a dictionary to store temp file index.
@@ -512,26 +493,17 @@ class Node:
         `ray start` or `ray.int()` to start worker nodes, that has been
         converted to ip:port format.
         """
-        if use_gcs_for_bootstrap():
-            return self._gcs_address
-        return self._redis_address
+        return self._gcs_address
 
     @property
     def gcs_address(self):
         """Get the gcs address."""
-        if use_gcs_for_bootstrap():
-            assert self._gcs_address is not None, "Gcs address is not set"
-        else:
-            # Always get the address from Redis because GCS address may change
-            # after restarting. This will be removed later.
-            self._gcs_address = self._get_gcs_address_from_redis()
+        assert self._gcs_address is not None, "Gcs address is not set"
         return self._gcs_address
 
     @property
     def redis_address(self):
         """Get the cluster Redis address."""
-        if not use_gcs_for_bootstrap():
-            assert self._redis_address is not None
         return self._redis_address
 
     @property
@@ -932,12 +904,10 @@ class Node:
         self._webui_url, process_info = ray._private.services.start_dashboard(
             require_dashboard,
             self._ray_params.dashboard_host,
-            self.redis_address,
             self.gcs_address,
             self._temp_dir,
             self._logs_dir,
             self._session_dir,
-            redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
@@ -984,8 +954,7 @@ class Node:
         # e.g. https://github.com/ray-project/ray/issues/15780
         # TODO(mwtian): figure out a way to use 127.0.0.1 for local connection
         # when possible.
-        if use_gcs_for_bootstrap():
-            self._gcs_address = f"{self._node_ip_address}:" f"{gcs_server_port}"
+        self._gcs_address = f"{self._node_ip_address}:" f"{gcs_server_port}"
         # Initialize gcs client, which also waits for GCS to start running.
         self.get_gcs_client()
 
@@ -1112,10 +1081,7 @@ class Node:
         assert self._gcs_address is None
         assert self._gcs_client is None
 
-        if (
-            not use_gcs_for_bootstrap()
-            or self._ray_params.external_addresses is not None
-        ):
+        if self._ray_params.external_addresses is not None:
             # This only configures external Redis and does not start local
             # Redis, when external Redis address is specified.
             # TODO(mwtian): after GCS bootstrapping is default and stable,
@@ -1149,14 +1115,9 @@ class Node:
         # on this node and spilled objects remain on disk.
         if not self.head:
             # Get the system config from GCS first if this is a non-head node.
-            if not use_gcs_for_bootstrap():
-                gcs_options = ray._raylet.GcsClientOptions.from_redis_address(
-                    self.redis_address, self.redis_password
-                )
-            else:
-                gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(
-                    self.gcs_address
-                )
+            gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(
+                self.gcs_address
+            )
             global_state = ray.state.GlobalState()
             global_state._initialize_global_state(gcs_options)
             new_config = global_state.get_system_config()

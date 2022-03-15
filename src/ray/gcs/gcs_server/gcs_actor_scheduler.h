@@ -35,9 +35,10 @@ namespace gcs {
 
 class GcsActor;
 
-using GcsActorSchedulerFailureCallback = std::function<void(
-    std::shared_ptr<GcsActor>, rpc::RequestWorkerLeaseReply::SchedulingFailureType,
-    const std::string &)>;
+using GcsActorSchedulerFailureCallback =
+    std::function<void(std::shared_ptr<GcsActor>,
+                       rpc::RequestWorkerLeaseReply::SchedulingFailureType,
+                       const std::string &)>;
 using GcsActorSchedulerSuccessCallback =
     std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>;
 
@@ -63,7 +64,8 @@ class GcsActorSchedulerInterface {
   ///
   /// \param node_id ID of the node where the actor leasing request has been sent.
   /// \param actor_id ID of an actor.
-  virtual void CancelOnLeasing(const NodeID &node_id, const ActorID &actor_id,
+  virtual void CancelOnLeasing(const NodeID &node_id,
+                               const ActorID &actor_id,
                                const TaskID &task_id) = 0;
 
   /// Cancel the actor that is being scheduled to the specified worker.
@@ -77,7 +79,7 @@ class GcsActorSchedulerInterface {
   ///
   /// \param node_to_workers Workers used by each node.
   virtual void ReleaseUnusedWorkers(
-      const std::unordered_map<NodeID, std::vector<WorkerID>> &node_to_workers) = 0;
+      const absl::flat_hash_map<NodeID, std::vector<WorkerID>> &node_to_workers) = 0;
 
   /// Handle the destruction of an actor.
   ///
@@ -106,7 +108,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param client_factory Factory to create remote core worker client, default factor
   /// will be used if not set.
   explicit GcsActorScheduler(
-      instrumented_io_context &io_context, GcsActorTable &gcs_actor_table,
+      instrumented_io_context &io_context,
+      GcsActorTable &gcs_actor_table,
       const GcsNodeManager &gcs_node_manager,
       GcsActorSchedulerFailureCallback schedule_failure_handler,
       GcsActorSchedulerSuccessCallback schedule_success_handler,
@@ -140,7 +143,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   ///
   /// \param node_id ID of the node where the actor leasing request has been sent.
   /// \param actor_id ID of an actor.
-  void CancelOnLeasing(const NodeID &node_id, const ActorID &actor_id,
+  void CancelOnLeasing(const NodeID &node_id,
+                       const ActorID &actor_id,
                        const TaskID &task_id) override;
 
   /// Cancel the actor that is being scheduled to the specified worker.
@@ -154,7 +158,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   ///
   /// \param node_to_workers Workers used by each node.
   void ReleaseUnusedWorkers(
-      const std::unordered_map<NodeID, std::vector<WorkerID>> &node_to_workers) override;
+      const absl::flat_hash_map<NodeID, std::vector<WorkerID>> &node_to_workers) override;
 
   /// Handle the destruction of an actor.
   ///
@@ -272,7 +276,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param failure_type The type of the canceling.
   /// \param scheduling_failure_message The scheduling failure error message.
   void HandleRequestWorkerLeaseCanceled(
-      std::shared_ptr<GcsActor> actor, const NodeID &node_id,
+      std::shared_ptr<GcsActor> actor,
+      const NodeID &node_id,
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
       const std::string &scheduling_failure_message);
 

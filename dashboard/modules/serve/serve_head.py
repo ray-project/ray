@@ -5,13 +5,12 @@ import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as optional_utils
 
 from ray import serve
-from ray.serve.api import deploy_group, get_deployment_statuses
-from ray.dashboard.modules.serve.schema import (
-    ServeApplicationSchema,
+from ray.serve.application import Application
+from ray.serve.schema import (
     serve_application_to_schema,
-    schema_to_serve_application,
     serve_application_status_to_schema,
 )
+from ray.serve.api import get_deployment_statuses
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -53,16 +52,11 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @routes.put("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def put_all_deployments(self, req: Request) -> Response:
-        serve_application_text = await req.text()
-        serve_application_schema = ServeApplicationSchema.parse_raw(
-            serve_application_text, content_type="application/json"
-        )
-        deployments = schema_to_serve_application(serve_application_schema)
-
-        deploy_group(deployments, _blocking=False)
+        app = Application.from_dict(await req.json())
+        app.deploy(blocking=False)
 
         new_names = set()
-        for deployment in serve_application_schema.deployments:
+        for deployment in app:
             new_names.add(deployment.name)
 
         all_deployments = serve.list_deployments()

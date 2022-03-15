@@ -15,7 +15,6 @@ from types import ModuleType
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import click
-import redis
 import yaml
 
 try:  # py3
@@ -90,7 +89,7 @@ POLL_INTERVAL = 5
 Port_forward = Union[Tuple[int, int], List[Tuple[int, int]]]
 
 
-def _redis() -> redis.StrictRedis:
+def _redis():
     global redis_client
     if redis_client is None:
         redis_client = services.create_redis_client(

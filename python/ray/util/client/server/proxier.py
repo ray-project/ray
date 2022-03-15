@@ -33,7 +33,7 @@ from ray._private.parameter import RayParams
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.services import ProcessInfo, start_ray_client_server
 from ray._private.tls_utils import add_port_to_grpc_server
-from ray._private.gcs_utils import GcsClient, use_gcs_for_bootstrap
+from ray._private.gcs_utils import GcsClient
 from ray._private.utils import detect_fate_sharing_support
 
 # Import psutil after ray so the packaged version is used.
@@ -182,12 +182,7 @@ class ProxyManager:
         """
         if self._node:
             return self._node
-        if use_gcs_for_bootstrap():
-            ray_params = RayParams(gcs_address=self.address)
-        else:
-            ray_params = RayParams(redis_address=self.address)
-            if self._redis_password:
-                ray_params.redis_password = self._redis_password
+        ray_params = RayParams(gcs_address=self.address)
 
         self._node = ray.node.Node(
             ray_params,
@@ -775,14 +770,9 @@ def serve_proxier(
     # before calling ray.init within the RayletServicers.
     # NOTE(edoakes): redis_address and redis_password should only be None in
     # tests.
-    if use_gcs_for_bootstrap():
-        if address is not None:
-            gcs_cli = GcsClient(address=address)
-            ray.experimental.internal_kv._initialize_internal_kv(gcs_cli)
-    else:
-        if address is not None and redis_password is not None:
-            gcs_cli = GcsClient.connect_to_gcs_by_redis_address(address, redis_password)
-            ray.experimental.internal_kv._initialize_internal_kv(gcs_cli)
+    if address is not None:
+        gcs_cli = GcsClient(address=address)
+        ray.experimental.internal_kv._initialize_internal_kv(gcs_cli)
 
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),

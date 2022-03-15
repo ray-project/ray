@@ -1,3 +1,5 @@
+.. include:: /_includes/data/announcement.rst
+
 .. _datasets:
 
 .. note::
@@ -263,3 +265,5 @@ There are many potential improvements, including:
 - Integration with more ecosystem libraries.
 - Adding features that require partitioning such as `groupby()` and `join()`.
 - Performance optimizations.
+
+.. include:: /_includes/data/announcement_bottom.rst
