@@ -359,7 +359,7 @@ def run(
 
     ray.init(address=address, namespace="serve", runtime_env=ray_runtime_env)
 
-    for deployment in app.deployments:
+    for deployment in app.deployments.values():
         _configure_runtime_env(deployment, runtime_env_updates)
 
     try:
@@ -375,7 +375,7 @@ def run(
 
     except KeyboardInterrupt:
         cli_logger.info("Got SIGINT (KeyboardInterrupt). Removing deployments.")
-        for deployment in app.deployments:
+        for deployment in app.deployments.values():
             deployment.delete()
         if len(serve.list_deployments()) == 0:
             cli_logger.info("No deployments left. Shutting down Serve.")

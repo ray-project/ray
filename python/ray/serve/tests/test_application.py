@@ -28,7 +28,7 @@ class TestAddDeployment:
         app._add_deployment(self.C)
 
         assert len(app.deployments) == 2
-        app_deployment_names = {d.name for d in app.deployments}
+        app_deployment_names = {d.name for d in app.deployments.values()}
         assert "f" in app_deployment_names
         assert "C" in app_deployment_names
 
@@ -71,7 +71,7 @@ class TestDeployGroup:
         the client to wait until the deployments finish deploying.
         """
 
-        deploy_group(Application(deployments).deployments, blocking=blocking)
+        deploy_group(Application(deployments).deployments.values(), blocking=blocking)
 
         def check_all_deployed():
             try:
@@ -144,7 +144,7 @@ class TestDeployGroup:
                 MutualHandles.options(name=deployment_name, init_args=(handle_name,))
             )
 
-        deploy_group(Application(deployments).deployments, blocking=True)
+        deploy_group(Application(deployments).deployments.values(), blocking=True)
 
         for deployment in deployments:
             assert (ray.get(deployment.get_handle().remote("hello"))) == "hello"
@@ -309,7 +309,7 @@ class TestDictTranslation:
 
         compare_specified_options(config_dict, app_dict)
 
-        deploy_group(app.deployments)
+        deploy_group(app.deployments.values())
 
         assert (
             requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
@@ -335,7 +335,7 @@ class TestYAMLTranslation:
         compare_specified_options(app1.to_dict(), app2.to_dict())
 
         # Check that deployment works
-        deploy_group(app1.deployments)
+        deploy_group(app1.deployments.values())
         assert (
             requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
         )
@@ -363,13 +363,13 @@ def test_immutable_deployment_list(serve_instance):
     with open(config_file_name, "r") as f:
         app = Application.from_yaml(f)
 
-    assert len(app.deployments) == 2
+    assert len(app.deployments.values()) == 2
 
-    for i in range(len(app.deployments)):
+    for name in app.deployments.keys():
         with pytest.raises(RuntimeError):
-            app.deployments[i] = app.deployments[i].options(name="sneaky")
+            app.deployments[name] = app.deployments[name].options(name="sneaky")
 
-    for deployment in app.deployments:
+    for deployment in app.deployments.values():
         deployment.deploy()
 
     assert requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
