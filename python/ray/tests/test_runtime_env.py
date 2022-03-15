@@ -304,17 +304,9 @@ def set_agent_failure_env_var():
     del os.environ["_RAY_AGENT_FAILING"]
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster_head",
-    [
-        {
-            "_system_config": {
-                "agent_restart_interval_ms": 10,
-                "agent_max_restart_count": 5,
-            }
-        }
-    ],
-    indirect=True,
+# TODO(SongGuyang): Fail the agent which is in different node from driver.
+@pytest.mark.skip(
+    reason="Agent failure will lead to raylet failure and driver failure."
 )
 @pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
 def test_runtime_env_broken(
@@ -333,13 +325,13 @@ def test_runtime_env_broken(
     """
     Test task raises an exception.
     """
-    with pytest.raises(RuntimeEnvSetupError):
+    with pytest.raises(ray.exceptions.LocalRayletDiedError):
         ray.get(f.options(runtime_env=runtime_env).remote())
     """
     Test actor task raises an exception.
     """
     a = A.options(runtime_env=runtime_env).remote()
-    with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
+    with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.ready.remote())
 
 

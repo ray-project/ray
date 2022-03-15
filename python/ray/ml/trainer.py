@@ -178,16 +178,15 @@ class Trainer(abc.ABC):
 
         This method is called prior to entering the training_loop.
 
-        If the ``Trainer`` has both a train_dataset and
-        preprocessor, and the preprocessor has not yet been fit, then it
-        will be fit on the train_dataset.
+        If the ``Trainer`` has both a datasets dict and
+        a preprocessor, the datasets dict contains a training dataset (denoted by
+        the "train" key), and the preprocessor has not yet
+        been fit, then it will be fit on the train.
 
-        Then, the Trainer's train_dataset and any extra_datasets
-        will be transformed by its preprocessor.
+        Then, the Trainer's datasets will be transformed by the preprocessor.
 
-        The transformed datasets will be set back in the
-        ``self.train_dataset`` and ``self.extra_datasets`` attributes to be
-        used when overriding ``training_loop``.
+        The transformed datasets will be set back in the ``self.datasets`` attribute
+        of the Trainer to be used when overriding ``training_loop``.
         """
         # Evaluate all datasets.
         self.datasets = {k: d() if callable(d) else d for k, d in self.datasets.items()}
@@ -222,8 +221,7 @@ class Trainer(abc.ABC):
 
         Note: this method runs on a remote process.
 
-        `self.train_dataset` and the Dataset values in `self.extra_datasets`
-        have already been preprocessed by `self.preprocessor`.'
+        ``self.datasets`` have already been preprocessed by ``self.preprocessor``.
 
         You can use the :ref:`Tune Function API functions <tune-function-docstring>`
         (``tune.report()`` and ``tune.save_checkpoint()``) inside
