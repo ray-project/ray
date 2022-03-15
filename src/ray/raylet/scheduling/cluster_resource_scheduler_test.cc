@@ -52,13 +52,21 @@ vector<int64_t> EmptyIntVector;
 vector<bool> EmptyBoolVector;
 vector<FixedPoint> EmptyFixedPointVector;
 
-void initResourceRequest(ResourceRequest &res_request, vector<FixedPoint> pred_demands,
-                         vector<int64_t> cust_ids, vector<FixedPoint> cust_demands) {
+void initResourceRequest(ResourceRequest &res_request,
+                         vector<FixedPoint> pred_demands,
+                         vector<int64_t> cust_ids,
+                         vector<FixedPoint> cust_demands) {
+  res_request.predefined_resources.resize(PredefinedResources_MAX + pred_demands.size());
   for (size_t i = 0; i < pred_demands.size(); i++) {
-    res_req.Set(i, pred_demands[i]);
+    res_request.predefined_resources[i] = pred_demands[i];
   }
+
+  for (size_t i = pred_demands.size(); i < PredefinedResources_MAX; i++) {
+    res_request.predefined_resources.push_back(0);
+  }
+
   for (size_t i = 0; i < cust_ids.size(); i++) {
-    res_request.Set(cust_ids[i], cust_demands[i]);
+    res_request.custom_resources[cust_ids[i]] = cust_demands[i];
   }
 };
 
@@ -68,8 +76,8 @@ void addTaskResourceInstances(bool predefined,
                               TaskResourceInstances *task_allocation) {
   std::vector<FixedPoint> allocation_fp = VectorDoubleToVectorFixedPoint(allocation);
 
-  if (task_allocation->predefined_resources.size() < PredefinedResourcesEnum_MAX) {
-    task_allocation->predefined_resources.resize(PredefinedResourcesEnum_MAX);
+  if (task_allocation->predefined_resources.size() < PredefinedResources_MAX) {
+    task_allocation->predefined_resources.resize(PredefinedResources_MAX);
   }
   if (predefined) {
     task_allocation->predefined_resources[idx] = allocation_fp;
@@ -89,8 +97,8 @@ void initNodeResources(NodeResources &node,
     node.predefined_resources.push_back(rc);
   }
 
-  if (pred_capacities.size() < PredefinedResourcesEnum_MAX) {
-    for (int i = pred_capacities.size(); i < PredefinedResourcesEnum_MAX; i++) {
+  if (pred_capacities.size() < PredefinedResources_MAX) {
+    for (int i = pred_capacities.size(); i < PredefinedResources_MAX; i++) {
       ResourceCapacity rc;
       rc.total = rc.available = 0;
       node.predefined_resources.push_back(rc);
@@ -105,7 +113,40 @@ void initNodeResources(NodeResources &node,
 }
 
 bool nodeResourcesEqual(const NodeResources &nr1, const NodeResources &nr2) {
-  return nr1 == nr2;
+  if (nr1.predefined_resources.size() != nr2.predefined_resources.size()) {
+    cout << nr1.predefined_resources.size() << " " << nr2.predefined_resources.size()
+         << endl;
+    return false;
+  }
+
+  for (size_t i = 0; i < nr1.predefined_resources.size(); i++) {
+    if (nr1.predefined_resources[i].available != nr2.predefined_resources[i].available) {
+      return false;
+    }
+    if (nr1.predefined_resources[i].total != nr2.predefined_resources[i].total) {
+      return false;
+    }
+  }
+
+  if (nr1.custom_resources.size() != nr2.custom_resources.size()) {
+    return false;
+  }
+
+  auto cr1 = nr1.custom_resources;
+  auto cr2 = nr2.custom_resources;
+  for (auto it1 = cr1.begin(); it1 != cr1.end(); ++it1) {
+    auto it2 = cr2.find(it1->first);
+    if (it2 == cr2.end()) {
+      return false;
+    }
+    if (it1->second.total != it2->second.total) {
+      return false;
+    }
+    if (it1->second.available != it2->second.available) {
+      return false;
+    }
+  }
+  return true;
 }
 
 class ClusterResourceSchedulerTest : public ::testing::Test {
@@ -132,7 +173,7 @@ class ClusterResourceSchedulerTest : public ::testing::Test {
     for (i = 0; i < n; i++) {
       NodeResources node_resources;
 
-      for (k = 0; k < PredefinedResourcesEnum_MAX; k++) {
+      for (k = 0; k < PredefinedResources_MAX; k++) {
         if (rand() % 3 == 0) {
           pred_capacities.push_back(0);
         } else {
@@ -140,7 +181,7 @@ class ClusterResourceSchedulerTest : public ::testing::Test {
         }
       }
 
-      int m = min(rand() % PredefinedResourcesEnum_MAX, n);
+      int m = min(rand() % PredefinedResources_MAX, n);
 
       int start = rand() % n;
       for (k = 0; k < m; k++) {
@@ -311,7 +352,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingModifyClusterNodeTest) {
   vector<FixedPoint> cust_capacities;
   int k;
 
-  for (k = 0; k < PredefinedResourcesEnum_MAX; k++) {
+  for (k = 0; k < PredefinedResources_MAX; k++) {
     if (rand() % 3 == 0) {
       pred_capacities.push_back(0);
     } else {
@@ -319,7 +360,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingModifyClusterNodeTest) {
     }
   }
 
-  int m = min(rand() % PredefinedResourcesEnum_MAX, num_nodes);
+  int m = min(rand() % PredefinedResources_MAX, num_nodes);
 
   int start = rand() % num_nodes;
   for (k = 0; k < m; k++) {
@@ -406,9 +447,10 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {
         resource_scheduler.GetClusterResourceManager().GetNodeResources(node_id, &nr2));
 
     for (size_t i = 0; i < PRED_CUSTOM_LEN; i++) {
-      auto t = nr1.availabile.Get(i) - resource_request.Get(i);
+      auto t = nr1.predefined_resources[i].available -
+               resource_request.predefined_resources[i];
       if (t < 0) t = 0;
-      ASSERT_EQ(nr2.available.Get(i), t);
+      ASSERT_EQ(nr2.predefined_resources[i].available, t);
     }
 
     for (size_t i = 1; i <= PRED_CUSTOM_LEN; i++) {
@@ -887,9 +929,9 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest2) {
     ASSERT_EQ(success, true);
     std::vector<double> cpu_instances = task_allocation->GetCPUInstancesDouble();
     resource_scheduler.GetLocalResourceManager().AddResourceInstances(
-        ResourceID::CPU(), cpu_instances);
+        scheduling::kCPUResource, cpu_instances);
     resource_scheduler.GetLocalResourceManager().SubtractResourceInstances(
-        ResourceID::CPU(), cpu_instances);
+        scheduling::kCPUResource, cpu_instances);
 
     ASSERT_EQ((resource_scheduler.GetLocalResourceManager().GetLocalResources() ==
                old_local_resources),
@@ -944,7 +986,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest) {
 
     std::vector<double> allocate_gpu_instances{0.5, 0.5, 0.5, 0.5};
     resource_scheduler.GetLocalResourceManager().SubtractResourceInstances(
-        ResourceID::GPU(), allocate_gpu_instances);
+        scheduling::kGPUResource, allocate_gpu_instances);
     std::vector<double> available_gpu_instances =
         resource_scheduler.GetLocalResourceManager()
             .GetLocalResources()
@@ -956,7 +998,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest) {
                            expected_available_gpu_instances.begin()));
 
     resource_scheduler.GetLocalResourceManager().AddResourceInstances(
-        ResourceID::GPU(), allocate_gpu_instances);
+        scheduling::kGPUResource, allocate_gpu_instances);
     available_gpu_instances = resource_scheduler.GetLocalResourceManager()
                                   .GetLocalResources()
                                   .GetAvailableResourceInstances()
@@ -969,7 +1011,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest) {
     allocate_gpu_instances = {1.5, 1.5, .5, 1.5};
     std::vector<double> underflow =
         resource_scheduler.GetLocalResourceManager().SubtractResourceInstances(
-            ResourceID::GPU(), allocate_gpu_instances);
+            scheduling::kGPUResource, allocate_gpu_instances);
     std::vector<double> expected_underflow{.5, .5, 0., .5};
     ASSERT_TRUE(
         std::equal(underflow.begin(), underflow.end(), expected_underflow.begin()));
@@ -985,7 +1027,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest) {
     allocate_gpu_instances = {1.0, .5, 1., .5};
     std::vector<double> overflow =
         resource_scheduler.GetLocalResourceManager().AddResourceInstances(
-            ResourceID::GPU(), allocate_gpu_instances);
+            scheduling::kGPUResource, allocate_gpu_instances);
     std::vector<double> expected_overflow{.0, .0, .5, 0.};
     ASSERT_TRUE(std::equal(overflow.begin(), overflow.end(), expected_overflow.begin()));
     available_gpu_instances = resource_scheduler.GetLocalResourceManager()
@@ -1015,7 +1057,7 @@ TEST_F(ClusterResourceSchedulerTest,
       // SubtractGPUResourceInstances() calls
       // UpdateLocalAvailableResourcesFromResourceInstances() under the hood.
       resource_scheduler.GetLocalResourceManager().SubtractResourceInstances(
-          ResourceID::GPU(), allocate_gpu_instances);
+          scheduling::kGPUResource, allocate_gpu_instances);
       std::vector<double> available_gpu_instances =
           resource_scheduler.GetLocalResourceManager()
               .GetLocalResources()
@@ -1037,7 +1079,7 @@ TEST_F(ClusterResourceSchedulerTest,
       // SubtractGPUResourceInstances() calls
       // UpdateLocalAvailableResourcesFromResourceInstances() under the hood.
       resource_scheduler.GetLocalResourceManager().AddResourceInstances(
-          ResourceID::GPU(), allocate_gpu_instances);
+          scheduling::kGPUResource, allocate_gpu_instances);
       std::vector<double> available_gpu_instances =
           resource_scheduler.GetLocalResourceManager()
               .GetLocalResources()
