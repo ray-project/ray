@@ -75,7 +75,7 @@ def framework_iterator(
             continue
         if fw != "torch" and not tf:
             logger.warning(
-                "framework_iterator skipping {} (tf not " "installed)!".format(fw)
+                "framework_iterator skipping {} (tf not installed)!".format(fw)
             )
             continue
         elif fw == "tfe" and not eager_mode:
@@ -840,7 +840,7 @@ def check_same_batch(batch1, batch2) -> None:
 
     assert type(batch1) == type(
         batch2
-    ), "Input batches are of different " "types {} and {}".format(
+    ), "Input batches are of different types {} and {}".format(
         str(type(batch1)), str(type(batch2))
     )
 
@@ -895,8 +895,6 @@ def check_same_batch(batch1, batch2) -> None:
         difference = batch1_ids.symmetric_difference(batch2_ids)
         assert (
             not difference
-        ), "MultiAgentBatches don't share the following" "information: \n{}.".format(
-            difference
-        )
+        ), f"MultiAgentBatches don't share the following information: \n{difference}."
     else:
         raise ValueError("Unsupported batch type " + str(type(batch1)))

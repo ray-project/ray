@@ -8,6 +8,7 @@ from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 from ray.experimental.dag.format_utils import get_dag_node_str
 from ray.serve.api import Deployment, DeploymentConfig
+from ray.serve.utils import get_deployment_import_path
 
 
 class DeploymentNode(DAGNode):
@@ -190,13 +191,7 @@ class DeploymentNode(DAGNode):
             "is_from_serve_deployment" in self._bound_other_args_to_resolve
         ):  # built by serve top level api, this is ignored for serve.run
             return "dummy"
-        elif isinstance(self._deployment._func_or_class, str):
-            # We're processing a deserilized JSON node where import_path
-            # is dag_node body.
-            return self._deployment._func_or_class
-        else:
-            body = self._deployment._func_or_class.__ray_actor_class__
-            return f"{body.__module__}.{body.__qualname__}"
+        return get_deployment_import_path(self._deployment)
 
     def to_json(self, encoder_cls) -> Dict[str, Any]:
         if "deployment_self" in self._bound_other_args_to_resolve:
