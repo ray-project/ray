@@ -181,6 +181,7 @@ class PyModulesManager:
                     f"Failed to install py_modules wheel {wheel_file}"
                     f"to {module_dir}:\n{output}"
                 )
+        return module_dir
 
     async def create(
         self,
@@ -195,7 +196,7 @@ class PyModulesManager:
         # make this method running in current loop.
         def _create():
             if is_whl_uri(uri):
-                self._download_and_install_wheel(uri=uri, logger=logger)
+                module_dir = self._download_and_install_wheel(uri=uri, logger=logger)
 
             else:
                 module_dir = download_and_unpack_package(
