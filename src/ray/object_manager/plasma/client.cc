@@ -53,7 +53,7 @@ class PlasmaBuffer : public SharedMemoryBuffer {
  public:
   ~PlasmaBuffer();
 
-  PlasmaBuffer(std::shared_ptr<PlasmaClient::Impl> client,
+  PlasmaBuffer(std::shared_ptr<ClientImplInterface> client,
                const ObjectID &object_id,
                const std::shared_ptr<Buffer> &buffer)
       : SharedMemoryBuffer(buffer, 0, buffer->Size()),
@@ -70,7 +70,7 @@ class PlasmaBuffer : public SharedMemoryBuffer {
 /// be called in the associated Seal call.
 class RAY_NO_EXPORT PlasmaMutableBuffer : public SharedMemoryBuffer {
  public:
-  PlasmaMutableBuffer(std::shared_ptr<PlasmaClient::Impl> client,
+  PlasmaMutableBuffer(std::shared_ptr<ClientImplInterface> client,
                       uint8_t *mutable_data,
                       int64_t data_size)
       : SharedMemoryBuffer(mutable_data, data_size), client_(client) {}
@@ -270,9 +270,9 @@ bool PlasmaClientImpl::IsInUse(const ObjectID &object_id) {
   return (elem != objects_in_use_.end());
 }
 
-void PlasmaClient::Impl::IncrementObjectCount(const ObjectID &object_id,
-                                              PlasmaObject *object,
-                                              bool is_sealed) {
+void PlasmaClientImpl::IncrementObjectCount(const ObjectID &object_id,
+                                            PlasmaObject *object,
+                                            bool is_sealed) {
   // Increment the count of the object to track the fact that it is being used.
   // The corresponding decrement should happen in PlasmaClient::Release.
   auto elem = objects_in_use_.find(object_id);
@@ -357,14 +357,14 @@ Status PlasmaClientImpl::HandleCreateReply(const ObjectID &object_id,
   return Status::OK();
 }
 
-Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
-                                                  const ray::rpc::Address &owner_address,
-                                                  int64_t data_size,
-                                                  const uint8_t *metadata,
-                                                  int64_t metadata_size,
-                                                  std::shared_ptr<Buffer> *data,
-                                                  fb::ObjectSource source,
-                                                  int device_num) {
+Status PlasmaClientImpl::CreateAndSpillIfNeeded(const ObjectID &object_id,
+                                                const ray::rpc::Address &owner_address,
+                                                int64_t data_size,
+                                                const uint8_t *metadata,
+                                                int64_t metadata_size,
+                                                std::shared_ptr<Buffer> *data,
+                                                fb::ObjectSource source,
+                                                int device_num) {
   std::unique_lock<std::recursive_mutex> guard(client_mutex_);
   uint64_t retry_with_request_id = 0;
 
@@ -395,24 +395,24 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
   return status;
 }
 
-Status PlasmaClient::Impl::RetryCreate(const ObjectID &object_id,
-                                       uint64_t request_id,
-                                       const uint8_t *metadata,
-                                       uint64_t *retry_with_request_id,
-                                       std::shared_ptr<Buffer> *data) {
+Status PlasmaClientImpl::RetryCreate(const ObjectID &object_id,
+                                     uint64_t request_id,
+                                     const uint8_t *metadata,
+                                     uint64_t *retry_with_request_id,
+                                     std::shared_ptr<Buffer> *data) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
   RAY_RETURN_NOT_OK(SendCreateRetryRequest(store_conn_, object_id, request_id));
   return HandleCreateReply(object_id, metadata, retry_with_request_id, data);
 }
 
-Status PlasmaClient::Impl::TryCreateImmediately(const ObjectID &object_id,
-                                                const ray::rpc::Address &owner_address,
-                                                int64_t data_size,
-                                                const uint8_t *metadata,
-                                                int64_t metadata_size,
-                                                std::shared_ptr<Buffer> *data,
-                                                fb::ObjectSource source,
-                                                int device_num) {
+Status PlasmaClientImpl::TryCreateImmediately(const ObjectID &object_id,
+                                              const ray::rpc::Address &owner_address,
+                                              int64_t data_size,
+                                              const uint8_t *metadata,
+                                              int64_t metadata_size,
+                                              std::shared_ptr<Buffer> *data,
+                                              fb::ObjectSource source,
+                                              int device_num) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
   RAY_LOG(DEBUG) << "called plasma_create on conn " << store_conn_ << " with size "
@@ -428,7 +428,7 @@ Status PlasmaClient::Impl::TryCreateImmediately(const ObjectID &object_id,
   return HandleCreateReply(object_id, metadata, nullptr, data);
 }
 
-Status PlasmaClient::Impl::GetBuffers(
+Status PlasmaClientImpl::GetBuffers(
     const ObjectID *object_ids,
     int64_t num_objects,
     int64_t timeout_ms,
@@ -548,10 +548,10 @@ Status PlasmaClient::Impl::GetBuffers(
   return Status::OK();
 }
 
-Status PlasmaClient::Impl::Get(const std::vector<ObjectID> &object_ids,
-                               int64_t timeout_ms,
-                               std::vector<ObjectBuffer> *out,
-                               bool is_from_worker) {
+Status PlasmaClientImpl::Get(const std::vector<ObjectID> &object_ids,
+                             int64_t timeout_ms,
+                             std::vector<ObjectBuffer> *out,
+                             bool is_from_worker) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
   const auto wrap_buffer = [=](const ObjectID &object_id,
