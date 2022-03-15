@@ -756,7 +756,7 @@ void NodeResourceInfoAccessor::AsyncReReportResourceUsage() {
 
 void NodeResourceInfoAccessor::FillResourceUsageRequest(
     rpc::ReportResourceUsageRequest &resources) {
-  SchedulingResources cached_resources = SchedulingResources(*GetLastResourceUsage());
+  NodeResources cached_resources = *GetLastResourceUsage();
 
   auto resources_data = resources.mutable_resources();
   resources_data->clear_resources_total();

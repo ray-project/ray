@@ -331,7 +331,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
   cluster_resource_scheduler_ =
       std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
           scheduling::NodeID(self_node_id_.Binary()),
-          local_resources.GetTotalResources().GetResourceMap(),
+          config.resource_config,
           *gcs_client_,
           [this]() {
             if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
