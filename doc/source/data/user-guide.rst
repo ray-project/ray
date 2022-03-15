@@ -20,9 +20,5 @@ you will learn
     dataset-ml-preprocessing
     dataset-tensor-support
     advanced-pipelines
-    dask-on-ray
-    raydp
-    mars-on-ray
-    modin/index
     custom-data
     performance-tips
