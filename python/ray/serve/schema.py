@@ -3,7 +3,7 @@ from typing import Union, Tuple, List, Dict
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve.api import Deployment, deployment
 from ray.serve.common import DeploymentStatus, DeploymentStatusInfo
-from ray.serve.utils import DEFAULT, get_deployment_import_path
+from ray.serve.utils import DEFAULT
 
 
 class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
@@ -321,7 +321,7 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
 
     return DeploymentSchema(
         name=d.name,
-        import_path=get_deployment_import_path(d),
+        import_path=d.func_or_class,
         init_args=d.init_args,
         init_kwargs=d.init_kwargs,
         num_replicas=d.num_replicas,
