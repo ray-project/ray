@@ -1558,7 +1558,13 @@ class Application:
 
         self._deployments: Dict[str, Deployment] = dict()
         for d in deployments:
-            self._add_deployment(d)
+
+            if not isinstance(d, Deployment):
+                raise TypeError(f"Got {type(d)}. Expected deployment.")
+            elif d.name in self._deployments:
+                raise ValueError(f'App got multiple deployments named "{d.name}".')
+
+            self._deployments[d.name] = d
 
     @property
     def ingress(self) -> Deployment:
@@ -1653,27 +1659,6 @@ class Application:
         deployments_json = yaml.safe_load(str_or_file)
         schema = ServeApplicationSchema.parse_obj(deployments_json)
         return cls(schema_to_serve_application(schema))
-
-    def _add_deployment(self, deployment: Deployment):
-        """Adds the deployment to this Serve application.
-
-        Validates that a deployment with the same name doesn't already exist.
-
-        Args:
-            deployment (Deployment): deployment to add to this Application.
-
-        Raises:
-            TypeError: If a non-Deployment object is passed in.
-            ValueError: If a deployment with deployment.name already exists in
-                this Application.
-        """
-
-        if not isinstance(deployment, Deployment):
-            raise TypeError(f"Got {type(deployment)}. Expected deployment.")
-        elif deployment.name in self._deployments:
-            raise ValueError(f'App already has deployment named "{deployment.name}".')
-
-        self._deployments[deployment.name] = deployment
 
 
 @PublicAPI(stability="alpha")

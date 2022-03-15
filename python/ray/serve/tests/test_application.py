@@ -12,7 +12,7 @@ from ray.serve.api import Application, deploy_group
 from ray._private.test_utils import wait_for_condition
 
 
-class TestAddDeployment:
+class TestApplicationConstruction:
     @serve.deployment
     def f(*args):
         return "got f"
@@ -22,24 +22,24 @@ class TestAddDeployment:
         def __call__(self, *args):
             return "got C"
 
-    def test_add_deployment_valid(self):
-        app = Application([])
-        app._add_deployment(self.f)
-        app._add_deployment(self.C)
+    def test_valid_deployments(self):
+        app = Application([self.f, self.C])
 
         assert len(app.deployments) == 2
         app_deployment_names = {d.name for d in app.deployments.values()}
         assert "f" in app_deployment_names
         assert "C" in app_deployment_names
 
-    def test_add_deployment_repeat_name(self):
+    def test_repeated_deployment_names(self):
         with pytest.raises(ValueError):
-            app = Application([])
-            app._add_deployment(self.f)
-            app._add_deployment(self.C.options(name="f"))
+            Application([self.f, self.C.options(name="f")])
 
         with pytest.raises(ValueError):
             Application([self.C, self.f.options(name="C")])
+
+    def test_non_deployments(self):
+        with pytest.raises(TypeError):
+            Application([self.f, 5, "hello"])
 
 
 class TestDeployGroup:
