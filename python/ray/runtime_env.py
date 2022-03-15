@@ -25,13 +25,26 @@ from ray.ray_constants import DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS
 logger = logging.getLogger(__name__)
 
 
+def _parse_proto_pip_runtime_env_config(runtime_env: ProtoRuntimeEnv):
+    pip_runtime_env_dict = {}
+    pip_runtime_env_dict["packages"] = list(
+        runtime_env.python_runtime_env.pip_runtime_env.config.packages
+    )
+    pip_runtime_env_dict[
+        "pip_check"
+    ] = runtime_env.python_runtime_env.pip_runtime_env.config.pip_check
+    if runtime_env.python_runtime_env.pip_runtime_env.config.pip_version:
+        pip_runtime_env_dict[
+            "pip_version"
+        ] = runtime_env.python_runtime_env.pip_runtime_env.config.pip_version
+    return pip_runtime_env_dict
+
+
 def _parse_proto_pip_runtime_env(runtime_env: ProtoRuntimeEnv, runtime_env_dict: dict):
     """Parse pip runtime env protobuf to runtime env dict."""
     if runtime_env.python_runtime_env.HasField("pip_runtime_env"):
         if runtime_env.python_runtime_env.pip_runtime_env.HasField("config"):
-            runtime_env_dict["pip"] = list(
-                runtime_env.python_runtime_env.pip_runtime_env.config.packages
-            )
+            runtime_env_dict["pip"] = _parse_proto_pip_runtime_env_config(runtime_env)
         else:
             runtime_env_dict[
                 "pip"
@@ -236,14 +249,26 @@ class RuntimeEnv(dict):
         # Example for set env_vars
         RuntimeEnv(env_vars={"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"})
 
+        # Example for set pip
+        RuntimeEnv(
+            pip={"packages":["tensorflow", "requests"], "pip_check": False,
+            "pip_version": "==22.0.2;python_version=='3.8.11'"})
+
     Args:
         py_modules (List[URI]): List of URIs (either in the GCS or external
             storage), each of which is a zip file that will be unpacked and
             inserted into the PYTHONPATH of the workers.
         working_dir (URI): URI (either in the GCS or external storage) of a zip
             file that will be unpacked in the directory of each task/actor.
-        pip (List[str] | str): Either a list of pip packages, or a string
-            containing the path to a pip requirements.txt file.
+        pip (dict | List[str] | str): Either a list of pip packages, a string
+            containing the path to a pip requirements.txt file, or a python
+            dictionary that has three fields: 1) ``packages`` (required, List[str]): a
+            list of pip packages, 2) ``pip_check`` (optional, bool): whether enable
+            pip check at the end of pip install, default True.
+            3) ``pip_version`` (optional, str): the version of pip, ray will spell
+            the package name "pip" in front of the ``pip_version`` to form the final
+            requirement string, the syntax of a requirement specifier is defined in
+            full in PEP 508.
         conda (dict | str): Either the conda YAML config, the name of a
             local conda env (e.g., "pytorch_p36"), or the path to a conda
             environment.yaml file.
@@ -573,14 +598,16 @@ class RuntimeEnv(dict):
             return True
         return False
 
-    def pip_packages(self) -> List:
-        if not self.has_pip() or not isinstance(self["pip"], list):
-            return []
-        return self["pip"]
-
     def virtualenv_name(self) -> Optional[str]:
         if not self.has_pip() or not isinstance(self["pip"], str):
             return None
+        return self["pip"]
+
+    def pip_config(self) -> Dict:
+        if not self.has_pip() or isinstance(self["pip"], str):
+            return {}
+        # Parse and validate field pip on method `__setitem__`
+        self["pip"] = self["pip"]
         return self["pip"]
 
     def get_extension(self, key) -> Optional[str]:
@@ -626,16 +653,22 @@ class RuntimeEnv(dict):
     def _build_proto_pip_runtime_env(self, runtime_env: ProtoRuntimeEnv):
         """Construct pip runtime env protobuf from runtime env dict."""
         if self.has_pip():
-            pip_packages = self.pip_packages()
+            pip_config = self.pip_config()
             virtualenv_name = self.virtualenv_name()
-            # It is impossible for pip_packages and virtualenv_name
-            # to be non-null at the same time
-            if pip_packages:
+            # It is impossible for pip_config is a non-empty dict and
+            # virtualenv_name is non-none at the same time
+            if pip_config:
                 runtime_env.python_runtime_env.pip_runtime_env.config.packages.extend(
-                    pip_packages
+                    pip_config["packages"]
                 )
+                runtime_env.python_runtime_env.pip_runtime_env.config.pip_check = (
+                    pip_config["pip_check"]
+                )
+                if "pip_version" in pip_config:
+                    runtime_env.python_runtime_env.pip_runtime_env.config.pip_version = pip_config[  # noqa: E501
+                        "pip_version"
+                    ]
             else:
-                # It is impossible for virtualenv_name is None
                 runtime_env.python_runtime_env.pip_runtime_env.virtual_env_name = (
                     virtualenv_name
                 )
