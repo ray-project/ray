@@ -7,6 +7,7 @@ import sys
 import time
 from unittest.mock import MagicMock
 
+
 import ray
 from ray import tune
 from ray.tune import Trainable
@@ -16,10 +17,11 @@ from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining
 from ray._private.test_utils import object_memory_usage
 
+
 # Import psutil after ray so the packaged version is used.
 import psutil
 
-MB = 1024**2
+MB = 1024 ** 2
 
 
 class MockParam(object):
