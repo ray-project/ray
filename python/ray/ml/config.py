@@ -55,7 +55,7 @@ class ScalingConfigDataClass:
         """Resources per worker, not including CPU or GPU resources."""
         raise NotImplementedError
 
-    def get_placement_group_factory(self) -> "PlacementGroupFactory":
+    def as_placement_group_factory(self) -> "PlacementGroupFactory":
         """Returns a PlacementGroupFactory to specify resources for Tune."""
         raise NotImplementedError
 

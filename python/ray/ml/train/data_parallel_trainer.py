@@ -43,8 +43,9 @@ class DataParallelTrainer(Trainer):
 
     If the ``datasets`` dict contains a training dataset (denoted by
     the "train" key), then it will be split into multiple dataset
-    shards that can be consumed by ``train_loop_per_worker``. All the other datasets
-    will not be sharded.
+    shards that can then be accessed by ``ray.train.get_dataset_shard("train")`` inside
+    ``train_loop_per_worker``. All the other datasets will not be split and
+    ``ray.train.get_dataset_shard(...)`` will return the the entire Dataset.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
     :ref:`Ray Train function utils <train-api-func-utils>`.
@@ -55,7 +56,7 @@ class DataParallelTrainer(Trainer):
             # Report intermediate results for callbacks or logging.
             train.report(...)
 
-            # Checkpoints the provided dict as restorable state.
+            # Checkpoints the provided args as restorable state.
             train.save_checkpoint(...)
 
             # Returns dict of last saved checkpoint.
