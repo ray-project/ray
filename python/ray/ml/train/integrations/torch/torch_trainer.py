@@ -97,7 +97,7 @@ class TorchTrainer(DataParallelTrainer):
 
             import ray
             from ray import train
-            from ray.ml.integrations.torch import TorchTrainer
+            from ray.ml.train.integrations.torch import TorchTrainer
 
             input_size = 1
             layer_size = 15
