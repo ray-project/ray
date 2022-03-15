@@ -84,7 +84,8 @@ struct Invoker {
     return result;
   }
 
-  static inline msgpack::sbuffer ApplyMember(const Function &func, msgpack::sbuffer *ptr,
+  static inline msgpack::sbuffer ApplyMember(const Function &func,
+                                             msgpack::sbuffer *ptr,
                                              const ArgsBufferList &args_buffer) {
     using RetrunType = boost::callable_traits::return_type_t<Function>;
     using ArgsTuple =
@@ -124,7 +125,8 @@ struct Invoker {
     }
   }
 
-  static inline bool GetArgsTuple(std::tuple<> &tup, const ArgsBufferList &args_buffer,
+  static inline bool GetArgsTuple(std::tuple<> &tup,
+                                  const ArgsBufferList &args_buffer,
                                   std::index_sequence<>) {
     return true;
   }
@@ -155,7 +157,8 @@ struct Invoker {
   }
 
   template <typename R, typename F, size_t... I, typename... Args>
-  static R CallInternal(const F &f, const std::index_sequence<I...> &,
+  static R CallInternal(const F &f,
+                        const std::index_sequence<I...> &,
                         std::tuple<Args...> args) {
     (void)args;
     using ArgsTuple = boost::callable_traits::args_t<F>;
@@ -165,21 +168,23 @@ struct Invoker {
   template <typename R, typename F, typename Self, typename... Args>
   static std::enable_if_t<std::is_void<R>::value, msgpack::sbuffer> CallMember(
       const F &f, Self *self, std::tuple<Args...> args) {
-    CallMemberInternal<R>(f, self, std::make_index_sequence<sizeof...(Args)>{},
-                          std::move(args));
+    CallMemberInternal<R>(
+        f, self, std::make_index_sequence<sizeof...(Args)>{}, std::move(args));
     return PackVoid();
   }
 
   template <typename R, typename F, typename Self, typename... Args>
   static std::enable_if_t<!std::is_void<R>::value, msgpack::sbuffer> CallMember(
       const F &f, Self *self, std::tuple<Args...> args) {
-    auto r = CallMemberInternal<R>(f, self, std::make_index_sequence<sizeof...(Args)>{},
-                                   std::move(args));
+    auto r = CallMemberInternal<R>(
+        f, self, std::make_index_sequence<sizeof...(Args)>{}, std::move(args));
     return PackReturnValue(r);
   }
 
   template <typename R, typename F, typename Self, size_t... I, typename... Args>
-  static R CallMemberInternal(const F &f, Self *self, const std::index_sequence<I...> &,
+  static R CallMemberInternal(const F &f,
+                              Self *self,
+                              const std::index_sequence<I...> &,
                               std::tuple<Args...> args) {
     (void)args;
     using ArgsTuple = boost::callable_traits::args_t<F>;
@@ -288,16 +293,20 @@ class FunctionManager {
   template <typename Function>
   bool RegisterNonMemberFunc(std::string const &name, Function f) {
     return map_invokers_
-        .emplace(name, std::bind(&Invoker<Function>::Apply, std::move(f),
-                                 std::placeholders::_1))
+        .emplace(
+            name,
+            std::bind(&Invoker<Function>::Apply, std::move(f), std::placeholders::_1))
         .second;
   }
 
   template <typename Function>
   bool RegisterMemberFunc(std::string const &name, Function f) {
     return map_mem_func_invokers_
-        .emplace(name, std::bind(&Invoker<Function>::ApplyMember, std::move(f),
-                                 std::placeholders::_1, std::placeholders::_2))
+        .emplace(name,
+                 std::bind(&Invoker<Function>::ApplyMember,
+                           std::move(f),
+                           std::placeholders::_1,
+                           std::placeholders::_2))
         .second;
   }
 

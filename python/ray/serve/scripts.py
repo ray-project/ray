@@ -2,34 +2,38 @@
 import json
 import yaml
 import os
-import sys
 import pathlib
 import click
-import time
 from typing import Tuple, List, Dict
 import argparse
 
 import ray
-from ray.serve.api import Deployment, deploy_group, get_deployment_statuses
 from ray.serve.config import DeploymentMode
-from ray._private.utils import import_attr
 from ray import serve
 from ray.serve.constants import (
     DEFAULT_CHECKPOINT_PATH,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
 )
-from ray.dashboard.modules.serve.schema import (
-    ServeApplicationSchema,
-    schema_to_serve_application,
-    serve_application_status_to_schema,
-)
+from ray.serve.schema import ServeApplicationSchema
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.autoscaler._private.cli_logger import cli_logger
+from ray.serve.application import Application
+from ray.serve.api import Deployment
+
+RAY_INIT_ADDRESS_HELP_STR = (
+    "Address to use for ray.init(). Can also be specified "
+    "using the RAY_ADDRESS environment variable."
+)
+RAY_DASHBOARD_ADDRESS_HELP_STR = (
+    "Address to use to query the Ray dashboard (defaults to "
+    "http://localhost:8265). Can also be specified using the "
+    "RAY_ADDRESS environment variable."
+)
 
 
-def process_args_and_kwargs(
+def _process_args_and_kwargs(
     args_and_kwargs: Tuple[str],
 ) -> Tuple[List[str], Dict[str, str]]:
     """
@@ -89,10 +93,11 @@ def process_args_and_kwargs(
     return args, args_and_kwargs
 
 
-def configure_runtime_env(deployment: Deployment, updates: Dict):
-    """
-    Adds to deployment's runtime_env with fields in updates. Any fields in
-    deployment's runtime_env are not overwritten.
+def _configure_runtime_env(deployment: Deployment, updates: Dict):
+    """Overwrites deployment's runtime_env with fields in updates.
+
+    Any fields in deployment's runtime_env that aren't in updates stay the
+    same.
     """
 
     if deployment.ray_actor_options is None:
@@ -115,7 +120,7 @@ def cli():
     default=os.environ.get("RAY_ADDRESS", "auto"),
     required=False,
     type=str,
-    help='Address of the running Ray cluster to connect to. Defaults to "auto".',
+    help=RAY_INIT_ADDRESS_HELP_STR,
 )
 @click.option(
     "--namespace",
@@ -124,13 +129,6 @@ def cli():
     required=False,
     type=str,
     help='Ray namespace to connect to. Defaults to "serve".',
-)
-@click.option(
-    "--runtime-env-json",
-    default=r"{}",
-    required=False,
-    type=str,
-    help=("Runtime environment dictionary to pass into ray.init. Defaults to empty."),
 )
 @click.option(
     "--http-host",
@@ -163,7 +161,6 @@ def cli():
 def start(
     address,
     namespace,
-    runtime_env_json,
     http_host,
     http_port,
     http_location,
@@ -172,7 +169,6 @@ def start(
     ray.init(
         address=address,
         namespace=namespace,
-        runtime_env=json.loads(runtime_env_json),
     )
     serve.start(
         detached=True,
@@ -185,14 +181,14 @@ def start(
     )
 
 
-@cli.command(help="Shutdown the running Serve instance on the Ray cluster.")
+@cli.command(help="Shut down the running Serve instance on the Ray cluster.")
 @click.option(
     "--address",
     "-a",
     default=os.environ.get("RAY_ADDRESS", "auto"),
     required=False,
     type=str,
-    help='Address of the running Ray cluster to connect to. Defaults to "auto".',
+    help=RAY_INIT_ADDRESS_HELP_STR,
 )
 @click.option(
     "--namespace",
@@ -212,75 +208,14 @@ def shutdown(address: str, namespace: str):
 
 
 @cli.command(
-    help="""
-[Experimental]
-Create a deployment in running Serve instance. The required argument is the
-import path for the deployment: ``my_module.sub_module.file.MyClass``. The
-class may or may not be decorated with ``@serve.deployment``.
-""",
-    hidden=True,
-)
-@click.argument("deployment")
-@click.option(
-    "--address",
-    "-a",
-    default=os.environ.get("RAY_ADDRESS", "auto"),
-    required=False,
-    type=str,
-    help='Address of the running Ray cluster to connect to. Defaults to "auto".',
-)
-@click.option(
-    "--namespace",
-    "-n",
-    default="serve",
-    required=False,
-    type=str,
-    help='Ray namespace to connect to. Defaults to "serve".',
-)
-@click.option(
-    "--runtime-env-json",
-    default=r"{}",
-    required=False,
-    type=str,
-    help=("Runtime environment dictionary to pass into ray.init. Defaults to empty."),
-)
-@click.option(
-    "--options-json",
-    default=r"{}",
-    required=False,
-    type=str,
-    help="JSON string for the deployments options",
-)
-def create_deployment(
-    address: str,
-    namespace: str,
-    runtime_env_json: str,
-    deployment: str,
-    options_json: str,
-):
-    ray.init(
-        address=address,
-        namespace=namespace,
-        runtime_env=json.loads(runtime_env_json),
-    )
-    deployment_cls = import_attr(deployment)
-    if not isinstance(deployment_cls, Deployment):
-        deployment_cls = serve.deployment(deployment_cls)
-    options = json.loads(options_json)
-    deployment_cls.options(**options).deploy()
-
-
-@cli.command(
-    short_help="[Experimental] Deploy deployments from a YAML config file.",
+    short_help="Deploy a Serve app from a YAML config file.",
     help=(
-        "Deploys deployment(s) from CONFIG_OR_IMPORT_PATH, which must be either a "
-        "Serve YAML configuration file path or an import path to "
-        "a class or function to deploy.\n\n"
-        "Import paths must be of the form "
-        '"module.submodule_1...submodule_n.MyClassOrFunction".\n\n'
-        "Sends a nonblocking request. A successful response only indicates that the "
-        "request was received successfully. It does not mean the deployments are "
-        "live. Use `serve info` and `serve status` to check on them. "
+        "Deploys deployment(s) from a YAML config file.\n\n"
+        "This call is async; a successful response only indicates that the "
+        "request was sent to the Ray cluster successfully. It does not mean "
+        "the the deployments have been deployed/updated.\n\n"
+        "Use `serve info` to fetch the current config and `serve status` to "
+        "check the status of the deployments after deploying."
     ),
 )
 @click.argument("config_file_name")
@@ -290,7 +225,7 @@ def create_deployment(
     default=os.environ.get("RAY_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
-    help='Address of the Ray dashboard to query. For example, "http://localhost:8265".',
+    help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
 def deploy(config_file_name: str, address: str):
 
@@ -313,21 +248,15 @@ def deploy(config_file_name: str, address: str):
 
 
 @cli.command(
-    short_help="[Experimental] Run deployments via Serve's Python API.",
+    short_help="Run a Serve app in a blocking way.",
     help=(
-        "Deploys deployment(s) from CONFIG_OR_IMPORT_PATH, which must be either a "
-        "Serve YAML configuration file path or an import path to "
-        "a class or function to deploy.\n\n"
-        "The full command must be of the form:\n"
-        '"serve run [import path] [optional parameters] -- [arg-1] ... [arg-n] '
-        '[kwarg-1]=[kwval-1] ... [kwarg-n]=[kwval-n]"\n\n'
-        "Deployments via import path may also take in init_args and "
-        "init_kwargs from any ARGS_AND_KWARGS passed in. Import paths must be "
-        "of the form:\n"
-        '"module.submodule_1...submodule_n.MyClassOrFunction".\n\n'
-        "Blocks after deploying, and logs status periodically. After being killed, "
-        "this command tears down all deployments it deployed. If there are no "
-        "deployments left, it also tears down the Serve application."
+        "Runs the Serve app from the specified YAML config file or import path "
+        "for a deployment class or function (`my_module.MyClassOrFunction`).\n"
+        "If deploying via import path, you can pass args and kwargs to the "
+        "constructor using serve run -- [arg1]...[argn] "
+        "[--kwarg1=val1]...[--kwargn=valn].\n"
+        "Blocks after deploying and logs status periodically. If you Ctrl-C "
+        "this command, it tears down the app."
     ),
 )
 @click.argument("config_or_import_path")
@@ -338,15 +267,15 @@ def deploy(config_file_name: str, address: str):
     default=None,
     required=False,
     help="Path to a local YAML file containing a runtime_env definition. "
-    "Overrides all runtime_envs specified in a config file.",
+    "Overrides runtime_envs specified in the config file.",
 )
 @click.option(
     "--runtime-env-json",
     type=str,
     default=None,
     required=False,
-    help="JSON-serialized runtime_env dictionary. Overrides all runtime_envs "
-    "specified in a config file.",
+    help="JSON-serialized runtime_env dictionary. Overrides runtime_envs "
+    "specified in the config file.",
 )
 @click.option(
     "--working-dir",
@@ -357,18 +286,16 @@ def deploy(config_file_name: str, address: str):
         "Directory containing files that your job will run in. Can be a "
         "local directory or a remote URI to a .zip file (S3, GS, HTTP). "
         "This overrides the working_dir in --runtime-env if both are "
-        "specified. Overrides all working_dirs specified in a config file."
+        "specified. Overrides working_dirs specified in the config file."
     ),
 )
 @click.option(
     "--address",
     "-a",
-    default="auto",
+    default=os.environ.get("RAY_ADDRESS", None),
     required=False,
     type=str,
-    help=(
-        'Address of the Ray cluster (not the dashboard) to query. Defaults to "auto".'
-    ),
+    help=RAY_INIT_ADDRESS_HELP_STR,
 )
 def run(
     config_or_import_path: str,
@@ -378,112 +305,63 @@ def run(
     working_dir: str,
     address: str,
 ):
+    # Check if path provided is for config or import
+    is_config = pathlib.Path(config_or_import_path).is_file()
+    args, kwargs = _process_args_and_kwargs(args_and_kwargs)
 
-    try:
-        # Check if path provided is for config or import
-        deployments = []
-        is_config = pathlib.Path(config_or_import_path).is_file()
-        args, kwargs = process_args_and_kwargs(args_and_kwargs)
+    # Calculate deployments' runtime env updates requested via args
+    runtime_env_updates = parse_runtime_env_args(
+        runtime_env=runtime_env,
+        runtime_env_json=runtime_env_json,
+        working_dir=working_dir,
+    )
 
-        # Calculate deployments' runtime env updates requested via args
-        runtime_env_updates = parse_runtime_env_args(
-            runtime_env=runtime_env,
-            runtime_env_json=runtime_env_json,
-            working_dir=working_dir,
-        )
+    # Create ray.init()'s runtime_env
+    if "working_dir" in runtime_env_updates:
+        ray_runtime_env = {"working_dir": runtime_env_updates.pop("working_dir")}
+    else:
+        ray_runtime_env = {}
 
-        # Create ray.init()'s runtime_env
-        if "working_dir" in runtime_env_updates:
-            ray_runtime_env = {"working_dir": runtime_env_updates.pop("working_dir")}
-        else:
-            ray_runtime_env = {}
-
-        if is_config:
-            config_path = config_or_import_path
-            # Delay serve.start() to catch invalid inputs without waiting
-            if len(args) + len(kwargs) > 0:
-                raise ValueError(
-                    "ARGS_AND_KWARGS cannot be defined for a "
-                    "config file deployment. Please specify the "
-                    "init_args and init_kwargs inside the config file."
-                )
-
-            cli_logger.print(
-                "Deploying application in config file at " f"{config_path}."
-            )
-            with open(config_path, "r") as config_file:
-                config = yaml.safe_load(config_file)
-
-            schematized_config = ServeApplicationSchema.parse_obj(config)
-            deployments = schema_to_serve_application(schematized_config)
-
-            ray.init(address=address, namespace="serve", runtime_env=ray_runtime_env)
-            serve.start(detached=True)
-
-            for deployment in deployments:
-                configure_runtime_env(deployment, runtime_env_updates)
-            deploy_group(deployments)
-
-            cli_logger.newline()
-            cli_logger.success(
-                f'\nDeployments from config file at "{config_path}" '
-                "deployed successfully!\n"
-            )
-            cli_logger.newline()
-
-        else:
-            import_path = config_or_import_path
-            cli_logger.print(
-                f'Deploying function or class imported from "{import_path}".'
+    if is_config:
+        config_path = config_or_import_path
+        # Delay serve.start() to catch invalid inputs without waiting
+        if len(args) + len(kwargs) > 0:
+            raise ValueError(
+                "ARGS_AND_KWARGS cannot be defined for a "
+                "config file deployment. Please specify the "
+                "init_args and init_kwargs inside the config file."
             )
 
-            if "." not in import_path:
-                raise ValueError(
-                    "Import paths must be of the form "
-                    '"module.submodule_1...submodule_n.MyClassOrFunction".'
-                )
-            deployment_name = import_path[import_path.rfind(".") + 1 :]
-            deployment = serve.deployment(name=deployment_name)(import_path)
-            deployments = [deployment]
+        cli_logger.print("Deploying application in config file at " f"{config_path}.")
+        with open(config_path, "r") as config_file:
+            app = Application.from_yaml(config_file)
 
-            ray.init(address=address, namespace="serve", runtime_env=ray_runtime_env)
-            serve.start(detached=True)
+    else:
+        import_path = config_or_import_path
+        if "." not in import_path:
+            raise ValueError(
+                "Import paths must be of the form "
+                '"module.submodule_1...submodule_n.MyClassOrFunction".'
+            )
 
-            configure_runtime_env(deployment, runtime_env_updates)
-            deployment.options(
-                init_args=args,
-                init_kwargs=kwargs,
-            ).deploy()
+        cli_logger.print(f'Deploying function or class imported from "{import_path}".')
 
-            cli_logger.newline()
-            cli_logger.print(f"\nDeployed import at {import_path} successfully!\n")
-            cli_logger.newline()
+        deployment_name = import_path[import_path.rfind(".") + 1 :]
+        deployment = serve.deployment(name=deployment_name)(import_path)
 
-        while True:
-            statuses = serve_application_status_to_schema(
-                get_deployment_statuses()
-            ).json(indent=4)
-            cli_logger.newline()
-            cli_logger.print(f"\n{statuses}", no_format=True)
-            cli_logger.newline()
-            time.sleep(10)
+        app = Application([deployment.options(init_args=args, init_kwargs=kwargs)])
 
-    except KeyboardInterrupt:
-        cli_logger.print("Got SIGINT (KeyboardInterrupt). Removing deployments.")
-        for deployment in deployments:
-            deployment.delete()
-        if len(serve.list_deployments()) == 0:
-            cli_logger.print("No deployments left. Shutting down Serve.")
-            serve.shutdown()
-        sys.exit()
+    ray.init(address=address, namespace="serve", runtime_env=ray_runtime_env)
+
+    for deployment in app:
+        _configure_runtime_env(deployment, runtime_env_updates)
+
+    app.run(logger=cli_logger)
 
 
 @cli.command(
-    short_help="[Experimental] Get info about your Serve application's config.",
-    help=(
-        "Prints the configurations of all running deployments in the Serve "
-        "application."
-    ),
+    short_help="Get the current config of the running Serve app.",
+    help=("Prints the configurations of all running deployments in the Serve app."),
 )
 @click.option(
     "--address",
@@ -491,7 +369,7 @@ def run(
     default=os.environ.get("RAY_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
-    help='Address of the Ray dashboard to query. For example, "http://localhost:8265".',
+    help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
 @click.option(
     "--json_format",
@@ -510,13 +388,14 @@ def info(address: str, json_format=bool):
 
 
 @cli.command(
-    short_help="[Experimental] Get your Serve application's status.",
+    short_help="Get the current status of the Serve app.",
     help=(
-        "Prints status information about all deployments in the Serve application.\n\n"
+        "Prints status information about all deployments in the Serve app.\n\n"
         "Deployments may be:\n\n"
-        "- HEALTHY: all replicas are acting normally and passing their health checks.\n"
+        "- HEALTHY: all replicas are acting normally and passing their "
+        "health checks.\n\n"
         "- UNHEALTHY: at least one replica is not acting normally and may not be "
-        "passing its health check.\n"
+        "passing its health check.\n\n"
         "- UPDATING: the deployment is updating."
     ),
 )
@@ -526,20 +405,17 @@ def info(address: str, json_format=bool):
     default=os.environ.get("RAY_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
-    help='Address of the Ray dashboard to query. For example, "http://localhost:8265".',
+    help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
 def status(address: str):
-
     app_status = ServeSubmissionClient(address).get_status()
     if app_status is not None:
         print(json.dumps(app_status, indent=4))
 
 
 @cli.command(
-    short_help=(
-        "[EXPERIMENTAL] Deletes all running deployments in the Serve application."
-    ),
-    help="Deletes all running deployments in the Serve application.",
+    short_help=("Deletes all running deployments in the Serve app."),
+    help="Deletes all running deployments in the Serve app.",
 )
 @click.option(
     "--address",
@@ -547,7 +423,7 @@ def status(address: str):
     default=os.environ.get("RAY_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
-    help='Address of the Ray dashboard to query. For example, "http://localhost:8265".',
+    help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
 @click.option("--yes", "-y", is_flag=True, help="Bypass confirmation prompt.")
 def delete(address: str, yes: bool):

@@ -11,7 +11,7 @@ https://docs.google.com/document/d/1ZT-l9YbGHh-iWRUC91jS-ssQ5Qe2UQ43Lsoc1edCalc/
 The module consists of 2 parts.
 
 ## Public API
-It contains public APIs to obtain usage report information. 
+It contains public APIs to obtain usage report information.
 APIs will be added before the usage report becomes opt-in by default.
 
 ## Internal APIs for usage processing/report
@@ -120,6 +120,10 @@ def _usage_stats_enabled():
     return int(os.getenv("RAY_USAGE_STATS_ENABLED", "0")) == 1
 
 
+def _usage_stats_prompt_enabled():
+    return int(os.getenv("RAY_USAGE_STATS_PROMPT_ENABLED", "1")) == 1
+
+
 def _generate_cluster_metadata():
     """Return a dictionary of cluster metadata."""
     ray_version, python_version = ray._private.utils.compute_version_info()
@@ -142,6 +146,17 @@ def _generate_cluster_metadata():
             }
         )
     return metadata
+
+
+def print_usage_stats_heads_up_message() -> None:
+    try:
+        if (not _usage_stats_prompt_enabled()) or _usage_stats_enabled():
+            return
+
+        print(usage_constant.USAGE_STATS_HEADS_UP_MESSAGE, file=sys.stderr)
+    except Exception:
+        # Silently ignore the exception since it doesn't affect the use of ray.
+        pass
 
 
 def put_cluster_metadata(gcs_client, num_retries) -> None:

@@ -69,6 +69,9 @@ class ResourceRequest {
   bool requires_object_store_memory = false;
   /// Check whether the request contains no resources.
   bool IsEmpty() const;
+  /// Test equality with the other ResourceRequest object.
+  bool operator==(const ResourceRequest &other) const;
+  bool operator!=(const ResourceRequest &other) const;
   /// Returns human-readable string for this task request.
   std::string DebugString() const;
   /// Request for GPU.
@@ -155,6 +158,8 @@ class NodeResources {
   /// custom resource ID.
   absl::flat_hash_map<int64_t, ResourceCapacity> custom_resources;
   ResourceRequest load;
+  /// Resources owned by normal tasks.
+  ResourceRequest normal_task_resources;
   bool object_pulls_queued = false;
 
   /// Amongst CPU, memory, and object store memory, calculate the utilization percentage

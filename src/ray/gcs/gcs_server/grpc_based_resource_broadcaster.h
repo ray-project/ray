@@ -28,7 +28,8 @@ class GrpcBasedResourceBroadcaster {
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
       /* Default values should only be changed for testing. */
       std::function<void(const rpc::Address &,
-                         std::shared_ptr<rpc::NodeManagerClientPool> &, std::string &,
+                         std::shared_ptr<rpc::NodeManagerClientPool> &,
+                         std::string &,
                          const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &)>
           send_batch =
               [](const rpc::Address &address,
@@ -60,7 +61,8 @@ class GrpcBasedResourceBroadcaster {
   // The shared, thread safe pool of raylet clients, which we use to minimize connections.
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
 
-  std::function<void(const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,
+  std::function<void(const rpc::Address &,
+                     std::shared_ptr<rpc::NodeManagerClientPool> &,
                      std::string &,
                      const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &)>
       send_batch_;

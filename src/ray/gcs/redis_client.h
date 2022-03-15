@@ -30,9 +30,13 @@ class RedisContext;
 
 class RedisClientOptions {
  public:
-  RedisClientOptions(const std::string &ip, int port, const std::string &password,
-                     bool enable_sharding_conn = true, bool enable_sync_conn = true,
-                     bool enable_async_conn = true, bool enable_subscribe_conn = true)
+  RedisClientOptions(const std::string &ip,
+                     int port,
+                     const std::string &password,
+                     bool enable_sharding_conn = true,
+                     bool enable_sync_conn = true,
+                     bool enable_async_conn = true,
+                     bool enable_subscribe_conn = true)
       : server_ip_(ip),
         server_port_(port),
         password_(password),
