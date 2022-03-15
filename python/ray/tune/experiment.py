@@ -93,7 +93,7 @@ class Experiment:
             checkpoint_freq=10,
             max_failures=2)
 
-    Attributes:
+    Args:
         TODO(xwjiang): Add the whole list.
         _experiment_checkpoint_dir: Internal use only. If present, use this
             as the root directory for experiment checkpoint. If not present,

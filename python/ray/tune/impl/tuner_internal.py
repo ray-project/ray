@@ -34,7 +34,7 @@ class TunerInternal:
 
     It can also be restored from a previous failed run (given ``restore_path``).
 
-    Attributes:
+    Args:
         restore_path: The path from where the Tuner can be restored. If provided, None
             of the rest args are needed.
         trainable: The trainable to be tuned.

@@ -23,7 +23,7 @@ _SELF = "self"
 class Tuner:
     """Tuner is the recommended way of launching hyperparameter tuning jobs with Ray Tune.
 
-    Attributes:
+    Args:
         trainable: The trainable to be tuned.
         param_space: Search space of the tuning job.
             One thing to note is that both preprocessor and dataset can be tuned here.
