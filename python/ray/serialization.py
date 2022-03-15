@@ -124,10 +124,9 @@ class SerializationContext:
             return object_ref.__await__()
 
         def objectref_iter_reducer(iter):
-            return objectref_iter_deserializer, (iter.object_ref, )
+            return objectref_iter_deserializer, (iter.object_ref,)
 
-        self._register_cloudpickle_reducer(ObjectRefIter,
-                                           objectref_iter_reducer)
+        self._register_cloudpickle_reducer(ObjectRefIter, objectref_iter_reducer)
 
         serialization_addons.apply(self)
 

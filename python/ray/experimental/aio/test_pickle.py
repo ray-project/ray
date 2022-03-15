@@ -10,7 +10,7 @@ def test_generator_basic():
         for n in range(a):
             yield b + b[-1] * n
 
-    gen = f(4, 'ay')
+    gen = f(4, "ay")
     pickled = pickle.dumps(gen)
     results = ["ay", "ayy", "ayyy", "ayyyy"]
 

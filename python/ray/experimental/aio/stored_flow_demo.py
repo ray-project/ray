@@ -30,12 +30,12 @@ while True:
         num_breaks += 1
         time = "time" if num_breaks == 1 else "times"
         if num_breaks == 3:
-            print(f"Caught keyboard interrupt {num_breaks} {time}. "
-                  "Exiting ...")
+            print(f"Caught keyboard interrupt {num_breaks} {time}. " "Exiting ...")
             break
         else:
-            print(f"Caught keyboard interrupt {num_breaks} {time}. "
-                  "Restarting work ...")
+            print(
+                f"Caught keyboard interrupt {num_breaks} {time}. " "Restarting work ..."
+            )
 
 
 print("")
@@ -49,9 +49,9 @@ while True:
         num_breaks += 1
         time = "time" if num_breaks == 1 else "times"
         if num_breaks == 3:
-            print(f"Caught keyboard interrupt {num_breaks} {time}. "
-                  "Exiting ...")
+            print(f"Caught keyboard interrupt {num_breaks} {time}. " "Exiting ...")
             break
         else:
-            print(f"Caught keyboard interrupt {num_breaks} {time}. "
-                  "Restarting work ...")
+            print(
+                f"Caught keyboard interrupt {num_breaks} {time}. " "Restarting work ..."
+            )

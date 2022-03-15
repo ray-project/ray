@@ -49,15 +49,15 @@ async def book_all(request_id: str):
         car_reservation_id = await book_car.remote(request_id)
         # When the result is available, the coroutine is checkpointed again.
 
-        undo.append(lambda : cancel(car_reservation_id))
+        undo.append(lambda: cancel(car_reservation_id))
 
         # Checkpointing here automatically saves the progress of this coroutine,
         # and stack variables like car_reservation_id, undo.
         hotel_reservation_id = await book_hotel.remote(request_id)
-        undo.append(lambda : cancel(hotel_reservation_id))
+        undo.append(lambda: cancel(hotel_reservation_id))
 
         flight_reservation_id = await book_flight.remote(request_id)
-        undo.append(lambda : cancel(flight_reservation_id))
+        undo.append(lambda: cancel(flight_reservation_id))
     except Exception:
         # Currently we cannot checkpoint inside an except block, because the
         # traceback object cannot be pickled, which is on the stack.
@@ -68,8 +68,11 @@ async def book_all(request_id: str):
         for callback in undo:
             await callback.remote()
         return
-    print(f"Booking finished: {car_reservation_id} {hotel_reservation_id} "
-          f"{flight_reservation_id}")
+    print(
+        f"Booking finished: {car_reservation_id} {hotel_reservation_id} "
+        f"{flight_reservation_id}"
+    )
+
 
 key = uuid.uuid4().hex
 rayaio.demo_workflow(key, book_all(key))

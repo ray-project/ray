@@ -60,8 +60,7 @@ async def execute(coro):
             #     "Awaiting ObjectRef from Task is unimplemented! "\
             #     "Please only await on actors."
             if actor is not None:
-                result = await actor.__ray_execute_coroutine__.remote(coro,
-                                                                      object_ref)
+                result = await actor.__ray_execute_coroutine__.remote(coro, object_ref)
                 return result
 
         assert asyncio.get_running_loop() is fut.get_loop()

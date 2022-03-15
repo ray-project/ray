@@ -6,8 +6,7 @@ from ._core import private_frame_data, restore_frame, unset_value
 
 
 def _empty_cell():
-    """Create an empty cell.
-    """
+    """Create an empty cell."""
     if False:
         free = None
 
@@ -15,8 +14,7 @@ def _empty_cell():
 
 
 def _make_cell(f_locals, var):
-    """Create a PyCell object around a value.
-    """
+    """Create a PyCell object around a value."""
     value = f_locals.get(var, unset_value)
     if value is unset_value:
         # unset the name ``value`` to return an empty cell
@@ -64,8 +62,8 @@ def _fill_generator_impl(frame, lasti, f_locals, frame_data):
     code = frame.f_code
     locals_ = [f_locals.get(var, unset_value) for var in code.co_varnames]
     locals_.extend(
-        _make_cell(f_locals, var)
-        for var in chain(code.co_cellvars, code.co_freevars))
+        _make_cell(f_locals, var) for var in chain(code.co_cellvars, code.co_freevars)
+    )
     restore_frame(frame, lasti, locals_, *frame_data)
 
 
@@ -84,10 +82,10 @@ def _create_skeleton_generator(gen_func):
         The uninitialized generator instance.
     """
     code = gen_func.__code__
-    kwonly_names = code.co_varnames[code.co_argcount:code.co_kwonlyargcount]
-    gen = gen_func(*(None for _ in range(code.co_argcount)),
-                   **{key: None
-                      for key in kwonly_names})
+    kwonly_names = code.co_varnames[code.co_argcount : code.co_kwonlyargcount]
+    gen = gen_func(
+        *(None for _ in range(code.co_argcount)), **{key: None for key in kwonly_names}
+    )
 
     try:
         # manually update the qualname to fix a bug in Python 3.6 where the
@@ -115,6 +113,7 @@ def _restore_spent_generator(name, qualname):
     gen : generator
         A generator which has been fully consumed.
     """
+
     def single_generator():
         # we actually need to run the gen to ensure that gi_frame gets
         # deallocated to further match the behavior of the existing generator;
@@ -135,7 +134,7 @@ def _restore_spent_generator(name, qualname):
 
 def _save_generator(self, gen):
     if gen.gi_running:
-        raise ValueError('cannot save running generator')
+        raise ValueError("cannot save running generator")
 
     frame = gen.gi_frame
     _save_generator_impl(self, frame, gen, _fill_generator)
@@ -156,7 +155,7 @@ def _save_generator_impl(self, frame, gen, filler):
         # frame is None when the generator is fully consumed; take a fast path
         self.save_reduce(
             _restore_spent_generator,
-            (gen.__name__, getattr(gen, '__qualname__', None)),
+            (gen.__name__, getattr(gen, "__qualname__", None)),
             obj=gen,
         )
         return
@@ -173,7 +172,7 @@ def _save_generator_impl(self, frame, gen, filler):
         frame.f_globals,
         gen.__name__,
         (),
-        (_empty_cell(), ) * len(f_code.co_freevars),
+        (_empty_cell(),) * len(f_code.co_freevars),
     )
     try:
         gen_func.__qualname__ = gen.__qualname__
@@ -193,7 +192,7 @@ def _save_generator_impl(self, frame, gen, filler):
     write(pickle.MARK)
 
     save(_create_skeleton_generator)
-    save((gen_func, ))
+    save((gen_func,))
     write(pickle.REDUCE)
     self.memoize(gen)
 
@@ -210,16 +209,14 @@ def _save_generator_impl(self, frame, gen, filler):
 
 
 def register_pypickler(CloudPickler):
-    """Register the cloudpickle extension.
-    """
+    """Register the cloudpickle extension."""
     CloudPickler.dispatch[GeneratorType] = _save_generator
     CloudPickler.dispatch[CoroutineType] = _save_coroutine
     CloudPickler.dispatch[AsyncGeneratorType] = _save_async_generator
 
 
 def unregister_pypickler(CloudPickler):
-    """Unregister the cloudpickle extension.
-    """
+    """Unregister the cloudpickle extension."""
     if CloudPickler.dispatch.get(GeneratorType) is _save_generator:
         # make sure we are only removing the dispatch we added, not someone
         # else's
@@ -228,8 +225,7 @@ def unregister_pypickler(CloudPickler):
     if CloudPickler.dispatch.get(CoroutineType) is _save_coroutine:
         del CloudPickler.dispatch[CoroutineType]
 
-    if (CloudPickler.dispatch.get(AsyncGeneratorType) is
-            _save_async_generator):
+    if CloudPickler.dispatch.get(AsyncGeneratorType) is _save_async_generator:
         del CloudPickler.dispatch[AsyncGeneratorType]
 
 
@@ -253,13 +249,15 @@ def _rehydrate_async_generator(gen_func, lasti, f_locals, frame_data):
 
 def _reduce_generator(gen):
     if gen.gi_running:
-        raise ValueError('cannot save running generator')
+        raise ValueError("cannot save running generator")
 
     frame = gen.gi_frame
     if frame is None:
         # frame is None when the generator is fully consumed; take a fast path
-        return _restore_spent_generator, (gen.__name__,
-                                          getattr(gen, '__qualname__', None))
+        return _restore_spent_generator, (
+            gen.__name__,
+            getattr(gen, "__qualname__", None),
+        )
     return _rehydrate_generator, _reduce_generator_impl(frame, gen)
 
 
@@ -267,8 +265,10 @@ def _reduce_coroutine(coro):
     frame = coro.cr_frame
     if frame is None:
         # frame is None when the generator is fully consumed; take a fast path
-        return _restore_spent_generator, (coro.__name__,
-                                          getattr(coro, '__qualname__', None))
+        return _restore_spent_generator, (
+            coro.__name__,
+            getattr(coro, "__qualname__", None),
+        )
     return _rehydrate_coroutine, _reduce_generator_impl(frame, coro)
 
 
@@ -276,9 +276,10 @@ def _reduce_async_generator(asyncgen):
     frame = asyncgen.ag_frame
     if frame is None:
         # frame is None when the generator is fully consumed; take a fast path
-        return _restore_spent_generator, (asyncgen.__name__,
-                                          getattr(asyncgen, '__qualname__',
-                                                  None))
+        return _restore_spent_generator, (
+            asyncgen.__name__,
+            getattr(asyncgen, "__qualname__", None),
+        )
     return _rehydrate_async_generator, _reduce_generator_impl(frame, asyncgen)
 
 
@@ -294,7 +295,7 @@ def _reduce_generator_impl(frame, gen):
         frame.f_globals,
         gen.__name__,
         (),
-        (_empty_cell(), ) * len(f_code.co_freevars),
+        (_empty_cell(),) * len(f_code.co_freevars),
     )
     gen_func.__qualname__ = gen.__qualname__
 

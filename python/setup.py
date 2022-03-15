@@ -509,10 +509,16 @@ def build(build_python, build_java, build_cpp):
 
     subprocess.check_call(
         [
-            sys.executable, "-m", "pip", "install", "-U", ".",
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "-U",
+            ".",
         ],
         cwd=os.path.join(ROOT_DIR, "ray/cloudpickle-generators"),
-        env=dict(os.environ, CC="gcc"))
+        env=dict(os.environ, CC="gcc"),
+    )
 
     bazel_flags = ["--verbose_failures"]
     if BAZEL_LIMIT_CPUS:
@@ -742,13 +748,15 @@ setuptools.setup(
     setup_requires=["cython >= 0.29.26", "wheel"],
     extras_require=setup_spec.extras,
     ext_modules=[
-        setuptools.Extension('ray.cloudpickle.generator._core',
-                             ['cloudpickle/generator/_core.c'],
-                             extra_compile_args=[
-                                 '-Wall',
-                                 '-Wextra',
-                                 '-Wno-missing-field-initializers',
-                             ]),
+        setuptools.Extension(
+            "ray.cloudpickle.generator._core",
+            ["cloudpickle/generator/_core.c"],
+            extra_compile_args=[
+                "-Wall",
+                "-Wextra",
+                "-Wno-missing-field-initializers",
+            ],
+        ),
     ],
     entry_points={
         "console_scripts": [

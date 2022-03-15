@@ -9,7 +9,7 @@ def f(a, b):
         yield b + b[-1] * n
 
 
-gen = f(4, 'ay')
+gen = f(4, "ay")
 print(next(gen))
 print(next(gen))
 
@@ -41,6 +41,7 @@ class TestActor:
     async def test_method(self):
         return 4
 
+
 async def g():
     sum = 0
 
@@ -71,7 +72,9 @@ async def g():
 
     return sum
 
+
 # import pdb; pdb.set_trace()
+
 
 @ray.remote
 class StepA:
@@ -112,6 +115,7 @@ async def flow():
     await asyncio.sleep(1)
 
     return result
+
 
 print(f"local result={asyncio.run(flow())}")
 

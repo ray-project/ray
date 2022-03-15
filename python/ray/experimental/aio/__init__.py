@@ -2,6 +2,7 @@ import asyncio
 import ray.cloudpickle as pickle
 import contextvars
 
+
 async def run(coro):
     while True:
         try:
@@ -16,8 +17,7 @@ async def run(coro):
             #     "Awaiting ObjectRef from Task is unimplemented! "\
             #     "Please only await on actors."
             if actor is not None:
-                result = await actor.__ray_execute_coroutine__.remote(coro,
-                                                                      object_ref)
+                result = await actor.__ray_execute_coroutine__.remote(coro, object_ref)
                 return result
 
         # Needs to wait on an object other than fut, because fut is already
@@ -37,7 +37,7 @@ async def run(coro):
 
 
 work = {}
-workflow_ctx = contextvars.ContextVar('workflow_ctx')
+workflow_ctx = contextvars.ContextVar("workflow_ctx")
 
 
 def queue_work(key, coro):
@@ -62,8 +62,6 @@ async def execute_work(key):
         except StopIteration as val:
             work.pop(key)
             return val.value
-        except Exception as ex:
-
 
         # Checkpoints work.
         if hasattr(fut, "_object_ref"):
@@ -94,12 +92,13 @@ def demo_workflow(key, coro):
             num_breaks += 1
             time = "time" if num_breaks == 1 else "times"
             if num_breaks == 3:
-                print(f"Caught keyboard interrupt {num_breaks} {time}. "
-                      "Exiting ...")
+                print(f"Caught keyboard interrupt {num_breaks} {time}. " "Exiting ...")
                 break
             else:
-                print(f"Caught keyboard interrupt {num_breaks} {time}. "
-                      "Restarting work ...")
+                print(
+                    f"Caught keyboard interrupt {num_breaks} {time}. "
+                    "Restarting work ..."
+                )
             continue
 
         # Finished execute work
