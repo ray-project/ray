@@ -38,6 +38,9 @@ from ray._private.gcs_pubsub import (
 )
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
+from ray._private.runtime_env.ray_libraries import (
+    upload_ray_libraries_if_needed,
+)  # noqa: E501
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 import ray._private.import_thread as import_thread
 from ray.util.tracing.tracing_helper import import_from_string
@@ -1647,6 +1650,9 @@ def connect(
         runtime_env = upload_working_dir_if_needed(
             runtime_env, scratch_dir, logger=logger
         )
+        runtime_env = upload_ray_libraries_if_needed(
+            runtime_env, scratch_dir, logger=logger
+        )
         # Remove excludes, it isn't relevant after the upload step.
         runtime_env.pop("excludes", None)
         job_config.set_runtime_env(runtime_env)
@@ -2096,7 +2102,7 @@ def wait(
                 "of objects provided to ray.wait."
             )
 
-        timeout = timeout if timeout is not None else 10 ** 6
+        timeout = timeout if timeout is not None else 10**6
         timeout_milliseconds = int(timeout * 1000)
         ready_ids, remaining_ids = worker.core_worker.wait(
             object_refs,

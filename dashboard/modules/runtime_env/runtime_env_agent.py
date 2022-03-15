@@ -25,6 +25,7 @@ from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.py_modules import PyModulesManager
 from ray._private.runtime_env.working_dir import WorkingDirManager
 from ray._private.runtime_env.container import ContainerManager
+from ray._private.runtime_env.ray_libraries import RayLibrariesManager
 from ray._private.runtime_env.plugin import decode_plugin_uri
 from ray._private.runtime_env.uri_cache import URICache
 from ray.runtime_env import RuntimeEnv
@@ -37,16 +38,16 @@ SLEEP_FOR_TESTING_S = os.environ.get("RAY_RUNTIME_ENV_SLEEP_FOR_TESTING_S")
 
 # Sizes for the URI cache for each runtime_env field.  Defaults to 10 GB.
 WORKING_DIR_CACHE_SIZE_BYTES = int(
-    (1024 ** 3) * float(os.environ.get("RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB", 10))
+    (1024**3) * float(os.environ.get("RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB", 10))
 )
 PY_MODULES_CACHE_SIZE_BYTES = int(
-    (1024 ** 3) * float(os.environ.get("RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB", 10))
+    (1024**3) * float(os.environ.get("RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB", 10))
 )
 CONDA_CACHE_SIZE_BYTES = int(
-    (1024 ** 3) * float(os.environ.get("RAY_RUNTIME_ENV_CONDA_CACHE_SIZE_GB", 10))
+    (1024**3) * float(os.environ.get("RAY_RUNTIME_ENV_CONDA_CACHE_SIZE_GB", 10))
 )
 PIP_CACHE_SIZE_BYTES = int(
-    (1024 ** 3) * float(os.environ.get("RAY_RUNTIME_ENV_PIP_CACHE_SIZE_GB", 10))
+    (1024**3) * float(os.environ.get("RAY_RUNTIME_ENV_PIP_CACHE_SIZE_GB", 10))
 )
 
 
@@ -93,6 +94,7 @@ class RuntimeEnvAgent(
         self._py_modules_manager = PyModulesManager(self._runtime_env_dir)
         self._working_dir_manager = WorkingDirManager(self._runtime_env_dir)
         self._container_manager = ContainerManager(dashboard_agent.temp_dir)
+        self._ray_libraries_manager = RayLibrariesManager(self._runtime_env_dir)
 
         self._working_dir_uri_cache = URICache(
             self._working_dir_manager.delete_uri, WORKING_DIR_CACHE_SIZE_BYTES
@@ -134,6 +136,9 @@ class RuntimeEnvAgent(
             per_job_logger.debug(f"Worker has resource :" f"{allocated_resource}")
             context = RuntimeEnvContext(env_vars=runtime_env.env_vars())
             await self._container_manager.setup(
+                runtime_env, context, logger=per_job_logger
+            )
+            await self._ray_libraries_manager.setup(
                 runtime_env, context, logger=per_job_logger
             )
 

@@ -48,6 +48,7 @@ from ray.util.debug import log_once
 import ray._private.utils
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
+from ray._private.runtime_env.ray_libraries import upload_ray_libraries_if_needed
 
 if TYPE_CHECKING:
     from ray.actor import ActorClass
@@ -65,7 +66,7 @@ MAX_BLOCKING_OPERATION_TIME_S: float = 2.0
 
 # If the total size (bytes) of all outbound messages to schedule tasks since
 # the connection began exceeds this value, a warning should be raised
-MESSAGE_SIZE_THRESHOLD = 10 * 2 ** 20  # 10 MB
+MESSAGE_SIZE_THRESHOLD = 10 * 2**20  # 10 MB
 
 # Links to the Ray Design Pattern doc to use in the task overhead warning
 # message
@@ -720,6 +721,9 @@ class Worker:
                         runtime_env, tmp_dir, logger=logger
                     )
                     runtime_env = upload_working_dir_if_needed(
+                        runtime_env, tmp_dir, logger=logger
+                    )
+                    runtime_env = upload_ray_libraries_if_needed(
                         runtime_env, tmp_dir, logger=logger
                     )
                     # Remove excludes, it isn't relevant after the upload step.

@@ -46,6 +46,17 @@ def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
     return py_modules
 
 
+def parse_and_validate_ray_libraries(ray_libraries: List[str]) -> List[str]:
+    """Parses and validates a user-provided 'ray_libraries' option.
+    This should be a list of ray libraries e.g ["rllib", "tune"].
+    """
+    if not isinstance(ray_libraries, list):
+        raise TypeError("`ray_libraries` must be a list of strings, got "
+                        f"{type(ray_libraries)}.")
+
+    return ray_libraries
+
+
 def parse_and_validate_working_dir(working_dir: str) -> str:
     """Parses and validates a 'working_dir' option.
 
@@ -266,4 +277,5 @@ OPTION_TO_VALIDATION_FN = {
     "env_vars": parse_and_validate_env_vars,
     "container": parse_and_validate_container,
     "eager_install": parse_and_validate_eager_install,
+    "ray_libraries": parse_and_validate_ray_libraries,
 }
