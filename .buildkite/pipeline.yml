@@ -238,6 +238,7 @@
     - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
     - 'git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd'
     - >-
+      set -ex;
       test_shard_selection=$(
       python ./scripts/bazel-sharding.py
       --exclude_manual
