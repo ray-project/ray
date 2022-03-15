@@ -21,8 +21,7 @@ class DataParallelTrainer(Trainer):
     function, but on different data.
 
     This Trainer runs the function ``train_loop_per_worker`` on multiple Ray
-    Actors. The provided datasets are automatically sharded to each Ray actor running
-    the training function.
+    Actors. 
 
     The ``train_loop_per_worker`` function is expected to take in either 0 or 1
     arguments:
