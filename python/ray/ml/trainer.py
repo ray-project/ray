@@ -63,7 +63,7 @@ class Trainer(abc.ABC):
 
                 import torch
 
-                from ray.ml.trainer import Trainer
+                from ray.ml.train import Trainer
                 from ray import tune
 
 
@@ -75,9 +75,9 @@ class Trainer(abc.ABC):
 
                     def training_loop(self):
                         # You can access any Trainer attributes directly in this method.
-                        # self.train_dataset has already been preprocessed by
-                        # self.preprocessor
-                        dataset = self.train_dataset
+                        # self.datasets["train"] has already been
+                        # preprocessed by self.preprocessor
+                        dataset = self.datasets["train"]
 
                         torch_ds = dataset.to_torch()
 
@@ -112,20 +112,17 @@ class Trainer(abc.ABC):
                 import ray
 
                 train_dataset = ray.data.from_items([1, 2, 3])
-                my_trainer = MyPytorchTrainer(train_dataset=train_dataset)
+                my_trainer = MyPytorchTrainer(datasets={"train": train_dataset})
                 result = my_trainer.fit()
 
     Args:
         scaling_config: Configuration for how to scale training.
         run_config: Configuration for the execution of the training run.
-        train_dataset: Either a distributed Ray :ref:`Dataset <dataset-api>`
-            or a Callable that returns a Dataset, to use for training. If a
-            ``preprocessor`` is also provided, it will be fit on this
-            dataset and this dataset will be transformed.
-        extra_datasets: Any extra Datasets (such as validation or test
-            datasets) to use for training. If a ``preprocessor`` is
-            provided, the datasets specified here will only be transformed,
-            and not fit on.
+        datasets: Any Ray Datasets to use for training. Use the key "train"
+            to denote which dataset is the training
+            dataset. If a ``preprocessor`` is provided and has not already been fit,
+            it will be fit on the training dataset. All datasets will be transformed
+            by the ``preprocessor`` if one is provided.
         preprocessor: A preprocessor to preprocess the provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
     """
@@ -134,16 +131,14 @@ class Trainer(abc.ABC):
         self,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
-        train_dataset: Optional[GenDataset] = None,
-        extra_datasets: Optional[Dict[str, GenDataset]] = None,
+        datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
 
         self.scaling_config = scaling_config
         self.run_config = run_config
-        self.train_dataset = train_dataset
-        self.extra_datasets = extra_datasets
+        self.datasets = datasets
         self.preprocessor = preprocessor
         self.resume_from_checkpoint = resume_from_checkpoint
         self._has_preprocessed_datasets = False

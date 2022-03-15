@@ -262,6 +262,7 @@ py_test_module_list(
     "test_runtime_env_conda_and_pip_2.py",
     "test_runtime_env_conda_and_pip_3.py",
     "test_runtime_env_conda_and_pip_4.py",
+    "test_runtime_env_conda_and_pip_5.py",
     "test_runtime_env_complicated.py"
   ],
   size = "large",
