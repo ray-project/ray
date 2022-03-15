@@ -6,6 +6,7 @@ from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY
 import json
 
 import numpy as np
+import pandas as pd
 import xgboost as xgb
 import tempfile
 
@@ -65,6 +66,23 @@ def test_predict_feature_columns():
 
     data_batch = np.array([[1, 2, 7], [3, 4, 8], [5, 6, 9]])
     predictions = predictor.predict(data_batch, feature_columns=[0, 1])
+
+    assert len(predictions) == 3
+    assert hasattr(predictor.preprocessor, "_batch_transformed")
+
+
+def test_predict_feature_columns_pandas():
+    pandas_data = pd.DataFrame(dummy_data, columns=["A", "B"])
+    pandas_target = pd.Series(dummy_target)
+    pandas_model = (
+        xgb.XGBClassifier(n_estimators=10).fit(pandas_data, pandas_target).get_booster()
+    )
+    preprocessor = DummyPreprocessor()
+    predictor = XGBoostPredictor(model=pandas_model, preprocessor=preprocessor)
+    data_batch = pd.DataFrame(
+        np.array([[1, 2, 7], [3, 4, 8], [5, 6, 9]]), columns=["A", "B", "C"]
+    )
+    predictions = predictor.predict(data_batch, feature_columns=["A", "B"])
 
     assert len(predictions) == 3
     assert hasattr(predictor.preprocessor, "_batch_transformed")
