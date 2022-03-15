@@ -30,8 +30,8 @@
 #include "ray/raylet/scheduling/fixed_point.h"
 #include "ray/raylet/scheduling/internal.h"
 #include "ray/raylet/scheduling/local_resource_manager.h"
+#include "ray/raylet/scheduling/policy/composite_scheduling_policy.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
-#include "ray/raylet/scheduling/scheduling_policy.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -90,7 +90,7 @@ class ClusterResourceScheduler {
   /// False otherwise.
   bool AllocateRemoteTaskResources(
       scheduling::NodeID node_id,
-      const absl::flat_hash_map<std::string, double> &task_resources);
+      const absl::flat_hash_map<std::string, double> &resource_request);
 
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;
@@ -148,8 +148,11 @@ class ClusterResourceScheduler {
   ///          return the ID of a node that can schedule the resource request.
   scheduling::NodeID GetBestSchedulableNode(
       const ResourceRequest &resource_request,
-      const rpc::SchedulingStrategy &scheduling_strategy, bool actor_creation,
-      bool force_spillback, int64_t *violations, bool *is_infeasible);
+      const rpc::SchedulingStrategy &scheduling_strategy,
+      bool actor_creation,
+      bool force_spillback,
+      int64_t *violations,
+      bool *is_infeasible);
 
   /// Similar to
   ///    int64_t GetBestSchedulableNode(...)
@@ -160,8 +163,11 @@ class ClusterResourceScheduler {
   scheduling::NodeID GetBestSchedulableNode(
       const absl::flat_hash_map<std::string, double> &resource_request,
       const rpc::SchedulingStrategy &scheduling_strategy,
-      bool requires_object_store_memory, bool actor_creation, bool force_spillback,
-      int64_t *violations, bool *is_infeasible);
+      bool requires_object_store_memory,
+      bool actor_creation,
+      bool force_spillback,
+      int64_t *violations,
+      bool *is_infeasible);
 
   /// Identifier of local node.
   scheduling::NodeID local_node_id_;
@@ -172,7 +178,7 @@ class ClusterResourceScheduler {
   /// Resources of the entire cluster.
   std::unique_ptr<ClusterResourceManager> cluster_resource_manager_;
   /// The scheduling policy to use.
-  std::unique_ptr<raylet_scheduling_policy::SchedulingPolicy> scheduling_policy_;
+  std::unique_ptr<raylet_scheduling_policy::ISchedulingPolicy> scheduling_policy_;
 
   friend class ClusterResourceSchedulerTest;
   FRIEND_TEST(ClusterResourceSchedulerTest, PopulatePredefinedResources);

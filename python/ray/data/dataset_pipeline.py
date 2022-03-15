@@ -1,4 +1,5 @@
 import inspect
+import itertools
 import logging
 import time
 from typing import (
@@ -35,13 +36,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Operations that can be naively applied per dataset row in the pipeline.
-PER_DATASET_OPS = ["map", "map_batches", "add_column", "flat_map", "filter"]
+_PER_DATASET_OPS = ["map", "map_batches", "add_column", "flat_map", "filter"]
 
 # Operations that apply to each dataset holistically in the pipeline.
-HOLISTIC_PER_DATASET_OPS = ["repartition", "random_shuffle", "sort"]
+_HOLISTIC_PER_DATASET_OPS = ["repartition", "random_shuffle", "sort"]
 
 # Similar to above but we should force evaluation immediately.
-PER_DATASET_OUTPUT_OPS = [
+_PER_DATASET_OUTPUT_OPS = [
     "write_json",
     "write_csv",
     "write_parquet",
@@ -49,10 +50,10 @@ PER_DATASET_OUTPUT_OPS = [
 ]
 
 # Operations that operate over the stream of output batches from the pipeline.
-OUTPUT_ITER_OPS = ["take", "take_all", "show", "to_tf", "to_torch"]
+_OUTPUT_ITER_OPS = ["take", "take_all", "show", "to_tf", "to_torch"]
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 class DatasetPipeline(Generic[T]):
     """Implements a pipeline of Datasets.
 
@@ -94,6 +95,9 @@ class DatasetPipeline(Generic[T]):
         # Whether the pipeline execution has started.
         # This variable is shared across all pipelines descending from this.
         self._executed = _executed or [False]
+        self._dataset_iter = None
+        self._first_dataset = None
+        self._schema = None
         self._stats = DatasetPipelineStats()
 
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
@@ -475,19 +479,32 @@ class DatasetPipeline(Generic[T]):
             length=length,
         )
 
-    def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
+    def schema(
+        self, fetch_if_missing: bool = False
+    ) -> Union[type, "pyarrow.lib.Schema"]:
         """Return the schema of the dataset pipeline.
 
         For datasets of Arrow records, this will return the Arrow schema.
         For dataset of Python objects, this returns their Python type.
 
+        Note: This is intended to be a method for peeking schema before
+        the execution of DatasetPipeline. If execution has already started,
+        it will simply return the cached schema from the previous call.
+
         Time complexity: O(1)
+
+        Args:
+            fetch_if_missing: If True, synchronously fetch the schema if it's
+                not known. Default is False, where None is returned if the
+                schema is not known.
 
         Returns:
             The Python type or Arrow schema of the records, or None if the
             schema is not known.
         """
-        return next(self.iter_datasets()).schema()
+        if not self._executed[0]:
+            self._schema = self._peek().schema(fetch_if_missing)
+        return self._schema
 
     def count(self) -> int:
         """Count the number of records in the dataset pipeline.
@@ -645,8 +662,12 @@ class DatasetPipeline(Generic[T]):
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
         self._executed[0] = True
-        self._optimize_stages()
-        return PipelineExecutor(self)
+        if self._first_dataset is None:
+            self._peek()
+        iter = itertools.chain([self._first_dataset], self._dataset_iter)
+        self._first_dataset = None
+        self._dataset_iter = None
+        return iter
 
     @DeveloperAPI
     def foreach_window(
@@ -670,12 +691,6 @@ class DatasetPipeline(Generic[T]):
             _executed=self._executed,
         )
 
-    def foreach_dataset(self, *a, **kw) -> None:
-        raise DeprecationWarning(
-            "`foreach_dataset` has been renamed to `foreach_window`."
-        )
-
-    @DeveloperAPI
     def stats(self, exclude_first_window: bool = True) -> str:
         """Returns a string containing execution timing information.
 
@@ -742,8 +757,15 @@ class DatasetPipeline(Generic[T]):
             )
         self._optimized_stages = optimized_stages
 
+    def _peek(self) -> Dataset[T]:
+        if self._first_dataset is None:
+            self._optimize_stages()
+            self._dataset_iter = PipelineExecutor(self)
+            self._first_dataset = next(self._dataset_iter)
+        return self._first_dataset
 
-for method in PER_DATASET_OPS:
+
+for method in _PER_DATASET_OPS:
 
     def make_impl(method):
         delegate = getattr(Dataset, method)
@@ -766,7 +788,7 @@ Apply ``Dataset.{method}`` to each dataset/window in this pipeline.
 
     setattr(DatasetPipeline, method, make_impl(method))
 
-for method in HOLISTIC_PER_DATASET_OPS:
+for method in _HOLISTIC_PER_DATASET_OPS:
 
     def make_impl(method):
         delegate = getattr(Dataset, method)
@@ -798,7 +820,7 @@ Apply ``Dataset.{method}`` to each dataset/window in this pipeline.
     setattr(DatasetPipeline, method, deprecation_warning(method))
     setattr(DatasetPipeline, method + "_each_window", make_impl(method))
 
-for method in PER_DATASET_OUTPUT_OPS:
+for method in _PER_DATASET_OUTPUT_OPS:
 
     def make_impl(method):
         delegate = getattr(Dataset, method)
@@ -822,7 +844,7 @@ Call ``Dataset.{method}`` on each output dataset of this pipeline.
 
     setattr(DatasetPipeline, method, make_impl(method))
 
-for method in OUTPUT_ITER_OPS:
+for method in _OUTPUT_ITER_OPS:
 
     def make_impl(method):
         delegate = getattr(Dataset, method)

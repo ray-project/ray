@@ -46,14 +46,6 @@ class Actor:
         return self.i
 
 
-def test_disallow_binding_deployments():
-    with pytest.raises(
-        AttributeError,
-        match="DAG building API should only be used for @ray.remote decorated",
-    ):
-        _ = ServeActor._bind(10)
-
-
 @pytest.mark.asyncio
 async def test_simple_deployment_async(serve_instance):
     """Internal testing only for simple creation and execution.

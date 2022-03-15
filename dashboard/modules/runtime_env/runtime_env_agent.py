@@ -324,7 +324,10 @@ class RuntimeEnvAgent(
         )
 
     async def run(self, server):
-        runtime_env_agent_pb2_grpc.add_RuntimeEnvServiceServicer_to_server(self, server)
+        if server:
+            runtime_env_agent_pb2_grpc.add_RuntimeEnvServiceServicer_to_server(
+                self, server
+            )
 
     @staticmethod
     def is_minimal_module():
