@@ -153,8 +153,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
       /*callback_service*/ &io_service);
 
   // Init GCS subscriber instance.
-  gcs_subscriber_ =
-      std::make_unique<GcsSubscriber>(gcs_address, std::move(subscriber));
+  gcs_subscriber_ = std::make_unique<GcsSubscriber>(gcs_address, std::move(subscriber));
 
   job_accessor_ = std::make_unique<JobInfoAccessor>(this);
   actor_accessor_ = std::make_unique<ActorInfoAccessor>(this);

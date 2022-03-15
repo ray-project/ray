@@ -35,11 +35,11 @@ namespace gcs {
 /// Supports publishing per-entity data and errors from GCS. Thread safe.
 class GcsPublisher {
  public:
-  GcsPublisher(std::unique_ptr<pubsub::Publisher> publisher)
+  GcsPublisher(std::unique_ptr<pubsub::PublisherInterface> publisher)
       : publisher_(std::move(publisher)) {}
 
   /// Returns the underlying pubsub::Publisher. Caller does not take ownership.
-  pubsub::Publisher *GetPublisher() const { return publisher_.get(); }
+  pubsub::PublisherInterface *GetPublisher() const { return publisher_.get(); }
 
   /// Each publishing method below publishes to a different "channel".
   /// ID is the entity which the message is associated with, e.g. ActorID for Actor data.
@@ -80,7 +80,7 @@ class GcsPublisher {
   std::string DebugString() const;
 
  private:
-  const std::unique_ptr<pubsub::Publisher> publisher_;
+  const std::unique_ptr<pubsub::PublisherInterface> publisher_;
 };
 
 /// \class GcsSubscriber
@@ -90,7 +90,7 @@ class GcsSubscriber {
  public:
   // TODO: Support restarted GCS publisher, at the same or a different address.
   GcsSubscriber(const rpc::Address &gcs_address,
-                std::unique_ptr<pubsub::Subscriber> subscriber)
+                std::unique_ptr<pubsub::SubscriberInterface> subscriber)
       : gcs_address_(gcs_address), subscriber_(std::move(subscriber)) {}
 
   /// Subscribe*() member functions below would be incrementally converted to use the GCS

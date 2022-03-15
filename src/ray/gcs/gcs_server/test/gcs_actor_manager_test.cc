@@ -15,12 +15,14 @@
 #include <memory>
 
 // clang-format off
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
+#include "ray/pubsub/mock_pubsub.h"
 #include "mock/ray/gcs/gcs_server/gcs_kv_manager.h"
 // clang-format on
 
@@ -112,7 +114,7 @@ class GcsActorManagerTest : public ::testing::Test {
     runtime_env_mgr_ =
         std::make_unique<ray::RuntimeEnvManager>([](auto, auto f) { f(true); });
     gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
-        std::make_unique<GcsServerMocker::MockGcsPubSub>(redis_client_));
+        std::make_unique<mock_pubsub::MockPublisher>());
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
@@ -235,7 +237,6 @@ class GcsActorManagerTest : public ::testing::Test {
   absl::flat_hash_map<JobID, std::string> job_namespace_table_;
   std::unique_ptr<gcs::GcsActorManager> gcs_actor_manager_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
-  std::shared_ptr<gcs::RedisClient> redis_client_;
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_mgr_;
   const std::chrono::milliseconds timeout_ms_{2000};
   std::function<void(void)> delayed_to_run_;
@@ -1175,7 +1176,6 @@ TEST_F(GcsActorManagerTest, TestActorTableDataDelayedGC) {
     promise.get_future().get();
     ASSERT_EQ(reply.actor_table_data().size(), 1);
   }
-  // Now the entry should be removed from "redis"
   delayed_to_run_();
   {
     rpc::GetAllActorInfoRequest request;

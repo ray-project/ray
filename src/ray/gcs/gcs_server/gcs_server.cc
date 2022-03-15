@@ -79,24 +79,23 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
 
   // Init GCS publisher instance.
   auto inner_publisher = std::make_unique<pubsub::Publisher>(
-        /*channels=*/
-        std::vector<rpc::ChannelType>{
-            rpc::ChannelType::GCS_ACTOR_CHANNEL,
-            rpc::ChannelType::GCS_JOB_CHANNEL,
-            rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
-            rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL,
-            rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
-            rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
-            rpc::ChannelType::RAY_LOG_CHANNEL,
-            rpc::ChannelType::RAY_PYTHON_FUNCTION_CHANNEL,
-            rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL,
-        },
-        /*periodical_runner=*/&pubsub_periodical_runner_,
-        /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
-        /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
-        /*publish_batch_size_=*/RayConfig::instance().publish_batch_size());
-  gcs_publisher_ =
-      std::make_shared<GcsPublisher>(std::move(inner_publisher));
+      /*channels=*/
+      std::vector<rpc::ChannelType>{
+          rpc::ChannelType::GCS_ACTOR_CHANNEL,
+          rpc::ChannelType::GCS_JOB_CHANNEL,
+          rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
+          rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL,
+          rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
+          rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
+          rpc::ChannelType::RAY_LOG_CHANNEL,
+          rpc::ChannelType::RAY_PYTHON_FUNCTION_CHANNEL,
+          rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL,
+      },
+      /*periodical_runner=*/&pubsub_periodical_runner_,
+      /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
+      /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
+      /*publish_batch_size_=*/RayConfig::instance().publish_batch_size());
+  gcs_publisher_ = std::make_shared<GcsPublisher>(std::move(inner_publisher));
 }
 
 GcsServer::~GcsServer() { Stop(); }

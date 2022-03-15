@@ -169,6 +169,15 @@ class PublisherInterface {
  public:
   virtual ~PublisherInterface() = default;
 
+  /// Handles a long poll request.
+  ///
+  /// \param request The long poll request.
+  /// \param reply The reply to the long poll that needs to be filled.
+  /// \param send_reply_callback Sends the reply back when reply is ready.
+  virtual void ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request,
+                                   rpc::PubsubLongPollingReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) = 0;
+
   /// Register the subscription.
   ///
   /// \param channel_type The type of the channel.
@@ -259,7 +268,7 @@ class Publisher : public PublisherInterface {
   /// streaming is supported.
   void ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request,
                            rpc::PubsubLongPollingReply *reply,
-                           rpc::SendReplyCallback send_reply_callback);
+                           rpc::SendReplyCallback send_reply_callback) override;
 
   /// Register the subscription.
   ///

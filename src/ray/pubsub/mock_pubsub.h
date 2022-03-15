@@ -62,6 +62,11 @@ class MockSubscriber : public pubsub::SubscriberInterface {
 
 class MockPublisher : public pubsub::PublisherInterface {
  public:
+  MOCK_METHOD3(ConnectToSubscriber,
+               void(const rpc::PubsubLongPollingRequest &request,
+                    rpc::PubsubLongPollingReply *reply,
+                    rpc::SendReplyCallback send_reply_callback));
+
   MOCK_METHOD3(RegisterSubscription,
                bool(const rpc::ChannelType channel_type,
                     const pubsub::SubscriberID &subscriber_id,

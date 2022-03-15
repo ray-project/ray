@@ -38,7 +38,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   "gcs_storage": $0
 }
   )",
-      use_gcs_store_ ? "\"memory\"" : "\"redis\""));
+                         use_gcs_store_ ? "\"memory\"" : "\"redis\""));
     if (!use_gcs_store_) {
       TestSetupUtil::StartUpRedisServers(std::vector<int>());
     }
