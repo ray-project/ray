@@ -166,7 +166,8 @@ def ray_start_10_cpus(request):
 
 @contextmanager
 def _ray_start_cluster(**kwargs):
-    if cluster_not_supported:
+    cluster_not_supported_ = kwargs.pop("skip_cluster", cluster_not_supported)
+    if cluster_not_supported_:
         pytest.skip("Cluster not supported")
     init_kwargs = get_default_fixture_ray_kwargs()
     num_nodes = 0
@@ -202,6 +203,14 @@ def _ray_start_cluster(**kwargs):
 @pytest.fixture
 def ray_start_cluster(request):
     param = getattr(request, "param", {})
+    with _ray_start_cluster(**param) as res:
+        yield res
+
+
+@pytest.fixture
+def ray_start_cluster_enabled(request):
+    param = getattr(request, "param", {})
+    param["skip_cluster"] = False
     with _ray_start_cluster(**param) as res:
         yield res
 
@@ -436,6 +445,11 @@ file_system_object_spilling_config = {
     "params": {"directory_path": spill_local_path},
 }
 
+buffer_object_spilling_config = {
+    "type": "filesystem",
+    "params": {"directory_path": spill_local_path, "buffer_size": 1_000_000},
+}
+
 # Since we have differet protocol for a local external storage (e.g., fs)
 # and distributed external storage (e.g., S3), we need to test both cases.
 # This mocks the distributed fs with cluster utils.
@@ -446,6 +460,14 @@ mock_distributed_fs_object_spilling_config = {
 smart_open_object_spilling_config = {
     "type": "smart_open",
     "params": {"uri": f"s3://{bucket_name}/"},
+}
+buffer_open_object_spilling_config = {
+    "type": "smart_open",
+    "params": {"uri": f"s3://{bucket_name}/", "buffer_size": 1000},
+}
+multi_smart_open_object_spilling_config = {
+    "type": "smart_open",
+    "params": {"uri": [f"s3://{bucket_name}/{i}" for i in range(3)]},
 }
 
 unstable_object_spilling_config = {
@@ -604,3 +626,26 @@ def cloned_virtualenv():
     )
     yield venv
     venv.teardown()
+
+
+@pytest.fixture
+def set_runtime_env_retry_times(request):
+    runtime_env_retry_times = getattr(request, "param", "0")
+    try:
+        os.environ["RUNTIME_ENV_RETRY_TIMES"] = runtime_env_retry_times
+        yield runtime_env_retry_times
+    finally:
+        del os.environ["RUNTIME_ENV_RETRY_TIMES"]
+
+
+@pytest.fixture
+def listen_port(request):
+    port = getattr(request, "param", 0)
+    try:
+        sock = socket.socket()
+        if hasattr(socket, "SO_REUSEPORT"):
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 0)
+        sock.bind(("127.0.0.1", port))
+        yield port
+    finally:
+        sock.close()

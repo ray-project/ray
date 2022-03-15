@@ -12,14 +12,14 @@ import time
 import urllib
 import urllib.parse
 import yaml
-from socket import socket
 
 import ray
 import psutil
-from ray._private.gcs_utils import use_gcs_for_bootstrap
+from ray._private.usage import usage_lib
 import ray._private.services as services
 import ray.ray_constants as ray_constants
 import ray._private.utils
+from ray.util.annotations import PublicAPI
 from ray.autoscaler._private.commands import (
     attach_cluster,
     exec_cluster,
@@ -37,6 +37,7 @@ from ray.autoscaler._private.commands import (
 )
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
+from ray.autoscaler._private.kuberay.run_autoscaler import run_autoscaler_with_retries
 
 from ray.internal.internal_api import memory_summary
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
@@ -100,6 +101,7 @@ def cli(logging_level, logging_format):
     default=False,
     help="Disable the local cluster config cache.",
 )
+@PublicAPI
 def dashboard(cluster_config_file, cluster_name, port, remote_port, no_config_cache):
     """Port-forward a Ray cluster's dashboard to the local machine."""
     # Sleeping in a loop is preferable to `sleep infinity` because the latter
@@ -500,6 +502,7 @@ def debug(address):
     "safe to activate if the node is behind a firewall.",
 )
 @add_click_logging_options
+@PublicAPI
 def start(
     node_ip_address,
     address,
@@ -540,7 +543,7 @@ def start(
     ray_debugger_external,
 ):
     """Start Ray processes manually on the local machine."""
-    if use_gcs_for_bootstrap() and gcs_server_port is not None:
+    if gcs_server_port is not None:
         cli_logger.error(
             "`{}` is deprecated and ignored. Use {} to specify "
             "GCS server port on head node.",
@@ -608,21 +611,15 @@ def start(
     if head:
         # Start head node.
 
+        usage_lib.print_usage_stats_heads_up_message()
+
         if port is None:
             port = ray_constants.DEFAULT_PORT
 
         # Set bootstrap port.
         assert ray_params.redis_port is None
         assert ray_params.gcs_server_port is None
-        if use_gcs_for_bootstrap():
-            ray_params.gcs_server_port = port
-        else:
-            if port == 0:
-                with socket() as s:
-                    s.bind(("", 0))
-                    port = s.getsockname()[1]
-            ray_params.redis_port = port
-            ray_params.gcs_server_port = gcs_server_port
+        ray_params.gcs_server_port = port
 
         if os.environ.get("RAY_FAKE_CLUSTER"):
             ray_params.env_vars = {
@@ -843,16 +840,7 @@ def start(
             )
             raise Exception("Cannot canonicalize address " f"`--address={address}`.")
 
-        if use_gcs_for_bootstrap():
-            ray_params.gcs_address = bootstrap_address
-        else:
-            ray_params.redis_address = bootstrap_address
-            address_ip, address_port = services.extract_ip_port(bootstrap_address)
-            # Wait for the Redis server to be started. And throw an exception
-            # if we can't connect to it.
-            services.wait_for_redis_to_start(
-                address_ip, address_port, password=redis_password
-            )
+        ray_params.gcs_address = bootstrap_address
 
         # Get the node IP address if one is not provided.
         ray_params.update_if_absent(
@@ -930,6 +918,7 @@ def start(
     ),
 )
 @add_click_logging_options
+@PublicAPI
 def stop(force, grace_period):
     """Stop Ray processes manually on the local machine."""
 
@@ -1126,6 +1115,7 @@ def stop(force, grace_period):
     ),
 )
 @add_click_logging_options
+@PublicAPI
 def up(
     cluster_config_file,
     min_workers,
@@ -1139,6 +1129,8 @@ def up(
     use_login_shells,
 ):
     """Create or update a Ray cluster."""
+    usage_lib.print_usage_stats_heads_up_message()
+
     if restart_only or no_restart:
         cli_logger.doassert(
             restart_only != no_restart,
@@ -1197,6 +1189,7 @@ def up(
     help="Retain the minimal amount of workers specified in the config.",
 )
 @add_click_logging_options
+@PublicAPI
 def down(cluster_config_file, yes, workers_only, cluster_name, keep_min_workers):
     """Tear down a Ray cluster."""
     teardown_cluster(
@@ -1280,6 +1273,7 @@ def monitor(cluster_config_file, lines, cluster_name):
     help="Port to forward. Use this multiple times to forward multiple ports.",
 )
 @add_click_logging_options
+@PublicAPI
 def attach(
     cluster_config_file,
     start,
@@ -1457,6 +1451,8 @@ def submit(
         cli_logger.newline()
 
     if start:
+        usage_lib.print_usage_stats_heads_up_message()
+
         create_or_update_cluster(
             config_file=cluster_config_file,
             override_min_workers=None,
@@ -1562,6 +1558,9 @@ def exec(
 ):
     """Execute a command via SSH on a Ray cluster."""
     port_forward = [(port, port) for port in list(port_forward)]
+
+    if start:
+        usage_lib.print_usage_stats_heads_up_message()
 
     exec_cluster(
         cluster_config_file,
@@ -1753,16 +1752,11 @@ def memory(
     default=ray_constants.REDIS_DEFAULT_PASSWORD,
     help="Connect to ray with redis_password.",
 )
+@PublicAPI
 def status(address, redis_password):
     """Print cluster status, including autoscaling info."""
     address = services.canonicalize_bootstrap_address(address)
-    if use_gcs_for_bootstrap():
-        gcs_client = ray._private.gcs_utils.GcsClient(address=address)
-    else:
-        redis_client = ray._private.services.create_redis_client(
-            address, redis_password
-        )
-        gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(redis_client)
+    gcs_client = ray._private.gcs_utils.GcsClient(address=address)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     status = ray.experimental.internal_kv._internal_kv_get(
         ray_constants.DEBUG_AUTOSCALING_STATUS
@@ -1995,6 +1989,42 @@ def global_gc(address):
     print("Triggered gc.collect() on all workers.")
 
 
+@cli.command(name="kuberay-autoscaler", hidden=True)
+@click.option(
+    "--cluster-name",
+    required=True,
+    type=str,
+    help="The name of the Ray Cluster.\n"
+    "Should coincide with the `metadata.name` of the RayCluster CR.",
+)
+@click.option(
+    "--cluster-namespace",
+    required=True,
+    type=str,
+    help="The Kubernetes namespace the Ray Cluster lives in.\n"
+    "Should coincide with the `metadata.namespace` of the RayCluster CR.",
+)
+@click.option(
+    "--redis-password",
+    required=False,
+    type=str,
+    default="",
+    help="The password to use for Redis.\n"
+    "Ray versions >= 1.11.0 don't use Redis.\n"
+    "Only set this if you really know what you're doing.",
+)
+def kuberay_autoscaler(
+    cluster_name: str, cluster_namespace: str, redis_password: str
+) -> None:
+    """Runs the autoscaler for a Ray cluster managed by the KubeRay operator.
+
+    `ray kuberay-autoscaler` is meant to be used as an entry point in
+        KubeRay cluster configs.
+    `ray kuberay-autoscaler` is NOT a public CLI.
+    """
+    run_autoscaler_with_retries(cluster_name, cluster_namespace, redis_password)
+
+
 @cli.command(name="health-check", hidden=True)
 @click.option(
     "--address", required=False, type=str, help="Override the address to connect to."
@@ -2022,16 +2052,7 @@ def healthcheck(address, redis_password, component):
 
     address = services.canonicalize_bootstrap_address(address)
 
-    if use_gcs_for_bootstrap():
-        gcs_address = address
-    else:
-        # If client creation or ping fails, this will exit with a non-zero
-        # exit code.
-        redis_client = ray._private.services.create_redis_client(
-            address, redis_password
-        )
-        redis_client.ping()
-        gcs_address = redis_client.get("GcsServerAddress").decode()
+    gcs_address = address
 
     if not component:
         try:

@@ -3,7 +3,6 @@ import logging
 import yaml
 import os
 import aiohttp.web
-from aioredis.pubsub import Receiver
 
 import ray
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
@@ -39,15 +38,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         # Please refer to: https://github.com/ray-project/ray/issues/16328
         assert dashboard_head.gcs_address or dashboard_head.redis_address
         gcs_address = dashboard_head.gcs_address
-        redis_address = dashboard_head.redis_address
-        redis_password = dashboard_head.redis_password
         temp_dir = dashboard_head.temp_dir
-        # Flatten the redis address
-        if isinstance(dashboard_head.redis_address, tuple):
-            redis_address = f"{redis_address[0]}:{redis_address[1]}"
-        self.service_discovery = PrometheusServiceDiscoveryWriter(
-            redis_address, redis_password, gcs_address, temp_dir
-        )
+        self.service_discovery = PrometheusServiceDiscoveryWriter(gcs_address, temp_dir)
 
     async def _update_stubs(self, change):
         if change.old:
@@ -157,7 +149,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         self.service_discovery.daemon = True
         self.service_discovery.start()
         if gcs_pubsub_enabled():
-            gcs_addr = await self._dashboard_head.get_gcs_address()
+            gcs_addr = self._dashboard_head.gcs_address
             subscriber = GcsAioResourceUsageSubscriber(gcs_addr)
             await subscriber.subscribe()
 
@@ -176,6 +168,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                         "Error receiving node physical stats " "from reporter agent."
                     )
         else:
+            from aioredis.pubsub import Receiver
+
             receiver = Receiver()
             aioredis_client = self._dashboard_head.aioredis_client
             reporter_key = "{}*".format(reporter_consts.REPORTER_PREFIX)

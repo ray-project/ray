@@ -31,24 +31,23 @@ class GrpcBasedResourceBroadcasterTest : public ::testing::Test {
       : num_batches_sent_(0),
         broadcaster_(
             /*raylet_client_pool*/ nullptr,
-            /*get_resource_usage_batch_for_broadcast*/
-            [](rpc::ResourceUsageBroadcastData &batch) {
-              rpc::ResourceUpdate update;
-              NodeID node_id = NodeID::FromRandom();
-              update.mutable_data()->set_node_id(node_id.Binary());
-              batch.add_batch()->Swap(&update);
-            }
-
-            ,
             /*send_batch*/
             [this](const rpc::Address &address,
-                   std::shared_ptr<rpc::NodeManagerClientPool> &pool, std::string &data,
+                   std::shared_ptr<rpc::NodeManagerClientPool> &pool,
+                   std::string &data,
                    const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) {
               num_batches_sent_++;
               callbacks_.push_back(callback);
             }) {}
 
-  void SendBroadcast() { broadcaster_.SendBroadcast(); }
+  void SendBroadcast() {
+    rpc::ResourceUsageBroadcastData batch;
+    rpc::ResourceUpdate update;
+    NodeID node_id = NodeID::FromRandom();
+    update.mutable_data()->set_node_id(node_id.Binary());
+    batch.add_batch()->Swap(&update);
+    broadcaster_.SendBroadcast(std::move(batch));
+  }
 
   void AssertNoLeaks() {
     absl::MutexLock guard(&broadcaster_.mutex_);

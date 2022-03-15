@@ -13,7 +13,7 @@ There are several ways that Ray applications use memory:
 .. image:: images/memory.svg
 
 Ray system memory: this is memory used internally by Ray
-  - **Redis**: memory used for storing the list of nodes and actors present in the cluster. The amount of memory used for these purposes is typically quite small.
+  - **GCS**: memory used for storing the list of nodes and actors present in the cluster. The amount of memory used for these purposes is typically quite small.
   - **Raylet**: memory used by the C++ raylet process running on each node. This cannot be controlled, but is typically quite small.
 
 Application memory: this is memory used by your application
@@ -275,7 +275,25 @@ usage across multiple physical devices if needed (e.g., SSD devices):
 
 .. note::
   
-  To optimize the performance, it is recommended to use SSD instead of HD when using object spilling for memory intensive workloads.
+  To optimize the performance, it is recommended to use SSD instead of HDD when using object spilling for memory intensive workloads.
+
+If you are using an HDD, it is recommended that you specify a large buffer size (> 1MB) to reduce IO requests during spilling.
+
+.. code-block:: python
+
+    ray.init(
+        _system_config={
+            "object_spilling_config": json.dumps(
+                {
+                  "type": "filesystem", 
+                  "params": {
+                    "directory_path": "/tmp/spill",
+                    "buffer_size": 1_000_000
+                  }
+                },
+            )
+        },
+    )
 
 To enable object spilling to remote storage (any URI supported by `smart_open <https://pypi.org/project/smart-open/>`__):
 
@@ -286,7 +304,35 @@ To enable object spilling to remote storage (any URI supported by `smart_open <h
             "max_io_workers": 4,  # More IO workers for remote storage.
             "min_spilling_size": 100 * 1024 * 1024,  # Spill at least 100MB at a time.
             "object_spilling_config": json.dumps(
-                {"type": "smart_open", "params": {"uri": "s3:///bucket/path"}},
+                {
+                  "type": "smart_open", 
+                  "params": {
+                    "uri": "s3://bucket/path"
+                  },
+                  "buffer_size": 100 * 1024 * 1024 # Use a 100MB buffer for writes
+                },
+            )
+        },
+    )
+
+It is recommended that you specify a large buffer size (> 1MB) to reduce IO requests during spilling.
+
+Spilling to multiple remote storages is also supported.
+
+.. code-block:: python
+
+    ray.init(
+        _system_config={
+            "max_io_workers": 4,  # More IO workers for remote storage.
+            "min_spilling_size": 100 * 1024 * 1024,  # Spill at least 100MB at a time.
+            "object_spilling_config": json.dumps(
+                {
+                  "type": "smart_open", 
+                  "params": {
+                    "uri": ["s3://bucket/path1", "s3://bucket/path2, "s3://bucket/path3"]
+                  },
+                  "buffer_size": 100 * 1024 * 1024 # Use a 100MB buffer for writes
+                },
             )
         },
     )

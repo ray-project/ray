@@ -16,18 +16,59 @@ from ray.dashboard.modules.job.common import (
 )
 from ray.dashboard.modules.job.job_manager import generate_job_id, JobManager
 from ray._private.test_utils import SignalActor, async_wait_for_condition
+from ray.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
+
+from ray.tests.conftest import call_ray_start  # noqa: F401
 
 TEST_NAMESPACE = "jobs_test_namespace"
 
 
-@pytest.fixture(scope="session")
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["""ray start --head --resources={"TestResourceKey":123}"""],
+    indirect=True,
+)
+async def test_submit_no_ray_address(call_ray_start):  # noqa: F811
+    """Test that a job script with an unspecified Ray address works."""
+
+    ray.init(address=call_ray_start)
+    job_manager = JobManager()
+
+    init_ray_no_address_script = """
+import ray
+
+ray.init()
+
+# Check that we connected to the running test Ray cluster and didn't create a new one.
+print(ray.cluster_resources())
+assert ray.cluster_resources().get('TestResourceKey') == 123
+
+"""
+
+    # The job script should work even if RAY_ADDRESS is not set on the cluster.
+    os.environ.pop(RAY_ADDRESS_ENVIRONMENT_VARIABLE, None)
+
+    job_id = job_manager.submit_job(
+        entrypoint=f"""python -c "{init_ray_no_address_script}" """
+    )
+
+    await async_wait_for_condition(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id
+    )
+
+
+@pytest.fixture(scope="module")
 def shared_ray_instance():
     # Remove ray address for test ray cluster in case we have
     # lingering RAY_ADDRESS="http://127.0.0.1:8265" from previous local job
     # submissions.
-    if "RAY_ADDRESS" in os.environ:
-        del os.environ["RAY_ADDRESS"]
+    old_ray_address = os.environ.pop(RAY_ADDRESS_ENVIRONMENT_VARIABLE, None)
+
     yield ray.init(num_cpus=16, namespace=TEST_NAMESPACE, log_to_driver=True)
+
+    if old_ray_address is not None:
+        os.environ[RAY_ADDRESS_ENVIRONMENT_VARIABLE] = old_ray_address
 
 
 @pytest.fixture
@@ -59,7 +100,7 @@ async def _run_hanging_command(job_manager, tmp_dir, start_signal_actor=None):
     status = job_manager.get_job_status(job_id)
     if start_signal_actor:
         for _ in range(10):
-            assert status.status == JobStatus.PENDING
+            assert status == JobStatus.PENDING
             logs = job_manager.get_job_logs(job_id)
             assert logs == ""
             await asyncio.sleep(0.01)
@@ -75,29 +116,30 @@ async def _run_hanging_command(job_manager, tmp_dir, start_signal_actor=None):
 
 
 def check_job_succeeded(job_manager, job_id):
-    status = job_manager.get_job_status(job_id)
-    if status.status == JobStatus.FAILED:
-        raise RuntimeError(f"Job failed! {status.message}")
-    assert status.status in {JobStatus.PENDING, JobStatus.RUNNING, JobStatus.SUCCEEDED}
-    return status.status == JobStatus.SUCCEEDED
+    data = job_manager.get_job_info(job_id)
+    status = data.status
+    if status == JobStatus.FAILED:
+        raise RuntimeError(f"Job failed! {data.message}")
+    assert status in {JobStatus.PENDING, JobStatus.RUNNING, JobStatus.SUCCEEDED}
+    return status == JobStatus.SUCCEEDED
 
 
 def check_job_failed(job_manager, job_id):
     status = job_manager.get_job_status(job_id)
-    assert status.status in {JobStatus.PENDING, JobStatus.RUNNING, JobStatus.FAILED}
-    return status.status == JobStatus.FAILED
+    assert status in {JobStatus.PENDING, JobStatus.RUNNING, JobStatus.FAILED}
+    return status == JobStatus.FAILED
 
 
 def check_job_stopped(job_manager, job_id):
     status = job_manager.get_job_status(job_id)
-    assert status.status in {JobStatus.PENDING, JobStatus.RUNNING, JobStatus.STOPPED}
-    return status.status == JobStatus.STOPPED
+    assert status in {JobStatus.PENDING, JobStatus.RUNNING, JobStatus.STOPPED}
+    return status == JobStatus.STOPPED
 
 
 def check_job_running(job_manager, job_id):
     status = job_manager.get_job_status(job_id)
-    assert status.status in {JobStatus.PENDING, JobStatus.RUNNING}
-    return status.status == JobStatus.RUNNING
+    assert status in {JobStatus.PENDING, JobStatus.RUNNING}
+    return status == JobStatus.RUNNING
 
 
 def check_subprocess_cleaned(pid):
@@ -115,6 +157,39 @@ def test_generate_job_id():
         ids.add(new_id)
 
     assert len(ids) == 10000
+
+
+# NOTE(architkulkarni): This test must be run first in order for the job
+# submission history of the shared Ray runtime to be empty.
+def test_list_jobs_empty(job_manager: JobManager):
+    assert job_manager.list_jobs() == dict()
+
+
+@pytest.mark.asyncio
+async def test_list_jobs(job_manager: JobManager):
+    job_manager.submit_job(entrypoint="echo hi", job_id="1")
+
+    runtime_env = {"env_vars": {"TEST": "123"}}
+    metadata = {"foo": "bar"}
+    job_manager.submit_job(
+        entrypoint="echo hello", job_id="2", runtime_env=runtime_env, metadata=metadata
+    )
+    await async_wait_for_condition(
+        check_job_succeeded, job_manager=job_manager, job_id="1"
+    )
+    await async_wait_for_condition(
+        check_job_succeeded, job_manager=job_manager, job_id="2"
+    )
+    jobs_info = job_manager.list_jobs()
+    assert "1" in jobs_info
+    assert jobs_info["1"].status == JobStatus.SUCCEEDED
+
+    assert "2" in jobs_info
+    assert jobs_info["2"].status == JobStatus.SUCCEEDED
+    assert jobs_info["2"].message is not None
+    assert jobs_info["2"].end_time >= jobs_info["2"].start_time
+    assert jobs_info["2"].runtime_env == runtime_env
+    assert jobs_info["2"].metadata == metadata
 
 
 @pytest.mark.asyncio
@@ -172,10 +247,10 @@ class TestShellScriptExecution:
         job_id = job_manager.submit_job(entrypoint=run_cmd)
 
         def cleaned_up():
-            status = job_manager.get_job_status(job_id)
-            if status.status != JobStatus.FAILED:
+            data = job_manager.get_job_info(job_id)
+            if data.status != JobStatus.FAILED:
                 return False
-            if "Exception: Script failed with exception !" not in status.message:
+            if "Exception: Script failed with exception !" not in data.message:
                 return False
 
             return job_manager._get_actor_for_job(job_id) is None
@@ -273,9 +348,9 @@ class TestRuntimeEnv:
             entrypoint=run_cmd, runtime_env={"working_dir": "path_not_exist"}
         )
 
-        status = job_manager.get_job_status(job_id)
-        assert status.status == JobStatus.FAILED
-        assert "path_not_exist is not a valid URI" in status.message
+        data = job_manager.get_job_info(job_id)
+        assert data.status == JobStatus.FAILED
+        assert "path_not_exist is not a valid URI" in data.message
 
     async def test_failed_runtime_env_setup(self, job_manager):
         """Ensure job status is correctly set as failed if job has a valid
@@ -290,8 +365,8 @@ class TestRuntimeEnv:
             check_job_failed, job_manager=job_manager, job_id=job_id
         )
 
-        status = job_manager.get_job_status(job_id)
-        assert "runtime_env setup failed" in status.message
+        data = job_manager.get_job_info(job_id)
+        assert "runtime_env setup failed" in data.message
 
     async def test_pass_metadata(self, job_manager):
         def dict_to_str(d):
@@ -512,7 +587,7 @@ class TestTailLogs:
 
             # TODO(edoakes): check we get no logs before actor starts (not sure
             # how to timeout the iterator call).
-            assert job_manager.get_job_status(job_id).status == JobStatus.PENDING
+            assert job_manager.get_job_status(job_id) == JobStatus.PENDING
 
             # Signal job to start.
             ray.get(start_signal_actor.send.remote())

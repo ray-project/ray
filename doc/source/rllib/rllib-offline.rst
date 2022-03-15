@@ -1,10 +1,12 @@
-.. include:: we_are_hiring.rst
+.. include:: /_includes/rllib/announcement.rst
 
-RLlib Offline Datasets
-======================
+.. include:: /_includes/rllib/we_are_hiring.rst
 
-Working with Offline Datasets
------------------------------
+Working With Offline Data
+=========================
+
+Getting started
+---------------
 
 RLlib's offline dataset APIs enable working with experiences read from offline storage (e.g., disk, cloud storage, streaming systems, HDFS). For example, you might want to read experiences saved from previous training runs, or gathered from policies deployed in `web applications <https://arxiv.org/abs/1811.00260>`__. You can also log new agent experiences produced during online training for future use.
 
@@ -262,3 +264,5 @@ The interface for a custom output writer is as follows:
 .. autoclass:: ray.rllib.offline.OutputWriter
     :members:
     :noindex:
+
+.. include:: /_includes/rllib/announcement_bottom.rst

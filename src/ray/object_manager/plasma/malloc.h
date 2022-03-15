@@ -21,6 +21,7 @@
 #include <stddef.h>
 
 #include <unordered_map>
+
 #include "ray/object_manager/plasma/compat.h"
 
 namespace plasma {
@@ -43,7 +44,9 @@ extern std::unordered_map<void *, MmapRecord> mmap_records;
 
 /// private function, only used by PlasmaAllocator
 namespace internal {
-bool GetMallocMapinfo(const void *const addr, MEMFD_TYPE *fd, int64_t *map_length,
+bool GetMallocMapinfo(const void *const addr,
+                      MEMFD_TYPE *fd,
+                      int64_t *map_length,
                       ptrdiff_t *offset);
 }
 }  // namespace plasma

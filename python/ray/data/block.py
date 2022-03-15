@@ -180,9 +180,10 @@ class BlockAccessor(Generic[T]):
     this is needed if we want to support storing ``pyarrow.Table`` directly
     as a top-level Ray object, without a wrapping class (issue #17186).
 
-    There are two types of block accessors: ``SimpleBlockAccessor``, which
-    operates over a plain Python list, and ``ArrowBlockAccessor`` for
-    ``pyarrow.Table`` type blocks.
+    There are three types of block accessors: ``SimpleBlockAccessor``, which
+    operates over a plain Python list, ``ArrowBlockAccessor`` for
+    ``pyarrow.Table`` type blocks, ``PandasBlockAccessor`` for ``pandas.DataFrame``
+    type blocks.
     """
 
     def num_rows(self) -> int:
