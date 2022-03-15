@@ -72,25 +72,14 @@ class AzureNodeProvider(NodeProvider):
     def _get_filtered_nodes(self, tag_filters):
         """In addition to tag_filters, here add an extra filter tag: TAG_RAY_CLUSTER_NAME
         to filter some specific cluster. """
-
-        update_tag_filters = [
-            {
-                TAG_RAY_CLUSTER_NAME: self.cluster_name,
-            },
-        ]
-        for key, value in tag_filters.items():
-            update_tag_filters.append(
-                {
-                    key: value
-                }
-            )
+        update_tag_filters = tag_filters.copy()
+        update_tag_filters.update({TAG_RAY_CLUSTER_NAME: self.cluster_name})
 
         def match_tags(vm):
-            for each_tag_filter in update_tag_filters:
-                for k, v in each_tag_filter.items():
-                    if vm.tags.get(k) != v:
-                        return False
-                return True
+            for k, v in update_tag_filters.items():
+                if vm.tags.get(k) != v:
+                    return False
+            return True
 
         vms = self.compute_client.virtual_machines.list(
             resource_group_name=self.provider_config["resource_group"]
