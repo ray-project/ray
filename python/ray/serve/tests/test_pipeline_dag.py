@@ -83,6 +83,8 @@ def class_factory():
             return self.val
 
     return MyInlineClass
+import ray
+from ray import serve
 
 
 @serve.deployment
@@ -179,6 +181,15 @@ def test_multi_instantiation_class_nested_deployment_arg_dag():
     print(serve_dag)
     handle = serve.run(serve_dag)
     assert ray.get(handle.remote(1)) == 5
+    def __call__(self, inp: int) -> int:
+        print(f"Driver got {inp}")
+        return ray.get(self.dag.remote(inp))
+
+
+@ray.remote
+def combine(*args):
+    return sum(args)
+
 
 def test_single_node_deploy_success(serve_instance):
     m1 = Adder.bind(1)
