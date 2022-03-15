@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 import ray.cluster_utils
-from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsFunctionKeySubscriber
+from ray._private.gcs_pubsub import GcsFunctionKeySubscriber
 from ray._private.test_utils import wait_for_condition
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from pathlib import Path
@@ -108,33 +108,27 @@ def test_function_unique_export(ray_start_regular):
     def g():
         ray.get(f.remote())
 
-    if gcs_pubsub_enabled():
-        subscriber = GcsFunctionKeySubscriber(
-            address=ray.worker.global_worker.gcs_client.address
-        )
-        subscriber.subscribe()
+    subscriber = GcsFunctionKeySubscriber(
+        address=ray.worker.global_worker.gcs_client.address
+    )
+    subscriber.subscribe()
 
-        ray.get(g.remote())
+    ray.get(g.remote())
 
-        # Poll pubsub channel for messages generated from running task g().
-        num_exports = 0
-        while True:
-            key = subscriber.poll(timeout=1)
-            if key is None:
-                break
-            else:
-                num_exports += 1
-        print(f"num_exports after running g(): {num_exports}")
-
-        ray.get([g.remote() for _ in range(5)])
-
+    # Poll pubsub channel for messages generated from running task g().
+    num_exports = 0
+    while True:
         key = subscriber.poll(timeout=1)
-        assert key is None, f"Unexpected function key export: {key}"
-    else:
-        ray.get(g.remote())
-        num_exports = ray.worker.global_worker.redis_client.llen("Exports")
-        ray.get([g.remote() for _ in range(5)])
-        assert ray.worker.global_worker.redis_client.llen("Exports") == num_exports
+        if key is None:
+            break
+        else:
+            num_exports += 1
+    print(f"num_exports after running g(): {num_exports}")
+
+    ray.get([g.remote() for _ in range(5)])
+
+    key = subscriber.poll(timeout=1)
+    assert key is None, f"Unexpected function key export: {key}"
 
 
 @pytest.mark.skipif(

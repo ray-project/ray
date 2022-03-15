@@ -31,7 +31,6 @@ from ray.core.generated import gcs_pb2
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
 from ray._private.gcs_pubsub import (
-    gcs_pubsub_enabled,
     GcsErrorSubscriber,
     GcsLogSubscriber,
 )
@@ -218,7 +217,6 @@ def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ut
     Returns:
         The script's output.
     """
-
     proc = subprocess.Popen(
         [sys.executable, "-"],
         stdin=subprocess.PIPE,
@@ -581,12 +579,8 @@ def get_non_head_nodes(cluster):
 
 def init_error_pubsub():
     """Initialize redis error info pub/sub"""
-    if gcs_pubsub_enabled():
-        s = GcsErrorSubscriber(address=ray.worker.global_worker.gcs_client.address)
-        s.subscribe()
-    else:
-        s = ray.worker.global_worker.redis_client.pubsub(ignore_subscribe_messages=True)
-        s.psubscribe(gcs_utils.RAY_ERROR_PUBSUB_PATTERN)
+    s = GcsErrorSubscriber(address=ray.worker.global_worker.gcs_client.address)
+    s.subscribe()
     return s
 
 
@@ -621,12 +615,8 @@ def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
 
 def init_log_pubsub():
     """Initialize redis error info pub/sub"""
-    if gcs_pubsub_enabled():
-        s = GcsLogSubscriber(address=ray.worker.global_worker.gcs_client.address)
-        s.subscribe()
-    else:
-        s = ray.worker.global_worker.redis_client.pubsub(ignore_subscribe_messages=True)
-        s.psubscribe(gcs_utils.LOG_FILE_CHANNEL)
+    s = GcsLogSubscriber(address=ray.worker.global_worker.gcs_client.address)
+    s.subscribe()
     return s
 
 
