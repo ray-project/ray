@@ -471,7 +471,9 @@ def _workflow_step_executor(
                 exception=None,
             )
         if isinstance(persisted_output, Workflow):
+            sub_workflow = persisted_output
             outer_most_step_id = context.outer_most_step_id
+            assert volatile_output is None
             if step_type == StepType.FUNCTION:
                 # Passing down outer most step so inner nested steps would
                 # access the same outer most step.
@@ -481,11 +483,22 @@ def _workflow_step_executor(
                     # current step is the outer most step for the inner nested
                     # workflow steps.
                     outer_most_step_id = workflow_context.get_current_step_id()
-            assert volatile_output is None
             if inplace:
+                _step_options = sub_workflow.data.step_options
+                if (
+                    _step_options.step_type != StepType.WAIT
+                    and runtime_options.ray_options != _step_options.ray_options
+                ):
+                    logger.warning(
+                        f"Workflow step '{sub_workflow.step_id}' uses "
+                        f"a Ray option different to its caller step '{step_id}' "
+                        f"and will be executed inplace. Ray assumes it still "
+                        f"consumes the same resource as the caller. This may result "
+                        f"in oversubscribing resources."
+                    )
                 return (
                     InplaceReturnedWorkflow(
-                        persisted_output, {"outer_most_step_id": outer_most_step_id}
+                        sub_workflow, {"outer_most_step_id": outer_most_step_id}
                     ),
                     None,
                 )
@@ -493,7 +506,7 @@ def _workflow_step_executor(
             with workflow_context.fork_workflow_step_context(
                 outer_most_step_id=outer_most_step_id
             ):
-                result = execute_workflow(persisted_output)
+                result = execute_workflow(sub_workflow)
             # When virtual actor returns a workflow in the method,
             # the volatile_output and persisted_output will be put together
             persisted_output = result.persisted_output
