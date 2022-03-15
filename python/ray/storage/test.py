@@ -1,6 +1,6 @@
 # TODO: move to normal test dir?
-
 import os
+import urllib
 import pyarrow.fs
 import pytest
 
@@ -8,11 +8,25 @@ import ray
 from ray.tests.conftest import *  # noqa
 
 
+def _custom_fs(uri):
+    parsed_uri = urllib.parse.urlparse(uri)
+    return pyarrow.fs.FileSystem.from_uri(parsed_uri.path)
+
+
 def test_get_filesystem_local(shutdown_only, tmp_path):
     path = os.path.join(str(tmp_path), "foo/bar")
     ray.init(storage=path)
     fs, prefix = ray.storage.get_filesystem()
     assert path == prefix, (path, prefix)
+    assert isinstance(fs, pyarrow.fs.LocalFileSystem), fs
+
+
+def test_get_custom_filesystem(shutdown_only, tmp_path):
+    ray.init(
+        storage=os.path.join("custom://ray.storage.test._custom_fs" + str(tmp_path))
+    )
+    fs, prefix = ray.storage.get_filesystem()
+    assert prefix == str(tmp_path), prefix
     assert isinstance(fs, pyarrow.fs.LocalFileSystem), fs
 
 

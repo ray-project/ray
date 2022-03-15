@@ -1,5 +1,7 @@
 from typing import List, TYPE_CHECKING
 import os
+import urllib
+import importlib
 
 from ray.util.annotations import DeveloperAPI
 from ray._private.client_mode_hook import client_mode_hook
@@ -253,7 +255,12 @@ def _init_filesystem(create_valid_file: bool = False, check_valid_file: bool = T
 
     import pyarrow.fs
 
-    _filesystem, _storage_prefix = pyarrow.fs.FileSystem.from_uri(_storage_uri)
+    parsed_uri = urllib.parse.urlparse(_storage_uri)
+    if parsed_uri.scheme == "custom":
+        fs_creator = _load_class(parsed_uri.netloc)
+        _filesystem, _storage_prefix = fs_creator(parsed_uri.path)
+    else:
+        _filesystem, _storage_prefix = pyarrow.fs.FileSystem.from_uri(_storage_uri)
 
     valid_file = os.path.join(_storage_prefix, "_valid")
     if create_valid_file:
@@ -276,3 +283,17 @@ def _reset() -> None:
     """Resets all initialized state to None."""
     global _storage_uri, _filesystem, _storage_prefix
     _storage_uri = _filesystem = _storage_prefix = None
+
+
+def _load_class(path):
+    """Load a class at runtime given a full path.
+
+    Example of the path: mypkg.mysubpkg.myclass
+    """
+    class_data = path.split(".")
+    if len(class_data) < 2:
+        raise ValueError("You need to pass a valid path like mymodule.provider_class")
+    module_path = ".".join(class_data[:-1])
+    class_str = class_data[-1]
+    module = importlib.import_module(module_path)
+    return getattr(module, class_str)
