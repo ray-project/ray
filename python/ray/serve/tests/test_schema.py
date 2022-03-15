@@ -623,9 +623,19 @@ def decorated_f(*args):
     return "reached decorated_f"
 
 
-def test_convert_deployment_to_import_path():
+def test_use_deployment_import_path():
     d = schema_to_deployment(deployment_to_schema(decorated_f))
-    assert d.func_or_class == "ray.serve.tests.test_schema.decorated_f"
+
+    assert isinstance(d.func_or_class, str)
+
+    # CI may change the parent path, so check only that the suffix matches.
+    assert d.func_or_class.endswith("ray.serve.tests.test_schema.decorated_f")
+
+    serve.start()
+    d.deploy()
+    assert (
+        requests.get("http://localhost:8000/decorated_f").text == "reached decorated_f"
+    )
 
 
 if __name__ == "__main__":
