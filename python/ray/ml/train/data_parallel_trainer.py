@@ -87,7 +87,7 @@ class DataParallelTrainer(Trainer):
 
                 train_dataset = ray.data.from_items([1, 2, 3])
                 assert len(train_dataset) == 3
-                trainer = DataParallelTrainer(scaling_config={"num_worker": 3},
+                trainer = DataParallelTrainer(scaling_config={"num_workers": 3},
                     datasets={"train": train_dataset})
                 result = trainer.fit()
 
