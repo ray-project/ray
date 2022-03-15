@@ -114,11 +114,12 @@ def test_dereference_object_refs(workflow_start_regular_shared):
     @ray.remote
     def f(obj_list):
         assert isinstance(obj_list[0], ray.ObjectRef)
-        assert ray.get(obj_list[0]) == 42
+        assert ray.get(obj_list) == [42]
 
     @ray.remote
     def g(x, y):
         assert x == 314
+        assert isinstance(y[0], ray.ObjectRef)
         assert ray.get(y) == [2022]
         return [ray.put(42)]
 
@@ -126,8 +127,11 @@ def test_dereference_object_refs(workflow_start_regular_shared):
     def h():
         return ray.put(2022)
 
-    wf = workflow.create(f.bind(g.bind(x=ray.put(314), y=[ray.put(2022)])))
-    wf.run()
+    dag = f.bind(g.bind(x=ray.put(314), y=[ray.put(2022)]))
+
+    # Run with workflow and normal Ray engine.
+    workflow.create(dag).run()
+    dag.execute()
 
 
 if __name__ == "__main__":
