@@ -99,6 +99,7 @@ def test_map_unordered(init):
 
     assert all(elem in [0, 2, 4, 6, 8] for elem in total)
 
+
 def test_map_gh23107(init):
     # Reference - https://github.com/ray-project/ray/issues/23107
     @ray.remote
@@ -120,6 +121,7 @@ def test_map_gh23107(init):
     pool_map_unordered.submit(func, 6)
     gen = pool_map_unordered.map(func, map_values)
     assert all(elem in [1, 2, 3, 4, 5] for elem in list(gen))
+
 
 def test_get_next_timeout(init):
     @ray.remote
