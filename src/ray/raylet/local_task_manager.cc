@@ -59,7 +59,8 @@ void LocalTaskManager::QueueAndScheduleTask(std::shared_ptr<internal::Work> work
   ScheduleAndDispatchTasks();
 }
 
-void LocalTaskManager::QueueAndScheduleTask(const RayTask &task, bool grant_or_reject,
+void LocalTaskManager::QueueAndScheduleTask(const RayTask &task,
+                                            bool grant_or_reject,
                                             bool is_selected_based_on_locality,
                                             rpc::RequestWorkerLeaseReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
@@ -71,8 +72,9 @@ void LocalTaskManager::QueueAndScheduleTask(const RayTask &task, bool grant_or_r
     return;
   }
   auto work = std::make_shared<internal::Work>(
-      task, grant_or_reject, is_selected_based_on_locality, reply,
-      [send_reply_callback] { send_reply_callback(Status::OK(), nullptr, nullptr); });
+      task, grant_or_reject, is_selected_based_on_locality, reply, [send_reply_callback] {
+        send_reply_callback(Status::OK(), nullptr, nullptr);
+      });
   QueueAndScheduleTask(work);
 }
 

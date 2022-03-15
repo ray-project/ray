@@ -80,9 +80,15 @@ class GcsBasedActorSchedulerTest : public ::testing::Test {
 
     required_resources.insert(required_placement_resources.begin(),
                               required_placement_resources.end());
-    auto actor_creating_task_spec = Mocker::GenActorCreationTask(
-        job_id, /*max_restarts=*/1, /*detached=*/true, /*name=*/"", "", owner_address,
-        required_resources, required_placement_resources);
+    auto actor_creating_task_spec =
+        Mocker::GenActorCreationTask(job_id,
+                                     /*max_restarts=*/1,
+                                     /*detached=*/true,
+                                     /*name=*/"",
+                                     "",
+                                     owner_address,
+                                     required_resources,
+                                     required_placement_resources);
     return std::make_shared<gcs::GcsActor>(actor_creating_task_spec.GetMessage(),
                                            /*ray_namespace=*/"");
   }
