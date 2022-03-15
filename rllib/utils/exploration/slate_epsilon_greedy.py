@@ -25,23 +25,18 @@ class SlateEpsilonGreedy(EpsilonGreedy):
 
         exploit_action = action_distribution.deterministic_sample()
 
-        batch_size = tf.shape(per_slate_q_values)[0]
+        batch_size, num_slates = \
+            tf.shape(per_slate_q_values)[0], tf.shape(per_slate_q_values)[1]
         action_logp = tf.zeros(batch_size, dtype=tf.float32)
 
         # Get the current epsilon.
         epsilon = self.epsilon_schedule(
             timestep if timestep is not None else self.last_timestep
         )
-        # Mask out actions, whose Q-values are -inf, so that we don't
-        # even consider them for exploration.
-        random_valid_action_logits = tf.where(
-            tf.equal(per_slate_q_values, tf.float32.min),
-            tf.ones_like(per_slate_q_values) * tf.float32.min,
-            tf.ones_like(per_slate_q_values),
-        )
         # A random action.
-        random_indices = tf.squeeze(
-            tf.random.categorical(random_valid_action_logits, 1), axis=1
+        random_indices = tf.random.uniform(
+            (batch_size, ), minval=0, maxval=num_slates,
+            dtype=tf.dtypes.int32,
         )
         random_actions = tf.gather(all_slates, random_indices)
 
@@ -92,17 +87,8 @@ class SlateEpsilonGreedy(EpsilonGreedy):
         if explore:
             # Get the current epsilon.
             epsilon = self.epsilon_schedule(self.last_timestep)
-            # Mask out actions, whose Q-values are -inf, so that we don't
-            # even consider them for exploration.
-            random_valid_action_logits = torch.where(
-                per_slate_q_values <= FLOAT_MIN,
-                torch.ones_like(per_slate_q_values) * 0.0,
-                torch.ones_like(per_slate_q_values),
-            )
             # A random action.
-            random_indices = torch.squeeze(
-                torch.multinomial(random_valid_action_logits, 1), axis=1
-            )
+            random_indices = torch.randint(0, per_slate_q_values.shape[1], (per_slate_q_values.shape[0], ))
             random_actions = all_slates[random_indices]
 
             # Pick either random or greedy.
@@ -111,7 +97,6 @@ class SlateEpsilonGreedy(EpsilonGreedy):
                 random_actions,
                 exploit_action,
             )
-
             return action, action_logp
         # Return the deterministic "sample" (argmax) over the logits.
         else:
