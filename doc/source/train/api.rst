@@ -205,6 +205,11 @@ train.torch.get_device
 
 .. autofunction:: ray.train.torch.get_device
 
+train.torch.enable_reproducibility
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.torch.enable_reproducibility
+
 .. _train-api-torch-worker-profiler:
 
 train.torch.TorchWorkerProfiler
