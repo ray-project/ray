@@ -3,7 +3,6 @@ import atexit
 import collections
 from copy import copy
 import inspect
-import json
 import logging
 import random
 import re
@@ -65,7 +64,6 @@ from ray.serve.utils import (
     get_random_letters,
     logger,
     DEFAULT,
-    serialize_to_path_or_base64,
 )
 from ray.util.annotations import PublicAPI
 import ray
@@ -1112,23 +1110,15 @@ class Deployment:
         The returned bound deployment can be deployed or bound to other
         deployments to create a multi-deployment application.
         """
-        from ray.serve.schema import deployment_to_schema
-
-        copied_self = copy(self)
-        copied_self._func_or_class = "dummy"
-        other_args_to_resolve = dict(
-            deployment_self=self,
-            is_from_serve_deployment=True,
-            # deployment_def=self._func_or_class,
-            # schema=deployment_to_schema()
-        )
-
         return DeploymentNode(
             self._func_or_class,
             args,
             kwargs,
             cls_options=self._ray_actor_options or dict(),
-            other_args_to_resolve=other_args_to_resolve,
+            other_args_to_resolve={
+                "deployment_self": copy(self),
+                "is_from_serve_deployment": True,
+            },
         )
 
     @PublicAPI

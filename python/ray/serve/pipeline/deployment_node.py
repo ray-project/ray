@@ -71,14 +71,21 @@ class DeploymentNode(DAGNode):
         )
 
         if "deployment_self" in self._bound_other_args_to_resolve:
-            original_deployment: Deployment = self._bound_other_args_to_resolve.pop(
+            original_deployment: Deployment = self._bound_other_args_to_resolve[
                 "deployment_self"
-            )
+            ]
+            print("deployment node init", original_deployment.num_replicas)
             self._deployment = original_deployment.options(
-                name=deployment_name,
+                name=(
+                    deployment_name
+                    if original_deployment._name
+                    == original_deployment.func_or_class.__name__
+                    else original_deployment._name
+                ),
                 init_args=replaced_deployment_init_args,
                 init_kwargs=replaced_deployment_init_kwargs,
             )
+            print("deployment node init", self._deployment.num_replicas)
         else:
             self._deployment: Deployment = Deployment(
                 func_or_class,
@@ -192,6 +199,8 @@ class DeploymentNode(DAGNode):
             return f"{body.__module__}.{body.__qualname__}"
 
     def to_json(self, encoder_cls) -> Dict[str, Any]:
+        if "deployment_self" in self._bound_other_args_to_resolve:
+            self._bound_other_args_to_resolve.pop("deployment_self")
         json_dict = super().to_json_base(encoder_cls, DeploymentNode.__name__)
         json_dict["deployment_name"] = self.get_deployment_name()
         import_path = self.get_import_path()

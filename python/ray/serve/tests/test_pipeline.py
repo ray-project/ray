@@ -1,8 +1,9 @@
-from ray import serve
-import ray
-from ray.experimental.dag.input_node import InputNode
+import pytest
+
 from ray.serve.handle import PipelineHandle
 from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
+import ray
+from ray import serve
 
 
 @serve.deployment
@@ -27,6 +28,11 @@ class Driver:
         return ray.get(self.dag.remote(inp))
 
 
+@ray.remote
+def combine(*args):
+    return sum(args)
+
+
 def test_single_node_deploy_success(serve_instance):
     m1 = Adder.bind(1)
     handle = serve.run(m1)
@@ -42,3 +48,55 @@ def test_single_node_driver_sucess(serve_instance):
     driver = Driver.bind(out)
     handle = serve.run(driver)
     assert ray.get(handle.remote(39)) == 42
+
+
+def test_options_and_names(serve_instance):
+    from ray.serve.pipeline.api import build as pipeline_build
+
+    def get_built_deployment(deployment_node):
+
+        with PipelineInputNode() as input_node:
+            root = deployment_node.__call__.bind(input_node)
+
+        m1_deploy = pipeline_build(root, inject_ingress=False)[0]
+        return m1_deploy
+
+    m1 = Adder.bind(1)
+    m1_built = get_built_deployment(m1)
+    assert m1_built.name == "Adder"
+
+    m1 = Adder.options(name="Adder2").bind(1)
+    m1_built = get_built_deployment(m1)
+    assert m1_built.name == "Adder2"
+
+    m1 = Adder.options(num_replicas=2).bind(1)
+    m1_built = get_built_deployment(m1)
+    assert m1_built.num_replicas == 2
+
+
+@pytest.mark.skip("TODO")
+def test_mixing_task(serve_instance):
+    m1 = Adder.bind(1)
+    m2 = Adder.bind(2)
+    with PipelineInputNode() as input_node:
+        out = combine.bind(m1.forward.bind(input_node), m2.forward.bind(input_node))
+    driver = Driver.bind(out)
+    handle = serve.run(driver)
+    assert ray.get(handle.remote(1)) == 5
+
+
+@serve.deployment
+class TakeHandle:
+    def __init__(self, handle) -> None:
+        self.handle = handle
+
+    def __call__(self, inp):
+        return ray.get(self.handle.remote(inp))
+
+
+def test_passing_handle(serve_instance):
+    child = Adder.bind(1)
+    parent = TakeHandle.bind(child)
+    driver = Driver.bind(parent)
+    handle = serve.run(driver)
+    assert ray.get(handle.remote(1)) == 2
