@@ -1,6 +1,9 @@
 import json
-
+import tempfile
 import numpy as np
+import os
+import sys
+import subprocess
 import pytest
 
 import ray
@@ -46,6 +49,32 @@ class TestGetDeploymentImportPath:
         assert (
             get_deployment_import_path(d) == "ray.serve.tests.test_util.DecoratedActor"
         )
+
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="File path incorrect on Windows."
+    )
+    def test_replace_main(self):
+
+        temp_fname = "testcase.py"
+        expected_import_path = "testcase.main_f"
+
+        code = (
+            "from ray import serve\n"
+            "from ray.serve.utils import get_deployment_import_path\n"
+            "@serve.deployment\n"
+            "def main_f(*args):\n"
+            "\treturn 'reached main_f'\n"
+            "assert get_deployment_import_path(main_f, replace_main=True) == "
+            f"'{expected_import_path}'"
+        )
+
+        with tempfile.TemporaryDirectory() as dirpath:
+            full_fname = os.path.join(dirpath, temp_fname)
+
+            with open(full_fname, "w+") as f:
+                f.write(code)
+
+            subprocess.check_output(["python", full_fname])
 
 
 if __name__ == "__main__":
