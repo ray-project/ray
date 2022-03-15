@@ -124,6 +124,10 @@ class Dataset(Generic[T]):
             # TODO(ekl) we should clear inputs once we have full lineage recorded.
             self._plan.execute(clear_input_blocks=False)
 
+    @staticmethod
+    def copy(dataset: "Dataset[T]") -> "Dataset[T]":
+        return Dataset(dataset._plan, dataset._epoch, dataset._lazy)
+
     def map(
         self,
         fn: Union[CallableClass, Callable[[T], U]],

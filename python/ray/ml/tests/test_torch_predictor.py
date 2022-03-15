@@ -53,3 +53,14 @@ def test_predict_feature_columns():
 
     assert len(predictions) == 3
     assert predictions.to_numpy().flatten().tolist() == [4, 8, 12]
+
+
+def test_predict_no_preprocessor():
+    checkpoint = Checkpoint.from_dict({MODEL_KEY: model})
+    predictor = TorchPredictor.from_checkpoint(checkpoint)
+
+    data_batch = np.array([[1], [2], [3]])
+    predictions = predictor.predict(data_batch)
+
+    assert len(predictions) == 3
+    assert predictions.to_numpy().flatten().tolist() == [2, 4, 6]
