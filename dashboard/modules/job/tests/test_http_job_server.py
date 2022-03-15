@@ -189,7 +189,7 @@ ray.get(f.remote())
             relative_filepath = "requirements.txt"
             pip_file = Path(relative_filepath)
             pip_file.write_text("\n".join(pip_list))
-            runtime_env = {"pip": relative_filepath}
+            runtime_env = {"pip": {"packages": relative_filepath, "pip_check": False}}
             yield {
                 "runtime_env": runtime_env,
                 "entrypoint": f"python -c '{driver_script}'",
