@@ -17,7 +17,7 @@ class DataParallelTrainer(Trainer):
     """A Trainer for data parallel training.
 
     You should subclass this Trainer if your Trainer follows SPMD (single program,
-    multiple data) programming paradigm- you want multiple processes to run the same
+    multiple data) programming paradigm - you want multiple processes to run the same
     function, but on different data.
 
     This Trainer runs the function ``train_loop_per_worker`` on multiple Ray
