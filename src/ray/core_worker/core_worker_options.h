@@ -129,7 +129,7 @@ struct CoreWorkerOptions {
   /// Application-language callback to trigger garbage collection in the language
   /// runtime. This is required to free distributed references that may otherwise
   /// be held up in garbage objects.
-  std::function<void()> gc_collect;
+  std::function<void(bool triggered_by_global_gc)> gc_collect;
   /// Application-language callback to spill objects to external storage.
   std::function<std::vector<std::string>(const std::vector<rpc::ObjectReference> &)>
       spill_objects;

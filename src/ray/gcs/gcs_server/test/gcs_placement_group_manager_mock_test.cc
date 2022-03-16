@@ -16,6 +16,7 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
+#include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
 #include "mock/ray/gcs/gcs_server/gcs_resource_manager.h"
@@ -37,7 +38,7 @@ class GcsPlacementGroupManagerMockTest : public Test {
     gcs_placement_group_scheduler_ =
         std::make_shared<MockGcsPlacementGroupSchedulerInterface>();
     resource_manager_ =
-        std::make_shared<MockGcsResourceManager>(io_context_, nullptr, nullptr);
+        std::make_shared<MockGcsResourceManager>(nullptr, cluster_resource_manager_);
 
     gcs_placement_group_manager_ =
         std::make_unique<GcsPlacementGroupManager>(io_context_,
@@ -51,6 +52,7 @@ class GcsPlacementGroupManagerMockTest : public Test {
   std::shared_ptr<MockGcsPlacementGroupSchedulerInterface> gcs_placement_group_scheduler_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<MockStoreClient> store_client_;
+  ClusterResourceManager cluster_resource_manager_;
   std::shared_ptr<GcsResourceManager> resource_manager_;
   instrumented_io_context io_context_;
 };

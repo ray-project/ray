@@ -29,8 +29,8 @@ jobject java_task_executor = nullptr;
 
 /// Store Java instances of function descriptor in the cache to avoid unnessesary JNI
 /// operations.
-thread_local std::unordered_map<size_t,
-                                std::vector<std::pair<FunctionDescriptor, jobject>>>
+thread_local absl::flat_hash_map<size_t,
+                                 std::vector<std::pair<FunctionDescriptor, jobject>>>
     executor_function_descriptor_cache;
 
 inline gcs::GcsClientOptions ToGcsClientOptions(JNIEnv *env, jobject gcs_client_options) {
@@ -237,12 +237,17 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
         return Status::OK();
       };
 
-  auto gc_collect = []() {
+  auto gc_collect = [](bool triggered_by_global_gc) {
     // A Java worker process usually contains more than one worker.
     // A LocalGC request is likely to be received by multiple workers in a short time.
     // Here we ensure that the 1 second interval of `System.gc()` execution is
     // guaranteed no matter how frequent the requests are received and how many workers
     // the process has.
+    if (!triggered_by_global_gc) {
+      RAY_LOG(DEBUG) << "Skipping non-global GC.";
+      return;
+    }
+
     static absl::Mutex mutex;
     static int64_t last_gc_time_ms = 0;
     absl::MutexLock lock(&mutex);

@@ -18,10 +18,10 @@ except ImportError:
 from ray._private.runtime_env.packaging import (
     create_package,
     get_uri_for_directory,
+    get_uri_for_package,
 )
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
-
 from ray.dashboard.modules.job.common import uri_to_http_components
 
 from ray.ray_constants import DEFAULT_DASHBOARD_PORT
@@ -259,17 +259,21 @@ class SubmissionClient:
         package_path: str,
         include_parent_dir: Optional[bool] = False,
         excludes: Optional[List[str]] = None,
+        is_file: bool = False,
     ) -> bool:
         logger.info(f"Uploading package {package_uri}.")
         with tempfile.TemporaryDirectory() as tmp_dir:
             protocol, package_name = uri_to_http_components(package_uri)
-            package_file = Path(tmp_dir) / package_name
-            create_package(
-                package_path,
-                package_file,
-                include_parent_dir=include_parent_dir,
-                excludes=excludes,
-            )
+            if is_file:
+                package_file = Path(package_path)
+            else:
+                package_file = Path(tmp_dir) / package_name
+                create_package(
+                    package_path,
+                    package_file,
+                    include_parent_dir=include_parent_dir,
+                    excludes=excludes,
+                )
             try:
                 r = self._do_request(
                     "PUT",
@@ -279,15 +283,21 @@ class SubmissionClient:
                 if r.status_code != 200:
                     self._raise_error(r)
             finally:
-                package_file.unlink()
+                # If the package is a user's existing file, don't delete it.
+                if not is_file:
+                    package_file.unlink()
 
     def _upload_package_if_needed(
         self,
         package_path: str,
-        include_parent_dir: Optional[bool] = False,
+        include_parent_dir: bool = False,
         excludes: Optional[List[str]] = None,
+        is_file: bool = False,
     ) -> str:
-        package_uri = get_uri_for_directory(package_path, excludes=excludes)
+        if is_file:
+            package_uri = get_uri_for_package(Path(package_path))
+        else:
+            package_uri = get_uri_for_directory(package_path, excludes=excludes)
 
         if not self._package_exists(package_uri):
             self._upload_package(
@@ -295,6 +305,7 @@ class SubmissionClient:
                 package_path,
                 include_parent_dir=include_parent_dir,
                 excludes=excludes,
+                is_file=is_file,
             )
         else:
             logger.info(f"Package {package_uri} already exists, skipping upload.")
@@ -302,20 +313,23 @@ class SubmissionClient:
         return package_uri
 
     def _upload_working_dir_if_needed(self, runtime_env: Dict[str, Any]):
-        def _upload_fn(working_dir, excludes):
+        def _upload_fn(working_dir, excludes, is_file=False):
             self._upload_package_if_needed(
-                working_dir, include_parent_dir=False, excludes=excludes
+                working_dir,
+                include_parent_dir=False,
+                excludes=excludes,
+                is_file=is_file,
             )
 
         upload_working_dir_if_needed(runtime_env, upload_fn=_upload_fn)
 
     def _upload_py_modules_if_needed(self, runtime_env: Dict[str, Any]):
-        def _upload_fn(module_path, excludes):
+        def _upload_fn(module_path, excludes, is_file=False):
             self._upload_package_if_needed(
-                module_path, include_parent_dir=True, excludes=excludes
+                module_path, include_parent_dir=True, excludes=excludes, is_file=is_file
             )
 
-        upload_py_modules_if_needed(runtime_env, "", upload_fn=_upload_fn)
+        upload_py_modules_if_needed(runtime_env, upload_fn=_upload_fn)
 
     @PublicAPI(stability="beta")
     def get_version(self) -> str:

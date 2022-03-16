@@ -76,7 +76,7 @@ class DependencyWaiterImpl : public DependencyWaiter {
 
  private:
   int64_t next_request_id_ = 0;
-  std::unordered_map<int64_t, std::function<void()>> requests_;
+  absl::flat_hash_map<int64_t, std::function<void()>> requests_;
   DependencyWaiterInterface &dependency_client_;
 };
 

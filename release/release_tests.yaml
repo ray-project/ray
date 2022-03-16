@@ -753,6 +753,8 @@
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
 
+  stable: false
+
   legacy:
     test_name: aws_no_sync_down
     test_suite: tune_cloud_tests
@@ -780,6 +782,8 @@
 - name: tune_cloud_aws_ssh_sync
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
+
+  stable: false
 
   legacy:
     test_name: aws_ssh_sync
@@ -809,6 +813,8 @@
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
 
+  stable: false
+
   legacy:
     test_name: aws_durable_upload
     test_suite: tune_cloud_tests
@@ -836,6 +842,8 @@
 - name: tune_cloud_aws_durable_upload_rllib_str
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
+
+  stable: false
 
   legacy:
     test_name: aws_durable_upload_rllib_str
@@ -867,6 +875,8 @@
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
 
+  stable: false
+
   legacy:
     test_name: aws_durable_upload_rllib_trainer
     test_suite: tune_cloud_tests
@@ -896,6 +906,8 @@
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
 
+  stable: false
+
   legacy:
     test_name: gcp_k8s_no_sync_down
     test_suite: tune_cloud_tests
@@ -919,6 +931,8 @@
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
 
+  stable: false
+
   legacy:
     test_name: gcp_k8s_ssh_sync
     test_suite: tune_cloud_tests
@@ -941,6 +955,8 @@
 - name: tune_cloud_gcp_k8s_durable_upload
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
+
+  stable: false
 
   legacy:
     test_name: gcp_k8s_durable_upload
@@ -2622,6 +2638,7 @@
       wait_for_nodes:
         num_nodes: 5
         timeout: 600
+  stable: false
 
 - name: dask_on_ray_1tb_sort
   group: core-daily-test
