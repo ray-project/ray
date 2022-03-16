@@ -21,7 +21,6 @@ from ray.serve.schema import ServeApplicationSchema
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.autoscaler._private.cli_logger import cli_logger
-from ray.serve.api import Deployment, DeploymentNode, build as build_app
 from ray._private.utils import import_attr
 from ray.serve.api import (
     Application,
@@ -31,6 +30,7 @@ from ray.serve.api import (
     get_deployment_statuses,
     serve_application_status_to_schema,
 )
+
 build_app = build
 
 RAY_INIT_ADDRESS_HELP_STR = (
