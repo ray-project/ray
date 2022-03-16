@@ -229,8 +229,11 @@ class DataParallelTrainer(Trainer):
         if "num_workers" not in self.scaling_config:
             raise ValueError("You must specify the 'num_workers' in scaling_config.")
 
-        if self.scaling_config["num_workers"] < 0:
-            raise ValueError("'num_workers' must be a non-negative integer.")
+        if self.scaling_config["num_workers"] <= 0:
+            raise ValueError(
+                "'num_workers' in `scaling_config` must be a positive "
+                f"integer. Received {self.scaling_config['num_workers']}"
+            )
 
         num_params = len(inspect.signature(self.train_loop_per_worker).parameters)
         if num_params > 1:
