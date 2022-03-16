@@ -2638,6 +2638,7 @@
       wait_for_nodes:
         num_nodes: 5
         timeout: 600
+  stable: false
 
 - name: dask_on_ray_1tb_sort
   group: core-daily-test
