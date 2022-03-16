@@ -33,6 +33,12 @@ from ray.serve.api import (
 
 build_app = build
 
+APP_DIR_HELP_STR = (
+    "Local directory to look for the IMPORT_PATH (will be inserted into "
+    "PYTHONPATH). Defaults to '.', meaning that an object in ./main.py "
+    "can be imported as 'main.object'. Not relevant if you're importing "
+    "from an installed module."
+)
 RAY_INIT_ADDRESS_HELP_STR = (
     "Address to use for ray.init(). Can also be specified "
     "using the RAY_ADDRESS environment variable."
@@ -480,6 +486,13 @@ def delete(address: str, yes: bool):
     ),
 )
 @click.option(
+    "--app-dir",
+    "-d",
+    default=".",
+    type=str,
+    help=APP_DIR_HELP_STR,
+)
+@click.option(
     "--output-path",
     "-o",
     default=None,
@@ -490,8 +503,8 @@ def delete(address: str, yes: bool):
     ),
 )
 @click.argument("import_path")
-def build(output_path: Optional[str], import_path: str):
-    sys.path.insert(0, ".")
+def build(app_dir: str, output_path: Optional[str], import_path: str):
+    sys.path.insert(0, app_dir)
 
     node: DeploymentNode = import_attr(import_path)
     if not isinstance(node, DeploymentNode):
