@@ -143,7 +143,9 @@ class JobSubmissionClient(SubmissionClient):
 
     @PublicAPI(stability="beta")
     async def tail_job_logs(self, job_id: str) -> Iterator[str]:
-        async with aiohttp.ClientSession(cookies=self._cookies) as session:
+        async with aiohttp.ClientSession(
+            cookies=self._cookies, headers=self._headers
+        ) as session:
             ws = await session.ws_connect(
                 f"{self._address}/api/jobs/{job_id}/logs/tail"
             )
