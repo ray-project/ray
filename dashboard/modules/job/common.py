@@ -23,32 +23,48 @@ CURRENT_VERSION = "1"
 
 
 class JobStatus(str, Enum):
+    #: The job has not started yet, likely waiting for the runtime_env to be set up.
     PENDING = "PENDING"
+    #: The job is currently running.
     RUNNING = "RUNNING"
+    #: The job was intentionally stopped by the user.
     STOPPED = "STOPPED"
+    #: The job finished successfully.
     SUCCEEDED = "SUCCEEDED"
+    #: The job failed.
     FAILED = "FAILED"
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.value}"
 
-    def is_terminal(self):
+    def is_terminal(self) -> bool:
+        """Return whether or not this status is terminal.
+        
+        A terminal status is one that cannot transition to any other status.
+        The terminal statuses are "STOPPED", "SUCCEEDED", and "FAILED".
+
+        Returns:
+            True if this status is terminal, otherwise False.
+        """
         return self.value in {"STOPPED", "SUCCEEDED", "FAILED"}
 
 
 @dataclass
 class JobInfo:
+    #: The status of the job.
     status: JobStatus
-
+    #: A message describing the status in more detail.
     message: Optional[str] = None
     # TODO(architkulkarni): Populate this field with e.g. Runtime env setup failure,
     # Internal error, user script error
     error_type: Optional[str] = None
+    #: The time when the job was started.  A Unix timestamp in seconds.
     start_time: Optional[int] = None
-    # The time when a job moves into a terminal state.  A Unix timestamp in seconds.
+    #: The time when the job moved into a terminal state.  A Unix timestamp in seconds.
     end_time: Optional[int] = None
-    # Arbitrary user-provided metadata.
+    #: Arbitrary user-provided metadata for the job.
     metadata: Optional[Dict[str, str]] = None
+    #: The runtime environment for the job.
     runtime_env: Optional[Dict[str, Any]] = None
 
     def __post_init__(self):
