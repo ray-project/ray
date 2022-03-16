@@ -630,8 +630,10 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   }
 
   // Set the global gc bit on the outgoing heartbeat message.
+  bool triggered_by_global_gc = false;
   if (should_global_gc_) {
     resources_data.set_should_global_gc(true);
+    triggered_by_global_gc = true;
     should_global_gc_ = false;
     global_gc_throttler_.RunNow();
   }
@@ -641,12 +643,12 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   if ((should_local_gc_ ||
        (absl::GetCurrentTimeNanos() - local_gc_run_time_ns_ > local_gc_interval_ns_)) &&
       local_gc_throttler_.AbleToRun()) {
-    DoLocalGC();
+    DoLocalGC(triggered_by_global_gc);
     should_local_gc_ = false;
   }
 }
 
-void NodeManager::DoLocalGC() {
+void NodeManager::DoLocalGC(bool triggered_by_global_gc) {
   auto all_workers = worker_pool_.GetAllRegisteredWorkers();
   for (const auto &driver : worker_pool_.GetAllRegisteredDrivers()) {
     all_workers.push_back(driver);
@@ -655,6 +657,7 @@ void NodeManager::DoLocalGC() {
                 << " local workers to clean up Python cyclic references.";
   for (const auto &worker : all_workers) {
     rpc::LocalGCRequest request;
+    request.set_triggered_by_global_gc(triggered_by_global_gc);
     worker->rpc_client()->LocalGC(
         request, [](const ray::Status &status, const rpc::LocalGCReply &r) {
           if (!status.ok()) {
