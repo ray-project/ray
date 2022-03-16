@@ -47,25 +47,7 @@ def combine(*args):
     return sum(args)
 
 
-def test_single_node_deploy_success(serve_instance):
-    m1 = Adder.bind(1)
-    handle = serve.run(m1)
-    assert ray.get(handle.remote(41)) == 42
-
-
-def test_single_node_driver_sucess(serve_instance):
-    m1 = Adder.bind(1)
-    m2 = Adder.bind(2)
-    with PipelineInputNode() as input_node:
-        out = m1.forward.bind(input_node)
-        out = m2.forward.bind(out)
-    driver = Driver.bind(out)
-    handle = serve.run(driver)
-    assert ray.get(handle.remote(39)) == 42
-
-
 def test_options_and_names(serve_instance):
-
     m1 = Adder.bind(1)
     m1_built = _get_deployments_from_node(m1)[-1]
     assert m1_built.name == "Adder"
@@ -79,6 +61,33 @@ def test_options_and_names(serve_instance):
     assert m1_built.num_replicas == 2
 
 
+@pytest.mark.parametrize("use_build", [False, True])
+def test_single_node_deploy_success(serve_instance, use_build):
+    m1 = Adder.bind(1)
+
+    if use_build:
+        m1 = serve.build(m1)
+
+    handle = serve.run(m1)
+    assert ray.get(handle.remote(41)) == 42
+
+
+@pytest.mark.parametrize("use_build", [False, True])
+def test_single_node_driver_sucess(serve_instance):
+    m1 = Adder.bind(1)
+    m2 = Adder.bind(2)
+    with PipelineInputNode() as input_node:
+        out = m1.forward.bind(input_node)
+        out = m2.forward.bind(out)
+    driver = Driver.bind(out)
+
+    if use_build:
+        driver = serve.build(driver)
+
+    handle = serve.run(driver)
+    assert ray.get(handle.remote(39)) == 42
+
+
 @pytest.mark.skip("TODO")
 def test_mixing_task(serve_instance):
     m1 = Adder.bind(1)
@@ -86,6 +95,10 @@ def test_mixing_task(serve_instance):
     with PipelineInputNode() as input_node:
         out = combine.bind(m1.forward.bind(input_node), m2.forward.bind(input_node))
     driver = Driver.bind(out)
+
+    if use_build:
+        driver = serve.build(driver)
+
     handle = serve.run(driver)
     assert ray.get(handle.remote(1)) == 5
 
@@ -99,14 +112,20 @@ class TakeHandle:
         return ray.get(self.handle.remote(inp))
 
 
+@pytest.mark.parametrize("use_build", [False, True])
 def test_passing_handle(serve_instance):
     child = Adder.bind(1)
     parent = TakeHandle.bind(child)
     driver = Driver.bind(parent)
+
+    if use_build:
+        driver = serve.build(driver)
+
     handle = serve.run(driver)
     assert ray.get(handle.remote(1)) == 2
 
 
+@pytest.mark.parametrize("use_build", [False, True])
 def test_passing_handle_in_obj(serve_instance):
     @serve.deployment
     class Parent:
@@ -120,11 +139,15 @@ def test_passing_handle_in_obj(serve_instance):
     child2 = Echo.bind("simon")
     parent = Parent.bind({"child1": child1, "child2": child2})
 
+    if use_build:
+        parent = serve.build(parent)
+
     handle = serve.run(parent)
     assert ray.get(handle.remote("child1")) == "ed"
     assert ray.get(handle.remote("child2")) == "simon"
 
 
+@pytest.mark.parametrize("use_build", [False, True])
 def test_pass_handle_to_multiple(serve_instance):
     @serve.deployment
     class Child:
@@ -153,6 +176,9 @@ def test_pass_handle_to_multiple(serve_instance):
     child = Child.bind()
     parent = Parent.bind(child)
     grandparent = GrandParent.bind(child, parent)
+
+    if use_build:
+        grandparent = serve.build(grandparent)
 
     handle = serve.run(grandparent)
     assert ray.get(handle.remote()) == "ok"
