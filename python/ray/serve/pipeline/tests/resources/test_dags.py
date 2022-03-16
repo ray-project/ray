@@ -3,8 +3,6 @@ from ray.serve.pipeline.tests.resources.test_modules import (
     Combine,
     combine,
     NESTED_HANDLE_KEY,
-    request_to_data_int,
-    request_to_data_obj,
 )
 from ray.experimental.dag.input_node import InputNode
 

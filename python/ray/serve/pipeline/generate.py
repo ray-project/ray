@@ -1,9 +1,9 @@
 from typing import Any, Dict, List
 import threading
-import json
 
 from ray.experimental.dag import (
     DAGNode,
+    FunctionNode,
     ClassNode,
     ClassMethodNode,
     PARENT_CLASS_NODE_KEY,
@@ -12,10 +12,6 @@ from ray.experimental.dag.input_node import InputNode
 from ray.serve.api import Deployment
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_node import DeploymentNode
-from ray.serve.pipeline.ingress import make_ingress_deployment
-from ray.serve.pipeline.json_serde import DAGNodeEncoder
-
-DEFAULT_INGRESS_DEPLOYMENT_NAME = "ingress"
 
 
 class DeploymentNameGenerator(object):
@@ -31,7 +27,7 @@ class DeploymentNameGenerator(object):
     @classmethod
     def get_deployment_name(cls, dag_node: ClassNode):
         assert isinstance(
-            dag_node, ClassNode
+            dag_node, (FunctionNode, ClassNode)
         ), "get_deployment_name() should only be called on ClassNode instances."
         with cls.__lock:
             deployment_name = (
@@ -76,7 +72,21 @@ def transform_ray_dag_to_serve_dag(dag_node):
     Transform a Ray DAG to a Serve DAG. Map ClassNode to DeploymentNode with
     ray decorated body passed in, ans ClassMethodNode to DeploymentMethodNode.
     """
-    if isinstance(dag_node, ClassNode):
+    if isinstance(dag_node, FunctionNode):
+        deployment_name = DeploymentNameGenerator.get_deployment_name(dag_node)
+        ray_actor_options = _remove_non_default_ray_actor_options(
+            dag_node.get_options()
+        )
+        return DeploymentNode(
+            dag_node._body,
+            deployment_name,
+            deployment_init_args=tuple(),
+            deployment_init_kwargs=dict(),
+            ray_actor_options=ray_actor_options,
+            # TODO: (jiaodong) Support .options(metadata=xxx) for deployment
+            other_args_to_resolve=dag_node.get_other_args_to_resolve(),
+        )
+    elif isinstance(dag_node, ClassNode):
         deployment_name = DeploymentNameGenerator.get_deployment_name(dag_node)
         ray_actor_options = _remove_non_default_ray_actor_options(
             dag_node.get_options()
@@ -161,27 +171,3 @@ def get_pipeline_input_node(serve_dag_root_node: DAGNode):
     )
 
     return input_nodes[0]
-
-
-def get_ingress_deployment(
-    serve_dag_root_node: DAGNode, pipeline_input_node: InputNode
-) -> Deployment:
-    """Return an Ingress deployment to handle user HTTP inputs.
-
-    Args:
-        serve_dag_root_node (DAGNode): Transformed  as serve DAG's root. User
-            inputs are translated to serve_dag_root_node.execute().
-        pipeline_input_node (DAGNode): Singleton InputNode instance that
-            contains input preprocessor info.
-    Returns:
-        ingress (Deployment): Generated pipeline ingress deployment to serve
-            user HTTP requests.
-    """
-    serve_dag_root_json = json.dumps(serve_dag_root_node, cls=DAGNodeEncoder)
-    preprocessor_import_path = pipeline_input_node.get_preprocessor_import_path()
-    serve_dag_root_deployment = make_ingress_deployment(
-        DEFAULT_INGRESS_DEPLOYMENT_NAME,
-        serve_dag_root_json,
-        preprocessor_import_path,
-    )
-    return serve_dag_root_deployment

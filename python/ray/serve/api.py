@@ -24,7 +24,6 @@ from typing import (
 
 from fastapi import APIRouter, FastAPI
 from ray.experimental.dag.class_node import ClassNode
-from ray.experimental.dag.input_node import InputNode
 from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
@@ -1110,22 +1109,28 @@ class Deployment:
         The returned bound deployment can be deployed or bound to other
         deployments to create a multi-deployment application.
         """
-        node = DeploymentNode(
-            self._func_or_class,
-            args,
-            kwargs,
-            cls_options=self._ray_actor_options or dict(),
-            other_args_to_resolve={
-                "deployment_self": copy(self),
-                "is_from_serve_deployment": True,
-            },
-        )
         if inspect.isclass(self._func_or_class):
-            return node
+            return DeploymentNode(
+                self._func_or_class,
+                args,
+                kwargs,
+                cls_options=self._ray_actor_options or dict(),
+                other_args_to_resolve={
+                    "deployment_self": copy(self),
+                    "is_from_serve_deployment": True,
+                },
+            )
         else:
-            # For function
-            return node.__call__.bind(*args, **kwargs)
-
+            return DeploymentNode(
+                self._func_or_class,
+                cls_args=tuple(),
+                cls_kwargs=dict(),
+                cls_options=self._ray_actor_options or dict(),
+                other_args_to_resolve={
+                    "deployment_self": copy(self),
+                    "is_from_serve_deployment": True,
+                },
+            ).__call__.bind(*args, **kwargs)
 
     @PublicAPI
     def deploy(self, *init_args, _blocking=True, **init_kwargs):
@@ -1659,17 +1664,10 @@ def run(
     If a DAGNode is passed in, all of the deployments it depends on
     will be deployed.
     """
+    from ray.serve.pipeline.api import build as pipeline_build
 
-    from ray.serve.pipeline.generate import (
-        transform_ray_dag_to_serve_dag,
-        extract_deployments_from_serve_dag,
-        get_pipeline_input_node,
-    )
-
-    if isinstance(target, DAGNode):
-        # input_node = get_pipeline_input_node(target)
-        serve_root_dag = target.apply_recursive(transform_ray_dag_to_serve_dag)
-        deployments = extract_deployments_from_serve_dag(serve_root_dag)
+    if isinstance(target, DeploymentNode):
+        deployments = pipeline_build(target)
     else:
         raise NotImplementedError()
 

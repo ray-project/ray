@@ -18,7 +18,6 @@ from ray.serve.pipeline.tests.resources.test_modules import (
     fn_hello,
     class_factory,
     Combine,
-    request_to_data_int,
     NESTED_HANDLE_KEY,
 )
 from ray.serve.pipeline.generate import (
