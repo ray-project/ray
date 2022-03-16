@@ -56,3 +56,10 @@ def test_choice():
     assert len(executed_ds) == 2
     assert executed_ds[0]._plan._has_final_stage_snapshot()
     assert executed_ds[1]._plan._has_final_stage_snapshot()
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))
