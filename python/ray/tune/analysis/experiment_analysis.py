@@ -335,7 +335,7 @@ class ExperimentAnalysis:
         """Get all the last results as a pandas dataframe."""
         if not pd:
             raise ValueError(
-                "`results_df` requires pandas. Install with " "`pip install pandas`."
+                "`results_df` requires pandas. Install with `pip install pandas`."
             )
         return pd.DataFrame.from_records(
             [

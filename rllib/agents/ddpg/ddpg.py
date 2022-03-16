@@ -220,7 +220,7 @@ class DDPGTrainer(SimpleQTrainer):
         if config.get("prioritized_replay"):
             if config["multiagent"]["replay_mode"] == "lockstep":
                 raise ValueError(
-                    "Prioritized replay is not supported when " "replay_mode=lockstep."
+                    "Prioritized replay is not supported when replay_mode=lockstep."
                 )
         else:
             if config.get("worker_side_prioritization"):

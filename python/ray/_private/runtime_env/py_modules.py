@@ -16,6 +16,7 @@ from ray._private.runtime_env.packaging import (
     Protocol,
     upload_package_if_needed,
 )
+from ray._private.runtime_env.working_dir import set_pythonpath_in_context
 from ray._private.utils import get_directory_size_bytes
 from ray._private.utils import try_to_create_directory
 
@@ -166,8 +167,4 @@ class PyModulesManager:
                     "downloading or unpacking the py_modules files."
                 )
             module_dirs.append(str(module_dir))
-        # Insert the py_modules directories into the PYTHONPATH.
-        python_path = os.pathsep.join(module_dirs)
-        if "PYTHONPATH" in context.env_vars:
-            python_path += os.pathsep + context.env_vars["PYTHONPATH"]
-        context.env_vars["PYTHONPATH"] = python_path
+        set_pythonpath_in_context(os.pathsep.join(module_dirs), context)

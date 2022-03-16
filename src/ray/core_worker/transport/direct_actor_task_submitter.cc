@@ -151,15 +151,15 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectRpcClient(ClientQueue &queue)
 }
 
 void CoreWorkerDirectActorTaskSubmitter::FailInflightTasks(
-    const std::unordered_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+    const absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
         &inflight_task_callbacks) {
   // NOTE(kfstorm): We invoke the callbacks with a bad status to act like there's a
   // network issue. We don't call `task_finisher_.FailOrRetryPendingTask` directly because
   // there's much more work to do in the callback.
   auto status = Status::IOError("Fail all inflight tasks due to actor state change.");
   rpc::PushTaskReply reply;
-  for (const auto &entry : inflight_task_callbacks) {
-    entry.second(status, reply);
+  for (const auto &[_, callback] : inflight_task_callbacks) {
+    callback(status, reply);
   }
 }
 
@@ -169,7 +169,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   RAY_LOG(DEBUG) << "Connecting to actor " << actor_id << " at worker "
                  << WorkerID::FromBinary(address.worker_id());
 
-  std::unordered_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+  absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
       inflight_task_callbacks;
 
   {
@@ -232,7 +232,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
   RAY_LOG(DEBUG) << "Disconnecting from actor " << actor_id
                  << ", death context type=" << GetActorDeathCauseString(death_cause);
 
-  std::unordered_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+  absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
       inflight_task_callbacks;
 
   {

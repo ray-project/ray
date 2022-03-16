@@ -1,12 +1,12 @@
-from functools import partial
-from pathlib import Path
-from typing import Any, Dict, Optional, Sequence
 import copy
+from functools import partial
+import grpc
 import inspect
 import logging
 import os
-
 from pickle import PicklingError
+import traceback
+from typing import Dict, Sequence, Any
 
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable
@@ -159,7 +159,21 @@ class Experiment:
                     "checkpointable function. You can specify checkpoints "
                     "within your trainable function."
                 )
-        self._run_identifier = Experiment.register_if_needed(run)
+        try:
+            self._run_identifier = Experiment.register_if_needed(run)
+        except grpc.RpcError as e:
+            if e.code() == grpc.StatusCode.RESOURCE_EXHAUSTED:
+                raise TuneError(
+                    f"The Trainable/training function is too large for grpc resource "
+                    f"limit. Check that its definition is not implicitly capturing a "
+                    f"large array or other object in scope. "
+                    f"Tip: use tune.with_parameters() to put large objects "
+                    f"in the Ray object store. \n"
+                    f"Original exception: {traceback.format_exc()}"
+                )
+            else:
+                raise e
+
         self.name = name or self._run_identifier
 
         if not _experiment_checkpoint_dir:
