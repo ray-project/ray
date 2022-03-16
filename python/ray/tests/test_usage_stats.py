@@ -239,6 +239,106 @@ def test_usage_lib_cluster_metadata_generation_usage_disabled(shutdown_only):
     assert len(meta) == 2
 
 
+def test_usage_lib_get_cluster_status(shutdown_only):
+    ray.init(num_cpus=3, num_gpus=1)
+    # Wait for monitor.py to update cluster status
+    time.sleep(10)
+    cluster_status = ray_usage_lib.get_cluster_status(
+        ray.experimental.internal_kv.internal_kv_get_gcs_client(),
+        num_retries=20,
+    )
+    assert cluster_status["num_cpus"] == 3
+    assert cluster_status["num_gpus"] == 1
+    assert cluster_status["total_memory_gb"] > 0
+    assert cluster_status["total_object_store_memory_gb"] > 0
+
+
+def test_usage_lib_get_cluster_config(tmp_path):
+    cluster_config_file_path = tmp_path / "ray_bootstrap_config.yaml"
+    """ Test minimal cluster config"""
+    cluster_config_file_path.write_text(
+        """
+cluster_name: minimal
+max_workers: 1
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+"""
+    )
+    cluster_config = ray_usage_lib.get_cluster_config(cluster_config_file_path)
+    assert cluster_config.get("cloud_provider") == "aws"
+    assert cluster_config.get("min_workers") is None
+    assert cluster_config.get("max_workers") == 1
+    assert cluster_config.get("head_node_instance_type") is None
+    assert cluster_config.get("worker_node_instance_types") is None
+
+    cluster_config_file_path.write_text(
+        """
+cluster_name: full
+min_workers: 1
+provider:
+    type: gcp
+head_node_type: head_node
+available_node_types:
+    head_node:
+        node_config:
+            InstanceType: m5.large
+        min_workers: 0
+        max_workers: 0
+    aws_worker_node:
+        node_config:
+            InstanceType: m3.large
+        min_workers: 0
+        max_workers: 0
+    azure_worker_node:
+        node_config:
+            azure_arm_parameters:
+                vmSize: Standard_D2s_v3
+    gcp_worker_node:
+        node_config:
+            machineType: n1-standard-2
+"""
+    )
+    cluster_config = ray_usage_lib.get_cluster_config(cluster_config_file_path)
+    assert cluster_config.get("cloud_provider") == "gcp"
+    assert cluster_config.get("min_workers") == 1
+    assert cluster_config.get("max_workers") is None
+    assert cluster_config.get("head_node_instance_type") == "m5.large"
+    assert cluster_config.get("worker_node_instance_types") == list(
+        {"m3.large", "Standard_D2s_v3", "n1-standard-2"}
+    )
+
+    cluster_config_file_path.write_text(
+        """
+cluster_name: full
+head_node_type: head_node
+available_node_types:
+    worker_node_1:
+        node_config:
+            ImageId: xyz
+    worker_node_2:
+        resources: {}
+    worker_node_3:
+        node_config:
+            InstanceType: m5.large
+"""
+    )
+    cluster_config = ray_usage_lib.get_cluster_config(cluster_config_file_path)
+    assert cluster_config.get("cloud_provider") is None
+    assert cluster_config.get("min_workers") is None
+    assert cluster_config.get("max_workers") is None
+    assert cluster_config.get("head_node_instance_type") is None
+    assert cluster_config.get("worker_node_instance_types") == ["m5.large"]
+
+    cluster_config_file_path.write_text("[invalid")
+    cluster_config = ray_usage_lib.get_cluster_config(cluster_config_file_path)
+    assert cluster_config == {}
+
+    cluster_config = ray_usage_lib.get_cluster_config(tmp_path / "does_not_exist.yaml")
+    assert cluster_config == {}
+
+
 @pytest.mark.skipif(
     sys.platform == "win32",
     reason="Test depends on runtime env feature not supported on Windows.",
@@ -321,11 +421,23 @@ provider:
     sys.platform == "win32",
     reason="Test depends on runtime env feature not supported on Windows.",
 )
-def test_usage_report_e2e(monkeypatch, shutdown_only):
+def test_usage_report_e2e(monkeypatch, shutdown_only, tmp_path):
     """
     Test usage report works e2e with env vars.
     """
+    cluster_config_file_path = tmp_path / "ray_bootstrap_config.yaml"
+    cluster_config_file_path.write_text(
+        """
+cluster_name: minimal
+max_workers: 1
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+"""
+    )
     with monkeypatch.context() as m:
+        m.setenv("HOME", str(tmp_path))
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
         m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
@@ -387,7 +499,10 @@ def test_usage_report_e2e(monkeypatch, shutdown_only):
         except Exception:
             print_dashboard_log()
             raise
-        validate(instance=ray.get(reporter.get_payload.remote()), schema=schema)
+        payload = ray.get(reporter.get_payload.remote())
+        assert payload["cloud_provider"] == "aws"
+        assert payload["total_memory_gb"] > 0
+        validate(instance=payload, schema=schema)
         """
         Verify the usage_stats.json is updated.
         """

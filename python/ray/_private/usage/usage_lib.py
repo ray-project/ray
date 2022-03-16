@@ -278,7 +278,10 @@ def get_cluster_config(cluster_config_file_path) -> dict:
                     if worker_node_instance_type:
                         result["worker_node_instance_types"] = result.get(
                             "worker_node_instance_types", set()
-                        ).add(worker_node_instance_type)
+                        )
+                        result["worker_node_instance_types"].add(
+                            worker_node_instance_type
+                        )
             if "worker_node_instance_types" in result:
                 result["worker_node_instance_types"] = list(
                     result["worker_node_instance_types"]
@@ -286,7 +289,7 @@ def get_cluster_config(cluster_config_file_path) -> dict:
             return result
     except Exception:
         # If the file doesn't exist or the config file is invalid,
-        # then it's not a ray cluster.
+        # then it's not a ray cluster or it's a k8s cluster.
         return {}
 
 
