@@ -44,8 +44,10 @@ import ray
 from ray import tune
 from ray.rllib.agents import ppo
 from ray.rllib.examples.env.action_mask_env import ActionMaskEnv
-from ray.rllib.examples.models.action_mask_model import \
-    ActionMaskModel, TorchActionMaskModel
+from ray.rllib.examples.models.action_mask_model import (
+    ActionMaskModel,
+    TorchActionMaskModel,
+)
 from ray.tune.logger import pretty_print
 
 
@@ -57,45 +59,47 @@ def get_cli_args():
     parser.add_argument(
         "--no-masking",
         action="store_true",
-        help="Do NOT mask invalid actions. This will likely lead to errors.")
+        help="Do NOT mask invalid actions. This will likely lead to errors.",
+    )
 
     # general args
     parser.add_argument(
-        "--run",
-        type=str,
-        default="APPO",
-        help="The RLlib-registered algorithm to use.")
+        "--run", type=str, default="APPO", help="The RLlib-registered algorithm to use."
+    )
     parser.add_argument("--num-cpus", type=int, default=0)
     parser.add_argument(
         "--framework",
         choices=["tf", "tf2", "tfe", "torch"],
         default="tf",
-        help="The DL framework specifier.")
+        help="The DL framework specifier.",
+    )
     parser.add_argument("--eager-tracing", action="store_true")
     parser.add_argument(
-        "--stop-iters",
-        type=int,
-        default=10,
-        help="Number of iterations to train.")
+        "--stop-iters", type=int, default=10, help="Number of iterations to train."
+    )
     parser.add_argument(
         "--stop-timesteps",
         type=int,
         default=10000,
-        help="Number of timesteps to train.")
+        help="Number of timesteps to train.",
+    )
     parser.add_argument(
         "--stop-reward",
         type=float,
         default=80.0,
-        help="Reward at which we stop training.")
+        help="Reward at which we stop training.",
+    )
     parser.add_argument(
         "--no-tune",
         action="store_true",
         help="Run without Tune using a manual train loop instead. Here,"
-        "there is no TensorBoard support.")
+        "there is no TensorBoard support.",
+    )
     parser.add_argument(
         "--local-mode",
         action="store_true",
-        help="Init Ray in local mode for easier debugging.")
+        help="Init Ray in local mode for easier debugging.",
+    )
 
     args = parser.parse_args()
     print(f"Running with following CLI args: {args}")
@@ -114,18 +118,16 @@ if __name__ == "__main__":
         "env": ActionMaskEnv,
         "env_config": {
             "action_space": Discrete(100),
-            "observation_space": Box(-1.0, 1.0, (5, )),
+            "observation_space": Box(-1.0, 1.0, (5,)),
         },
         # the ActionMaskModel retrieves the invalid actions and avoids them
         "model": {
             "custom_model": ActionMaskModel
-            if args.framework != "torch" else TorchActionMaskModel,
+            if args.framework != "torch"
+            else TorchActionMaskModel,
             # disable action masking according to CLI
-            "custom_model_config": {
-                "no_masking": args.no_masking
-            }
+            "custom_model_config": {"no_masking": args.no_masking},
         },
-
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "framework": args.framework,
@@ -151,8 +153,10 @@ if __name__ == "__main__":
             result = trainer.train()
             print(pretty_print(result))
             # stop training if the target train steps or reward are reached
-            if result["timesteps_total"] >= args.stop_timesteps or \
-                    result["episode_reward_mean"] >= args.stop_reward:
+            if (
+                result["timesteps_total"] >= args.stop_timesteps
+                or result["episode_reward_mean"] >= args.stop_reward
+            ):
                 break
 
         # manual test loop

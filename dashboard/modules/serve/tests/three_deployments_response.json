@@ -1,0 +1,97 @@
+{
+    "deployments": [
+        {
+            "name": "shallow",
+            "import_path": "test_env.shallow_import.ShallowClass",
+            "init_args": [],
+            "init_kwargs": {},
+            "num_replicas": 3,
+            "route_prefix": "/shallow",
+            "max_concurrent_queries": 100,
+            "user_config": null,
+            "autoscaling_config": null,
+            "graceful_shutdown_wait_loop_s": 2.0,
+            "graceful_shutdown_timeout_s": 20.0,
+            "health_check_period_s": 10.0,
+            "health_check_timeout_s": 30.0,
+            "ray_actor_options": {
+                "runtime_env": {
+                    "py_modules": [
+                        "https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip",
+                        "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip",
+                        null
+                    ],
+                    "working_dir": null
+                },
+                "num_cpus": 0.1,
+                "num_gpus": 0.0,
+                "memory": 0.0,
+                "object_store_memory": 0.0,
+                "resources": {},
+                "accelerator_type": null
+            }
+        },
+        {
+            "name": "deep",
+            "import_path": "test_env.subdir1.subdir2.deep_import.DeepClass",
+            "init_args": [],
+            "init_kwargs": {},
+            "num_replicas": 1,
+            "route_prefix": "/deep",
+            "max_concurrent_queries": 100,
+            "user_config": null,
+            "autoscaling_config": null,
+            "graceful_shutdown_wait_loop_s": 2.0,
+            "graceful_shutdown_timeout_s": 20.0,
+            "health_check_period_s": 10.0,
+            "health_check_timeout_s": 30.0,
+            "ray_actor_options": {
+                "runtime_env": {
+                    "py_modules": [
+                        "https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip",
+                        "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip",
+                        null
+                    ],
+                    "working_dir": null
+                },
+                "num_cpus": 0.1,
+                "num_gpus": 0.0,
+                "memory": 0.0,
+                "object_store_memory": 0.0,
+                "resources": {},
+                "accelerator_type": null
+            }
+        },
+        {
+            "name": "one",
+            "import_path": "test_module.test.one",
+            "init_args": [],
+            "init_kwargs": {},
+            "num_replicas": 3,
+            "route_prefix": "/one",
+            "max_concurrent_queries": 100,
+            "user_config": null,
+            "autoscaling_config": null,
+            "graceful_shutdown_wait_loop_s": 2.0,
+            "graceful_shutdown_timeout_s": 20.0,
+            "health_check_period_s": 10.0,
+            "health_check_timeout_s": 30.0,
+            "ray_actor_options": {
+                "runtime_env": {
+                    "py_modules": [
+                        "https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip",
+                        "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip",
+                        null
+                    ],
+                    "working_dir": null
+                },
+                "num_cpus": 0.1,
+                "num_gpus": 0.0,
+                "memory": 0.0,
+                "object_store_memory": 0.0,
+                "resources": {},
+                "accelerator_type": null
+            }
+        }
+    ]
+}

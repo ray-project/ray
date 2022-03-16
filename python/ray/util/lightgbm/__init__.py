@@ -11,14 +11,27 @@ RayLGBMClassifier = None
 RayLGBMRegressor = None
 
 try:
-    from lightgbm_ray import (train, predict, RayParams, RayDMatrix,
-                              RayFileType, RayLGBMClassifier, RayLGBMRegressor)
+    from lightgbm_ray import (
+        train,
+        predict,
+        RayParams,
+        RayDMatrix,
+        RayFileType,
+        RayLGBMClassifier,
+        RayLGBMRegressor,
+    )
 except ImportError:
     logger.info(
         "lightgbm_ray is not installed. Please run "
-        "`pip install git+https://github.com/ray-project/lightgbm_ray`.")
+        "`pip install git+https://github.com/ray-project/lightgbm_ray`."
+    )
 
 __all__ = [
-    "train", "predict", "RayParams", "RayDMatrix", "RayFileType",
-    "RayLGBMClassifier", "RayLGBMRegressor"
+    "train",
+    "predict",
+    "RayParams",
+    "RayDMatrix",
+    "RayFileType",
+    "RayLGBMClassifier",
+    "RayLGBMRegressor",
 ]

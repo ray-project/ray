@@ -13,8 +13,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
-    unbatch
+from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, unbatch
 
 tf1, tf, tfv = try_import_tf()
 
@@ -37,17 +36,23 @@ def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0.0):
             from humanoid).
     """
     max_timestep_limit = 999999
-    env_timestep_limit = env.spec.max_episode_steps if (
-            hasattr(env, "spec") and hasattr(env.spec, "max_episode_steps")) \
+    env_timestep_limit = (
+        env.spec.max_episode_steps
+        if (hasattr(env, "spec") and hasattr(env.spec, "max_episode_steps"))
         else max_timestep_limit
-    timestep_limit = (env_timestep_limit if timestep_limit is None else min(
-        timestep_limit, env_timestep_limit))
+    )
+    timestep_limit = (
+        env_timestep_limit
+        if timestep_limit is None
+        else min(timestep_limit, env_timestep_limit)
+    )
     rewards = []
     t = 0
     observation = env.reset()
     for _ in range(timestep_limit or max_timestep_limit):
         ac, _, _ = policy.compute_actions(
-            [observation], add_noise=add_noise, update=True)
+            [observation], add_noise=add_noise, update=True
+        )
         ac = ac[0]
         observation, r, done, _ = env.step(ac)
         if offset != 0.0:
@@ -65,7 +70,9 @@ def make_session(single_threaded):
         return tf1.Session()
     return tf1.Session(
         config=tf1.ConfigProto(
-            inter_op_parallelism_threads=1, intra_op_parallelism_threads=1))
+            inter_op_parallelism_threads=1, intra_op_parallelism_threads=1
+        )
+    )
 
 
 class ESTFPolicy(Policy):
@@ -74,8 +81,9 @@ class ESTFPolicy(Policy):
         self.action_space_struct = get_base_struct_from_space(action_space)
         self.action_noise_std = self.config["action_noise_std"]
         self.preprocessor = ModelCatalog.get_preprocessor_for_space(obs_space)
-        self.observation_filter = get_filter(self.config["observation_filter"],
-                                             self.preprocessor.shape)
+        self.observation_filter = get_filter(
+            self.config["observation_filter"], self.preprocessor.shape
+        )
         self.single_threaded = self.config.get("single_threaded", False)
         if self.config["framework"] == "tf":
             self.sess = make_session(single_threaded=self.single_threaded)
@@ -86,7 +94,8 @@ class ESTFPolicy(Policy):
                     tf1.set_random_seed(config["seed"])
 
             self.inputs = tf1.placeholder(
-                tf.float32, [None] + list(self.preprocessor.shape))
+                tf.float32, [None] + list(self.preprocessor.shape)
+            )
         else:
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
@@ -101,13 +110,15 @@ class ESTFPolicy(Policy):
 
         # Policy network.
         self.dist_class, dist_dim = ModelCatalog.get_action_dist(
-            self.action_space, self.config["model"], dist_type="deterministic")
+            self.action_space, self.config["model"], dist_type="deterministic"
+        )
 
         self.model = ModelCatalog.get_model_v2(
             obs_space=self.preprocessor.observation_space,
             action_space=action_space,
             num_outputs=dist_dim,
-            model_config=self.config["model"])
+            model_config=self.config["model"],
+        )
 
         self.sampler = None
         if self.sess:
@@ -115,22 +126,21 @@ class ESTFPolicy(Policy):
             dist = self.dist_class(dist_inputs, self.model)
             self.sampler = dist.sample()
             self.variables = ray.experimental.tf_utils.TensorFlowVariables(
-                dist_inputs, self.sess)
+                dist_inputs, self.sess
+            )
             self.sess.run(tf1.global_variables_initializer())
         else:
             self.variables = ray.experimental.tf_utils.TensorFlowVariables(
-                [], None, self.model.variables())
+                [], None, self.model.variables()
+            )
 
         self.num_params = sum(
             np.prod(variable.shape.as_list())
-            for _, variable in self.variables.variables.items())
+            for _, variable in self.variables.variables.items()
+        )
 
     @override(Policy)
-    def compute_actions(self,
-                        observation,
-                        add_noise=False,
-                        update=True,
-                        **kwargs):
+    def compute_actions(self, observation, add_noise=False, update=True, **kwargs):
         # Squeeze batch dimension (we always calculate actions for only a
         # single obs).
         observation = observation[0]
@@ -145,31 +155,32 @@ class ESTFPolicy(Policy):
             actions = tree.map_structure(lambda a: a.numpy(), actions)
         # Graph mode.
         else:
-            actions = self.sess.run(
-                self.sampler, feed_dict={self.inputs: observation})
+            actions = self.sess.run(self.sampler, feed_dict={self.inputs: observation})
 
         if add_noise:
-            actions = tree.map_structure(self._add_noise, actions,
-                                         self.action_space_struct)
+            actions = tree.map_structure(
+                self._add_noise, actions, self.action_space_struct
+            )
         # Convert `flat_actions` to a list of lists of action components
         # (list of single actions).
         actions = unbatch(actions)
         return actions, [], {}
 
-    def compute_single_action(self,
-                              observation,
-                              add_noise=False,
-                              update=True,
-                              **kwargs):
+    def compute_single_action(
+        self, observation, add_noise=False, update=True, **kwargs
+    ):
         action, state_outs, extra_fetches = self.compute_actions(
-            [observation], add_noise=add_noise, update=update, **kwargs)
+            [observation], add_noise=add_noise, update=update, **kwargs
+        )
         return action[0], state_outs, extra_fetches
 
     def _add_noise(self, single_action, single_action_space):
-        if isinstance(single_action_space, gym.spaces.Box) and \
-                single_action_space.dtype.name.startswith("float"):
-            single_action += np.random.randn(*single_action.shape) * \
-                self.action_noise_std
+        if isinstance(
+            single_action_space, gym.spaces.Box
+        ) and single_action_space.dtype.name.startswith("float"):
+            single_action += (
+                np.random.randn(*single_action.shape) * self.action_noise_std
+            )
         return single_action
 
     def get_state(self):

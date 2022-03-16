@@ -1,5 +1,5 @@
 # flake8: noqa
-# yapf: disable
+# fmt: off
 
 # __torch_setup_begin__
 import torch
@@ -49,6 +49,7 @@ def train_func():
 # __torch_distributed_begin__
 
 from ray import train
+import ray.train.torch
 
 def train_func_distributed():
     num_epochs = 3
@@ -80,6 +81,10 @@ if __name__ == "__main__":
     from ray.train import Trainer
 
     trainer = Trainer(backend="torch", num_workers=4)
+
+    # For GPU Training, set `use_gpu` to True.
+    # trainer = Trainer(backend="torch", num_workers=4, use_gpu=True)
+
     trainer.start()
     results = trainer.run(train_func_distributed)
     trainer.shutdown()

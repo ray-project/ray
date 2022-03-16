@@ -3,7 +3,6 @@
     [
         "RAY_CI_LINUX_WHEELS_AFFECTED",
         "RAY_CI_JAVA_AFFECTED",
-        "RAY_CI_STREAMING_JAVA_AFFECTED",
     ]
   commands:
     # Build the wheels and jars
@@ -41,7 +40,6 @@
     [
         "RAY_CI_LINUX_WHEELS_AFFECTED",
         "RAY_CI_JAVA_AFFECTED",
-        "RAY_CI_STREAMING_JAVA_AFFECTED",
     ]
   commands:
     # Build the debug wheels
@@ -61,7 +59,6 @@
 #     [
 #         "RAY_CI_LINUX_WHEELS_AFFECTED",
 #         "RAY_CI_JAVA_AFFECTED",
-#         "RAY_CI_STREAMING_JAVA_AFFECTED",
 #     ]
 #   commands:
 #     # Build the asan wheels
@@ -151,15 +148,7 @@
   commands:
     - ./java/test.sh
 
-- label: ":java: Streaming"
-  conditions:
-    ["RAY_CI_STREAMING_PYTHON_AFFECTED", "RAY_CI_STREAMING_JAVA_AFFECTED", "RAY_CI_PYTHON_AFFECTED"]
-  commands:
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      //streaming:all
-    - bash streaming/src/test/run_streaming_queue_test.sh
-
-- label: ":cpp: Worker"
+- label: ":cpp: Ray CPP Worker"
   conditions: [ "RAY_CI_CPP_AFFECTED" ]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -203,24 +192,52 @@
       -//:gcs_server_rpc_test -//:gcs_server_test
       -//:metric_exporter_client_test -//:stats_test -//:worker_pool_test
 
-- label: ":serverless: Dashboard + Serve Tests"
+- label: ":serverless: Dashboard Tests"
   conditions:
     [
-        "RAY_CI_SERVE_AFFECTED",
         "RAY_CI_DASHBOARD_AFFECTED",
         "RAY_CI_PYTHON_AFFECTED",
     ]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
     - ./dashboard/tests/run_ui_tests.sh
     - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/dashboard/...
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-post_wheel_build
-      python/ray/serve/...
+- label: ":serverless: Serve Release Tests"
+  conditions:
+    [
+        "RAY_CI_SERVE_AFFECTED",
+        "RAY_CI_PYTHON_AFFECTED",
+    ]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
+    - 'git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd'
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=team:serve
       release/...
+- label: ":serverless: Serve Tests"
+  parallelism: 3
+  conditions:
+    [
+        "RAY_CI_SERVE_AFFECTED",
+        "RAY_CI_PYTHON_AFFECTED",
+    ]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
+    - 'git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd'
+    - >- 
+      set -x;
+      python ./scripts/bazel-sharding.py
+      --exclude_manual
+      --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}"
+      python/ray/serve/...
+      > test_shard.txt
+    - cat test_shard.txt
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=-post_wheel_build
+      $(cat test_shard.txt)
+
 
 - label: ":python: Minimal install"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -243,25 +260,42 @@
       python/ray/tests/test_output
     - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./scripts/bazel_export_options)
       python/ray/tests/test_runtime_env_ray_minimal
+    - bazel test --test_output=streamed --config=ci $(./scripts/bazel_export_options)
+      python/ray/tests/test_runtime_env
+    - bazel test --test_output=streamed --config=ci $(./scripts/bazel_export_options)
+      python/ray/tests/test_runtime_env_complicated
+    - bazel test --test_output=streamed --config=ci $(./scripts/bazel_export_options)
+      python/ray/tests/test_runtime_env_validation
     - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./scripts/bazel_export_options)
       python/ray/tests/test_serve_ray_minimal
+    - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./scripts/bazel_export_options)
+      python/ray/dashboard/test_dashboard
+    - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./scripts/bazel_export_options)
+      python/ray/tests/test_usage_stats
 
-- label: ":python: (Small & Large)"
+- label: ":python: Release test package unit tests"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - pip install -e release/
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=release_unit
+      release/...
+
+- label: ":python: (Small & Client)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-client_tests,-post_wheel_build,-worker-container
-      --test_env=CONDA_EXE
-      --test_env=CONDA_PYTHON_EXE
-      --test_env=CONDA_SHLVL
-      --test_env=CONDA_PREFIX
-      --test_env=CONDA_DEFAULT_ENV
-      python/ray/tests/...
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,client_tests
-      --test_env=RAY_CLIENT_MODE=1 --test_env=RAY_PROFILING=1
-      python/ray/tests/...
+      --test_tag_filters=client_tests,small_size_python_tests
+      -- python/ray/tests/...
+- label: ":python: (Large)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  parallelism: 3
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - . ./ci/travis/ci.sh test_large
 - label: ":python: (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
@@ -290,6 +324,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
+    - pip install "grpcio >= 1.28.1, <= 1.43.0"
     - bazel test --config=ci --config=asan $(./scripts/bazel_export_options)
       --config=asan-buildkite
       --test_tag_filters=-kubernetes,asan_tests
@@ -299,104 +334,22 @@
       --test_env=CONDA_PREFIX
       --test_env=CONDA_DEFAULT_ENV
       python/ray/tests/...
-- label: ":python: (Privileged test)"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  commands:
-    - LINUX_WHEELS=1 ./ci/travis/ci.sh build
-    - pip install docker
-    # We build image ray-worker-container:nightly-py36-cpu which have installed podman,but not push it.
-    # And we save this image to a tarball, so that we can load it to podman image storage in the
-    # nested-container which run tests. And in this nested-container, Raylet will start ray worker
-    # process in double-nested-container.
-    - python ./ci/travis/build-docker-images.py --py-versions py36 --device-types cpu --build-type BUILDKITE --only-build-worker-container
-    - mkdir /ray-mount/containers
-    - docker save -o /ray-mount/containers/images.tar rayproject/ray-worker-container:nightly-py36-cpu
-    - docker run --rm --privileged -v /ray/containers:/var/lib/containers -v /ray:/ray --entrypoint /bin/bash
-      rayproject/ray-worker-container:nightly-py36-cpu /ray/ci/travis/test-worker-in-container.sh
 
-- label: ":redis: HA GCS (Dashboard + Serve Tests)"
-  conditions:
-    [
-        "RAY_CI_SERVE_AFFECTED",
-        "RAY_CI_DASHBOARD_AFFECTED",
-        "RAY_CI_PYTHON_AFFECTED",
-    ]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
-    - ./dashboard/tests/run_ui_tests.sh
-    # Enable job related tests after ray.init can accept gcs address
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_env=RAY_gcs_grpc_based_pubsub=1
-      --test_env=RAY_bootstrap_with_gcs=1
-      --test_env=RAY_gcs_storage=memory -- //python/ray/dashboard/...
-      -//python/ray/dashboard:test_actor
-      -//python/ray/dashboard:test_job_manager
-      -//python/ray/dashboard:test_cli_integration
-      -//python/ray/dashboard:test_http_job_server
-      -//python/ray/dashboard:test_job_submission
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-post_wheel_build
-      --test_env=RAY_gcs_grpc_based_pubsub=1
-      --test_env=RAY_bootstrap_with_gcs=1
-      --test_env=RAY_gcs_storage=memory
-      -- python/ray/serve/... -//python/ray/serve:test_cli -//python/ray/serve:test_standalone
-    # Re-enable after fixing.
-    #- bazel test --config=ci $(./scripts/bazel_export_options)
-    #  --test_tag_filters=team:serve
-    #  --test_env=RAY_gcs_grpc_based_pubsub=1 --test_env=RAY_gcs_storage=memory
-    #  release/...
-- label: ":redis: HA GCS (Small & Large)"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-client_tests,-post_wheel_build,-worker-container
-      --test_env=CONDA_EXE
-      --test_env=CONDA_PYTHON_EXE
-      --test_env=CONDA_SHLVL
-      --test_env=CONDA_PREFIX
-      --test_env=CONDA_DEFAULT_ENV
-      --test_env=RAY_gcs_grpc_based_pubsub=1
-      --test_env=RAY_bootstrap_with_gcs=1
-      --test_env=RAY_gcs_storage=memory
-      -- //python/ray/tests/...
-      -//python/ray/tests:test_failure_2
-      -//python/ray/tests:test_job
-      -//python/ray/tests:test_autoscaler_drain_node_api
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,client_tests
-      --test_env=RAY_CLIENT_MODE=1 --test_env=RAY_PROFILING=1
-      --test_env=RAY_gcs_grpc_based_pubsub=1
-      --test_env=RAY_bootstrap_with_gcs=1
-      --test_env=RAY_gcs_storage=memory
-      -- //python/ray/tests/...
-- label: ":redis: HA GCS (Medium A-J)"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
-      --test_env=RAY_gcs_grpc_based_pubsub=1
-      --test_env=RAY_bootstrap_with_gcs=1
-      --test_env=RAY_gcs_storage=memory
-      -- //python/ray/tests/...
-      -//python/ray/tests:test_client_multi -//python/ray/tests:test_component_failures_3
-      -//python/ray/tests:test_healthcheck -//python/ray/tests:test_gcs_fault_tolerance
-      -//python/ray/tests:test_client -//python/ray/tests:test_client_reconnect
-- label: ":redis: HA GCS (Medium K-Z)"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
-      --test_env=RAY_gcs_grpc_based_pubsub=1
-      --test_env=RAY_bootstrap_with_gcs=1
-      --test_env=RAY_gcs_storage=memory
-      -- //python/ray/tests/...
-      -//python/ray/tests:test_multinode_failures_2 -//python/ray/tests:test_ray_debugger
-      -//python/ray/tests:test_placement_group_2 -//python/ray/tests:test_placement_group_3
-      -//python/ray/tests:test_multi_node -//python/ray/tests:test_multi_node_3
+# https://github.com/ray-project/ray/issues/22460
+#- label: ":python: (Privileged test)"
+  #conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  #commands:
+    #- LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    #- pip install docker
+     #We build image ray-worker-container:nightly-py36-cpu which have installed podman,but not push it.
+     #And we save this image to a tarball, so that we can load it to podman image storage in the
+     #nested-container which run tests. And in this nested-container, Raylet will start ray worker
+     #process in double-nested-container.
+    #- python ./ci/travis/build-docker-images.py --py-versions py36 --device-types cpu --build-type BUILDKITE --only-build-worker-container
+    #- mkdir /ray-mount/containers
+    #- docker save -o /ray-mount/containers/images.tar rayproject/ray-worker-container:nightly-py36-cpu
+    #- docker run --rm --privileged -v /ray/containers:/var/lib/containers -v /ray:/ray --entrypoint /bin/bash
+      #rayproject/ray-worker-container:nightly-py36-cpu /ray/ci/travis/test-worker-in-container.sh
 
 - label: ":octopus: Tune soft imports test"
   conditions: ["RAY_CI_TUNE_AFFECTED"]
@@ -405,3 +358,17 @@
     # no TUNE_TESTING=1 on purpose
     - ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=soft_imports python/ray/tune/...
+
+- label: ":steam_locomotive: Train minimal install"
+  conditions: ["RAY_CI_TRAIN_AFFECTED"]
+  commands:
+      - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+      - ./ci/travis/install-minimal.sh
+      - ./ci/travis/env_info.sh
+      - python ./ci/travis/check_minimal_install.py
+      - bazel test --config=ci $(./scripts/bazel_export_options)  --build_tests_only --test_tag_filters=minimal python/ray/train/...
+
+- label: ":kubernetes: operator"
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/travis/prep-k8s-environment.sh

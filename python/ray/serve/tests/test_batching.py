@@ -67,12 +67,12 @@ async def test_decorator_validation():
     async def function2():
         pass
 
-    class Class():
+    class Class:
         @serve.batch
         async def method(self):
             pass
 
-    class Class2():
+    class Class2:
         @serve.batch(max_batch_size=10, batch_wait_timeout_s=1.5)
         async def method(self):
             pass
@@ -259,6 +259,40 @@ async def test_batch_size_multiple_long_timeout(use_class):
         t3.result()
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["args", "kwargs", "mixed", "out-of-order"])
+@pytest.mark.parametrize("use_class", [True, False])
+async def test_batch_args_kwargs(mode, use_class):
+    if use_class:
+
+        class MultipleArgs:
+            @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+            async def method(self, key1, key2):
+                return [(key1[i], key2[i]) for i in range(len(key1))]
+
+        instance = MultipleArgs()
+        func = instance.method
+
+    else:
+
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+        async def func(key1, key2):
+            return [(key1[i], key2[i]) for i in range(len(key1))]
+
+    if mode == "args":
+        coros = [func("hi1", "hi2"), func("hi3", "hi4")]
+    elif mode == "kwargs":
+        coros = [func(key1="hi1", key2="hi2"), func(key1="hi3", key2="hi4")]
+    elif mode == "mixed":
+        coros = [func("hi1", key2="hi2"), func("hi3", key2="hi4")]
+    elif mode == "out-of-order":
+        coros = [func(key2="hi2", key1="hi1"), func(key2="hi4", key1="hi3")]
+
+    result = await asyncio.gather(*coros)
+    assert result == [("hi1", "hi2"), ("hi3", "hi4")]
+
+
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

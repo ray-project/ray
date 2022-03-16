@@ -11,7 +11,7 @@ from ray.rllib.utils.typing import TrainerConfigDict
 
 logger = logging.getLogger(__name__)
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # === Twin Delayed DDPG (TD3) and Soft Actor-Critic (SAC) tricks ===
@@ -171,11 +171,11 @@ DEFAULT_CONFIG = with_common_config({
     "num_workers": 0,
     # Whether to compute priorities on workers.
     "worker_side_prioritization": False,
-    # Prevent iterations from going lower than this time span
-    "min_iter_time_s": 1,
+    # Prevent reporting frequency from going lower than this time span.
+    "min_time_s_per_reporting": 1,
 })
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 class DDPGTrainer(SimpleQTrainer):
@@ -185,23 +185,24 @@ class DDPGTrainer(SimpleQTrainer):
         return DEFAULT_CONFIG
 
     @override(SimpleQTrainer)
-    def get_default_policy_class(self,
-                                 config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.agents.ddpg.ddpg_torch_policy import DDPGTorchPolicy
+
             return DDPGTorchPolicy
         else:
             return DDPGTFPolicy
 
     @override(SimpleQTrainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
-
+        # Call super's validation method.
         super().validate_config(config)
 
         if config["model"]["custom_model"]:
             logger.warning(
                 "Setting use_state_preprocessor=True since a custom model "
-                "was specified.")
+                "was specified."
+            )
             config["use_state_preprocessor"] = True
 
         if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
@@ -212,15 +213,18 @@ class DDPGTrainer(SimpleQTrainer):
                 logger.warning(
                     "ParameterNoise Exploration requires `batch_mode` to be "
                     "'complete_episodes'. Setting "
-                    "batch_mode=complete_episodes.")
+                    "batch_mode=complete_episodes."
+                )
                 config["batch_mode"] = "complete_episodes"
 
         if config.get("prioritized_replay"):
             if config["multiagent"]["replay_mode"] == "lockstep":
-                raise ValueError("Prioritized replay is not supported when "
-                                 "replay_mode=lockstep.")
+                raise ValueError(
+                    "Prioritized replay is not supported when replay_mode=lockstep."
+                )
         else:
             if config.get("worker_side_prioritization"):
                 raise ValueError(
                     "Worker side prioritization is not supported when "
-                    "prioritized_replay=False.")
+                    "prioritized_replay=False."
+                )

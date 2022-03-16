@@ -45,14 +45,23 @@ using SubscriptionFailureCallback =
 
 /// Subscription info stores metadata that is needed for subscriptions.
 struct SubscriptionInfo {
-  // Subscription for all entities.
-  std::unique_ptr<std::pair<SubscriptionItemCallback, SubscriptionFailureCallback>>
-      all_entities_subscription;
+  SubscriptionInfo(SubscriptionItemCallback i_cb, SubscriptionFailureCallback f_cb)
+      : item_cb(std::move(i_cb)), failure_cb(std::move(f_cb)) {}
 
-  // Subscription for all entities.
-  absl::flat_hash_map<std::string,
-                      std::pair<SubscriptionItemCallback, SubscriptionFailureCallback>>
-      per_entity_subscription;
+  // Callback that runs on each received rpc::PubMessage.
+  SubscriptionItemCallback item_cb;
+
+  // Callback that runs after a polling request fails. The input is the failure status.
+  SubscriptionFailureCallback failure_cb;
+};
+
+/// All subscription info for the publisher.
+struct Subscriptions {
+  // Subscriptions for all entities.
+  std::unique_ptr<SubscriptionInfo> all_entities_subscription;
+
+  // Subscriptions for each entity.
+  absl::flat_hash_map<std::string, SubscriptionInfo> per_entity_subscription;
 };
 
 /// Subscriber channel is an abstraction for each channel.
@@ -123,7 +132,7 @@ class SubscriberChannel {
 
   /// Return true if the subscription exists for a given publisher id.
   bool SubscriptionExists(const PublisherID &publisher_id) {
-    return subscription_map_.count(publisher_id);
+    return subscription_map_.contains(publisher_id);
   }
 
   /// Return the channel type of this subscribe channel.
@@ -137,7 +146,8 @@ class SubscriberChannel {
   /// id. \return Return true if the given key id needs to be unsubscribed. False
   /// otherwise.
   bool HandlePublisherFailureInternal(const rpc::Address &publisher_address,
-                                      const std::string &key_id, const Status &status);
+                                      const std::string &key_id,
+                                      const Status &status);
 
   /// Returns a subscription callback; Returns a nullopt if the object id is not
   /// subscribed.
@@ -149,13 +159,13 @@ class SubscriberChannel {
       return absl::nullopt;
     }
     if (subscription_it->second.all_entities_subscription != nullptr) {
-      return subscription_it->second.all_entities_subscription->first;
+      return subscription_it->second.all_entities_subscription->item_cb;
     }
     auto callback_it = subscription_it->second.per_entity_subscription.find(key_id);
     if (callback_it == subscription_it->second.per_entity_subscription.end()) {
       return absl::nullopt;
     }
-    return callback_it->second.first;
+    return callback_it->second.item_cb;
   }
 
   /// Returns a publisher failure callback; Returns a nullopt if the object id is not
@@ -168,19 +178,19 @@ class SubscriberChannel {
       return absl::nullopt;
     }
     if (subscription_it->second.all_entities_subscription != nullptr) {
-      return subscription_it->second.all_entities_subscription->second;
+      return subscription_it->second.all_entities_subscription->failure_cb;
     }
     auto callback_it = subscription_it->second.per_entity_subscription.find(key_id);
     if (callback_it == subscription_it->second.per_entity_subscription.end()) {
       return absl::nullopt;
     }
-    return callback_it->second.second;
+    return callback_it->second.failure_cb;
   }
 
   const rpc::ChannelType channel_type_;
 
-  /// Mapping of the publisher ID -> subscription info.
-  absl::flat_hash_map<PublisherID, SubscriptionInfo> subscription_map_;
+  /// Mapping of the publisher ID -> subscription info for the publisher.
+  absl::flat_hash_map<PublisherID, Subscriptions> subscription_map_;
 
   /// An event loop to execute RPC callbacks. This should be equivalent to the client
   /// pool's io service.
@@ -222,8 +232,10 @@ class SubscriberInterface {
   /// \param subscription_failure_callback A callback that is invoked whenever the
   /// connection to publisher is broken (e.g. the publisher fails).
   [[nodiscard]] virtual bool Subscribe(
-      std::unique_ptr<rpc::SubMessage> sub_message, rpc::ChannelType channel_type,
-      const rpc::Address &publisher_address, const std::string &key_id,
+      std::unique_ptr<rpc::SubMessage> sub_message,
+      rpc::ChannelType channel_type,
+      const rpc::Address &publisher_address,
+      const std::string &key_id,
       SubscribeDoneCallback subscribe_done_callback,
       SubscriptionItemCallback subscription_callback,
       SubscriptionFailureCallback subscription_failure_callback) = 0;
@@ -238,7 +250,8 @@ class SubscriberInterface {
   /// \param subscription_failure_callback A callback that is invoked whenever the
   /// connection to publisher is broken (e.g. the publisher fails).
   [[nodiscard]] virtual bool SubscribeChannel(
-      std::unique_ptr<rpc::SubMessage> sub_message, rpc::ChannelType channel_type,
+      std::unique_ptr<rpc::SubMessage> sub_message,
+      rpc::ChannelType channel_type,
       const rpc::Address &publisher_address,
       SubscribeDoneCallback subscribe_done_callback,
       SubscriptionItemCallback subscription_callback,
@@ -313,7 +326,8 @@ class SubscriberClientInterface {
 class Subscriber : public SubscriberInterface {
  public:
   Subscriber(
-      const SubscriberID subscriber_id, const std::vector<rpc::ChannelType> &channels,
+      const SubscriberID subscriber_id,
+      const std::vector<rpc::ChannelType> &channels,
       const int64_t max_command_batch_size,
       std::function<std::shared_ptr<SubscriberClientInterface>(const rpc::Address &)>
           get_client,
@@ -331,13 +345,15 @@ class Subscriber : public SubscriberInterface {
 
   bool Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
                  const rpc::ChannelType channel_type,
-                 const rpc::Address &publisher_address, const std::string &key_id,
+                 const rpc::Address &publisher_address,
+                 const std::string &key_id,
                  SubscribeDoneCallback subscribe_done_callback,
                  SubscriptionItemCallback subscription_callback,
                  SubscriptionFailureCallback subscription_failure_callback) override;
 
   bool SubscribeChannel(
-      std::unique_ptr<rpc::SubMessage> sub_message, rpc::ChannelType channel_type,
+      std::unique_ptr<rpc::SubMessage> sub_message,
+      rpc::ChannelType channel_type,
       const rpc::Address &publisher_address,
       SubscribeDoneCallback subscribe_done_callback,
       SubscriptionItemCallback subscription_callback,
@@ -444,6 +460,10 @@ class Subscriber : public SubscriberInterface {
   /// The command batch size for the subscriber.
   const int64_t max_command_batch_size_;
 
+  /// Gets an rpc client for connecting to the publisher.
+  const std::function<std::shared_ptr<SubscriberClientInterface>(const rpc::Address &)>
+      get_client_;
+
   /// Protects below fields. Since the coordinator runs in a core worker, it should be
   /// thread safe.
   mutable absl::Mutex mutex_;
@@ -457,10 +477,6 @@ class Subscriber : public SubscriberInterface {
   };
   using CommandQueue = std::queue<std::unique_ptr<CommandItem>>;
   absl::flat_hash_map<PublisherID, CommandQueue> commands_ GUARDED_BY(mutex_);
-
-  /// Gets an rpc client for connecting to the publisher.
-  std::function<std::shared_ptr<SubscriberClientInterface>(const rpc::Address &)>
-      get_client_;
 
   /// A set to cache the connected publisher ids. "Connected" means the long polling
   /// request is in flight.

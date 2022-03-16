@@ -2,10 +2,11 @@ import asyncio
 from dataclasses import dataclass
 import inspect
 import json
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any, Dict, Type
 
 import starlette.responses
 import starlette.requests
+from starlette.types import Send, ASGIApp
 
 from ray.serve.exceptions import RayServeException
 
@@ -38,11 +39,7 @@ def build_starlette_request(scope, serialized_body: bytes):
             await block_forever.wait()
 
         received = True
-        return {
-            "body": serialized_body,
-            "type": "http.request",
-            "more_body": False
-        }
+        return {"body": serialized_body, "type": "http.request", "more_body": False}
 
     return starlette.requests.Request(scope, mock_receive)
 
@@ -78,27 +75,28 @@ class Response:
         else:
             # Delayed import since utils depends on http_util
             from ray.serve.utils import ServeEncoder
-            self.body = json.dumps(
-                content, cls=ServeEncoder, indent=2).encode()
+
+            self.body = json.dumps(content, cls=ServeEncoder, indent=2).encode()
             self.set_content_type("json")
 
     def set_content_type(self, content_type):
         if content_type == "text":
             self.raw_headers.append([b"content-type", b"text/plain"])
         elif content_type == "text-utf8":
-            self.raw_headers.append(
-                [b"content-type", b"text/plain; charset=utf-8"])
+            self.raw_headers.append([b"content-type", b"text/plain; charset=utf-8"])
         elif content_type == "json":
             self.raw_headers.append([b"content-type", b"application/json"])
         else:
             raise ValueError("Invalid content type {}".format(content_type))
 
     async def send(self, scope, receive, send):
-        await send({
-            "type": "http.response.start",
-            "status": self.status_code,
-            "headers": self.raw_headers,
-        })
+        await send(
+            {
+                "type": "http.response.start",
+                "status": self.status_code,
+                "headers": self.raw_headers,
+            }
+        )
         await send({"type": "http.response.body", "body": self.body})
 
 
@@ -115,29 +113,39 @@ async def receive_http_body(scope, receive, send):
     return b"".join(body_buffer)
 
 
-class ASGIHTTPSender:
-    """Implement the interface for ASGI sender, build Starlette Response"""
+class RawASGIResponse(ASGIApp):
+    """Implement a raw ASGI response interface.
+
+    We have to build this because starlette's base response class is
+    still too smart and perform header inference.
+    """
+
+    def __init__(self, messages):
+        self.messages = messages
+
+    async def __call__(self, _scope, _receive, send):
+        for message in self.messages:
+            await send(message)
+
+    @property
+    def status_code(self):
+        return self.messages[0]["status"]
+
+
+class ASGIHTTPSender(Send):
+    """Implement the interface for ASGI sender to save data from varisous
+    asgi response type (fastapi, starlette, etc.)
+    """
 
     def __init__(self) -> None:
-        self.status_code: Optional[int] = 200
-        self.headers: List[Tuple[bytes, bytes]] = []
-        self.buffer: List[bytes] = []
+        self.messages = []
 
     async def __call__(self, message):
-        if (message["type"] == "http.response.start"):
-            self.status_code = message["status"]
-            self.headers = message["headers"]
-        elif (message["type"] == "http.response.body"):
-            self.buffer.append(message["body"])
-        else:
-            raise ValueError("ASGI type must be one of "
-                             "http.responses.{body,start}.")
+        assert message["type"] in ("http.response.start", "http.response.body")
+        self.messages.append(message)
 
-    def build_starlette_response(self) -> starlette.responses.Response:
-        resp = starlette.responses.Response(
-            b"".join(self.buffer), status_code=self.status_code)
-        resp.raw_headers.extend(self.headers)
-        return resp
+    def build_asgi_response(self) -> RawASGIResponse:
+        return RawASGIResponse(self.messages)
 
 
 def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
@@ -162,11 +170,14 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
 
     def get_current_servable_instance():
         from ray import serve
+
         return serve.get_replica_context().servable_object
 
     # Find all the class method routes
     class_method_routes = [
-        route for route in fastapi_app.routes if
+        route
+        for route in fastapi_app.routes
+        if
         # User defined routes must all be APIRoute.
         isinstance(route, APIRoute)
         # We want to find the route that's bound to the `cls`.
@@ -195,10 +206,12 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
             # TODO(simon): make it more flexible to support no arguments.
             raise RayServeException(
                 "Methods in FastAPI class-based view must have ``self`` as "
-                "their first argument.")
+                "their first argument."
+            )
         old_self_parameter = old_parameters[0]
         new_self_parameter = old_self_parameter.replace(
-            default=Depends(get_current_servable_instance))
+            default=Depends(get_current_servable_instance)
+        )
         new_parameters = [new_self_parameter] + [
             # Make the rest of the parameters keyword only because
             # the first argument is no longer positional.
@@ -219,10 +232,10 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         # If there is a response model, FastAPI creates a copy of the fields.
         # But FastAPI creates the field incorrectly by missing the outer_type_.
         if route.response_model:
-            original_resp_fields = (
-                route.response_field.outer_type_.__fields__)
+            original_resp_fields = route.response_field.outer_type_.__fields__
             cloned_resp_fields = (
-                route.secure_cloned_response_field.outer_type_.__fields__)
+                route.secure_cloned_response_field.outer_type_.__fields__
+            )
             for key, field in cloned_resp_fields.items():
                 field.outer_type_ = original_resp_fields[key].outer_type_
 
@@ -230,6 +243,4 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         serve_cls = getattr(route.endpoint, "_serve_cls", None)
         if serve_cls is not None and serve_cls != cls:
             routes_to_remove.append(route)
-    fastapi_app.routes[:] = [
-        r for r in fastapi_app.routes if r not in routes_to_remove
-    ]
+    fastapi_app.routes[:] = [r for r in fastapi_app.routes if r not in routes_to_remove]

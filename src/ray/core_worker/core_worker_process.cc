@@ -144,7 +144,8 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
   // Initialize event framework.
   if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {
     RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
-                 std::unordered_map<std::string, std::string>(), options_.log_dir,
+                 absl::flat_hash_map<std::string, std::string>(),
+                 options_.log_dir,
                  RayConfig::instance().event_level());
   }
 }
@@ -188,7 +189,10 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
         options_.raylet_ip_address, options_.node_manager_port, client_call_manager);
     raylet::RayletClient raylet_client(grpc_client);
 
-    std::function<void(int64_t)> get_once = [this, &get_once, &raylet_client, &promise,
+    std::function<void(int64_t)> get_once = [this,
+                                             &get_once,
+                                             &raylet_client,
+                                             &promise,
                                              &io_service](int64_t num_attempts) {
       raylet_client.GetSystemConfig(
           [this, num_attempts, &get_once, &promise, &io_service](
@@ -212,7 +216,8 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
             if (status.IsGrpcUnavailable()) {
               std::ostringstream ss;
               ss << "Failed to get the system config from raylet because "
-                 << "it is dead. Worker will terminate. Status: " << status;
+                 << "it is dead. Worker will terminate. Status: " << status
+                 << " .Please see `raylet.out` for more details.";
               if (options_.worker_type == WorkerType::DRIVER) {
                 // If it is the driver, surface the issue to the user.
                 RAY_LOG(ERROR) << ss.str();
@@ -281,7 +286,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateWorker() {
 }
 
 void CoreWorkerProcessImpl::RemoveWorker(std::shared_ptr<CoreWorker> worker) {
-  worker->WaitForShutdown();
   absl::WriterMutexLock lock(&mutex_);
   if (global_worker_) {
     RAY_CHECK(global_worker_ == worker);
@@ -307,7 +311,7 @@ void CoreWorkerProcessImpl::RunWorkerTaskExecutionLoop() {
       worker = CreateWorker();
     }
     worker->RunTaskExecutionLoop();
-    RAY_LOG(DEBUG) << "Task execution loop terminated. Removing the global worker.";
+    RAY_LOG(INFO) << "Task execution loop terminated. Removing the global worker.";
     RemoveWorker(worker);
   } else {
     std::vector<std::thread> worker_threads;
@@ -345,9 +349,16 @@ CoreWorker &CoreWorkerProcessImpl::GetCoreWorkerForCurrentThread() {
       // In this case, we should exit without crashing.
       // TODO (scv119): A better solution could be returning error code
       // and handling it at language frontend.
-      RAY_LOG(ERROR) << "The global worker has already been shutdown. This happens when "
-                        "the language frontend accesses the Ray's worker after it is "
-                        "shutdown. The process will exit";
+      if (options_.worker_type == WorkerType::DRIVER) {
+        RAY_LOG(ERROR)
+            << "The global worker has already been shutdown. This happens when "
+               "the language frontend accesses the Ray's worker after it is "
+               "shutdown. The process will exit";
+      } else {
+        RAY_LOG(INFO) << "The global worker has already been shutdown. This happens when "
+                         "the language frontend accesses the Ray's worker after it is "
+                         "shutdown. The process will exit";
+      }
       QuickExit();
     }
     RAY_CHECK(global_worker) << "global_worker_ must not be NULL";

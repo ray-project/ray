@@ -94,17 +94,18 @@ def from_config(cls, config=None, **kwargs):
     if type_ is None:
         # We have a default constructor that was defined directly by cls
         # (not by its children).
-        if cls is not None and hasattr(cls, "__default_constructor__") and \
-                cls.__default_constructor__ is not None and \
-                ctor_args == [] and \
-                (
-                        not hasattr(cls.__bases__[0],
-                                    "__default_constructor__")
-                        or
-                        cls.__bases__[0].__default_constructor__ is None or
-                        cls.__bases__[0].__default_constructor__ is not
-                        cls.__default_constructor__
-                ):
+        if (
+            cls is not None
+            and hasattr(cls, "__default_constructor__")
+            and cls.__default_constructor__ is not None
+            and ctor_args == []
+            and (
+                not hasattr(cls.__bases__[0], "__default_constructor__")
+                or cls.__bases__[0].__default_constructor__ is None
+                or cls.__bases__[0].__default_constructor__
+                is not cls.__default_constructor__
+            )
+        ):
             constructor = cls.__default_constructor__
             # Default constructor's keywords into ctor_kwargs.
             if isinstance(constructor, partial):
@@ -162,7 +163,8 @@ def from_config(cls, config=None, **kwargs):
                     raise ValueError(
                         f"Full classpath specifier ({type_}) must be a valid "
                         "full [module].[class] string! E.g.: "
-                        "`my.cool.module.MyCoolClass`.")
+                        "`my.cool.module.MyCoolClass`."
+                    )
 
                 try:
                     module = importlib.import_module(cls.__module__)
@@ -171,7 +173,8 @@ def from_config(cls, config=None, **kwargs):
                     # Try the package as well.
                     try:
                         package_name = importlib.import_module(
-                            cls.__module__).__package__
+                            cls.__module__
+                        ).__package__
                         module = __import__(package_name, fromlist=[type_])
                         constructor = getattr(module, type_)
                     except (ModuleNotFoundError, ImportError, AttributeError):
@@ -181,11 +184,11 @@ def from_config(cls, config=None, **kwargs):
                 raise ValueError(
                     f"String specifier ({type_}) must be a valid filename, "
                     f"a [module].[class], a class within '{cls.__module__}', "
-                    f"or a key into {cls.__name__}.__type_registry__!")
+                    f"or a key into {cls.__name__}.__type_registry__!"
+                )
 
     if not constructor:
-        raise TypeError(
-            "Invalid type '{}'. Cannot create `from_config`.".format(type_))
+        raise TypeError("Invalid type '{}'. Cannot create `from_config`.".format(type_))
 
     # Create object with inferred constructor.
     try:
@@ -198,8 +201,9 @@ def from_config(cls, config=None, **kwargs):
     # No sanity check for fake (lambda)-"constructors".
     if type(constructor).__name__ != "function":
         assert isinstance(
-            object_, constructor.func
-            if isinstance(constructor, partial) else constructor)
+            object_,
+            constructor.func if isinstance(constructor, partial) else constructor,
+        )
 
     return object_
 
@@ -230,14 +234,22 @@ def from_file(cls, filename, *args, **kwargs):
 
 
 def lookup_type(cls, type_):
-    if cls is not None and hasattr(cls, "__type_registry__") and \
-            isinstance(cls.__type_registry__, dict) and (
-            type_ in cls.__type_registry__ or (
-            isinstance(type_, str) and
-            re.sub("[\\W_]", "", type_.lower()) in cls.__type_registry__)):
+    if (
+        cls is not None
+        and hasattr(cls, "__type_registry__")
+        and isinstance(cls.__type_registry__, dict)
+        and (
+            type_ in cls.__type_registry__
+            or (
+                isinstance(type_, str)
+                and re.sub("[\\W_]", "", type_.lower()) in cls.__type_registry__
+            )
+        )
+    ):
         available_class_for_type = cls.__type_registry__.get(type_)
         if available_class_for_type is None:
-            available_class_for_type = \
-                cls.__type_registry__[re.sub("[\\W_]", "", type_.lower())]
+            available_class_for_type = cls.__type_registry__[
+                re.sub("[\\W_]", "", type_.lower())
+            ]
         return available_class_for_type
     return None

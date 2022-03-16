@@ -2,8 +2,7 @@ from types import FunctionType
 from typing import Callable, Optional, Union
 
 from ray.serve.pipeline.node import ExecutorPipelineNode, INPUT, PipelineNode
-from ray.serve.pipeline.common import (ExecutionMode, str_to_execution_mode,
-                                       StepConfig)
+from ray.serve.pipeline.common import ExecutionMode, str_to_execution_mode, StepConfig
 
 
 def _validate_step_args(*args, **kwargs):
@@ -18,19 +17,21 @@ def _validate_step_args(*args, **kwargs):
     # Check arguments for incoming edges.
     for arg in args:
         if isinstance(arg, PipelineStep):
-            raise TypeError("PipelineSteps cannot be passed in directly, "
-                            "you need to call them with an input first. For "
-                            "example: instead of `my_step_2(my_step_1)`, try "
-                            "`my_step_2(my_step_1(pipeline.INPUT))`.")
+            raise TypeError(
+                "PipelineSteps cannot be passed in directly, "
+                "you need to call them with an input first. For "
+                "example: instead of `my_step_2(my_step_1)`, try "
+                "`my_step_2(my_step_1(pipeline.INPUT))`."
+            )
 
         elif arg is INPUT:
             if len(args) > 1:
-                raise ValueError(
-                    "INPUT steps cannnot take argument other than INPUT.")
+                raise ValueError("INPUT steps cannnot take argument other than INPUT.")
 
         elif not isinstance(arg, PipelineNode):
             raise TypeError(
-                f"Only PipelineNodes supported as arguments, got {type(arg)}")
+                f"Only PipelineNodes supported as arguments, got {type(arg)}"
+            )
 
 
 class PipelineStep:
@@ -54,8 +55,7 @@ class CallablePipelineStep(PipelineStep):
     as its arguments (or the INPUT step).
     """
 
-    def __init__(self, callable_factory: Callable[[], Callable],
-                 config: StepConfig):
+    def __init__(self, callable_factory: Callable[[], Callable], config: StepConfig):
         super().__init__(config)
         assert callable(callable_factory)
         self._callable_factory = callable_factory
@@ -66,7 +66,8 @@ class CallablePipelineStep(PipelineStep):
     def __call__(self, *args, **kwargs):
         _validate_step_args(*args, **kwargs)
         return ExecutorPipelineNode(
-            self._callable_factory, self._config, incoming_edges=args)
+            self._callable_factory, self._config, incoming_edges=args
+        )
 
 
 class UninstantiatedClassPipelineStep(PipelineStep):
@@ -84,13 +85,14 @@ class UninstantiatedClassPipelineStep(PipelineStep):
         raise NotImplementedError("No options yet!")
 
     def __call__(self, *args, **kwargs):
-        return CallablePipelineStep(lambda: self._class(*args, **kwargs),
-                                    self._config)
+        return CallablePipelineStep(lambda: self._class(*args, **kwargs), self._config)
 
 
-def step(_func_or_class: Optional[Callable] = None,
-         execution_mode: Union[ExecutionMode, str] = ExecutionMode.LOCAL,
-         num_replicas: int = 1) -> Callable[[Callable], PipelineStep]:
+def step(
+    _func_or_class: Optional[Callable] = None,
+    execution_mode: Union[ExecutionMode, str] = ExecutionMode.LOCAL,
+    num_replicas: int = 1,
+) -> Callable[[Callable], PipelineStep]:
     """Decorator used to define a pipeline step.
 
     Args:
@@ -120,8 +122,7 @@ def step(_func_or_class: Optional[Callable] = None,
     elif not isinstance(execution_mode, ExecutionMode):
         raise TypeError("execution_mode must be an ExecutionMode or str.")
 
-    config = StepConfig(
-        execution_mode=execution_mode, num_replicas=num_replicas)
+    config = StepConfig(execution_mode=execution_mode, num_replicas=num_replicas)
 
     def decorator(_func_or_class):
         if isinstance(_func_or_class, FunctionType):

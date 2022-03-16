@@ -62,12 +62,12 @@ class MLflowLoggerCallback(LoggerCallback):
     """
 
     def __init__(
-            self,
-            tracking_uri: Optional[str] = None,
-            registry_uri: Optional[str] = None,
-            experiment_name: Optional[str] = None,
-            tags: Optional[Dict] = None,
-            save_artifact: bool = False,
+        self,
+        tracking_uri: Optional[str] = None,
+        registry_uri: Optional[str] = None,
+        experiment_name: Optional[str] = None,
+        tags: Optional[Dict] = None,
+        save_artifact: bool = False,
     ):
 
         self.tracking_uri = tracking_uri
@@ -79,19 +79,22 @@ class MLflowLoggerCallback(LoggerCallback):
         self.mlflow_util = MLflowLoggerUtil()
 
         if ray.util.client.ray.is_connected():
-            logger.warning("When using MLflowLoggerCallback with Ray Client, "
-                           "it is recommended to use a remote tracking "
-                           "server. If you are using a MLflow tracking server "
-                           "backed by the local filesystem, then it must be "
-                           "setup on the server side and not on the client "
-                           "side.")
+            logger.warning(
+                "When using MLflowLoggerCallback with Ray Client, "
+                "it is recommended to use a remote tracking "
+                "server. If you are using a MLflow tracking server "
+                "backed by the local filesystem, then it must be "
+                "setup on the server side and not on the client "
+                "side."
+            )
 
     def setup(self, *args, **kwargs):
         # Setup the mlflow logging util.
         self.mlflow_util.setup_mlflow(
             tracking_uri=self.tracking_uri,
             registry_uri=self.registry_uri,
-            experiment_name=self.experiment_name)
+            experiment_name=self.experiment_name,
+        )
 
         if self.tags is None:
             # Create empty dictionary for tags if not given explicitly
@@ -119,8 +122,7 @@ class MLflowLoggerCallback(LoggerCallback):
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
         step = result.get(TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
         run_id = self._trial_runs[trial]
-        self.mlflow_util.log_metrics(
-            run_id=run_id, metrics_to_log=result, step=step)
+        self.mlflow_util.log_metrics(run_id=run_id, metrics_to_log=result, step=step)
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
         run_id = self._trial_runs[trial]
@@ -143,9 +145,11 @@ class MLflowLogger(Logger):
     """
 
     def _init(self):
-        raise DeprecationWarning("The legacy MLflowLogger has been "
-                                 "deprecated. Use the MLflowLoggerCallback "
-                                 "instead.")
+        raise DeprecationWarning(
+            "The legacy MLflowLogger has been "
+            "deprecated. Use the MLflowLoggerCallback "
+            "instead."
+        )
 
 
 def mlflow_mixin(func: Callable):
@@ -243,16 +247,18 @@ def mlflow_mixin(func: Callable):
             })
     """
     if ray.util.client.ray.is_connected():
-        logger.warning("When using mlflow_mixin with Ray Client, "
-                       "it is recommended to use a remote tracking "
-                       "server. If you are using a MLflow tracking server "
-                       "backed by the local filesystem, then it must be "
-                       "setup on the server side and not on the client "
-                       "side.")
+        logger.warning(
+            "When using mlflow_mixin with Ray Client, "
+            "it is recommended to use a remote tracking "
+            "server. If you are using a MLflow tracking server "
+            "backed by the local filesystem, then it must be "
+            "setup on the server side and not on the client "
+            "side."
+        )
     if hasattr(func, "__mixins__"):
-        func.__mixins__ = func.__mixins__ + (MLflowTrainableMixin, )
+        func.__mixins__ = func.__mixins__ + (MLflowTrainableMixin,)
     else:
-        func.__mixins__ = (MLflowTrainableMixin, )
+        func.__mixins__ = (MLflowTrainableMixin,)
     return func
 
 
@@ -265,7 +271,8 @@ class MLflowTrainableMixin:
                 "The `MLflowTrainableMixin` can only be used as a mixin "
                 "for `tune.Trainable` classes. Please make sure your "
                 "class inherits from both. For example: "
-                "`class YourTrainable(MLflowTrainableMixin)`.")
+                "`class YourTrainable(MLflowTrainableMixin)`."
+            )
 
         super().__init__(config, *args, **kwargs)
         _config = config.copy()
@@ -276,15 +283,18 @@ class MLflowTrainableMixin:
                 "MLflow mixin specified but no configuration has been passed. "
                 "Make sure to include a `mlflow` key in your `config` dict "
                 "containing at least a `tracking_uri` and either "
-                "`experiment_name` or `experiment_id` specification.") from e
+                "`experiment_name` or `experiment_id` specification."
+            ) from e
 
         tracking_uri = mlflow_config.pop("tracking_uri", None)
         if tracking_uri is None:
-            raise ValueError("MLflow mixin specified but no "
-                             "tracking_uri has been "
-                             "passed in. Make sure to include a `mlflow` "
-                             "key in your `config` dict containing at "
-                             "least a `tracking_uri`")
+            raise ValueError(
+                "MLflow mixin specified but no "
+                "tracking_uri has been "
+                "passed in. Make sure to include a `mlflow` "
+                "key in your `config` dict containing at "
+                "least a `tracking_uri`"
+            )
 
         # Set the tracking token if one is passed in.
         tracking_token = mlflow_config.pop("token", None)
@@ -303,7 +313,8 @@ class MLflowTrainableMixin:
             experiment_id=experiment_id,
             experiment_name=experiment_name,
             tracking_token=tracking_token,
-            create_experiment_if_not_exists=False)
+            create_experiment_if_not_exists=False,
+        )
 
         run_name = self.trial_name + "_" + self.trial_id
         run_name = run_name.replace("/", "_")

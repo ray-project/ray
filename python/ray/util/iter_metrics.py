@@ -49,9 +49,9 @@ class SharedMetrics:
     This is used by LocalIterator.union() to point the metrics contexts of
     entirely separate iterator chains to the same underlying context."""
 
-    def __init__(self,
-                 metrics: MetricsContext = None,
-                 parents: List["SharedMetrics"] = None):
+    def __init__(
+        self, metrics: MetricsContext = None, parents: List["SharedMetrics"] = None
+    ):
         self.metrics = metrics or MetricsContext()
         self.parents = parents or []
         self.set(self.metrics)

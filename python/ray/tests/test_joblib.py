@@ -34,6 +34,7 @@ def test_register_ray():
 def test_ray_backend(shutdown_only):
     register_ray()
     from ray.util.joblib.ray_backend import RayBackend
+
     with joblib.parallel_backend("ray"):
         assert type(joblib.parallel.get_active_backend()[0]) == RayBackend
 
@@ -51,14 +52,12 @@ def test_svm_single_node(shutdown_only):
         def _terminate_backend(self):
             if self._backend is not None:
                 # test ObjectRef caching (PR #16879)
-                assert any(o is digits.data
-                           for o, ref in self._backend._pool._registry)
+                assert any(o is digits.data for o, ref in self._backend._pool._registry)
                 self._backend.terminate()
 
     model = SVC(kernel="rbf")
     with mock.patch("sklearn.model_selection._search.Parallel", MockParallel):
-        search = RandomizedSearchCV(
-            model, param_space, cv=3, n_iter=2, verbose=10)
+        search = RandomizedSearchCV(model, param_space, cv=3, n_iter=2, verbose=10)
         register_ray()
         with joblib.parallel_backend("ray"):
             search.fit(digits.data, digits.target)
@@ -78,14 +77,12 @@ def test_svm_multiple_nodes(ray_start_cluster_2_nodes):
         def _terminate_backend(self):
             if self._backend is not None:
                 # test ObjectRef caching (PR #16879)
-                assert any(o is digits.data
-                           for o, ref in self._backend._pool._registry)
+                assert any(o is digits.data for o, ref in self._backend._pool._registry)
                 self._backend.terminate()
 
     model = SVC(kernel="rbf")
     with mock.patch("sklearn.model_selection._search.Parallel", MockParallel):
-        search = RandomizedSearchCV(
-            model, param_space, cv=5, n_iter=2, verbose=10)
+        search = RandomizedSearchCV(model, param_space, cv=5, n_iter=2, verbose=10)
         register_ray()
         with joblib.parallel_backend("ray"):
             search.fit(digits.data, digits.target)
@@ -106,13 +103,13 @@ def test_sklearn_benchmarks(ray_start_cluster_2_nodes):
         "ExtraTrees": ExtraTreesClassifier(n_estimators=10),
         "RandomForest": RandomForestClassifier(),
         "Nystroem-SVM": make_pipeline(
-            Nystroem(gamma=0.015, n_components=1000), LinearSVC(C=1)),
+            Nystroem(gamma=0.015, n_components=1000), LinearSVC(C=1)
+        ),
         "SampledRBF-SVM": make_pipeline(
-            RBFSampler(gamma=0.015, n_components=1000), LinearSVC(C=1)),
-        "LogisticRegression-SAG": LogisticRegression(
-            solver="sag", tol=1e-1, C=1e4),
-        "LogisticRegression-SAGA": LogisticRegression(
-            solver="saga", tol=1e-1, C=1e4),
+            RBFSampler(gamma=0.015, n_components=1000), LinearSVC(C=1)
+        ),
+        "LogisticRegression-SAG": LogisticRegression(solver="sag", tol=1e-1, C=1e4),
+        "LogisticRegression-SAGA": LogisticRegression(solver="saga", tol=1e-1, C=1e4),
         "MultilayerPerceptron": MLPClassifier(
             hidden_layer_sizes=(32, 32),
             max_iter=100,
@@ -122,7 +119,8 @@ def test_sklearn_benchmarks(ray_start_cluster_2_nodes):
             momentum=0.9,
             verbose=1,
             tol=1e-2,
-            random_state=1),
+            random_state=1,
+        ),
         "MLP-adam": MLPClassifier(
             hidden_layer_sizes=(32, 32),
             max_iter=100,
@@ -131,14 +129,14 @@ def test_sklearn_benchmarks(ray_start_cluster_2_nodes):
             learning_rate_init=0.001,
             verbose=1,
             tol=1e-2,
-            random_state=1)
+            random_state=1,
+        ),
     }
     # Load dataset.
     print("Loading dataset...")
     unnormalized_X_train, y_train = pickle.load(
-        open(
-            os.path.join(
-                os.path.dirname(__file__), "mnist_784_100_samples.pkl"), "rb"))
+        open(os.path.join(os.path.dirname(__file__), "mnist_784_100_samples.pkl"), "rb")
+    )
     # Normalize features.
     X_train = unnormalized_X_train / 255
 
@@ -155,8 +153,10 @@ def test_sklearn_benchmarks(ray_start_cluster_2_nodes):
             estimator.set_params(
                 **{
                     p: random_seed
-                    for p in estimator_params if p.endswith("random_state")
-                })
+                    for p in estimator_params
+                    if p.endswith("random_state")
+                }
+            )
 
             if "n_jobs" in estimator_params:
                 estimator.set_params(n_jobs=num_jobs)
@@ -179,4 +179,5 @@ def test_cross_validation(shutdown_only):
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

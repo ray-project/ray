@@ -1,5 +1,6 @@
 /// This is an example of Ray C++ application. Please visit
-/// `https://docs.ray.io/en/master/index.html` for more details.
+/// `https://docs.ray.io/en/master/ray-core/walkthrough.html#installation`
+/// for more details.
 
 /// including the `<ray/api.h>` header
 #include <ray/api.h>

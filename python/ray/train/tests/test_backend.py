@@ -7,13 +7,19 @@ import pytest
 import ray
 import ray.train as train
 from ray.cluster_utils import Cluster
-from ray.train.backend import Backend, \
-    InactiveWorkerGroupError, TrainBackendError, TrainingWorkerError
+from ray.train.backend import (
+    Backend,
+    InactiveWorkerGroupError,
+    TrainBackendError,
+    TrainingWorkerError,
+)
 from ray.train.backend import BackendConfig, BackendExecutor
 from ray.train.tensorflow import TensorflowConfig
 from ray.train.torch import TorchConfig
-from ray.train.constants import ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV, \
-    TRAIN_ENABLE_WORKER_SPREAD_ENV
+from ray.train.constants import (
+    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
+    TRAIN_ENABLE_WORKER_SPREAD_ENV,
+)
 from ray.train.worker_group import WorkerGroup
 from ray.util.placement_group import get_current_placement_group
 
@@ -73,8 +79,7 @@ def gen_execute_special(special_f):
         """Runs f on worker 0, special_f on other workers."""
         futures = [self.workers[0].actor._BaseWorkerMixin__execute.remote(f)]
         for worker in self.workers[1:]:
-            futures.append(
-                worker.actor._BaseWorkerMixin__execute.remote(special_f))
+            futures.append(worker.actor._BaseWorkerMixin__execute.remote(special_f))
         return futures
 
     return execute_async_special
@@ -90,8 +95,7 @@ class TestBackend(Backend):
     def on_start(self, worker_group: WorkerGroup, backend_config: TestConfig):
         pass
 
-    def on_shutdown(self, worker_group: WorkerGroup,
-                    backend_config: TestConfig):
+    def on_shutdown(self, worker_group: WorkerGroup, backend_config: TestConfig):
         pass
 
 
@@ -110,12 +114,14 @@ def test_initialization_hook(ray_start_2_cpus):
 
     def init_hook():
         import os
+
         os.environ["TEST"] = "1"
 
     e.start(initialization_hook=init_hook)
 
     def check():
         import os
+
         return os.getenv("TEST", "0")
 
     e.start_training(check)
@@ -214,6 +220,7 @@ def test_tensorflow_start(ray_start_2_cpus):
     def get_tf_config():
         import json
         import os
+
         return json.loads(os.environ["TF_CONFIG"])
 
     e.start_training(get_tf_config)
@@ -235,8 +242,11 @@ def test_torch_start_shutdown(ray_start_2_cpus, init_method):
 
     def check_process_group():
         import torch
-        return torch.distributed.is_initialized(
-        ) and torch.distributed.get_world_size() == 2
+
+        return (
+            torch.distributed.is_initialized()
+            and torch.distributed.get_world_size() == 2
+        )
 
     e.start_training(check_process_group)
     assert all(e.finish_training())
@@ -247,9 +257,15 @@ def test_torch_start_shutdown(ray_start_2_cpus, init_method):
     assert not any(e.finish_training())
 
 
-@pytest.mark.parametrize("worker_results", [(1, ["0"]), (2, ["0,1", "0,1"]),
-                                            (3, ["0", "0,1", "0,1"]),
-                                            (4, ["0,1", "0,1", "0,1", "0,1"])])
+@pytest.mark.parametrize(
+    "worker_results",
+    [
+        (1, ["0"]),
+        (2, ["0,1", "0,1"]),
+        (3, ["0", "0,1", "0,1"]),
+        (4, ["0,1", "0,1", "0,1", "0,1"]),
+    ],
+)
 def test_cuda_visible_devices(ray_2_node_2_gpu, worker_results):
     config = TestConfig()
 
@@ -260,10 +276,8 @@ def test_cuda_visible_devices(ray_2_node_2_gpu, worker_results):
 
     os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
     e = BackendExecutor(
-        config,
-        num_workers=num_workers,
-        num_cpus_per_worker=0,
-        num_gpus_per_worker=1)
+        config, num_workers=num_workers, num_cpus_per_worker=0, num_gpus_per_worker=1
+    )
     e.start()
     e.start_training(get_resources)
     results = e.finish_training()
@@ -273,11 +287,17 @@ def test_cuda_visible_devices(ray_2_node_2_gpu, worker_results):
 
 @pytest.mark.parametrize(
     "worker_results",
-    [(1, ["0"]), (2, ["0", "0"]), (3, ["0,1", "0,1", "0,1"]),
-     (4, ["0,1", "0,1", "0,1", "0,1"]), (5, ["0", "0,1", "0,1", "0,1", "0,1"]),
-     (6, ["0", "0", "0,1", "0,1", "0,1", "0,1"]),
-     (7, ["0,1", "0,1", "0,1", "0,1", "0,1", "0,1", "0,1"]),
-     (8, ["0,1", "0,1", "0,1", "0,1", "0,1", "0,1", "0,1", "0,1"])])
+    [
+        (1, ["0"]),
+        (2, ["0", "0"]),
+        (3, ["0,1", "0,1", "0,1"]),
+        (4, ["0,1", "0,1", "0,1", "0,1"]),
+        (5, ["0", "0,1", "0,1", "0,1", "0,1"]),
+        (6, ["0", "0", "0,1", "0,1", "0,1", "0,1"]),
+        (7, ["0,1", "0,1", "0,1", "0,1", "0,1", "0,1", "0,1"]),
+        (8, ["0,1", "0,1", "0,1", "0,1", "0,1", "0,1", "0,1", "0,1"]),
+    ],
+)
 def test_cuda_visible_devices_fractional(ray_2_node_2_gpu, worker_results):
     config = TestConfig()
 
@@ -288,10 +308,8 @@ def test_cuda_visible_devices_fractional(ray_2_node_2_gpu, worker_results):
 
     os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
     e = BackendExecutor(
-        config,
-        num_workers=num_workers,
-        num_cpus_per_worker=0,
-        num_gpus_per_worker=0.5)
+        config, num_workers=num_workers, num_cpus_per_worker=0, num_gpus_per_worker=0.5
+    )
     e.start()
     e.start_training(get_resources)
     results = e.finish_training()
@@ -299,10 +317,15 @@ def test_cuda_visible_devices_fractional(ray_2_node_2_gpu, worker_results):
     assert results == expected_results
 
 
-@pytest.mark.parametrize("worker_results",
-                         [(1, ["0,1"]), (2, ["0,1,2,3", "0,1,2,3"]),
-                          (3, ["0,1", "0,1,2,3", "0,1,2,3"]),
-                          (4, ["0,1,2,3", "0,1,2,3", "0,1,2,3", "0,1,2,3"])])
+@pytest.mark.parametrize(
+    "worker_results",
+    [
+        (1, ["0,1"]),
+        (2, ["0,1,2,3", "0,1,2,3"]),
+        (3, ["0,1", "0,1,2,3", "0,1,2,3"]),
+        (4, ["0,1,2,3", "0,1,2,3", "0,1,2,3", "0,1,2,3"]),
+    ],
+)
 def test_cuda_visible_devices_multiple(ray_2_node_4_gpu, worker_results):
     config = TestConfig()
 
@@ -313,10 +336,8 @@ def test_cuda_visible_devices_multiple(ray_2_node_4_gpu, worker_results):
 
     os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
     e = BackendExecutor(
-        config,
-        num_workers=num_workers,
-        num_cpus_per_worker=0,
-        num_gpus_per_worker=2)
+        config, num_workers=num_workers, num_cpus_per_worker=0, num_gpus_per_worker=2
+    )
     e.start()
     e.start_training(get_resources)
     results = e.finish_training()
@@ -354,8 +375,7 @@ def test_placement_group_spread(ray_4_node_4_cpu, num_workers):
 
 
 @pytest.mark.parametrize("placement_group_capture_child_tasks", [True, False])
-def test_placement_group_parent(ray_4_node_4_cpu,
-                                placement_group_capture_child_tasks):
+def test_placement_group_parent(ray_4_node_4_cpu, placement_group_capture_child_tasks):
     """Tests that parent placement group will be used."""
     num_workers = 2
     bundle = {"CPU": 1}
@@ -375,7 +395,7 @@ def test_placement_group_parent(ray_4_node_4_cpu,
 
     results_future = test.options(
         placement_group=placement_group,
-        placement_group_capture_child_tasks=placement_group_capture_child_tasks
+        placement_group_capture_child_tasks=placement_group_capture_child_tasks,
     ).remote()
     results = ray.get(results_future)
     for worker_result in results:
