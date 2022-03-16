@@ -85,6 +85,8 @@ that specific worker and can access and mutate the state of that worker.
 Specifying required resources
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+.. _actor-resource-guide:
+
 You can specify resource requirements in actors too (see the `Actors section
 <actors.html>`__ for more details.)
 
