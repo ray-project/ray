@@ -1,5 +1,8 @@
+import pytest
+
 import ray
 from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
+
 
 def test_runtime_env_config(start_cluster):
     _, address = start_cluster
@@ -52,6 +55,7 @@ def test_runtime_env_config(start_cluster):
         run(runtime_env)
         runtime_env = RuntimeEnv(config=RuntimeEnvConfig(**good_config))
         run(runtime_env)
+
 
 if __name__ == "__main__":
     import sys
