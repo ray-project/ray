@@ -179,6 +179,7 @@ test_python() {
       --build_tests_only $(./scripts/bazel_export_options) \
       --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" \
       --test_env=USERPROFILE="${USERPROFILE}" \
+      --test_env=CI \
       --test_output=streamed \
       -- \
       ${test_shard_selection};
