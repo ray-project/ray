@@ -442,7 +442,7 @@ class Trainable:
             checkpoint, parent_dir=checkpoint_dir, trainable_state=trainable_state
         )
 
-        self._postprocess_checkpoint(checkpoint_path)
+        self._postprocess_checkpoint(checkpoint_dir)
 
         # Maybe sync to cloud
         self._maybe_save_to_cloud(checkpoint_dir)
