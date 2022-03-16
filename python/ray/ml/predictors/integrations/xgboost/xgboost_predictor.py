@@ -2,6 +2,7 @@ from typing import Optional, List, Union, Dict, Any
 import os
 import shutil
 import numpy as np
+import pandas as pd
 
 import xgboost
 
@@ -51,8 +52,8 @@ class XGBoostPredictor(Predictor):
         data: DataBatchType,
         feature_columns: Optional[Union[List[str], List[int]]] = None,
         dmatrix_kwargs: Optional[Dict[str, Any]] = None,
-        **predict_kwargs
-    ) -> DataBatchType:
+        **predict_kwargs,
+    ) -> pd.DataFrame:
         """Run inference on data batch.
 
         The data is converted into an XGBoost DMatrix before being inputted to
@@ -110,7 +111,7 @@ class XGBoostPredictor(Predictor):
 
 
         Returns:
-            DataBatchType: Prediction result.
+            pd.DataFrame: Prediction result.
 
         """
         dmatrix_kwargs = dmatrix_kwargs or {}
@@ -124,4 +125,10 @@ class XGBoostPredictor(Predictor):
             else:
                 data = data[feature_columns]
         matrix = xgboost.DMatrix(data, **dmatrix_kwargs)
-        return self.model.predict(matrix, **predict_kwargs)
+        df = pd.DataFrame(self.model.predict(matrix, **predict_kwargs))
+        df.columns = (
+            ["predictions"]
+            if len(df.columns) == 1
+            else [f"predictions_{i}" for i in range(len(df.columns))]
+        )
+        return df

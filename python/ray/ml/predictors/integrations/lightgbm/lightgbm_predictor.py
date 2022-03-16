@@ -2,6 +2,7 @@ from typing import Optional, List, Union
 import os
 import shutil
 import numpy as np
+import pandas as pd
 
 import lightgbm
 
@@ -49,8 +50,8 @@ class LightGBMPredictor(Predictor):
         self,
         data: DataBatchType,
         feature_columns: Optional[Union[List[str], List[int]]] = None,
-        **predict_kwargs
-    ) -> DataBatchType:
+        **predict_kwargs,
+    ) -> pd.DataFrame:
         """Run inference on data batch.
 
         Args:
@@ -105,7 +106,7 @@ class LightGBMPredictor(Predictor):
 
 
         Returns:
-            DataBatchType: Prediction result.
+            pd.DataFrame: Prediction result.
 
         """
 
@@ -117,4 +118,10 @@ class LightGBMPredictor(Predictor):
                 data = data[:, feature_columns]
             else:
                 data = data[feature_columns]
-        return self.model.predict(data, **predict_kwargs)
+        df = pd.DataFrame(self.model.predict(data, **predict_kwargs))
+        df.columns = (
+            ["predictions"]
+            if len(df.columns) == 1
+            else [f"predictions_{i}" for i in range(len(df.columns))]
+        )
+        return df
