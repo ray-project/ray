@@ -1644,38 +1644,32 @@ class Application:
         raise NotImplementedError()
 
 
-def _get_deployments_from_node(node: DeploymentNode) -> List[Deployment]:
-    """Generate a list of deployment objects from a root node.
-
-    Returns:
-        deployment_list(List[Deployment]): the list of Deployment objects. The
-          last element correspond to the node passed in to this function.
-    """
-    from ray.serve.pipeline.api import build as pipeline_build
-
-    with InputNode() as input_node:
-        root = node.__call__.bind(input_node)
-    deployments = pipeline_build(root, inject_ingress=False)
-
-    return deployments
-
-
 @PublicAPI(stability="alpha")
 def run(
     target: Union[DeploymentNode, Application],
     *,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
+    driver: Optional[Deployment] = None,
+    **kwargs,
 ) -> RayServeHandle:
     """Run a Serve application and return a ServeHandle to the ingress.
 
-    Either a DeploymentNode or a pre-built application can be passed in.
-    If a DeploymentNode is passed in, all of the deployments it depends on
+    Either a DAGNode or a pre-built application can be passed in.
+    If a DAGNode is passed in, all of the deployments it depends on
     will be deployed.
     """
 
-    if isinstance(target, DeploymentNode):
-        deployments = _get_deployments_from_node(target)
+    from ray.serve.pipeline.generate import (
+        transform_ray_dag_to_serve_dag,
+        extract_deployments_from_serve_dag,
+        get_pipeline_input_node,
+    )
+
+    if isinstance(target, DAGNode):
+        # input_node = get_pipeline_input_node(target)
+        serve_root_dag = target.apply_recursive(transform_ray_dag_to_serve_dag)
+        deployments = extract_deployments_from_serve_dag(serve_root_dag)
     else:
         raise NotImplementedError()
 

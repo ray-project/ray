@@ -6,13 +6,12 @@ import numpy as np
 
 import ray
 from ray import serve
-from ray.serve.api import _get_deployments_from_node
 from ray.serve.handle import PipelineHandle
 from ray.experimental.dag.input_node import InputNode
 
 import ray
 from ray import serve
-from typing import TypeVar
+from typing import TypeVar, Any
 
 RayHandleLike = TypeVar("RayHandleLike")
 NESTED_HANDLE_KEY = "nested_handle"
@@ -108,7 +107,7 @@ class Driver:
     def __init__(self, dag: PipelineHandle):
         self.dag = dag
 
-    async def __call__(self, inp: int) -> int:
+    async def __call__(self, inp: Any) -> Any:
         print(f"Driver got {inp}")
         return await self.dag.remote(inp)
 
@@ -123,228 +122,230 @@ class NoargDriver:
 
 def test_single_func_deployment_dag(serve_instance):
     with InputNode() as dag_input:
-        output = combine.bind(
+        dag = combine.bind(
             dag_input[0], dag_input[1], kwargs_output=1
         )
-        serve_dag = Driver.bind(output)
+    with InputNode() as driver_input:
+        driver = Driver.bind(dag)
+        serve_dag = driver.__call__.bind(driver_input)
 
     handle = serve.run(serve_dag)
     assert ray.get(handle.remote([1, 2])) == 4
 
 
-def test_simple_class_with_class_method(serve_instance):
-    with InputNode() as dag_input:
-        model = Model.bind(2, ratio=0.3)
-        output = model.forward.bind(dag_input)
-        serve_dag = Driver.bind(output)
+# def test_simple_class_with_class_method(serve_instance):
+#     with InputNode() as dag_input:
+#         model = Model.bind(2, ratio=0.3)
+#         dag = model.forward.bind(dag_input)
+#         serve_dag = Driver.bind(dag)
 
-    handle = serve.run(serve_dag)
-    assert ray.get(handle.remote(1)) == 0.6
-
-
-def test_func_class_with_class_method(serve_instance):
-    with InputNode() as dag_input:
-        m1 = Model.bind(1)
-        m2 = Model.bind(2)
-        m1_output = m1.forward.bind(dag_input[0])
-        m2_output = m2.forward.bind(dag_input[1])
-        combine_output = combine.bind(
-            m1_output, m2_output, kwargs_output=dag_input[2]
-        )
-        serve_dag = Driver.bind(combine_output)
-
-    handle = serve.run(serve_dag)
-    assert ray.get(handle.remote([1, 2, 3])) == 8
+#     handle = serve.run(serve_dag)
+#     assert ray.get(handle.remote(1)) == 0.6
 
 
-def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
-    with InputNode() as dag_input:
-        m1 = Model.bind(2)
-        m2 = Model.bind(3)
-        combine = Combine.bind(m1, m2=m2)
-        combine_output = combine.__call__.bind(dag_input)
-        serve_dag = Driver.bind(combine_output)
+# def test_func_class_with_class_method(serve_instance):
+#     with InputNode() as dag_input:
+#         m1 = Model.bind(1)
+#         m2 = Model.bind(2)
+#         m1_output = m1.forward.bind(dag_input[0])
+#         m2_output = m2.forward.bind(dag_input[1])
+#         combine_output = combine.bind(
+#             m1_output, m2_output, kwargs_output=dag_input[2]
+#         )
+#         serve_dag = Driver.bind(combine_output)
 
-    handle = serve.run(serve_dag)
-    assert ray.get(handle.remote(1)) == 5
-
-
-def test_shared_deployment_handle(serve_instance):
-    with InputNode() as dag_input:
-        m = Model.bind(2)
-        combine = Combine.bind(m, m2=m)
-        combine_output = combine.__call__.bind(dag_input)
-        serve_dag = Driver.bind(combine_output)
-
-    handle = serve.run(serve_dag)
-    assert ray.get(handle.remote(1)) == 4
+#     handle = serve.run(serve_dag)
+#     assert ray.get(handle.remote([1, 2, 3])) == 8
 
 
-def test_multi_instantiation_class_nested_deployment_arg_dag(serve_instance):
-    with InputNode() as dag_input:
-        m1 = Model.bind(2)
-        m2 = Model.bind(3)
-        combine = Combine.bind(m1, m2={NESTED_HANDLE_KEY: m2}, m2_nested=True)
-        output = combine.__call__.bind(dag_input)
-        serve_dag = Driver.bind(output)
+# def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
+#     with InputNode() as dag_input:
+#         m1 = Model.bind(2)
+#         m2 = Model.bind(3)
+#         combine = Combine.bind(m1, m2=m2)
+#         combine_output = combine.__call__.bind(dag_input)
+#         serve_dag = Driver.bind(combine_output)
 
-    handle = serve.run(serve_dag)
-    assert ray.get(handle.remote(1)) == 5
-
-def test_class_factory(serve_instance):
-    with InputNode() as _:
-        instance = ray.remote(class_factory()).bind(3)
-        output = instance.get.bind()
-        serve_dag = NoargDriver.bind(output)
-
-    handle = serve.run(serve_dag)
-    assert ray.get(handle.remote()) == 3
-@serve.deployment
-class Echo:
-    def __init__(self, s: str):
-        self._s = s
-
-    def __call__(self, *args):
-        return self._s
+#     handle = serve.run(serve_dag)
+#     assert ray.get(handle.remote(1)) == 5
 
 
-def test_single_node_deploy_success(serve_instance):
-    m1 = Adder.bind(1)
-    handle = serve.run(m1)
-    assert ray.get(handle.remote(41)) == 42
+# def test_shared_deployment_handle(serve_instance):
+#     with InputNode() as dag_input:
+#         m = Model.bind(2)
+#         combine = Combine.bind(m, m2=m)
+#         combine_output = combine.__call__.bind(dag_input)
+#         serve_dag = Driver.bind(combine_output)
+
+#     handle = serve.run(serve_dag)
+#     assert ray.get(handle.remote(1)) == 4
 
 
-def test_single_node_driver_sucess(serve_instance):
-    m1 = Adder.bind(1)
-    m2 = Adder.bind(2)
-    with InputNode() as input_node:
-        out = m1.forward.bind(input_node)
-        out = m2.forward.bind(out)
-    driver = Driver.bind(out)
-    handle = serve.run(driver)
-    assert ray.get(handle.remote(39)) == 42
+# def test_multi_instantiation_class_nested_deployment_arg_dag(serve_instance):
+#     with InputNode() as dag_input:
+#         m1 = Model.bind(2)
+#         m2 = Model.bind(3)
+#         combine = Combine.bind(m1, m2={NESTED_HANDLE_KEY: m2}, m2_nested=True)
+#         output = combine.__call__.bind(dag_input)
+#         serve_dag = Driver.bind(output)
+
+#     handle = serve.run(serve_dag)
+#     assert ray.get(handle.remote(1)) == 5
+
+# def test_class_factory(serve_instance):
+#     with InputNode() as _:
+#         instance = ray.remote(class_factory()).bind(3)
+#         output = instance.get.bind()
+#         serve_dag = NoargDriver.bind(output)
+
+#     handle = serve.run(serve_dag)
+#     assert ray.get(handle.remote()) == 3
+# @serve.deployment
+# class Echo:
+#     def __init__(self, s: str):
+#         self._s = s
+
+#     def __call__(self, *args):
+#         return self._s
 
 
-def test_options_and_names(serve_instance):
-
-    m1 = Adder.bind(1)
-    m1_built = _get_deployments_from_node(m1)[-1]
-    assert m1_built.name == "Adder"
-
-    m1 = Adder.options(name="Adder2").bind(1)
-    m1_built = _get_deployments_from_node(m1)[-1]
-    assert m1_built.name == "Adder2"
-
-    m1 = Adder.options(num_replicas=2).bind(1)
-    m1_built = _get_deployments_from_node(m1)[-1]
-    assert m1_built.num_replicas == 2
+# def test_single_node_deploy_success(serve_instance):
+#     m1 = Adder.bind(1)
+#     handle = serve.run(m1)
+#     assert ray.get(handle.remote(41)) == 42
 
 
-@serve.deployment
-def combine_task(*args):
-    return sum(args)
+# def test_single_node_driver_sucess(serve_instance):
+#     m1 = Adder.bind(1)
+#     m2 = Adder.bind(2)
+#     with InputNode() as input_node:
+#         out = m1.forward.bind(input_node)
+#         out = m2.forward.bind(out)
+#     driver = Driver.bind(out)
+#     handle = serve.run(driver)
+#     assert ray.get(handle.remote(39)) == 42
 
 
-def test_mixing_task(serve_instance):
-    # Can't mix ray.remote tasks with deployment in a dag right now.
-    # But serve deployment works !
-    m1 = Adder.bind(1)
-    m2 = Adder.bind(2)
-    with InputNode() as input_node:
-        out = combine_task.bind(
-            m1.forward.bind(input_node), m2.forward.bind(input_node)
-        )
-        serve_dag = Driver.bind(out)
+# def test_options_and_names(serve_instance):
 
-    handle = serve.run(serve_dag)
-    assert ray.get(handle.remote(1)) == 5
+#     m1 = Adder.bind(1)
+#     m1_built = _get_deployments_from_node(m1)[-1]
+#     assert m1_built.name == "Adder"
 
+#     m1 = Adder.options(name="Adder2").bind(1)
+#     m1_built = _get_deployments_from_node(m1)[-1]
+#     assert m1_built.name == "Adder2"
 
-@serve.deployment
-class TakeHandle:
-    def __init__(self, handle) -> None:
-        self.handle = handle
-
-    def __call__(self, inp):
-        return ray.get(self.handle.remote(inp))
+#     m1 = Adder.options(num_replicas=2).bind(1)
+#     m1_built = _get_deployments_from_node(m1)[-1]
+#     assert m1_built.num_replicas == 2
 
 
-def test_passing_handle(serve_instance):
-    child = Adder.bind(1)
-    parent = TakeHandle.bind(child)
-    driver = Driver.bind(parent)
-    handle = serve.run(driver)
-    assert ray.get(handle.remote(1)) == 2
+# @serve.deployment
+# def combine_task(*args):
+#     return sum(args)
 
 
-def test_passing_handle_in_obj(serve_instance):
-    @serve.deployment
-    class Parent:
-        def __init__(self, d):
-            self._d = d
+# def test_mixing_task(serve_instance):
+#     # Can't mix ray.remote tasks with deployment in a dag right now.
+#     # But serve deployment works !
+#     m1 = Adder.bind(1)
+#     m2 = Adder.bind(2)
+#     with InputNode() as input_node:
+#         out = combine_task.bind(
+#             m1.forward.bind(input_node), m2.forward.bind(input_node)
+#         )
+#         serve_dag = Driver.bind(out)
 
-        async def __call__(self, key):
-            return await self._d[key].remote()
-
-    child1 = Echo.bind("ed")
-    child2 = Echo.bind("simon")
-    parent = Parent.bind({"child1": child1, "child2": child2})
-
-    handle = serve.run(parent)
-    assert ray.get(handle.remote("child1")) == "ed"
-    assert ray.get(handle.remote("child2")) == "simon"
+#     handle = serve.run(serve_dag)
+#     assert ray.get(handle.remote(1)) == 5
 
 
-def test_pass_handle_to_multiple(serve_instance):
-    @serve.deployment
-    class Child:
-        def __call__(self, *args):
-            return os.getpid()
+# @serve.deployment
+# class TakeHandle:
+#     def __init__(self, handle) -> None:
+#         self.handle = handle
 
-    @serve.deployment
-    class Parent:
-        def __init__(self, child):
-            self._child = child
-
-        def __call__(self, *args):
-            return ray.get(self._child.remote())
-
-    @serve.deployment
-    class GrandParent:
-        def __init__(self, child, parent):
-            self._child = child
-            self._parent = parent
-
-        def __call__(self, *args):
-            # Check that the grandparent and parent are talking to the same child.
-            assert ray.get(self._child.remote()) == ray.get(self._parent.remote())
-            return "ok"
-
-    child = Child.bind()
-    parent = Parent.bind(child)
-    grandparent = GrandParent.bind(child, parent)
-
-    handle = serve.run(grandparent)
-    assert ray.get(handle.remote()) == "ok"
+#     def __call__(self, inp):
+#         return ray.get(self.handle.remote(inp))
 
 
-def test_non_json_serializable_args(serve_instance):
-    # Test that we can capture and bind non-json-serializable arguments.
-    arr1 = np.zeros(100)
-    arr2 = np.zeros(200)
+# def test_passing_handle(serve_instance):
+#     child = Adder.bind(1)
+#     parent = TakeHandle.bind(child)
+#     driver = Driver.bind(parent)
+#     handle = serve.run(driver)
+#     assert ray.get(handle.remote(1)) == 2
 
-    @serve.deployment
-    class A:
-        def __init__(self, arr1):
-            self.arr1 = arr1
-            self.arr2 = arr2
 
-        def __call__(self, *args):
-            return self.arr1, self.arr2
+# def test_passing_handle_in_obj(serve_instance):
+#     @serve.deployment
+#     class Parent:
+#         def __init__(self, d):
+#             self._d = d
 
-    handle = serve.run(A.bind(arr1))
-    ret1, ret2 = ray.get(handle.remote())
-    assert np.array_equal(ret1, arr1) and np.array_equal(ret2, arr2)
+#         async def __call__(self, key):
+#             return await self._d[key].remote()
+
+#     child1 = Echo.bind("ed")
+#     child2 = Echo.bind("simon")
+#     parent = Parent.bind({"child1": child1, "child2": child2})
+
+#     handle = serve.run(parent)
+#     assert ray.get(handle.remote("child1")) == "ed"
+#     assert ray.get(handle.remote("child2")) == "simon"
+
+
+# def test_pass_handle_to_multiple(serve_instance):
+#     @serve.deployment
+#     class Child:
+#         def __call__(self, *args):
+#             return os.getpid()
+
+#     @serve.deployment
+#     class Parent:
+#         def __init__(self, child):
+#             self._child = child
+
+#         def __call__(self, *args):
+#             return ray.get(self._child.remote())
+
+#     @serve.deployment
+#     class GrandParent:
+#         def __init__(self, child, parent):
+#             self._child = child
+#             self._parent = parent
+
+#         def __call__(self, *args):
+#             # Check that the grandparent and parent are talking to the same child.
+#             assert ray.get(self._child.remote()) == ray.get(self._parent.remote())
+#             return "ok"
+
+#     child = Child.bind()
+#     parent = Parent.bind(child)
+#     grandparent = GrandParent.bind(child, parent)
+
+#     handle = serve.run(grandparent)
+#     assert ray.get(handle.remote()) == "ok"
+
+
+# def test_non_json_serializable_args(serve_instance):
+#     # Test that we can capture and bind non-json-serializable arguments.
+#     arr1 = np.zeros(100)
+#     arr2 = np.zeros(200)
+
+#     @serve.deployment
+#     class A:
+#         def __init__(self, arr1):
+#             self.arr1 = arr1
+#             self.arr2 = arr2
+
+#         def __call__(self, *args):
+#             return self.arr1, self.arr2
+
+#     handle = serve.run(A.bind(arr1))
+#     ret1, ret2 = ray.get(handle.remote())
+#     assert np.array_equal(ret1, arr1) and np.array_equal(ret2, arr2)
 
     # TODO: check that serve.build raises an exception.
 
