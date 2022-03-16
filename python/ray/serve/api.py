@@ -1,11 +1,13 @@
 import asyncio
 import atexit
 import collections
+from copy import copy
 import inspect
 import logging
 import random
 import re
 import time
+import yaml
 from dataclasses import dataclass
 from functools import wraps
 from typing import (
@@ -22,6 +24,8 @@ from typing import (
 )
 
 from fastapi import APIRouter, FastAPI
+from ray.experimental.dag.class_node import ClassNode
+from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
 from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
@@ -59,12 +63,20 @@ from ray.serve.utils import (
     format_actor_name,
     get_current_node_resource_key,
     get_random_letters,
+    get_deployment_import_path,
     logger,
     DEFAULT,
 )
 from ray.util.annotations import PublicAPI
 import ray
 from ray import cloudpickle
+from ray.serve.schema import (
+    RayActorOptionsSchema,
+    DeploymentSchema,
+    DeploymentStatusSchema,
+    ServeApplicationSchema,
+    ServeApplicationStatusSchema,
+)
 
 
 _INTERNAL_REPLICA_CONTEXT = None
@@ -926,7 +938,7 @@ class DeploymentMethodNode(DAGNode):
 
 
 @PublicAPI(stability="alpha")
-class DeploymentNode(DAGNode):
+class DeploymentNode(ClassNode):
     """Represents a deployment with its bound config options and arguments.
 
     The bound deployment can be run, deployed, or built to a production config
@@ -941,8 +953,7 @@ class DeploymentNode(DAGNode):
     that can be used to compose an optimized call graph.
     """
 
-    def __init__(self):
-        raise NotImplementedError()
+    pass
 
 
 @PublicAPI
@@ -1108,7 +1119,16 @@ class Deployment:
         The returned bound deployment can be deployed or bound to other
         deployments to create a multi-deployment application.
         """
-        raise NotImplementedError()
+        return DeploymentNode(
+            self._func_or_class,
+            args,
+            kwargs,
+            cls_options=self._ray_actor_options or dict(),
+            other_args_to_resolve={
+                "deployment_self": copy(self),
+                "is_from_serve_deployment": True,
+            },
+        )
 
     @PublicAPI
     def deploy(self, *init_args, _blocking=True, **init_kwargs):
@@ -1511,8 +1531,9 @@ def get_deployment_statuses() -> Dict[str, DeploymentStatusInfo]:
 
 
 class ImmutableDeploymentDict(dict):
-    def __init__(self, deployments: List[Deployment]):
-        raise NotImplementedError()
+    def __init__(self, deployments: Dict[str, Deployment]):
+        super().__init__()
+        self.update(deployments)
 
     def __setitem__(self, *args):
         """Not allowed. Modify deployment options using set_options instead."""
@@ -1540,16 +1561,30 @@ class Application:
     to production using the Serve CLI or REST API.
     """
 
-    def __init__(self, ingress: Deployment, deployments: List[Deployment]):
-        raise NotImplementedError()
+    def __init__(self, deployments: List[Deployment], ingress: Deployment = None):
+
+        # TODO (shrekris-anyscale): validate ingress
+        self._ingress = ingress
+
+        deployments = deployments or []
+
+        self._deployments: Dict[str, Deployment] = dict()
+        for d in deployments:
+
+            if not isinstance(d, Deployment):
+                raise TypeError(f"Got {type(d)}. Expected deployment.")
+            elif d.name in self._deployments:
+                raise ValueError(f'App got multiple deployments named "{d.name}".')
+
+            self._deployments[d.name] = d
 
     @property
     def ingress(self) -> Deployment:
-        raise NotImplementedError()
+        return self._ingress
 
     @property
     def deployments(self) -> ImmutableDeploymentDict:
-        raise NotImplementedError()
+        return ImmutableDeploymentDict(self._deployments)
 
     def to_dict(self) -> Dict:
         """Returns this Application's deployments as a dictionary.
@@ -1560,7 +1595,8 @@ class Application:
         Returns:
             Dict: The Application's deployments formatted in a dictionary.
         """
-        raise NotImplementedError()
+
+        return serve_application_to_schema(self._deployments.values()).dict()
 
     @classmethod
     def from_dict(cls, d: Dict) -> "Application":
@@ -1576,7 +1612,9 @@ class Application:
         Returns:
             Application: a new application object containing the deployments.
         """
-        raise NotImplementedError()
+
+        schema = ServeApplicationSchema.parse_obj(d)
+        return cls(schema_to_serve_application(schema))
 
     def to_yaml(self, f: Optional[TextIO] = None) -> Optional[str]:
         """Returns this application's deployments as a YAML string.
@@ -1598,7 +1636,12 @@ class Application:
             Optional[String]: The deployments' YAML string. The output is from
                 yaml.safe_dump(). Returned only if no file pointer is passed in.
         """
-        raise NotImplementedError()
+
+        deployment_dict = serve_application_to_schema(self._deployments.values()).dict()
+
+        if f:
+            yaml.safe_dump(deployment_dict, f, default_flow_style=False)
+        return yaml.safe_dump(deployment_dict, default_flow_style=False)
 
     @classmethod
     def from_yaml(cls, str_or_file: Union[str, TextIO]) -> "Application":
@@ -1622,9 +1665,12 @@ class Application:
                 Serve YAML config files.
 
         Returns:
-            Application: a new application object containing the deployments.
+            Application: a new Application object containing the deployments.
         """
-        raise NotImplementedError()
+
+        deployments_json = yaml.safe_load(str_or_file)
+        schema = ServeApplicationSchema.parse_obj(deployments_json)
+        return cls(schema_to_serve_application(schema))
 
 
 @PublicAPI(stability="alpha")
@@ -1640,12 +1686,54 @@ def run(
     If a DeploymentNode is passed in, all of the deployments it depends on
     will be deployed.
     """
-    raise NotImplementedError()
+
+    if isinstance(target, Application):
+        deployments = target.deployments.values()
+    elif isinstance(target, DeploymentNode):
+        deployments = _get_deployments_from_node(target)
+    else:
+        raise TypeError(
+            "Expected a DeploymentNode or "
+            "Application as target. Got unexpected type "
+            f'"{type(target)}" instead.'
+        )
+
+    if len(deployments) == 0:
+        return
+
+    # TODO (shrekris-anyscale): validate ingress
+
+    client = start(detached=True, http_options={"host": host, "port": port})
+
+    parameter_group = []
+
+    for deployment in deployments:
+
+        deployment_parameters = {
+            "name": deployment._name,
+            "func_or_class": deployment._func_or_class,
+            "init_args": deployment.init_args,
+            "init_kwargs": deployment.init_kwargs,
+            "ray_actor_options": deployment._ray_actor_options,
+            "config": deployment._config,
+            "version": deployment._version,
+            "prev_version": deployment._prev_version,
+            "route_prefix": deployment.route_prefix,
+            "url": deployment.url,
+        }
+
+        parameter_group.append(deployment_parameters)
+
+    client.deploy_group(parameter_group, _blocking=True)
+
+    return deployments[-1].get_handle()
+
+    # TODO (shrekris-anyscale): return handle to ingress deployment
 
 
 @PublicAPI(stability="alpha")
 def build(target: DeploymentNode) -> Application:
-    """Builds a Serve application into a static configuration.
+    """Builds a Serve application into a static application.
 
     Takes in a DeploymentNode and converts it to a Serve application
     consisting of one or more deployments. This is intended to be used for
@@ -1662,3 +1750,107 @@ def build(target: DeploymentNode) -> Application:
     # TODO(edoakes): this should accept host and port, but we don't
     # currently support them in the REST API.
     raise NotImplementedError()
+
+
+def _get_deployments_from_node(node: DeploymentNode) -> List[Deployment]:
+    """Generate a list of deployment objects from a root node.
+
+    Returns:
+        deployment_list(List[Deployment]): the list of Deployment objects. The
+          last element corresponds to the node passed in to this function.
+    """
+    from ray.serve.pipeline.api import build as pipeline_build
+
+    with PipelineInputNode() as input_node:
+        root = node.__call__.bind(input_node)
+    deployments = pipeline_build(root, inject_ingress=False)
+
+    return deployments
+
+
+def deployment_to_schema(d: Deployment) -> DeploymentSchema:
+    if d.ray_actor_options is not None:
+        ray_actor_options_schema = RayActorOptionsSchema.parse_obj(d.ray_actor_options)
+    else:
+        ray_actor_options_schema = None
+
+    return DeploymentSchema(
+        name=d.name,
+        import_path=get_deployment_import_path(d),
+        init_args=d.init_args,
+        init_kwargs=d.init_kwargs,
+        num_replicas=d.num_replicas,
+        route_prefix=d.route_prefix,
+        max_concurrent_queries=d.max_concurrent_queries,
+        user_config=d.user_config,
+        autoscaling_config=d._config.autoscaling_config,
+        graceful_shutdown_wait_loop_s=d._config.graceful_shutdown_wait_loop_s,
+        graceful_shutdown_timeout_s=d._config.graceful_shutdown_timeout_s,
+        health_check_period_s=d._config.health_check_period_s,
+        health_check_timeout_s=d._config.health_check_timeout_s,
+        ray_actor_options=ray_actor_options_schema,
+    )
+
+
+def schema_to_deployment(s: DeploymentSchema) -> Deployment:
+    if s.ray_actor_options is None:
+        ray_actor_options = None
+    else:
+        ray_actor_options = s.ray_actor_options.dict(exclude_unset=True)
+
+    return deployment(
+        name=s.name,
+        num_replicas=s.num_replicas,
+        init_args=s.init_args,
+        init_kwargs=s.init_kwargs,
+        route_prefix=s.route_prefix,
+        ray_actor_options=ray_actor_options,
+        max_concurrent_queries=s.max_concurrent_queries,
+        _autoscaling_config=s.autoscaling_config,
+        _graceful_shutdown_wait_loop_s=s.graceful_shutdown_wait_loop_s,
+        _graceful_shutdown_timeout_s=s.graceful_shutdown_timeout_s,
+        _health_check_period_s=s.health_check_period_s,
+        _health_check_timeout_s=s.health_check_timeout_s,
+    )(s.import_path)
+
+
+def serve_application_to_schema(
+    deployments: List[Deployment],
+) -> ServeApplicationSchema:
+    schemas = [deployment_to_schema(d) for d in deployments]
+    return ServeApplicationSchema(deployments=schemas)
+
+
+def schema_to_serve_application(schema: ServeApplicationSchema) -> List[Deployment]:
+    return [schema_to_deployment(s) for s in schema.deployments]
+
+
+def status_info_to_schema(
+    deployment_name: str, status_info: Union[DeploymentStatusInfo, Dict]
+) -> DeploymentStatusSchema:
+    if isinstance(status_info, DeploymentStatusInfo):
+        return DeploymentStatusSchema(
+            name=deployment_name, status=status_info.status, message=status_info.message
+        )
+    elif isinstance(status_info, dict):
+        return DeploymentStatusSchema(
+            name=deployment_name,
+            status=status_info["status"],
+            message=status_info["message"],
+        )
+    else:
+        raise TypeError(
+            f"Got {type(status_info)} as status_info's "
+            "type. Expected status_info to be either a "
+            "DeploymentStatusInfo or a dictionary."
+        )
+
+
+def serve_application_status_to_schema(
+    status_infos: Dict[str, Union[DeploymentStatusInfo, Dict]]
+) -> ServeApplicationStatusSchema:
+    schemas = [
+        status_info_to_schema(deployment_name, status_info)
+        for deployment_name, status_info in status_infos.items()
+    ]
+    return ServeApplicationStatusSchema(statuses=schemas)

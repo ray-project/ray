@@ -4,6 +4,8 @@ import yaml
 import os
 import pathlib
 import click
+import time
+import sys
 from typing import Tuple, List, Dict, Union
 import argparse
 
@@ -19,19 +21,17 @@ from ray.serve.schema import ServeApplicationSchema
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.autoscaler._private.cli_logger import cli_logger
-from ray.serve.application import Application
 from ray.serve.api import Deployment, DeploymentNode, build as build_app
 from ray._private.utils import import_attr
-
-RAY_INIT_ADDRESS_HELP_STR = (
-    "Address to use for ray.init(). Can also be specified "
-    "using the RAY_ADDRESS environment variable."
+from ray.serve.api import (
+    Application,
+    Deployment,
+    DeploymentNode,
+    build,
+    get_deployment_statuses,
+    serve_application_status_to_schema,
 )
-RAY_DASHBOARD_ADDRESS_HELP_STR = (
-    "Address to use to query the Ray dashboard (defaults to "
-    "http://localhost:8265). Can also be specified using the "
-    "RAY_ADDRESS environment variable."
-)
+build_app = build
 
 RAY_INIT_ADDRESS_HELP_STR = (
     "Address to use for ray.init(). Can also be specified "
@@ -364,10 +364,28 @@ def run(
 
     ray.init(address=address, namespace="serve", runtime_env=ray_runtime_env)
 
-    for deployment in app:
+    for deployment in app.deployments.values():
         _configure_runtime_env(deployment, runtime_env_updates)
 
-    app.run(logger=cli_logger)
+    try:
+        serve.run(app)
+        cli_logger.success("Deployed successfully!\n")
+
+        while True:
+            statuses = serve_application_status_to_schema(
+                get_deployment_statuses()
+            ).json(indent=4)
+            cli_logger.info(f"{statuses}")
+            time.sleep(10)
+
+    except KeyboardInterrupt:
+        cli_logger.info("Got SIGINT (KeyboardInterrupt). Removing deployments.")
+        for deployment in app.deployments.values():
+            deployment.delete()
+        if len(serve.list_deployments()) == 0:
+            cli_logger.info("No deployments left. Shutting down Serve.")
+            serve.shutdown()
+        sys.exit()
 
 
 @cli.command(

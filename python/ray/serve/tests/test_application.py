@@ -8,11 +8,11 @@ import requests
 
 import ray
 from ray import serve
-from ray.serve.application import Application
+from ray.serve.api import Application, deploy_group
 from ray._private.test_utils import wait_for_condition
 
 
-class TestAddDeployment:
+class TestApplicationConstruction:
     @serve.deployment
     def f(*args):
         return "got f"
@@ -22,23 +22,24 @@ class TestAddDeployment:
         def __call__(self, *args):
             return "got C"
 
-    def test_add_deployment_valid(self):
-        app = Application()
-        app.add_deployment(self.f)
-        app.add_deployment(self.C)
+    def test_valid_deployments(self):
+        app = Application([self.f, self.C])
 
-        assert len(app) == 2
-        assert "f" in app
-        assert "C" in app
+        assert len(app.deployments) == 2
+        app_deployment_names = {d.name for d in app.deployments.values()}
+        assert "f" in app_deployment_names
+        assert "C" in app_deployment_names
 
-    def test_add_deployment_repeat_name(self):
+    def test_repeated_deployment_names(self):
         with pytest.raises(ValueError):
-            app = Application()
-            app.add_deployment(self.f)
-            app.add_deployment(self.C.options(name="f"))
+            Application([self.f, self.C.options(name="f")])
 
         with pytest.raises(ValueError):
             Application([self.C, self.f.options(name="C")])
+
+    def test_non_deployments(self):
+        with pytest.raises(TypeError):
+            Application([self.f, 5, "hello"])
 
 
 class TestDeployGroup:
@@ -70,7 +71,7 @@ class TestDeployGroup:
         the client to wait until the deployments finish deploying.
         """
 
-        Application(deployments).deploy(blocking=blocking)
+        deploy_group(Application(deployments).deployments.values(), blocking=blocking)
 
         def check_all_deployed():
             try:
@@ -143,7 +144,7 @@ class TestDeployGroup:
                 MutualHandles.options(name=deployment_name, init_args=(handle_name,))
             )
 
-        Application(deployments).deploy(blocking=True)
+        deploy_group(Application(deployments).deployments.values(), blocking=True)
 
         for deployment in deployments:
             assert (ray.get(deployment.get_handle().remote("hello"))) == "hello"
@@ -308,7 +309,7 @@ class TestDictTranslation:
 
         compare_specified_options(config_dict, app_dict)
 
-        app.deploy()
+        deploy_group(app.deployments.values())
 
         assert (
             requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
@@ -334,7 +335,7 @@ class TestYAMLTranslation:
         compare_specified_options(app1.to_dict(), app2.to_dict())
 
         # Check that deployment works
-        app1.deploy()
+        deploy_group(app1.deployments.values())
         assert (
             requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
         )
@@ -359,21 +360,28 @@ class TestYAMLTranslation:
 
         reconstructed_app = Application.from_yaml(app.to_yaml())
 
-        reconstructed_app.deploy()
+        deploy_group(reconstructed_app.deployments.values())
         assert requests.get("http://localhost:8000/f").text == "got decorated func"
         assert requests.get("http://localhost:8000/C").text == "got decorated class"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_get_set_item(serve_instance):
+def test_immutable_deployment_list(serve_instance):
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
     )
 
     with open(config_file_name, "r") as f:
         app = Application.from_yaml(f)
-    app["shallow"].deploy()
-    app["one"].deploy()
+
+    assert len(app.deployments.values()) == 2
+
+    for name in app.deployments.keys():
+        with pytest.raises(RuntimeError):
+            app.deployments[name] = app.deployments[name].options(name="sneaky")
+
+    for deployment in app.deployments.values():
+        deployment.deploy()
 
     assert requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
     assert requests.get("http://localhost:8000/one").text == "2"
