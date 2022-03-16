@@ -1176,8 +1176,8 @@ class Deployment:
         The returned bound deployment can be deployed or bound to other
         deployments to create a multi-deployment application.
         """
-        if not inspect.isclass(self._func_or_class):
-            if not (len(args) == 0 and len(kwargs) == 0):
+        if inspect.isfunction(self._func_or_class):
+            if len(args) != 0 or len(kwargs) != 0:
                 raise ValueError("Function deployment doesn't take any init arguments.")
 
         return DeploymentNode(
