@@ -865,7 +865,7 @@ cdef CRayStatus check_signals() nogil:
     return CRayStatus.OK()
 
 
-cdef void gc_collect() nogil:
+cdef void gc_collect(c_bool triggered_by_global_gc) nogil:
     with gil:
         start = time.perf_counter()
         num_freed = gc.collect()

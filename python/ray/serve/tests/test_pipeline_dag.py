@@ -1,11 +1,14 @@
-import sys
 import pytest
+import os
+import sys
 
+import numpy as np
+
+import ray
+from ray import serve
 from ray.serve.api import _get_deployments_from_node
 from ray.serve.handle import PipelineHandle
 from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
-import ray
-from ray import serve
 
 
 @serve.deployment
@@ -28,6 +31,15 @@ class Driver:
     def __call__(self, inp: int) -> int:
         print(f"Driver got {inp}")
         return ray.get(self.dag.remote(inp))
+
+
+@serve.deployment
+class Echo:
+    def __init__(self, s: str):
+        self._s = s
+
+    def __call__(self, *args):
+        return self._s
 
 
 @ray.remote
@@ -93,6 +105,78 @@ def test_passing_handle(serve_instance):
     driver = Driver.bind(parent)
     handle = serve.run(driver)
     assert ray.get(handle.remote(1)) == 2
+
+
+def test_passing_handle_in_obj(serve_instance):
+    @serve.deployment
+    class Parent:
+        def __init__(self, d):
+            self._d = d
+
+        async def __call__(self, key):
+            return await self._d[key].remote()
+
+    child1 = Echo.bind("ed")
+    child2 = Echo.bind("simon")
+    parent = Parent.bind({"child1": child1, "child2": child2})
+
+    handle = serve.run(parent)
+    assert ray.get(handle.remote("child1")) == "ed"
+    assert ray.get(handle.remote("child2")) == "simon"
+
+
+def test_pass_handle_to_multiple(serve_instance):
+    @serve.deployment
+    class Child:
+        def __call__(self, *args):
+            return os.getpid()
+
+    @serve.deployment
+    class Parent:
+        def __init__(self, child):
+            self._child = child
+
+        def __call__(self, *args):
+            return ray.get(self._child.remote())
+
+    @serve.deployment
+    class GrandParent:
+        def __init__(self, child, parent):
+            self._child = child
+            self._parent = parent
+
+        def __call__(self, *args):
+            # Check that the grandparent and parent are talking to the same child.
+            assert ray.get(self._child.remote()) == ray.get(self._parent.remote())
+            return "ok"
+
+    child = Child.bind()
+    parent = Parent.bind(child)
+    grandparent = GrandParent.bind(child, parent)
+
+    handle = serve.run(grandparent)
+    assert ray.get(handle.remote()) == "ok"
+
+
+def test_non_json_serializable_args(serve_instance):
+    # Test that we can capture and bind non-json-serializable arguments.
+    arr1 = np.zeros(100)
+    arr2 = np.zeros(200)
+
+    @serve.deployment
+    class A:
+        def __init__(self, arr1):
+            self.arr1 = arr1
+            self.arr2 = arr2
+
+        def __call__(self, *args):
+            return self.arr1, self.arr2
+
+    handle = serve.run(A.bind(arr1))
+    ret1, ret2 = ray.get(handle.remote())
+    assert np.array_equal(ret1, arr1) and np.array_equal(ret2, arr2)
+
+    # TODO: check that serve.build raises an exception.
 
 
 if __name__ == "__main__":

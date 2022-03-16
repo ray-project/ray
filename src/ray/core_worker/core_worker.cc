@@ -3133,7 +3133,7 @@ void CoreWorker::HandleLocalGC(const rpc::LocalGCRequest &request,
                                rpc::LocalGCReply *reply,
                                rpc::SendReplyCallback send_reply_callback) {
   if (options_.gc_collect != nullptr) {
-    options_.gc_collect();
+    options_.gc_collect(request.triggered_by_global_gc());
     send_reply_callback(Status::OK(), nullptr, nullptr);
   } else {
     send_reply_callback(

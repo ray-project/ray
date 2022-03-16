@@ -562,7 +562,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                  rpc::SendReplyCallback send_reply_callback) override;
 
   /// Trigger local GC on each worker of this raylet.
-  void DoLocalGC();
+  void DoLocalGC(bool triggered_by_global_gc = false);
 
   /// Push an error to the driver if this node is full of actors and so we are
   /// unable to schedule new tasks or actors at all.
