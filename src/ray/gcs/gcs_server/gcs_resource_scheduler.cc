@@ -111,7 +111,7 @@ double LeastResourceScorer::Calculate(const FixedPoint &requested,
 SchedulingResult SortSchedulingResult(const SchedulingResult &result,
                                       const std::vector<int> &sorted_index) {
   if (result.first == SchedulingResultStatus::SUCCESS) {
-    std::vector<NodeID> sorted_nodes(result.second.size());
+    std::vector<scheduling::NodeID> sorted_nodes(result.second.size());
     for (int i = 0; i < (int)sorted_index.size(); i++) {
       sorted_nodes[sorted_index[i]] = result.second[i];
     }
@@ -124,12 +124,13 @@ SchedulingResult SortSchedulingResult(const SchedulingResult &result,
 SchedulingResult GcsResourceScheduler::Schedule(
     const std::vector<ResourceRequest> &required_resources_list,
     const SchedulingType &scheduling_type,
-    const std::function<bool(const NodeID &)> &node_filter_func) {
+    const std::function<bool(const scheduling::NodeID &)> &node_filter_func) {
   // Filter candidate nodes.
   auto candidate_nodes = FilterCandidateNodes(node_filter_func);
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
-    return std::make_pair(SchedulingResultStatus::INFEASIBLE, std::vector<NodeID>());
+    return std::make_pair(SchedulingResultStatus::INFEASIBLE,
+                          std::vector<scheduling::NodeID>());
   }
 
   // If scheduling type is strict pack, we do not need to sort resources of each placement
@@ -164,9 +165,9 @@ SchedulingResult GcsResourceScheduler::Schedule(
   UNREACHABLE;
 }
 
-absl::flat_hash_set<NodeID> GcsResourceScheduler::FilterCandidateNodes(
-    const std::function<bool(const NodeID &)> &node_filter_func) {
-  absl::flat_hash_set<NodeID> result;
+absl::flat_hash_set<scheduling::NodeID> GcsResourceScheduler::FilterCandidateNodes(
+    const std::function<bool(const scheduling::NodeID &)> &node_filter_func) {
+  absl::flat_hash_set<scheduling::NodeID> result;
   const auto &resource_view = GetResourceView();
   result.reserve(resource_view.size());
   for (const auto &iter : resource_view) {
@@ -239,25 +240,26 @@ std::vector<int> GcsResourceScheduler::SortRequiredResources(
 
 SchedulingResult GcsResourceScheduler::StrictSpreadSchedule(
     const std::vector<ResourceRequest> &required_resources_list,
-    const absl::flat_hash_set<NodeID> &candidate_nodes) {
+    const absl::flat_hash_set<scheduling::NodeID> &candidate_nodes) {
   if (required_resources_list.size() > candidate_nodes.size()) {
     RAY_LOG(DEBUG) << "The number of required resources "
                    << required_resources_list.size()
                    << " is greater than the number of candidate nodes "
                    << candidate_nodes.size() << ", scheduling fails.";
-    return std::make_pair(SchedulingResultStatus::INFEASIBLE, std::vector<NodeID>());
+    return std::make_pair(SchedulingResultStatus::INFEASIBLE,
+                          std::vector<scheduling::NodeID>());
   }
 
-  std::vector<NodeID> result_nodes;
-  absl::flat_hash_set<NodeID> candidate_nodes_copy(candidate_nodes);
+  std::vector<scheduling::NodeID> result_nodes;
+  absl::flat_hash_set<scheduling::NodeID> candidate_nodes_copy(candidate_nodes);
   for (const auto &iter : required_resources_list) {
     // Score and sort nodes.
     auto best_node = GetBestNode(iter, candidate_nodes_copy);
 
     // There are nodes to meet the scheduling requirements.
-    if (best_node) {
-      candidate_nodes_copy.erase(*best_node);
-      result_nodes.emplace_back(std::move(*best_node));
+    if (!best_node.IsNil()) {
+      candidate_nodes_copy.erase(best_node);
+      result_nodes.emplace_back(best_node);
     } else {
       // There is no node to meet the scheduling requirements.
       break;
@@ -266,32 +268,33 @@ SchedulingResult GcsResourceScheduler::StrictSpreadSchedule(
 
   if (result_nodes.size() != required_resources_list.size()) {
     // Can't meet the scheduling requirements temporarily.
-    return std::make_pair(SchedulingResultStatus::FAILED, std::vector<NodeID>());
+    return std::make_pair(SchedulingResultStatus::FAILED,
+                          std::vector<scheduling::NodeID>());
   }
   return std::make_pair(SchedulingResultStatus::SUCCESS, result_nodes);
 }
 
 SchedulingResult GcsResourceScheduler::SpreadSchedule(
     const std::vector<ResourceRequest> &required_resources_list,
-    const absl::flat_hash_set<NodeID> &candidate_nodes) {
-  std::vector<NodeID> result_nodes;
-  absl::flat_hash_set<NodeID> candidate_nodes_copy(candidate_nodes);
-  absl::flat_hash_set<NodeID> selected_nodes;
+    const absl::flat_hash_set<scheduling::NodeID> &candidate_nodes) {
+  std::vector<scheduling::NodeID> result_nodes;
+  absl::flat_hash_set<scheduling::NodeID> candidate_nodes_copy(candidate_nodes);
+  absl::flat_hash_set<scheduling::NodeID> selected_nodes;
   for (const auto &iter : required_resources_list) {
     // Score and sort nodes.
     auto best_node = GetBestNode(iter, candidate_nodes_copy);
 
     // There are nodes to meet the scheduling requirements.
-    if (best_node) {
-      result_nodes.emplace_back(std::move(*best_node));
+    if (!best_node.IsNil()) {
+      result_nodes.emplace_back(best_node);
       RAY_CHECK(AllocateRemoteTaskResources(result_nodes.back(), iter));
       candidate_nodes_copy.erase(result_nodes.back());
       selected_nodes.insert(result_nodes.back());
     } else {
       // Scheduling from selected nodes.
       auto best_node = GetBestNode(iter, selected_nodes);
-      if (best_node) {
-        result_nodes.push_back(std::move(*best_node));
+      if (!best_node.IsNil()) {
+        result_nodes.push_back(best_node);
         RAY_CHECK(AllocateRemoteTaskResources(result_nodes.back(), iter));
       } else {
         break;
@@ -299,19 +302,20 @@ SchedulingResult GcsResourceScheduler::SpreadSchedule(
     }
   }
 
-  // Releasing the resources temporarily deducted from `gcs_resource_manager_`.
+  // Releasing the resources temporarily deducted from `cluster_resource_manager_`.
   ReleaseTemporarilyDeductedResources(required_resources_list, result_nodes);
 
   if (result_nodes.size() != required_resources_list.size()) {
     // Can't meet the scheduling requirements temporarily.
-    return std::make_pair(SchedulingResultStatus::FAILED, std::vector<NodeID>());
+    return std::make_pair(SchedulingResultStatus::FAILED,
+                          std::vector<scheduling::NodeID>());
   }
   return std::make_pair(SchedulingResultStatus::SUCCESS, result_nodes);
 }
 
 SchedulingResult GcsResourceScheduler::StrictPackSchedule(
     const std::vector<ResourceRequest> &required_resources_list,
-    const absl::flat_hash_set<NodeID> &candidate_nodes) {
+    const absl::flat_hash_set<scheduling::NodeID> &candidate_nodes) {
   // Aggregate required resources.
   ResourceRequest aggregated_resource_request;
   for (const auto &resource_request : required_resources_list) {
@@ -329,35 +333,37 @@ SchedulingResult GcsResourceScheduler::StrictPackSchedule(
     }
   }
 
-  const auto &cluster_resource = GetResourceView();
+  const auto &resource_view = GetResourceView();
   const auto &right_node_it = std::find_if(
-      cluster_resource.begin(),
-      cluster_resource.end(),
+      resource_view.begin(),
+      resource_view.end(),
       [&aggregated_resource_request](const auto &entry) {
-        return entry.second->GetLocalView().IsAvailable(aggregated_resource_request);
+        return entry.second.GetLocalView().IsAvailable(aggregated_resource_request);
       });
 
-  if (right_node_it == cluster_resource.end()) {
+  if (right_node_it == resource_view.end()) {
     RAY_LOG(DEBUG) << "The required resource is bigger than the maximum resource in the "
                       "whole cluster, schedule failed.";
-    return std::make_pair(SchedulingResultStatus::INFEASIBLE, std::vector<NodeID>());
+    return std::make_pair(SchedulingResultStatus::INFEASIBLE,
+                          std::vector<scheduling::NodeID>());
   }
 
-  std::vector<NodeID> result_nodes;
+  std::vector<scheduling::NodeID> result_nodes;
 
   auto best_node = GetBestNode(aggregated_resource_request, candidate_nodes);
 
   // Select the node with the highest score.
   // `StrictPackSchedule` does not need to consider the scheduling context, because it
   // only schedules to a node and triggers rescheduling when node dead.
-  if (best_node) {
+  if (!best_node.IsNil()) {
     for (int index = 0; index < (int)required_resources_list.size(); ++index) {
-      result_nodes.emplace_back(std::move(*best_node));
+      result_nodes.emplace_back(best_node);
     }
   }
   if (result_nodes.empty()) {
     // Can't meet the scheduling requirements temporarily.
-    return std::make_pair(SchedulingResultStatus::FAILED, std::vector<NodeID>());
+    return std::make_pair(SchedulingResultStatus::FAILED,
+                          std::vector<scheduling::NodeID>());
   }
 
   return std::make_pair(SchedulingResultStatus::SUCCESS, result_nodes);
@@ -365,10 +371,10 @@ SchedulingResult GcsResourceScheduler::StrictPackSchedule(
 
 SchedulingResult GcsResourceScheduler::PackSchedule(
     const std::vector<ResourceRequest> &required_resources_list,
-    const absl::flat_hash_set<NodeID> &candidate_nodes) {
-  std::vector<NodeID> result_nodes;
+    const absl::flat_hash_set<scheduling::NodeID> &candidate_nodes) {
+  std::vector<scheduling::NodeID> result_nodes;
   result_nodes.resize(required_resources_list.size());
-  absl::flat_hash_set<NodeID> candidate_nodes_copy(candidate_nodes);
+  absl::flat_hash_set<scheduling::NodeID> candidate_nodes_copy(candidate_nodes);
   std::list<std::pair<int, ResourceRequest>> required_resources_list_copy;
   int index = 0;
   for (const auto &iter : required_resources_list) {
@@ -379,64 +385,63 @@ SchedulingResult GcsResourceScheduler::PackSchedule(
     const auto &required_resources_index = required_resources_list_copy.front().first;
     const auto &required_resources = required_resources_list_copy.front().second;
     auto best_node = GetBestNode(required_resources, candidate_nodes_copy);
-    if (!best_node) {
+    if (best_node.IsNil()) {
       // There is no node to meet the scheduling requirements.
       break;
     }
 
-    RAY_CHECK(AllocateRemoteTaskResources(*best_node, required_resources));
-    result_nodes[required_resources_index] = *best_node;
+    RAY_CHECK(AllocateRemoteTaskResources(best_node, required_resources));
+    result_nodes[required_resources_index] = best_node;
     required_resources_list_copy.pop_front();
 
     // We try to schedule more resources on one node.
     for (auto iter = required_resources_list_copy.begin();
          iter != required_resources_list_copy.end();) {
-      if (AllocateRemoteTaskResources(*best_node, iter->second)) {
-        result_nodes[iter->first] = *best_node;
+      if (AllocateRemoteTaskResources(best_node, iter->second)) {
+        result_nodes[iter->first] = best_node;
         required_resources_list_copy.erase(iter++);
       } else {
         ++iter;
       }
     }
-    candidate_nodes_copy.erase(*best_node);
+    candidate_nodes_copy.erase(best_node);
   }
 
-  // Releasing the resources temporarily deducted from `gcs_resource_manager_`.
+  // Releasing the resources temporarily deducted from `cluster_resource_manager_`.
   ReleaseTemporarilyDeductedResources(required_resources_list, result_nodes);
 
   if (!required_resources_list_copy.empty()) {
     // Can't meet the scheduling requirements temporarily.
-    return std::make_pair(SchedulingResultStatus::FAILED, std::vector<NodeID>());
+    return std::make_pair(SchedulingResultStatus::FAILED,
+                          std::vector<scheduling::NodeID>());
   }
   return std::make_pair(SchedulingResultStatus::SUCCESS, result_nodes);
 }
 
-std::optional<NodeID> GcsResourceScheduler::GetBestNode(
+scheduling::NodeID GcsResourceScheduler::GetBestNode(
     const ResourceRequest &required_resources,
-    const absl::flat_hash_set<NodeID> &candidate_nodes) {
+    const absl::flat_hash_set<scheduling::NodeID> &candidate_nodes) {
   double best_node_score = -1;
-  const NodeID *best_node_id = nullptr;
+  auto best_node_id = scheduling::NodeID::Nil();
 
   // Score the nodes.
   for (const auto &node_id : candidate_nodes) {
     const auto &node_resources = GetNodeResources(node_id);
     double node_score = node_scorer_->Score(required_resources, node_resources);
-    if (best_node_id == nullptr || best_node_score < node_score) {
-      best_node_id = &node_id;
+    if (best_node_id.IsNil() || best_node_score < node_score) {
+      best_node_id = node_id;
       best_node_score = node_score;
     }
   }
-  if (best_node_id && best_node_score >= 0) {
-    return *best_node_id;
-  } else {
-    return std::nullopt;
+  if (!best_node_id.IsNil() && best_node_score >= 0) {
+    return best_node_id;
   }
-  return std::nullopt;
+  return scheduling::NodeID::Nil();
 }
 
 void GcsResourceScheduler::ReleaseTemporarilyDeductedResources(
     const std::vector<ResourceRequest> &required_resources_list,
-    const std::vector<NodeID> &nodes) {
+    const std::vector<scheduling::NodeID> &nodes) {
   for (int index = 0; index < (int)nodes.size(); index++) {
     // If `PackSchedule` fails, the id of some nodes may be nil.
     if (!nodes[index].IsNil()) {
@@ -445,26 +450,30 @@ void GcsResourceScheduler::ReleaseTemporarilyDeductedResources(
   }
 }
 
-const NodeResources &GcsResourceScheduler::GetNodeResources(const NodeID &node_id) const {
-  const auto &resource_view = GetResourceView();
-  auto iter = resource_view.find(node_id);
-  RAY_CHECK(iter != resource_view.end());
-  return iter->second->GetLocalView();
+const NodeResources &GcsResourceScheduler::GetNodeResources(
+    const scheduling::NodeID &node_id) const {
+  return cluster_resource_manager_->GetNodeResources(
+      scheduling::NodeID(node_id.Binary()));
 }
 
 bool GcsResourceScheduler::AllocateRemoteTaskResources(
-    const NodeID &node_id, const ResourceRequest &resource_request) {
-  return gcs_resource_manager_.AcquireResources(node_id, resource_request);
+    const scheduling::NodeID &node_id, const ResourceRequest &resource_request) {
+  if (!cluster_resource_manager_->HasSufficientResource(
+          node_id, resource_request, /*ignore_object_store_memory_requirement=*/true)) {
+    return false;
+  }
+  return cluster_resource_manager_->SubtractNodeAvailableResources(node_id,
+                                                                   resource_request);
 }
 
 bool GcsResourceScheduler::ReleaseRemoteTaskResources(
-    const NodeID &node_id, const ResourceRequest &resource_request) {
-  return gcs_resource_manager_.ReleaseResources(node_id, resource_request);
+    const scheduling::NodeID &node_id, const ResourceRequest &resource_request) {
+  return cluster_resource_manager_->AddNodeAvailableResources(node_id, resource_request);
 }
 
-const absl::flat_hash_map<NodeID, std::shared_ptr<Node>>
+const absl::flat_hash_map<scheduling::NodeID, Node>
     &GcsResourceScheduler::GetResourceView() const {
-  return gcs_resource_manager_.GetClusterResources();
+  return cluster_resource_manager_->GetResourceView();
 }
 
 }  // namespace gcs
