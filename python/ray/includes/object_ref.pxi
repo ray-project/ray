@@ -134,6 +134,12 @@ cdef class ObjectRef(BaseID):
     def __await__(self):
         return self.as_future(_internal=True).__await__()
 
+    def __reduce__(self):
+        raise RuntimeError(
+            "Object references cannot be pickled except via `ray.put()` or passing "
+            "as arguments to Ray tasks and actors. Use `object_ref.export()` to "
+            "export a reference for out-of-band use.")
+
     def as_future(self, _internal=False) -> asyncio.Future:
         """Wrap ObjectRef with an asyncio.Future.
 

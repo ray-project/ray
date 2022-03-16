@@ -1295,9 +1295,11 @@ class ActorHandle:
             )
 
     def __reduce__(self):
-        """This code path is used by pickling but not by Ray forking."""
-        state = self._serialization_helper()
-        return ActorHandle._deserialization_helper, state
+        raise RuntimeError(
+            "Actor handles cannot be pickled except via `ray.put()` or passing "
+            "as arguments to Ray tasks and actors. Use the named actors feature "
+            "to work with Actor handles out-of-band."
+        )
 
 
 def modify_class(cls):
