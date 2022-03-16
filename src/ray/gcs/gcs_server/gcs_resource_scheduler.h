@@ -49,7 +49,7 @@ enum class SchedulingResultStatus {
   SUCCESS = 2,
 };
 
-typedef std::pair<scheduling::NodeID, double> NodeScore;
+using NodeScore = std::pair<scheduling::NodeID, double>;
 typedef std::pair<SchedulingResultStatus, std::vector<scheduling::NodeID>>
     SchedulingResult;
 

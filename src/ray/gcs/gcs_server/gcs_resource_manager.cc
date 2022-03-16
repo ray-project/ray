@@ -21,13 +21,9 @@ namespace ray {
 namespace gcs {
 
 GcsResourceManager::GcsResourceManager(
-    instrumented_io_context &main_io_service,
-    std::shared_ptr<GcsPublisher> gcs_publisher,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     ClusterResourceManager &cluster_resource_manager)
-    : periodical_runner_(main_io_service),
-      gcs_publisher_(gcs_publisher),
-      gcs_table_storage_(gcs_table_storage),
+    : gcs_table_storage_(gcs_table_storage),
       cluster_resource_manager_(cluster_resource_manager) {}
 
 void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &request,
@@ -205,7 +201,7 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     UpdateNodeNormalTaskResources(node_id, data);
   } else {
-    if (!cluster_resource_manager_.UpdateNodeAvailableResources(
+    if (!cluster_resource_manager_.UpdateNodeAvailableResourcesIfExist(
             scheduling::NodeID(node_id.Binary()), data)) {
       RAY_LOG(INFO)
           << "[UpdateFromResourceReport]: received resource usage from unknown node id "
@@ -318,11 +314,6 @@ void GcsResourceManager::Initialize(const GcsInitData &gcs_init_data) {
   }
 }
 
-const absl::flat_hash_map<scheduling::NodeID, Node> &GcsResourceManager::GetResourceView()
-    const {
-  return cluster_resource_manager_.GetResourceView();
-}
-
 void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
   if (!node.resources_total().empty()) {
     scheduling::NodeID node_id(node.node_id());
@@ -339,17 +330,6 @@ void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
 void GcsResourceManager::OnNodeDead(const NodeID &node_id) {
   node_resource_usages_.erase(node_id);
   cluster_resource_manager_.RemoveNode(scheduling::NodeID(node_id.Binary()));
-}
-
-bool GcsResourceManager::AcquireResources(const scheduling::NodeID &node_id,
-                                          const ResourceRequest &required_resources) {
-  return cluster_resource_manager_.SubtractNodeAvailableResources(node_id,
-                                                                  required_resources);
-}
-
-bool GcsResourceManager::ReleaseResources(const scheduling::NodeID &node_id,
-                                          const ResourceRequest &acquired_resources) {
-  return cluster_resource_manager_.AddNodeAvailableResources(node_id, acquired_resources);
 }
 
 void GcsResourceManager::UpdatePlacementGroupLoad(

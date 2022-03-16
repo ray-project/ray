@@ -303,7 +303,7 @@ bool ClusterResourceManager::AddNodeAvailableResources(
   return true;
 }
 
-bool ClusterResourceManager::UpdateNodeAvailableResources(
+bool ClusterResourceManager::UpdateNodeAvailableResourcesIfExist(
     scheduling::NodeID node_id, const rpc::ResourcesData &resource_data) {
   auto iter = nodes_.find(node_id);
   if (iter == nodes_.end()) {

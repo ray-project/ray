@@ -255,12 +255,9 @@ void GcsServer::InitGcsHeartbeatManager(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
-  RAY_CHECK(gcs_table_storage_ && gcs_publisher_ && gcs_resource_scheduler_);
+  RAY_CHECK(gcs_table_storage_ && gcs_resource_scheduler_);
   gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
-      main_service_,
-      gcs_publisher_,
-      gcs_table_storage_,
-      gcs_resource_scheduler_->GetClusterResourceManager());
+      gcs_table_storage_, gcs_resource_scheduler_->GetClusterResourceManager());
 
   // Initialize by gcs tables data.
   gcs_resource_manager_->Initialize(gcs_init_data);

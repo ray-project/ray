@@ -132,7 +132,7 @@ TEST_F(ClusterResourceManagerTest, SubtractAndAddNodeAvailableResources) {
       1);
 }
 
-TEST_F(ClusterResourceManagerTest, UpdateNodeAvailableResources) {
+TEST_F(ClusterResourceManagerTest, UpdateNodeAvailableResourcesIfExist) {
   const auto &node_resources = manager->GetNodeResources(node0);
   ASSERT_TRUE(
       node_resources.predefined_resources[scheduling::kCPUResource.ToInt()].available ==
@@ -142,13 +142,13 @@ TEST_F(ClusterResourceManagerTest, UpdateNodeAvailableResources) {
   resources_data.set_resources_available_changed(true);
   (*resources_data.mutable_resources_available())["CPU"] = 0;
 
-  manager->UpdateNodeAvailableResources(node0, resources_data);
+  manager->UpdateNodeAvailableResourcesIfExist(node0, resources_data);
   ASSERT_TRUE(
       node_resources.predefined_resources[scheduling::kCPUResource.ToInt()].available ==
       0);
 
   (*resources_data.mutable_resources_available())["CUSTOM_RESOURCE"] = 1;
-  manager->UpdateNodeAvailableResources(node0, resources_data);
+  manager->UpdateNodeAvailableResourcesIfExist(node0, resources_data);
   ASSERT_FALSE(node_resources.custom_resources.contains(
       scheduling::ResourceID("CUSTOM_RESOURCE").ToInt()));
 }

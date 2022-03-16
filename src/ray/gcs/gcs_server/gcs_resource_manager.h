@@ -15,12 +15,9 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/rpc/client_call.h"
@@ -29,6 +26,20 @@
 
 namespace ray {
 namespace gcs {
+/// Ideally, the logic related to resource calculation should be moved from
+/// `gcs_resoruce_manager` to `cluster_resource_manager`, and all logic related to
+/// resource modification should directly depend on `cluster_resource_manager`, while
+/// `gcs_resoruce_manager` is still responsible for processing resource-related RPC
+/// request. We will split several small PR to achieve this goal, so as to prevent one PR
+/// from being too large to review.
+///
+/// 1). Remove `node_resource_usages_` related code as it could be calculated from
+/// `cluseter_resource_mananger`
+/// 2). Move all resource-write-related logic out from `gcs_resource_manager`
+/// 3). Move `placement_group_load_` from `gcs_resource_manager` to
+/// `placement_group_manager` and make `gcs_resource_manager` depend on
+/// `placement_group_manager`
+
 /// Gcs resource manager interface.
 /// It is responsible for handing node resource related rpc requests and it is used for
 /// actor and placement group scheduling. It obtains the available resources of nodes
@@ -37,12 +48,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
  public:
   /// Create a GcsResourceManager.
   ///
-  /// \param main_io_service The main event loop.
-  /// \param gcs_publisher GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
-  explicit GcsResourceManager(instrumented_io_context &main_io_service,
-                              std::shared_ptr<GcsPublisher> gcs_publisher,
-                              std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+  explicit GcsResourceManager(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
                               ClusterResourceManager &cluster_resource_manager);
 
   virtual ~GcsResourceManager() {}
@@ -68,11 +75,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
                                  rpc::GetAllResourceUsageReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Get the resources of all nodes in the cluster.
-  ///
-  /// \return The resources of all nodes in the cluster.
-  const absl::flat_hash_map<scheduling::NodeID, Node> &GetResourceView() const;
-
   /// Update resources of a node
   /// \param node_id Id of a node.
   /// \param changed_resources The newly added resources for the node. Usually it's
@@ -94,24 +96,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   ///
   /// \param node_id The specified node id.
   void OnNodeDead(const NodeID &node_id);
-
-  /// Acquire resources from the specified node. It will deduct directly from the node
-  /// resources.
-  ///
-  /// \param node_id Id of a node.
-  /// \param required_resources Resources to apply for.
-  /// \return True if acquire resources successfully. False otherwise.
-  bool AcquireResources(const scheduling::NodeID &node_id,
-                        const ResourceRequest &required_resources);
-
-  /// Release the resources of the specified node. It will be added directly to the node
-  /// resources.
-  ///
-  /// \param node_id Id of a node.
-  /// \param acquired_resources Resources to release.
-  /// \return True if release resources successfully. False otherwise.
-  bool ReleaseResources(const scheduling::NodeID &node_id,
-                        const ResourceRequest &acquired_resources);
 
   /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
@@ -149,13 +133,9 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
       const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
 
  private:
-  /// The runner to run function periodically.
-  PeriodicalRunner periodical_runner_;
   /// Newest resource usage of all nodes.
   absl::flat_hash_map<NodeID, rpc::ResourcesData> node_resource_usages_;
 
-  /// A publisher for publishing gcs messages.
-  std::shared_ptr<GcsPublisher> gcs_publisher_;
   /// Storage for GCS tables.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// Placement group load information that is used for autoscaler.

@@ -28,11 +28,10 @@ using ::testing::_;
 class GcsResourceManagerTest : public ::testing::Test {
  public:
   GcsResourceManagerTest() {
-    gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
-        io_service_, nullptr, nullptr, cluster_resource_manager_);
+    gcs_resource_manager_ =
+        std::make_shared<gcs::GcsResourceManager>(nullptr, cluster_resource_manager_);
   }
 
-  instrumented_io_context io_service_;
   ClusterResourceManager cluster_resource_manager_;
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
 };
@@ -48,7 +47,7 @@ TEST_F(GcsResourceManagerTest, TestBasic) {
   gcs_resource_manager_->OnNodeAdd(*node);
 
   // Get and check cluster resources.
-  const auto &resource_view = gcs_resource_manager_->GetResourceView();
+  const auto &resource_view = cluster_resource_manager_.GetResourceView();
   ASSERT_EQ(1, resource_view.size());
 
   scheduling::NodeID scheduling_node_id(node->node_id());
@@ -104,11 +103,11 @@ TEST_F(GcsResourceManagerTest, TestSetAvailableResourcesWhenNodeDead) {
   node->mutable_resources_total()->insert({"CPU", 10});
 
   gcs_resource_manager_->OnNodeAdd(*node);
-  ASSERT_EQ(gcs_resource_manager_->GetResourceView().size(), 1);
+  ASSERT_EQ(cluster_resource_manager_.GetResourceView().size(), 1);
 
   auto node_id = NodeID::FromBinary(node->node_id());
   gcs_resource_manager_->OnNodeDead(node_id);
-  ASSERT_EQ(gcs_resource_manager_->GetResourceView().size(), 0);
+  ASSERT_EQ(cluster_resource_manager_.GetResourceView().size(), 0);
 
   rpc::ResourcesData resources_data;
   resources_data.set_node_id(node->node_id());
@@ -116,7 +115,7 @@ TEST_F(GcsResourceManagerTest, TestSetAvailableResourcesWhenNodeDead) {
   resources_data.mutable_resources_available()->insert({"CPU", 5});
   resources_data.set_resources_available_changed(true);
   gcs_resource_manager_->UpdateFromResourceReport(resources_data);
-  ASSERT_EQ(gcs_resource_manager_->GetResourceView().size(), 0);
+  ASSERT_EQ(cluster_resource_manager_.GetResourceView().size(), 0);
 }
 
 }  // namespace ray
