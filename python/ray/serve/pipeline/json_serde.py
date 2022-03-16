@@ -15,7 +15,7 @@ from ray.experimental.dag import (
 from ray.serve.pipeline.deployment_node import DeploymentNode
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.utils import parse_import_path
-from ray.serve.handle import RayServeHandle
+from ray.serve.handle import HandleOptions, RayServeHandle, RayServeLazyHandle
 from ray.serve.utils import ServeHandleEncoder, serve_handle_object_hook
 from ray.serve.constants import SERVE_HANDLE_JSON_KEY
 from ray.serve.api import RayServeDAGHandle
@@ -44,14 +44,21 @@ class DAGNodeEncoder(json.JSONEncoder):
         # For replaced deployment handles used as init args or kwargs.
         if isinstance(obj, RayServeHandle):
             return json.dumps(obj, cls=ServeHandleEncoder)
-        if isinstance(obj, RayServeDAGHandle):
+        elif isinstance(obj, RayServeDAGHandle):
             # TODO(simon) Do a proper encoder
             return {
-                DAGNODE_TYPE_KEY: "RayServeDAGHandle",
+                DAGNODE_TYPE_KEY: RayServeDAGHandle.__name__,
                 "dag_node_json": obj.dag_node_json,
             }
+        elif isinstance(obj, RayServeLazyHandle):
+            return {
+                DAGNODE_TYPE_KEY: RayServeLazyHandle.__name__,
+                "deployment_name": obj.deployment_name,
+                "handle_options_method_name": obj.handle_options.method_name,
+            }
+
         # For all other DAGNode types.
-        if isinstance(obj, DAGNode):
+        elif isinstance(obj, DAGNode):
             return obj.to_json(DAGNodeEncoder)
         else:
             # Let the base class default method raise the TypeError
@@ -96,6 +103,11 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
             return input_json
     elif input_json[DAGNODE_TYPE_KEY] == RayServeDAGHandle.__name__:
         return RayServeDAGHandle(input_json["dag_node_json"])
+    elif input_json[DAGNODE_TYPE_KEY] == RayServeLazyHandle.__name__:
+        return RayServeLazyHandle(
+            input_json["deployment_name"],
+            HandleOptions(input_json["handle_options_method_name"]),
+        )
     # Deserialize DAGNode type
     elif input_json[DAGNODE_TYPE_KEY] == InputNode.__name__:
         return InputNode.from_json(input_json, object_hook=dagnode_from_json)

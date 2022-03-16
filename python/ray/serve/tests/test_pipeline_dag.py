@@ -119,6 +119,18 @@ class NoargDriver:
         return await self.dag.remote()
 
 
+def test_serve_run_no_serve_start_required():
+    try:
+        dag = fn_hello.bind()
+        serve_dag = NoargDriver.bind(dag)
+
+        handle = serve.run(serve_dag)
+        assert ray.get(handle.remote()) == "hello"
+    finally:
+        serve.shutdown()
+        ray.shutdown()
+
+
 def test_single_func_no_input(serve_instance):
     dag = fn_hello.bind()
     serve_dag = NoargDriver.bind(dag)
@@ -194,7 +206,7 @@ def test_multi_instantiation_class_nested_deployment_arg_dag(serve_instance):
 
 def test_class_factory(serve_instance):
     with InputNode() as _:
-        instance = ray.remote(class_factory()).bind(3)
+        instance = serve.deployment(class_factory()).bind(3)
         output = instance.get.bind()
         serve_dag = NoargDriver.bind(output)
 

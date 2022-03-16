@@ -9,6 +9,7 @@ from ray.actor import ActorHandle
 from ray.serve.utils import get_random_letters, DEFAULT
 from ray.serve.router import Router, RequestMetadata
 from ray.util import metrics
+from ray import serve
 
 _global_async_loop = None
 
@@ -234,3 +235,59 @@ class RayServeSyncHandle(RayServeHandle):
             "_internal_pickled_http_request": self._pickled_http_request,
         }
         return RayServeSyncHandle._deserialize, (serialized_data,)
+
+
+class RayServeLazyHandle:
+    """Lazily initialized handle that only gets fulfilled upon first execution.
+
+    Supposed to return existing supported serve handles, including
+    [RayServeHandle, RayServeSyncHandle, RayServeDAGHandle].
+    """
+
+    def __init__(
+        self,
+        deployment_name: EndpointTag,
+        handle_options: Optional[HandleOptions] = None,
+    ):
+        self.deployment_name = deployment_name
+        self.handle_options = handle_options or HandleOptions()
+        # For Serve DAG we need placeholder in DAG binding and building without
+        # requirement of serve.start; Thus handle is fulfilled at runtime.
+        self.handle = None
+
+    def options(self, *, method_name: Union[str, DEFAULT] = DEFAULT.VALUE):
+        new_options_dict = self.handle_options.__dict__.copy()
+        user_modified_options_dict = {
+            key: value
+            for key, value in zip(["method_name"], [method_name])
+            if value != DEFAULT.VALUE
+        }
+        new_options_dict.update(user_modified_options_dict)
+        new_options = HandleOptions(**new_options_dict)
+        self.handle_options = new_options
+        return self.__class__(self.deployment_name, self.handle_options)
+
+    def remote(self, *args, **kwargs):
+        if not self.handle:
+            handle = serve.get_deployment(self.deployment_name).get_handle()
+            self.handle = handle.options(method_name=self.handle_options.method_name)
+        # TODO (jiaodong): Polish async handles later for serve pipeline
+        return self.handle.remote(*args, **kwargs)
+
+    @classmethod
+    def _deserialize(cls, kwargs):
+        """Required for this class's __reduce__ method to be picklable."""
+        return cls(**kwargs)
+
+    def __reduce__(self):
+        serialized_data = {
+            "deployment_name": self.deployment_name,
+            "handle_options": self.handle_options,
+        }
+        return RayServeLazyHandle._deserialize, (serialized_data,)
+
+    def __getattr__(self, name):
+        return self.options(method_name=name)
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}" f"(deployment='{self.deployment_name}')"
