@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import io
 import logging
 import os
+import random
 
 from datetime import timedelta
 from pathlib import Path
@@ -18,6 +19,7 @@ from ray.train.worker_group import WorkerGroup
 from ray.train.utils import get_address_and_port
 from ray.util import PublicAPI
 
+import numpy as np
 import torch
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
@@ -39,6 +41,9 @@ logger = logging.getLogger(__name__)
 
 class TorchAccelerator(Accelerator):
     """A utility that implements methods to accelerate PyTorch training."""
+
+    def __init__(self):
+        self._seed = None
 
     def prepare_model(
         self,
@@ -142,6 +147,22 @@ class TorchAccelerator(Accelerator):
                 # shuffling is enabled by checking the default sampler type.
                 shuffle = not isinstance(loader.sampler, SequentialSampler)
 
+                def seeded_worker_init_fn(worker_init_fn):
+                    def wrapper(worker_id):
+                        worker_seed = torch.initial_seed() % 2 ** 32
+                        np.random.seed(worker_seed)
+                        random.seed(worker_seed)
+                        worker_init_fn(worker_id)
+
+                    return wrapper
+
+                worker_init_fn = loader.worker_init_fn
+                generator = loader.generator
+                if self._seed is not None:
+                    worker_init_fn = seeded_worker_init_fn(loader.worker_init_fn)
+                    generator = torch.Generator()
+                    generator.manual_seed(self._seed)
+
                 using_default_sampler = isinstance(
                     loader.sampler, (SequentialSampler, RandomSampler)
                 )
@@ -161,7 +182,8 @@ class TorchAccelerator(Accelerator):
                     "pin_memory": loader.pin_memory,
                     "drop_last": loader.drop_last,
                     "timeout": loader.timeout,
-                    "worker_init_fn": loader.worker_init_fn,
+                    "worker_init_fn": worker_init_fn,
+                    "generator": generator,
                     "sampler": DistributedSampler(loader.dataset, shuffle=shuffle),
                 }
                 return DataLoader(**data_loader_args)
@@ -183,6 +205,22 @@ class TorchAccelerator(Accelerator):
             device = torch.device("cpu")
 
         return device
+
+    def enable_reproducibility(self, seed: int = 0) -> None:
+        """Limits sources of nondeterministic behavior."""
+        self._seed = seed
+
+        torch.manual_seed(seed)
+        random.seed(seed)
+        np.random.seed(seed)
+
+        torch.use_deterministic_algorithms(True)
+        torch.backends.cudnn.benchmark = False
+
+        # If you want to use deterministic algorithms with CUDA, then you need to set
+        # the CUBLAS_WORKSPACE_CONFIG environment variable; otherwise, Torch errors.
+        # See https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility.
+        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 
 
 @PublicAPI(stability="beta")
@@ -495,6 +533,28 @@ def accelerate() -> None:
             "`train.torch.accelerate()` is not called multiple times, and is called "
             "before any of the prepare methods."
         )
+
+
+@PublicAPI(stability="beta")
+def enable_reproducibility(seed: int = 0) -> None:
+    """Limits sources of nondeterministic behavior.
+
+    This function:
+
+        * Seeds PyTorch, Python, and NumPy.
+        * Disables CUDA convolution benchmarking.
+        * Configures PyTorch to use determinstic algorithms.
+        * Seeds workers spawned for multi-process data loading.
+
+    Args:
+        seed (int): The number to seed libraries and data workers with.
+
+    .. warning:: ``train.torch.enable_reproducibility()`` can't guarantee
+        completely reproducible results across executions. To learn more, read
+        the `PyTorch notes on randomness
+        <https://pytorch.org/docs/stable/notes/randomness.html>`_.
+    """
+    get_accelerator(TorchAccelerator).enable_reproducibility(seed)
 
 
 WORKER_TRACE_DIR_NAME = "pytorch_profiler_worker_traces"
