@@ -141,6 +141,7 @@ def test_tune(ray_start_4_cpus):
     # Make sure original Trainer is not affected.
     assert trainer.lightgbm_config[PARAMS_KEY]["max_depth"] == 1
 
+
 def test_validation(ray_start_4_cpus):
     train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
@@ -165,6 +166,7 @@ def test_validation(ray_start_4_cpus):
             lightgbm_config={PARAMS_KEY: params, DMATRIX_PARAMS_KEY: {"data": {}}},
             datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
         )
+
 
 if __name__ == "__main__":
     import pytest

@@ -15,35 +15,6 @@ PARAMS_KEY = "params"
 DMATRIX_PARAMS_KEY = "dmatrix_params"
 
 
-def pgf_to_ray_params(
-    pgf: PlacementGroupFactory,
-    use_lightgbm: bool = False,
-) -> "xgboost_ray.RayParams":
-    extra_params = {}
-    if use_lightgbm:
-        import lightgbm_ray
-
-        ray_params_cls = lightgbm_ray.RayParams
-        extra_params["allow_less_than_two_cpus"] = True
-    else:
-        ray_params_cls = xgboost_ray.RayParams
-
-    resources_per_worker = pgf.bundles[-1]
-    num_workers = len(pgf.bundles) - int(not pgf.head_bundle_is_empty)
-    cpus_per_worker = resources_per_worker.pop("CPU", 1)
-    gpus_per_worker = resources_per_worker.pop("GPU", 0)
-
-    ray_params = ray_params_cls(
-        num_actors=int(num_workers),
-        cpus_per_actor=int(cpus_per_worker),
-        gpus_per_actor=int(gpus_per_worker),
-        resources_per_actor=resources_per_worker,
-        **extra_params,
-    )
-
-    return ray_params
-
-
 @DeveloperAPI
 class GBDTTrainer(Trainer):
     """Common logic for XGBoost-Ray and LightGBM-Ray."""
@@ -72,12 +43,38 @@ class GBDTTrainer(Trainer):
             for k, v in self.datasets.items()
         }
 
+    def _convert_pgf_to_ray_params(
+        self,
+        pgf: PlacementGroupFactory,
+    ) -> "xgboost_ray.RayParams":
+        extra_params = {}
+        if self._use_lightgbm:
+            import lightgbm_ray
+
+            ray_params_cls = lightgbm_ray.RayParams
+            extra_params["allow_less_than_two_cpus"] = True
+        else:
+            ray_params_cls = xgboost_ray.RayParams
+
+        resources_per_worker = pgf.bundles[-1]
+        num_workers = len(pgf.bundles) - int(not pgf.head_bundle_is_empty)
+        cpus_per_worker = resources_per_worker.pop("CPU", 1)
+        gpus_per_worker = resources_per_worker.pop("GPU", 0)
+
+        ray_params = ray_params_cls(
+            num_actors=int(num_workers),
+            cpus_per_actor=int(cpus_per_worker),
+            gpus_per_actor=int(gpus_per_worker),
+            resources_per_actor=resources_per_worker,
+            **extra_params,
+        )
+
+        return ray_params
+
     def setup(self) -> None:
         super().setup()
         resources_per_trial: PlacementGroupFactory = tune.get_trial_resources()
-        self._ray_params = pgf_to_ray_params(
-            resources_per_trial, use_lightgbm=self._use_lightgbm
-        )
+        self._ray_params = self._convert_pgf_to_ray_params(resources_per_trial)
 
     def preprocess_datasets(self) -> None:
         super().preprocess_datasets()
