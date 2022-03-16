@@ -11,7 +11,6 @@ import ray
 from ray import serve
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray._private.test_utils import wait_for_condition
-from ray.dashboard.optional_utils import RAY_INTERNAL_DASHBOARD_NAMESPACE
 from ray.serve.scripts import _process_args_and_kwargs, _configure_runtime_env
 
 
@@ -255,7 +254,7 @@ def test_deploy(ray_start_stop):
     # Deploys some valid config files and checks that the deployments work
 
     # Initialize serve in test to enable calling serve.list_deployments()
-    ray.init(address="auto", namespace=RAY_INTERNAL_DASHBOARD_NAMESPACE)
+    ray.init(address="auto", namespace="serve")
     serve.start(detached=True)
 
     # Create absolute file names to YAML config files

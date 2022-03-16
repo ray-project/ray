@@ -7,7 +7,6 @@ import traceback
 import ray
 import pytest
 import ray.dashboard.utils as dashboard_utils
-import ray._private.gcs_utils as gcs_utils
 import ray._private.gcs_pubsub as gcs_pubsub
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.modules.actor import actor_consts
@@ -228,15 +227,7 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
     def handle_pub_messages(msgs, timeout, expect_num):
         start_time = time.time()
         while time.time() - start_time < timeout and len(msgs) < expect_num:
-            if gcs_pubsub.gcs_pubsub_enabled():
-                _, actor_data = sub.poll(timeout=timeout)
-            else:
-                msg = sub.get_message()
-                if msg is None:
-                    time.sleep(0.01)
-                    continue
-                pubsub_msg = gcs_utils.PubSubMessage.FromString(msg["data"])
-                actor_data = gcs_utils.ActorTableData.FromString(pubsub_msg.data)
+            _, actor_data = sub.poll(timeout=timeout)
             if actor_data is None:
                 continue
             msgs.append(actor_data)

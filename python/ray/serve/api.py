@@ -81,7 +81,20 @@ _UUID_RE = re.compile(
 _CLIENT_POLLING_INTERVAL_S: float = 1
 
 
-def _get_controller_namespace(detached):
+def _get_controller_namespace(
+    detached: bool, _override_controller_namespace: Optional[str] = None
+):
+    """Gets the controller's namespace.
+
+    Args:
+        detached (bool): Whether serve.start() was called with detached=True
+        _override_controller_namespace (Optional[str]): When set, this is the
+            controller's namespace
+    """
+
+    if _override_controller_namespace is not None:
+        return _override_controller_namespace
+
     controller_namespace = ray.get_runtime_context().namespace
 
     if not detached:
@@ -94,11 +107,11 @@ def _get_controller_namespace(detached):
     return controller_namespace
 
 
-def internal_get_global_client():
+def internal_get_global_client(_override_controller_namespace: Optional[str] = None):
     if _global_client is not None:
         return _global_client
 
-    return _connect()
+    return _connect(_override_controller_namespace=_override_controller_namespace)
 
 
 def _set_global_client(client):
@@ -142,11 +155,16 @@ def _ensure_connected(f: Callable) -> Callable:
 
 class Client:
     def __init__(
-        self, controller: ActorHandle, controller_name: str, detached: bool = False
+        self,
+        controller: ActorHandle,
+        controller_name: str,
+        detached: bool = False,
+        _override_controller_namespace: Optional[str] = None,
     ):
         self._controller: ServeController = controller
         self._controller_name = controller_name
         self._detached = detached
+        self._override_controller_namespace = _override_controller_namespace
         self._shutdown = False
         self._http_config: HTTPOptions = ray.get(controller.get_http_config.remote())
         self._root_url = ray.get(controller.get_root_url.remote())
@@ -206,7 +224,10 @@ class Client:
             started = time.time()
             while True:
                 try:
-                    controller_namespace = _get_controller_namespace(self._detached)
+                    controller_namespace = _get_controller_namespace(
+                        self._detached,
+                        self._override_controller_namespace,
+                    )
                     ray.get_actor(self._controller_name, namespace=controller_namespace)
                     if time.time() - started > 5:
                         logger.warning(
@@ -618,6 +639,7 @@ def start(
     http_options: Optional[Union[dict, HTTPOptions]] = None,
     dedicated_cpu: bool = False,
     _checkpoint_path: str = DEFAULT_CHECKPOINT_PATH,
+    _override_controller_namespace: Optional[str] = None,
     **kwargs,
 ) -> Client:
     """Initialize a serve instance.
@@ -670,10 +692,14 @@ def start(
     if not ray.is_initialized():
         ray.init(namespace="serve")
 
-    controller_namespace = _get_controller_namespace(detached)
+    controller_namespace = _get_controller_namespace(
+        detached, _override_controller_namespace=_override_controller_namespace
+    )
 
     try:
-        client = internal_get_global_client()
+        client = internal_get_global_client(
+            _override_controller_namespace=_override_controller_namespace
+        )
         logger.info(
             "Connecting to existing Serve instance in namespace "
             f"'{controller_namespace}'."
@@ -709,6 +735,7 @@ def start(
         http_options,
         _checkpoint_path,
         detached=detached,
+        _override_controller_namespace=_override_controller_namespace,
     )
 
     proxy_handles = ray.get(controller.get_http_proxies.remote())
@@ -723,7 +750,12 @@ def start(
                 "HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
             )
 
-    client = Client(controller, controller_name, detached=detached)
+    client = Client(
+        controller,
+        controller_name,
+        detached=detached,
+        _override_controller_namespace=_override_controller_namespace,
+    )
     _set_global_client(client)
     logger.info(
         f"Started{' detached ' if detached else ' '}Serve instance in "
@@ -732,7 +764,7 @@ def start(
     return client
 
 
-def _connect() -> Client:
+def _connect(_override_controller_namespace: Optional[str] = None) -> Client:
     """Connect to an existing Serve instance on this Ray cluster.
 
     If calling from the driver program, the Serve instance on this Ray cluster
@@ -740,6 +772,11 @@ def _connect() -> Client:
 
     If called from within a replica, this will connect to the same Serve
     instance that the replica is running in.
+
+    Args:
+        _override_controller_namespace (Optional[str]): The namespace to use
+            when looking for the controller. If None, Serve recalculates the
+            controller's namespace using _get_controller_namespace().
     """
 
     # Initialize ray if needed.
@@ -751,7 +788,9 @@ def _connect() -> Client:
     # ensure that the correct instance is connected to.
     if _INTERNAL_REPLICA_CONTEXT is None:
         controller_name = SERVE_CONTROLLER_NAME
-        controller_namespace = _get_controller_namespace(detached=True)
+        controller_namespace = _get_controller_namespace(
+            detached=True, _override_controller_namespace=_override_controller_namespace
+        )
     else:
         controller_name = _INTERNAL_REPLICA_CONTEXT._internal_controller_name
         controller_namespace = _INTERNAL_REPLICA_CONTEXT._internal_controller_namespace
@@ -767,7 +806,12 @@ def _connect() -> Client:
             "one."
         )
 
-    client = Client(controller, controller_name, detached=True)
+    client = Client(
+        controller,
+        controller_name,
+        detached=True,
+        _override_controller_namespace=_override_controller_namespace,
+    )
     _set_global_client(client)
     return client
 
@@ -1697,21 +1741,36 @@ def run(
     # TODO (jiaodong): Resolve circular reference in pipeline codebase and serve
     from ray.serve.pipeline.api import build as pipeline_build
 
+    client = start(detached=True, http_options={"host": host, "port": port})
+
     if isinstance(target, DeploymentNode):
         deployments = pipeline_build(target)
     else:
         raise NotImplementedError()
 
-    for d in deployments:
-        logger.debug(f"Deploying {d}")
-        d.deploy()
+    parameter_group = [
+        {
+            "name": deployment._name,
+            "func_or_class": deployment._func_or_class,
+            "init_args": deployment.init_args,
+            "init_kwargs": deployment.init_kwargs,
+            "ray_actor_options": deployment._ray_actor_options,
+            "config": deployment._config,
+            "version": deployment._version,
+            "prev_version": deployment._prev_version,
+            "route_prefix": deployment.route_prefix,
+            "url": deployment.url,
+        }
+        for deployment in deployments
+    ]
 
+    client.deploy_group(parameter_group, _blocking=True)
     return deployments[-1].get_handle()
 
 
 @PublicAPI(stability="alpha")
 def build(target: DeploymentNode) -> Application:
-    """Builds a Serve application into a static configuration.
+    """Builds a Serve application into a static application.
 
     Takes in a DeploymentNode and converts it to a Serve application
     consisting of one or more deployments. This is intended to be used for
