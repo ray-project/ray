@@ -1008,7 +1008,9 @@ class DeploymentNode(ClassNode):
     """
 
     # TODO (jiaodong): Later unify and refactor this with pipeline node class
-    pass
+    def bind(self, *args, **kwargs):
+        """Bind the default __call__ method and return a DeploymentMethodNode"""
+        return self.__call__.bind(*args, **kwargs)
 
 
 @PublicAPI
@@ -1174,28 +1176,20 @@ class Deployment:
         The returned bound deployment can be deployed or bound to other
         deployments to create a multi-deployment application.
         """
-        if inspect.isclass(self._func_or_class):
-            return DeploymentNode(
-                self._func_or_class,
-                args,
-                kwargs,
-                cls_options=self._ray_actor_options or dict(),
-                other_args_to_resolve={
-                    "deployment_self": copy(self),
-                    "is_from_serve_deployment": True,
-                },
-            )
-        else:
-            return DeploymentNode(
-                self._func_or_class,
-                cls_args=tuple(),
-                cls_kwargs=dict(),
-                cls_options=self._ray_actor_options or dict(),
-                other_args_to_resolve={
-                    "deployment_self": copy(self),
-                    "is_from_serve_deployment": True,
-                },
-            ).__call__.bind(*args, **kwargs)
+        if not inspect.isclass(self._func_or_class):
+            if not (len(args) == 0 and len(kwargs) == 0):
+                raise ValueError("Function deployment doesn't take any init arguments.")
+
+        return DeploymentNode(
+            self._func_or_class,
+            args,
+            kwargs,
+            cls_options=self._ray_actor_options or dict(),
+            other_args_to_resolve={
+                "deployment_self": copy(self),
+                "is_from_serve_deployment": True,
+            },
+        )
 
     @PublicAPI
     def deploy(self, *init_args, _blocking=True, **init_kwargs):

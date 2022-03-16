@@ -120,7 +120,7 @@ class NoargDriver:
 
 
 def test_single_func_no_input(serve_instance):
-    dag = fn_hello.bind()
+    dag = fn_hello.bind().bind()
     serve_dag = NoargDriver.bind(dag)
 
     handle = serve.run(serve_dag)
@@ -129,7 +129,7 @@ def test_single_func_no_input(serve_instance):
 
 def test_single_func_deployment_dag(serve_instance):
     with InputNode() as dag_input:
-        dag = combine.bind(dag_input[0], dag_input[1], kwargs_output=1)
+        dag = combine.bind().bind(dag_input[0], dag_input[1], kwargs_output=1)
         serve_dag = Driver.bind(dag)
     handle = serve.run(serve_dag)
     assert ray.get(handle.remote([1, 2])) == 4
@@ -150,7 +150,9 @@ def test_func_class_with_class_method(serve_instance):
         m2 = Model.bind(2)
         m1_output = m1.forward.bind(dag_input[0])
         m2_output = m2.forward.bind(dag_input[1])
-        combine_output = combine.bind(m1_output, m2_output, kwargs_output=dag_input[2])
+        combine_output = combine.bind().bind(
+            m1_output, m2_output, kwargs_output=dag_input[2]
+        )
         serve_dag = Driver.bind(combine_output)
 
     handle = serve.run(serve_dag)
@@ -162,7 +164,7 @@ def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
         m1 = Model.bind(2)
         m2 = Model.bind(3)
         combine = Combine.bind(m1, m2=m2)
-        combine_output = combine.__call__.bind(dag_input)
+        combine_output = combine.bind(dag_input)
         serve_dag = Driver.bind(combine_output)
 
     handle = serve.run(serve_dag)
@@ -173,7 +175,7 @@ def test_shared_deployment_handle(serve_instance):
     with InputNode() as dag_input:
         m = Model.bind(2)
         combine = Combine.bind(m, m2=m)
-        combine_output = combine.__call__.bind(dag_input)
+        combine_output = combine.bind(dag_input)
         serve_dag = Driver.bind(combine_output)
 
     handle = serve.run(serve_dag)
@@ -185,7 +187,7 @@ def test_multi_instantiation_class_nested_deployment_arg_dag(serve_instance):
         m1 = Model.bind(2)
         m2 = Model.bind(3)
         combine = Combine.bind(m1, m2={NESTED_HANDLE_KEY: m2}, m2_nested=True)
-        output = combine.__call__.bind(dag_input)
+        output = combine.bind(dag_input)
         serve_dag = Driver.bind(output)
 
     handle = serve.run(serve_dag)
@@ -328,6 +330,19 @@ def test_non_json_serializable_args(serve_instance):
     handle = serve.run(A.bind(arr1))
     ret1, ret2 = ray.get(handle.remote())
     assert np.array_equal(ret1, arr1) and np.array_equal(ret2, arr2)
+
+
+@serve.deployment
+def func():
+    return 1
+
+
+def test_functional_node(serve_instance):
+    with pytest.raises(ValueError, match="doesn't take any init arguments"):
+        func.bind("something")
+
+    handle = serve.run(func.bind())
+    assert ray.get(handle.remote()) == 1
 
 
 # TODO: check that serve.build raises an exception.
