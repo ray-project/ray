@@ -420,9 +420,7 @@ def wait_for_gpu(
     """
     GPUtil = _import_gputil()
     if gpu_memory_limit:
-        raise ValueError(
-            "'gpu_memory_limit' is deprecated. " "Use 'target_util' instead."
-        )
+        raise ValueError("'gpu_memory_limit' is deprecated. Use 'target_util' instead.")
     if GPUtil is None:
         raise RuntimeError("GPUtil must be installed if calling `wait_for_gpu`.")
 
