@@ -374,18 +374,6 @@ class Trial:
         self.restoring_from = None
         self.num_failures = 0
 
-        if self.restore_path:
-            checkpoint_metadata = TrainableUtil.load_checkpoint_metadata(
-                self.restore_path
-            )
-
-            checkpoint = _TuneCheckpoint(
-                _TuneCheckpoint.PERSISTENT,
-                self.restore_path,
-                checkpoint_metadata["last_result"],
-            )
-            self.checkpoint_manager.on_checkpoint(checkpoint)
-
         # AutoML fields
         self.results = None
         self.best_result = None
@@ -468,7 +456,8 @@ class Trial:
             checkpoint = self.checkpoint_manager.newest_persistent_checkpoint
         else:
             checkpoint = self.checkpoint_manager.newest_checkpoint
-
+        if checkpoint.value is None:
+            checkpoint = _TuneCheckpoint(_TuneCheckpoint.PERSISTENT, self.restore_path)
         return checkpoint
 
     @classmethod
@@ -534,6 +523,20 @@ class Trial:
             self.logdir = create_logdir(self._generate_dirname(), self.local_dir)
         else:
             os.makedirs(self.logdir, exist_ok=True)
+
+        # Add restored checkpoint
+        if self.restore_path and self.restore_path.startswith(self.logdir):
+            checkpoint_metadata = (
+                TrainableUtil.load_checkpoint_metadata(self.restore_path) or {}
+            )
+
+            checkpoint = _TuneCheckpoint(
+                _TuneCheckpoint.PERSISTENT,
+                self.restore_path,
+                checkpoint_metadata.get("last_result", None),
+            )
+            self.checkpoint_manager.on_checkpoint(checkpoint)
+
         self.invalidate_json_state()
 
     def update_resources(self, resources: Union[Dict, PlacementGroupFactory]):
