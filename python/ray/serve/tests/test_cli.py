@@ -1,3 +1,4 @@
+import yaml
 import json
 import os
 from pathlib import Path
@@ -12,7 +13,6 @@ import ray
 from ray import serve
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray._private.test_utils import wait_for_condition
-from ray.serve.scripts import _process_args_and_kwargs, _configure_runtime_env
 from ray.serve.api import Application
 
 
@@ -28,192 +28,6 @@ def ray_start_stop():
     subprocess.check_output(["ray", "start", "--head"])
     yield
     subprocess.check_output(["ray", "stop", "--force"])
-
-
-class TestProcessArgsAndKwargs:
-    def test_valid_args_and_kwargs(self):
-        args_and_kwargs = (
-            "argval1",
-            "argval2",
-            "--kwarg1",
-            "kwval1",
-            "--kwarg2",
-            "kwval2",
-        )
-        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
-        assert args == ["argval1", "argval2"]
-        assert kwargs == {"kwarg1": "kwval1", "kwarg2": "kwval2"}
-
-    def test_mixed_args_and_kwargs(self):
-        args_and_kwargs = (
-            "argval1",
-            "--kwarg1",
-            "kwval1",
-            "argval2",
-            "--kwarg2",
-            "kwval2",
-        )
-        with pytest.raises(ValueError):
-            _process_args_and_kwargs(args_and_kwargs)
-
-    def test_mixed_kwargs(self):
-        args_and_kwargs = (
-            "argval1",
-            "argval2",
-            "--kwarg1==kw==val1",
-            "--kwarg2",
-            "kwval2",
-            "--kwarg3",
-            "=kwval=3",
-            "--kwarg4=",
-            "--kwarg5",
-            "kwval5",
-        )
-        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
-        assert args == ["argval1", "argval2"]
-        assert kwargs == {
-            "kwarg1": "=kw==val1",
-            "kwarg2": "kwval2",
-            "kwarg3": "=kwval=3",
-            "kwarg4": "",
-            "kwarg5": "kwval5",
-        }
-
-    def test_empty_kwarg(self):
-        args_and_kwargs = (
-            "argval1",
-            "--kwarg1",
-            "--kwarg2",
-            "kwval2",
-        )
-        with pytest.raises(ValueError):
-            _process_args_and_kwargs(args_and_kwargs)
-
-        args_and_kwargs = ("--empty_kwarg_only",)
-        with pytest.raises(ValueError):
-            _process_args_and_kwargs(args_and_kwargs)
-
-    def test_empty_equals_kwarg(self):
-        args_and_kwargs = (
-            "argval1",
-            "--kwarg1=--hello",
-            "--kwarg2=",
-        )
-        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
-        assert args == ["argval1"]
-        assert kwargs == {
-            "kwarg1": "--hello",
-            "kwarg2": "",
-        }
-
-        args_and_kwargs = ("--empty_kwarg_only=",)
-        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
-        assert args == []
-        assert kwargs == {"empty_kwarg_only": ""}
-
-    def test_only_args(self):
-        args_and_kwargs = ("argval1", "argval2", "argval3")
-        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
-        assert args == ["argval1", "argval2", "argval3"]
-        assert kwargs == {}
-
-        args_and_kwargs = ("single_arg",)
-        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
-        assert args == ["single_arg"]
-        assert kwargs == {}
-
-    def test_only_kwargs(self):
-        args_and_kwargs = (
-            "--kwarg1",
-            "kwval1",
-            "--kwarg2",
-            "kwval2",
-            "--kwarg3",
-            "kwval3",
-        )
-        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
-        assert args == []
-        assert kwargs == {"kwarg1": "kwval1", "kwarg2": "kwval2", "kwarg3": "kwval3"}
-
-        args_and_kwargs = (
-            "--single_kwarg",
-            "single_kwval",
-        )
-        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
-        assert args == []
-        assert kwargs == {"single_kwarg": "single_kwval"}
-
-    def test_empty_args_and_kwargs(self):
-        for empty_val in [None, ()]:
-            args, kwargs = _process_args_and_kwargs(empty_val)
-            assert args == []
-            assert kwargs == {}
-
-
-class TestConfigureRuntimeEnv:
-    @serve.deployment
-    def f():
-        pass
-
-    @pytest.mark.parametrize("ray_actor_options", [None, {}])
-    def test_empty_ray_actor_options(self, ray_actor_options):
-        runtime_env = {
-            "working_dir": "http://test.com",
-            "pip": ["requests", "pendulum==2.1.2"],
-        }
-        deployment = TestConfigureRuntimeEnv.f.options(
-            ray_actor_options=ray_actor_options
-        )
-        _configure_runtime_env(deployment, runtime_env)
-        assert deployment.ray_actor_options["runtime_env"] == runtime_env
-
-    def test_no_overwrite_all_options(self):
-        old_runtime_env = {
-            "working_dir": "http://test.com",
-            "pip": ["requests", "pendulum==2.1.2"],
-        }
-        new_runtime_env = {
-            "working_dir": "http://new.com",
-            "pip": [],
-            "env_vars": {"test_var": "test"},
-        }
-        updated_env = {
-            "working_dir": "http://test.com",
-            "pip": ["requests", "pendulum==2.1.2"],
-            "env_vars": {"test_var": "test"},
-        }
-        deployment = TestConfigureRuntimeEnv.f.options(
-            ray_actor_options={"runtime_env": old_runtime_env}
-        )
-        _configure_runtime_env(deployment, new_runtime_env)
-        assert deployment.ray_actor_options["runtime_env"] == updated_env
-
-    def test_no_overwrite_some_options(self):
-        old_runtime_env = {
-            "working_dir": "http://new.com",
-            "pip": [],
-            "env_vars": {"test_var": "test"},
-        }
-        new_runtime_env = {
-            "working_dir": "http://test.com",
-            "pip": ["requests", "pendulum==2.1.2"],
-        }
-        deployment = TestConfigureRuntimeEnv.f.options(
-            ray_actor_options={"runtime_env": old_runtime_env}
-        )
-        _configure_runtime_env(deployment, new_runtime_env)
-        assert deployment.ray_actor_options["runtime_env"] == old_runtime_env
-
-    def test_overwrite_no_options(self):
-        runtime_env = {
-            "working_dir": "http://test.com",
-            "pip": ["requests", "pendulum==2.1.2"],
-        }
-        deployment = TestConfigureRuntimeEnv.f.options(
-            ray_actor_options={"runtime_env": runtime_env}
-        )
-        _configure_runtime_env(deployment, {})
-        assert deployment.ray_actor_options["runtime_env"] == runtime_env
 
 
 def test_start_shutdown(ray_start_stop):
@@ -347,7 +161,7 @@ def test_deploy(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_info(ray_start_stop):
+def test_config(ray_start_stop):
     # Deploys valid config file and checks that serve info returns correct
     # response
 
@@ -358,8 +172,8 @@ def test_info(ray_start_stop):
     deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
     assert success_message_fragment in deploy_response
 
-    info_response = subprocess.check_output(["serve", "info", "-j"]).decode("utf-8")
-    info = json.loads(info_response)
+    info_response = subprocess.check_output(["serve", "config"])
+    info = yaml.safe_load(info_response)
 
     assert "deployments" in info
     assert len(info["deployments"]) == 2
