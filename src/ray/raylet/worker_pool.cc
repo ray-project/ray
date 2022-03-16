@@ -1624,7 +1624,8 @@ void WorkerPool::CreateRuntimeEnv(
           callback(true, serialized_runtime_env_context, "");
         } else {
           RAY_LOG(WARNING) << "Couldn't create a runtime environment for job " << job_id
-                           << ". The runtime environment was " << serialized_runtime_env;
+                           << ". The runtime environment was " << serialized_runtime_env
+                           << ".";
           callback(false, "", setup_error_message);
         }
       });
