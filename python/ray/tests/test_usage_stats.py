@@ -441,7 +441,7 @@ provider:
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
         m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
-        ray.init(num_cpus=0)
+        ray.init(num_cpus=3)
 
         @ray.remote(num_cpus=0)
         class StatusReporter:
@@ -500,8 +500,21 @@ provider:
             print_dashboard_log()
             raise
         payload = ray.get(reporter.get_payload.remote())
+        ray_version, python_version = ray._private.utils.compute_version_info()
+        assert payload["ray_version"] == ray_version
+        assert payload["python_version"] == python_version
+        assert payload["schema_version"] == "0.2"
+        assert payload["os"] == sys.platform
+        assert payload["source"] == "OSS"
         assert payload["cloud_provider"] == "aws"
+        assert payload["min_workers"] is None
+        assert payload["max_workers"] == 1
+        assert payload["head_node_instance_type"] is None
+        assert payload["worker_node_instance_types"] is None
+        assert payload["num_cpus"] == 3
+        assert payload["num_gpus"] is None
         assert payload["total_memory_gb"] > 0
+        assert payload["total_object_store_memory_gb"] > 0
         validate(instance=payload, schema=schema)
         """
         Verify the usage_stats.json is updated.
