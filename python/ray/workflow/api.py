@@ -5,6 +5,7 @@ from typing import Dict, Set, List, Tuple, Union, Optional, Any, TYPE_CHECKING
 import time
 
 import ray
+from ray.experimental.dag import DAGNode
 from ray.experimental.dag.input_node import DAGInputData
 
 from ray.workflow import execution
@@ -34,7 +35,6 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.workflow.virtual_actor_class import VirtualActorClass, VirtualActor
-    from ray.experimental.dag import DAGNode
 
 logger = logging.getLogger(__name__)
 
@@ -586,8 +586,31 @@ def create(dag_node: "DAGNode", *args, **kwargs) -> Workflow:
     """
     from ray.workflow.dag_to_workflow import transform_ray_dag_to_workflow
 
+    if not isinstance(dag_node, DAGNode):
+        raise TypeError("Input should be a DAG.")
     input_context = DAGInputData(*args, **kwargs)
     return transform_ray_dag_to_workflow(dag_node, input_context)
+
+
+@PublicAPI(stability="beta")
+def continuation(dag_node: "DAGNode") -> Union[Workflow, ray.ObjectRef]:
+    """Converts a DAG into a continuation.
+
+    The result depends on the context. If it is inside a workflow, it
+    returns a workflow; otherwise it executes and get the result of
+    the DAG.
+
+    Args:
+        dag_node: The DAG to be converted.
+    """
+    from ray.workflow.workflow_context import in_workflow_execution
+
+    if not isinstance(dag_node, DAGNode):
+        raise TypeError("Input should be a DAG.")
+
+    if in_workflow_execution():
+        return create(dag_node)
+    return ray.get(dag_node.execute())
 
 
 __all__ = (
