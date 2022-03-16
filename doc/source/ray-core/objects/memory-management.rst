@@ -10,6 +10,9 @@ Concepts
 
 There are several ways that Ray applications use memory:
 
+..
+  https://docs.google.com/drawings/d/1wHHnAJZ-NsyIv3TUXQJTYpPz6pjB6PUm2M40Zbfb1Ak/edit
+
 .. image:: ../images/memory.svg
 
 Ray system memory: this is memory used internally by Ray
