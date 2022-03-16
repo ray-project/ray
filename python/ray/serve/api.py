@@ -24,7 +24,7 @@ from typing import (
 
 from fastapi import APIRouter, FastAPI
 from ray.experimental.dag.class_node import ClassNode
-from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
+from ray.experimental.dag.input_node import InputNode
 from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
@@ -1110,30 +1110,20 @@ class Deployment:
         The returned bound deployment can be deployed or bound to other
         deployments to create a multi-deployment application.
         """
+        node = DeploymentNode(
+            self._func_or_class,
+            args,
+            kwargs,
+            cls_options=self._ray_actor_options or dict(),
+            other_args_to_resolve={
+                "deployment_self": copy(self),
+                "is_from_serve_deployment": True,
+            },
+        )
         if inspect.isclass(self._func_or_class):
-            return DeploymentNode(
-                self._func_or_class,
-                args,
-                kwargs,
-                cls_options=self._ray_actor_options or dict(),
-                other_args_to_resolve={
-                    "deployment_self": copy(self),
-                    "is_from_serve_deployment": True,
-                },
-            )
+            return node
         else:
             # For function
-            node = DeploymentNode(
-                self._func_or_class,
-                (),
-                {},
-                cls_options=self._ray_actor_options or dict(),
-                other_args_to_resolve={
-                    "deployment_self": copy(self),
-                    "is_function": True,
-                    "is_from_serve_deployment": True,
-                },
-            )
             return node.__call__.bind(*args, **kwargs)
 
 
@@ -1663,7 +1653,7 @@ def _get_deployments_from_node(node: DeploymentNode) -> List[Deployment]:
     """
     from ray.serve.pipeline.api import build as pipeline_build
 
-    with PipelineInputNode() as input_node:
+    with InputNode() as input_node:
         root = node.__call__.bind(input_node)
     deployments = pipeline_build(root, inject_ingress=False)
 

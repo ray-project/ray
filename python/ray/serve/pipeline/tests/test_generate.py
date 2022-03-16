@@ -16,7 +16,6 @@ from ray.serve.pipeline.tests.resources.test_modules import (
     Model,
     NESTED_HANDLE_KEY,
     combine,
-    request_to_data_int,
 )
 from ray.serve.pipeline.tests.resources.test_dags import (
     get_simple_class_with_class_method_dag,
@@ -25,7 +24,6 @@ from ray.serve.pipeline.tests.resources.test_dags import (
     get_shared_deployment_handle_dag,
     get_multi_instantiation_class_nested_deployment_arg_dag,
 )
-from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
 
 
 def _validate_consistent_python_output(
@@ -62,7 +60,7 @@ def test_simple_single_class(serve_instance):
 
 
 def test_single_class_with_valid_ray_options(serve_instance):
-    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
+    with InputNode() as dag_input:
         model = Model.options(num_cpus=1, memory=1000).bind(2, ratio=0.3)
         ray_dag = model.forward.bind(dag_input)
 
@@ -81,7 +79,7 @@ def test_single_class_with_valid_ray_options(serve_instance):
 
 
 def test_single_class_with_invalid_deployment_options(serve_instance):
-    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
+    with InputNode() as dag_input:
         model = Model.options(name="my_deployment").bind(2, ratio=0.3)
         ray_dag = model.forward.bind(dag_input)
 
@@ -202,32 +200,32 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
 
 
 def test_get_pipeline_input_node():
-    # 1) No PipelineInputNode found
+    # 1) No InputNode found
     ray_dag = combine.bind(1, 2)
     serve_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
     with pytest.raises(
-        AssertionError, match="There should be one and only one PipelineInputNode"
+        AssertionError, match="There should be one and only one InputNode"
     ):
         get_pipeline_input_node(serve_dag)
 
-    # 2) More than one PipelineInputNode found
-    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
+    # 2) More than one InputNode found
+    with InputNode() as dag_input:
         a = combine.bind(dag_input[0], dag_input[1])
-    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input_2:
+    with InputNode() as dag_input_2:
         b = combine.bind(dag_input_2[0], dag_input_2[1])
         ray_dag = combine.bind(a, b)
     serve_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
     with pytest.raises(
-        AssertionError, match="There should be one and only one PipelineInputNode"
+        AssertionError, match="There should be one and only one InputNode"
     ):
         get_pipeline_input_node(serve_dag)
 
-    # 3) User forgot to change InputNode to PipelineInputNode
+    # 3) User forgot to change InputNode to InputNode
     with InputNode() as dag_input:
         ray_dag = combine.bind(dag_input[0], dag_input[1])
     serve_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
     with pytest.raises(
-        ValueError, match="Please change Ray DAG InputNode to PipelineInputNode"
+        ValueError, match="Please change Ray DAG InputNode to InputNode"
     ):
         get_pipeline_input_node(serve_dag)
 

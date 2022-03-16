@@ -9,7 +9,7 @@ from ray.ml.checkpoint import Checkpoint
 from ray.ml.predictor import DataBatchType, Predictor
 from ray.serve.model_wrappers import ModelWrapper
 from ray.serve.pipeline.api import build
-from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
+from ray.experimental.dag.input_node import InputNode
 from requests.adapters import HTTPAdapter, Retry
 import ray
 from ray import serve
@@ -83,7 +83,7 @@ def test_model_wrappers_in_pipeline(serve_instance):
     checkpoint_cls = "ray.serve.tests.test_model_wrappers.AdderCheckpoint"
     schema_cls = "ray.serve.http_adapters.array_to_databatch"
 
-    with PipelineInputNode(preprocessor=schema_cls) as dag_input:
+    with InputNode() as dag_input:
         m1 = ray.remote(ModelWrapper).bind(
             predictor_cls=predictor_cls,  # TODO: can't be the raw class right now?
             checkpoint={  # TODO: can't be the raw object right now?

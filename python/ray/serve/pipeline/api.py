@@ -38,7 +38,7 @@ def build(ray_dag_root_node: DAGNode, inject_ingress=True):
     Args:
         ray_dag_root_node: DAGNode acting as root of a Ray authored DAG. It
             should be executable via `ray_dag_root_node.execute(user_input)`
-            and should have `PipelineInputNode` in it.
+            and should have `InputNode` in it.
 
     Returns:
         app: The Ray Serve application object that wraps all deployments needed
@@ -46,7 +46,7 @@ def build(ray_dag_root_node: DAGNode, inject_ingress=True):
             accessible via python .remote() call and HTTP.
 
     Examples:
-        >>> with ServeInputNode(preprocessor=request_to_data_int) as dag_input:
+        >>> with InputNode() as dag_input:
         ...    m1 = Model.bind(1)
         ...    m2 = Model.bind(2)
         ...    m1_output = m1.forward.bind(dag_input[0])

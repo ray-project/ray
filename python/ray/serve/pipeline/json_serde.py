@@ -14,7 +14,6 @@ from ray.experimental.dag import (
 )
 from ray.serve.pipeline.deployment_node import DeploymentNode
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
-from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
 from ray.serve.utils import parse_import_path
 from ray.serve.handle import PipelineHandle, RayServeHandle
 from ray.serve.utils import ServeHandleEncoder, serve_handle_object_hook
@@ -101,8 +100,6 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
         return InputNode.from_json(input_json, object_hook=dagnode_from_json)
     elif input_json[DAGNODE_TYPE_KEY] == InputAtrributeNode.__name__:
         return InputAtrributeNode.from_json(input_json, object_hook=dagnode_from_json)
-    elif input_json[DAGNODE_TYPE_KEY] == PipelineInputNode.__name__:
-        return PipelineInputNode.from_json(input_json, object_hook=dagnode_from_json)
     elif input_json[DAGNODE_TYPE_KEY] == ClassMethodNode.__name__:
         return ClassMethodNode.from_json(input_json, object_hook=dagnode_from_json)
     elif input_json[DAGNODE_TYPE_KEY] == DeploymentNode.__name__:

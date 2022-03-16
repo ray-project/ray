@@ -4,6 +4,7 @@ from typing import TypeVar
 
 import ray
 from ray.experimental.dag.dag_node import DAGNode
+from ray.experimental.dag.input_node import InputNode
 from ray.serve.pipeline.json_serde import (
     DAGNodeEncoder,
     dagnode_from_json,
@@ -24,7 +25,6 @@ from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
 )
-from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
 
 RayHandleLike = TypeVar("RayHandleLike")
 
@@ -124,7 +124,7 @@ def test_no_inline_class_or_func(serve_instance):
     def inline_func(val):
         return val
 
-    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
+    with InputNode() as dag_input:
         ray_dag = inline_func.bind(dag_input)
 
     assert ray.get(ray_dag.execute(1)) == 1
@@ -143,7 +143,7 @@ def test_no_inline_class_or_func(serve_instance):
         def get(self, input):
             return self.val + input
 
-    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
+    with InputNode() as dag_input:
         node = InlineClass.bind(1)
         ray_dag = node.get.bind(dag_input)
 
@@ -153,21 +153,8 @@ def test_no_inline_class_or_func(serve_instance):
     ):
         _ = json.dumps(ray_dag, cls=DAGNodeEncoder)
 
-    # 3) Inline preprocessor fn
-    def inline_preprocessor_fn(input):
-        return input
-
-    with PipelineInputNode(preprocessor=inline_preprocessor_fn) as dag_input:
-        ray_dag = combine.bind(dag_input[0], 2)
-
-    with pytest.raises(
-        AssertionError,
-        match="Preprocessor used in DAG should not be in-line defined",
-    ):
-        _ = json.dumps(ray_dag, cls=DAGNodeEncoder)
-
-    # 4) Class factory that function returns class object
-    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
+    # 3) Class factory that function returns class object
+    with InputNode() as dag_input:
         instance = ray.remote(class_factory()).bind()
         ray_dag = instance.get.bind()
     with pytest.raises(
@@ -350,7 +337,7 @@ def test_simple_deployment_method_call_chain(serve_instance):
 
 
 def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
-    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
+    with InputNode() as dag_input:
         m1 = Model.bind(2)
         m2 = Model.bind(3)
         combine = Combine.bind(m1, m2={NESTED_HANDLE_KEY: m2}, m2_nested=True)
@@ -366,7 +353,7 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
 
 
 def test_nested_deployment_node_json_serde(serve_instance):
-    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
+    with InputNode() as dag_input:
         m1 = Model.bind(2)
         m2 = Model.bind(3)
 
