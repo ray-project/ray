@@ -39,7 +39,7 @@ class JobStatus(str, Enum):
 
     def is_terminal(self) -> bool:
         """Return whether or not this status is terminal.
-        
+
         A terminal status is one that cannot transition to any other status.
         The terminal statuses are "STOPPED", "SUCCEEDED", and "FAILED".
 

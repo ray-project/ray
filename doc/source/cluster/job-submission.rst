@@ -72,50 +72,23 @@ Next, start a local Ray cluster:
     Local node IP: 127.0.0.1
     INFO services.py:1360 -- View the Ray dashboard at http://127.0.0.1:8265
 
-Note the address and port returned in the terminal---this will be where we submit job requests to.  If you do not see this, ensure the Ray Dashboard is installed by running :code:`pip install "ray[default]"`.
+Note the address and port returned in the terminal---this will be where we submit job requests to, as explained further in the examples below.  If you do not see this, ensure the Ray Dashboard is installed by running :code:`pip install "ray[default]"`.
 
-At this point, the job is ready to be submitted by one of the Ray Job APIs.  The simplest way is to use the command line interface.  Ensure you are in ``your_working_directory`` and run the following command:
+At this point, the job is ready to be submitted by one of the :ref:`Ray Job APIs<ray-job-apis>`.
+Continue on to see examples of running and interacting with this sample job. 
 
-.. code-block::
+.. _ray-job-apis:
 
-    RAY_ADDRESS="http://127.0.0.1:8265" ray job submit --runtime-env-json='{"working_dir": "./", "pip": ["requests==2.26.0"]}' -- python script.py
-    
-You should see the following output:
+Ray Job Submission APIs
+-----------------------
 
-.. code-block::
+Ray provides three APIs for job submission: 
 
-    2021-12-01 23:04:52,672	INFO cli.py:25 -- Creating JobSubmissionClient at address: http://127.0.0.1:8265
-    2021-12-01 23:04:52,809	INFO sdk.py:144 -- Uploading package gcs://_ray_pkg_bbcc8ca7e83b4dc0.zip.
-    2021-12-01 23:04:52,810	INFO packaging.py:352 -- Creating a file package for local directory './'.
-    2021-12-01 23:04:52,878	INFO cli.py:105 -- Job submitted successfully: raysubmit_RXhvSyEPbxhcXtm6.
-    2021-12-01 23:04:52,878	INFO cli.py:106 -- Query the status of the job using: `ray job status raysubmit_RXhvSyEPbxhcXtm6`.
+* A :ref:`command line interface<ray-job-cli>`, the easiest way to get started.
+* A :ref:`Python SDK<ray-job-sdk>`, the recommended way to submit jobs programmatically.
+* An :ref:`HTTP REST API<ray-job-rest-api>`. Both the CLI and SDK call into the REST API under the hood.
 
-You can check the logs with the following command:
-
-.. code-block::
-    
-    RAY_ADDRESS="http://127.0.0.1:8265" ray job logs raysubmit_RXhvSyEPbxhcXtm6
-
-Sample output:
-
-.. code-block::
-
-    2021-12-01 23:05:59,026	INFO cli.py:25 -- Creating JobSubmissionClient at address: http://127.0.0.1:8265
-    2021-12-01 23:05:23,037	INFO worker.py:851 -- Connecting to existing Ray cluster at address: 127.0.0.1:6379
-    (pid=runtime_env) 2021-12-01 23:05:23,212	WARNING conda.py:54 -- Injecting /Users/jiaodong/Workspace/ray/python to environment /tmp/ray/session_2021-12-01_23-04-44_771129_7693/runtime_resources/conda/99305e1352b2dcc9d5f38c2721c7c1f1cc0551d5 because _inject_current_ray flag is on.
-    (pid=runtime_env) 2021-12-01 23:05:23,212	INFO conda.py:328 -- Finished setting up runtime environment at /tmp/ray/session_2021-12-01_23-04-44_771129_7693/runtime_resources/conda/99305e1352b2dcc9d5f38c2721c7c1f1cc0551d5
-    (pid=runtime_env) 2021-12-01 23:05:23,213	INFO working_dir.py:85 -- Setup working dir for gcs://_ray_pkg_bbcc8ca7e83b4dc0.zip
-    1
-    2
-    3
-    4
-    5
-    2.26.0
-
-Ray Job APIs
-------------
-
-Ray provides three APIs for job submission: a command line interface, a Python SDK, and an HTTP REST API. Both the CLI and SDK call into the REST API under the hood.  All the APIs for job submission share the following **key inputs**:
+All three APIs for job submission share the following key inputs:
 
 * **Entrypoint**: The shell command to run the job.
 
@@ -131,10 +104,15 @@ Ray provides three APIs for job submission: a command line interface, a Python S
         * If :code:`working_dir` is a remote URI hosted on S3, GitHub or others: It will be downloaded and unpacked to where your submitted application runs.  This option has no size limit and is recommended for production use.  For details, see :ref:`remote-uris`.
 
 
+.. _ray-job-cli:
+
 CLI
 ^^^
 
-The easiest way to get started with Ray job submission is to use the Job Submission CLI.
+The easiest way to get started with Ray job submission is to use the Job Submission CLI. 
+
+Jump to the :ref:`API Reference<ray-job-submission-cli-ref>`, or continue reading for a walkthrough.
+
 
 Using the CLI on a local cluster
 """"""""""""""""""""""""""""""""
@@ -147,16 +125,53 @@ Next, set the :code:`RAY_ADDRESS` environment variable:
 
     export RAY_ADDRESS="http://127.0.0.1:8265"
 
-This tells Job Submission how to find our Ray cluster.  Here we are specifying port ``8265`` on the head node, the port that the Ray Dashboard listens on.  
+This tells the jobs CLI how to find your Ray cluster.  Here we are specifying port ``8265`` on the head node, the port that the Ray Dashboard listens on.  
 (Note that this port is different from the port used to connect to the cluster via :ref:`Ray Client <ray-client>`, which is ``10001`` by default.)
 
-Now you are ready to use the CLI.  Jump to the :ref:`API Reference<ray-job-submission-cli-ref>` for the list of commands.
+Now you are ready to use the CLI.  
+Here are some examples of CLI commands from the Quick Start example and their output:
+
+.. code-block::
+
+    ❯ ray job submit --runtime-env-json='{"working_dir": "./", "pip": ["requests==2.26.0"]}' -- python script.py
+    2021-12-01 23:04:52,672	INFO cli.py:25 -- Creating JobSubmissionClient at address: http://127.0.0.1:8265
+    2021-12-01 23:04:52,809	INFO sdk.py:144 -- Uploading package gcs://_ray_pkg_bbcc8ca7e83b4dc0.zip.
+    2021-12-01 23:04:52,810	INFO packaging.py:352 -- Creating a file package for local directory './'.
+    2021-12-01 23:04:52,878	INFO cli.py:105 -- Job submitted successfully: raysubmit_RXhvSyEPbxhcXtm6.
+    2021-12-01 23:04:52,878	INFO cli.py:106 -- Query the status of the job using: `ray job status raysubmit_RXhvSyEPbxhcXtm6`.
+
+    ❯ ray job status raysubmit_RXhvSyEPbxhcXtm6
+    2021-12-01 23:05:00,356	INFO cli.py:25 -- Creating JobSubmissionClient at address: http://127.0.0.1:8265
+    2021-12-01 23:05:00,371	INFO cli.py:127 -- Job status for 'raysubmit_RXhvSyEPbxhcXtm6': PENDING.
+    2021-12-01 23:05:00,371	INFO cli.py:129 -- Job has not started yet, likely waiting for the runtime_env to be set up.
+
+    ❯ ray job status raysubmit_RXhvSyEPbxhcXtm6
+    2021-12-01 23:05:37,751	INFO cli.py:25 -- Creating JobSubmissionClient at address: http://127.0.0.1:8265
+    2021-12-01 23:05:37,764	INFO cli.py:127 -- Job status for 'raysubmit_RXhvSyEPbxhcXtm6': SUCCEEDED.
+    2021-12-01 23:05:37,764	INFO cli.py:129 -- Job finished successfully.
+
+    ❯ ray job logs raysubmit_RXhvSyEPbxhcXtm6
+    2021-12-01 23:05:59,026	INFO cli.py:25 -- Creating JobSubmissionClient at address: http://127.0.0.1:8265
+    2021-12-01 23:05:23,037	INFO worker.py:851 -- Connecting to existing Ray cluster at address: 127.0.0.1:6379
+    (pid=runtime_env) 2021-12-01 23:05:23,212	WARNING conda.py:54 -- Injecting /Users/jiaodong/Workspace/ray/python to environment /tmp/ray/session_2021-12-01_23-04-44_771129_7693/runtime_resources/conda/99305e1352b2dcc9d5f38c2721c7c1f1cc0551d5 because _inject_current_ray flag is on.
+    (pid=runtime_env) 2021-12-01 23:05:23,212	INFO conda.py:328 -- Finished setting up runtime environment at /tmp/ray/session_2021-12-01_23-04-44_771129_7693/runtime_resources/conda/99305e1352b2dcc9d5f38c2721c7c1f1cc0551d5
+    (pid=runtime_env) 2021-12-01 23:05:23,213	INFO working_dir.py:85 -- Setup working dir for gcs://_ray_pkg_bbcc8ca7e83b4dc0.zip
+    1
+    2
+    3
+    4
+    5
+    2.26.0
+
+    ❯ ray job list
+    {'raysubmit_AYhLMgDJ6XBQFvFP': JobInfo(status='SUCCEEDED', message='Job finished successfully.', error_type=None, start_time=1645908622, end_time=1645908623, metadata={}, runtime_env={}),
+    'raysubmit_su9UcdUviUZ86b1t': JobInfo(status='SUCCEEDED', message='Job finished successfully.', error_type=None, start_time=1645908669, end_time=1645908670, metadata={}, runtime_env={})}
 
 
-Using the CLI with the Ray Cluster Launcher
-"""""""""""""""""""""""""""""""""""""""""""
+Using the CLI on a remote cluster
+"""""""""""""""""""""""""""""""""
 
-The "Quick Start" example above was for a local Ray cluster.  When connecting to a `remote` cluster, you need to be able to access the Ray Dashboard port of the cluster over HTTP.
+Above, we ran the "Quick Start" example on a local Ray cluster.  When connecting to a `remote` cluster via the CLI, you need to be able to access the Ray Dashboard port of the cluster over HTTP.
 
 One way to do this is to port forward ``127.0.0.1:8265`` on your local machine to ``127.0.0.1:8265`` on the head node. 
 If you started your remote cluster with the :ref:`Ray Cluster Launcher <ref-cluster-quick-start>`, then the port forwarding can be set up automatically using the ``ray dashboard`` command (see :ref:`monitor-cluster` for details).
@@ -184,6 +199,9 @@ The instructions above still apply, but you can achieve the dashboard port forwa
 https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/
 
 Alternatively, you can set up Ingress to the dashboard port of the cluster over HTTP: https://kubernetes.io/docs/concepts/services-networking/ingress/
+
+
+.. _ray-job-sdk:
 
 Python SDK
 ^^^^^^^^^^
@@ -276,6 +294,9 @@ A submitted job can be stopped by the user before it finishes executing.
 To get information about all jobs, call ``client.list_jobs()``.  This returns a ``Dict[str, JobInfo]`` object mapping Job IDs to their information.
 
 For full details, see the :ref:`API Reference<ray-job-submission-sdk-ref>`.
+
+
+.. _ray-job-rest-api:
 
 REST API
 ^^^^^^^^
