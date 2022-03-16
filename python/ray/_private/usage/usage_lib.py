@@ -194,41 +194,61 @@ def put_cluster_metadata(gcs_client, num_retries) -> None:
 
 
 def get_cluster_status(gcs_client, num_retries) -> dict:
-    """Get the current status of this cluster."""
-    cluster_status = ray._private.utils.internal_kv_get_with_retry(
-        gcs_client,
-        ray.ray_constants.DEBUG_AUTOSCALING_STATUS,
-        namespace=None,
-        num_retries=num_retries,
-    )
-    if not cluster_status:
-        return {}
+    """Get the current status of this cluster.
 
-    result = {}
-    to_GiB = 1 / 2 ** 30
-    cluster_status = json.loads(cluster_status.decode("utf-8"))
-    if (
-        "load_metrics_report" not in cluster_status
-        or "usage" not in cluster_status["load_metrics_report"]
-    ):
-        return {}
+    It is a blocking API.
 
-    usage = cluster_status["load_metrics_report"]["usage"]
-    if "CPU" in usage:
-        result["num_cpus"] = usage["CPU"][1]
-    if "GPU" in usage:
-        result["num_gpus"] = usage["GPU"][1]
-    if "memory" in usage:
-        result["total_memory_gb"] = usage["memory"][1] * to_GiB
-    if "object_store_memory" in usage:
-        result["total_object_store_memory_gb"] = (
-            usage["object_store_memory"][1] * to_GiB
+    Params:
+        gcs_client (GCSClient): The GCS client to perform KV operation GET.
+        num_retries (int): Max number of times to retry if GET fails.
+
+    Returns:
+        The current cluster status or empty dict if it fails to get that information.
+    """
+    try:
+        cluster_status = ray._private.utils.internal_kv_get_with_retry(
+            gcs_client,
+            ray.ray_constants.DEBUG_AUTOSCALING_STATUS,
+            namespace=None,
+            num_retries=num_retries,
         )
-    return result
+        if not cluster_status:
+            return {}
+
+        result = {}
+        to_GiB = 1 / 2 ** 30
+        cluster_status = json.loads(cluster_status.decode("utf-8"))
+        if (
+            "load_metrics_report" not in cluster_status
+            or "usage" not in cluster_status["load_metrics_report"]
+        ):
+            return {}
+
+        usage = cluster_status["load_metrics_report"]["usage"]
+        if "CPU" in usage:
+            result["num_cpus"] = usage["CPU"][1]
+        if "GPU" in usage:
+            result["num_gpus"] = usage["GPU"][1]
+        if "memory" in usage:
+            result["total_memory_gb"] = usage["memory"][1] * to_GiB
+        if "object_store_memory" in usage:
+            result["total_object_store_memory_gb"] = (
+                usage["object_store_memory"][1] * to_GiB
+            )
+        return result
+    except Exception:
+        return {}
 
 
 def get_cluster_config(cluster_config_file_path) -> dict:
-    """Get the static cluster (autoscaler) config used to launch this cluster."""
+    """Get the static cluster (autoscaler) config used to launch this cluster.
+
+    Params:
+        cluster_config_file_path (str): The file path to the cluster config file.
+
+    Returns:
+        The cluster (autoscaler) config or empty if it fails to get that information.
+    """
 
     def get_instance_type(node_config):
         if not node_config:
