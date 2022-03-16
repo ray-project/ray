@@ -597,9 +597,14 @@ def runtime_env_disable_URI_cache():
         {
             "RAY_RUNTIME_ENV_CONDA_CACHE_SIZE_GB": "0",
             "RAY_RUNTIME_ENV_PIP_CACHE_SIZE_GB": "0",
+            "RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB": "0",
+            "RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB": "0",
         },
     ):
-        print("URI caching disabled (conda and pip cache size set to 0).")
+        print(
+            "URI caching disabled (conda, pip, working_dir, py_modules cache "
+            "size set to 0)."
+        )
         yield
 
 
