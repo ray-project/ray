@@ -15,7 +15,7 @@ import xgboost_ray
 
 @DeveloperAPI
 class GBDTTrainer(Trainer):
-    """Common logic for gradient-boosting decision tree frameworks
+    """Common logic for gradient-boosting decision tree (GBDT) frameworks
     like XGBoost-Ray and LightGBM-Ray.
 
 
