@@ -1,5 +1,4 @@
 # flake8: noqa
-# TODO(amog): Add this to CI once Trainer has been implemented.
 # TODO(rliaw): Include this in the docs.
 
 # fmt: off
