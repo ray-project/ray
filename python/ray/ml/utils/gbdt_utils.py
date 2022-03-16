@@ -56,7 +56,7 @@ class GBDTTrainer(Trainer):
         else:
             ray_params_cls = xgboost_ray.RayParams
 
-        resources_per_worker = pgf.bundles[-1]
+        resources_per_worker = pgf.bundles[-1].copy()
         num_workers = len(pgf.bundles) - int(not pgf.head_bundle_is_empty)
         cpus_per_worker = resources_per_worker.pop("CPU", 1)
         gpus_per_worker = resources_per_worker.pop("GPU", 0)
