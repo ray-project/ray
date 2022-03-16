@@ -1235,7 +1235,7 @@ class TrialRunner:
         if self.trial_executor.has_resources_for_trial(trial):
             requeue_trial = False
             logger.info(
-                "Trial %s: Attempting to restore " "trial state from last checkpoint.",
+                "Trial %s: Attempting to restore trial state from last checkpoint.",
                 trial,
             )
             # TODO(xwjiang): For better consistency, consider not starting

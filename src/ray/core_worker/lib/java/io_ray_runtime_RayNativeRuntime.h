@@ -104,6 +104,14 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetResourceIds(JNIEnv *, jclass);
 JNIEXPORT jstring JNICALL
 Java_io_ray_runtime_RayNativeRuntime_nativeGetNamespace(JNIEnv *, jclass);
 
+/*
+ * Class:     io_ray_runtime_RayNativeRuntime
+ * Method:    nativeGetCurrentReturnIds
+ * Signature: (I[B)Ljava/util/List;
+ */
+JNIEXPORT jobject JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeGetCurrentReturnIds(
+    JNIEnv *, jclass, jint, jbyteArray);
+
 #ifdef __cplusplus
 }
 #endif

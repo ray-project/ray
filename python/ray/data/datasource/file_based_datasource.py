@@ -284,6 +284,34 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 block_udf=_block_udf, target_max_block_size=ctx.target_max_block_size
             )
             for read_path in read_paths:
+                compression = open_stream_args.pop("compression", None)
+                if compression is None:
+                    import pyarrow as pa
+
+                    try:
+                        # If no compression manually given, try to detect
+                        # compression codec from path.
+                        compression = pa.Codec.detect(read_path).name
+                    except (ValueError, TypeError):
+                        # Arrow's compression inference on the file path
+                        # doesn't work for Snappy, so we double-check ourselves.
+                        import pathlib
+
+                        suffix = pathlib.Path(read_path).suffix
+                        if suffix and suffix[1:] == "snappy":
+                            compression = "snappy"
+                        else:
+                            compression = None
+                if compression == "snappy":
+                    # Pass Snappy compression as a reader arg, so datasource subclasses
+                    # can manually handle streaming decompression in
+                    # self._read_stream().
+                    reader_args["compression"] = compression
+                    reader_args["filesystem"] = fs
+                elif compression is not None:
+                    # Non-Snappy compression, pass as open_input_stream() arg so Arrow
+                    # can take care of streaming decompression for us.
+                    open_stream_args["compression"] = compression
                 with fs.open_input_stream(read_path, **open_stream_args) as f:
                     for data in read_stream(f, read_path, **reader_args):
                         output_buffer.add_block(data)

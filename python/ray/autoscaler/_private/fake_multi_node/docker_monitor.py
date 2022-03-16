@@ -57,6 +57,8 @@ def _update_docker_compose(
         cmd = ["down"]
         shutdown = True
     try:
+        # Loop through parsed docker-compose and create node-specific
+        # host directories if needed
         for node_id, node_conf in docker_compose_config["services"].items():
             for volume_mount in node_conf["volumes"]:
                 host_dir, container_dir = volume_mount.split(":", maxsplit=1)

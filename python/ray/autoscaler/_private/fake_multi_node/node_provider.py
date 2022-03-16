@@ -174,12 +174,18 @@ def create_node_spec(
         mj = sys.version_info.major
         mi = sys.version_info.minor
 
+        fake_modules_str = os.environ.get("FAKE_CLUSTER_DEV_MODULES", "autoscaler")
+        fake_modules = fake_modules_str.split(",")
+
         docker_ray_dir = f"/home/ray/anaconda3/lib/python{mj}.{mi}/site-packages/ray"
+
         node_spec["volumes"] += [
-            f"{local_ray_dir}/autoscaler:{docker_ray_dir}/autoscaler:ro",
-            f"{local_ray_dir}/tune:{docker_ray_dir}/tune:ro",  # Todo: remove
+            f"{local_ray_dir}/{module}:{docker_ray_dir}/{module}:ro"
+            for module in fake_modules
         ]
         env_vars["FAKE_CLUSTER_DEV"] = local_ray_dir
+        env_vars["FAKE_CLUSTER_DEV_MODULES"] = fake_modules_str
+        os.environ["FAKE_CLUSTER_DEV_MODULES"] = fake_modules_str
 
     if head:
         node_spec["command"] = DOCKER_HEAD_CMD.format(**cmd_kwargs)

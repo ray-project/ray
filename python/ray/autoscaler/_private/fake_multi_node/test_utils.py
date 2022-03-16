@@ -213,7 +213,12 @@ class DockerCluster:
         self.maybe_pull_image()
 
     def teardown(self, keep_dir: bool = False):
-        """Tear down docker compose cluster environment."""
+        """Tear down docker compose cluster environment.
+
+        Args:
+            keep_dir (bool): If True, cluster directory
+                will not be removed after termination.
+        """
         if not keep_dir:
             shutil.rmtree(self._tempdir)
         self._tempdir = None
