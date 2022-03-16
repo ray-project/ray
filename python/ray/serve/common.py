@@ -1,4 +1,3 @@
-import pickle
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, Optional
@@ -10,7 +9,8 @@ from ray.serve.autoscaling_policy import AutoscalingPolicy
 from ray.serve.generated.serve_pb2 import (
     DeploymentInfo as DeploymentInfoProto,
     DeploymentStatusInfo as DeploymentStatusInfoProto,
-    DeploymentStatus as DeploymentStatusProto, DeploymentLanguage,
+    DeploymentStatus as DeploymentStatusProto,
+    DeploymentLanguage,
 )
 
 EndpointTag = str
@@ -40,8 +40,10 @@ class DeploymentStatusInfo:
 
     @classmethod
     def from_proto(cls, proto: DeploymentStatusInfoProto):
-        return cls(status=DeploymentStatus(
-            DeploymentStatusProto.Name(proto.status)), message=proto.message)
+        return cls(
+            status=DeploymentStatus(DeploymentStatusProto.Name(proto.status)),
+            message=proto.message,
+        )
 
 
 class DeploymentInfo:
@@ -111,19 +113,25 @@ class DeploymentInfo:
 
     @classmethod
     def from_proto(cls, proto: DeploymentInfoProto):
-        deployment_config = DeploymentConfig.from_proto(
-            proto.deployment_config) if proto.deployment_config else None
+        deployment_config = (
+            DeploymentConfig.from_proto(proto.deployment_config)
+            if proto.deployment_config
+            else None
+        )
         data = {
             "deployment_config": deployment_config,
             "replica_config": ReplicaConfig.from_proto(
                 proto.replica_config,
-                deployment_config.deployment_language if deployment_config else DeploymentLanguage.PYTHON
+                deployment_config.deployment_language
+                if deployment_config
+                else DeploymentLanguage.PYTHON,
             ),
             "start_time_ms": proto.start_time_ms,
-            "actor_name": proto.actor_name if proto.actor_name != '' else None,
-            "serialized_deployment_def":
-                proto.serialized_deployment_def if proto.serialized_deployment_def != b'' else None,
-            "version": proto.version if proto.version != '' else None,
+            "actor_name": proto.actor_name if proto.actor_name != "" else None,
+            "serialized_deployment_def": proto.serialized_deployment_def
+            if proto.serialized_deployment_def != b""
+            else None,
+            "version": proto.version if proto.version != "" else None,
             "end_time_ms": proto.end_time_ms if proto.end_time_ms != 0 else None,
             "deployer_job_id": ray.get_runtime_context().job_id,
         }

@@ -12,7 +12,6 @@ from ray.actor import ActorHandle
 from ray.serve.deployment_state import ReplicaState, DeploymentStateManager
 from ray.serve.common import (
     DeploymentInfo,
-    DeploymentStatusInfo,
     EndpointTag,
     EndpointInfo,
     NodeId,
@@ -143,8 +142,10 @@ class ServeController:
     def get_http_proxy_names(self) -> bytes:
         """Returns the http_proxy actor name list serialized by protobuf."""
         from ray.serve.generated.serve_pb2 import ActorNameList
+
         actor_name_list = ActorNameList(
-            names=self.http_state.get_http_proxy_names().values())
+            names=self.http_state.get_http_proxy_names().values()
+        )
         return actor_name_list.SerializeToString()
 
     def autoscale(self) -> None:
@@ -219,9 +220,10 @@ class ServeController:
 
     def _put_serve_snapshot(self) -> None:
         val = dict()
-        for deployment_name, (deployment_info, route_prefix) in self.list_deployments_internal(
-            include_deleted=True
-        ).items():
+        for deployment_name, (
+            deployment_info,
+            route_prefix,
+        ) in self.list_deployments_internal(include_deleted=True).items():
             entry = dict()
             entry["name"] = deployment_name
             entry["namespace"] = ray.get_runtime_context().namespace
@@ -304,7 +306,8 @@ class ServeController:
         version = deployment_config.version
         prev_version = deployment_config.prev_version
         replica_config = ReplicaConfig.from_proto_bytes(
-            replica_config_proto_bytes, deployment_config.deployment_language)
+            replica_config_proto_bytes, deployment_config.deployment_language
+        )
 
         if prev_version is not None:
             existing_deployment_info = self.deployment_state_manager.get_deployment(
@@ -388,8 +391,10 @@ class ServeController:
         route = self.endpoint_state.get_endpoint_route(name)
 
         from ray.serve.generated.serve_pb2 import DeploymentRoute
+
         deployment_route = DeploymentRoute(
-            deployment_info=deployment_info.to_proto(), route=route)
+            deployment_info=deployment_info.to_proto(), route=route
+        )
         return deployment_route.SerializeToString()
 
     def list_deployments_internal(
@@ -419,9 +424,7 @@ class ServeController:
             )
         }
 
-    def list_deployments(
-        self, include_deleted: Optional[bool] = False
-    ) -> bytes:
+    def list_deployments(self, include_deleted: Optional[bool] = False) -> bytes:
         """Gets the current information about all deployments.
 
         Args:
@@ -435,22 +438,32 @@ class ServeController:
             KeyError if the deployment doesn't exist.
         """
         from ray.serve.generated.serve_pb2 import DeploymentRouteList, DeploymentRoute
+
         deployment_route_list = DeploymentRouteList()
-        for deployment_name, (deployment_info, route_prefix) in self.list_deployments_internal(
-            include_deleted=include_deleted
-        ).items():
+        for deployment_name, (
+            deployment_info,
+            route_prefix,
+        ) in self.list_deployments_internal(include_deleted=include_deleted).items():
             deployment_info_proto = deployment_info.to_proto()
             deployment_info_proto.name = deployment_name
-            deployment_route_list.deployment_routes.append(DeploymentRoute(
-                deployment_info=deployment_info_proto, route=route_prefix))
+            deployment_route_list.deployment_routes.append(
+                DeploymentRoute(
+                    deployment_info=deployment_info_proto, route=route_prefix
+                )
+            )
         return deployment_route_list.SerializeToString()
 
     def get_deployment_statuses(self) -> bytes:
         from ray.serve.generated.serve_pb2 import DeploymentStatusInfoList
+
         deployment_status_info_list = DeploymentStatusInfoList()
-        for name, deployment_status_info in self.deployment_state_manager.get_deployment_statuses().items():
+        for (
+            name,
+            deployment_status_info,
+        ) in self.deployment_state_manager.get_deployment_statuses().items():
             deployment_status_info_proto = deployment_status_info.to_proto()
             deployment_status_info_proto.name = name
             deployment_status_info_list.deployment_status_infos.append(
-                deployment_status_info_proto)
+                deployment_status_info_proto
+            )
         return deployment_status_info_list.SerializeToString()

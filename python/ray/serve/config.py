@@ -304,27 +304,33 @@ class ReplicaConfig:
         self.resource_dict.update(custom_resources)
 
     @classmethod
-    def from_proto(cls, proto: ReplicaConfigProto,
-                   deployment_language: DeploymentLanguage):
+    def from_proto(
+        cls, proto: ReplicaConfigProto, deployment_language: DeploymentLanguage
+    ):
         deployment_def = None
-        if proto.serialized_deployment_def != b'':
+        if proto.serialized_deployment_def != b"":
             if deployment_language == DeploymentLanguage.PYTHON:
                 deployment_def = cloudpickle.loads(proto.serialized_deployment_def)
             else:
                 # TODO use messagepack
                 deployment_def = cloudpickle.loads(proto.serialized_deployment_def)
 
-        init_args = pickle.loads(proto.init_args) if proto.init_args != b'' else None
-        init_kwargs = pickle.loads(
-            proto.init_kwargs) if proto.init_kwargs != b'' else None
-        ray_actor_options = json.loads(
-            proto.ray_actor_options) if proto.ray_actor_options != '' else None
+        init_args = pickle.loads(proto.init_args) if proto.init_args != b"" else None
+        init_kwargs = (
+            pickle.loads(proto.init_kwargs) if proto.init_kwargs != b"" else None
+        )
+        ray_actor_options = (
+            json.loads(proto.ray_actor_options)
+            if proto.ray_actor_options != ""
+            else None
+        )
 
         return ReplicaConfig(deployment_def, init_args, init_kwargs, ray_actor_options)
 
     @classmethod
-    def from_proto_bytes(cls, proto_bytes: bytes,
-                         deployment_language: DeploymentLanguage):
+    def from_proto_bytes(
+        cls, proto_bytes: bytes, deployment_language: DeploymentLanguage
+    ):
         proto = ReplicaConfigProto.FromString(proto_bytes)
         return cls.from_proto(proto, deployment_language)
 
@@ -338,7 +344,8 @@ class ReplicaConfig:
             data["init_kwargs"] = pickle.dumps(self.init_kwargs)
         if self.ray_actor_options:
             data["ray_actor_options"] = json.dumps(
-                self.ray_actor_options, cls=ServeEncoder)
+                self.ray_actor_options, cls=ServeEncoder
+            )
         return ReplicaConfigProto(**data)
 
     def to_proto_bytes(self):

@@ -50,8 +50,11 @@ from ray.serve.constants import (
 )
 from ray.serve.controller import ServeController
 from ray.serve.exceptions import RayServeException
-from ray.serve.generated.serve_pb2 import DeploymentRoute, DeploymentRouteList, \
-    DeploymentStatusInfoList
+from ray.serve.generated.serve_pb2 import (
+    DeploymentRoute,
+    DeploymentRouteList,
+    DeploymentStatusInfoList,
+)
 from ray.experimental.dag import DAGNode
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
@@ -378,29 +381,35 @@ class Client:
     @_ensure_connected
     def get_deployment_info(self, name: str) -> Tuple[DeploymentInfo, str]:
         deployment_route_proto = DeploymentRoute.FromString(
-            ray.get(self._controller.get_deployment_info.remote(name)))
-        return DeploymentInfo.from_proto(
-            deployment_route_proto.deployment_info), deployment_route_proto.route
+            ray.get(self._controller.get_deployment_info.remote(name))
+        )
+        return (
+            DeploymentInfo.from_proto(deployment_route_proto.deployment_info),
+            deployment_route_proto.route,
+        )
 
     @_ensure_connected
     def list_deployments(self) -> Dict[str, Tuple[DeploymentInfo, str]]:
         deployment_route_list_proto = DeploymentRouteList.FromString(
-            ray.get(self._controller.list_deployments.remote()))
+            ray.get(self._controller.list_deployments.remote())
+        )
         return {
             deployment_route.deployment_info.name: (
-                DeploymentInfo.from_proto(
-                    deployment_route.deployment_info),
-                deployment_route.route if deployment_route.route != '' else None)
+                DeploymentInfo.from_proto(deployment_route.deployment_info),
+                deployment_route.route if deployment_route.route != "" else None,
+            )
             for deployment_route in deployment_route_list_proto.deployment_routes
         }
 
     @_ensure_connected
     def get_deployment_statuses(self) -> Dict[str, DeploymentStatusInfo]:
         proto = DeploymentStatusInfoList.FromString(
-            ray.get(self._controller.get_deployment_statuses.remote()))
+            ray.get(self._controller.get_deployment_statuses.remote())
+        )
         return {
             deployment_status_info.name: DeploymentStatusInfo.from_proto(
-                deployment_status_info)
+                deployment_status_info
+            )
             for deployment_status_info in proto.deployment_status_infos
         }
 
