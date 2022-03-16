@@ -122,7 +122,7 @@ def log_sync_template(options=""):
     ssh_key = get_ssh_key()
     if ssh_key is None:
         if not _log_sync_warned:
-            logger.debug("Log sync requires cluster to be setup with " "`ray up`.")
+            logger.debug("Log sync requires cluster to be setup with `ray up`.")
             _log_sync_warned = True
         return None
 
@@ -363,7 +363,7 @@ class NodeSyncer(Syncer):
             return None
         if ssh_user is None:
             if not _log_sync_warned:
-                logger.error("Syncer requires cluster to be setup with " "`ray up`.")
+                logger.error("Syncer requires cluster to be setup with `ray up`.")
                 _log_sync_warned = True
             return None
         return "{}@{}:{}/".format(ssh_user, self.worker_ip, self._remote_dir)
@@ -498,7 +498,7 @@ class SyncerCallback(Callback):
                     trial_syncer.wait()
                 else:
                     logger.error(
-                        "Trial %s: Checkpoint sync skipped. " "This should not happen.",
+                        "Trial %s: Checkpoint sync skipped. This should not happen.",
                         trial,
                     )
             except TuneError as e:

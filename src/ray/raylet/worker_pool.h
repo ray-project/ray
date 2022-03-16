@@ -462,7 +462,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   struct IOWorkerState {
     /// The pool of idle I/O workers.
-    std::queue<std::shared_ptr<WorkerInterface>> idle_io_workers;
+    std::unordered_set<std::shared_ptr<WorkerInterface>> idle_io_workers;
     /// The queue of pending I/O tasks.
     std::queue<std::function<void(std::shared_ptr<WorkerInterface>)>> pending_io_tasks;
     /// All I/O workers that have registered and are still connected, including both
@@ -681,7 +681,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   std::function<void()> starting_worker_timeout_callback_;
   /// If 1, expose Ray debuggers started by the workers externally (to this node).
   int ray_debugger_external;
-  FRIEND_TEST(WorkerPoolTest, InitialWorkerProcessCount);
 
   /// The Job ID of the firstly received job.
   JobID first_job_;

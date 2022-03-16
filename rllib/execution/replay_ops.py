@@ -42,7 +42,7 @@ class StoreToReplayBuffer:
         """
         if local_buffer is not None and actors is not None:
             raise ValueError(
-                "Either `local_buffer` or `replay_actors` must be given, " "not both!"
+                "Either `local_buffer` or `replay_actors` must be given, not both!"
             )
 
         if local_buffer is not None:

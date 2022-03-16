@@ -7,7 +7,7 @@ from ray.serve.pipeline.generate import (
 )
 
 
-def build(ray_dag_root_node: DAGNode):
+def build(ray_dag_root_node: DAGNode, inject_ingress=True):
     """Do all the DAG transformation, extraction and generation needed to
     produce a runnable and deployable serve pipeline application from a valid
     DAG authored with Ray DAG API.
@@ -65,9 +65,10 @@ def build(ray_dag_root_node: DAGNode):
     """
     serve_root_dag = ray_dag_root_node.apply_recursive(transform_ray_dag_to_serve_dag)
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
-    pipeline_input_node = get_pipeline_input_node(serve_root_dag)
-    ingress_deployment = get_ingress_deployment(serve_root_dag, pipeline_input_node)
-    deployments.insert(0, ingress_deployment)
+    if inject_ingress:
+        pipeline_input_node = get_pipeline_input_node(serve_root_dag)
+        ingress_deployment = get_ingress_deployment(serve_root_dag, pipeline_input_node)
+        deployments.insert(0, ingress_deployment)
 
     # TODO (jiaodong): Call into Application once Shreyas' PR is merged
     # TODO (jiaodong): Apply enforcements at serve app to_yaml level

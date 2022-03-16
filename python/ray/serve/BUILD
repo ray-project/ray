@@ -331,6 +331,14 @@ py_test(
     deps = [":serve_lib"],
 )
 
+py_test(
+    name = "test_pipeline_dag",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
 
 # Runs test_api and test_failure with injected failures in the controller.
 py_test(
@@ -397,7 +405,7 @@ py_test(
     name = "tutorial_sklearn_ray_overview",
     size = "small",
     main = "quick_start.py",
-    srcs = ["//doc/source/serve/_examples/doc_code:serve_doc_code"],
+    srcs = ["//doc/source/serve/doc_code:serve_doc_code"],
     tags = ["exclusive", "team:serve"],
 )
 

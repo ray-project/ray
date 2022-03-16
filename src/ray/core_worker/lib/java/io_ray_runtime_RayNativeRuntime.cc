@@ -293,6 +293,47 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
   options.metrics_agent_port = -1;
   options.startup_token = startupToken;
   options.runtime_env_hash = runtimeEnvHash;
+   options.object_allocator =
+      [](const ray::RayObject &object,
+         const ObjectID &object_id) -> std::shared_ptr<ray::RayObject> {
+    if (!object.HasData()) {
+      /// This object only has metadata, and doesn't have data. In this case, we can
+      /// just use the original RayObject and doesn't have to put in the JVM heap.
+      return std::make_shared<ray::RayObject>(object.GetData(), object.GetMetadata(),
+                                              object.GetNestedRefs(), true);
+    }
+    JNIEnv *env = GetJNIEnv();
+    auto java_byte_array = NativeBufferToJavaByteArray(env, object.GetData());
+    auto raw_object_id_byte_array = NativeStringToJavaByteArray(env, object_id.Binary());
+    RAY_LOG(DEBUG) << "Allocating Java byte array for object " << object_id;
+    env->CallStaticVoidMethod(java_object_ref_impl_class,
+                              java_object_ref_impl_class_on_memory_store_object_allocated,
+                              raw_object_id_byte_array, java_byte_array);
+    auto java_weak_ref = CreateJavaWeakRef(env, java_byte_array);
+    // This shared_ptr will be captured by the data_factory. So when the data_factory
+    // is destructed, we deference the java_weak_ref.
+    std::shared_ptr<void> java_weak_ref_ptr{
+        reinterpret_cast<void *>(java_weak_ref), [](auto p) {
+          JNIEnv *env = GetJNIEnv();
+          env->DeleteLocalRef(reinterpret_cast<jobject>(p));
+        }};
+    // Remove this local reference because this byte array is fate-sharing with the
+    // ObjectRefImpl in Java frontend.
+    env->DeleteLocalRef(java_byte_array);
+    env->DeleteLocalRef(raw_object_id_byte_array);
+    auto data_factory = [java_weak_ref_ptr, object_id]() -> std::shared_ptr<ray::Buffer> {
+      JNIEnv *env = GetJNIEnv();
+      jbyteArray java_byte_array = (jbyteArray)env->CallObjectMethod(
+          reinterpret_cast<jobject>(java_weak_ref_ptr.get()), java_weak_reference_get);
+      RAY_CHECK_JAVA_EXCEPTION(env);
+      RAY_CHECK(java_byte_array != nullptr)
+          << "The java byte array is null of object " << object_id;
+      return std::make_shared<JavaByteArrayBuffer>(env, java_byte_array);
+    };
+    std::shared_ptr<ray::Buffer> metadata_buffer = object.GetMetadata();
+    return std::make_shared<ray::RayObject>(metadata_buffer, object.GetNestedRefs(),
+                                            std::move(data_factory), /*copy_data=*/true);
+  };
 
   CoreWorkerProcess::Initialize(options);
 }
@@ -380,8 +421,17 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetResourceIds(JNIEnv *env, jclass) {
 
 JNIEXPORT jstring JNICALL
 Java_io_ray_runtime_RayNativeRuntime_nativeGetNamespace(JNIEnv *env, jclass) {
-  return env->NewStringUTF(
+return env->NewStringUTF(
       CoreWorkerProcess::GetCoreWorker().GetJobConfig().ray_namespace().c_str());
+}
+
+JNIEXPORT jobject JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeGetCurrentReturnIds(
+    JNIEnv *env, jclass, jint numReturns, jbyteArray actorIdByteArray) {
+  auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+  auto return_ids = core_worker.GetCurrentReturnIds(
+      static_cast<int>(numReturns),
+      JavaByteArrayToId<ray::ActorID>(env, actorIdByteArray));
+  return NativeIdVectorToJavaByteArrayList<ray::ObjectID>(env, return_ids);
 }
 
 #ifdef __cplusplus

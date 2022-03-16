@@ -91,21 +91,23 @@ def get_latest_commits(
     return commits
 
 
+def get_wheels_filename(ray_version: str) -> str:
+    return f"ray-{ray_version}-cp37-cp37m-manylinux2014_x86_64.whl"
+
+
 def get_ray_wheels_url(
     repo_url: str, branch: str, commit: str, ray_version: str
 ) -> str:
     if not repo_url.startswith("https://github.com/ray-project/ray"):
-        raise RayWheelsNotFoundError(
-            f"Automatically retrieving Ray wheels URLs is currently not "
-            f"implemented for PRs or foreign repositories. Got repository "
-            f"{repo_url}, branch {branch}, commit {commit}, "
-            f"version {ray_version}"
+        return (
+            f"https://ray-ci-artifact-pr-public.s3.amazonaws.com/"
+            f"{commit}/tmp/artifacts/.whl/{get_wheels_filename(ray_version)}"
         )
 
+    # Else, ray repo
     return (
         f"https://s3-us-west-2.amazonaws.com/ray-wheels/"
-        f"{branch}/{commit}/"
-        f"ray-{ray_version}-cp37-cp37m-manylinux2014_x86_64.whl"
+        f"{branch}/{commit}/{get_wheels_filename(ray_version)}"
     )
 
 
@@ -205,11 +207,19 @@ def find_ray_wheels_url(ray_wheels: Optional[str] = None) -> str:
         ray_version = get_ray_version(repo_url, latest_commits[0])
 
         for commit in latest_commits:
-            wheels_url = get_ray_wheels_url(repo_url, branch, commit, ray_version)
+            try:
+                wheels_url = get_ray_wheels_url(repo_url, branch, commit, ray_version)
+            except Exception as e:
+                logger.info(f"Commit not found for PR: {e}")
+                continue
             if url_exists(wheels_url):
                 set_test_env_var("RAY_COMMIT", commit)
 
                 return wheels_url
+            else:
+                logger.info(
+                    f"Wheels URL for commit {commit} does not exist: " f"{wheels_url}"
+                )
 
         raise RayWheelsNotFoundError(
             f"Couldn't find latest available wheels for repo "
