@@ -1703,12 +1703,24 @@ def run(
 
     # TODO (shrekris-anyscale): validate ingress
 
-    client = start(detached=True, http_options={"host": host, "port": port})
+    start(detached=True, http_options={"host": host, "port": port})
+
+    deploy_group(deployments, blocking=True)
+
+    return deployments[-1].get_handle()
+
+    # TODO (shrekris-anyscale): return handle to ingress deployment
+
+
+def deploy_group(deployments: List[Deployment], *, blocking=True) -> RayServeHandle:
+    """Atomically deploys a group of deployments."""
+
+    if len(deployments) == 0:
+        return
 
     parameter_group = []
 
     for deployment in deployments:
-
         deployment_parameters = {
             "name": deployment._name,
             "func_or_class": deployment._func_or_class,
@@ -1724,11 +1736,7 @@ def run(
 
         parameter_group.append(deployment_parameters)
 
-    client.deploy_group(parameter_group, _blocking=True)
-
-    return deployments[-1].get_handle()
-
-    # TODO (shrekris-anyscale): return handle to ingress deployment
+    internal_get_global_client().deploy_group(parameter_group, _blocking=blocking)
 
 
 @PublicAPI(stability="alpha")
