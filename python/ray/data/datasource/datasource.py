@@ -329,6 +329,7 @@ class RandomIntRowDatasource(Datasource[ArrowRow]):
                 size_bytes=8 * count * num_columns,
                 schema=schema,
                 input_files=None,
+                exec_stats=None,
             )
             read_tasks.append(
                 ReadTask(

@@ -3302,6 +3302,13 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
         ).take()
 
 
+def test_datasource(ray_start_regular):
+    source = ray.data.datasource.RandomIntRowDatasource()
+    assert len(ray.data.read_datasource(source, n=10, num_columns=2).take()) == 10
+    source = ray.data.datasource.RangeDatasource()
+    assert ray.data.read_datasource(source, n=10).take() == list(range(10))
+
+
 if __name__ == "__main__":
     import sys
 
