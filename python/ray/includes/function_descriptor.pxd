@@ -57,7 +57,8 @@ cdef extern from "ray/common/function_descriptor.h" nogil:
 
         @staticmethod
         CFunctionDescriptor BuildCpp(const c_string &function_name,
-                                     const c_string &caller)
+                                     const c_string &caller,
+                                     const c_string &class_name)
 
         @staticmethod
         CFunctionDescriptor Deserialize(const c_string &serialized_binary)
@@ -76,3 +77,4 @@ cdef extern from "ray/common/function_descriptor.h" nogil:
     cdef cppclass CCppFunctionDescriptor "ray::CppFunctionDescriptor":
         c_string FunctionName()
         c_string Caller()
+        c_string ClassName()

@@ -1286,8 +1286,8 @@ def get_directory_size_bytes(path: Union[str, Path] = ".") -> int:
     for dirpath, dirnames, filenames in os.walk(path):
         for f in filenames:
             fp = os.path.join(dirpath, f)
-            # skip if it is a symbolic link
-            if not os.path.islink(fp):
+            # skip if it is a symbolic link or a .pyc file
+            if not os.path.islink(fp) and not f.endswith(".pyc"):
                 total_size_bytes += os.path.getsize(fp)
 
     return total_size_bytes

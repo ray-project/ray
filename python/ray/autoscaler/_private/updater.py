@@ -301,7 +301,7 @@ class NodeUpdater:
                                 cmd_ = " ".join(e.cmd)
                             else:
                                 logger.debug(
-                                    f"e.cmd type ({type(e.cmd)}) not " "list or str."
+                                    f"e.cmd type ({type(e.cmd)}) not list or str."
                                 )
                                 cmd_ = str(e.cmd)
                             retry_str = "(Exit Status {}): {}".format(
@@ -309,7 +309,7 @@ class NodeUpdater:
                             )
 
                         cli_logger.print(
-                            "SSH still not available {}, " "retrying in {} seconds.",
+                            "SSH still not available {}, retrying in {} seconds.",
                             cf.dimmed(retry_str),
                             cf.bold(str(READY_CHECK_INTERVAL)),
                         )

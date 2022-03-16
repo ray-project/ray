@@ -285,7 +285,7 @@ def debug(address):
     required=False,
     hidden=True,
     type=str,
-    help="the port to use for the Redis shards other than the " "primary Redis shard",
+    help="the port to use for the Redis shards other than the primary Redis shard",
 )
 @click.option(
     "--object-manager-port",
@@ -372,7 +372,7 @@ def debug(address):
     required=False,
     default="{}",
     type=str,
-    help="a JSON serialized dictionary mapping resource name to " "resource quantity",
+    help="a JSON serialized dictionary mapping resource name to resource quantity",
 )
 @click.option(
     "--head",
@@ -476,14 +476,14 @@ def debug(address):
     type=int,
     hidden=True,
     default=None,
-    help="the port to use to expose Ray metrics through a " "Prometheus endpoint.",
+    help="the port to use to expose Ray metrics through a Prometheus endpoint.",
 )
 @click.option(
     "--no-monitor",
     is_flag=True,
     hidden=True,
     default=False,
-    help="If True, the ray autoscaler monitor for this cluster will not be " "started.",
+    help="If True, the ray autoscaler monitor for this cluster will not be started.",
 )
 @click.option(
     "--tracing-startup-hook",
@@ -801,7 +801,7 @@ def start(
         # Ensure `--address` flag is specified.
         if address is None:
             cli_logger.abort(
-                "`{}` is a required flag unless starting a head " "node with `{}`.",
+                "`{}` is a required flag unless starting a head node with `{}`.",
                 cf.bold("--address"),
                 cf.bold("--head"),
             )
@@ -820,7 +820,7 @@ def start(
             if val is None:
                 continue
             cli_logger.abort(
-                "`{}` should only be specified when starting head " "node with `{}`.",
+                "`{}` should only be specified when starting head node with `{}`.",
                 cf.bold(flag),
                 cf.bold("--head"),
             )
@@ -1138,9 +1138,9 @@ def up(
             cf.bold("--restart-only"),
             cf.bold("--no-restart"),
         )
-        assert restart_only != no_restart, (
-            "Cannot set both 'restart_only' " "and 'no_restart' at the same time!"
-        )
+        assert (
+            restart_only != no_restart
+        ), "Cannot set both 'restart_only' and 'no_restart' at the same time!"
 
     if urllib.parse.urlparse(cluster_config_file).scheme in ("http", "https"):
         try:
@@ -1430,7 +1430,7 @@ def submit(
     )
     cli_logger.doassert(
         not (script_args and args),
-        "`{0}` and `{1}` are incompatible. Use only `{1}`.\n" "Example: `{2}`",
+        "`{0}` and `{1}` are incompatible. Use only `{1}`.\nExample: `{2}`",
         cf.bold("--args"),
         cf.bold("-- <args ...>"),
         cf.bold("ray submit script.py -- --arg=123 --flag"),
@@ -2166,7 +2166,7 @@ def install_nightly(verbose, dryrun):
     "-gen",
     required=False,
     type=str,
-    help="The directory to generate the bazel project template to," " if provided.",
+    help="The directory to generate the bazel project template to, if provided.",
 )
 @add_click_logging_options
 def cpp(show_library_path, generate_bazel_project_template_to):

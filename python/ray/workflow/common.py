@@ -537,9 +537,7 @@ class Workflow(Generic[T]):
 @PublicAPI(stability="beta")
 class WorkflowNotFoundError(Exception):
     def __init__(self, workflow_id: str):
-        self.message = (
-            f"Workflow[id={workflow_id}] was referenced but " "doesn't exist."
-        )
+        self.message = f"Workflow[id={workflow_id}] was referenced but doesn't exist."
         super().__init__(self.message)
 
 
