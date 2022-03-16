@@ -270,6 +270,7 @@ class Trainer(abc.ABC):
 
         base_config = self._param_dict
         trainer_cls = self.__class__
+        scaling_config = self.scaling_config
 
         def train_func(config, checkpoint_dir=None):
             # config already contains merged values.
@@ -286,8 +287,6 @@ class Trainer(abc.ABC):
             trainer.training_loop()
 
         trainable_cls = wrap_function(train_func)
-
-        scaling_config = self.scaling_config
 
         class TrainTrainable(trainable_cls):
             """Add default resources to the Trainable."""
