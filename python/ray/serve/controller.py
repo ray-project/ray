@@ -67,6 +67,7 @@ class ServeController:
         http_config: HTTPOptions,
         checkpoint_path: str,
         detached: bool = False,
+        _override_controller_namespace: Optional[str] = None,
     ):
         # Used to read/write checkpoints.
         self.controller_namespace = ray.get_runtime_context().namespace
@@ -85,7 +86,12 @@ class ServeController:
 
         self.long_poll_host = LongPollHost()
 
-        self.http_state = HTTPState(controller_name, detached, http_config)
+        self.http_state = HTTPState(
+            controller_name,
+            detached,
+            http_config,
+            _override_controller_namespace=_override_controller_namespace,
+        )
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
         # Fetch all running actors in current cluster as source of current
         # replica state for controller failure recovery
@@ -96,6 +102,7 @@ class ServeController:
             self.kv_store,
             self.long_poll_host,
             all_current_actor_names,
+            _override_controller_namespace=_override_controller_namespace,
         )
 
         # TODO(simon): move autoscaling related stuff into a manager.
