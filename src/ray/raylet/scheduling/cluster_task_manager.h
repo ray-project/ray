@@ -48,14 +48,15 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   ///                                  is infeasible.
   /// \param local_task_manager: Manages local tasks.
   /// \param get_time_ms: A callback which returns the current time in milliseconds.
-  ClusterTaskManager(const NodeID &self_node_id,
-                     std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
-                     internal::NodeInfoGetter get_node_info,
-                     std::function<void(const RayTask &)> announce_infeasible_task,
-                     std::shared_ptr<ILocalTaskManager> local_task_manager,
-                     std::function<int64_t(void)> get_time_ms = []() {
-                       return (int64_t)(absl::GetCurrentTimeNanos() / 1e6);
-                     });
+  ClusterTaskManager(
+      const NodeID &self_node_id,
+      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
+      internal::NodeInfoGetter get_node_info,
+      std::function<void(const RayTask &)> announce_infeasible_task,
+      std::shared_ptr<ILocalTaskManager> local_task_manager,
+      std::function<int64_t(void)> get_time_ms = []() {
+        return (int64_t)(absl::GetCurrentTimeNanos() / 1e6);
+      });
 
   /// Queue task and schedule. This hanppens when processing the worker lease request.
   ///
