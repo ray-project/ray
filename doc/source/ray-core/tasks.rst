@@ -365,6 +365,7 @@ More about Ray Tasks
 .. toctree::
     :maxdepth: -1
 
+    tasks/nested-tasks.rst
     tasks/using-ray-with-gpus.rst
     tasks/fault-tolerance.rst
     tasks/patterns/index.rst

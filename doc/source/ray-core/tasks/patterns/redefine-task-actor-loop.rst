@@ -1,5 +1,5 @@
-Advanced antipattern: Redefining task or actor in loop
-======================================================
+Antipattern: Redefining task or actor in loop
+=============================================
 
 **TLDR:** Limit the number of times you re-define a remote function.
 

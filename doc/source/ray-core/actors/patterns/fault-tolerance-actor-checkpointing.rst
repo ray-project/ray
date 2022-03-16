@@ -1,5 +1,5 @@
-Advanced pattern: Fault Tolerance with Actor Checkpointing
-==========================================================
+Pattern: Fault Tolerance with Actor Checkpointing
+=================================================
 
 Ray offers support for task and actor `fault tolerance <https://docs.ray.io/en/latest/fault-tolerance.html>`__. Specifically for actors, you can specify max_restarts to automatically enable restart for Ray actors. This means when your actor or the node hosting that actor crashed, the actor will be automatically reconstructed. However, this doesn’t provide ways for you to restore application level states in your actor. You checkpoint your actor periodically and read from the checkpoint if possible.
 

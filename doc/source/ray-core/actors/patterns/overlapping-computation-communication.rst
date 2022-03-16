@@ -1,5 +1,5 @@
-Advanced pattern: Overlapping computation and communication
-===========================================================
+Pattern: Overlapping computation and communication
+==================================================
 
 Sometimes a component of your application will need to do both compute-intensive work and communicate with other processes. Ideally, you want to overlap computation and communication to minimize the time spent not doing compute-intensive work.
 
