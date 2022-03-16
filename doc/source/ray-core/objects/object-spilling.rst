@@ -28,12 +28,13 @@ usage across multiple physical devices if needed (e.g., SSD devices):
 
     ray.init(
         _system_config={
-            "max_io_workers": 4,  # More IO workers for local storage. Each IO worker tries using a different directories.
+            "max_io_workers": 4,  # More IO workers for parallelism.
             "object_spilling_config": json.dumps(
                 {
                   "type": "filesystem",
                   "params": {
-                    # Each directory could mount at different devices.
+                    # Multiple directories can be specified to distribute
+                    # IO across multiple mounted physical devices.
                     "directory_path": [
                       "/tmp/spill",
                       "/tmp/spill_1",
