@@ -23,6 +23,8 @@ CURRENT_VERSION = "1"
 
 
 class JobStatus(str, Enum):
+    """An enumeration for describing the status of a job."""
+
     #: The job has not started yet, likely waiting for the runtime_env to be set up.
     PENDING = "PENDING"
     #: The job is currently running.
@@ -51,6 +53,8 @@ class JobStatus(str, Enum):
 
 @dataclass
 class JobInfo:
+    """A class for recording information associated with a job and its execution."""
+
     #: The status of the job.
     status: JobStatus
     #: A message describing the status in more detail.

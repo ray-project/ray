@@ -21,7 +21,7 @@ Concepts
 
 - **Job Lifecycle**: When a job is submitted, it runs once to completion or failure. Retries or different runs with different parameters should be handled by the submitter. Jobs are bound to the lifetime of a Ray cluster, so if the cluster goes down, all running jobs on that cluster will be terminated.
 
-- **Job Manager**: An entity external to the Ray cluster that manages the lifecycle of a job, such as scheduling, killing, polling status, getting logs, and persisting inputs/outputs. Can be any third-party framework with these abilities, such as Apache Airflow or Kubernetes Jobs.
+- **Job Manager**: An entity external to the Ray cluster that manages the lifecycle of a job (scheduling, killing, polling status, getting logs, and persisting inputs/outputs), and potentially also manages the lifecycle of Ray clusters. Can be any third-party framework with these abilities, such as Apache Airflow or Kubernetes Jobs.
 
 Quick Start Example
 -------------------

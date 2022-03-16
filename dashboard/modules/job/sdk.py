@@ -28,14 +28,33 @@ logger.setLevel(logging.INFO)
 
 
 class JobSubmissionClient(SubmissionClient):
+    """A local client for submitting and interacting with jobs on a remote cluster.
+
+    Submits requests over HTTP to the job server on the cluster using the REST API.
+    """
+
     def __init__(
         self,
         address: str,
-        create_cluster_if_needed=False,
+        create_cluster_if_needed: bool = False,
         cookies: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None,
     ):
+        """Initialize a JobSubmissionClient and check the connection to the cluster.
+
+        Args:
+            address: The IP address and port of the head node.
+            create_cluster_if_needed: Indicates whether the cluster at the specified
+                address needs to already be running. Ray doesn't start a cluster
+                before interacting with jobs, but external job managers may do so.
+            cookies: Cookies to use when sending requests to the HTTP job server.
+            metadata: Arbitrary metadata to store along with all jobs.  New metadata
+                specified per job will be merged with the global metadata provided here
+                via a simple dict update.
+            headers: Headers to use when sending requests to the HTTP job server, used
+                for cases like authentication to a remote cluster.
+        """
         if requests is None:
             raise RuntimeError(
                 "The Ray jobs CLI & SDK require the ray[default] "
@@ -72,7 +91,9 @@ class JobSubmissionClient(SubmissionClient):
         cluster goes down, all running jobs on that cluster will be terminated.
 
         Example:
-            >>> job_submission_client.submit_job(
+            >>> from ray.job_submission import JobSubmissionClient
+            >>> client = JobSubmissionClient("http://127.0.0.1:8265")
+            >>> client.submit_job(
             >>>     entrypoint="python script.py",
             >>>     runtime_env={
             >>>         "working_dir": "./",
@@ -128,7 +149,10 @@ class JobSubmissionClient(SubmissionClient):
         """Request a job to exit asynchronously.
 
         Example:
-            >>> job_submission_client.stop_job("raysubmit_T8zDX5W1mpRpmtWt")
+            >>> from ray.job_submission import JobSubmissionClient
+            >>> client = JobSubmissionClient("http://127.0.0.1:8265")
+            >>> job_id = client.submit_job(entrypoint="sleep 10")
+            >>> client.stop_job(job_id)
             True
 
         Args:
@@ -156,7 +180,10 @@ class JobSubmissionClient(SubmissionClient):
         """Get the latest status and other information associated with a job.
 
         Example:
-            >>> job_submission_client.get_job_info("raysubmit_4LamXRuQpYdSMg7J")
+            >>> from ray.job_submission import JobSubmissionClient
+            >>> client = JobSubmissionClient("http://127.0.0.1:8265")
+            >>> job_id = client.submit_job(entrypoint="sleep 1")
+            >>> job_submission_client.get_job_info(job_id)
             JobInfo(status='SUCCEEDED', message='Job finished successfully.',
             error_type=None, start_time=1647388711, end_time=1647388712,
             metadata={}, runtime_env={})
@@ -185,13 +212,17 @@ class JobSubmissionClient(SubmissionClient):
         currently running and jobs that are no longer running.
 
         Example:
+            >>> from ray.job_submission import JobSubmissionClient
+            >>> client = JobSubmissionClient("http://127.0.0.1:8265")
+            >>> client.submit_job(entrypoint="echo hello")
+            >>> client.submit_job(entrypoint="sleep 2")
             >>> job_submission_client.list_jobs()
             {'raysubmit_4LamXRuQpYdSMg7J': JobInfo(status='SUCCEEDED',
             message='Job finished successfully.', error_type=None,
             start_time=1647388711, end_time=1647388712, metadata={}, runtime_env={}),
-            'raysubmit_T8zDX5W1mpRpmtWt': JobInfo(status='STOPPED',
-            message='Job was intentionally stopped.', error_type=None,
-            start_time=1647389440, end_time=1647389492, metadata={}, runtime_env={})}
+            'raysubmit_1dxCeNvG1fCMVNHG': JobInfo(status='RUNNING',
+            message='Job is currently running.', error_type=None,
+            start_time=1647454832, end_time=None, metadata={}, runtime_env={})}
 
         Returns:
             A dictionary mapping jobs to their information.
@@ -216,7 +247,10 @@ class JobSubmissionClient(SubmissionClient):
         """Get the most recent status of a job.
 
         Example:
-            >>> job_submission_client.get_job_info("raysubmit_4LamXRuQpYdSMg7J")
+            >>> from ray.job_submission import JobSubmissionClient
+            >>> client = JobSubmissionClient("http://127.0.0.1:8265")
+            >>> client.submit_job(entrypoint="echo hello")
+            >>> client.get_job_info("raysubmit_4LamXRuQpYdSMg7J")
             'SUCCEEDED'
 
         Args:
@@ -235,8 +269,11 @@ class JobSubmissionClient(SubmissionClient):
         """Get all logs produced by a job.
 
         Example:
-            >>> job_submission_client.get_job_logs("raysubmit_4LamXRuQpYdSMg7J")
-            'hello world\\n'
+            >>> from ray.job_submission import JobSubmissionClient
+            >>> client = JobSubmissionClient("http://127.0.0.1:8265")
+            >>> job_id = client.submit_job(entrypoint="echo hello")
+            >>> job_submission_client.get_job_logs(job_id)
+            'hello\\n'
 
         Args:
             job_id: The ID of the job whose logs are being requested.
@@ -259,11 +296,13 @@ class JobSubmissionClient(SubmissionClient):
         """Get an iterator that follows the logs of a job.
 
         Example:
+            >>> from ray.job_submission import JobSubmissionClient
+            >>> client = JobSubmissionClient("http://127.0.0.1:8265")
+            >>> job_id = client.submit_job(entrypoint="echo hi && sleep 5 && echo hi2")
             >>> async for lines in client.tail_job_logs('raysubmit_Xe7cvjyGJCyuCvm2'):
             >>>     print(lines, end="")
-            hello 1
-            hello 2
-            hello 3
+            hi
+            hi2
 
         Args:
             job_id: The ID of the job whose logs are being requested.
