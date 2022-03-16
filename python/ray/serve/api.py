@@ -1703,7 +1703,6 @@ def run(
     will be deployed.
     """
 
-<<<<<<< HEAD
     deployments = _get_deployments_from_target(target)
 
     # if isinstance(target, DeploymentNode):
@@ -1751,33 +1750,6 @@ def deploy_group(deployments: List[Deployment], *, blocking=True) -> RayServeHan
         parameter_group.append(deployment_parameters)
 
     internal_get_global_client().deploy_group(parameter_group, _blocking=blocking)
-=======
-    client = start(detached=True, http_options={"host": host, "port": port})
-
-    if isinstance(target, DeploymentNode):
-        deployments = _get_deployments_from_node(target)
-    else:
-        raise NotImplementedError()
-
-    parameter_group = [
-        {
-            "name": deployment._name,
-            "func_or_class": deployment._func_or_class,
-            "init_args": deployment.init_args,
-            "init_kwargs": deployment.init_kwargs,
-            "ray_actor_options": deployment._ray_actor_options,
-            "config": deployment._config,
-            "version": deployment._version,
-            "prev_version": deployment._prev_version,
-            "route_prefix": deployment.route_prefix,
-            "url": deployment.url,
-        }
-        for deployment in deployments
-    ]
-
-    client.deploy_group(parameter_group, _blocking=True)
-    return deployments[-1].get_handle()
->>>>>>> fix-serve-run
 
 
 @PublicAPI(stability="alpha")
