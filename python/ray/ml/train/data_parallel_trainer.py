@@ -5,7 +5,7 @@ from typing import Dict, Callable, Optional, Union, Type
 
 import ray
 from ray import tune
-from ray.ml.constants import TRAIN_DATASET_KEY
+from ray.ml.constants import TRAIN_DATASET_KEY, PREPROCESSOR_KEY
 from ray.ml.trainer import Trainer
 from ray.ml.config import ScalingConfig, RunConfig, ScalingConfigDataClass
 from ray.ml.trainer import GenDataset
@@ -13,7 +13,7 @@ from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.train import BackendConfig, TrainingIterator
 from ray.train.backend import BackendExecutor
-from ray.train.checkpoint import MLTuneCheckpointManager
+from ray.train.checkpoint import TuneCheckpointManager
 from ray.train.constants import (
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
@@ -280,7 +280,7 @@ class DataParallelTrainer(Trainer):
             max_retries=0,
         )
 
-        checkpoint_manager = MLTuneCheckpointManager()
+        checkpoint_manager = _DataParallelCheckpointManager()
         checkpoint_manager.on_init(preprocessor=self.preprocessor)
 
         # Start the remote actors.
@@ -340,3 +340,21 @@ class DataParallelTrainer(Trainer):
                     os.environ[var_name] = value
 
         return TrainableWithEnvVars
+
+
+# TODO(team-ml): Refactor checkpoint management along with Tune.
+class _DataParallelCheckpointManager(TuneCheckpointManager):
+    def on_init(self, preprocessor: Preprocessor):
+        self.preprocessor = preprocessor
+        super(_DataParallelCheckpointManager, self).on_init()
+
+    def write_checkpoint(self, checkpoint: Dict):
+        self.add_tune_checkpoint_id(checkpoint)
+
+        # Add the preprocessor to the checkpoint.
+        checkpoint[PREPROCESSOR_KEY] = self.preprocessor
+
+        checkpoint_obj = Checkpoint.from_dict(checkpoint)
+        # If inside a Tune Trainable, then checkpoint with Tune.
+        with tune.checkpoint_dir(step=self._latest_checkpoint_id) as checkpoint_dir:
+            checkpoint_obj.to_directory(path=checkpoint_dir)
