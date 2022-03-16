@@ -129,7 +129,7 @@ struct CoreWorkerOptions {
   /// Application-language callback to trigger garbage collection in the language
   /// runtime. This is required to free distributed references that may otherwise
   /// be held up in garbage objects.
-  std::function<void()> gc_collect;
+  std::function<void(bool triggered_by_global_gc)> gc_collect;
   /// Application-language callback to spill objects to external storage.
   std::function<std::vector<std::string>(const std::vector<rpc::ObjectReference> &)>
       spill_objects;
@@ -169,6 +169,13 @@ struct CoreWorkerOptions {
   /// may not have the same pid as the process the worker pool
   /// starts (due to shim processes).
   StartupToken startup_token{0};
+  /// The function to allocate a new object for the memory store.
+  /// This allows allocating the objects in the language frontend's memory.
+  /// For example, for the Java worker, we can allocate the objects in the JVM heap
+  /// memory, and enables the JVM to manage the memory of the memory store objects.
+  std::function<std::shared_ptr<ray::RayObject>(const ray::RayObject &object,
+                                                const ObjectID &object_id)>
+      object_allocator;
 };
 }  // namespace core
 }  // namespace ray
