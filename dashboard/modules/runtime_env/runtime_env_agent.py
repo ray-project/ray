@@ -259,7 +259,7 @@ class RuntimeEnvAgent(
             runtime_env_context: RuntimeEnvContext = None
             error_message = None
             runtime_env_config = RuntimeEnvConfig.from_proto(runtime_env_config)
-            # accroding the document of `async-timeout`,
+            # accroding to the document of `async-timeout`,
             # None means disable timeout logic
             setup_timeout_seconds = (
                 None

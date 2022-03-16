@@ -105,7 +105,8 @@ class RuntimeEnvConfig(dict):
         setup_timeout_seconds (int): The timeout of runtime environment
             creation, timeout is in seconds. The value `-1` means disable
             timeout logic, except `-1`, `setup_timeout_seconds` cannot be
-            less than or equal to 0.
+            less than or equal to 0. The default value of `setup_timeout_seconds`
+            is 600 seconds.
     """
 
     known_fields: Set[str] = {"setup_timeout_seconds"}
@@ -114,7 +115,9 @@ class RuntimeEnvConfig(dict):
         "setup_timeout_seconds": DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
     }
 
-    def __init__(self, setup_timeout_seconds: int):
+    def __init__(
+        self, setup_timeout_seconds: int = DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS
+    ):
         super().__init__()
         if not isinstance(setup_timeout_seconds, int):
             raise TypeError(

@@ -649,7 +649,7 @@ void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job
     // `HandleJobFinished` will also decrement the ref count multiple times.
     runtime_env_manager_.AddURIReference(job_id.Hex(), job_config.runtime_env_info());
     RAY_LOG(INFO) << "[Eagerly] Start install runtime environment for job " << job_id
-                  << ". The runtime environment was " << runtime_env;
+                  << ". The runtime environment was " << runtime_env << ".";
     CreateRuntimeEnv(runtime_env,
                      runtime_env_config,
                      job_id,
