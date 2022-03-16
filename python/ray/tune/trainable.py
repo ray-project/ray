@@ -476,9 +476,10 @@ class Trainable:
         """
         tmpdir = tempfile.mkdtemp("save_to_object", dir=self.logdir)
         checkpoint_path = self.save(tmpdir)
-
-        checkpoint = Checkpoint.from_directory(checkpoint_path)
-        return checkpoint.to_bytes()
+        # Save all files in subtree and delete the tmpdir.
+        obj = TrainableUtil.checkpoint_to_object(checkpoint_path)
+        shutil.rmtree(tmpdir)
+        return obj
 
     def restore(self, checkpoint_path: str, checkpoint_node_ip: Optional[str] = None):
         """Restores training state from a given model checkpoint.
