@@ -525,7 +525,7 @@ class RayletServicerProxy(ray_client_pb2_grpc.RayletDriverServicer):
         return self._call_inner_function(req, context, "Terminate")
 
     def GetObject(self, request, context=None):
-        return self._call_inner_function(request, context, "GetObject")
+        yield from self._call_inner_function(request, context, "GetObject")
 
     def PutObject(
         self, request: ray_client_pb2.PutRequest, context=None
