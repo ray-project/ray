@@ -6,7 +6,7 @@ import logging
 import os
 from pickle import PicklingError
 import traceback
-from typing import Dict, Sequence, Any
+from typing import Any, Dict, Optional, Sequence
 
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable
