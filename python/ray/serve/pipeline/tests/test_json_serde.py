@@ -16,7 +16,6 @@ from ray.serve.pipeline.tests.resources.test_modules import (
     Counter,
     ClassHello,
     fn_hello,
-    class_factory,
     Combine,
     NESTED_HANDLE_KEY,
 )

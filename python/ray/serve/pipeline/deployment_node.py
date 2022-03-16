@@ -2,7 +2,7 @@ import json
 from typing import Any, Callable, Dict, Optional, List, Tuple, Union
 
 from ray.experimental.dag import DAGNode, InputNode
-from ray.serve.handle import PipelineHandle, RayServeSyncHandle, RayServeHandle
+from ray.serve.handle import RayServeDAGHandle, RayServeSyncHandle, RayServeHandle
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
@@ -58,7 +58,7 @@ class DeploymentNode(DAGNode):
                 from ray.serve.pipeline.json_serde import DAGNodeEncoder
 
                 serve_dag_root_json = json.dumps(node, cls=DAGNodeEncoder)
-                return PipelineHandle(serve_dag_root_json)
+                return RayServeDAGHandle(serve_dag_root_json)
 
         (
             replaced_deployment_init_args,

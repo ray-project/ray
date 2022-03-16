@@ -237,7 +237,7 @@ class RayServeSyncHandle(RayServeHandle):
         return RayServeSyncHandle._deserialize, (serialized_data,)
 
 
-class PipelineHandle:
+class RayServeDAGHandle:
     def __init__(self, dag_node_json: str) -> None:
 
         self.dag_node_json = dag_node_json
@@ -253,7 +253,7 @@ class PipelineHandle:
         return cls(*args)
 
     def __reduce__(self):
-        return PipelineHandle._deserialize, (self.dag_node_json,)
+        return RayServeDAGHandle._deserialize, (self.dag_node_json,)
 
     def remote(self, *args, **kwargs):
         from ray.serve.pipeline.json_serde import dagnode_from_json

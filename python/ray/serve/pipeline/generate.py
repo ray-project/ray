@@ -3,7 +3,6 @@ import threading
 
 from ray.experimental.dag import (
     DAGNode,
-    FunctionNode,
     ClassNode,
     ClassMethodNode,
     PARENT_CLASS_NODE_KEY,
