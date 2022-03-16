@@ -360,7 +360,7 @@ class TestYAMLTranslation:
 
         reconstructed_app = Application.from_yaml(app.to_yaml())
 
-        reconstructed_app.deploy()
+        deploy_group(reconstructed_app.deployments.values())
         assert requests.get("http://localhost:8000/f").text == "got decorated func"
         assert requests.get("http://localhost:8000/C").text == "got decorated class"
 
