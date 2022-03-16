@@ -13,6 +13,29 @@ from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY, TRAIN_DATASET_KEY
 import xgboost_ray
 
 
+def _convert_scaling_config_to_ray_params(
+    scaling_config: ScalingConfig,
+    ray_params_cls: Type[xgboost_ray.RayParams],
+    default_ray_params: Optional[Dict[str, Any]] = None,
+) -> xgboost_ray.RayParams:
+    default_ray_params = default_ray_params or {}
+    scaling_config_dataclass = ScalingConfigDataClass(**scaling_config)
+    resources_per_worker = scaling_config_dataclass.additional_resources_per_worker
+    num_workers = scaling_config_dataclass.num_workers
+    cpus_per_worker = scaling_config_dataclass.num_cpus_per_worker
+    gpus_per_worker = scaling_config_dataclass.num_gpus_per_worker
+
+    ray_params = ray_params_cls(
+        num_actors=int(num_workers),
+        cpus_per_actor=int(cpus_per_worker),
+        gpus_per_actor=int(gpus_per_worker),
+        resources_per_actor=resources_per_worker,
+        **default_ray_params,
+    )
+
+    return ray_params
+
+
 @DeveloperAPI
 class GBDTTrainer(Trainer):
     """Common logic for gradient-boosting decision tree (GBDT) frameworks
@@ -90,25 +113,6 @@ class GBDTTrainer(Trainer):
             for k, v in self.datasets.items()
         }
 
-    def _convert_scaling_config_to_ray_params(
-        self, scaling_config: ScalingConfig
-    ) -> xgboost_ray.RayParams:
-        scaling_config_dataclass = ScalingConfigDataClass(**scaling_config)
-        resources_per_worker = scaling_config_dataclass.additional_resources_per_worker
-        num_workers = scaling_config_dataclass.num_workers
-        cpus_per_worker = scaling_config_dataclass.num_cpus_per_worker
-        gpus_per_worker = scaling_config_dataclass.num_gpus_per_worker
-
-        ray_params = self._ray_params_cls(
-            num_actors=int(num_workers),
-            cpus_per_actor=int(cpus_per_worker),
-            gpus_per_actor=int(gpus_per_worker),
-            resources_per_actor=resources_per_worker,
-            **self._default_ray_params,
-        )
-
-        return ray_params
-
     def _load_model_from_checkpoint(self):
         raise NotImplementedError
 
@@ -117,7 +121,9 @@ class GBDTTrainer(Trainer):
 
     @property
     def _ray_params(self) -> xgboost_ray.RayParams:
-        return self._convert_scaling_config_to_ray_params(self.scaling_config)
+        return _convert_scaling_config_to_ray_params(
+            self.scaling_config, self._ray_params_cls, self._default_ray_params
+        )
 
     def preprocess_datasets(self) -> None:
         super().preprocess_datasets()
@@ -170,13 +176,15 @@ class GBDTTrainer(Trainer):
     def as_trainable(self) -> Type[Trainable]:
         trainable_cls = super().as_trainable()
         scaling_config = self.scaling_config
+        ray_params_cls = self._ray_params_cls
+        default_ray_params = self._default_ray_params
 
         class GBDTTrainable(trainable_cls):
             @classmethod
             def default_resource_request(cls, config):
                 updated_scaling_config = config.get("scaling_config", scaling_config)
-                return self._convert_scaling_config_to_ray_params(
-                    updated_scaling_config
+                return _convert_scaling_config_to_ray_params(
+                    updated_scaling_config, ray_params_cls, default_ray_params
                 ).get_tune_resources()
 
             def _postprocess_checkpoint(self, checkpoint_path: str):
