@@ -242,8 +242,8 @@ def test_delete(ray_start_stop):
     # Deploys a config file and deletes it
 
     def get_num_deployments():
-        info_response = subprocess.check_output(["serve", "info", "-j"])
-        info = json.loads(info_response)
+        info_response = subprocess.check_output(["serve", "config"])
+        info = yaml.safe_load(info_response)
         return len(info["deployments"])
 
     config_file_name = os.path.join(
