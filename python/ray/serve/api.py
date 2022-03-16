@@ -1673,22 +1673,6 @@ class Application:
         return cls(schema_to_serve_application(schema))
 
 
-def _get_deployments_from_node(node: DeploymentNode) -> List[Deployment]:
-    """Generate a list of deployment objects from a root node.
-
-    Returns:
-        deployment_list(List[Deployment]): the list of Deployment objects. The
-          last element corresponds to the node passed in to this function.
-    """
-    from ray.serve.pipeline.api import build as pipeline_build
-
-    with PipelineInputNode() as input_node:
-        root = node.__call__.bind(input_node)
-    deployments = pipeline_build(root, inject_ingress=False)
-
-    return deployments
-
-
 @PublicAPI(stability="alpha")
 def run(
     target: Union[DeploymentNode, Application],
@@ -1703,32 +1687,23 @@ def run(
     will be deployed.
     """
 
-    deployments = _get_deployments_from_target(target)
-
-    # if isinstance(target, DeploymentNode):
-    #     deployments = _get_deployments_from_node(target)
-    # else:
-    #     raise NotImplementedError()
-
-    # for d in deployments:
-    #     logger.debug(f"Deploying {d}")
-    #     d.deploy()
-
-    # return deployments[-1].get_handle()
-
-    # TODO (shrekris-anyscale): validate ingress
-
-    start(detached=True, http_options={"host": host, "port": port})
-    deploy_group(deployments, blocking=True)
-
-    # TODO (shrekris-anyscale): return handle to ingress deployment
-
-
-def deploy_group(deployments: List[Deployment], *, blocking=True) -> RayServeHandle:
-    """Atomically deploys a group of deployments."""
+    if isinstance(target, Application):
+        deployments = target.deployments.values()
+    elif isinstance(target, DeploymentNode):
+        deployments = _get_deployments_from_node(target)
+    else:
+        raise TypeError(
+            "Expected a DeploymentNode or "
+            "Application as target. Got unexpected type "
+            f'"{type(target)}" instead.'
+        )
 
     if len(deployments) == 0:
         return
+
+    # TODO (shrekris-anyscale): validate ingress
+
+    client = start(detached=True, http_options={"host": host, "port": port})
 
     parameter_group = []
 
@@ -1749,7 +1724,11 @@ def deploy_group(deployments: List[Deployment], *, blocking=True) -> RayServeHan
 
         parameter_group.append(deployment_parameters)
 
-    internal_get_global_client().deploy_group(parameter_group, _blocking=blocking)
+    client.deploy_group(parameter_group, _blocking=True)
+
+    return deployments[-1].get_handle()
+
+    # TODO (shrekris-anyscale): return handle to ingress deployment
 
 
 @PublicAPI(stability="alpha")
@@ -1773,22 +1752,20 @@ def build(target: DeploymentNode) -> Application:
     raise NotImplementedError()
 
 
-def _get_deployments_from_target(
-    target: Union[DeploymentNode, Application]
-) -> List[Deployment]:
-    """Validates target and gets its deployments."""
+def _get_deployments_from_node(node: DeploymentNode) -> List[Deployment]:
+    """Generate a list of deployment objects from a root node.
 
-    if isinstance(target, Application):
-        return target.deployments.values()
-    elif isinstance(target, DeploymentNode):
-        return []
-        # return extract_deployments_from_serve_dag(target)
-    else:
-        raise TypeError(
-            "Expected a DeploymentNode or "
-            "Application as target. Got unexpected type "
-            f'"{type(target)}" instead.'
-        )
+    Returns:
+        deployment_list(List[Deployment]): the list of Deployment objects. The
+          last element corresponds to the node passed in to this function.
+    """
+    from ray.serve.pipeline.api import build as pipeline_build
+
+    with PipelineInputNode() as input_node:
+        root = node.__call__.bind(input_node)
+    deployments = pipeline_build(root, inject_ingress=False)
+
+    return deployments
 
 
 def deployment_to_schema(d: Deployment) -> DeploymentSchema:
