@@ -42,7 +42,7 @@ def test_scaling_config(ray_start_4_cpus):
 
     assert ray.available_resources()["CPU"] == 4
     trainer = DataParallelTrainer(
-        train_loop_per_worker=train_func, scaling_config={"num_workers": 3}
+        train_loop_per_worker=train_func, scaling_config={"num_workers": 2}
     )
     trainer.fit()
 

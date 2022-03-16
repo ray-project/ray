@@ -259,6 +259,8 @@ class DataParallelTrainer(Trainer):
 
         runtime_env = {"env_vars": self.train_env_var_values}
 
+        # TODO(amog): Run BackendExecutor directly in the Trainable instead of a
+        #  separate actor.
         remote_executor = ray.remote(num_cpus=0)(BackendExecutor)
         additional_resources_per_worker = (
             scaling_config_dataclass.additional_resources_per_worker
@@ -289,6 +291,9 @@ class DataParallelTrainer(Trainer):
         # Tell Ray Train to only shard the train dataset and not the other datasets.
         # This is purely an implementation detail and users do not need to know about
         # this.
+        # TODO(amog): Refactor this to remove hack and make this more modular.
+        #  TrainingIterator should accept a generic custom_ingest_func that contains
+        #  the logic for how to split the Datasets.
         updated_dataset_dict = {}
         for key, value in self.datasets.items():
             if key == TRAIN_DATASET_KEY:
@@ -297,6 +302,8 @@ class DataParallelTrainer(Trainer):
                 # Ray Train will strip out the added string before exposing to users.
                 updated_dataset_dict[key + "_NO-SHARD"] = value
 
+        # TODO(amog): Have TrainingIterator also accept a checkpoint ObjectRef instead
+        #  of just a Dict.
         training_iterator = TrainingIterator(
             backend_executor_actor=backend_executor_actor,
             backend_config=self.backend_config,
