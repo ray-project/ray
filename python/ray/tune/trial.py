@@ -498,7 +498,7 @@ class Trial:
         return Trial(
             self.trainable_name,
             config=self.config,
-            trial_id=self.trial_id,
+            trial_id=None,
             local_dir=self.local_dir,
             evaluated_params=self.evaluated_params,
             experiment_tag=self.experiment_tag,

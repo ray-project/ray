@@ -465,6 +465,7 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
             env_vars={
                 "RAY_OVERRIDE_NODE_ID_FOR_TESTING": node_id,
                 "RAY_OVERRIDE_RESOURCES": resource_str,
+                **self.provider_config.get("env_vars", {}),
             },
             volume_dir=self._volume_dir,
             node_state_path=self._node_state_path,

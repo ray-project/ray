@@ -7,6 +7,7 @@ from typing import List
 
 import ray
 from ray import tune
+from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.autoscaler._private.fake_multi_node.test_utils import DockerCluster
 from ray.tune.callback import Callback
 from ray.tune.trial import Trial
@@ -166,10 +167,12 @@ class MultiNodeSyncTest(unittest.TestCase):
 
     def testCheckpointSync(self):
         """Test that checkpoints are correctly synced."""
-
         self.cluster.update_config(
             {
-                "provider": {"head_resources": {"CPU": 4, "GPU": 0}},
+                "provider": {
+                    "head_resources": {"CPU": 4, "GPU": 0},
+                    "env_vars": {"TUNE_GLOBAL_CHECKPOINT_S": "0"},
+                },
                 "available_node_types": {
                     "ray.worker.cpu": {
                         "resources": {"CPU": 4},
@@ -200,23 +203,46 @@ class MultiNodeSyncTest(unittest.TestCase):
                         json.dump({"step": i}, fp)
                 tune.report(step=i)
 
+            with open(f"/cluster/shared/indicator.{tune.get_trial_id()}", "wt") as fp:
+                fp.write("")
+
+            time.sleep(6)
+            tune.report(step=i + 1)
             time.sleep(6)
 
             if start == 0:
-                raise RuntimeError("First time we fail.")
+                tune.report(step=i + 2)
+                time.sleep(120)
 
-        analysis = tune.run(
-            train,
-            name="checkpoint_test",
-            num_samples=3,
-            resources_per_trial={"cpu": 4},
-            max_failures=0,
-            local_dir="/cluster/node",
-            trial_name_creator=lambda trial: trial.trial_id,
-            trial_dirname_creator=lambda trial: trial.trial_id,
-            keep_checkpoints_num=2,
-            raise_on_failed_trial=False,
-        )
+        class FailOnIndicator(Callback):
+            def __init__(self, indicator_dir: str, num_indicators: int = 3):
+                self._indicator_dir = indicator_dir
+                self._num_indicators = num_indicators
+
+            def on_step_begin(self, iteration, trials, **info):
+                if os.path.exists(self._indicator_dir):
+                    indicators = [
+                        f
+                        for f in os.listdir(self._indicator_dir)
+                        if f.startswith("indicator")
+                    ]
+                    if len(indicators) >= self._num_indicators:
+                        raise RuntimeError("All the indicators are there.")
+
+        with self.assertRaises(RuntimeError):
+            tune.run(
+                train,
+                name="checkpoint_test",
+                num_samples=3,
+                resources_per_trial={"cpu": 4},
+                max_failures=0,
+                local_dir="/cluster/node",
+                trial_name_creator=lambda trial: trial.trial_id,
+                trial_dirname_creator=lambda trial: trial.trial_id,
+                keep_checkpoints_num=2,
+                callbacks=[FailOnIndicator("/cluster/shared", num_indicators=3)],
+                verbose=2,
+            )
 
         nodes_dir = os.path.join(self.cluster.cluster_dir, "nodes")
 
@@ -237,6 +263,9 @@ class MultiNodeSyncTest(unittest.TestCase):
                 if path.startswith("checkpoint_")
             ]
 
+        analysis = tune.ExperimentAnalysis(
+            os.path.join(nodes_dir, FAKE_HEAD_NODE_ID, "checkpoint_test")
+        )
         ip_to_trial_dir = {
             trial.last_result["node_ip"]: trial.trial_id for trial in analysis.trials
         }
@@ -249,29 +278,14 @@ class MultiNodeSyncTest(unittest.TestCase):
                 sorted(checkpoint_dirs), ["checkpoint_000008", "checkpoint_000009"]
             )
 
-        class UpdateMaxFailures(Callback):
-            def __init__(self, num_failures: int = 0):
-                self._num_failures = num_failures
-                self._initialized = False
-
-            def on_step_begin(self, iteration, trials, **info):
-                if not self._initialized:
-                    for trial in trials:
-                        trial.max_failures = self._num_failures
-                    self._initialized = False
-
         analysis = tune.run(
             train,
             name="checkpoint_test",
             resources_per_trial={"cpu": 4},
-            max_failures=0,
             local_dir="/cluster/node",
-            trial_name_creator=lambda trial: trial.trial_id,
-            trial_dirname_creator=lambda trial: trial.trial_id,
             keep_checkpoints_num=2,
-            resume="ERRORED_ONLY",
-            callbacks=[UpdateMaxFailures(num_failures=1)],
-            fail_fast=True,
+            resume="AUTO",
+            verbose=2,
         )
 
         ip_to_trial_dir = {
@@ -282,7 +296,11 @@ class MultiNodeSyncTest(unittest.TestCase):
             node_trial_dir = get_trial_path(ip_to_trial_dir, node)
             checkpoint_dirs = get_checkpoint_dirs(node_trial_dir)
 
-            print(node_trial_dir, checkpoint_dirs)
+            self.assertNotIn("checkpoint_000017", checkpoint_dirs)
+            self.assertIn("checkpoint_000018", checkpoint_dirs)
+            self.assertIn("checkpoint_000019", checkpoint_dirs)
+
+            self.assertLessEqual(len(checkpoint_dirs), 4)
 
 
 if __name__ == "__main__":
