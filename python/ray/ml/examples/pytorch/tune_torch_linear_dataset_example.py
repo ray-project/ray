@@ -69,12 +69,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.smoke_test:
-        # 1 for driver, 1 for datasets
-        num_cpus = args.num_workers + 2
-        num_gpus = args.num_workers if args.use_gpu else 0
-        ray.init(num_cpus=args.num_workers + 2, num_gpus=num_gpus)
+        # 2 workers, 1 for trainer, 1 for datasets
+        ray.init(num_cpus=4)
+        tune_linear(num_workers=2, num_samples=1, use_gpu=False)
     else:
         ray.init(address=args.address)
-    tune_linear(
-        num_workers=args.num_workers, use_gpu=args.use_gpu, num_samples=args.num_samples
-    )
+        tune_linear(
+            num_workers=args.num_workers,
+            use_gpu=args.use_gpu,
+            num_samples=args.num_samples,
+        )

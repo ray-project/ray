@@ -1,4 +1,5 @@
 import argparse
+import random
 from typing import Tuple
 
 import torch
@@ -7,6 +8,8 @@ import torch.nn as nn
 import ray
 import ray.train as train
 from ray.data import Dataset
+from ray.ml.predictors.integrations.torch import TorchPredictor
+from ray.ml.result import Result
 from ray.ml.train.integrations.torch import TorchTrainer
 
 
@@ -102,6 +105,7 @@ def train_func(config):
             result = {}
         train.report(**result)
         results.append(result)
+        train.save_checkpoint(model=model)
 
     return results
 
@@ -121,7 +125,19 @@ def train_linear(num_workers=2, use_gpu=False):
 
     result = trainer.fit()
     print(result.metrics)
-    return result.metrics
+    return result
+
+
+def predict_linear(result: Result):
+    predictor = TorchPredictor.from_checkpoint(result.checkpoint)
+    items = [{"x": random.uniform(0, 1) for _ in range(10)}]
+    prediction_dataset = ray.data.from_items(items)
+
+    predictions = prediction_dataset.map_batches(
+        lambda batch: predictor.predict(batch, dtype=torch.float)
+    )
+
+    return predictions
 
 
 if __name__ == "__main__":
@@ -149,10 +165,10 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
-        # 1 for datasets
-        num_cpus = args.num_workers + 1
-        num_gpus = args.num_workers if args.use_gpu else 0
-        ray.init(num_cpus=num_cpus, num_gpus=num_gpus)
+        # 2 workers, 1 for trainer, 1 for datasets
+        ray.init(num_cpus=4)
+        result = train_linear()
     else:
         ray.init(address=args.address)
-    train_linear(num_workers=args.num_workers, use_gpu=args.use_gpu)
+        result = train_linear(num_workers=args.num_workers, use_gpu=args.use_gpu)
+    predict_linear(result)
