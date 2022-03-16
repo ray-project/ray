@@ -1,5 +1,6 @@
 import inspect
 import logging
+from pathlib import Path
 from typing import Dict, Callable, Optional, Union
 
 import ray
@@ -320,3 +321,9 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
         # If inside a Tune Trainable, then checkpoint with Tune.
         with tune.checkpoint_dir(step=self._latest_checkpoint_id) as checkpoint_dir:
             checkpoint_obj.to_directory(path=checkpoint_dir)
+
+    @property
+    def latest_checkpoint_dir(self) -> Optional[Path]:
+        raise RuntimeError(
+            "`latest_checkpoint_dir` should not be called when running " "with Tune."
+        )

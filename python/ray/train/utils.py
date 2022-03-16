@@ -69,7 +69,7 @@ def get_address_and_port() -> Tuple[str, int]:
     return addr, port
 
 
-def construct_path(path: Path, parent_path: Optional[Path] = None) -> Path:
+def construct_path(path: Path, parent_path: Path) -> Path:
     """Constructs a path relative to a parent.
 
     Args:
@@ -78,7 +78,6 @@ def construct_path(path: Path, parent_path: Optional[Path] = None) -> Path:
 
     Returns: An absolute path.
     """
-    parent_path = parent_path if parent_path else Path.cwd()
     if path.expanduser().is_absolute():
         return path.expanduser().resolve()
     else:
