@@ -1689,13 +1689,13 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
                                               request.is_selected_based_on_locality(),
                                               reply,
                                               send_reply_callback_wrapper);
-    return;
+  } else {
+    cluster_task_manager_->QueueAndScheduleTask(task,
+                                                request.grant_or_reject(),
+                                                request.is_selected_based_on_locality(),
+                                                reply,
+                                                send_reply_callback_wrapper);
   }
-  cluster_task_manager_->QueueAndScheduleTask(task,
-                                              request.grant_or_reject(),
-                                              request.is_selected_based_on_locality(),
-                                              reply,
-                                              send_reply_callback_wrapper);
 }
 
 void NodeManager::HandlePrepareBundleResources(
