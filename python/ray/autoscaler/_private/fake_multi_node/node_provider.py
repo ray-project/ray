@@ -60,6 +60,8 @@ DOCKER_HEAD_CMD = (
     "touch {volume_dir}/.in_docker && "
     "sudo chown -R ray:users /cluster/node && "
     "sudo chmod -R 777 /cluster/node && "
+    "sudo chown -R ray:users /cluster/shared && "
+    "sudo chmod -R 777 /cluster/shared && "
     "sudo chmod 700 ~/.ssh && "
     "sudo chmod 600 ~/.ssh/authorized_keys && "
     "sudo chmod 600 ~/ray_bootstrap_key.pem && "
