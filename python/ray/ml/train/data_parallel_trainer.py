@@ -257,18 +257,11 @@ class DataParallelTrainer(Trainer):
             fn_arg_name="train_loop_per_worker",
         )
 
-        runtime_env = {"env_vars": self.train_env_var_values}
-
-        # TODO(amog): Run BackendExecutor directly in the Trainable instead of a
-        #  separate actor.
-        remote_executor = ray.remote(num_cpus=0)(BackendExecutor)
         additional_resources_per_worker = (
             scaling_config_dataclass.additional_resources_per_worker
         )
 
-        backend_executor_actor = remote_executor.options(
-            runtime_env=runtime_env
-        ).remote(
+        backend_executor = BackendExecutor(
             backend_config=self.backend_config,
             num_workers=scaling_config_dataclass.num_workers,
             num_cpus_per_worker=scaling_config_dataclass.num_cpus_per_worker,
@@ -280,8 +273,12 @@ class DataParallelTrainer(Trainer):
         checkpoint_manager = MLTuneCheckpointManager()
         checkpoint_manager.on_init(preprocessor=self.preprocessor)
 
+        def set_env_vars():
+            for key, value in self.train_env_var_values.items():
+                os.environ[key] = value
+
         # Start the remote actors.
-        ray.get(backend_executor_actor.start.remote(initialization_hook=None))
+        backend_executor.start(initialization_hook=set_env_vars)
 
         if self.resume_from_checkpoint:
             resume_checkpoint_dict = self.resume_from_checkpoint.to_dict()
@@ -305,7 +302,7 @@ class DataParallelTrainer(Trainer):
         # TODO(amog): Have TrainingIterator also accept a checkpoint ObjectRef instead
         #  of just a Dict.
         training_iterator = TrainingIterator(
-            backend_executor_actor=backend_executor_actor,
+            backend_executor=backend_executor,
             backend_config=self.backend_config,
             train_func=train_loop_per_worker,
             dataset=updated_dataset_dict if len(updated_dataset_dict) > 0 else None,
@@ -321,7 +318,7 @@ class DataParallelTrainer(Trainer):
             tune.report(**first_worker_results)
 
         # Shutdown workers.
-        ray.get(backend_executor_actor.shutdown.remote())
+        backend_executor.shutdown()
 
     def as_trainable(self) -> Type[Trainable]:
         trainable_cls = super().as_trainable()
