@@ -114,7 +114,7 @@ def test_preprocessor_in_checkpoint(ray_start_4_cpus):
     assert result.checkpoint.to_dict()[PREPROCESSOR_KEY].is_same
 
 
-def test_resume_from_checkpoint(ray_start_4_cpus):
+def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
     def train_func():
         checkpoint = train.load_checkpoint()
         if checkpoint:
@@ -133,7 +133,7 @@ def test_resume_from_checkpoint(ray_start_4_cpus):
     # Move checkpoint to a different directory.
     checkpoint_dict = result.checkpoint.to_dict()
     checkpoint = Checkpoint.from_dict(checkpoint_dict)
-    checkpoint_path = checkpoint.to_directory()
+    checkpoint_path = checkpoint.to_directory(tmpdir)
     resume_from = Checkpoint.from_directory(checkpoint_path)
 
     trainer = DataParallelTrainer(
