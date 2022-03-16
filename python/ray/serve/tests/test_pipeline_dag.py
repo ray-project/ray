@@ -108,6 +108,14 @@ class Driver:
         print(f"Driver got {inp}")
         return await self.dag.remote(inp)
 
+@serve.deployment
+class NoargDriver:
+    def __init__(self, dag: PipelineHandle):
+        self.dag = dag
+
+    async def __call__(self):
+        return await self.dag.remote()
+
 
 def test_single_func_deployment_dag(serve_instance):
     with InputNode() as dag_input:
@@ -176,6 +184,14 @@ def test_multi_instantiation_class_nested_deployment_arg_dag(serve_instance):
     print(serve_dag)
     handle = serve.run(Driver.bind(serve_dag))
     assert ray.get(handle.remote(1)) == 5
+
+def test_class_factory(serve_instance):
+    with InputNode() as _:
+        instance = ray.remote(class_factory()).bind(3)
+        serve_dag = instance.get.bind()
+    print(serve_dag)
+    handle = serve.run(NoargDriver.bind(serve_dag))
+    assert ray.get(handle.remote()) == 3
 
 
 def test_single_node_deploy_success(serve_instance):
