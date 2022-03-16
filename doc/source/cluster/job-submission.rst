@@ -206,7 +206,7 @@ Alternatively, you can set up Ingress to the dashboard port of the cluster over 
 Python SDK
 ^^^^^^^^^^
 
-The Ray Job SDK is the recommended way to submit jobs programmatically.  Jump to the :ref:`API Reference<ray-job-submission-sdk-ref>`, or continue reading for a quick overview.
+The Job Submission Python SDK is the recommended way to submit jobs programmatically.  Jump to the :ref:`API Reference<ray-job-submission-sdk-ref>`, or continue reading for a quick overview.
 
 SDK calls are made via a ``JobSubmissionClient`` object.  To initialize the client, provide the Ray cluster head node address and the port used by the Ray Dashboard (``8265`` by default). For this example, we'll use a local Ray cluster, but the same example will work for remote Ray cluster addresses.
 
@@ -217,7 +217,7 @@ SDK calls are made via a ``JobSubmissionClient`` object.  To initialize the clie
     # If using a remote cluster, replace 127.0.0.1 with the head node's IP address.
     client = JobSubmissionClient("http://127.0.0.1:8265")
 
-Then we can submit our "Quick Start" application to the Ray cluster via the Job SDK.
+Then we can submit our application to the Ray cluster via the Job SDK.
 
 .. code-block:: python
 
@@ -359,6 +359,6 @@ Under the hood, both the Python SDK and the CLI make HTTP calls to the job serve
 Job Submission Architecture
 ----------------------------
 
-The following diagram shows the underlying structure and steps for each job submission.
+The following diagram shows the underlying structure and steps for each submitted job.
 
 .. image:: https://raw.githubusercontent.com/ray-project/images/master/docs/job/job_submission_arch_v2.png
