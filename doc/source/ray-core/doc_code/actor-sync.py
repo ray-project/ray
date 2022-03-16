@@ -2,7 +2,6 @@ import asyncio
 
 import ray
 
-ray.init()
 
 # We set num_cpus to zero because this actor will mostly just block on I/O.
 @ray.remote(num_cpus=0)
@@ -19,11 +18,13 @@ class SignalActor:
         if should_wait:
             await self.ready_event.wait()
 
+
 @ray.remote
 def wait_and_go(signal):
     ray.get(signal.wait.remote())
 
     print("go!")
+
 
 signal = SignalActor.remote()
 tasks = [wait_and_go.remote(signal) for _ in range(4)]
@@ -35,7 +36,7 @@ ray.get(signal.send.remote())
 # Tasks are unblocked.
 ray.get(tasks)
 
-##  Output is:
+# Output is:
 # ready...
 # get set..
 
