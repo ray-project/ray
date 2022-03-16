@@ -60,6 +60,22 @@ message NodeResourceUsage {
   string json = 1;
 }
 
+message GetNodeLogIndexRequest {
+}
+
+message GetNodeLogIndexReply {
+  repeated string log_files = 1;
+}
+
+message GetLogLinesRequest {
+  string log_name = 1;
+  // Maximum number of lines to return, from the end of the log file.
+  int32 max_lines = 2;
+}
+message GetLogLinesReply {
+  repeated string lines = 1;
+}
+
 // Service for communicating with the reporter.py process on a remote node.
 service ReporterService {
   // Get the profiling stats.
@@ -68,4 +84,8 @@ service ReporterService {
   rpc ReportMetrics(ReportMetricsRequest) returns (ReportMetricsReply);
   // Report OpenCensus metrics to the local metrics agent.
   rpc ReportOCMetrics(ReportOCMetricsRequest) returns (ReportOCMetricsReply);
+  // Get the log index from the agent.
+  rpc GetNodeLogIndex(GetNodeLogIndexRequest) returns (GetNodeLogIndexReply);
+  // Get lines from a log file from the agent.
+  rpc GetLogLines(GetLogLinesRequest) returns (GetLogLinesReply);
 }
