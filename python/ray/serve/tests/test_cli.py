@@ -7,7 +7,6 @@ import sys
 import signal
 import pytest
 import requests
-from tempfile import NamedTemporaryFile
 
 import ray
 from ray import serve
@@ -259,12 +258,16 @@ def test_delete(ray_start_stop):
         wait_for_condition(lambda: get_num_deployments() == 0, timeout=35)
 
 
+@serve.deployment
 def parrot(request):
     return request.query_params["sound"]
 
 
+parrot_app = Application([parrot])
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_basic(ray_start_stop):
+def test_run_application(ray_start_stop):
     # Deploys valid config file and import path via serve run
 
     # Deploy via config file
@@ -285,7 +288,7 @@ def test_run_basic(ray_start_stop):
 
     # Deploy via import path
     p = subprocess.Popen(
-        ["serve", "run", "--address=auto", "ray.serve.tests.test_cli.parrot"]
+        ["serve", "run", "--address=auto", "ray.serve.tests.test_cli.parrot_app"]
     )
     wait_for_condition(
         lambda: ping_endpoint("parrot", params="?sound=squawk") == "squawk", timeout=10
@@ -296,6 +299,7 @@ def test_run_basic(ray_start_stop):
     assert ping_endpoint("parrot", params="?sound=squawk") == "connection error"
 
 
+@serve.deployment
 class Macaw:
     def __init__(self, color, name="Mulligan", surname=None):
         self.color = color
@@ -309,8 +313,11 @@ class Macaw:
             return f"{self.name} is {self.color}!"
 
 
+molly_macaw = Macaw.bind("green", name="Molly")
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_init_args_kwargs(ray_start_stop):
+def test_run_deployment_node(ray_start_stop):
     # Tests serve run with specified args and kwargs
 
     # Deploy via import path
@@ -319,176 +326,13 @@ def test_run_init_args_kwargs(ray_start_stop):
             "serve",
             "run",
             "--address=auto",
-            "ray.serve.tests.test_cli.Macaw",
-            "--",
-            "green",
-            "--name",
-            "Molly",
+            "ray.serve.tests.test_cli.molly_macaw",
         ]
     )
     wait_for_condition(lambda: ping_endpoint("Macaw") == "Molly is green!", timeout=10)
     p.send_signal(signal.SIGINT)
     p.wait()
     assert ping_endpoint("Macaw") == "connection error"
-
-    # Mix and match keyword notation
-    p = subprocess.Popen(
-        [
-            "serve",
-            "run",
-            "--address=auto",
-            "ray.serve.tests.test_cli.Macaw",
-            "--",
-            "green",
-            "--name",
-            "Molly",
-            "--surname==./u=6y",
-        ]
-    )
-    wait_for_condition(
-        lambda: ping_endpoint("Macaw") == "Molly =./u=6y is green!", timeout=10
-    )
-    p.send_signal(signal.SIGINT)
-    p.wait()
-    assert ping_endpoint("Macaw") == "connection error"
-
-    # Args/kwargs with config file
-    config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "macaw.yaml"
-    )
-
-    with pytest.raises(subprocess.CalledProcessError):
-        subprocess.check_output(
-            [
-                "serve",
-                "run",
-                "--address=auto",
-                config_file_name,
-                "--",
-                "green",
-                "--name",
-                "Molly",
-            ]
-        )
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_runtime_env(ray_start_stop):
-    # Tests serve run with runtime_envs specified
-
-    # Use local working_dir with import path
-    p = subprocess.Popen(
-        [
-            "serve",
-            "run",
-            "--address=auto",
-            "test_cli.Macaw",
-            "--working-dir",
-            os.path.dirname(__file__),
-            "--",
-            "green",
-            "--name=Molly",
-        ]
-    )
-    wait_for_condition(lambda: ping_endpoint("Macaw") == "Molly is green!", timeout=10)
-    p.send_signal(signal.SIGINT)
-    p.wait()
-
-    # Use local working_dir with config file
-    p = subprocess.Popen(
-        [
-            "serve",
-            "run",
-            "--address=auto",
-            os.path.join(
-                os.path.dirname(__file__), "test_config_files", "scarlet.yaml"
-            ),
-            "--working-dir",
-            os.path.dirname(__file__),
-        ]
-    )
-    wait_for_condition(
-        lambda: ping_endpoint("Scarlet") == "Scarlet is red!", timeout=10
-    )
-    p.send_signal(signal.SIGINT)
-    p.wait()
-
-    # Use remote working_dir
-    p = subprocess.Popen(
-        [
-            "serve",
-            "run",
-            "--address=auto",
-            "test_module.test.one",
-            "--working-dir",
-            "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip",
-        ]
-    )
-    wait_for_condition(lambda: ping_endpoint("one") == "2", timeout=10)
-    p.send_signal(signal.SIGINT)
-    p.wait()
-
-    # Use runtime env
-    p = subprocess.Popen(
-        [
-            "serve",
-            "run",
-            "--address=auto",
-            os.path.join(
-                os.path.dirname(__file__),
-                "test_config_files",
-                "missing_runtime_env.yaml",
-            ),
-            "--runtime-env-json",
-            (
-                '{"py_modules": ["https://github.com/shrekris-anyscale/'
-                'test_deploy_group/archive/HEAD.zip"],'
-                '"working_dir": "http://nonexistentlink-q490123950ni34t"}'
-            ),
-            "--working-dir",
-            "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip",
-        ]
-    )
-    wait_for_condition(lambda: ping_endpoint("one") == "2", timeout=10)
-    p.send_signal(signal.SIGINT)
-    p.wait()
-
-
-@serve.deployment
-def global_f(*args):
-    return "wonderful world"
-
-
-test_build_app = Application(
-    [
-        global_f.options(name="f1"),
-        global_f.options(name="f2"),
-    ]
-)
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_build(ray_start_stop):
-    f = NamedTemporaryFile(mode="w", delete=False)
-
-    # Build an app
-    subprocess.check_output(
-        ["serve", "build", "ray.serve.tests.test_cli.test_build_app", f.name]
-    )
-    subprocess.check_output(["serve", "deploy", f.name])
-
-    assert requests.get("http://localhost:8000/f1").text == "wonderful world"
-    assert requests.get("http://localhost:8000/f2").text == "wonderful world"
-
-    # Build a deployment
-    subprocess.check_output(
-        ["serve", "build", "ray.serve.tests.test_cli.global_f", f.name]
-    )
-    subprocess.check_output(["serve", "deploy", f.name])
-
-    assert requests.get("http://localhost:8000/global_f").text == "wonderful world"
-
-    os.unlink(f.name)
 
 
 if __name__ == "__main__":

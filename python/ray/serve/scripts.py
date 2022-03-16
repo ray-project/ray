@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-import click
 import json
 import os
 import pathlib
@@ -13,7 +12,6 @@ import ray
 from ray._private.utils import import_attr
 from ray.serve.config import DeploymentMode
 from ray import serve
-from ray.serve.api import get_deployment_statuses
 from ray.serve.constants import (
     DEFAULT_CHECKPOINT_PATH,
     DEFAULT_HTTP_HOST,
@@ -23,16 +21,12 @@ from ray.serve.schema import ServeApplicationSchema
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.autoscaler._private.cli_logger import cli_logger
-from ray._private.utils import import_attr
 from ray.serve.api import (
     Application,
     DeploymentNode,
-    build,
     get_deployment_statuses,
     serve_application_status_to_schema,
 )
-
-build_app = build
 
 APP_DIR_HELP_STR = (
     "Local directory to look for the IMPORT_PATH (will be inserted into "
@@ -226,6 +220,13 @@ def deploy(config_file_name: str, address: str):
     ),
 )
 @click.option(
+    "--app-dir",
+    "-d",
+    default=".",
+    type=str,
+    help=APP_DIR_HELP_STR,
+)
+@click.option(
     "--address",
     "-a",
     default=os.environ.get("RAY_ADDRESS", None),
@@ -262,11 +263,14 @@ def run(
     runtime_env: str,
     runtime_env_json: str,
     working_dir: str,
+    app_dir: str,
     address: str,
     host: str,
     port: int,
     blocking: bool,
 ):
+    sys.path.insert(0, app_dir)
+
     final_runtime_env = parse_runtime_env_args(
         runtime_env=runtime_env,
         runtime_env_json=runtime_env_json,
@@ -287,11 +291,11 @@ def run(
     # Setting the runtime_env here will set defaults for the deployments.
     ray.init(address=address, namespace="serve", runtime_env=final_runtime_env)
 
-    serve.run(app_or_node, host=host, port=port)
-    cli_logger.success("Deployed successfully!\n")
-
     if blocking:
         try:
+            serve.run(app_or_node, host=host, port=port)
+            cli_logger.success("Deployed successfully!\n")
+
             while True:
                 statuses = serve_application_status_to_schema(
                     get_deployment_statuses()
@@ -303,6 +307,9 @@ def run(
             cli_logger.info("Got KeyboardInterrupt, shutting down...")
             serve.shutdown()
             sys.exit()
+    else:
+        serve.run(app_or_node, host=host, port=port)
+        cli_logger.success("Deployed successfully!\n")
 
 
 @cli.command(

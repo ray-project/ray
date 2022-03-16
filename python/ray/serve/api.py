@@ -1733,6 +1733,8 @@ def run(
     route prefix), its handle will be returned.
     """
 
+    client = start(detached=True, http_options={"host": host, "port": port})
+
     if isinstance(target, Application):
         deployments = list(target.deployments.values())
     elif isinstance(target, DeploymentNode):
@@ -1743,8 +1745,6 @@ def run(
             "Application as target. Got unexpected type "
             f'"{type(target)}" instead.'
         )
-
-    client = start(detached=True, http_options={"host": host, "port": port})
 
     parameter_group = []
 
