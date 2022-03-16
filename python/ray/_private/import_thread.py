@@ -38,6 +38,7 @@ class ImportThread:
         self.exception_type = grpc.RpcError
         self.threads_stopped = threads_stopped
         self.imported_collision_identifiers = defaultdict(int)
+        self.t = None
         # Keep track of the number of imports that we've imported.
         self.num_imported = 0
         # Protect writes to self.num_imported.
@@ -53,7 +54,8 @@ class ImportThread:
 
     def join_import_thread(self):
         """Wait for the thread to exit."""
-        self.t.join()
+        if self.t:
+            self.t.join()
 
     def _run(self):
         try:
