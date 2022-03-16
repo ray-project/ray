@@ -1,5 +1,3 @@
-# test tune
-# test env vars
 import os
 
 import pytest
