@@ -78,7 +78,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             await Response(error_message, status_code=500).send(scope, receive, send)
             return "500"
         except RayActorError:
-            logger.warning(
+            logger.debug(
                 "Request failed due to replica failure. There are "
                 f"{MAX_REPLICA_FAILURE_RETRIES - retries} retries "
                 "remaining."
@@ -187,13 +187,15 @@ class HTTPProxy:
     def __init__(self, controller_name: str, controller_namespace: str):
         # Set the controller name so that serve will connect to the
         # controller instance this proxy is running in.
-        ray.serve.api._set_internal_replica_context(None, None, controller_name, None)
+        ray.serve.api._set_internal_replica_context(
+            None, None, controller_name, controller_namespace, None
+        )
 
         # Used only for displaying the route table.
         self.route_info: Dict[str, EndpointTag] = dict()
 
         def get_handle(name):
-            return serve.api._get_global_client().get_handle(
+            return serve.api.internal_get_global_client().get_handle(
                 name,
                 sync=False,
                 missing_ok=True,
@@ -223,7 +225,7 @@ class HTTPProxy:
         self.deployment_request_error_counter = metrics.Counter(
             "serve_num_deployment_http_error_requests",
             description=(
-                "The number of non-200 HTTP responses returned by each " "deployment."
+                "The number of non-200 HTTP responses returned by each deployment."
             ),
             tag_keys=("deployment",),
         )

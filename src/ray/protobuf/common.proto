@@ -101,6 +101,8 @@ message PythonFunctionDescriptor {
 message CppFunctionDescriptor {
   /// Remote function name.
   string function_name = 1;
+  string caller = 2;
+  string class_name = 3;
 }
 
 // A union wrapper for various function descriptor types.
@@ -238,8 +240,7 @@ message ActorDiedErrorContext {
 // ---Actor death contexts end----
 
 /// The task specification encapsulates all immutable information about the
-/// task. These fields are determined at submission time, converse to the
-/// `TaskExecutionSpec` may change at execution time.
+/// task.
 message TaskSpec {
   // Type of this task.
   TaskType type = 1;
@@ -433,20 +434,9 @@ message ActorTaskSpec {
   bytes previous_actor_task_dummy_object_id = 7;
 }
 
-// The task execution specification encapsulates all mutable information about
-// the task. These fields may change at execution time, converse to the
-// `TaskSpec` is determined at submission time.
-message TaskExecutionSpec {
-  // The last time this task was received for scheduling.
-  double last_timestamp = 1;
-  // The number of times this task was spilled back by raylets.
-  uint64 num_forwards = 2;
-}
-
-// Represents a task, including task spec, and task execution spec.
+// Represents a task, including task spec.
 message Task {
   TaskSpec task_spec = 1;
-  TaskExecutionSpec task_execution_spec = 2;
 }
 
 // Represents a resource id.
@@ -489,6 +479,18 @@ message ViewData {
   repeated Measure measures = 2;
 }
 
+enum TaskStatus {
+  // We don't have a status for this task because we are not the owner or the
+  // task metadata has already been deleted.
+  NIL = 0;
+  // The task is waiting for its dependencies to be created.
+  WAITING_FOR_DEPENDENCIES = 1;
+  // All dependencies have been created and the task is scheduled to execute.
+  SCHEDULED = 2;
+  // The task finished successfully.
+  FINISHED = 3;
+}
+
 // Debug info for a referenced object.
 message ObjectRefInfo {
   // Object id that is referenced.
@@ -505,6 +507,11 @@ message ObjectRefInfo {
   repeated bytes contained_in_owned = 6;
   // True if this object is pinned in memory by the current process.
   bool pinned_in_memory = 7;
+  // Status of the task that creates this object.
+  TaskStatus task_status = 8;
+  // A count of the number of times this task has been attempted so far. 0
+  // means this is the first execution.
+  uint64 attempt_number = 9;
 }
 
 // Details about the allocation of a given resource. Some resources

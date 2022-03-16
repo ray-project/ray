@@ -1,6 +1,6 @@
 import os
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 # (Optional/Auto-filled) training is terminated. Filled only if not provided.
 DONE = "done"
@@ -60,7 +60,7 @@ TIME_TOTAL_S = "time_total_s"
 # (Auto-filled) The index of this training iteration.
 TRAINING_ITERATION = "training_iteration"
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 DEFAULT_EXPERIMENT_INFO_KEYS = ("trainable_name", EXPERIMENT_TAG, TRIAL_ID)
 
@@ -102,6 +102,7 @@ AUTO_RESULT_KEYS = (
     "iterations_since_restore",
     "timesteps_since_restore",
     "config",
+    "warmup_time",
 )
 
 # __duplicate__ is a magic keyword used internally to

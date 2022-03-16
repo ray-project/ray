@@ -27,7 +27,8 @@ namespace gcs {
 std::string RedisStoreClient::table_separator_ = ":";
 std::string RedisStoreClient::index_table_separator_ = "&";
 
-Status RedisStoreClient::AsyncPut(const std::string &table_name, const std::string &key,
+Status RedisStoreClient::AsyncPut(const std::string &table_name,
+                                  const std::string &key,
                                   const std::string &data,
                                   const StatusCallback &callback) {
   return DoPut(GenRedisKey(table_name, key), data, callback);
@@ -58,7 +59,8 @@ Status RedisStoreClient::AsyncPutWithIndex(const std::string &table_name,
   return status;
 }
 
-Status RedisStoreClient::AsyncGet(const std::string &table_name, const std::string &key,
+Status RedisStoreClient::AsyncGet(const std::string &table_name,
+                                  const std::string &key,
                                   const OptionalItemCallback<std::string> &callback) {
   RAY_CHECK(callback != nullptr);
 
@@ -87,8 +89,8 @@ Status RedisStoreClient::AsyncGetAll(
   std::string match_pattern = GenRedisMatchPattern(table_name);
   auto scanner = std::make_shared<RedisScanner>(redis_client_, table_name);
   auto on_done = [callback,
-                  scanner](const std::unordered_map<std::string, std::string> &result) {
-    callback(result);
+                  scanner](absl::flat_hash_map<std::string, std::string> &&result) {
+    callback(std::move(result));
   };
   return scanner->ScanKeysAndValues(match_pattern, on_done);
 }
@@ -135,8 +137,10 @@ Status RedisStoreClient::AsyncBatchDelete(const std::string &table_name,
 }
 
 Status RedisStoreClient::AsyncBatchDeleteWithIndex(
-    const std::string &table_name, const std::vector<std::string> &keys,
-    const std::vector<std::string> &index_keys, const StatusCallback &callback) {
+    const std::string &table_name,
+    const std::vector<std::string> &keys,
+    const std::vector<std::string> &index_keys,
+    const StatusCallback &callback) {
   RAY_CHECK(keys.size() == index_keys.size());
 
   std::vector<std::string> redis_keys;
@@ -150,7 +154,8 @@ Status RedisStoreClient::AsyncBatchDeleteWithIndex(
 }
 
 Status RedisStoreClient::AsyncGetByIndex(
-    const std::string &table_name, const std::string &index_key,
+    const std::string &table_name,
+    const std::string &index_key,
     const MapCallback<std::string, std::string> &callback) {
   RAY_CHECK(callback);
   std::string match_pattern = GenRedisMatchPattern(table_name, index_key);
@@ -167,7 +172,7 @@ Status RedisStoreClient::AsyncGetByIndex(
 
       RAY_CHECK_OK(MGetValues(redis_client_, table_name, keys, callback));
     } else {
-      callback(std::unordered_map<std::string, std::string>());
+      callback(absl::flat_hash_map<std::string, std::string>());
     }
   };
   return scanner->ScanKeys(match_pattern, on_done);
@@ -202,7 +207,8 @@ Status RedisStoreClient::AsyncDeleteByIndex(const std::string &table_name,
   return scanner->ScanKeys(match_pattern, on_done);
 }
 
-Status RedisStoreClient::DoPut(const std::string &key, const std::string &data,
+Status RedisStoreClient::DoPut(const std::string &key,
+                               const std::string &data,
                                const StatusCallback &callback) {
   std::vector<std::string> args = {"SET", key, data};
   RedisCallback write_callback = nullptr;
@@ -229,8 +235,8 @@ Status RedisStoreClient::DeleteByKeys(const std::vector<std::string> &keys,
 
   for (auto &command_list : del_commands_by_shards) {
     for (auto &command : command_list.second) {
-      auto delete_callback = [finished_count, total_count,
-                              callback](const std::shared_ptr<CallbackReply> &reply) {
+      auto delete_callback = [finished_count, total_count, callback](
+                                 const std::shared_ptr<CallbackReply> &reply) {
         ++(*finished_count);
         if (*finished_count == total_count) {
           if (callback) {
@@ -244,11 +250,12 @@ Status RedisStoreClient::DeleteByKeys(const std::vector<std::string> &keys,
   return Status::OK();
 }
 
-std::unordered_map<RedisContext *, std::list<std::vector<std::string>>>
+absl::flat_hash_map<RedisContext *, std::list<std::vector<std::string>>>
 RedisStoreClient::GenCommandsByShards(const std::shared_ptr<RedisClient> &redis_client,
                                       const std::string &command,
-                                      const std::vector<std::string> &keys, int *count) {
-  std::unordered_map<RedisContext *, std::list<std::vector<std::string>>>
+                                      const std::vector<std::string> &keys,
+                                      int *count) {
+  absl::flat_hash_map<RedisContext *, std::list<std::vector<std::string>>>
       commands_by_shards;
   for (auto &key : keys) {
     auto shard_context = redis_client->GetShardContext(key).get();
@@ -317,36 +324,39 @@ std::string RedisStoreClient::GetKeyFromRedisKey(const std::string &redis_key,
 }
 
 Status RedisStoreClient::MGetValues(
-    std::shared_ptr<RedisClient> redis_client, std::string table_name,
+    std::shared_ptr<RedisClient> redis_client,
+    const std::string &table_name,
     const std::vector<std::string> &keys,
-    const ItemCallback<std::unordered_map<std::string, std::string>> &callback) {
+    const MapCallback<std::string, std::string> &callback) {
   // The `MGET` command for each shard.
   int total_count = 0;
   auto mget_commands_by_shards =
       GenCommandsByShards(redis_client, "MGET", keys, &total_count);
   auto finished_count = std::make_shared<int>(0);
-  auto key_value_map = std::make_shared<std::unordered_map<std::string, std::string>>();
+  auto key_value_map = std::make_shared<absl::flat_hash_map<std::string, std::string>>();
   for (auto &command_list : mget_commands_by_shards) {
     for (auto &command : command_list.second) {
       auto mget_keys = std::move(command);
-      auto mget_callback = [table_name, finished_count, total_count, mget_keys, callback,
-                            key_value_map](const std::shared_ptr<CallbackReply> &reply) {
-        if (!reply->IsNil()) {
-          auto value = reply->ReadAsStringArray();
-          // The 0 th element of mget_keys is "MGET", so we start from the 1 th element.
-          for (size_t index = 0; index < value.size(); ++index) {
-            if (value[index].has_value()) {
-              (*key_value_map)[GetKeyFromRedisKey(mget_keys[index + 1], table_name)] =
-                  *(value[index]);
+      auto mget_callback =
+          [table_name, finished_count, total_count, mget_keys, callback, key_value_map](
+              const std::shared_ptr<CallbackReply> &reply) {
+            if (!reply->IsNil()) {
+              auto value = reply->ReadAsStringArray();
+              // The 0 th element of mget_keys is "MGET", so we start from the 1 th
+              // element.
+              for (size_t index = 0; index < value.size(); ++index) {
+                if (value[index].has_value()) {
+                  (*key_value_map)[GetKeyFromRedisKey(mget_keys[index + 1], table_name)] =
+                      *(value[index]);
+                }
+              }
             }
-          }
-        }
 
-        ++(*finished_count);
-        if (*finished_count == total_count) {
-          callback(*key_value_map);
-        }
-      };
+            ++(*finished_count);
+            if (*finished_count == total_count) {
+              callback(std::move(*key_value_map));
+            }
+          };
       RAY_CHECK_OK(command_list.first->RunArgvAsync(mget_keys, mget_callback));
     }
   }
@@ -354,7 +364,7 @@ Status RedisStoreClient::MGetValues(
 }
 
 RedisStoreClient::RedisScanner::RedisScanner(std::shared_ptr<RedisClient> redis_client,
-                                             std::string table_name)
+                                             const std::string &table_name)
     : table_name_(std::move(table_name)), redis_client_(std::move(redis_client)) {
   for (size_t index = 0; index < redis_client_->GetShardContexts().size(); ++index) {
     shard_to_cursor_[index] = 0;
@@ -362,12 +372,12 @@ RedisStoreClient::RedisScanner::RedisScanner(std::shared_ptr<RedisClient> redis_
 }
 
 Status RedisStoreClient::RedisScanner::ScanKeysAndValues(
-    std::string match_pattern,
-    const ItemCallback<std::unordered_map<std::string, std::string>> &callback) {
+    const std::string &match_pattern,
+    const MapCallback<std::string, std::string> &callback) {
   auto on_done = [this, callback](const Status &status,
                                   const std::vector<std::string> &result) {
     if (result.empty()) {
-      callback(std::unordered_map<std::string, std::string>());
+      callback(absl::flat_hash_map<std::string, std::string>());
     } else {
       RAY_CHECK_OK(MGetValues(redis_client_, table_name_, result, callback));
     }
@@ -376,17 +386,17 @@ Status RedisStoreClient::RedisScanner::ScanKeysAndValues(
 }
 
 Status RedisStoreClient::RedisScanner::ScanKeys(
-    std::string match_pattern, const MultiItemCallback<std::string> &callback) {
+    const std::string &match_pattern, const MultiItemCallback<std::string> &callback) {
   auto on_done = [this, callback](const Status &status) {
     std::vector<std::string> result;
     result.insert(result.begin(), keys_.begin(), keys_.end());
-    callback(status, result);
+    callback(status, std::move(result));
   };
   Scan(match_pattern, on_done);
   return Status::OK();
 }
 
-void RedisStoreClient::RedisScanner::Scan(std::string match_pattern,
+void RedisStoreClient::RedisScanner::Scan(const std::string &match_pattern,
                                           const StatusCallback &callback) {
   // This lock guards the iterator over shard_to_cursor_ because the callbacks
   // can remove items from the shard_to_cursor_ map. If performance is a concern,
@@ -404,14 +414,17 @@ void RedisStoreClient::RedisScanner::Scan(std::string match_pattern,
     size_t shard_index = item.first;
     size_t cursor = item.second;
 
-    auto scan_callback = [this, match_pattern, shard_index,
-                          callback](const std::shared_ptr<CallbackReply> &reply) {
+    auto scan_callback = [this, match_pattern, shard_index, callback](
+                             const std::shared_ptr<CallbackReply> &reply) {
       OnScanCallback(match_pattern, shard_index, reply, callback);
     };
     // Scan by prefix from Redis.
-    std::vector<std::string> args = {"SCAN",  std::to_string(cursor),
-                                     "MATCH", match_pattern,
-                                     "COUNT", std::to_string(batch_count)};
+    std::vector<std::string> args = {"SCAN",
+                                     std::to_string(cursor),
+                                     "MATCH",
+                                     match_pattern,
+                                     "COUNT",
+                                     std::to_string(batch_count)};
     auto shard_context = redis_client_->GetShardContexts()[shard_index];
     Status status = shard_context->RunArgvAsync(args, scan_callback);
     if (!status.ok()) {
@@ -421,8 +434,10 @@ void RedisStoreClient::RedisScanner::Scan(std::string match_pattern,
 }
 
 void RedisStoreClient::RedisScanner::OnScanCallback(
-    std::string match_pattern, size_t shard_index,
-    const std::shared_ptr<CallbackReply> &reply, const StatusCallback &callback) {
+    const std::string &match_pattern,
+    size_t shard_index,
+    const std::shared_ptr<CallbackReply> &reply,
+    const StatusCallback &callback) {
   RAY_CHECK(reply);
   std::vector<std::string> scan_result;
   size_t cursor = reply->ReadAsScanArray(&scan_result);

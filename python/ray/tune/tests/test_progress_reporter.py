@@ -195,9 +195,7 @@ EXPECTED_BEST_1 = (
     "parameters={'a': 1, 'b': 2, 'n': {'k': [1, 2]}}"
 )
 
-EXPECTED_BEST_2 = (
-    "Current best trial: 00004 with metric_1=2.0 and " "parameters={'a': 4}"
-)
+EXPECTED_BEST_2 = "Current best trial: 00004 with metric_1=2.0 and parameters={'a': 4}"
 
 EXPECTED_SORT_RESULT_UNSORTED = """Number of trials: 5 (1 PENDING, 1 RUNNING, 3 TERMINATED)
 +--------------+------------+-------+-----+------------+
@@ -295,11 +293,6 @@ with patch("ray.tune.progress_reporter._get_trial_location",
 
 class ProgressReporterTest(unittest.TestCase):
     def setUp(self) -> None:
-        # Wait up to five seconds for placement groups when starting a trial
-        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
-        # Block for results even when placement groups are pending
-        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
-        os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "auto"
 
     def mock_trial(self, status, i):

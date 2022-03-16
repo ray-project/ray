@@ -20,7 +20,7 @@ from ray.serve.constants import SERVE_ROOT_URL_ENV_KEY, SERVE_PROXY_NAME
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import block_until_http_ready, get_all_node_ids, format_actor_name
 from ray.serve.config import HTTPOptions
-from ray.serve.api import _get_global_client
+from ray.serve.api import internal_get_global_client
 from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_condition,
@@ -113,12 +113,13 @@ def test_detached_deployment(ray_cluster):
     first_job_id = ray.get_runtime_context().job_id
     serve.start(detached=True)
 
-    @serve.deployment
+    @serve.deployment(route_prefix="/say_hi_f")
     def f(*args):
-        return "hello"
+        return "from_f"
 
     f.deploy()
-    assert ray.get(f.get_handle().remote()) == "hello"
+    assert ray.get(f.get_handle().remote()) == "from_f"
+    assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
 
     serve.api._global_client = None
     ray.shutdown()
@@ -127,12 +128,14 @@ def test_detached_deployment(ray_cluster):
     ray.init(head_node.address, namespace="serve")
     assert ray.get_runtime_context().job_id != first_job_id
 
-    @serve.deployment
+    @serve.deployment(route_prefix="/say_hi_g")
     def g(*args):
-        return "world"
+        return "from_g"
 
     g.deploy()
-    assert ray.get(g.get_handle().remote()) == "world"
+    assert ray.get(g.get_handle().remote()) == "from_g"
+    assert requests.get("http://localhost:8000/say_hi_g").text == "from_g"
+    assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
 
 
 @pytest.mark.parametrize("detached", [True, False])
@@ -440,7 +443,7 @@ def test_fixed_number_proxies(ray_cluster):
     )
 
     # Only the controller and two http proxy should be started.
-    controller_handle = _get_global_client()._controller
+    controller_handle = internal_get_global_client()._controller
     node_to_http_actors = ray.get(controller_handle.get_http_proxies.remote())
     assert len(node_to_http_actors) == 2
 

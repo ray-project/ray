@@ -328,7 +328,7 @@ class AxSearch(Searcher):
             sampler = domain.get_sampler()
             if isinstance(sampler, Quantized):
                 logger.warning(
-                    "AxSearch does not support quantization. " "Dropped quantization."
+                    "AxSearch does not support quantization. Dropped quantization."
                 )
                 sampler = sampler.sampler
 

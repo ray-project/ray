@@ -230,14 +230,16 @@ class CppFunctionDescriptor : public FunctionDescriptorInterface {
 
   virtual size_t Hash() const {
     return std::hash<int>()(ray::FunctionDescriptorType::kCppFunctionDescriptor) ^
-           std::hash<std::string>()(typed_message_->function_name());
+           std::hash<std::string>()(typed_message_->function_name()) ^
+           std::hash<std::string>()(typed_message_->class_name());
   }
 
   inline bool operator==(const CppFunctionDescriptor &other) const {
     if (this == &other) {
       return true;
     }
-    return this->FunctionName() == other.FunctionName();
+    return this->FunctionName() == other.FunctionName() &&
+           this->ClassName() == other.ClassName();
   }
 
   inline bool operator!=(const CppFunctionDescriptor &other) const {
@@ -245,8 +247,9 @@ class CppFunctionDescriptor : public FunctionDescriptorInterface {
   }
 
   virtual std::string ToString() const {
+    std::string class_name = ClassName().empty() ? "" : ", class_name=" + ClassName();
     return "{type=CppFunctionDescriptor, function_name=" +
-           typed_message_->function_name() + "}";
+           typed_message_->function_name() + class_name + "}";
   }
 
   virtual std::string CallString() const { return typed_message_->function_name(); }
@@ -254,6 +257,10 @@ class CppFunctionDescriptor : public FunctionDescriptorInterface {
   virtual std::string DefaultTaskName() const { return CallString(); }
 
   const std::string &FunctionName() const { return typed_message_->function_name(); }
+
+  const std::string &Caller() const { return typed_message_->caller(); }
+
+  const std::string &ClassName() const { return typed_message_->class_name(); }
 
  private:
   const rpc::CppFunctionDescriptor *typed_message_;
@@ -320,7 +327,9 @@ class FunctionDescriptorBuilder {
   /// Build a CppFunctionDescriptor.
   ///
   /// \return a ray::CppFunctionDescriptor
-  static FunctionDescriptor BuildCpp(const std::string &function_name);
+  static FunctionDescriptor BuildCpp(const std::string &function_name,
+                                     const std::string &caller = "",
+                                     const std::string &class_name = "");
 
   /// Build a ray::FunctionDescriptor according to input message.
   ///

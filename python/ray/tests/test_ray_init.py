@@ -11,9 +11,8 @@ from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.client_builder import ClientContext
 from ray.cluster_utils import Cluster
 from ray._private.test_utils import run_string_as_driver
-from ray._raylet import ClientObjectRef
+from ray.util.client.common import ClientObjectRef
 from ray.util.client.worker import Worker
-from ray._private.gcs_utils import use_gcs_for_bootstrap
 import grpc
 
 
@@ -26,7 +25,9 @@ def password():
 
 
 class TestRedisPassword:
-    @pytest.mark.skipif(use_gcs_for_bootstrap(), reason="Not valid for gcs bootstrap")
+    @pytest.mark.skipif(
+        True, reason="Not valid anymore. To be added back when fixing Redis mode"
+    )
     def test_redis_password(self, password, shutdown_only):
         @ray.remote
         def f():

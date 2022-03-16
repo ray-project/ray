@@ -188,9 +188,11 @@ class GlobalStateAccessor {
   template <class DATA>
   MultiItemCallback<DATA> TransformForMultiItemCallback(
       std::vector<std::string> &data_vec, std::promise<bool> &promise) {
-    return [&data_vec, &promise](const Status &status, const std::vector<DATA> &result) {
+    return [&data_vec, &promise](const Status &status, std::vector<DATA> &&result) {
       RAY_CHECK_OK(status);
-      std::transform(result.begin(), result.end(), std::back_inserter(data_vec),
+      std::transform(result.begin(),
+                     result.end(),
+                     std::back_inserter(data_vec),
                      [](const DATA &data) { return data.SerializeAsString(); });
       promise.set_value(true);
     };

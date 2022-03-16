@@ -36,8 +36,11 @@ using ContextCase = rpc::ActorDeathCause::ContextCase;
 /// \param driver_pid Process ID of the driver running this job.
 /// \return The job table data created by this method.
 inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
-    const ray::JobID &job_id, bool is_dead, const std::string &driver_ip_address,
-    int64_t driver_pid, const ray::rpc::JobConfig &job_config = {}) {
+    const ray::JobID &job_id,
+    bool is_dead,
+    const std::string &driver_ip_address,
+    int64_t driver_pid,
+    const ray::rpc::JobConfig &job_config = {}) {
   auto job_info_ptr = std::make_shared<ray::rpc::JobTableData>();
   job_info_ptr->set_job_id(job_id.Binary());
   job_info_ptr->set_is_dead(is_dead);
@@ -49,7 +52,9 @@ inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
 
 /// Helper function to produce error table data.
 inline std::shared_ptr<ray::rpc::ErrorTableData> CreateErrorTableData(
-    const std::string &error_type, const std::string &error_msg, double timestamp,
+    const std::string &error_type,
+    const std::string &error_msg,
+    double timestamp,
     const JobID &job_id = JobID::Nil()) {
   uint32_t max_error_msg_size_bytes = RayConfig::instance().max_error_msg_size_bytes();
   auto error_info_ptr = std::make_shared<ray::rpc::ErrorTableData>();
@@ -70,8 +75,10 @@ inline std::shared_ptr<ray::rpc::ErrorTableData> CreateErrorTableData(
 
 /// Helper function to produce actor table data.
 inline std::shared_ptr<ray::rpc::ActorTableData> CreateActorTableData(
-    const TaskSpecification &task_spec, const ray::rpc::Address &address,
-    ray::rpc::ActorTableData::ActorState state, uint64_t num_restarts) {
+    const TaskSpecification &task_spec,
+    const ray::rpc::Address &address,
+    ray::rpc::ActorTableData::ActorState state,
+    uint64_t num_restarts) {
   RAY_CHECK(task_spec.IsActorCreationTask());
   auto actor_id = task_spec.ActorCreationId();
   auto actor_info_ptr = std::make_shared<ray::rpc::ActorTableData>();
@@ -95,8 +102,12 @@ inline std::shared_ptr<ray::rpc::ActorTableData> CreateActorTableData(
 
 /// Helper function to produce worker failure data.
 inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
-    const NodeID &raylet_id, const WorkerID &worker_id, const std::string &address,
-    int32_t port, int64_t timestamp, rpc::WorkerExitType disconnect_type,
+    const NodeID &raylet_id,
+    const WorkerID &worker_id,
+    const std::string &address,
+    int32_t port,
+    int64_t timestamp,
+    rpc::WorkerExitType disconnect_type,
     const rpc::RayException *creation_task_exception = nullptr) {
   auto worker_failure_info_ptr = std::make_shared<ray::rpc::WorkerTableData>();
   worker_failure_info_ptr->mutable_worker_address()->set_raylet_id(raylet_id.Binary());
@@ -156,10 +167,12 @@ inline const std::string &GetActorDeathCauseString(
 inline rpc::RayErrorInfo GetErrorInfoFromActorDeathCause(
     const rpc::ActorDeathCause &death_cause) {
   rpc::RayErrorInfo error_info;
-  if (death_cause.context_case() == ContextCase::kRuntimeEnvFailedContext ||
-      death_cause.context_case() == ContextCase::kActorDiedErrorContext ||
+  if (death_cause.context_case() == ContextCase::kActorDiedErrorContext ||
       death_cause.context_case() == ContextCase::kCreationTaskFailureContext) {
     error_info.mutable_actor_died_error()->CopyFrom(death_cause);
+  } else if (death_cause.context_case() == ContextCase::kRuntimeEnvFailedContext) {
+    error_info.mutable_runtime_env_setup_failed_error()->CopyFrom(
+        death_cause.runtime_env_failed_context());
   } else {
     RAY_CHECK(death_cause.context_case() == ContextCase::CONTEXT_NOT_SET);
   }

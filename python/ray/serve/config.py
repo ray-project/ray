@@ -1,7 +1,7 @@
 import inspect
 import pickle
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import pydantic
 from google.protobuf.json_format import MessageToDict
@@ -13,14 +13,21 @@ from pydantic import (
     PositiveInt,
     validator,
 )
-from ray.serve.constants import DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT
-from ray.serve.generated.serve_pb2 import (
-    DeploymentConfig as DeploymentConfigProto,
-    AutoscalingConfig as AutoscalingConfigProto,
-)
-from ray.serve.generated.serve_pb2 import DeploymentLanguage
 
 from ray import cloudpickle as cloudpickle
+from ray.serve.constants import (
+    DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
+    DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
+    DEFAULT_HEALTH_CHECK_PERIOD_S,
+    DEFAULT_HEALTH_CHECK_TIMEOUT_S,
+    DEFAULT_HTTP_HOST,
+    DEFAULT_HTTP_PORT,
+)
+from ray.serve.generated.serve_pb2 import (
+    DeploymentConfig as DeploymentConfigProto,
+    DeploymentLanguage,
+    AutoscalingConfig as AutoscalingConfigProto,
+)
 
 
 class AutoscalingConfig(BaseModel):
@@ -87,20 +94,40 @@ class DeploymentConfig(BaseModel):
             user_config is not None.
         graceful_shutdown_wait_loop_s (Optional[float]): Duration
             that deployment replicas will wait until there is no more work to
-            be done before shutting down. Defaults to 2s.
+            be done before shutting down.
         graceful_shutdown_timeout_s (Optional[float]):
             Controller waits for this duration to forcefully kill the replica
-            for shutdown. Defaults to 20s.
+            for shutdown.
+        health_check_period_s (Optional[float]):
+            Frequency at which the controller will health check replicas.
+        health_check_timeout_s (Optional[float]):
+            Timeout that the controller will wait for a response from the
+            replica's health check before marking it unhealthy.
     """
 
     num_replicas: PositiveInt = 1
     max_concurrent_queries: Optional[int] = None
     user_config: Any = None
 
-    graceful_shutdown_wait_loop_s: NonNegativeFloat = 2.0
-    graceful_shutdown_timeout_s: NonNegativeFloat = 20.0
+    graceful_shutdown_timeout_s: NonNegativeFloat = (
+        DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S  # noqa: E501
+    )
+    graceful_shutdown_wait_loop_s: NonNegativeFloat = (
+        DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S  # noqa: E501
+    )
+
+    health_check_period_s: PositiveFloat = DEFAULT_HEALTH_CHECK_PERIOD_S
+    health_check_timeout_s: PositiveFloat = DEFAULT_HEALTH_CHECK_TIMEOUT_S
 
     autoscaling_config: Optional[AutoscalingConfig] = None
+
+    # This flag is used to let replica know they are deplyed from
+    # a different language.
+    is_cross_language: bool = False
+
+    # This flag is used to let controller know which language does
+    # the deploymnent use.
+    deployment_language: Any = DeploymentLanguage.PYTHON
 
     class Config:
         validate_assignment = True
@@ -125,17 +152,16 @@ class DeploymentConfig(BaseModel):
             data["autoscaling_config"] = AutoscalingConfigProto(
                 **data["autoscaling_config"]
             )
-        return DeploymentConfigProto(
-            is_cross_language=False,
-            deployment_language=DeploymentLanguage.PYTHON,
-            **data,
-        ).SerializeToString()
+        return DeploymentConfigProto(**data).SerializeToString()
 
     @classmethod
     def from_proto_bytes(cls, proto_bytes: bytes):
         proto = DeploymentConfigProto.FromString(proto_bytes)
         data = MessageToDict(
-            proto, including_default_value_fields=True, preserving_proto_field_name=True
+            proto,
+            including_default_value_fields=True,
+            preserving_proto_field_name=True,
+            use_integers_for_enums=True,
         )
         if "user_config" in data:
             if data["user_config"] != "":
@@ -145,24 +171,22 @@ class DeploymentConfig(BaseModel):
         if "autoscaling_config" in data:
             data["autoscaling_config"] = AutoscalingConfig(**data["autoscaling_config"])
 
-        # Delete fields which are only used in protobuf, not in Python.
-        del data["is_cross_language"]
-        del data["deployment_language"]
-
         return cls(**data)
 
 
 class ReplicaConfig:
     def __init__(
         self,
-        deployment_def: Callable,
+        deployment_def: Union[Callable, str],
         init_args: Optional[Tuple[Any]] = None,
         init_kwargs: Optional[Dict[Any, Any]] = None,
         ray_actor_options=None,
     ):
         # Validate that deployment_def is an import path, function, or class.
+        self.import_path = None
         if isinstance(deployment_def, str):
             self.func_or_class_name = deployment_def
+            self.import_path = deployment_def
         elif inspect.isfunction(deployment_def):
             self.func_or_class_name = deployment_def.__name__
             if init_args:
@@ -190,70 +214,76 @@ class ReplicaConfig:
         self._validate()
 
     def _validate(self):
-
-        if "placement_group" in self.ray_actor_options:
-            raise ValueError(
-                "Providing placement_group for deployment actors "
-                "is not currently supported."
-            )
-
         if not isinstance(self.ray_actor_options, dict):
             raise TypeError("ray_actor_options must be a dictionary.")
-        elif "lifetime" in self.ray_actor_options:
-            raise ValueError("Specifying lifetime in ray_actor_options is not allowed.")
-        elif "name" in self.ray_actor_options:
-            raise ValueError("Specifying name in ray_actor_options is not allowed.")
-        elif "max_restarts" in self.ray_actor_options:
-            raise ValueError(
-                "Specifying max_restarts in " "ray_actor_options is not allowed."
-            )
-        else:
-            # Ray defaults to zero CPUs for placement, we default to one here.
-            if "num_cpus" not in self.ray_actor_options:
-                self.ray_actor_options["num_cpus"] = 1
-            num_cpus = self.ray_actor_options["num_cpus"]
-            if not isinstance(num_cpus, (int, float)):
-                raise TypeError(
-                    "num_cpus in ray_actor_options must be an int or a float."
-                )
-            elif num_cpus < 0:
-                raise ValueError("num_cpus in ray_actor_options must be >= 0.")
-            self.resource_dict["CPU"] = num_cpus
 
-            num_gpus = self.ray_actor_options.get("num_gpus", 0)
-            if not isinstance(num_gpus, (int, float)):
-                raise TypeError(
-                    "num_gpus in ray_actor_options must be an int or a float."
-                )
-            elif num_gpus < 0:
-                raise ValueError("num_gpus in ray_actor_options must be >= 0.")
-            self.resource_dict["GPU"] = num_gpus
+        disallowed_ray_actor_options = {
+            "args",
+            "kwargs",
+            "max_concurrency",
+            "max_restarts",
+            "max_task_retries",
+            "name",
+            "namespace",
+            "lifetime",
+            "placement_group",
+            "placement_group_bundle_index",
+            "placement_group_capture_child_tasks",
+            "max_pending_calls",
+            "scheduling_strategy",
+        }
 
-            memory = self.ray_actor_options.get("memory", 0)
-            if not isinstance(memory, (int, float)):
-                raise TypeError(
-                    "memory in ray_actor_options must be an int or a float."
-                )
-            elif memory < 0:
-                raise ValueError("num_gpus in ray_actor_options must be >= 0.")
-            self.resource_dict["memory"] = memory
-
-            object_store_memory = self.ray_actor_options.get("object_store_memory", 0)
-            if not isinstance(object_store_memory, (int, float)):
-                raise TypeError(
-                    "object_store_memory in ray_actor_options must be "
-                    "an int or a float."
-                )
-            elif object_store_memory < 0:
+        for option in disallowed_ray_actor_options:
+            if option in self.ray_actor_options:
                 raise ValueError(
-                    "object_store_memory in ray_actor_options must be >= 0."
+                    f"Specifying {option} in ray_actor_options is not allowed."
                 )
-            self.resource_dict["object_store_memory"] = object_store_memory
 
-            custom_resources = self.ray_actor_options.get("resources", {})
-            if not isinstance(custom_resources, dict):
-                raise TypeError("resources in ray_actor_options must be a dictionary.")
-            self.resource_dict.update(custom_resources)
+        # Ray defaults to zero CPUs for placement, we default to one here.
+        if self.ray_actor_options.get("num_cpus", None) is None:
+            self.ray_actor_options["num_cpus"] = 1
+        num_cpus = self.ray_actor_options["num_cpus"]
+        if not isinstance(num_cpus, (int, float)):
+            raise TypeError("num_cpus in ray_actor_options must be an int or a float.")
+        elif num_cpus < 0:
+            raise ValueError("num_cpus in ray_actor_options must be >= 0.")
+        self.resource_dict["CPU"] = num_cpus
+
+        if self.ray_actor_options.get("num_gpus", None) is None:
+            self.ray_actor_options["num_gpus"] = 0
+        num_gpus = self.ray_actor_options["num_gpus"]
+        if not isinstance(num_gpus, (int, float)):
+            raise TypeError("num_gpus in ray_actor_options must be an int or a float.")
+        elif num_gpus < 0:
+            raise ValueError("num_gpus in ray_actor_options must be >= 0.")
+        self.resource_dict["GPU"] = num_gpus
+
+        if self.ray_actor_options.get("memory", None) is None:
+            self.ray_actor_options["memory"] = 0
+        memory = self.ray_actor_options["memory"]
+        if not isinstance(memory, (int, float)):
+            raise TypeError("memory in ray_actor_options must be an int or a float.")
+        elif memory < 0:
+            raise ValueError("num_gpus in ray_actor_options must be >= 0.")
+        self.resource_dict["memory"] = memory
+
+        if self.ray_actor_options.get("object_store_memory", None) is None:
+            self.ray_actor_options["object_store_memory"] = 0
+        object_store_memory = self.ray_actor_options["object_store_memory"]
+        if not isinstance(object_store_memory, (int, float)):
+            raise TypeError(
+                "object_store_memory in ray_actor_options must be an int or a float."
+            )
+        elif object_store_memory < 0:
+            raise ValueError("object_store_memory in ray_actor_options must be >= 0.")
+        self.resource_dict["object_store_memory"] = object_store_memory
+
+        if self.ray_actor_options.get("resources", None) is None:
+            self.ray_actor_options["resources"] = {}
+        custom_resources = self.ray_actor_options["resources"]
+        if not isinstance(custom_resources, dict):
+            raise TypeError("resources in ray_actor_options must be a dictionary.")
+        self.resource_dict.update(custom_resources)
 
 
 class DeploymentMode(str, Enum):

@@ -174,6 +174,14 @@ class SampleBatch(dict):
         """
         return len(self)
 
+    @PublicAPI
+    def env_steps(self) -> int:
+        """Returns the same as len(self) (number of steps in this batch).
+
+        To make this compatible with `MultiAgentBatch.env_steps()`.
+        """
+        return len(self)
+
     @staticmethod
     @PublicAPI
     def concat_samples(
@@ -304,7 +312,7 @@ class SampleBatch(dict):
     def rows(self) -> Iterator[Dict[str, TensorType]]:
         """Returns an iterator over data rows, i.e. dicts with column values.
 
-        Note that if `seq_lens` is set in self, we set it to [1] in the rows.
+        Note that if `seq_lens` is set in self, we set it to 1 in the rows.
 
         Yields:
             The column values of the row in this iteration.
@@ -317,13 +325,12 @@ class SampleBatch(dict):
             ... })
             >>> for row in batch.rows():
                    print(row)
-            {"a": 1, "b": 4, "seq_lens": [1]}
-            {"a": 2, "b": 5, "seq_lens": [1]}
-            {"a": 3, "b": 6, "seq_lens": [1]}
+            {"a": 1, "b": 4, "seq_lens": 1}
+            {"a": 2, "b": 5, "seq_lens": 1}
+            {"a": 3, "b": 6, "seq_lens": 1}
         """
 
-        # Do we add seq_lens=[1] to each row?
-        seq_lens = None if self.get(SampleBatch.SEQ_LENS) is None else np.array([1])
+        seq_lens = None if self.get(SampleBatch.SEQ_LENS, 1) is None else 1
 
         self_as_dict = {k: v for k, v in self.items()}
 
@@ -1174,6 +1181,7 @@ class MultiAgentBatch:
                 {k: v.build_and_reset() for k, v in cur_slice.items()}, cur_slice_size
             )
             cur_slice_size = 0
+            cur_slice.clear()
             finished_slices.append(batch)
 
         # For each unique env timestep.

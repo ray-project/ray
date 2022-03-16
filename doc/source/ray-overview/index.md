@@ -1,3 +1,6 @@
+```{include} /_includes/overview/announcement.md
+```
+
 (gentle-intro)=
 
 # Getting Started Guide
@@ -55,7 +58,7 @@ pip install "ray[data]" dask
 Get started by creating Datasets from synthetic data using ``ray.data.range()`` and ``ray.data.from_items()``.
 Datasets can hold either plain Python objects (schema is a Python type), or Arrow records (schema is Arrow).
 
-```{literalinclude} ../data/_examples/doc_code/quick_start.py
+```{literalinclude} ../data/doc_code/quick_start.py
 :language: python
 :start-after: __data_setup_begin__
 :end-before: __data_setup_end__
@@ -65,7 +68,7 @@ Datasets can be created from files on local disk or remote datasources such as S
 [supported by pyarrow](http://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html) can be used to specify file locations.
 You can also create a ``Dataset`` from existing data in the Ray object store or Ray-compatible distributed DataFrames:
 
-```{literalinclude} ../data/_examples/doc_code/quick_start.py
+```{literalinclude} ../data/doc_code/quick_start.py
 :language: python
 :start-after: __data_load_begin__
 :end-before: __data_load_end__
@@ -74,7 +77,7 @@ Datasets can be transformed in parallel using ``.map()``.
 Transformations are executed *eagerly* and block until the operation is finished.
 Datasets also supports ``.filter()`` and ``.flat_map()``.
 
-```{literalinclude} ../data/_examples/doc_code/quick_start.py
+```{literalinclude} ../data/doc_code/quick_start.py
 :language: python
 :start-after: __data_transform_begin__
 :end-before: __data_transform_end__
@@ -127,7 +130,7 @@ All you have to do is use the ``ray.train.torch.prepare_model`` and
 ``ray.train.torch.prepare_data_loader`` utility functions to
 easily setup your model & data for distributed training.
 This will automatically wrap your model with ``DistributedDataParallel``
-and place it on the right device, and add ``DisributedSampler`` to your DataLoaders.
+and place it on the right device, and add ``DistributedSampler`` to your DataLoaders.
 
 ```{literalinclude} /../../python/ray/train/examples/torch_quick_start.py
 :language: python
@@ -515,4 +518,7 @@ ray submit cluster.yaml example.py --start
 
 
 ```{include} learn-more.md
+```
+
+```{include} /_includes/overview/announcement_bottom.md
 ```

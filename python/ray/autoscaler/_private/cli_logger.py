@@ -158,9 +158,9 @@ def _external_caller_info():
 def _format_msg(
     msg: str,
     *args: Any,
+    no_format: bool = None,
     _tags: Dict[str, Any] = None,
     _numbered: Tuple[str, int, int] = None,
-    _no_format: bool = None,
     **kwargs: Any
 ):
     """Formats a message for printing.
@@ -170,6 +170,12 @@ def _format_msg(
 
     Args:
         *args (Any): `.format` arguments for `msg`.
+        no_format (bool):
+            If `no_format` is `True`,
+            `.format` will not be called on the message.
+
+            Useful if the output is user-provided or may otherwise
+            contain an unexpected formatting string (e.g. "{}").
         _tags (Dict[str, Any]):
             key-value pairs to display at the end of
             the message in square brackets.
@@ -193,12 +199,6 @@ def _format_msg(
 
             E.g. `_format_msg("hello", _numbered=("[]", 0, 5))`
                  `[0/5] hello`
-        _no_format (bool):
-            If `_no_format` is `True`,
-            `.format` will not be called on the message.
-
-            Useful if the output is user-provided or may otherwise
-            contain an unexpected formatting string (e.g. "{}").
 
     Returns:
         The formatted message.
@@ -224,7 +224,7 @@ def _format_msg(
             chars, i, n = _numbered
             numbering_str = cf.dimmed(chars[0] + str(i) + "/" + str(n) + chars[1]) + " "
 
-        if _no_format:
+        if no_format:
             # todo: throw if given args/kwargs?
             return numbering_str + msg + tags_str
         return numbering_str + msg.format(*args, **kwargs) + tags_str
@@ -389,7 +389,13 @@ class _CliLogger:
         """Print a line feed."""
         self.print("")
 
-    def _print(self, msg: str, _level_str: str = "INFO", _linefeed: bool = True):
+    def _print(
+        self,
+        msg: str,
+        _level_str: str = "INFO",
+        _linefeed: bool = True,
+        end: str = None,
+    ):
         """Proxy for printing messages.
 
         Args:
@@ -435,7 +441,8 @@ class _CliLogger:
             stream.flush()
             return
 
-        print(rendered_message, file=stream)
+        kwargs = {"end": end}
+        print(rendered_message, file=stream, **kwargs)
 
     def indented(self):
         """Context manager that starts an indented block of output."""
@@ -557,12 +564,22 @@ class _CliLogger:
         self._error(*args, _level_str="PANIC", **kwargs)
 
     # Fine to expose _level_str here, since this is a general log function.
-    def print(self, msg: str, *args: Any, _level_str: str = "INFO", **kwargs: Any):
+    def print(
+        self,
+        msg: str,
+        *args: Any,
+        _level_str: str = "INFO",
+        end: str = None,
+        **kwargs: Any
+    ):
         """Prints a message.
 
         For arguments, see `_format_msg`.
         """
-        self._print(_format_msg(msg, *args, **kwargs), _level_str=_level_str)
+        self._print(_format_msg(msg, *args, **kwargs), _level_str=_level_str, end=end)
+
+    def info(self, msg: str, no_format=True, *args, **kwargs):
+        self.print(msg, no_format=no_format, *args, **kwargs)
 
     def abort(
         self, msg: Optional[str] = None, *args: Any, exc: Any = None, **kwargs: Any
@@ -686,7 +703,7 @@ class _CliLogger:
 
                 indent = " " * msg_len
                 self.error(
-                    "{}Invalid answer: {}. " "Expected {} or {}",
+                    "{}Invalid answer: {}. Expected {} or {}",
                     indent,
                     cf.bold(ans.strip()),
                     self.render_list(yes_answers, "/"),
@@ -775,7 +792,7 @@ CLICK_LOGGING_OPTIONS = [
         required=False,
         type=click.Choice(["auto", "false", "true"], case_sensitive=False),
         default="auto",
-        help=("Use color logging. " "Auto enables color logging if stdout is a TTY."),
+        help=("Use color logging. Auto enables color logging if stdout is a TTY."),
     ),
     click.option("-v", "--verbose", default=None, count=True),
 ]

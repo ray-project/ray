@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import os
 import types
@@ -6,6 +5,9 @@ from typing import Dict, Set, List, Tuple, Union, Optional, Any, TYPE_CHECKING
 import time
 
 import ray
+from ray.experimental.dag import DAGNode
+from ray.experimental.dag.input_node import DAGInputData
+
 from ray.workflow import execution
 from ray.workflow.step_function import WorkflowStepFunction
 
@@ -22,6 +24,7 @@ from ray.workflow.common import (
     WorkflowNotFoundError,
     WorkflowStepRuntimeOptions,
     StepType,
+    asyncio_run,
 )
 from ray.workflow import serialization
 from ray.workflow.event_listener import EventListener, EventListenerType, TimerListener
@@ -67,10 +70,10 @@ def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
         # we have to use the 'else' branch because we would raise a
         # runtime error, but we do not want to be captured by 'except'
         if _storage.storage_url == storage.storage_url:
-            logger.warning("Calling 'workflow.init()' again with the same " "storage.")
+            logger.warning("Calling 'workflow.init()' again with the same storage.")
         else:
             raise RuntimeError(
-                "Calling 'workflow.init()' again with a " "different storage"
+                "Calling 'workflow.init()' again with a different storage"
             )
     storage_base.set_global_storage(storage)
     workflow_access.init_management_actor()
@@ -114,6 +117,7 @@ def step(*args, **kwargs):
     name = kwargs.pop("name", None)
     metadata = kwargs.pop("metadata", None)
     allow_inplace = kwargs.pop("allow_inplace", False)
+    checkpoint = kwargs.pop("checkpoint", None)
     ray_options = kwargs
 
     options = WorkflowStepRuntimeOptions.make(
@@ -121,6 +125,7 @@ def step(*args, **kwargs):
         catch_exceptions=catch_exceptions,
         max_retries=max_retries,
         allow_inplace=allow_inplace,
+        checkpoint=checkpoint,
         ray_options=ray_options,
     )
     return make_step_decorator(options, name, metadata)
@@ -354,16 +359,14 @@ def wait_for_event(
     @step
     def get_message(event_listener_type: EventListenerType, *args, **kwargs) -> Event:
         event_listener = event_listener_type()
-        loop = asyncio.get_event_loop()
-        return loop.run_until_complete(event_listener.poll_for_event(*args, **kwargs))
+        return asyncio_run(event_listener.poll_for_event(*args, **kwargs))
 
     @step
     def message_committed(
         event_listener_type: EventListenerType, event: Event
     ) -> Event:
         event_listener = event_listener_type()
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(event_listener.event_checkpointed(event))
+        asyncio_run(event_listener.event_checkpointed(event))
         return event
 
     return message_committed.step(
@@ -546,9 +549,7 @@ def wait(
 
     for w in workflows:
         if not isinstance(w, Workflow):
-            raise TypeError(
-                "The input of workflow.wait should be a list " "of workflows."
-            )
+            raise TypeError("The input of workflow.wait should be a list of workflows.")
     wait_inputs = serialization_context.make_workflow_inputs(workflows)
     step_options = WorkflowStepRuntimeOptions.make(
         step_type=StepType.WAIT,
@@ -570,6 +571,44 @@ def wait(
         user_metadata={},
     )
     return Workflow(workflow_data)
+
+
+@PublicAPI(stability="beta")
+def create(dag_node: "DAGNode", *args, **kwargs) -> Workflow:
+    """Converts a DAG into a workflow.
+
+    Args:
+        dag_node: The DAG to be converted.
+        args: Positional arguments of the DAG input node.
+        kwargs: Keyword arguments of the DAG input node.
+    """
+    from ray.workflow.dag_to_workflow import transform_ray_dag_to_workflow
+
+    if not isinstance(dag_node, DAGNode):
+        raise TypeError("Input should be a DAG.")
+    input_context = DAGInputData(*args, **kwargs)
+    return transform_ray_dag_to_workflow(dag_node, input_context)
+
+
+@PublicAPI(stability="beta")
+def continuation(dag_node: "DAGNode") -> Union[Workflow, ray.ObjectRef]:
+    """Converts a DAG into a continuation.
+
+    The result depends on the context. If it is inside a workflow, it
+    returns a workflow; otherwise it executes and get the result of
+    the DAG.
+
+    Args:
+        dag_node: The DAG to be converted.
+    """
+    from ray.workflow.workflow_context import in_workflow_execution
+
+    if not isinstance(dag_node, DAGNode):
+        raise TypeError("Input should be a DAG.")
+
+    if in_workflow_execution():
+        return create(dag_node)
+    return ray.get(dag_node.execute())
 
 
 __all__ = (

@@ -125,11 +125,11 @@ def _put_helper(
     # nested object refs.
     if isinstance(obj, ray.ObjectRef):
         raise NotImplementedError(
-            "Workflow does not support checkpointing " "nested object references yet."
+            "Workflow does not support checkpointing nested object references yet."
         )
     paths = obj_id_to_paths(workflow_id, identifier)
     promise = dump_to_storage(paths, obj, workflow_id, storage, update_existing=False)
-    return asyncio.get_event_loop().run_until_complete(promise)
+    return common.asyncio_run(promise)
 
 
 def _reduce_objectref(
@@ -207,7 +207,7 @@ async def dump_to_storage(
 @ray.remote
 def _load_ref_helper(key: str, storage: storage.Storage):
     # TODO(Alex): We should stream the data directly into `cloudpickle.load`.
-    serialized = asyncio.get_event_loop().run_until_complete(storage.get(key))
+    serialized = common.asyncio_run(storage.get(key))
     return cloudpickle.loads(serialized)
 
 

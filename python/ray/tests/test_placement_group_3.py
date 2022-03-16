@@ -20,7 +20,7 @@ from ray._private.test_utils import (
     is_placement_group_removed,
     convert_actor_state,
 )
-from ray.exceptions import RaySystemError, GetTimeoutError
+from ray.exceptions import RaySystemError
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 import ray.experimental.internal_kv as internal_kv
@@ -28,11 +28,7 @@ from ray.ray_constants import DEBUG_AUTOSCALING_ERROR, DEBUG_AUTOSCALING_STATUS
 
 
 def get_ray_status_output(address):
-    if gcs_utils.use_gcs_for_bootstrap():
-        gcs_client = gcs_utils.GcsClient(address=address)
-    else:
-        redis_client = ray._private.services.create_redis_client(address, "")
-        gcs_client = gcs_utils.GcsClient.create_from_redis(redis_client)
+    gcs_client = gcs_utils.GcsClient(address=address)
     internal_kv._initialize_internal_kv(gcs_client)
     status = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_STATUS)
     error = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_ERROR)
@@ -685,27 +681,6 @@ def test_fractional_resources_handle_correct(ray_start_cluster):
     pg = placement_group(bundles, strategy="SPREAD")
 
     ray.get(pg.ready(), timeout=10)
-
-
-def test_infeasible_pg(ray_start_cluster):
-    """Test infeasible pgs are scheduled after new nodes are added."""
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=2)
-    ray.init("auto")
-
-    bundle = {"CPU": 4, "GPU": 1}
-    pg = placement_group([bundle], name="worker_1", strategy="STRICT_PACK")
-
-    # Placement group is infeasible.
-    with pytest.raises(GetTimeoutError):
-        ray.get(pg.ready(), timeout=3)
-
-    state = ray.util.placement_group_table()[pg.id.hex()]["stats"]["scheduling_state"]
-    assert state == "INFEASIBLE"
-
-    # Add a new node. PG can now be scheduled.
-    cluster.add_node(num_cpus=4, num_gpus=1)
-    assert ray.get(pg.ready(), timeout=10)
 
 
 if __name__ == "__main__":

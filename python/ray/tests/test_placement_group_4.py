@@ -1,5 +1,6 @@
 import pytest
 import os
+import sys
 
 import ray
 import ray.cluster_utils
@@ -407,3 +408,28 @@ def test_placement_group_reschedule_when_node_dead(
         ray.get(actor_6.value.remote())
         placement_group_assert_no_leak([placement_group])
         ray.shutdown()
+
+
+def test_infeasible_pg(ray_start_cluster):
+    """Test infeasible pgs are scheduled after new nodes are added."""
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=2)
+    ray.init("auto")
+
+    bundle = {"CPU": 4, "GPU": 1}
+    pg = ray.util.placement_group([bundle], name="worker_1", strategy="STRICT_PACK")
+
+    # Placement group is infeasible.
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(pg.ready(), timeout=3)
+
+    state = ray.util.placement_group_table()[pg.id.hex()]["stats"]["scheduling_state"]
+    assert state == "INFEASIBLE"
+
+    # Add a new node. PG can now be scheduled.
+    cluster.add_node(num_cpus=4, num_gpus=1)
+    assert ray.get(pg.ready(), timeout=10)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))

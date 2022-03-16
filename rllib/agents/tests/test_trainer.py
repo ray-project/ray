@@ -1,6 +1,8 @@
 import copy
 import gym
 import numpy as np
+import os
+from pathlib import Path
 from random import choice
 import time
 import unittest
@@ -8,6 +10,7 @@ import unittest
 import ray
 import ray.rllib.agents.a3c as a3c
 import ray.rllib.agents.dqn as dqn
+from ray.rllib.agents.marwil import BCTrainer
 import ray.rllib.agents.pg as pg
 from ray.rllib.agents.trainer import COMMON_CONFIG
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
@@ -58,6 +61,7 @@ class TestTrainer(unittest.TestCase):
                     },
                 },
                 "num_workers": 2,  # Test on remote workers as well.
+                "num_cpus_per_worker": 0.1,
                 "model": {
                     "fcnet_hiddens": [5],
                     "fcnet_activation": "linear",
@@ -71,6 +75,10 @@ class TestTrainer(unittest.TestCase):
                     # And only two policies that can be stored in memory at a
                     # time.
                     "policy_map_capacity": 2,
+                },
+                "evaluation_num_workers": 1,
+                "evaluation_config": {
+                    "num_cpus_per_worker": 0.1,
                 },
             }
         )
@@ -107,6 +115,16 @@ class TestTrainer(unittest.TestCase):
                 # than what's defined in the config dict).
                 test = pg.PGTrainer(config=config)
                 test.restore(checkpoint)
+
+                # Make sure evaluation worker also gets the restored policy.
+                def _has_policy(w):
+                    return w.get_policy("p0") is not None
+
+                self.assertTrue(
+                    all(test.evaluation_workers.foreach_worker(_has_policy))
+                )
+
+                # Make sure trainer can continue training the restored policy.
                 pol0 = test.get_policy("p0")
                 test.train()
                 # Test creating an action with the added (and restored) policy.
@@ -245,15 +263,15 @@ class TestTrainer(unittest.TestCase):
         config["num_workers"] = 1
 
         # No env on driver -> expect longer build time due to space
-        # "lookup" from remote worker.
+        # lookup from remote worker.
         t0 = time.time()
         trainer = pg.PGTrainer(config=config)
         w_lookup = time.time() - t0
         print(f"No env on learner: {w_lookup}sec")
         trainer.stop()
 
-        # Env on driver -> expect longer build time due to space
-        # "lookup" from remote worker.
+        # Env on driver -> expect shorted build time due to no space
+        # lookup required from remote worker.
         config["create_env_on_driver"] = True
         t0 = time.time()
         trainer = pg.PGTrainer(config=config)
@@ -263,7 +281,7 @@ class TestTrainer(unittest.TestCase):
         trainer.stop()
 
         # Spaces given -> expect shorter build time due to no space
-        # "lookup" from remote worker.
+        # lookup required from remote worker.
         config["create_env_on_driver"] = False
         config["observation_space"] = env.observation_space
         config["action_space"] = env.action_space
@@ -273,6 +291,36 @@ class TestTrainer(unittest.TestCase):
         print(f"Spaces given manually in config: {wo_lookup}sec")
         self.assertLess(wo_lookup, w_lookup)
         trainer.stop()
+
+    def test_no_env_but_eval_workers_do_have_env(self):
+        """Tests whether no env on workers, but env on eval workers works ok."""
+        script_path = Path(__file__)
+        input_file = os.path.join(
+            script_path.parent.parent.parent, "tests/data/cartpole/small.json"
+        )
+
+        env = gym.make("CartPole-v0")
+
+        offline_rl_config = {
+            # Offline RL -> No env on regular workers.
+            "input": input_file,
+            # No env -> Must specify spaces here.
+            "observation_space": env.observation_space,
+            "action_space": env.action_space,
+            # Configure env to be created on evaluation workers.
+            "evaluation_interval": 1,
+            "evaluation_num_workers": 1,
+            "evaluation_config": {
+                "env": "CartPole-v0",
+                "input": "sampler",
+                "observation_space": None,  # Test, whether this is inferred.
+                "action_space": None,  # Test, whether this is inferred.
+            },
+        }
+
+        bc_trainer = BCTrainer(config=offline_rl_config)
+        bc_trainer.train()
+        bc_trainer.stop()
 
 
 if __name__ == "__main__":

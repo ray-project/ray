@@ -16,6 +16,8 @@
 
 #include <google/protobuf/util/json_util.h>
 
+#include "ray/common/runtime_env_common.h"
+
 namespace ray {
 namespace core {
 
@@ -27,6 +29,8 @@ struct WorkerThreadContext {
   }
 
   uint64_t GetNextTaskIndex() { return ++task_index_; }
+
+  uint64_t GetTaskIndex() { return task_index_; }
 
   /// Returns the next put object index. The index starts at the number of
   /// return values for the current task in order to keep the put indices from
@@ -134,7 +138,8 @@ struct WorkerThreadContext {
 thread_local std::unique_ptr<WorkerThreadContext> WorkerContext::thread_context_ =
     nullptr;
 
-WorkerContext::WorkerContext(WorkerType worker_type, const WorkerID &worker_id,
+WorkerContext::WorkerContext(WorkerType worker_type,
+                             const WorkerID &worker_id,
                              const JobID &job_id)
     : worker_type_(worker_type),
       worker_id_(worker_id),
@@ -160,6 +165,8 @@ const WorkerID &WorkerContext::GetWorkerID() const { return worker_id_; }
 uint64_t WorkerContext::GetNextTaskIndex() {
   return GetThreadContext().GetNextTaskIndex();
 }
+
+uint64_t WorkerContext::GetTaskIndex() { return GetThreadContext().GetTaskIndex(); }
 
 ObjectIDIndexType WorkerContext::GetNextPutIndex() {
   return GetThreadContext().GetNextPutIndex();
@@ -253,7 +260,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     // only set runtime_env_ once and then RAY_CHECK that we
     // never see a new one.
     runtime_env_info_ = task_spec.RuntimeEnvInfo();
-    if (!runtime_env_info_.serialized_runtime_env().empty()) {
+    if (!IsRuntimeEnvEmpty(runtime_env_info_.serialized_runtime_env())) {
       runtime_env_.reset(new rpc::RuntimeEnv());
       RAY_CHECK(google::protobuf::util::JsonStringToMessage(
                     runtime_env_info_.serialized_runtime_env(), runtime_env_.get())

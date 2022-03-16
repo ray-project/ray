@@ -3,7 +3,6 @@ import pytest
 import sys
 import platform
 import time
-from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.test_utils import (
     wait_for_condition,
     chdir,
@@ -11,11 +10,12 @@ from ray._private.test_utils import (
     generate_runtime_env_dict,
 )
 from ray._private.runtime_env.conda import _get_conda_dict_with_ray_inserted
-from ray._private.runtime_env.validation import ParsedRuntimeEnv
+from ray.runtime_env import RuntimeEnv
 
 import yaml
 import tempfile
 from pathlib import Path
+import subprocess
 
 import ray
 
@@ -40,7 +40,7 @@ def test_get_conda_dict_with_ray_inserted_m1_wheel(monkeypatch):
     monkeypatch.setattr(platform, "machine", lambda: "arm64")
 
     input_conda = {"dependencies": ["blah", "pip", {"pip": ["pip_pkg"]}]}
-    runtime_env = RuntimeEnv(ParsedRuntimeEnv({"conda": input_conda}).serialize())
+    runtime_env = RuntimeEnv(conda=input_conda)
     output_conda = _get_conda_dict_with_ray_inserted(runtime_env)
     # M1 wheels are not uploaded to AWS S3.  So rather than have an S3 URL
     # inserted as a dependency, we should just have the string "ray==1.9.0".
@@ -59,11 +59,15 @@ def test_get_conda_dict_with_ray_inserted_m1_wheel(monkeypatch):
     reason="Requires PR wheels built in CI, so only run on linux CI machines.",
 )
 @pytest.mark.parametrize("field", ["conda", "pip"])
-def test_files_remote_cluster(start_cluster, field):
-    """Test that requirements files are parsed on the driver, not the cluster.
+def test_requirements_files(start_cluster, field):
+    """Test the use of requirements.txt and environment.yaml.
 
+    Tests that requirements files are parsed on the driver, not the cluster.
     This is the desired behavior because the file paths only make sense on the
     driver machine. The files do not exist on the remote cluster.
+
+    Also tests the common use case of specifying the option --extra-index-url
+    in a pip requirements.txt file.
     """
     cluster, address = start_cluster
 
@@ -73,14 +77,17 @@ def test_files_remote_cluster(start_cluster, field):
     # temporary directory.  So if the nodes try to read the requirements file,
     # this test should fail because the relative path won't make sense.
     with tempfile.TemporaryDirectory() as tmpdir, chdir(tmpdir):
+        pip_list = [
+            "--extra-index-url https://pypi.org/simple",
+            "pip-install-test==0.5",
+        ]
         if field == "conda":
-            conda_dict = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
+            conda_dict = {"dependencies": ["pip", {"pip": pip_list}]}
             relative_filepath = "environment.yml"
             conda_file = Path(relative_filepath)
             conda_file.write_text(yaml.dump(conda_dict))
             runtime_env = {"conda": relative_filepath}
         elif field == "pip":
-            pip_list = ["pip-install-test==0.5"]
             relative_filepath = "requirements.txt"
             pip_file = Path(relative_filepath)
             pip_file.write_text("\n".join(pip_list))
@@ -148,7 +155,7 @@ class TestGC:
 
     @pytest.mark.skipif(
         os.environ.get("CI") and sys.platform != "linux",
-        reason=("Requires PR wheels built in CI, so only run on linux CI " "machines."),
+        reason="Requires PR wheels built in CI, so only run on linux CI machines.",
     )
     @pytest.mark.parametrize("field", ["conda", "pip"])
     @pytest.mark.parametrize("spec_format", ["file", "python_object"])
@@ -188,38 +195,20 @@ class TestGC:
 
         wait_for_condition(lambda: check_local_files_gced(cluster), timeout=30)
 
-    @pytest.mark.skipif(
-        os.environ.get("CI") and sys.platform != "linux",
-        reason=("Requires PR wheels built in CI, so only run on linux CI " "machines."),
-    )
-    @pytest.mark.parametrize("field", ["conda", "pip"])
-    @pytest.mark.parametrize("spec_format", ["file", "python_object"])
-    def test_actor_level_gc(
-        self, runtime_env_disable_URI_cache, start_cluster, field, spec_format, tmp_path
-    ):
-        """Tests that actor-level working_dir is GC'd when the actor exits."""
-        cluster, address = start_cluster
 
-        ray.init(address)
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="_PathHelper.get_virtual_activate not supported on Windows.",
+)
+def test_import_in_subprocess(shutdown_only):
 
-        runtime_env = generate_runtime_env_dict(field, spec_format, tmp_path)
+    ray.init()
 
-        @ray.remote
-        class A:
-            def test_import(self):
-                import pip_install_test  # noqa: F401
+    @ray.remote(runtime_env={"pip": ["pip-install-test==0.5"]})
+    def f():
+        return subprocess.run(["python", "-c", "import pip_install_test"]).returncode
 
-                return True
-
-        NUM_ACTORS = 5
-        actors = [
-            A.options(runtime_env=runtime_env).remote() for _ in range(NUM_ACTORS)
-        ]
-        ray.get([a.test_import.remote() for a in actors])
-        for i in range(5):
-            assert not check_local_files_gced(cluster)
-            ray.kill(actors[i])
-        wait_for_condition(lambda: check_local_files_gced(cluster))
+    assert ray.get(f.remote()) == 0
 
 
 if __name__ == "__main__":

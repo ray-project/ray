@@ -1,4 +1,5 @@
 import gc
+import asyncio
 
 import numpy as np
 import requests
@@ -10,7 +11,7 @@ import ray
 from ray.exceptions import GetTimeoutError
 from ray import serve
 from ray._private.test_utils import SignalActor
-from ray.serve.api import _get_global_client
+from ray.serve.api import internal_get_global_client
 
 
 @pytest.fixture
@@ -145,7 +146,7 @@ def test_nested_actors(serve_instance):
 
 def test_handle_cache_out_of_scope(serve_instance):
     # https://github.com/ray-project/ray/issues/18980
-    initial_num_cached = len(_get_global_client().handle_cache)
+    initial_num_cached = len(internal_get_global_client().handle_cache)
 
     @serve.deployment(name="f")
     def f():
@@ -154,7 +155,7 @@ def test_handle_cache_out_of_scope(serve_instance):
     f.deploy()
     handle = serve.get_deployment("f").get_handle()
 
-    handle_cache = _get_global_client().handle_cache
+    handle_cache = internal_get_global_client().handle_cache
     assert len(handle_cache) == initial_num_cached + 1
 
     def sender_where_handle_goes_out_of_scope():
@@ -164,6 +165,57 @@ def test_handle_cache_out_of_scope(serve_instance):
 
     [sender_where_handle_goes_out_of_scope() for _ in range(30)]
     assert len(handle_cache) == initial_num_cached + 1
+
+
+def test_out_of_order_chaining(serve_instance):
+    # https://discuss.ray.io/t/concurrent-queries-blocking-following-queries/3949
+
+    @ray.remote(num_cpus=0)
+    class Collector:
+        def __init__(self):
+            self.lst = []
+
+        def append(self, msg):
+            self.lst.append(msg)
+
+        def get(self):
+            return self.lst
+
+    collector = Collector.remote()
+
+    @serve.deployment
+    async def composed_model(_id: int):
+        first_func_h = first_func.get_handle()
+        second_func_h = second_func.get_handle()
+        first_res_h = first_func_h.remote(_id=_id)
+        ref = second_func_h.remote(_id=first_res_h)
+        await ref
+
+    @serve.deployment
+    async def first_func(_id):
+        if _id == 0:
+            await asyncio.sleep(1000)
+        print(f"First output: {_id}")
+        ray.get(collector.append.remote(f"first-{_id}"))
+        return _id
+
+    @serve.deployment
+    async def second_func(_id):
+        print(f"Second output: {_id}")
+        ray.get(collector.append.remote(f"second-{_id}"))
+        return _id
+
+    serve.start(detached=True)
+
+    composed_model.deploy()
+    first_func.deploy()
+    second_func.deploy()
+
+    main_p = composed_model.get_handle()
+    main_p.remote(_id=0)
+    ray.get(main_p.remote(_id=1))
+
+    assert ray.get(collector.get.remote()) == ["first-1", "second-1"]
 
 
 def test_uvicorn_duplicate_headers(serve_instance):

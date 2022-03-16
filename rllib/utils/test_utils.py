@@ -75,7 +75,7 @@ def framework_iterator(
             continue
         if fw != "torch" and not tf:
             logger.warning(
-                "framework_iterator skipping {} (tf not " "installed)!".format(fw)
+                "framework_iterator skipping {} (tf not installed)!".format(fw)
             )
             continue
         elif fw == "tfe" and not eager_mode:
@@ -288,9 +288,9 @@ def check_compute_single_action(
     # Some Trainers may not abide to the standard API.
     pid = DEFAULT_POLICY_ID
     try:
-        # Multi-agent: Pick any policy (or DEFAULT_POLICY if it's the only
+        # Multi-agent: Pick any learnable policy (or DEFAULT_POLICY if it's the only
         # one).
-        pid = next(iter(trainer.workers.local_worker().policy_map))
+        pid = next(iter(trainer.workers.local_worker().get_policies_to_train()))
         pol = trainer.get_policy(pid)
     except AttributeError:
         pol = trainer.policy
@@ -405,7 +405,7 @@ def check_compute_single_action(
                 isinstance(action_space, Box)
                 and not unsquash
                 and what.config.get("normalize_actions")
-                and np.any(np.abs(action) > 3.0)
+                and np.any(np.abs(action) > 15.0)
             ):
                 raise ValueError(
                     f"Returned action ({action}) of trainer/policy {what} "
@@ -419,11 +419,7 @@ def check_compute_single_action(
         if what is trainer:
             # Get the obs-space from Workers.env (not Policy) due to possible
             # pre-processor up front.
-            worker_set = getattr(trainer, "workers")
-            # TODO: ES and ARS use `self._workers` instead of `self.workers` to
-            #  store their rollout worker set. Change to `self.workers`.
-            if worker_set is None:
-                worker_set = getattr(trainer, "_workers", None)
+            worker_set = getattr(trainer, "workers", None)
             assert worker_set
             if isinstance(worker_set, list):
                 obs_space = trainer.get_policy(pid).observation_space
@@ -824,3 +820,81 @@ def run_learning_tests_from_yaml(
     }
 
     return result
+
+
+def check_same_batch(batch1, batch2) -> None:
+    """Check if both batches are (almost) identical.
+
+    For MultiAgentBatches, the step count and individual policy's
+    SampleBatches are checked for identity. For SampleBatches, identity is
+    checked as the almost numerical key-value-pair identity between batches
+    with ray.rllib.utils.test_utils.check(). unroll_id is compared only if
+    both batches have an unroll_id.
+
+    Args:
+        batch1: Batch to compare against batch2
+        batch2: Batch to compare against batch1
+    """
+    # Avoids circular import
+    from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+
+    assert type(batch1) == type(
+        batch2
+    ), "Input batches are of different types {} and {}".format(
+        str(type(batch1)), str(type(batch2))
+    )
+
+    def check_sample_batches(_batch1, _batch2, _policy_id=None):
+        unroll_id_1 = _batch1.get("unroll_id", None)
+        unroll_id_2 = _batch2.get("unroll_id", None)
+        # unroll IDs only have to fit if both batches have them
+        if unroll_id_1 is not None and unroll_id_2 is not None:
+            assert unroll_id_1 == unroll_id_2
+
+        batch1_keys = set()
+        for k, v in _batch1.items():
+            # unroll_id is compared above already
+            if k == "unroll_id":
+                continue
+            check(v, _batch2[k])
+            batch1_keys.add(k)
+
+        batch2_keys = set(_batch2.keys())
+        # unroll_id is compared above already
+        batch2_keys.discard("unroll_id")
+        _difference = batch1_keys.symmetric_difference(batch2_keys)
+
+        # Cases where one batch has info and the other has not
+        if _policy_id:
+            assert not _difference, (
+                "SampleBatches for policy with ID {} "
+                "don't share information on the "
+                "following information: \n{}"
+                "".format(_policy_id, _difference)
+            )
+        else:
+            assert not _difference, (
+                "SampleBatches don't share information "
+                "on the following information: \n{}"
+                "".format(_difference)
+            )
+
+    if type(batch1) == SampleBatch:
+        check_sample_batches(batch1, batch2)
+    elif type(batch1) == MultiAgentBatch:
+        assert batch1.count == batch2.count
+        batch1_ids = set()
+        for policy_id, policy_batch in batch1.policy_batches.items():
+            check_sample_batches(
+                policy_batch, batch2.policy_batches[policy_id], policy_id
+            )
+            batch1_ids.add(policy_id)
+
+        # Case where one ma batch has info on a policy the other has not
+        batch2_ids = set(batch2.policy_batches.keys())
+        difference = batch1_ids.symmetric_difference(batch2_ids)
+        assert (
+            not difference
+        ), f"MultiAgentBatches don't share the following information: \n{difference}."
+    else:
+        raise ValueError("Unsupported batch type " + str(type(batch1)))

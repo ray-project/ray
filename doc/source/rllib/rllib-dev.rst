@@ -1,12 +1,28 @@
-.. include:: we_are_hiring.rst
+.. include:: /_includes/rllib/announcement.rst
 
-Contributing to RLlib
-=====================
+.. include:: /_includes/rllib/we_are_hiring.rst
+
+How To Contribute to RLlib
+==========================
 
 Development Install
 -------------------
 
-You can develop RLlib locally without needing to compile Ray by using the `setup-dev.py <https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py>`__ script. This sets up links between the ``rllib`` dir in your git repo and the one bundled with the ``ray`` package. However if you have installed ray from source using `these instructions <https://docs.ray.io/en/master/installation.html>`__ then do not this as these steps should have already created this symlink. When using this script, make sure that your git branch is in sync with the installed Ray binaries (i.e., you are up-to-date on `master <https://github.com/ray-project/ray>`__ and have the latest `wheel <https://docs.ray.io/en/master/installation.html>`__ installed.)
+You can develop RLlib locally without needing to compile Ray by using the `setup-dev.py <https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py>`__ script.
+This sets up symlinks between the ``ray/rllib`` dir in your local git clone and the respective directory bundled with the pip-installed ``ray`` package. This way, every change you make in the source files in your local git clone will immediately be reflected in your installed ``ray`` as well.
+However if you have installed ray from source using `these instructions <https://docs.ray.io/en/master/ray-overview/installation.html>`__ then do not use this, as these steps should have already created this symlink.
+When using this script, make sure that your git branch is in sync with the installed Ray binaries (i.e., you are up-to-date on `master <https://github.com/ray-project/ray>`__ and have the latest `wheel <https://docs.ray.io/en/master/installation.html>`__ installed.)
+
+.. code-block:: bash
+
+    # Clone your fork onto your local machine, e.g.:
+    git clone https://github.com/[your username]/ray.git
+    cd ray
+    # Only enter 'Y' at the first question on linking RLlib.
+    # This leads to the most stable behavior and you won't have to re-install ray as often.
+    # If you anticipate making changes to e.g. tune quite often, consider also symlinking ray tune here
+    # (say 'Y' when asked by the script about creating the tune symlink).
+    python python/ray/setup-dev.py
 
 API Stability
 -------------
@@ -100,3 +116,42 @@ The objects with the top 20 memory usage in the workers will be added as custom 
 
 .. image:: images/MemoryTrackingCallbacks.png
 
+
+Troubleshooting
+---------------
+
+If you encounter errors like
+`blas_thread_init: pthread_create: Resource temporarily unavailable` when using many workers,
+try setting ``OMP_NUM_THREADS=1``. Similarly, check configured system limits with
+`ulimit -a` for other resource limit errors.
+
+For debugging unexpected hangs or performance problems, you can run ``ray stack`` to dump
+the stack traces of all Ray workers on the current node, ``ray timeline`` to dump
+a timeline visualization of tasks to a file, and ``ray memory`` to list all object
+references in the cluster.
+
+TensorFlow 2.x
+~~~~~~~~~~~~~~
+
+It is now recommended to use framework=tf2 and eager_tracing=True (in case you are developing with TensorFlow)
+for maximum performance and support.
+We will however continue to support framework=tf (static-graph) for the foreseeable future.
+
+For debugging purposes, you should use ``framework=tf2`` with ``eager_tracing=False``.
+All ``tf.Tensor`` values will then be visible and printable when executing your code.
+However, some slowdown is to be expected in this config mode.
+
+Older TensorFlow versions
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+RLlib supports both TensorFlow 2.x as well as ``tf.compat.v1`` modes.
+Always use the ``ray.rllib.utils.framework.try_import_tf()`` utility function to import tensorflow.
+It returns three values:
+
+*  ``tf1``: The ``tf.compat.v1`` module or the installed tf1.x package (if the version is < 2.0).
+*  ``tf``: The installed tensorflow module as-is.
+*  ``tfv``: A version integer, whose value is either 1 or 2.
+
+`See here <https://github.com/ray-project/ray/blob/master/rllib/examples/eager_execution.py>`__ for a detailed example script.
+
+.. include:: /_includes/rllib/announcement_bottom.rst

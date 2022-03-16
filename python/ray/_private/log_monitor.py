@@ -1,7 +1,6 @@
 import argparse
 import errno
 import glob
-import json
 import logging
 import logging.handlers
 import os
@@ -13,10 +12,9 @@ import traceback
 
 import ray.ray_constants as ray_constants
 import ray._private.gcs_pubsub as gcs_pubsub
-import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
 import ray._private.utils
-from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher
+from ray._private.gcs_pubsub import GcsPublisher
 from ray._private.ray_logging import setup_component_logger
 
 # Logger for this module. It should be configured at the entry point
@@ -24,8 +22,8 @@ from ray._private.ray_logging import setup_component_logger
 # entry/init points.
 logger = logging.getLogger(__name__)
 
-# The groups are worker id, job id, and pid.
-JOB_LOG_PATTERN = re.compile(".*worker-([0-9a-f]+)-([0-9a-f]+)-(\d+)")
+# The groups are job id, and pid.
+JOB_LOG_PATTERN = re.compile(".*worker.*-([0-9a-f]+)-(\d+)")
 # The groups are job id.
 RUNTIME_ENV_SETUP_PATTERN = re.compile(".*runtime_env_setup-(\d+).log")
 # Log name update interval under pressure.
@@ -38,7 +36,7 @@ RAY_LOG_MONITOR_MANY_FILES_THRESHOLD = int(
     os.getenv("RAY_LOG_MONITOR_MANY_FILES_THRESHOLD", 1000)
 )
 RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED = int(
-    os.getenv("RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED", 1)
+    os.getenv("RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED", 0)
 )
 
 
@@ -91,7 +89,6 @@ class LogMonitor:
         host (str): The hostname of this machine. Used to improve the log
             messages published to Redis.
         logs_dir (str): The directory that the log files are in.
-        redis_client: A client used to communicate with the Redis server.
         log_filenames (set): This is the set of filenames of all files in
             open_file_infos and closed_file_infos.
         open_file_infos (list[LogFileInfo]): Info for all of the open files.
@@ -105,16 +102,7 @@ class LogMonitor:
         """Initialize the log monitor object."""
         self.ip = services.get_node_ip_address()
         self.logs_dir = logs_dir
-        if gcs_utils.use_gcs_for_bootstrap():
-            self.redis_client = None
-        else:
-            self.redis_client = ray._private.services.create_redis_client(
-                redis_address, password=redis_password
-            )
-            gcs_address = gcs_utils.get_gcs_address_from_redis(self.redis_client)
-        self.publisher = None
-        if gcs_pubsub.gcs_pubsub_enabled():
-            self.publisher = gcs_pubsub.GcsPublisher(address=gcs_address)
+        self.publisher = gcs_pubsub.GcsPublisher(address=gcs_address)
         self.log_filenames = set()
         self.open_file_infos = []
         self.closed_file_infos = []
@@ -164,7 +152,9 @@ class LogMonitor:
     def update_log_filenames(self):
         """Update the list of log files to monitor."""
         # output of user code is written here
-        log_file_paths = glob.glob(f"{self.logs_dir}/worker*[.out|.err]")
+        log_file_paths = glob.glob(f"{self.logs_dir}/worker*[.out|.err]") + glob.glob(
+            f"{self.logs_dir}/java-worker*.log"
+        )
         # segfaults and other serious errors are logged here
         raylet_err_paths = glob.glob(f"{self.logs_dir}/raylet*.err")
         # monitor logs are needed to report autoscaler events
@@ -186,8 +176,8 @@ class LogMonitor:
             if os.path.isfile(file_path) and file_path not in self.log_filenames:
                 job_match = JOB_LOG_PATTERN.match(file_path)
                 if job_match:
-                    job_id = job_match.group(2)
-                    worker_pid = int(job_match.group(3))
+                    job_id = job_match.group(1)
+                    worker_pid = int(job_match.group(2))
                 else:
                     job_id = None
                     worker_pid = None
@@ -297,12 +287,7 @@ class LogMonitor:
                     "actor_name": file_info.actor_name,
                     "task_name": file_info.task_name,
                 }
-                if self.publisher:
-                    self.publisher.publish_logs(data)
-                else:
-                    self.redis_client.publish(
-                        gcs_utils.LOG_FILE_CHANNEL, json.dumps(data)
-                    )
+                self.publisher.publish_logs(data)
                 anything_published = True
                 lines_to_publish = []
 
@@ -319,8 +304,7 @@ class LogMonitor:
                     next_line = next_line.decode("utf-8", "replace")
                     if next_line == "":
                         break
-                    if next_line[-1] == "\n":
-                        next_line = next_line[:-1]
+                    next_line = next_line.rstrip("\r\n")
 
                     if next_line.startswith(ray_constants.LOG_PREFIX_ACTOR_NAME):
                         flush()  # Possible change of task/actor name.
@@ -482,17 +466,7 @@ if __name__ == "__main__":
         log_monitor.run()
     except Exception as e:
         # Something went wrong, so push an error to all drivers.
-        redis_client = ray._private.services.create_redis_client(
-            args.redis_address, password=args.redis_password
-        )
-        gcs_publisher = None
-        if gcs_pubsub_enabled():
-            if gcs_utils.use_gcs_for_bootstrap():
-                gcs_publisher = GcsPublisher(address=args.gcs_address)
-            else:
-                gcs_publisher = GcsPublisher(
-                    address=gcs_utils.get_gcs_address_from_redis(redis_client)
-                )
+        gcs_publisher = GcsPublisher(address=args.gcs_address)
         traceback_str = ray._private.utils.format_error_message(traceback.format_exc())
         message = (
             f"The log monitor on node {platform.node()} "
@@ -501,7 +475,6 @@ if __name__ == "__main__":
         ray._private.utils.publish_error_to_driver(
             ray_constants.LOG_MONITOR_DIED_ERROR,
             message,
-            redis_client=redis_client,
             gcs_publisher=gcs_publisher,
         )
         logger.error(message)

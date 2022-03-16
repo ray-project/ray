@@ -1,3 +1,5 @@
+load("//bazel:python.bzl", "py_test_module_list")
+
 # --------------------------------------------------------------------
 # Tests from the python/ray/tune/tests directory.
 # Covers all tests starting with `test_`.
@@ -208,7 +210,7 @@ py_test(
 
 py_test(
     name = "test_ray_trial_executor",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_ray_trial_executor.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_R"],
@@ -335,6 +337,14 @@ py_test(
 )
 
 py_test(
+    name = "test_trial_scheduler_resource_changing",
+    size = "small",
+    srcs = ["tests/test_trial_scheduler_resource_changing.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
+)
+
+py_test(
     name = "test_tune_restore_warm_start",
     size = "large",
     srcs = ["tests/test_tune_restore_warm_start.py"],
@@ -364,6 +374,16 @@ py_test(
     srcs = ["tests/test_tune_server.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_T"],
+)
+
+py_test_module_list(
+  files = [
+      "tests/test_trial_executor_inheritance.py",
+  ],
+  size = "large",
+  extra_srcs = [],
+  tags = ["exclusive", "manual", "team:ml"],
+  deps = ["//:tune_lib"],
 )
 
 # --------------------------------------------------------------------
@@ -438,7 +458,7 @@ py_test(
 
 py_test(
     name = "bohb_example",
-    size = "small",
+    size = "medium",
     srcs = ["examples/bohb_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"]
@@ -578,15 +598,6 @@ py_test(
 )
 
 py_test(
-    name = "hyperopt_example",
-    size = "medium",
-    srcs = ["examples/hyperopt_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
-py_test(
     name = "hyperopt_conditional_search_space_example",
     size = "medium",
     srcs = ["examples/hyperopt_conditional_search_space_example.py"],
@@ -595,13 +606,22 @@ py_test(
     args = ["--smoke-test"]
 )
 
-
 py_test(
     name = "lightgbm_example",
     size = "small",
     srcs = ["examples/lightgbm_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"]
+)
+
+py_test(
+    name = "lightgbm_example_cv",
+    size = "small",
+    main = "examples/lightgbm_example.py",
+    srcs = ["examples/lightgbm_example.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "example"],
+    args = ["--use-cv"]
 )
 
 py_test(
@@ -882,15 +902,6 @@ py_test(
 # )
 
 py_test(
-    name = "tune_comet_example",
-    size = "medium",
-    srcs = ["examples/tune_comet_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--mock-api"]
-)
-
-py_test(
     name = "tune_mnist_keras",
     size = "medium",
     srcs = ["examples/tune_mnist_keras.py"],
@@ -914,6 +925,16 @@ py_test(
     srcs = ["examples/xgboost_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"]
+)
+
+py_test(
+    name = "xgboost_example_cv",
+    size = "small",
+    main = "examples/xgboost_example.py",
+    srcs = ["examples/xgboost_example.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "example"],
+    args = ["--use-cv"]
 )
 
 py_test(

@@ -264,7 +264,7 @@ class MultiGPUTrainOneStep:
     ):
         if framework != DEPRECATED_VALUE or shuffle_sequences != DEPRECATED_VALUE:
             deprecation_warning(
-                old="MultiGPUTrainOneStep(framework=..., " "shuffle_sequences=...)",
+                old="MultiGPUTrainOneStep(framework=..., shuffle_sequences=...)",
                 error=False,
             )
 
@@ -399,13 +399,11 @@ class ComputeGradients:
         _check_sample_batch_type(samples)
         metrics = _get_shared_metrics()
         with metrics.timers[COMPUTE_GRADS_TIMER]:
-            grad, info = self.workers.local_worker().compute_gradients(samples)
-        # RolloutWorker.compute_gradients returns pure single agent stats
-        # in a non-multi agent setup.
-        if isinstance(samples, MultiAgentBatch):
-            metrics.info[LEARNER_INFO] = info
-        else:
-            metrics.info[LEARNER_INFO] = {DEFAULT_POLICY_ID: info}
+            grad, info = self.workers.local_worker().compute_gradients(
+                samples, single_agent=True
+            )
+        # RolloutWorker.compute_gradients returned single-agent stats.
+        metrics.info[LEARNER_INFO] = {DEFAULT_POLICY_ID: info}
         return grad, samples.count
 
 
@@ -549,7 +547,7 @@ class UpdateTargetNetwork:
         metrics = _get_shared_metrics()
         cur_ts = metrics.counters[self.metric]
         last_update = metrics.counters[LAST_TARGET_UPDATE_TS]
-        if cur_ts - last_update > self.target_update_freq:
+        if cur_ts - last_update >= self.target_update_freq:
             to_update = self.policies or self.local_worker.get_policies_to_train()
             self.workers.local_worker().foreach_policy_to_train(
                 lambda p, pid: pid in to_update and p.update_target()

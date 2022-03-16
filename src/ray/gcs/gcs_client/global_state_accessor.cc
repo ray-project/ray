@@ -175,8 +175,9 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetActorInfo(const ActorID &ac
   {
     absl::ReaderMutexLock lock(&mutex_);
     RAY_CHECK_OK(gcs_client_->Actors().AsyncGet(
-        actor_id, TransformForOptionalItemCallback<rpc::ActorTableData>(actor_table_data,
-                                                                        promise)));
+        actor_id,
+        TransformForOptionalItemCallback<rpc::ActorTableData>(actor_table_data,
+                                                              promise)));
   }
   promise.get_future().get();
   return actor_table_data;
@@ -189,8 +190,9 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetWorkerInfo(
   {
     absl::ReaderMutexLock lock(&mutex_);
     RAY_CHECK_OK(gcs_client_->Workers().AsyncGet(
-        worker_id, TransformForOptionalItemCallback<rpc::WorkerTableData>(
-                       worker_table_data, promise)));
+        worker_id,
+        TransformForOptionalItemCallback<rpc::WorkerTableData>(worker_table_data,
+                                                               promise)));
   }
   promise.get_future().get();
   return worker_table_data;
@@ -259,7 +261,8 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetPlacementGroupByName(
   {
     absl::ReaderMutexLock lock(&mutex_);
     RAY_CHECK_OK(gcs_client_->PlacementGroups().AsyncGetByName(
-        placement_group_name, ray_namespace,
+        placement_group_name,
+        ray_namespace,
         TransformForOptionalItemCallback<rpc::PlacementGroupTableData>(
             placement_group_table_data, promise)));
   }
@@ -304,9 +307,9 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
     {
       absl::ReaderMutexLock lock(&mutex_);
       RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
-          [&promise](Status status, const std::vector<rpc::GcsNodeInfo> &nodes) {
-            promise.set_value(
-                std::pair<Status, std::vector<rpc::GcsNodeInfo>>(status, nodes));
+          [&promise](Status status, std::vector<rpc::GcsNodeInfo> &&nodes) {
+            promise.set_value(std::pair<Status, std::vector<rpc::GcsNodeInfo>>(
+                status, std::move(nodes)));
           }));
     }
     auto result = promise.get_future().get();
@@ -317,7 +320,9 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
 
     // Deal with alive nodes only
     std::vector<rpc::GcsNodeInfo> nodes;
-    std::copy_if(result.second.begin(), result.second.end(), std::back_inserter(nodes),
+    std::copy_if(result.second.begin(),
+                 result.second.end(),
+                 std::back_inserter(nodes),
                  [](const rpc::GcsNodeInfo &node) {
                    return node.state() == rpc::GcsNodeInfo::ALIVE;
                  });

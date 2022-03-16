@@ -3,6 +3,7 @@ import math
 import torch
 from filelock import FileLock
 from torch.nn import functional as F
+from torchmetrics import Accuracy
 import pytorch_lightning as pl
 from pl_bolts.datamodules.mnist_datamodule import MNISTDataModule
 import os
@@ -24,7 +25,7 @@ class LightningMNISTClassifier(pl.LightningModule):
         self.layer_1 = torch.nn.Linear(28 * 28, layer_1)
         self.layer_2 = torch.nn.Linear(layer_1, layer_2)
         self.layer_3 = torch.nn.Linear(layer_2, 10)
-        self.accuracy = pl.metrics.Accuracy()
+        self.accuracy = Accuracy()
 
     def forward(self, x):
         batch_size, channels, width, height = x.size()
@@ -75,7 +76,7 @@ def train_mnist_tune(config, num_epochs=10, num_gpus=0):
         max_epochs=num_epochs,
         # If fractional GPUs passed in, convert to int.
         gpus=math.ceil(num_gpus),
-        progress_bar_refresh_rate=0,
+        enable_progress_bar=False,
         callbacks=[TuneReportCallback(metrics, on="validation_end")],
     )
     trainer.fit(model, dm)
@@ -117,7 +118,7 @@ if __name__ == "__main__":
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using " "Ray Client.",
+        help="The address of server to connect to if using Ray Client.",
     )
     args, _ = parser.parse_known_args()
 

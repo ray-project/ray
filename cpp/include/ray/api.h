@@ -82,7 +82,8 @@ std::vector<std::shared_ptr<T>> Get(const std::vector<ray::ObjectRef<T>> &object
 /// \return Two arrays, one containing locally available objects, one containing the
 /// rest.
 template <typename T>
-WaitResult<T> Wait(const std::vector<ray::ObjectRef<T>> &objects, int num_objects,
+WaitResult<T> Wait(const std::vector<ray::ObjectRef<T>> &objects,
+                   int num_objects,
                    int timeout_ms);
 
 /// Create a `TaskCaller` for calling remote function.
@@ -163,7 +164,12 @@ inline ray::ObjectRef<T> Put(const T &obj) {
   auto buffer =
       std::make_shared<msgpack::sbuffer>(ray::internal::Serializer::Serialize(obj));
   auto id = ray::internal::GetRayRuntime()->Put(buffer);
-  return ray::ObjectRef<T>(id);
+  auto ref = ObjectRef<T>(id);
+  // The core worker will add an initial ref to the put ID to
+  // keep it in scope. Now that we've created the frontend
+  // ObjectRef, remove this initial ref.
+  ray::internal::GetRayRuntime()->RemoveLocalReference(id);
+  return ref;
 }
 
 template <typename T>
@@ -191,7 +197,8 @@ inline std::vector<std::shared_ptr<T>> Get(const std::vector<ray::ObjectRef<T>> 
 }
 
 template <typename T>
-inline WaitResult<T> Wait(const std::vector<ray::ObjectRef<T>> &objects, int num_objects,
+inline WaitResult<T> Wait(const std::vector<ray::ObjectRef<T>> &objects,
+                          int num_objects,
                           int timeout_ms) {
   auto object_ids = ObjectRefsToObjectIDs<T>(objects);
   auto results =
@@ -209,9 +216,10 @@ inline WaitResult<T> Wait(const std::vector<ray::ObjectRef<T>> &objects, int num
 }
 
 inline ray::internal::ActorCreator<PyActorClass> Actor(PyActorClass func) {
-  ray::internal::RemoteFunctionHolder remote_func_holder(
-      func.module_name, func.function_name, func.class_name,
-      ray::internal::LangType::PYTHON);
+  ray::internal::RemoteFunctionHolder remote_func_holder(func.module_name,
+                                                         func.function_name,
+                                                         func.class_name,
+                                                         ray::internal::LangType::PYTHON);
   return {ray::internal::GetRayRuntime().get(), std::move(remote_func_holder)};
 }
 

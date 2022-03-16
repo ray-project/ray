@@ -19,7 +19,6 @@
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/id.h"
 #include "ray/common/runtime_env_manager.h"
-#include "ray/common/task/task_execution_spec.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/gcs_server/gcs_actor_distribution.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
@@ -199,7 +198,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       boost::asio::io_context &io_context,
       std::shared_ptr<GcsActorSchedulerInterface> scheduler,
       std::shared_ptr<GcsTableStorage> gcs_table_storage,
-      std::shared_ptr<GcsPublisher> gcs_publisher, RuntimeEnvManager &runtime_env_manager,
+      std::shared_ptr<GcsPublisher> gcs_publisher,
+      RuntimeEnvManager &runtime_env_manager,
       GcsFunctionManager &function_manager,
       std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
       std::function<std::shared_ptr<rpc::JobConfig>(const JobID &)> get_job_config,
@@ -303,7 +303,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param exit_type exit reason of the dead worker.
   /// \param creation_task_exception if this arg is set, this worker is died because of an
   /// exception thrown in actor's creation task.
-  void OnWorkerDead(const NodeID &node_id, const WorkerID &worker_id,
+  void OnWorkerDead(const NodeID &node_id,
+                    const WorkerID &worker_id,
                     const std::string &worker_ip,
                     const rpc::WorkerExitType disconnect_type,
                     const rpc::RayException *creation_task_exception = nullptr);
@@ -318,9 +319,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   ///
   /// \param actor The actor whose creation task is infeasible.
   /// \param failure_type Scheduling failure type.
+  /// \param scheduling_failure_message The scheduling failure error message.
   void OnActorSchedulingFailed(
       std::shared_ptr<GcsActor> actor,
-      const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type);
+      const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+      const std::string &scheduling_failure_message);
 
   /// Handle actor creation task success. This should be called when the actor
   /// creation task has been scheduled successfully.
@@ -388,7 +391,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param[in] actor_id The actor id to destroy.
   /// \param[in] death_cause The reason why actor is destroyed.
   /// \param[in] force_kill Whether destory the actor forcelly.
-  void DestroyActor(const ActorID &actor_id, const rpc::ActorDeathCause &death_cause,
+  void DestroyActor(const ActorID &actor_id,
+                    const rpc::ActorDeathCause &death_cause,
                     bool force_kill = true);
 
   /// Get unresolved actors that were submitted from the specified node.
@@ -407,7 +411,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// again.
   /// \param death_cause Context about why this actor is dead. Should only be set when
   /// need_reschedule=false.
-  void ReconstructActor(const ActorID &actor_id, bool need_reschedule,
+  void ReconstructActor(const ActorID &actor_id,
+                        bool need_reschedule,
                         const rpc::ActorDeathCause &death_cause);
 
   /// Remove the specified actor from `unresolved_actors_`.
@@ -433,7 +438,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param force_kill Whether to force kill an actor by killing the worker.
   /// \param no_restart If set to true, the killed actor will not be restarted anymore.
   void NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor> &actor,
-                                   bool force_kill = true, bool no_restart = true);
+                                   bool force_kill = true,
+                                   bool no_restart = true);
 
   /// Add the destroyed actor to the cache. If the cache is full, one actor is randomly
   /// evicted.

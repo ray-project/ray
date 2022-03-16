@@ -1,32 +1,23 @@
 #!/usr/bin/env bash
-# YAPF + Clang formatter (if installed). This script formats all changed files from the last mergebase.
+# Black + Clang formatter (if installed). This script formats all changed files from the last mergebase.
 # You are encouraged to run this locally before pushing changes for review.
 
 # Cause the script to exit if a single command fails
 set -euo pipefail
 
-BLACK_IS_ENABLED=true
-
 FLAKE8_VERSION_REQUIRED="3.9.1"
 BLACK_VERSION_REQUIRED="21.12b0"
-YAPF_VERSION_REQUIRED="0.23.0"
 SHELLCHECK_VERSION_REQUIRED="0.7.1"
 MYPY_VERSION_REQUIRED="0.782"
 
-check_command_exist() {
+check_python_command_exist() {
     VERSION=""
     case "$1" in
         black)
             VERSION=$BLACK_VERSION_REQUIRED
             ;;
-        yapf)
-            VERSION=$YAPF_VERSION_REQUIRED
-            ;;
         flake8)
             VERSION=$FLAKE8_VERSION_REQUIRED
-            ;;
-        shellcheck)
-            VERSION=$SHELLCHECK_VERSION_REQUIRED
             ;;
         mypy)
             VERSION=$MYPY_VERSION_REQUIRED
@@ -36,18 +27,14 @@ check_command_exist() {
             exit 1
     esac
     if ! [ -x "$(command -v "$1")" ]; then
-        echo "$1 not installed. pip install $1==$VERSION"
+        echo "$1 not installed. Install the python package with: pip install $1==$VERSION"
         exit 1
     fi
 }
 
-if [ "$BLACK_IS_ENABLED" = true ]; then
-  check_command_exist black
-else
-  check_command_exist yapf
-fi
-check_command_exist flake8
-check_command_exist mypy
+check_python_command_exist black
+check_python_command_exist flake8
+check_python_command_exist mypy
 
 # this stops git rev-parse from failing if we run this from the .git directory
 builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
@@ -56,12 +43,7 @@ ROOT="$(git rev-parse --show-toplevel)"
 builtin cd "$ROOT" || exit 1
 
 FLAKE8_VERSION=$(flake8 --version | head -n 1 | awk '{print $1}')
-if [ "$BLACK_IS_ENABLED" = true ]; then
-  BLACK_VERSION=$(black --version | awk '{print $2}')
-else
-  YAPF_VERSION=$(yapf --version | awk '{print $2}')
-fi
-SHELLCHECK_VERSION=$(shellcheck --version | awk '/^version:/ {print $2}')
+BLACK_VERSION=$(black --version | awk '{print $2}')
 MYPY_VERSION=$(mypy --version | awk '{print $2}')
 GOOGLE_JAVA_FORMAT_JAR=/tmp/google-java-format-1.7-all-deps.jar
 
@@ -73,15 +55,17 @@ tool_version_check() {
 }
 
 tool_version_check "flake8" "$FLAKE8_VERSION" "$FLAKE8_VERSION_REQUIRED"
-if [ "$BLACK_IS_ENABLED" = true ]; then
-  tool_version_check "black" "$BLACK_VERSION" "$BLACK_VERSION_REQUIRED"
-else
-  tool_version_check "yapf" "$YAPF_VERSION" "$YAPF_VERSION_REQUIRED"
-fi
-tool_version_check "shellcheck" "$SHELLCHECK_VERSION" "$SHELLCHECK_VERSION_REQUIRED"
+tool_version_check "black" "$BLACK_VERSION" "$BLACK_VERSION_REQUIRED"
 tool_version_check "mypy" "$MYPY_VERSION" "$MYPY_VERSION_REQUIRED"
 
-if which clang-format >/dev/null; then
+if command -v shellcheck >/dev/null; then
+    SHELLCHECK_VERSION=$(shellcheck --version | awk '/^version:/ {print $2}')
+    tool_version_check "shellcheck" "$SHELLCHECK_VERSION" "$SHELLCHECK_VERSION_REQUIRED"
+else
+    echo "INFO: Ray uses shellcheck for shell scripts, which is not installed. You may install shellcheck=$SHELLCHECK_VERSION_REQUIRED with your system package manager."
+fi
+
+if command -v clang-format >/dev/null; then
   CLANG_FORMAT_VERSION=$(clang-format --version | awk '{print $3}')
   tool_version_check "clang-format" "$CLANG_FORMAT_VERSION" "12.0.0"
 else
@@ -111,12 +95,6 @@ SHELLCHECK_FLAGS=(
   --exclude=2207  # "Prefer mapfile or read -a to split command output (or quote to avoid splitting)." -- these aren't compatible with macOS's old Bash
 )
 
-YAPF_FLAGS=(
-    '--style' "$ROOT/.style.yapf"
-    '--recursive'
-    '--parallel'
-)
-
 # TODO(dmitri): When more of the codebase is typed properly, the mypy flags
 # should be set to do a more stringent check.
 MYPY_FLAGS=(
@@ -144,16 +122,9 @@ BLACK_EXCLUDES=(
     '--extend-exclude' 'python/ray/_private/thirdparty/*'
 )
 
-YAPF_EXCLUDES=(
-    '--exclude' 'python/ray/cloudpickle/*'
-    '--exclude' 'python/build/*'
-    '--exclude' 'python/ray/core/src/ray/gcs/*'
-    '--exclude' 'python/ray/thirdparty_files/*'
-    '--exclude' 'python/ray/_private/thirdparty/*'
-)
-
 GIT_LS_EXCLUDES=(
   ':(exclude)python/ray/cloudpickle/'
+  ':(exclude)python/ray/_private/runtime_env/_clonevirtualenv.py'
 )
 
 JAVA_EXCLUDES=(
@@ -220,22 +191,20 @@ format_files() {
     done
 
     if [ 0 -lt "${#python_files[@]}" ]; then
-      if [ "$BLACK_IS_ENABLED" = true ]; then
-        black "${python_files[@]}"
-      else
-        yapf --in-place "${YAPF_FLAGS[@]}" -- "${python_files[@]}"
-      fi
+      black "${python_files[@]}"
     fi
 
-    if shellcheck --shell=sh --format=diff - < /dev/null; then
-      if [ 0 -lt "${#shell_files[@]}" ]; then
-        local difference
-        difference="$(shellcheck_scripts --format=diff "${shell_files[@]}" || true && printf "-")"
-        difference="${difference%-}"
-        printf "%s" "${difference}" | patch -p1
+    if command -v shellcheck >/dev/null; then
+      if shellcheck --shell=sh --format=diff - < /dev/null; then
+        if [ 0 -lt "${#shell_files[@]}" ]; then
+          local difference
+          difference="$(shellcheck_scripts --format=diff "${shell_files[@]}" || true && printf "-")"
+          difference="${difference%-}"
+          printf "%s" "${difference}" | patch -p1
+        fi
+      else
+        echo "error: this version of shellcheck does not support diffs"
       fi
-    else
-      echo "error: this version of shellcheck does not support diffs"
     fi
 }
 
@@ -243,15 +212,9 @@ format_all_scripts() {
     command -v flake8 &> /dev/null;
     HAS_FLAKE8=$?
 
-    if [ "$BLACK_IS_ENABLED" = true ]; then
-      echo "$(date)" "Black...."
-      git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 10 \
-        black "${BLACK_EXCLUDES[@]}"
-    else
-      echo "$(date)" "YAPF...."
-      git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 10 \
-        yapf --in-place "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}"
-    fi
+    echo "$(date)" "Black...."
+    git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 10 \
+      black "${BLACK_EXCLUDES[@]}"
     echo "$(date)" "MYPY...."
     mypy_on_each "${MYPY_FILES[@]}"
     if [ $HAS_FLAKE8 ]; then
@@ -300,20 +263,15 @@ format_all() {
 format_changed() {
     # The `if` guard ensures that the list of filenames is not empty, which
     # could cause the formatter to receive 0 positional arguments, making
-    # Black error and yapf hang waiting for STDIN.
+    # Black error.
     #
     # `diff-filter=ACRM` and $MERGEBASE is to ensure we only format files that
     # exist on both branches.
     MERGEBASE="$(git merge-base upstream/master HEAD)"
 
     if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
-        if [ "$BLACK_IS_ENABLED" = true ]; then
-            git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
-                black "${BLACK_EXCLUDES[@]}"
-        else
-            git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
-                yapf --in-place "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}"
-        fi
+        git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
+            black "${BLACK_EXCLUDES[@]}"
         if which flake8 >/dev/null; then
             git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
                  flake8 --config=.flake8

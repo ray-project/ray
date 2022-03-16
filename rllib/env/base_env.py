@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from ray.rllib.env.external_env import ExternalEnv
     from ray.rllib.env.multi_agent_env import MultiAgentEnv
     from ray.rllib.env.vector_env import VectorEnv
+    from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
 ASYNC_RESET_RETURN = "async_reset_return"
 
@@ -203,7 +204,7 @@ class BaseEnv:
         Returns:
             All agent ids for each the environment.
         """
-        return {_DUMMY_AGENT_ID}
+        return {}
 
     @PublicAPI
     def try_render(self, env_id: Optional[EnvID] = None) -> None:
@@ -312,7 +313,7 @@ class BaseEnv:
             True if the observations are contained within their respective
                 spaces. False otherwise.
         """
-        self._space_contains(self.observation_space, x)
+        return self._space_contains(self.observation_space, x)
 
     @PublicAPI
     def action_space_contains(self, x: MultiEnvDict) -> bool:
@@ -339,8 +340,15 @@ class BaseEnv:
         """
         agents = set(self.get_agent_ids())
         for multi_agent_dict in x.values():
-            for agent_id, obs in multi_agent_dict:
-                if (agent_id not in agents) or (not space[agent_id].contains(obs)):
+            for agent_id, obs in multi_agent_dict.items():
+                # this is for the case where we have a single agent
+                # and we're checking a Vector env thats been converted to
+                # a BaseEnv
+                if agent_id == _DUMMY_AGENT_ID:
+                    if not space.contains(obs):
+                        return False
+                # for the MultiAgent env case
+                elif (agent_id not in agents) or (not space[agent_id].contains(obs)):
                     return False
 
         return True
@@ -717,6 +725,7 @@ def convert_to_base_env(
     num_envs: int = 1,
     remote_envs: bool = False,
     remote_env_batch_wait_ms: int = 0,
+    worker: Optional["RolloutWorker"] = None,
 ) -> "BaseEnv":
     """Converts an RLlib-supported env into a BaseEnv object.
 
@@ -748,6 +757,10 @@ def convert_to_base_env(
         remote_env_batch_wait_ms: The wait time (in ms) to poll remote
             sub-environments for, if applicable. Only used if
             `remote_envs` is True.
+        worker: An optional RolloutWorker that owns the env. This is only
+            used if `remote_worker_envs` is True in your config and the
+            `on_sub_environment_created` custom callback needs to be called
+            on each created actor.
 
     Returns:
         The resulting BaseEnv object.
@@ -761,7 +774,7 @@ def convert_to_base_env(
     if remote_envs and num_envs == 1:
         raise ValueError(
             "Remote envs only make sense to use if num_envs > 1 "
-            "(i.e. vectorization is enabled)."
+            "(i.e. environment vectorization is enabled)."
         )
 
     # Given `env` is already a BaseEnv -> Return as is.
@@ -789,6 +802,7 @@ def convert_to_base_env(
                 multiagent=multiagent,
                 remote_env_batch_wait_ms=remote_env_batch_wait_ms,
                 existing_envs=[env],
+                worker=worker,
             )
         # Sub-environments are not ray.remote actors.
         else:

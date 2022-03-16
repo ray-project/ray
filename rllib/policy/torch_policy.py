@@ -32,6 +32,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import force_list, NullContextManager
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules import PiecewiseSchedule
@@ -314,7 +315,15 @@ class TorchPolicy(Policy):
                 input_dict[k] for k in input_dict.keys() if "state_in" in k[:8]
             ]
             # Calculate RNN sequence lengths.
-            seq_lens = np.array([1] * len(input_dict["obs"])) if state_batches else None
+            seq_lens = (
+                torch.tensor(
+                    [1] * len(input_dict["obs"]),
+                    dtype=torch.long,
+                    device=input_dict["obs"].device,
+                )
+                if state_batches
+                else None
+            )
 
             return self._compute_action_helper(
                 input_dict, state_batches, seq_lens, explore, timestep
@@ -465,7 +474,12 @@ class TorchPolicy(Policy):
 
         if self.model:
             fetches["model"] = self.model.metrics()
-        fetches.update({"custom_metrics": learn_stats})
+        fetches.update(
+            {
+                "custom_metrics": learn_stats,
+                NUM_AGENT_STEPS_TRAINED: postprocessed_batch.count,
+            }
+        )
 
         return fetches
 
@@ -573,6 +587,15 @@ class TorchPolicy(Policy):
                 for b in self._loaded_batches[buffer_index]
             ]
 
+        # Callback handling.
+        batch_fetches = {}
+        for i, batch in enumerate(device_batches):
+            custom_metrics = {}
+            self.callbacks.on_learn_on_batch(
+                policy=self, train_batch=batch, result=custom_metrics
+            )
+            batch_fetches[f"tower_{i}"] = {"custom_metrics": custom_metrics}
+
         # Do the (maybe parallelized) gradient calculation step.
         tower_outputs = self._multi_gpu_parallel_grad_calc(device_batches)
 
@@ -594,11 +617,13 @@ class TorchPolicy(Policy):
 
         self.apply_gradients(_directStepOptimizerSingleton)
 
-        batch_fetches = {}
-        for i, batch in enumerate(device_batches):
-            batch_fetches[f"tower_{i}"] = {
-                LEARNER_STATS_KEY: self.extra_grad_info(batch)
-            }
+        for i, (model, batch) in enumerate(zip(self.model_gpu_towers, device_batches)):
+            batch_fetches[f"tower_{i}"].update(
+                {
+                    LEARNER_STATS_KEY: self.extra_grad_info(batch),
+                    "model": model.metrics(),
+                }
+            )
 
         batch_fetches.update(self.extra_compute_grad_fetches())
 

@@ -1,3 +1,4 @@
+import copy
 from dataclasses import dataclass, field
 import logging
 from typing import Optional, List, TYPE_CHECKING
@@ -7,7 +8,21 @@ from ray.workflow.common import WorkflowStatus
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from ray.workflow.common import StepID
+    from ray.workflow.common import StepID, CheckpointModeType
+
+
+@dataclass
+class CheckpointContext:
+    # The step is checkpointed or not.
+    checkpoint: "CheckpointModeType" = True
+    # Detached from DAG means step is not checkpointed in the DAG.
+    # The output step inside current step is an exception, because
+    # its output is linked to the output of the current step.
+    detached_from_dag: bool = False
+
+    def copy(self) -> "CheckpointContext":
+        """Copy the dataclass safely."""
+        return copy.copy(self)
 
 
 @dataclass
@@ -46,6 +61,8 @@ class WorkflowStepContext:
     # The step that generates the output of the workflow (including all
     # nested steps).
     last_step_of_workflow: bool = False
+    # The checkpoint context.
+    checkpoint_context: CheckpointContext = field(default_factory=CheckpointContext)
 
 
 _context: Optional[WorkflowStepContext] = None
@@ -83,6 +100,7 @@ def fork_workflow_step_context(
     workflow_scope: Optional[List[str]] = _sentinel,
     outer_most_step_id: Optional[str] = _sentinel,
     last_step_of_workflow: Optional[bool] = _sentinel,
+    checkpoint_context: CheckpointContext = _sentinel,
 ):
     """Fork the workflow step context.
     Inherits the original value if no value is provided.
@@ -111,6 +129,9 @@ def fork_workflow_step_context(
             last_step_of_workflow=original_context.last_step_of_workflow
             if last_step_of_workflow is _sentinel
             else last_step_of_workflow,
+            checkpoint_context=original_context.checkpoint_context
+            if checkpoint_context is _sentinel
+            else checkpoint_context,
         )
         yield
     finally:
@@ -161,3 +182,23 @@ def get_step_status_info(status: WorkflowStatus) -> str:
 
 def get_scope():
     return _context.workflow_scope
+
+
+_in_workflow_execution = False
+
+
+@contextmanager
+def workflow_execution() -> None:
+    """Scope for workflow step execution."""
+    global _in_workflow_execution
+    try:
+        _in_workflow_execution = True
+        yield
+    finally:
+        _in_workflow_execution = False
+
+
+def in_workflow_execution() -> bool:
+    """Whether we are in workflow step execution."""
+    global _in_workflow_execution
+    return _in_workflow_execution

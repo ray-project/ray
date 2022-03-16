@@ -178,7 +178,11 @@ class MultiAgentEnv(gym.Env):
             if agent_ids is None:
                 agent_ids = self.get_agent_ids()
             samples = self.action_space.sample()
-            return {agent_id: samples[agent_id] for agent_id in agent_ids}
+            return {
+                agent_id: samples[agent_id]
+                for agent_id in agent_ids
+                if agent_id != "__all__"
+            }
         logger.warning("action_space_sample() has not been implemented")
         del agent_ids
         return {}
@@ -233,7 +237,7 @@ class MultiAgentEnv(gym.Env):
         # By default, do nothing.
         pass
 
-    # yapf: disable
+    # fmt: off
     # __grouping_doc_begin__
     @ExperimentalAPI
     def with_agent_groups(
@@ -279,7 +283,7 @@ class MultiAgentEnv(gym.Env):
         return GroupAgentsWrapper(self, groups, obs_space, act_space)
 
     # __grouping_doc_end__
-    # yapf: enable
+    # fmt: on
 
     @PublicAPI
     def to_base_env(
@@ -338,7 +342,7 @@ class MultiAgentEnv(gym.Env):
         obs_space_check = (
             hasattr(self, "observation_space")
             and isinstance(self.observation_space, gym.spaces.Dict)
-            and set(self.observation_space.keys()) == self.get_agent_ids()
+            and set(self.observation_space.spaces.keys()) == self.get_agent_ids()
         )
         action_space_check = (
             hasattr(self, "action_space")
