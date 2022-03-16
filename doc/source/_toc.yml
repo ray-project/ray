@@ -147,7 +147,6 @@ parts:
           - file: ray-core/examples/testing-tips
       - file: ray-core/configure
       - file: ray-observability/index
-      - file: ray-design-patterns/index
       - file: ray-contribute/whitepaper
 
 # TODO: Add examples section

@@ -647,42 +647,6 @@ exist. See :ref:`actor-lifetimes` for more details.
         Optional<ActorHandle<Actor>> actor = Ray.getActor("orange");
         Assert.assertTrue(actor.isPresent());  // actor.isPresent() is true.
 
-
-.. _actor-lifetimes:
-
-Actor Lifetimes
----------------
-
-.. tabbed:: Python
-
-    Separately, actor lifetimes can be decoupled from the job, allowing an actor to
-    persist even after the driver process of the job exits.
-
-    .. code-block:: python
-
-        counter = Counter.options(name="CounterActor", lifetime="detached").remote()
-
-    The CounterActor will be kept alive even after the driver running above script
-    exits. Therefore it is possible to run the following script in a different
-    driver:
-
-    .. code-block:: python
-
-        counter = ray.get_actor("CounterActor")
-        print(ray.get(counter.get_counter.remote()))
-
-    Note that the lifetime option is decoupled from the name. If we only specified
-    the name without specifying ``lifetime="detached"``, then the CounterActor can
-    only be retrieved as long as the original driver is still running.
-
-.. tabbed:: Java
-
-    Customizing lifetime of an actor hasn't been implemented in Java yet.
-
-.. tabbed:: C++
-
-    Customizing lifetime of an actor hasn't been implemented in C++ yet.
-
 FAQ: Actors, Workers and Resources
 ----------------------------------
 

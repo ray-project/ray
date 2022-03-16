@@ -1,46 +1,10 @@
 Advanced Usage
 ==============
 
-This page will cover some more advanced examples of using Ray's flexible programming model.
+This page will cover some more advanced functionality of Ray.
 
 .. contents::
   :local:
-
-Synchronization
----------------
-
-Tasks or actors can often contend over the same resource or need to communicate with each other. Here are some standard ways to perform synchronization across Ray processes.
-
-Inter-process synchronization using FileLock
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If you have several tasks or actors writing to the same file or downloading a file on a single node, you can use `FileLock <https://pypi.org/project/filelock/>`_ to synchronize.
-
-This often occurs for data loading and preprocessing.
-
-.. code-block:: python
-
-    import ray
-    from filelock import FileLock
-
-    @ray.remote
-    def write_to_file(text):
-        # Create a filelock object. Consider using an absolute path for the lock.
-        with FileLock("my_data.txt.lock"):
-            with open("my_data.txt","a") as f:
-                f.write(text)
-
-    ray.init()
-    ray.get([write_to_file.remote("hi there!\n") for i in range(3)])
-
-    with open("my_data.txt") as f:
-        print(f.read())
-
-    ## Output is:
-
-    # hi there!
-    # hi there!
-    # hi there!
 
 Dynamic Remote Parameters
 -------------------------
@@ -185,64 +149,6 @@ Overloaded actor task call:
     a.task((RayFunc2<CounterOverloaded, Integer, Integer>) CounterOverloaded::increment, 10).remote();
     a.task((RayFunc3<CounterOverloaded, Integer, Integer, Integer>) CounterOverloaded::increment, 10, 10).remote();
     Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 33);
-
-
-Nested Remote Functions
------------------------
-
-Remote functions can call other remote functions, resulting in nested tasks.
-For example, consider the following.
-
-.. code:: python
-
-    @ray.remote
-    def f():
-        return 1
-
-    @ray.remote
-    def g():
-        # Call f 4 times and return the resulting object refs.
-        return [f.remote() for _ in range(4)]
-
-    @ray.remote
-    def h():
-        # Call f 4 times, block until those 4 tasks finish,
-        # retrieve the results, and return the values.
-        return ray.get([f.remote() for _ in range(4)])
-
-Then calling ``g`` and ``h`` produces the following behavior.
-
-.. code:: python
-
-    >>> ray.get(g.remote())
-    [ObjectRef(b1457ba0911ae84989aae86f89409e953dd9a80e),
-     ObjectRef(7c14a1d13a56d8dc01e800761a66f09201104275),
-     ObjectRef(99763728ffc1a2c0766a2000ebabded52514e9a6),
-     ObjectRef(9c2f372e1933b04b2936bb6f58161285829b9914)]
-
-    >>> ray.get(h.remote())
-    [1, 1, 1, 1]
-
-**One limitation** is that the definition of ``f`` must come before the
-definitions of ``g`` and ``h`` because as soon as ``g`` is defined, it
-will be pickled and shipped to the workers, and so if ``f`` hasn't been
-defined yet, the definition will be incomplete.
-
-Circular Dependencies
----------------------
-
-Consider the following remote function.
-
-.. code-block:: python
-
-  @ray.remote(num_cpus=1, num_gpus=1)
-  def g():
-      return ray.get(f.remote())
-
-When a ``g`` task is executing, it will release its CPU resources when it gets
-blocked in the call to ``ray.get``. It will reacquire the CPU resources when
-``ray.get`` returns. It will retain its GPU resources throughout the lifetime of
-the task because the task will most likely continue to use GPU memory.
 
 Cython Code in Ray
 ------------------
