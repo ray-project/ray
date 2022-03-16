@@ -2795,9 +2795,13 @@ class Trainer(Trainable):
         if capacity != DEPRECATED_VALUE:
             deprecation_warning(
                 old="config['buffer_size']",
-                new="config['replay_buffer_config']['capacity']",
+                help="Buffer size specified at new location config["
+                     "'replay_buffer_config']["
+                     "'capacity'] will be overwritten.",
                 error=False,
             )
+            config["replay_buffer_config"]["capacity"] = capacity
+
 
         # Check if old replay buffer should be instantiated
         buffer_type = config["replay_buffer_config"]["type"]
