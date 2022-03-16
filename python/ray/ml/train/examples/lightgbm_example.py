@@ -24,7 +24,7 @@ def prepare_data() -> Tuple[Dataset, Dataset, Dataset]:
     return train_dataset, valid_dataset, test_dataset
 
 
-def train_xgboost(num_workers: int, use_gpu: bool = False) -> Result:
+def train_lightgbm(num_workers: int, use_gpu: bool = False) -> Result:
     train_dataset, valid_dataset, _ = prepare_data()
 
     # Scale some random columns
@@ -54,7 +54,7 @@ def train_xgboost(num_workers: int, use_gpu: bool = False) -> Result:
     return result
 
 
-def predict_xgboost(result: Result):
+def predict_lightgbm(result: Result):
     _, _, test_dataset = prepare_data()
     this_checkpoint = result.checkpoint
     predictor = LightGBMPredictor.from_checkpoint(this_checkpoint)
@@ -90,5 +90,5 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     ray.init(address=args.address)
-    result = train_xgboost(num_workers=args.num_workers, use_gpu=args.use_gpu)
-    predict_xgboost(result)
+    result = train_lightgbm(num_workers=args.num_workers, use_gpu=args.use_gpu)
+    train_lightgbm(result)
