@@ -2430,6 +2430,9 @@ Dict[str, List[str]]]): The names of the columns
         of worker actors are created, each of which has zero-copy access to the
         underlying sorted data blocks of the Dataset.
 
+        Note that the key must be unique in the dataset. If there are duplicate keys,
+        an arbitrary value is returned.
+
         This is only supported for Arrow-format datasets.
 
         Args:

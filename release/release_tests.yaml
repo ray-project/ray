@@ -3151,6 +3151,7 @@
 - name: dataset_random_access
   group: core-dataset-tests
   working_dir: nightly_tests/dataset
+  stable: false
 
   frequency: multi
   team: core

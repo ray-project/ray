@@ -76,5 +76,21 @@ if __name__ == "__main__":
     print(f"success! total time {delta}")
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
         f.write(
-            json.dumps({"get_qps": get_qps, "multiget_qps": multiget_qps, "success": 1})
+            json.dumps(
+                {
+                    "perf_metrics": [
+                        {
+                            "perf_metric_name": "get_qps",
+                            "perf_metric_value": get_qps,
+                            "perf_metric_type": "THROUGHPUT",
+                        },
+                        {
+                            "perf_metric_name": "multiget_qps",
+                            "perf_metric_value": multiget_qps,
+                            "perf_metric_type": "THROUGHPUT",
+                        },
+                    ],
+                    "success": 1,
+                }
+            )
         )
