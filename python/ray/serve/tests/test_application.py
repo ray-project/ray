@@ -353,6 +353,17 @@ class TestYAMLTranslation:
                 Application.from_yaml(tmp).to_dict(), app1.to_dict()
             )
 
+    def test_convert_to_import_path(self, serve_instance):
+        f = decorated_func.options(name="f")
+        C = DecoratedClass.options(name="C")
+        app = Application([f, C])
+
+        reconstructed_app = Application.from_yaml(app.to_yaml())
+
+        reconstructed_app.deploy()
+        assert requests.get("http://localhost:8000/f").text == "got decorated func"
+        assert requests.get("http://localhost:8000/C").text == "got decorated class"
+
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_immutable_deployment_list(serve_instance):

@@ -1,6 +1,7 @@
 import asyncio
 import atexit
 import collections
+from copy import copy
 import inspect
 import logging
 import random
@@ -23,6 +24,8 @@ from typing import (
 )
 
 from fastapi import APIRouter, FastAPI
+from ray.experimental.dag.class_node import ClassNode
+from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
 from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
@@ -60,6 +63,7 @@ from ray.serve.utils import (
     format_actor_name,
     get_current_node_resource_key,
     get_random_letters,
+    get_deployment_import_path,
     logger,
     DEFAULT,
 )
@@ -934,7 +938,7 @@ class DeploymentMethodNode(DAGNode):
 
 
 @PublicAPI(stability="alpha")
-class DeploymentNode(DAGNode):
+class DeploymentNode(ClassNode):
     """Represents a deployment with its bound config options and arguments.
 
     The bound deployment can be run, deployed, or built to a production config
@@ -949,8 +953,7 @@ class DeploymentNode(DAGNode):
     that can be used to compose an optimized call graph.
     """
 
-    def __init__(self):
-        raise NotImplementedError()
+    pass
 
 
 @PublicAPI
@@ -1116,7 +1119,16 @@ class Deployment:
         The returned bound deployment can be deployed or bound to other
         deployments to create a multi-deployment application.
         """
-        raise NotImplementedError()
+        return DeploymentNode(
+            self._func_or_class,
+            args,
+            kwargs,
+            cls_options=self._ray_actor_options or dict(),
+            other_args_to_resolve={
+                "deployment_self": copy(self),
+                "is_from_serve_deployment": True,
+            },
+        )
 
     @PublicAPI
     def deploy(self, *init_args, _blocking=True, **init_kwargs):
@@ -1661,6 +1673,22 @@ class Application:
         return cls(schema_to_serve_application(schema))
 
 
+def _get_deployments_from_node(node: DeploymentNode) -> List[Deployment]:
+    """Generate a list of deployment objects from a root node.
+
+    Returns:
+        deployment_list(List[Deployment]): the list of Deployment objects. The
+          last element correspond to the node passed in to this function.
+    """
+    from ray.serve.pipeline.api import build as pipeline_build
+
+    with PipelineInputNode() as input_node:
+        root = node.__call__.bind(input_node)
+    deployments = pipeline_build(root, inject_ingress=False)
+
+    return deployments
+
+
 @PublicAPI(stability="alpha")
 def run(
     target: Union[DeploymentNode, Application],
@@ -1676,6 +1704,17 @@ def run(
     """
 
     deployments = _get_deployments_from_target(target)
+
+    # if isinstance(target, DeploymentNode):
+    #     deployments = _get_deployments_from_node(target)
+    # else:
+    #     raise NotImplementedError()
+
+    # for d in deployments:
+    #     logger.debug(f"Deploying {d}")
+    #     d.deploy()
+
+    # return deployments[-1].get_handle()
 
     # TODO (shrekris-anyscale): validate ingress
 
@@ -1760,7 +1799,7 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
 
     return DeploymentSchema(
         name=d.name,
-        import_path=d.func_or_class,
+        import_path=get_deployment_import_path(d),
         init_args=d.init_args,
         init_kwargs=d.init_kwargs,
         num_replicas=d.num_replicas,

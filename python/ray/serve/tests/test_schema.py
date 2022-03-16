@@ -620,5 +620,27 @@ def test_serve_application_to_schema_to_serve_application():
     serve.shutdown()
 
 
+@serve.deployment
+def decorated_f(*args):
+    return "reached decorated_f"
+
+
+def test_use_deployment_import_path():
+    """Ensure deployment func_or_class becomes import path when schematized."""
+
+    d = schema_to_deployment(deployment_to_schema(decorated_f))
+
+    assert isinstance(d.func_or_class, str)
+
+    # CI may change the parent path, so check only that the suffix matches.
+    assert d.func_or_class.endswith("ray.serve.tests.test_schema.decorated_f")
+
+    serve.start()
+    d.deploy()
+    assert (
+        requests.get("http://localhost:8000/decorated_f").text == "reached decorated_f"
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
