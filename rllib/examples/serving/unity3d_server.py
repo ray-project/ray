@@ -82,7 +82,7 @@ parser.add_argument(
     "--port",
     type=int,
     default=SERVER_PORT,
-    help="The Policy server's port to listen on for ExternalEnv client " "conections.",
+    help="The Policy server's port to listen on for ExternalEnv client conections.",
 )
 parser.add_argument(
     "--checkpoint-freq",
@@ -94,7 +94,7 @@ parser.add_argument(
 parser.add_argument(
     "--no-restore",
     action="store_true",
-    help="Whether to load the Policy " "weights from a previous checkpoint",
+    help="Whether to load the Policy weights from a previous checkpoint",
 )
 
 if __name__ == "__main__":

@@ -491,7 +491,7 @@ class LocalModeExecutorTest(RayTrialExecutorTest):
         _register_all()  # re-register the evicted objects
 
     def testTrialCleanup(self):
-        self.skipTest("Skipping as trial cleanup is not applicable" " for local mode.")
+        self.skipTest("Skipping as trial cleanup is not applicable for local mode.")
 
 
 if __name__ == "__main__":

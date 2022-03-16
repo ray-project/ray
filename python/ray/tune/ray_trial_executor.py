@@ -615,7 +615,7 @@ class RayTrialExecutor(TrialExecutor):
         for i in range(num_retries):
             if i > 0:
                 logger.warning(
-                    "Cluster resources not detected or are 0. Attempt #" "%s...", i + 1
+                    "Cluster resources not detected or are 0. Attempt #%s...", i + 1
                 )
                 time.sleep(0.5)
             resources = ray.cluster_resources()

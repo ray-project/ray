@@ -58,6 +58,8 @@ DOCKER_HEAD_CMD = (
     "sudo mkdir -p {volume_dir} && "
     "sudo chmod 777 {volume_dir} && "
     "touch {volume_dir}/.in_docker && "
+    "sudo chown -R ray:users /cluster/node && "
+    "sudo chmod -R 777 /cluster/node && "
     "sudo chmod 700 ~/.ssh && "
     "sudo chmod 600 ~/.ssh/authorized_keys && "
     "sudo chmod 600 ~/ray_bootstrap_key.pem && "
@@ -79,6 +81,8 @@ DOCKER_WORKER_CMD = (
     "sudo mkdir -p {volume_dir} && "
     "sudo chmod 777 {volume_dir} && "
     "touch {volume_dir}/.in_docker && "
+    "sudo chown -R ray:users /cluster/node && "
+    "sudo chmod -R 777 /cluster/node && "
     "sudo chmod 700 ~/.ssh && "
     "sudo chmod 600 ~/.ssh/authorized_keys && "
     "sudo chown ray:users ~/.ssh ~/.ssh/authorized_keys && "
@@ -170,13 +174,18 @@ def create_node_spec(
         mj = sys.version_info.major
         mi = sys.version_info.minor
 
-        docker_ray_dir = (
-            f"/home/ray/anaconda3/lib" f"/python{mj}.{mi}/site-packages/ray"
-        )
+        fake_modules_str = os.environ.get("FAKE_CLUSTER_DEV_MODULES", "autoscaler")
+        fake_modules = fake_modules_str.split(",")
+
+        docker_ray_dir = f"/home/ray/anaconda3/lib/python{mj}.{mi}/site-packages/ray"
+
         node_spec["volumes"] += [
-            f"{local_ray_dir}/autoscaler:{docker_ray_dir}/autoscaler:ro",
+            f"{local_ray_dir}/{module}:{docker_ray_dir}/{module}:ro"
+            for module in fake_modules
         ]
         env_vars["FAKE_CLUSTER_DEV"] = local_ray_dir
+        env_vars["FAKE_CLUSTER_DEV_MODULES"] = fake_modules_str
+        os.environ["FAKE_CLUSTER_DEV_MODULES"] = fake_modules_str
 
     if head:
         node_spec["command"] = DOCKER_HEAD_CMD.format(**cmd_kwargs)

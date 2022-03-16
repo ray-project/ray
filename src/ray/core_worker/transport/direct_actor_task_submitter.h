@@ -199,7 +199,7 @@ class CoreWorkerDirectActorTaskSubmitter
 
     /// Stores all callbacks of inflight tasks. Note that this doesn't include tasks
     /// without replies.
-    std::unordered_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+    absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
         inflight_task_callbacks;
 
     /// The max number limit of task capacity used for back pressure.
@@ -252,7 +252,7 @@ class CoreWorkerDirectActorTaskSubmitter
 
   /// Fail all in-flight tasks.
   void FailInflightTasks(
-      const std::unordered_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+      const absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
           &inflight_task_callbacks) LOCKS_EXCLUDED(mu_);
 
   /// Whether the specified actor is alive.

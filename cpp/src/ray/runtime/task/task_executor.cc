@@ -164,6 +164,13 @@ Status TaskExecutor::ExecuteTask(
     std::tie(status, data) = GetExecuteResult(func_name, ray_args_buffer, nullptr);
     current_actor_ = data;
   } else if (task_type == ray::TaskType::ACTOR_TASK) {
+    if (cross_lang) {
+      RAY_CHECK(!typed_descriptor->ClassName().empty());
+      func_name = std::string("&")
+                      .append(typed_descriptor->ClassName())
+                      .append("::")
+                      .append(typed_descriptor->FunctionName());
+    }
     RAY_CHECK(current_actor_ != nullptr);
     std::tie(status, data) =
         GetExecuteResult(func_name, ray_args_buffer, current_actor_.get());

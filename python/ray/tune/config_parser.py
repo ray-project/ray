@@ -79,7 +79,7 @@ def make_parser(parser_creator=None, **kwargs):
     parser.add_argument(
         "--checkpoint-at-end",
         action="store_true",
-        help="Whether to checkpoint at the end of the experiment. " "Default is False.",
+        help="Whether to checkpoint at the end of the experiment. Default is False.",
     )
     parser.add_argument(
         "--sync-on-checkpoint",

@@ -977,6 +977,31 @@ the disk that from which your script was executed from.
     # View the PyTorch Profiler traces.
     $ open http://localhost:6006/#pytorch_profiler
 
+.. _train-reproducibility:
+
+Reproducibility
+---------------
+
+.. tabbed:: PyTorch
+
+    To limit sources of nondeterministic behavior, add
+    ``train.torch.enable_reproducibility()`` to the top of your training
+    function. `
+
+    .. code-block:: diff
+
+        def train_func():
+        +   train.torch.enable_reproducibility()
+
+            model = NeuralNetwork()
+            model = train.torch.prepare_model(model)
+
+            ...
+
+    .. warning:: ``train.torch.enable_reproducibility()`` can't guarantee
+        completely reproducible results across executions. To learn more, read
+        the `PyTorch notes on randomness <https://pytorch.org/docs/stable/notes/randomness.html>`_.
+
 .. _train-datasets:
 
 Distributed Data Ingest (Ray Datasets)

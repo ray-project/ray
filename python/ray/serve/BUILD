@@ -308,7 +308,7 @@ py_test(
 )
 
 py_test(
-    name = "test_cross_langauge",
+    name = "test_cross_language",
     size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -326,6 +326,14 @@ py_test(
 py_test(
     name = "test_http_adapters",
     size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_pipeline_dag",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],

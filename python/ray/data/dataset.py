@@ -632,7 +632,7 @@ class Dataset(Generic[T]):
             This assume that the given splits are sorted in ascending order.
             """
             if target_size == 0:
-                return splits
+                return splits, []
             new_splits = []
             leftovers = []
             for split in splits:
