@@ -218,15 +218,6 @@ def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ut
     Returns:
         The script's output.
     """
-    if env is not None and gcs_utils.use_gcs_for_bootstrap():
-        env.update(
-            {
-                "RAY_bootstrap_with_gcs": "1",
-                "RAY_gcs_grpc_based_pubsub": "1",
-                "RAY_gcs_storage": "memory",
-                "RAY_bootstrap_with_gcs": "1",
-            }
-        )
 
     proc = subprocess.Popen(
         [sys.executable, "-"],
@@ -1268,3 +1259,14 @@ def check_spilled_mb(address, spilled=None, restored=None, fallback=None):
         return True
 
     wait_for_condition(ok, timeout=3, retry_interval_ms=1000)
+
+
+def no_resource_leaks_excluding_node_resources():
+    cluster_resources = ray.cluster_resources()
+    available_resources = ray.available_resources()
+    for r in ray.cluster_resources():
+        if "node" in r:
+            del cluster_resources[r]
+            del available_resources[r]
+
+    return ray.available_resources() == ray.cluster_resources()

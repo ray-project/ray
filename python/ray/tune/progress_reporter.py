@@ -581,7 +581,7 @@ def memory_debug_str():
             round(used_gb, 1), round(total_gb, 1), warn
         )
     except ImportError:
-        return "Unknown memory usage. Please run `pip install psutil` " "to resolve)"
+        return "Unknown memory usage. Please run `pip install psutil` to resolve)"
 
 
 def time_passed_str(start_time: float, current_time: float):

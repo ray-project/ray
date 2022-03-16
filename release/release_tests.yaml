@@ -108,7 +108,6 @@
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small.yaml
-    autosuspend_mins: 10
 
   run:
     timeout: 600
@@ -362,7 +361,6 @@
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small.yaml
-    autosuspend_mins: 10
 
   run:
     timeout: 600
@@ -536,6 +534,215 @@
 
     type: sdk_command
     file_manager: job
+
+  alert: default
+
+
+#######################
+# ML user tests
+#######################
+- name: ml_user_horovod_user_test_latest
+  group: ML user tests
+  working_dir: ml_user_tests
+
+  legacy:
+    test_name: horovod_user_test_latest
+    test_suite: ml_user_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: horovod/app_config.yaml
+    cluster_compute: horovod/compute_tpl.yaml
+
+  driver_setup: horovod/driver_setup_latest.sh
+  run:
+    timeout: 1200
+    script: python horovod/horovod_user_test.py
+    type: client
+
+  alert: default
+
+- name: ml_user_horovod_user_test_master
+  group: ML user tests
+  working_dir: ml_user_tests
+
+  legacy:
+    test_name: horovod_user_test_master
+    test_suite: ml_user_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: ../horovod_tests/app_config_master.yaml
+    cluster_compute: horovod/compute_tpl.yaml
+
+  driver_setup: horovod/driver_setup_master.sh
+  run:
+    timeout: 1200
+    script: python horovod/horovod_user_test.py
+    type: client
+
+  alert: default
+
+- name: ml_user_train_tensorflow_mnist_test
+  group: ML user tests
+  working_dir: ml_user_tests
+
+  legacy:
+    test_name: train_tensorflow_mnist_test
+    test_suite: ml_user_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: train/app_config.yaml
+    cluster_compute: train/compute_tpl.yaml
+
+  driver_setup: train/driver_setup.sh
+  run:
+    timeout: 36000
+    script: python train/train_tensorflow_mnist_test.py
+    type: client
+
+  alert: default
+
+- name: ml_user_train_torch_linear_test
+  group: ML user tests
+  working_dir: ml_user_tests
+
+  legacy:
+    test_name: train_torch_linear_test
+    test_suite: ml_user_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: train/app_config.yaml
+    cluster_compute: train/compute_tpl.yaml
+
+  driver_setup: train/driver_setup.sh
+  run:
+    timeout: 36000
+    script: python train/train_torch_linear_test.py
+    type: client
+
+  alert: default
+
+- name: ml_user_xgboost_gpu_connect_latest
+  group: ML user tests
+  working_dir: ml_user_tests
+
+  legacy:
+    test_name: xgboost_gpu_connect_latest
+    test_suite: ml_user_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: xgboost/app_config_gpu.yaml
+    cluster_compute: xgboost/tpl_gpu_small_scaling.yaml
+
+  run:
+    timeout: 1200
+    script: python xgboost/train_gpu_connect.py
+    type: client
+
+  alert: default
+
+- name: ml_user_xgboost_gpu_connect_master
+  group: ML user tests
+  working_dir: ml_user_tests
+
+  legacy:
+    test_name: xgboost_gpu_connect_master
+    test_suite: ml_user_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: xgboost/app_config_gpu_master.yaml
+    cluster_compute: xgboost/tpl_gpu_small_scaling.yaml
+
+  run:
+    timeout: 1200
+    script: python xgboost/train_gpu_connect.py
+    type: client
+
+  alert: default
+
+- name: ml_user_ray_lightning_user_test_latest
+  group: ML user tests
+  working_dir: ml_user_tests
+
+  legacy:
+    test_name: ray_lightning_user_test_latest
+    test_suite: ml_user_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: ray-lightning/app_config.yaml
+    cluster_compute: ray-lightning/compute_tpl.yaml
+
+  driver_setup: ray-lightning/driver_setup.sh
+  run:
+    timeout: 1200
+    script: python ray-lightning/ray_lightning_user_test.py
+    type: client
+
+  alert: default
+
+- name: ml_user_ray_lightning_user_test_master
+  group: ML user tests
+  working_dir: ml_user_tests
+
+  legacy:
+    test_name: ray_lightning_user_test_master
+    test_suite: ml_user_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: ray-lightning/app_config_master.yaml
+    cluster_compute: ray-lightning/compute_tpl.yaml
+
+  driver_setup: ray-lightning/driver_setup.sh
+  run:
+    timeout: 1200
+    script: python ray-lightning/ray_lightning_user_test.py
+    type: client
+
+  alert: default
+
+- name: ml_user_tune_rllib_connect_test
+  group: ML user tests
+  working_dir: ml_user_tests
+
+  legacy:
+    test_name: tune_rllib_connect_test
+    test_suite: ml_user_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: ../rllib_tests/app_config.yaml
+    cluster_compute: tune_rllib/compute_tpl.yaml
+
+  driver_setup: tune_rllib/driver_setup.sh
+  run:
+    timeout: 2000
+    script: python tune_rllib/run_connect_tests.py
+    type: client
 
   alert: default
 
@@ -960,6 +1167,472 @@
 
 
 ########################
+# Golden Notebook tests
+########################
+- name: golden_notebook_dask_xgboost_test
+  group: Golden Notebook tests
+  working_dir: golden_notebook_tests
+
+  legacy:
+    test_name: dask_xgboost_test
+    test_suite: golden_notebook_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: dask_xgboost_app_config.yaml
+    cluster_compute: compute_tpl.yaml
+
+  run:
+    timeout: 1800
+    script: python workloads/dask_xgboost_test.py --num-actors 4 --cpus-per-actor 4 --num-actors-inference 16 --cpus-per-actor-inference 1
+    type: client
+
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
+
+  alert: default
+
+- name: golden_notebook_modin_xgboost_test
+  group: Golden Notebook tests
+  working_dir: golden_notebook_tests
+
+  legacy:
+    test_name: modin_xgboost_test
+    test_suite: golden_notebook_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: modin_xgboost_app_config.yaml
+    cluster_compute: compute_tpl.yaml
+
+  run:
+    timeout: 1800
+    script: python workloads/modin_xgboost_test.py --num-actors 4 --cpus-per-actor 4 --num-actors-inference 16 --cpus-per-actor-inference 1
+    type: client
+
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
+
+  alert: default
+
+- name: golden_notebook_torch_tune_serve_test
+  group: Golden Notebook tests
+  working_dir: golden_notebook_tests
+
+  legacy:
+    test_name: torch_tune_serve_test
+    test_suite: golden_notebook_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: torch_tune_serve_app_config.yaml
+    cluster_compute: gpu_tpl.yaml
+
+  run:
+    timeout: 1800
+    script: python workloads/torch_tune_serve_test.py
+    type: client
+
+  alert: default
+
+
+#######################
+# Long running tests
+#######################
+
+- name: long_running_actor_deaths
+  group: Long running tests
+  working_dir: long_running_tests
+  legacy:
+    test_name: actor_deaths
+    test_suite: long_running_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_1.yaml
+
+  run:
+    timeout: 86400
+    prepare: ray stop
+    script: python workloads/actor_deaths.py
+    long_running: true
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 3600
+
+  alert: long_running_tests
+
+- name: long_running_apex
+  group: Long running tests
+  working_dir: long_running_tests
+  legacy:
+    test_name: apex
+    test_suite: long_running_tests
+
+  frequency: nightly
+  team: ml
+  cluster:
+    cluster_env: ../rllib_tests/app_config.yaml
+    cluster_compute: tpl_cpu_3.yaml
+
+  run:
+    timeout: 86400
+    script: python workloads/apex.py
+    long_running: true
+    wait_for_nodes:
+      num_nodes: 3
+      timeout: 600
+
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 3600
+
+  alert: long_running_tests
+
+- name: long_running_impala
+  group: Long running tests
+  working_dir: long_running_tests
+  legacy:
+    test_name: impala
+    test_suite: long_running_tests
+
+  frequency: nightly
+  team: ml
+  cluster:
+    cluster_env: app_config_np.yaml
+    cluster_compute: tpl_cpu_1_large.yaml
+
+  run:
+    timeout: 86400
+    script: python workloads/impala.py
+    long_running: true
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 3600
+
+  alert: long_running_tests
+
+- name: long_running_many_actor_tasks
+  group: Long running tests
+  working_dir: long_running_tests
+  legacy:
+    test_name: many_actor_tasks
+    test_suite: long_running_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_1.yaml
+
+  run:
+    timeout: 86400
+    prepare: ray stop
+    script: python workloads/many_actor_tasks.py
+    long_running: true
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 3600
+
+  alert: long_running_tests
+
+- name: long_running_many_drivers
+  group: Long running tests
+  working_dir: long_running_tests
+  legacy:
+    test_name: many_drivers
+    test_suite: long_running_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_1.yaml
+
+  run:
+    timeout: 86400
+    prepare: ray stop
+    script: python workloads/many_drivers.py --iteration-num=4000
+    long_running: true
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 3600
+
+  alert: long_running_tests
+
+- name: long_running_many_ppo
+  group: Long running tests
+  working_dir: long_running_tests
+  legacy:
+    test_name: many_ppo
+    test_suite: long_running_tests
+
+  frequency: nightly
+  team: ml
+  cluster:
+    cluster_env: ../rllib_tests/app_config.yaml
+    cluster_compute: many_ppo.yaml
+
+  run:
+    timeout: 86400
+    script: python workloads/many_ppo.py
+    long_running: true
+    wait_for_nodes:
+      num_nodes: 1
+      timeout: 600
+
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 3600
+
+  alert: long_running_tests
+
+- name: long_running_many_tasks
+  group: Long running tests
+  working_dir: long_running_tests
+  legacy:
+    test_name: many_tasks
+    test_suite: long_running_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_1.yaml
+
+  run:
+    timeout: 86400
+    prepare: ray stop
+    script: python workloads/many_tasks.py
+    long_running: true
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 3600
+
+  alert: long_running_tests
+
+- name: long_running_many_tasks_serialized_ids
+  group: Long running tests
+  working_dir: long_running_tests
+  legacy:
+    test_name: many_tasks_serialized_ids
+    test_suite: long_running_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_1.yaml
+
+  run:
+    timeout: 86400
+    prepare: ray stop
+    script: python workloads/many_tasks_serialized_ids.py
+    long_running: true
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 3600
+
+  alert: long_running_tests
+
+- name: long_running_node_failures
+  group: Long running tests
+  working_dir: long_running_tests
+  legacy:
+    test_name: node_failures
+    test_suite: long_running_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_1.yaml
+
+  run:
+    timeout: 86400
+    prepare: ray stop
+    script: python workloads/node_failures.py
+    long_running: true
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 3600
+
+  alert: long_running_tests
+
+- name: long_running_pbt
+  group: Long running tests
+  working_dir: long_running_tests
+  legacy:
+    test_name: pbt
+    test_suite: long_running_tests
+
+  frequency: nightly
+  team: ml
+  cluster:
+    cluster_env: ../rllib_tests/app_config.yaml
+    cluster_compute: tpl_cpu_1.yaml
+
+  run:
+    timeout: 86400
+    prepare: ray stop
+    script: python workloads/pbt.py
+    long_running: true
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 3600
+
+  alert: long_running_tests
+
+- name: long_running_serve
+  group: Long running tests
+  working_dir: long_running_tests
+  legacy:
+    test_name: serve
+    test_suite: long_running_tests
+
+  frequency: nightly
+  team: serve
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_1.yaml
+
+  run:
+    timeout: 86400
+    prepare: ray stop
+    script: python workloads/serve.py
+    long_running: true
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 3600
+
+  alert: long_running_tests
+
+- name: long_running_serve_failure
+  group: Long running tests
+  working_dir: long_running_tests
+
+  stable: false
+
+  legacy:
+    test_name: serve_failure
+    test_suite: long_running_tests
+
+  frequency: nightly
+  team: serve
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_1.yaml
+
+  run:
+    timeout: 86400
+    prepare: ray stop
+    script: python workloads/serve_failure.py
+    long_running: true
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 600
+
+  alert: long_running_tests
+
+- name: long_running_distributed_pytorch_pbt_failure
+  group: Long running tests
+  working_dir: long_running_distributed_tests
+
+  legacy:
+    test_name: pytorch_pbt_failure
+    test_suite: long_running_distributed
+
+  frequency: weekly
+  team: ml
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl.yaml
+
+  run:
+    timeout: 86400
+    script: python workloads/pytorch_pbt_failure.py
+    long_running: true
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+    run:
+      timeout: 3600
+
+  alert: long_running_tests
+
+########################
 # Runtime env tests
 ########################
 - name: runtime_env_rte_many_tasks_actors
@@ -1030,7 +1703,6 @@
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: rte_minimal.yaml
-    autosuspend_mins: 10
 
   run:
     timeout: 600

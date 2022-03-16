@@ -184,9 +184,9 @@ class SigOptSearch(Searcher):
             ), """SigOpt must be installed!
                 You can install SigOpt with the command:
                 `pip install -U sigopt`."""
-            assert "SIGOPT_KEY" in os.environ, (
-                "SigOpt API key must be stored as " "environ variable at SIGOPT_KEY"
-            )
+            assert (
+                "SIGOPT_KEY" in os.environ
+            ), "SigOpt API key must be stored as environ variable at SIGOPT_KEY"
             # Create a connection with SigOpt API, requires API key
             self.conn = sgo.Connection(client_token=os.environ["SIGOPT_KEY"])
 

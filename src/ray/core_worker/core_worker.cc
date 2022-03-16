@@ -3133,7 +3133,7 @@ void CoreWorker::HandleLocalGC(const rpc::LocalGCRequest &request,
                                rpc::LocalGCReply *reply,
                                rpc::SendReplyCallback send_reply_callback) {
   if (options_.gc_collect != nullptr) {
-    options_.gc_collect();
+    options_.gc_collect(request.triggered_by_global_gc());
     send_reply_callback(Status::OK(), nullptr, nullptr);
   } else {
     send_reply_callback(
@@ -3441,6 +3441,29 @@ Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {
     }
   }
   return Status::OK();
+}
+
+std::vector<ObjectID> CoreWorker::GetCurrentReturnIds(int num_returns,
+                                                      const ActorID &callee_actor_id) {
+  std::vector<ObjectID> return_ids(num_returns);
+  const auto next_task_index = worker_context_.GetTaskIndex() + 1;
+  TaskID task_id;
+  if (callee_actor_id.IsNil()) {
+    /// Return ids for normal task call.
+    task_id = TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
+                                    worker_context_.GetCurrentInternalTaskId(),
+                                    next_task_index);
+  } else {
+    /// Return ids for actor task call.
+    task_id = TaskID::ForActorTask(worker_context_.GetCurrentJobID(),
+                                   worker_context_.GetCurrentInternalTaskId(),
+                                   next_task_index,
+                                   callee_actor_id);
+  }
+  for (int i = 0; i < num_returns; i++) {
+    return_ids[i] = ObjectID::FromIndex(task_id, i + 1);
+  }
+  return return_ids;
 }
 
 }  // namespace core

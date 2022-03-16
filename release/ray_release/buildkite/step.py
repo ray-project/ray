@@ -39,6 +39,7 @@ DEFAULT_STEP_TEMPLATE = {
 
 def get_step(
     test: Test,
+    report: bool = False,
     smoke_test: bool = False,
     ray_wheels: Optional[str] = None,
     env: Optional[Dict] = None,
@@ -50,7 +51,7 @@ def get_step(
 
     cmd = f"./release/run_release_test.sh \"{test['name']}\" "
 
-    if not bool(int(os.environ.get("NO_REPORT_OVERRIDE", "0"))):
+    if report and not bool(int(os.environ.get("NO_REPORT_OVERRIDE", "0"))):
         cmd += " --report"
 
     if smoke_test:

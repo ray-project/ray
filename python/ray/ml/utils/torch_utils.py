@@ -1,4 +1,4 @@
-from typing import Optional, Union, List
+from typing import Optional, Union, List, Dict
 
 import pandas as pd
 import torch
@@ -71,3 +71,33 @@ def convert_pandas_to_torch_tensor(
         ]
     else:
         return get_tensor_for_columns(columns=columns, dtype=column_dtypes)
+
+
+def load_torch_model(
+    saved_model: Union[torch.nn.Module, Dict],
+    model_definition: Optional[torch.nn.Module] = None,
+) -> torch.nn.Module:
+    """Loads a PyTorch model from the provided``saved_model``.
+
+    If ``saved_model`` is a torch Module, then return it directly. If ``saved_model`` is
+    a torch state dict, then load it in the ``model_definition`` and return the loaded
+    model.
+    """
+    if isinstance(saved_model, torch.nn.Module):
+        return saved_model
+    elif isinstance(saved_model, dict):
+        if not model_definition:
+            raise ValueError(
+                "Attempting to load torch model from a "
+                "state_dict, but no `model_definition` was "
+                "provided."
+            )
+        model_definition.load_state_dict(saved_model)
+        return model_definition
+    else:
+        raise ValueError(
+            f"Saved model is of type {type(saved_model)}. "
+            f"The model saved in the checkpoint is expected "
+            f"to be of type `torch.nn.Module`, or a model "
+            f"state dict of type dict."
+        )
