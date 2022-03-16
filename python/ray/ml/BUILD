@@ -1,4 +1,39 @@
 # --------------------------------------------------------------------
+# Tests from the python/ray/ml/examples directory.
+# Please keep these sorted alphabetically.
+# --------------------------------------------------------------------
+py_test(
+    name = "tensorflow_linear_dataset_example",
+    size = "medium",
+    main = "examples/torch/tensorflow_linear_dataset_example.py",
+    srcs = ["examples/torch/tensorflow_linear_dataset_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib", ":ml_lib"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "tensorflow_mnist_example",
+    size = "medium",
+    main = "examples/torch/tensorflow_mnist_example.py",
+    srcs = ["examples/torch/tensorflow_mnist_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib", ":ml_lib"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "tune_tensorflow_mnist_example",
+    size = "medium",
+    main = "examples/torch/tune_tensorflow_mnist_example.py",
+    srcs = ["examples/torch/tune_tensorflow_mnist_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib", ":ml_lib"],
+    args = ["--smoke-test"]
+)
+
+
+# --------------------------------------------------------------------
 # Tests from the python/ray/ml/tests directory.
 # Covers all tests starting with `test_`.
 # Please keep these sorted alphabetically.
@@ -48,6 +83,14 @@ py_test(
     name = "test_tensorflow_predictor",
     size = "small",
     srcs = ["tests/test_tensorflow_predictor.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_tensorflow_trainer",
+    size = "medium",
+    srcs = ["tests/test_tensorflow_trainer.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
