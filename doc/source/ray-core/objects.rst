@@ -144,13 +144,13 @@ Ray object references can be freely passed around a Ray application. This means 
 
     # Pass-by-value: send the object to a task as a top-level argument.
     # The object will be de-referenced, so the task only sees its value.
-    task.remote(object_ref)
+    echo.remote(object_ref)
     # -> prints "1"
 
     # Pass-by-reference: when passed inside a Python list or other data structure,
     # the object ref is preserved. The object data is not transferred to the worker
     # when it is passed by reference, until ray.get() is called on the reference.
-    task.remote({"obj": object_ref})
+    echo.remote({"obj": object_ref})
     # -> prints "{"obj": ObjectRef(...)}"
 
     # Objects can be nested within each other. Ray will keep the inner object
