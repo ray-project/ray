@@ -1678,7 +1678,7 @@ def _get_deployments_from_node(node: DeploymentNode) -> List[Deployment]:
 
     Returns:
         deployment_list(List[Deployment]): the list of Deployment objects. The
-          last element correspond to the node passed in to this function.
+          last element corresponds to the node passed in to this function.
     """
     from ray.serve.pipeline.api import build as pipeline_build
 
@@ -1703,6 +1703,7 @@ def run(
     will be deployed.
     """
 
+<<<<<<< HEAD
     deployments = _get_deployments_from_target(target)
 
     # if isinstance(target, DeploymentNode):
@@ -1750,11 +1751,38 @@ def deploy_group(deployments: List[Deployment], *, blocking=True) -> RayServeHan
         parameter_group.append(deployment_parameters)
 
     internal_get_global_client().deploy_group(parameter_group, _blocking=blocking)
+=======
+    client = start(detached=True, http_options={"host": host, "port": port})
+
+    if isinstance(target, DeploymentNode):
+        deployments = _get_deployments_from_node(target)
+    else:
+        raise NotImplementedError()
+
+    parameter_group = [
+        {
+            "name": deployment._name,
+            "func_or_class": deployment._func_or_class,
+            "init_args": deployment.init_args,
+            "init_kwargs": deployment.init_kwargs,
+            "ray_actor_options": deployment._ray_actor_options,
+            "config": deployment._config,
+            "version": deployment._version,
+            "prev_version": deployment._prev_version,
+            "route_prefix": deployment.route_prefix,
+            "url": deployment.url,
+        }
+        for deployment in deployments
+    ]
+
+    client.deploy_group(parameter_group, _blocking=True)
+    return deployments[-1].get_handle()
+>>>>>>> fix-serve-run
 
 
 @PublicAPI(stability="alpha")
 def build(target: DeploymentNode) -> Application:
-    """Builds a Serve application into a static configuration.
+    """Builds a Serve application into a static application.
 
     Takes in a DeploymentNode and converts it to a Serve application
     consisting of one or more deployments. This is intended to be used for
