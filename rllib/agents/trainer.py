@@ -2853,14 +2853,16 @@ class Trainer(Trainable):
             config["replay_buffer_config"]["replay_burn_in"] = config.get(
                 "replay_burn_in", 0
             )
-            if config.get("replay_burn_in"):
+
+            if config.get("burn_in"):
                 deprecation_warning(
-                    old="config['replay_burn_in']",
+                    old="config['burn_in']",
                     new="config['replay_buffer_config']['replay_burn_in']",
                     error=False,
                 )
                 # and old configs
-                config["replay_buffer_config"][k] = config["k"]
+                config["replay_buffer_config"]["replay_burn_in"] = config[
+                    "burn_in"]
 
             config["replay_buffer_config"]["replay_zero_init_states"] = config.get(
                 "replay_zero_init_states", True

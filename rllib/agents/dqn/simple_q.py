@@ -84,6 +84,7 @@ DEFAULT_CONFIG = with_common_config({
     # Use the new ReplayBuffer API here
     "_replay_buffer_api": True,
     # Deprecated for Simple Q because of new ReplayBuffer API
+    # Use MultiAgentPrioritizedReplayBuffer for prioritization.
     "prioritized_replay": DEPRECATED_VALUE,
     "replay_buffer_config": {
         "type": "MultiAgentPrioritizedReplayBuffer",
