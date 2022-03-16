@@ -40,6 +40,8 @@ class JobStatus(str, Enum):
 class JobInfo:
     status: JobStatus
 
+    #: The entrypoint command for this job.
+    entrypoint: str
     message: Optional[str] = None
     # TODO(architkulkarni): Populate this field with e.g. Runtime env setup failure,
     # Internal error, user script error
