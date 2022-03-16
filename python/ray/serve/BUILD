@@ -485,10 +485,3 @@ py_test(
     deps = [":serve_lib"],
 )
 
-py_test(
-    name = "test_build",
-    size = "medium",
-    srcs = pipeline_tests_srcs,
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"],
-)
