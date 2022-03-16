@@ -20,6 +20,7 @@ from typing import (
     Type,
     Union,
     List,
+    Iterable,
     overload,
 )
 
@@ -393,9 +394,11 @@ class Client:
                 self.log_deployment_ready(name, version, url, tags[i])
 
     @_ensure_connected
-    def delete_deployment(self, name: str) -> None:
-        ray.get(self._controller.delete_deployment.remote(name))
-        self._wait_for_deployment_deleted(name)
+    def delete_deployments(self, names: Iterable[str], blocking: bool = True) -> None:
+        ray.get(self._controller.delete_deployments.remote(names))
+        if blocking:
+            for name in names:
+                self._wait_for_deployment_deleted(name)
 
     @_ensure_connected
     def get_deployment_info(self, name: str) -> Tuple[DeploymentInfo, str]:
@@ -1229,7 +1232,7 @@ class Deployment:
     @PublicAPI
     def delete(self):
         """Delete this deployment."""
-        return internal_get_global_client().delete_deployment(self._name)
+        return internal_get_global_client().delete_deployments([self._name])
 
     @PublicAPI
     def get_handle(

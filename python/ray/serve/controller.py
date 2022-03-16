@@ -3,7 +3,7 @@ import json
 import time
 from collections import defaultdict
 import os
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, Iterable, List, Optional, Tuple, Any
 from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
 from copy import copy
 
@@ -366,6 +366,10 @@ class ServeController:
     def delete_deployment(self, name: str):
         self.endpoint_state.delete_endpoint(name)
         return self.deployment_state_manager.delete_deployment(name)
+
+    def delete_deployments(self, names: Iterable[str]) -> None:
+        for name in names:
+            self.delete_deployment(name)
 
     def get_deployment_info(self, name: str) -> Tuple[DeploymentInfo, str]:
         """Get the current information about a deployment.
