@@ -1,4 +1,25 @@
 # --------------------------------------------------------------------
+# Tests from the python/ray/ml/examples directory.
+# Please keep these sorted alphabetically.
+# --------------------------------------------------------------------
+py_test(
+    name = "lightgbm_example",
+    size = "small",
+    srcs = ["examples/torch/lightgbm_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"],
+)
+
+py_test(
+    name = "xgboost_example",
+    size = "small",
+    srcs = ["examples/torch/xgboost_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"],
+)
+
+
+# --------------------------------------------------------------------
 # Tests from the python/ray/ml/tests directory.
 # Covers all tests starting with `test_`.
 # Please keep these sorted alphabetically.

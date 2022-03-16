@@ -110,6 +110,7 @@ class LightGBMTrainer(GBDTTrainer):
                 model_file=os.path.join(init_model_path, MODEL_KEY)
             )
 
+        lightgbm_config.setdefault("verbose_eval", False)
         lightgbm_config.setdefault("callbacks", [])
         lightgbm_config["callbacks"] += [
             TuneReportCheckpointCallback(filename=MODEL_KEY, frequency=1)

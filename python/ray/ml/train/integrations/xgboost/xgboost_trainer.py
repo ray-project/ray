@@ -111,6 +111,7 @@ class XGBoostTrainer(GBDTTrainer):
             xgb_model = xgboost.Booster()
             xgb_model.load_model(os.path.join(xgb_model_path, MODEL_KEY))
 
+        xgboost_config.setdefault("verbose_eval", False)
         xgboost_config.setdefault("callbacks", [])
         xgboost_config["callbacks"] += [
             TuneReportCheckpointCallback(filename=MODEL_KEY, frequency=1)
