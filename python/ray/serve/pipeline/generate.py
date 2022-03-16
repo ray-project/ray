@@ -27,7 +27,7 @@ class DeploymentNameGenerator(object):
     @classmethod
     def get_deployment_name(cls, dag_node: ClassNode):
         assert isinstance(
-            dag_node, (FunctionNode, ClassNode)
+            dag_node, ClassNode
         ), "get_deployment_name() should only be called on ClassNode instances."
         with cls.__lock:
             deployment_name = (
@@ -72,21 +72,7 @@ def transform_ray_dag_to_serve_dag(dag_node):
     Transform a Ray DAG to a Serve DAG. Map ClassNode to DeploymentNode with
     ray decorated body passed in, ans ClassMethodNode to DeploymentMethodNode.
     """
-    if isinstance(dag_node, FunctionNode):
-        deployment_name = DeploymentNameGenerator.get_deployment_name(dag_node)
-        ray_actor_options = _remove_non_default_ray_actor_options(
-            dag_node.get_options()
-        )
-        return DeploymentNode(
-            dag_node._body,
-            deployment_name,
-            deployment_init_args=tuple(),
-            deployment_init_kwargs=dict(),
-            ray_actor_options=ray_actor_options,
-            # TODO: (jiaodong) Support .options(metadata=xxx) for deployment
-            other_args_to_resolve=dag_node.get_other_args_to_resolve(),
-        )
-    elif isinstance(dag_node, ClassNode):
+    if isinstance(dag_node, ClassNode):
         deployment_name = DeploymentNameGenerator.get_deployment_name(dag_node)
         ray_actor_options = _remove_non_default_ray_actor_options(
             dag_node.get_options()

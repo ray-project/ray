@@ -39,6 +39,9 @@ def _validate_consistent_python_output(
     assert ray.get(handle_by_name.remote(input)) == output
 
 
+@pytest.mark.skip(
+    "No supporting converting ray.remote task directly to Serve deployments right now."
+)
 def test_build_simple_func_dag(serve_instance):
     ray_dag, _ = get_simple_func_dag()
     serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)

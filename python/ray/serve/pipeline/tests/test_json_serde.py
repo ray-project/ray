@@ -117,52 +117,6 @@ def test_non_json_serializable_args():
         _ = json.dumps(ray_dag, cls=DAGNodeEncoder)
 
 
-def test_no_inline_class_or_func(serve_instance):
-    # 1) Inline function
-    @ray.remote
-    def inline_func(val):
-        return val
-
-    with InputNode() as dag_input:
-        ray_dag = inline_func.bind(dag_input)
-
-    assert ray.get(ray_dag.execute(1)) == 1
-    with pytest.raises(
-        AssertionError,
-        match="Function used in DAG should not be in-line defined",
-    ):
-        _ = json.dumps(ray_dag, cls=DAGNodeEncoder)
-
-    # 2) Inline class
-    @ray.remote
-    class InlineClass:
-        def __init__(self, val):
-            self.val = val
-
-        def get(self, input):
-            return self.val + input
-
-    with InputNode() as dag_input:
-        node = InlineClass.bind(1)
-        ray_dag = node.get.bind(dag_input)
-
-    with pytest.raises(
-        AssertionError,
-        match="Class used in DAG should not be in-line defined",
-    ):
-        _ = json.dumps(ray_dag, cls=DAGNodeEncoder)
-
-    # 3) Class factory that function returns class object
-    with InputNode() as dag_input:
-        instance = ray.remote(class_factory()).bind()
-        ray_dag = instance.get.bind()
-    with pytest.raises(
-        AssertionError,
-        match="Class used in DAG should not be in-line defined",
-    ):
-        _ = json.dumps(ray_dag, cls=DAGNodeEncoder)
-
-
 def test_simple_function_node_json_serde(serve_instance):
     """
     Test the following behavior
