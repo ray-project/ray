@@ -13,7 +13,7 @@ py_test(
 )
 
 py_test(
-    name = "test_data_parallel_Trainer",
+    name = "test_data_parallel_trainer",
     size = "medium",
     srcs = ["tests/test_data_parallel_trainer.py"],
     tags = ["team:ml", "exclusive"],
