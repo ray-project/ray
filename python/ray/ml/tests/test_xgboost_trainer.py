@@ -2,7 +2,6 @@ import os
 import pytest
 import json
 import pandas as pd
-from ray.ml.utils.gbdt_utils import DMATRIX_PARAMS_KEY, PARAMS_KEY
 
 import xgboost as xgb
 
@@ -58,7 +57,7 @@ def test_fit(ray_start_4_cpus):
     trainer = XGBoostTrainer(
         scaling_config={"num_workers": 2},
         label_column="target",
-        xgboost_config={PARAMS_KEY: params},
+        params=params,
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
     )
     trainer.fit()
@@ -70,7 +69,8 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
     trainer = XGBoostTrainer(
         scaling_config=scale_config,
         label_column="target",
-        xgboost_config={PARAMS_KEY: params, "num_boost_round": 5},
+        params=params,
+        num_boost_round=5,
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
     )
     result = trainer.fit()
@@ -87,7 +87,8 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
     trainer = XGBoostTrainer(
         scaling_config=scale_config,
         label_column="target",
-        xgboost_config={PARAMS_KEY: params, "num_boost_round": 5},
+        params=params,
+        num_boost_round=5,
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
         resume_from_checkpoint=resume_from,
     )
@@ -115,7 +116,7 @@ def test_preprocessor_in_checkpoint(ray_start_4_cpus):
     trainer = XGBoostTrainer(
         scaling_config=scale_config,
         label_column="target",
-        xgboost_config={PARAMS_KEY: params},
+        params=params,
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
         preprocessor=DummyPreprocessor(),
     )
@@ -132,18 +133,18 @@ def test_tune(ray_start_4_cpus):
     trainer = XGBoostTrainer(
         scaling_config=scale_config,
         label_column="target",
-        xgboost_config={PARAMS_KEY: {**params, **{"max_depth": 1}}},
+        params={**params, **{"max_depth": 1}},
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
     )
 
     tune.run(
         trainer.as_trainable(),
-        config={"xgboost_config": {PARAMS_KEY: {"max_depth": tune.randint(2, 4)}}},
+        config={"params": {"max_depth": tune.randint(2, 4)}},
         num_samples=2,
     )
 
     # Make sure original Trainer is not affected.
-    assert trainer.xgboost_config[PARAMS_KEY]["max_depth"] == 1
+    assert trainer.params["max_depth"] == 1
 
 
 def test_validation(ray_start_4_cpus):
@@ -153,21 +154,15 @@ def test_validation(ray_start_4_cpus):
         XGBoostTrainer(
             scaling_config={"num_workers": 2},
             label_column="target",
-            xgboost_config={PARAMS_KEY: params},
+            params=params,
             datasets={"valid": valid_dataset},
         )
-    with pytest.raises(KeyError, match=PARAMS_KEY):
+    with pytest.raises(KeyError, match="dmatrix_params"):
         XGBoostTrainer(
             scaling_config={"num_workers": 2},
             label_column="target",
-            xgboost_config={},
-            datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
-        )
-    with pytest.raises(KeyError, match=DMATRIX_PARAMS_KEY):
-        XGBoostTrainer(
-            scaling_config={"num_workers": 2},
-            label_column="target",
-            xgboost_config={PARAMS_KEY: params, DMATRIX_PARAMS_KEY: {"data": {}}},
+            params=params,
+            dmatrix_params={"data": {}},
             datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
         )
 

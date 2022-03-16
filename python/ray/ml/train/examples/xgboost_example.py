@@ -44,9 +44,10 @@ def train_xgboost(num_workers: int, use_gpu: bool = False) -> Result:
             "use_gpu": use_gpu,
         },
         label_column="target",
-        xgboost_config={"params": params, "num_boost_round": 100},
+        params=params,
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
         preprocessor=preprocessor,
+        num_boost_round=100,
     )
     result = trainer.fit()
     print(result.metrics)
@@ -67,7 +68,7 @@ def predict_xgboost(result: Result):
     print(f"PREDICTED LABELS\n{predicted_labels}")
 
     shap_values = test_dataset.map_batches(
-        partial(predictor.predict, pred_contrib=True), batch_format="pandas"
+        partial(predictor.predict, pred_contribs=True), batch_format="pandas"
     ).to_pandas(limit=float("inf"))
     print(f"SHAP VALUES\n{shap_values}")
 
