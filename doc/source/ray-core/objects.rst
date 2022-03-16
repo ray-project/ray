@@ -131,7 +131,7 @@ If the current node's object store does not contain the object, the object is do
 Passing Objects by Reference
 ----------------------------
 
-Ray object references can be freely passed around a Ray application. This means that they can be passed as arguments to tasks, actor methods, and even stored in other objects.
+Ray object references can be freely passed around a Ray application. This means that they can be passed as arguments to tasks, actor methods, and even stored in other objects. Objects are tracked via *distributed reference counting*, and their data is automatically freed once all references to the object are deleted.
 
 .. code-block:: python
 
