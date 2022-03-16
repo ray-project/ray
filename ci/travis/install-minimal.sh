@@ -15,8 +15,3 @@ eval "${WORKSPACE_DIR}/ci/travis/ci.sh build"
 python -m pip install -U \
   pytest==5.4.3 \
   numpy
-
-# Runtime Env Agent require async_timeout,
-# we don't need to add async_timeout on ray's requirement,
-# because aiohttp require async_timeout.
-python -m pip install async_timeout
