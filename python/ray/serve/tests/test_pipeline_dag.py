@@ -5,12 +5,14 @@ from ray.serve.api import _get_deployments_from_node
 from ray.serve.handle import PipelineHandle
 from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
 from ray.experimental.dag import InputNode
+
 import ray
 from ray import serve
 from typing import TypeVar
 
 RayHandleLike = TypeVar("RayHandleLike")
 NESTED_HANDLE_KEY = "nested_handle"
+
 
 @serve.deployment
 class ClassHello:
@@ -83,8 +85,6 @@ def class_factory():
             return self.val
 
     return MyInlineClass
-import ray
-from ray import serve
 
 
 @serve.deployment
@@ -109,86 +109,73 @@ class Driver:
         return await self.dag.remote(inp)
 
 
-@pytest.mark.skip("TODO")
-def test_single_func_deployment_dag():
-    # Doesn't work. First error we ran into was related to InputAtrributeNode.
-    # combine is already a deployment function.
+def test_single_func_deployment_dag(serve_instance):
     with InputNode() as dag_input:
-        serve_dag = combine.bind(dag_input[0], dag_input[1], kwargs_output=1)
+        combine_func = combine.bind()
+        serve_dag = combine_func.__call__.bind(
+            dag_input[0], dag_input[1], kwargs_output=1
+        )
     print(serve_dag)
 
-    handle = serve.run(serve_dag)
+    handle = serve.run(Driver.bind(serve_dag))
     assert ray.get(handle.remote([1, 2])) == 4
 
-@pytest.mark.skip("TODO")
-def test_simple_class_with_class_method():
-    # Doesn't work. serve run does not support DeploymentMethodNode as entry.
+
+def test_simple_class_with_class_method(serve_instance):
     with InputNode() as dag_input:
         model = Model.bind(2, ratio=0.3)
         serve_dag = model.forward.bind(dag_input)
 
     print(serve_dag)
-    handle = serve.run(serve_dag)
+    handle = serve.run(Driver.bind(serve_dag))
     assert ray.get(handle.remote(1)) == 0.6
 
-@pytest.mark.skip("TODO")
+
 def test_func_class_with_class_method(serve_instance):
-    # Likely same as test_single_func_deployment_dag, InputAttributeNode
     with InputNode() as dag_input:
         m1 = Model.bind(1)
         m2 = Model.bind(2)
         m1_output = m1.forward.bind(dag_input[0])
         m2_output = m2.forward.bind(dag_input[1])
-        serve_dag = combine.bind(m1_output, m2_output, kwargs_output=dag_input[2])
+        serve_dag = combine.bind().__call__.bind(
+            m1_output, m2_output, kwargs_output=dag_input[2]
+        )
+
     print(serve_dag)
-    handle = serve.run(serve_dag)
+    handle = serve.run(Driver.bind(serve_dag))
     assert ray.get(handle.remote([1, 2, 3])) == 8
 
-@pytest.mark.skip("TODO")
-def test_multi_instantiation_class_deployment_in_init_args():
-    # First error encountered was same reason as test_simple_class_with_class_method
-    # Can't use DeploymentMethodNode as DAG entry
+
+def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
     with InputNode() as dag_input:
         m1 = Model.bind(2)
         m2 = Model.bind(3)
         combine = Combine.bind(m1, m2=m2)
         serve_dag = combine.__call__.bind(dag_input)
     print(serve_dag)
-    handle = serve.run(serve_dag)
+    handle = serve.run(Driver.bind(serve_dag))
     assert ray.get(handle.remote(1)) == 5
 
-@pytest.mark.skip("TODO")
-def test_shared_deployment_handle():
-    # First error encountered was same reason as test_simple_class_with_class_method
-    # Can't use DeploymentMethodNode as DAG entry
+
+def test_shared_deployment_handle(serve_instance):
     with InputNode() as dag_input:
         m = Model.bind(2)
         combine = Combine.bind(m, m2=m)
         serve_dag = combine.__call__.bind(dag_input)
     print(serve_dag)
-    handle = serve.run(serve_dag)
+    handle = serve.run(Driver.bind(serve_dag))
     assert ray.get(handle.remote(1)) == 4
 
-@pytest.mark.skip("TODO")
-def test_multi_instantiation_class_nested_deployment_arg_dag():
-    # First error encountered was same reason as test_simple_class_with_class_method
-    # Can't use DeploymentMethodNode as DAG entry
+
+def test_multi_instantiation_class_nested_deployment_arg_dag(serve_instance):
     with InputNode() as dag_input:
         m1 = Model.bind(2)
         m2 = Model.bind(3)
         combine = Combine.bind(m1, m2={NESTED_HANDLE_KEY: m2}, m2_nested=True)
         serve_dag = combine.__call__.bind(dag_input)
     print(serve_dag)
-    handle = serve.run(serve_dag)
+    handle = serve.run(Driver.bind(serve_dag))
     assert ray.get(handle.remote(1)) == 5
-    def __call__(self, inp: int) -> int:
-        print(f"Driver got {inp}")
-        return ray.get(self.dag.remote(inp))
-
-
-@ray.remote
-def combine(*args):
-    return sum(args)
 
 
 def test_single_node_deploy_success(serve_instance):
@@ -223,14 +210,20 @@ def test_options_and_names(serve_instance):
     assert m1_built.num_replicas == 2
 
 
+@ray.remote
+def combine_task(*args):
+    return sum(args)
+
+
 @pytest.mark.skip("TODO")
 def test_mixing_task(serve_instance):
-    # Even if we change it to serve.deployment, funtion deployment doesn't take
-    # init args but we need binding here.
+    # Can't mix ray.remote tasks with deployment in a dag right now.
     m1 = Adder.bind(1)
     m2 = Adder.bind(2)
     with PipelineInputNode() as input_node:
-        out = combine.bind(m1.forward.bind(input_node), m2.forward.bind(input_node))
+        out = combine_task.bind(
+            m1.forward.bind(input_node), m2.forward.bind(input_node)
+        )
     driver = Driver.bind(out)
     handle = serve.run(driver)
     assert ray.get(handle.remote(1)) == 5
