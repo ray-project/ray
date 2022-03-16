@@ -9,6 +9,7 @@ from ray import serve
 from ray.serve.api import (
     Application,
     get_deployment_statuses,
+    internal_get_global_client,
     serve_application_status_to_schema,
 )
 
@@ -61,8 +62,7 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
         all_deployments = serve.list_deployments()
         all_names = set(all_deployments.keys())
         names_to_delete = all_names.difference(new_names)
-        for name in names_to_delete:
-            all_deployments[name].delete()
+        internal_get_global_client().delete_deployments(names_to_delete)
 
         return Response()
 

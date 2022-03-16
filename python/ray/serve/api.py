@@ -7,11 +7,8 @@ import logging
 import random
 import re
 import time
-<<<<<<< HEAD
 import yaml
-=======
 import json
->>>>>>> 8707eb628843a6ab02e6452f487bb7f7df8a5e8f
 from dataclasses import dataclass
 from functools import wraps
 from typing import (
