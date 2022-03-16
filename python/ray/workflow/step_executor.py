@@ -410,9 +410,10 @@ def _workflow_step_executor(
     try:
         step_prerun_metadata = {"start_time": time.time()}
         store.save_step_prerun_metadata(step_id, step_prerun_metadata)
-        persisted_output, volatile_output = _wrap_run(
-            func, runtime_options, *args, **kwargs
-        )
+        with workflow_context.workflow_execution():
+            persisted_output, volatile_output = _wrap_run(
+                func, runtime_options, *args, **kwargs
+            )
         step_postrun_metadata = {"end_time": time.time()}
         store.save_step_postrun_metadata(step_id, step_postrun_metadata)
     except Exception as e:
