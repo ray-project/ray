@@ -461,7 +461,7 @@ slateq-interest-evolution-recsim-env:
     env: ray.rllib.examples.env.recommender_system_envs_with_recsim.InterestEvolutionRecSimEnv
     run: SlateQ
     stop:
-        episode_reward_mean: 155.0
+        episode_reward_mean: 162.0
         timesteps_total: 300000
     config:
         # RLlib/RecSim wrapper specific settings:
