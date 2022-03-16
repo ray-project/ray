@@ -14,11 +14,13 @@ from ray_release.exception import (
     LogsError,
     RemoteEnvSetupError,
     ClusterNodesWaitTimeout,
+    LocalEnvSetupError,
 )
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.job_manager import JobManager
 from ray_release.logger import logger
 from ray_release.util import format_link, get_anyscale_sdk
+from ray_release.wheels import install_matching_ray_locally
 
 
 class JobRunner(CommandRunner):
@@ -40,7 +42,13 @@ class JobRunner(CommandRunner):
         self.last_command_scd_id = None
 
     def prepare_local_env(self, ray_wheels_url: Optional[str] = None):
-        pass
+        # Install matching Ray for job submission
+        try:
+            install_matching_ray_locally(
+                ray_wheels_url or os.environ.get("RAY_WHEELS", None)
+            )
+        except Exception as e:
+            raise LocalEnvSetupError(f"Error setting up local environment: {e}") from e
 
     def prepare_remote_env(self):
         # Copy wait script to working dir
