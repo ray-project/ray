@@ -121,7 +121,7 @@ These are walkthroughs for Ray's three core concepts: Tasks, Actors, and Objects
 
 .. tip::
 
-    We suggest reading through the walkthrough for each section, prior to browsing more deeply into the materials.
+    We suggest reading through the walkthrough for each section prior to browsing more deeply into the materials.
 
 .. panels::
     :container: container pb-4
