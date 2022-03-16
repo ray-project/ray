@@ -1720,15 +1720,17 @@ def _get_deployments_from_node(node: DeploymentNode) -> List[Deployment]:
 @PublicAPI(stability="alpha")
 def run(
     target: Union[DeploymentNode, Application],
+    blocking: bool = True,
     *,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
-) -> RayServeHandle:
+) -> Optional[RayServeHandle]:
     """Run a Serve application and return a ServeHandle to the ingress.
 
     Either a DeploymentNode or a pre-built application can be passed in.
     If a DeploymentNode is passed in, all of the deployments it depends on
-    will be deployed.
+    will be deployed. If there is an ingress (i.e. only one deployment with a
+    route prefix), its handle will be returned.
     """
 
     if isinstance(target, Application):
@@ -1742,39 +1744,7 @@ def run(
             f'"{type(target)}" instead.'
         )
 
-    if len(deployments) == 0:
-        return
-
-    # TODO (shrekris-anyscale): validate ingress
-
     client = start(detached=True, http_options={"host": host, "port": port})
-    parameter_group = [
-        {
-            "name": deployment._name,
-            "func_or_class": deployment._func_or_class,
-            "init_args": deployment.init_args,
-            "init_kwargs": deployment.init_kwargs,
-            "ray_actor_options": deployment._ray_actor_options,
-            "config": deployment._config,
-            "version": deployment._version,
-            "prev_version": deployment._prev_version,
-            "route_prefix": deployment.route_prefix,
-            "url": deployment.url,
-        }
-        for deployment in deployments
-    ]
-
-    client.deploy_group(parameter_group, _blocking=True)
-    return deployments[-1].get_handle()
-
-    # TODO (shrekris-anyscale): return handle to ingress deployment
-
-
-def deploy_group(deployments: List[Deployment], *, blocking=True) -> RayServeHandle:
-    """Atomically deploys a group of deployments."""
-
-    if len(deployments) == 0:
-        return
 
     parameter_group = []
 
@@ -1794,7 +1764,20 @@ def deploy_group(deployments: List[Deployment], *, blocking=True) -> RayServeHan
 
         parameter_group.append(deployment_parameters)
 
-    internal_get_global_client().deploy_group(parameter_group, _blocking=blocking)
+    client.deploy_group(parameter_group, _blocking=blocking)
+
+    # If only one deployment has a route_prefix, consider that the ingress.
+    # Otherwise, there is no ingress.
+    ingress_handle = None
+    for deployment in deployments:
+        if deployment.route_prefix is not None:
+            if ingress_handle is None:
+                ingress_handle = deployment.get_handle()
+            else:
+                ingress_handle = None
+                break
+
+    return ingress_handle
 
 
 @PublicAPI(stability="alpha")
