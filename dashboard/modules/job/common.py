@@ -87,7 +87,6 @@ class JobInfoStorageClient:
         )
 
     def get_info(self, job_id: str) -> Optional[JobInfo]:
-        # raise ValueError
         pickled_info = _internal_kv_get(
             self.JOB_DATA_KEY.format(job_id=job_id),
             namespace=ray_constants.KV_NAMESPACE_JOB,
