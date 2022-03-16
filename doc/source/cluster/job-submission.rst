@@ -242,6 +242,7 @@ We expect to see the numbers printed from our actor, as well as the correct vers
 .. code-block:: python
 
     from ray.job_submission import JobStatus
+    import time
 
     def wait_until_finish(job_id):
         start = time.time()
@@ -307,6 +308,10 @@ Under the hood, both the Python SDK and the CLI make HTTP calls to the job serve
 
 .. code-block:: python
 
+    import requests
+    import json
+    import time
+
     resp = requests.post(
         "http://127.0.0.1:8265/api/jobs/",
         json={
@@ -329,7 +334,7 @@ Under the hood, both the Python SDK and the CLI make HTTP calls to the job serve
             "http://127.0.0.1:8265/api/jobs/<job_id>"
         )
         rst = json.loads(resp.text)
-        status = rst["job_status"]
+        status = rst["status"]
         print(f"status: {status}")
         if status in {JobStatus.SUCCEEDED, JobStatus.STOPPED, JobStatus.FAILED}:
             break

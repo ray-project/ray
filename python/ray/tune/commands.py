@@ -84,7 +84,7 @@ def print_format_output(dataframe):
     print(table)
     if dropped_cols:
         click.secho("Dropped columns: {}".format(dropped_cols), fg="yellow")
-        click.secho("Please increase your terminal size " "to view remaining columns.")
+        click.secho("Please increase your terminal size to view remaining columns.")
     if empty_cols:
         click.secho("Empty columns: {}".format(empty_cols), fg="yellow")
 

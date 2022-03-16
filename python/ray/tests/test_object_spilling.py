@@ -14,7 +14,6 @@ from ray.tests.conftest import (
     mock_distributed_fs_object_spilling_config,
 )
 from ray.external_storage import create_url_with_offset, parse_url_with_offset
-from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray._private.test_utils import wait_for_condition
 from ray.internal.internal_api import memory_summary
 from ray._raylet import GcsClientOptions
@@ -42,12 +41,7 @@ def is_dir_empty(temp_folder, append_path=ray.ray_constants.DEFAULT_OBJECT_PREFI
 
 def assert_no_thrashing(address):
     state = ray.state.GlobalState()
-    if use_gcs_for_bootstrap():
-        options = GcsClientOptions.from_gcs_address(address)
-    else:
-        options = GcsClientOptions.from_redis_address(
-            address, ray.ray_constants.REDIS_DEFAULT_PASSWORD
-        )
+    options = GcsClientOptions.from_gcs_address(address)
     state._initialize_global_state(options)
     summary = memory_summary(address=address, stats_only=True)
     restored_bytes = 0

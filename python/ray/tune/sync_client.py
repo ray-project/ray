@@ -76,13 +76,9 @@ def get_cloud_sync_client(remote_path) -> "CommandBasedClient":
                 "Upload uri starting with '{}' requires awscli tool"
                 " to be installed".format(S3_PREFIX)
             )
-        sync_up_template = (
-            "aws s3 sync {source} {target} " "--only-show-errors {options}"
-        )
+        sync_up_template = "aws s3 sync {source} {target} --only-show-errors {options}"
         sync_down_template = sync_up_template
-        delete_template = (
-            "aws s3 rm {target} --recursive " "--only-show-errors {options}"
-        )
+        delete_template = "aws s3 rm {target} --recursive --only-show-errors {options}"
         exclude_template = "--exclude '{pattern}'"
     elif remote_path.startswith(GS_PREFIX):
         if not distutils.spawn.find_executable("gsutil"):

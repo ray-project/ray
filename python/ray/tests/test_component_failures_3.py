@@ -6,7 +6,6 @@ import pytest
 
 import ray
 import ray.ray_constants as ray_constants
-from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray._private.test_utils import get_other_nodes
 
 
@@ -77,8 +76,6 @@ def test_driver_lives_sequential(ray_start_regular):
     ray.worker._global_node.kill_raylet()
     ray.worker._global_node.kill_log_monitor()
     ray.worker._global_node.kill_monitor()
-    if not use_gcs_for_bootstrap():
-        ray.worker._global_node.kill_gcs_server()
 
     # If the driver can reach the tearDown method, then it is still alive.
 
@@ -91,8 +88,6 @@ def test_driver_lives_parallel(ray_start_regular):
         + all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR]
         + all_processes[ray_constants.PROCESS_TYPE_MONITOR]
     )
-    if not use_gcs_for_bootstrap():
-        process_infos += all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER]
 
     # Kill all the components in parallel.
     for process_info in process_infos:

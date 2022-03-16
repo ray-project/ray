@@ -274,7 +274,9 @@ class JobSubmissionClient(SubmissionClient):
         Raises:
             RuntimeError: If the request to the job server fails.
         """
-        async with aiohttp.ClientSession(cookies=self._cookies) as session:
+        async with aiohttp.ClientSession(
+            cookies=self._cookies, headers=self._headers
+        ) as session:
             ws = await session.ws_connect(
                 f"{self._address}/api/jobs/{job_id}/logs/tail"
             )
