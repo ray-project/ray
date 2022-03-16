@@ -15,9 +15,10 @@ from ray.experimental.dag import (
 from ray.serve.pipeline.deployment_node import DeploymentNode
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.utils import parse_import_path
-from ray.serve.handle import RayServeDAGHandle, RayServeHandle
+from ray.serve.handle import RayServeHandle
 from ray.serve.utils import ServeHandleEncoder, serve_handle_object_hook
 from ray.serve.constants import SERVE_HANDLE_JSON_KEY
+from ray.serve.api import RayServeDAGHandle
 
 
 class DAGNodeEncoder(json.JSONEncoder):
@@ -93,7 +94,7 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
             return json.loads(input_json)
         except Exception:
             return input_json
-    elif input_json[DAGNODE_TYPE_KEY] == "RayServeDAGHandle":
+    elif input_json[DAGNODE_TYPE_KEY] == RayServeDAGHandle.__name__:
         return RayServeDAGHandle(input_json["dag_node_json"])
     # Deserialize DAGNode type
     elif input_json[DAGNODE_TYPE_KEY] == InputNode.__name__:

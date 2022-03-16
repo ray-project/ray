@@ -2,12 +2,12 @@ import json
 from typing import Any, Callable, Dict, Optional, List, Tuple, Union
 
 from ray.experimental.dag import DAGNode, InputNode
-from ray.serve.handle import RayServeDAGHandle, RayServeSyncHandle, RayServeHandle
+from ray.serve.handle import RayServeSyncHandle, RayServeHandle
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 from ray.experimental.dag.format_utils import get_dag_node_str
-from ray.serve.api import Deployment, DeploymentConfig
+from ray.serve.api import Deployment, DeploymentConfig, RayServeDAGHandle
 from ray.serve.utils import get_deployment_import_path
 
 

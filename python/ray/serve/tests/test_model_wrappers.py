@@ -12,7 +12,7 @@ from ray.ml.predictor import DataBatchType, Predictor
 from ray.serve.model_wrappers import ModelWrapper
 from ray.serve.pipeline.api import build
 from ray.experimental.dag.input_node import InputNode
-from ray.serve.handle import RayServeDAGHandle
+from ray.serve.api import RayServeDAGHandle
 from ray.serve.http_adapters import array_to_databatch
 import ray
 from ray import serve

@@ -7,6 +7,7 @@ import logging
 import random
 import re
 import time
+import json
 from dataclasses import dataclass
 from functools import wraps
 from typing import (
@@ -897,19 +898,38 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
 
 
 @PublicAPI(stability="alpha")
-class DAGHandle:
-    """Resolved from a DeploymentMethodNode at runtime.
+class RayServeDAGHandle:
+    """Resolved from a DeploymentNode at runtime.
 
     This can be used to call the DAG from a driver deployment to efficiently
     orchestrate a multi-deployment pipeline.
     """
 
-    def __init__(self, serialized_dag_json: str):
-        raise NotImplementedError()
+    def __init__(self, dag_node_json: str) -> None:
 
-    def remote(self, *args, **kwargs) -> ray.ObjectRef:
-        """Call the DAG."""
-        raise NotImplementedError()
+        self.dag_node_json = dag_node_json
+
+        # NOTE(simon): Making this lazy to avoid deserialization in controller for now
+        # This would otherwise hang because it's trying to get handles from within
+        # the controller.
+        self.dag_node = None
+
+    @classmethod
+    def _deserialize(cls, *args):
+        """Required for this class's __reduce__ method to be picklable."""
+        return cls(*args)
+
+    def __reduce__(self):
+        return RayServeDAGHandle._deserialize, (self.dag_node_json,)
+
+    def remote(self, *args, **kwargs):
+        from ray.serve.pipeline.json_serde import dagnode_from_json
+
+        if self.dag_node is None:
+            self.dag_node = json.loads(
+                self.dag_node_json, object_hook=dagnode_from_json
+            )
+        return self.dag_node.execute(*args, **kwargs)
 
 
 @PublicAPI(stability="alpha")
@@ -923,8 +943,8 @@ class DeploymentMethodNode(DAGNode):
     deployment node, it will be resolved to a DeployedCallGraph at runtime.
     """
 
-    def __init__(self):
-        raise NotImplementedError()
+    # TODO (jiaodong): Later unify and refactor this with pipeline node class
+    pass
 
 
 @PublicAPI(stability="alpha")
@@ -943,6 +963,7 @@ class DeploymentNode(ClassNode):
     that can be used to compose an optimized call graph.
     """
 
+    # TODO (jiaodong): Later unify and refactor this with pipeline node class
     pass
 
 
@@ -1660,10 +1681,20 @@ def run(
 ) -> RayServeHandle:
     """Run a Serve application and return a ServeHandle to the ingress.
 
-    Either a DAGNode or a pre-built application can be passed in.
-    If a DAGNode is passed in, all of the deployments it depends on
+    Either a DeploymentNode or a pre-built application can be passed in.
+    If a DeploymentNode is passed in, all of the deployments it depends on
     will be deployed.
+
+    Args:
+        target: User built serve Application or DeploymentNode that acts as
+            the root node of DAG. By default DeploymentNode is the Driver
+            deployment unless user provided customized one.
+
+    Returns:
+        handle: A regular ray serve handle that can be called by user to exeucte
+            the serve DAG.
     """
+    # TODO (jiaodong): Resolve circular reference in pipeline codebase and serve
     from ray.serve.pipeline.api import build as pipeline_build
 
     if isinstance(target, DeploymentNode):

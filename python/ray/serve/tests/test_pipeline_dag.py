@@ -7,7 +7,7 @@ import numpy as np
 
 import ray
 from ray import serve
-from ray.serve.handle import RayServeDAGHandle
+from ray.serve.api import RayServeDAGHandle
 from ray.experimental.dag.input_node import InputNode
 from ray.serve.pipeline.api import build as pipeline_build
 
@@ -117,6 +117,14 @@ class NoargDriver:
 
     async def __call__(self):
         return await self.dag.remote()
+
+
+def test_single_func_no_input(serve_instance):
+    dag = fn_hello.bind()
+    serve_dag = NoargDriver.bind(dag)
+
+    handle = serve.run(serve_dag)
+    assert ray.get(handle.remote()) == "hello"
 
 
 def test_single_func_deployment_dag(serve_instance):
