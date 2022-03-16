@@ -735,7 +735,7 @@ class RayTrialExecutor(TrialExecutor):
         return {}
 
     def has_gpus(self) -> bool:
-        return self._resource_updater.has_gpus()
+        return self._resource_updater.get_num_gpus() > 0
 
     def cleanup(self, trials: List[Trial]) -> None:
         while True:

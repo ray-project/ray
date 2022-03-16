@@ -111,17 +111,14 @@ class ResourceUpdater:
             return "Resources requested: ?"
 
     def get_num_cpus(self) -> int:
-        self.update_avail_resources()
+        if ray.is_initialized():
+            self.update_avail_resources()
         return self._avail_resources.cpu
 
     def get_num_gpus(self) -> int:
-        self.update_avail_resources()
-        return self._avail_resources.gpu
-
-    def has_gpus(self) -> bool:
-        if self._last_resource_refresh > 0:
+        if ray.is_initialized():
             self.update_avail_resources()
-            return self._avail_resources.gpu > 0
+        return self._avail_resources.gpu
 
     def __reduce__(self):
         # Do not need to serialize resources, because we can always
