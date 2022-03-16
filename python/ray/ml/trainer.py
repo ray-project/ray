@@ -246,9 +246,10 @@ class Trainer(abc.ABC):
         from ray import tune
         from ray.tune import TuneError
 
-        # TODO(amog/xwjiang): Replace with Tuner.
+        # TODO(amog/xwjiang): Replace with Tuner and pass through run_config. Also add
+        #  test for run_config.
         try:
-            analysis = tune.run(run_or_experiment=trainable, **self.run_config)
+            analysis = tune.run(run_or_experiment=trainable)
         except TuneError:
             raise TrainingFailedError
         else:
