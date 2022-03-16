@@ -3641,6 +3641,7 @@
     script: python placement_group_tests/pg_run.py
     type: job
     file_manager: job
+  stable: false
 
 - name: k8s_placement_group_performance_test
   group: core-daily-test
@@ -3665,6 +3666,7 @@
 
     type: job
     file_manager: job
+  stable: false
 
 ##################
 # Core Chaos tests
