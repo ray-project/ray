@@ -1,7 +1,7 @@
+.. _actor-fault-tolerance:
+
 Fault Tolerance
 ===============
-
-.. _actor-fault-tolerance:
 
 Ray will automatically restart actors that crash unexpectedly.
 This behavior is controlled using ``max_restarts``,

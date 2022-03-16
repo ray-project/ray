@@ -279,7 +279,7 @@ Below are more examples of resource specifications:
   which can include Python packages, local files, environment variables, and more---see :ref:`Runtime Environments <runtime-environments>` for details.
 
 Waiting for Ready Results
--------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 After launching a number of tasks, you may want to know which ones have
 finished executing. This can be done with ``wait`` (:ref:`ray-wait-ref`). The function
@@ -363,7 +363,7 @@ More about Ray Tasks
 --------------------
 
 .. toctree::
-    :maxdepth: -1
+    :maxdepth: 1
 
     tasks/nested-tasks.rst
     tasks/using-ray-with-gpus.rst

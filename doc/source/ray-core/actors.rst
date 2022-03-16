@@ -1,9 +1,13 @@
 .. _ray-remote-classes:
+.. _actor-guide:
 
 Actors
 ======
 
-Actors extend the Ray API from functions (tasks) to classes. An actor is essentially a stateful worker.
+Actors extend the Ray API from functions (tasks) to classes.
+An actor is essentially a stateful worker (or a service). When a new actor is
+instantiated, a new worker is created, and methods of the actor are scheduled on
+that specific worker and can access and mutate the state of that worker.
 
 .. tabbed:: Python
 
@@ -220,14 +224,126 @@ Methods called on different actors can execute in parallel, and methods called o
             std::cout << *result;
         }
 
+Passing Around Actor Handles
+----------------------------
+
+Actor handles can be passed into other tasks. We can define remote functions (or actor methods) that use actor handles.
+
+.. tabbed:: Python
+
+    .. code-block:: python
+
+        import time
+
+        @ray.remote
+        def f(counter):
+            for _ in range(1000):
+                time.sleep(0.1)
+                counter.increment.remote()
+
+.. tabbed:: Java
+
+    .. code-block:: java
+
+        public static class MyRayApp {
+
+          public static void foo(ActorHandle<Counter> counter) throws InterruptedException {
+            for (int i = 0; i < 1000; i++) {
+              TimeUnit.MILLISECONDS.sleep(100);
+              counter.task(Counter::increment).remote();
+            }
+          }
+        }
+
+.. tabbed:: C++
+
+    .. code-block:: c++
+
+        void Foo(ray::ActorHandle<Counter> counter) {
+            for (int i = 0; i < 1000; i++) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                counter.Task(&Counter::Increment).Remote();
+            }
+        }
+
+If we instantiate an actor, we can pass the handle around to various tasks.
+
+.. tabbed:: Python
+
+    .. code-block:: python
+
+        counter = Counter.remote()
+
+        # Start some tasks that use the actor.
+        [f.remote(counter) for _ in range(3)]
+
+        # Print the counter value.
+        for _ in range(10):
+            time.sleep(1)
+            print(ray.get(counter.get_counter.remote()))
+
+.. tabbed:: Java
+
+    .. code-block:: java
+
+        ActorHandle<Counter> counter = Ray.actor(Counter::new).remote();
+
+        // Start some tasks that use the actor.
+        for (int i = 0; i < 3; i++) {
+          Ray.task(MyRayApp::foo, counter).remote();
+        }
+
+        // Print the counter value.
+        for (int i = 0; i < 10; i++) {
+          TimeUnit.SECONDS.sleep(1);
+          System.out.println(counter.task(Counter::getCounter).remote().get());
+        }
+
+.. tabbed:: C++
+
+    .. code-block:: c++
+
+        auto counter = ray::Actor(CreateCounter).Remote();
+
+        // Start some tasks that use the actor.
+        for (int i = 0; i < 3; i++) {
+          ray::Task(Foo).Remote(counter);
+        }
+
+        // Print the counter value.
+        for (int i = 0; i < 10; i++) {
+          std::this_thread::sleep_for(std::chrono::seconds(1));
+          std::cout << *counter.Task(&Counter::GetCounter).Remote().Get() << std::endl;
+        }
+
+FAQ: Actors, Workers and Resources
+----------------------------------
+
+What's the difference between a worker and an actor?
+
+Each "Ray worker" is a python process.
+
+Workers are treated differently for tasks and actors. Any "Ray worker" is either 1. used to execute multiple Ray tasks or 2. is started as a dedicated Ray actor.
+
+* **Tasks**: When Ray starts on a machine, a number of Ray workers will be started automatically (1 per CPU by default). They will be used to execute tasks (like a process pool). If you execute 8 tasks with `num_cpus=2`, and total number of CPUs is 16 (`ray.cluster_resources()["CPU"] == 16`), you will end up with 8 of your 16 workers idling.
+
+* **Actor**: A Ray Actor is also a "Ray worker" but is instantiated at runtime (upon `actor_cls.remote()`). All of its methods will run on the same process, using the same resources (designated when defining the Actor). Note that unlike tasks, the python processes that runs Ray Actors are not reused and will be terminated when the Actor is deleted.
+
+To maximally utilize your resources, you want to maximize the time that
+your workers are working. You also want to allocate enough cluster resources
+so that both all of your needed actors can run and any other tasks you
+define can run. This also implies that tasks are scheduled more flexibly,
+and that if you don't need the stateful part of an actor, you're mostly
+better off using tasks.
+
 More about Ray Actors
 ---------------------
 
 .. toctree::
-    :maxdepth: -1
+    :maxdepth: 1
 
-    actors/actors.rst
     actors/named-actors.rst
+    actors/terminating-actors.rst
     actors/async_api.rst
     actors/concurrency_group_api.rst
     actors/actor-utils.rst

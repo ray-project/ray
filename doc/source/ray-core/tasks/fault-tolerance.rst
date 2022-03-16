@@ -1,3 +1,5 @@
+.. _task-fault-tolerance:
+
 Fault Tolerance
 ===============
 
