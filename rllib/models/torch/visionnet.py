@@ -197,11 +197,17 @@ class VisionNetwork(TorchModelV2, nn.Module):
             if post_fcnet_hiddens:
                 # If we have a post-fc-stack, the size of the final fc-layer is the input to the value output.
                 self._value_branch = SlimFC(
-                    post_fcnet_hiddens[-1], 1, initializer=normc_initializer(0.01), activation_fn=None
+                    post_fcnet_hiddens[-1],
+                    1,
+                    initializer=normc_initializer(0.01),
+                    activation_fn=None,
                 )
             else:
                 self._value_branch = SlimFC(
-                    out_channels, 1, initializer=normc_initializer(0.01), activation_fn=None
+                    out_channels,
+                    1,
+                    initializer=normc_initializer(0.01),
+                    activation_fn=None,
                 )
         else:
             vf_layers = []
@@ -296,7 +302,7 @@ class VisionNetwork(TorchModelV2, nn.Module):
             value = value.squeeze(2)
             return value.squeeze(1)
         else:
-            # self._features has shape of length 4 if it's an unflattened CNN output. 
+            # self._features has shape of length 4 if it's an unflattened CNN output.
             # In that case we squeeze the extra length-1 dimensions.
             if len(self._features.shape) == 4:
                 features = self._features.squeeze(3)
