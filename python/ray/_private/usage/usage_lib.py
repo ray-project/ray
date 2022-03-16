@@ -86,8 +86,8 @@ class UsageStatsToReport:
     max_workers: Optional[int]
     head_node_instance_type: Optional[str]
     worker_node_instance_types: Optional[List[str]]
-    num_cpus: Optional[int]
-    num_gpus: Optional[int]
+    total_num_cpus: Optional[int]
+    total_num_gpus: Optional[int]
     total_memory_gb: Optional[float]
     total_object_store_memory_gb: Optional[float]
     # The total number of successful reports for the lifetime of the cluster.
@@ -226,9 +226,9 @@ def get_cluster_status(gcs_client, num_retries) -> dict:
 
         usage = cluster_status["load_metrics_report"]["usage"]
         if "CPU" in usage:
-            result["num_cpus"] = usage["CPU"][1]
+            result["total_num_cpus"] = usage["CPU"][1]
         if "GPU" in usage:
-            result["num_gpus"] = usage["GPU"][1]
+            result["total_num_gpus"] = usage["GPU"][1]
         if "memory" in usage:
             result["total_memory_gb"] = usage["memory"][1] * to_GiB
         if "object_store_memory" in usage:
@@ -383,8 +383,8 @@ def generate_report_data(
         max_workers=cluster_config.get("max_workers"),
         head_node_instance_type=cluster_config.get("head_node_instance_type"),
         worker_node_instance_types=cluster_config.get("worker_node_instance_types"),
-        num_cpus=cluster_status.get("num_cpus"),
-        num_gpus=cluster_status.get("num_gpus"),
+        total_num_cpus=cluster_status.get("total_num_cpus"),
+        total_num_gpus=cluster_status.get("total_num_gpus"),
         total_memory_gb=cluster_status.get("total_memory_gb"),
         total_object_store_memory_gb=cluster_status.get("total_object_store_memory_gb"),
         total_success=total_success,

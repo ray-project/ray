@@ -37,8 +37,8 @@ schema = {
             "type": ["null", "array"],
             "items": {"type": "string"},
         },
-        "num_cpus": {"type": ["null", "integer"]},
-        "num_gpus": {"type": ["null", "integer"]},
+        "total_num_cpus": {"type": ["null", "integer"]},
+        "total_num_gpus": {"type": ["null", "integer"]},
         "total_memory_gb": {"type": ["null", "number"]},
         "total_object_store_memory_gb": {"type": ["null", "number"]},
         "total_success": {"type": "integer"},
@@ -247,8 +247,8 @@ def test_usage_lib_get_cluster_status(shutdown_only):
         ray.experimental.internal_kv.internal_kv_get_gcs_client(),
         num_retries=20,
     )
-    assert cluster_status["num_cpus"] == 3
-    assert cluster_status["num_gpus"] == 1
+    assert cluster_status["total_num_cpus"] == 3
+    assert cluster_status["total_num_gpus"] == 1
     assert cluster_status["total_memory_gb"] > 0
     assert cluster_status["total_object_store_memory_gb"] > 0
 
@@ -511,8 +511,8 @@ provider:
         assert payload["max_workers"] == 1
         assert payload["head_node_instance_type"] is None
         assert payload["worker_node_instance_types"] is None
-        assert payload["num_cpus"] == 3
-        assert payload["num_gpus"] is None
+        assert payload["total_num_cpus"] == 3
+        assert payload["total_num_gpus"] is None
         assert payload["total_memory_gb"] > 0
         assert payload["total_object_store_memory_gb"] > 0
         validate(instance=payload, schema=schema)
