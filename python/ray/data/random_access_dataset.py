@@ -3,7 +3,7 @@ import logging
 import random
 import time
 from collections import defaultdict
-from typing import List, Any, Optional, TYPE_CHECKING
+from typing import List, Any, Generic, Optional, TYPE_CHECKING
 
 import ray
 from ray.types import ObjectRef
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class RandomAccessDataset(object):
+class RandomAccessDataset(Generic[T]):
     """A class that provides distributed, random access to a Dataset.
 
     See: ``Dataset.to_random_access_dataset()``.
@@ -45,12 +45,12 @@ class RandomAccessDataset(object):
 
         logger.info("[setup] Computing block range bounds.")
         bounds = ray.get([get_bounds.remote(b, key, self._format) for b in blocks])
-        self._valid_blocks = []
+        self._non_empty_blocks = []
         self._lower_bound = None
         self._upper_bounds = []
         for i, b in enumerate(bounds):
             if b:
-                self._valid_blocks.append(blocks[i])
+                self._non_empty_blocks.append(blocks[i])
                 if self._lower_bound is None:
                     self._lower_bound = b[0]
                 self._upper_bounds.append(b[1])
@@ -73,7 +73,10 @@ class RandomAccessDataset(object):
         ray.get(
             [
                 w.assign_blocks.remote(
-                    {i: self._valid_blocks[i] for i in self._worker_to_blocks_map[w]}
+                    {
+                        i: self._non_empty_blocks[i]
+                        for i in self._worker_to_blocks_map[w]
+                    }
                 )
                 for w in self._workers
             ]
@@ -84,34 +87,34 @@ class RandomAccessDataset(object):
 
     def _compute_block_to_worker_assignments(self):
         # Return values.
-        blocks_to_workers: dict[int, List["ray.ActorHandle"]] = defaultdict(list)
-        workers_to_blocks: dict["ray.ActorHandle", List[int]] = defaultdict(list)
+        block_to_workers: dict[int, List["ray.ActorHandle"]] = defaultdict(list)
+        worker_to_blocks: dict["ray.ActorHandle", List[int]] = defaultdict(list)
 
         # Aux data structures.
         loc_to_workers: dict[str, List["ray.ActorHandle"]] = defaultdict(list)
         locs = ray.get([w.ping.remote() for w in self._workers])
         for i, loc in enumerate(locs):
             loc_to_workers[loc].append(self._workers[i])
-        block_locs = ray.experimental.get_object_locations(self._valid_blocks)
+        block_locs = ray.experimental.get_object_locations(self._non_empty_blocks)
 
         # First, try to assign all blocks to all workers at its location.
-        for block_idx, block in enumerate(self._valid_blocks):
+        for block_idx, block in enumerate(self._non_empty_blocks):
             block_info = block_locs[block]
             locs = block_info.get("node_ids", [])
             for loc in locs:
                 for worker in loc_to_workers[loc]:
-                    blocks_to_workers[block_idx].append(worker)
-                    workers_to_blocks[worker].append(block_idx)
+                    block_to_workers[block_idx].append(worker)
+                    worker_to_blocks[worker].append(block_idx)
 
         # Randomly assign any leftover blocks to at least one worker.
         # TODO: the load balancing here could be improved.
-        for block_idx, block in enumerate(self._valid_blocks):
-            if len(blocks_to_workers[block_idx]) == 0:
+        for block_idx, block in enumerate(self._non_empty_blocks):
+            if len(block_to_workers[block_idx]) == 0:
                 worker = random.choice(self._workers)
-                blocks_to_workers[block_idx].append(worker)
-                workers_to_blocks[worker].append(block_idx)
+                block_to_workers[block_idx].append(worker)
+                worker_to_blocks[worker].append(block_idx)
 
-        return blocks_to_workers, workers_to_blocks
+        return block_to_workers, worker_to_blocks
 
     def get_async(self, key: Any) -> ObjectRef[Optional[T]]:
         """Asynchronously finds the record for a single key.
