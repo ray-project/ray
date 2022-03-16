@@ -13,6 +13,14 @@ py_test(
 )
 
 py_test(
+    name = "test_data_parallel_Trainer",
+    size = "medium",
+    srcs = ["tests/test_data_parallel_trainer.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_preprocessors",
     size = "small",
     srcs = ["tests/test_preprocessors.py"],
