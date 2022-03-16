@@ -185,6 +185,24 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
         return (protocol, uri.netloc)
 
 
+def is_zip_uri(uri: str) -> bool:
+    try:
+        protocol, path = parse_uri(uri)
+    except ValueError:
+        return False
+
+    return Path(path).suffix == ".zip"
+
+
+def is_whl_uri(uri: str) -> bool:
+    try:
+        protocol, path = parse_uri(uri)
+    except ValueError:
+        return False
+
+    return Path(path).suffix == ".whl"
+
+
 def _get_excludes(path: Path, excludes: List[str]) -> Callable:
     path = path.absolute()
     pathspec = PathSpec.from_lines("gitwildmatch", excludes)
@@ -295,10 +313,17 @@ def package_exists(pkg_uri: str) -> bool:
 def get_uri_for_package(package: Path) -> str:
     """Get a content-addressable URI from a package's contents."""
 
-    hash_val = hashlib.md5(package.read_bytes()).hexdigest()
-    return "{protocol}://{pkg_name}.zip".format(
-        protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val
-    )
+    if package.suffix == ".whl":
+        # Wheel file names include the Python package name, version
+        # and tags, so it is already effectively content-addressed.
+        return "{protocol}://{whl_filename}".format(
+            protocol=Protocol.GCS.value, whl_filename=package.name
+        )
+    else:
+        hash_val = hashlib.md5(package.read_bytes()).hexdigest()
+        return "{protocol}://{pkg_name}.zip".format(
+            protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val
+        )
 
 
 def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) -> str:
@@ -434,9 +459,10 @@ def download_and_unpack_package(
     base_directory: str,
     logger: Optional[logging.Logger] = default_logger,
 ) -> str:
-    """Download the package corresponding to this URI and unpack it.
+    """Download the package corresponding to this URI and unpack it if zipped.
 
-    Will be written to a directory named {base_directory}/{uri}.
+    Will be written to a file or directory named {base_directory}/{uri}.
+    Returns the path to this file or directory.
     """
     pkg_file = Path(_get_local_path(base_directory, pkg_uri))
     with FileLock(str(pkg_file) + ".lock"):
@@ -458,13 +484,17 @@ def download_and_unpack_package(
                     raise IOError(f"Failed to fetch URI {pkg_uri} from GCS.")
                 code = code or b""
                 pkg_file.write_bytes(code)
-                unzip_package(
-                    package_path=pkg_file,
-                    target_dir=local_dir,
-                    remove_top_level_directory=False,
-                    unlink_zip=True,
-                    logger=logger,
-                )
+
+                if is_zip_uri(pkg_uri):
+                    unzip_package(
+                        package_path=pkg_file,
+                        target_dir=local_dir,
+                        remove_top_level_directory=False,
+                        unlink_zip=True,
+                        logger=logger,
+                    )
+                else:
+                    return str(pkg_file)
             elif protocol in Protocol.remote_protocols():
                 # Download package from remote URI
                 tp = None
