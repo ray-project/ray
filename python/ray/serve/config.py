@@ -132,8 +132,8 @@ class DeploymentConfig(BaseModel):
     # the deploymnent use.
     deployment_language: Any = DeploymentLanguage.PYTHON
 
-    version: Optional[str]
-    prev_version: Optional[str]
+    version: Optional[str] = None
+    prev_version: Optional[str] = None
 
     class Config:
         validate_assignment = True

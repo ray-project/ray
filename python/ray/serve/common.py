@@ -120,10 +120,11 @@ class DeploymentInfo:
                 deployment_config.deployment_language if deployment_config else DeploymentLanguage.PYTHON
             ),
             "start_time_ms": proto.start_time_ms,
-            "actor_name": proto.actor_name,
-            "serialized_deployment_def": proto.serialized_deployment_def,
-            "version": proto.version,
-            "end_time_ms": proto.end_time_ms,
+            "actor_name": proto.actor_name if proto.actor_name != '' else None,
+            "serialized_deployment_def":
+                proto.serialized_deployment_def if proto.serialized_deployment_def != b'' else None,
+            "version": proto.version if proto.version != '' else None,
+            "end_time_ms": proto.end_time_ms if proto.end_time_ms != 0 else None,
             "deployer_job_id": ray.get_runtime_context().job_id,
         }
 

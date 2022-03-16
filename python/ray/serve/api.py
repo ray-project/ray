@@ -390,7 +390,7 @@ class Client:
             deployment_route.deployment_info.name: (
                 DeploymentInfo.from_proto(
                     deployment_route.deployment_info),
-                deployment_route.route)
+                deployment_route.route if deployment_route.route != '' else None)
             for deployment_route in deployment_route_list_proto.deployment_routes
         }
 

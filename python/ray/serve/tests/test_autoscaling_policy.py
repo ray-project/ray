@@ -160,7 +160,9 @@ def get_deployment_start_time(controller: ServeController, deployment: Deploymen
         ray.get(controller.list_deployments.remote()))
     deployments = {
         deployment_route.deployment_info.name: (
-            DeploymentInfo.from_proto(deployment_route.deployment_info), deployment_route.route)
+            DeploymentInfo.from_proto(
+                deployment_route.deployment_info),
+            deployment_route.route if deployment_route.route != '' else None)
         for deployment_route in deployment_route_list.deployment_routes
     }
     deployment_info, _route_prefix = deployments[deployment.name]
