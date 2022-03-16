@@ -1,4 +1,5 @@
 from aiohttp.web import Request, Response
+import json
 import logging
 
 import ray.dashboard.utils as dashboard_utils
@@ -9,7 +10,6 @@ from ray.serve.api import (
     Application,
     deploy_group,
     get_deployment_statuses,
-    serve_application_to_schema,
     serve_application_status_to_schema,
 )
 
@@ -26,10 +26,9 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def get_all_deployments(self, req: Request) -> Response:
-        deployments = list(serve.list_deployments().values())
-        serve_application_schema = serve_application_to_schema(deployments=deployments)
+        app = Application(list(serve.list_deployments().values()))
         return Response(
-            text=serve_application_schema.json(),
+            text=json.dumps(app.to_dict()),
             content_type="application/json",
         )
 

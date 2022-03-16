@@ -1561,30 +1561,21 @@ class Application:
     to production using the Serve CLI or REST API.
     """
 
-    def __init__(self, deployments: List[Deployment], ingress: Deployment = None):
-
-        # TODO (shrekris-anyscale): validate ingress
-        self._ingress = ingress
-
-        deployments = deployments or []
-
-        self._deployments: Dict[str, Deployment] = dict()
+    def __init__(self, deployments: List[Deployment]):
+        deployment_dict = {}
         for d in deployments:
-
             if not isinstance(d, Deployment):
                 raise TypeError(f"Got {type(d)}. Expected deployment.")
-            elif d.name in self._deployments:
-                raise ValueError(f'App got multiple deployments named "{d.name}".')
+            elif d.name in deployment_dict:
+                raise ValueError(f"App got multiple deployments named '{d.name}'.")
 
-            self._deployments[d.name] = d
+            deployment_dict[d.name] = d
 
-    @property
-    def ingress(self) -> Deployment:
-        return self._ingress
+        self._deployments = ImmutableDeploymentDict(deployment_dict)
 
     @property
     def deployments(self) -> ImmutableDeploymentDict:
-        return ImmutableDeploymentDict(self._deployments)
+        return self._deployments
 
     def to_dict(self) -> Dict:
         """Returns this Application's deployments as a dictionary.
@@ -1595,8 +1586,9 @@ class Application:
         Returns:
             Dict: The Application's deployments formatted in a dictionary.
         """
-
-        return serve_application_to_schema(self._deployments.values()).dict()
+        return ServeApplicationSchema(
+            deployments=[deployment_to_schema(d) for d in self._deployments.values()]
+        ).dict()
 
     @classmethod
     def from_dict(cls, d: Dict) -> "Application":
@@ -1614,7 +1606,7 @@ class Application:
         """
 
         schema = ServeApplicationSchema.parse_obj(d)
-        return cls(schema_to_serve_application(schema))
+        return cls([schema_to_deployment(s) for s in schema.deployments])
 
     def to_yaml(self, f: Optional[TextIO] = None) -> Optional[str]:
         """Returns this application's deployments as a YAML string.
@@ -1636,12 +1628,7 @@ class Application:
             Optional[String]: The deployments' YAML string. The output is from
                 yaml.safe_dump(). Returned only if no file pointer is passed in.
         """
-
-        deployment_dict = serve_application_to_schema(self._deployments.values()).dict()
-
-        if f:
-            yaml.safe_dump(deployment_dict, f, default_flow_style=False)
-        return yaml.safe_dump(deployment_dict, default_flow_style=False)
+        return yaml.safe_dump(self.to_dict(), stream=f, default_flow_style=False)
 
     @classmethod
     def from_yaml(cls, str_or_file: Union[str, TextIO]) -> "Application":
@@ -1667,10 +1654,7 @@ class Application:
         Returns:
             Application: a new Application object containing the deployments.
         """
-
-        deployments_json = yaml.safe_load(str_or_file)
-        schema = ServeApplicationSchema.parse_obj(deployments_json)
-        return cls(schema_to_serve_application(schema))
+        return cls.from_dict(yaml.safe_load(str_or_file))
 
 
 @PublicAPI(stability="alpha")
@@ -1688,7 +1672,7 @@ def run(
     """
 
     if isinstance(target, Application):
-        deployments = target.deployments.values()
+        deployments = list(target.deployments.values())
     elif isinstance(target, DeploymentNode):
         deployments = _get_deployments_from_node(target)
     else:
@@ -1757,7 +1741,7 @@ def build(target: DeploymentNode) -> Application:
     """
     # TODO(edoakes): this should accept host and port, but we don't
     # currently support them in the REST API.
-    raise NotImplementedError()
+    return Application(_get_deployments_from_node(target))
 
 
 def _get_deployments_from_node(node: DeploymentNode) -> List[Deployment]:
@@ -1777,6 +1761,16 @@ def _get_deployments_from_node(node: DeploymentNode) -> List[Deployment]:
 
 
 def deployment_to_schema(d: Deployment) -> DeploymentSchema:
+    """Converts a live deployment object to a corresponding structured schema.
+
+    If the deployment has a class or function, it will be attemptetd to be
+    converted to a valid corresponding import path.
+
+    init_args and init_kwargs must also be JSON-serializable or this call will
+    fail.
+    """
+    from ray.serve.pipeline.json_serde import convert_to_json_safe_obj
+
     if d.ray_actor_options is not None:
         ray_actor_options_schema = RayActorOptionsSchema.parse_obj(d.ray_actor_options)
     else:
@@ -1785,12 +1779,12 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
     return DeploymentSchema(
         name=d.name,
         import_path=get_deployment_import_path(d),
-        init_args=d.init_args,
-        init_kwargs=d.init_kwargs,
+        init_args=convert_to_json_safe_obj(d.init_args, err_key="init_args"),
+        init_kwargs=convert_to_json_safe_obj(d.init_kwargs, err_key="init_kwargs"),
         num_replicas=d.num_replicas,
         route_prefix=d.route_prefix,
         max_concurrent_queries=d.max_concurrent_queries,
-        user_config=d.user_config,
+        user_config=convert_to_json_safe_obj(d.user_config, err_key="user_config"),
         autoscaling_config=d._config.autoscaling_config,
         graceful_shutdown_wait_loop_s=d._config.graceful_shutdown_wait_loop_s,
         graceful_shutdown_timeout_s=d._config.graceful_shutdown_timeout_s,
@@ -1801,6 +1795,8 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
 
 
 def schema_to_deployment(s: DeploymentSchema) -> Deployment:
+    from ray.serve.pipeline.json_serde import convert_from_json_safe_obj
+
     if s.ray_actor_options is None:
         ray_actor_options = None
     else:
@@ -1808,29 +1804,19 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
 
     return deployment(
         name=s.name,
+        init_args=convert_from_json_safe_obj(s.init_args),
+        init_kwargs=convert_from_json_safe_obj(s.init_kwargs),
         num_replicas=s.num_replicas,
-        init_args=s.init_args,
-        init_kwargs=s.init_kwargs,
         route_prefix=s.route_prefix,
-        ray_actor_options=ray_actor_options,
         max_concurrent_queries=s.max_concurrent_queries,
+        user_config=convert_from_json_safe_obj(s.user_config),
         _autoscaling_config=s.autoscaling_config,
         _graceful_shutdown_wait_loop_s=s.graceful_shutdown_wait_loop_s,
         _graceful_shutdown_timeout_s=s.graceful_shutdown_timeout_s,
         _health_check_period_s=s.health_check_period_s,
         _health_check_timeout_s=s.health_check_timeout_s,
+        ray_actor_options=ray_actor_options,
     )(s.import_path)
-
-
-def serve_application_to_schema(
-    deployments: List[Deployment],
-) -> ServeApplicationSchema:
-    schemas = [deployment_to_schema(d) for d in deployments]
-    return ServeApplicationSchema(deployments=schemas)
-
-
-def schema_to_serve_application(schema: ServeApplicationSchema) -> List[Deployment]:
-    return [schema_to_deployment(s) for s in schema.deployments]
 
 
 def status_info_to_schema(
