@@ -73,7 +73,7 @@ def test_single_node_deploy_success(serve_instance, use_build):
 
 
 @pytest.mark.parametrize("use_build", [False, True])
-def test_single_node_driver_sucess(serve_instance):
+def test_single_node_driver_sucess(serve_instance, use_build):
     m1 = Adder.bind(1)
     m2 = Adder.bind(2)
     with PipelineInputNode() as input_node:
@@ -89,7 +89,7 @@ def test_single_node_driver_sucess(serve_instance):
 
 
 @pytest.mark.skip("TODO")
-def test_mixing_task(serve_instance):
+def test_mixing_task(serve_instance, use_build):
     m1 = Adder.bind(1)
     m2 = Adder.bind(2)
     with PipelineInputNode() as input_node:
@@ -113,7 +113,7 @@ class TakeHandle:
 
 
 @pytest.mark.parametrize("use_build", [False, True])
-def test_passing_handle(serve_instance):
+def test_passing_handle(serve_instance, use_build):
     child = Adder.bind(1)
     parent = TakeHandle.bind(child)
     driver = Driver.bind(parent)
@@ -126,7 +126,7 @@ def test_passing_handle(serve_instance):
 
 
 @pytest.mark.parametrize("use_build", [False, True])
-def test_passing_handle_in_obj(serve_instance):
+def test_passing_handle_in_obj(serve_instance, use_build):
     @serve.deployment
     class Parent:
         def __init__(self, d):
@@ -148,7 +148,7 @@ def test_passing_handle_in_obj(serve_instance):
 
 
 @pytest.mark.parametrize("use_build", [False, True])
-def test_pass_handle_to_multiple(serve_instance):
+def test_pass_handle_to_multiple(serve_instance, use_build):
     @serve.deployment
     class Child:
         def __call__(self, *args):
