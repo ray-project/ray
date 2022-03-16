@@ -19,6 +19,7 @@ from typing import (
     Type,
     Union,
     List,
+    Iterable,
     overload,
 )
 
@@ -393,7 +394,7 @@ class Client:
                 self.log_deployment_ready(name, version, url, tags[i])
 
     @_ensure_connected
-    def delete_deployments(self, names: List[str], blocking: bool = True) -> None:
+    def delete_deployments(self, names: Iterable[str], blocking: bool = True) -> None:
         ray.get(self._controller.delete_deployments.remote(names))
         if blocking:
             for name in names:
