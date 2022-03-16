@@ -52,7 +52,7 @@ class MockTaskResubmitter : public TaskResubmissionInterface {
     return true;
   }
 
-  std::unordered_map<TaskID, std::vector<ObjectID>> task_specs;
+  absl::flat_hash_map<TaskID, std::vector<ObjectID>> task_specs;
   int num_tasks_resubmitted = 0;
 };
 
@@ -102,7 +102,7 @@ class MockObjectDirectory {
   }
 
   std::vector<std::pair<ObjectID, ObjectLookupCallback>> callbacks = {};
-  std::unordered_map<ObjectID, std::vector<rpc::Address>> locations;
+  absl::flat_hash_map<ObjectID, std::vector<rpc::Address>> locations;
 };
 
 class ObjectRecoveryManagerTestBase : public ::testing::Test {
@@ -151,7 +151,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
   }
 
   NodeID local_raylet_id_;
-  std::unordered_map<ObjectID, rpc::ErrorType> failed_reconstructions_;
+  absl::flat_hash_map<ObjectID, rpc::ErrorType> failed_reconstructions_;
 
   std::shared_ptr<mock_pubsub::MockPublisher> publisher_;
   std::shared_ptr<mock_pubsub::MockSubscriber> subscriber_;

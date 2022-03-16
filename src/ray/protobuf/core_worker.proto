@@ -265,6 +265,8 @@ message GetCoreWorkerStatsReply {
 }
 
 message LocalGCRequest {
+  // Whether this is triggered by a global gc.
+  bool triggered_by_global_gc = 1;
 }
 
 message LocalGCReply {
