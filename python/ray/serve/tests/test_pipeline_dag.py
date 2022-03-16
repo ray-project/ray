@@ -119,23 +119,22 @@ class NoargDriver:
 
 def test_single_func_deployment_dag(serve_instance):
     with InputNode() as dag_input:
-        combine_func = combine.bind()
-        serve_dag = combine_func.__call__.bind(
+        output = combine.bind(
             dag_input[0], dag_input[1], kwargs_output=1
         )
-    print(serve_dag)
+        serve_dag = Driver.bind(output)
 
-    handle = serve.run(Driver.bind(serve_dag))
+    handle = serve.run(serve_dag)
     assert ray.get(handle.remote([1, 2])) == 4
 
 
 def test_simple_class_with_class_method(serve_instance):
     with InputNode() as dag_input:
         model = Model.bind(2, ratio=0.3)
-        serve_dag = model.forward.bind(dag_input)
+        output = model.forward.bind(dag_input)
+        serve_dag = Driver.bind(output)
 
-    print(serve_dag)
-    handle = serve.run(Driver.bind(serve_dag))
+    handle = serve.run(serve_dag)
     assert ray.get(handle.remote(1)) == 0.6
 
 
@@ -145,12 +144,12 @@ def test_func_class_with_class_method(serve_instance):
         m2 = Model.bind(2)
         m1_output = m1.forward.bind(dag_input[0])
         m2_output = m2.forward.bind(dag_input[1])
-        serve_dag = combine.bind().__call__.bind(
+        combine_output = combine.bind(
             m1_output, m2_output, kwargs_output=dag_input[2]
         )
+        serve_dag = Driver.bind(combine_output)
 
-    print(serve_dag)
-    handle = serve.run(Driver.bind(serve_dag))
+    handle = serve.run(serve_dag)
     assert ray.get(handle.remote([1, 2, 3])) == 8
 
 
@@ -159,9 +158,10 @@ def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
         m1 = Model.bind(2)
         m2 = Model.bind(3)
         combine = Combine.bind(m1, m2=m2)
-        serve_dag = combine.__call__.bind(dag_input)
-    print(serve_dag)
-    handle = serve.run(Driver.bind(serve_dag))
+        combine_output = combine.__call__.bind(dag_input)
+        serve_dag = Driver.bind(combine_output)
+
+    handle = serve.run(serve_dag)
     assert ray.get(handle.remote(1)) == 5
 
 
@@ -169,9 +169,10 @@ def test_shared_deployment_handle(serve_instance):
     with InputNode() as dag_input:
         m = Model.bind(2)
         combine = Combine.bind(m, m2=m)
-        serve_dag = combine.__call__.bind(dag_input)
-    print(serve_dag)
-    handle = serve.run(Driver.bind(serve_dag))
+        combine_output = combine.__call__.bind(dag_input)
+        serve_dag = Driver.bind(combine_output)
+
+    handle = serve.run(serve_dag)
     assert ray.get(handle.remote(1)) == 4
 
 
@@ -180,17 +181,19 @@ def test_multi_instantiation_class_nested_deployment_arg_dag(serve_instance):
         m1 = Model.bind(2)
         m2 = Model.bind(3)
         combine = Combine.bind(m1, m2={NESTED_HANDLE_KEY: m2}, m2_nested=True)
-        serve_dag = combine.__call__.bind(dag_input)
-    print(serve_dag)
-    handle = serve.run(Driver.bind(serve_dag))
+        output = combine.__call__.bind(dag_input)
+        serve_dag = Driver.bind(output)
+
+    handle = serve.run(serve_dag)
     assert ray.get(handle.remote(1)) == 5
 
 def test_class_factory(serve_instance):
     with InputNode() as _:
         instance = ray.remote(class_factory()).bind(3)
-        serve_dag = instance.get.bind()
-    print(serve_dag)
-    handle = serve.run(NoargDriver.bind(serve_dag))
+        output = instance.get.bind()
+        serve_dag = NoargDriver.bind(output)
+
+    handle = serve.run(serve_dag)
     assert ray.get(handle.remote()) == 3
 
 
@@ -226,22 +229,23 @@ def test_options_and_names(serve_instance):
     assert m1_built.num_replicas == 2
 
 
-@ray.remote
+@serve.deployment
 def combine_task(*args):
     return sum(args)
 
 
-@pytest.mark.skip("TODO")
 def test_mixing_task(serve_instance):
     # Can't mix ray.remote tasks with deployment in a dag right now.
+    # But serve deployment works !
     m1 = Adder.bind(1)
     m2 = Adder.bind(2)
     with PipelineInputNode() as input_node:
         out = combine_task.bind(
             m1.forward.bind(input_node), m2.forward.bind(input_node)
         )
-    driver = Driver.bind(out)
-    handle = serve.run(driver)
+        serve_dag = Driver.bind(out)
+
+    handle = serve.run(serve_dag)
     assert ray.get(handle.remote(1)) == 5
 
 

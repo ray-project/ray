@@ -1110,16 +1110,32 @@ class Deployment:
         The returned bound deployment can be deployed or bound to other
         deployments to create a multi-deployment application.
         """
-        return DeploymentNode(
-            self._func_or_class,
-            args,
-            kwargs,
-            cls_options=self._ray_actor_options or dict(),
-            other_args_to_resolve={
-                "deployment_self": copy(self),
-                "is_from_serve_deployment": True,
-            },
-        )
+        if inspect.isclass(self._func_or_class):
+            return DeploymentNode(
+                self._func_or_class,
+                args,
+                kwargs,
+                cls_options=self._ray_actor_options or dict(),
+                other_args_to_resolve={
+                    "deployment_self": copy(self),
+                    "is_from_serve_deployment": True,
+                },
+            )
+        else:
+            # For function
+            node = DeploymentNode(
+                self._func_or_class,
+                (),
+                {},
+                cls_options=self._ray_actor_options or dict(),
+                other_args_to_resolve={
+                    "deployment_self": copy(self),
+                    "is_function": True,
+                    "is_from_serve_deployment": True,
+                },
+            )
+            return node.__call__.bind(*args, **kwargs)
+
 
     @PublicAPI
     def deploy(self, *init_args, _blocking=True, **init_kwargs):
