@@ -134,6 +134,28 @@ def test_dereference_object_refs(workflow_start_regular_shared):
     ray.get(dag.execute())
 
 
+def test_workflow_continuation(workflow_start_regular_shared):
+    """Test unified behavior of returning continuation inside
+    workflow and default Ray execution engine."""
+
+    @ray.remote
+    def h(a, b):
+        return a + b
+
+    @ray.remote
+    def g(x):
+        return workflow.continuation(h.bind(42, x))
+
+    @ray.remote
+    def f():
+        with InputNode() as dag_input:
+            return workflow.continuation(g.bind(dag_input.x), x=1)
+
+    dag = f.bind()
+    assert ray.get(dag.execute()) == 43
+    assert workflow.create(dag).run() == 43
+
+
 if __name__ == "__main__":
     import sys
 

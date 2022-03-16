@@ -182,3 +182,8 @@ def get_step_status_info(status: WorkflowStatus) -> str:
 
 def get_scope():
     return _context.workflow_scope
+
+
+def in_workflow_execution() -> bool:
+    """Whether we are in workflow step execution."""
+    return get_workflow_step_context() is not None
