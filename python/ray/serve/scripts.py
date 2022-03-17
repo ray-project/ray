@@ -6,7 +6,6 @@ import click
 import time
 import sys
 import yaml
-from typing import Optional
 
 import ray
 from ray._private.utils import import_attr
@@ -23,7 +22,6 @@ from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.serve.api import (
     Application,
-    DeploymentNode,
     get_deployment_statuses,
     serve_application_status_to_schema,
 )
@@ -383,49 +381,3 @@ def delete(address: str, yes: bool):
     cli_logger.newline()
     cli_logger.success("\nSent delete request successfully!\n")
     cli_logger.newline()
-
-
-@cli.command(
-    short_help="Build a Serve app into a structured config.",
-    help=(
-        "Imports the Serve app at IMPORT_PATH and generates a structured "
-        "config for it that can be used by `serve deploy` or the REST API. "
-    ),
-)
-@click.option(
-    "--app-dir",
-    "-d",
-    default=".",
-    type=str,
-    help=APP_DIR_HELP_STR,
-)
-@click.option(
-    "--output-path",
-    "-o",
-    default=None,
-    type=str,
-    help=(
-        "Local path where the output config will be written in YAML format. "
-        "If not provided, the config will be printed to STDOUT."
-    ),
-)
-@click.argument("import_path")
-def build(app_dir: str, output_path: Optional[str], import_path: str):
-    sys.path.insert(0, app_dir)
-
-    node: DeploymentNode = import_attr(import_path)
-    if not isinstance(node, DeploymentNode):
-        raise TypeError(
-            f"Expected '{import_path}' to be DeploymentNode, but got {type(node)}."
-        )
-
-    app = serve.build(node)
-
-    if output_path is not None:
-        if not output_path.endswith(".yaml"):
-            raise ValueError("FILE_PATH must end with '.yaml'.")
-
-        with open(output_path, "w") as f:
-            app.to_yaml(f)
-    else:
-        print(app.to_yaml(), end="")
