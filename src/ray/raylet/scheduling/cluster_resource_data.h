@@ -96,15 +96,17 @@ class ResourceRequest {
     custom_resources_.clear();
   }
 
-  void Normalize() {
+  void RemoveNegative() {
     for (size_t i = 0; i < predefined_resources_.size(); i++) {
       if (predefined_resources_[i] < 0) {
         predefined_resources_[i] = 0;
       }
     }
-    for (auto &entry : custom_resources_) {
-      if (entry.second < 0) {
-        entry.second = 0;
+    for (auto it = custom_resources_.begin(); it != custom_resources_.end();) {
+      if (it->second < 0) {
+        custom_resources_.erase(it++);
+      } else {
+        it++;
       }
     }
   }
