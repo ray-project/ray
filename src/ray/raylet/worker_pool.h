@@ -643,9 +643,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       TaskID *task_id /* output */);
 
   /// We manage all runtime env resources locally by the two methods:
-  /// `CreateRuntimeEnvOrGet` and `DeleteRuntimeEnvIfPossible`.
+  /// `GetOrCreateRuntimeEnv` and `DeleteRuntimeEnvIfPossible`.
   ///
-  /// `CreateRuntimeEnvOrGet` means increasing the reference count for the runtime env
+  /// `GetOrCreateRuntimeEnv` means increasing the reference count for the runtime env
   /// and `DeleteRuntimeEnvIfPossible` means decreasing the reference count. Note, The
   /// actual ref counting happens in runtime env agent.
   /// We increase or decrease runtime env reference in the cases below:
@@ -674,10 +674,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// assume that the worker process has tree worker instances totally.
 
   /// Create runtime env asynchronously by runtime env agent.
-  void CreateRuntimeEnvOrGet(
+  void GetOrCreateRuntimeEnv(
       const std::string &serialized_runtime_env,
       const JobID &job_id,
-      const CreateRuntimeEnvOrGetCallback &callback,
+      const GetOrCreateRuntimeEnvCallback &callback,
       const std::string &serialized_allocated_resource_instances = "{}");
 
   /// Delete runtime env asynchronously by runtime env agent.

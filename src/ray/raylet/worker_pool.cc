@@ -635,7 +635,7 @@ void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job
     // `HandleJobFinished` will also decrement the ref count multiple times.
     RAY_LOG(INFO) << "[Eagerly] Start install runtime environment for job " << job_id
                   << ". The runtime environment was " << runtime_env << ".";
-    CreateRuntimeEnvOrGet(runtime_env,
+    GetOrCreateRuntimeEnv(runtime_env,
                      job_id,
                      [job_id](bool successful,
                               const std::string &serialized_runtime_env_context,
@@ -1205,7 +1205,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
         // create runtime env.
         RAY_LOG(DEBUG) << "[dedicated] Creating runtime env for task "
                        << task_spec.TaskId();
-        CreateRuntimeEnvOrGet(
+        GetOrCreateRuntimeEnv(
             task_spec.SerializedRuntimeEnv(),
             task_spec.JobId(),
             [this, start_worker_process_fn, callback, &state, task_spec, dynamic_options](
@@ -1274,7 +1274,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
       if (task_spec.HasRuntimeEnv()) {
         // create runtime env.
         RAY_LOG(DEBUG) << "Creating runtime env for task " << task_spec.TaskId();
-        CreateRuntimeEnvOrGet(
+        GetOrCreateRuntimeEnv(
             task_spec.SerializedRuntimeEnv(),
             task_spec.JobId(),
             [this, start_worker_process_fn, callback, &state, task_spec](
@@ -1603,13 +1603,13 @@ WorkerPool::IOWorkerState &WorkerPool::GetIOWorkerStateFromWorkerType(
   UNREACHABLE;
 }
 
-void WorkerPool::CreateRuntimeEnvOrGet(
+void WorkerPool::GetOrCreateRuntimeEnv(
     const std::string &serialized_runtime_env,
     const JobID &job_id,
-    const CreateRuntimeEnvOrGetCallback &callback,
+    const GetOrCreateRuntimeEnvCallback &callback,
     const std::string &serialized_allocated_resource_instances) {
-  RAY_LOG(DEBUG) << "CreateRuntimeEnvOrGet " << serialized_runtime_env;
-  agent_manager_->CreateRuntimeEnvOrGet(
+  RAY_LOG(DEBUG) << "GetOrCreateRuntimeEnv " << serialized_runtime_env;
+  agent_manager_->GetOrCreateRuntimeEnv(
       job_id,
       serialized_runtime_env,
       serialized_allocated_resource_instances,

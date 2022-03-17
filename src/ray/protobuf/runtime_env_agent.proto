@@ -19,7 +19,7 @@ package ray.rpc;
 
 import "src/ray/protobuf/agent_manager.proto";
 
-message CreateRuntimeEnvOrGetRequest {
+message GetOrCreateRuntimeEnvRequest {
   string serialized_runtime_env = 1;
   bytes job_id = 2;
   // Serialized allocated resource instances. Key is resource type, value is allocated
@@ -29,7 +29,7 @@ message CreateRuntimeEnvOrGetRequest {
   string source_process = 4;
 }
 
-message CreateRuntimeEnvOrGetReply {
+message GetOrCreateRuntimeEnvReply {
   AgentRpcStatus status = 1;
   string error_message = 2;
   string serialized_runtime_env_context = 3;
@@ -46,8 +46,8 @@ message DeleteRuntimeEnvIfPossibleReply {
 }
 
 service RuntimeEnvService {
-  rpc CreateRuntimeEnvOrGet(CreateRuntimeEnvOrGetRequest)
-      returns (CreateRuntimeEnvOrGetReply);
+  rpc GetOrCreateRuntimeEnv(GetOrCreateRuntimeEnvRequest)
+      returns (GetOrCreateRuntimeEnvReply);
   rpc DeleteRuntimeEnvIfPossible(DeleteRuntimeEnvIfPossibleRequest)
       returns (DeleteRuntimeEnvIfPossibleReply);
 }

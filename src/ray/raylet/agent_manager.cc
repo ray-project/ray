@@ -114,11 +114,11 @@ void AgentManager::StartAgent() {
   monitor_thread.detach();
 }
 
-void AgentManager::CreateRuntimeEnvOrGet(
+void AgentManager::GetOrCreateRuntimeEnv(
     const JobID &job_id,
     const std::string &serialized_runtime_env,
     const std::string &serialized_allocated_resource_instances,
-    CreateRuntimeEnvOrGetCallback callback) {
+    GetOrCreateRuntimeEnvCallback callback) {
   // If the agent cannot be started, fail the request.
   if (!should_start_agent_) {
     std::stringstream str_stream;
@@ -141,6 +141,7 @@ void AgentManager::CreateRuntimeEnvOrGet(
     return;
   }
 
+  // `runtime_env_agent_client_` should be `nullptr` when the agent is starting or the agent has failed.
   if (runtime_env_agent_client_ == nullptr) {
     // If the grpc service of agent is invalid, fail the request.
     if (disable_agent_client_) {
@@ -165,7 +166,7 @@ void AgentManager::CreateRuntimeEnvOrGet(
 
     RAY_LOG_EVERY_MS(INFO, 3 * 10 * 1000)
         << "Runtime env agent is not registered yet. Will retry "
-           "CreateRuntimeEnvOrGet later: "
+           "GetOrCreateRuntimeEnv later: "
         << serialized_runtime_env;
     delay_executor_(
         [this,
@@ -173,7 +174,7 @@ void AgentManager::CreateRuntimeEnvOrGet(
          serialized_runtime_env,
          serialized_allocated_resource_instances,
          callback = std::move(callback)] {
-          CreateRuntimeEnvOrGet(job_id,
+          GetOrCreateRuntimeEnv(job_id,
                                 serialized_runtime_env,
                                 serialized_allocated_resource_instances,
                                 callback);
@@ -181,17 +182,17 @@ void AgentManager::CreateRuntimeEnvOrGet(
         RayConfig::instance().agent_manager_retry_interval_ms());
     return;
   }
-  rpc::CreateRuntimeEnvOrGetRequest request;
+  rpc::GetOrCreateRuntimeEnvRequest request;
   request.set_job_id(job_id.Hex());
   request.set_serialized_runtime_env(serialized_runtime_env);
   request.set_serialized_allocated_resource_instances(
       serialized_allocated_resource_instances);
-  runtime_env_agent_client_->CreateRuntimeEnvOrGet(
+  runtime_env_agent_client_->GetOrCreateRuntimeEnv(
       request,
       [serialized_runtime_env,
        serialized_allocated_resource_instances,
        callback = std::move(callback)](const Status &status,
-                                       const rpc::CreateRuntimeEnvOrGetReply &reply) {
+                                       const rpc::GetOrCreateRuntimeEnvReply &reply) {
         if (status.ok()) {
           if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
             callback(true,
@@ -228,6 +229,7 @@ void AgentManager::DeleteRuntimeEnvIfPossible(
     delay_executor_([callback = std::move(callback)] { callback(false); }, 0);
     return;
   }
+  // `runtime_env_agent_client_` should be `nullptr` when the agent is starting or the agent has failed.
   if (runtime_env_agent_client_ == nullptr) {
     RAY_LOG(INFO)
         << "Runtime env agent is not registered yet. Will retry DeleteRuntimeEnvIfPossible later.";

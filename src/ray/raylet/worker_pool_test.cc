@@ -87,10 +87,10 @@ static int GetReferenceCount(const std::string serialized_runtime_env) {
 
 class MockRuntimeEnvAgentClient : public rpc::RuntimeEnvAgentClientInterface {
  public:
-  void CreateRuntimeEnvOrGet(
-      const rpc::CreateRuntimeEnvOrGetRequest &request,
-      const rpc::ClientCallback<rpc::CreateRuntimeEnvOrGetReply> &callback) {
-    rpc::CreateRuntimeEnvOrGetReply reply;
+  void GetOrCreateRuntimeEnv(
+      const rpc::GetOrCreateRuntimeEnvRequest &request,
+      const rpc::ClientCallback<rpc::GetOrCreateRuntimeEnvReply> &callback) {
+    rpc::GetOrCreateRuntimeEnvReply reply;
     if (request.serialized_runtime_env() == BAD_RUNTIME_ENV) {
       reply.set_status(rpc::AGENT_RPC_STATUS_FAILED);
       reply.set_error_message(BAD_RUNTIME_ENV_ERROR_MSG);

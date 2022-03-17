@@ -7,6 +7,7 @@ import os
 import time
 from typing import Dict, Set, List, Tuple, Callable
 from enum import Enum
+from collections import defaultdict
 from ray._private.utils import import_attr
 
 from ray.core.generated import runtime_env_agent_pb2
@@ -80,9 +81,12 @@ class ReferenceTable:
         unused_uris_callback: Callable[[List[Tuple[UriType, str]]], None],
         unused_runtime_env_callback: Callable[[str], None],
     ):
-        self._logger = default_logger
-        self._uri_reference: Dict[str, int] = dict()
-        self._runtime_env_reference: Dict[str, int] = dict()
+        # Runtime Environment reference table. The key is serialized runtime env and
+        # the value is reference count.
+        self._runtime_env_reference: Dict[str, int] = defaultdict(int)
+        # URI reference table. The key is URI parsed from runtime env and the value
+        # is reference count.
+        self._uri_reference: Dict[str, int] = defaultdict(int)
         self._uris_parser = uris_parser
         self._unused_uris_callback = unused_uris_callback
         self._unused_runtime_env_callback = unused_runtime_env_callback
@@ -93,48 +97,42 @@ class ReferenceTable:
         }
 
     def _increase_reference_for_uris(self, uris):
-        self._logger.info(f"Increase reference for uris {uris}.")
+        default_logger.debug(f"Increase reference for uris {uris}.")
         for uri, _ in uris:
-            if uri in self._uri_reference:
-                self._uri_reference[uri] += 1
-            else:
-                self._uri_reference[uri] = 1
+            self._uri_reference[uri] += 1
 
     def _decrease_reference_for_uris(self, uris):
-        self._logger.info(f"Decrease reference for uris {uris}.")
+        default_logger.debug(f"Decrease reference for uris {uris}.")
         unused_uris = list()
         for uri, uri_type in uris:
-            if uri in self._uri_reference:
+            if self._uri_reference[uri] > 0:
                 self._uri_reference[uri] -= 1
                 if self._uri_reference[uri] == 0:
                     unused_uris.append((uri, uri_type))
                     del self._uri_reference[uri]
             else:
-                self._logger.error(f"URI {uri} does not exist.")
+                default_logger.warn(f"URI {uri} does not exist.")
         if unused_uris:
-            self._logger.info(f"Unused uris {unused_uris}.")
+            default_logger.info(f"Unused uris {unused_uris}.")
             self._unused_uris_callback(unused_uris)
         return unused_uris
 
     def _increase_reference_for_runtime_env(self, serialized_env: str):
-        self._logger.info(f"Increase reference for runtime env {serialized_env}.")
-        if serialized_env in self._runtime_env_reference:
-            self._runtime_env_reference[serialized_env] += 1
-        else:
-            self._runtime_env_reference[serialized_env] = 1
+        default_logger.debug(f"Increase reference for runtime env {serialized_env}.")
+        self._runtime_env_reference[serialized_env] += 1
 
     def _decrease_reference_for_runtime_env(self, serialized_env: str):
-        self._logger.info(f"Decrease reference for runtime env {serialized_env}.")
+        default_logger.debug(f"Decrease reference for runtime env {serialized_env}.")
         unused = False
-        if serialized_env in self._runtime_env_reference:
+        if self._runtime_env_reference[serialized_env] > 0:
             self._runtime_env_reference[serialized_env] -= 1
             if self._runtime_env_reference[serialized_env] == 0:
                 unused = True
                 del self._runtime_env_reference[serialized_env]
         else:
-            self._logger.error(f"Runtime env {serialized_env} does not exist.")
+            default_logger.warn(f"Runtime env {serialized_env} does not exist.")
         if unused:
-            self._logger.info(f"Unused runtime env {serialized_env}.")
+            default_logger.info(f"Unused runtime env {serialized_env}.")
             self._unused_runtime_env_callback(serialized_env)
         return unused
 
@@ -260,8 +258,8 @@ class RuntimeEnvAgent(
             self._per_job_logger_cache[job_id] = per_job_logger
         return self._per_job_logger_cache[job_id]
 
-    async def CreateRuntimeEnvOrGet(self, request, context):
-        self._logger.info(
+    async def GetOrCreateRuntimeEnv(self, request, context):
+        self._logger.debug(
             f"Got request from {request.source_process} to increase "
             "reference for runtime env: "
             f"{request.serialized_runtime_env}."
@@ -345,6 +343,9 @@ class RuntimeEnvAgent(
 
             return context
 
+        # Create runtime env with retry times. This function won't raise exceptions.
+        # Returns a tuple which contains result(bool), runtime env context(str), and
+        # error message(str).
         async def _create_runtime_env_with_retry(
             runtime_env, serialized_runtime_env, serialized_allocated_resource_instances
         ):
@@ -392,7 +393,7 @@ class RuntimeEnvAgent(
             self._logger.exception(
                 "[Increase] Failed to parse runtime env: " f"{serialized_env}"
             )
-            return runtime_env_agent_pb2.CreateRuntimeEnvOrGetReply(
+            return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
                 error_message="".join(
                     traceback.format_exception(type(e), e, e.__traceback__)
@@ -419,7 +420,7 @@ class RuntimeEnvAgent(
                         f"successfully. Env: {serialized_env}, "
                         f"context: {context}"
                     )
-                    return runtime_env_agent_pb2.CreateRuntimeEnvOrGetReply(
+                    return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                         status=agent_manager_pb2.AGENT_RPC_STATUS_OK,
                         serialized_runtime_env_context=context,
                     )
@@ -433,7 +434,7 @@ class RuntimeEnvAgent(
                     self._reference_table.decrease_reference(
                         runtime_env, serialized_env, request.source_process
                     )
-                    return runtime_env_agent_pb2.CreateRuntimeEnvOrGetReply(
+                    return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                         status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
                         error_message=error_message,
                     )
@@ -461,7 +462,7 @@ class RuntimeEnvAgent(
                 successful, serialized_context if successful else error_message
             )
             # Reply the RPC
-            return runtime_env_agent_pb2.CreateRuntimeEnvOrGetReply(
+            return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_OK
                 if successful
                 else agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
@@ -483,7 +484,7 @@ class RuntimeEnvAgent(
                 "[Decrease] Failed to parse runtime env: "
                 f"{request.serialized_runtime_env}"
             )
-            return runtime_env_agent_pb2.CreateRuntimeEnvOrGetReply(
+            return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
                 error_message="".join(
                     traceback.format_exception(type(e), e, e.__traceback__)
