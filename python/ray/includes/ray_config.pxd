@@ -62,7 +62,3 @@ cdef extern from "ray/common/ray_config.h" nogil:
         uint32_t max_grpc_message_size() const
 
         c_bool record_ref_creation_sites() const
-
-        c_bool gcs_grpc_based_pubsub() const
-
-        c_bool bootstrap_with_gcs() const

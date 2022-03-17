@@ -24,7 +24,6 @@ except ImportError:  # py2
 
 import ray
 from ray.experimental.internal_kv import _internal_kv_put
-import ray._private.services as services
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler._private.constants import (
     AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
@@ -70,7 +69,6 @@ from ray.autoscaler._private.cluster_dump import (
     get_all_local_data,
 )
 
-from ray.worker import global_worker  # type: ignore
 from ray.util.debug import log_once
 
 from ray.autoscaler._private import subprocess_output_util as cmd_output_util
@@ -87,15 +85,6 @@ RUN_ENV_TYPES = ["auto", "host", "docker"]
 POLL_INTERVAL = 5
 
 Port_forward = Union[Tuple[int, int], List[Tuple[int, int]]]
-
-
-def _redis():
-    global redis_client
-    if redis_client is None:
-        redis_client = services.create_redis_client(
-            global_worker.node.redis_address, password=global_worker.node.redis_password
-        )
-    return redis_client
 
 
 def try_logging_config(config: Dict[str, Any]) -> None:
