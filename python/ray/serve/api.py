@@ -1902,6 +1902,17 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     )(s.import_path)
 
 
+def serve_application_to_schema(
+    deployments: List[Deployment],
+) -> ServeApplicationSchema:
+    schemas = [deployment_to_schema(d) for d in deployments]
+    return ServeApplicationSchema(deployments=schemas)
+
+
+def schema_to_serve_application(schema: ServeApplicationSchema) -> List[Deployment]:
+    return [schema_to_deployment(s) for s in schema.deployments]
+
+
 def status_info_to_schema(
     deployment_name: str, status_info: Union[DeploymentStatusInfo, Dict]
 ) -> DeploymentStatusSchema:
