@@ -1,7 +1,7 @@
-Advanced Usage
-==============
+Miscellaneous Topics
+====================
 
-This page will cover some more advanced functionality of Ray.
+This page will cover some miscellaneous topics in Ray.
 
 .. contents::
   :local:
