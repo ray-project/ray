@@ -1,5 +1,6 @@
 import os
 import pytest
+from timeit import default_timer as timer
 
 import torch
 from torch.nn.parallel import DistributedDataParallel
@@ -125,6 +126,65 @@ def test_enable_reproducibility(ray_start_4_cpus_2_gpus, use_gpu):
     trainer.shutdown()
 
     assert result1 == result2
+
+
+def test_torch_amp(ray_start_4_cpus_2_gpus):
+    def train_func(config):
+        train.torch.accelerate(amp=config["amp"])
+
+        model = torchvision.models.resnet101()
+        model = train.torch.prepare_model(model)
+
+        dataset_length = 1000
+        dataset = torch.utils.data.TensorDataset(
+            torch.randn(dataset_length, 3, 224, 224),
+            torch.randint(low=0, high=1000, size=(dataset_length,)),
+        )
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size=64)
+        dataloader = train.torch.prepare_data_loader(dataloader)
+
+        optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
+        optimizer = train.torch.prepare_optimizer(optimizer)
+
+        model.train()
+        for epoch in range(1):
+            for images, targets in dataloader:
+                optimizer.zero_grad()
+
+                outputs = model(images)
+                loss = torch.nn.functional.cross_entropy(outputs, targets)
+
+                train.torch.backward(loss)
+                optimizer.step()
+
+    def latency(amp: bool) -> float:
+        trainer = Trainer("torch", num_workers=2, use_gpu=True)
+        trainer.start()
+        start_time = timer()
+        trainer.run(train_func, {"amp": amp})
+        end_time = timer()
+        trainer.shutdown()
+        return end_time - start_time
+
+    # Training should be at least 5% faster with AMP.
+    assert 1.05 * latency(amp=True) < latency(amp=False)
+
+
+def test_checkpoint_torch_model_with_amp(ray_start_4_cpus_2_gpus):
+    """Test that model with AMP is serializable."""
+
+    def train_func():
+        train.torch.accelerate(amp=True)
+
+        model = torchvision.models.resnet101()
+        model = train.torch.prepare_model(model)
+
+        train.save_checkpoint(model=model)
+
+    trainer = Trainer("torch", num_workers=1, use_gpu=True)
+    trainer.start()
+    trainer.run(train_func)
+    trainer.shutdown()
 
 
 def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):

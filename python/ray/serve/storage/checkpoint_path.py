@@ -12,9 +12,7 @@ def make_kv_store(checkpoint_path, namespace):
     """Create KVStore instance based on checkpoint_path configuration"""
 
     if checkpoint_path == DEFAULT_CHECKPOINT_PATH:
-        logger.info(
-            "Using RayInternalKVStore for controller " "checkpoint and recovery."
-        )
+        logger.info("Using RayInternalKVStore for controller checkpoint and recovery.")
         return RayInternalKVStore(namespace)
     else:
         parsed_url = urlparse(checkpoint_path)

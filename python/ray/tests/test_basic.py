@@ -183,7 +183,7 @@ def test_invalid_arguments(shutdown_only):
     for opt in [np.random.randint(-100, -1), np.random.uniform(0, 1)]:
         with pytest.raises(
             ValueError,
-            match="The keyword 'num_returns' only accepts 0 or a" " positive integer",
+            match="The keyword 'num_returns' only accepts 0 or a positive integer",
         ):
 
             @ray.remote(num_returns=opt)
@@ -204,7 +204,7 @@ def test_invalid_arguments(shutdown_only):
     for opt in [np.random.randint(-100, -1), np.random.uniform(0, 1)]:
         with pytest.raises(
             ValueError,
-            match="The keyword 'max_calls' only accepts 0 or a positive" " integer",
+            match="The keyword 'max_calls' only accepts 0 or a positive integer",
         ):
 
             @ray.remote(max_calls=opt)
