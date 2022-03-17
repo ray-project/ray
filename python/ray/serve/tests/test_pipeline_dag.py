@@ -205,7 +205,7 @@ def test_multi_instantiation_class_nested_deployment_arg_dag(serve_instance, use
     assert ray.get(handle.remote(1)) == 5
 
 
-def test_class_factory(serve_instance, use_build):
+def test_class_factory(serve_instance):
     with InputNode() as _:
         instance = ray.remote(class_factory()).bind(3)
         output = instance.get.bind()
