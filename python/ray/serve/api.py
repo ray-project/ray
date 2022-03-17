@@ -73,7 +73,7 @@ from ray import cloudpickle
 
 
 _INTERNAL_REPLICA_CONTEXT = None
-_global_client = None
+_global_client: "Client" = None
 
 _UUID_RE = re.compile(
     "[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89aAbB][a-f0-9]{3}-[a-f0-9]{12}"
@@ -109,9 +109,24 @@ def _get_controller_namespace(
     return controller_namespace
 
 
-def internal_get_global_client(_override_controller_namespace: Optional[str] = None):
+def internal_get_global_client(
+    _override_controller_namespace: Optional[str] = None,
+    _health_check_controller: bool = False,
+) -> "Client":
+    """Gets the global client, which stores the controller's handle.
+
+    Args:
+        _override_controller_namespace (Optional[str]): If None and there's no
+            cached client, searches for the controller in this namespace.
+        _health_check_controller (bool): If True, run a health check on the
+            cached controller if it exists. If the check fails, try reconnecting
+            to the controller.
+    """
+
     try:
-        if _global_client is not None and ray.get(_global_client._controller.check_alive.remote()):
+        if _global_client is not None:
+            if _health_check_controller:
+                ray.get(_global_client._controller.check_alive.remote())
             return _global_client
     except RayActorError:
         logger.debug("The cached controller has died. Reconnecting.")
