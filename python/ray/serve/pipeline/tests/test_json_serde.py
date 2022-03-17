@@ -99,24 +99,6 @@ def test_non_json_serializable_args():
     # General context
     with pytest.raises(
         TypeError,
-        match=(
-            "All args and kwargs used in Ray DAG building for serve "
-            "deployment need to be JSON serializable."
-        ),
-    ):
-        _ = json.dumps(ray_dag, cls=DAGNodeEncoder)
-    # User actionable item
-    with pytest.raises(
-        TypeError,
-        match=(
-            "Please JSON serialize your args to make your ray application "
-            "deployment ready"
-        ),
-    ):
-        _ = json.dumps(ray_dag, cls=DAGNodeEncoder)
-    # Original error message
-    with pytest.raises(
-        TypeError,
         match=r"Object of type .* is not JSON serializable",
     ):
         _ = json.dumps(ray_dag, cls=DAGNodeEncoder)

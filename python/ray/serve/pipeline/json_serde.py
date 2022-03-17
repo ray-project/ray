@@ -41,8 +41,8 @@ def convert_to_json_safe_obj(obj: Any, *, err_key: str) -> Any:
     except Exception as e:
         raise TypeError(
             "All provided fields must be JSON-serializable to build the "
-            f"Serve app. Failed while serializing {err_key}."
-        ) from e
+            f"Serve app. Failed while serializing {err_key}:\n{e}"
+        )
 
 
 def convert_from_json_safe_obj(obj: Any, *, err_key: str) -> Any:
@@ -55,7 +55,7 @@ def convert_from_json_safe_obj(obj: Any, *, err_key: str) -> Any:
     try:
         return json.loads(json.dumps(obj), object_hook=dagnode_from_json)
     except Exception as e:
-        raise ValueError(f"Failed to convert {err_key} from JSON.") from e
+        raise ValueError(f"Failed to convert {err_key} from JSON:\n{e}")
 
 
 class DAGNodeEncoder(json.JSONEncoder):
@@ -87,17 +87,7 @@ class DAGNodeEncoder(json.JSONEncoder):
         elif isinstance(obj, DAGNode):
             return obj.to_json(DAGNodeEncoder)
         else:
-            # Let the base class default method raise the TypeError
-            try:
-                return json.JSONEncoder.default(self, obj)
-            except Exception as e:
-                raise TypeError(
-                    "All args and kwargs used in Ray DAG building for serve "
-                    "deployment need to be JSON serializable. Please JSON "
-                    "serialize your args to make your ray application "
-                    "deployment ready."
-                    f"\n Original exception message: {e}"
-                )
+            return json.JSONEncoder.default(self, obj)
 
 
 def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
