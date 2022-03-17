@@ -26,8 +26,8 @@ from ray._private.runtime_env.py_modules import PyModulesManager
 from ray._private.runtime_env.working_dir import WorkingDirManager
 from ray._private.runtime_env.container import ContainerManager
 from ray._private.runtime_env.plugin import decode_plugin_uri
-from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.runtime_env.uri_cache import URICache
+from ray.runtime_env import RuntimeEnv
 
 default_logger = logging.getLogger(__name__)
 
@@ -122,7 +122,7 @@ class RuntimeEnvAgent(
         async def _setup_runtime_env(
             serialized_runtime_env, serialized_allocated_resource_instances
         ):
-            runtime_env = RuntimeEnv(serialized_runtime_env=serialized_runtime_env)
+            runtime_env = RuntimeEnv.deserialize(serialized_runtime_env)
             allocated_resource: dict = json.loads(
                 serialized_allocated_resource_instances or "{}"
             )
@@ -194,17 +194,25 @@ class RuntimeEnvAgent(
                 for uri in runtime_env.plugin_uris():
                     self._uris_to_envs[uri].add(serialized_runtime_env)
 
-            # Run setup function from all the plugins
-            for plugin_class_path, config in runtime_env.plugins():
-                per_job_logger.debug(
-                    f"Setting up runtime env plugin {plugin_class_path}"
-                )
-                plugin_class = import_attr(plugin_class_path)
-                # TODO(simon): implement uri support
-                plugin_class.create("uri not implemented", json.loads(config), context)
-                plugin_class.modify_context(
-                    "uri not implemented", json.loads(config), context
-                )
+            def setup_plugins():
+                # Run setup function from all the plugins
+                for plugin_class_path, config in runtime_env.plugins():
+                    per_job_logger.debug(
+                        f"Setting up runtime env plugin {plugin_class_path}"
+                    )
+                    plugin_class = import_attr(plugin_class_path)
+                    # TODO(simon): implement uri support
+                    plugin_class.create(
+                        "uri not implemented", json.loads(config), context
+                    )
+                    plugin_class.modify_context(
+                        "uri not implemented", json.loads(config), context
+                    )
+
+            loop = asyncio.get_event_loop()
+            # Plugins setup method is sync process, running in other threads
+            # is to avoid  blocks asyncio loop
+            await loop.run_in_executor(None, setup_plugins)
 
             return context
 
@@ -316,7 +324,10 @@ class RuntimeEnvAgent(
         )
 
     async def run(self, server):
-        runtime_env_agent_pb2_grpc.add_RuntimeEnvServiceServicer_to_server(self, server)
+        if server:
+            runtime_env_agent_pb2_grpc.add_RuntimeEnvServiceServicer_to_server(
+                self, server
+            )
 
     @staticmethod
     def is_minimal_module():

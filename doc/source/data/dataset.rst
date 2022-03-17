@@ -1,10 +1,6 @@
+.. include:: /_includes/data/announcement.rst
+
 .. _datasets:
-
-.. note::
-
-    Before you proceed, note that Ray Datasets is available as **beta** in Ray 1.8+.
-    Please file feature requests and bug reports on GitHub Issues or join the discussion
-    on the `Ray Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`__.
 
 ==================================================
 Ray Datasets: Distributed Data Loading and Compute
@@ -259,3 +255,5 @@ There are many potential improvements, including:
 - Integration with more ecosystem libraries.
 - Adding features that require partitioning such as `groupby()` and `join()`.
 - Performance optimizations.
+
+.. include:: /_includes/data/announcement_bottom.rst

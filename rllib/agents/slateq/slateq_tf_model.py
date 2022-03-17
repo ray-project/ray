@@ -11,8 +11,6 @@ tf1, tf, tfv = try_import_tf()
 
 
 class SlateQTFModel(TFModelV2):
-    """"""
-
     def __init__(
         self,
         obs_space: gym.spaces.Space,

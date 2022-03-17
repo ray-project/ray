@@ -29,14 +29,19 @@ ObjectStoreRunner::ObjectStoreRunner(const ObjectManagerConfig &config,
                                      std::function<void()> object_store_full_callback,
                                      AddObjectCallback add_object_callback,
                                      DeleteObjectCallback delete_object_callback) {
-  plasma::plasma_store_runner.reset(new plasma::PlasmaStoreRunner(
-      config.store_socket_name, config.object_store_memory, config.huge_pages,
-      config.plasma_directory, config.fallback_directory));
+  plasma::plasma_store_runner.reset(
+      new plasma::PlasmaStoreRunner(config.store_socket_name,
+                                    config.object_store_memory,
+                                    config.huge_pages,
+                                    config.plasma_directory,
+                                    config.fallback_directory));
   // Initialize object store.
-  store_thread_ =
-      std::thread(&plasma::PlasmaStoreRunner::Start, plasma::plasma_store_runner.get(),
-                  spill_objects_callback, object_store_full_callback, add_object_callback,
-                  delete_object_callback);
+  store_thread_ = std::thread(&plasma::PlasmaStoreRunner::Start,
+                              plasma::plasma_store_runner.get(),
+                              spill_objects_callback,
+                              object_store_full_callback,
+                              add_object_callback,
+                              delete_object_callback);
   // Sleep for sometime until the store is working. This can suppress some
   // connection warnings.
   std::this_thread::sleep_for(std::chrono::microseconds(500));
@@ -49,13 +54,16 @@ ObjectStoreRunner::~ObjectStoreRunner() {
 }
 
 ObjectManager::ObjectManager(
-    instrumented_io_context &main_service, const NodeID &self_node_id,
-    const ObjectManagerConfig &config, IObjectDirectory *object_directory,
+    instrumented_io_context &main_service,
+    const NodeID &self_node_id,
+    const ObjectManagerConfig &config,
+    IObjectDirectory *object_directory,
     RestoreSpilledObjectCallback restore_spilled_object,
     std::function<std::string(const ObjectID &)> get_spilled_object_url,
     SpillObjectsCallback spill_objects_callback,
     std::function<void()> object_store_full_callback,
-    AddObjectCallback add_object_callback, DeleteObjectCallback delete_object_callback,
+    AddObjectCallback add_object_callback,
+    DeleteObjectCallback delete_object_callback,
     std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
     const std::function<void(const ObjectID &)> fail_pull_request)
     : main_service_(&main_service),
@@ -63,12 +71,15 @@ ObjectManager::ObjectManager(
       config_(config),
       object_directory_(object_directory),
       object_store_internal_(
-          config, spill_objects_callback, object_store_full_callback,
+          config,
+          spill_objects_callback,
+          object_store_full_callback,
           /*add_object_callback=*/
-          [this, add_object_callback =
-                     std::move(add_object_callback)](const ObjectInfo &object_info) {
+          [this, add_object_callback = std::move(add_object_callback)](
+              const ObjectInfo &object_info) {
             main_service_->post(
-                [this, object_info,
+                [this,
+                 object_info,
                  add_object_callback = std::move(add_object_callback)]() {
                   HandleObjectAdded(object_info);
                   add_object_callback(object_info);
@@ -76,19 +87,22 @@ ObjectManager::ObjectManager(
                 "ObjectManager.ObjectAdded");
           },
           /*delete_object_callback=*/
-          [this, delete_object_callback =
-                     std::move(delete_object_callback)](const ObjectID &object_id) {
+          [this, delete_object_callback = std::move(delete_object_callback)](
+              const ObjectID &object_id) {
             main_service_->post(
-                [this, object_id,
+                [this,
+                 object_id,
                  delete_object_callback = std::move(delete_object_callback)]() {
                   HandleObjectDeleted(object_id);
                   delete_object_callback(object_id);
                 },
                 "ObjectManager.ObjectDeleted");
           }),
-      buffer_pool_(config_.store_socket_name, config_.object_chunk_size),
+      buffer_pool_store_client_(std::make_shared<plasma::PlasmaClient>()),
+      buffer_pool_(buffer_pool_store_client_, config_.object_chunk_size),
       rpc_work_(rpc_service_),
-      object_manager_server_("ObjectManager", config_.object_manager_port,
+      object_manager_server_("ObjectManager",
+                             config_.object_manager_port,
                              config_.object_manager_address == "127.0.0.1",
                              config_.rpc_service_threads_number),
       object_manager_service_(rpc_service_, *this),
@@ -123,10 +137,21 @@ ObjectManager::ObjectManager(
   if (available_memory < 0) {
     available_memory = 0;
   }
-  pull_manager_.reset(new PullManager(
-      self_node_id_, object_is_local, send_pull_request, cancel_pull_request,
-      fail_pull_request, restore_spilled_object_, get_time, config.pull_timeout_ms,
-      available_memory, pin_object, get_spilled_object_url));
+  pull_manager_.reset(new PullManager(self_node_id_,
+                                      object_is_local,
+                                      send_pull_request,
+                                      cancel_pull_request,
+                                      fail_pull_request,
+                                      restore_spilled_object_,
+                                      get_time,
+                                      config.pull_timeout_ms,
+                                      available_memory,
+                                      pin_object,
+                                      get_spilled_object_url));
+
+  RAY_CHECK_OK(
+      buffer_pool_store_client_->Connect(config_.store_socket_name.c_str(), "", 0, 300));
+
   // Start object manager rpc server and send & receive request threads
   StartRpcService();
 }
@@ -209,13 +234,19 @@ uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_ref
   std::vector<rpc::ObjectReference> objects_to_locate;
   auto request_id = pull_manager_->Pull(object_refs, prio, &objects_to_locate);
 
-  const auto &callback =
-      [this](const ObjectID &object_id, const std::unordered_set<NodeID> &client_ids,
-             const std::string &spilled_url, const NodeID &spilled_node_id,
-             bool pending_creation, size_t object_size) {
-        pull_manager_->OnLocationChange(object_id, client_ids, spilled_url,
-                                        spilled_node_id, pending_creation, object_size);
-      };
+  const auto &callback = [this](const ObjectID &object_id,
+                                const std::unordered_set<NodeID> &client_ids,
+                                const std::string &spilled_url,
+                                const NodeID &spilled_node_id,
+                                bool pending_creation,
+                                size_t object_size) {
+    pull_manager_->OnLocationChange(object_id,
+                                    client_ids,
+                                    spilled_url,
+                                    spilled_node_id,
+                                    pending_creation,
+                                    object_size);
+  };
 
   for (const auto &ref : objects_to_locate) {
     // Subscribe to object notifications. A notification will be received every
@@ -286,9 +317,12 @@ void ObjectManager::HandlePushTaskTimeout(const ObjectID &object_id,
   }
 }
 
-void ObjectManager::HandleSendFinished(const ObjectID &object_id, const NodeID &node_id,
-                                       uint64_t chunk_index, double start_time,
-                                       double end_time, ray::Status status) {
+void ObjectManager::HandleSendFinished(const ObjectID &object_id,
+                                       const NodeID &node_id,
+                                       uint64_t chunk_index,
+                                       double start_time,
+                                       double end_time,
+                                       ray::Status status) {
   RAY_LOG(DEBUG) << "HandleSendFinished on " << self_node_id_ << " to " << node_id
                  << " of object " << object_id << " chunk " << chunk_index
                  << ", status: " << status.ToString();
@@ -368,31 +402,26 @@ void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &nod
 
   if (object_reader->GetDataSize() != data_size ||
       object_reader->GetMetadataSize() != metadata_size) {
-    if (object_reader->GetDataSize() == 0) {
-      // TODO(scv119): handle object size changes in a more graceful way.
-      RAY_LOG(WARNING) << object_id
-                       << " is marked as failed but object_manager has stale info "
-                       << " with data size: " << data_size
-                       << ", metadata size: " << metadata_size
-                       << ". This is likely due to race condition."
-                       << " Update the info and proceed sending failed object.";
-      local_objects_[object_id].object_info.data_size = 0;
-      local_objects_[object_id].object_info.metadata_size = 1;
-    } else {
-      RAY_LOG(FATAL) << "Object id:" << object_id
+    // TODO(scv119): handle object size changes in a more graceful way.
+    RAY_LOG(WARNING) << "Object id:" << object_id
                      << "'s size mismatches our record. Expected data size: " << data_size
                      << ", expected metadata size: " << metadata_size
                      << ", actual data size: " << object_reader->GetDataSize()
-                     << ", actual metadata size: " << object_reader->GetMetadataSize();
-    }
+                     << ", actual metadata size: " << object_reader->GetMetadataSize()
+                     << ". This is likely due to a race condition."
+                     << " We will update the object size and proceed sending the object.";
+    local_objects_[object_id].object_info.data_size = 0;
+    local_objects_[object_id].object_info.metadata_size = 1;
   }
 
-  PushObjectInternal(object_id, node_id,
+  PushObjectInternal(object_id,
+                     node_id,
                      std::make_shared<ChunkObjectReader>(std::move(object_reader),
                                                          config_.object_chunk_size));
 }
 
-void ObjectManager::PushFromFilesystem(const ObjectID &object_id, const NodeID &node_id,
+void ObjectManager::PushFromFilesystem(const ObjectID &object_id,
+                                       const NodeID &node_id,
                                        const std::string &spilled_url) {
   // SpilledObjectReader::CreateSpilledObjectReader does synchronous IO; schedule it off
   // main thread.
@@ -413,7 +442,9 @@ void ObjectManager::PushFromFilesystem(const ObjectID &object_id, const NodeID &
         // Schedule PushObjectInternal back to main_service as PushObjectInternal access
         // thread unsafe datastructure.
         main_service_->post(
-            [this, object_id, node_id,
+            [this,
+             object_id,
+             node_id,
              chunk_object_reader = std::move(chunk_object_reader)]() {
               PushObjectInternal(object_id, node_id, std::move(chunk_object_reader));
             },
@@ -422,7 +453,8 @@ void ObjectManager::PushFromFilesystem(const ObjectID &object_id, const NodeID &
       "ObjectManager.CreateSpilledObject");
 }
 
-void ObjectManager::PushObjectInternal(const ObjectID &object_id, const NodeID &node_id,
+void ObjectManager::PushObjectInternal(const ObjectID &object_id,
+                                       const NodeID &node_id,
                                        std::shared_ptr<ChunkObjectReader> chunk_reader) {
   auto rpc_client = GetRpcClient(node_id);
   if (!rpc_client) {
@@ -444,7 +476,11 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id, const NodeID &
               // Post to the multithreaded RPC event loop so that data is copied
               // off of the main thread.
               SendObjectChunk(
-                  push_id, object_id, node_id, chunk_id, rpc_client,
+                  push_id,
+                  object_id,
+                  node_id,
+                  chunk_id,
+                  rpc_client,
                   [=](const Status &status) {
                     // Post back to the main event loop because the
                     // PushManager is thread-safe.
@@ -460,8 +496,10 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id, const NodeID &
       });
 }
 
-void ObjectManager::SendObjectChunk(const UniqueID &push_id, const ObjectID &object_id,
-                                    const NodeID &node_id, uint64_t chunk_index,
+void ObjectManager::SendObjectChunk(const UniqueID &push_id,
+                                    const ObjectID &object_id,
+                                    const NodeID &node_id,
+                                    uint64_t chunk_index,
                                     std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
                                     std::function<void(const Status &)> on_complete,
                                     std::shared_ptr<ChunkObjectReader> chunk_reader) {
@@ -506,7 +544,8 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id, const ObjectID &obj
 }
 
 /// Implementation of ObjectManagerServiceHandler
-void ObjectManager::HandlePush(const rpc::PushRequest &request, rpc::PushReply *reply,
+void ObjectManager::HandlePush(const rpc::PushRequest &request,
+                               rpc::PushReply *reply,
                                rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   NodeID node_id = NodeID::FromBinary(request.node_id());
@@ -518,8 +557,8 @@ void ObjectManager::HandlePush(const rpc::PushRequest &request, rpc::PushReply *
   const rpc::Address &owner_address = request.owner_address();
   const std::string &data = request.data();
 
-  bool success = ReceiveObjectChunk(node_id, object_id, owner_address, data_size,
-                                    metadata_size, chunk_index, data);
+  bool success = ReceiveObjectChunk(
+      node_id, object_id, owner_address, data_size, metadata_size, chunk_index, data);
   num_chunks_received_total_++;
   if (!success) {
     num_chunks_received_total_failed_++;
@@ -532,10 +571,13 @@ void ObjectManager::HandlePush(const rpc::PushRequest &request, rpc::PushReply *
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id, const ObjectID &object_id,
+bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
+                                       const ObjectID &object_id,
                                        const rpc::Address &owner_address,
-                                       uint64_t data_size, uint64_t metadata_size,
-                                       uint64_t chunk_index, const std::string &data) {
+                                       uint64_t data_size,
+                                       uint64_t metadata_size,
+                                       uint64_t chunk_index,
+                                       const std::string &data) {
   RAY_LOG(DEBUG) << "ReceiveObjectChunk on " << self_node_id_ << " from " << node_id
                  << " of object " << object_id << " chunk index: " << chunk_index
                  << ", chunk data size: " << data.size()
@@ -546,8 +588,8 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id, const ObjectID &ob
     // This object is no longer being actively pulled. Do not create the object.
     return false;
   }
-  auto chunk_status = buffer_pool_.CreateChunk(object_id, owner_address, data_size,
-                                               metadata_size, chunk_index);
+  auto chunk_status = buffer_pool_.CreateChunk(
+      object_id, owner_address, data_size, metadata_size, chunk_index);
   if (!pull_manager_->IsObjectActive(object_id)) {
     num_chunks_received_cancelled_++;
     // This object is no longer being actively pulled. Abort the object. We
@@ -560,7 +602,7 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id, const ObjectID &ob
 
   if (chunk_status.ok()) {
     // Avoid handling this chunk if it's already being handled by another process.
-    buffer_pool_.WriteChunk(object_id, chunk_index, data);
+    buffer_pool_.WriteChunk(object_id, data_size, metadata_size, chunk_index, data);
     return true;
   } else {
     num_chunks_received_failed_due_to_plasma_++;
@@ -569,7 +611,8 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id, const ObjectID &ob
   }
 }
 
-void ObjectManager::HandlePull(const rpc::PullRequest &request, rpc::PullReply *reply,
+void ObjectManager::HandlePull(const rpc::PullRequest &request,
+                               rpc::PullReply *reply,
                                rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   NodeID node_id = NodeID::FromBinary(request.node_id());
@@ -622,12 +665,14 @@ void ObjectManager::SpreadFreeObjectsRequest(
   }
 
   for (auto &rpc_client : rpc_clients) {
-    rpc_client->FreeObjects(free_objects_request, [](const Status &status,
-                                                     const rpc::FreeObjectsReply &reply) {
-      if (!status.ok()) {
-        RAY_LOG(WARNING) << "Send free objects request failed due to" << status.message();
-      }
-    });
+    rpc_client->FreeObjects(free_objects_request,
+                            [](const Status &status, const rpc::FreeObjectsReply &reply) {
+                              if (!status.ok()) {
+                                RAY_LOG(WARNING)
+                                    << "Send free objects request failed due to"
+                                    << status.message();
+                              }
+                            });
   }
 }
 

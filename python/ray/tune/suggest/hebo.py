@@ -333,7 +333,7 @@ class HEBOSearch(Searcher):
             )
         else:
             logger.warning(
-                "Only non errored and non pruned points" " can be added to HEBO."
+                "Only non errored and non pruned points can be added to HEBO."
             )
 
     def save(self, checkpoint_path: str):

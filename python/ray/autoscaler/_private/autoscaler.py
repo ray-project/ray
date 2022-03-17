@@ -287,7 +287,7 @@ class StandardAutoscaler:
             self._update()
         except Exception as e:
             self.prom_metrics.update_loop_exceptions.inc()
-            logger.exception("StandardAutoscaler: " "Error during autoscaling.")
+            logger.exception("StandardAutoscaler: Error during autoscaling.")
             # Don't abort the autoscaler if the K8s API server is down.
             # https://github.com/ray-project/ray/issues/12255
             is_k8s_connection_error = self.config["provider"][
@@ -296,7 +296,7 @@ class StandardAutoscaler:
             if not is_k8s_connection_error:
                 self.num_failures += 1
             if self.num_failures > self.max_failures:
-                logger.critical("StandardAutoscaler: " "Too many errors, abort.")
+                logger.critical("StandardAutoscaler: Too many errors, abort.")
                 raise e
 
     def _update(self):
@@ -310,6 +310,9 @@ class StandardAutoscaler:
 
         # Query the provider to update the list of non-terminated nodes
         self.non_terminated_nodes = NonTerminatedNodes(self.provider)
+
+        # This will accumulate the nodes we need to terminate.
+        self.nodes_to_terminate = []
 
         # Update running nodes gauge
         num_workers = len(self.non_terminated_nodes.worker_ids)
@@ -969,7 +972,7 @@ class StandardAutoscaler:
             if errors_fatal:
                 raise e
             else:
-                logger.exception("StandardAutoscaler: " "Error parsing config.")
+                logger.exception("StandardAutoscaler: Error parsing config.")
 
     def launch_config_ok(self, node_id):
         if self.disable_launch_config_check:
@@ -1239,7 +1242,7 @@ class StandardAutoscaler:
                 self.prom_metrics.stopped_nodes.inc()
         logger.error("StandardAutoscaler: terminated {} node(s)".format(len(nodes)))
 
-    def summary(self):
+    def summary(self) -> Optional[AutoscalerSummary]:
         """Summarizes the active, pending, and failed node launches.
 
         An active node is a node whose raylet is actively reporting heartbeats.
@@ -1250,6 +1253,8 @@ class StandardAutoscaler:
         Returns:
             AutoscalerSummary: The summary.
         """
+        if not self.non_terminated_nodes:
+            return None
         active_nodes = Counter()
         pending_nodes = []
         failed_nodes = []
@@ -1309,4 +1314,5 @@ class StandardAutoscaler:
     def info_string(self):
         lm_summary = self.load_metrics.summary()
         autoscaler_summary = self.summary()
+        assert autoscaler_summary
         return "\n" + format_info_string(lm_summary, autoscaler_summary)

@@ -61,7 +61,7 @@ def train(config):
     print(hvd.size())
     np.random.seed(1 + hvd.rank())
     torch.manual_seed(1234)
-    # To ensure consistent initialization across slots,
+    # To ensure consistent initialization across workers,
     hvd.broadcast_parameters(net.state_dict(), root_rank=0)
     hvd.broadcast_optimizer_state(optimizer, root_rank=0)
 
@@ -85,14 +85,11 @@ def train(config):
     print(f"Took {total:0.3f} s. Avg: {total / num_steps:0.3f} s.")
 
 
-def tune_horovod(
-    hosts_per_trial, slots_per_host, num_samples, use_gpu, mode="square", x_max=1.0
-):
+def tune_horovod(num_workers, num_samples, use_gpu, mode="square", x_max=1.0):
     horovod_trainable = DistributedTrainableCreator(
         train,
         use_gpu=use_gpu,
-        num_hosts=hosts_per_trial,
-        num_slots=slots_per_host,
+        num_workers=num_workers,
         replicate_pem=False,
     )
     analysis = tune.run(
@@ -121,14 +118,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help=("Finish quickly for testing.")
     )
-    parser.add_argument("--hosts-per-trial", type=int, default=1)
-    parser.add_argument("--slots-per-host", type=int, default=2)
+    parser.add_argument("--num-workers", type=int, default=2)
     parser.add_argument(
         "--server-address",
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using " "Ray Client.",
+        help="The address of server to connect to if using Ray Client.",
     )
     args, _ = parser.parse_known_args()
 
@@ -141,8 +137,7 @@ if __name__ == "__main__":
     # ray.init(address="auto")  # assumes ray is started with ray up
 
     tune_horovod(
-        hosts_per_trial=args.hosts_per_trial,
-        slots_per_host=args.slots_per_host,
+        num_workers=args.num_workers,
         num_samples=2 if args.smoke_test else 10,
         use_gpu=args.gpu,
         mode=args.mode,

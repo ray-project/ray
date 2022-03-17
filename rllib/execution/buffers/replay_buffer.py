@@ -349,7 +349,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         # Making sure we don't pass in e.g. a torch tensor.
         assert isinstance(
             idxes, (list, np.ndarray)
-        ), "ERROR: `idxes` is not a list or np.ndarray, but " "{}!".format(
+        ), "ERROR: `idxes` is not a list or np.ndarray, but {}!".format(
             type(idxes).__name__
         )
         assert len(idxes) == len(priorities)

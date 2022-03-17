@@ -96,11 +96,11 @@ class DistributeResources:
     ) -> Tuple[float, float]:
         """Get the number of CPUs and GPUs avaialble in total (not just free)"""
         total_available_cpus = (
-            trial_runner.trial_executor._avail_resources.cpu
+            trial_runner.trial_executor._resource_updater.get_num_cpus()
             - self.reserve_resources.get("CPU", 0)
         )
         total_available_gpus = (
-            trial_runner.trial_executor._avail_resources.gpu
+            trial_runner.trial_executor._resource_updater.get_num_gpus()
             - self.reserve_resources.get("GPU", 0)
         )
         return total_available_cpus, total_available_gpus
@@ -518,7 +518,7 @@ class DistributeResourcesToTopJob(DistributeResources):
     @property
     def _metric_op(self) -> float:
         if self.mode not in ("min", "max"):
-            raise ValueError("The mode parameter can only be" " either min or max.")
+            raise ValueError("The mode parameter can only be either min or max.")
         if self.mode == "max":
             return 1.0
         return -1.0
@@ -697,8 +697,9 @@ class ResourceChangingScheduler(TrialScheduler):
     scheduler and adjusting the resource requirements of live trials
     in response to the decisions of the wrapped scheduler
     through a user-specified ``resources_allocation_function``.
-    An example of such a callable can be found in
-    :doc:`/tune/examples/xgboost_dynamic_resources_example`.
+
+    An example of such a function can be found in
+    :doc:`/tune/examples/includes/xgboost_dynamic_resources_example`.
 
     If the functional API is used, the current trial resources can be obtained
     by calling `tune.get_trial_resources()` inside the training function.
@@ -706,12 +707,8 @@ class ResourceChangingScheduler(TrialScheduler):
     :ref:`load and save checkpoints <tune-checkpoint-syncing>`
     (the latter preferably every iteration).
 
-    If the Trainable (class) API is used, when the resources of a
-    trial are updated with new values, the ``update_resources`` method in
-    the Trainable will be called. This method needs to be overwritten by the
-    user in order to let the trained model take advantage of newly allocated
-    resources. You can also obtain the current trial resources by calling
-    ``Trainable.trial_resources``.
+    If the Trainable (class) API is used, you can obtain the current trial
+    resources through the ``Trainable.trial_resources`` property.
 
     Cannot be used if ``reuse_actors`` is True in ``tune.run``. A ValueError
     will be raised in that case.
@@ -758,7 +755,7 @@ class ResourceChangingScheduler(TrialScheduler):
                             my_resources_allocation_function
                         )
 
-        See :doc:`/tune/examples/xgboost_dynamic_resources_example` for a
+        See :doc:`/tune/examples/includes/xgboost_dynamic_resources_example` for a
         more detailed example.
     """
 

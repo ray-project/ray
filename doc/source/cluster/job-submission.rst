@@ -1,14 +1,16 @@
 .. _jobs-overview:
 
-===========================================================
-Ray Job Submission: Going from your laptop to production
-===========================================================
+==================
+Ray Job Submission
+==================
 
 .. note::
 
     This component is in **beta**.
 
-Ray Job submission is a mechanism to submit locally developed and tested applications to a running remote Ray cluster. It simplifies the user experience of packaging, deploying, and manage their Ray application as a "job". Jobs can be submitted by a "job manager", like Airflow or Kubernetes Jobs.
+Ray Job submission is a mechanism to submit locally developed and tested applications to a running remote Ray cluster. It simplifies the experience of packaging, deploying, and managing a Ray application.  Jobs can be submitted by a "job manager", like Airflow or Kubernetes Jobs.
+
+Jump to the :ref:`API Reference<ray-job-submission-api-ref>`, or continue reading for an overview with examples.
 
 Concepts
 --------
@@ -84,10 +86,6 @@ We provide three APIs for Job submission: SDK, CLI and HTTP. Both the SDK and CL
     - :code:`working_dir` as a local directory: It will be automatically zipped and uploaded to the target Ray cluster, then unpacked to where your submitted application runs.  This option has a size limit of 100 MB and is recommended for quick iteration and experimentation.
     - :code:`working_dir` as a remote URI hosted on S3, GitHub or others: It will be downloaded and unpacked to where your submitted application runs.  This option has no size limit and is recommended for production use.  For details, see :ref:`remote-uris`.
 
-.. warning::
-
-    We currently don't support passing in :code:`requirements.txt` in :code:`pip` yet in job submission so you still need to pass in a list of packages. It will be supported in later releases.
-
 
 Job CLI API
 -----------
@@ -111,7 +109,7 @@ Now you may run the following CLI commands:
 
 .. code-block::
 
-    ❯ ray job submit --runtime-env-json='{"working_dir": "./", "pip": ["requests==2.26.0"]}' -- "python script.py"
+    ❯ ray job submit --runtime-env-json='{"working_dir": "./", "pip": ["requests==2.26.0"]}' -- python script.py
     2021-12-01 23:04:52,672	INFO cli.py:25 -- Creating JobSubmissionClient at address: http://127.0.0.1:8265
     2021-12-01 23:04:52,809	INFO sdk.py:144 -- Uploading package gcs://_ray_pkg_bbcc8ca7e83b4dc0.zip.
     2021-12-01 23:04:52,810	INFO packaging.py:352 -- Creating a file package for local directory './'.
@@ -140,6 +138,10 @@ Now you may run the following CLI commands:
     4
     5
     2.26.0
+
+    ❯ ray job list
+    {'raysubmit_AYhLMgDJ6XBQFvFP': JobInfo(status='SUCCEEDED', message='Job finished successfully.', error_type=None, start_time=1645908622, end_time=1645908623, metadata={}, runtime_env={}),
+    'raysubmit_su9UcdUviUZ86b1t': JobInfo(status='SUCCEEDED', message='Job finished successfully.', error_type=None, start_time=1645908669, end_time=1645908670, metadata={}, runtime_env={})}
 
 Using the CLI with the Ray Cluster Launcher
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -201,6 +203,7 @@ Now we can have a simple polling loop that checks the job status until it reache
 .. code-block:: python
 
     from ray.job_submission import JobStatus
+    import time
 
     def wait_until_finish(job_id):
         start = time.time()
@@ -250,6 +253,8 @@ A submitted Job can be stopped by the user before it finishes executing.
     wait_until_finish(job_id)
     logs = client.get_job_logs(job_id)
 
+To get information about all jobs, call ``client.list_jobs()``.  This returns a `Dict[str, JobInfo]` object mapping Job IDs to their information.
+
 
 REST API
 ------------
@@ -259,6 +264,10 @@ Under the hood, both the Job Client and the CLI make HTTP calls to the job serve
 | **Submit Job**
 
 .. code-block:: python
+
+    import requests
+    import json
+    import time
 
     resp = requests.post(
         "http://127.0.0.1:8265/api/jobs/",
@@ -282,7 +291,7 @@ Under the hood, both the Job Client and the CLI make HTTP calls to the job serve
             "http://127.0.0.1:8265/api/jobs/<job_id>"
         )
         rst = json.loads(resp.text)
-        status = rst["job_status"]
+        status = rst["status"]
         print(f"status: {status}")
         if status in {JobStatus.SUCCEEDED, JobStatus.STOPPED, JobStatus.FAILED}:
             break
@@ -297,6 +306,16 @@ Under the hood, both the Job Client and the CLI make HTTP calls to the job serve
     )
     rst = json.loads(resp.text)
     logs = rst["logs"]
+
+**List all jobs**
+
+.. code-block:: python
+
+    resp = requests.get(
+        "http://127.0.0.1:8265/api/jobs/"
+    )
+    print(resp.json())
+    # {"job_id": {"metadata": ..., "status": ..., "message": ...}, ...}
 
 
 Job Submission Architecture

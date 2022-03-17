@@ -27,7 +27,7 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_for_num_actors,
 )
-from ray._private.runtime_env.utils import RuntimeEnv
+from ray.runtime_env import RuntimeEnv
 
 logger = logging.getLogger(__name__)
 
@@ -282,7 +282,7 @@ def test_ray_stack(ray_start_2_cpus):
             break
 
     if not success:
-        raise Exception("Failed to find necessary information with " "'ray stack'")
+        raise Exception("Failed to find necessary information with 'ray stack'")
 
 
 def test_raylet_is_robust_to_random_messages(ray_start_regular):
@@ -663,11 +663,40 @@ def test_detect_docker_cpus():
             == 0.42
         )
 
+    # cgroups v2, cpu_quota set
+    with tempfile.NamedTemporaryFile("w") as cpu_max_file:
+        cpu_max_file.write("200000 100000")
+        cpu_max_file.flush()
+        assert (
+            ray._private.utils._get_docker_cpus(
+                cpu_quota_file_name="nope",
+                cpu_period_file_name="give_up",
+                cpuset_file_name="lose_hope",
+                cpu_max_file_name=cpu_max_file.name,
+            )
+            == 2.0
+        )
+
+    # cgroups v2, cpu_quota unset
+    with tempfile.NamedTemporaryFile("w") as cpu_max_file:
+        cpu_max_file.write("max 100000")
+        cpu_max_file.flush()
+        assert (
+            ray._private.utils._get_docker_cpus(
+                cpu_quota_file_name="nope",
+                cpu_period_file_name="give_up",
+                cpuset_file_name="lose_hope",
+                cpu_max_file_name=cpu_max_file.name,
+            )
+            is None
+        )
+
 
 @pytest.mark.skipif(
     sys.platform.startswith("win"), reason="No need to test on Windows."
 )
-def test_k8s_cpu():
+@pytest.mark.parametrize("use_cgroups_v2", [True, False])
+def test_k8s_cpu(use_cgroups_v2: bool):
     """Test all the functions in dashboard/k8s_utils.py.
     Also test ray._private.utils.get_num_cpus when running in a  K8s pod.
     Files were obtained from within a K8s pod with 2 CPU request, CPU limit
@@ -711,31 +740,68 @@ def test_k8s_cpu():
     softirq 524317451 0 230145523 27143 63542930 0 0 171 74043232 0 156558452
     """  # noqa
 
-    CPUACCTUSAGE1 = "2268980984108"
+    CPUACCTUSAGE1 = "2268980984000"
 
     CPUACCTUSAGE2 = "2270120061999"
 
-    CPUSHARES = "2048"
+    CPU_STAT_1 = """usage_usec 2268980984
+    user_usec 5673216
+    system_usec 794353
+    nr_periods 168
+    nr_throttled 6
+    throttled_usec 638117
+    """
 
-    shares_file, cpu_file, proc_stat_file = [
+    CPU_STAT_2 = """usage_usec 2270120061
+    user_usec 5673216
+    system_usec 794353
+    nr_periods 168
+    nr_throttled 6
+    throttled_usec 638117
+    """
+
+    cpu_file, cpu_v2_file, proc_stat_file = [
         tempfile.NamedTemporaryFile("w+") for _ in range(3)
     ]
-    shares_file.write(CPUSHARES)
     cpu_file.write(CPUACCTUSAGE1)
+    cpu_v2_file.write(CPU_STAT_1)
     proc_stat_file.write(PROCSTAT1)
-    for file in shares_file, cpu_file, proc_stat_file:
+    for file in cpu_file, cpu_v2_file, proc_stat_file:
         file.flush()
+
+    if use_cgroups_v2:
+        # Should get a file not found for cpuacctusage if on cgroups v2
+        cpu_usage_file = "NO_SUCH_FILE"
+    else:
+        # If using cgroups v1, use the temp file we've just made
+        cpu_usage_file = cpu_file.name
     with mock.patch(
-        "ray._private.utils.os.environ", {"KUBERNETES_SERVICE_HOST"}
-    ), mock.patch("ray.dashboard.k8s_utils.CPU_USAGE_PATH", cpu_file.name), mock.patch(
+        "ray._private.utils.os.environ", {"KUBERNETES_SERVICE_HOST": "host"}
+    ), mock.patch("ray.dashboard.k8s_utils.CPU_USAGE_PATH", cpu_usage_file), mock.patch(
+        "ray.dashboard.k8s_utils.CPU_USAGE_PATH_V2", cpu_v2_file.name
+    ), mock.patch(
         "ray.dashboard.k8s_utils.PROC_STAT_PATH", proc_stat_file.name
     ), mock.patch(
-        "ray._private.utils.get_k8s_cpus.__defaults__", (shares_file.name,)
+        # get_num_cpus is tested elsewhere
+        "ray.dashboard.k8s_utils.get_num_cpus",
+        mock.Mock(return_value=2),
+    ), mock.patch(
+        # Reset this global variable between tests.
+        "ray.dashboard.k8s_utils.last_system_usage",
+        None,
     ):
+        # Validate mocks:
+        # Confirm CPU_USAGE_PATH is found with cgroups v2, but not with v2.
+        from ray.dashboard.k8s_utils import CPU_USAGE_PATH
+
+        if use_cgroups_v2:
+            with pytest.raises(FileNotFoundError):
+                print(open(CPU_USAGE_PATH).read())
+        else:
+            print(open(CPU_USAGE_PATH).read())
 
         # Test helpers
-        assert ray._private.utils.get_num_cpus() == 2
-        assert k8s_utils._cpu_usage() == 2268980984108
+        assert k8s_utils._cpu_usage() == 2268980984000
         assert k8s_utils._system_usage() == 1551775030000000
         assert k8s_utils._host_num_cpus() == 8
 
@@ -743,12 +809,13 @@ def test_k8s_cpu():
         assert k8s_utils.cpu_percent() == 0.0
 
         # Write new usage info obtained after 1 sec wait.
-        for file in cpu_file, proc_stat_file:
+        for file in cpu_file, cpu_v2_file, proc_stat_file:
             file.truncate(0)
             file.seek(0)
         cpu_file.write(CPUACCTUSAGE2)
+        cpu_v2_file.write(CPU_STAT_2)
         proc_stat_file.write(PROCSTAT2)
-        for file in cpu_file, proc_stat_file:
+        for file in cpu_file, cpu_v2_file, proc_stat_file:
             file.flush()
 
         # Files were extracted under 1 CPU of load on a 2 CPU pod
@@ -769,8 +836,8 @@ def test_sync_job_config(shutdown_only):
     # Check that the job config is synchronized at the driver side.
     job_config = ray.worker.global_worker.core_worker.get_job_config()
     assert job_config.num_java_workers_per_process == num_java_workers_per_process
-    job_runtime_env = RuntimeEnv(
-        serialized_runtime_env=job_config.runtime_env_info.serialized_runtime_env
+    job_runtime_env = RuntimeEnv.deserialize(
+        job_config.runtime_env_info.serialized_runtime_env
     )
     assert job_runtime_env.env_vars() == runtime_env["env_vars"]
 
@@ -783,8 +850,8 @@ def test_sync_job_config(shutdown_only):
     job_config = gcs_utils.JobConfig()
     job_config.ParseFromString(ray.get(get_job_config.remote()))
     assert job_config.num_java_workers_per_process == num_java_workers_per_process
-    job_runtime_env = RuntimeEnv(
-        serialized_runtime_env=job_config.runtime_env_info.serialized_runtime_env
+    job_runtime_env = RuntimeEnv.deserialize(
+        job_config.runtime_env_info.serialized_runtime_env
     )
     assert job_runtime_env.env_vars() == runtime_env["env_vars"]
 
