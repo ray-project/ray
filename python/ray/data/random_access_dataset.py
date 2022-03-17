@@ -30,8 +30,8 @@ class RandomAccessDataset(Generic[T]):
     ):
         """Construct a RandomAccessDataset (internal API).
 
-        The constructor is not part of the Datasets API. Use
-        ``dataset.to_random_access_dataset()`` to construct a RandomAccessDataset.
+        The constructor is a private API. Use ``dataset.to_random_access_dataset()``
+        to construct a RandomAccessDataset.
         """
         self._format = dataset._dataset_format()
         if self._format not in ["arrow", "pandas"]:
