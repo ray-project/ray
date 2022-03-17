@@ -5,8 +5,8 @@
 py_test(
     name = "tensorflow_linear_dataset_example",
     size = "medium",
-    main = "examples/torch/tensorflow_linear_dataset_example.py",
-    srcs = ["examples/torch/tensorflow_linear_dataset_example.py"],
+    main = "examples/tensorflow/tensorflow_linear_dataset_example.py",
+    srcs = ["examples/tensorflow/tensorflow_linear_dataset_example.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"],
     args = ["--smoke-test"]
@@ -15,8 +15,8 @@ py_test(
 py_test(
     name = "tensorflow_mnist_example",
     size = "medium",
-    main = "examples/torch/tensorflow_mnist_example.py",
-    srcs = ["examples/torch/tensorflow_mnist_example.py"],
+    main = "examples/tensorflow/tensorflow_mnist_example.py",
+    srcs = ["examples/tensorflow/tensorflow_mnist_example.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"],
     args = ["--smoke-test"]
@@ -25,8 +25,8 @@ py_test(
 py_test(
     name = "tune_tensorflow_mnist_example",
     size = "medium",
-    main = "examples/torch/tune_tensorflow_mnist_example.py",
-    srcs = ["examples/torch/tune_tensorflow_mnist_example.py"],
+    main = "examples/tensorflow/tune_tensorflow_mnist_example.py",
+    srcs = ["examples/tensorflow/tune_tensorflow_mnist_example.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"],
     args = ["--smoke-test"]
