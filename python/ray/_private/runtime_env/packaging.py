@@ -46,13 +46,9 @@ class Protocol(Enum):
     GCS = "gcs", "For packages dynamically uploaded and managed by the GCS."
     CONDA = "conda", "For conda environments installed locally on each node."
     PIP = "pip", "For pip environments installed locally on each node."
-    HTTPS = "https", (
-        "Remote https path, " "assumes everything packed in one zip file."
-    )
+    HTTPS = "https", "Remote https path, assumes everything packed in one zip file."
     S3 = "s3", "Remote s3 path, assumes everything packed in one zip file."
-    GS = "gs", (
-        "Remote google storage path, " "assumes everything packed in one zip file."
-    )
+    GS = "gs", "Remote google storage path, assumes everything packed in one zip file."
     HDFS = "hdfs", "Remote HDFS path, assumes everything packed in one zip file."
 
     @classmethod
@@ -254,7 +250,7 @@ def _store_package_in_gcs(
             "files using the 'excludes' option to the runtime_env."
         )
 
-    logger.info(f"Pushing file package '{pkg_uri}' ({size_str}) to " "Ray cluster...")
+    logger.info(f"Pushing file package '{pkg_uri}' ({size_str}) to Ray cluster...")
     _internal_kv_put(pkg_uri, data)
     logger.info(f"Successfully pushed file package '{pkg_uri}'.")
     return len(data)
@@ -368,7 +364,7 @@ def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) 
 
     directory = Path(directory).absolute()
     if not directory.exists() or not directory.is_dir():
-        raise ValueError(f"directory {directory} must be an existing" " directory")
+        raise ValueError(f"directory {directory} must be an existing directory")
 
     hash_val = _hash_directory(directory, directory, _get_excludes(directory, excludes))
 
