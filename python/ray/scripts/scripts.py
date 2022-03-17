@@ -550,8 +550,6 @@ def start(
 ):
     """Start Ray processes manually on the local machine."""
 
-    storage = storage or os.environ.get("RAY_STORAGE")
-
     if gcs_server_port is not None:
         cli_logger.error(
             "`{}` is deprecated and ignored. Use {} to specify "
