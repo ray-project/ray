@@ -141,8 +141,11 @@ cdef class ObjectRef(BaseID):
             "passing as arguments to Ray tasks and actors. Use "
             "`object_ref.export()` to export a reference for out-of-band use.")
 
-    def export(self, pin: bool = False):
+    def export(self, pin: bool = False) -> bytes:
         """Export an ObjectRef for serialization out-of-band to Ray.
+
+        The returned bytestring can be loaded using pickle.loads() anywhere within
+        the current Ray cluster.
 
         Args:
             pin: Whether to current worker should pin the object. If pinned, the
