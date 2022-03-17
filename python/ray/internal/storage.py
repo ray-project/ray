@@ -89,7 +89,7 @@ class KVClient:
         Examples:
             # Writes "bar" to <storage_prefix>/my_app/path/foo.txt
             >>> client = storage.get_client("my_app")
-            >>> client.put("my_app", "path/foo.txt", b"bar")
+            >>> client.put("path/foo.txt", b"bar")
 
         Args:
             path: Relative directory of the blobs.
