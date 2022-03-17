@@ -120,8 +120,7 @@ TEST_F(TaskResourceInstancesTest, TestBasic) {
   auto gpu_id = ResourceID::GPU();
   auto custom_id1 = ResourceID("custom1");
 
-  absl::flat_hash_map<ResourceID, FixedPoint> resource_map(
-      {{cpu_id, 5}, {gpu_id, 5}});
+  absl::flat_hash_map<ResourceID, FixedPoint> resource_map({{cpu_id, 5}, {gpu_id, 5}});
 
   ResourceRequest resource_request(resource_map);
   TaskResourceInstances task_resource_instances(resource_request);
@@ -148,7 +147,8 @@ TEST_F(TaskResourceInstancesTest, TestBasic) {
   ASSERT_FALSE(task_resource_instances.Has(custom_id1));
 
   // Test ResourceIds
-  ASSERT_EQ(task_resource_instances.ResourceIds(), absl::flat_hash_set<ResourceID>({cpu_id, gpu_id}));
+  ASSERT_EQ(task_resource_instances.ResourceIds(),
+            absl::flat_hash_set<ResourceID>({cpu_id, gpu_id}));
 
   // Test Size and IsEmpty
   ASSERT_EQ(task_resource_instances.Size(), 2);
