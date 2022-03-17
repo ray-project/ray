@@ -21,6 +21,7 @@ from filelock import FileLock
 
 import ray
 import ray.ray_constants as ray_constants
+import ray.internal.storage as storage
 import ray._private.services
 import ray._private.utils
 from ray._private.gcs_utils import (
@@ -205,7 +206,7 @@ class Node:
         self._init_temp()
 
         # Validate and initialize the persistent storage API.
-        ray.storage.impl._init_storage(
+        storage._init_storage(
             ray_params.storage or os.environ.get("RAY_STORAGE"), is_head=head
         )
 

@@ -460,7 +460,7 @@ def debug(address):
 @click.option(
     "--storage",
     default=None,
-    help="the persistent storage URI for the cluster",
+    help="the persistent storage URI for the cluster. Experimental.",
 )
 @click.option(
     "--system-config",

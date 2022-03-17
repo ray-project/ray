@@ -21,6 +21,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 # Ray modules
 import ray.cloudpickle as pickle
 import ray._private.memory_monitor as memory_monitor
+import ray.internal.storage as storage
 import ray.node
 import ray.job_config
 import ray._private.parameter
@@ -1173,7 +1174,7 @@ def shutdown(_exiting_interpreter: bool = False):
     if hasattr(global_worker, "gcs_client"):
         del global_worker.gcs_client
     _internal_kv_reset()
-    ray.storage.impl._reset()
+    storage._reset()
 
     # We need to destruct the core worker here because after this function,
     # we will tear down any processes spawned by ray.init() and the background

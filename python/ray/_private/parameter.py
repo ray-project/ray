@@ -97,7 +97,7 @@ class RayParams:
             directory for the Ray process.
         storage: Specify a URI for persistent cluster-wide storage. This storage path
             must be accessible by all nodes of the cluster, otherwise an error will be
-            raised. This config must be specified to use the ``ray.storage`` APIs.
+            raised. This feature is currently experimental.
         runtime_env_dir_name (str): If provided, specifies the directory that
             will be created in the session dir to hold runtime_env files.
         include_log_monitor (bool): If True, then start a log monitor to
