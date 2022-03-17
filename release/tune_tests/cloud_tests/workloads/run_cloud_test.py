@@ -1227,7 +1227,9 @@ if __name__ == "__main__":
 
     run_time = 180 if "rllib" in args.trainable else 90
 
-    bucket = os.path.join(args.bucket, f"test_{int(time.time())}")
+    bucket = None
+    if args.bucket:
+        bucket = os.path.join(args.bucket, f"test_{int(time.time())}")
 
     err = None
     try:
