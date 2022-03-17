@@ -7,8 +7,10 @@ parts:
       - file: ray-overview/installation
       - file: ray-overview/ray-libraries
 
-  - caption: Ray ML
+  - caption: Ray AI Runtime
     chapters:
+      - file: ray-air/quickstart
+        title: Getting Started
       - file: data/dataset
         title: Ray Data
         sections:
