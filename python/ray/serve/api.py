@@ -1190,8 +1190,6 @@ class Deployment:
         deployments to create a multi-deployment application.
         """
         if inspect.isfunction(self._func_or_class):
-            # if len(args) != 0 or len(kwargs) != 0:
-            #     raise ValueError("Function deployment doesn't take any init arguments.")
             return DeploymentFunctionNode(
                 self._func_or_class,
                 args,
