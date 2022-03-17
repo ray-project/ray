@@ -3,7 +3,6 @@ import os
 import urllib
 import importlib
 
-from ray.util.annotations import DeveloperAPI
 from ray._private.client_mode_hook import client_mode_hook
 
 if TYPE_CHECKING:
@@ -23,7 +22,6 @@ _storage_prefix = None
 _filesystem = None
 
 
-@DeveloperAPI
 @client_mode_hook(auto_init=True)
 def get_filesystem() -> ("pyarrow.fs.FileSystem", str):
     """Initialize and get the configured storage filesystem, if possible.
@@ -49,168 +47,169 @@ def get_filesystem() -> ("pyarrow.fs.FileSystem", str):
     return _get_filesystem_internal()
 
 
-@DeveloperAPI
 @client_mode_hook(auto_init=True)
-def put(namespace: str, path: str, value: bytes) -> None:
-    """Save a blob in persistent storage at the given path, if possible.
-
-    This is a convenience wrapper around get_filesystem() and working with files.
-    Slashes in the path are interpreted as directory delimiters.
+def get_client(prefix: str) -> "KVClient":
+    """Returns a KV-client (convenience wrapper around underlying filesystem).
 
     Examples:
-        # Writes "bar" to <storage_prefix>/my_app/path/foo.txt
-        >>> storage.put("my_app", "path/foo.txt", "bar")
-
-    Args:
-        namespace: Namespace used to isolate blobs from different applications.
-        path: Relative directory of the blobs.
-        value: String value to save.
-    """
-    fs, prefix = get_filesystem()
-    full_path = os.path.join(os.path.join(prefix, namespace), path)
-    fs.create_dir(os.path.dirname(full_path))
-    with fs.open_output_stream(full_path) as f:
-        f.write(value)
-
-
-@DeveloperAPI
-@client_mode_hook(auto_init=True)
-def get(namespace: str, path: str) -> bytes:
-    """Load a blob from persistent storage at the given path, if possible.
-
-    This is a convenience wrapper around get_filesystem() and working with files.
-    Slashes in the path are interpreted as directory delimiters.
-
-    Examples:
-        # Loads value from <storage_prefix>/my_app/path/foo.txt
-        >>> storage.get("my_app", "path/foo.txt")
-        "bar"
-        >>> storage.get("my_app", "invalid")
-        None
-
-    Args:
-        namespace: Namespace used to isolate blobs from different applications.
-        path: Relative directory of the blobs.
+        # Assume ray.init(storage="s3:/bucket/cluster_1/storage")
+        >>> client = storage.get_client("foo")
+        >>> client.put("foo", b"bar")
 
     Returns:
-        String content of the blob, or None if not found.
+        KVClient.
     """
-    fs, prefix = get_filesystem()
-    full_path = os.path.join(os.path.join(prefix, namespace), path)
-    try:
-        with fs.open_input_stream(full_path) as f:
-            return f.read()
-    except FileNotFoundError:
-        return None
+    if not prefix:
+        raise ValueError("A directory prefix must be specified.")
+    fs, base_prefix = get_filesystem()
+    combined_prefix = os.path.join(base_prefix, prefix)
+    return KVClient(fs, combined_prefix)
 
 
-@DeveloperAPI
-@client_mode_hook(auto_init=True)
-def delete(namespace: str, path: str) -> bool:
-    """Load the blob from persistent storage at the given path, if possible.
+class KVClient:
+    """Simple KV API built on the underlying filesystem.
 
     This is a convenience wrapper around get_filesystem() and working with files.
     Slashes in the path are interpreted as directory delimiters.
-
-    Examples:
-        # Deletes blob at <storage_prefix>/my_app/path/foo.txt
-        >>> storage.delete("my_app", "path/foo.txt")
-        True
-
-    Args:
-        namespace: Namespace used to isolate blobs from different applications.
-        path: Relative directory of the blob.
-
-    Returns:
-        Whether the blob was deleted.
     """
-    fs, prefix = get_filesystem()
-    full_path = os.path.join(os.path.join(prefix, namespace), path)
-    try:
-        fs.delete_file(full_path)
-        return True
-    except FileNotFoundError:
-        return False
 
+    def __init__(self, fs: "pyarrow.fs.FileSystem", prefix: str):
+        """Use storage.get_client() to construct KVClient."""
+        self.fs = fs
+        self.prefix = prefix
 
-@DeveloperAPI
-@client_mode_hook(auto_init=True)
-def get_info(namespace: str, path: str) -> "pyarrow.fs.FileInfo":
-    """Get info about the persistent blob at the given path, if possible.
+    def put(self, path: str, value: bytes) -> None:
+        """Save a blob in persistent storage at the given path, if possible.
 
-    This is a convenience wrapper around get_filesystem() and working with files.
-    Slashes in the path are interpreted as directory delimiters.
+        Examples:
+            # Writes "bar" to <storage_prefix>/my_app/path/foo.txt
+            >>> client = storage.get_client("my_app")
+            >>> client.put("my_app", "path/foo.txt", b"bar")
 
-    Examples:
-        # Inspect blob at <storage_prefix>/my_app/path/foo.txt
-        >>> storage.get_info("my_app", "path/foo.txt")
-        <FileInfo for '/tmp/storage/my_app/path/foo.txt': type=FileType.File, size=4>
+        Args:
+            path: Relative directory of the blobs.
+            value: String value to save.
+        """
+        full_path = self._resolve_path(path)
+        self.fs.create_dir(os.path.dirname(full_path))
+        with self.fs.open_output_stream(full_path) as f:
+            f.write(value)
 
-        # Non-existent blob.
-        >>> storage.get_info("my_app", "path/does_not_exist.txt")
-        None
-        <FileInfo for '/tmp/storage/my_app/path/foo.txt': type=FileType.NotFound>
+    def get(self, path: str) -> bytes:
+        """Load a blob from persistent storage at the given path, if possible.
 
-    Args:
-        namespace: Namespace used to isolate blobs from different applications.
-        path: Relative directory of the blob.
+        Examples:
+            # Loads value from <storage_prefix>/my_app/path/foo.txt
+            >>> client = storage.get_client("my_app")
+            >>> client.get("path/foo.txt")
+            b"bar"
+            >>> client.get("invalid")
+            None
 
-    Returns:
-        Info about the blob, or None if it doesn't exist.
-    """
-    import pyarrow.fs
+        Args:
+            path: Relative directory of the blobs.
 
-    fs, prefix = get_filesystem()
-    full_path = os.path.join(os.path.join(prefix, namespace), path)
-    info = fs.get_file_info([full_path])[0]
-    if info.type == pyarrow.fs.FileType.NotFound:
-        return None
-    return info
+        Returns:
+            String content of the blob, or None if not found.
+        """
+        full_path = self._resolve_path(path)
+        try:
+            with self.fs.open_input_stream(full_path) as f:
+                return f.read()
+        except FileNotFoundError:
+            return None
 
+    def delete(self, path: str) -> bool:
+        """Load the blob from persistent storage at the given path, if possible.
 
-@DeveloperAPI
-@client_mode_hook(auto_init=True)
-def list(
-    namespace: str,
-    path: str,
-) -> List["pyarrow.fs.FileInfo"]:
-    """List blobs and sub-dirs in the given path, if possible.
+        Examples:
+            # Deletes blob at <storage_prefix>/my_app/path/foo.txt
+            >>> client = storage.get_client("my_app")
+            >>> client.delete("path/foo.txt")
+            True
 
-    This is a convenience wrapper around get_filesystem() and working with files.
-    Slashes in the path are interpreted as directory delimiters.
+        Args:
+            path: Relative directory of the blob.
 
-    Examples:
-        # List created blobs and dirs at <storage_prefix>/my_app/path
-        >>> storage.list("my_app", "path")
-        [<FileInfo for '/tmp/storage/my_app/path/foo.txt' type=FileType.File>,
-         <FileInfo for '/tmp/storage/my_app/path/subdir' type=FileType.Directory>]
+        Returns:
+            Whether the blob was deleted.
+        """
+        full_path = self._resolve_path(path)
+        try:
+            self.fs.delete_file(full_path)
+            return True
+        except FileNotFoundError:
+            return False
 
-        # Non-existent path.
-        >>> storage.get_info("my_app", "does_not_exist")
-        FileNotFoundError: ...
+    def get_info(self, path: str) -> "pyarrow.fs.FileInfo":
+        """Get info about the persistent blob at the given path, if possible.
 
-        # Not a directory.
-        >>> storage.get_info("my_app", "path/foo.txt")
-        NotADirectoryError: ...
+        Examples:
+            # Inspect blob at <storage_prefix>/my_app/path/foo.txt
+            >>> client = storage.get_client("my_app")
+            >>> client.get_info("path/foo.txt")
+            <FileInfo for '/tmp/storage/my_app/path/foo.txt': type=FileType.File>
 
-    Args:
-        namespace: Namespace used to isolate blobs from different applications.
-        path: Relative directory to list from.
+            # Non-existent blob.
+            >>> client.get_info("path/does_not_exist.txt")
+            None
+            <FileInfo for '/tmp/storage/my_app/path/foo.txt': type=FileType.NotFound>
 
-    Returns:
-        List of file-info objects for the directory contents.
+        Args:
+            path: Relative directory of the blob.
 
-    Raises:
-        FileNotFoundError if the given path is not found.
-        NotADirectoryError if the given path isn't a valid directory.
-    """
-    fs, prefix = get_filesystem()
-    from pyarrow.fs import FileSelector
+        Returns:
+            Info about the blob, or None if it doesn't exist.
+        """
+        import pyarrow.fs
 
-    full_path = os.path.join(os.path.join(prefix, namespace), path)
-    selector = FileSelector(full_path, recursive=False)
-    files = fs.get_file_info(selector)
-    return files
+        full_path = self._resolve_path(path)
+        info = self.fs.get_file_info([full_path])[0]
+        if info.type == pyarrow.fs.FileType.NotFound:
+            return None
+        return info
+
+    def list(
+        self,
+        path: str,
+    ) -> List["pyarrow.fs.FileInfo"]:
+        """List blobs and sub-dirs in the given path, if possible.
+
+        Examples:
+            # List created blobs and dirs at <storage_prefix>/my_app/path
+            >>> client = storage.get_client("my_app")
+            >>> client.list("path")
+            [<FileInfo for '/tmp/storage/my_app/path/foo.txt' type=FileType.File>,
+             <FileInfo for '/tmp/storage/my_app/path/subdir' type=FileType.Directory>]
+
+            # Non-existent path.
+            >>> client.get_info("does_not_exist")
+            FileNotFoundError: ...
+
+            # Not a directory.
+            >>> storage.get_info("path/foo.txt")
+            NotADirectoryError: ...
+
+        Args:
+            path: Relative directory to list from.
+
+        Returns:
+            List of file-info objects for the directory contents.
+
+        Raises:
+            FileNotFoundError if the given path is not found.
+            NotADirectoryError if the given path isn't a valid directory.
+        """
+        from pyarrow.fs import FileSelector
+
+        full_path = self._resolve_path(path)
+        selector = FileSelector(full_path, recursive=False)
+        files = self.fs.get_file_info(selector)
+        return files
+
+    def _resolve_path(self, path: str) -> str:
+        # TODO protect against traversal attacks
+        return os.path.join(self.prefix, path)
 
 
 def _init_storage(storage_uri: str, is_head: bool):
