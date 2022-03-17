@@ -1786,9 +1786,10 @@ def run(
     will be deployed. If there is an ingress, its handle will be returned.
 
     Args:
-        target: User built serve Application or DeploymentNode that acts as
-            the root node of DAG. By default DeploymentNode is the Driver
-            deployment unless user provided customized one.
+        target (Union[DeploymentNode, Application]): A user-built Serve
+            Application or a DeploymentNode that acts as the root node of DAG.
+            By default DeploymentNode is the Driver deployment unless user
+            provides a customized one.
         host (str): The host passed into serve.start().
         port (int): The port passed into serve.start().
 
