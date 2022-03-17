@@ -9,7 +9,7 @@ This section covers extended topics on how to use Ray.
     tips-for-first-time
     starting-ray
     troubleshooting
-    advanced
     namespaces
     cross-language
     using-ray-with-jupyter
+    advanced
