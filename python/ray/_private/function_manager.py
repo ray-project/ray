@@ -465,7 +465,9 @@ class FunctionActorManager:
             job_id,
             actor_creation_function_descriptor.function_id.binary(),
         )
+        context = self._worker.get_serialization_context()
         try:
+            context.set_is_export_pinned(True)
             serialized_actor_class = pickle.dumps(Class)
         except TypeError as e:
             msg = (
@@ -475,6 +477,8 @@ class FunctionActorManager:
                 "for more information."
             )
             raise TypeError(msg) from e
+        finally:
+            context.set_is_export_pinned(False)
         actor_class_info = {
             "class_name": actor_creation_function_descriptor.class_name.split(".")[-1],
             "module": actor_creation_function_descriptor.module_name,
