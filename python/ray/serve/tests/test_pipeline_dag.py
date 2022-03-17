@@ -119,18 +119,6 @@ class NoargDriver:
         return await self.dag.remote()
 
 
-def test_serve_run_no_serve_start_required():
-    try:
-        dag = fn_hello.bind()
-        serve_dag = NoargDriver.bind(dag)
-
-        handle = serve.run(serve_dag)
-        assert ray.get(handle.remote()) == "hello"
-    finally:
-        serve.shutdown()
-        ray.shutdown()
-
-
 def test_single_func_no_input(serve_instance):
     dag = fn_hello.bind()
     serve_dag = NoargDriver.bind(dag)
@@ -371,9 +359,6 @@ def test_single_functional_node_base_case(serve_instance):
     # Base case should work
     handle = serve.run(func.bind())
     assert ray.get(handle.remote()) == 1
-
-
-# TODO: check that serve.build raises an exception.
 
 
 if __name__ == "__main__":
