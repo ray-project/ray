@@ -189,7 +189,9 @@ Next, set the :code:`RAY_ADDRESS` environment variable:
 .. code-block:: bash
 
     export RAY_ADDRESS="http://127.0.0.1:8265"
-    
+
+(Note that this port is different from the port used to connect to the cluster via :ref:`Ray Client <ray-client>`, which is ``10001`` by default.)
+
 Now you will be able to use the Jobs CLI on your local machine as in the example above to interact with your remote Ray cluster.
 
 Using the CLI on Kubernetes
