@@ -1656,6 +1656,26 @@ class Application:
     def deployments(self) -> ImmutableDeploymentDict:
         return self._deployments
 
+    @property
+    def ingress(self) -> Optional[Deployment]:
+        """Gets the app's ingress, if one exists.
+
+        The ingress is the single deployment with a non-None route prefix. If more
+        or less than one deployment has a route prefix, no single ingress exists,
+        so returns None.
+        """
+
+        ingress = None
+
+        for deployment in self._deployments.values():
+            if deployment.route_prefix is not None:
+                if ingress is None:
+                    ingress = deployment
+                else:
+                    return None
+
+        return ingress
+
     def to_dict(self) -> Dict:
         """Returns this Application's deployments as a dictionary.
 
@@ -1735,25 +1755,6 @@ class Application:
         """
         return cls.from_dict(yaml.safe_load(str_or_file))
 
-    def get_ingress(self) -> Optional[Deployment]:
-        """Gets the app's ingress, if one exists.
-
-        The ingress is the single deployment with a non-None route prefix. If more
-        or less than one deployment has a route prefix, no single ingress exists,
-        so returns None.
-        """
-
-        ingress = None
-
-        for deployment in self._deployments.values():
-            if deployment.route_prefix is not None:
-                if ingress is None:
-                    ingress = deployment
-                else:
-                    return None
-
-        return ingress
-
 
 @PublicAPI(stability="alpha")
 def run(
@@ -1786,7 +1787,7 @@ def run(
 
     if isinstance(target, Application):
         deployments = list(target.deployments.values())
-        ingress = target.get_ingress()
+        ingress = target.ingress
     elif isinstance(target, DeploymentNode):
         deployments = pipeline_build(target)
         ingress = deployments[-1]
