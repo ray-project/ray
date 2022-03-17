@@ -27,13 +27,28 @@ using ray::rpc::syncer::ServerMeta;
 static constexpr size_t kComponentArraySize =
     static_cast<size_t>(ray::rpc::syncer::RayComponentId_ARRAYSIZE);
 
+/// The interface for a reporter. Reporter is defined to be a local module which would
+/// like to let the other nodes know its status. For example, local cluster resource
+/// manager.
 struct Reporter {
+  /// Interface to get the snapshot of the component. It asks the module to take a
+  /// snapshot of the current status. Each snapshot is versioned, and it should return
+  /// std::nullopt if the version hasn't changed.
+  ///
+  /// \param current_version The version syncer module current has.
+  /// \param component_id The component id asked for.
   virtual std::optional<RaySyncMessage> Snapshot(uint64_t current_version,
                                                  RayComponentId component_id) const = 0;
   virtual ~Reporter() {}
 };
 
+/// The interface for a receiver. Receiver is defined to be a module which would like
+/// to get the status of other nodes. For example, cluster resource manager.
 struct Receiver {
+  /// Interface to update a module. The module should read the `sync_message` fields and
+  /// deserialize it to update its internal status.
+  ///
+  /// \param message The message received from remote node.
   virtual void Update(std::shared_ptr<RaySyncMessage> message) = 0;
   virtual ~Receiver() {}
 };
@@ -127,6 +142,8 @@ class RaySyncer {
     // We need different implementation for server and client.
     // Server will wait until client send the long-polling request.
     // Client will just uses Update to send the data immediately.
+    // This function needs to read data from `sending_queue_` and construct the sending
+    // batch and do the actual sending.
     virtual void DoSend() = 0;
 
     boost::asio::deadline_timer timer_;
@@ -161,6 +178,11 @@ class RaySyncer {
    private:
     void DoSend() override;
 
+    // These two fields are RPC related. When the server got long-polling requests,
+    // these two fields will be set so that it can be used to send message.
+    // After the message being sent, these two fields will be set to be empty again.
+    // When the periodical timer wake up, it'll check whether these two fields are set
+    // and it'll only send data when these are set.
     RaySyncMessages *response_ = nullptr;
     grpc::ServerUnaryReactor *unary_reactor_ = nullptr;
   };
@@ -174,7 +196,11 @@ class RaySyncer {
 
    private:
     void DoSend() override;
+
+    /// Start to send long-polling request to remote nodes.
     void StartLongPolling();
+
+    /// Stub for this connection.
     std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub_;
     Dummy dummy_;
   };
