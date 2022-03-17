@@ -597,7 +597,7 @@ class Worker:
     def terminate_actor(self, actor: ClientActorHandle, no_restart: bool) -> None:
         if not isinstance(actor, ClientActorHandle):
             raise ValueError(
-                "ray.kill() only supported for actors. " "Got: {}.".format(type(actor))
+                "ray.kill() only supported for actors. Got: {}.".format(type(actor))
             )
         term_actor = ray_client_pb2.TerminateRequest.ActorTerminate()
         term_actor.id = actor.actor_ref.id
