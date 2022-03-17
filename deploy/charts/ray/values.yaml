@@ -2,7 +2,8 @@
 
 # RayCluster settings:
 
-# image is Ray image to use for the head and workers of this Ray cluster.
+# image is the default Ray image to use for the head and workers of this Ray cluster
+# You can override image for specific podTypes, e.g. for GPU workers
 # It's recommended to build custom dependencies for your workload into this image,
 # taking one of the offical `rayproject/ray` images as base.
 image: rayproject/ray:latest
@@ -14,6 +15,7 @@ podTypes:
     # Since we set headPodType: rayHeadType, the Ray head pod will use the configuration
     # defined in this entry of podTypes:
     rayHeadType:
+        image: ""
         # CPU is the number of CPUs used by this pod type.
         # (Used for both requests and limits. Must be an integer, as Ray does not support fractional CPUs.)
         CPU: 1
@@ -43,6 +45,7 @@ podTypes:
 
     # The key for each podType is a user-defined string.
     rayWorkerType:
+        image: ""
         # minWorkers is the minimum number of Ray workers of this pod type to keep running.
         minWorkers: 2
         # maxWorkers is the maximum number of Ray workers of this pod type to which Ray will scale.
