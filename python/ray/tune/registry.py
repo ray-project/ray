@@ -210,12 +210,12 @@ class _ParameterRegistry:
     def get(self, k):
         if not ray.is_initialized():
             return self.to_flush[k]
-        return ray.get(self.references[k])
+        return ray.get(pickle.loads(self.references[k]))
 
     def flush(self):
         for k, v in self.to_flush.items():
             if isinstance(v, ray.ObjectRef):
-                self.references[k] = v
+                self.references[k] = v.export(pin=True)
             else:
-                self.references[k] = ray.put(v)
+                self.references[k] = ray.put(v).export(pin=True)
         self.to_flush.clear()
