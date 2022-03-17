@@ -1,6 +1,7 @@
 import sys
 
 import pytest
+from ray.exceptions import RayActorError
 import requests
 
 import ray
@@ -73,6 +74,35 @@ def test_deploy_with_overriden_namespace(shutdown_ray, detached):
         assert requests.get("http://localhost:8000/f").text == f"{iteration}"
 
     serve.shutdown()
+
+
+@pytest.mark.parametrize("detached", [True, False])
+def test_refresh_controller_after_death(shutdown_ray, detached):
+    """Check if serve.start() refreshes the controller handle if it's dead."""
+
+    ray_namespace = "ray_namespace"
+    controller_namespace = "controller_namespace"
+
+    ray.init(namespace=ray_namespace)
+    serve.start(detached=detached, _override_controller_namespace=controller_namespace)
+
+    old_handle = internal_get_global_client()._controller
+    ray.kill(old_handle, no_restart=True)
+
+    with pytest.raises(RayActorError):
+        ray.get(old_handle.check_alive.remote())
+
+    # Call start again to refresh handle
+    serve.start(detached=detached, _override_controller_namespace=controller_namespace)
+
+    new_handle = internal_get_global_client()._controller
+    assert new_handle is not old_handle
+
+    # Health check should not error
+    ray.get(new_handle.check_alive.remote())
+
+    serve.shutdown()
+    ray.shutdown()
 
 
 if __name__ == "__main__":
