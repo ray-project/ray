@@ -17,7 +17,8 @@ using ClientBidiReactor = grpc::ClientBidiReactor<ray::rpc::syncer::RaySyncMessa
                                                   ray::rpc::syncer::RaySyncMessages>;
 
 using ray::rpc::syncer::ClientMeta;
-using ray::rpc::syncer::Dummy;
+using ray::rpc::syncer::DummyRequest;
+using ray::rpc::syncer::DummyResponse;
 using ray::rpc::syncer::RayComponentId;
 using ray::rpc::syncer::RaySyncMessage;
 using ray::rpc::syncer::RaySyncMessages;
@@ -259,7 +260,7 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
 
   grpc::ServerUnaryReactor *Update(grpc::CallbackServerContext *context,
                                    const RaySyncMessages *request,
-                                   Dummy *response) {
+                                   DummyResponse *) {
     auto *reactor = context->DefaultReactor();
     auto sync_context = syncer_.GetSyncContext(request->node_id());
     if (sync_context != nullptr) {
@@ -272,7 +273,7 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
   }
 
   grpc::ServerUnaryReactor *LongPolling(grpc::CallbackServerContext *context,
-                                        const Dummy *request,
+                                        const DummyRequest *,
                                         RaySyncMessages *response) {
     auto *reactor = context->DefaultReactor();
     leader_context_->HandleLongPollingRequest(reactor, response);
