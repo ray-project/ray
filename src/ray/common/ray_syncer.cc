@@ -4,7 +4,8 @@
 namespace ray {
 namespace syncer {
 
-RaySyncer::RaySyncer(const std::string &node_id) : node_id_(node_id), timer_(io_context_) {
+RaySyncer::RaySyncer(const std::string &node_id)
+    : node_id_(node_id), timer_(io_context_) {
   syncer_thread_ = std::make_unique<std::thread>([this]() {
     boost::asio::io_service::work work(io_context_);
     io_context_.run();
@@ -20,17 +21,26 @@ void RaySyncer::ConnectTo(std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stu
   auto client_context = std::make_shared<grpc::ClientContext>();
   auto response = std::make_shared<SyncMeta>();
 
-  handler->StartSync(client_context.get(), &request, response.get(), [this, response, stub = std::shared_ptr<ray::rpc::syncer::RaySyncer::Stub>(std::move(stub))](grpc::Status status) {
-    if(status.ok()) {
-      io_context_.post([this, stub, node_id = response->node_id()]() {
-        auto context = std::make_unique<RaySyncer::ClientSyncContext>(*this, io_context_, node_id, stub);
-        sync_context_[node_id] = std::move(context);
-      },
-      "StartSyncCallback");
-    } else {
-      RAY_LOG(ERROR) << "Start sync failed: " << status.error_message();
-    }
-  });
+  handler->StartSync(
+      client_context.get(),
+      &request,
+      response.get(),
+      [this,
+       response,
+       stub = std::shared_ptr<ray::rpc::syncer::RaySyncer::Stub>(std::move(stub))](
+          grpc::Status status) {
+        if (status.ok()) {
+          io_context_.post(
+              [this, stub, node_id = response->node_id()]() {
+                auto context = std::make_unique<RaySyncer::ClientSyncContext>(
+                    *this, io_context_, node_id, stub);
+                sync_context_[node_id] = std::move(context);
+              },
+              "StartSyncCallback");
+        } else {
+          RAY_LOG(ERROR) << "Start sync failed: " << status.error_message();
+        }
+      });
 }
 
 std::unique_ptr<RaySyncer::ServerSyncContext> RaySyncer::ConnectFrom(
@@ -138,7 +148,8 @@ RaySyncer::NodeSyncContext::NodeSyncContext(RaySyncer &instance,
   });
 }
 
-void RaySyncer::NodeSyncContext::PushToSendingQueue(std::shared_ptr<RaySyncMessage> message) {
+void RaySyncer::NodeSyncContext::PushToSendingQueue(
+    std::shared_ptr<RaySyncMessage> message) {
   auto &node_versions = GetNodeComponentVersions(message->node_id());
   if (node_versions[message->component_id()] < message->version()) {
     sending_queue_.insert(message);
@@ -146,13 +157,12 @@ void RaySyncer::NodeSyncContext::PushToSendingQueue(std::shared_ptr<RaySyncMessa
   }
 }
 
-std::array<uint64_t, kComponentArraySize> &RaySyncer::NodeSyncContext::GetNodeComponentVersions(
-    const std::string &node_id) {
+std::array<uint64_t, kComponentArraySize>
+    &RaySyncer::NodeSyncContext::GetNodeComponentVersions(const std::string &node_id) {
   auto iter = node_versions_.find(node_id);
   if (iter == node_versions_.end()) {
-    iter =
-        node_versions_.emplace(node_id, std::array<uint64_t, kComponentArraySize>({}))
-            .first;
+    iter = node_versions_.emplace(node_id, std::array<uint64_t, kComponentArraySize>({}))
+               .first;
   }
   return iter->second;
 }
@@ -171,17 +181,22 @@ void RaySyncer::ClientSyncContext::StartLongPolling() {
   //    1. there is a new version of message
   //    2. and it has passed X ms since last update.
   auto client_context = std::make_shared<grpc::ClientContext>();
-  stub_->async()->LongPolling(client_context.get(), &dummy_, &in_message_, [this, client_context](grpc::Status status) {
-    if (status.ok()) {
-      io_context_.post([this, messages = std::move(in_message_)]() mutable {
-        ReceiveUpdate(std::move(messages));
-      },
-      "LongPollingCallback");
-      in_message_.Clear();
-      // Start the next polling.
-      StartLongPolling();
-    }
-  });
+  stub_->async()->LongPolling(
+      client_context.get(),
+      &dummy_,
+      &in_message_,
+      [this, client_context](grpc::Status status) {
+        if (status.ok()) {
+          io_context_.post(
+              [this, messages = std::move(in_message_)]() mutable {
+                ReceiveUpdate(std::move(messages));
+              },
+              "LongPollingCallback");
+          in_message_.Clear();
+          // Start the next polling.
+          StartLongPolling();
+        }
+      });
 }
 
 void RaySyncer::ClientSyncContext::DoSend() {
@@ -218,10 +233,10 @@ void RaySyncer::ClientSyncContext::DoSend() {
       });
 }
 
-RaySyncer::ServerSyncContext::ServerSyncContext(
-  RaySyncer &instance,
-  instrumented_io_context &io_context,
-  const std::string &node_id) : RaySyncer::NodeSyncContext(instance, io_context, node_id) {}
+RaySyncer::ServerSyncContext::ServerSyncContext(RaySyncer &instance,
+                                                instrumented_io_context &io_context,
+                                                const std::string &node_id)
+    : RaySyncer::NodeSyncContext(instance, io_context, node_id) {}
 
 void RaySyncer::ServerSyncContext::HandleLongPollingRequest(
     grpc::ServerUnaryReactor *reactor, RaySyncMessages *response) {

@@ -4,7 +4,6 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "boost/functional/hash.hpp"
-
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
@@ -114,7 +113,7 @@ class RaySyncer {
    public:
     NodeSyncContext(RaySyncer &instance,
                     instrumented_io_context &io_context,
-                    const std::string& node_id);
+                    const std::string &node_id);
 
     /// Push a message to the sending queue to be sent later.
     ///
@@ -150,7 +149,7 @@ class RaySyncer {
     virtual void DoSend() = 0;
 
     std::array<uint64_t, kComponentArraySize> &GetNodeComponentVersions(
-      const std::string &node_id);
+        const std::string &node_id);
     boost::asio::deadline_timer timer_;
     RaySyncer &instance_;
     instrumented_io_context &io_context_;
