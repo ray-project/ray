@@ -141,7 +141,8 @@ void AgentManager::GetOrCreateRuntimeEnv(
     return;
   }
 
-  // `runtime_env_agent_client_` should be `nullptr` when the agent is starting or the agent has failed.
+  // `runtime_env_agent_client_` should be `nullptr` when the agent is starting or the
+  // agent has failed.
   if (runtime_env_agent_client_ == nullptr) {
     // If the grpc service of agent is invalid, fail the request.
     if (disable_agent_client_) {
@@ -229,15 +230,16 @@ void AgentManager::DeleteRuntimeEnvIfPossible(
     delay_executor_([callback = std::move(callback)] { callback(false); }, 0);
     return;
   }
-  // `runtime_env_agent_client_` should be `nullptr` when the agent is starting or the agent has failed.
+  // `runtime_env_agent_client_` should be `nullptr` when the agent is starting or the
+  // agent has failed.
   if (runtime_env_agent_client_ == nullptr) {
-    RAY_LOG(INFO)
-        << "Runtime env agent is not registered yet. Will retry DeleteRuntimeEnvIfPossible later.";
+    RAY_LOG(INFO) << "Runtime env agent is not registered yet. Will retry "
+                     "DeleteRuntimeEnvIfPossible later.";
     delay_executor_(
 
-        [this, serialized_runtime_env, callback = std::move(callback)] { 
-          DeleteRuntimeEnvIfPossible(serialized_runtime_env, callback); 
-          },
+        [this, serialized_runtime_env, callback = std::move(callback)] {
+          DeleteRuntimeEnvIfPossible(serialized_runtime_env, callback);
+        },
         RayConfig::instance().agent_manager_retry_interval_ms());
     return;
   }
@@ -245,7 +247,8 @@ void AgentManager::DeleteRuntimeEnvIfPossible(
   request.set_serialized_runtime_env(serialized_runtime_env);
   request.set_source_process("raylet");
   runtime_env_agent_client_->DeleteRuntimeEnvIfPossible(
-      [serialized_runtime_env, callback = std::move(callback)](Status status, const rpc::DeleteRuntimeEnvIfPossibleReply &reply) {
+      [serialized_runtime_env, callback = std::move(callback)](
+          Status status, const rpc::DeleteRuntimeEnvIfPossibleReply &reply) {
         if (status.ok()) {
           if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
             callback(true);
