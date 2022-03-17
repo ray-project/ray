@@ -1,3 +1,6 @@
+```{include} /_includes/overview/announcement.md
+```
+
 # Welcome to the Ray documentation
 
 ```{image} https://github.com/ray-project/ray/raw/master/doc/source/images/ray_header_logo.png

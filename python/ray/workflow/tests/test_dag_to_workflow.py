@@ -27,6 +27,9 @@ def test_dag_to_workflow_execution(workflow_start_regular_shared):
     def end(lf, rt, b):
         return f"{lf},{rt};{b}"
 
+    with pytest.raises(TypeError):
+        workflow.create(begin.remote(1, 2, 3))
+
     with InputNode() as dag_input:
         f = begin.bind(2, dag_input[1], a=dag_input.a)
         lf = left.bind(f, "hello", dag_input.a)
@@ -106,6 +109,56 @@ def test_same_object_many_dags(workflow_start_regular_shared):
     assert ray.get(*result1) == 10
     assert ray.get(*result2) == 10
     assert ray.get(*result3) == 10
+
+
+def test_dereference_object_refs(workflow_start_regular_shared):
+    """Ensure that object refs are dereferenced like in ray tasks."""
+
+    @ray.remote
+    def f(obj_list):
+        assert isinstance(obj_list[0], ray.ObjectRef)
+        assert ray.get(obj_list) == [42]
+
+    @ray.remote
+    def g(x, y):
+        assert x == 314
+        assert isinstance(y[0], ray.ObjectRef)
+        assert ray.get(y) == [2022]
+        return [ray.put(42)]
+
+    @ray.remote
+    def h():
+        return ray.put(2022)
+
+    dag = f.bind(g.bind(x=ray.put(314), y=[ray.put(2022)]))
+
+    # Run with workflow and normal Ray engine.
+    workflow.create(dag).run()
+    ray.get(dag.execute())
+
+
+def test_workflow_continuation(workflow_start_regular_shared):
+    """Test unified behavior of returning continuation inside
+    workflow and default Ray execution engine."""
+
+    @ray.remote
+    def h(a, b):
+        return a + b
+
+    @ray.remote
+    def g(x):
+        return workflow.continuation(h.bind(42, x))
+
+    @ray.remote
+    def f():
+        return workflow.continuation(g.bind(1))
+
+    with pytest.raises(TypeError):
+        workflow.continuation(f.remote())
+
+    dag = f.bind()
+    assert ray.get(dag.execute()) == 43
+    assert workflow.create(dag).run() == 43
 
 
 if __name__ == "__main__":

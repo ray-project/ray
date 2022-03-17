@@ -201,15 +201,21 @@ class TestValidatePip:
             requirements_file = requirements_file.resolve()
 
         result = parse_and_validate_pip(str(requirements_file))
-        assert result == PIP_LIST
+        assert result["packages"] == PIP_LIST
+        assert result["pip_check"]
+        assert "pip_version" not in result
 
     def test_validate_pip_valid_list(self):
         result = parse_and_validate_pip(PIP_LIST)
-        assert result == PIP_LIST
+        assert result["packages"] == PIP_LIST
+        assert result["pip_check"]
+        assert "pip_version" not in result
 
     def test_validate_ray(self):
         result = parse_and_validate_pip(["pkg1", "ray", "pkg2"])
-        assert result == ["pkg1", "ray", "pkg2"]
+        assert result["packages"] == ["pkg1", "ray", "pkg2"]
+        assert result["pip_check"]
+        assert "pip_version" not in result
 
 
 class TestValidateEnvVars:

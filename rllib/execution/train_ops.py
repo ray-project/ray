@@ -264,7 +264,7 @@ class MultiGPUTrainOneStep:
     ):
         if framework != DEPRECATED_VALUE or shuffle_sequences != DEPRECATED_VALUE:
             deprecation_warning(
-                old="MultiGPUTrainOneStep(framework=..., " "shuffle_sequences=...)",
+                old="MultiGPUTrainOneStep(framework=..., shuffle_sequences=...)",
                 error=False,
             )
 
