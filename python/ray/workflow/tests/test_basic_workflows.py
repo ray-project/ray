@@ -1,3 +1,4 @@
+import os
 import time
 
 from ray.tests.conftest import *  # noqa
@@ -305,6 +306,21 @@ def test_dynamic_output(workflow_start_regular_shared):
     wf_storage = get_workflow_storage(workflow_id="dynamic_output")
     result = wf_storage.inspect_step("step_0")
     assert result.output_step_id == "step_3"
+
+
+def test_workflow_error_message():
+    storage_url = r"c:\ray"
+    expected_error_msg = "Invalid url: {}.".format(storage_url)
+    if os.name == "nt":
+
+        expected_error_msg += (
+            " Try using file://{} or file:///{} for Windows file paths.".format(
+                storage_url, storage_url
+            )
+        )
+    with pytest.raises(ValueError) as e:
+        workflow.init(storage_url)
+    assert str(e.value) == expected_error_msg
 
 
 if __name__ == "__main__":

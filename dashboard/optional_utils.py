@@ -269,9 +269,7 @@ def init_ray_and_catch_exceptions(connect_to_serve: bool = False) -> Callable:
                         raise e from None
 
                 if connect_to_serve:
-                    # TODO(edoakes): this should probably run in the `serve`
-                    # namespace.
-                    serve.start(detached=True)
+                    serve.start(detached=True, _override_controller_namespace="serve")
                 return await f(self, *args, **kwargs)
             except Exception as e:
                 logger.exception(f"Unexpected error in handler: {e}")

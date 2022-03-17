@@ -205,7 +205,7 @@ def DistributedTrainableCreator(
     if num_workers_per_host:
         if num_workers % num_workers_per_host:
             raise ValueError(
-                "`num_workers` must be an integer multiple " "of workers_per_node."
+                "`num_workers` must be an integer multiple of workers_per_node."
             )
 
     class WrappedDistributedTorchTrainable(_TorchTrainable):

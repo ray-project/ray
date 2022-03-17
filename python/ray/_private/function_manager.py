@@ -178,13 +178,8 @@ class FunctionActorManager:
                     break
         # Notify all subscribers that there is a new function exported. Note
         # that the notification doesn't include any actual data.
-        if self._worker.gcs_pubsub_enabled:
-            # TODO(mwtian) implement per-job notification here.
-            self._worker.gcs_publisher.publish_function_key(key)
-        else:
-            self._worker.redis_client.lpush(
-                make_exports_prefix(self._worker.current_job_id), "a"
-            )
+        # TODO(mwtian) implement per-job notification here.
+        self._worker.gcs_publisher.publish_function_key(key)
 
     def export(self, remote_function):
         """Pickle a remote function and export it to redis.

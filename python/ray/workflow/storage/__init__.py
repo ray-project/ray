@@ -1,4 +1,5 @@
 import logging
+import os
 import urllib.parse as parse
 from ray.workflow.storage.base import Storage
 from ray.workflow.storage.base import DataLoadError, DataSaveError, KeyNotFoundError
@@ -48,7 +49,14 @@ def create_storage(storage_url: str) -> Storage:
         params = dict(parse.parse_qsl(parsed_url.query))
         return DebugStorage(create_storage(params["storage"]), path=parsed_url.path)
     else:
-        raise ValueError(f"Invalid url: {storage_url}")
+        extra_msg = ""
+        if os.name == "nt":
+            extra_msg = (
+                " Try using file://{} or file:///{} for Windows file paths.".format(
+                    storage_url, storage_url
+                )
+            )
+        raise ValueError(f"Invalid url: {storage_url}." + extra_msg)
 
 
 # the default storage is a local filesystem storage with a hidden directory
@@ -59,7 +67,7 @@ def get_global_storage() -> Storage:
     global _global_storage
     if _global_storage is None:
         raise RuntimeError(
-            "`workflow.init()` must be called prior to " "using the workflows API."
+            "`workflow.init()` must be called prior to using the workflows API."
         )
     return _global_storage
 

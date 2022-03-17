@@ -27,15 +27,18 @@ using ::testing::_;
 class GcsResourceSchedulerTest : public ::testing::Test {
  public:
   void SetUp() override {
-    gcs_resource_manager_ =
-        std::make_shared<gcs::GcsResourceManager>(io_service_, nullptr, nullptr);
-    gcs_resource_scheduler_ =
-        std::make_shared<gcs::GcsResourceScheduler>(*gcs_resource_manager_);
+    gcs_resource_scheduler_ = std::make_shared<gcs::GcsResourceScheduler>();
   }
 
-  void TearDown() override {
-    gcs_resource_scheduler_.reset();
-    gcs_resource_manager_.reset();
+  void TearDown() override { gcs_resource_scheduler_.reset(); }
+
+  void AddNode(const rpc::GcsNodeInfo &node) {
+    scheduling::NodeID node_id(node.node_id());
+    auto &cluster_resource_manager = gcs_resource_scheduler_->GetClusterResourceManager();
+    for (const auto &entry : node.resources_total()) {
+      cluster_resource_manager.UpdateResourceCapacity(
+          node_id, scheduling::ResourceID(entry.first), entry.second);
+    }
   }
 
   void AddClusterResources(const NodeID &node_id,
@@ -44,7 +47,7 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     auto node = Mocker::GenNodeInfo();
     node->set_node_id(node_id.Binary());
     (*node->mutable_resources_total())[resource_name] = resource_value;
-    gcs_resource_manager_->OnNodeAdd(*node);
+    AddNode(*node);
   }
 
   void AddClusterResources(const NodeID &node_id,
@@ -54,16 +57,16 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     for (auto r : resource) {
       (*node->mutable_resources_total())[r.first] = r.second;
     }
-    gcs_resource_manager_->OnNodeAdd(*node);
+    AddNode(*node);
   }
 
   void CheckClusterAvailableResources(const NodeID &node_id,
                                       const std::string &resource_name,
                                       double resource_value) {
-    const auto &cluster_resource = gcs_resource_manager_->GetClusterResources();
-    auto iter = cluster_resource.find(node_id);
-    ASSERT_TRUE(iter != cluster_resource.end());
-    const auto &node_resources = iter->second->GetLocalView();
+    const auto &cluster_resource_manager =
+        gcs_resource_scheduler_->GetClusterResourceManager();
+    const auto &node_resources =
+        cluster_resource_manager.GetNodeResources(scheduling::NodeID(node_id.Binary()));
     auto resource_id = scheduling::ResourceID(resource_name).ToInt();
     ASSERT_NE(resource_id, -1);
 
@@ -160,7 +163,6 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     ASSERT_EQ(result1.second.size(), resources_list.size());
   }
 
-  std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<gcs::GcsResourceScheduler> gcs_resource_scheduler_;
 
  private:
@@ -200,18 +202,18 @@ TEST_F(GcsResourceSchedulerTest, TestNodeFilter) {
   resource_map[cpu_resource] = 1;
   required_resources_list.emplace_back(
       ResourceMapToResourceRequest(resource_map, /*requires_object_store_memory=*/false));
-  const auto &result1 = gcs_resource_scheduler_->Schedule(
-      required_resources_list, gcs::SchedulingType::STRICT_SPREAD, [](const NodeID &) {
-        return false;
-      });
+  const auto &result1 =
+      gcs_resource_scheduler_->Schedule(required_resources_list,
+                                        gcs::SchedulingType::STRICT_SPREAD,
+                                        [](const scheduling::NodeID &) { return false; });
   ASSERT_TRUE(result1.first == gcs::SchedulingResultStatus::INFEASIBLE);
   ASSERT_EQ(result1.second.size(), 0);
 
   // Scheduling succeeded.
-  const auto &result2 = gcs_resource_scheduler_->Schedule(
-      required_resources_list, gcs::SchedulingType::STRICT_SPREAD, [](const NodeID &) {
-        return true;
-      });
+  const auto &result2 =
+      gcs_resource_scheduler_->Schedule(required_resources_list,
+                                        gcs::SchedulingType::STRICT_SPREAD,
+                                        [](const scheduling::NodeID &) { return true; });
   ASSERT_TRUE(result2.first == gcs::SchedulingResultStatus::SUCCESS);
   ASSERT_EQ(result2.second.size(), 1);
 }
