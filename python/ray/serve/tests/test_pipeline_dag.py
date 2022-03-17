@@ -116,11 +116,12 @@ class NoargDriver:
         self.dag = dag
 
     async def __call__(self):
+        print("<<<<< NoargDriver called !")
         return await self.dag.remote()
 
 
 def test_single_func_no_input(serve_instance):
-    dag = fn_hello.bind().bind()
+    dag = fn_hello.bind()
     serve_dag = NoargDriver.bind(dag)
 
     handle = serve.run(serve_dag)
@@ -129,7 +130,7 @@ def test_single_func_no_input(serve_instance):
 
 def test_single_func_deployment_dag(serve_instance):
     with InputNode() as dag_input:
-        dag = combine.bind().bind(dag_input[0], dag_input[1], kwargs_output=1)
+        dag = combine.bind(dag_input[0], dag_input[1], kwargs_output=1)
         serve_dag = Driver.bind(dag)
     handle = serve.run(serve_dag)
     assert ray.get(handle.remote([1, 2])) == 4
@@ -150,9 +151,7 @@ def test_func_class_with_class_method(serve_instance):
         m2 = Model.bind(2)
         m1_output = m1.forward.bind(dag_input[0])
         m2_output = m2.forward.bind(dag_input[1])
-        combine_output = combine.bind().bind(
-            m1_output, m2_output, kwargs_output=dag_input[2]
-        )
+        combine_output = combine.bind(m1_output, m2_output, kwargs_output=dag_input[2])
         serve_dag = Driver.bind(combine_output)
 
     handle = serve.run(serve_dag)
@@ -338,6 +337,7 @@ def func():
 
 
 def test_functional_node(serve_instance):
+    # TODO (jiaodong): Check on this part
     with pytest.raises(ValueError, match="doesn't take any init arguments"):
         func.bind("something")
 

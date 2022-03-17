@@ -25,6 +25,7 @@ from typing import (
 
 from fastapi import APIRouter, FastAPI
 from ray.experimental.dag.class_node import ClassNode
+from ray.experimental.dag.function_node import FunctionNode
 from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
@@ -1013,6 +1014,17 @@ class DeploymentNode(ClassNode):
         return self.__call__.bind(*args, **kwargs)
 
 
+@PublicAPI(stability="alpha")
+class DeploymentFunctionNode(FunctionNode):
+    """Represents a serve.deployment decorated function from user.
+
+    It's the counterpart of DeploymentNode that represents function as body
+    instead of class.
+    """
+
+    pass
+
+
 @PublicAPI
 class Deployment:
     def __init__(
@@ -1177,19 +1189,29 @@ class Deployment:
         deployments to create a multi-deployment application.
         """
         if inspect.isfunction(self._func_or_class):
-            if len(args) != 0 or len(kwargs) != 0:
-                raise ValueError("Function deployment doesn't take any init arguments.")
-
-        return DeploymentNode(
-            self._func_or_class,
-            args,
-            kwargs,
-            cls_options=self._ray_actor_options or dict(),
-            other_args_to_resolve={
-                "deployment_self": copy(self),
-                "is_from_serve_deployment": True,
-            },
-        )
+            # if len(args) != 0 or len(kwargs) != 0:
+            #     raise ValueError("Function deployment doesn't take any init arguments.")
+            return DeploymentFunctionNode(
+                self._func_or_class,
+                args,
+                kwargs,
+                {},
+                other_args_to_resolve={
+                    "deployment_self": copy(self),
+                    "is_from_serve_deployment": True,
+                },
+            )
+        else:
+            return DeploymentNode(
+                self._func_or_class,
+                args,
+                kwargs,
+                cls_options=self._ray_actor_options or dict(),
+                other_args_to_resolve={
+                    "deployment_self": copy(self),
+                    "is_from_serve_deployment": True,
+                },
+            )
 
     @PublicAPI
     def deploy(self, *init_args, _blocking=True, **init_kwargs):
