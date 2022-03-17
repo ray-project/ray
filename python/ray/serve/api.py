@@ -1854,7 +1854,6 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
     init_args and init_kwargs must also be JSON-serializable or this call will
     fail.
     """
-    from ray.serve.pipeline.json_serde import convert_to_json_safe_obj
 
     if d.ray_actor_options is not None:
         ray_actor_options_schema = RayActorOptionsSchema.parse_obj(d.ray_actor_options)
@@ -1864,12 +1863,12 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
     return DeploymentSchema(
         name=d.name,
         import_path=get_deployment_import_path(d),
-        init_args=convert_to_json_safe_obj(d.init_args, err_key="init_args"),
-        init_kwargs=convert_to_json_safe_obj(d.init_kwargs, err_key="init_kwargs"),
+        init_args=d.init_args,
+        init_kwargs=d.init_kwargs,
         num_replicas=d.num_replicas,
         route_prefix=d.route_prefix,
         max_concurrent_queries=d.max_concurrent_queries,
-        user_config=convert_to_json_safe_obj(d.user_config, err_key="user_config"),
+        user_config=d.user_config,
         autoscaling_config=d._config.autoscaling_config,
         graceful_shutdown_wait_loop_s=d._config.graceful_shutdown_wait_loop_s,
         graceful_shutdown_timeout_s=d._config.graceful_shutdown_timeout_s,
