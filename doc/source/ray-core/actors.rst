@@ -83,7 +83,7 @@ that specific worker and can access and mutate the state of that worker.
       auto counter = ray::Actor(CreateCounter).Remote();
 
 Specifying required resources
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-----------------------------
 
 .. _actor-resource-guide:
 
@@ -114,7 +114,7 @@ You can specify resource requirements in actors too (see :ref:`resource-requirem
 
 
 Calling the actor
-~~~~~~~~~~~~~~~~~
+-----------------
 
 We can interact with the actor by calling its methods with the ``remote``
 operator. We can then call ``get`` on the object ref to retrieve the actual

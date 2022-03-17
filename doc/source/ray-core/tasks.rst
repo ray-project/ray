@@ -79,7 +79,7 @@ Ray enables arbitrary functions to be executed asynchronously on separate Python
 .. _ray-object-refs:
 
 Passing object refs to remote functions
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+---------------------------------------
 
 **Object refs** can also be passed into remote functions. When the function actually gets executed, **the argument will be passed as the underlying Python value**. For example, take this function:
 
@@ -140,7 +140,7 @@ Note the following behaviors:
      network to the machine where the second task is scheduled.
 
 Waiting for Partial Results
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+---------------------------
 
 After launching a number of tasks, you may want to know which ones have
 finished executing without blocking on all of them, as in ``ray.get``. This can be done with ``wait`` (:ref:`ray-wait-ref`). The function
@@ -167,7 +167,7 @@ works as follows.
     ray::WaitResult<int> wait_result = ray::Wait(object_refs, /*num_objects=*/0, /*timeout_ms=*/1000);
 
 Multiple returns
-~~~~~~~~~~~~~~~~
+----------------
 
 .. tabbed:: Python
 
@@ -190,7 +190,7 @@ Multiple returns
     C++ remote functions doesn't support returning multiple objects.
 
 Cancelling tasks
-~~~~~~~~~~~~~~~~
+----------------
 
 .. tabbed:: Python
 
