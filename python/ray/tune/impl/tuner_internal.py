@@ -91,7 +91,7 @@ class TunerInternal:
         )
 
         # Not used for restored Tuner.
-        self._param_space = param_space if param_space else {}
+        self._param_space = param_space or {}
         self._process_dataset_param()
 
         # This needs to happen before `tune.run()` is kicked in.
