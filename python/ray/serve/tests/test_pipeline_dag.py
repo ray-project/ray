@@ -361,6 +361,47 @@ def test_single_functional_node_base_case(serve_instance):
     assert ray.get(handle.remote()) == 1
 
 
+def test_unsupported_bind():
+    @serve.deployment
+    class Actor:
+        def ping(self):
+            return "hello"
+
+    with pytest.raises(
+        AttributeError, match=r"Please do not call \.bind\(\) on a DAGNode IR object"
+    ):
+        # Special for serve: Actor.bind().bind() returns DeploymentMethodNode
+        _ = Actor.bind().bind().bind()
+
+    with pytest.raises(
+        AttributeError,
+        match=r"Please do not call \.remote\(\) on a UnboundClassMethodNode",
+    ):
+        actor = Actor.bind()
+        _ = actor.ping.remote()
+
+
+def test_unsupported_remote():
+    @serve.deployment
+    class Actor:
+        def ping(self):
+            return "hello"
+
+    with pytest.raises(
+        AttributeError, match=r"Please do not call \.remote\(\) on a DAGNode IR object"
+    ):
+        _ = Actor.bind().remote()
+
+    @serve.deployment
+    def func():
+        return 1
+
+    with pytest.raises(
+        AttributeError, match=r"Please do not call \.remote\(\) on a DAGNode IR object"
+    ):
+        _ = func.bind().remote()
+
+
 # TODO: check that serve.build raises an exception.
 
 

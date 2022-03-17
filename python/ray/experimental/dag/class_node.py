@@ -133,6 +133,15 @@ class _UnboundClassMethodNode(object):
         self._actor._last_call = node
         return node
 
+    def remote(self, *args, **kwargs):
+        raise AttributeError(
+            "All DAGNode types act as intermediate representation (IR) of a "
+            "DAG that can only be produced by .bind() on supported class or "
+            "function, and executed via dag.execute(input). Please do not call "
+            ".remote() on a UnboundClassMethodNode object and use .bind() "
+            "instead."
+        )
+
     def options(self, **options):
         self._options = options
         return self
