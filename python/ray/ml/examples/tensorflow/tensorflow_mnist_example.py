@@ -11,13 +11,12 @@ import tensorflow as tf
 from tensorflow.keras.callbacks import Callback
 
 import ray.train as train
-from ray.ml.constants import MODEL_KEY
 from ray.ml.train.integrations.tensorflow import TensorflowTrainer
 
 
 class TrainCheckpointReportCallback(Callback):
     def on_epoch_end(self, epoch, logs=None):
-        train.save_checkpoint(**{MODEL_KEY: self.model.get_weights()})
+        train.save_checkpoint(**{"model": self.model.get_weights()})
         train.report(**logs)
 
 

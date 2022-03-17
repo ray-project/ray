@@ -6,7 +6,7 @@ from ray import train
 from ray.ml.train.integrations.tensorflow import TensorflowTrainer
 from ray.ml.examples.tensorflow.tensorflow_linear_dataset_example import (
     train_func as tensorflow_linear_train_func,
-    get_dataset_pipeline,
+    get_dataset,
 )
 from ray.ml.predictors.integrations.tensorflow import TensorflowPredictor
 from ray.ml.constants import MODEL_KEY, TRAIN_DATASET_KEY
@@ -52,7 +52,7 @@ def test_tensorflow_linear(ray_start_4_cpus, num_workers):
         train_loop_per_worker=train_func,
         train_loop_config=config,
         scaling_config=scaling_config,
-        datasets={TRAIN_DATASET_KEY: get_dataset_pipeline()},
+        datasets={TRAIN_DATASET_KEY: get_dataset()},
     )
     trainer.fit()
 

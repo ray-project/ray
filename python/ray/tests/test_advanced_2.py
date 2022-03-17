@@ -50,7 +50,7 @@ def test_gpu_ids(shutdown_only):
             break
         if time.time() > start_time + 10:
             raise RayTestTimeoutException(
-                "Timed out while waiting for workers to start " "up."
+                "Timed out while waiting for workers to start up."
             )
 
     list_of_ids = ray.get([f0.remote() for _ in range(10)])

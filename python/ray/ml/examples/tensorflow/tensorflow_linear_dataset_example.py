@@ -1,5 +1,6 @@
 import argparse
 import numpy as np
+import pandas as pd
 
 
 import tensorflow as tf
@@ -8,30 +9,23 @@ from tensorflow.keras.callbacks import Callback
 import ray
 import ray.train as train
 from ray.data import Dataset
-from ray.data.dataset_pipeline import DatasetPipeline
 from ray.train.tensorflow import prepare_dataset_shard
+from ray.ml.checkpoint import Checkpoint
 from ray.ml.train.integrations.tensorflow import TensorflowTrainer
 from ray.ml.predictors.integrations.tensorflow import TensorflowPredictor
-from ray.ml.constants import MODEL_KEY, TRAIN_DATASET_KEY
 from ray.ml.result import Result
 
 
 class TrainCheckpointReportCallback(Callback):
     def on_epoch_end(self, epoch, logs=None):
-        train.save_checkpoint(**{MODEL_KEY: self.model.get_weights()})
+        train.save_checkpoint(**{"model": self.model.get_weights()})
         train.report(**logs)
 
 
-def get_dataset_pipeline(a=5, b=10, size=1000) -> DatasetPipeline:
-    def get_dataset(a, b, size) -> Dataset:
-        items = [i / size for i in range(size)]
-        dataset = ray.data.from_items([{"x": x, "y": a * x + b} for x in items])
-        return dataset
-
-    dataset = get_dataset(a, b, size)
-    train_dataset_pipeline = dataset.repeat().random_shuffle_each_window()
-
-    return train_dataset_pipeline
+def get_dataset(a=5, b=10, size=1000) -> Dataset:
+    items = [i / size for i in range(size)]
+    dataset = ray.data.from_items([{"x": x, "y": a * x + b} for x in items])
+    return dataset
 
 
 def build_model() -> tf.keras.Model:
@@ -59,12 +53,10 @@ def train_func(config: dict):
             metrics=[tf.keras.metrics.mean_squared_error],
         )
 
-    dataset_pipeline = train.get_dataset_shard(TRAIN_DATASET_KEY)
-    dataset_iterator = dataset_pipeline.iter_epochs()
+    dataset = train.get_dataset_shard("train")
 
     results = []
     for _ in range(epochs):
-        dataset = next(dataset_iterator)
         tf_dataset = prepare_dataset_shard(
             dataset.to_tf(
                 label_column="y",
@@ -83,14 +75,14 @@ def train_func(config: dict):
 
 
 def train_tensorflow_linear(num_workers: int = 2, use_gpu: bool = False) -> Result:
-    dataset_pipeline = get_dataset_pipeline()
+    dataset_pipeline = get_dataset()
     config = {"lr": 1e-3, "batch_size": 32, "epochs": 4}
     scaling_config = dict(num_workers=num_workers, use_gpu=use_gpu)
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_func,
         train_loop_config=config,
         scaling_config=scaling_config,
-        datasets={TRAIN_DATASET_KEY: dataset_pipeline},
+        datasets={"train": dataset_pipeline},
     )
     results = trainer.fit()
     print(results.metrics)
@@ -98,13 +90,25 @@ def train_tensorflow_linear(num_workers: int = 2, use_gpu: bool = False) -> Resu
 
 
 def predict_linear(result: Result) -> Dataset:
-    predictor = TensorflowPredictor.from_checkpoint(result.checkpoint, build_model)
     items = [{"x": np.random.uniform(0, 1)}] * 10
     prediction_dataset = ray.data.from_items(items)
 
+    checkpoint_object_ref = result.checkpoint.to_object_ref()
+
+    class TFScorer:
+        def __init__(self):
+            self.predictor = TensorflowPredictor.from_checkpoint(
+                Checkpoint.from_object_ref(checkpoint_object_ref),
+                model_definition=build_model,
+            )
+
+        def __call__(self, batch) -> pd.DataFrame:
+            return self.predictor.predict(batch, dtype=tf.float32)
+
     predictions = prediction_dataset.map_batches(
-        lambda batch: predictor.predict(batch, dtype=tf.float32)
+        TFScorer, compute="actors", batch_format="pandas"
     )
+
     pandas_predictions = predictions.to_pandas(float("inf"))
 
     print(f"PREDICTIONS\n{pandas_predictions}")

@@ -62,7 +62,6 @@ class ResultGrid:
         return None
 
     def _trial_to_result(self, trial: Trial) -> Result:
-        # TODO(xwjiang): Use Kai's new checkpoint!
         result = Result(
             checkpoint=trial.checkpoint,
             metrics=trial.last_result,

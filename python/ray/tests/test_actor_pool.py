@@ -100,6 +100,29 @@ def test_map_unordered(init):
     assert all(elem in [0, 2, 4, 6, 8] for elem in total)
 
 
+def test_map_gh23107(init):
+    # Reference - https://github.com/ray-project/ray/issues/23107
+    @ray.remote
+    class DummyActor:
+        async def identity(self, s):
+            return s
+
+    def func(a, v):
+        return a.identity.remote(v)
+
+    map_values = [1, 2, 3, 4, 5]
+
+    pool_map = ActorPool([DummyActor.remote() for i in range(2)])
+    pool_map.submit(func, 6)
+    gen = pool_map.map(func, map_values)
+    assert list(gen) == [1, 2, 3, 4, 5]
+
+    pool_map_unordered = ActorPool([DummyActor.remote() for i in range(2)])
+    pool_map_unordered.submit(func, 6)
+    gen = pool_map_unordered.map(func, map_values)
+    assert all(elem in [1, 2, 3, 4, 5] for elem in list(gen))
+
+
 def test_get_next_timeout(init):
     @ray.remote
     class MyActor:
