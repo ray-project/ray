@@ -195,9 +195,9 @@ class DataParallelTrainer(Trainer):
         if scaling_config.get("use_gpu", False) and "GPU" in ray.available_resources():
             logger.info(
                 "GPUs are detected in your Ray cluster, but GPU "
-                "training is not enabled for Ray Train. To enable "
+                "training is not enabled for this trainer. To enable "
                 "GPU training, make sure to set `use_gpu` to True "
-                "when instantiating your Trainer."
+                "in your scaling config."
             )
 
         self.train_loop_per_worker = train_loop_per_worker
