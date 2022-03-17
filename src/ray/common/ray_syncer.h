@@ -3,6 +3,8 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "boost/functional/hash.hpp"
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
@@ -16,14 +18,13 @@ using ServerBidiReactor = grpc::ServerBidiReactor<ray::rpc::syncer::RaySyncMessa
 using ClientBidiReactor = grpc::ClientBidiReactor<ray::rpc::syncer::RaySyncMessages,
                                                   ray::rpc::syncer::RaySyncMessages>;
 
-using ray::rpc::syncer::ClientMeta;
 using ray::rpc::syncer::DummyRequest;
 using ray::rpc::syncer::DummyResponse;
 using ray::rpc::syncer::RayComponentId;
 using ray::rpc::syncer::RaySyncMessage;
 using ray::rpc::syncer::RaySyncMessages;
 using ray::rpc::syncer::RaySyncMessageType;
-using ray::rpc::syncer::ServerMeta;
+using ray::rpc::syncer::SyncMeta;
 
 static constexpr size_t kComponentArraySize =
     static_cast<size_t>(ray::rpc::syncer::RayComponentId_ARRAYSIZE);
@@ -57,7 +58,10 @@ struct ReceiverInterface {
 /// RaySyncer is an embedding service for component synchronization.
 class RaySyncer {
  public:
-  struct ServerSyncContext;
+  class NodeSyncContext;
+  class ClientSyncContext;
+  class ServerSyncContext;
+
   /// Constructor of RaySyncer
   ///
   /// \param node_id The id of current node.
@@ -70,10 +74,8 @@ class RaySyncer {
   /// This will make the data flow like:
   ///    current node <- node of the stub
   ///
-  /// \param node_id The node id to connect to
   /// \param stub The stub for RPC operations
-  void ConnectTo(const std::string &node_id,
-                 std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub);
+  void ConnectTo(std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub);
 
   /// Clean up the data when a node is removed.
   void NodeRemoved(const std::string &node_id);
@@ -108,18 +110,18 @@ class RaySyncer {
   /// Get the current node id.
   const std::string &GetNodeId() const { return node_id_; }
 
-  struct NodeSyncContext {
+  class NodeSyncContext {
    public:
     NodeSyncContext(RaySyncer &instance,
                     instrumented_io_context &io_context,
-                    std::string node_id);
+                    const std::string& node_id);
 
     /// Push a message to the sending queue to be sent later.
     ///
     /// \param message The message to be sent.
     void PushToSendingQueue(std::shared_ptr<RaySyncMessage> message);
 
-    ~NodeSyncContext() { timer_.cancel(); }
+    virtual ~NodeSyncContext() { timer_.cancel(); }
 
     /// Return the node id of this sync context.
     const std::string &GetNodeId() const { return node_id_; }
@@ -138,7 +140,7 @@ class RaySyncer {
       }
     }
 
-   private:
+   protected:
     // The function to send data.
     // We need different implementation for server and client.
     // Server will wait until client send the long-polling request.
@@ -147,6 +149,8 @@ class RaySyncer {
     // batch and do the actual sending.
     virtual void DoSend() = 0;
 
+    std::array<uint64_t, kComponentArraySize> &GetNodeComponentVersions(
+      const std::string &node_id);
     boost::asio::deadline_timer timer_;
     RaySyncer &instance_;
     instrumented_io_context &io_context_;
@@ -176,7 +180,7 @@ class RaySyncer {
     void HandleLongPollingRequest(grpc::ServerUnaryReactor *reactor,
                                   RaySyncMessages *response);
 
-   private:
+   protected:
     void DoSend() override;
 
     // These two fields are RPC related. When the server got long-polling requests,
@@ -193,16 +197,17 @@ class RaySyncer {
     ClientSyncContext(RaySyncer &instance,
                       instrumented_io_context &io_context,
                       const std::string &node_id,
-                      std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub);
+                      std::shared_ptr<ray::rpc::syncer::RaySyncer::Stub> stub);
 
-   private:
+   protected:
     void DoSend() override;
 
     /// Start to send long-polling request to remote nodes.
     void StartLongPolling();
 
     /// Stub for this connection.
-    std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub_;
+    std::shared_ptr<ray::rpc::syncer::RaySyncer::Stub> stub_;
+    ray::rpc::syncer::RaySyncMessages in_message_;
     DummyRequest dummy_;
   };
 
@@ -250,31 +255,33 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
   RaySyncerService(RaySyncer &syncer) : syncer_(syncer) {}
 
   grpc::ServerUnaryReactor *StartSync(grpc::CallbackServerContext *context,
-                                      SyncMeta *request,
-                                      SyncMeta *response) {
+                                      const SyncMeta *request,
+                                      SyncMeta *response) override {
     auto *reactor = context->DefaultReactor();
     leader_context_ = syncer_.ConnectFrom(request->node_id());
     response->set_node_id(syncer_.GetNodeId());
-    reactor->Finish(Status::OK);
+    reactor->Finish(grpc::Status::OK);
+    return reactor;
   }
 
   grpc::ServerUnaryReactor *Update(grpc::CallbackServerContext *context,
                                    const RaySyncMessages *request,
-                                   DummyResponse *) {
+                                   DummyResponse *) override {
     auto *reactor = context->DefaultReactor();
     auto sync_context = syncer_.GetSyncContext(request->node_id());
     if (sync_context != nullptr) {
       sync_context->ReceiveUpdate(std::move(*const_cast<RaySyncMessages *>(request)));
     } else {
-      RAY_LOG(ERROR) << "Node " << NodeId::FromBinary(request->node_id())
+      RAY_LOG(ERROR) << "Node " << NodeID::FromBinary(request->node_id())
                      << " has already been removed.";
     }
-    reactor->Finish(Status::OK);
+    reactor->Finish(grpc::Status::OK);
+    return reactor;
   }
 
   grpc::ServerUnaryReactor *LongPolling(grpc::CallbackServerContext *context,
                                         const DummyRequest *,
-                                        RaySyncMessages *response) {
+                                        RaySyncMessages *response) override {
     auto *reactor = context->DefaultReactor();
     leader_context_->HandleLongPollingRequest(reactor, response);
     return reactor;
