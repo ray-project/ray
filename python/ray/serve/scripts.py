@@ -290,11 +290,11 @@ def run(
     # Setting the runtime_env here will set defaults for the deployments.
     ray.init(address=address, namespace="serve", runtime_env=final_runtime_env)
 
-    if blocking:
-        try:
-            serve.run(app_or_node, host=host, port=port)
-            cli_logger.success("Deployed successfully!\n")
+    try:
+        serve.run(app_or_node, host=host, port=port)
+        cli_logger.success("Deployed successfully!\n")
 
+        if blocking:
             while True:
                 statuses = serve_application_status_to_schema(
                     get_deployment_statuses()
@@ -302,13 +302,10 @@ def run(
                 cli_logger.info(f"{statuses}")
                 time.sleep(10)
 
-        except KeyboardInterrupt:
-            cli_logger.info("Got KeyboardInterrupt, shutting down...")
-            serve.shutdown()
-            sys.exit()
-    else:
-        serve.run(app_or_node, host=host, port=port)
-        cli_logger.success("Deployed successfully!\n")
+    except KeyboardInterrupt:
+        cli_logger.info("Got KeyboardInterrupt, shutting down...")
+        serve.shutdown()
+        sys.exit()
 
 
 @cli.command(
