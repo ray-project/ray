@@ -157,11 +157,12 @@ class ResourceRequest {
   }
 
   ResourceRequest &operator+=(const ResourceRequest &other) {
-    for (auto resource_id : ResourceIds()) {
+    auto resource_ids = ResourceIds();
+    for (auto resource_id : resource_ids) {
       Set(resource_id, Get(resource_id) + other.GetOrZero(resource_id));
     }
     for (auto &resource_id : other.ResourceIds()) {
-      if (!Has(resource_id)) {
+      if (resource_ids.find(resource_id ) == resource_ids.end()) {
         Set(resource_id, other.Get(resource_id));
       }
     }
@@ -169,11 +170,12 @@ class ResourceRequest {
   }
 
   ResourceRequest &operator-=(const ResourceRequest &other) {
-    for (auto resource_id : ResourceIds()) {
+    auto resource_ids = ResourceIds();
+    for (auto resource_id : resource_ids) {
       Set(resource_id, Get(resource_id) - other.GetOrZero(resource_id));
     }
     for (auto &resource_id : other.ResourceIds()) {
-      if (!Has(resource_id)) {
+      if (resource_ids.find(resource_id ) == resource_ids.end()) {
         Set(resource_id, -other.Get(resource_id));
       }
     }
