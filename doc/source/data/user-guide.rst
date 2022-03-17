@@ -19,5 +19,6 @@ you will learn
     dataset-ml-preprocessing
     dataset-tensor-support
     advanced-pipelines
+    random-access
     custom-data
     performance-tips
