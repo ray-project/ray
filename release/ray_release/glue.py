@@ -212,7 +212,10 @@ def run_release_test(
                 raise PrepareCommandTimeout(e)
 
         command = test["run"]["script"]
-        command_env = {}
+        command_env = {
+            "RAY_USAGE_STATS_ENABLED": "1",
+            "RAY_USAGE_STATS_SOURCE": "nightly-tests",
+        }
 
         if smoke_test:
             command = f"{command} --smoke-test"
