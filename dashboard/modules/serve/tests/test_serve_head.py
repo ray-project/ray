@@ -7,6 +7,8 @@ from typing import List, Dict, Set
 import pytest
 
 import requests
+import ray
+from ray import serve
 
 
 GET_OR_PUT_URL = "http://localhost:8265/api/serve/deployments/"
@@ -226,6 +228,29 @@ def test_get_status_info(ray_start_stop):
     assert len(expected_deployment_names) == 0
 
     print(statuses)
+
+
+def test_serve_namespace(ray_start_stop):
+    """
+    Check that the Dashboard's Serve can interact with the Python API
+    when they both start in the "serve namespace"
+    """
+
+    one = dict(
+        name="one",
+        num_replicas=1,
+        route_prefix="/one",
+        ray_actor_options={"runtime_env": {"py_modules": [test_module_uri]}},
+        import_path="test_module.test.one",
+    )
+    put_response = requests.put(GET_OR_PUT_URL, json={"deployments": [one]}, timeout=30)
+    assert put_response.status_code == 200
+    ray.init(address="auto", namespace="serve")
+    serve.start()
+    deployments = serve.list_deployments()
+    assert len(deployments) == 1
+    assert "one" in deployments
+    serve.shutdown()
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ import traceback
 import warnings
 
 import ray
+from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
 from ray.util import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.callback import CallbackList
@@ -160,7 +161,8 @@ class _ExperimentCheckpointManager:
             search_alg.save_to_dir(self._checkpoint_dir, session_str=self._session_str)
 
         checkpoint_time_start = time.monotonic()
-        _serialize_and_write()
+        with out_of_band_serialize_dataset():
+            _serialize_and_write()
 
         if self._sync_trial_checkpoints:
             exclude = None
@@ -1235,7 +1237,7 @@ class TrialRunner:
         if self.trial_executor.has_resources_for_trial(trial):
             requeue_trial = False
             logger.info(
-                "Trial %s: Attempting to restore " "trial state from last checkpoint.",
+                "Trial %s: Attempting to restore trial state from last checkpoint.",
                 trial,
             )
             # TODO(xwjiang): For better consistency, consider not starting

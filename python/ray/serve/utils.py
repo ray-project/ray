@@ -11,6 +11,7 @@ from typing import Iterable, List, Tuple, Dict, Any
 import os
 import traceback
 from enum import Enum
+import __main__
 from ray.actor import ActorHandle
 
 import requests
@@ -308,6 +309,41 @@ def msgpack_serialize(obj):
     buffer = ctx.serialize(obj)
     serialized = buffer.to_bytes()
     return serialized
+
+
+def get_deployment_import_path(deployment, replace_main=False):
+    """
+    Gets the import path for deployment's func_or_class.
+
+    deployment: A deployment object whose import path should be returned
+    replace_main: If this is True, the function will try to replace __main__
+        with __main__'s file name if the deployment's module is __main__
+    """
+
+    body = deployment._func_or_class
+
+    if isinstance(body, str):
+        # deployment's func_or_class is already an import path
+        return body
+    elif hasattr(body, "__ray_actor_class__"):
+        # If ActorClass, get the class or function inside
+        body = body.__ray_actor_class__
+
+    import_path = f"{body.__module__}.{body.__qualname__}"
+
+    if replace_main:
+
+        # Replaces __main__ with its file name. E.g. suppose the import path
+        # is __main__.classname and classname is defined in filename.py.
+        # Its import path becomes filename.classname.
+
+        if import_path.split(".")[0] == "__main__" and hasattr(__main__, "__file__"):
+            file_name = os.path.basename(__main__.__file__)
+            extensionless_file_name = file_name.split(".")[0]
+            attribute_name = import_path.split(".")[-1]
+            import_path = f"{extensionless_file_name}.{attribute_name}"
+
+    return import_path
 
 
 def parse_import_path(import_path: str):

@@ -173,7 +173,7 @@ class SimpleQTrainer(Trainer):
         ).get("prioritized_replay"):
             if config["multiagent"]["replay_mode"] == "lockstep":
                 raise ValueError(
-                    "Prioritized replay is not supported when " "replay_mode=lockstep."
+                    "Prioritized replay is not supported when replay_mode=lockstep."
                 )
             elif config.get("replay_sequence_length", 0) > 1:
                 raise ValueError(

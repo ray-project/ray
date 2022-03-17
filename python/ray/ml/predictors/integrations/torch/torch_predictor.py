@@ -1,10 +1,14 @@
 from typing import Optional, Union, List
 
+import numpy as np
+import pandas as pd
 import torch
 
 from ray.ml.predictor import Predictor, DataBatchType
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
+from ray.ml.utils.torch_utils import load_torch_model, convert_pandas_to_torch_tensor
+from ray.ml.constants import PREPROCESSOR_KEY, MODEL_KEY
 
 
 class TorchPredictor(Predictor):
@@ -19,7 +23,9 @@ class TorchPredictor(Predictor):
     def __init__(
         self, model: torch.nn.Module, preprocessor: Optional[Preprocessor] = None
     ):
-        raise NotImplementedError
+        self.model = model
+        self.model.eval()
+        self.preprocessor = preprocessor
 
     @classmethod
     def from_checkpoint(
@@ -37,7 +43,18 @@ class TorchPredictor(Predictor):
                 the model itself, then the state dict will be loaded to this
                 ``model``.
         """
-        raise NotImplementedError
+        checkpoint_dict = checkpoint.to_dict()
+        preprocessor = checkpoint_dict.get(PREPROCESSOR_KEY, None)
+        if MODEL_KEY not in checkpoint_dict:
+            raise RuntimeError(
+                f"No item with key: {MODEL_KEY} is found in the "
+                f"Checkpoint. Make sure this key exists when saving the "
+                f"checkpoint in ``TorchTrainer``."
+            )
+        model = load_torch_model(
+            saved_model=checkpoint_dict[MODEL_KEY], model_definition=model
+        )
+        return TorchPredictor(model=model, preprocessor=preprocessor)
 
     def predict(
         self,
@@ -102,4 +119,17 @@ class TorchPredictor(Predictor):
         Returns:
             DataBatchType: Prediction result.
         """
-        raise NotImplementedError
+        if self.preprocessor:
+            data = self.preprocessor.transform_batch(data)
+
+        if isinstance(data, np.ndarray):
+            # If numpy array, then convert to pandas dataframe.
+            data = pd.DataFrame(data)
+
+        # TODO(amog): Add `_convert_numpy_to_torch_tensor to use based on input type.
+        # Reduce conversion cost if input is in Numpy
+        tensor = convert_pandas_to_torch_tensor(
+            data, columns=feature_columns, column_dtypes=dtype
+        )
+        prediction = self.model(tensor).cpu().detach().numpy()
+        return pd.DataFrame(prediction, columns=["predictions"])

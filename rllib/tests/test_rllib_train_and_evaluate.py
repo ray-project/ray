@@ -42,7 +42,7 @@ def evaluate_test(algo, env="CartPole-v0", test_episode_rollout=False):
         )
 
         checkpoint_path = os.popen(
-            "ls {}/default/*/checkpoint_000001/" "checkpoint-1".format(tmp_dir)
+            "ls {}/default/*/checkpoint_000001/checkpoint-1".format(tmp_dir)
         ).read()[:-1]
         if not os.path.exists(checkpoint_path):
             sys.exit(1)
@@ -103,7 +103,7 @@ def learn_test_plus_evaluate(algo, env="CartPole-v0"):
 
         # Find last checkpoint and use that for the rollout.
         checkpoint_path = os.popen(
-            "ls {}/default/*/checkpoint_*/" "checkpoint-*".format(tmp_dir)
+            "ls {}/default/*/checkpoint_*/checkpoint-*".format(tmp_dir)
         ).read()[:-1]
         checkpoints = [
             cp
@@ -187,7 +187,7 @@ def learn_test_multi_agent_plus_evaluate(algo):
 
         # Find last checkpoint and use that for the rollout.
         checkpoint_path = os.popen(
-            "ls {}/PPO/*/checkpoint_*/" "checkpoint-*".format(tmp_dir)
+            "ls {}/PPO/*/checkpoint_*/checkpoint-*".format(tmp_dir)
         ).read()[:-1]
         checkpoint_paths = checkpoint_path.split("\n")
         assert len(checkpoint_paths) > 0

@@ -3,6 +3,7 @@ from enum import Enum
 import time
 from typing import Any, Dict, Optional, Tuple
 import pickle
+from pathlib import Path
 
 from ray import ray_constants
 from ray.experimental.internal_kv import (
@@ -40,6 +41,8 @@ class JobStatus(str, Enum):
 class JobInfo:
     status: JobStatus
 
+    #: The entrypoint command for this job.
+    entrypoint: str
     message: Optional[str] = None
     # TODO(architkulkarni): Populate this field with e.g. Runtime env setup failure,
     # Internal error, user script error
@@ -107,7 +110,9 @@ class JobInfoStorageClient:
                 assert False, "Attempted to change job status from a terminal state."
             new_info = replace(old_info, status=status, message=message)
         else:
-            new_info = JobInfo(status=status, message=message)
+            new_info = JobInfo(
+                entrypoint="Entrypoint not found.", status=status, message=message
+            )
 
         if status.is_terminal():
             new_info.end_time = int(time.time())
@@ -138,18 +143,17 @@ class JobInfoStorageClient:
 
 
 def uri_to_http_components(package_uri: str) -> Tuple[str, str]:
-    if not package_uri.endswith(".zip"):
-        raise ValueError(f"package_uri ({package_uri}) does not end in .zip")
-    # We need to strip the gcs:// prefix and .zip suffix to make it
-    # possible to pass the package_uri over HTTP.
+    suffix = Path(package_uri).suffix
+    if suffix not in {".zip", ".whl"}:
+        raise ValueError(f"package_uri ({package_uri}) does not end in .zip or .whl")
+    # We need to strip the <protocol>:// prefix to make it possible to pass
+    # the package_uri over HTTP.
     protocol, package_name = parse_uri(package_uri)
-    return protocol.value, package_name[: -len(".zip")]
+    return protocol.value, package_name
 
 
 def http_uri_components_to_uri(protocol: str, package_name: str) -> str:
-    if package_name.endswith(".zip"):
-        raise ValueError(f"package_name ({package_name}) should not end in .zip")
-    return f"{protocol}://{package_name}.zip"
+    return f"{protocol}://{package_name}"
 
 
 def validate_request_type(json_data: Dict[str, Any], request_type: dataclass) -> Any:

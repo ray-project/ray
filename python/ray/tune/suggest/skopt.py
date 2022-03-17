@@ -247,7 +247,7 @@ class SkOptSearch(Searcher):
 
         else:
             logger.warning(
-                "Only non errored and non pruned points" " can be added to SkOpt."
+                "Only non errored and non pruned points can be added to SkOpt."
             )
 
     def set_search_properties(
