@@ -13,7 +13,7 @@ py_test(
 py_test(
     name = "xgboost_example",
     size = "small",
-    srcs = ["examples/torch/xgboost_example.py"],
+    srcs = ["examples/xgboost_example.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"],
 )
