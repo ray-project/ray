@@ -18,8 +18,8 @@
 #include <functional>
 #include <string>
 
-#include "absl/container/flat_hash_set.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
@@ -31,7 +31,13 @@
 namespace ray {
 
 /// List of predefined resources.
-enum PredefinedResourcesEnum { CPU, MEM, GPU, OBJECT_STORE_MEM, PredefinedResourcesEnum_MAX };
+enum PredefinedResourcesEnum {
+  CPU,
+  MEM,
+  GPU,
+  OBJECT_STORE_MEM,
+  PredefinedResourcesEnum_MAX
+};
 
 const std::string kCPU_ResourceLabel = "CPU";
 const std::string kGPU_ResourceLabel = "GPU";
@@ -162,7 +168,9 @@ class ResourceID : public BaseSchedulingID<SchedulingIDTag::Resource> {
   static ResourceID CPU() { return ResourceID(PredefinedResourcesEnum::CPU); }
   static ResourceID Memory() { return ResourceID(PredefinedResourcesEnum::MEM); }
   static ResourceID GPU() { return ResourceID(PredefinedResourcesEnum::GPU); }
-  static ResourceID ObjectStoreMemory() { return ResourceID(PredefinedResourcesEnum::OBJECT_STORE_MEM); }
+  static ResourceID ObjectStoreMemory() {
+    return ResourceID(PredefinedResourcesEnum::OBJECT_STORE_MEM);
+  }
 
  private:
   static absl::flat_hash_set<int64_t> UnitInstanceResources() {
@@ -208,7 +216,7 @@ struct hash<ray::BaseSchedulingID<T>> {
     return std::hash<int64_t>()(id.ToInt());
   }
 };
-template<>
+template <>
 struct hash<ray::scheduling::ResourceID> {
   std::size_t operator()(const ray::scheduling::ResourceID &id) const {
     return std::hash<int64_t>()(id.ToInt());

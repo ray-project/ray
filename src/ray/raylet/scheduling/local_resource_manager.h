@@ -171,7 +171,8 @@ class LocalResourceManager {
   /// capacities in "available", i.e.,.
   /// max(available - reasource_instances.available, 0)
   std::vector<FixedPoint> SubtractAvailableResourceInstances(
-      std::vector<FixedPoint> available, std::vector<FixedPoint> &resource_instances,
+      std::vector<FixedPoint> available,
+      std::vector<FixedPoint> &resource_instances,
       bool allow_going_negative = false) const;
 
   /// Allocate enough capacity across the instances of a resource to satisfy "demand".

@@ -91,25 +91,23 @@ bool NodeResources::operator!=(const NodeResources &other) const {
   return !(*this == other);
 }
 
-std::string NodeResources::DebugString() const{
-    std::stringstream buffer;
-    buffer << "{";
-    bool first = true;
-    for (auto resource_id : total.ResourceIds()) {
-      if (!first) {
-        buffer << ", ";
-      }
-      first = false;
-      buffer << resource_id.Binary() << ": " << available.GetOrZero(resource_id) << "/"
-             << total.Get(resource_id);
+std::string NodeResources::DebugString() const {
+  std::stringstream buffer;
+  buffer << "{";
+  bool first = true;
+  for (auto resource_id : total.ResourceIds()) {
+    if (!first) {
+      buffer << ", ";
     }
-    buffer << "}";
-    return buffer.str();
+    first = false;
+    buffer << resource_id.Binary() << ": " << available.GetOrZero(resource_id) << "/"
+           << total.Get(resource_id);
+  }
+  buffer << "}";
+  return buffer.str();
 }
 
-std::string NodeResources::DictString() const {
-  return DebugString();
-}
+std::string NodeResources::DictString() const { return DebugString(); }
 
 bool NodeResourceInstances::operator==(const NodeResourceInstances &other) {
   return this->total == other.total && this->available == other.available;

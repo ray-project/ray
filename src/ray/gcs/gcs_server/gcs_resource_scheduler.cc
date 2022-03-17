@@ -23,10 +23,10 @@ namespace gcs {
 
 double LeastResourceScorer::Score(const ResourceRequest &required_resources,
                                   const NodeResources &node_resources) {
-  // In GCS-based actor scheduling, the `predefined_resources` and `custom_resources` (of
-  // class `NodeResources`) are only acquired or released by actor scheduling, instead of
-  // being updated by resource reports from raylets. So we have to subtract normal task
-  // resources (if exist) from the current available resources.
+  // In GCS-based actor scheduling, the `NodeResources` are only acquired or released by
+  // actor scheduling, instead of being updated by resource reports from raylets. So we
+  // have to subtract normal task resources (if exist) from the current available
+  // resources.
   const NodeResources *node_resources_ptr = &node_resources;
   NodeResources new_node_resources;
   if (!node_resources.normal_task_resources.IsEmpty()) {
@@ -151,16 +151,17 @@ std::vector<int> GcsResourceScheduler::SortRequiredResources(
     const auto &a = required_resources[a_idx];
     const auto &b = required_resources[b_idx];
 
-    RAY_CHECK(a.predefined_resources.size() == (int)PredefinedResources_MAX);
-    RAY_CHECK(b.predefined_resources.size() == (int)PredefinedResources_MAX);
-
     // Make sure that resources are always sorted in the same order
-    std::set<uint64_t> extra_resources_set;
-    for (auto r : a.custom_resources) {
-      extra_resources_set.insert(r.first);
+    std::set<scheduling::ResourceID> extra_resources_set;
+    for (const auto &r : a.ResourceIds()) {
+      if (!IsPredefinedResource(r)) {
+        extra_resources_set.insert(r);
+      }
     }
-    for (auto r : b.custom_resources) {
-      extra_resources_set.insert(r.first);
+    for (const auto &r : b.ResourceIds()) {
+      if (!IsPredefinedResource(r)) {
+        extra_resources_set.insert(r);
+      }
     }
 
     // TODO (jon-chuang): the exact resource priority defined here needs to be revisted.
@@ -174,21 +175,22 @@ std::vector<int> GcsResourceScheduler::SortRequiredResources(
     // two `ResourceRequest`s require a resource under consideration, the one requiring
     // more of the resource is prioritized.
 
-    if (a.predefined_resources[GPU] != b.predefined_resources[GPU]) {
-      return a.predefined_resources[GPU] < b.predefined_resources[GPU];
+    auto gpu = scheduling::ResourceID(GPU);
+    if (a.Get(gpu) != b.Get(gpu)) {
+      return a.Get(gpu) < b.Get(gpu);
     }
-    for (auto r : extra_resources_set) {
-      auto a_iter = a.custom_resources.find(r);
-      const auto &a_resource = a_iter != a.custom_resources.end() ? a_iter->second : 0;
-      auto b_iter = a.custom_resources.find(r);
-      const auto &b_resource = b_iter != b.custom_resources.end() ? b_iter->second : 0;
+    for (const auto &r : extra_resources_set) {
+      auto a_resource = a.GetOrZero(r);
+      auto b_resource = b.GetOrZero(r);
       if (a_resource != b_resource) {
         return a_resource < b_resource;
       }
     }
-    for (auto idx : std::vector({OBJECT_STORE_MEM, MEM, CPU})) {
-      if (a.predefined_resources[idx] != b.predefined_resources[idx]) {
-        return a.predefined_resources[idx] < b.predefined_resources[idx];
+    for (auto id : std::vector({scheduling::ResourceID(OBJECT_STORE_MEM),
+                                scheduling::ResourceID(MEM),
+                                scheduling::ResourceID(CPU)})) {
+      if (a.Get(id) != b.Get(id)) {
+        return a.Get(id) < b.Get(id);
       }
     }
     return false;

@@ -999,7 +999,7 @@ ResourceSet LocalTaskManager::CalcNormalTaskResources() const {
     if (auto allocated_instances = worker->GetAllocatedInstances()) {
       auto resource_request = allocated_instances->ToResourceRequest();
       for (auto entry : resource_request.ToMap()) {
-          total_normal_task_resources.emplace(entry.first.Binary(), entry.second);
+        total_normal_task_resources.emplace(entry.first.Binary(), entry.second);
       }
     }
   }

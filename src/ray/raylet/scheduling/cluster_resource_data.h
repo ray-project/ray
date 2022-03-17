@@ -34,7 +34,7 @@ bool IsPredefinedResource(scheduling::ResourceID resource_id);
 // Data structure specifying the capacity of each resource requested by a task.
 class ResourceRequest {
  public:
-  ResourceRequest(): ResourceRequest({}, false) {}
+  ResourceRequest() : ResourceRequest({}, false) {}
 
   ResourceRequest(absl::flat_hash_map<ResourceID, FixedPoint> resource_map)
       : ResourceRequest(resource_map, false){};
@@ -50,9 +50,7 @@ class ResourceRequest {
     }
   }
 
-  bool RequiresObjectStoreMemory() const {
-    return requires_object_store_memory_;
-  }
+  bool RequiresObjectStoreMemory() const { return requires_object_store_memory_; }
 
   FixedPoint Get(ResourceID resource_id) const {
     auto ptr = GetPointer(resource_id);
@@ -164,7 +162,7 @@ class ResourceRequest {
       Set(resource_id, Get(resource_id) + other.GetOrZero(resource_id));
     }
     for (auto &resource_id : other.ResourceIds()) {
-      if (resource_ids.find(resource_id ) == resource_ids.end()) {
+      if (resource_ids.find(resource_id) == resource_ids.end()) {
         Set(resource_id, other.Get(resource_id));
       }
     }
@@ -177,7 +175,7 @@ class ResourceRequest {
       Set(resource_id, Get(resource_id) - other.GetOrZero(resource_id));
     }
     for (auto &resource_id : other.ResourceIds()) {
-      if (resource_ids.find(resource_id ) == resource_ids.end()) {
+      if (resource_ids.find(resource_id) == resource_ids.end()) {
         Set(resource_id, -other.Get(resource_id));
       }
     }
@@ -189,9 +187,7 @@ class ResourceRequest {
            this->custom_resources_ == other.custom_resources_;
   }
 
-  bool operator!=(const ResourceRequest &other) const {
-    return !(*this == other);
-  }
+  bool operator!=(const ResourceRequest &other) const { return !(*this == other); }
 
   bool operator<=(const ResourceRequest &other) const {
     if (Size() > other.Size()) {
@@ -250,7 +246,6 @@ class ResourceRequest {
   bool requires_object_store_memory_ = false;
 };
 
-
 // Data structure specifying the capacity of each instance of each resource
 // allocated to a task.
 class TaskResourceInstances {
@@ -300,9 +295,10 @@ class TaskResourceInstances {
     return ptr != nullptr && ptr->size() > 0;
   }
 
-  TaskResourceInstances &Set(const ResourceID resource_id, const std::vector<FixedPoint> &instances) {
-     GetMutable(resource_id) = instances;
-     return *this;
+  TaskResourceInstances &Set(const ResourceID resource_id,
+                             const std::vector<FixedPoint> &instances) {
+    GetMutable(resource_id) = instances;
+    return *this;
   }
 
   void Add(const ResourceID resource_id, const std::vector<FixedPoint> &delta) {
@@ -350,7 +346,8 @@ class TaskResourceInstances {
 
   bool operator==(const TaskResourceInstances &other) const {
     for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
-      if (!FixedPointEqualVectors(this->predefined_resources_[i], other.predefined_resources_[i])) {
+      if (!FixedPointEqualVectors(this->predefined_resources_[i],
+                                  other.predefined_resources_[i])) {
         return false;
       }
     }
@@ -376,7 +373,8 @@ class TaskResourceInstances {
         buffer << ", ";
       }
       first = false;
-      buffer << resource_id.Binary() << ": " << FixedPointVectorToString(Get(resource_id));
+      buffer << resource_id.Binary() << ": "
+             << FixedPointVectorToString(Get(resource_id));
     }
     buffer << "}";
     return buffer.str();

@@ -1264,14 +1264,12 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
     ASSERT_EQ(total["object_store_memory"], 1000 * 1024 * 1024);
     ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
                   .GetLocalResources()
-                  .available
-                  .Get(ResourceID::ObjectStoreMemory())
+                  .available.Get(ResourceID::ObjectStoreMemory())
                   .Double(),
               750 * 1024 * 1024);
     ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
                   .GetLocalResources()
-                  .total
-                  .Get(ResourceID::ObjectStoreMemory())
+                  .total.Get(ResourceID::ObjectStoreMemory())
                   .Double(),
               1000 * 1024 * 1024);
   }
@@ -1285,14 +1283,12 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
     ASSERT_EQ(available["object_store_memory"], 550 * 1024 * 1024);
     ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
                   .GetLocalResources()
-                  .available
-                  .Get(ResourceID::ObjectStoreMemory())
+                  .available.Get(ResourceID::ObjectStoreMemory())
                   .Double(),
               550 * 1024 * 1024);
     ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
                   .GetLocalResources()
-                  .total
-                  .Get(ResourceID::ObjectStoreMemory())
+                  .total.Get(ResourceID::ObjectStoreMemory())
                   .Double(),
               1000 * 1024 * 1024);
   }
@@ -1306,14 +1302,12 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
     ASSERT_EQ(available["object_store_memory"], 1000 * 1024 * 1024);
     ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
                   .GetLocalResources()
-                  .available
-                  .Get(ResourceID::ObjectStoreMemory())
+                  .available.Get(ResourceID::ObjectStoreMemory())
                   .Double(),
               1000 * 1024 * 1024);
     ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
                   .GetLocalResources()
-                  .total
-                  .Get(ResourceID::ObjectStoreMemory())
+                  .total.Get(ResourceID::ObjectStoreMemory())
                   .Double(),
               1000 * 1024 * 1024);
   }
@@ -1327,14 +1321,12 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
     ASSERT_EQ(available["object_store_memory"], 0);
     ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
                   .GetLocalResources()
-                  .available
-                  .Get(ResourceID::ObjectStoreMemory())
+                  .available.Get(ResourceID::ObjectStoreMemory())
                   .Double(),
               0);
     ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
                   .GetLocalResources()
-                  .total
-                  .Get(ResourceID::ObjectStoreMemory())
+                  .total.Get(ResourceID::ObjectStoreMemory())
                   .Double(),
               1000 * 1024 * 1024);
   }
@@ -1522,8 +1514,7 @@ TEST_F(ClusterResourceSchedulerTest, CustomResourceInstanceTest) {
   int64_t fpga_resource_id = mock_string_to_int_map.Insert("FPGA");
 
   ResourceRequest resource_request;
-  resource_request.Set(ResourceID::CPU(), 1)
-      .Set(fpga_resource_id, 0.7);
+  resource_request.Set(ResourceID::CPU(), 1).Set(fpga_resource_id, 0.7);
 
   std::shared_ptr<TaskResourceInstances> task_allocation =
       std::make_shared<TaskResourceInstances>();
@@ -1537,8 +1528,7 @@ TEST_F(ClusterResourceSchedulerTest, CustomResourceInstanceTest) {
   ASSERT_TRUE(success) << resource_scheduler.DebugString();
 
   ResourceRequest fail_resource_request;
-  fail_resource_request.Set(ResourceID::CPU(), 1)
-      .Set(fpga_resource_id, 0.5);
+  fail_resource_request.Set(ResourceID::CPU(), 1).Set(fpga_resource_id, 0.5);
   success = resource_scheduler.GetLocalResourceManager().AllocateTaskResourceInstances(
       fail_resource_request, task_allocation);
   ASSERT_FALSE(success) << resource_scheduler.DebugString();

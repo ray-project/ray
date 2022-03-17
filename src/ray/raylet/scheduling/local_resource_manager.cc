@@ -81,7 +81,8 @@ std::vector<FixedPoint> LocalResourceManager::AddAvailableResourceInstances(
 }
 
 std::vector<FixedPoint> LocalResourceManager::SubtractAvailableResourceInstances(
-    std::vector<FixedPoint> available, std::vector<FixedPoint> &resource_instances,
+    std::vector<FixedPoint> available,
+    std::vector<FixedPoint> &resource_instances,
     bool allow_going_negative) const {
   RAY_CHECK(available.size() == resource_instances.size());
 
@@ -89,8 +90,7 @@ std::vector<FixedPoint> LocalResourceManager::SubtractAvailableResourceInstances
   for (size_t i = 0; i < available.size(); i++) {
     if (resource_instances[i] < 0) {
       if (allow_going_negative) {
-        resource_instances[i] =
-            resource_instances[i] - available[i];
+        resource_instances[i] = resource_instances[i] - available[i];
       } else {
         underflow[i] = available[i];  // No change in the value in this case.
       }
@@ -216,9 +216,10 @@ std::vector<double> LocalResourceManager::AddResourceInstances(
     return resource_instances;  // No overflow.
   }
 
-  auto overflow = AddAvailableResourceInstances(
-      resource_instances_fp, local_resources_.available.GetMutable(resource_id),
-      local_resources_.total.GetMutable(resource_id));
+  auto overflow =
+      AddAvailableResourceInstances(resource_instances_fp,
+                                    local_resources_.available.GetMutable(resource_id),
+                                    local_resources_.total.GetMutable(resource_id));
   OnResourceChanged();
 
   return VectorFixedPointToVectorDouble(overflow);
@@ -236,7 +237,8 @@ std::vector<double> LocalResourceManager::SubtractResourceInstances(
   }
 
   auto underflow = SubtractAvailableResourceInstances(
-      resource_instances_fp, local_resources_.available.GetMutable(resource_id),
+      resource_instances_fp,
+      local_resources_.available.GetMutable(resource_id),
       allow_going_negative);
   OnResourceChanged();
 
@@ -309,7 +311,7 @@ void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data)
     NodeResources node_resources = ResourceMapToNodeResources({{}}, {{}});
     last_report_resources_.reset(new NodeResources(node_resources));
   }
-  for(auto entry : resources.total.ToMap()) {
+  for (auto entry : resources.total.ToMap()) {
     auto resource_id = entry.first;
     auto label = ResourceID(resource_id).Binary();
     auto total = entry.second;
@@ -319,8 +321,7 @@ void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data)
 
     if (available != last_available && available > 0) {
       resources_data.set_resources_available_changed(true);
-      (*resources_data.mutable_resources_available())[label] =
-          available.Double();
+      (*resources_data.mutable_resources_available())[label] = available.Double();
     }
     if (total != last_total) {
       (*resources_data.mutable_resources_total())[label] = total.Double();

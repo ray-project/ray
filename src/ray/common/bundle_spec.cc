@@ -36,7 +36,7 @@ void BundleSpecification::ComputeResources() {
 void BundleSpecification::ComputeBundleResourceLabels() {
   RAY_CHECK(unit_resource_);
 
-  for (auto resource_id: unit_resource_->ResourceIds()) {
+  for (auto resource_id : unit_resource_->ResourceIds()) {
     auto resource_name = resource_id.Binary();
     auto resource_value = unit_resource_->Get(resource_id);
 
