@@ -198,7 +198,7 @@ bool ClusterResourceManager::AddNodeAvailableResources(
 
   auto node_resources = it->second.GetMutableLocalView();
   node_resources->available += resource_request;
-  node_resources->available.Cap(node_resources.total);
+  node_resources->available.Cap(node_resources->total);
   return true;
 }
 

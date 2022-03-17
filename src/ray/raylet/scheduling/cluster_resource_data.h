@@ -85,7 +85,7 @@ class ResourceRequest {
     return *this;
   }
 
-  const bool Has(ResourceID resource_id) const { return GetOrZero(resource_id) > 0; }
+  bool Has(ResourceID resource_id) const { return GetOrZero(resource_id) > 0; }
 
   void Clear() {
     for (size_t i = 0; i < predefined_resources_.size(); i++) {
@@ -305,9 +305,13 @@ class TaskResourceInstances {
     return ptr != nullptr && ptr->size() > 0;
   }
 
-  TaskResourceInstances &Set(const ResourceID resource_id,
-                             const std::vector<FixedPoint> &instances) {
-    GetMutable(resource_id) = instances;
+  TaskResourceInstances &Set(const ResourceID resource_id, const std::vector<FixedPoint> &instances) {
+    auto ptr = GetPointer(resource_id);
+    if (ptr != nullptr) {
+      *ptr = instances;
+    } else {
+      custom_resources_.emplace(resource_id.ToInt(), instances);
+    }
     return *this;
   }
 

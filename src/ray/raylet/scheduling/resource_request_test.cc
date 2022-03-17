@@ -113,6 +113,55 @@ TEST_F(ResourceRequestTest, TestOperators) {
   ASSERT_EQ(r1.ToMap(), expected);
 }
 
+class TaskResourceInstancesTest : public ::testing::Test {};
+
+TEST_F(TaskResourceInstancesTest, TestBasic) {
+  auto cpu_id = ResourceID::CPU();
+  auto gpu_id = ResourceID::GPU();
+  auto custom_id1 = ResourceID("custom1");
+
+  absl::flat_hash_map<ResourceID, FixedPoint> resource_map(
+      {{cpu_id, 5}, {gpu_id, 5}});
+
+  ResourceRequest resource_request(resource_map);
+  TaskResourceInstances task_resource_instances(resource_request);
+
+  // Test Has
+  ASSERT_TRUE(task_resource_instances.Has(cpu_id));
+  ASSERT_TRUE(task_resource_instances.Has(gpu_id));
+  ASSERT_FALSE(task_resource_instances.Has(custom_id1));
+
+  // Test Get
+  // GPU is a unit resource, while CPU is not.
+  auto cpu_instances = task_resource_instances.Get(cpu_id);
+  auto gpu_instances = task_resource_instances.Get(gpu_id);
+  ASSERT_EQ(cpu_instances, VectorDoubleToVectorFixedPoint({5}));
+  ASSERT_EQ(gpu_instances, VectorDoubleToVectorFixedPoint({1, 1, 1, 1, 1}));
+
+  // Test Set
+  task_resource_instances.Set(custom_id1, VectorDoubleToVectorFixedPoint({1}));
+  ASSERT_TRUE(task_resource_instances.Has(custom_id1));
+  ASSERT_EQ(task_resource_instances.Get(custom_id1), VectorDoubleToVectorFixedPoint({1}));
+
+  // Test Clear
+  task_resource_instances.Clear(custom_id1);
+  ASSERT_FALSE(task_resource_instances.Has(custom_id1));
+
+  // Test ResourceIds
+  ASSERT_EQ(task_resource_instances.ResourceIds(), absl::flat_hash_set<ResourceID>({cpu_id, gpu_id}));
+
+  // Test Size and IsEmpty
+  ASSERT_EQ(task_resource_instances.Size(), 2);
+  ASSERT_FALSE(task_resource_instances.IsEmpty());
+
+  // Test Sum
+  ASSERT_EQ(task_resource_instances.Sum(cpu_id), 5);
+  ASSERT_EQ(task_resource_instances.Sum(gpu_id), 5);
+
+  // Test ToResourceRequest
+  ASSERT_EQ(task_resource_instances.ToResourceRequest(), resource_request);
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
