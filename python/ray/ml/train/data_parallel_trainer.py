@@ -324,6 +324,4 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
 
     @property
     def latest_checkpoint_dir(self) -> Optional[Path]:
-        raise RuntimeError(
-            "`latest_checkpoint_dir` should not be called when running " "with Tune."
-        )
+        raise NotImplementedError
