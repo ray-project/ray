@@ -356,7 +356,7 @@ class PullManager {
 
   /// The objects that this object manager has been asked to fetch from remote
   /// object managers.
-  std::unordered_map<ObjectID, ObjectPullRequest> object_pull_requests_;
+  absl::flat_hash_map<ObjectID, ObjectPullRequest> object_pull_requests_;
 
   // Protects state that is shared by the threads used to receive object
   // chunks.

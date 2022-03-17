@@ -252,8 +252,8 @@ void CoreWorkerDirectTaskReceiver::SetupActor(bool is_asyncio,
 }
 
 void CoreWorkerDirectTaskReceiver::Stop() {
-  for (const auto &it : actor_scheduling_queues_) {
-    it.second->Stop();
+  for (const auto &[_, scheduling_queue] : actor_scheduling_queues_) {
+    scheduling_queue->Stop();
   }
 }
 

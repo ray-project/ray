@@ -287,7 +287,7 @@ class StandardAutoscaler:
             self._update()
         except Exception as e:
             self.prom_metrics.update_loop_exceptions.inc()
-            logger.exception("StandardAutoscaler: " "Error during autoscaling.")
+            logger.exception("StandardAutoscaler: Error during autoscaling.")
             # Don't abort the autoscaler if the K8s API server is down.
             # https://github.com/ray-project/ray/issues/12255
             is_k8s_connection_error = self.config["provider"][
@@ -296,7 +296,7 @@ class StandardAutoscaler:
             if not is_k8s_connection_error:
                 self.num_failures += 1
             if self.num_failures > self.max_failures:
-                logger.critical("StandardAutoscaler: " "Too many errors, abort.")
+                logger.critical("StandardAutoscaler: Too many errors, abort.")
                 raise e
 
     def _update(self):
@@ -969,7 +969,7 @@ class StandardAutoscaler:
             if errors_fatal:
                 raise e
             else:
-                logger.exception("StandardAutoscaler: " "Error parsing config.")
+                logger.exception("StandardAutoscaler: Error parsing config.")
 
     def launch_config_ok(self, node_id):
         if self.disable_launch_config_check:

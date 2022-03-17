@@ -221,7 +221,7 @@ def test_get_named_step_default(workflow_start_regular, tmp_path):
     assert math.factorial(5) == factorial.step(5).run("factorial")
     for i in range(5):
         step_name = (
-            "test_basic_workflows_2." "test_get_named_step_default.locals.factorial"
+            "test_basic_workflows_2.test_get_named_step_default.locals.factorial"
         )
         if i != 0:
             step_name += "_" + str(i)
@@ -252,7 +252,7 @@ def test_no_init(shutdown_only):
         pass
 
     fail_wf_init_error_msg = re.escape(
-        "`workflow.init()` must be called prior to using " "the workflows API."
+        "`workflow.init()` must be called prior to using the workflows API."
     )
 
     with pytest.raises(RuntimeError, match=fail_wf_init_error_msg):

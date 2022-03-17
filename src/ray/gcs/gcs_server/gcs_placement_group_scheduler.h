@@ -22,6 +22,7 @@
 #include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/ray_syncer.h"
+#include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
@@ -142,7 +143,7 @@ class GcsScheduleStrategy {
   /// \return The scheduling result from the required resource.
   ScheduleResult GenerateScheduleResult(
       const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
-      const std::vector<NodeID> &selected_nodes,
+      const std::vector<scheduling::NodeID> &selected_nodes,
       const SchedulingResultStatus &status);
 };
 

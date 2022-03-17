@@ -29,8 +29,8 @@ jobject java_task_executor = nullptr;
 
 /// Store Java instances of function descriptor in the cache to avoid unnessesary JNI
 /// operations.
-thread_local std::unordered_map<size_t,
-                                std::vector<std::pair<FunctionDescriptor, jobject>>>
+thread_local absl::flat_hash_map<size_t,
+                                 std::vector<std::pair<FunctionDescriptor, jobject>>>
     executor_function_descriptor_cache;
 
 inline gcs::GcsClientOptions ToGcsClientOptions(JNIEnv *env, jobject gcs_client_options) {
