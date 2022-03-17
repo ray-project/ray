@@ -1803,7 +1803,7 @@ def run(
         deployments = list(target.deployments.values())
         ingress = target.ingress
     # Each DAG should always provide a valid Driver DeploymentNode
-    if isinstance(target, DeploymentNode):
+    elif isinstance(target, DeploymentNode):
         deployments = pipeline_build(target)
         ingress = deployments[-1]
     # Special case where user is doing single function serve.run(func.bind())
