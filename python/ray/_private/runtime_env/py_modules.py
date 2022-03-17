@@ -74,7 +74,7 @@ def upload_py_modules_if_needed(
             # users, we can add this support on demand.
             if len(module.__path__) > 1:
                 raise ValueError(
-                    "py_modules only supports modules whose " "__path__ has length 1."
+                    "py_modules only supports modules whose __path__ has length 1."
                 )
             [module_path] = module.__path__
         else:
