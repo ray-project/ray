@@ -33,7 +33,7 @@ def get_filesystem() -> ("pyarrow.fs.FileSystem", str):
 
     Examples:
         # Assume ray.init(storage="s3:/bucket/cluster_1/storage")
-        >>> fs, path = ray.storage.get_filesystem()
+        >>> fs, path = storage.get_filesystem()
         >>> print(fs)
         <pyarrow._fs.LocalFileSystem object at 0x7fd745dd9830>
         >>> print(path)
@@ -59,7 +59,7 @@ def put(namespace: str, path: str, value: bytes) -> None:
 
     Examples:
         # Writes "bar" to <storage_prefix>/my_app/path/foo.txt
-        >>> ray.storage.put("my_app", "path/foo.txt", "bar")
+        >>> storage.put("my_app", "path/foo.txt", "bar")
 
     Args:
         namespace: Namespace used to isolate blobs from different applications.
@@ -83,9 +83,9 @@ def get(namespace: str, path: str) -> bytes:
 
     Examples:
         # Loads value from <storage_prefix>/my_app/path/foo.txt
-        >>> ray.storage.get("my_app", "path/foo.txt")
+        >>> storage.get("my_app", "path/foo.txt")
         "bar"
-        >>> ray.storage.get("my_app", "invalid")
+        >>> storage.get("my_app", "invalid")
         None
 
     Args:
@@ -114,7 +114,7 @@ def delete(namespace: str, path: str) -> bool:
 
     Examples:
         # Deletes blob at <storage_prefix>/my_app/path/foo.txt
-        >>> ray.storage.delete("my_app", "path/foo.txt")
+        >>> storage.delete("my_app", "path/foo.txt")
         True
 
     Args:
@@ -143,11 +143,11 @@ def get_info(namespace: str, path: str) -> "pyarrow.fs.FileInfo":
 
     Examples:
         # Inspect blob at <storage_prefix>/my_app/path/foo.txt
-        >>> ray.storage.get_info("my_app", "path/foo.txt")
+        >>> storage.get_info("my_app", "path/foo.txt")
         <FileInfo for '/tmp/storage/my_app/path/foo.txt': type=FileType.File, size=4>
 
         # Non-existent blob.
-        >>> ray.storage.get_info("my_app", "path/does_not_exist.txt")
+        >>> storage.get_info("my_app", "path/does_not_exist.txt")
         None
         <FileInfo for '/tmp/storage/my_app/path/foo.txt': type=FileType.NotFound>
 
@@ -181,16 +181,16 @@ def list(
 
     Examples:
         # List created blobs and dirs at <storage_prefix>/my_app/path
-        >>> ray.storage.list("my_app", "path")
+        >>> storage.list("my_app", "path")
         [<FileInfo for '/tmp/storage/my_app/path/foo.txt' type=FileType.File>,
          <FileInfo for '/tmp/storage/my_app/path/subdir' type=FileType.Directory>]
 
         # Non-existent path.
-        >>> ray.storage.get_info("my_app", "does_not_exist")
+        >>> storage.get_info("my_app", "does_not_exist")
         FileNotFoundError: ...
 
         # Not a directory.
-        >>> ray.storage.get_info("my_app", "path/foo.txt")
+        >>> storage.get_info("my_app", "path/foo.txt")
         NotADirectoryError: ...
 
     Args:

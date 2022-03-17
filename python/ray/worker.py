@@ -807,10 +807,10 @@ def init(
         namespace: Namespace to use
         runtime_env: The runtime environment to use
             for this job (see :ref:`runtime-environments` for details).
-        storage: Specify a URI for persistent cluster-wide storage. This storage path
-            must be accessible by all nodes of the cluster, otherwise an error will be
-            raised. This config must be specified to use the ``ray.storage`` APIs.
-            This option can also be specified as the RAY_STORAGE env var.
+        storage: [Experimental] Specify a URI for persistent cluster-wide storage.
+            This storage path must be accessible by all nodes of the cluster, otherwise
+            an error will be raised. This option can also be specified as the
+            RAY_STORAGE env var.
         _enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
