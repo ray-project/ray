@@ -974,7 +974,6 @@ class RayServeDAGHandle:
             self.dag_node = json.loads(
                 self.dag_node_json, object_hook=dagnode_from_json
             )
-        print(f"Executing RayServeDAGHandle with args: {args}, kwargs: {kwargs}")
         return self.dag_node.execute(*args, **kwargs)
 
 
@@ -1192,8 +1191,8 @@ class Deployment:
         if inspect.isfunction(self._func_or_class):
             return DeploymentFunctionNode(
                 self._func_or_class,
-                args,
-                kwargs,
+                args,  # Used to bind and resolve DAG only, can take user input
+                kwargs,  # Used to bind and resolve DAG only, can take user input
                 {},
                 other_args_to_resolve={
                     "deployment_self": copy(self),
@@ -1758,8 +1757,7 @@ def run(
 
     client = start(detached=True, http_options={"host": host, "port": port})
 
-    # Take either class or function deployment as entry, matches current
-    # deployment behavior.
+    # Each DAG should always provide a valid Driver DeploymentNode
     if isinstance(target, (DeploymentNode)):
         deployments = pipeline_build(target)
     elif isinstance(target, DAGNode):
