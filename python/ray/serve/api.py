@@ -1305,9 +1305,6 @@ class Deployment:
             _health_check_timeout_s=_health_check_timeout_s,
         )
 
-        self._config.num_replicas = validated._config.num_replicas
-        self._config.user_config = validated._config.user_config
-        self._config.max_concurrent_queries = validated._config.max_concurrent_queries
         self._func_or_class = validated._func_or_class
         self._name = validated._name
         self._version = validated._version
@@ -1316,15 +1313,7 @@ class Deployment:
         self._init_kwargs = validated._init_kwargs
         self._route_prefix = validated._route_prefix
         self._ray_actor_options = validated._ray_actor_options
-        self._config.autoscaling_config = validated._config.autoscaling_config
-        self._config.graceful_shutdown_wait_loop_s = (
-            validated._config.graceful_shutdown_wait_loop_s
-        )
-        self._config.graceful_shutdown_timeout_s = (
-            validated._config.graceful_shutdown_timeout_s
-        )
-        self._config.health_check_period_s = validated._config.health_check_period_s
-        self._config.health_check_timeout_s = validated._config.health_check_timeout_s
+        self._config = validated._config
 
     def __eq__(self, other):
         return all(
