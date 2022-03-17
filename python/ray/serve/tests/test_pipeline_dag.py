@@ -359,23 +359,31 @@ def test_pass_handle_to_multiple(serve_instance, use_build):
     assert ray.get(handle.remote()) == "ok"
 
 
-def test_non_json_serializable_args(serve_instance):
+def test_run_non_json_serializable_args(serve_instance):
     # Test that we can capture and bind non-json-serializable arguments.
     arr1 = np.zeros(100)
     arr2 = np.zeros(200)
+    arr3 = np.zeros(300)
 
     @serve.deployment
     class A:
-        def __init__(self, arr1):
+        def __init__(self, arr1, *, arr2):
             self.arr1 = arr1
             self.arr2 = arr2
+            self.arr3 = arr3
 
         def __call__(self, *args):
-            return self.arr1, self.arr2
+            return self.arr1, self.arr2, self.arr3
 
-    handle = serve.run(A.bind(arr1))
-    ret1, ret2 = ray.get(handle.remote())
-    assert np.array_equal(ret1, arr1) and np.array_equal(ret2, arr2)
+    handle = serve.run(A.bind(arr1, arr2=arr2))
+    ret1, ret2, ret3 = ray.get(handle.remote())
+    assert all(
+        [
+            np.array_equal(ret1, arr1),
+            np.array_equal(ret2, arr2),
+            np.array_equal(ret3, arr3),
+        ]
+    )
 
 
 @serve.deployment
@@ -389,7 +397,33 @@ def test_single_functional_node_base_case(serve_instance):
     assert ray.get(handle.remote()) == 1
 
 
-# TODO: check that serve.build raises an exception.
+class TestServeBuild:
+    @serve.deployment
+    class A:
+        pass
+
+    def test_build_non_json_serializable_args(self, serve_instance):
+        with pytest.raises(
+            TypeError, match="must be JSON-serializable to build.*init_args"
+        ):
+            serve.build(self.A.bind(np.zeros(100))).to_dict()
+
+    def test_build_non_json_serializable_kwargs(self, serve_instance):
+        with pytest.raises(
+            TypeError, match="must be JSON-serializable to build.*init_kwargs"
+        ):
+            serve.build(self.A.bind(kwarg=np.zeros(100))).to_dict()
+
+    def test_build_non_importable(self, serve_instance):
+        def gen_deployment():
+            @serve.deployment
+            def f():
+                pass
+
+            return f
+
+        with pytest.raises(RuntimeError, match="must be importable"):
+            serve.build(gen_deployment().bind()).to_dict()
 
 
 if __name__ == "__main__":

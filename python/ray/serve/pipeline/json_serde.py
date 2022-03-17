@@ -33,16 +33,16 @@ def convert_to_json_safe_obj(obj: Any, *, err_key: str) -> Any:
     Uses the Ray Serve encoder to serialize special objects such as
     ServeHandles and DAGHandles.
 
-    Raises: ValueError if the object contains fields that cannot be
+    Raises: TypeError if the object contains fields that cannot be
     JSON-serialized.
     """
     try:
         return json.loads(json.dumps(obj, cls=DAGNodeEncoder))
     except Exception as e:
-        raise ValueError(
+        raise TypeError(
             "All provided fields must be JSON-serializable to build the "
-            f"Serve app. Failed while serializing {err_key}: \n{e}"
-        )
+            f"Serve app. Failed while serializing {err_key}."
+        ) from e
 
 
 def convert_from_json_safe_obj(obj: Any, *, err_key: str) -> Any:
@@ -55,7 +55,7 @@ def convert_from_json_safe_obj(obj: Any, *, err_key: str) -> Any:
     try:
         return json.loads(json.dumps(obj), object_hook=dagnode_from_json)
     except Exception as e:
-        raise ValueError(f"Failed to convert {err_key} from JSON:\n{e}")
+        raise ValueError(f"Failed to convert {err_key} from JSON.") from e
 
 
 class DAGNodeEncoder(json.JSONEncoder):

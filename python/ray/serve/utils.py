@@ -273,8 +273,15 @@ def get_deployment_import_path(deployment, replace_main=False):
 
     import_path = f"{body.__module__}.{body.__qualname__}"
 
-    if replace_main:
+    if "<locals>" in body.__qualname__:
+        raise RuntimeError(
+            "Deployment definitions must be importable to build the Serve app, "
+            f"but deployment {deployment.name} is inline defined or returned "
+            "from another function. Please restructure your code so that "
+            f"{import_path} can be imported (e.g., put it in a module)."
+        )
 
+    if replace_main:
         # Replaces __main__ with its file name. E.g. suppose the import path
         # is __main__.classname and classname is defined in filename.py.
         # Its import path becomes filename.classname.
