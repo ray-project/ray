@@ -96,11 +96,11 @@ class DistributeResources:
     ) -> Tuple[float, float]:
         """Get the number of CPUs and GPUs avaialble in total (not just free)"""
         total_available_cpus = (
-            trial_runner.trial_executor._avail_resources.cpu
+            trial_runner.trial_executor._resource_updater.get_num_cpus()
             - self.reserve_resources.get("CPU", 0)
         )
         total_available_gpus = (
-            trial_runner.trial_executor._avail_resources.gpu
+            trial_runner.trial_executor._resource_updater.get_num_gpus()
             - self.reserve_resources.get("GPU", 0)
         )
         return total_available_cpus, total_available_gpus
@@ -518,7 +518,7 @@ class DistributeResourcesToTopJob(DistributeResources):
     @property
     def _metric_op(self) -> float:
         if self.mode not in ("min", "max"):
-            raise ValueError("The mode parameter can only be" " either min or max.")
+            raise ValueError("The mode parameter can only be either min or max.")
         if self.mode == "max":
             return 1.0
         return -1.0

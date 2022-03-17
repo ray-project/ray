@@ -117,7 +117,8 @@ class CoreWorkerDirectTaskReceiver {
   std::shared_ptr<DependencyWaiter> waiter_;
   /// Queue of pending requests per actor handle.
   /// TODO(ekl) GC these queues once the handle is no longer active.
-  std::unordered_map<WorkerID, std::unique_ptr<SchedulingQueue>> actor_scheduling_queues_;
+  absl::flat_hash_map<WorkerID, std::unique_ptr<SchedulingQueue>>
+      actor_scheduling_queues_;
   // Queue of pending normal (non-actor) tasks.
   std::unique_ptr<SchedulingQueue> normal_scheduling_queue_ =
       std::unique_ptr<SchedulingQueue>(new NormalSchedulingQueue());
