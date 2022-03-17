@@ -210,7 +210,7 @@ void LocalResourceManager::FreeTaskResourceInstances(
 std::vector<double> LocalResourceManager::AddResourceInstances(
     scheduling::ResourceID resource_id, const std::vector<double> &resource_instances) {
   std::vector<FixedPoint> resource_instances_fp =
-      VectorDoubleToVectorFixedPoint(resource_instances);
+      FixedPointVectorFromDouble(resource_instances);
 
   if (resource_instances.size() == 0) {
     return resource_instances;  // No overflow.
@@ -222,7 +222,7 @@ std::vector<double> LocalResourceManager::AddResourceInstances(
                                     local_resources_.total.GetMutable(resource_id));
   OnResourceChanged();
 
-  return VectorFixedPointToVectorDouble(overflow);
+  return FixedPointVectorToDouble(overflow);
 }
 
 std::vector<double> LocalResourceManager::SubtractResourceInstances(
@@ -230,7 +230,7 @@ std::vector<double> LocalResourceManager::SubtractResourceInstances(
     const std::vector<double> &resource_instances,
     bool allow_going_negative) {
   std::vector<FixedPoint> resource_instances_fp =
-      VectorDoubleToVectorFixedPoint(resource_instances);
+      FixedPointVectorFromDouble(resource_instances);
 
   if (resource_instances.size() == 0) {
     return resource_instances;  // No underflow.
@@ -242,7 +242,7 @@ std::vector<double> LocalResourceManager::SubtractResourceInstances(
       allow_going_negative);
   OnResourceChanged();
 
-  return VectorFixedPointToVectorDouble(underflow);
+  return FixedPointVectorToDouble(underflow);
 }
 
 bool LocalResourceManager::AllocateLocalTaskResources(

@@ -74,7 +74,7 @@ void addTaskResourceInstances(bool predefined,
                               vector<double> allocation,
                               uint64_t idx,
                               TaskResourceInstances *task_allocation) {
-  std::vector<FixedPoint> allocation_fp = VectorDoubleToVectorFixedPoint(allocation);
+  std::vector<FixedPoint> allocation_fp = FixedPointVectorFromDouble(allocation);
   task_allocation->Set(ResourceID(idx), allocation_fp);
 };
 

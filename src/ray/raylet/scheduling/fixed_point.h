@@ -114,16 +114,17 @@ inline std::ostream &operator<<(std::ostream &out, FixedPoint const &ru1) {
   return out;
 }
 
-/// Helper function to compare two vectors with FixedPoint values.
-bool FixedPointEqualVectors(const std::vector<FixedPoint> &v1,
-                            const std::vector<FixedPoint> &v2);
+// Helper functions for FixedPoint vectors.
 
-/// Convert a vector of doubles to a vector of resource units.
-std::vector<FixedPoint> VectorDoubleToVectorFixedPoint(const std::vector<double> &vector);
+/// Compare two FixedPoint vectors.
+bool FixedPointVectorEqual(const std::vector<FixedPoint> &v1,
+                           const std::vector<FixedPoint> &v2);
 
-/// Convert a vector of resource units to a vector of doubles.
-std::vector<double> VectorFixedPointToVectorDouble(
-    const std::vector<FixedPoint> &vector_fp);
+/// Construct a FixedPoint vector from a double vector.
+std::vector<FixedPoint> FixedPointVectorFromDouble(const std::vector<double> &vector);
 
-/// Convert a vector of FixedPoint to string.
+/// Convert a FixedPoint vector to a double vector.
+std::vector<double> FixedPointVectorToDouble(const std::vector<FixedPoint> &vector_fp);
+
+/// Convert a FixedPoint vector to string.
 std::string FixedPointVectorToString(const std::vector<FixedPoint> &vector);

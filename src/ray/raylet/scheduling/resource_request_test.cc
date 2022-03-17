@@ -135,13 +135,13 @@ TEST_F(TaskResourceInstancesTest, TestBasic) {
   // GPU is a unit resource, while CPU is not.
   auto cpu_instances = task_resource_instances.Get(cpu_id);
   auto gpu_instances = task_resource_instances.Get(gpu_id);
-  ASSERT_EQ(cpu_instances, VectorDoubleToVectorFixedPoint({5}));
-  ASSERT_EQ(gpu_instances, VectorDoubleToVectorFixedPoint({1, 1, 1, 1, 1}));
+  ASSERT_EQ(cpu_instances, FixedPointVectorFromDouble({5}));
+  ASSERT_EQ(gpu_instances, FixedPointVectorFromDouble({1, 1, 1, 1, 1}));
 
   // Test Set
-  task_resource_instances.Set(custom_id1, VectorDoubleToVectorFixedPoint({1}));
+  task_resource_instances.Set(custom_id1, FixedPointVectorFromDouble({1}));
   ASSERT_TRUE(task_resource_instances.Has(custom_id1));
-  ASSERT_EQ(task_resource_instances.Get(custom_id1), VectorDoubleToVectorFixedPoint({1}));
+  ASSERT_EQ(task_resource_instances.Get(custom_id1), FixedPointVectorFromDouble({1}));
 
   // Test Clear
   task_resource_instances.Clear(custom_id1);

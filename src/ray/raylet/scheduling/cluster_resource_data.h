@@ -193,7 +193,7 @@ class ResourceRequest {
   }
 
   bool operator==(const ResourceRequest &other) const {
-    return FixedPointEqualVectors(predefined_resources_, other.predefined_resources_) &&
+    return FixedPointVectorEqual(predefined_resources_, other.predefined_resources_) &&
            this->custom_resources_ == other.custom_resources_;
   }
 
@@ -291,7 +291,7 @@ class TaskResourceInstances {
   }
 
   std::vector<double> GetDouble(const ResourceID resource_id) const {
-    return VectorFixedPointToVectorDouble(Get(resource_id));
+    return FixedPointVectorToDouble(Get(resource_id));
   }
 
   std::vector<FixedPoint> &GetMutable(const ResourceID resource_id) {
@@ -360,7 +360,7 @@ class TaskResourceInstances {
 
   bool operator==(const TaskResourceInstances &other) const {
     for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
-      if (!FixedPointEqualVectors(this->predefined_resources_[i],
+      if (!FixedPointVectorEqual(this->predefined_resources_[i],
                                   other.predefined_resources_[i])) {
         return false;
       }

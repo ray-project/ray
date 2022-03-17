@@ -16,15 +16,12 @@
 
 #include <sstream>
 
-/// Helper function to compare two vectors with FixedPoint values.
-bool FixedPointEqualVectors(const std::vector<FixedPoint> &v1,
-                            const std::vector<FixedPoint> &v2) {
+bool FixedPointVectorEqual(const std::vector<FixedPoint> &v1,
+                           const std::vector<FixedPoint> &v2) {
   return (v1.size() == v2.size() && std::equal(v1.begin(), v1.end(), v2.begin()));
 }
 
-/// Convert a vector of doubles to a vector of resource units.
-std::vector<FixedPoint> VectorDoubleToVectorFixedPoint(
-    const std::vector<double> &vector) {
+std::vector<FixedPoint> FixedPointVectorFromDouble(const std::vector<double> &vector) {
   std::vector<FixedPoint> vector_fp(vector.size());
   for (size_t i = 0; i < vector.size(); i++) {
     vector_fp[i] = vector[i];
@@ -32,9 +29,7 @@ std::vector<FixedPoint> VectorDoubleToVectorFixedPoint(
   return vector_fp;
 }
 
-/// Convert a vector of resource units to a vector of doubles.
-std::vector<double> VectorFixedPointToVectorDouble(
-    const std::vector<FixedPoint> &vector_fp) {
+std::vector<double> FixedPointVectorToDouble(const std::vector<FixedPoint> &vector_fp) {
   std::vector<double> vector(vector_fp.size());
   for (size_t i = 0; i < vector_fp.size(); i++) {
     vector[i] = FixedPoint(vector_fp[i]).Double();
