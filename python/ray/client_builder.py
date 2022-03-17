@@ -332,9 +332,9 @@ def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
             f"Module: {module_string} does not exist.\n"
             f"This module was parsed from Address: {address}"
         ) from None
-    assert "ClientBuilder" in dir(module), (
-        f"Module: {module_string} does " "not have ClientBuilder."
-    )
+    assert "ClientBuilder" in dir(
+        module
+    ), f"Module: {module_string} does not have ClientBuilder."
     return module.ClientBuilder(inner_address)
 
 

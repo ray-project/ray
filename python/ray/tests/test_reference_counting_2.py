@@ -404,7 +404,7 @@ def test_object_unpin(ray_start_cluster):
     ten_mb_arrays.append(ray.put(ten_mb_array))
 
     def check_memory(mb):
-        return f"Plasma memory usage {mb} " "MiB" in memory_summary(
+        return f"Plasma memory usage {mb} MiB" in memory_summary(
             address=head_node.address, stats_only=True
         )
 
@@ -539,8 +539,7 @@ def test_object_unpin_stress(ray_start_cluster):
 
     wait_for_condition(
         lambda: (
-            (f"Plasma memory usage {total_size}" " MiB")
-            in memory_summary(stats_only=True)
+            (f"Plasma memory usage {total_size} MiB") in memory_summary(stats_only=True)
         )
     )
 
