@@ -43,7 +43,7 @@ from ray._private.client_mode_hook import disable_client_hook
 from ray._private.ray_logging import setup_logger
 from ray._private.services import canonicalize_bootstrap_address
 from ray._private.tls_utils import add_port_to_grpc_server
-from ray._private.gcs_utils import use_gcs_for_bootstrap, GcsClient
+from ray._private.gcs_utils import GcsClient
 
 logger = logging.getLogger(__name__)
 
@@ -768,12 +768,7 @@ def try_create_gcs_client(
     autodetecting a running Ray cluster.
     """
     address = canonicalize_bootstrap_address(address)
-    if use_gcs_for_bootstrap():
-        return GcsClient(address=address)
-    else:
-        if redis_password is None:
-            redis_password = ray.ray_constants.REDIS_DEFAULT_PASSWORD
-        return GcsClient.connect_to_gcs_by_redis_address(address, redis_password)
+    return GcsClient(address=address)
 
 
 def main():

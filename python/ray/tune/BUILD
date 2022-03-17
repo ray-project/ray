@@ -1,3 +1,5 @@
+load("//bazel:python.bzl", "py_test_module_list")
+
 # --------------------------------------------------------------------
 # Tests from the python/ray/tune/tests directory.
 # Covers all tests starting with `test_`.
@@ -374,6 +376,16 @@ py_test(
     tags = ["team:ml", "exclusive", "tests_dir_T"],
 )
 
+py_test_module_list(
+  files = [
+      "tests/test_trial_executor_inheritance.py",
+  ],
+  size = "large",
+  extra_srcs = [],
+  tags = ["exclusive", "manual", "team:ml"],
+  deps = ["//:tune_lib"],
+)
+
 # --------------------------------------------------------------------
 # Tests from the python/ray/tune/tests directory.
 # Covers all remaining tests that do not start with `test_`.
@@ -600,6 +612,16 @@ py_test(
     srcs = ["examples/lightgbm_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"]
+)
+
+py_test(
+    name = "lightgbm_example_cv",
+    size = "small",
+    main = "examples/lightgbm_example.py",
+    srcs = ["examples/lightgbm_example.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "example"],
+    args = ["--use-cv"]
 )
 
 py_test(
@@ -903,6 +925,16 @@ py_test(
     srcs = ["examples/xgboost_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"]
+)
+
+py_test(
+    name = "xgboost_example_cv",
+    size = "small",
+    main = "examples/xgboost_example.py",
+    srcs = ["examples/xgboost_example.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "example"],
+    args = ["--use-cv"]
 )
 
 py_test(

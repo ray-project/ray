@@ -578,6 +578,9 @@ class _CliLogger:
         """
         self._print(_format_msg(msg, *args, **kwargs), _level_str=_level_str, end=end)
 
+    def info(self, msg: str, no_format=True, *args, **kwargs):
+        self.print(msg, no_format=no_format, *args, **kwargs)
+
     def abort(
         self, msg: Optional[str] = None, *args: Any, exc: Any = None, **kwargs: Any
     ):
@@ -700,7 +703,7 @@ class _CliLogger:
 
                 indent = " " * msg_len
                 self.error(
-                    "{}Invalid answer: {}. " "Expected {} or {}",
+                    "{}Invalid answer: {}. Expected {} or {}",
                     indent,
                     cf.bold(ans.strip()),
                     self.render_list(yes_answers, "/"),
@@ -789,7 +792,7 @@ CLICK_LOGGING_OPTIONS = [
         required=False,
         type=click.Choice(["auto", "false", "true"], case_sensitive=False),
         default="auto",
-        help=("Use color logging. " "Auto enables color logging if stdout is a TTY."),
+        help=("Use color logging. Auto enables color logging if stdout is a TTY."),
     ),
     click.option("-v", "--verbose", default=None, count=True),
 ]

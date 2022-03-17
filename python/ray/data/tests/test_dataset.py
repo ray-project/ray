@@ -128,6 +128,10 @@ def test_callable_classes(shutdown_only):
             self.num_reuses += 1
             return r
 
+    # Need to specify compute explicitly.
+    with pytest.raises(ValueError):
+        ds.map(StatefulFn).take()
+
     # map
     task_reuse = ds.map(StatefulFn, compute="tasks").take()
     assert sorted(task_reuse) == list(range(10)), task_reuse
@@ -228,7 +232,7 @@ def test_batch_tensors(ray_start_regular_shared):
     import torch
 
     ds = ray.data.from_items([torch.tensor([0, 0]) for _ in range(40)])
-    res = "Dataset(num_blocks=40, num_rows=40, " "schema=<class 'torch.Tensor'>)"
+    res = "Dataset(num_blocks=40, num_rows=40, schema=<class 'torch.Tensor'>)"
     assert str(ds) == res, str(ds)
     with pytest.raises(pa.lib.ArrowInvalid):
         next(ds.iter_batches(batch_format="pyarrow"))
@@ -770,8 +774,8 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_col_schema(
 
     ds = ray.data.read_parquet(
         str(tmp_path),
+        tensor_column_schema={tensor_col_name: (arr.dtype, inner_shape)},
         _block_udf=_block_udf,
-        _tensor_column_schema={tensor_col_name: (arr.dtype, inner_shape)},
     )
 
     assert isinstance(ds.schema().field_by_name(tensor_col_name).type, ArrowTensorType)
@@ -1561,7 +1565,8 @@ def test_to_tf(ray_start_regular_shared, pipelined):
     assert np.array_equal(df.values, combined_iterations)
 
 
-def test_to_tf_feature_columns(ray_start_regular_shared):
+@pytest.mark.parametrize("label_column", [None, "label"])
+def test_to_tf_feature_columns(ray_start_regular_shared, label_column):
     import tensorflow as tf
 
     df1 = pd.DataFrame(
@@ -1573,17 +1578,29 @@ def test_to_tf_feature_columns(ray_start_regular_shared):
     df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
     df = pd.concat([df1, df2, df3]).drop("two", axis=1)
     ds = ray.data.from_pandas([df1, df2, df3])
-    tfd = ds.to_tf(
-        label_column="label",
-        feature_columns=["one"],
-        output_signature=(
+
+    if label_column:
+        output_signature = (
             tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
             tf.TensorSpec(shape=(None), dtype=tf.float32),
-        ),
+        )
+    else:
+        output_signature = tf.TensorSpec(shape=(None, 1), dtype=tf.float32)
+        df = df.drop("label", axis=1)
+
+    tfd = ds.to_tf(
+        label_column=label_column,
+        feature_columns=["one"],
+        output_signature=output_signature,
     )
     iterations = []
     for batch in tfd.as_numpy_iterator():
-        iterations.append(np.concatenate((batch[0], batch[1].reshape(-1, 1)), axis=1))
+        if label_column:
+            iterations.append(
+                np.concatenate((batch[0], batch[1].reshape(-1, 1)), axis=1)
+            )
+        else:
+            iterations.append(batch)
     combined_iterations = np.concatenate(iterations)
     assert np.array_equal(df.values, combined_iterations)
 
@@ -2513,6 +2530,23 @@ def test_groupby_simple_sum(ray_start_regular_shared, num_parts):
     assert nan_ds.sum() is None
 
 
+def test_map_batches_combine_empty_blocks(ray_start_regular_shared):
+    xs = [x % 3 for x in list(range(100))]
+
+    # ds1 has 1 block which contains 100 rows.
+    ds1 = ray.data.from_items(xs).repartition(1).sort().map_batches(lambda x: x)
+    assert ds1._block_num_rows() == [100]
+
+    # ds2 has 30 blocks, but only 3 of them are non-empty
+    ds2 = ray.data.from_items(xs).repartition(30).sort().map_batches(lambda x: x)
+    assert len(ds2._block_num_rows()) == 30
+    count = sum(1 for x in ds2._block_num_rows() if x > 0)
+    assert count == 3
+
+    # The number of partitions should not affect the map_batches() result.
+    assert ds1.take_all() == ds2.take_all()
+
+
 def test_groupby_map_groups_for_empty_dataset(ray_start_regular_shared):
     ds = ray.data.from_items([])
     mapped = ds.groupby(lambda x: x % 3).map_groups(lambda x: [min(x) * min(x)])
@@ -2543,8 +2577,7 @@ def test_groupby_map_groups_returning_empty_result(ray_start_regular_shared, num
     assert mapped.take_all() == []
 
 
-# TODO(jian): after fix issue #22673, add more num_parts values.
-@pytest.mark.parametrize("num_parts", [1])
+@pytest.mark.parametrize("num_parts", [1, 2, 3, 30])
 def test_groupby_map_groups_for_list(ray_start_regular_shared, num_parts):
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_simple_count with: {seed}")
@@ -3011,9 +3044,7 @@ def test_sort_partition_same_key_to_same_block(ray_start_regular_shared):
 def test_column_name_type_check(ray_start_regular_shared):
     df = pd.DataFrame({"1": np.random.rand(10), "a": np.random.rand(10)})
     ds = ray.data.from_pandas(df)
-    expected_str = (
-        "Dataset(num_blocks=1, num_rows=10, " "schema={1: float64, a: float64})"
-    )
+    expected_str = "Dataset(num_blocks=1, num_rows=10, schema={1: float64, a: float64})"
     assert str(ds) == expected_str, str(ds)
     df = pd.DataFrame({1: np.random.rand(10), "a": np.random.rand(10)})
     with pytest.raises(ValueError):
@@ -3059,13 +3090,13 @@ def test_random_shuffle(shutdown_only, pipelined):
 
     # Test move.
     ds = range(100, parallelism=2)
-    r1 = ds.random_shuffle(_move=True).take(999)
+    r1 = ds.random_shuffle().take(999)
     if pipelined:
         with pytest.raises(RuntimeError):
             ds = ds.map(lambda x: x).take(999)
     else:
         ds = ds.map(lambda x: x).take(999)
-    r2 = range(100).random_shuffle(_move=True).take(999)
+    r2 = range(100).random_shuffle().take(999)
     assert r1 != r2, (r1, r2)
 
     # Test empty dataset.
@@ -3075,8 +3106,7 @@ def test_random_shuffle(shutdown_only, pipelined):
     assert r1.take() == ds.take()
 
 
-@pytest.mark.parametrize("use_spread_resource_prefix", [False, True])
-def test_random_shuffle_spread(ray_start_cluster, use_spread_resource_prefix):
+def test_random_shuffle_spread(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(
         resources={"bar:1": 100},
@@ -3095,9 +3125,7 @@ def test_random_shuffle_spread(ray_start_cluster, use_spread_resource_prefix):
     node1_id = ray.get(get_node_id.options(resources={"bar:1": 1}).remote())
     node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
 
-    ds = ray.data.range(100, parallelism=2).random_shuffle(
-        _spread_resource_prefix=("bar:" if use_spread_resource_prefix else None)
-    )
+    ds = ray.data.range(100, parallelism=2).random_shuffle()
     blocks = ds.get_internal_block_refs()
     ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
     location_data = ray.experimental.get_object_locations(blocks)
@@ -3107,8 +3135,7 @@ def test_random_shuffle_spread(ray_start_cluster, use_spread_resource_prefix):
     assert set(locations) == {node1_id, node2_id}
 
 
-@pytest.mark.parametrize("use_spread_resource_prefix", [False, True])
-def test_parquet_read_spread(ray_start_cluster, tmp_path, use_spread_resource_prefix):
+def test_parquet_read_spread(ray_start_cluster, tmp_path):
     cluster = ray_start_cluster
     cluster.add_node(
         resources={"bar:1": 100},
@@ -3135,51 +3162,7 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path, use_spread_resource_pr
     path2 = os.path.join(data_path, "test2.parquet")
     df2.to_parquet(path2)
 
-    ds = ray.data.read_parquet(
-        data_path,
-        _spread_resource_prefix=("bar:" if use_spread_resource_prefix else None),
-    )
-
-    # Force reads.
-    blocks = ds.get_internal_block_refs()
-    assert len(blocks) == 2
-
-    ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
-    location_data = ray.experimental.get_object_locations(blocks)
-    locations = []
-    for block in blocks:
-        locations.extend(location_data[block]["node_ids"])
-    assert set(locations) == {node1_id, node2_id}
-
-
-def test_parquet_read_spread_no_cpus(ray_start_cluster, tmp_path):
-    cluster = ray_start_cluster
-    cluster.add_node(
-        resources={"foo": 100}, _system_config={"max_direct_call_object_size": 0}
-    )
-    cluster.add_node(resources={"bar:1": 100})
-    cluster.add_node(resources={"bar:2": 100}, num_cpus=0)
-
-    ray.init(cluster.address)
-
-    @ray.remote(num_cpus=0)
-    def get_node_id():
-        return ray.get_runtime_context().node_id.hex()
-
-    node1_id = ray.get(get_node_id.options(resources={"bar:1": 1}).remote())
-    node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
-
-    data_path = str(tmp_path)
-    df1 = pd.DataFrame({"one": list(range(100)), "two": list(range(100, 200))})
-    path1 = os.path.join(data_path, "test1.parquet")
-    df1.to_parquet(path1)
-    df2 = pd.DataFrame({"one": list(range(300, 400)), "two": list(range(400, 500))})
-    path2 = os.path.join(data_path, "test2.parquet")
-    df2.to_parquet(path2)
-
-    ds = ray.data.read_parquet(
-        data_path, ray_remote_args={"num_cpus": 0}, _spread_resource_prefix="bar:"
-    )
+    ds = ray.data.read_parquet(data_path)
 
     # Force reads.
     blocks = ds.get_internal_block_refs()

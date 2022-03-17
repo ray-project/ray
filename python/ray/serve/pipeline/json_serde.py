@@ -9,6 +9,7 @@ from ray.experimental.dag import (
     ClassMethodNode,
     FunctionNode,
     InputNode,
+    InputAtrributeNode,
     DAGNODE_TYPE_KEY,
 )
 from ray.serve.pipeline.deployment_node import DeploymentNode
@@ -17,6 +18,7 @@ from ray.serve.utils import parse_import_path
 from ray.serve.handle import RayServeHandle
 from ray.serve.utils import ServeHandleEncoder, serve_handle_object_hook
 from ray.serve.constants import SERVE_HANDLE_JSON_KEY
+from ray.serve.api import RayServeDAGHandle
 
 
 class DAGNodeEncoder(json.JSONEncoder):
@@ -42,6 +44,12 @@ class DAGNodeEncoder(json.JSONEncoder):
         # For replaced deployment handles used as init args or kwargs.
         if isinstance(obj, RayServeHandle):
             return json.dumps(obj, cls=ServeHandleEncoder)
+        if isinstance(obj, RayServeDAGHandle):
+            # TODO(simon) Do a proper encoder
+            return {
+                DAGNODE_TYPE_KEY: "RayServeDAGHandle",
+                "dag_node_json": obj.dag_node_json,
+            }
         # For all other DAGNode types.
         if isinstance(obj, DAGNode):
             return obj.to_json(DAGNodeEncoder)
@@ -86,9 +94,13 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
             return json.loads(input_json)
         except Exception:
             return input_json
+    elif input_json[DAGNODE_TYPE_KEY] == RayServeDAGHandle.__name__:
+        return RayServeDAGHandle(input_json["dag_node_json"])
     # Deserialize DAGNode type
     elif input_json[DAGNODE_TYPE_KEY] == InputNode.__name__:
         return InputNode.from_json(input_json, object_hook=dagnode_from_json)
+    elif input_json[DAGNODE_TYPE_KEY] == InputAtrributeNode.__name__:
+        return InputAtrributeNode.from_json(input_json, object_hook=dagnode_from_json)
     elif input_json[DAGNODE_TYPE_KEY] == ClassMethodNode.__name__:
         return ClassMethodNode.from_json(input_json, object_hook=dagnode_from_json)
     elif input_json[DAGNODE_TYPE_KEY] == DeploymentNode.__name__:
@@ -97,6 +109,7 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
         return DeploymentMethodNode.from_json(input_json, object_hook=dagnode_from_json)
     else:
         # Class and Function nodes require original module as body.
+        print(f"import_path: {input_json['import_path']}")
         module_name, attr_name = parse_import_path(input_json["import_path"])
         module = getattr(import_module(module_name), attr_name)
         if input_json[DAGNODE_TYPE_KEY] == FunctionNode.__name__:

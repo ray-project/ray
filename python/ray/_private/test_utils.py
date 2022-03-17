@@ -31,13 +31,13 @@ from ray.core.generated import gcs_pb2
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
 from ray._private.gcs_pubsub import (
-    gcs_pubsub_enabled,
     GcsErrorSubscriber,
     GcsLogSubscriber,
 )
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray.util.queue import Queue, _QueueActor, Empty
 from ray.scripts.scripts import main as ray_main
+from ray.internal.internal_api import memory_summary
 
 try:
     from prometheus_client.parser import text_string_to_metric_families
@@ -217,16 +217,6 @@ def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ut
     Returns:
         The script's output.
     """
-    if env is not None and gcs_utils.use_gcs_for_bootstrap():
-        env.update(
-            {
-                "RAY_bootstrap_with_gcs": "1",
-                "RAY_gcs_grpc_based_pubsub": "1",
-                "RAY_gcs_storage": "memory",
-                "RAY_bootstrap_with_gcs": "1",
-            }
-        )
-
     proc = subprocess.Popen(
         [sys.executable, "-"],
         stdin=subprocess.PIPE,
@@ -589,12 +579,8 @@ def get_non_head_nodes(cluster):
 
 def init_error_pubsub():
     """Initialize redis error info pub/sub"""
-    if gcs_pubsub_enabled():
-        s = GcsErrorSubscriber(address=ray.worker.global_worker.gcs_client.address)
-        s.subscribe()
-    else:
-        s = ray.worker.global_worker.redis_client.pubsub(ignore_subscribe_messages=True)
-        s.psubscribe(gcs_utils.RAY_ERROR_PUBSUB_PATTERN)
+    s = GcsErrorSubscriber(address=ray.worker.global_worker.gcs_client.address)
+    s.subscribe()
     return s
 
 
@@ -629,12 +615,8 @@ def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
 
 def init_log_pubsub():
     """Initialize redis error info pub/sub"""
-    if gcs_pubsub_enabled():
-        s = GcsLogSubscriber(address=ray.worker.global_worker.gcs_client.address)
-        s.subscribe()
-    else:
-        s = ray.worker.global_worker.redis_client.pubsub(ignore_subscribe_messages=True)
-        s.psubscribe(gcs_utils.LOG_FILE_CHANNEL)
+    s = GcsLogSubscriber(address=ray.worker.global_worker.gcs_client.address)
+    s.subscribe()
     return s
 
 
@@ -644,7 +626,7 @@ def get_log_data(
     timeout: float = 20,
     job_id: Optional[str] = None,
     matcher=None,
-) -> List[str]:
+) -> List[dict]:
     deadline = time.time() + timeout
     msgs = []
     while time.time() < deadline and len(msgs) < num:
@@ -674,10 +656,10 @@ def get_log_message(
     timeout: float = 20,
     job_id: Optional[str] = None,
     matcher=None,
-) -> List[str]:
+) -> List[List[str]]:
     """Gets log lines through GCS / Redis subscriber.
 
-    Returns maximum `num` lines of log messages, within `timeout`.
+    Returns maximum `num` of log messages, within `timeout`.
 
     If `job_id` or `match` is specified, only returns log lines from `job_id`
     or when `matcher` is true.
@@ -1240,3 +1222,41 @@ def generate_runtime_env_dict(field, spec_format, tmp_path, pip_list=None):
             pip = pip_list
         runtime_env = {"pip": pip}
     return runtime_env
+
+
+def check_spilled_mb(address, spilled=None, restored=None, fallback=None):
+    def ok():
+        s = memory_summary(address=address["address"], stats_only=True)
+        print(s)
+        if restored:
+            if "Restored {} MiB".format(restored) not in s:
+                return False
+        else:
+            if "Restored" in s:
+                return False
+        if spilled:
+            if "Spilled {} MiB".format(spilled) not in s:
+                return False
+        else:
+            if "Spilled" in s:
+                return False
+        if fallback:
+            if "Plasma filesystem mmap usage: {} MiB".format(fallback) not in s:
+                return False
+        else:
+            if "Plasma filesystem mmap usage:" in s:
+                return False
+        return True
+
+    wait_for_condition(ok, timeout=3, retry_interval_ms=1000)
+
+
+def no_resource_leaks_excluding_node_resources():
+    cluster_resources = ray.cluster_resources()
+    available_resources = ray.available_resources()
+    for r in ray.cluster_resources():
+        if "node" in r:
+            del cluster_resources[r]
+            del available_resources[r]
+
+    return cluster_resources == available_resources

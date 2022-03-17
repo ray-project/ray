@@ -71,7 +71,14 @@ class Trainable:
 
     When using Tune, Tune will convert this class into a Ray actor, which
     runs on a separate process. Tune will also change the current working
-    directory of this process to ``self.logdir``.
+    directory of this process to ``self.logdir``. This is designed so that
+    different trials that run on the same physical node won't accidently
+    write to the same location and overstep each other.
+
+    If you want to know the orginal working directory path on the driver node,
+    you can do so through env variable "TUNE_ORIG_WORKING_DIR".
+    It is advised that you access this path for read only purposes and you
+    need to make sure that the path exists on the remote nodes.
 
     This class supports checkpointing to and restoring from remote storage.
 
@@ -435,10 +442,16 @@ class Trainable:
             checkpoint, parent_dir=checkpoint_dir, trainable_state=trainable_state
         )
 
+        self._postprocess_checkpoint(checkpoint_dir)
+
         # Maybe sync to cloud
         self._maybe_save_to_cloud(checkpoint_dir)
 
         return checkpoint_path
+
+    def _postprocess_checkpoint(self, checkpoint_path: str):
+        """Run extra postprocessing before the checkpoint is saved to cloud."""
+        pass
 
     def _maybe_save_to_cloud(self, checkpoint_dir):
         # Derived classes like the FunctionRunner might call this

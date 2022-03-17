@@ -288,4 +288,4 @@ class MinimalClusterManager(ClusterManager):
         pass
 
     def get_cluster_address(self) -> str:
-        return f"anyscale://{self.cluster_name}"
+        return f"anyscale://{self.project_name}/{self.cluster_name}"

@@ -17,17 +17,32 @@ public class RuntimeEnvImpl implements RuntimeEnv {
 
   @Override
   public String toJsonBytes() {
+    // Get serializedRuntimeEnv
+    String serializedRuntimeEnv = "{}";
     if (!envVars.isEmpty()) {
       RuntimeEnvCommon.RuntimeEnv.Builder protoRuntimeEnvBuilder =
           RuntimeEnvCommon.RuntimeEnv.newBuilder();
       protoRuntimeEnvBuilder.putAllEnvVars(envVars);
       JsonFormat.Printer printer = JsonFormat.printer();
       try {
-        return printer.print(protoRuntimeEnvBuilder);
+        serializedRuntimeEnv = printer.print(protoRuntimeEnvBuilder);
       } catch (InvalidProtocolBufferException e) {
         throw new RuntimeException(e);
       }
     }
-    return "{}";
+
+    // Get serializedRuntimeEnvInfo
+    if (serializedRuntimeEnv.equals("{}") || serializedRuntimeEnv.isEmpty()) {
+      return "{}";
+    }
+    RuntimeEnvCommon.RuntimeEnvInfo.Builder protoRuntimeEnvInfoBuilder =
+        RuntimeEnvCommon.RuntimeEnvInfo.newBuilder();
+    protoRuntimeEnvInfoBuilder.setSerializedRuntimeEnv(serializedRuntimeEnv);
+    JsonFormat.Printer printer = JsonFormat.printer();
+    try {
+      return printer.print(protoRuntimeEnvInfoBuilder);
+    } catch (InvalidProtocolBufferException e) {
+      throw new RuntimeException(e);
+    }
   }
 }

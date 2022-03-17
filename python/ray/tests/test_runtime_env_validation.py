@@ -207,23 +207,21 @@ class TestValidatePip:
             requirements_file = requirements_file.resolve()
 
         result = parse_and_validate_pip(str(requirements_file))
-        assert result == PIP_LIST
+        assert result["packages"] == PIP_LIST
+        assert result["pip_check"]
+        assert "pip_version" not in result
 
     def test_validate_pip_valid_list(self):
         result = parse_and_validate_pip(PIP_LIST)
-        assert result == PIP_LIST
+        assert result["packages"] == PIP_LIST
+        assert result["pip_check"]
+        assert "pip_version" not in result
 
     def test_validate_ray(self):
         result = parse_and_validate_pip(["pkg1", "ray", "pkg2"])
-        assert result == ["pkg1", "ray", "pkg2"]
-
-    def test_replace_ray_libraries_with_dependencies(self):
-        result = parse_and_validate_pip(["pkg1", "ray[serve, tune]", "pkg2"])
-        assert "pkg1" in result
-        assert "pkg2" in result
-        assert "fastapi" in result  # from ray[serve]
-        assert "pandas" in result  # from ray[tune]
-        assert not any("ray" in specifier for specifier in result)
+        assert result["packages"] == ["pkg1", "ray", "pkg2"]
+        assert result["pip_check"]
+        assert "pip_version" not in result
 
 
 class TestValidateEnvVars:
