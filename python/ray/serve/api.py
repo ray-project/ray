@@ -129,7 +129,7 @@ def internal_get_global_client(
                 ray.get(_global_client._controller.check_alive.remote())
             return _global_client
     except RayActorError:
-        logger.debug("The cached controller has died. Reconnecting.")
+        logger.info("The cached controller has died. Reconnecting.")
         _set_global_client(None)
 
     return _connect(_override_controller_namespace=_override_controller_namespace)
