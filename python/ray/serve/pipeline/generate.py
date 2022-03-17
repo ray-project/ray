@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-from typing import Any, Dict, List, Tuple
-=======
-from typing import Any, Dict, List, Union
->>>>>>> 6cc0fee9476ee9c779c00cca3e0e4830b0f053a9
+from typing import Any, Dict, List, Tuple, Union
 import threading
 
 from ray.experimental.dag import (

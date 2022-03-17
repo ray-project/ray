@@ -364,6 +364,7 @@ def test_single_functional_node_base_case(serve_instance):
     # Base case should work
     handle = serve.run(func.bind())
     assert ray.get(handle.remote()) == 1
+    assert requests.get("http://127.0.0.1:8000/").text == "1"
 
 
 # TODO: check that serve.build raises an exception.
