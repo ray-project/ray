@@ -84,14 +84,14 @@ class TunerInternal:
 
         self._is_restored = False
         self._trainable = trainable
-        self._tune_config = tune_config if tune_config else TuneConfig()
-        self._run_config = run_config if run_config else RunConfig()
+        self._tune_config = tune_config or TuneConfig()
+        self._run_config = run_config or RunConfig()
         self._experiment_checkpoint_dir = self._setup_create_experiment_checkpoint_dir(
             self._run_config
         )
 
         # Not used for restored Tuner.
-        self._param_space = param_space if param_space else {}
+        self._param_space = param_space or {}
         self._process_dataset_param()
 
         # This needs to happen before `tune.run()` is kicked in.
