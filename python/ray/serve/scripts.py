@@ -26,12 +26,9 @@ from ray.serve.api import (
     Application,
     Deployment,
     DeploymentNode,
-    build,
     get_deployment_statuses,
     serve_application_status_to_schema,
 )
-
-build_app = build
 
 APP_DIR_HELP_STR = (
     "Local directory to look for the IMPORT_PATH (will be inserted into "
