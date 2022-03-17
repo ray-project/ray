@@ -659,7 +659,7 @@ class RayTrialExecutor(TrialExecutor):
         Returns:
              Checkpoint object, or None if an Exception occurs.
         """
-        logger.info(f"saving trial {trial}")
+        logger.debug(f"saving trial {trial}")
         result = result or trial.last_result
         with self._change_working_directory(trial):
             if storage == Checkpoint.MEMORY:

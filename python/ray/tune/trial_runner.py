@@ -1039,7 +1039,7 @@ class TrialRunner:
         self._checkpoint_trial_if_needed(trial, force=force_checkpoint)
 
         if trial.is_saving:
-            logger.info(f"caching trial decision {trial}")
+            logger.debug(f"caching trial decision {trial}")
             # Cache decision to execute on after the save is processed.
             # This prevents changing the trial's state or kicking off
             # another training step prematurely.
@@ -1446,15 +1446,16 @@ class TrialExecutorWrapper(RayTrialExecutor):
 
     def __getattr__(self, attr):
         if attr not in self._whitelist_attr:
-            logger.warning(
-                f"You are trying to access {attr} interface of "
-                f"TrialExecutor in TrialScheduler, which is being "
-                f"restricted. If you believe it is reasonable for "
-                f"your scheduler to access this TrialExecutor API, "
-                f"please reach out to Ray team on GitHub. A more "
-                f"strict API access pattern would be enforced "
-                f"starting 1.12.0"
-            )
+            if log_once("restrict_accessing_trial_executor"):
+                logger.warning(
+                    f"You are trying to access {attr} interface of "
+                    f"TrialExecutor in TrialScheduler, which is being "
+                    f"restricted. If you believe it is reasonable for "
+                    f"your scheduler to access this TrialExecutor API, "
+                    f"please reach out to Ray team on GitHub. A more "
+                    f"strict API access pattern would be enforced "
+                    f"starting 1.12.0"
+                )
         return getattr(self._trial_executor, attr)
 
 
@@ -1484,13 +1485,14 @@ class TrialRunnerWrapper(TrialRunner):
         if attr == self._EXECUTOR_ATTR:
             return self._trial_executor
         if attr not in self._runner_whitelist_attr:
-            logger.warning(
-                f"You are trying to access {attr} interface of "
-                f"TrialRunner in TrialScheduler, which is being "
-                f"restricted. If you believe it is reasonable for "
-                f"your scheduler to access this TrialRunner API, "
-                f"please reach out to Ray team on GitHub. A more "
-                f"strict API access pattern would be enforced "
-                f"starting 1.12s.0"
-            )
+            if log_once("restrict_accessing_trial_runner"):
+                logger.warning(
+                    f"You are trying to access {attr} interface of "
+                    f"TrialRunner in TrialScheduler, which is being "
+                    f"restricted. If you believe it is reasonable for "
+                    f"your scheduler to access this TrialRunner API, "
+                    f"please reach out to Ray team on GitHub. A more "
+                    f"strict API access pattern would be enforced "
+                    f"starting 1.12s.0"
+                )
         return getattr(self._trial_runner, attr)
