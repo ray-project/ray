@@ -26,8 +26,8 @@ def ray_start_4_cpus():
 
 scale_config = {"num_workers": 2}
 
-data_raw = load_breast_cancer(as_frame=True)
-dataset_df = data_raw["data"]
+data_raw = load_breast_cancer()
+dataset_df = pd.DataFrame(data_raw["data"], columns=data_raw["feature_names"])
 dataset_df["target"] = data_raw["target"]
 train_df, test_df = train_test_split(dataset_df, test_size=0.3)
 

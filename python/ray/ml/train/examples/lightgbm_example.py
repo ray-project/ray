@@ -2,6 +2,8 @@ import argparse
 from functools import partial
 from typing import Tuple
 
+import pandas as pd
+
 import ray
 from ray.ml.predictors.integrations.lightgbm import LightGBMPredictor
 from ray.ml.train.integrations.lightgbm import LightGBMTrainer
@@ -14,8 +16,8 @@ from sklearn.model_selection import train_test_split
 
 
 def prepare_data() -> Tuple[Dataset, Dataset, Dataset]:
-    data_raw = load_breast_cancer(as_frame=True)
-    dataset_df = data_raw["data"]
+    data_raw = load_breast_cancer()
+    dataset_df = pd.DataFrame(data_raw["data"], columns=data_raw["feature_names"])
     dataset_df["target"] = data_raw["target"]
     train_df, test_df = train_test_split(dataset_df, test_size=0.3)
     train_dataset = ray.data.from_pandas(train_df)
