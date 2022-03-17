@@ -29,16 +29,16 @@ inline jint GetHashCodeOfJavaObject(JNIEnv *env, jobject java_object) {
 }
 
 /// Store C++ instances of ray function in the cache to avoid unnessesary JNI operations.
-thread_local std::unordered_map<jint, std::vector<std::pair<jobject, RayFunction>>>
+thread_local absl::flat_hash_map<jint, std::vector<std::pair<jobject, RayFunction>>>
     submitter_function_descriptor_cache;
 
 inline const RayFunction &ToRayFunction(JNIEnv *env,
                                         jobject functionDescriptor,
                                         jint hash) {
   auto &fd_vector = submitter_function_descriptor_cache[hash];
-  for (auto &pair : fd_vector) {
-    if (env->CallBooleanMethod(pair.first, java_object_equals, functionDescriptor)) {
-      return pair.second;
+  for (auto &[obj, func] : fd_vector) {
+    if (env->CallBooleanMethod(obj, java_object_equals, functionDescriptor)) {
+      return func;
     }
   }
 

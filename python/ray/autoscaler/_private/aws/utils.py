@@ -41,7 +41,7 @@ def handle_boto_error(exc, msg, *args, **kwargs):
         error_code = error_info.get("Code", None)
 
     generic_message_args = [
-        "{}\n" "Error code: {}",
+        "{}\nError code: {}",
         msg.format(*args, **kwargs),
         cf.bold(error_code),
     ]
@@ -94,7 +94,7 @@ def handle_boto_error(exc, msg, *args, **kwargs):
         # fixme: replace with a Github URL that points
         # to our repo
         aws_session_script_url = (
-            "https://gist.github.com/maximsmol/" "a0284e1d97b25d417bd9ae02e5f450cf"
+            "https://gist.github.com/maximsmol/a0284e1d97b25d417bd9ae02e5f450cf"
         )
 
         cli_logger.verbose_error(*generic_message_args)

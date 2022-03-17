@@ -16,7 +16,6 @@ except ImportError:
 
 import ray._private.gcs_utils as gcs_utils
 import ray._private.logging_utils as logging_utils
-from ray._raylet import Config
 from ray.core.generated.gcs_pb2 import ErrorTableData
 from ray.core.generated import dependency_pb2
 from ray.core.generated import gcs_service_pb2_grpc
@@ -28,11 +27,6 @@ logger = logging.getLogger(__name__)
 
 # Max retries for GCS publisher connection error
 MAX_GCS_PUBLISH_RETRIES = 60
-
-
-def gcs_pubsub_enabled():
-    """Checks whether GCS pubsub feature flag is enabled."""
-    return Config.gcs_grpc_based_pubsub()
 
 
 def construct_error_message(job_id, error_type, message, timestamp):

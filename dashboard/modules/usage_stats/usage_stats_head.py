@@ -51,6 +51,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
                 self.total_failed,
                 self.seq_no,
             )
+
             error = None
             try:
                 self.client.report_usage_data(
