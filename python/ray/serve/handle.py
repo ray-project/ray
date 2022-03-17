@@ -264,8 +264,7 @@ class RayServeLazyHandle:
         }
         new_options_dict.update(user_modified_options_dict)
         new_options = HandleOptions(**new_options_dict)
-        self.handle_options = new_options
-        return self.__class__(self.deployment_name, self.handle_options)
+        return self.__class__(self.deployment_name, new_options)
 
     def remote(self, *args, **kwargs):
         if not self.handle:
