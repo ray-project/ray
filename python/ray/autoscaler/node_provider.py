@@ -155,7 +155,7 @@ class NodeProvider:
         mapping from deleted node ids to node metadata.
         """
         for node_id in node_ids:
-            logger.info("NodeProvider: " "{}: Terminating node".format(node_id))
+            logger.info("NodeProvider: {}: Terminating node".format(node_id))
             self.terminate_node(node_id)
         return None
 

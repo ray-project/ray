@@ -47,7 +47,7 @@ class ClusterState:
                 else:
                     workers = {}
                 logger.info(
-                    "ClusterState: " "Loaded cluster state: {}".format(list(workers))
+                    "ClusterState: Loaded cluster state: {}".format(list(workers))
                 )
                 for worker_ip in provider_config["worker_ips"]:
                     if worker_ip not in workers:
@@ -89,7 +89,7 @@ class ClusterState:
                 assert len(workers) == len(provider_config["worker_ips"]) + 1
                 with open(self.save_path, "w") as f:
                     logger.debug(
-                        "ClusterState: " "Writing cluster state: {}".format(workers)
+                        "ClusterState: Writing cluster state: {}".format(workers)
                     )
                     f.write(json.dumps(workers))
 

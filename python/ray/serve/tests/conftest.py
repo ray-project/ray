@@ -40,8 +40,7 @@ def _shared_serve_instance():
 def serve_instance(_shared_serve_instance):
     yield _shared_serve_instance
     # Clear all state between tests to avoid naming collisions.
-    for deployment in serve.list_deployments().values():
-        deployment.delete()
+    _shared_serve_instance.delete_deployments(serve.list_deployments().keys())
     # Clear the ServeHandle cache between tests to avoid them piling up.
     _shared_serve_instance.handle_cache.clear()
     # Clear deployment generation shared state between tests

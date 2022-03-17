@@ -59,6 +59,14 @@ class ActorPool:
             ...                     [1, 2, 3, 4])))
             [2, 4, 6, 8]
         """
+        # Ignore/Cancel all the previous submissions
+        # by calling `has_next` and `gen_next` repeteadly.
+        while self.has_next():
+            try:
+                self.get_next(timeout=0)
+            except TimeoutError:
+                pass
+
         for v in values:
             self.submit(fn, v)
         while self.has_next():
@@ -87,6 +95,14 @@ class ActorPool:
             ...                               [1, 2, 3, 4])))
             [6, 2, 4, 8]
         """
+        # Ignore/Cancel all the previous submissions
+        # by calling `has_next` and `gen_next_unordered` repeteadly.
+        while self.has_next():
+            try:
+                self.get_next_unordered(timeout=0)
+            except TimeoutError:
+                pass
+
         for v in values:
             self.submit(fn, v)
         while self.has_next():

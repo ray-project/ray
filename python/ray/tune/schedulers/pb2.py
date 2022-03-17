@@ -301,7 +301,7 @@ class PB2(PopulationBasedTraining):
 
         if not hyperparam_bounds:
             raise TuneError(
-                "`hyperparam_bounds` must be specified to use " "PB2 scheduler."
+                "`hyperparam_bounds` must be specified to use PB2 scheduler."
             )
 
         super(PB2, self).__init__(

@@ -2,7 +2,7 @@
 PREPROCESSOR_KEY = "_preprocessor"
 
 # Key to denote the model in the checkpoint dict.
-MODEL_KEY = "_model"
+MODEL_KEY = "model"
 
 # Key to denote which dataset is the training dataset.
 # This is the dataset that the preprocessor is fit on.

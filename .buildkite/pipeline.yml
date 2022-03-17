@@ -192,25 +192,52 @@
       -//:gcs_server_rpc_test -//:gcs_server_test
       -//:metric_exporter_client_test -//:stats_test -//:worker_pool_test
 
-- label: ":serverless: Dashboard + Serve Tests"
+- label: ":serverless: Dashboard Tests"
+  conditions:
+    [
+        "RAY_CI_DASHBOARD_AFFECTED",
+        "RAY_CI_PYTHON_AFFECTED",
+    ]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./dashboard/tests/run_ui_tests.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/dashboard/...
+- label: ":serverless: Serve Release Tests"
   conditions:
     [
         "RAY_CI_SERVE_AFFECTED",
-        "RAY_CI_DASHBOARD_AFFECTED",
         "RAY_CI_PYTHON_AFFECTED",
     ]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
     - 'git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd'
-    - ./dashboard/tests/run_ui_tests.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/dashboard/...
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-post_wheel_build
-      python/ray/serve/...
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=team:serve
       release/...
+- label: ":serverless: Serve Tests"
+  parallelism: 3
+  conditions:
+    [
+        "RAY_CI_SERVE_AFFECTED",
+        "RAY_CI_PYTHON_AFFECTED",
+    ]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
+    - 'git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd'
+    - >- 
+      set -x;
+      python ./scripts/bazel-sharding.py
+      --exclude_manual
+      --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}"
+      python/ray/serve/...
+      > test_shard.txt
+    - cat test_shard.txt
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=-post_wheel_build
+      $(cat test_shard.txt)
+
 
 - label: ":python: Minimal install"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
