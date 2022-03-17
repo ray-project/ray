@@ -172,6 +172,8 @@ class ClientObjectRef(raylet.ObjectRef):
 
             if isinstance(resp, Exception):
                 data = resp
+            elif isinstance(resp, bytearray):
+                data = loads_from_server(resp)
             else:
                 obj = resp.get
                 data = None
