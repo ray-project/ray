@@ -128,7 +128,8 @@ class WorkflowStatus(str, Enum):
     # The workflow failed with a system error, i.e., ray shutdown.
     # It can be resumed.
     RESUMABLE = "RESUMABLE"
-
+    # This workflow is waiting for one or more external event
+    SUSPENDED = "SUSPENDED"
 
 @unique
 class StepType(str, Enum):
@@ -138,6 +139,8 @@ class StepType(str, Enum):
     ACTOR_METHOD = "ACTOR_METHOD"
     READONLY_ACTOR_METHOD = "READONLY_ACTOR_METHOD"
     WAIT = "WAIT"
+    # This workflow step waits for one external event
+    EVENT = "EVENT"
 
 
 CheckpointModeType = bool

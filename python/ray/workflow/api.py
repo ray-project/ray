@@ -5,7 +5,6 @@ from typing import Dict, Set, List, Tuple, Union, Optional, Any, TYPE_CHECKING
 import time
 
 import ray
-from ray.experimental.dag import DAGNode
 from ray.experimental.dag.input_node import DAGInputData
 
 from ray.workflow import execution
@@ -29,12 +28,13 @@ from ray.workflow.common import (
 from ray.workflow import serialization
 from ray.workflow.event_listener import EventListener, EventListenerType, TimerListener
 from ray.workflow.storage import Storage
-from ray.workflow import workflow_access
+from ray.workflow import workflow_access, workflow_context
 from ray.workflow.workflow_storage import get_workflow_storage
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.workflow.virtual_actor_class import VirtualActorClass, VirtualActor
+    from ray.experimental.dag import DAGNode
 
 logger = logging.getLogger(__name__)
 
@@ -70,10 +70,10 @@ def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
         # we have to use the 'else' branch because we would raise a
         # runtime error, but we do not want to be captured by 'except'
         if _storage.storage_url == storage.storage_url:
-            logger.warning("Calling 'workflow.init()' again with the same storage.")
+            logger.warning("Calling 'workflow.init()' again with the same " "storage.")
         else:
             raise RuntimeError(
-                "Calling 'workflow.init()' again with a different storage"
+                "Calling 'workflow.init()' again with a " "different storage"
             )
     storage_base.set_global_storage(storage)
     workflow_access.init_management_actor()
@@ -373,6 +373,38 @@ def wait_for_event(
         event_listener_type, get_message.step(event_listener_type, *args, **kwargs)
     )
 
+@PublicAPI(stability="beta")
+def wait_for_event_revised(
+    event_listener_type: EventListenerType, *args, **kwargs
+) -> Workflow[Event]:
+    # revised to support event step suspend
+    if not issubclass(event_listener_type, EventListener):
+        raise TypeError(
+            f"Event listener type is {event_listener_type.__name__}"
+            ", which is not a subclass of workflow.EventListener"
+        )
+
+    workflow_id = workflow_context.get_workflow_step_context().workflow_id
+    current_step_id = workflow_context.get_current_step_id()
+    outer_most_step_id = workflow_context.get_workflow_step_context().outer_most_step_id
+
+    # transfer control to event coordinator actor
+    eca_handle = get_event_coordinator_actor()
+    ack = ray.get(eca_handle.transfer_event_step.remote( \
+        event_listener_type, workflow_id, current_step_id, outer_most_step_id))
+
+    step_options = WorkflowStepRuntimeOptions.make(
+        step_type=StepType.EVENT
+    )
+
+    workflow_data = WorkflowData(
+        func_body=None,
+        inputs=None,
+        step_options=step_options,
+        name=f"{current_step_id}.event",
+        user_metadata={},
+    )
+    return Workflow(workflow_data)
 
 @PublicAPI(stability="beta")
 def sleep(duration: float) -> Workflow[Event]:
@@ -549,7 +581,9 @@ def wait(
 
     for w in workflows:
         if not isinstance(w, Workflow):
-            raise TypeError("The input of workflow.wait should be a list of workflows.")
+            raise TypeError(
+                "The input of workflow.wait should be a list " "of workflows."
+            )
     wait_inputs = serialization_context.make_workflow_inputs(workflows)
     step_options = WorkflowStepRuntimeOptions.make(
         step_type=StepType.WAIT,
@@ -584,31 +618,8 @@ def create(dag_node: "DAGNode", *args, **kwargs) -> Workflow:
     """
     from ray.workflow.dag_to_workflow import transform_ray_dag_to_workflow
 
-    if not isinstance(dag_node, DAGNode):
-        raise TypeError("Input should be a DAG.")
     input_context = DAGInputData(*args, **kwargs)
     return transform_ray_dag_to_workflow(dag_node, input_context)
-
-
-@PublicAPI(stability="beta")
-def continuation(dag_node: "DAGNode") -> Union[Workflow, ray.ObjectRef]:
-    """Converts a DAG into a continuation.
-
-    The result depends on the context. If it is inside a workflow, it
-    returns a workflow; otherwise it executes and get the result of
-    the DAG.
-
-    Args:
-        dag_node: The DAG to be converted.
-    """
-    from ray.workflow.workflow_context import in_workflow_execution
-
-    if not isinstance(dag_node, DAGNode):
-        raise TypeError("Input should be a DAG.")
-
-    if in_workflow_execution():
-        return create(dag_node)
-    return ray.get(dag_node.execute())
 
 
 __all__ = (
