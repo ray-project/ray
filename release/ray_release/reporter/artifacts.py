@@ -1,12 +1,14 @@
 import json
 import os
 
-from ray_release.buildkite.step import DEFAULT_ARTIFACTS_DIR
 from ray_release.config import Test
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result
 
+# Write to this directory. run_release_tests.sh will copy the content
+# overt to DEFAULT_ARTIFACTS_DIR_HOST
+DEFAULT_ARTIFACTS_DIR = "/tmp/artifacts"
 
 ARTIFACT_TEST_CONFIG_FILE = "test_config.json"
 ARTIFACT_RESULT_FILE = "result.json"

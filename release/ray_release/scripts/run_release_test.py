@@ -5,7 +5,6 @@ from typing import Optional
 import click
 
 from ray_release.aws import maybe_fetch_api_token
-from ray_release.buildkite.step import DEFAULT_ARTIFACTS_DIR
 from ray_release.config import (
     read_and_validate_release_test_collection,
     find_test,
@@ -119,7 +118,7 @@ def main(
     reporters = [LogReporter()]
 
     if "BUILDKITE" in os.environ:
-        reporters.append(ArtifactsReporter(DEFAULT_ARTIFACTS_DIR))
+        reporters.append(ArtifactsReporter())
 
     if report:
         reporters.append(LegacyRDSReporter())
