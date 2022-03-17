@@ -1,10 +1,10 @@
 import argparse
-from functools import partial
 from typing import Tuple
 
 import pandas as pd
 
 import ray
+from ray.ml.checkpoint import Checkpoint
 from ray.ml.predictors.integrations.lightgbm import LightGBMPredictor
 from ray.ml.train.integrations.lightgbm import LightGBMTrainer
 from ray.data.dataset import Dataset
@@ -58,18 +58,32 @@ def train_lightgbm(num_workers: int, use_gpu: bool = False) -> Result:
 
 def predict_lightgbm(result: Result):
     _, _, test_dataset = prepare_data()
-    this_checkpoint = result.checkpoint
-    predictor = LightGBMPredictor.from_checkpoint(this_checkpoint)
+    checkpoint_object_ref = result.checkpoint.to_object_ref()
+
+    class LightGBMScorer:
+        def __init__(self):
+            self.predictor = LightGBMPredictor.from_checkpoint(
+                Checkpoint.from_object_ref(checkpoint_object_ref)
+            )
+
+        def __call__(self, batch) -> pd.DataFrame:
+            return self.predictor.predict(batch)
 
     predicted_labels = (
-        test_dataset.map_batches(predictor.predict, batch_format="pandas")
+        test_dataset.map_batches(
+            LightGBMScorer, compute="actors", batch_format="pandas"
+        )
         .map_batches(lambda df: (df > 0.5).astype(int), batch_format="pandas")
         .to_pandas(limit=float("inf"))
     )
     print(f"PREDICTED LABELS\n{predicted_labels}")
 
+    class LightGBMScorerSHAP(LightGBMScorer):
+        def __call__(self, batch) -> pd.DataFrame:
+            return self.predictor.predict(batch, pred_contrib=True)
+
     shap_values = test_dataset.map_batches(
-        partial(predictor.predict, pred_contrib=True), batch_format="pandas"
+        LightGBMScorerSHAP, compute="actors", batch_format="pandas"
     ).to_pandas(limit=float("inf"))
     print(f"SHAP VALUES\n{shap_values}")
 
@@ -93,4 +107,4 @@ if __name__ == "__main__":
 
     ray.init(address=args.address)
     result = train_lightgbm(num_workers=args.num_workers, use_gpu=args.use_gpu)
-    train_lightgbm(result)
+    predict_lightgbm(result)

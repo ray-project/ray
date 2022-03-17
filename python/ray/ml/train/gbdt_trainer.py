@@ -1,6 +1,8 @@
 from typing import Dict, Type, Any, Optional
 import warnings
+import os
 
+import ray.cloudpickle as cpickle
 from ray.ml.trainer import GenDataset
 from ray.ml.config import ScalingConfig, RunConfig, ScalingConfigDataClass
 from ray.ml.preprocessor import Preprocessor
@@ -191,7 +193,7 @@ class GBDTTrainer(Trainer):
                 preprocessor = self._merged_config.get("preprocessor", None)
                 if not checkpoint_path or preprocessor is None:
                     return
-                checkpoint_obj = Checkpoint.from_dict({PREPROCESSOR_KEY: preprocessor})
-                checkpoint_obj.to_directory(path=checkpoint_path)
+                with open(os.path.join(checkpoint_path, PREPROCESSOR_KEY), "wb") as f:
+                    cpickle.dump(preprocessor, f)
 
         return GBDTTrainable
