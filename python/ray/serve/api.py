@@ -66,6 +66,7 @@ from ray.serve.utils import (
     get_current_node_resource_key,
     get_random_letters,
     get_deployment_import_path,
+    in_interactive_shell,
     logger,
     DEFAULT,
 )
@@ -1879,6 +1880,13 @@ def build(target: DeploymentNode) -> Application:
     """
     # TODO (jiaodong): Resolve circular reference in pipeline codebase and serve
     from ray.serve.pipeline.api import build as pipeline_build
+
+    if in_interactive_shell():
+        raise RuntimeError(
+            "serve.build cannot be called from an interactive shell like "
+            "IPython or Jupyter because it requires all deployments to be "
+            "importable to run the app after building."
+        )
 
     # TODO(edoakes): this should accept host and port, but we don't
     # currently support them in the REST API.
