@@ -94,6 +94,16 @@ class ResourceRequest {
     custom_resources_.clear();
   }
 
+  void Cap(const ResourceRequest &other) {
+    for (auto resource_id : ResourceIds()) {
+      auto this_value = Get(resource_id);
+      auto other_value = other.GetOrZero(resource_id);
+      if (this_value > other_value) {
+        Set(resource_id, other_value);
+      }
+    }
+  }
+
   void RemoveNegative() {
     for (size_t i = 0; i < predefined_resources_.size(); i++) {
       if (predefined_resources_[i] < 0) {
