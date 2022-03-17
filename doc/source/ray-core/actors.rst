@@ -89,8 +89,6 @@ Specifying required resources
 
 You can specify resource requirements in actors too (see :ref:`resource-requirements` for more details.)
 
-.. _resource-requirements:
-
 .. tabbed:: Python
 
     .. code-block:: python
