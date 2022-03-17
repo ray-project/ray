@@ -18,6 +18,11 @@ import time
 from pathlib import Path
 
 import ray
+import pkg_resources
+
+
+def _get_pip_install_test_version() -> str:
+    return pkg_resources.get_distribution("pip-install-test").version
 
 
 def test_pip_requirements_files(tmpdir: str):
@@ -25,37 +30,32 @@ def test_pip_requirements_files(tmpdir: str):
 
     Test specifying in @ray.remote decorator and in .options.
     """
-    pip_file_18 = Path(os.path.join(tmpdir, "runtime_env_pip_18.txt"))
-    pip_file_18.write_text("requests==2.18.0")
-    env_18 = {"pip": str(pip_file_18)}
 
-    pip_file_16 = Path(os.path.join(tmpdir, "runtime_env_pip_16.txt"))
-    pip_file_16.write_text("requests==2.16.0")
-    env_16 = {"pip": str(pip_file_16)}
+    files = {}
+    envs = {}
 
-    @ray.remote(runtime_env=env_16)
+    for version in ["0.4", "0.5"]:
+        files[version] = Path(os.path.join(tmpdir, f"requirements_{version}.txt"))
+        files[version].write_text(f"pip-install-test=={version}")
+        envs[version] = {"pip": str(files[version])}
+
+    @ray.remote(runtime_env=envs["0.4"])
     def get_version():
-        import requests
+        return _get_pip_install_test_version()
 
-        return requests.__version__
+    assert ray.get(get_version.remote()) == "0.4"
+    assert ray.get(get_version.options(runtime_env=envs["0.5"]).remote()) == "0.5"
 
-    # TODO(architkulkarni): Uncomment after #19002 is fixed
-    # assert ray.get(get_version.remote()) == "2.16.0"
-    assert ray.get(get_version.options(runtime_env=env_18).remote()) == "2.18.0"
-
-    @ray.remote(runtime_env=env_18)
+    @ray.remote(runtime_env=envs["0.4"])
     class VersionActor:
         def get_version(self):
-            import requests
+            return _get_pip_install_test_version()
 
-            return requests.__version__
+    actor = VersionActor.remote()
+    assert ray.get(actor.get_version.remote()) == "0.4"
 
-    # TODO(architkulkarni): Uncomment after #19002 is fixed
-    # actor_18 = VersionActor.remote()
-    # assert ray.get(actor_18.get_version.remote()) == "2.18.0"
-
-    actor_16 = VersionActor.options(runtime_env=env_16).remote()
-    assert ray.get(actor_16.get_version.remote()) == "2.16.0"
+    actor = VersionActor.options(runtime_env=envs["0.5"]).remote()
+    assert ray.get(actor.get_version.remote()) == "0.5"
 
 
 if __name__ == "__main__":

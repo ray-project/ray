@@ -13,6 +13,7 @@ import random
 import os
 import json
 import time
+import pkg_resources
 
 
 def update_progress(result):
@@ -24,11 +25,24 @@ def update_progress(result):
         json.dump(result, f)
 
 
+def _get_pip_install_test_version(expected_version) -> str:
+    return pkg_resources.get_distribution("pip-install-test").version
+
+
+def _assert_version_matches(expected_version):
+    assert _get_pip_install_test_version() == expected_version, (
+        _get_pip_install_test_version(),
+        expected_version,
+    )
+
+
 if __name__ == "__main__":
-    ray.init(address="auto", runtime_env={"pip": ["requests==2.18.0"]})
-    versions = ["2.16.0", "2.17.0", "2.18.0"]
-    envs = [{"pip": [f"requests=={versions[i]}"]} for i in range(len(versions) - 1)]
-    # If a task's env is {}, we should have requests==2.18.0 from the job's env
+    ray.init(address="auto", runtime_env={"pip": ["pip-install-test==0.2"]})
+    versions = ["0.5", "0.4", "0.3"]
+    envs = [
+        {"pip": [f"pip-install-test=={versions[i]}"]} for i in range(len(versions) - 1)
+    ]
+    # If a task's env is {}, we should have pip-install-test==0.2 from the job's env
     envs.append({})
 
     NUM_TASK_ITERATIONS = 10
@@ -49,12 +63,7 @@ if __name__ == "__main__":
 
     @ray.remote
     def check_version_task(expected_version: str):
-        import requests
-
-        assert requests.__version__ == expected_version, (
-            requests.__version__,
-            expected_version,
-        )
+        _assert_version_matches(expected_version)
 
     for i in range(NUM_TASK_ITERATIONS):
         results = []
@@ -85,12 +94,7 @@ if __name__ == "__main__":
     @ray.remote
     class TestActor:
         def check_version(self, expected_version: str):
-            import requests
-
-            assert requests.__version__ == expected_version, (
-                requests.__version__,
-                expected_version,
-            )
+            _assert_version_matches(expected_version)
 
         def nested_check_version(self, expected_version: str):
             ray.get(check_version_task.remote(expected_version))
