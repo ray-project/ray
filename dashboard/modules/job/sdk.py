@@ -162,7 +162,8 @@ class JobSubmissionClient(SubmissionClient):
             True if the job was running, otherwise False.
 
         Raises:
-            RuntimeError: If the request to the job server fails.
+            RuntimeError: If the job does not exist or if the request to the
+            job server fails.
         """
         logger.debug(f"Stopping job with job_id={job_id}.")
         r = self._do_request("POST", f"/api/jobs/{job_id}/stop")
@@ -195,7 +196,8 @@ class JobSubmissionClient(SubmissionClient):
             The JobInfo for the job.
 
         Raises:
-            RuntimeError: If the request to the job server fails.
+            RuntimeError: If the job does not exist or if the request to the
+            job server fails.
         """
         r = self._do_request("GET", f"/api/jobs/{job_id}")
 
@@ -260,7 +262,8 @@ class JobSubmissionClient(SubmissionClient):
             The status.
 
         Raises:
-            RuntimeError: If the request to the job server fails.
+            RuntimeError: If the job does not exist or if the request to the
+            job server fails.
         """
         return self.get_job_info(job_id).status
 
@@ -282,7 +285,8 @@ class JobSubmissionClient(SubmissionClient):
             A string containing the full logs of the job.
 
         Raises:
-            RuntimeError: If the request to the job server fails.
+            RuntimeError: If the job does not exist or if the request to the
+            job server fails.
         """
         r = self._do_request("GET", f"/api/jobs/{job_id}/logs")
 
@@ -311,7 +315,8 @@ class JobSubmissionClient(SubmissionClient):
             The iterator.
 
         Raises:
-            RuntimeError: If the request to the job server fails.
+            RuntimeError: If the job does not exist or if the request to the
+            job server fails.
         """
         async with aiohttp.ClientSession(
             cookies=self._cookies, headers=self._headers
