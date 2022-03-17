@@ -340,6 +340,9 @@ class Worker:
                         )
                     last_seen_chunk = chunk.chunk_id
                     yield chunk
+                    if last_seen_chunk == chunk.total_chunks - 1:
+                        # We've yielded the last chunk, exit early
+                        return
                 return
             except grpc.RpcError as e:
                 if self._can_reconnect(e):
