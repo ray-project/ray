@@ -50,6 +50,16 @@ py_test(
 )
 
 py_test(
+    name = "torch_fashion_mnist_example_gpu",
+    size = "medium",
+    main = "examples/pytorch/torch_fashion_mnist_example.py",
+    srcs = ["examples/pytorch/torch_fashion_mnist_example.py"],
+    tags = ["team:ml", "exclusive", "gpu"],
+    deps = [":ml_lib"],
+    args = ["--use-gpu"]
+)
+
+py_test(
     name = "torch_linear_dataset_example",
     size = "medium",
     main = "examples/pytorch/torch_linear_dataset_example.py",
