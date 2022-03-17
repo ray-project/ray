@@ -173,6 +173,7 @@ message DeploymentRoute {
   string route = 2;
 }
 
+// Wrap a list for DeploymentRoute.
 message DeploymentRouteList {
   repeated DeploymentRoute deployment_routes = 1;
 }
@@ -189,6 +190,7 @@ message DeploymentStatusInfo {
   string message = 3;
 }
 
+// Wrap a list for DeploymentStatusInfo.
 message DeploymentStatusInfoList {
   repeated DeploymentStatusInfo deployment_status_infos = 1;
 }
