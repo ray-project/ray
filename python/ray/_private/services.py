@@ -894,7 +894,7 @@ def start_reaper(fate_share=None):
             pass
         else:
             logger.warning(
-                "setpgrp failed, processes may not be " f"cleaned up properly: {e}."
+                f"setpgrp failed, processes may not be cleaned up properly: {e}."
             )
             # Don't start the reaper in this case as it could result in killing
             # other user processes.
@@ -1670,7 +1670,6 @@ def start_raylet(
 
     if os.path.exists(DEFAULT_WORKER_EXECUTABLE):
         cpp_worker_command = build_cpp_worker_command(
-            "",
             gcs_address,
             plasma_store_name,
             raylet_name,
