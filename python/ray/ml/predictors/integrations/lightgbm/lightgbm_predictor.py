@@ -2,9 +2,11 @@ from typing import Optional, List, Union
 import os
 import shutil
 import numpy as np
+import pandas as pd
 
 import lightgbm
 
+import ray.cloudpickle as cpickle
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.predictor import Predictor, DataBatchType
 from ray.ml.preprocessor import Preprocessor
@@ -40,17 +42,21 @@ class LightGBMPredictor(Predictor):
         """
         path = checkpoint.to_directory()
         bst = lightgbm.Booster(model_file=os.path.join(path, MODEL_KEY))
+        preprocessor_path = os.path.join(path, PREPROCESSOR_KEY)
+        if os.path.exists(preprocessor_path):
+            with open(preprocessor_path, "rb") as f:
+                preprocessor = cpickle.load(f)
+        else:
+            preprocessor = None
         shutil.rmtree(path)
-        return LightGBMPredictor(
-            model=bst, preprocessor=checkpoint.to_dict().get(PREPROCESSOR_KEY, None)
-        )
+        return LightGBMPredictor(model=bst, preprocessor=preprocessor)
 
     def predict(
         self,
         data: DataBatchType,
         feature_columns: Optional[Union[List[str], List[int]]] = None,
-        **predict_kwargs
-    ) -> DataBatchType:
+        **predict_kwargs,
+    ) -> pd.DataFrame:
         """Run inference on data batch.
 
         Args:
@@ -105,7 +111,7 @@ class LightGBMPredictor(Predictor):
 
 
         Returns:
-            DataBatchType: Prediction result.
+            pd.DataFrame: Prediction result.
 
         """
 
@@ -117,4 +123,10 @@ class LightGBMPredictor(Predictor):
                 data = data[:, feature_columns]
             else:
                 data = data[feature_columns]
-        return self.model.predict(data, **predict_kwargs)
+        df = pd.DataFrame(self.model.predict(data, **predict_kwargs))
+        df.columns = (
+            ["predictions"]
+            if len(df.columns) == 1
+            else [f"predictions_{i}" for i in range(len(df.columns))]
+        )
+        return df

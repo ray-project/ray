@@ -1,5 +1,5 @@
-Advanced pattern: Concurrent operations with async actor
-========================================================
+Pattern: Concurrent operations with async actor
+===============================================
 
 Sometimes, we'd like to have IO operations to other actors/tasks/components (e.g., DB) periodically within an actor (long polling). Imagine a process queue actor that needs to fetch data from other actors or DBs. 
 

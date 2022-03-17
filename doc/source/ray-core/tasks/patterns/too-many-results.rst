@@ -1,5 +1,5 @@
-Advanced antipattern: Fetching too many results at once with ray.get
-====================================================================
+Antipattern: Fetching too many results at once with ray.get
+===========================================================
 
 **TLDR:** Avoid calling ``ray.get`` on many large objects since this will lead to object store OOM. Instead process one batch at a time.
 
