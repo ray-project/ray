@@ -380,17 +380,17 @@ class Client:
 
     @_ensure_connected
     def get_deployment_info(self, name: str) -> Tuple[DeploymentInfo, str]:
-        deployment_route_proto = DeploymentRoute.FromString(
+        deployment_route = DeploymentRoute.FromString(
             ray.get(self._controller.get_deployment_info.remote(name))
         )
         return (
-            DeploymentInfo.from_proto(deployment_route_proto.deployment_info),
-            deployment_route_proto.route,
+            DeploymentInfo.from_proto(deployment_route.deployment_info),
+            deployment_route.route if deployment_route.route != "" else None,
         )
 
     @_ensure_connected
     def list_deployments(self) -> Dict[str, Tuple[DeploymentInfo, str]]:
-        deployment_route_list_proto = DeploymentRouteList.FromString(
+        deployment_route_list = DeploymentRouteList.FromString(
             ray.get(self._controller.list_deployments.remote())
         )
         return {
@@ -398,7 +398,7 @@ class Client:
                 DeploymentInfo.from_proto(deployment_route.deployment_info),
                 deployment_route.route if deployment_route.route != "" else None,
             )
-            for deployment_route in deployment_route_list_proto.deployment_routes
+            for deployment_route in deployment_route_list.deployment_routes
         }
 
     @_ensure_connected
