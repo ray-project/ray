@@ -26,13 +26,36 @@ from ray.serve.api import RayServeDAGHandle
 
 
 def convert_to_json_safe_obj(obj: Any, *, err_key: str) -> Any:
-    # XXX: comment, err msg
-    return json.loads(json.dumps(obj, cls=DAGNodeEncoder))
+    """Converts the provided object into a JSON-safe version of it.
+
+    The returned object can safely be `json.dumps`'d to a string.
+
+    Uses the Ray Serve encoder to serialize special objects such as
+    ServeHandles and DAGHandles.
+
+    Raises: ValueError if the object contains fields that cannot be
+    JSON-serialized.
+    """
+    try:
+        return json.loads(json.dumps(obj, cls=DAGNodeEncoder))
+    except Exception as e:
+        raise ValueError(
+            "All provided fields must be JSON-serializable to build the "
+            f"Serve app. Failed while serializing {err_key}: \n{e}"
+        )
 
 
-def convert_from_json_safe_obj(obj: Any) -> Any:
-    # XXX: comment, err msg
-    return json.loads(json.dumps(obj), object_hook=dagnode_from_json)
+def convert_from_json_safe_obj(obj: Any, *, err_key: str) -> Any:
+    """Converts a JSON-safe object to one that contains Serve special types.
+
+    The provided object should have been serialized using
+    convert_to_json_safe_obj. Any special-cased objects such as ServeHandles
+    will be recovered on this pass.
+    """
+    try:
+        return json.loads(json.dumps(obj), object_hook=dagnode_from_json)
+    except Exception as e:
+        raise ValueError(f"Failed to convert {err_key} from JSON:\n{e}")
 
 
 class DAGNodeEncoder(json.JSONEncoder):
