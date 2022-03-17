@@ -1,7 +1,3 @@
-# test tune
-# test env vars
-import os
-
 import pytest
 
 import ray
@@ -11,7 +7,6 @@ from ray.ml.constants import PREPROCESSOR_KEY
 
 from ray.ml.train.data_parallel_trainer import DataParallelTrainer
 from ray.ml.preprocessor import Preprocessor
-from ray.train.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV
 
 
 @pytest.fixture
@@ -42,7 +37,7 @@ def test_scaling_config(ray_start_4_cpus):
 
     assert ray.available_resources()["CPU"] == 4
     trainer = DataParallelTrainer(
-        train_loop_per_worker=train_func, scaling_config={"num_workers": 3}
+        train_loop_per_worker=train_func, scaling_config={"num_workers": 2}
     )
     trainer.fit()
 
@@ -114,7 +109,7 @@ def test_preprocessor_in_checkpoint(ray_start_4_cpus):
     assert result.checkpoint.to_dict()[PREPROCESSOR_KEY].is_same
 
 
-def test_resume_from_checkpoint(ray_start_4_cpus):
+def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
     def train_func():
         checkpoint = train.load_checkpoint()
         if checkpoint:
@@ -133,7 +128,7 @@ def test_resume_from_checkpoint(ray_start_4_cpus):
     # Move checkpoint to a different directory.
     checkpoint_dict = result.checkpoint.to_dict()
     checkpoint = Checkpoint.from_dict(checkpoint_dict)
-    checkpoint_path = checkpoint.to_directory()
+    checkpoint_path = checkpoint.to_directory(tmpdir)
     resume_from = Checkpoint.from_directory(checkpoint_path)
 
     trainer = DataParallelTrainer(
@@ -172,24 +167,6 @@ def test_tune(ray_start_4_cpus):
 
     # Make sure original Trainer is not affected.
     assert trainer.train_loop_config["x"] == 100
-
-
-def test_env_vars(ray_start_4_cpus, monkeypatch):
-    assert ENABLE_DETAILED_AUTOFILLED_METRICS_ENV not in os.environ
-    monkeypatch.setenv(ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, "1")
-    assert ENABLE_DETAILED_AUTOFILLED_METRICS_ENV in os.environ
-
-    def train_func():
-        # Make sure environment variables are being set inside the trainable.
-        assert ENABLE_DETAILED_AUTOFILLED_METRICS_ENV in os.environ
-
-    trainer = DataParallelTrainer(
-        train_loop_per_worker=train_func,
-        train_loop_config={"x": 100},
-        scaling_config=scale_config,
-    )
-
-    trainer.fit()
 
 
 if __name__ == "__main__":
