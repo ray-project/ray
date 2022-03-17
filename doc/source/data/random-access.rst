@@ -47,3 +47,8 @@ Performance
 Since actor communication goes directly from worker to worker in Ray, the throughput of a RandomAccessDataset scales linearly with the number of workers available. As a rough measure, a single worker can provide ~2k individual gets/s and serve ~10k records/s for multigets, and this scales linearly as you increase the number of clients and workers for a single RandomAccessDataset. You will generally want more workers than clients, since the client does less computation than worker actors do.
 
 To debug performance problems, use ``random_access_ds.stats()``. This will return a string showing the actor-side measured latencies as well as the distribution of data blocks and queries across the actors. Load imbalances can cause bottlenecks as certain actors receive more requests than others. Ensure that load is evenly distributed across the key space to avoid this.
+
+Fault Tolerance
+---------------
+
+Currently, RandomAccessDataset is not fault-tolerant. Losing any of the worker actors invalidates the dataset, and it must be re-created from the source dataset.
