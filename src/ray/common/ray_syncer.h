@@ -203,7 +203,7 @@ class RaySyncer {
 
     /// Stub for this connection.
     std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub_;
-    Dummy dummy_;
+    DummyRequest dummy_;
   };
 
  private:
