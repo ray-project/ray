@@ -720,7 +720,8 @@ def start(
 
     try:
         client = internal_get_global_client(
-            _override_controller_namespace=_override_controller_namespace
+            _override_controller_namespace=_override_controller_namespace,
+            _health_check_controller=True,
         )
         logger.info(
             "Connecting to existing Serve instance in namespace "
