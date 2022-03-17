@@ -8,6 +8,7 @@ from ray.ml.constants import PREPROCESSOR_KEY
 from ray.ml.train.data_parallel_trainer import DataParallelTrainer
 from ray.ml.preprocessor import Preprocessor
 
+
 @pytest.fixture
 def ray_start_4_cpus():
     address_info = ray.init(num_cpus=4)
@@ -166,6 +167,7 @@ def test_tune(ray_start_4_cpus):
 
     # Make sure original Trainer is not affected.
     assert trainer.train_loop_config["x"] == 100
+
 
 if __name__ == "__main__":
     import pytest
