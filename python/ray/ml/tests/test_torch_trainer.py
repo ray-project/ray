@@ -46,12 +46,17 @@ def test_torch_e2e(ray_start_4_cpus):
     )
     result = trainer.fit()
 
-    predictor = TorchPredictor.from_checkpoint(result.checkpoint)
-
     predict_dataset = ray.data.range(3)
+
+    class TorchScorer:
+        def __init__(self):
+            self.pred = TorchPredictor.from_checkpoint(result.checkpoint)
+
+        def __call__(self, x):
+            return self.pred.predict(x, dtype=torch.float)
+
     predictions = predict_dataset.map_batches(
-        lambda batch: predictor.predict(batch, dtype=torch.float),
-        batch_format="pandas",
+        TorchScorer, batch_format="pandas", compute="actors"
     )
     assert predictions.count() == 3
 
@@ -71,14 +76,18 @@ def test_torch_e2e_state_dict(ray_start_4_cpus):
     with pytest.raises(ValueError):
         TorchPredictor.from_checkpoint(result.checkpoint)
 
-    predictor = TorchPredictor.from_checkpoint(
-        result.checkpoint, model=torch.nn.Linear(1, 1)
-    )
+    class TorchScorer:
+        def __init__(self):
+            self.pred = TorchPredictor.from_checkpoint(
+                result.checkpoint, model=torch.nn.Linear(1, 1)
+            )
+
+        def __call__(self, x):
+            return self.pred.predict(x, dtype=torch.float)
 
     predict_dataset = ray.data.range(3)
     predictions = predict_dataset.map_batches(
-        lambda batch: predictor.predict(batch, dtype=torch.float),
-        batch_format="pandas",
+        TorchScorer, batch_format="pandas", compute="actors"
     )
     assert predictions.count() == 3
 
