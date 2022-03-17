@@ -259,7 +259,7 @@ class JobSubmissionClient(SubmissionClient):
             job_id: The ID of the job whose status is being requested.
 
         Returns:
-            The status.
+            The JobStatus of the job.
 
         Raises:
             RuntimeError: If the job does not exist or if the request to the
