@@ -2,7 +2,7 @@ from typing import Any, Dict, Optional, Tuple, List, Union
 
 from ray.experimental.dag import DAGNode
 from ray.experimental.dag.format_utils import get_dag_node_str
-from ray.serve.handle import RayServeLazyHandle, RayServeSyncHandle, RayServeHandle
+from ray.serve.handle import RayServeLazySyncHandle, RayServeSyncHandle, RayServeHandle
 from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 from ray.serve.api import Deployment, DeploymentConfig
@@ -29,7 +29,7 @@ class DeploymentMethodNode(DAGNode):
             other_args_to_resolve=other_args_to_resolve,
         )
         self._deployment_handle: Union[
-            RayServeLazyHandle, RayServeHandle, RayServeSyncHandle
+            RayServeLazySyncHandle, RayServeHandle, RayServeSyncHandle
         ] = self._get_serve_deployment_handle(deployment, other_args_to_resolve)
 
     def _copy_impl(
@@ -78,8 +78,8 @@ class DeploymentMethodNode(DAGNode):
         """
         # TODO (jiaodong): Support configurable async handle
         if USE_SYNC_HANDLE_KEY not in bound_other_args_to_resolve:
-            # Return sync RayServeLazyHandle
-            return RayServeLazyHandle(deployment.name)
+            # Return sync RayServeLazySyncHandle
+            return RayServeLazySyncHandle(deployment.name)
         elif bound_other_args_to_resolve.get(USE_SYNC_HANDLE_KEY) is True:
             # Return sync RayServeSyncHandle
             return deployment.get_handle(sync=True)

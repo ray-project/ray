@@ -237,12 +237,8 @@ class RayServeSyncHandle(RayServeHandle):
         return RayServeSyncHandle._deserialize, (serialized_data,)
 
 
-class RayServeLazyHandle:
-    """Lazily initialized handle that only gets fulfilled upon first execution.
-
-    Supposed to return existing supported serve handles, including
-    [RayServeHandle, RayServeSyncHandle, RayServeDAGHandle].
-    """
+class RayServeLazySyncHandle:
+    """Lazily initialized handle that only gets fulfilled upon first execution."""
 
     def __init__(
         self,
@@ -283,7 +279,7 @@ class RayServeLazyHandle:
             "deployment_name": self.deployment_name,
             "handle_options": self.handle_options,
         }
-        return RayServeLazyHandle._deserialize, (serialized_data,)
+        return RayServeLazySyncHandle._deserialize, (serialized_data,)
 
     def __getattr__(self, name):
         return self.options(method_name=name)
