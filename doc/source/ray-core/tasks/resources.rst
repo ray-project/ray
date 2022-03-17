@@ -1,6 +1,6 @@
 .. _resource-requirements:
 
-Specifying required resources
+Specifying Required Resources
 =============================
 
 Oftentimes, you may want to specify a task's resource requirements (for example
