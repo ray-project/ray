@@ -171,7 +171,6 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         return sum(len(buffer._storage) for buffer in self.replay_buffers.values())
 
     @ExperimentalAPI
-    @override(ReplayBuffer)
     def replay(self, num_items: int = None, **kwargs) -> Optional[SampleBatchType]:
         """Deprecated in favor of new ReplayBuffer API.
 

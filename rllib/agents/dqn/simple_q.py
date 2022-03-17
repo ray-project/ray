@@ -87,7 +87,7 @@ DEFAULT_CONFIG = with_common_config({
     # Use MultiAgentPrioritizedReplayBuffer for prioritization.
     "prioritized_replay": DEPRECATED_VALUE,
     "replay_buffer_config": {
-        "type": "MultiAgentPrioritizedReplayBuffer",
+        "type": "MultiAgentReplayBuffer",
         "capacity": 50000,
         "replay_batch_size": 32,
         # The number of contiguous environment steps to replay at once. This

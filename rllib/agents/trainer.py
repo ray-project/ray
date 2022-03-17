@@ -2778,13 +2778,10 @@ class Trainer(Trainable):
                     config["replay_buffer_config"][k] = config[k]
 
         # Some agents do not need a replay buffer
-        if config.get("replay_buffer_config") is None or config.get(
+        if not config.get("replay_buffer_config") or config.get(
             "no_local_replay_buffer", False
         ):
-            return None
-
-        if config["replay_buffer_config"] is None:
-            return None
+            return
 
         replay_buffer_config = config["replay_buffer_config"]
         assert (
@@ -2796,12 +2793,11 @@ class Trainer(Trainable):
             deprecation_warning(
                 old="config['buffer_size']",
                 help="Buffer size specified at new location config["
-                     "'replay_buffer_config']["
-                     "'capacity'] will be overwritten.",
+                "'replay_buffer_config']["
+                "'capacity'] will be overwritten.",
                 error=False,
             )
             config["replay_buffer_config"]["capacity"] = capacity
-
 
         # Check if old replay buffer should be instantiated
         buffer_type = config["replay_buffer_config"]["type"]
@@ -2820,7 +2816,8 @@ class Trainer(Trainable):
             else:
                 assert buffer_type in [
                     "ray.rllib.execution.MultiAgentReplayBuffer",
-                    MultiAgentReplayBuffer], (
+                    MultiAgentReplayBuffer,
+                ], (
                     "Without ReplayBuffer API, only "
                     "MultiAgentReplayBuffer is supported!"
                 )
@@ -2860,11 +2857,10 @@ class Trainer(Trainable):
                 deprecation_warning(
                     old="config['burn_in']",
                     help="Burn in specified at new location config["
-                     "'replay_buffer_config']["
-                     "'replay_burn_in'] will be overwritten."
+                    "'replay_buffer_config']["
+                    "'replay_burn_in'] will be overwritten.",
                 )
-                config["replay_buffer_config"]["replay_burn_in"] = config[
-                    "replay_burn_in"]
+                config["replay_buffer_config"]["replay_burn_in"] = config["burn_in"]
 
             config["replay_buffer_config"]["replay_zero_init_states"] = config.get(
                 "replay_zero_init_states", True
@@ -2879,12 +2875,8 @@ class Trainer(Trainable):
             # If no prioritized replay, old-style replay buffer should
             # not be handed the following parameters:
             if config.get("prioritized_replay", False) is False:
-                for p in [
-                    "prioritized_replay_alpha",
-                    "prioritized_replay_beta",
-                    "prioritized_replay_eps",
-                ]:
-                    config["replay_buffer_config"].pop(p, None)
+                # This triggers non-prioritization in old-style replay buffer
+                config["replay_buffer_config"]["prioritized_replay_alpha"] = 0.0
 
         else:
             if isinstance(buffer_type, str) and buffer_type.find(".") == -1:
