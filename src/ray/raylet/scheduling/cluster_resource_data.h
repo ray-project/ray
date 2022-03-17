@@ -56,14 +56,12 @@ class ResourceRequest {
 
   FixedPoint Get(ResourceID resource_id) const {
     auto ptr = GetPointer(resource_id);
-    // FixedPoint *ptr;
     RAY_CHECK(ptr) << "Resource not found: " << resource_id;
     return *ptr;
   }
 
   FixedPoint GetOrZero(ResourceID resource_id) const {
     auto ptr = GetPointer(resource_id);
-    // FixedPoint *ptr;
     if (ptr == nullptr) {
       return FixedPoint(0);
     } else {
@@ -71,12 +69,20 @@ class ResourceRequest {
     }
   }
 
-  ResourceRequest &Set(ResourceID resource_id, const FixedPoint &value) {
-    auto ptr = GetPointer(resource_id);
-    if (ptr == nullptr) {
-      custom_resources_[resource_id.ToInt()] = value;
+  ResourceRequest &Set(ResourceID resource_id, FixedPoint value) {
+    if (value == 0) {
+      if (IsPredefinedResource(resource_id)) {
+        predefined_resources_[resource_id.ToInt()] = 0;
+      } else {
+        custom_resources_.erase(resource_id.ToInt());
+      }
     } else {
-      *ptr = value;
+      auto ptr = GetPointer(resource_id);
+      if (ptr == nullptr) {
+        custom_resources_[resource_id.ToInt()] = value;
+      } else {
+        *ptr = value;
+      }
     }
     return *this;
   }
@@ -103,15 +109,20 @@ class ResourceRequest {
     }
   }
 
+  size_t Size() const { return ResourceIds().size(); }
+
+  /// Check whether the request contains no resources.
+  bool IsEmpty() const { return Size() == 0; }
+
   absl::flat_hash_set<ResourceID> ResourceIds() const {
     absl::flat_hash_set<ResourceID> res;
     for (size_t i = 0; i < predefined_resources_.size(); i++) {
-      if (predefined_resources_[i] > 0) {
+      if (predefined_resources_[i] != 0) {
         res.insert(ResourceID(i));
       }
     }
     for (auto &entry : custom_resources_) {
-      if (entry.second > 0) {
+      if (entry.second != 0) {
         res.insert(ResourceID(entry.first));
       }
     }
@@ -147,7 +158,7 @@ class ResourceRequest {
 
   ResourceRequest &operator+=(const ResourceRequest &other) {
     for (auto resource_id : ResourceIds()) {
-      *GetPointer(resource_id) += other.GetOrZero(resource_id);
+      Set(resource_id, Get(resource_id) + other.GetOrZero(resource_id));
     }
     for (auto &resource_id : other.ResourceIds()) {
       if (!Has(resource_id)) {
@@ -159,7 +170,7 @@ class ResourceRequest {
 
   ResourceRequest &operator-=(const ResourceRequest &other) {
     for (auto resource_id : ResourceIds()) {
-      *GetPointer(resource_id) -= other.GetOrZero(resource_id);
+      Set(resource_id, Get(resource_id) - other.GetOrZero(resource_id));
     }
     for (auto &resource_id : other.ResourceIds()) {
       if (!Has(resource_id)) {
@@ -172,6 +183,10 @@ class ResourceRequest {
   bool operator==(const ResourceRequest &other) const {
     return FixedPointEqualVectors(predefined_resources_, other.predefined_resources_) &&
            this->custom_resources_ == other.custom_resources_;
+  }
+
+  bool operator!=(const ResourceRequest &other) const {
+    return !(*this == other);
   }
 
   bool operator<=(const ResourceRequest &other) const {
@@ -187,11 +202,6 @@ class ResourceRequest {
   }
 
   bool operator>=(const ResourceRequest &other) const { return other <= *this; }
-
-  size_t Size() const { return ResourceIds().size(); }
-
-  /// Check whether the request contains no resources.
-  bool IsEmpty() const { return Size() == 0; }
 
   /// Returns human-readable string for this task request.
   std::string DebugString() const {
