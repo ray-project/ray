@@ -1777,7 +1777,7 @@ def run(
 
     Returns:
         RayServeHandle: A regular ray serve handle that can be called by user
-            to exeucte the serve DAG.
+            to execute the serve DAG.
     """
     # TODO (jiaodong): Resolve circular reference in pipeline codebase and serve
     from ray.serve.pipeline.api import build as pipeline_build
