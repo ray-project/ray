@@ -31,11 +31,17 @@ using scheduling::ResourceID;
 
 bool IsPredefinedResource(scheduling::ResourceID resource_id);
 
-// Data structure specifying the capacity of each resource requested by a task.
+/// Represents a set of resources.
+/// NOTE: this negative values are valid in this class, while 0 is not. This means if any
+/// resource value is changed to 0, it will be removed.
+/// TODO(chenh): This class should be independent with tasks. We should move out the
+/// "requires_object_store_memory_" field, and remove this class to ResourceSet.
 class ResourceRequest {
  public:
+  /// Construct an empty ResourceRequest.
   ResourceRequest() : ResourceRequest({}, false) {}
 
+  /// Construct a ResourceRequest with a given resource map.
   ResourceRequest(absl::flat_hash_map<ResourceID, FixedPoint> resource_map)
       : ResourceRequest(resource_map, false){};
 
@@ -52,12 +58,16 @@ class ResourceRequest {
 
   bool RequiresObjectStoreMemory() const { return requires_object_store_memory_; }
 
+  /// Get the value of a particular resource.
+  /// NOTE: the resource MUST already exist in this ResourceRequest, otherwise a check
+  /// fail will occur.
   FixedPoint Get(ResourceID resource_id) const {
     auto ptr = GetPointer(resource_id);
     RAY_CHECK(ptr) << "Resource not found: " << resource_id;
     return *ptr;
   }
 
+  /// Get the value of a particular resource. If the resource doesn't exist, return 0.
   FixedPoint GetOrZero(ResourceID resource_id) const {
     auto ptr = GetPointer(resource_id);
     if (ptr == nullptr) {
@@ -67,6 +77,8 @@ class ResourceRequest {
     }
   }
 
+  /// Set a resource to the given value.
+  /// NOTE: if the new value is 0, the resource will be removed.
   ResourceRequest &Set(ResourceID resource_id, FixedPoint value) {
     if (value == 0) {
       if (IsPredefinedResource(resource_id)) {
@@ -85,8 +97,10 @@ class ResourceRequest {
     return *this;
   }
 
+  /// Check whether a particular resource exist.
   bool Has(ResourceID resource_id) const { return GetOrZero(resource_id) > 0; }
 
+  /// Clear the whole ResourceRequest.
   void Clear() {
     for (size_t i = 0; i < predefined_resources_.size(); i++) {
       predefined_resources_[i] = 0;
@@ -94,6 +108,7 @@ class ResourceRequest {
     custom_resources_.clear();
   }
 
+  /// Cap the resource values in this ResourceRequest by those in another ResourceRequest.
   void Cap(const ResourceRequest &other) {
     for (auto resource_id : ResourceIds()) {
       auto this_value = Get(resource_id);
@@ -104,6 +119,7 @@ class ResourceRequest {
     }
   }
 
+  /// Remove the negative values in this ResourceRequest.
   void RemoveNegative() {
     for (size_t i = 0; i < predefined_resources_.size(); i++) {
       if (predefined_resources_[i] < 0) {
@@ -119,11 +135,13 @@ class ResourceRequest {
     }
   }
 
+  /// \return The number of resources in this ResourceRequest.
   size_t Size() const { return ResourceIds().size(); }
 
-  /// Check whether the request contains no resources.
+  /// \return True if this ResourceRequest is empty.
   bool IsEmpty() const { return Size() == 0; }
 
+  /// \return A set that contains all resource ids in this ResourceRequest.
   absl::flat_hash_set<ResourceID> ResourceIds() const {
     absl::flat_hash_set<ResourceID> res;
     for (size_t i = 0; i < predefined_resources_.size(); i++) {
@@ -139,6 +157,7 @@ class ResourceRequest {
     return res;
   }
 
+  /// \return A map from the resource ids to the values.
   absl::flat_hash_map<ResourceID, FixedPoint> ToMap() const {
     absl::flat_hash_map<ResourceID, FixedPoint> res;
     for (auto resource_id : ResourceIds()) {
@@ -199,6 +218,7 @@ class ResourceRequest {
 
   bool operator!=(const ResourceRequest &other) const { return !(*this == other); }
 
+  /// Check whether this ResourceRequest is a subset of another one.
   bool operator<=(const ResourceRequest &other) const {
     if (Size() > other.Size()) {
       return false;
@@ -213,7 +233,7 @@ class ResourceRequest {
 
   bool operator>=(const ResourceRequest &other) const { return other <= *this; }
 
-  /// Returns human-readable string for this task request.
+  /// \return A human-readable string for this ResourceRequest.
   std::string DebugString() const {
     std::stringstream buffer;
     buffer << "{";
@@ -230,6 +250,9 @@ class ResourceRequest {
   }
 
  private:
+  /// Return a pointer to the given resource, or nullptr if the resource doesn't exist.
+  /// NOTE, this function doesn't mutate values. But it returns non-const pointer, so it's
+  /// not marked as const.
   FixedPoint *GetPointer(ResourceID id) {
     if (IsPredefinedResource(id)) {
       return &predefined_resources_[id.ToInt()];
@@ -243,13 +266,14 @@ class ResourceRequest {
     }
   }
 
+  /// The const version of GetPointer.
   const FixedPoint *GetPointer(ResourceID id) const {
     return const_cast<ResourceRequest *>(this)->GetPointer(id);
   }
 
-  /// List of predefined resources required by the task.
+  /// The predefined resources.
   std::vector<FixedPoint> predefined_resources_;
-  /// List of custom resources required by the task.
+  /// The custom resources.
   absl::flat_hash_map<int64_t, FixedPoint> custom_resources_;
   /// Whether this task requires object store memory.
   /// TODO(swang): This should be a quantity instead of a flag.
@@ -305,7 +329,8 @@ class TaskResourceInstances {
     return ptr != nullptr && ptr->size() > 0;
   }
 
-  TaskResourceInstances &Set(const ResourceID resource_id, const std::vector<FixedPoint> &instances) {
+  TaskResourceInstances &Set(const ResourceID resource_id,
+                             const std::vector<FixedPoint> &instances) {
     auto ptr = GetPointer(resource_id);
     if (ptr != nullptr) {
       *ptr = instances;
@@ -361,7 +386,7 @@ class TaskResourceInstances {
   bool operator==(const TaskResourceInstances &other) const {
     for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
       if (!FixedPointVectorEqual(this->predefined_resources_[i],
-                                  other.predefined_resources_[i])) {
+                                 other.predefined_resources_[i])) {
         return false;
       }
     }
