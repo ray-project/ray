@@ -99,6 +99,21 @@ class Checkpoint:
             # It is guaranteed that the original data was recovered
             assert isinstance(clf, RandomForestClassifier)
 
+        Checkpoints can be pickled and sent to remote processes.
+        Please note that checkpoints pointing to local directories will be
+        pickled as data representations, so the full checkpoint data will be
+        contained in the checkpoint object. If you want to avoid this,
+        consider passing only the checkpoint directory to the remote task
+        and re-construct your checkpoint object in that function. Note that
+        this will only work if the "remote" task is scheduled on the
+        same node or a node that also has access to the local data path (e.g.
+        on a shared file system like NFS).
+
+        Checkpoints pointing to object store references will keep the
+        object reference in tact - this means that these checkpoints cannot
+        be properly deserialized on other Ray clusters or outside a Ray
+        cluster. If you need persistence across clusters, use the ``to_uri()``
+        or ``to_directory()`` methods to persist your checkpoints to disk.
 
     """
 
