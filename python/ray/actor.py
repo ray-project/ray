@@ -1295,6 +1295,7 @@ class ActorHandle:
             )
 
     def __reduce__(self):
+        """Note: this code path is hit by pickle, but not ray.cloudpickle."""
         raise RuntimeError(
             "Actor handles cannot be pickled except via `ray.put()` or passing "
             "as arguments to Ray tasks and actors. Use the named actors feature "

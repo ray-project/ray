@@ -135,6 +135,7 @@ cdef class ObjectRef(BaseID):
         return self.as_future(_internal=True).__await__()
 
     def __reduce__(self):
+        """Note: this code path is hit by pickle, but not ray.cloudpickle."""
         raise RuntimeError(
             "Object references cannot be pickled except via `ray.put()` or "
             "passing as arguments to Ray tasks and actors. Use "
