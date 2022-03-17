@@ -32,7 +32,7 @@ using scheduling::ResourceID;
 bool IsPredefinedResource(scheduling::ResourceID resource_id);
 
 /// Represents a set of resources.
-/// NOTE: this negative values are valid in this class, while 0 is not. This means if any
+/// NOTE: negative values are valid in this set, while 0 is not. This means if any
 /// resource value is changed to 0, it will be removed.
 /// TODO(chenh): This class should be independent with tasks. We should move out the
 /// "requires_object_store_memory_" field, and remove this class to ResourceSet.
@@ -135,13 +135,13 @@ class ResourceRequest {
     }
   }
 
-  /// \return The number of resources in this set.
+  /// Return the number of resources in this set.
   size_t Size() const { return ResourceIds().size(); }
 
-  /// \return True if this set is empty.
+  /// Return true if this set is empty.
   bool IsEmpty() const { return Size() == 0; }
 
-  /// \return A set that contains all resource ids in this set.
+  /// Return a set that contains all resource ids in this set.
   absl::flat_hash_set<ResourceID> ResourceIds() const {
     absl::flat_hash_set<ResourceID> res;
     for (size_t i = 0; i < predefined_resources_.size(); i++) {
@@ -157,7 +157,7 @@ class ResourceRequest {
     return res;
   }
 
-  /// \return A map from the resource ids to the values.
+  /// Return a map from the resource ids to the values.
   absl::flat_hash_map<ResourceID, FixedPoint> ToMap() const {
     absl::flat_hash_map<ResourceID, FixedPoint> res;
     for (auto resource_id : ResourceIds()) {
@@ -233,7 +233,7 @@ class ResourceRequest {
 
   bool operator>=(const ResourceRequest &other) const { return other <= *this; }
 
-  /// \return A human-readable string for this set.
+  /// Return a human-readable string for this set.
   std::string DebugString() const {
     std::stringstream buffer;
     buffer << "{";
@@ -402,7 +402,7 @@ class TaskResourceInstances {
   /// Return the number of resources.
   size_t Size() const { return ResourceIds().size(); }
 
-  /// Check whether this TaskResourceInstances is empty.
+  /// Check whether this set is empty.
   bool IsEmpty() const { return Size() == 0; }
 
   bool operator==(const TaskResourceInstances &other) const {
