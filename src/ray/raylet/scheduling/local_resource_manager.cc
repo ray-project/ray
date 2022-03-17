@@ -44,8 +44,8 @@ void LocalResourceManager::AddLocalResourceInstances(
 }
 
 void LocalResourceManager::DeleteLocalResource(scheduling::ResourceID resource_id) {
-  local_resources_.available.Clear(resource_id);
-  local_resources_.total.Clear(resource_id);
+  local_resources_.available.Remove(resource_id);
+  local_resources_.total.Remove(resource_id);
   OnResourceChanged();
 }
 

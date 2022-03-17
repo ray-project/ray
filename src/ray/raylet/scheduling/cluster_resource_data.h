@@ -59,7 +59,7 @@ class ResourceRequest {
   bool RequiresObjectStoreMemory() const { return requires_object_store_memory_; }
 
   /// Get the value of a particular resource.
-  /// NOTE: the resource MUST already exist in this ResourceRequest, otherwise a check
+  /// NOTE: the resource MUST already exist in this set, otherwise a check
   /// fail will occur.
   FixedPoint Get(ResourceID resource_id) const {
     auto ptr = GetPointer(resource_id);
@@ -100,7 +100,7 @@ class ResourceRequest {
   /// Check whether a particular resource exist.
   bool Has(ResourceID resource_id) const { return GetOrZero(resource_id) > 0; }
 
-  /// Clear the whole ResourceRequest.
+  /// Clear the whole set.
   void Clear() {
     for (size_t i = 0; i < predefined_resources_.size(); i++) {
       predefined_resources_[i] = 0;
@@ -108,7 +108,7 @@ class ResourceRequest {
     custom_resources_.clear();
   }
 
-  /// Cap the resource values in this ResourceRequest by those in another ResourceRequest.
+  /// Cap the resource values in this set by those in another set.
   void Cap(const ResourceRequest &other) {
     for (auto resource_id : ResourceIds()) {
       auto this_value = Get(resource_id);
@@ -119,7 +119,7 @@ class ResourceRequest {
     }
   }
 
-  /// Remove the negative values in this ResourceRequest.
+  /// Remove the negative values in this set.
   void RemoveNegative() {
     for (size_t i = 0; i < predefined_resources_.size(); i++) {
       if (predefined_resources_[i] < 0) {
@@ -135,13 +135,13 @@ class ResourceRequest {
     }
   }
 
-  /// \return The number of resources in this ResourceRequest.
+  /// \return The number of resources in this set.
   size_t Size() const { return ResourceIds().size(); }
 
-  /// \return True if this ResourceRequest is empty.
+  /// \return True if this set is empty.
   bool IsEmpty() const { return Size() == 0; }
 
-  /// \return A set that contains all resource ids in this ResourceRequest.
+  /// \return A set that contains all resource ids in this set.
   absl::flat_hash_set<ResourceID> ResourceIds() const {
     absl::flat_hash_set<ResourceID> res;
     for (size_t i = 0; i < predefined_resources_.size(); i++) {
@@ -218,7 +218,7 @@ class ResourceRequest {
 
   bool operator!=(const ResourceRequest &other) const { return !(*this == other); }
 
-  /// Check whether this ResourceRequest is a subset of another one.
+  /// Check whether this set is a subset of another one.
   bool operator<=(const ResourceRequest &other) const {
     if (Size() > other.Size()) {
       return false;
@@ -233,7 +233,7 @@ class ResourceRequest {
 
   bool operator>=(const ResourceRequest &other) const { return other <= *this; }
 
-  /// \return A human-readable string for this ResourceRequest.
+  /// \return A human-readable string for this set.
   std::string DebugString() const {
     std::stringstream buffer;
     buffer << "{";
@@ -280,15 +280,19 @@ class ResourceRequest {
   bool requires_object_store_memory_ = false;
 };
 
-// Data structure specifying the capacity of each instance of each resource
-// allocated to a task.
+/// Represents resource set that contains the per-instance resource values.
+/// TODO(chenh): due to the same reason of ResourceRequest, we should rename it to
+/// ResourceInstanceSet.
 class TaskResourceInstances {
  public:
+  /// Construct an empty TaskResourceInstances.
   TaskResourceInstances() {
     for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
       this->predefined_resources_.push_back({});
     }
   }
+
+  /// Construct a TaskResourceInstances with the values from a ResourceRequest.
   TaskResourceInstances(const ResourceRequest &request) {
     for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
       this->predefined_resources_.push_back({});
@@ -308,27 +312,46 @@ class TaskResourceInstances {
     }
   }
 
+  /// Get the per-instance values of a particular resource.
+  /// NOTE: the resource MUST already exist in this TaskResourceInstances, otherwise a
+  /// check fail will occur.
   const std::vector<FixedPoint> &Get(const ResourceID resource_id) const {
     auto ptr = GetPointer(resource_id);
     RAY_CHECK(ptr != nullptr) << "Resource ID not found " << resource_id;
     return *ptr;
   }
 
+  /// Get the per-instance double values of a particular resource.
+  /// NOTE: the resource MUST already exist in this TaskResourceInstances, otherwise a
+  /// check fail will occur.
   std::vector<double> GetDouble(const ResourceID resource_id) const {
     return FixedPointVectorToDouble(Get(resource_id));
   }
 
+  /// Get the sum of per-instance values of a particular resource.
+  /// NOTE: the resource MUST already exist in this TaskResourceInstances, otherwise a
+  /// check fail will occur.
+  FixedPoint Sum(const ResourceID resource_id) const {
+    return FixedPoint::Sum(Get(resource_id));
+  }
+
+  /// Get the mutable per-instance values of a particular resource.
+  /// NOTE: the resource MUST already exist in this TaskResourceInstances, otherwise a
+  /// check fail will occur.
+  /// TODO(chenh): We should hide this method, and encapsulate all mutation operations.
   std::vector<FixedPoint> &GetMutable(const ResourceID resource_id) {
     auto ptr = GetPointer(resource_id);
     RAY_CHECK(ptr != nullptr) << "Resource ID not found " << resource_id;
     return *ptr;
   }
 
+  /// Check whether a particular resource exists.
   bool Has(ResourceID resource_id) const {
     auto ptr = GetPointer(resource_id);
     return ptr != nullptr && ptr->size() > 0;
   }
 
+  /// Set the per-instance values for a particular resource.
   TaskResourceInstances &Set(const ResourceID resource_id,
                              const std::vector<FixedPoint> &instances) {
     auto ptr = GetPointer(resource_id);
@@ -350,7 +373,8 @@ class TaskResourceInstances {
     }
   }
 
-  void Clear(ResourceID resource_id) {
+  /// Remove a particular resource.
+  void Remove(ResourceID resource_id) {
     if (IsPredefinedResource(resource_id)) {
       auto &instances = GetMutable(resource_id);
       instances.clear();
@@ -359,6 +383,7 @@ class TaskResourceInstances {
     }
   }
 
+  /// Return a set of all resource ids.
   absl::flat_hash_set<ResourceID> ResourceIds() const {
     absl::flat_hash_set<ResourceID> res;
     for (size_t i = 0; i < predefined_resources_.size(); i++) {
@@ -374,13 +399,10 @@ class TaskResourceInstances {
     return res;
   }
 
-  FixedPoint Sum(const ResourceID resource_id) const {
-    return FixedPoint::Sum(Get(resource_id));
-  }
-
+  /// Return the number of resources.
   size_t Size() const { return ResourceIds().size(); }
 
-  /// Check whether there are no resource instances.
+  /// Check whether this TaskResourceInstances is empty.
   bool IsEmpty() const { return Size() == 0; }
 
   bool operator==(const TaskResourceInstances &other) const {
@@ -393,7 +415,7 @@ class TaskResourceInstances {
     return this->custom_resources_ == other.custom_resources_;
   }
 
-  /// For each resource of this request aggregate its instances.
+  /// Return a ResourceRequest with the aggregated per-instance values.
   ResourceRequest ToResourceRequest() const {
     ResourceRequest resource_request;
     for (auto resource_id : ResourceIds()) {
@@ -470,9 +492,9 @@ class TaskResourceInstances {
     return const_cast<TaskResourceInstances *>(this)->GetPointer(id);
   }
 
-  /// The list of instances of each predifined resource allocated to a task.
+  /// The predefined resources.
   std::vector<std::vector<FixedPoint>> predefined_resources_;
-  /// The list of instances of each custom resource allocated to a task.
+  /// The custom resources.
   absl::flat_hash_map<int64_t, std::vector<FixedPoint>> custom_resources_;
 };
 

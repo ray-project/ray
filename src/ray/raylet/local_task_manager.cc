@@ -916,7 +916,7 @@ void LocalTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> w
     if (worker->IsBlocked()) {
       // If the worker is blocked, its CPU instances have already been released. We clear
       // the CPU instances to avoid double freeing.
-      allocated_instances->Clear(ResourceID::CPU());
+      allocated_instances->Remove(ResourceID::CPU());
     }
     cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
         worker->GetAllocatedInstances());
@@ -929,7 +929,7 @@ void LocalTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> w
     if (worker->IsBlocked()) {
       // If the worker is blocked, its CPU instances have already been released. We clear
       // the CPU instances to avoid double freeing.
-      lifetime_allocated_instances->Clear(ResourceID::CPU());
+      lifetime_allocated_instances->Remove(ResourceID::CPU());
     }
     cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
         worker->GetLifetimeAllocatedInstances());
