@@ -88,6 +88,8 @@ enum class SchedulingIDTag { Node, Resource };
 template <SchedulingIDTag T>
 class BaseSchedulingID {
  public:
+  explicit BaseSchedulingID() = default;
+
   explicit BaseSchedulingID(const std::string &name) : id_{GetMap().Insert(name)} {}
 
   explicit BaseSchedulingID(int64_t id) : id_{id} {}

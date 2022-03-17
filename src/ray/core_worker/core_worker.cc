@@ -700,7 +700,7 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number
 }
 
 void CoreWorker::RegisterToGcs() {
-  std::unordered_map<std::string, std::string> worker_info;
+  absl::flat_hash_map<std::string, std::string> worker_info;
   const auto &worker_id = GetWorkerID();
   worker_info.emplace("node_ip_address", options_.node_ip_address);
   worker_info.emplace("plasma_store_socket", options_.store_socket);
@@ -3133,7 +3133,7 @@ void CoreWorker::HandleLocalGC(const rpc::LocalGCRequest &request,
                                rpc::LocalGCReply *reply,
                                rpc::SendReplyCallback send_reply_callback) {
   if (options_.gc_collect != nullptr) {
-    options_.gc_collect();
+    options_.gc_collect(request.triggered_by_global_gc());
     send_reply_callback(Status::OK(), nullptr, nullptr);
   } else {
     send_reply_callback(

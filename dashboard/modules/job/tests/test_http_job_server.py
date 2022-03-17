@@ -1,5 +1,7 @@
 import logging
 from pathlib import Path
+import os
+import shutil
 import sys
 import json
 import yaml
@@ -66,8 +68,9 @@ def test_list_jobs(job_sdk_client: JobSubmissionClient, use_sdk: bool):
 
     runtime_env = {"env_vars": {"TEST": "123"}}
     metadata = {"foo": "bar"}
+    entrypoint = "echo hello"
     job_id = client.submit_job(
-        entrypoint="echo hello", runtime_env=runtime_env, metadata=metadata
+        entrypoint=entrypoint, runtime_env=runtime_env, metadata=metadata
     )
 
     wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
@@ -84,6 +87,7 @@ def test_list_jobs(job_sdk_client: JobSubmissionClient, use_sdk: bool):
         info_json = jobs_info_json[job_id]
         info = JobInfo(**info_json)
 
+    assert info.entrypoint == entrypoint
     assert info.status == JobStatus.SUCCEEDED
     assert info.message is not None
     assert info.end_time >= info.start_time
@@ -115,13 +119,16 @@ def _check_job_stopped(client: JobSubmissionClient, job_id: str) -> bool:
         "no_working_dir",
         "local_working_dir",
         "s3_working_dir",
+        "local_py_modules",
+        "working_dir_and_local_py_modules_whl",
+        "local_working_dir_zip",
         "pip_txt",
         "conda_yaml",
         "local_py_modules",
     ],
 )
 def runtime_env_option(request):
-    driver_script = """
+    import_in_task_script = """
 import ray
 ray.init(address="auto")
 
@@ -137,7 +144,12 @@ ray.get(f.remote())
             "entrypoint": "echo hello",
             "expected_logs": "hello\n",
         }
-    elif request.param == "local_working_dir" or request.param == "local_py_modules":
+    elif request.param in {
+        "local_working_dir",
+        "local_working_dir_zip",
+        "local_py_modules",
+        "working_dir_and_local_py_modules_whl",
+    }:
         with tempfile.TemporaryDirectory() as tmp_dir:
             path = Path(tmp_dir)
 
@@ -164,6 +176,15 @@ ray.get(f.remote())
                     "entrypoint": "python test.py",
                     "expected_logs": "Hello from test_module!\n",
                 }
+            elif request.param == "local_working_dir_zip":
+                local_zipped_dir = shutil.make_archive(
+                    os.path.join(tmp_dir, "test"), "zip", tmp_dir
+                )
+                yield {
+                    "runtime_env": {"working_dir": local_zipped_dir},
+                    "entrypoint": "python test.py",
+                    "expected_logs": "Hello from test_module!\n",
+                }
             elif request.param == "local_py_modules":
                 yield {
                     "runtime_env": {"py_modules": [str(Path(tmp_dir) / "test_module")]},
@@ -172,6 +193,23 @@ ray.get(f.remote())
                         "print(test_module.run_test())'"
                     ),
                     "expected_logs": "Hello from test_module!\n",
+                }
+            elif request.param == "working_dir_and_local_py_modules_whl":
+                yield {
+                    "runtime_env": {
+                        "working_dir": "s3://runtime-env-test/script_runtime_env.zip",
+                        "py_modules": [
+                            Path(os.path.dirname(__file__))
+                            / "pip_install_test-0.5-py3-none-any.whl"
+                        ],
+                    },
+                    "entrypoint": (
+                        "python script.py && python -c 'import pip_install_test'"
+                    ),
+                    "expected_logs": (
+                        "Executing main() from script.py !!\n"
+                        "Good job!  You installed a pip module."
+                    ),
                 }
             else:
                 raise ValueError(f"Unexpected pytest fixture option {request.param}")
@@ -192,9 +230,10 @@ ray.get(f.remote())
             runtime_env = {"pip": {"packages": relative_filepath, "pip_check": False}}
             yield {
                 "runtime_env": runtime_env,
-                "entrypoint": f"python -c '{driver_script}'",
-                # TODO(architkulkarni): Uncomment after #22968 is fixed.
-                # "entrypoint": "python -c 'import pip_install_test'",
+                "entrypoint": (
+                    f"python -c 'import pip_install_test' && "
+                    f"python -c '{import_in_task_script}'"
+                ),
                 "expected_logs": "Good job!  You installed a pip module.",
             }
     elif request.param == "conda_yaml":
@@ -207,7 +246,7 @@ ray.get(f.remote())
 
             yield {
                 "runtime_env": runtime_env,
-                "entrypoint": f"python -c '{driver_script}'",
+                "entrypoint": f"python -c '{import_in_task_script}'",
                 # TODO(architkulkarni): Uncomment after #22968 is fixed.
                 # "entrypoint": "python -c 'import pip_install_test'",
                 "expected_logs": "Good job!  You installed a pip module.",

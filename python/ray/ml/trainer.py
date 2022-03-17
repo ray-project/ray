@@ -1,14 +1,18 @@
 import abc
+import inspect
 import logging
 from typing import Dict, Union, Callable, Optional, TYPE_CHECKING, Type
 
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.result import Result
-from ray.ml.config import RunConfig, ScalingConfig
+from ray.ml.config import RunConfig, ScalingConfig, ScalingConfigDataClass
+from ray.ml.constants import TRAIN_DATASET_KEY
 from ray.tune import Trainable
+from ray.tune.function_runner import wrap_function
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
+from ray.util.ml_utils.dict import merge_dicts
 
 if TYPE_CHECKING:
     from ray.data import Dataset
@@ -78,7 +82,8 @@ class Trainer(abc.ABC):
                         # preprocessed by self.preprocessor
                         dataset = self.datasets["train"]
 
-                        torch_ds = dataset.to_torch()
+                        torch_ds = dataset.to_torch(label_column="y")
+                        loss_fn = torch.nn.MSELoss()
 
                         for epoch_idx in range(10):
                             loss = 0
@@ -86,7 +91,7 @@ class Trainer(abc.ABC):
                             for X, y in iter(torch_ds):
                                 # Compute prediction error
                                 pred = self.model(X)
-                                batch_loss = torch.nn.MSELoss(pred, y)
+                                batch_loss = loss_fn(pred, y.float())
 
                                 # Backpropagation
                                 self.optimizer.zero_grad()
@@ -110,17 +115,14 @@ class Trainer(abc.ABC):
 
                 import ray
 
-                train_dataset = ray.data.from_items([1, 2, 3])
+                train_dataset = ray.data.from_items(
+                    [{"x": i, "y": i} for i in range(3)])
                 my_trainer = MyPytorchTrainer(datasets={"train": train_dataset})
                 result = my_trainer.fit()
 
     Args:
         scaling_config: Configuration for how to scale training.
         run_config: Configuration for the execution of the training run.
-        train_dataset: Either a distributed Ray :ref:`Dataset <dataset-api>`
-            or a Callable that returns a Dataset, to use for training. If a
-            ``preprocessor`` is also provided, it will be fit on this
-            dataset and this dataset will be transformed.
         datasets: Any Ray Datasets to use for training. Use the key "train"
             to denote which dataset is the training
             dataset. If a ``preprocessor`` is provided and has not already been fit,
@@ -139,7 +141,22 @@ class Trainer(abc.ABC):
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
 
-        raise NotImplementedError
+        self.scaling_config = scaling_config if scaling_config else {}
+        self.run_config = run_config if run_config else {}
+        self.datasets = datasets if datasets else {}
+        self.preprocessor = preprocessor
+        self.resume_from_checkpoint = resume_from_checkpoint
+
+    def __new__(cls, *args, **kwargs):
+        """Store the init args as attributes so this can be merged with Tune hparams."""
+        trainer = super(Trainer, cls).__new__(cls)
+        parameters = inspect.signature(cls.__init__).parameters
+        parameters = list(parameters.keys())
+        # Remove self.
+        parameters = parameters[1:]
+        arg_dict = dict(zip(parameters, args))
+        trainer._param_dict = {**arg_dict, **kwargs}
+        return trainer
 
     def setup(self) -> None:
         """Called during fit() to perform initial setup on the Trainer.
@@ -152,7 +169,7 @@ class Trainer(abc.ABC):
         This method is called prior to ``preprocess_datasets`` and
         ``training_loop``.
         """
-        raise NotImplementedError
+        pass
 
     def preprocess_datasets(self) -> None:
         """Called during fit() to preprocess dataset attributes with preprocessor.
@@ -171,7 +188,23 @@ class Trainer(abc.ABC):
         The transformed datasets will be set back in the ``self.datasets`` attribute
         of the Trainer to be used when overriding ``training_loop``.
         """
-        raise NotImplementedError
+        # Evaluate all datasets.
+        self.datasets = {k: d() if callable(d) else d for k, d in self.datasets.items()}
+
+        if self.preprocessor:
+            train_dataset = self.datasets.get(TRAIN_DATASET_KEY, None)
+            if train_dataset and not self.preprocessor.check_is_fitted():
+                self.preprocessor.fit(train_dataset)
+
+            # Execute dataset transformations serially for now.
+            # Cannot execute them in remote tasks due to dataset ownership model:
+            # if datasets are created on a remote node, then if that node fails,
+            # we cannot recover the dataset.
+            new_datasets = {}
+            for key, dataset in self.datasets.items():
+                new_datasets[key] = self.preprocessor.transform(dataset)
+
+            self.datasets = new_datasets
 
     @abc.abstractmethod
     def training_loop(self) -> None:
@@ -210,8 +243,74 @@ class Trainer(abc.ABC):
             TrainingFailedError: If any failures during the execution of
             ``self.as_trainable()``.
         """
-        raise NotImplementedError
+        trainable = self.as_trainable()
+
+        from ray import tune
+        from ray.tune import TuneError
+
+        # TODO(amog/xwjiang): Replace with Tuner and pass through run_config. Also add
+        #  test for run_config.
+        try:
+            analysis = tune.run(run_or_experiment=trainable)
+        except TuneError:
+            raise TrainingFailedError
+        else:
+            assert len(analysis.trials) == 1
+
+            trial = analysis.trials[0]
+
+            result = Result(
+                metrics=trial.last_result,
+                checkpoint=Checkpoint.from_directory(trial.checkpoint.value)
+                if trial.checkpoint.value
+                else None,
+            )
+
+            return result
 
     def as_trainable(self) -> Type[Trainable]:
         """Convert self to a ``tune.Trainable`` class."""
-        raise NotImplementedError
+
+        base_config = self._param_dict
+        trainer_cls = self.__class__
+        scaling_config = self.scaling_config
+
+        def train_func(config, checkpoint_dir=None):
+            # config already contains merged values.
+            # Instantiate new Trainer in Trainable.
+            trainer = trainer_cls(**config)
+
+            if checkpoint_dir:
+                trainer.resume_from_checkpoint = Checkpoint.from_directory(
+                    checkpoint_dir
+                )
+
+            trainer.setup()
+            trainer.preprocess_datasets()
+            trainer.training_loop()
+
+        trainable_cls = wrap_function(train_func)
+
+        class TrainTrainable(trainable_cls):
+            """Add default resources to the Trainable."""
+
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+
+                # Create a new config by merging the dicts.
+                self._merged_config = merge_dicts(base_config, self.config)
+
+            def _trainable_func(self, config, reporter, checkpoint_dir):
+                # We ignore the config passed by Tune and instead use the merged
+                # config which includes the initial Trainer args.
+                super()._trainable_func(self._merged_config, reporter, checkpoint_dir)
+
+            @classmethod
+            def default_resource_request(cls, config):
+                updated_scaling_config = config.get("scaling_config", scaling_config)
+                scaling_config_dataclass = ScalingConfigDataClass(
+                    **updated_scaling_config
+                )
+                return scaling_config_dataclass.as_placement_group_factory()
+
+        return TrainTrainable

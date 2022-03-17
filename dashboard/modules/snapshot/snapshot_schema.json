@@ -80,6 +80,9 @@
                     "status": {
                       "type": ["string", "null"]
                     },
+                    "entrypoint": {
+                      "type": ["string", "null"]
+                    },
                     "message": {
                       "type": ["string", "null"]
                     },
@@ -100,7 +103,8 @@
                     }
                   },
                   "required": [
-                    "status"
+                    "status",
+                    "entrypoint"
                   ]
                 }
               }

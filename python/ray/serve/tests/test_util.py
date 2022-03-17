@@ -42,12 +42,18 @@ class DecoratedActor:
 class TestGetDeploymentImportPath:
     def test_get_import_path_basic(self):
         d = decorated_f.options()
-        assert get_deployment_import_path(d) == "ray.serve.tests.test_util.decorated_f"
+
+        # CI may change the parent path, so check only that the suffix matches.
+        assert get_deployment_import_path(d).endswith(
+            "ray.serve.tests.test_util.decorated_f"
+        )
 
     def test_get_import_path_nested_actor(self):
         d = serve.deployment(name="actor")(DecoratedActor)
-        assert (
-            get_deployment_import_path(d) == "ray.serve.tests.test_util.DecoratedActor"
+
+        # CI may change the parent path, so check only that the suffix matches.
+        assert get_deployment_import_path(d).endswith(
+            "ray.serve.tests.test_util.DecoratedActor"
         )
 
     @pytest.mark.skipif(

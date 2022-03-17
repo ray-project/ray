@@ -8,7 +8,7 @@ from ray.core.generated.runtime_env_common_pb2 import (
 )
 
 deprecated = private_utils.deprecated(
-    "If you need to use this function, open a feature request issue on " "GitHub.",
+    "If you need to use this function, open a feature request issue on GitHub.",
     removal_release="1.4",
     warn_once=True,
 )
