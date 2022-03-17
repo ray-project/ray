@@ -445,7 +445,7 @@ def _get_external_path(path: Optional[str]) -> Optional[str]:
 
 def _temporary_checkpoint_dir() -> str:
     """Create temporary checkpoint dir."""
-    return tempfile.mkdtemp(prefix="checkpoint_tmp_", dir=os.getcwd())
+    return tempfile.mkdtemp(prefix="checkpoint_tmp_")  # , dir=os.getcwd())
 
 
 def _pack(path: str) -> bytes:

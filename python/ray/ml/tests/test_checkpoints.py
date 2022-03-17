@@ -162,12 +162,6 @@ class CheckpointsConversionTest(unittest.TestCase):
 
         self.assertDictEqual(local_data, self.checkpoint_dir_data)
 
-        # Checkpoint should lie within current directory
-        self.assertTrue(
-            local_dir.startswith(self.tmpdir),
-            msg=f"Checkpoint dir {local_dir} is not contained in {self.tmpdir}",
-        )
-
     def test_fs_checkpoint_bytes(self):
         """Test conversion from fs to bytes checkpoint and back."""
         checkpoint = self._prepare_fs_checkpoint()
@@ -248,10 +242,6 @@ class CheckpointsSerdeTest(unittest.TestCase):
         if not ray.is_initialized():
             ray.init()
 
-    def tearDown(self) -> None:
-        if ray.is_initialized():
-            ray.shutdown()
-
     def _testCheckpointSerde(
         self, checkpoint: Checkpoint, expected_type: str, expected_data: Any
     ):
@@ -281,7 +271,7 @@ class CheckpointsSerdeTest(unittest.TestCase):
 
         self._testCheckpointSerde(checkpoint, *checkpoint.get_internal_representation())
 
-    def testLocalCheckpointServe(self):
+    def testLocalCheckpointSerde(self):
         # Local checkpoints are converted to bytes on serialization. Currently
         # this is a pickled dict, so we compare with a dict checkpoint.
         source_checkpoint = Checkpoint.from_dict({"checkpoint_data": 5})
