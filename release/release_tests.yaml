@@ -925,6 +925,10 @@
     script: python workloads/run_cloud_test.py no_sync_down --cpus-per-trial 8
     type: client
 
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
+
   alert: tune_tests
 
 - name: tune_cloud_gcp_k8s_ssh_sync
@@ -950,6 +954,10 @@
     script: python workloads/run_cloud_test.py ssh_sync --cpus-per-trial 8
     type: client
 
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
+
   alert: tune_tests
 
 - name: tune_cloud_gcp_k8s_durable_upload
@@ -974,6 +982,10 @@
     timeout: 600
     script: python workloads/run_cloud_test.py durable_upload --cpus-per-trial 8 --bucket gs://tune-cloud-tests/durable_upload
     type: client
+
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
 
   alert: tune_tests
 
