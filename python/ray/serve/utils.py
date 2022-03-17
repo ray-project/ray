@@ -253,7 +253,9 @@ def msgpack_serialize(obj):
     return serialized
 
 
-def get_deployment_import_path(deployment, replace_main=False):
+def get_deployment_import_path(
+    deployment, replace_main=False, enforce_importable=False
+):
     """
     Gets the import path for deployment's func_or_class.
 
@@ -273,7 +275,7 @@ def get_deployment_import_path(deployment, replace_main=False):
 
     import_path = f"{body.__module__}.{body.__qualname__}"
 
-    if "<locals>" in body.__qualname__:
+    if enforce_importable and "<locals>" in body.__qualname__:
         raise RuntimeError(
             "Deployment definitions must be importable to build the Serve app, "
             f"but deployment '{deployment.name}' is inline defined or returned "

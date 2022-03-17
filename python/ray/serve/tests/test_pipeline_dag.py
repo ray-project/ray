@@ -143,7 +143,6 @@ def test_single_func_deployment_dag(serve_instance, use_build):
     assert ray.get(handle.remote([1, 2])) == 4
 
 
-@pytest.mark.parametrize("use_build", [False, True])
 def test_chained_function(serve_instance, use_build):
     @serve.deployment
     def func_1(input):
@@ -160,7 +159,7 @@ def test_chained_function(serve_instance, use_build):
     with pytest.raises(ValueError, match="Please provide a driver class"):
         _ = serve.run(serve_dag)
 
-    handle = serve.run(maybe_build(Driver.bind(serve_dag, use_build)))
+    handle = serve.run(Driver.bind(serve_dag))
     assert ray.get(handle.remote(2)) == 6  # 2 + 2*2
 
 

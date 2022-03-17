@@ -1908,7 +1908,9 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
 
     return DeploymentSchema(
         name=d.name,
-        import_path=get_deployment_import_path(d),
+        import_path=get_deployment_import_path(
+            d, enforce_importable=True, replace_main=True
+        ),
         init_args=convert_to_json_safe_obj(d.init_args, err_key="init_args"),
         init_kwargs=convert_to_json_safe_obj(d.init_kwargs, err_key="init_kwargs"),
         num_replicas=d.num_replicas,
