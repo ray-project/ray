@@ -220,6 +220,7 @@ class KVClient:
 
     def _resolve_path(self, path: str) -> str:
         joined = self.root.joinpath(path).resolve()
+        # Raises an error if the path is above the root (e.g., "../data" attack).
         joined.resolve().relative_to(self.root)
         return str(joined)
 

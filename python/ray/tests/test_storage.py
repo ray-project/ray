@@ -120,7 +120,7 @@ def test_get_info_basic(shutdown_only, tmp_path):
     assert client.get_info("foo/bar1").base_name == "bar1"
     assert client.get_info("foo/bar2") is None
     assert client.get_info("foo").base_name == "foo"
-    assert client.get_info("").base_name == ""
+    assert client.get_info("").base_name == "ns"
 
 
 if __name__ == "__main__":
