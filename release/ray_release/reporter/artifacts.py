@@ -28,7 +28,7 @@ class ArtifactsReporter(Reporter):
 
         result_file = os.path.join(self.artifacts_dir, ARTIFACT_RESULT_FILE)
         with open(result_file, "wt") as fp:
-            json.dump(result, fp, sort_keys=True, indent=4)
+            json.dump(result.__dict__, fp, sort_keys=True, indent=4)
 
         logger.info(
             f"Wrote test config and result to artifacts directory: {self.artifacts_dir}"
