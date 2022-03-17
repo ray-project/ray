@@ -344,6 +344,7 @@ def test_travel(tmp_path):
         ("s3://bucket/file.zip", Protocol.S3, "s3_bucket_file.zip"),
         ("https://test.com/file.zip", Protocol.HTTPS, "https_test_com_file.zip"),
         ("gs://bucket/file.zip", Protocol.GS, "gs_bucket_file.zip"),
+        ("hdfs://namenode/file.zip", Protocol.HDFS, "hdfs_namenode_file.zip"),
     ],
 )
 def test_parsing(parsing_tuple):
@@ -363,6 +364,7 @@ def test_is_whl_uri():
 def test_is_zip_uri():
     assert is_zip_uri("s3://my-package.zip")
     assert is_zip_uri("gcs://asdf.zip")
+    assert is_zip_uri("hdfs://asdf.zip")
     assert not is_zip_uri("invalid_format")
     assert not is_zip_uri("gcs://a.whl")
 
