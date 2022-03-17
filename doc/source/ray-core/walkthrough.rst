@@ -31,7 +31,7 @@ Installation
 
 .. tabbed:: C++
 
-    The C++ Ray API is currently experimental with limited support. You can track its development `here <https://github.com/ray-project/ray/milestone/17>`__ and report issues on GitHub.
+    The C++ Ray API is currently experimental with limited support and it's not supported on Windows. You can track its development `here <https://github.com/ray-project/ray/milestone/17>`__ and report issues on GitHub.
     Run the following commands to get started:
 
     Install ray with C++ API support and generate a bazel project with the ray command.
