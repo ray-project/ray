@@ -568,6 +568,7 @@ def test_experimental_package_lazy(shutdown_only):
     assert ray.get(pkg.my_func.remote()) == "hello world"
 
 
+@pytest.mark.skipif(_WIN32, reason="requires tar cli command")
 def test_experimental_package_github(shutdown_only):
     ray.init(num_cpus=2)
     pkg = ray.experimental.load_package(
