@@ -21,21 +21,20 @@ namespace ray {
 namespace gcs {
 
 GcsResourceManager::GcsResourceManager(
-    instrumented_io_context &main_io_service,
-    std::shared_ptr<GcsPublisher> gcs_publisher,
-    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
-    : periodical_runner_(main_io_service),
-      gcs_publisher_(gcs_publisher),
-      gcs_table_storage_(gcs_table_storage) {}
+    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+    ClusterResourceManager &cluster_resource_manager)
+    : gcs_table_storage_(gcs_table_storage),
+      cluster_resource_manager_(cluster_resource_manager) {}
 
 void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &request,
                                             rpc::GetResourcesReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
-  NodeID node_id = NodeID::FromBinary(request.node_id());
-  auto iter = cluster_scheduling_resources_.find(node_id);
-  if (iter != cluster_scheduling_resources_.end()) {
+  scheduling::NodeID node_id(request.node_id());
+  const auto &resource_view = cluster_resource_manager_.GetResourceView();
+  auto iter = resource_view.find(node_id);
+  if (iter != resource_view.end()) {
     rpc::ResourceTableData resource_table_data;
-    const auto &node_resources = iter->second->GetLocalView();
+    const auto &node_resources = iter->second.GetLocalView();
     for (size_t i = 0; i < node_resources.predefined_resources.size(); ++i) {
       const auto &resource_value = node_resources.predefined_resources[i].total;
       if (resource_value <= 0) {
@@ -60,19 +59,21 @@ void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &requ
 void GcsResourceManager::UpdateResources(
     const NodeID &node_id, absl::flat_hash_map<std::string, double> changed_resources) {
   RAY_LOG(DEBUG) << "Updating resources, node id = " << node_id;
-  auto iter = cluster_scheduling_resources_.find(node_id);
-  if (iter != cluster_scheduling_resources_.end()) {
-    // Update `cluster_scheduling_resources_`.
 
-    auto node_resources = iter->second->GetMutableLocalView();
+  scheduling::NodeID scheduling_node_id(node_id.Binary());
+  if (cluster_resource_manager_.ContainsNode(scheduling_node_id)) {
+    // Update `cluster_resource_manager_`.
     for (const auto &[name, capacity] : changed_resources) {
-      UpdateResourceCapacity(node_resources, name, capacity);
+      cluster_resource_manager_.UpdateResourceCapacity(
+          scheduling_node_id, scheduling::ResourceID(name), capacity);
     }
 
+    const auto &node_resources =
+        cluster_resource_manager_.GetNodeResources(scheduling_node_id);
     // Update gcs storage.
     rpc::ResourceMap resource_map;
-    for (size_t i = 0; i < node_resources->predefined_resources.size(); ++i) {
-      const auto &resource_value = node_resources->predefined_resources[i].total;
+    for (size_t i = 0; i < node_resources.predefined_resources.size(); ++i) {
+      const auto &resource_value = node_resources.predefined_resources[i].total;
       if (resource_value <= 0) {
         continue;
       }
@@ -81,7 +82,7 @@ void GcsResourceManager::UpdateResources(
       (*resource_map.mutable_items())[resource_name].set_resource_capacity(
           resource_value.Double());
     }
-    for (const auto &[id, capacity] : node_resources->custom_resources) {
+    for (const auto &[id, capacity] : node_resources.custom_resources) {
       const auto &resource_name = scheduling::ResourceID(id).Binary();
       const auto &resource_value = capacity.total;
       (*resource_map.mutable_items())[resource_name].set_resource_capacity(
@@ -108,22 +109,26 @@ void GcsResourceManager::UpdateResources(
 void GcsResourceManager::DeleteResources(const NodeID &node_id,
                                          std::vector<std::string> resource_names) {
   RAY_LOG(DEBUG) << "Deleting node resources, node id = " << node_id;
-  auto iter = cluster_scheduling_resources_.find(node_id);
-  if (iter != cluster_scheduling_resources_.end()) {
-    auto node_resources = iter->second->GetMutableLocalView();
-    // Update `cluster_scheduling_resources_`.
-    DeleteResources(node_resources, resource_names);
+  scheduling::NodeID scheduling_node_id(node_id.Binary());
+  if (cluster_resource_manager_.ContainsNode(scheduling_node_id)) {
+    // Update `cluster_resource_manager_`.
+    for (const auto &resource_name : resource_names) {
+      cluster_resource_manager_.DeleteResource(scheduling_node_id,
+                                               scheduling::ResourceID(resource_name));
+    }
 
+    const auto &node_resources =
+        cluster_resource_manager_.GetNodeResources(scheduling_node_id);
     // Update gcs storage.
     rpc::ResourceMap resource_map;
-    for (size_t i = 0; i < node_resources->predefined_resources.size(); ++i) {
+    for (size_t i = 0; i < node_resources.predefined_resources.size(); ++i) {
       const auto &resource_name = scheduling::ResourceID(i).Binary();
       if (std::find(resource_names.begin(), resource_names.end(), resource_name) !=
           resource_names.end()) {
         continue;
       }
 
-      const auto &resource_value = node_resources->predefined_resources[i].total;
+      const auto &resource_value = node_resources.predefined_resources[i].total;
       if (resource_value <= 0) {
         continue;
       }
@@ -131,7 +136,7 @@ void GcsResourceManager::DeleteResources(const NodeID &node_id,
       (*resource_map.mutable_items())[resource_name].set_resource_capacity(
           resource_value.Double());
     }
-    for (const auto &entry : node_resources->custom_resources) {
+    for (const auto &entry : node_resources.custom_resources) {
       const auto &resource_name = scheduling::ResourceID(entry.first).Binary();
       if (std::find(resource_names.begin(), resource_names.end(), resource_name) !=
           resource_names.end()) {
@@ -159,9 +164,9 @@ void GcsResourceManager::HandleGetAllAvailableResources(
     const rpc::GetAllAvailableResourcesRequest &request,
     rpc::GetAllAvailableResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  for (const auto &node_resources_entry : cluster_scheduling_resources_) {
+  for (const auto &node_resources_entry : cluster_resource_manager_.GetResourceView()) {
     const auto &node_id = node_resources_entry.first;
-    const auto &node_resources = node_resources_entry.second->GetLocalView();
+    const auto &node_resources = node_resources_entry.second.GetLocalView();
     rpc::AvailableResources resource;
     resource.set_node_id(node_id.Binary());
 
@@ -196,8 +201,11 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     UpdateNodeNormalTaskResources(node_id, data);
   } else {
-    if (node_resource_usages_.count(node_id) == 0 || data.resources_available_changed()) {
-      SetAvailableResources(node_id, MapFromProtobuf(data.resources_available()));
+    if (!cluster_resource_manager_.UpdateNodeAvailableResourcesIfExist(
+            scheduling::NodeID(node_id.Binary()), data)) {
+      RAY_LOG(INFO)
+          << "[UpdateFromResourceReport]: received resource usage from unknown node id "
+          << node_id;
     }
   }
 
@@ -289,141 +297,39 @@ void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
 }
 
 void GcsResourceManager::Initialize(const GcsInitData &gcs_init_data) {
-  const auto &nodes = gcs_init_data.Nodes();
-  for (const auto &entry : nodes) {
+  for (const auto &entry : gcs_init_data.Nodes()) {
     if (entry.second.state() == rpc::GcsNodeInfo::ALIVE) {
       OnNodeAdd(entry.second);
     }
   }
 
-  const auto &cluster_resources = gcs_init_data.ClusterResources();
-  for (const auto &entry : cluster_resources) {
-    const auto &iter = cluster_scheduling_resources_.find(entry.first);
-    if (iter != cluster_scheduling_resources_.end()) {
-      auto node_resources = iter->second->GetMutableLocalView();
-      for (const auto &resource : entry.second.items()) {
-        UpdateResourceCapacity(
-            node_resources, resource.first, resource.second.resource_capacity());
-      }
-    }
-  }
-}
-
-const absl::flat_hash_map<NodeID, std::shared_ptr<Node>>
-    &GcsResourceManager::GetClusterResources() const {
-  return cluster_scheduling_resources_;
-}
-
-void GcsResourceManager::SetAvailableResources(
-    const NodeID &node_id, const absl::flat_hash_map<std::string, double> &resource_map) {
-  auto iter = cluster_scheduling_resources_.find(node_id);
-  if (iter != cluster_scheduling_resources_.end()) {
-    auto resources = ResourceMapToResourceRequest(resource_map,
-                                                  /*requires_object_store_memory=*/false);
-    auto node_resources = iter->second->GetMutableLocalView();
-    for (size_t i = 0; i < node_resources->predefined_resources.size(); ++i) {
-      node_resources->predefined_resources[i].available =
-          resources.predefined_resources[i];
-    }
-    for (auto &entry : node_resources->custom_resources) {
-      auto it = resources.custom_resources.find(entry.first);
-      if (it != resources.custom_resources.end()) {
-        entry.second.available = it->second;
-      } else {
-        entry.second.available = 0.;
-      }
-    }
-  } else {
-    RAY_LOG(WARNING)
-        << "Skip the setting of available resources of node " << node_id
-        << " as it does not exist, maybe it is not registered yet or is already dead.";
-  }
-}
-
-void GcsResourceManager::DeleteResources(NodeResources *node_resources,
-                                         const std::vector<std::string> &resource_names) {
-  for (const auto &resource_name : resource_names) {
-    auto resource_id = scheduling::ResourceID(resource_name).ToInt();
-    if (resource_id == -1) {
-      continue;
-    }
-
-    if (resource_id >= 0 && resource_id < PredefinedResources_MAX) {
-      node_resources->predefined_resources[resource_id].total = 0;
-      node_resources->predefined_resources[resource_id].available = 0;
-    } else {
-      node_resources->custom_resources.erase(resource_id);
+  for (const auto &entry : gcs_init_data.ClusterResources()) {
+    scheduling::NodeID node_id(entry.first.Binary());
+    for (const auto &resource : entry.second.items()) {
+      cluster_resource_manager_.UpdateResourceCapacity(
+          node_id,
+          scheduling::ResourceID(resource.first),
+          resource.second.resource_capacity());
     }
   }
 }
 
 void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
-  auto node_id = NodeID::FromBinary(node.node_id());
-  if (!cluster_scheduling_resources_.contains(node_id)) {
-    absl::flat_hash_map<std::string, double> resource_mapping(
-        node.resources_total().begin(), node.resources_total().end());
-    // Update the cluster scheduling resources as new node is added.
-    cluster_scheduling_resources_.emplace(
-        node_id,
-        std::make_shared<Node>(
-            ResourceMapToNodeResources(resource_mapping, resource_mapping)));
+  if (!node.resources_total().empty()) {
+    scheduling::NodeID node_id(node.node_id());
+    for (const auto &entry : node.resources_total()) {
+      cluster_resource_manager_.UpdateResourceCapacity(
+          node_id, scheduling::ResourceID(entry.first), entry.second);
+    }
+  } else {
+    RAY_LOG(WARNING) << "The registered node " << NodeID::FromBinary(node.node_id())
+                     << " doesn't set the total resources.";
   }
 }
 
 void GcsResourceManager::OnNodeDead(const NodeID &node_id) {
   node_resource_usages_.erase(node_id);
-  cluster_scheduling_resources_.erase(node_id);
-  latest_resources_normal_task_timestamp_.erase(node_id);
-}
-
-bool GcsResourceManager::AcquireResources(const NodeID &node_id,
-                                          const ResourceRequest &required_resources) {
-  auto iter = cluster_scheduling_resources_.find(node_id);
-  if (iter != cluster_scheduling_resources_.end()) {
-    auto node_resources = iter->second->GetMutableLocalView();
-    if (!node_resources->IsAvailable(required_resources)) {
-      return false;
-    }
-
-    for (size_t i = 0; i < required_resources.predefined_resources.size(); ++i) {
-      node_resources->predefined_resources[i].available -=
-          required_resources.predefined_resources[i];
-    }
-    for (auto &entry : required_resources.custom_resources) {
-      node_resources->custom_resources[entry.first].available -= entry.second;
-    }
-  }
-  // If node dead, we will not find the node. This is a normal scenario, so it returns
-  // true.
-  return true;
-}
-
-bool GcsResourceManager::ReleaseResources(const NodeID &node_id,
-                                          const ResourceRequest &acquired_resources) {
-  auto iter = cluster_scheduling_resources_.find(node_id);
-  if (iter != cluster_scheduling_resources_.end()) {
-    auto node_resources = iter->second->GetMutableLocalView();
-    RAY_CHECK(acquired_resources.predefined_resources.size() <=
-              node_resources->predefined_resources.size());
-
-    for (size_t i = 0; i < acquired_resources.predefined_resources.size(); ++i) {
-      node_resources->predefined_resources[i].available +=
-          acquired_resources.predefined_resources[i];
-      node_resources->predefined_resources[i].available =
-          std::min(node_resources->predefined_resources[i].available,
-                   node_resources->predefined_resources[i].total);
-    }
-    for (auto &entry : acquired_resources.custom_resources) {
-      auto it = node_resources->custom_resources.find(entry.first);
-      if (it != node_resources->custom_resources.end()) {
-        it->second.available += entry.second;
-        it->second.available = std::min(it->second.available, it->second.total);
-      }
-    }
-  }
-  // If node dead, we will not find the node. This is a normal scenario, so it returns
-  // true.
-  return true;
+  cluster_resource_manager_.RemoveNode(scheduling::NodeID(node_id.Binary()));
 }
 
 void GcsResourceManager::UpdatePlacementGroupLoad(
@@ -456,28 +362,8 @@ void GcsResourceManager::AddResourcesChangedListener(std::function<void()> liste
 
 void GcsResourceManager::UpdateNodeNormalTaskResources(
     const NodeID &node_id, const rpc::ResourcesData &heartbeat) {
-  auto iter = cluster_scheduling_resources_.find(node_id);
-  if (iter == cluster_scheduling_resources_.end()) {
-    return;
-  }
-
-  auto normal_task_resources =
-      ResourceMapToResourceRequest(MapFromProtobuf(heartbeat.resources_normal_task()),
-                                   /*requires_object_store_memory=*/false);
-  auto &local_normal_task_resources =
-      iter->second->GetMutableLocalView()->normal_task_resources;
-  if (heartbeat.resources_normal_task_changed() &&
-      heartbeat.resources_normal_task_timestamp() >
-          latest_resources_normal_task_timestamp_[node_id] &&
-      local_normal_task_resources != normal_task_resources) {
-    local_normal_task_resources.predefined_resources.resize(PredefinedResources_MAX);
-    for (size_t i = 0; i < PredefinedResources_MAX; ++i) {
-      local_normal_task_resources.predefined_resources[i] =
-          normal_task_resources.predefined_resources[i];
-    }
-    local_normal_task_resources.custom_resources = normal_task_resources.custom_resources;
-    latest_resources_normal_task_timestamp_[node_id] =
-        heartbeat.resources_normal_task_timestamp();
+  if (cluster_resource_manager_.UpdateNodeNormalTaskResources(
+          scheduling::NodeID(node_id.Binary()), heartbeat)) {
     for (const auto &listener : resources_changed_listeners_) {
       listener();
     }
@@ -490,52 +376,12 @@ std::string GcsResourceManager::ToString() const {
   std::string indent_0(indent + 0 * 2, ' ');
   std::string indent_1(indent + 1 * 2, ' ');
   ostr << "{\n";
-  for (const auto &entry : cluster_scheduling_resources_) {
-    ostr << indent_1 << entry.first << " : " << entry.second->GetLocalView().DebugString()
+  for (const auto &entry : cluster_resource_manager_.GetResourceView()) {
+    ostr << indent_1 << entry.first << " : " << entry.second.GetLocalView().DebugString()
          << ",\n";
   }
   ostr << indent_0 << "}\n";
   return ostr.str();
-}
-
-void GcsResourceManager::UpdateResourceCapacity(NodeResources *node_resources,
-                                                const std::string &resource_name,
-                                                double capacity) {
-  auto idx = scheduling::ResourceID(resource_name).ToInt();
-  if (idx == -1) {
-    return;
-  }
-
-  FixedPoint resource_total_fp(capacity);
-  if (idx >= 0 && idx < PredefinedResources_MAX) {
-    auto diff_capacity =
-        resource_total_fp - node_resources->predefined_resources[idx].total;
-    node_resources->predefined_resources[idx].total += diff_capacity;
-    node_resources->predefined_resources[idx].available += diff_capacity;
-    if (node_resources->predefined_resources[idx].available < 0) {
-      node_resources->predefined_resources[idx].available = 0;
-    }
-    if (node_resources->predefined_resources[idx].total < 0) {
-      node_resources->predefined_resources[idx].total = 0;
-    }
-  } else {
-    auto itr = node_resources->custom_resources.find(idx);
-    if (itr != node_resources->custom_resources.end()) {
-      auto diff_capacity = resource_total_fp - itr->second.total;
-      itr->second.total += diff_capacity;
-      itr->second.available += diff_capacity;
-      if (itr->second.available < 0) {
-        itr->second.available = 0;
-      }
-      if (itr->second.total < 0) {
-        itr->second.total = 0;
-      }
-    } else {
-      ResourceCapacity resource_capacity;
-      resource_capacity.total = resource_capacity.available = resource_total_fp;
-      node_resources->custom_resources.emplace(idx, resource_capacity);
-    }
-  }
 }
 
 }  // namespace gcs
