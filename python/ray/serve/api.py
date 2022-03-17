@@ -1797,8 +1797,6 @@ def run(
             f'"{type(target)}" instead.'
         )
 
-    print(deployments)
-
     parameter_group = []
 
     for deployment in deployments:
