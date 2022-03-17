@@ -116,7 +116,6 @@ class NoargDriver:
         self.dag = dag
 
     async def __call__(self):
-        print("<<<<< NoargDriver called !")
         return await self.dag.remote()
 
 
@@ -134,6 +133,26 @@ def test_single_func_deployment_dag(serve_instance):
         serve_dag = Driver.bind(dag)
     handle = serve.run(serve_dag)
     assert ray.get(handle.remote([1, 2])) == 4
+
+
+def test_chained_function(serve_instance):
+    @serve.deployment
+    def func_1(input):
+        return input
+
+    @serve.deployment
+    def func_2(input):
+        return input * 2
+
+    with InputNode() as dag_input:
+        output_1 = func_1.bind(dag_input)
+        output_2 = func_2.bind(dag_input)
+        serve_dag = combine.bind(output_1, output_2)
+    with pytest.raises(ValueError, match="Please provide a driver class"):
+        _ = serve.run(serve_dag)
+
+    handle = serve.run(Driver.bind(serve_dag))
+    assert ray.get(handle.remote(2)) == 6  # 2 + 2*2
 
 
 def test_simple_class_with_class_method(serve_instance):
@@ -337,11 +356,9 @@ def func():
 
 
 def test_functional_node(serve_instance):
-    # TODO (jiaodong): Check on this part
-    with pytest.raises(ValueError, match="doesn't take any init arguments"):
-        func.bind("something")
-
-    handle = serve.run(func.bind())
+    # TODO: Currently in serve, handle.remote("anything") would return 1 even
+    # though the signature doens't match at all.
+    handle = serve.run(NoargDriver.bind(func.bind()))
     assert ray.get(handle.remote()) == 1
 
 

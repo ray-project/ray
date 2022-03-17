@@ -56,7 +56,6 @@ class DeploymentNode(DAGNode):
                     node._deployment, node._bound_other_args_to_resolve
                 )
             elif isinstance(node, (DeploymentMethodNode, DeploymentFunctionNode)):
-                print(f">>>>> node: {node}")
                 from ray.serve.pipeline.json_serde import DAGNodeEncoder
 
                 serve_dag_root_json = json.dumps(node, cls=DAGNodeEncoder)

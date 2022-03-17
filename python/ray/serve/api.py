@@ -974,6 +974,7 @@ class RayServeDAGHandle:
             self.dag_node = json.loads(
                 self.dag_node_json, object_hook=dagnode_from_json
             )
+        print(f"Executing RayServeDAGHandle with args: {args}, kwargs: {kwargs}")
         return self.dag_node.execute(*args, **kwargs)
 
 
@@ -1759,8 +1760,15 @@ def run(
 
     client = start(detached=True, http_options={"host": host, "port": port})
 
-    if isinstance(target, DeploymentNode):
+    # Take either class or function deployment as entry, matches current
+    # deployment behavior.
+    if isinstance(target, (DeploymentNode)):
         deployments = pipeline_build(target)
+    elif isinstance(target, DAGNode):
+        raise ValueError(
+            "Please provide a driver class and bind it as entrypoint to your "
+            "Serve DAG."
+        )
     else:
         raise NotImplementedError()
 
