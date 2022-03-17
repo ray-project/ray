@@ -1,7 +1,6 @@
 import yaml
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
 import signal
@@ -43,25 +42,6 @@ def test_start_shutdown_in_namespace(ray_start_stop):
 
     subprocess.check_output(["serve", "start", "-n", "test"])
     subprocess.check_output(["serve", "shutdown", "-n", "test"])
-
-
-class A:
-    def __init__(self, value, increment=1):
-        self.value = value
-        self.increment = increment
-        self.decrement = 0
-        self.multiplier = int(os.environ["SERVE_TEST_MULTIPLIER"])
-
-        p = Path("hello")
-        assert p.exists()
-        with open(p) as f:
-            assert f.read() == "world"
-
-    def reconfigure(self, config):
-        self.decrement = config["decrement"]
-
-    def __call__(self, inp):
-        return (self.value + self.increment - self.decrement) * self.multiplier
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -333,6 +313,62 @@ def test_run_deployment_node(ray_start_stop):
     p.send_signal(signal.SIGINT)
     p.wait()
     assert ping_endpoint("Macaw") == "connection error"
+
+
+@serve.deployment
+class MetalDetector:
+    def __call__(self, *args):
+        return os.environ.get("buried_item", "no dice")
+
+
+metal_detector_node = MetalDetector.bind()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run_runtime_env(ray_start_stop):
+    # Test serve run with runtime_env passed in
+
+    # With import path
+    p = subprocess.Popen(
+        [
+            "serve",
+            "run",
+            "--address=auto",
+            "ray.serve.tests.test_cli.metal_detector_node",
+            "--runtime-env-json",
+            ('{"env_vars": {"buried_item": "lucky coin"} }'),
+        ]
+    )
+    wait_for_condition(
+        lambda: ping_endpoint("MetalDetector") == "lucky coin", timeout=10
+    )
+    p.send_signal(signal.SIGINT)
+    p.wait()
+
+    # With config
+    p = subprocess.Popen(
+        [
+            "serve",
+            "run",
+            "--address=auto",
+            os.path.join(
+                os.path.dirname(__file__),
+                "test_config_files",
+                "missing_runtime_env.yaml",
+            ),
+            "--runtime-env-json",
+            (
+                '{"py_modules": ["https://github.com/shrekris-anyscale/'
+                'test_deploy_group/archive/HEAD.zip"],'
+                '"working_dir": "http://nonexistentlink-q490123950ni34t"}'
+            ),
+            "--working-dir",
+            "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip",
+        ]
+    )
+    wait_for_condition(lambda: ping_endpoint("one") == "2", timeout=10)
+    p.send_signal(signal.SIGINT)
+    p.wait()
 
 
 if __name__ == "__main__":

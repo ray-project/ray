@@ -185,6 +185,7 @@ def deploy(config_file_name: str, address: str):
     short_help="Run a Serve app.",
     help=(
         "Runs the Serve app from the specified import path or YAML config.\n"
+        "Any import path must lead to an Application or DeploymentNode object. "
         "By default, this will block and periodically log status. If you "
         "Ctrl-C the command, it will tear down the app."
     ),
@@ -285,7 +286,7 @@ def run(
             app_or_node = Application.from_yaml(config_file)
     else:
         import_path = config_or_import_path
-        cli_logger.print(f"Loading app from import path: '{import_path}'.")
+        cli_logger.print(f"Loading app or node from import path: '{import_path}'.")
         app_or_node = import_attr(import_path)
 
     # Setting the runtime_env here will set defaults for the deployments.
