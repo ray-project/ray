@@ -13,6 +13,7 @@ from jsonschema import validate
 
 import ray._private.usage.usage_lib as ray_usage_lib
 import ray._private.usage.usage_constants as usage_constants
+from ray._private.usage.usage_lib import ClusterConfigToReport
 
 from ray._private.test_utils import wait_for_condition
 
@@ -239,21 +240,28 @@ def test_usage_lib_cluster_metadata_generation_usage_disabled(shutdown_only):
     assert len(meta) == 2
 
 
-def test_usage_lib_get_cluster_status(shutdown_only):
-    ray.init(num_cpus=3, num_gpus=1)
+def test_usage_lib_get_cluster_status_to_report(shutdown_only):
+    ray.init(num_cpus=3, num_gpus=1, object_store_memory=2 ** 30)
     # Wait for monitor.py to update cluster status
-    time.sleep(10)
-    cluster_status = ray_usage_lib.get_cluster_status(
+    wait_for_condition(
+        lambda: ray_usage_lib.get_cluster_status_to_report(
+            ray.experimental.internal_kv.internal_kv_get_gcs_client(),
+            num_retries=20,
+        ).total_num_cpus
+        == 3,
+        timeout=10,
+    )
+    cluster_status_to_report = ray_usage_lib.get_cluster_status_to_report(
         ray.experimental.internal_kv.internal_kv_get_gcs_client(),
         num_retries=20,
     )
-    assert cluster_status["total_num_cpus"] == 3
-    assert cluster_status["total_num_gpus"] == 1
-    assert cluster_status["total_memory_gb"] > 0
-    assert cluster_status["total_object_store_memory_gb"] > 0
+    assert cluster_status_to_report.total_num_cpus == 3
+    assert cluster_status_to_report.total_num_gpus == 1
+    assert cluster_status_to_report.total_memory_gb > 0
+    assert cluster_status_to_report.total_object_store_memory_gb == 1.0
 
 
-def test_usage_lib_get_cluster_config(tmp_path):
+def test_usage_lib_get_cluster_config_to_report(tmp_path):
     cluster_config_file_path = tmp_path / "ray_bootstrap_config.yaml"
     """ Test minimal cluster config"""
     cluster_config_file_path.write_text(
@@ -266,12 +274,14 @@ provider:
     availability_zone: us-west-2a
 """
     )
-    cluster_config = ray_usage_lib.get_cluster_config(cluster_config_file_path)
-    assert cluster_config.get("cloud_provider") == "aws"
-    assert cluster_config.get("min_workers") is None
-    assert cluster_config.get("max_workers") == 1
-    assert cluster_config.get("head_node_instance_type") is None
-    assert cluster_config.get("worker_node_instance_types") is None
+    cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
+        cluster_config_file_path
+    )
+    assert cluster_config_to_report.cloud_provider == "aws"
+    assert cluster_config_to_report.min_workers is None
+    assert cluster_config_to_report.max_workers == 1
+    assert cluster_config_to_report.head_node_instance_type is None
+    assert cluster_config_to_report.worker_node_instance_types is None
 
     cluster_config_file_path.write_text(
         """
@@ -300,12 +310,14 @@ available_node_types:
             machineType: n1-standard-2
 """
     )
-    cluster_config = ray_usage_lib.get_cluster_config(cluster_config_file_path)
-    assert cluster_config.get("cloud_provider") == "gcp"
-    assert cluster_config.get("min_workers") == 1
-    assert cluster_config.get("max_workers") is None
-    assert cluster_config.get("head_node_instance_type") == "m5.large"
-    assert cluster_config.get("worker_node_instance_types") == list(
+    cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
+        cluster_config_file_path
+    )
+    assert cluster_config_to_report.cloud_provider == "gcp"
+    assert cluster_config_to_report.min_workers == 1
+    assert cluster_config_to_report.max_workers is None
+    assert cluster_config_to_report.head_node_instance_type == "m5.large"
+    assert cluster_config_to_report.worker_node_instance_types == list(
         {"m3.large", "Standard_D2s_v3", "n1-standard-2"}
     )
 
@@ -324,19 +336,25 @@ available_node_types:
             InstanceType: m5.large
 """
     )
-    cluster_config = ray_usage_lib.get_cluster_config(cluster_config_file_path)
-    assert cluster_config.get("cloud_provider") is None
-    assert cluster_config.get("min_workers") is None
-    assert cluster_config.get("max_workers") is None
-    assert cluster_config.get("head_node_instance_type") is None
-    assert cluster_config.get("worker_node_instance_types") == ["m5.large"]
+    cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
+        cluster_config_file_path
+    )
+    assert cluster_config_to_report.cloud_provider is None
+    assert cluster_config_to_report.min_workers is None
+    assert cluster_config_to_report.max_workers is None
+    assert cluster_config_to_report.head_node_instance_type is None
+    assert cluster_config_to_report.worker_node_instance_types == ["m5.large"]
 
     cluster_config_file_path.write_text("[invalid")
-    cluster_config = ray_usage_lib.get_cluster_config(cluster_config_file_path)
-    assert cluster_config == {}
+    cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
+        cluster_config_file_path
+    )
+    assert cluster_config_to_report == ClusterConfigToReport()
 
-    cluster_config = ray_usage_lib.get_cluster_config(tmp_path / "does_not_exist.yaml")
-    assert cluster_config == {}
+    cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
+        tmp_path / "does_not_exist.yaml"
+    )
+    assert cluster_config_to_report == ClusterConfigToReport()
 
 
 @pytest.mark.skipif(
@@ -365,9 +383,11 @@ provider:
     availability_zone: us-west-2a
 """
         )
-        cluster_config = ray_usage_lib.get_cluster_config(cluster_config_file_path)
+        cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
+            cluster_config_file_path
+        )
         d = ray_usage_lib.generate_report_data(
-            cluster_metadata, cluster_config, 2, 2, 2
+            cluster_metadata, cluster_config_to_report, 2, 2, 2
         )
         validate(instance=asdict(d), schema=schema)
 

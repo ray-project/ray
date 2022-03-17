@@ -41,7 +41,6 @@ Note that it is also possible to configure the interval using the environment va
 To see collected/reported data, see `usage_stats.json` inside a temp
 folder (e.g., /tmp/ray/session_[id]/*).
 """
-import asyncio
 import os
 import uuid
 import sys
@@ -50,7 +49,6 @@ import logging
 import time
 import yaml
 
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, asdict
 from typing import Optional, List
 from pathlib import Path
@@ -66,6 +64,23 @@ logger = logging.getLogger(__name__)
 #################
 # Internal APIs #
 #################
+
+
+@dataclass(init=True)
+class ClusterConfigToReport:
+    cloud_provider: Optional[str] = None
+    min_workers: Optional[int] = None
+    max_workers: Optional[int] = None
+    head_node_instance_type: Optional[str] = None
+    worker_node_instance_types: Optional[List[str]] = None
+
+
+@dataclass(init=True)
+class ClusterStatusToReport:
+    total_num_cpus: Optional[int] = None
+    total_num_gpus: Optional[int] = None
+    total_memory_gb: Optional[float] = None
+    total_object_store_memory_gb: Optional[float] = None
 
 
 @dataclass(init=True)
@@ -193,7 +208,7 @@ def put_cluster_metadata(gcs_client, num_retries) -> None:
     return metadata
 
 
-def get_cluster_status(gcs_client, num_retries) -> dict:
+def get_cluster_status_to_report(gcs_client, num_retries) -> ClusterStatusToReport:
     """Get the current status of this cluster.
 
     It is a blocking API.
@@ -203,7 +218,7 @@ def get_cluster_status(gcs_client, num_retries) -> dict:
         num_retries (int): Max number of times to retry if GET fails.
 
     Returns:
-        The current cluster status or empty dict if it fails to get that information.
+        The current cluster status or empty if it fails to get that information.
     """
     try:
         cluster_status = ray._private.utils.internal_kv_get_with_retry(
@@ -213,34 +228,36 @@ def get_cluster_status(gcs_client, num_retries) -> dict:
             num_retries=num_retries,
         )
         if not cluster_status:
-            return {}
+            return ClusterStatusToReport()
 
-        result = {}
+        result = ClusterStatusToReport()
         to_GiB = 1 / 2 ** 30
         cluster_status = json.loads(cluster_status.decode("utf-8"))
         if (
             "load_metrics_report" not in cluster_status
             or "usage" not in cluster_status["load_metrics_report"]
         ):
-            return {}
+            return ClusterStatusToReport()
 
         usage = cluster_status["load_metrics_report"]["usage"]
+        # usage is a map from resource to (used, total) pair
         if "CPU" in usage:
-            result["total_num_cpus"] = usage["CPU"][1]
+            result.total_num_cpus = usage["CPU"][1]
         if "GPU" in usage:
-            result["total_num_gpus"] = usage["GPU"][1]
+            result.total_num_gpus = usage["GPU"][1]
         if "memory" in usage:
-            result["total_memory_gb"] = usage["memory"][1] * to_GiB
+            result.total_memory_gb = usage["memory"][1] * to_GiB
         if "object_store_memory" in usage:
-            result["total_object_store_memory_gb"] = (
+            result.total_object_store_memory_gb = (
                 usage["object_store_memory"][1] * to_GiB
             )
         return result
-    except Exception:
-        return {}
+    except Exception as e:
+        logger.info(f"Failed to get cluster status to report {e}")
+        return ClusterStatusToReport()
 
 
-def get_cluster_config(cluster_config_file_path) -> dict:
+def get_cluster_config_to_report(cluster_config_file_path) -> ClusterConfigToReport:
     """Get the static cluster (autoscaler) config used to launch this cluster.
 
     Params:
@@ -269,14 +286,14 @@ def get_cluster_config(cluster_config_file_path) -> dict:
     try:
         with open(cluster_config_file_path) as f:
             config = yaml.safe_load(f)
-            result = {}
+            result = ClusterConfigToReport()
             if "min_workers" in config:
-                result["min_workers"] = config["min_workers"]
+                result.min_workers = config["min_workers"]
             if "max_workers" in config:
-                result["max_workers"] = config["max_workers"]
+                result.max_workers = config["max_workers"]
 
             if "provider" in config and "type" in config["provider"]:
-                result["cloud_provider"] = config["provider"]["type"]
+                result.cloud_provider = config["provider"]["type"]
 
             if "head_node_type" not in config:
                 return result
@@ -290,27 +307,27 @@ def get_cluster_config(cluster_config_file_path) -> dict:
                         available_node_types[available_node_type].get("node_config")
                     )
                     if head_node_instance_type:
-                        result["head_node_instance_type"] = head_node_instance_type
+                        result.head_node_instance_type = head_node_instance_type
                 else:
                     worker_node_instance_type = get_instance_type(
                         available_node_types[available_node_type].get("node_config")
                     )
                     if worker_node_instance_type:
-                        result["worker_node_instance_types"] = result.get(
-                            "worker_node_instance_types", set()
+                        result.worker_node_instance_types = (
+                            result.worker_node_instance_types or set()
                         )
-                        result["worker_node_instance_types"].add(
-                            worker_node_instance_type
-                        )
-            if "worker_node_instance_types" in result:
-                result["worker_node_instance_types"] = list(
-                    result["worker_node_instance_types"]
+                        result.worker_node_instance_types.add(worker_node_instance_type)
+            if result.worker_node_instance_types:
+                result.worker_node_instance_types = list(
+                    result.worker_node_instance_types
                 )
             return result
-    except Exception:
-        # If the file doesn't exist or the config file is invalid,
-        # then it's not a ray cluster or it's a k8s cluster.
-        return {}
+    except FileNotFoundError:
+        # It's a manually started cluster or k8s cluster
+        return ClusterConfigToReport()
+    except Exception as e:
+        logger.info(f"Failed to get cluster config to report {e}")
+        return ClusterConfigToReport()
 
 
 def get_cluster_metadata(gcs_client, num_retries) -> dict:
@@ -342,7 +359,7 @@ def get_cluster_metadata(gcs_client, num_retries) -> dict:
 
 def generate_report_data(
     cluster_metadata: dict,
-    cluster_config: dict,
+    cluster_config_to_report: ClusterConfigToReport,
     total_success: int,
     total_failed: int,
     seq_number: int,
@@ -352,7 +369,7 @@ def generate_report_data(
     Params:
         cluster_metadata (dict): The cluster metadata of the system generated by
             `_generate_cluster_metadata`.
-        cluster_config (dcit): The cluster (autoscaler) config generated by
+        cluster_config_to_report (dcit): The cluster (autoscaler) config generated by
             `get_cluster_config`.
         total_success(int): The total number of successful report
             for the lifetime of the cluster.
@@ -364,7 +381,7 @@ def generate_report_data(
     Returns:
         UsageStats
     """
-    cluster_status = get_cluster_status(
+    cluster_status_to_report = get_cluster_status_to_report(
         ray.experimental.internal_kv.internal_kv_get_gcs_client(),
         num_retries=20,
     )
@@ -378,15 +395,15 @@ def generate_report_data(
         os=cluster_metadata["os"],
         collect_timestamp_ms=int(time.time() * 1000),
         session_start_timestamp_ms=cluster_metadata["session_start_timestamp_ms"],
-        cloud_provider=cluster_config.get("cloud_provider"),
-        min_workers=cluster_config.get("min_workers"),
-        max_workers=cluster_config.get("max_workers"),
-        head_node_instance_type=cluster_config.get("head_node_instance_type"),
-        worker_node_instance_types=cluster_config.get("worker_node_instance_types"),
-        total_num_cpus=cluster_status.get("total_num_cpus"),
-        total_num_gpus=cluster_status.get("total_num_gpus"),
-        total_memory_gb=cluster_status.get("total_memory_gb"),
-        total_object_store_memory_gb=cluster_status.get("total_object_store_memory_gb"),
+        cloud_provider=cluster_config_to_report.cloud_provider,
+        min_workers=cluster_config_to_report.min_workers,
+        max_workers=cluster_config_to_report.max_workers,
+        head_node_instance_type=cluster_config_to_report.head_node_instance_type,
+        worker_node_instance_types=cluster_config_to_report.worker_node_instance_types,
+        total_num_cpus=cluster_status_to_report.total_num_cpus,
+        total_num_gpus=cluster_status_to_report.total_num_gpus,
+        total_memory_gb=cluster_status_to_report.total_memory_gb,
+        total_object_store_memory_gb=cluster_status_to_report.total_object_store_memory_gb,
         total_success=total_success,
         total_failed=total_failed,
         seq_number=seq_number,
@@ -422,7 +439,7 @@ class UsageReportClient:
     and report usage stats.
     """
 
-    def _write_usage_data(self, data: UsageStatsToWrite, dir_path: str) -> None:
+    def write_usage_data(self, data: UsageStatsToWrite, dir_path: str) -> None:
         """Write the usage data to the directory.
 
         Params:
@@ -444,7 +461,7 @@ class UsageReportClient:
             destination.unlink(missing_ok=True)
         temp.rename(destination)
 
-    def _report_usage_data(self, url: str, data: UsageStatsToReport) -> None:
+    def report_usage_data(self, url: str, data: UsageStatsToReport) -> None:
         """Report the usage data to the usage server.
 
         Params:
@@ -466,26 +483,3 @@ class UsageReportClient:
         )
         r.raise_for_status()
         return r
-
-    async def write_usage_data_async(
-        self, data: UsageStatsToWrite, dir_path: str
-    ) -> None:
-        """Asynchronously write the data to the `dir_path`.
-
-        It uses a thread pool to implement asynchronous write.
-        https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.run_in_executor
-        """
-        loop = asyncio.get_event_loop()
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            await loop.run_in_executor(executor, self._write_usage_data, data, dir_path)
-
-    async def report_usage_data_async(self, url: str, data: UsageStatsToReport) -> None:
-        """Asynchronously report the data to the `url`.
-
-        It uses a thread pool to implement asynchronous write
-        instead of using dedicated library such as httpx
-        since that's too heavy dependency.
-        """
-        loop = asyncio.get_event_loop()
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            await loop.run_in_executor(executor, self._report_usage_data, url, data)
