@@ -42,7 +42,7 @@ class DeploymentFunctionNode(DAGNode):
                 ),
                 init_args=tuple(),
                 init_kwargs=dict(),
-                route_prefix=None,
+                route_prefix=None,  # Disable HTTP in all DAGNodes by default
             )
         else:
             self._deployment: Deployment = Deployment(
@@ -52,7 +52,7 @@ class DeploymentFunctionNode(DAGNode):
                 init_args=tuple(),
                 init_kwargs=dict(),
                 ray_actor_options=func_options,
-                route_prefix=None,
+                route_prefix=None,  # Disable HTTP in all DAGNodes by default
                 _internal=True,
             )
         # TODO (jiaodong): Change this to lazy handle after the PR merged
