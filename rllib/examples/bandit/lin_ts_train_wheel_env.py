@@ -2,6 +2,7 @@
     For more information on WheelBandit, see https://arxiv.org/abs/1802.09127 .
 """
 
+import argparse
 import numpy as np
 from matplotlib import pyplot as plt
 
@@ -30,12 +31,21 @@ def plot_model_weights(means, covs):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--framework",
+        choices=["tf2", "torch"],
+        default="torch",
+        help="The DL framework specifier.",
+    )
+    args = parser.parse_args()
+    print(f"Running with following CLI args: {args}")
+
     num_iter = 10
     print("Running training for %s time steps" % num_iter)
     config = {
-        # Uncomment to use TF2 framework.
-        # "framework": "tf2",
-        # "eager_tracing": True,
+        "framework": args.framework,
+        "eager_tracing": (args.framework == "tf2"),
     }
     trainer = BanditLinTSTrainer(env=WheelBanditEnv, config=config)
 
