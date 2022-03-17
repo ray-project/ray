@@ -458,7 +458,6 @@ class Monitor:
         publish_error_to_driver(
             ray_constants.MONITOR_DIED_ERROR,
             message,
-            redis_client=None,
             gcs_publisher=gcs_publisher,
         )
 
