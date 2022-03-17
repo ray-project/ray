@@ -249,10 +249,3 @@ To get information about the current available resource capacity of your cluster
 
 .. autofunction:: ray.available_resources
     :noindex:
-
-.. _runtime-environments-old:
-
-Runtime Environments
---------------------
-
-:ref:`This section has moved.<runtime-environments>`
