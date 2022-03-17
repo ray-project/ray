@@ -286,7 +286,7 @@ class DAGNode:
             )
         elif attr == "remote":
             raise AttributeError(
-                ".remote() cannot be used on {type(self)}. To execute the task "
+                f".remote() cannot be used on {type(self)}. To execute the task "
                 "graph for this node, use .execute()."
             )
         else:
