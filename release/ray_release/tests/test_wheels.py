@@ -36,14 +36,6 @@ class WheelsFinderTest(unittest.TestCase):
             get_ray_version(DEFAULT_REPO, commit="fake")
 
     def testGetRayWheelsURL(self):
-        with self.assertRaises(RayWheelsNotFoundError):
-            get_ray_wheels_url(
-                repo_url="https://github.com/unknown/ray.git",
-                branch="master",
-                commit="1234",
-                ray_version="2.0.0.dev0",
-            )
-
         url = get_ray_wheels_url(
             repo_url="https://github.com/ray-project/ray.git",
             branch="master",
@@ -78,6 +70,8 @@ class WheelsFinderTest(unittest.TestCase):
 
     @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.0.0.dev0")
     def testFindRayWheelsCommitOnly(self):
+        os.environ.pop("BUILDKITE_BRANCH")
+
         repo = DEFAULT_REPO
         branch = "master"
         commit = "1234" * 10
@@ -132,10 +126,23 @@ class WheelsFinderTest(unittest.TestCase):
             repo, branch, commit, version, search_str="ray-project:master"
         )
 
-        with self.assertRaises(RayWheelsNotFoundError):
-            self._testFindRayWheelsCheckout(
-                repo, branch, commit, version, search_str="remote:master"
-            )
+    @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.0.0.dev0")
+    def testFindRayWheelsPRRepoBranch(self):
+        repo = "user"
+        branch = "dev-branch"
+        commit = "1234" * 10
+        version = "2.0.0.dev0"
+
+        self._testFindRayWheelsCheckout(
+            repo, branch, commit, version, search_str="user:dev-branch"
+        )
+        self._testFindRayWheelsCheckout(
+            f"https://github.com/{repo}/ray-fork.git",
+            branch,
+            commit,
+            version,
+            search_str="user:dev-branch",
+        )
 
     @patch("time.sleep", lambda *a, **kw: None)
     @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.0.0.dev0")

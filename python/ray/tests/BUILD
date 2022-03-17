@@ -10,10 +10,23 @@ SRCS = [] + select({
 
 py_test_module_list(
   files = [
+    "test_dashboard.py",
+    "test_ray_cluster_with_external_redis.py",
+    "test_k8s_cluster_launcher.py",
+  ],
+  size = "large",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "manual", "team:serverless"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
     "test_actor_pool.py",
     "test_async.py",
     "test_actor_failures.py",
     "test_actor_resources.py",
+    "test_actor_lifetime.py",
     "test_advanced.py",
     "test_advanced_2.py",
     "test_advanced_3.py",
@@ -81,6 +94,7 @@ py_test_module_list(
   files = [
     "test_usage_stats.py",
     "test_autoscaler_fake_scaledown.py",  # Temporarily owned by core.
+    "test_logging.py",
     "test_memory_scheduling.py",
     "test_metrics.py",
     "test_multi_node.py",
@@ -94,9 +108,11 @@ py_test_module_list(
     "test_placement_group_2.py",
     "test_placement_group_3.py",
     "test_placement_group_4.py",
+    "test_placement_group_5.py",
     "test_ray_init.py",
     "test_reference_counting.py",
     "test_resource_demand_scheduler.py",
+    "test_runtime_context.py",
     "test_runtime_env_env_vars.py",
     "test_runtime_env_packaging.py",
     "test_runtime_env_plugin.py",
@@ -116,6 +132,7 @@ py_test_module_list(
     "test_object_spilling_3.py",
     "test_object_manager.py",
     "test_multi_tenancy.py",
+    "test_namespace.py",
     "test_scheduling.py",
     "test_scheduling_2.py",
     "test_traceback.py",
@@ -148,6 +165,11 @@ py_test_module_list(
     "test_list_actors_2.py",
     "test_list_actors_3.py",
     "test_list_actors_4.py",
+    "test_actor_out_of_order.py",
+    "test_cross_language.py",
+    "test_environ.py",
+    "test_raylet_output.py",
+    "test_scheduling_performance.py",
   ],
   size = "small",
   extra_srcs = SRCS,
@@ -169,6 +191,7 @@ py_test_module_list(
     "test_k8s_operator_unit_tests.py",
     "test_monitor.py",
     "test_response_cache.py",
+    "kuberay/test_autoscaling_config.py"
   ],
   size = "small",
   extra_srcs = SRCS,
@@ -225,6 +248,7 @@ py_test_module_list(
     "test_runtime_env.py",
     "test_runtime_env_working_dir.py",
     "test_runtime_env_working_dir_2.py",
+    "test_runtime_env_working_dir_3.py",
     "test_runtime_env_working_dir_remote_uri.py"
   ],
   size = "large",
@@ -239,6 +263,7 @@ py_test_module_list(
     "test_runtime_env_conda_and_pip_2.py",
     "test_runtime_env_conda_and_pip_3.py",
     "test_runtime_env_conda_and_pip_4.py",
+    "test_runtime_env_conda_and_pip_5.py",
     "test_runtime_env_complicated.py"
   ],
   size = "large",
@@ -329,7 +354,7 @@ py_test(
     name = "test_serve_ray_minimal",
     size = "small",
     srcs = SRCS + ["test_serve_ray_minimal.py"],
-    tags = ["exclusive", "python_tests", "team:serve"],
+    tags = ["exclusive", "small_size_python_tests", "team:serve"],
     deps = ["//:ray_lib"],
 )
 

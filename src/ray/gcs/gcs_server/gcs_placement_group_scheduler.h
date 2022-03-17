@@ -21,6 +21,8 @@
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/ray_syncer.h"
+#include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
@@ -46,10 +48,12 @@ struct pair_hash {
     return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
   }
 };
-using ScheduleMap = std::unordered_map<BundleID, NodeID, pair_hash>;
+using ScheduleMap = absl::flat_hash_map<BundleID, NodeID, pair_hash>;
 using ScheduleResult = std::pair<SchedulingResultStatus, ScheduleMap>;
-using BundleLocations = absl::flat_hash_map<
-    BundleID, std::pair<NodeID, std::shared_ptr<const BundleSpecification>>, pair_hash>;
+using BundleLocations =
+    absl::flat_hash_map<BundleID,
+                        std::pair<NodeID, std::shared_ptr<const BundleSpecification>>,
+                        pair_hash>;
 
 class GcsPlacementGroupSchedulerInterface {
  public:
@@ -87,15 +91,15 @@ class GcsPlacementGroupSchedulerInterface {
   ///
   /// \param node_to_bundles Bundles used by each node.
   virtual void ReleaseUnusedBundles(
-      const std::unordered_map<NodeID, std::vector<rpc::Bundle>> &node_to_bundles) = 0;
+      const absl::flat_hash_map<NodeID, std::vector<rpc::Bundle>> &node_to_bundles) = 0;
 
   /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
   ///
   /// \param node_to_bundles Bundles used by each node.
   virtual void Initialize(
-      const std::unordered_map<PlacementGroupID,
-                               std::vector<std::shared_ptr<BundleSpecification>>>
+      const absl::flat_hash_map<PlacementGroupID,
+                                std::vector<std::shared_ptr<BundleSpecification>>>
           &group_to_bundles) = 0;
 
   virtual ~GcsPlacementGroupSchedulerInterface() {}
@@ -128,7 +132,7 @@ class GcsScheduleStrategy {
   ///
   /// \param bundles Bundles to be scheduled.
   /// \return Required resources.
-  std::vector<ResourceSet> GetRequiredResourcesFromBundles(
+  std::vector<ResourceRequest> GetRequiredResourcesFromBundles(
       const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles);
 
   /// Generate `ScheduleResult` from bundles and nodes .
@@ -139,7 +143,8 @@ class GcsScheduleStrategy {
   /// \return The scheduling result from the required resource.
   ScheduleResult GenerateScheduleResult(
       const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
-      const std::vector<NodeID> &selected_nodes, const SchedulingResultStatus &status);
+      const std::vector<scheduling::NodeID> &selected_nodes,
+      const SchedulingResultStatus &status);
 };
 
 /// The `GcsPackStrategy` is that pack all bundles in one node as much as possible.
@@ -218,7 +223,8 @@ class LeaseStatusTracker {
   /// \param status Status of the prepare response.
   /// \param void
   void MarkPrepareRequestReturned(
-      const NodeID &node_id, const std::shared_ptr<const BundleSpecification> &bundle,
+      const NodeID &node_id,
+      const std::shared_ptr<const BundleSpecification> &bundle,
       const Status &status);
 
   /// Used to know if all prepare requests are returned.
@@ -310,7 +316,7 @@ class LeaseStatusTracker {
   std::shared_ptr<BundleLocations> preparing_bundle_locations_;
 
   /// Location of bundles grouped by node.
-  std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
+  absl::flat_hash_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
       grouped_preparing_bundle_locations_;
 
   /// Number of prepare requests that are returned.
@@ -416,9 +422,11 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   GcsPlacementGroupScheduler(
       instrumented_io_context &io_context,
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-      const GcsNodeManager &gcs_node_manager, GcsResourceManager &gcs_resource_manager,
+      const GcsNodeManager &gcs_node_manager,
+      GcsResourceManager &gcs_resource_manager,
       GcsResourceScheduler &gcs_resource_scheduler,
-      std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
+      std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
+      syncer::RaySyncer &ray_syncer);
 
   virtual ~GcsPlacementGroupScheduler() = default;
 
@@ -461,16 +469,17 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Notify raylets to release unused bundles.
   ///
   /// \param node_to_bundles Bundles used by each node.
-  void ReleaseUnusedBundles(const std::unordered_map<NodeID, std::vector<rpc::Bundle>>
+  void ReleaseUnusedBundles(const absl::flat_hash_map<NodeID, std::vector<rpc::Bundle>>
                                 &node_to_bundles) override;
 
   /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
   ///
   /// \param node_to_bundles Bundles used by each node.
-  void Initialize(const std::unordered_map<
-                  PlacementGroupID, std::vector<std::shared_ptr<BundleSpecification>>>
-                      &group_to_bundles) override;
+  void Initialize(
+      const absl::flat_hash_map<PlacementGroupID,
+                                std::vector<std::shared_ptr<BundleSpecification>>>
+          &group_to_bundles) override;
 
  protected:
   /// Send bundles PREPARE requests to a node. The PREPARE requests will lock resources
@@ -590,6 +599,10 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
 
   /// The nodes which are releasing unused bundles.
   absl::flat_hash_set<NodeID> nodes_of_releasing_unused_bundles_;
+
+  /// The syncer of resource. This is used to report placement group updates.
+  /// TODO (iycheng): Remove this one from pg once we finish the refactor
+  syncer::RaySyncer &ray_syncer_;
 };
 
 }  // namespace gcs

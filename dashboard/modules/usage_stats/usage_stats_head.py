@@ -45,6 +45,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
                 self.total_failed,
                 self.seq_no,
             )
+
             error = None
             try:
                 await self.client.report_usage_data_async(

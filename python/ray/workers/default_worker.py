@@ -14,7 +14,7 @@ from ray._private.parameter import RayParams
 from ray._private.ray_logging import get_worker_log_file_name, configure_log_file
 
 parser = argparse.ArgumentParser(
-    description=("Parse addresses for the worker " "to connect to.")
+    description=("Parse addresses for the worker to connect to.")
 )
 parser.add_argument(
     "--node-ip-address",

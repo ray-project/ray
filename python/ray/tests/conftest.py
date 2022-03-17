@@ -461,6 +461,14 @@ smart_open_object_spilling_config = {
     "type": "smart_open",
     "params": {"uri": f"s3://{bucket_name}/"},
 }
+buffer_open_object_spilling_config = {
+    "type": "smart_open",
+    "params": {"uri": f"s3://{bucket_name}/", "buffer_size": 1000},
+}
+multi_smart_open_object_spilling_config = {
+    "type": "smart_open",
+    "params": {"uri": [f"s3://{bucket_name}/{i}" for i in range(3)]},
+}
 
 unstable_object_spilling_config = {
     "type": "unstable_fs",
@@ -565,9 +573,9 @@ def _ray_start_chaos_cluster(request):
         killed = ray.get(node_killer.get_total_killed_nodes.remote())
         assert len(killed) > 0
         died = {node["NodeID"] for node in ray.nodes() if not node["Alive"]}
-        assert died.issubset(killed), (
-            f"Raylets {died - killed} that " "we did not kill crashed"
-        )
+        assert died.issubset(
+            killed
+        ), f"Raylets {died - killed} that we did not kill crashed"
 
     ray.shutdown()
     cluster.shutdown()
@@ -589,9 +597,14 @@ def runtime_env_disable_URI_cache():
         {
             "RAY_RUNTIME_ENV_CONDA_CACHE_SIZE_GB": "0",
             "RAY_RUNTIME_ENV_PIP_CACHE_SIZE_GB": "0",
+            "RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB": "0",
+            "RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB": "0",
         },
     ):
-        print("URI caching disabled (conda and pip cache size set to 0).")
+        print(
+            "URI caching disabled (conda, pip, working_dir, py_modules cache "
+            "size set to 0)."
+        )
         yield
 
 
@@ -628,3 +641,16 @@ def set_runtime_env_retry_times(request):
         yield runtime_env_retry_times
     finally:
         del os.environ["RUNTIME_ENV_RETRY_TIMES"]
+
+
+@pytest.fixture
+def listen_port(request):
+    port = getattr(request, "param", 0)
+    try:
+        sock = socket.socket()
+        if hasattr(socket, "SO_REUSEPORT"):
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 0)
+        sock.bind(("127.0.0.1", port))
+        yield port
+    finally:
+        sock.close()

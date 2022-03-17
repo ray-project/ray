@@ -86,10 +86,6 @@ We provide three APIs for Job submission: SDK, CLI and HTTP. Both the SDK and CL
     - :code:`working_dir` as a local directory: It will be automatically zipped and uploaded to the target Ray cluster, then unpacked to where your submitted application runs.  This option has a size limit of 100 MB and is recommended for quick iteration and experimentation.
     - :code:`working_dir` as a remote URI hosted on S3, GitHub or others: It will be downloaded and unpacked to where your submitted application runs.  This option has no size limit and is recommended for production use.  For details, see :ref:`remote-uris`.
 
-.. warning::
-
-    We currently don't support passing in :code:`requirements.txt` in :code:`pip` yet in job submission so you still need to pass in a list of packages. It will be supported in later releases.
-
 
 Job CLI API
 -----------
@@ -207,6 +203,7 @@ Now we can have a simple polling loop that checks the job status until it reache
 .. code-block:: python
 
     from ray.job_submission import JobStatus
+    import time
 
     def wait_until_finish(job_id):
         start = time.time()
@@ -268,6 +265,10 @@ Under the hood, both the Job Client and the CLI make HTTP calls to the job serve
 
 .. code-block:: python
 
+    import requests
+    import json
+    import time
+
     resp = requests.post(
         "http://127.0.0.1:8265/api/jobs/",
         json={
@@ -290,7 +291,7 @@ Under the hood, both the Job Client and the CLI make HTTP calls to the job serve
             "http://127.0.0.1:8265/api/jobs/<job_id>"
         )
         rst = json.loads(resp.text)
-        status = rst["job_status"]
+        status = rst["status"]
         print(f"status: {status}")
         if status in {JobStatus.SUCCEEDED, JobStatus.STOPPED, JobStatus.FAILED}:
             break

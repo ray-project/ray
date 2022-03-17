@@ -24,7 +24,6 @@ from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_condition,
 )
-from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray.exceptions import LocalRayletDiedError
 import ray.experimental.internal_kv as internal_kv
 
@@ -400,13 +399,7 @@ def test_gcs_drain(ray_start_cluster_head, error_pubsub):
     Test batch drain.
     """
     # Prepare requests.
-    if use_gcs_for_bootstrap():
-        gcs_server_addr = cluster.gcs_address
-    else:
-        redis_cli = ray._private.services.create_redis_client(
-            cluster.redis_address, password=ray_constants.REDIS_DEFAULT_PASSWORD
-        )
-        gcs_server_addr = redis_cli.get("GcsServerAddress").decode()
+    gcs_server_addr = cluster.gcs_address
     options = (("grpc.enable_http_proxy", 0),)
     channel = grpc.insecure_channel(gcs_server_addr, options)
     stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(channel)
@@ -463,7 +456,7 @@ def test_worker_start_timeout(monkeypatch, ray_start_cluster):
         # this delay will make worker start slow
         m.setenv(
             "RAY_testing_asio_delay_us",
-            "InternalKVGcsService.grpc_server.InternalKVGet" "=2000000:2000000",
+            "InternalKVGcsService.grpc_server.InternalKVGet=2000000:2000000",
         )
         m.setenv("RAY_worker_register_timeout_seconds", "1")
         cluster = ray_start_cluster
@@ -483,11 +476,11 @@ ray.get(task.remote(), timeout=3)
 
         # make sure log is correct
         assert (
-            "The process is still alive, probably " "it's hanging during start"
+            "The process is still alive, probably it's hanging during start"
         ) in e.value.output.decode()
         # worker will be killed so it won't try to register to raylet
         assert (
-            "Received a register request from an " "unknown worker shim process"
+            "Received a register request from an unknown worker shim process"
         ) not in e.value.output.decode()
 
 

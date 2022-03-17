@@ -6,24 +6,30 @@ from typing import Tuple, Optional, Dict
 from ray_release.config import Test, RELEASE_PACKAGE_DIR, load_test_cluster_compute
 from ray_release.logger import logger
 
+# Keep 10% for the buffer.
+limit = int(15784 * 0.9)
+
 
 CONCURRENY_GROUPS = {
-    "small": 64,
-    "medium": 16,
-    "large": 8,
+    "tiny": 32,
+    "small": 16,
+    "medium": 4,
+    "large": 2,
     "small-gpu": 8,
     "large-gpu": 4,
 }
+
 
 Condition = namedtuple(
     "Condition", ["min_gpu", "max_gpu", "min_cpu", "max_cpu", "group"]
 )
 
 gpu_cpu_to_concurrency_groups = [
-    Condition(min_gpu=8, max_gpu=-1, min_cpu=0, max_cpu=-1, group="large-gpu"),
-    Condition(min_gpu=1, max_gpu=8, min_cpu=0, max_cpu=-1, group="small-gpu"),
-    Condition(min_gpu=0, max_gpu=0, min_cpu=512, max_cpu=-1, group="large"),
-    Condition(min_gpu=0, max_gpu=0, min_cpu=128, max_cpu=512, group="medium"),
+    Condition(min_gpu=9, max_gpu=-1, min_cpu=0, max_cpu=-1, group="large-gpu"),
+    Condition(min_gpu=1, max_gpu=9, min_cpu=0, max_cpu=-128, group="small-gpu"),
+    Condition(min_gpu=0, max_gpu=0, min_cpu=513, max_cpu=-1, group="large"),
+    Condition(min_gpu=0, max_gpu=0, min_cpu=129, max_cpu=512, group="medium"),
+    Condition(min_gpu=0, max_gpu=0, min_cpu=0, max_cpu=32, group="tiny"),
     Condition(min_gpu=0, max_gpu=0, min_cpu=0, max_cpu=128, group="small"),
 ]
 

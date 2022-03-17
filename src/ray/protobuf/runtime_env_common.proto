@@ -21,10 +21,13 @@ option java_package = "io.ray.runtime.generated";
 
 /// The pip type runtime env.
 message PipRuntimeEnv {
-  /// The pip packages config.
   message Config {
     /// A list of pip packages, such as ["redis >= 3.5.0", "numpy"].
     repeated string packages = 1;
+    /// Whether enable pip check after runtime env finish pip install packages
+    bool pip_check = 2;
+    /// Pip version in virtualenv
+    string pip_version = 3;
   }
   oneof pip_runtime_env {
     /// The pip packages config.

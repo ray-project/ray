@@ -117,7 +117,7 @@ class _UnboundClassMethodNode(object):
         self._method_name = method_name
         self._options = {}
 
-    def _bind(self, *args, **kwargs):
+    def bind(self, *args, **kwargs):
         other_args_to_resolve = {
             PARENT_CLASS_NODE_KEY: self._actor,
             PREV_CLASS_METHOD_CALL_KEY: self._actor._last_call,
