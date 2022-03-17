@@ -404,6 +404,13 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
+cc_grpc_library(
+    name = "ray_syncer_cc_grpc",
+    srcs = ["//src/ray/protobuf:ray_syncer_proto"],
+    grpc_only = True,
+    deps = ["//src/ray/protobuf:ray_syncer_cc_proto"],
+)
+
 cc_library(
     name = "ray_common",
     srcs = glob(
@@ -434,6 +441,7 @@ cc_library(
         ":node_manager_fbs",
         ":ray_util",
         ":stats_metric",
+        ":ray_syncer_cc_grpc",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:gcs_cc_proto",
         "@boost//:asio",

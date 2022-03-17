@@ -429,10 +429,10 @@ void GcsServer::StoreGcsServerAddressInRedis() {
 void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
   /*
     The current synchronization flow is:
-        raylet -> syncer::poller --> syncer::update -> gcs_resource_manager
+        raylet -> poller --> update -> gcs_resource_manager
         gcs_placement_scheduler --/
   */
-  ray_syncer_ = std::make_unique<syncer::RaySyncer>(
+  ray_syncer_ = std::make_unique<RaySyncer>(
       main_service_, raylet_client_pool_, *gcs_resource_manager_);
   ray_syncer_->Initialize(gcs_init_data);
   ray_syncer_->Start();

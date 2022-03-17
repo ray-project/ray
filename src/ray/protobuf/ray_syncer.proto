@@ -1,0 +1,55 @@
+syntax = "proto3";
+option cc_enable_arenas = true;
+package ray.rpc.syncer;
+
+enum RayComponentId {
+  RESOURCE_MANAGER = 0;
+  SCHEDULER = 1;
+}
+
+enum RaySyncMessageType {
+  BROADCAST = 0;
+  AGGREGATE = 1;
+}
+
+message RaySyncMessage {
+  // The version of the message.
+  uint64 version = 1;
+  // Whether we need to broadcast this message or just send it up.
+  RaySyncMessageType message_type = 2;
+  // The component this message is for.
+  RayComponentId component_id = 3;
+  // The actual payload.
+  bytes sync_message = 4;
+  // The node id which initially sent this message.
+  bytes node_id = 5;
+}
+
+message RaySyncMessages {
+  // The node id where the message was sent.
+  bytes node_id = 1;
+  // The bached messages.
+  repeated RaySyncMessage sync_messages = 2;
+}
+
+message SyncMeta {
+  bytes node_id = 1;
+}
+
+message Dummy {
+}
+
+service RaySyncer {
+  rpc StartSync(SyncMeta) returns (SyncMeta);
+  // Ideally these should be a streaming API like this
+  //   rpc StartSync(stream RaySyncMessages) returns (stream RaySyncMessages);
+  // But to make sure it's the same as the current protocol, we still use
+  // unary rpc.
+  // TODO (iycheng): Using grpc streaming for the protocol.
+  // These two RPCs are for messages reporting and broadcasting.
+  // Update is used by GCS to send update request to Raylet.
+  rpc Update(RaySyncMessages) returns (Dummy);
+
+  // LongPolling is used by GCS to get updated message from Raylet.
+  rpc LongPolling(Dummy) returns (RaySyncMessages);
+}
