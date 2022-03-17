@@ -1195,7 +1195,7 @@ if __name__ == "__main__":
         bucket: str = "",
         cpus_per_trial: int = 2,
         overwrite_tune_script: Optional[str] = None,
-    ):
+    ) -> Dict:
         start_time = time.monotonic()
         print(
             f"Running test variant `{variant}` on "
@@ -1223,15 +1223,13 @@ if __name__ == "__main__":
         time_taken = time.monotonic() - start_time
 
         result = {"time_taken": time_taken, "last_update": time.time()}
-
-        with open(release_test_out, "wt") as f:
-            json.dump(result, f)
+        return result
 
     run_time = 180 if "rllib" in args.trainable else 90
 
     if not uses_ray_client:
         print("This test will *not* use Ray client.")
-        _run_test(
+        result = _run_test(
             args.variant, args.trainable, run_time, args.bucket, args.cpus_per_trial
         )
     else:
@@ -1255,7 +1253,7 @@ if __name__ == "__main__":
         _run_test_remote = ray.remote(resources={f"node:{ip}": 0.01}, num_cpus=0)(
             _run_test
         )
-        ray.get(
+        result = ray.get(
             _run_test_remote.remote(
                 args.variant,
                 args.trainable,
@@ -1266,7 +1264,7 @@ if __name__ == "__main__":
             )
         )
 
-        print(f"Fetching remote release test result file: {release_test_out}")
-        fetch_remote_file_to_local_file(release_test_out, ip, release_test_out)
+    with open(release_test_out, "wt") as f:
+        json.dump(result, f)
 
     print(f"Test for variant {args.variant} SUCCEEDED")
