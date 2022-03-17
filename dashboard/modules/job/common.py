@@ -41,6 +41,8 @@ class JobStatus(str, Enum):
 class JobInfo:
     status: JobStatus
 
+    #: The entrypoint command for this job.
+    entrypoint: str
     message: Optional[str] = None
     # TODO(architkulkarni): Populate this field with e.g. Runtime env setup failure,
     # Internal error, user script error
@@ -108,7 +110,9 @@ class JobInfoStorageClient:
                 assert False, "Attempted to change job status from a terminal state."
             new_info = replace(old_info, status=status, message=message)
         else:
-            new_info = JobInfo(status=status, message=message)
+            new_info = JobInfo(
+                entrypoint="Entrypoint not found.", status=status, message=message
+            )
 
         if status.is_terminal():
             new_info.end_time = int(time.time())

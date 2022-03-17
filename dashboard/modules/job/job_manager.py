@@ -431,6 +431,7 @@ class JobManager:
 
         logger.info(f"Starting job with job_id: {job_id}")
         job_info = JobInfo(
+            entrypoint=entrypoint,
             status=JobStatus.PENDING,
             start_time=int(time.time()),
             metadata=metadata,
