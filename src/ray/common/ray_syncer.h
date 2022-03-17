@@ -31,7 +31,7 @@ static constexpr size_t kComponentArraySize =
 /// The interface for a reporter. Reporter is defined to be a local module which would
 /// like to let the other nodes know its status. For example, local cluster resource
 /// manager.
-struct Reporter {
+struct ReporterInterface {
   /// Interface to get the snapshot of the component. It asks the module to take a
   /// snapshot of the current status. Each snapshot is versioned, and it should return
   /// std::nullopt if the version hasn't changed.
@@ -40,18 +40,18 @@ struct Reporter {
   /// \param component_id The component id asked for.
   virtual std::optional<RaySyncMessage> Snapshot(uint64_t current_version,
                                                  RayComponentId component_id) const = 0;
-  virtual ~Reporter() {}
+  virtual ~ReporterInterface() {}
 };
 
 /// The interface for a receiver. Receiver is defined to be a module which would like
 /// to get the status of other nodes. For example, cluster resource manager.
-struct Receiver {
+struct ReceiverInterface {
   /// Interface to update a module. The module should read the `sync_message` fields and
   /// deserialize it to update its internal status.
   ///
   /// \param message The message received from remote node.
   virtual void Update(std::shared_ptr<RaySyncMessage> message) = 0;
-  virtual ~Receiver() {}
+  virtual ~ReceiverInterface() {}
 };
 
 /// RaySyncer is an embedding service for component synchronization.
@@ -91,8 +91,8 @@ class RaySyncer {
   /// \param receiver The snapshot of the component in the cluster.
   /// \param report_ms The frequence to report resource usages.
   void Register(RayComponentId component_id,
-                const Reporter *reporter,
-                Receiver *receiver,
+                const ReporterInterface *reporter,
+                ReceiverInterface *receiver,
                 int64_t report_ms = 100);
 
   /// Tell the syncer there is an update.
@@ -228,8 +228,8 @@ class RaySyncer {
   absl::flat_hash_map<std::string, std::unique_ptr<NodeSyncContext>> sync_context_;
 
   /// For local nodes
-  std::array<const Reporter *, kComponentArraySize> reporters_;
-  std::array<Receiver *, kComponentArraySize> receivers_;
+  std::array<const ReporterInterface *, kComponentArraySize> reporters_;
+  std::array<ReceiverInterface *, kComponentArraySize> receivers_;
 
   /// Threading for syncer. To have a better isolation, we put all operations in this
   /// module into a dedicated thread.

@@ -34,8 +34,8 @@ void RaySyncer::NodeRemoved(const std::string &node_id) {
 }
 
 void RaySyncer::Register(RayComponentId component_id,
-                         const Reporter *reporter,
-                         Receiver *receiver,
+                         const ReporterInterface *reporter,
+                         ReceiverInterface *receiver,
                          int64_t report_ms = 100) {
   reporters_[component_id] = reporter;
   receivers_[component_id] = receiver;
