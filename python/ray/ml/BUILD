@@ -8,7 +8,7 @@ py_test(
     main = "examples/custom_trainer.py",
     srcs = ["examples/custom_trainer.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":train_lib"]
+    deps = [":ml_lib"]
 )
 
 
@@ -18,7 +18,7 @@ py_test(
     main = "examples/torch/torch_fashion_mnist_example.py",
     srcs = ["examples/torch/torch_fashion_mnist_example.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":train_lib"],
+    deps = [":ml_lib"],
     args = ["--smoke-test"]
 )
 
@@ -28,7 +28,7 @@ py_test(
     main = "examples/torch/torch_linear_dataset_example.py",
     srcs = ["examples/torch/torch_linear_dataset_example.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":train_lib"],
+    deps = [":ml_lib"],
     args = ["--smoke-test"]
 )
 
@@ -38,7 +38,7 @@ py_test(
     main = "examples/torch/torch_linear_example.py",
     srcs = ["examples/torch/torch_linear_example.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":train_lib"],
+    deps = [":ml_lib"],
     args = ["--smoke-test"]
 )
 
@@ -48,7 +48,7 @@ py_test(
     main = "examples/torch/tune_torch_linear_dataset_example.py",
     srcs = ["examples/torch/tune_torch_linear_dataset_example.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":train_lib"],
+    deps = [":ml_lib"],
     args = ["--smoke-test"]
 )
 
