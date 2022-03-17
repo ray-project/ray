@@ -400,6 +400,15 @@ class Checkpoint:
                 "Cannot get internal representation of empty checkpoint."
             )
 
+    def __getstate__(self):
+        if self._local_path:
+            blob = self.to_bytes()
+            return Checkpoint.from_bytes(blob).__getstate__()
+        return self.__dict__
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
 
 def _get_local_path(path: Optional[str]) -> Optional[str]:
     """Check if path is a local path. Otherwise return None."""
