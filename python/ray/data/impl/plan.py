@@ -1,13 +1,24 @@
 import copy
-from typing import Callable, Tuple, Optional, Union, Iterable, TYPE_CHECKING
+import functools
+from typing import (
+    Callable,
+    List,
+    Tuple,
+    Optional,
+    Union,
+    Iterator,
+    Iterable,
+    TYPE_CHECKING,
+)
 import uuid
 
 if TYPE_CHECKING:
     import pyarrow
 
+import ray
+from ray.types import ObjectRef
 from ray.data.context import DatasetContext
-from ray.data.block import Block
-from ray.data.datasource import ReadTask
+from ray.data.block import Block, BlockPartition
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.compute import get_compute
 from ray.data.impl.stats import DatasetStats
@@ -15,328 +26,6 @@ from ray.data.impl.lazy_block_list import LazyBlockList
 
 # Scheduling strategy can be inherited from prev stage if not specified.
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
-
-
-class ExecutionPlan:
-    """A lazy execution plan for a Dataset."""
-
-    def __init__(self, in_blocks: BlockList, stats: DatasetStats, dataset_uuid=None):
-        """Create a plan with no transformation stages.
-
-        Args:
-            in_blocks: Base list of blocks.
-            stats: Stats for the base blocks.
-        """
-        self._in_blocks = in_blocks
-        self._in_stats = stats
-        # A computed snapshot of some prefix of stages.
-        self._snapshot_blocks = None
-        self._snapshot_stats = None
-        self._snapshot_stage_idx = None
-        self._stages = []
-        self._dataset_uuid = dataset_uuid or uuid.uuid4().hex
-        if not stats.dataset_uuid:
-            stats.dataset_uuid = self._dataset_uuid
-
-    def with_stage(self, stage: "Stage") -> "ExecutionPlan":
-        """Return a copy of this plan with the given stage appended.
-
-        Args:
-            stage: The stage to append.
-
-        Returns:
-            A new ExecutionPlan with this stage appended.
-        """
-        copy = self.copy()
-        copy._stages.append(stage)
-        return copy
-
-    def copy(self) -> "ExecutionPlan":
-        """Create a shallow copy of this execution plan.
-
-        This copy can be executed without mutating the original, but clearing the copy
-        will also clear the original.
-
-        Returns:
-            A shallow copy of this execution plan.
-        """
-        plan_copy = ExecutionPlan(self._in_blocks, self._in_stats)
-        if self._snapshot_blocks is not None:
-            # Copy over the existing snapshot.
-            plan_copy._snapshot_blocks = self._snapshot_blocks
-            plan_copy._snapshot_stats = self._snapshot_stats
-            plan_copy._snapshot_stage_idx = self._snapshot_stage_idx
-        plan_copy._stages = self._stages.copy()
-        return plan_copy
-
-    def deep_copy(self, preserve_uuid: bool = False) -> "ExecutionPlan":
-        """Create a deep copy of this execution plan.
-
-        This copy can be executed AND cleared without mutating the original.
-
-        Args:
-            preserve_uuid: Whether to preserve the original UUID in the copy.
-
-        Returns:
-            A deep copy of this execution plan.
-        """
-        dataset_uuid = None
-        if preserve_uuid:
-            dataset_uuid = self._dataset_uuid
-        plan_copy = ExecutionPlan(
-            self._in_blocks.copy(), copy.copy(self._in_stats), dataset_uuid=dataset_uuid
-        )
-        if self._snapshot_blocks:
-            # Copy over the existing snapshot.
-            snapshot_blocks = self._snapshot_blocks
-            if isinstance(snapshot_blocks, BlockList):
-                snapshot_blocks = snapshot_blocks.copy()
-            plan_copy._snapshot_blocks = snapshot_blocks
-            plan_copy._snapshot_stats = copy.copy(self._snapshot_stats)
-            plan_copy._snapshot_stage_idx = self._snapshot_stage_idx
-        plan_copy._stages = self._stages.copy()
-        return plan_copy
-
-    def initial_num_blocks(self) -> int:
-        """Get the estimated number of blocks after applying all plan stages."""
-        if self._has_final_stage_snapshot():
-            return self._snapshot_blocks.initial_num_blocks()
-        for stage in self._stages[::-1]:
-            if stage.num_blocks is not None:
-                return stage.num_blocks
-        if self._snapshot_blocks is not None:
-            return self._snapshot_blocks.initial_num_blocks()
-        if self._in_blocks is not None:
-            return self._in_blocks.initial_num_blocks()
-        return None
-
-    def schema(
-        self, fetch_if_missing: bool = False
-    ) -> Union[type, "pyarrow.lib.Schema"]:
-        """Get the schema after applying all plan stages.
-
-        Args:
-            fetch_if_missing: Whether to execute the plan to fetch the schema.
-
-        Returns:
-            The schema of the output dataset.
-        """
-        if self._stages:
-            if fetch_if_missing:
-                self.execute()
-        if self._snapshot_blocks is not None:
-            # Snapshot is guaranteed to be the output of the final stage after executing
-            # the plan.
-            blocks = self._snapshot_blocks
-        else:
-            blocks = self._in_blocks
-        metadata = blocks.get_metadata() if blocks else []
-        # Some blocks could be empty, in which case we cannot get their schema.
-        # TODO(ekl) validate schema is the same across different blocks.
-        for m in metadata:
-            if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
-                return m.schema
-        if not fetch_if_missing:
-            return None
-        # Need to synchronously fetch schema.
-        return blocks.ensure_schema_for_first_block() if blocks else None
-
-    def meta_count(self) -> Optional[int]:
-        """Get the number of rows after applying all plan stages if possible.
-
-        This method will never trigger any computation.
-
-        Returns:
-            The number of records of the result Dataset, or None.
-        """
-        if self._stages:
-            blocks = self._snapshot_blocks
-        else:
-            blocks = self._in_blocks
-        metadata = blocks.get_metadata() if blocks else None
-        if metadata and metadata[0].num_rows is not None:
-            return sum(m.num_rows for m in metadata)
-        else:
-            return None
-
-    def execute(self, clear_input_blocks: bool = True) -> BlockList:
-        """Execute this plan.
-
-        Args:
-            clear_input_blocks: Whether to assume ownership of the input blocks,
-                allowing them to be dropped from memory during execution.
-
-        Returns:
-            The blocks of the output dataset.
-        """
-        if not self._has_final_stage_snapshot():
-            self._optimize()
-            if self._snapshot_blocks is None:
-                # If no snapshot exists, we have to execute the full plan from the
-                # beginning.
-                blocks = self._in_blocks
-                stats = self._in_stats
-                if not self.has_lazy_input():
-                    # If input blocks are non-lazy, unlink them here so we can eagerly
-                    # reclaim the input block memory after the first stage is done
-                    # executing.
-                    self._in_blocks = None
-                stages_to_execute = self._stages
-            else:
-                # If snapshot exists, we only have to execute the plan from the
-                # snapshot.
-                blocks = self._snapshot_blocks
-                stats = self._snapshot_stats
-                # Unlink the snapshot blocks from the plan so we can eagerly reclaim the
-                # snapshot block memory after the first stage is done executing.
-                self._snapshot_blocks = None
-                stages_to_execute = self._stages[self._snapshot_stage_idx + 1 :]
-            for stage in stages_to_execute:
-                stats_builder = stats.child_builder(stage.name)
-                blocks, stage_info = stage(blocks, clear_input_blocks)
-                if stage_info:
-                    stats = stats_builder.build_multistage(stage_info)
-                else:
-                    stats = stats_builder.build(blocks)
-                stats.dataset_uuid = uuid.uuid4().hex
-            # Set the snapshot to the output of the final stage.
-            self._snapshot_blocks = blocks
-            self._snapshot_stats = stats
-            self._snapshot_stats.dataset_uuid = self._dataset_uuid
-            self._snapshot_stage_idx = len(self._stages) - 1
-        return self._snapshot_blocks
-
-    def clear(self) -> None:
-        """Clear all cached block references of this plan, including input blocks.
-
-        This will render the plan un-executable unless the root is a LazyBlockList."""
-        if self._should_clear_input():
-            self._in_blocks.clear()
-        self._snapshot_blocks = None
-        self._snapshot_stats = None
-        self._snapshot_stage_idx = None
-
-    def _should_clear_input(self) -> bool:
-        """Return whether the input blocks should be cleared."""
-        return isinstance(self._in_blocks, LazyBlockList) or (
-            isinstance(self._in_blocks, BlockList)
-            and not isinstance(self._in_blocks._blocks[0], ReadTask)
-        )
-
-    def has_lazy_input(self) -> bool:
-        """Return whether this plan has lazy input blocks."""
-        return isinstance(self._in_blocks, LazyBlockList) or (
-            isinstance(self._in_blocks, BlockList)
-            and isinstance(self._in_blocks._blocks[0], ReadTask)
-        )
-
-    def stats(self) -> DatasetStats:
-        """Return stats for this plan, forcing execution if needed."""
-        self.execute()
-        return self._snapshot_stats
-
-    def _optimize(self) -> None:
-        """Apply stage fusion optimizations, updating this plan."""
-        context = DatasetContext.get_current()
-        if context.optimize_fuse_stages:
-            if context.optimize_fuse_read_stages:
-                self._rewrite_read_stages()
-            self._fuse_one_to_one_stages()
-
-    def _has_final_stage_snapshot(self) -> bool:
-        """Whether this plan has a computed snapshot for the final stage, i.e. for the
-        output of this plan.
-        """
-        return self._has_snapshot_at_stage(len(self._stages) - 1)
-
-    def _is_stage_before_snapshot(self, stage_idx: int) -> bool:
-        """Whether the provided stage is before this plan's snapshot."""
-        return (
-            self._snapshot_blocks is not None
-            and self._snapshot_stage_idx is not None
-            and stage_idx < self._snapshot_stage_idx
-        )
-
-    def _has_snapshot_at_stage(self, stage_idx: int) -> bool:
-        """Whether this plan has a snapshot for the provided stage."""
-        return (
-            self._snapshot_blocks is not None
-            and self._snapshot_stage_idx is not None
-            and stage_idx == self._snapshot_stage_idx
-        )
-
-    def _rewrite_read_stages(self) -> None:
-        """Rewrites read stages into one-to-one stages."""
-        if self._stages and self._has_read_stage():
-            block_list, stage = self._rewrite_read_stage()
-            self._in_blocks = block_list
-            self._in_stats = DatasetStats(stages={}, parent=None)
-            self._stages.insert(0, stage)
-            if self._snapshot_blocks is not None:
-                # If the snapshot exists, update it's index to account for the new read
-                # stage.
-                self._snapshot_stage_idx += 1
-
-    def _has_read_stage(self) -> bool:
-        """Whether this plan has a read stage for its input."""
-        return isinstance(self._in_blocks, LazyBlockList) and hasattr(
-            self._in_blocks, "_read_tasks"
-        )
-
-    def _is_read_stage(self) -> bool:
-        """Whether this plan is a bare read stage."""
-        return self._has_read_stage() and not self._stages
-
-    def _rewrite_read_stage(self) -> Tuple[BlockList, "Stage"]:
-        """Rewrite the read stage to a OneToOne stage over read tasks as input.
-
-        For example, suppose the plan was [Read -> MapBatches(Fn)]. These stages cannot
-        be fused, since read stages are handled specially.
-
-        After rewriting to [GetReadTasks -> MapBatches(DoRead) -> MapBatches(Fn)],
-        now we can fuse the latter two MapBatches stages into a single OneToOne stage:
-        [GetReadTasks -> MapBatches(DoRead -> Fn)].
-        """
-        # Generate the "GetReadTasks" stage blocks.
-        remote_args = self._in_blocks._read_remote_args
-        read_tasks = []
-        metadata = []
-        for i, read_task in enumerate(self._in_blocks._read_tasks):
-            # TODO(Clark): Remove this shoe-horning of the read tasks into a BlockList.
-            read_tasks.append(read_task)
-            metadata.append(self._in_blocks._metadata[i])
-        block_list = BlockList(read_tasks, metadata)
-
-        def block_fn(read_task: ReadTask) -> Iterable[Block]:
-            for tmp1 in read_task._read_fn():
-                yield tmp1
-
-        return block_list, OneToOneStage("read", block_fn, "tasks", remote_args)
-
-    def _fuse_one_to_one_stages(self) -> None:
-        """Fuses compatible one-to-one stages."""
-        optimized_stages = []
-        prev_stage = None
-        new_snapshot_stage_idx = self._snapshot_stage_idx
-        for idx, stage in enumerate(self._stages):
-            if prev_stage is None:
-                prev_stage = stage
-            elif stage.can_fuse(prev_stage) and self._has_snapshot_at_stage(idx - 1):
-                # Only fuse the stages if they can be fused and if the previous stage
-                # isn't already cached as a snapshot.
-                prev_stage = stage.fuse(prev_stage)
-                if self._is_stage_before_snapshot(idx):
-                    # If this stage fusing is happening before the snapshot, we need to
-                    # adjust the snapshot index.
-                    new_snapshot_stage_idx -= 1
-            else:
-                optimized_stages.append(prev_stage)
-                prev_stage = stage
-        if prev_stage:
-            optimized_stages.append(prev_stage)
-            prev_stage = None
-        self._snapshot_stage_idx = new_snapshot_stage_idx
-        self._stages = optimized_stages
 
 
 class Stage:
@@ -361,6 +50,303 @@ class Stage:
         raise NotImplementedError
 
 
+class ExecutionPlan:
+    """A lazy execution plan for a Dataset."""
+
+    # Implementation Notes:
+    #
+    # This lazy execution plan takes in an input block list and builds up a chain of
+    # BlockList --> BlockList stages. When execution is triggered, it tries to fuse
+    # together stages in order to reduce Ray task overhead and data copies.
+    #
+    # Internally, the execution plan holds two block lists:
+    #   * _in_blocks: The (possibly lazy) input block list.
+    #   * _snapshot_blocks: A snapshot of a computed block list, where this snapshot
+    #     is the cached output of executing some prefix in the stage chain.
+    #
+    # The stages in this execution plan are partitioned into two subchains: before the
+    # snapshot and after the snapshot. When the snapshot exists from a previous
+    # execution, any future executions will only have to execute the "after the
+    # snapshot" subchain, using the snapshot as the input to that subchain.
+
+    def __init__(self, in_blocks: BlockList, stats: DatasetStats, dataset_uuid=None):
+        """Create a plan with no transformation stages.
+
+        Args:
+            in_blocks: Base list of blocks.
+            stats: Stats for the base blocks.
+            dataset_uuid: Dataset's UUID.
+        """
+        self._in_blocks = in_blocks
+        self._in_stats = stats
+        # A computed snapshot of some prefix of stages.
+        self._snapshot_blocks = None
+        self._snapshot_stats = None
+        # Chains of stages.
+        self._stages_before_snapshot = []
+        self._stages_after_snapshot = []
+        # Cache of optimized stages.
+        self._last_optimized_stages = None
+
+        self._dataset_uuid = dataset_uuid or uuid.uuid4().hex
+        if not stats.dataset_uuid:
+            stats.dataset_uuid = self._dataset_uuid
+
+    def with_stage(self, stage: "Stage") -> "ExecutionPlan":
+        """Return a copy of this plan with the given stage appended.
+
+        Args:
+            stage: The stage to append.
+
+        Returns:
+            A new ExecutionPlan with this stage appended.
+        """
+        copy = self.copy()
+        copy._stages_after_snapshot.append(stage)
+        return copy
+
+    def copy(self) -> "ExecutionPlan":
+        """Create a shallow copy of this execution plan.
+
+        This copy can be executed without mutating the original, but clearing the copy
+        will also clear the original.
+
+        Returns:
+            A shallow copy of this execution plan.
+        """
+        plan_copy = ExecutionPlan(self._in_blocks, self._in_stats)
+        if self._snapshot_blocks is not None:
+            # Copy over the existing snapshot.
+            plan_copy._snapshot_blocks = self._snapshot_blocks
+            plan_copy._snapshot_stats = self._snapshot_stats
+        plan_copy._stages_before_snapshot = self._stages_before_snapshot.copy()
+        plan_copy._stages_after_snapshot = self._stages_after_snapshot.copy()
+        return plan_copy
+
+    def deep_copy(self, preserve_uuid: bool = False) -> "ExecutionPlan":
+        """Create a deep copy of this execution plan.
+
+        This copy can be executed AND cleared without mutating the original.
+
+        Args:
+            preserve_uuid: Whether to preserve the original UUID in the copy.
+
+        Returns:
+            A deep copy of this execution plan.
+        """
+        dataset_uuid = None
+        if preserve_uuid:
+            dataset_uuid = self._dataset_uuid
+        in_blocks = self._in_blocks
+        if isinstance(in_blocks, BlockList):
+            in_blocks = in_blocks.copy()
+        plan_copy = ExecutionPlan(
+            in_blocks, copy.copy(self._in_stats), dataset_uuid=dataset_uuid
+        )
+        if self._snapshot_blocks:
+            # Copy over the existing snapshot.
+            snapshot_blocks = self._snapshot_blocks
+            if isinstance(snapshot_blocks, BlockList):
+                snapshot_blocks = snapshot_blocks.copy()
+            plan_copy._snapshot_blocks = snapshot_blocks
+            plan_copy._snapshot_stats = copy.copy(self._snapshot_stats)
+        plan_copy._stages_before_snapshot = self._stages_before_snapshot.copy()
+        plan_copy._stages_after_snapshot = self._stages_after_snapshot.copy()
+        return plan_copy
+
+    def initial_num_blocks(self) -> int:
+        """Get the estimated number of blocks after applying all plan stages."""
+        if self.has_computed_output():
+            return self._snapshot_blocks.initial_num_blocks()
+        for stage in self._stages_after_snapshot[::-1]:
+            if stage.num_blocks is not None:
+                return stage.num_blocks
+        if self._snapshot_blocks is not None:
+            return self._snapshot_blocks.initial_num_blocks()
+        for stage in self._stages_before_snapshot[::-1]:
+            if stage.num_blocks is not None:
+                return stage.num_blocks
+        if self._in_blocks is not None:
+            return self._in_blocks.initial_num_blocks()
+        return None
+
+    def schema(
+        self, fetch_if_missing: bool = False
+    ) -> Union[type, "pyarrow.lib.Schema"]:
+        """Get the schema after applying all plan stages.
+
+        Args:
+            fetch_if_missing: Whether to execute the plan to fetch the schema.
+
+        Returns:
+            The schema of the output dataset.
+        """
+        if self._stages_after_snapshot:
+            if fetch_if_missing:
+                self.execute()
+            else:
+                return None
+        # Snapshot is now guaranteed to be the output of the final stage or None.
+        blocks = self._snapshot_blocks
+        if not blocks:
+            return None
+        metadata = blocks.get_metadata(fetch_if_missing=False)
+        # Some blocks could be empty, in which case we cannot get their schema.
+        # TODO(ekl) validate schema is the same across different blocks.
+        for m in metadata:
+            if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
+                return m.schema
+        if not fetch_if_missing:
+            return None
+        # Synchronously fetch the schema.
+        # For lazy block lists, this launches read tasks and fetches block metadata
+        # until we find valid block schema.
+        for _, m in blocks.iter_blocks_with_metadata():
+            if m.schema is not None and (m.num_rows > 0 or m.num_rows is None):
+                return m.schema
+        return None
+
+    def meta_count(self) -> Optional[int]:
+        """Get the number of rows after applying all plan stages if possible.
+
+        This method will never trigger any computation.
+
+        Returns:
+            The number of records of the result Dataset, or None.
+        """
+        if self._stages_after_snapshot:
+            return None
+        # Snapshot is now guaranteed to be the output of the final stage or None.
+        blocks = self._snapshot_blocks
+        if blocks is None:
+            return None
+        metadata = blocks.get_metadata()
+        if metadata and all(m.num_rows is not None for m in metadata):
+            return sum(m.num_rows for m in metadata)
+        return None
+
+    def execute(
+        self,
+        clear_input_blocks: bool = True,
+        force_read: bool = False,
+    ) -> BlockList:
+        """Execute this plan.
+
+        Args:
+            clear_input_blocks: Whether to assume ownership of the input blocks,
+                allowing them to be dropped from memory during execution.
+            force_read: Whether to force the read stage to fully execute.
+
+        Returns:
+            The blocks of the output dataset.
+        """
+        if not self.has_computed_output():
+            blocks, stats, stages = self._optimize()
+            for stage in stages:
+                stats_builder = stats.child_builder(stage.name)
+                blocks, stage_info = stage(blocks, clear_input_blocks)
+                if stage_info:
+                    stats = stats_builder.build_multistage(stage_info)
+                else:
+                    stats = stats_builder.build(blocks)
+                stats.dataset_uuid = uuid.uuid4().hex
+            # Set the snapshot to the output of the final stage.
+            self._snapshot_blocks = blocks
+            self._snapshot_stats = stats
+            self._snapshot_stats.dataset_uuid = self._dataset_uuid
+            self._stages_before_snapshot += self._stages_after_snapshot
+            self._stages_after_snapshot = []
+        if isinstance(self._snapshot_blocks, LazyBlockList) and (
+            force_read or self._snapshot_blocks._pushdown_fn is not None
+        ):
+            # If we have a lazy datasource that we've pushed downstream tasks into,
+            # materialize it as a concrete BlockList to preserve the default eager
+            # semantics.
+            self._snapshot_blocks = self._snapshot_blocks.compute_to_blocklist()
+        return self._snapshot_blocks
+
+    def clear(self) -> None:
+        """Clear all cached block references of this plan, including input blocks.
+
+        This will render the plan un-executable unless the root is a LazyBlockList."""
+        self._in_blocks.clear()
+        self._snapshot_blocks = None
+        self._snapshot_stats = None
+        # We're erasing the snapshot, so put all stages into the "after snapshot"
+        # bucket.
+        self._stages_after_snapshot = (
+            self._stages_before_snapshot + self._stages_after_snapshot
+        )
+        self._stages_before_snapshot = []
+
+    def stats(self) -> DatasetStats:
+        """Return stats for this plan, forcing execution if needed."""
+        self.execute()
+        return self._snapshot_stats
+
+    def _optimize(self) -> Tuple[BlockList, DatasetStats, List[Stage]]:
+        """Apply stage fusion optimizations, updating this plan."""
+        context = DatasetContext.get_current()
+        blocks, stats = self._get_input_blocks()
+        stages = self._stages_after_snapshot.copy()
+        if isinstance(blocks, LazyBlockList) and context.optimize_fuse_read_stages:
+            # If using a lazy datasource, fuse downstream tasks into the read stage.
+            blocks, stats, stages = _fuse_into_read_stage(blocks, stats, stages)
+            stats.dataset_uuid = self._dataset_uuid
+        if context.optimize_fuse_stages:
+            stages = _fuse_one_to_one_stages(stages)
+        self._last_optimized_stages = stages
+        return blocks, stats, stages
+
+    def _get_input_blocks(self) -> Tuple[BlockList, DatasetStats]:
+        """Get the input blocks (and corresponding stats) for plan execution.
+
+        Options include the input block list that the plan was created with, and the
+        computation snapshot of some stage prefix of the execution plan.
+        """
+        if self._snapshot_blocks is not None:
+            # If snapshot exists, we only have to execute the plan from the
+            # snapshot.
+            blocks = self._snapshot_blocks
+            stats = self._snapshot_stats
+            # Unlink the snapshot blocks from the plan so we can eagerly reclaim the
+            # snapshot block memory after the first stage is done executing.
+            self._snapshot_blocks = None
+        else:
+            # If no snapshot exists, we have to execute the full plan from the
+            # beginning.
+            blocks = self._in_blocks
+            stats = self._in_stats
+            if not self.has_lazy_input():
+                # If not a lazy datasource, unlink the input blocks from the plan so we
+                # can eagerly reclaim the input block memory after the first stage is
+                # done executing.
+                self._in_blocks = None
+        return blocks, stats
+
+    def has_lazy_input(self) -> bool:
+        """Return whether this plan has lazy input blocks."""
+        return isinstance(self._in_blocks, LazyBlockList)
+
+    def is_read_stage(self) -> bool:
+        """Return whether this plan only consists of a read stage."""
+        return (
+            self.has_lazy_input()
+            and not self._stages_before_snapshot
+            and not self._stages_after_snapshot
+            and (
+                self._snapshot_blocks is None
+                or self._snapshot_blocks._pushdown_fn is None
+            )
+        )
+
+    def has_computed_output(self) -> bool:
+        """Whether this plan has a computed snapshot for the final stage, i.e. for the
+        output of this plan.
+        """
+        return self._snapshot_blocks is not None and not self._stages_after_snapshot
+
+
 class OneToOneStage(Stage):
     """A stage that transforms blocks independently (e.g., map or filter)."""
 
@@ -381,11 +367,7 @@ class OneToOneStage(Stage):
             return False
         if prev.compute != self.compute:
             return False
-        for key in INHERITABLE_REMOTE_ARGS:
-            remote_args = self.ray_remote_args.copy()
-            if key in prev.ray_remote_args:
-                remote_args[key] = prev.ray_remote_args[key]
-        if prev.ray_remote_args != remote_args:
+        if not _are_remote_args_compatible(prev.ray_remote_args, self.ray_remote_args):
             return False
         return True
 
@@ -423,12 +405,14 @@ class AllToAllStage(Stage):
         supports_block_udf: bool = False,
         block_udf=None,
         remote_args=None,
+        is_expecting_read_tasks: bool = False,
     ):
         super().__init__(name, num_blocks)
         self.fn = fn
         self.supports_block_udf = supports_block_udf
         self.block_udf = block_udf
         self.ray_remote_args = remote_args or {}
+        self.is_expecting_read_tasks = is_expecting_read_tasks
 
     def can_fuse(self, prev: Stage):
         context = DatasetContext.get_current()
@@ -455,8 +439,177 @@ class AllToAllStage(Stage):
     def __call__(
         self, blocks: BlockList, clear_input_blocks: bool
     ) -> Tuple[BlockList, dict]:
+        if self.is_expecting_read_tasks:
+            assert isinstance(blocks, LazyBlockList)
+            blocks = BlockList(
+                [
+                    # Use block partition future if the read task has already been
+                    # submitted, otherwise use the read task that the block UDF will
+                    # execute.
+                    # TODO(Clark): Remove shoe-horning of read tasks into block list.
+                    part if part is not None else ray.put(t._read_fn)
+                    for part, t in zip(blocks._block_partitions, blocks._tasks)
+                ],
+                [t.get_metadata() for t in blocks._tasks],
+            )
         blocks, stage_info = self.fn(
             blocks, clear_input_blocks, self.block_udf, self.ray_remote_args
         )
         assert isinstance(blocks, BlockList), blocks
         return blocks, stage_info
+
+
+def _fuse_into_read_stage(
+    blocks: LazyBlockList,
+    stats: DatasetStats,
+    stages: List[Stage],
+) -> Tuple[BlockList, DatasetStats]:
+    """Fuse downstream stages into the LazyBlockList read stage.
+
+    Args:
+        blocks: Lazy block list representing read stage. Compatible downstream stages
+            will be fused into this block list as pushdown functions.
+        stats: Current stats for this stage. This is overridden if fusion takes place.
+        stages: The candidate downstream stages to fuse.
+
+    Returns:
+        Lazy block list with fused pushdown functions, and the corresponding stats for
+        the modified read stage.
+    """
+    context = DatasetContext.get_current()
+    assert isinstance(blocks, LazyBlockList)
+    pushdown_fns = []
+    remote_args = blocks._remote_args
+    name = blocks._name
+    # Gather compatible stages into a set of pushdown functions.
+    for stage in stages:
+        if not isinstance(stage, OneToOneStage):
+            break
+        if not _are_remote_args_compatible(remote_args, stage.ray_remote_args):
+            break
+        if stage.compute != "tasks":
+            break
+        pushdown_fns.append(stage.block_fn)
+        name += "->" + stage.name
+    # Compose pushdown functions into single Block -> Iterator[Block] function.
+    composed_pushdown_fn = compose_block_funcs(*pushdown_fns[::-1])
+    if blocks._pushdown_fn is not None:
+        # Lazy block list already has a pushdown function, so we compose our new
+        # pushdown function with it.
+        composed_pushdown_fn = compose(composed_pushdown_fn, blocks._pushdown_fn)
+    # Slice off fused stages.
+    stages = stages[len(pushdown_fns) :]
+    next_stage = next(iter(stages), None)
+    if (
+        context.optimize_fuse_shuffle_stages
+        and isinstance(next_stage, AllToAllStage)
+        # Stage is already fused/optimized, e.g. if this is being executed in a
+        # pipeline.
+        and not next_stage.is_expecting_read_tasks
+        and next_stage.supports_block_udf
+        and all(k in INHERITABLE_REMOTE_ARGS for k in remote_args)
+    ):
+        # Push read stage into all-to-all stage.
+
+        def block_udf(
+            part_or_read_fn: Union[
+                ObjectRef[BlockPartition], Callable[[], Iterator[Block]]
+            ]
+        ) -> Iterator[Block]:
+            if not callable(part_or_read_fn):
+                # Block partition was provided.
+                if context.block_splitting_enabled:
+                    for block_and_meta in part_or_read_fn:
+                        block, _ = block_and_meta
+                        block = ray.get(block)
+                        yield from composed_pushdown_fn(block)
+                else:
+                    yield from composed_pushdown_fn(part_or_read_fn)
+            else:
+                # Read task was provided.
+                for block in part_or_read_fn():
+                    yield from composed_pushdown_fn(block)
+
+        new_stage = AllToAllStage(
+            name=name + "->" + next_stage.name,
+            num_blocks=next_stage.num_blocks,
+            fn=next_stage.fn,
+            supports_block_udf=True,
+            block_udf=block_udf,
+            remote_args=remote_args,
+            is_expecting_read_tasks=True,
+        )
+        # Overwrite stage.
+        stages[0] = new_stage
+        stats = DatasetStats(stages={}, parent=None)
+    elif pushdown_fns:
+        # Create the new read stage with the new pushdown functions.
+        blocks = LazyBlockList(
+            blocks._tasks,
+            block_partitions=None,
+            pushdown_fn=composed_pushdown_fn,
+            base_block_partitions=blocks._block_partitions,
+            ray_remote_args=remote_args,
+            name=name,
+            stats_uuid=blocks._stats_uuid,
+        )
+        stats = blocks.stats()
+    return blocks, stats, stages
+
+
+def _fuse_one_to_one_stages(stages: List[Stage]) -> List[Stage]:
+    """Fuses compatible one-to-one stages.
+
+    Args:
+        stages: Stages to try to fuse.
+
+    Returns:
+        Optimized, fused stages.
+    """
+    optimized_stages = []
+    prev_stage = None
+    # We do not fuse stages across the snapshot, since we want to reuse the
+    # snapshot.
+    for idx, stage in enumerate(stages):
+        if prev_stage is None:
+            prev_stage = stage
+        elif stage.can_fuse(prev_stage):
+            prev_stage = stage.fuse(prev_stage)
+        else:
+            optimized_stages.append(prev_stage)
+            prev_stage = stage
+    if prev_stage:
+        optimized_stages.append(prev_stage)
+        prev_stage = None
+    return optimized_stages
+
+
+def _are_remote_args_compatible(prev_args, next_args):
+    """Check if Ray remote arguments are compatible for merging."""
+    remote_args = next_args.copy()
+    for key in INHERITABLE_REMOTE_ARGS:
+        if key in prev_args:
+            remote_args[key] = prev_args[key]
+    if prev_args != remote_args:
+        return False
+    return True
+
+
+def compose(
+    f: Callable[[Block], Iterator[Block]],
+    g: Callable[[Block], Iterator[Block]],
+) -> Callable[[Block], Iterator[Block]]:
+    def _fn(block: Block):
+        for b in g(block):
+            yield from f(b)
+
+    return _fn
+
+
+def compose_block_funcs(
+    *block_funcs: Callable[[Block], Iterator[Block]],
+) -> Callable[[Block], Iterator[Block]]:
+    if not block_funcs:
+        return lambda block: [block]
+
+    return functools.reduce(compose, block_funcs)

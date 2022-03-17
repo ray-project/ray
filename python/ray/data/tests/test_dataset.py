@@ -203,6 +203,7 @@ def test_dataset_out_of_band_serialization(shutdown_only, lazy):
     ds = maybe_lazy(ds, lazy)
     ds = ds.map(lambda x: x + 1)
     ds = ds.map(lambda x: x + 1)
+    ds = ds.random_shuffle()
     epoch = ds._get_epoch()
     uuid = ds._get_uuid()
     plan_uuid = ds._plan._dataset_uuid
@@ -213,7 +214,7 @@ def test_dataset_out_of_band_serialization(shutdown_only, lazy):
     in_blocks = ds._plan._in_blocks
     # Should not raise.
     in_blocks._check_if_cleared()
-    if isinstance(in_blocks, LazyBlockList):
+    if lazy and isinstance(in_blocks, LazyBlockList):
         assert in_blocks._block_partitions[0] is not None
     if not lazy:
         assert ds._plan._snapshot_blocks is not None
@@ -1019,6 +1020,16 @@ def test_schema(ray_start_regular_shared):
     assert (
         str(ds4) == "Dataset(num_blocks=1, num_rows=5, schema={a: string, b: double})"
     )
+
+
+def test_schema_lazy(ray_start_regular_shared):
+    ds = ray.data.range(100, parallelism=10)
+    # We kick off the read task for the first block by default.
+    assert ds._plan._in_blocks._num_computed() == 1
+    schema = ds.schema()
+    assert schema == int
+    # Fetching the schema should not trigger execution of extra read tasks.
+    assert ds._plan.execute()._num_computed() == 1
 
 
 def test_lazy_loading_exponential_rampup(ray_start_regular_shared):

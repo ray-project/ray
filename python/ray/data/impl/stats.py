@@ -91,9 +91,11 @@ class _StatsActor:
         self.metadata = collections.defaultdict(dict)
         self.last_time = {}
         self.start_time = {}
+        self.names = {}
 
-    def record_start(self, stats_uuid):
+    def record_start(self, stats_uuid, name):
         self.start_time[stats_uuid] = time.perf_counter()
+        self.names[stats_uuid] = name
 
     def record_task(self, stats_uuid, i, metadata):
         self.metadata[stats_uuid][i] = metadata
@@ -101,10 +103,11 @@ class _StatsActor:
 
     def get(self, stats_uuid):
         if stats_uuid not in self.metadata:
-            return {}, 0.0
+            return {}, 0.0, ""
         return (
             self.metadata[stats_uuid],
             self.last_time[stats_uuid] - self.start_time[stats_uuid],
+            self.names[stats_uuid],
         )
 
 
@@ -216,11 +219,11 @@ class DatasetStats:
 
         if self.needs_stats_actor:
             # XXX this is a super hack, clean it up.
-            stats_map, self.time_total_s = ray.get(
+            stats_map, self.time_total_s, name = ray.get(
                 self.stats_actor.get.remote(self.stats_uuid)
             )
             for i, metadata in stats_map.items():
-                self.stages["read"][i] = metadata
+                self.stages[name][i] = metadata
         out = ""
         if self.parents:
             for p in self.parents:
@@ -264,8 +267,12 @@ class DatasetStats:
 
     def _summarize_blocks(self, blocks: List[BlockMetadata]) -> str:
         exec_stats = [m.exec_stats for m in blocks if m.exec_stats is not None]
+        rounded_total = round(self.time_total_s, 2)
+        if rounded_total <= 0:
+            # Handle -0.0 case.
+            rounded_total = 0
         out = "{}/{} blocks executed in {}s\n".format(
-            len(exec_stats), len(blocks), round(self.time_total_s, 2)
+            len(exec_stats), len(blocks), rounded_total
         )
 
         if exec_stats:

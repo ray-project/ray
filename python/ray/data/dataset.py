@@ -58,6 +58,7 @@ from ray.data.datasource import (
     ParquetDatasource,
     BlockWritePathProvider,
     DefaultBlockWritePathProvider,
+    ReadTask,
     WriteResult,
 )
 from ray.data.datasource.file_based_datasource import (
@@ -977,26 +978,26 @@ class Dataset(Generic[T]):
 
         start_time = time.perf_counter()
         context = DatasetContext.get_current()
-        calls: List[Callable[[], ObjectRef[BlockPartition]]] = []
-        metadata: List[BlockPartitionMetadata] = []
+        tasks: List[ReadTask] = []
         block_partitions: List[ObjectRef[BlockPartition]] = []
+        block_partitions_meta: List[ObjectRef[BlockPartitionMetadata]] = []
 
         datasets = [self] + list(other)
         for ds in datasets:
             bl = ds._plan.execute()
             if isinstance(bl, LazyBlockList):
-                calls.extend(bl._calls)
-                metadata.extend(bl._metadata)
+                tasks.extend(bl._tasks)
                 block_partitions.extend(bl._block_partitions)
+                block_partitions_meta.extend(bl._block_partitions_meta)
             else:
-                calls.extend([None] * bl.initial_num_blocks())
-                metadata.extend(bl._metadata)
+                tasks.extend([ReadTask(lambda: None, meta) for meta in bl._metadata])
                 if context.block_splitting_enabled:
                     block_partitions.extend(
                         [ray.put([(b, m)]) for b, m in bl.get_blocks_with_metadata()]
                     )
                 else:
                     block_partitions.extend(bl.get_blocks())
+                block_partitions_meta.extend([ray.put(meta) for meta in bl._metadata])
 
         epochs = [ds._get_epoch() for ds in datasets]
         max_epoch = max(*epochs)
@@ -1017,7 +1018,8 @@ class Dataset(Generic[T]):
         dataset_stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
             ExecutionPlan(
-                LazyBlockList(calls, metadata, block_partitions), dataset_stats
+                LazyBlockList(tasks, block_partitions, block_partitions_meta),
+                dataset_stats,
             ),
             max_epoch,
             self._lazy,
@@ -2533,16 +2535,17 @@ Dict[str, List[str]]]): The names of the columns
         """
         from ray.data.dataset_pipeline import DatasetPipeline
 
-        # If optimizations are enabled, rewrite the read stage into a OneToOneStage
-        # to enable fusion with downstream map stages.
         ctx = DatasetContext.get_current()
-        if self._plan._is_read_stage() and ctx.optimize_fuse_read_stages:
-            blocks, read_stage = self._plan._rewrite_read_stage()
-            outer_stats = DatasetStats(stages={}, parent=None)
+        if self._plan.is_read_stage() and ctx.optimize_fuse_read_stages:
+            blocks = self._plan._in_blocks.copy()
+            assert isinstance(blocks, LazyBlockList)
+            blocks.clear()
+            outer_stats = blocks.stats()
+            starts_with_read = True
         else:
             blocks = self._plan.execute()
-            read_stage = None
             outer_stats = self._plan.stats()
+            starts_with_read = False
 
         if times is not None and times < 1:
             raise ValueError("`times` must be >= 1, got {}".format(times))
@@ -2578,13 +2581,11 @@ Dict[str, List[str]]]): The names of the columns
             def __iter__(self):
                 return Iterator(self._blocks)
 
-        pipe = DatasetPipeline(Iterable(blocks), length=times or float("inf"))
-        if read_stage:
-            pipe = pipe.foreach_window(
-                lambda ds, read_stage=read_stage: Dataset(
-                    ds._plan.with_stage(read_stage), ds._epoch, True
-                )
-            )
+        pipe = DatasetPipeline(
+            Iterable(blocks),
+            length=times or float("inf"),
+            _starts_with_read=starts_with_read,
+        )
         return pipe
 
     def window(
@@ -2651,16 +2652,17 @@ Dict[str, List[str]]]): The names of the columns
         if blocks_per_window is None:
             blocks_per_window = 10
 
-        # If optimizations are enabled, rewrite the read stage into a OneToOneStage
-        # to enable fusion with downstream map stages.
         ctx = DatasetContext.get_current()
-        if self._plan._is_read_stage() and ctx.optimize_fuse_read_stages:
-            blocks, read_stage = self._plan._rewrite_read_stage()
-            outer_stats = DatasetStats(stages={}, parent=None)
+        if self._plan.is_read_stage() and ctx.optimize_fuse_read_stages:
+            blocks = self._plan._in_blocks.copy()
+            assert isinstance(blocks, LazyBlockList)
+            blocks.clear()
+            outer_stats = blocks.stats()
+            starts_with_read = True
         else:
             blocks = self._plan.execute()
-            read_stage = None
             outer_stats = self._plan.stats()
+            starts_with_read = False
 
         class Iterator:
             def __init__(self, splits, epoch):
@@ -2720,13 +2722,9 @@ Dict[str, List[str]]]): The names of the columns
                 return Iterator(self._splits, self._epoch)
 
         it = Iterable(blocks, self._epoch)
-        pipe = DatasetPipeline(it, length=len(it._splits))
-        if read_stage:
-            pipe = pipe.foreach_window(
-                lambda ds, read_stage=read_stage: Dataset(
-                    ds._plan.with_stage(read_stage), ds._epoch, True
-                )
-            )
+        pipe = DatasetPipeline(
+            it, length=len(it._splits), _starts_with_read=starts_with_read
+        )
         return pipe
 
     def fully_executed(self) -> "Dataset[T]":
@@ -2738,16 +2736,19 @@ Dict[str, List[str]]]): The names of the columns
         Returns:
             A Dataset with all blocks fully materialized in memory.
         """
-        blocks = self.get_internal_block_refs()
-        bar = ProgressBar("Force reads", len(blocks))
-        bar.block_until_complete(blocks)
-        ds = Dataset(
-            self._plan.copy(),
-            self._epoch,
-            lazy=False,
-        )
+        plan = self._plan.deep_copy()
+        plan.execute(force_read=True)
+        ds = Dataset(plan, self._epoch, lazy=False)
         ds._set_uuid(self._get_uuid())
         return ds
+
+    def is_fully_executed(self) -> bool:
+        """Returns whether this Dataset has been fully executed.
+
+        This will return False if this Dataset is lazy and if the output of its final
+        stage hasn't been computed yet.
+        """
+        return self._plan.has_computed_output()
 
     def stats(self) -> str:
         """Returns a string containing execution timing information."""

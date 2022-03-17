@@ -87,11 +87,13 @@ def test_spread_hint_inherit(ray_start_regular_shared):
     ds = ray.data.range(10)._experimental_lazy()
     ds = ds.map(lambda x: x + 1)
     ds = ds.random_shuffle()
-    for s in ds._plan._stages:
+    for s in ds._plan._stages_before_snapshot:
         assert s.ray_remote_args == {}, s.ray_remote_args
-    ds._plan._optimize()
-    assert len(ds._plan._stages) == 1, ds._plan._stages
-    assert ds._plan._stages[0].ray_remote_args == {"scheduling_strategy": "SPREAD"}
+    for s in ds._plan._stages_after_snapshot:
+        assert s.ray_remote_args == {}, s.ray_remote_args
+    _, _, optimized_stages = ds._plan._optimize()
+    assert len(optimized_stages) == 1, optimized_stages
+    assert optimized_stages[0].ray_remote_args == {"scheduling_strategy": "SPREAD"}
 
 
 def test_optimize_fuse(ray_start_regular_shared):
@@ -171,7 +173,7 @@ def test_optimize_incompatible_stages(ray_start_regular_shared):
     pipe.take()
     expect_stages(
         pipe,
-        3,
+        2,
         [
             "read",
             "map_batches",
@@ -220,7 +222,7 @@ class MySource(CSVDatasource):
     def _read_stream(self, f, path: str, **reader_args):
         count = self.counter.increment.remote()
         ray.get(count)
-        for block in CSVDatasource._read_stream(self, f, path, **reader_args):
+        for block in super()._read_stream(f, path, **reader_args):
             yield block
 
 
@@ -251,6 +253,33 @@ def test_optimize_reread_base_data(ray_start_regular_shared, local_path):
     pipe.take()
     num_reads = ray.get(counter.get.remote())
     assert num_reads == 1, num_reads
+
+
+@pytest.mark.parametrize("with_shuffle", [True, False])
+@pytest.mark.parametrize("enable_dynamic_splitting", [True, False])
+def test_optimize_lazy_reuse_base_data(
+    ray_start_regular_shared, local_path, enable_dynamic_splitting, with_shuffle
+):
+    context = DatasetContext.get_current()
+    context.block_splitting_enabled = enable_dynamic_splitting
+
+    num_blocks = 4
+    dfs = [pd.DataFrame({"one": list(range(i, i + 4))}) for i in range(num_blocks)]
+    paths = [os.path.join(local_path, f"test{i}.csv") for i in range(num_blocks)]
+    for df, path in zip(dfs, paths):
+        df.to_csv(path, index=False)
+    counter = Counter.remote()
+    source = MySource(counter)
+    ds = ray.data.read_datasource(source, parallelism=4, paths=paths)
+    num_reads = ray.get(counter.get.remote())
+    assert num_reads == 1, num_reads
+    ds = ds._experimental_lazy()
+    ds = ds.map(lambda x: x)
+    if with_shuffle:
+        ds = ds.random_shuffle()
+    ds.take()
+    num_reads = ray.get(counter.get.remote())
+    assert num_reads == num_blocks, num_reads
 
 
 if __name__ == "__main__":

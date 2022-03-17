@@ -26,6 +26,7 @@ from ray.data.row import TableRow
 from ray.data.impl import progress_bar
 from ray.data.impl.block_batching import batch_blocks, BatchType
 from ray.data.impl.block_list import BlockList
+from ray.data.impl.lazy_block_list import LazyBlockList
 from ray.data.impl.plan import ExecutionPlan
 from ray.data.impl.stats import DatasetPipelineStats, DatasetStats
 from ray.util.annotations import PublicAPI, DeveloperAPI
@@ -79,6 +80,7 @@ class DatasetPipeline(Generic[T]):
         length: int = None,
         progress_bars: bool = progress_bar._enabled,
         _executed: List[bool] = None,
+        _starts_with_read: bool = False,
     ):
         """Construct a DatasetPipeline (internal API).
 
@@ -95,6 +97,7 @@ class DatasetPipeline(Generic[T]):
         # Whether the pipeline execution has started.
         # This variable is shared across all pipelines descending from this.
         self._executed = _executed or [False]
+        self._starts_with_read = _starts_with_read
         self._dataset_iter = None
         self._first_dataset = None
         self._schema = None
@@ -334,6 +337,7 @@ class DatasetPipeline(Generic[T]):
                 SplitIterator(idx, coordinator),
                 length=self._length,
                 progress_bars=False,
+                _starts_with_read=self._starts_with_read,
             )
             for idx in range(n)
         ]
@@ -405,7 +409,11 @@ class DatasetPipeline(Generic[T]):
         else:
             length = None
 
-        return DatasetPipeline(WindowIterable(self.iter_datasets()), length=length)
+        return DatasetPipeline(
+            WindowIterable(self.iter_datasets()),
+            length=length,
+            _starts_with_read=self._starts_with_read,
+        )
 
     def repeat(self, times: int = None) -> "DatasetPipeline[T]":
         """Repeat this pipeline a given number or times, or indefinitely.
@@ -488,6 +496,7 @@ class DatasetPipeline(Generic[T]):
             RepeatIterable(iter(self._base_iterable)),
             stages=self._stages.copy(),
             length=length,
+            _starts_with_read=self._starts_with_read,
         )
 
     def schema(
@@ -701,6 +710,7 @@ class DatasetPipeline(Generic[T]):
             self._length,
             self._progress_bars,
             _executed=self._executed,
+            _starts_with_read=self._starts_with_read,
         )
 
     def stats(self, exclude_first_window: bool = True) -> str:
@@ -717,6 +727,7 @@ class DatasetPipeline(Generic[T]):
     @staticmethod
     def from_iterable(
         iterable: Iterable[Callable[[], Dataset[T]]],
+        _starts_with_read: bool = False,
     ) -> "DatasetPipeline[T]":
         """Create a pipeline from an sequence of Dataset producing functions.
 
@@ -728,7 +739,9 @@ class DatasetPipeline(Generic[T]):
             length = len(iterable)
         else:
             length = None
-        return DatasetPipeline(iterable, length=length)
+        return DatasetPipeline(
+            iterable, length=length, _starts_with_read=_starts_with_read
+        )
 
     def __repr__(self) -> str:
         return "DatasetPipeline(num_windows={}, num_stages={})".format(
@@ -752,16 +765,62 @@ class DatasetPipeline(Generic[T]):
             self._optimized_stages = self._stages
             return
 
+        if self._starts_with_read:
+            # If the only dataset operaation preceding the creation of the pipeline is a
+            # read stage, use a LazyBlockList for the dummy dataset.
+            dummy_bl = LazyBlockList([])
+        else:
+            dummy_bl = BlockList([], [])
+
+        # This dummy dataset will be used to get a set of optimized stages.
         dummy_ds = Dataset(
-            ExecutionPlan(BlockList([], []), DatasetStats(stages={}, parent=None)),
+            ExecutionPlan(dummy_bl, DatasetStats(stages={}, parent=None)),
             0,
             True,
         )
+        # Apply all pipeline operations to the dummy dataset.
         for stage in self._stages:
             dummy_ds = stage(dummy_ds)
-        dummy_ds._plan._optimize()
         optimized_stages = []
-        for stage in dummy_ds._plan._stages:
+        # Get the optimized stages and the input blocks.
+        blocks, _, stages = dummy_ds._plan._optimize()
+        if (
+            self._starts_with_read
+            and isinstance(blocks, LazyBlockList)
+            and blocks._pushdown_fn is not None
+        ):
+            # Lazy datasource has pushdown functions, which we need to propagate to
+            # each dataset source blocklist in the pipeline.
+            pushdown_fn = blocks._pushdown_fn
+            name = blocks._name
+
+            def propagate_pushdown(ds: Dataset) -> Dataset:
+                old_blocks = ds._plan._in_blocks
+                # Create a new lazy block list with the old read tasks + the new
+                # pushdown function.
+                in_blocks = LazyBlockList(
+                    old_blocks._tasks,
+                    block_partitions=None,
+                    pushdown_fn=pushdown_fn,
+                    # NOTE: We can use the old block list's partitions as our base
+                    # partitions since the old block list is guaranteed to only consist
+                    # of a read stage (no past pushdown lineage).
+                    base_block_partitions=old_blocks._block_partitions,
+                    ray_remote_args=old_blocks._remote_args,
+                    name=name,
+                    stats_uuid=old_blocks._stats_uuid,
+                )
+                plan = ExecutionPlan(
+                    in_blocks, in_blocks.stats(), dataset_uuid=ds._get_uuid()
+                )
+                # We trigger execution so this stage encompasses the execution of any
+                # remaining read tasks and the pushdown functions.
+                return Dataset(plan, ds._epoch, False)
+
+            optimized_stages.append(propagate_pushdown)
+        # Apply these optimized stages to the datasets underlying the pipeline.
+        # These optimized stages will be executed by the PipelineExecutor.
+        for stage in stages:
             optimized_stages.append(
                 lambda ds, stage=stage: Dataset(
                     ds._plan.with_stage(stage), ds._epoch, True

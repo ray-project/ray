@@ -1,8 +1,5 @@
 import math
-from typing import List, Iterator, Tuple, Any, Union, Optional, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    import pyarrow
+from typing import List, Iterator, Tuple, Optional
 
 import numpy as np
 
@@ -26,11 +23,7 @@ class BlockList:
         self._num_blocks = len(self._blocks)
         self._metadata: List[BlockMetadata] = metadata
 
-    def set_metadata(self, i: int, metadata: BlockMetadata) -> None:
-        """Set the metadata for a given block."""
-        self._metadata[i] = metadata
-
-    def get_metadata(self) -> List[BlockMetadata]:
+    def get_metadata(self, fetch_if_missing: bool = False) -> List[BlockMetadata]:
         """Get the metadata for all blocks."""
         return self._metadata.copy()
 
@@ -182,22 +175,22 @@ class BlockList:
         """
         return len(self.get_blocks())
 
-    def ensure_schema_for_first_block(self) -> Optional[Union["pyarrow.Schema", type]]:
-        """Ensure that the schema is set for the first block.
+    def ensure_metadata_for_first_block(self) -> BlockMetadata:
+        """Ensure that the metadata is fetched and set for the first block.
 
         Returns None if the block list is empty.
         """
-        get_schema = cached_remote_fn(_get_schema)
+        get_metadata = cached_remote_fn(_get_metadata)
         try:
-            block = next(self.iter_blocks())
+            block, metadata = next(self.iter_blocks_with_metadata())
         except (StopIteration, ValueError):
             # Dataset is empty (no blocks) or was manually cleared.
             return None
-        schema = ray.get(get_schema.remote(block))
-        # Set the schema.
-        self._metadata[0].schema = schema
-        return schema
+        input_files = metadata.input_files
+        metadata = ray.get(get_metadata.remote(block, input_files))
+        self._metadata[0] = metadata
+        return metadata
 
 
-def _get_schema(block: Block) -> Any:
-    return BlockAccessor.for_block(block).schema()
+def _get_metadata(block: Block, input_files=Optional[List[str]]) -> BlockMetadata:
+    return BlockAccessor.for_block(block).get_metadata(input_files=input_files)

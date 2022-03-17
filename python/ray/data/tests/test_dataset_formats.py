@@ -327,13 +327,11 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
     assert len(input_files) == 2, input_files
     assert (
         str(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={two: string, "
-        "one: dictionary<values=int32, indices=int32, ordered=0>})"
+        "schema={two: string, one: int64})"
     ), ds
     assert (
         repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={two: string, "
-        "one: dictionary<values=int32, indices=int32, ordered=0>})"
+        "schema={two: string, one: int64})"
     ), ds
     assert ds._plan.execute()._num_computed() == 1
 
@@ -738,7 +736,7 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     ds.write_numpy(data_path, filesystem=fs)
     ds = ray.data.read_numpy(data_path, filesystem=fs)
     assert str(ds) == (
-        "Dataset(num_blocks=2, num_rows=None, "
+        "Dataset(num_blocks=2, num_rows=10, "
         "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})"
     )
     assert str(ds.take(2)) == "[{'value': array([0])}, {'value': array([1])}]"
@@ -750,7 +748,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     np.save(os.path.join(path, "test.npy"), np.expand_dims(np.arange(0, 10), 1))
     ds = ray.data.read_numpy(path)
     assert str(ds) == (
-        "Dataset(num_blocks=1, num_rows=None, "
+        "Dataset(num_blocks=1, num_rows=10, "
         "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})"
     )
     assert str(ds.take(2)) == "[{'value': array([0])}, {'value': array([1])}]"
