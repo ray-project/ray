@@ -45,17 +45,17 @@ class GBDTTrainer(Trainer):
 
 
     Args:
-        label_column: Name of the label column. A column with this name
-            must be present in the training dataset.
-        params: Framework specific training parameters.
-        dmatrix_params: Dict of ``dataset name:dict of kwargs`` passed to respective
-            :class:`xgboost_ray.RayDMatrix` initializations.
         datasets: Ray Datasets to use for training and validation. Must include a
             "train" key denoting the training dataset. If a ``preprocessor``
             is provided and has not already been fit, it will be fit on the training
             dataset. All datasets will be transformed by the ``preprocessor`` if
             one is provided. All non-training datasets will be used as separate
             validation sets, each reporting a separate metric.
+        label_column: Name of the label column. A column with this name
+            must be present in the training dataset.
+        params: Framework specific training parameters.
+        dmatrix_params: Dict of ``dataset name:dict of kwargs`` passed to respective
+            :class:`xgboost_ray.RayDMatrix` initializations.
         scaling_config: Configuration for how to scale data parallel training.
         run_config: Configuration for the execution of the training run.
         preprocessor: A ray.ml.preprocessor.Preprocessor to preprocess the
@@ -72,9 +72,9 @@ class GBDTTrainer(Trainer):
 
     def __init__(
         self,
+        datasets: Dict[str, GenDataset],
         label_column: str,
         params: Dict[str, Any],
-        datasets: Dict[str, GenDataset],
         dmatrix_params: Optional[Dict[str, Dict[str, Any]]] = None,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,

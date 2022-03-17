@@ -34,19 +34,21 @@ class XGBoostTrainer(GBDTTrainer):
             result = trainer.fit()
 
     Args:
-        label_column: Name of the label column. A column with this name
-            must be present in the training dataset.
-        params: XGBoost training parameters.
-            Refer to `XGBoost documentation <https://xgboost.readthedocs.io/>`_
-            for a list of possible parameters.
-        dmatrix_params: Dict of ``dataset name:dict of kwargs`` passed to respective
-            :class:`xgboost_ray.RayDMatrix` initializations.
         datasets: Ray Datasets to use for training and validation. Must include a
             "train" key denoting the training dataset. If a ``preprocessor``
             is provided and has not already been fit, it will be fit on the training
             dataset. All datasets will be transformed by the ``preprocessor`` if
             one is provided. All non-training datasets will be used as separate
             validation sets, each reporting a separate metric.
+        label_column: Name of the label column. A column with this name
+            must be present in the training dataset.
+        params: XGBoost training parameters.
+            Refer to `XGBoost documentation <https://xgboost.readthedocs.io/>`_
+            for a list of possible parameters.
+        dmatrix_params: Dict of ``dataset name:dict of kwargs`` passed to respective
+            :class:`xgboost_ray.RayDMatrix` initializations, which in turn are passed
+            to ``xgboost.DMatrix`` objects created on each worker. For example, this can
+            be used to add sample weights with the ``weights`` parameter.
         scaling_config: Configuration for how to scale data parallel training.
         run_config: Configuration for the execution of the training run.
         preprocessor: A ray.ml.preprocessor.Preprocessor to preprocess the
