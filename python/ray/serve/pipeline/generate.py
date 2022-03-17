@@ -102,7 +102,12 @@ def transform_ray_dag_to_serve_dag(dag_node):
             dag_node.get_options(),
             other_args_to_resolve=dag_node.get_other_args_to_resolve(),
         )
-    elif isinstance(dag_node, FunctionNode):
+    elif isinstance(
+        dag_node,
+        FunctionNode
+        # TODO (jiaodong): We do not convert ray function to deployment function
+        # yet, revisit this later
+    ) and dag_node.get_other_args_to_resolve().get("is_from_serve_deployment"):
         deployment_name = DeploymentNameGenerator.get_deployment_name(dag_node)
         return DeploymentFunctionNode(
             dag_node._body,
@@ -133,9 +138,7 @@ def extract_deployments_from_serve_dag(
     deployments = {}
 
     def extractor(dag_node):
-        if isinstance(
-            dag_node, (DeploymentNode, DeploymentMethodNode, DeploymentFunctionNode)
-        ):
+        if isinstance(dag_node, (DeploymentNode, DeploymentFunctionNode)):
             deployment = dag_node._deployment
             # In case same deployment is used in multiple DAGNodes
             deployments[deployment.name] = deployment

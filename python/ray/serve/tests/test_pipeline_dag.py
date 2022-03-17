@@ -355,10 +355,9 @@ def func():
     return 1
 
 
-def test_functional_node(serve_instance):
-    # TODO: Currently in serve, handle.remote("anything") would return 1 even
-    # though the signature doens't match at all.
-    handle = serve.run(NoargDriver.bind(func.bind()))
+def test_single_functional_node_base_case(serve_instance):
+    # Base case should work
+    handle = serve.run(func.bind())
     assert ray.get(handle.remote()) == 1
 
 

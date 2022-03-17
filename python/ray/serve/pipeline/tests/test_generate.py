@@ -105,7 +105,7 @@ def test_func_class_with_class_method_dag(serve_instance):
 
     serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
-    assert len(deployments) == 3
+    assert len(deployments) == 2
     for deployment in deployments:
         deployment.deploy()
 

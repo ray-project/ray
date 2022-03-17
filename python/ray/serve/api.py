@@ -1193,7 +1193,7 @@ class Deployment:
                 self._func_or_class,
                 args,  # Used to bind and resolve DAG only, can take user input
                 kwargs,  # Used to bind and resolve DAG only, can take user input
-                {},
+                self._ray_actor_options or dict(),
                 other_args_to_resolve={
                     "deployment_self": copy(self),
                     "is_from_serve_deployment": True,
@@ -1760,10 +1760,22 @@ def run(
     # Each DAG should always provide a valid Driver DeploymentNode
     if isinstance(target, (DeploymentNode)):
         deployments = pipeline_build(target)
+    # Special case where user is doing single function serve.run(func.bind())
+    elif isinstance(target, (DeploymentFunctionNode)):
+        deployments = pipeline_build(target)
+        if len(deployments) != 1:
+            raise ValueError(
+                "We only support single function node in serve.run, ex: "
+                "serve.run(func.bind()). For more than one nodes in your DAG, "
+                "Please provide a driver class and bind it as entrypoint to "
+                "your Serve DAG."
+            )
     elif isinstance(target, DAGNode):
         raise ValueError(
-            "Please provide a driver class and bind it as entrypoint to your "
-            "Serve DAG."
+            "Invalid DAGNode type as entry to serve.run(), "
+            f"type: {type(target)}, accepted: DeploymentNode, "
+            "DeploymentFunctionNode please provide a driver class and bind it "
+            "as entrypoint to your Serve DAG."
         )
     else:
         raise NotImplementedError()
