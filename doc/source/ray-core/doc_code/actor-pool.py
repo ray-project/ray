@@ -13,5 +13,5 @@ pool = ActorPool([a1, a2])
 
 # pool.map(..) returns a Python generator object ActorPool.map
 gen = pool.map(lambda a, v: a.double.remote(v), [1, 2, 3, 4])
-print([v for v in gen])
+print(list(v for v in gen))
 # [2, 4, 6, 8]
