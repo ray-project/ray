@@ -139,6 +139,7 @@ message ActorNameList {
   repeated string names = 1;
 }
 
+// It is deprecated. Use ActorNameList instead.
 message ActorSet {
   repeated string names = 1;
 }
@@ -166,6 +167,7 @@ message DeploymentInfo {
   int64 end_time_ms = 8;
 }
 
+// Wrap DeploymentInfo and route. The "" route value need to be convert to None/null.
 message DeploymentRoute {
   DeploymentInfo deployment_info = 1;
   string route = 2;
