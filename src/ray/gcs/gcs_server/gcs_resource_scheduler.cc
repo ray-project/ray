@@ -32,7 +32,7 @@ double LeastResourceScorer::Score(const ResourceRequest &required_resources,
   if (!node_resources.normal_task_resources.IsEmpty()) {
     new_node_resources = node_resources;
     new_node_resources.available -= node_resources.normal_task_resources;
-    new_node_resources.RemoveNegative();
+    new_node_resources.available.RemoveNegative();
     node_resources_ptr = &new_node_resources;
   }
 
