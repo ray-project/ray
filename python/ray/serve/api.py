@@ -1789,6 +1789,8 @@ def run(
         target: User built serve Application or DeploymentNode that acts as
             the root node of DAG. By default DeploymentNode is the Driver
             deployment unless user provided customized one.
+        host (str): The host passed into serve.start().
+        port (int): The port passed into serve.start().
 
     Returns:
         RayServeHandle: A regular ray serve handle that can be called by user
