@@ -396,7 +396,7 @@ provider:
         """
         client = ray_usage_lib.UsageReportClient()
         temp_dir = Path(tmp_path)
-        client._write_usage_data(d, temp_dir)
+        client.write_usage_data(d, temp_dir)
 
         wait_for_condition(lambda: file_exists(temp_dir))
 
@@ -432,7 +432,7 @@ provider:
         ray.get(s.ready.remote())
 
         # Query our endpoint over HTTP.
-        r = client._report_usage_data("http://127.0.0.1:8000/usage", d)
+        r = client.report_usage_data("http://127.0.0.1:8000/usage", d)
         r.raise_for_status()
         assert json.loads(r.text) is True
 
