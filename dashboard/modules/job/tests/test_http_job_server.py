@@ -68,8 +68,9 @@ def test_list_jobs(job_sdk_client: JobSubmissionClient, use_sdk: bool):
 
     runtime_env = {"env_vars": {"TEST": "123"}}
     metadata = {"foo": "bar"}
+    entrypoint = "echo hello"
     job_id = client.submit_job(
-        entrypoint="echo hello", runtime_env=runtime_env, metadata=metadata
+        entrypoint=entrypoint, runtime_env=runtime_env, metadata=metadata
     )
 
     wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
@@ -86,6 +87,7 @@ def test_list_jobs(job_sdk_client: JobSubmissionClient, use_sdk: bool):
         info_json = jobs_info_json[job_id]
         info = JobInfo(**info_json)
 
+    assert info.entrypoint == entrypoint
     assert info.status == JobStatus.SUCCEEDED
     assert info.message is not None
     assert info.end_time >= info.start_time

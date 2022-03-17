@@ -1232,10 +1232,8 @@ def _start_redis_instance(
 
 
 def start_log_monitor(
-    redis_address,
-    gcs_address,
     logs_dir,
-    redis_password=None,
+    gcs_address,
     fate_share=None,
     max_bytes=0,
     backup_count=0,
@@ -1244,9 +1242,10 @@ def start_log_monitor(
     """Start a log monitor process.
 
     Args:
-        redis_address (str): The address of the Redis instance.
         logs_dir (str): The directory of logging files.
-        redis_password (str): The password of the redis server.
+        gcs_address (str): GCS address for pubsub.
+        fate_share (bool): Whether to share fate between log_monitor
+            and this process.
         max_bytes (int): Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count (int): Log rotation parameter. Corresponding to
@@ -1263,11 +1262,10 @@ def start_log_monitor(
         sys.executable,
         "-u",
         log_monitor_filepath,
-        f"--redis-address={redis_address}",
         f"--logs-dir={logs_dir}",
+        f"--gcs-address={gcs_address}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
-        f"--gcs-address={gcs_address}",
     ]
     if redirect_logging:
         # Avoid hanging due to fd inheritance.
@@ -1285,8 +1283,6 @@ def start_log_monitor(
         # Inherit stdout/stderr streams.
         stdout_file = None
         stderr_file = None
-    if redis_password:
-        command.append(f"--redis-password={redis_password}")
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_LOG_MONITOR,

@@ -879,10 +879,8 @@ class Node:
     def start_log_monitor(self):
         """Start the log monitor."""
         process_info = ray._private.services.start_log_monitor(
-            self.redis_address,
-            self.gcs_address,
             self._logs_dir,
-            redis_password=self._ray_params.redis_password,
+            self.gcs_address,
             fate_share=self.kernel_fate_share,
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
