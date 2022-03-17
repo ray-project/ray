@@ -5,6 +5,7 @@ from typing import Optional
 import click
 
 from ray_release.aws import maybe_fetch_api_token
+from ray_release.buildkite.step import DEFAULT_ARTIFACTS_DIR
 from ray_release.config import (
     read_and_validate_release_test_collection,
     find_test,
@@ -14,6 +15,7 @@ from ray_release.config import (
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestError
 from ray_release.glue import run_release_test
 from ray_release.logger import logger
+from ray_release.reporter.artifacts import ArtifactsReporter
 from ray_release.reporter.legacy_rds import LegacyRDSReporter
 from ray_release.reporter.db import DBReporter
 from ray_release.reporter.log import LogReporter
@@ -115,6 +117,10 @@ def main(
     result = Result()
 
     reporters = [LogReporter()]
+
+    if "BUILDKITE" in os.environ:
+        reporters.append(ArtifactsReporter(DEFAULT_ARTIFACTS_DIR))
+
     if report:
         reporters.append(LegacyRDSReporter())
         reporters.append(DBReporter())
