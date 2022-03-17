@@ -42,9 +42,12 @@ struct RemoteConnectionInfo {
 };
 
 /// Callback for object location notifications.
-using OnLocationsFound = std::function<void(
-    const ray::ObjectID &object_id, const std::unordered_set<ray::NodeID> &,
-    const std::string &, const NodeID &, bool pending_creation, size_t object_size)>;
+using OnLocationsFound = std::function<void(const ray::ObjectID &object_id,
+                                            const std::unordered_set<ray::NodeID> &,
+                                            const std::string &,
+                                            const NodeID &,
+                                            bool pending_creation,
+                                            size_t object_size)>;
 
 class IObjectDirectory {
  public:
@@ -113,7 +116,8 @@ class IObjectDirectory {
   /// \param object_id The object id that was put into the store.
   /// \param node_id The node id corresponding to this node.
   /// \param object_info Additional information about the object.
-  virtual void ReportObjectAdded(const ObjectID &object_id, const NodeID &node_id,
+  virtual void ReportObjectAdded(const ObjectID &object_id,
+                                 const NodeID &node_id,
                                  const ObjectInfo &object_info) = 0;
 
   /// Report objects removed from this node's store to the object directory.
@@ -121,7 +125,8 @@ class IObjectDirectory {
   /// \param object_id The object id that was removed from the store.
   /// \param node_id The node id corresponding to this node.
   /// \param object_info Additional information about the object.
-  virtual void ReportObjectRemoved(const ObjectID &object_id, const NodeID &node_id,
+  virtual void ReportObjectRemoved(const ObjectID &object_id,
+                                   const NodeID &node_id,
                                    const ObjectInfo &object_info) = 0;
 
   /// Record metrics.

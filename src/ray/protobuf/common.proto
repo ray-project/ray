@@ -101,6 +101,8 @@ message PythonFunctionDescriptor {
 message CppFunctionDescriptor {
   /// Remote function name.
   string function_name = 1;
+  string caller = 2;
+  string class_name = 3;
 }
 
 // A union wrapper for various function descriptor types.

@@ -75,6 +75,7 @@ if __name__ == "__main__":
         print("NOTE: Use '-y' to override all python files without confirmation.")
 
     do_link("rllib", force=args.yes, local_path="../../../rllib")
+    do_link("ml", force=args.yes)
     do_link("tune", force=args.yes)
     do_link("sgd", force=args.yes)
     do_link("train", force=args.yes)
@@ -87,7 +88,6 @@ if __name__ == "__main__":
     do_link("tests", force=args.yes)
     do_link("experimental", force=args.yes)
     do_link("util", force=args.yes)
-    do_link("serve", force=args.yes)
     do_link("workflow", force=args.yes)
     do_link("_private", force=args.yes)
     do_link("node.py", force=args.yes)

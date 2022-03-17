@@ -24,6 +24,7 @@
 #include <thread>
 #include <unordered_map>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/random/random.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
@@ -155,7 +156,7 @@ ParseUrlEndpoint(const std::string &endpoint, int default_port = 0);
 ///   num_objects: 9,
 ///   offset: 8388878
 /// }
-std::shared_ptr<std::unordered_map<std::string, std::string>> ParseURL(std::string url);
+std::shared_ptr<absl::flat_hash_map<std::string, std::string>> ParseURL(std::string url);
 
 class InitShutdownRAII {
  public:
@@ -194,7 +195,7 @@ struct EnumClassHash {
 
 /// unordered_map for enum class type.
 template <typename Key, typename T>
-using EnumUnorderedMap = std::unordered_map<Key, T, EnumClassHash>;
+using EnumUnorderedMap = absl::flat_hash_map<Key, T, EnumClassHash>;
 
 /// A helper function to fill random bytes into the `data`.
 /// Warning: this is not fork-safe, we need to re-seed after that.
@@ -303,7 +304,8 @@ class ExponentialBackOff {
   /// \param[in] multiplier The multiplier for this counter.
   /// \param[in] max_value The maximum value for this counter. By default it's
   ///    infinite double.
-  ExponentialBackOff(uint64_t initial_value, double multiplier,
+  ExponentialBackOff(uint64_t initial_value,
+                     double multiplier,
                      uint64_t max_value = std::numeric_limits<uint64_t>::max())
       : curr_value_(initial_value),
         initial_value_(initial_value),
