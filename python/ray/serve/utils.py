@@ -276,9 +276,9 @@ def get_deployment_import_path(deployment, replace_main=False):
     if "<locals>" in body.__qualname__:
         raise RuntimeError(
             "Deployment definitions must be importable to build the Serve app, "
-            f"but deployment {deployment.name} is inline defined or returned "
+            f"but deployment '{deployment.name}' is inline defined or returned "
             "from another function. Please restructure your code so that "
-            f"{import_path} can be imported (e.g., put it in a module)."
+            f"'{import_path}' can be imported (i.e., put it in a module)."
         )
 
     if replace_main:
