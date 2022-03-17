@@ -23,8 +23,8 @@ RUN sudo apt-get update \
     && $HOME/anaconda3/bin/pip install -U pip \
     && $HOME/anaconda3/bin/pip --use-deprecated=legacy-resolver --no-cache-dir install -r requirements.txt \
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U -r requirements_rllib.txt \
+    && $HOME/anaconda3/bin/pip --no-cache-dir install -U -r requirements_train.txt \
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U -r requirements_tune.txt \
-    && $HOME/anaconda3/bin/pip --no-cache-dir install -U -r requirements_train.txt
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U -r requirements_ml_docker.txt \
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U -r requirements_upstream.txt \
     # Remove dataclasses & typing because they are included in Python > 3.6
@@ -32,7 +32,7 @@ RUN sudo apt-get update \
         $HOME/anaconda3/bin/pip uninstall dataclasses typing -y; fi  \
     && sudo rm requirements.txt && sudo rm requirements_ml_docker.txt \
     && sudo rm requirements_tune.txt && sudo rm requirements_rllib.txt \
-    && sudo rm requirements_train.txt
+    && sudo rm requirements_train.txt \
     && sudo rm requirements_upstream.txt \
     && sudo apt-get clean
 
