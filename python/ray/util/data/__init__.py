@@ -53,7 +53,7 @@ def to_pandas(
                 batch = pd.DataFrame(values, columns=names)
             else:
                 raise ValueError(
-                    "MLDataset only support list like item or " "dataclass instance"
+                    "MLDataset only support list like item or dataclass instance"
                 )
 
             yield batch

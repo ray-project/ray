@@ -20,6 +20,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
+#include "ray/raylet/scheduling/cluster_resource_manager.h"
 
 namespace ray {
 namespace gcs {
@@ -81,7 +82,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
         std::make_unique<GcsServerMocker::MockGcsPubSub>(redis_client_));
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     gcs_resource_manager_ =
-        std::make_shared<gcs::GcsResourceManager>(io_service_, nullptr, nullptr);
+        std::make_shared<gcs::GcsResourceManager>(nullptr, cluster_resource_manager_);
     gcs_placement_group_manager_.reset(new gcs::GcsPlacementGroupManager(
         io_service_,
         mock_placement_group_scheduler_,
@@ -163,6 +164,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
   std::unique_ptr<std::thread> thread_io_service_;
   instrumented_io_context io_service_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  ClusterResourceManager cluster_resource_manager_;
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
   std::shared_ptr<gcs::RedisClient> redis_client_;

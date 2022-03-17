@@ -14,6 +14,7 @@ from ray.experimental.dag import (
 )
 from ray.serve.pipeline.deployment_node import DeploymentNode
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
+from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
 from ray.serve.utils import parse_import_path
 from ray.serve.handle import HandleOptions, RayServeHandle, RayServeLazySyncHandle
 from ray.serve.utils import ServeHandleEncoder, serve_handle_object_hook
@@ -119,9 +120,12 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
         return DeploymentNode.from_json(input_json, object_hook=dagnode_from_json)
     elif input_json[DAGNODE_TYPE_KEY] == DeploymentMethodNode.__name__:
         return DeploymentMethodNode.from_json(input_json, object_hook=dagnode_from_json)
+    elif input_json[DAGNODE_TYPE_KEY] == DeploymentFunctionNode.__name__:
+        return DeploymentFunctionNode.from_json(
+            input_json, object_hook=dagnode_from_json
+        )
     else:
         # Class and Function nodes require original module as body.
-        print(f"import_path: {input_json['import_path']}")
         module_name, attr_name = parse_import_path(input_json["import_path"])
         module = getattr(import_module(module_name), attr_name)
         if input_json[DAGNODE_TYPE_KEY] == FunctionNode.__name__:
