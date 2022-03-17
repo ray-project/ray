@@ -456,7 +456,7 @@ def test_worker_start_timeout(monkeypatch, ray_start_cluster):
         # this delay will make worker start slow
         m.setenv(
             "RAY_testing_asio_delay_us",
-            "InternalKVGcsService.grpc_server.InternalKVGet" "=2000000:2000000",
+            "InternalKVGcsService.grpc_server.InternalKVGet=2000000:2000000",
         )
         m.setenv("RAY_worker_register_timeout_seconds", "1")
         cluster = ray_start_cluster
@@ -476,11 +476,11 @@ ray.get(task.remote(), timeout=3)
 
         # make sure log is correct
         assert (
-            "The process is still alive, probably " "it's hanging during start"
+            "The process is still alive, probably it's hanging during start"
         ) in e.value.output.decode()
         # worker will be killed so it won't try to register to raylet
         assert (
-            "Received a register request from an " "unknown worker shim process"
+            "Received a register request from an unknown worker shim process"
         ) not in e.value.output.decode()
 
 

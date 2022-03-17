@@ -50,9 +50,9 @@ def submit_scaling_job(num_actors):
     print(">>>Waiting for task output.")
     task_output = ray.get(futures, timeout=360)
 
-    assert task_output == list(range(num_actors)), (
-        "Tasks did not" "complete with expected output."
-    )
+    assert task_output == list(
+        range(num_actors)
+    ), "Tasks did not complete with expected output."
 
 
 @retry_until_true

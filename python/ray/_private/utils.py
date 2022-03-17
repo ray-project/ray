@@ -332,7 +332,7 @@ def resources_from_resource_arguments(
 
     if "CPU" in resources or "GPU" in resources:
         raise ValueError(
-            "The resources dictionary must not " "contain the key 'CPU' or 'GPU'"
+            "The resources dictionary must not contain the key 'CPU' or 'GPU'"
         )
     elif "memory" in resources or "object_store_memory" in resources:
         raise ValueError(

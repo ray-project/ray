@@ -737,9 +737,8 @@ def start(
             # NOTE(kfstorm): Java driver rely on this line to get the address
             # of the cluster. Please be careful when updating this line.
             cli_logger.print(
-                cf.bold("  ray start --address='{}'{}"),
+                cf.bold("  ray start --address='{}'"),
                 bootstrap_addresses,
-                f" --redis-password='{redis_password}'" if redis_password else "",
             )
             cli_logger.newline()
             cli_logger.print("Alternatively, use the following Python code:")
@@ -749,15 +748,10 @@ def start(
                 # `address="auto"`, the _node_ip_address parameter is
                 # unnecessary.
                 cli_logger.print(
-                    "ray{}init(address{}{}{}{})",
+                    "ray{}init(address{}{}{})",
                     cf.magenta("."),
                     cf.magenta("="),
                     cf.yellow("'auto'"),
-                    ", _redis_password{}{}".format(
-                        cf.magenta("="), cf.yellow("'" + redis_password + "'")
-                    )
-                    if redis_password
-                    else "",
                     ", _node_ip_address{}{}".format(
                         cf.magenta("="), cf.yellow("'" + node_ip_address + "'")
                     )
@@ -1647,7 +1641,7 @@ def microbenchmark():
     "--address",
     required=False,
     type=str,
-    help="Override the redis address to connect to.",
+    help="Override the Ray address to connect to.",
 )
 def timeline(address):
     """Take a Chrome tracing timeline for a Ray cluster."""
