@@ -517,10 +517,10 @@ def fetch_bucket_contents_to_tmp_dir(bucket: str) -> str:
             # Sometimes single files cannot be processed
             if len(os.listdir(tmpdir)) == 0:
                 raise RuntimeError(
-                    f"Local dir {tmpdir} empty after trying to fetch " f"bucket data."
+                    f"Local dir {tmpdir} empty after trying to fetch bucket data."
                 ) from e
         pattern = re.compile("gs://[^/]+/(.+)")
-        subfolder = re.match(pattern, bucket).group(1)
+        subfolder = re.match(pattern, bucket).group(1).split("/")[-1]
     else:
         raise ValueError(f"Invalid bucket URL: {bucket}")
 
@@ -1053,7 +1053,7 @@ def test_durable_upload(bucket: str):
     """
     if not bucket:
         raise ValueError(
-            "The `durable_upload` test requires a `--bucket` argument to " "be set."
+            "The `durable_upload` test requires a `--bucket` argument to be set."
         )
 
     experiment_name = "cloud_durable_upload"
@@ -1227,44 +1227,60 @@ if __name__ == "__main__":
 
     run_time = 180 if "rllib" in args.trainable else 90
 
-    if not uses_ray_client:
-        print("This test will *not* use Ray client.")
-        result = _run_test(
-            args.variant, args.trainable, run_time, args.bucket, args.cpus_per_trial
-        )
-    else:
-        print("This test will run using Ray client.")
+    bucket = os.path.join(args.bucket, f"test_{int(time.time())}")
 
-        wait_for_nodes(num_nodes=4, timeout=300.0)
-
-        # This will usually run on the head node
-        @ray.remote
-        def _get_head_ip():
-            return ray.util.get_node_ip_address()
-
-        ip = ray.get(_get_head_ip.remote())
-
-        remote_tune_script = "/tmp/_tune_script.py"
-
-        print(f"Sending tune script to remote node {ip} " f"({remote_tune_script})")
-        send_local_file_to_remote_file(TUNE_SCRIPT, remote_tune_script, ip)
-        print("Starting remote cloud test using Ray client")
-
-        _run_test_remote = ray.remote(resources={f"node:{ip}": 0.01}, num_cpus=0)(
-            _run_test
-        )
-        result = ray.get(
-            _run_test_remote.remote(
-                args.variant,
-                args.trainable,
-                run_time,
-                args.bucket,
-                args.cpus_per_trial,
-                remote_tune_script,
+    err = None
+    try:
+        if not uses_ray_client:
+            print("This test will *not* use Ray client.")
+            result = _run_test(
+                args.variant, args.trainable, run_time, bucket, args.cpus_per_trial
             )
-        )
+        else:
+            print("This test will run using Ray client.")
+
+            wait_for_nodes(num_nodes=4, timeout=300.0)
+
+            # This will usually run on the head node
+            @ray.remote
+            def _get_head_ip():
+                return ray.util.get_node_ip_address()
+
+            ip = ray.get(_get_head_ip.remote())
+
+            remote_tune_script = "/tmp/_tune_script.py"
+
+            print(f"Sending tune script to remote node {ip} " f"({remote_tune_script})")
+            send_local_file_to_remote_file(TUNE_SCRIPT, remote_tune_script, ip)
+            print("Starting remote cloud test using Ray client")
+
+            _run_test_remote = ray.remote(resources={f"node:{ip}": 0.01}, num_cpus=0)(
+                _run_test
+            )
+            result = ray.get(
+                _run_test_remote.remote(
+                    args.variant,
+                    args.trainable,
+                    run_time,
+                    bucket,
+                    args.cpus_per_trial,
+                    remote_tune_script,
+                )
+            )
+    except Exception as e:
+        err = e
+        result = {}
+
+    if bucket:
+        try:
+            clear_bucket_contents(bucket)
+        except Exception as be:
+            print(f"Error during cleanup of bucket: {be}")
 
     with open(release_test_out, "wt") as f:
         json.dump(result, f)
+
+    if err:
+        raise err
 
     print(f"Test for variant {args.variant} SUCCEEDED")
