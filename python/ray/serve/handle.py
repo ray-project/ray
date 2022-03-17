@@ -245,7 +245,7 @@ class RayServeSyncHandle(RayServeHandle):
         return RayServeSyncHandle._deserialize, (serialized_data,)
 
 
-def serve_handle_to_json_dict(self, handle: RayServeHandle) -> Dict[str, str]:
+def serve_handle_to_json_dict(handle: RayServeHandle) -> Dict[str, str]:
     """Converts a Serve handle to a JSON-serializable dictionary.
 
     The dictionary can be converted back to a ServeHandle using
@@ -254,7 +254,7 @@ def serve_handle_to_json_dict(self, handle: RayServeHandle) -> Dict[str, str]:
     if isinstance(handle, RayServeSyncHandle):
         handle_type = ServeHandleType.SYNC
     else:
-        ServeHandleType.ASYNC
+        handle_type = ServeHandleType.ASYNC
 
     return {
         SERVE_HANDLE_JSON_KEY: handle_type,
@@ -262,7 +262,7 @@ def serve_handle_to_json_dict(self, handle: RayServeHandle) -> Dict[str, str]:
     }
 
 
-def serve_handle_from_json_dict(self, d: Dict[str, str]) -> RayServeHandle:
+def serve_handle_from_json_dict(d: Dict[str, str]) -> RayServeHandle:
     """Converts a JSON-serializable dictionary back to a ServeHandle.
 
     The dictionary should be constructed using serve_handle_to_json_dict.
