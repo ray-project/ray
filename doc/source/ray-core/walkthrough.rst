@@ -117,7 +117,7 @@ To start a multi-node Ray cluster, see the :ref:`cluster setup page <cluster-ind
 Using Tasks, Actors, and Objects
 --------------------------------
 
-Click through below to walk through Ray's key concepts: Tasks, Actors, and Objects. These primitives work together to enable Ray to flexibly support a broad range of distributed applications.
+Click through below to walk through using Ray's key concepts: Tasks, Actors, and Objects.
 
 .. tip::
 
