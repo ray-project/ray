@@ -135,7 +135,7 @@ class CheckpointManager:
     def on_start_training(
         self,
         checkpoint_strategy: Optional[CheckpointStrategy],
-        run_dir: Optional[Path] = None,
+        run_dir: Path,
         latest_checkpoint_id: Optional[int] = None,
     ):
         """Checkpoint code executed during BackendExecutor start_training."""
