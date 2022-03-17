@@ -87,34 +87,6 @@ It is the developer's responsibility to make sure that the individual tasks
 don't use more than their share of the GPU memory. TensorFlow can be configured
 to limit its memory usage.
 
-Using Actors with GPUs
-----------------------
-
-When defining an actor that uses GPUs, indicate the number of GPUs an actor
-instance requires in the ``ray.remote`` decorator.
-
-.. code-block:: python
-
-  @ray.remote(num_gpus=1)
-  class GPUActor(object):
-      def __init__(self):
-          return "This actor is allowed to use GPUs {}.".format(ray.get_gpu_ids())
-
-When the actor is created, GPUs will be reserved for that actor for the lifetime
-of the actor. If sufficient GPU resources are not available, then the actor will
-not be created.
-
-The following is an example of how to use GPUs in an actor through TensorFlow.
-
-.. code-block:: python
-
-  @ray.remote(num_gpus=1)
-  class GPUActor(object):
-      def __init__(self):
-          # The call to tf.Session() will restrict TensorFlow to use the GPUs
-          # specified in the CUDA_VISIBLE_DEVICES environment variable.
-          self.sess = tf.Session()
-
 Workers not Releasing GPU Resources
 -----------------------------------
 

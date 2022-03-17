@@ -15,8 +15,11 @@ from ray.experimental.dag import (
 from ray.serve.pipeline.deployment_node import DeploymentNode
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.utils import parse_import_path
-from ray.serve.handle import RayServeHandle
-from ray.serve.utils import ServeHandleEncoder, serve_handle_object_hook
+from ray.serve.handle import (
+    RayServeHandle,
+    serve_handle_to_json_dict,
+    serve_handle_from_json_dict,
+)
 from ray.serve.constants import SERVE_HANDLE_JSON_KEY
 from ray.serve.api import RayServeDAGHandle
 
@@ -49,19 +52,15 @@ class DAGNodeEncoder(json.JSONEncoder):
     """
 
     def default(self, obj):
-        # TODO: (jiaodong) Have better abtraction for users to extend and use
-        # JSON serialization of their own object types
-        # For replaced deployment handles used as init args or kwargs.
         if isinstance(obj, RayServeHandle):
-            return json.dumps(obj, cls=ServeHandleEncoder)
-        if isinstance(obj, RayServeDAGHandle):
+            return serve_handle_to_json_dict(obj)
+        elif isinstance(obj, RayServeDAGHandle):
             # TODO(simon) Do a proper encoder
             return {
                 DAGNODE_TYPE_KEY: "RayServeDAGHandle",
                 "dag_node_json": obj.dag_node_json,
             }
-        # For all other DAGNode types.
-        if isinstance(obj, DAGNode):
+        elif isinstance(obj, DAGNode):
             return obj.to_json(DAGNodeEncoder)
         else:
             # Let the base class default method raise the TypeError
@@ -97,7 +96,7 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
     """
     # Deserialize RayServeHandle type
     if SERVE_HANDLE_JSON_KEY in input_json:
-        return json.loads(input_json, object_hook=serve_handle_object_hook)
+        return serve_handle_from_json_dict(input_json)
     # Base case for plain objects
     elif DAGNODE_TYPE_KEY not in input_json:
         try:

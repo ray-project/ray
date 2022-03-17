@@ -622,7 +622,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 func = ray.get(funcref)
                 if not inspect.isfunction(func):
                     raise Exception(
-                        "Attempting to register function that " "isn't a function."
+                        "Attempting to register function that isn't a function."
                     )
                 if options is None or len(options) == 0:
                     self.function_refs[id] = ray.remote(func)
@@ -638,9 +638,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 actor_class_ref = self.object_refs[client_id][id]
                 actor_class = ray.get(actor_class_ref)
                 if not inspect.isclass(actor_class):
-                    raise Exception(
-                        "Attempting to schedule actor that " "isn't a class."
-                    )
+                    raise Exception("Attempting to schedule actor that isn't a class.")
                 if options is None or len(options) == 0:
                     reg_class = ray.remote(actor_class)
                 else:

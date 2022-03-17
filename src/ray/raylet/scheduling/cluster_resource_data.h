@@ -151,6 +151,9 @@ class NodeResources {
   NodeResources(const NodeResources &other)
       : predefined_resources(other.predefined_resources),
         custom_resources(other.custom_resources),
+        normal_task_resources(other.normal_task_resources),
+        latest_resources_normal_task_timestamp(
+            other.latest_resources_normal_task_timestamp),
         object_pulls_queued(other.object_pulls_queued) {}
   /// Available and total capacities for predefined resources.
   std::vector<ResourceCapacity> predefined_resources;
@@ -159,6 +162,10 @@ class NodeResources {
   absl::flat_hash_map<int64_t, ResourceCapacity> custom_resources;
   /// Resources owned by normal tasks.
   ResourceRequest normal_task_resources;
+  /// Normal task resources could be uploaded by 1) Raylets' periodical reporters; 2)
+  /// Rejected RequestWorkerLeaseReply. So we need the timestamps to decide whether an
+  /// upload is latest.
+  int64_t latest_resources_normal_task_timestamp = 0;
   bool object_pulls_queued = false;
 
   /// Amongst CPU, memory, and object store memory, calculate the utilization percentage

@@ -1,25 +1,13 @@
 .. _handling_dependencies:
 
-Handling Dependencies
-=====================
-
-This page might be useful for you if you're trying to:
-
-
-* Run a distributed Ray library or application.
-* Run a distributed Ray script which imports some local files.
-* Quickly iterate on a project with changing dependencies and files while running on a Ray cluster.
-
-
-What problem does this page solve?
-----------------------------------
+Environment Dependencies
+========================
 
 Your Ray application may have dependencies that exist outside of your Ray script. For example:
 
 * Your Ray script may import/depend on some Python packages.
 * Your Ray script may be looking for some specific environment variables to be available.
 * Your Ray script may import some files outside of the script.
-
 
 One frequent problem when running on a cluster is that Ray expects these "dependencies" to exist on each Ray node. If these are not present, you may run into issues such as ``ModuleNotFoundError``, ``FileNotFoundError`` and so on.
 
@@ -297,7 +285,7 @@ The ``runtime_env`` is a Python dictionary or a python class :class:`ray.runtime
   Note: If your local directory contains a ``.gitignore`` file, the files and paths specified therein will not be uploaded to the cluster.
 
 - ``py_modules`` (List[str|module]): Specifies Python modules to be available for import in the Ray workers.  (For more ways to specify packages, see also the ``pip`` and ``conda`` fields below.)
-  Each entry must be either (1) a path to a local directory, (2) a URI to a remote zip file (see :ref:`remote-uris` for details), or (3) a Python module object.
+  Each entry must be either (1) a path to a local directory, (2) a URI to a remote zip file (see :ref:`remote-uris` for details), (3) a Python module object, or (4) a path to a local `.whl` file.
 
   - Examples of entries in the list:
 
@@ -308,6 +296,8 @@ The ``runtime_env`` is a Python dictionary or a python class :class:`ray.runtime
     - ``"s3://bucket/my_module.zip"``
 
     - ``my_module # Assumes my_module has already been imported, e.g. via 'import my_module'``
+
+    - ``my_module.whl``
 
   The modules will be downloaded to each node on the cluster.
 
