@@ -355,7 +355,7 @@ class TestHandleJSON:
     @pytest.mark.parametrize("sync", [False, True])
     async def test_basic(self, serve_instance, sync):
         handle = get_handle(sync)
-        await call(handle, "hi") == "hi"
+        assert await call(handle, "hi") == "hi"
 
         serialized = json.dumps(serve_handle_to_json_dict(handle))
         # Check we can go through multiple rounds of serde.
@@ -363,7 +363,7 @@ class TestHandleJSON:
 
         # Load the handle back from the dict.
         handle = serve_handle_from_json_dict(json.loads(serialized))
-        await call(handle, "hi") == "hi"
+        assert await call(handle, "hi") == "hi"
 
 
 if __name__ == "__main__":
