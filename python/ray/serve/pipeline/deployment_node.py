@@ -2,12 +2,13 @@ import json
 from typing import Any, Callable, Dict, Optional, List, Tuple, Union
 
 from ray.experimental.dag import DAGNode, InputNode
-from ray.serve.handle import PipelineHandle, RayServeSyncHandle, RayServeHandle
+from ray.serve.handle import RayServeSyncHandle, RayServeHandle
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
+from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
 from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 from ray.experimental.dag.format_utils import get_dag_node_str
-from ray.serve.api import Deployment, DeploymentConfig
+from ray.serve.api import Deployment, DeploymentConfig, RayServeDAGHandle
 from ray.serve.utils import get_deployment_import_path
 
 
@@ -54,11 +55,11 @@ class DeploymentNode(DAGNode):
                 return node._get_serve_deployment_handle(
                     node._deployment, node._bound_other_args_to_resolve
                 )
-            elif isinstance(node, DeploymentMethodNode):
+            elif isinstance(node, (DeploymentMethodNode, DeploymentFunctionNode)):
                 from ray.serve.pipeline.json_serde import DAGNodeEncoder
 
                 serve_dag_root_json = json.dumps(node, cls=DAGNodeEncoder)
-                return PipelineHandle(serve_dag_root_json)
+                return RayServeDAGHandle(serve_dag_root_json)
 
         (
             replaced_deployment_init_args,
@@ -66,7 +67,7 @@ class DeploymentNode(DAGNode):
         ) = self.apply_functional(
             [deployment_init_args, deployment_init_kwargs],
             predictate_fn=lambda node: isinstance(
-                node, (DeploymentNode, DeploymentMethodNode)
+                node, (DeploymentNode, DeploymentMethodNode, DeploymentFunctionNode)
             ),
             apply_fn=replace_with_handle,
         )
@@ -116,7 +117,7 @@ class DeploymentNode(DAGNode):
             other_args_to_resolve=new_other_args_to_resolve,
         )
 
-    def _execute_impl(self, *args):
+    def _execute_impl(self, *args, **kwargs):
         """Executor of DeploymentNode by ray.remote()"""
         return self._deployment_handle.options(**self._bound_options).remote(
             *self._bound_args, **self._bound_kwargs
@@ -196,19 +197,7 @@ class DeploymentNode(DAGNode):
             self._bound_other_args_to_resolve.pop("deployment_self")
         json_dict = super().to_json_base(encoder_cls, DeploymentNode.__name__)
         json_dict["deployment_name"] = self.get_deployment_name()
-        import_path = self.get_import_path()
-
-        error_message = (
-            "Class used in DAG should not be in-line defined when exporting"
-            "import path for deployment. Please ensure it has fully "
-            "qualified name with valid __module__ and __qualname__ for "
-            "import path, with no __main__ or <locals>. \n"
-            f"Current import path: {import_path}"
-        )
-        assert "__main__" not in import_path, error_message
-        assert "<locals>" not in import_path, error_message
-
-        json_dict["import_path"] = import_path
+        json_dict["import_path"] = self.get_import_path()
 
         return json_dict
 

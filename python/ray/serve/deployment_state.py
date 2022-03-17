@@ -136,12 +136,15 @@ class ActorReplicaWrapper:
         controller_name: str,
         replica_tag: ReplicaTag,
         deployment_name: str,
+        _override_controller_namespace: Optional[str] = None,
     ):
         self._actor_name = actor_name
         self._placement_group_name = self._actor_name + "_placement_group"
         self._detached = detached
         self._controller_name = controller_name
-        self._controller_namespace = ray.serve.api._get_controller_namespace(detached)
+        self._controller_namespace = ray.serve.api._get_controller_namespace(
+            detached, _override_controller_namespace=_override_controller_namespace
+        )
 
         self._replica_tag = replica_tag
         self._deployment_name = deployment_name
@@ -609,6 +612,7 @@ class DeploymentReplica(VersionedReplica):
         replica_tag: ReplicaTag,
         deployment_name: str,
         version: DeploymentVersion,
+        _override_controller_namespace: Optional[str] = None,
     ):
         self._actor = ActorReplicaWrapper(
             f"{ReplicaName.prefix}{format_actor_name(replica_tag)}",
@@ -616,6 +620,7 @@ class DeploymentReplica(VersionedReplica):
             controller_name,
             replica_tag,
             deployment_name,
+            _override_controller_namespace=_override_controller_namespace,
         )
         self._controller_name = controller_name
         self._deployment_name = deployment_name
@@ -907,6 +912,7 @@ class DeploymentState:
         detached: bool,
         long_poll_host: LongPollHost,
         _save_checkpoint_func: Callable,
+        _override_controller_namespace: Optional[str] = None,
     ):
 
         self._name = name
@@ -914,6 +920,9 @@ class DeploymentState:
         self._detached: bool = detached
         self._long_poll_host: LongPollHost = long_poll_host
         self._save_checkpoint_func = _save_checkpoint_func
+        self._override_controller_namespace: Optional[
+            str
+        ] = _override_controller_namespace
 
         # Each time we set a new deployment goal, we're trying to save new
         # DeploymentInfo and bring current deployment to meet new status.
@@ -973,6 +982,7 @@ class DeploymentState:
                 replica_name.replica_tag,
                 replica_name.deployment_tag,
                 None,
+                _override_controller_namespace=self._override_controller_namespace,
             )
             new_deployment_replica.recover()
             self._replicas.add(ReplicaState.RECOVERING, new_deployment_replica)
@@ -1173,9 +1183,9 @@ class DeploymentState:
     def _scale_deployment_replicas(self) -> bool:
         """Scale the given deployment to the number of replicas."""
 
-        assert self._target_replicas >= 0, (
-            "Number of replicas must be" " greater than or equal to 0."
-        )
+        assert (
+            self._target_replicas >= 0
+        ), "Number of replicas must be greater than or equal to 0."
 
         replicas_stopped = self._stop_wrong_version_replicas()
 
@@ -1210,6 +1220,7 @@ class DeploymentState:
                     replica_name.replica_tag,
                     replica_name.deployment_tag,
                     self._target_version,
+                    _override_controller_namespace=self._override_controller_namespace,
                 )
                 new_deployment_replica.start(self._target_info, self._target_version)
 
@@ -1525,6 +1536,7 @@ class DeploymentStateManager:
         kv_store: KVStoreBase,
         long_poll_host: LongPollHost,
         all_current_actor_names: List[str],
+        _override_controller_namespace: Optional[str] = None,
     ):
 
         self._controller_name = controller_name
@@ -1537,6 +1549,7 @@ class DeploymentStateManager:
             detached,
             long_poll_host,
             self._save_checkpoint_func,
+            _override_controller_namespace=_override_controller_namespace,
         )
         self._deployment_states: Dict[str, DeploymentState] = dict()
         self._deleted_deployment_metadata: Dict[str, DeploymentInfo] = OrderedDict()

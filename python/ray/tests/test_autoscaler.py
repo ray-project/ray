@@ -2448,11 +2448,9 @@ class AutoscalingTest(unittest.TestCase):
 
         # Check add/remove events.
         events = autoscaler.event_summarizer.summary()
+        assert "Adding 5 nodes of type ray-legacy-worker-node-type." in events, events
         assert (
-            "Adding 5 nodes of type " "ray-legacy-worker-node-type." in events
-        ), events
-        assert (
-            "Removing 4 nodes of type " "ray-legacy-worker-node-type (idle)." in events
+            "Removing 4 nodes of type ray-legacy-worker-node-type (idle)." in events
         ), events
 
         summary = autoscaler.summary()
@@ -3356,9 +3354,9 @@ MemAvailable:   33000000 kB
         self.waitForUpdatersToFinish(autoscaler)
         # Check that updaters processed some commands in the last autoscaler
         # update.
-        assert len(autoscaler.process_runner.calls) > num_calls, (
-            "Did not get additional process runner calls on last autoscaler" " update."
-        )
+        assert (
+            len(autoscaler.process_runner.calls) > num_calls
+        ), "Did not get additional process runner calls on last autoscaler update."
         # Missed heartbeat triggered recovery for both nodes.
         events = autoscaler.event_summarizer.summary()
         assert (
@@ -3392,7 +3390,7 @@ MemAvailable:   33000000 kB
         # Just one node (node_id 1) terminated in the last update.
         # Validates that we didn't try to double-terminate node 0.
         assert (
-            "Removing 1 nodes of type " "ray.worker.default (launch failed)." in events
+            "Removing 1 nodes of type ray.worker.default (launch failed)." in events
         ), events
         # To be more explicit,
         assert (

@@ -1,5 +1,4 @@
 import asyncio
-import time
 import os
 
 import requests
@@ -9,6 +8,7 @@ import starlette.responses
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.serve.api import internal_get_global_client
 
 
 def test_e2e(serve_instance):
@@ -239,14 +239,48 @@ def test_delete_deployment(serve_instance):
 
     function2.deploy()
 
-    for _ in range(10):
-        try:
-            assert requests.get("http://127.0.0.1:8000/delete").text == "olleh"
-            break
-        except AssertionError:
-            time.sleep(0.5)  # Wait for the change to propagate.
-    else:
-        assert requests.get("http://127.0.0.1:8000/delete").text == "olleh"
+    wait_for_condition(
+        lambda: requests.get("http://127.0.0.1:8000/delete").text == "olleh", timeout=6
+    )
+
+
+@pytest.mark.parametrize("blocking", [False, True])
+def test_delete_deployment_group(serve_instance, blocking):
+    @serve.deployment(num_replicas=1)
+    def f(*args):
+        return "got f"
+
+    @serve.deployment(num_replicas=2)
+    def g(*args):
+        return "got g"
+
+    # Check redeploying after deletion
+    for _ in range(2):
+        f.deploy()
+        g.deploy()
+
+        wait_for_condition(
+            lambda: requests.get("http://127.0.0.1:8000/f").text == "got f", timeout=5
+        )
+        wait_for_condition(
+            lambda: requests.get("http://127.0.0.1:8000/g").text == "got g", timeout=5
+        )
+
+        # Check idempotence
+        for _ in range(2):
+
+            internal_get_global_client().delete_deployments(
+                ["f", "g"], blocking=blocking
+            )
+
+            wait_for_condition(
+                lambda: requests.get("http://127.0.0.1:8000/f").status_code == 404,
+                timeout=5,
+            )
+            wait_for_condition(
+                lambda: requests.get("http://127.0.0.1:8000/g").status_code == 404,
+                timeout=5,
+            )
 
 
 def test_starlette_request(serve_instance):

@@ -1,6 +1,5 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
 import threading
-import json
 
 from ray.experimental.dag import (
     DAGNode,
@@ -8,15 +7,12 @@ from ray.experimental.dag import (
     ClassMethodNode,
     PARENT_CLASS_NODE_KEY,
 )
+from ray.experimental.dag.function_node import FunctionNode
 from ray.experimental.dag.input_node import InputNode
 from ray.serve.api import Deployment
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_node import DeploymentNode
-from ray.serve.pipeline.ingress import make_ingress_deployment
-from ray.serve.pipeline.json_serde import DAGNodeEncoder
-from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
-
-DEFAULT_INGRESS_DEPLOYMENT_NAME = "ingress"
+from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
 
 
 class DeploymentNameGenerator(object):
@@ -30,10 +26,11 @@ class DeploymentNameGenerator(object):
     __shared_state = dict()
 
     @classmethod
-    def get_deployment_name(cls, dag_node: ClassNode):
-        assert isinstance(
-            dag_node, ClassNode
-        ), "get_deployment_name() should only be called on ClassNode instances."
+    def get_deployment_name(cls, dag_node: Union[ClassNode, FunctionNode]):
+        assert isinstance(dag_node, (ClassNode, FunctionNode)), (
+            "get_deployment_name() should only be called on ClassNode or "
+            "FunctionNode instances."
+        )
         with cls.__lock:
             deployment_name = (
                 dag_node.get_options().get("name", None) or dag_node._body.__name__
@@ -105,6 +102,21 @@ def transform_ray_dag_to_serve_dag(dag_node):
             dag_node.get_options(),
             other_args_to_resolve=dag_node.get_other_args_to_resolve(),
         )
+    elif isinstance(
+        dag_node,
+        FunctionNode
+        # TODO (jiaodong): We do not convert ray function to deployment function
+        # yet, revisit this later
+    ) and dag_node.get_other_args_to_resolve().get("is_from_serve_deployment"):
+        deployment_name = DeploymentNameGenerator.get_deployment_name(dag_node)
+        return DeploymentFunctionNode(
+            dag_node._body,
+            deployment_name,
+            dag_node.get_args(),
+            dag_node.get_kwargs(),
+            dag_node.get_options(),
+            other_args_to_resolve=dag_node.get_other_args_to_resolve(),
+        )
     else:
         # TODO: (jiaodong) Support FunctionNode or leave it as ray task
         return dag_node
@@ -126,7 +138,7 @@ def extract_deployments_from_serve_dag(
     deployments = {}
 
     def extractor(dag_node):
-        if isinstance(dag_node, DeploymentNode):
+        if isinstance(dag_node, (DeploymentNode, DeploymentFunctionNode)):
             deployment = dag_node._deployment
             # In case same deployment is used in multiple DAGNodes
             deployments[deployment.name] = deployment
@@ -138,13 +150,13 @@ def extract_deployments_from_serve_dag(
 
 
 def get_pipeline_input_node(serve_dag_root_node: DAGNode):
-    """Return the PipelineInputNode singleton node from serve dag, and throw
+    """Return the InputNode singleton node from serve dag, and throw
     exceptions if we didn't find any, or found more than one.
 
     Args:
         ray_dag_root_node: DAGNode acting as root of a Ray authored DAG. It
             should be executable via `ray_dag_root_node.execute(user_input)`
-            and should have `PipelineInputNode` in it.
+            and should have `InputNode` in it.
     Returns
         pipeline_input_node: Singleton input node for the serve pipeline.
     """
@@ -152,43 +164,13 @@ def get_pipeline_input_node(serve_dag_root_node: DAGNode):
     input_nodes = []
 
     def extractor(dag_node):
-        if isinstance(dag_node, PipelineInputNode):
+        if isinstance(dag_node, InputNode):
             input_nodes.append(dag_node)
-        elif isinstance(dag_node, InputNode):
-            raise ValueError(
-                "Please change Ray DAG InputNode to PipelineInputNode in order "
-                "to build serve application. See docstring of "
-                "PipelineInputNode for examples."
-            )
 
     serve_dag_root_node.apply_recursive(extractor)
     assert len(input_nodes) == 1, (
-        "There should be one and only one PipelineInputNode in the DAG. "
-        f"Found {len(input_nodes)} PipelineInputNode(s) instead."
+        "There should be one and only one InputNode in the DAG. "
+        f"Found {len(input_nodes)} InputNode(s) instead."
     )
 
     return input_nodes[0]
-
-
-def get_ingress_deployment(
-    serve_dag_root_node: DAGNode, pipeline_input_node: PipelineInputNode
-) -> Deployment:
-    """Return an Ingress deployment to handle user HTTP inputs.
-
-    Args:
-        serve_dag_root_node (DAGNode): Transformed  as serve DAG's root. User
-            inputs are translated to serve_dag_root_node.execute().
-        pipeline_input_node (DAGNode): Singleton PipelineInputNode instance that
-            contains input preprocessor info.
-    Returns:
-        ingress (Deployment): Generated pipeline ingress deployment to serve
-            user HTTP requests.
-    """
-    serve_dag_root_json = json.dumps(serve_dag_root_node, cls=DAGNodeEncoder)
-    preprocessor_import_path = pipeline_input_node.get_preprocessor_import_path()
-    serve_dag_root_deployment = make_ingress_deployment(
-        DEFAULT_INGRESS_DEPLOYMENT_NAME,
-        serve_dag_root_json,
-        preprocessor_import_path,
-    )
-    return serve_dag_root_deployment

@@ -308,7 +308,7 @@ py_test(
 )
 
 py_test(
-    name = "test_cross_langauge",
+    name = "test_cross_language",
     size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -438,30 +438,6 @@ py_test(
 pipeline_tests_srcs = glob(["pipeline/tests/**/*.py"])
 
 py_test(
-    name = "test_step",
-    size = "small",
-    srcs = pipeline_tests_srcs,
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"],
-)
-
-py_test(
-    name = "test_pipeline",
-    size = "small",
-    srcs = pipeline_tests_srcs,
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"],
-)
-
-py_test(
-    name = "test_actor_executor",
-    size = "small",
-    srcs = pipeline_tests_srcs,
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"],
-)
-
-py_test(
     name = "test_deployment_node",
     size = "medium",
     srcs = pipeline_tests_srcs,
@@ -485,10 +461,3 @@ py_test(
     deps = [":serve_lib"],
 )
 
-py_test(
-    name = "test_build",
-    size = "medium",
-    srcs = pipeline_tests_srcs,
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"],
-)
