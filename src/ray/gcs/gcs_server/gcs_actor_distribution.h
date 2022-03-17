@@ -129,8 +129,9 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
   /// \param required_placement_resources The required resources of the task for
   /// scheduling. \param required_resources The required resources of the task for
   /// allocation. \return ID of the node from which the resources are allocated.
-  scheduling::NodeID AllocateResources(const ResourceRequest &required_placement_resources,
-                           const ResourceRequest &required_resources);
+  scheduling::NodeID AllocateResources(
+      const ResourceRequest &required_placement_resources,
+      const ResourceRequest &required_resources);
 
   scheduling::NodeID GetHighestScoreNodeResource(
       const ResourceRequest &required_resources) const;

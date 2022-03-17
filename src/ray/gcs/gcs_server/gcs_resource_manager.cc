@@ -168,12 +168,32 @@ void GcsResourceManager::HandleGetAllAvailableResources(
     const rpc::GetAllAvailableResourcesRequest &request,
     rpc::GetAllAvailableResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  for (const auto &iter : node_resource_usages_) {
+  for (const auto &node_resources_entry : cluster_resource_manager_.GetResourceView()) {
+    const auto &node_id = node_resources_entry.first;
+    const auto &node_resources = node_resources_entry.second.GetLocalView();
     rpc::AvailableResources resource;
-    resource.set_node_id(iter.first.Binary());
-    resource.mutable_resources_available()->insert(
-        iter.second.resources_available().begin(),
-        iter.second.resources_available().end());
+    resource.set_node_id(node_id.Binary());
+
+    for (size_t i = 0; i < node_resources.predefined_resources.size(); ++i) {
+      const auto &resource_value = node_resources.predefined_resources[i].available;
+      if (resource_value <= 0) {
+        continue;
+      }
+
+      const auto &resource_name = scheduling::ResourceID(i).Binary();
+      resource.mutable_resources_available()->insert(
+          {resource_name, resource_value.Double()});
+    }
+    for (const auto &entry : node_resources.custom_resources) {
+      const auto &resource_value = entry.second.available;
+      if (resource_value <= 0) {
+        continue;
+      }
+
+      const auto &resource_name = scheduling::ResourceID(entry.first).Binary();
+      resource.mutable_resources_available()->insert(
+          {resource_name, resource_value.Double()});
+    }
     reply->add_resources_list()->CopyFrom(resource);
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
