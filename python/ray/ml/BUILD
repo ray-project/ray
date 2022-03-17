@@ -116,7 +116,7 @@ py_test(
 
 py_test(
     name = "test_torch_trainer",
-    size = "mediunm",
+    size = "medium",
     srcs = ["tests/test_torch_trainer.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
