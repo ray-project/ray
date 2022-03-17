@@ -38,7 +38,7 @@ class ServeSubmissionClient(SubmissionClient):
             headers=headers,
         )
         self._check_connection_and_version(
-            min_version="1.12",
+            min_version="1.11.1",
             version_error_message="Serve CLI is not supported on the Ray "
             "cluster. Please ensure the cluster is "
             "running Ray 1.12 or higher.",
