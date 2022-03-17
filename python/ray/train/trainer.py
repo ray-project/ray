@@ -572,9 +572,9 @@ class Trainer:
                 "`to_worker_group`. Either shutdown the "
                 "Trainer or don't start it in the first place."
             )
-            self._backend_executor.start(
-                train_cls=train_cls, train_cls_args=args, train_cls_kwargs=kwargs
-            )
+        self._backend_executor.start(
+            train_cls=train_cls, train_cls_args=args, train_cls_kwargs=kwargs
+        )
         worker_group = self._backend_executor.get_worker_group()
         return TrainWorkerGroup(worker_group)
 
