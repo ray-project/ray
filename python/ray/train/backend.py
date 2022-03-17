@@ -339,6 +339,8 @@ class BackendExecutor:
         if isinstance(dataset_or_dict, dict):
             # Return a smaller dict for each shard.
             dataset_shards = [{} for _ in range(len(self.worker_group))]
+            # TODO(amog): Update Backend to accept a generic function with logic on
+            #  how to split dataset, instead of having to support _NO-SHARD in key.
             for key, dataset in dataset_or_dict.items():
                 if "_NO-SHARD" in key:
                     # Do not shard this dataset.

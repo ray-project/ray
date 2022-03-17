@@ -1,11 +1,11 @@
 import inspect
 import logging
-import os
-from typing import Dict, Callable, Optional, Union, Type
+from pathlib import Path
+from typing import Dict, Callable, Optional, Union
 
 import ray
 from ray import tune
-from ray.ml.constants import TRAIN_DATASET_KEY
+from ray.ml.constants import TRAIN_DATASET_KEY, PREPROCESSOR_KEY
 from ray.ml.trainer import Trainer
 from ray.ml.config import ScalingConfig, RunConfig, ScalingConfigDataClass
 from ray.ml.trainer import GenDataset
@@ -13,23 +13,11 @@ from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.train import BackendConfig, TrainingIterator
 from ray.train.backend import BackendExecutor
-from ray.train.checkpoint import MLTuneCheckpointManager
-from ray.train.constants import (
-    ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
-    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
-)
+from ray.train.checkpoint import TuneCheckpointManager
 from ray.train.utils import construct_train_func
-from ray.tune import Trainable
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
-
-# The environment variables that need to be propagated from the driver to the
-# `BackendExecutor` actor via runtime env.
-_BACKEND_ENV_VARS = {
-    ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
-    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
-}
 
 
 @DeveloperAPI
@@ -229,8 +217,11 @@ class DataParallelTrainer(Trainer):
         if "num_workers" not in self.scaling_config:
             raise ValueError("You must specify the 'num_workers' in scaling_config.")
 
-        if self.scaling_config["num_workers"] < 0:
-            raise ValueError("'num_workers' must be a non-negative integer.")
+        if self.scaling_config["num_workers"] <= 0:
+            raise ValueError(
+                "'num_workers' in `scaling_config` must be a positive "
+                f"integer. Received {self.scaling_config['num_workers']}"
+            )
 
         num_params = len(inspect.signature(self.train_loop_per_worker).parameters)
         if num_params > 1:
@@ -241,12 +232,6 @@ class DataParallelTrainer(Trainer):
 
         backend_config = backend_config if backend_config else BackendConfig()
         self.backend_config = backend_config
-
-        self.train_env_var_values = {
-            var_name: os.environ[var_name]
-            for var_name in _BACKEND_ENV_VARS
-            if var_name in os.environ
-        }
 
     def training_loop(self) -> None:
         scaling_config_dataclass = ScalingConfigDataClass(**self.scaling_config)
@@ -270,15 +255,11 @@ class DataParallelTrainer(Trainer):
             max_retries=0,
         )
 
-        checkpoint_manager = MLTuneCheckpointManager()
+        checkpoint_manager = _DataParallelCheckpointManager()
         checkpoint_manager.on_init(preprocessor=self.preprocessor)
 
-        def set_env_vars():
-            for key, value in self.train_env_var_values.items():
-                os.environ[key] = value
-
         # Start the remote actors.
-        backend_executor.start(initialization_hook=set_env_vars)
+        backend_executor.start(initialization_hook=None)
 
         if self.resume_from_checkpoint:
             resume_checkpoint_dict = self.resume_from_checkpoint.to_dict()
@@ -320,17 +301,24 @@ class DataParallelTrainer(Trainer):
         # Shutdown workers.
         backend_executor.shutdown()
 
-    def as_trainable(self) -> Type[Trainable]:
-        trainable_cls = super().as_trainable()
 
-        env_vars = self.train_env_var_values
+# TODO(team-ml): Refactor checkpoint management along with Tune.
+class _DataParallelCheckpointManager(TuneCheckpointManager):
+    def on_init(self, preprocessor: Preprocessor):
+        self.preprocessor = preprocessor
+        super(_DataParallelCheckpointManager, self).on_init()
 
-        class TrainableWithEnvVars(trainable_cls):
-            def __init__(self, *args, **kwargs):
-                super().__init__(*args, **kwargs)
+    def write_checkpoint(self, checkpoint: Dict):
+        self.add_tune_checkpoint_id(checkpoint)
 
-                # Have to set the environment variables again in the trainable.
-                for var_name, value in env_vars.items():
-                    os.environ[var_name] = value
+        # Add the preprocessor to the checkpoint.
+        checkpoint[PREPROCESSOR_KEY] = self.preprocessor
 
-        return TrainableWithEnvVars
+        checkpoint_obj = Checkpoint.from_dict(checkpoint)
+        # If inside a Tune Trainable, then checkpoint with Tune.
+        with tune.checkpoint_dir(step=self._latest_checkpoint_id) as checkpoint_dir:
+            checkpoint_obj.to_directory(path=checkpoint_dir)
+
+    @property
+    def latest_checkpoint_dir(self) -> Optional[Path]:
+        raise NotImplementedError

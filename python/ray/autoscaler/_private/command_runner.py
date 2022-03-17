@@ -198,12 +198,12 @@ class KubernetesCommandRunner(CommandRunnerInterface):
         if options.get("rsync_exclude"):
             if log_once("autoscaler_k8s_rsync_exclude"):
                 logger.warning(
-                    "'rsync_exclude' detected but is currently " "unsupported for k8s."
+                    "'rsync_exclude' detected but is currently unsupported for k8s."
                 )
         if options.get("rsync_filter"):
             if log_once("autoscaler_k8s_rsync_filter"):
                 logger.warning(
-                    "'rsync_filter' detected but is currently " "unsupported for k8s."
+                    "'rsync_filter' detected but is currently unsupported for k8s."
                 )
         if target.startswith("~"):
             target = self._home + target[1:]

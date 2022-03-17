@@ -324,10 +324,13 @@ class TuneCheckpointManager(CheckpointManager):
             self._latest_checkpoint_id = loaded_checkpoint[TUNE_CHECKPOINT_ID]
         return loaded_checkpoint
 
-    def write_checkpoint(self, checkpoint: Dict):
+    def add_tune_checkpoint_id(self, checkpoint: Dict):
         # Store the checkpoint_id in the file so that the Tune trial can be
         # resumed after failure or cancellation.
         checkpoint[TUNE_CHECKPOINT_ID] = self._latest_checkpoint_id
+
+    def write_checkpoint(self, checkpoint: Dict):
+        self.add_tune_checkpoint_id(checkpoint)
         # If inside a Tune Trainable, then checkpoint with Tune.
         with tune.checkpoint_dir(step=self._latest_checkpoint_id) as checkpoint_dir:
             path = Path(checkpoint_dir)
