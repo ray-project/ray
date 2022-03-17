@@ -145,7 +145,9 @@ cdef class ObjectRef(BaseID):
         """Export an ObjectRef for serialization out-of-band to Ray.
 
         The returned bytestring can be loaded using pickle.loads() anywhere within
-        the current Ray cluster.
+        the current Ray cluster. Note that exported references exist outside the
+        Ray reference counting system. Consider using the `pin` option to prevent
+        the object from being prematurely evicted.
 
         Args:
             pin: Whether to current worker should pin the object. If pinned, the
