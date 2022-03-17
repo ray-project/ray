@@ -47,5 +47,7 @@ class Predictor(abc.ABC):
 
     def __reduce__(self):
         raise PredictorNotSerializableException(
-            "Predictor instances are not serializable."
+            "Predictor instances are not serializable. Instead, you may want "
+            "to serialize a checkpoint and initialize the Predictor with "
+            "Predictor.from_checkpoint."
         )
