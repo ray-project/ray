@@ -1,7 +1,7 @@
 import logging
 import numpy as np
 import queue
-from typing import Optional, Type
+from typing import Optional, Type, List
 
 import ray
 from ray.rllib.agents.impala.vtrace_tf_policy import VTraceTFPolicy
@@ -337,36 +337,36 @@ class ImpalaTrainer(Trainer):
         if self.config["_disable_execution_plan_api"]:
             # Create extra aggregation workers and assign each rollout worker to
             # one of them.
-            if self.config["num_aggregation_workers"] > 0:
-                # Assign all remote (or single local) worker(s) to one
-                # aggregation worker.
-                worker_assignments = [[] for _ in range(config["num_aggregation_workers"])]
-                for i, worker_idx in enumerate(range(len(self.workers.remote_workers()) or 1)):
-                    worker_assignments[i % len(worker_assignments)].append(worker_idx)
-                logger.info("Worker assignments: {}".format(worker_assignments))
-
-                # Create parallel iterators that represent each aggregation group.
-                rollout_groups: List["ParallelIterator[SampleBatchType]"] = [
-                    rollouts.select_shards(assigned) for assigned in worker_assignments
-                ]
-
-                # This spawns `num_aggregation_workers` actors that aggregate
-                # experiences coming from RolloutWorkers in parallel. We force
-                # colocation on the same node (localhost) to maximize data bandwidth
-                # between them and the learner.
-                localhost = platform.node()
-                assert localhost != "", (
-                    "ERROR: Cannot determine local node name! "
-                    "`platform.node()` returned empty string."
-                )
-                all_co_located = create_colocated_actors(
-                    actor_specs=[
-                        # (class, args, kwargs={}, count=1)
-                        (Aggregator, [config, g], {}, 1)
-                        for g in rollout_groups
-                    ],
-                    node=localhost,
-                )
+            # if self.config["num_aggregation_workers"] > 0:
+            #     # Assign all remote (or single local) worker(s) to one
+            #     # aggregation worker.
+            #     worker_assignments = [[] for _ in range(config["num_aggregation_workers"])]
+            #     for i, worker_idx in enumerate(range(len(self.workers.remote_workers()) or 1)):
+            #         worker_assignments[i % len(worker_assignments)].append(worker_idx)
+            #     logger.info("Worker assignments: {}".format(worker_assignments))
+            #
+            #     # Create parallel iterators that represent each aggregation group.
+            #     rollout_groups: List["ParallelIterator[SampleBatchType]"] = [
+            #         rollouts.select_shards(assigned) for assigned in worker_assignments
+            #     ]
+            #
+            #     # This spawns `num_aggregation_workers` actors that aggregate
+            #     # experiences coming from RolloutWorkers in parallel. We force
+            #     # colocation on the same node (localhost) to maximize data bandwidth
+            #     # between them and the learner.
+            #     localhost = platform.node()
+            #     assert localhost != "", (
+            #         "ERROR: Cannot determine local node name! "
+            #         "`platform.node()` returned empty string."
+            #     )
+            #     all_co_located = create_colocated_actors(
+            #         actor_specs=[
+            #             # (class, args, kwargs={}, count=1)
+            #             (Aggregator, [config, g], {}, 1)
+            #             for g in rollout_groups
+            #         ],
+            #         node=localhost,
+            #     )
 
             # Create our mixin buffer.
             self.mixin_buffer = MultiAgentMixInReplayBuffer(
@@ -398,9 +398,9 @@ class ImpalaTrainer(Trainer):
                 # Decompress batch (if compressed).
                 batch.decompress_if_needed()
                 # Send batch through mixin buffer.
-                self.
+                # self.
                 self._learner_thread.inqueue.put(
-                    batch.decompress_if_needed(), block=False)
+                    batch, block=False)
                 self._counters[NUM_ENV_STEPS_SAMPLED] += len(batch)
                 self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
         except queue.Full:
