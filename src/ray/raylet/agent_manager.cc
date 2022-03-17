@@ -247,6 +247,7 @@ void AgentManager::DeleteRuntimeEnvIfPossible(
   request.set_serialized_runtime_env(serialized_runtime_env);
   request.set_source_process("raylet");
   runtime_env_agent_client_->DeleteRuntimeEnvIfPossible(
+      request,
       [serialized_runtime_env, callback = std::move(callback)](
           Status status, const rpc::DeleteRuntimeEnvIfPossibleReply &reply) {
         if (status.ok()) {
