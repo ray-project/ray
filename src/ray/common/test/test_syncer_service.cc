@@ -10,8 +10,8 @@
 #include <iostream>
 
 #include "ray/common/asio/periodical_runner.h"
-#include "ray/common/ray_syncer.h"
 #include "ray/common/id.h"
+#include "ray/common/ray_syncer.h"
 using namespace std;
 using namespace ray::syncer;
 
@@ -89,7 +89,8 @@ int main(int argc, char *argv[]) {
   std::unique_ptr<RaySyncerService> service;
   std::unique_ptr<grpc::Server> server;
   std::shared_ptr<grpc::Channel> channel;
-  syncer.Register(ray::rpc::syncer::RayComponentId::RESOURCE_MANAGER, local_node.get(),
+  syncer.Register(ray::rpc::syncer::RayComponentId::RESOURCE_MANAGER,
+                  local_node.get(),
                   remote_node.get());
   if (server_port != ".") {
     RAY_LOG(INFO) << "Start server on port " << server_port;
@@ -111,8 +112,8 @@ int main(int argc, char *argv[]) {
     argument.SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
     argument.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
 
-    channel = grpc::CreateCustomChannel("localhost:" + leader_port,
-                                        grpc::InsecureChannelCredentials(), argument);
+    channel = grpc::CreateCustomChannel(
+        "localhost:" + leader_port, grpc::InsecureChannelCredentials(), argument);
     syncer.ConnectTo(ray::rpc::syncer::RaySyncer::NewStub(channel));
   }
   boost::asio::io_context::work work(io_context);
