@@ -202,9 +202,7 @@ class Node:
         self._init_temp()
 
         # Validate and initialize the persistent storage API.
-        storage._init_storage(
-            ray_params.storage or os.environ.get("RAY_STORAGE"), is_head=head
-        )
+        storage._init_storage(ray_params.storage, is_head=head)
 
         # If it is a head node, try validating if
         # external storage is configurable.

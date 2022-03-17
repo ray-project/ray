@@ -852,8 +852,6 @@ def init(
             arguments is passed in.
     """
 
-    storage = storage or os.environ.get("RAY_STORAGE")
-
     # If available, use RAY_ADDRESS to override if the address was left
     # unspecified, or set to "auto" in the call to init
     address_env_var = os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
