@@ -365,18 +365,6 @@ class TestHandleJSON:
         handle = serve_handle_from_json_dict(json.loads(serialized))
         await call(handle, "hi") == "hi"
 
-    @pytest.mark.parametrize("sync", [False, True])
-    async def test_nested_in_obj(self, serve_instance, sync):
-        handle = get_handle(sync)
-        await call(handle, "hi") == "hi"
-
-        serialized = json.dumps([serve_handle_to_json_dict(handle)])
-        serialized = json.dumps(json.loads(serialized))
-
-        # Load the handle back from the dict.
-        [handle] = serve_handle_from_json_dict(json.loads(serialized))
-        await call(handle, "hi") == "hi"
-
 
 if __name__ == "__main__":
     import sys
