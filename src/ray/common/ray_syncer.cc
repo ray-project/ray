@@ -220,7 +220,7 @@ void RaySyncer::ServerSyncContext::DoSend() {
   }
 
   if (message_bytes != 0) {
-    unary_reactor_->Finish();
+    unary_reactor_->Finish(grpc::Status::OK());
     unary_reactor_ = nullptr;
     response_ = nullptr;
   }
