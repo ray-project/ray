@@ -1680,9 +1680,7 @@ class Application:
         Returns:
             Dict: The Application's deployments formatted in a dictionary.
         """
-        return ServeApplicationSchema(
-            deployments=[deployment_to_schema(d) for d in self._deployments.values()]
-        ).dict()
+        return serve_application_to_schema(self._deployments.values()).dict()
 
     @classmethod
     def from_dict(cls, d: Dict) -> "Application":
@@ -1699,8 +1697,7 @@ class Application:
             Application: a new application object containing the deployments.
         """
 
-        schema = ServeApplicationSchema.parse_obj(d)
-        return cls([schema_to_deployment(s) for s in schema.deployments])
+        return cls(schema_to_serve_application(ServeApplicationSchema.parse_obj(d)))
 
     def to_yaml(self, f: Optional[TextIO] = None) -> Optional[str]:
         """Returns this application's deployments as a YAML string.
@@ -1950,6 +1947,18 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         _health_check_timeout_s=s.health_check_timeout_s,
         ray_actor_options=ray_actor_options,
     )(s.import_path)
+
+
+def serve_application_to_schema(
+    deployments: List[Deployment],
+) -> ServeApplicationSchema:
+    return ServeApplicationSchema(
+        deployments=[deployment_to_schema(d) for d in deployments]
+    )
+
+
+def schema_to_serve_application(schema: ServeApplicationSchema) -> List[Deployment]:
+    return [schema_to_deployment(s) for s in schema.deployments]
 
 
 def status_info_to_schema(
