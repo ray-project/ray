@@ -37,12 +37,12 @@ def _assert_version_matches(expected_version):
 
 
 if __name__ == "__main__":
-    ray.init(address="auto", runtime_env={"pip": ["pip-install-test==0.2"]})
+    ray.init(address="auto", runtime_env={"pip": ["pip-install-test==0.3"]})
     versions = ["0.5", "0.4", "0.3"]
     envs = [
         {"pip": [f"pip-install-test=={versions[i]}"]} for i in range(len(versions) - 1)
     ]
-    # If a task's env is {}, we should have pip-install-test==0.2 from the job's env
+    # If a task's env is {}, we should have pip-install-test==0.3 from the job's env
     envs.append({})
 
     NUM_TASK_ITERATIONS = 10
