@@ -10,7 +10,10 @@ Concepts
 
 There are several ways that Ray applications use memory:
 
-.. image:: images/memory.svg
+..
+  https://docs.google.com/drawings/d/1wHHnAJZ-NsyIv3TUXQJTYpPz6pjB6PUm2M40Zbfb1Ak/edit
+
+.. image:: ../images/memory.svg
 
 Ray system memory: this is memory used internally by Ray
   - **GCS**: memory used for storing the list of nodes and actors present in the cluster. The amount of memory used for these purposes is typically quite small.
@@ -18,7 +21,7 @@ Ray system memory: this is memory used internally by Ray
 
 Application memory: this is memory used by your application
   - **Worker heap**: memory used by your application (e.g., in Python code or TensorFlow), best measured as the *resident set size (RSS)* of your application minus its *shared memory usage (SHR)* in commands such as ``top``. The reason you need to subtract *SHR* is that object store shared memory is reported by the OS as shared with each worker. Not subtracting *SHR* will result in double counting memory usage.
-  - **Object store memory**: memory used when your application creates objects in the object store via ``ray.put`` and when returning values from remote functions. Objects are reference counted and evicted when they fall out of scope. There is an object store server running on each node. In Ray 1.3+, objects will be `spilled to disk <#object-spilling>`__ if the object store fills up.
+  - **Object store memory**: memory used when your application creates objects in the object store via ``ray.put`` and when returning values from remote functions. Objects are reference counted and evicted when they fall out of scope. There is an object store server running on each node. In Ray 1.3+, objects will be `spilled to disk <object-spilling.html>`__ if the object store fills up.
   - **Object store shared memory**: memory used when your application reads objects via ``ray.get``. Note that if an object is already present on the node, this does not cause additional allocations. This allows large objects to be efficiently shared among many actors and tasks.
 
 ObjectRef Reference Counting
@@ -228,143 +231,6 @@ In this example, we first create an object via ``ray.put()``, then capture its `
                                                                                                                     <module>:42 
 
 In the output of ``ray memory``, we see that the second object displays as a normal ``LOCAL_REFERENCE``, but the first object is listed as ``CAPTURED_IN_OBJECT``.
-
-Object Spilling
-~~~~~~~~~~~~~~~
-.. _object-spilling:
-
-Ray 1.3+ spills objects to external storage once the object store is full. By default, objects are spilled to Ray's temporary directory in the local filesystem.
-
-Single node
------------
-
-Ray uses object spilling by default. Without any setting, objects are spilled to `[temp_folder]/spill`. `temp_folder` is `/tmp` for Linux and MacOS by default.
-
-To configure the directory where objects are placed, use:
-
-.. code-block:: python
-
-    ray.init(
-        _system_config={
-            "object_spilling_config": json.dumps(
-                {"type": "filesystem", "params": {"directory_path": "/tmp/spill"}},
-            )
-        },
-    )
-
-You can also specify multiple directories for spilling to spread the IO load and disk space
-usage across multiple physical devices if needed (e.g., SSD devices):
-
-.. code-block:: python
-
-    ray.init(
-        _system_config={
-            "max_io_workers": 4,  # More IO workers for local storage. Each IO worker tries using a different directories.
-            "object_spilling_config": json.dumps(
-                {
-                  "type": "filesystem",
-                  "params": {
-                    # Each directory could mount at different devices.
-                    "directory_path": [
-                      "/tmp/spill",
-                      "/tmp/spill_1",
-                      "/tmp/spill_2"}},
-            )
-        },
-    )
-
-.. note::
-  
-  To optimize the performance, it is recommended to use SSD instead of HDD when using object spilling for memory intensive workloads.
-
-If you are using an HDD, it is recommended that you specify a large buffer size (> 1MB) to reduce IO requests during spilling.
-
-.. code-block:: python
-
-    ray.init(
-        _system_config={
-            "object_spilling_config": json.dumps(
-                {
-                  "type": "filesystem", 
-                  "params": {
-                    "directory_path": "/tmp/spill",
-                    "buffer_size": 1_000_000
-                  }
-                },
-            )
-        },
-    )
-
-To enable object spilling to remote storage (any URI supported by `smart_open <https://pypi.org/project/smart-open/>`__):
-
-.. code-block:: python
-
-    ray.init(
-        _system_config={
-            "max_io_workers": 4,  # More IO workers for remote storage.
-            "min_spilling_size": 100 * 1024 * 1024,  # Spill at least 100MB at a time.
-            "object_spilling_config": json.dumps(
-                {
-                  "type": "smart_open", 
-                  "params": {
-                    "uri": "s3://bucket/path"
-                  },
-                  "buffer_size": 100 * 1024 * 1024 # Use a 100MB buffer for writes
-                },
-            )
-        },
-    )
-
-It is recommended that you specify a large buffer size (> 1MB) to reduce IO requests during spilling.
-
-Spilling to multiple remote storages is also supported.
-
-.. code-block:: python
-
-    ray.init(
-        _system_config={
-            "max_io_workers": 4,  # More IO workers for remote storage.
-            "min_spilling_size": 100 * 1024 * 1024,  # Spill at least 100MB at a time.
-            "object_spilling_config": json.dumps(
-                {
-                  "type": "smart_open", 
-                  "params": {
-                    "uri": ["s3://bucket/path1", "s3://bucket/path2, "s3://bucket/path3"]
-                  },
-                  "buffer_size": 100 * 1024 * 1024 # Use a 100MB buffer for writes
-                },
-            )
-        },
-    )
-
-Remote storage support is still experimental.
-
-Cluster mode
-------------
-To enable object spilling in multi node clusters:
-
-.. code-block:: bash
-  
-  # Note that `object_spilling_config`'s value should be json format.
-  ray start --head --system-config='{"object_spilling_config":"{\"type\":\"filesystem\",\"params\":{\"directory_path\":\"/tmp/spill\"}}"}'
-
-Stats
------
-
-When spilling is happening, the following INFO level messages will be printed to the raylet logs (e.g., ``/tmp/ray/session_latest/logs/raylet.out``)::
-
-  local_object_manager.cc:166: Spilled 50 MiB, 1 objects, write throughput 230 MiB/s
-  local_object_manager.cc:334: Restored 50 MiB, 1 objects, read throughput 505 MiB/s
-
-You can also view cluster-wide spill stats by using the ``ray memory`` command::
-
-  --- Aggregate object store stats across all nodes ---
-  Plasma memory usage 50 MiB, 1 objects, 50.0% full
-  Spilled 200 MiB, 4 objects, avg write throughput 570 MiB/s
-  Restored 150 MiB, 3 objects, avg read throughput 1361 MiB/s
-
-If you only want to display cluster-wide spill stats, use ``ray memory --stats-only``.
-
 
 Memory Aware Scheduling
 ~~~~~~~~~~~~~~~~~~~~~~~

@@ -1,5 +1,5 @@
-Advanced antipattern: Processing results in submission order using ray.get
-==========================================================================
+Antipattern: Processing results in submission order using ray.get
+=================================================================
 
 **TLDR:** Avoid calling ``ray.get`` one by one in a loop if possible.
 
