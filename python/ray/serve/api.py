@@ -25,6 +25,7 @@ from typing import (
 )
 
 from fastapi import APIRouter, FastAPI
+from ray.exceptions import RayActorError
 from ray.experimental.dag.class_node import ClassNode
 from starlette.requests import Request
 from uvicorn.config import Config
@@ -109,8 +110,11 @@ def _get_controller_namespace(
 
 
 def internal_get_global_client(_override_controller_namespace: Optional[str] = None):
-    if _global_client is not None:
-        return _global_client
+    try:
+        if _global_client is not None and ray.get(_global_client._controller.check_alive.remote()):
+            return _global_client
+    except RayActorError:
+        logger.debug("The cached controller has died. Reconnecting.")
 
     return _connect(_override_controller_namespace=_override_controller_namespace)
 
