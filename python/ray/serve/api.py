@@ -1216,6 +1216,9 @@ class Deployment:
         if version is None:
             version = self._version
 
+        if prev_version is None:
+            prev_version = self._prev_version
+
         if init_args is None:
             init_args = self._init_args
 
@@ -1256,6 +1259,72 @@ class Deployment:
             ray_actor_options=ray_actor_options,
             _internal=True,
         )
+
+    @PublicAPI
+    def set_options(
+        self,
+        func_or_class: Optional[Callable] = None,
+        name: Optional[str] = None,
+        version: Optional[str] = None,
+        prev_version: Optional[str] = None,
+        init_args: Optional[Tuple[Any]] = None,
+        init_kwargs: Optional[Dict[Any, Any]] = None,
+        route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
+        num_replicas: Optional[int] = None,
+        ray_actor_options: Optional[Dict] = None,
+        user_config: Optional[Any] = None,
+        max_concurrent_queries: Optional[int] = None,
+        _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
+        _graceful_shutdown_wait_loop_s: Optional[float] = None,
+        _graceful_shutdown_timeout_s: Optional[float] = None,
+        _health_check_period_s: Optional[float] = None,
+        _health_check_timeout_s: Optional[float] = None,
+    ) -> None:
+        """Overwrite this deployment's options. Mutates the deployment.
+
+        Only those options passed in will be updated, all others will remain
+        unchanged.
+        """
+
+        validated = self.options(
+            func_or_class=func_or_class,
+            name=name,
+            version=version,
+            prev_version=prev_version,
+            init_args=init_args,
+            init_kwargs=init_kwargs,
+            route_prefix=route_prefix,
+            num_replicas=num_replicas,
+            ray_actor_options=ray_actor_options,
+            user_config=user_config,
+            max_concurrent_queries=max_concurrent_queries,
+            _autoscaling_config=_autoscaling_config,
+            _graceful_shutdown_wait_loop_s=_graceful_shutdown_wait_loop_s,
+            _graceful_shutdown_timeout_s=_graceful_shutdown_timeout_s,
+            _health_check_period_s=_health_check_period_s,
+            _health_check_timeout_s=_health_check_timeout_s,
+        )
+
+        self._config.num_replicas = validated._config.num_replicas
+        self._config.user_config = validated._config.user_config
+        self._config.max_concurrent_queries = validated._config.max_concurrent_queries
+        self._func_or_class = validated._func_or_class
+        self._name = validated._name
+        self._version = validated._version
+        self._prev_version = validated._prev_version
+        self._init_args = validated._init_args
+        self._init_kwargs = validated._init_kwargs
+        self._route_prefix = validated._route_prefix
+        self._ray_actor_options = validated._ray_actor_options
+        self._config.autoscaling_config = validated._config.autoscaling_config
+        self._config.graceful_shutdown_wait_loop_s = (
+            validated._config.graceful_shutdown_wait_loop_s
+        )
+        self._config.graceful_shutdown_timeout_s = (
+            validated._config.graceful_shutdown_timeout_s
+        )
+        self._config.health_check_period_s = validated._config.health_check_period_s
+        self._config.health_check_timeout_s = validated._config.health_check_timeout_s
 
     def __eq__(self, other):
         return all(
