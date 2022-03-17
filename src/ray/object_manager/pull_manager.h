@@ -60,12 +60,14 @@ class PullManager {
   /// \param restore_spilled_object A callback which should
   /// retrieve an spilled object from the external store.
   PullManager(
-      NodeID &self_node_id, const std::function<bool(const ObjectID &)> object_is_local,
+      NodeID &self_node_id,
+      const std::function<bool(const ObjectID &)> object_is_local,
       const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
       const std::function<void(const ObjectID &)> cancel_pull_request,
       const std::function<void(const ObjectID &)> fail_pull_request,
       const RestoreSpilledObjectCallback restore_spilled_object,
-      const std::function<double()> get_time_seconds, int pull_timeout_ms,
+      const std::function<double()> get_time_seconds,
+      int pull_timeout_ms,
       int64_t num_bytes_available,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
       std::function<std::string(const ObjectID &)> get_locally_spilled_object_url);
@@ -111,8 +113,10 @@ class PullManager {
   /// objects we can safely pull.
   void OnLocationChange(const ObjectID &object_id,
                         const std::unordered_set<NodeID> &client_ids,
-                        const std::string &spilled_url, const NodeID &spilled_node_id,
-                        bool pending_creation, size_t object_size);
+                        const std::string &spilled_url,
+                        const NodeID &spilled_node_id,
+                        bool pending_creation,
+                        size_t object_size);
 
   /// Cancel an existing pull request.
   ///
@@ -272,8 +276,10 @@ class PullManager {
   ///                   bundles (in any queue) below this threshold.
   /// \param quota_margin Keep deactivating bundles until this amount of quota margin
   ///                     becomes available.
-  void DeactivateUntilMarginAvailable(const std::string &debug_name, Queue &bundles,
-                                      int retain_min, int64_t quota_margin,
+  void DeactivateUntilMarginAvailable(const std::string &debug_name,
+                                      Queue &bundles,
+                                      int retain_min,
+                                      int64_t quota_margin,
                                       uint64_t *highest_id_for_bundle,
                                       std::unordered_set<ObjectID> *objects_to_cancel);
 
@@ -350,7 +356,7 @@ class PullManager {
 
   /// The objects that this object manager has been asked to fetch from remote
   /// object managers.
-  std::unordered_map<ObjectID, ObjectPullRequest> object_pull_requests_;
+  absl::flat_hash_map<ObjectID, ObjectPullRequest> object_pull_requests_;
 
   // Protects state that is shared by the threads used to receive object
   // chunks.

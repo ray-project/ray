@@ -201,7 +201,9 @@ def tune_xgboost(use_class_trainable=True):
         min_cpu = base_trial_resource.required_resources.get("CPU", 0)
 
         # Get the number of CPUs available in total (not just free)
-        total_available_cpus = trial_runner.trial_executor._avail_resources.cpu
+        total_available_cpus = (
+            trial_runner.trial_executor._resource_updater.get_num_cpus()
+        )
 
         # Divide the free CPUs among all live trials
         cpu_to_use = max(
@@ -254,7 +256,7 @@ if __name__ == "__main__":
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using " "Ray Client.",
+        help="The address of server to connect to if using Ray Client.",
     )
     parser.add_argument(
         "--class-trainable",

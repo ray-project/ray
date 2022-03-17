@@ -28,7 +28,6 @@ from pathlib import Path
 import numpy as np
 
 import ray
-import ray._private.gcs_utils as gcs_utils
 import ray.ray_constants as ray_constants
 from ray._private.gcs_pubsub import construct_error_message
 from ray._private.tls_utils import load_certs_from_env
@@ -118,7 +117,10 @@ def push_error_to_driver(worker, error_type, message, job_id=None):
 
 
 def publish_error_to_driver(
-    error_type, message, job_id=None, redis_client=None, gcs_publisher=None
+    error_type,
+    message,
+    gcs_publisher,
+    job_id=None,
 ):
     """Push an error message to the driver to be printed in the background.
 
@@ -131,27 +133,15 @@ def publish_error_to_driver(
         error_type (str): The type of the error.
         message (str): The message that will be printed in the background
             on the driver.
+        gcs_publisher: The GCS publisher to use.
         job_id: The ID of the driver to push the error message to. If this
             is None, then the message will be pushed to all drivers.
-        redis_client: The redis client to use.
-        gcs_publisher: The GCS publisher to use. If specified, ignores
-            redis_client.
     """
     if job_id is None:
         job_id = ray.JobID.nil()
     assert isinstance(job_id, ray.JobID)
     error_data = construct_error_message(job_id, error_type, message, time.time())
-    if gcs_publisher:
-        gcs_publisher.publish_error(job_id.hex().encode(), error_data)
-    elif redis_client:
-        pubsub_msg = gcs_utils.PubSubMessage()
-        pubsub_msg.id = job_id.binary()
-        pubsub_msg.data = error_data.SerializeToString()
-        redis_client.publish(
-            "ERROR_INFO:" + job_id.hex(), pubsub_msg.SerializeToString()
-        )
-    else:
-        raise ValueError("One of redis_client and gcs_publisher needs to be specified!")
+    gcs_publisher.publish_error(job_id.hex().encode(), error_data)
 
 
 def random_string():
@@ -342,7 +332,7 @@ def resources_from_resource_arguments(
 
     if "CPU" in resources or "GPU" in resources:
         raise ValueError(
-            "The resources dictionary must not " "contain the key 'CPU' or 'GPU'"
+            "The resources dictionary must not contain the key 'CPU' or 'GPU'"
         )
     elif "memory" in resources or "object_store_memory" in resources:
         raise ValueError(
@@ -1232,7 +1222,7 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
         if result is not None:
             break
         else:
-            logger.debug(f"Fetched {key}=None from redis. Retrying.")
+            logger.debug(f"Fetched {key}=None from KV. Retrying.")
             time.sleep(2)
     if not result:
         raise RuntimeError(
@@ -1286,8 +1276,8 @@ def get_directory_size_bytes(path: Union[str, Path] = ".") -> int:
     for dirpath, dirnames, filenames in os.walk(path):
         for f in filenames:
             fp = os.path.join(dirpath, f)
-            # skip if it is a symbolic link
-            if not os.path.islink(fp):
+            # skip if it is a symbolic link or a .pyc file
+            if not os.path.islink(fp) and not f.endswith(".pyc"):
                 total_size_bytes += os.path.getsize(fp)
 
     return total_size_bytes

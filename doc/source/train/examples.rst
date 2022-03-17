@@ -52,6 +52,7 @@ Logger/Callback Examples
 * :doc:`/train/examples/mlflow_fashion_mnist_example`:
   Example for logging training to MLflow via the ``MLflowLoggerCallback``
 
+
 Ray Datasets Integration Examples
 ---------------------------------
 
@@ -63,6 +64,7 @@ Ray Datasets Integration Examples
 
 * :doc:`/train/examples/tune_linear_dataset_example`:
   Simple example for tuning a linear PyTorch model.
+
 
 Ray Tune Integration Examples
 -----------------------------

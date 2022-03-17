@@ -19,6 +19,8 @@ from ray.dashboard.modules.job.common import (
 )
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 
+from ray.runtime_env import RuntimeEnv
+
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -67,6 +69,11 @@ class JobSubmissionClient(SubmissionClient):
         metadata.update(self._default_metadata)
 
         self._upload_working_dir_if_needed(runtime_env)
+        self._upload_py_modules_if_needed(runtime_env)
+
+        # Run the RuntimeEnv constructor to parse local pip/conda requirements files.
+        runtime_env = RuntimeEnv(**runtime_env).to_dict()
+
         req = JobSubmitRequest(
             entrypoint=entrypoint,
             job_id=job_id,
@@ -136,7 +143,9 @@ class JobSubmissionClient(SubmissionClient):
 
     @PublicAPI(stability="beta")
     async def tail_job_logs(self, job_id: str) -> Iterator[str]:
-        async with aiohttp.ClientSession(cookies=self._cookies) as session:
+        async with aiohttp.ClientSession(
+            cookies=self._cookies, headers=self._headers
+        ) as session:
             ws = await session.ws_connect(
                 f"{self._address}/api/jobs/{job_id}/logs/tail"
             )

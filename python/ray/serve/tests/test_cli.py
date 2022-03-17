@@ -11,8 +11,7 @@ import ray
 from ray import serve
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray._private.test_utils import wait_for_condition
-from ray.dashboard.optional_utils import RAY_INTERNAL_DASHBOARD_NAMESPACE
-from ray.serve.scripts import process_args_and_kwargs, configure_runtime_env
+from ray.serve.scripts import _process_args_and_kwargs, _configure_runtime_env
 
 
 def ping_endpoint(endpoint: str, params: str = ""):
@@ -39,7 +38,7 @@ class TestProcessArgsAndKwargs:
             "--kwarg2",
             "kwval2",
         )
-        args, kwargs = process_args_and_kwargs(args_and_kwargs)
+        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
         assert args == ["argval1", "argval2"]
         assert kwargs == {"kwarg1": "kwval1", "kwarg2": "kwval2"}
 
@@ -53,7 +52,7 @@ class TestProcessArgsAndKwargs:
             "kwval2",
         )
         with pytest.raises(ValueError):
-            process_args_and_kwargs(args_and_kwargs)
+            _process_args_and_kwargs(args_and_kwargs)
 
     def test_mixed_kwargs(self):
         args_and_kwargs = (
@@ -68,7 +67,7 @@ class TestProcessArgsAndKwargs:
             "--kwarg5",
             "kwval5",
         )
-        args, kwargs = process_args_and_kwargs(args_and_kwargs)
+        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
         assert args == ["argval1", "argval2"]
         assert kwargs == {
             "kwarg1": "=kw==val1",
@@ -86,11 +85,11 @@ class TestProcessArgsAndKwargs:
             "kwval2",
         )
         with pytest.raises(ValueError):
-            process_args_and_kwargs(args_and_kwargs)
+            _process_args_and_kwargs(args_and_kwargs)
 
         args_and_kwargs = ("--empty_kwarg_only",)
         with pytest.raises(ValueError):
-            process_args_and_kwargs(args_and_kwargs)
+            _process_args_and_kwargs(args_and_kwargs)
 
     def test_empty_equals_kwarg(self):
         args_and_kwargs = (
@@ -98,7 +97,7 @@ class TestProcessArgsAndKwargs:
             "--kwarg1=--hello",
             "--kwarg2=",
         )
-        args, kwargs = process_args_and_kwargs(args_and_kwargs)
+        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
         assert args == ["argval1"]
         assert kwargs == {
             "kwarg1": "--hello",
@@ -106,18 +105,18 @@ class TestProcessArgsAndKwargs:
         }
 
         args_and_kwargs = ("--empty_kwarg_only=",)
-        args, kwargs = process_args_and_kwargs(args_and_kwargs)
+        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
         assert args == []
         assert kwargs == {"empty_kwarg_only": ""}
 
     def test_only_args(self):
         args_and_kwargs = ("argval1", "argval2", "argval3")
-        args, kwargs = process_args_and_kwargs(args_and_kwargs)
+        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
         assert args == ["argval1", "argval2", "argval3"]
         assert kwargs == {}
 
         args_and_kwargs = ("single_arg",)
-        args, kwargs = process_args_and_kwargs(args_and_kwargs)
+        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
         assert args == ["single_arg"]
         assert kwargs == {}
 
@@ -130,7 +129,7 @@ class TestProcessArgsAndKwargs:
             "--kwarg3",
             "kwval3",
         )
-        args, kwargs = process_args_and_kwargs(args_and_kwargs)
+        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
         assert args == []
         assert kwargs == {"kwarg1": "kwval1", "kwarg2": "kwval2", "kwarg3": "kwval3"}
 
@@ -138,13 +137,13 @@ class TestProcessArgsAndKwargs:
             "--single_kwarg",
             "single_kwval",
         )
-        args, kwargs = process_args_and_kwargs(args_and_kwargs)
+        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
         assert args == []
         assert kwargs == {"single_kwarg": "single_kwval"}
 
     def test_empty_args_and_kwargs(self):
         for empty_val in [None, ()]:
-            args, kwargs = process_args_and_kwargs(empty_val)
+            args, kwargs = _process_args_and_kwargs(empty_val)
             assert args == []
             assert kwargs == {}
 
@@ -163,10 +162,10 @@ class TestConfigureRuntimeEnv:
         deployment = TestConfigureRuntimeEnv.f.options(
             ray_actor_options=ray_actor_options
         )
-        configure_runtime_env(deployment, runtime_env)
+        _configure_runtime_env(deployment, runtime_env)
         assert deployment.ray_actor_options["runtime_env"] == runtime_env
 
-    def test_overwrite_all_options(self):
+    def test_no_overwrite_all_options(self):
         old_runtime_env = {
             "working_dir": "http://test.com",
             "pip": ["requests", "pendulum==2.1.2"],
@@ -176,13 +175,18 @@ class TestConfigureRuntimeEnv:
             "pip": [],
             "env_vars": {"test_var": "test"},
         }
+        updated_env = {
+            "working_dir": "http://test.com",
+            "pip": ["requests", "pendulum==2.1.2"],
+            "env_vars": {"test_var": "test"},
+        }
         deployment = TestConfigureRuntimeEnv.f.options(
             ray_actor_options={"runtime_env": old_runtime_env}
         )
-        configure_runtime_env(deployment, new_runtime_env)
-        assert deployment.ray_actor_options["runtime_env"] == new_runtime_env
+        _configure_runtime_env(deployment, new_runtime_env)
+        assert deployment.ray_actor_options["runtime_env"] == updated_env
 
-    def test_overwrite_some_options(self):
+    def test_no_overwrite_some_options(self):
         old_runtime_env = {
             "working_dir": "http://new.com",
             "pip": [],
@@ -192,16 +196,11 @@ class TestConfigureRuntimeEnv:
             "working_dir": "http://test.com",
             "pip": ["requests", "pendulum==2.1.2"],
         }
-        merged_env = {
-            "working_dir": "http://test.com",
-            "pip": ["requests", "pendulum==2.1.2"],
-            "env_vars": {"test_var": "test"},
-        }
         deployment = TestConfigureRuntimeEnv.f.options(
             ray_actor_options={"runtime_env": old_runtime_env}
         )
-        configure_runtime_env(deployment, new_runtime_env)
-        assert deployment.ray_actor_options["runtime_env"] == merged_env
+        _configure_runtime_env(deployment, new_runtime_env)
+        assert deployment.ray_actor_options["runtime_env"] == old_runtime_env
 
     def test_overwrite_no_options(self):
         runtime_env = {
@@ -211,7 +210,7 @@ class TestConfigureRuntimeEnv:
         deployment = TestConfigureRuntimeEnv.f.options(
             ray_actor_options={"runtime_env": runtime_env}
         )
-        configure_runtime_env(deployment, {})
+        _configure_runtime_env(deployment, {})
         assert deployment.ray_actor_options["runtime_env"] == runtime_env
 
 
@@ -250,55 +249,12 @@ class A:
         return (self.value + self.increment - self.decrement) * self.multiplier
 
 
-@serve.deployment
-class DecoratedA(A):
-    pass
-
-
-@pytest.mark.parametrize("class_name", ["A", "DecoratedA"])
-def test_create_deployment(ray_start_stop, tmp_working_dir, class_name):  # noqa: F811
-    subprocess.check_output(["serve", "start"])
-    subprocess.check_output(
-        [
-            "serve",
-            "create-deployment",
-            f"ray.serve.tests.test_cli.{class_name}",
-            "--runtime-env-json",
-            json.dumps(
-                {
-                    "working_dir": tmp_working_dir,
-                }
-            ),
-            "--options-json",
-            json.dumps(
-                {
-                    "name": "B",
-                    "init_args": [42],
-                    "init_kwargs": {"increment": 10},
-                    "num_replicas": 2,
-                    "user_config": {"decrement": 5},
-                    "ray_actor_options": {
-                        "runtime_env": {
-                            "env_vars": {
-                                "SERVE_TEST_MULTIPLIER": "2",
-                            },
-                        }
-                    },
-                }
-            ),
-        ]
-    )
-    resp = requests.get("http://127.0.0.1:8000/B")
-    resp.raise_for_status()
-    assert resp.text == "94", resp.text
-
-
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_deploy(ray_start_stop):
     # Deploys some valid config files and checks that the deployments work
 
     # Initialize serve in test to enable calling serve.list_deployments()
-    ray.init(address="auto", namespace=RAY_INTERNAL_DASHBOARD_NAMESPACE)
+    ray.init(address="auto", namespace="serve")
     serve.start(detached=True)
 
     # Create absolute file names to YAML config files
@@ -500,7 +456,7 @@ def test_run_basic(ray_start_stop):
         os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
     )
 
-    p = subprocess.Popen(["serve", "run", config_file_name])
+    p = subprocess.Popen(["serve", "run", "--address=auto", config_file_name])
     wait_for_condition(lambda: ping_endpoint("one") == "2", timeout=10)
     wait_for_condition(
         lambda: ping_endpoint("shallow") == "Hello shallow world!", timeout=10
@@ -512,7 +468,9 @@ def test_run_basic(ray_start_stop):
     assert ping_endpoint("shallow") == "connection error"
 
     # Deploy via import path
-    p = subprocess.Popen(["serve", "run", "ray.serve.tests.test_cli.parrot"])
+    p = subprocess.Popen(
+        ["serve", "run", "--address=auto", "ray.serve.tests.test_cli.parrot"]
+    )
     wait_for_condition(
         lambda: ping_endpoint("parrot", params="?sound=squawk") == "squawk", timeout=10
     )
@@ -544,6 +502,7 @@ def test_run_init_args_kwargs(ray_start_stop):
         [
             "serve",
             "run",
+            "--address=auto",
             "ray.serve.tests.test_cli.Macaw",
             "--",
             "green",
@@ -561,6 +520,7 @@ def test_run_init_args_kwargs(ray_start_stop):
         [
             "serve",
             "run",
+            "--address=auto",
             "ray.serve.tests.test_cli.Macaw",
             "--",
             "green",
@@ -583,7 +543,16 @@ def test_run_init_args_kwargs(ray_start_stop):
 
     with pytest.raises(subprocess.CalledProcessError):
         subprocess.check_output(
-            ["serve", "run", config_file_name, "--", "green", "--name", "Molly"]
+            [
+                "serve",
+                "run",
+                "--address=auto",
+                config_file_name,
+                "--",
+                "green",
+                "--name",
+                "Molly",
+            ]
         )
 
 
@@ -591,7 +560,9 @@ def test_run_init_args_kwargs(ray_start_stop):
 def test_run_simultaneous(ray_start_stop):
     # Test that two serve run processes can run simultaneously
 
-    p1 = subprocess.Popen(["serve", "run", "ray.serve.tests.test_cli.parrot"])
+    p1 = subprocess.Popen(
+        ["serve", "run", "--address=auto", "ray.serve.tests.test_cli.parrot"]
+    )
     wait_for_condition(
         lambda: ping_endpoint("parrot", params="?sound=squawk") == "squawk", timeout=10
     )
@@ -600,6 +571,7 @@ def test_run_simultaneous(ray_start_stop):
         [
             "serve",
             "run",
+            "--address=auto",
             "ray.serve.tests.test_cli.Macaw",
             "--",
             "green",
@@ -636,6 +608,7 @@ def test_run_runtime_env(ray_start_stop):
         [
             "serve",
             "run",
+            "--address=auto",
             "test_cli.Macaw",
             "--working-dir",
             os.path.dirname(__file__),
@@ -653,6 +626,7 @@ def test_run_runtime_env(ray_start_stop):
         [
             "serve",
             "run",
+            "--address=auto",
             os.path.join(
                 os.path.dirname(__file__), "test_config_files", "scarlet.yaml"
             ),
@@ -671,6 +645,7 @@ def test_run_runtime_env(ray_start_stop):
         [
             "serve",
             "run",
+            "--address=auto",
             "test_module.test.one",
             "--working-dir",
             "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip",
@@ -685,8 +660,11 @@ def test_run_runtime_env(ray_start_stop):
         [
             "serve",
             "run",
+            "--address=auto",
             os.path.join(
-                os.path.dirname(__file__), "test_config_files", "fake_runtime_env.yaml"
+                os.path.dirname(__file__),
+                "test_config_files",
+                "missing_runtime_env.yaml",
             ),
             "--runtime-env-json",
             (

@@ -6,8 +6,10 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+import snappy
 from fsspec.implementations.local import LocalFileSystem
 from pytest_lazyfixture import lazy_fixture
+from io import BytesIO
 
 import ray
 
@@ -838,6 +840,31 @@ def test_read_text(ray_start_regular_shared, tmp_path):
     assert sorted(ds.take()) == ["goodbye", "hello", "ray", "world"]
     ds = ray.data.read_text(path, drop_empty_lines=False)
     assert ds.count() == 5
+
+
+def test_read_binary_snappy(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test_binary_snappy")
+    os.mkdir(path)
+    with open(os.path.join(path, "file"), "wb") as f:
+        byte_str = "hello, world".encode()
+        bytes = BytesIO(byte_str)
+        snappy.stream_compress(bytes, f)
+    ds = ray.data.read_binary_files(
+        path,
+        arrow_open_stream_args=dict(compression="snappy"),
+    )
+    assert sorted(ds.take()) == [byte_str]
+
+
+def test_read_binary_snappy_inferred(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test_binary_snappy_inferred")
+    os.mkdir(path)
+    with open(os.path.join(path, "file.snappy"), "wb") as f:
+        byte_str = "hello, world".encode()
+        bytes = BytesIO(byte_str)
+        snappy.stream_compress(bytes, f)
+    ds = ray.data.read_binary_files(path)
+    assert sorted(ds.take()) == [byte_str]
 
 
 @pytest.mark.parametrize("pipelined", [False, True])

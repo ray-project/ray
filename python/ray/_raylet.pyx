@@ -865,7 +865,7 @@ cdef CRayStatus check_signals() nogil:
     return CRayStatus.OK()
 
 
-cdef void gc_collect() nogil:
+cdef void gc_collect(c_bool triggered_by_global_gc) nogil:
     with gil:
         start = time.perf_counter()
         num_freed = gc.collect()
@@ -1495,7 +1495,7 @@ cdef class CoreWorker:
                     c_bool retry_exceptions,
                     scheduling_strategy,
                     c_string debugger_breakpoint,
-                    c_string serialized_runtime_env,
+                    c_string serialized_runtime_env_info,
                     ):
         cdef:
             unordered_map[c_string, double] c_resources
@@ -1523,7 +1523,7 @@ cdef class CoreWorker:
                 ray_function, args_vector, CTaskOptions(
                     name, num_returns, c_resources,
                     b"",
-                    serialized_runtime_env),
+                    serialized_runtime_env_info),
                 max_retries, retry_exceptions,
                 c_scheduling_strategy,
                 debugger_breakpoint)
@@ -1555,7 +1555,7 @@ cdef class CoreWorker:
                      c_string ray_namespace,
                      c_bool is_asyncio,
                      c_string extension_data,
-                     c_string serialized_runtime_env,
+                     c_string serialized_runtime_env_info,
                      concurrency_groups_dict,
                      int32_t max_pending_calls,
                      scheduling_strategy,
@@ -1600,7 +1600,7 @@ cdef class CoreWorker:
                         ray_namespace,
                         is_asyncio,
                         c_scheduling_strategy,
-                        serialized_runtime_env,
+                        serialized_runtime_env_info,
                         c_concurrency_groups,
                         # execute out of order for
                         # async or threaded actors.

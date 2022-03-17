@@ -688,7 +688,7 @@ def test_actor_inheritance(ray_start_regular_shared):
     # Test that you can't inherit from an actor class.
     with pytest.raises(
         ActorClassInheritanceException,
-        match="Inheriting from actor classes is not " "currently supported.",
+        match="Inheriting from actor classes is not currently supported.",
     ):
 
         class Derived(ActorBase):
@@ -1139,7 +1139,7 @@ def test_actor_autocomplete(ray_start_regular_shared):
 
     class_calls = [fn for fn in dir(Foo) if not fn.startswith("_")]
 
-    assert set(class_calls) == {"method_one", "options", "remote"}
+    assert set(class_calls) == {"method_one", "options", "remote", "bind"}
 
     f = Foo.remote()
 

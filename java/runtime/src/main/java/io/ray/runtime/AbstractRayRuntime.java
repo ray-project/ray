@@ -303,13 +303,23 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     if (options == null) {
       options = new CallOptions.Builder().build();
     }
+
+    ObjectRefImpl<?> impl = new ObjectRefImpl<>();
+    /// Mapping the object id to the object ref.
+    List<ObjectId> preparedReturnIds = getCurrentReturnIds(numReturns, ActorId.NIL);
+    if (rayConfig.runMode == RunMode.CLUSTER && numReturns > 0) {
+      ObjectRefImpl.registerObjectRefImpl(preparedReturnIds.get(0), impl);
+    }
+
     List<ObjectId> returnIds =
         taskSubmitter.submitTask(functionDescriptor, functionArgs, numReturns, options);
     Preconditions.checkState(returnIds.size() == numReturns);
+    validatePreparedReturnIds(preparedReturnIds, returnIds);
     if (returnIds.isEmpty()) {
       return null;
     } else {
-      return new ObjectRefImpl(returnIds.get(0), returnType.get(), /*skipAddingLocalRef=*/ true);
+      impl.init(returnIds.get(0), returnType.get(), /*skipAddingLocalRef=*/ true);
+      return impl;
     }
   }
 
@@ -324,6 +334,13 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
       LOGGER.debug("Submitting Actor Task {}.", functionDescriptor);
     }
     List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args, functionDescriptor.getLanguage());
+
+    ObjectRefImpl<?> impl = new ObjectRefImpl<>();
+    /// Mapping the object id to the object ref.
+    List<ObjectId> preparedReturnIds = getCurrentReturnIds(numReturns, rayActor.getId());
+    if (rayConfig.runMode == RunMode.CLUSTER && numReturns > 0) {
+      ObjectRefImpl.registerObjectRefImpl(preparedReturnIds.get(0), impl);
+    }
     List<ObjectId> returnIds =
         taskSubmitter.submitActorTask(
             rayActor, functionDescriptor, functionArgs, numReturns, options);
@@ -331,7 +348,9 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     if (returnIds.isEmpty()) {
       return null;
     } else {
-      return new ObjectRefImpl(returnIds.get(0), returnType.get(), /*skipAddingLocalRef=*/ true);
+      validatePreparedReturnIds(preparedReturnIds, returnIds);
+      impl.init(returnIds.get(0), returnType.get(), /*skipAddingLocalRef=*/ true);
+      return impl;
     }
   }
 
@@ -387,6 +406,8 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     }
   }
 
+  abstract List<ObjectId> getCurrentReturnIds(int numReturns, ActorId actorId);
+
   @Override
   public WorkerContext getWorkerContext() {
     return workerContext;
@@ -419,5 +440,21 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   @Override
   public void setIsContextSet(boolean isContextSet) {
     this.isContextSet.set(isContextSet);
+  }
+
+  /// A helper to validate if the prepared return ids is as expected.
+  void validatePreparedReturnIds(List<ObjectId> preparedReturnIds, List<ObjectId> realReturnIds) {
+    if (rayConfig.runMode == RunMode.CLUSTER) {
+      Preconditions.checkState(realReturnIds.size() == preparedReturnIds.size());
+      for (int i = 0; i < preparedReturnIds.size(); ++i) {
+        ObjectId prepared = preparedReturnIds.get(i);
+        Object real = realReturnIds.get(i);
+        Preconditions.checkState(
+            prepared.equals(real),
+            "The prepared object id {} is not equal to the real return id {}",
+            prepared,
+            real);
+      }
+    }
   }
 }
