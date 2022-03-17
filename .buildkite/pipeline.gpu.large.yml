@@ -32,7 +32,7 @@
       --test_tag_filters=multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
 
 
-- label: ":tv: :airplane: ML tests (ray/ml)"
+- label: ":tv: :airplane: ML GPU tests (ray/ml)"
   conditions: ["RAY_CI_ML_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
