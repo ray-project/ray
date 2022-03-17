@@ -27,6 +27,7 @@ from typing import (
 
 from fastapi import APIRouter, FastAPI
 from ray.experimental.dag.class_node import ClassNode
+from ray.experimental.dag.function_node import FunctionNode
 from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
@@ -1020,6 +1021,19 @@ class DeploymentNode(ClassNode):
     """
 
     # TODO (jiaodong): Later unify and refactor this with pipeline node class
+    def bind(self, *args, **kwargs):
+        """Bind the default __call__ method and return a DeploymentMethodNode"""
+        return self.__call__.bind(*args, **kwargs)
+
+
+@PublicAPI(stability="alpha")
+class DeploymentFunctionNode(FunctionNode):
+    """Represents a serve.deployment decorated function from user.
+
+    It's the counterpart of DeploymentNode that represents function as body
+    instead of class.
+    """
+
     pass
 
 
@@ -1186,7 +1200,18 @@ class Deployment:
         The returned bound deployment can be deployed or bound to other
         deployments to create a multi-deployment application.
         """
-        if inspect.isclass(self._func_or_class):
+        if inspect.isfunction(self._func_or_class):
+            return DeploymentFunctionNode(
+                self._func_or_class,
+                args,  # Used to bind and resolve DAG only, can take user input
+                kwargs,  # Used to bind and resolve DAG only, can take user input
+                self._ray_actor_options or dict(),
+                other_args_to_resolve={
+                    "deployment_self": copy(self),
+                    "is_from_serve_deployment": True,
+                },
+            )
+        else:
             return DeploymentNode(
                 self._func_or_class,
                 args,
@@ -1197,17 +1222,6 @@ class Deployment:
                     "is_from_serve_deployment": True,
                 },
             )
-        else:
-            return DeploymentNode(
-                self._func_or_class,
-                cls_args=tuple(),
-                cls_kwargs=dict(),
-                cls_options=self._ray_actor_options or dict(),
-                other_args_to_resolve={
-                    "deployment_self": copy(self),
-                    "is_from_serve_deployment": True,
-                },
-            ).__call__.bind(*args, **kwargs)
 
     @PublicAPI
     def deploy(self, *init_args, _blocking=True, **init_kwargs):
@@ -1765,8 +1779,26 @@ def run(
 
     if isinstance(target, Application):
         deployments = list(target.deployments.values())
+    # Each DAG should always provide a valid Driver DeploymentNode
     elif isinstance(target, DeploymentNode):
         deployments = pipeline_build(target)
+    # Special case where user is doing single function serve.run(func.bind())
+    elif isinstance(target, DeploymentFunctionNode):
+        deployments = pipeline_build(target)
+        if len(deployments) != 1:
+            raise ValueError(
+                "We only support single function node in serve.run, ex: "
+                "serve.run(func.bind()). For more than one nodes in your DAG, "
+                "Please provide a driver class and bind it as entrypoint to "
+                "your Serve DAG."
+            )
+    elif isinstance(target, DAGNode):
+        raise ValueError(
+            "Invalid DAGNode type as entry to serve.run(), "
+            f"type: {type(target)}, accepted: DeploymentNode, "
+            "DeploymentFunctionNode please provide a driver class and bind it "
+            "as entrypoint to your Serve DAG."
+        )
     else:
         raise TypeError(
             "Expected a DeploymentNode or "
