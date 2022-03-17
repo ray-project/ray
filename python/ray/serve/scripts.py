@@ -286,7 +286,7 @@ def run(
             app_or_node = Application.from_yaml(config_file)
     else:
         import_path = config_or_import_path
-        cli_logger.print(f"Loading app or node from import path: '{import_path}'.")
+        cli_logger.print(f"Loading app from import path: '{import_path}'.")
         app_or_node = import_attr(import_path)
 
     # Setting the runtime_env here will set defaults for the deployments.
