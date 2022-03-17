@@ -32,7 +32,7 @@ class PlacementGroupSchedulingStrategy:
     ):
         if placement_group is None:
             raise ValueError(
-                "placement_group needs to be an instance " "of PlacementGroup"
+                "placement_group needs to be an instance of PlacementGroup"
             )
 
         self.placement_group = placement_group
