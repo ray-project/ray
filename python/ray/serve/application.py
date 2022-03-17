@@ -31,7 +31,7 @@ class Application:
     def __init__(self, deployments: List[Deployment] = None):
         deployments = deployments or []
 
-        self._deployments = dict()
+        self._deployments: Dict[str, Deployment] = dict()
         for d in deployments:
             self.add_deployment(d)
 
@@ -135,8 +135,10 @@ class Application:
 
         except KeyboardInterrupt:
             logger.info("Got SIGINT (KeyboardInterrupt). Removing deployments.")
-            for deployment in self._deployments.values():
-                deployment.delete()
+            deployment_names = [d.name for d in self._deployments.values()]
+            internal_get_global_client().delete_deployments(
+                deployment_names, blocking=True
+            )
             if len(serve.list_deployments()) == 0:
                 logger.info("No deployments left. Shutting down Serve.")
                 serve.shutdown()
@@ -147,6 +149,9 @@ class Application:
 
         This dictionary adheres to the Serve REST API schema. It can be deployed
         via the Serve REST API.
+
+        If any deployment's func_or_class is a function or class (and not an
+        import path), it overwrites it with that function or class's import path.
 
         Returns:
             Dict: The Application's deployments formatted in a dictionary.
@@ -183,6 +188,9 @@ class Application:
 
         This file is formatted as a Serve YAML config file. It can be deployed
         via the Serve CLI.
+
+        If any deployment's func_or_class is a function or class (and not an
+        import path), it overwrites it with that function or class's import path.
 
         Args:
             f (Optional[TextIO]): A pointer to the file where the YAML should

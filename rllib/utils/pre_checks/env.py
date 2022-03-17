@@ -203,7 +203,7 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
         env.observation_space_contains(reset_obs)
     except Exception as e:
         raise ValueError(
-            "Your observation_space_contains function has some " "error "
+            "Your observation_space_contains function has some error "
         ) from e
 
     if not env.observation_space_contains(reset_obs):
@@ -227,9 +227,7 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
     try:
         env.action_space_contains(sampled_action)
     except Exception as e:
-        raise ValueError(
-            "Your action_space_contains function has some " "error "
-        ) from e
+        raise ValueError("Your action_space_contains function has some error ") from e
 
     if not env.action_space_contains(sampled_action):
         error = (
@@ -299,9 +297,7 @@ def check_base_env(env: "BaseEnv") -> None:
     try:
         env.action_space_contains(sampled_action)
     except Exception as e:
-        raise ValueError(
-            "Your action_space_contains function has some " "error "
-        ) from e
+        raise ValueError("Your action_space_contains function has some error ") from e
     if not env.action_space_contains(sampled_action):
         error = (
             _not_contained_error("action_space_sample", "action")

@@ -667,7 +667,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::pair<std::vector<std::pair<std::string, std::string>>, Status> ListNamedActors(
       bool all_namespaces);
 
-  ///
+  /// Get the expected return ids of the next task.
+  std::vector<ObjectID> GetCurrentReturnIds(int num_returns,
+                                            const ActorID &callee_actor_id);
+
   /// The following methods are handlers for the core worker's gRPC server, which follow
   /// a macro-generated call convention. These are executed on the io_service_ and
   /// post work to the appropriate event loop.

@@ -34,9 +34,9 @@ class MockAutoscalingCluster(AutoscalingCluster):
     def _generate_config(self, head_resources, worker_node_types):
         config = super()._generate_config(head_resources, worker_node_types)
         config["provider"]["type"] = "external"
-        config["provider"]["module"] = (
-            "ray.tests" ".test_autoscaler_drain_node_api.MockFakeProvider"
-        )
+        config["provider"][
+            "module"
+        ] = "ray.tests.test_autoscaler_drain_node_api.MockFakeProvider"
         return config
 
 

@@ -126,7 +126,7 @@ class DDPPOTrainer(PPOTrainer):
         if "train_batch_size" in config.keys() and config["train_batch_size"] != -1:
             # Users should not define `train_batch_size` directly (always -1).
             raise ValueError(
-                "Set rollout_fragment_length instead of train_batch_size " "for DDPPO."
+                "Set rollout_fragment_length instead of train_batch_size for DDPPO."
             )
 
         # Auto-train_batch_size: Calculate from rollout len and
@@ -158,7 +158,7 @@ class DDPPOTrainer(PPOTrainer):
         # Error if run on Win.
         if sys.platform in ["win32", "cygwin"]:
             raise ValueError(
-                "DD-PPO not supported on Win yet! " "Due to usage of torch.distributed."
+                "DD-PPO not supported on Win yet! Due to usage of torch.distributed."
             )
 
         # Only supported for PyTorch so far.
@@ -180,7 +180,7 @@ class DDPPOTrainer(PPOTrainer):
         # `batch_mode` must be "truncate_episodes".
         if config["batch_mode"] != "truncate_episodes":
             raise ValueError(
-                "Distributed data parallel requires truncate_episodes " "batch mode."
+                "Distributed data parallel requires truncate_episodes batch mode."
             )
         # DDPPO doesn't support KL penalties like PPO-1.
         # In order to support KL penalties, DDPPO would need to become

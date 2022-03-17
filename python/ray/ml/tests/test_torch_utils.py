@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from ray.ml.utils.torch_utils import convert_pandas_to_torch_tensor
+from ray.ml.utils.torch_utils import convert_pandas_to_torch_tensor, load_torch_model
 
 data_batch = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
 
@@ -71,6 +71,26 @@ class TestConvertPandasToTorch:
             assert np.array_equal(
                 tensor.numpy(), data_batch[[data_batch.columns[i]]].to_numpy()
             )
+
+
+torch_module = torch.nn.Linear(1, 1)
+
+
+class TestLoadTorchModel:
+    def test_load_module(self):
+        assert load_torch_model(torch_module) == torch_module
+
+    def test_load_state_dict(self):
+        state_dict = torch_module.state_dict()
+        model_definition = torch.nn.Linear(1, 1)
+        assert model_definition.state_dict() != state_dict
+
+        assert load_torch_model(state_dict, model_definition).state_dict() == state_dict
+
+    def test_load_state_dict_fail(self):
+        with pytest.raises(ValueError):
+            # model_definition is required to load state dict.
+            load_torch_model(torch_module.state_dict())
 
 
 if __name__ == "__main__":

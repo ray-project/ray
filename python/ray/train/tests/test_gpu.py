@@ -1,9 +1,11 @@
 import os
 import pytest
+from timeit import default_timer as timer
 
 import torch
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, DistributedSampler
+import torchvision
 
 import ray
 import ray.train as train
@@ -77,6 +79,111 @@ def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus):
     trainer = Trainer("torch", num_workers=2, use_gpu=True)
     trainer.start()
     trainer.run(train_fn)
+    trainer.shutdown()
+
+
+@pytest.mark.parametrize("use_gpu", (False, True))
+def test_enable_reproducibility(ray_start_4_cpus_2_gpus, use_gpu):
+    # NOTE: Reproducible results aren't guaranteed between seeded executions, even with
+    # identical hardware and software dependencies. This test should be okay given that
+    # it only runs for two epochs on a small dataset.
+    # NOTE: I've chosen to use a ResNet model over a more simple model, because
+    # `enable_reproducibility` disables CUDA convolution benchmarking, and a simpler
+    # model (e.g., linear) might not test this feature.
+    def train_func():
+        train.torch.enable_reproducibility()
+
+        model = torchvision.models.resnet18()
+        model = train.torch.prepare_model(model)
+
+        dataset_length = 128
+        dataset = torch.utils.data.TensorDataset(
+            torch.randn(dataset_length, 3, 32, 32),
+            torch.randint(low=0, high=1000, size=(dataset_length,)),
+        )
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size=64)
+        dataloader = train.torch.prepare_data_loader(dataloader)
+
+        optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
+
+        model.train()
+        for epoch in range(2):
+            for images, targets in dataloader:
+                optimizer.zero_grad()
+
+                outputs = model(images)
+                loss = torch.nn.functional.cross_entropy(outputs, targets)
+
+                loss.backward()
+                optimizer.step()
+
+        return loss.item()
+
+    trainer = Trainer("torch", num_workers=2, use_gpu=use_gpu)
+    trainer.start()
+    result1 = trainer.run(train_func)
+    result2 = trainer.run(train_func)
+    trainer.shutdown()
+
+    assert result1 == result2
+
+
+def test_torch_amp(ray_start_4_cpus_2_gpus):
+    def train_func(config):
+        train.torch.accelerate(amp=config["amp"])
+
+        model = torchvision.models.resnet101()
+        model = train.torch.prepare_model(model)
+
+        dataset_length = 1000
+        dataset = torch.utils.data.TensorDataset(
+            torch.randn(dataset_length, 3, 224, 224),
+            torch.randint(low=0, high=1000, size=(dataset_length,)),
+        )
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size=64)
+        dataloader = train.torch.prepare_data_loader(dataloader)
+
+        optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
+        optimizer = train.torch.prepare_optimizer(optimizer)
+
+        model.train()
+        for epoch in range(1):
+            for images, targets in dataloader:
+                optimizer.zero_grad()
+
+                outputs = model(images)
+                loss = torch.nn.functional.cross_entropy(outputs, targets)
+
+                train.torch.backward(loss)
+                optimizer.step()
+
+    def latency(amp: bool) -> float:
+        trainer = Trainer("torch", num_workers=2, use_gpu=True)
+        trainer.start()
+        start_time = timer()
+        trainer.run(train_func, {"amp": amp})
+        end_time = timer()
+        trainer.shutdown()
+        return end_time - start_time
+
+    # Training should be at least 5% faster with AMP.
+    assert 1.05 * latency(amp=True) < latency(amp=False)
+
+
+def test_checkpoint_torch_model_with_amp(ray_start_4_cpus_2_gpus):
+    """Test that model with AMP is serializable."""
+
+    def train_func():
+        train.torch.accelerate(amp=True)
+
+        model = torchvision.models.resnet101()
+        model = train.torch.prepare_model(model)
+
+        train.save_checkpoint(model=model)
+
+    trainer = Trainer("torch", num_workers=1, use_gpu=True)
+    trainer.start()
+    trainer.run(train_func)
     trainer.shutdown()
 
 

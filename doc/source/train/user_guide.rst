@@ -977,6 +977,79 @@ the disk that from which your script was executed from.
     # View the PyTorch Profiler traces.
     $ open http://localhost:6006/#pytorch_profiler
 
+.. _torch-amp:
+
+Automatic Mixed Precision
+-------------------------
+
+Automatic mixed precision (AMP) lets you train your models faster by using a lower
+precision datatype for operations like linear layers and convolutions.
+
+.. tabbed:: PyTorch
+
+    You can train your Torch model with AMP by:
+
+    1. Adding ``train.torch.accelerate(amp=True)`` to the top of your training function.
+    2. Wrapping your optimizer with ``train.torch.prepare_optimizer``.
+    3. Replacing your backward call with ``train.torch.backward``.
+
+    .. code-block:: diff
+
+        def train_func():
+        +   train.torch.accelerate(amp=True)
+
+            model = NeuralNetwork()
+            model = train.torch.prepare_model(model)
+
+            data_loader = DataLoader(my_dataset, batch_size=worker_batch_size)
+            data_loader = train.torch.prepare_data_loader(data_loader)
+
+            optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
+        +   optimizer = train.torch.prepare_optimizer(optimizer)
+
+            model.train()
+            for epoch in range(90):
+                for images, targets in dataloader:
+                    optimizer.zero_grad()
+
+                    outputs = model(images)
+                    loss = torch.nn.functional.cross_entropy(outputs, targets)
+
+        -           loss.backward()
+        +           train.torch.backward(loss)
+                    optimizer.step()
+            ...
+
+
+.. note:: The performance of AMP varies based on GPU architecture, model type,
+        and data shape. For certain workflows, AMP may perform worse than
+        full-precision training.
+
+.. _train-reproducibility:
+
+Reproducibility
+---------------
+
+.. tabbed:: PyTorch
+
+    To limit sources of nondeterministic behavior, add
+    ``train.torch.enable_reproducibility()`` to the top of your training
+    function. `
+
+    .. code-block:: diff
+
+        def train_func():
+        +   train.torch.enable_reproducibility()
+
+            model = NeuralNetwork()
+            model = train.torch.prepare_model(model)
+
+            ...
+
+    .. warning:: ``train.torch.enable_reproducibility()`` can't guarantee
+        completely reproducible results across executions. To learn more, read
+        the `PyTorch notes on randomness <https://pytorch.org/docs/stable/notes/randomness.html>`_.
+
 .. _train-datasets:
 
 Distributed Data Ingest (Ray Datasets)
