@@ -9,7 +9,6 @@ from ray.ml.predictors.integrations.xgboost import XGBoostPredictor
 from ray.ml.train.integrations.xgboost import XGBoostTrainer
 from ray.data.dataset import Dataset
 from ray.ml.result import Result
-from ray.ml.constants import TRAIN_DATASET_KEY
 from ray.ml.preprocessors import StandardScaler
 from sklearn.datasets import load_breast_cancer
 from sklearn.model_selection import train_test_split
@@ -47,7 +46,7 @@ def train_xgboost(num_workers: int, use_gpu: bool = False) -> Result:
         },
         label_column="target",
         params=params,
-        datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
+        datasets={"train": train_dataset, "valid": valid_dataset},
         preprocessor=preprocessor,
         num_boost_round=100,
     )
