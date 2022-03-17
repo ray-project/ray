@@ -2818,7 +2818,9 @@ class Trainer(Trainable):
                 # Create valid full [module].[class] string for from_config
                 buffer_type = "ray.rllib.execution.MultiAgentReplayBuffer"
             else:
-                assert buffer_type == "ray.rllib.execution.MultiAgentReplayBuffer", (
+                assert buffer_type in [
+                    "ray.rllib.execution.MultiAgentReplayBuffer",
+                    MultiAgentReplayBuffer], (
                     "Without ReplayBuffer API, only "
                     "MultiAgentReplayBuffer is supported!"
                 )
@@ -2857,12 +2859,12 @@ class Trainer(Trainable):
             if config.get("burn_in"):
                 deprecation_warning(
                     old="config['burn_in']",
-                    new="config['replay_buffer_config']['replay_burn_in']",
-                    error=False,
+                    help="Burn in specified at new location config["
+                     "'replay_buffer_config']["
+                     "'replay_burn_in'] will be overwritten."
                 )
-                # and old configs
                 config["replay_buffer_config"]["replay_burn_in"] = config[
-                    "burn_in"]
+                    "replay_burn_in"]
 
             config["replay_buffer_config"]["replay_zero_init_states"] = config.get(
                 "replay_zero_init_states", True
