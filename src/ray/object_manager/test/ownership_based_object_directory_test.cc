@@ -80,7 +80,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     batch_sent = 0;
   }
 
-  std::unordered_map<WorkerID, std::unordered_map<ObjectID, rpc::ObjectLocationState>>
+  absl::flat_hash_map<WorkerID, absl::flat_hash_map<ObjectID, rpc::ObjectLocationState>>
       buffered_object_locations_;
   std::deque<rpc::ClientCallback<rpc::UpdateObjectLocationBatchReply>> callbacks;
   int callback_invoked = 0;

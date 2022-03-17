@@ -1,11 +1,13 @@
 import asyncio
 import atexit
 import collections
+from copy import copy
 import inspect
 import logging
 import random
 import re
 import time
+import json
 from dataclasses import dataclass
 from functools import wraps
 from typing import (
@@ -18,10 +20,12 @@ from typing import (
     Type,
     Union,
     List,
+    Iterable,
     overload,
 )
 
 from fastapi import APIRouter, FastAPI
+from ray.experimental.dag.class_node import ClassNode
 from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
@@ -83,7 +87,20 @@ _UUID_RE = re.compile(
 _CLIENT_POLLING_INTERVAL_S: float = 1
 
 
-def _get_controller_namespace(detached):
+def _get_controller_namespace(
+    detached: bool, _override_controller_namespace: Optional[str] = None
+):
+    """Gets the controller's namespace.
+
+    Args:
+        detached (bool): Whether serve.start() was called with detached=True
+        _override_controller_namespace (Optional[str]): When set, this is the
+            controller's namespace
+    """
+
+    if _override_controller_namespace is not None:
+        return _override_controller_namespace
+
     controller_namespace = ray.get_runtime_context().namespace
 
     if not detached:
@@ -96,11 +113,11 @@ def _get_controller_namespace(detached):
     return controller_namespace
 
 
-def internal_get_global_client():
+def internal_get_global_client(_override_controller_namespace: Optional[str] = None):
     if _global_client is not None:
         return _global_client
 
-    return _connect()
+    return _connect(_override_controller_namespace=_override_controller_namespace)
 
 
 def _set_global_client(client):
@@ -144,11 +161,16 @@ def _ensure_connected(f: Callable) -> Callable:
 
 class Client:
     def __init__(
-        self, controller: ActorHandle, controller_name: str, detached: bool = False
+        self,
+        controller: ActorHandle,
+        controller_name: str,
+        detached: bool = False,
+        _override_controller_namespace: Optional[str] = None,
     ):
         self._controller: ServeController = controller
         self._controller_name = controller_name
         self._detached = detached
+        self._override_controller_namespace = _override_controller_namespace
         self._shutdown = False
         self._http_config: HTTPOptions = ray.get(controller.get_http_config.remote())
         self._root_url = ray.get(controller.get_root_url.remote())
@@ -208,7 +230,10 @@ class Client:
             started = time.time()
             while True:
                 try:
-                    controller_namespace = _get_controller_namespace(self._detached)
+                    controller_namespace = _get_controller_namespace(
+                        self._detached,
+                        self._override_controller_namespace,
+                    )
                     ray.get_actor(self._controller_name, namespace=controller_namespace)
                     if time.time() - started > 5:
                         logger.warning(
@@ -374,9 +399,11 @@ class Client:
                 self.log_deployment_ready(name, version, url, tags[i])
 
     @_ensure_connected
-    def delete_deployment(self, name: str) -> None:
-        ray.get(self._controller.delete_deployment.remote(name))
-        self._wait_for_deployment_deleted(name)
+    def delete_deployments(self, names: Iterable[str], blocking: bool = True) -> None:
+        ray.get(self._controller.delete_deployments.remote(names))
+        if blocking:
+            for name in names:
+                self._wait_for_deployment_deleted(name)
 
     @_ensure_connected
     def get_deployment_info(self, name: str) -> Tuple[DeploymentInfo, str]:
@@ -644,6 +671,7 @@ def start(
     http_options: Optional[Union[dict, HTTPOptions]] = None,
     dedicated_cpu: bool = False,
     _checkpoint_path: str = DEFAULT_CHECKPOINT_PATH,
+    _override_controller_namespace: Optional[str] = None,
     **kwargs,
 ) -> Client:
     """Initialize a serve instance.
@@ -696,10 +724,14 @@ def start(
     if not ray.is_initialized():
         ray.init(namespace="serve")
 
-    controller_namespace = _get_controller_namespace(detached)
+    controller_namespace = _get_controller_namespace(
+        detached, _override_controller_namespace=_override_controller_namespace
+    )
 
     try:
-        client = internal_get_global_client()
+        client = internal_get_global_client(
+            _override_controller_namespace=_override_controller_namespace
+        )
         logger.info(
             "Connecting to existing Serve instance in namespace "
             f"'{controller_namespace}'."
@@ -735,6 +767,7 @@ def start(
         http_options,
         _checkpoint_path,
         detached=detached,
+        _override_controller_namespace=_override_controller_namespace,
     )
 
     proxy_handles = ray.get(controller.get_http_proxies.remote())
@@ -749,7 +782,12 @@ def start(
                 "HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
             )
 
-    client = Client(controller, controller_name, detached=detached)
+    client = Client(
+        controller,
+        controller_name,
+        detached=detached,
+        _override_controller_namespace=_override_controller_namespace,
+    )
     _set_global_client(client)
     logger.info(
         f"Started{' detached ' if detached else ' '}Serve instance in "
@@ -758,7 +796,7 @@ def start(
     return client
 
 
-def _connect() -> Client:
+def _connect(_override_controller_namespace: Optional[str] = None) -> Client:
     """Connect to an existing Serve instance on this Ray cluster.
 
     If calling from the driver program, the Serve instance on this Ray cluster
@@ -766,6 +804,11 @@ def _connect() -> Client:
 
     If called from within a replica, this will connect to the same Serve
     instance that the replica is running in.
+
+    Args:
+        _override_controller_namespace (Optional[str]): The namespace to use
+            when looking for the controller. If None, Serve recalculates the
+            controller's namespace using _get_controller_namespace().
     """
 
     # Initialize ray if needed.
@@ -777,7 +820,9 @@ def _connect() -> Client:
     # ensure that the correct instance is connected to.
     if _INTERNAL_REPLICA_CONTEXT is None:
         controller_name = SERVE_CONTROLLER_NAME
-        controller_namespace = _get_controller_namespace(detached=True)
+        controller_namespace = _get_controller_namespace(
+            detached=True, _override_controller_namespace=_override_controller_namespace
+        )
     else:
         controller_name = _INTERNAL_REPLICA_CONTEXT._internal_controller_name
         controller_namespace = _INTERNAL_REPLICA_CONTEXT._internal_controller_namespace
@@ -793,7 +838,12 @@ def _connect() -> Client:
             "one."
         )
 
-    client = Client(controller, controller_name, detached=True)
+    client = Client(
+        controller,
+        controller_name,
+        detached=True,
+        _override_controller_namespace=_override_controller_namespace,
+    )
     _set_global_client(client)
     return client
 
@@ -924,19 +974,38 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
 
 
 @PublicAPI(stability="alpha")
-class DAGHandle:
-    """Resolved from a DeploymentMethodNode at runtime.
+class RayServeDAGHandle:
+    """Resolved from a DeploymentNode at runtime.
 
     This can be used to call the DAG from a driver deployment to efficiently
     orchestrate a multi-deployment pipeline.
     """
 
-    def __init__(self, serialized_dag_json: str):
-        raise NotImplementedError()
+    def __init__(self, dag_node_json: str) -> None:
 
-    def remote(self, *args, **kwargs) -> ray.ObjectRef:
-        """Call the DAG."""
-        raise NotImplementedError()
+        self.dag_node_json = dag_node_json
+
+        # NOTE(simon): Making this lazy to avoid deserialization in controller for now
+        # This would otherwise hang because it's trying to get handles from within
+        # the controller.
+        self.dag_node = None
+
+    @classmethod
+    def _deserialize(cls, *args):
+        """Required for this class's __reduce__ method to be picklable."""
+        return cls(*args)
+
+    def __reduce__(self):
+        return RayServeDAGHandle._deserialize, (self.dag_node_json,)
+
+    def remote(self, *args, **kwargs):
+        from ray.serve.pipeline.json_serde import dagnode_from_json
+
+        if self.dag_node is None:
+            self.dag_node = json.loads(
+                self.dag_node_json, object_hook=dagnode_from_json
+            )
+        return self.dag_node.execute(*args, **kwargs)
 
 
 @PublicAPI(stability="alpha")
@@ -950,12 +1019,12 @@ class DeploymentMethodNode(DAGNode):
     deployment node, it will be resolved to a DeployedCallGraph at runtime.
     """
 
-    def __init__(self):
-        raise NotImplementedError()
+    # TODO (jiaodong): Later unify and refactor this with pipeline node class
+    pass
 
 
 @PublicAPI(stability="alpha")
-class DeploymentNode(DAGNode):
+class DeploymentNode(ClassNode):
     """Represents a deployment with its bound config options and arguments.
 
     The bound deployment can be run, deployed, or built to a production config
@@ -970,8 +1039,8 @@ class DeploymentNode(DAGNode):
     that can be used to compose an optimized call graph.
     """
 
-    def __init__(self):
-        raise NotImplementedError()
+    # TODO (jiaodong): Later unify and refactor this with pipeline node class
+    pass
 
 
 @PublicAPI
@@ -1137,7 +1206,28 @@ class Deployment:
         The returned bound deployment can be deployed or bound to other
         deployments to create a multi-deployment application.
         """
-        raise NotImplementedError()
+        if inspect.isclass(self._func_or_class):
+            return DeploymentNode(
+                self._func_or_class,
+                args,
+                kwargs,
+                cls_options=self._ray_actor_options or dict(),
+                other_args_to_resolve={
+                    "deployment_self": copy(self),
+                    "is_from_serve_deployment": True,
+                },
+            )
+        else:
+            return DeploymentNode(
+                self._func_or_class,
+                cls_args=tuple(),
+                cls_kwargs=dict(),
+                cls_options=self._ray_actor_options or dict(),
+                other_args_to_resolve={
+                    "deployment_self": copy(self),
+                    "is_from_serve_deployment": True,
+                },
+            ).__call__.bind(*args, **kwargs)
 
     @PublicAPI
     def deploy(self, *init_args, _blocking=True, **init_kwargs):
@@ -1171,7 +1261,7 @@ class Deployment:
     @PublicAPI
     def delete(self):
         """Delete this deployment."""
-        return internal_get_global_client().delete_deployment(self._name)
+        return internal_get_global_client().delete_deployments([self._name])
 
     @PublicAPI
     def get_handle(
@@ -1478,7 +1568,7 @@ def get_deployment(name: str) -> Deployment:
         ) = internal_get_global_client().get_deployment_info(name)
     except KeyError:
         raise KeyError(
-            f"Deployment {name} was not found. " "Did you call Deployment.deploy()?"
+            f"Deployment {name} was not found. Did you call Deployment.deploy()?"
         )
     return Deployment(
         cloudpickle.loads(deployment_info.replica_config.serialized_deployment_def),
@@ -1662,19 +1752,57 @@ def run(
     *,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
+    driver: Optional[Deployment] = None,
+    **kwargs,
 ) -> RayServeHandle:
     """Run a Serve application and return a ServeHandle to the ingress.
 
     Either a DeploymentNode or a pre-built application can be passed in.
     If a DeploymentNode is passed in, all of the deployments it depends on
     will be deployed.
+
+    Args:
+        target: User built serve Application or DeploymentNode that acts as
+            the root node of DAG. By default DeploymentNode is the Driver
+            deployment unless user provided customized one.
+
+    Returns:
+        handle: A regular ray serve handle that can be called by user to exeucte
+            the serve DAG.
     """
-    raise NotImplementedError()
+    # TODO (jiaodong): Resolve circular reference in pipeline codebase and serve
+    from ray.serve.pipeline.api import build as pipeline_build
+
+    client = start(detached=True, http_options={"host": host, "port": port})
+
+    if isinstance(target, DeploymentNode):
+        deployments = pipeline_build(target)
+    else:
+        raise NotImplementedError()
+
+    parameter_group = [
+        {
+            "name": deployment._name,
+            "func_or_class": deployment._func_or_class,
+            "init_args": deployment.init_args,
+            "init_kwargs": deployment.init_kwargs,
+            "ray_actor_options": deployment._ray_actor_options,
+            "config": deployment._config,
+            "version": deployment._version,
+            "prev_version": deployment._prev_version,
+            "route_prefix": deployment.route_prefix,
+            "url": deployment.url,
+        }
+        for deployment in deployments
+    ]
+
+    client.deploy_group(parameter_group, _blocking=True)
+    return deployments[-1].get_handle()
 
 
 @PublicAPI(stability="alpha")
 def build(target: DeploymentNode) -> Application:
-    """Builds a Serve application into a static configuration.
+    """Builds a Serve application into a static application.
 
     Takes in a DeploymentNode and converts it to a Serve application
     consisting of one or more deployments. This is intended to be used for

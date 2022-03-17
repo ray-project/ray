@@ -2,7 +2,6 @@ import asyncio
 import io
 import fnmatch
 import os
-import json
 import pathlib
 import subprocess
 import sys
@@ -31,7 +30,6 @@ from ray.core.generated import gcs_pb2
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
 from ray._private.gcs_pubsub import (
-    gcs_pubsub_enabled,
     GcsErrorSubscriber,
     GcsLogSubscriber,
 )
@@ -58,12 +56,7 @@ class RayTestTimeoutException(Exception):
 
 
 def make_global_state_accessor(address_info):
-    if not gcs_utils.use_gcs_for_bootstrap():
-        gcs_options = GcsClientOptions.from_redis_address(
-            address_info["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD
-        )
-    else:
-        gcs_options = GcsClientOptions.from_gcs_address(address_info["gcs_address"])
+    gcs_options = GcsClientOptions.from_gcs_address(address_info["gcs_address"])
     global_state_accessor = GlobalStateAccessor(gcs_options)
     global_state_accessor.connect()
     return global_state_accessor
@@ -218,16 +211,6 @@ def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ut
     Returns:
         The script's output.
     """
-    if env is not None and gcs_utils.use_gcs_for_bootstrap():
-        env.update(
-            {
-                "RAY_bootstrap_with_gcs": "1",
-                "RAY_gcs_grpc_based_pubsub": "1",
-                "RAY_gcs_storage": "memory",
-                "RAY_bootstrap_with_gcs": "1",
-            }
-        )
-
     proc = subprocess.Popen(
         [sys.executable, "-"],
         stdin=subprocess.PIPE,
@@ -589,18 +572,14 @@ def get_non_head_nodes(cluster):
 
 
 def init_error_pubsub():
-    """Initialize redis error info pub/sub"""
-    if gcs_pubsub_enabled():
-        s = GcsErrorSubscriber(address=ray.worker.global_worker.gcs_client.address)
-        s.subscribe()
-    else:
-        s = ray.worker.global_worker.redis_client.pubsub(ignore_subscribe_messages=True)
-        s.psubscribe(gcs_utils.RAY_ERROR_PUBSUB_PATTERN)
+    """Initialize error info pub/sub"""
+    s = GcsErrorSubscriber(address=ray.worker.global_worker.gcs_client.address)
+    s.subscribe()
     return s
 
 
 def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
-    """Gets errors from GCS / Redis subscriber.
+    """Gets errors from GCS subscriber.
 
     Returns maximum `num` error strings within `timeout`.
     Only returns errors of `error_type` if specified.
@@ -608,18 +587,10 @@ def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
     deadline = time.time() + timeout
     msgs = []
     while time.time() < deadline and len(msgs) < num:
-        if isinstance(subscriber, GcsErrorSubscriber):
-            _, error_data = subscriber.poll(timeout=deadline - time.time())
-            if not error_data:
-                # Timed out before any data is received.
-                break
-        else:
-            msg = subscriber.get_message()
-            if msg is None:
-                time.sleep(0.01)
-                continue
-            pubsub_msg = gcs_utils.PubSubMessage.FromString(msg["data"])
-            error_data = gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
+        _, error_data = subscriber.poll(timeout=deadline - time.time())
+        if not error_data:
+            # Timed out before any data is received.
+            break
         if error_type is None or error_type == error_data.type:
             msgs.append(error_data)
         else:
@@ -629,13 +600,9 @@ def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
 
 
 def init_log_pubsub():
-    """Initialize redis error info pub/sub"""
-    if gcs_pubsub_enabled():
-        s = GcsLogSubscriber(address=ray.worker.global_worker.gcs_client.address)
-        s.subscribe()
-    else:
-        s = ray.worker.global_worker.redis_client.pubsub(ignore_subscribe_messages=True)
-        s.psubscribe(gcs_utils.LOG_FILE_CHANNEL)
+    """Initialize log pub/sub"""
+    s = GcsLogSubscriber(address=ray.worker.global_worker.gcs_client.address)
+    s.subscribe()
     return s
 
 
@@ -649,18 +616,10 @@ def get_log_data(
     deadline = time.time() + timeout
     msgs = []
     while time.time() < deadline and len(msgs) < num:
-        if isinstance(subscriber, GcsLogSubscriber):
-            logs_data = subscriber.poll(timeout=deadline - time.time())
-            if not logs_data:
-                # Timed out before any data is received.
-                break
-        else:
-            msg = subscriber.get_message()
-            if msg is None:
-                time.sleep(0.01)
-                continue
-            logs_data = json.loads(ray._private.utils.decode(msg["data"]))
-
+        logs_data = subscriber.poll(timeout=deadline - time.time())
+        if not logs_data:
+            # Timed out before any data is received.
+            break
         if job_id and job_id != logs_data["job"]:
             continue
         if matcher and all(not matcher(line) for line in logs_data["lines"]):
@@ -676,7 +635,7 @@ def get_log_message(
     job_id: Optional[str] = None,
     matcher=None,
 ) -> List[List[str]]:
-    """Gets log lines through GCS / Redis subscriber.
+    """Gets log lines through GCS subscriber.
 
     Returns maximum `num` of log messages, within `timeout`.
 
@@ -706,7 +665,7 @@ def get_log_batch(
     job_id: Optional[str] = None,
     matcher=None,
 ) -> List[str]:
-    """Gets log batches through GCS / Redis subscriber.
+    """Gets log batches through GCS subscriber.
 
     Returns maximum `num` batches of logs. Each batch is a dict that includes
     metadata such as `pid`, `job_id`, and `lines` of log messages.
@@ -717,18 +676,10 @@ def get_log_batch(
     deadline = time.time() + timeout
     batches = []
     while time.time() < deadline and len(batches) < num:
-        if isinstance(subscriber, GcsLogSubscriber):
-            logs_data = subscriber.poll(timeout=deadline - time.time())
-            if not logs_data:
-                # Timed out before any data is received.
-                break
-        else:
-            msg = subscriber.get_message()
-            if msg is None:
-                time.sleep(0.01)
-                continue
-            logs_data = json.loads(ray._private.utils.decode(msg["data"]))
-
+        logs_data = subscriber.poll(timeout=deadline - time.time())
+        if not logs_data:
+            # Timed out before any data is received.
+            break
         if job_id and job_id != logs_data["job"]:
             continue
         if matcher and not matcher(logs_data):
@@ -1278,4 +1229,4 @@ def no_resource_leaks_excluding_node_resources():
             del cluster_resources[r]
             del available_resources[r]
 
-    return ray.available_resources() == ray.cluster_resources()
+    return cluster_resources == available_resources

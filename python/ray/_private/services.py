@@ -22,7 +22,7 @@ import uuid
 import ray
 import ray.ray_constants as ray_constants
 from ray._raylet import GcsClientOptions
-from ray._private.gcs_utils import GcsClient, use_gcs_for_bootstrap
+from ray._private.gcs_utils import GcsClient
 from ray.core.generated.common_pb2 import Language
 
 # Import psutil and colorama after ray so the packaged version is used.
@@ -91,12 +91,7 @@ ProcessInfo = collections.namedtuple(
 
 
 def _get_gcs_client_options(redis_address, redis_password, gcs_server_address):
-    if not use_gcs_for_bootstrap():
-        redis_ip_address, redis_port = redis_address.split(":")
-        wait_for_redis_to_start(redis_ip_address, redis_port, redis_password)
-        return GcsClientOptions.from_redis_address(redis_address, redis_password)
-    else:
-        return GcsClientOptions.from_gcs_address(gcs_server_address)
+    return GcsClientOptions.from_gcs_address(gcs_server_address)
 
 
 def serialize_config(config):
@@ -299,10 +294,7 @@ def find_gcs_address():
 
 
 def find_bootstrap_address():
-    if use_gcs_for_bootstrap():
-        return find_gcs_address()
-    else:
-        return find_redis_address()
+    return find_gcs_address()
 
 
 def _find_redis_address_or_die():
@@ -358,10 +350,7 @@ def get_ray_address_from_environment():
     """
     addr = os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
     if addr is None or addr == "auto":
-        if use_gcs_for_bootstrap():
-            addr = _find_gcs_address_or_die()
-        else:
-            addr = _find_redis_address_or_die()
+        addr = _find_gcs_address_or_die()
     return addr
 
 
@@ -387,12 +376,7 @@ def wait_for_node(
         TimeoutError: An exception is raised if the timeout expires before
             the node appears in the client table.
     """
-    if use_gcs_for_bootstrap():
-        gcs_options = GcsClientOptions.from_gcs_address(gcs_address)
-    else:
-        redis_ip_address, redis_port = redis_address.split(":")
-        wait_for_redis_to_start(redis_ip_address, redis_port, redis_password)
-        gcs_options = GcsClientOptions.from_redis_address(redis_address, redis_password)
+    gcs_options = GcsClientOptions.from_gcs_address(gcs_address)
     global_state = ray.state.GlobalState()
     global_state._initialize_global_state(gcs_options)
     start_time = time.time()
@@ -1248,10 +1232,8 @@ def _start_redis_instance(
 
 
 def start_log_monitor(
-    redis_address,
-    gcs_address,
     logs_dir,
-    redis_password=None,
+    gcs_address,
     fate_share=None,
     max_bytes=0,
     backup_count=0,
@@ -1260,9 +1242,10 @@ def start_log_monitor(
     """Start a log monitor process.
 
     Args:
-        redis_address (str): The address of the Redis instance.
         logs_dir (str): The directory of logging files.
-        redis_password (str): The password of the redis server.
+        gcs_address (str): GCS address for pubsub.
+        fate_share (bool): Whether to share fate between log_monitor
+            and this process.
         max_bytes (int): Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count (int): Log rotation parameter. Corresponding to
@@ -1279,11 +1262,10 @@ def start_log_monitor(
         sys.executable,
         "-u",
         log_monitor_filepath,
-        f"--redis-address={redis_address}",
         f"--logs-dir={logs_dir}",
+        f"--gcs-address={gcs_address}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
-        f"--gcs-address={gcs_address}",
     ]
     if redirect_logging:
         # Avoid hanging due to fd inheritance.
@@ -1301,8 +1283,6 @@ def start_log_monitor(
         # Inherit stdout/stderr streams.
         stdout_file = None
         stderr_file = None
-    if redis_password:
-        command.append(f"--redis-password={redis_password}")
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_LOG_MONITOR,
@@ -1685,7 +1665,7 @@ def start_raylet(
     include_java = has_java_command and ray_java_installed
     if include_java is True:
         java_worker_command = build_java_worker_command(
-            gcs_address if use_gcs_for_bootstrap() else redis_address,
+            gcs_address,
             plasma_store_name,
             raylet_name,
             redis_password,
@@ -1699,7 +1679,7 @@ def start_raylet(
     if os.path.exists(DEFAULT_WORKER_EXECUTABLE):
         cpp_worker_command = build_cpp_worker_command(
             "",
-            gcs_address if use_gcs_for_bootstrap() else redis_address,
+            gcs_address,
             plasma_store_name,
             raylet_name,
             redis_password,
@@ -1805,15 +1785,8 @@ def start_raylet(
         f"--object_store_memory={object_store_memory}",
         f"--plasma_directory={plasma_directory}",
         f"--ray-debugger-external={1 if ray_debugger_external else 0}",
+        f"--gcs-address={gcs_address}",
     ]
-    if use_gcs_for_bootstrap():
-        command.append(f"--gcs-address={gcs_address}")
-    else:
-        # TODO (iycheng): remove redis_ip_address after redis removal
-        redis_ip_address, redis_port = redis_address.split(":")
-        command.extend(
-            [f"--redis_address={redis_ip_address}", f"--redis_port={redis_port}"]
-        )
 
     if worker_port_list is not None:
         command.append(f"--worker_port_list={worker_port_list}")

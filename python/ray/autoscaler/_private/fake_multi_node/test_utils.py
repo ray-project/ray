@@ -59,6 +59,10 @@ class DockerCluster:
         return self._cluster_config
 
     @property
+    def cluster_dir(self):
+        return self._tempdir
+
+    @property
     def gcs_port(self):
         return self._cluster_config.get("provider", {}).get(
             "host_gcs_port", FAKE_DOCKER_DEFAULT_GCS_PORT
@@ -208,9 +212,15 @@ class DockerCluster:
         self.update_config()
         self.maybe_pull_image()
 
-    def teardown(self):
-        """Tear down docker compose cluster environment."""
-        shutil.rmtree(self._tempdir)
+    def teardown(self, keep_dir: bool = False):
+        """Tear down docker compose cluster environment.
+
+        Args:
+            keep_dir (bool): If True, cluster directory
+                will not be removed after termination.
+        """
+        if not keep_dir:
+            shutil.rmtree(self._tempdir)
         self._tempdir = None
         self._config_file = None
 
