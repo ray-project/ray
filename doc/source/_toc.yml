@@ -17,6 +17,7 @@ parts:
           - file: data/key-concepts
           - file: data/examples/big_data_ingestion
           - file: data/package-ref
+          - file: data/integrations
 
       - file: train/train
         title: Ray Train
@@ -110,8 +111,10 @@ parts:
     chapters:
       - file: ray-core/walkthrough
         title: Getting Started
-      - file: ray-core/using-ray
-        title: "User Guide"
+      - file: ray-core/key-concepts
+        title: "Key Concepts"
+      - file: ray-core/user-guide
+        title: "User Guides"
       - file: ray-core/examples/overview
         title: "Examples"
         sections:
@@ -145,7 +148,6 @@ parts:
           - file: ray-core/examples/testing-tips
       - file: ray-core/configure
       - file: ray-observability/index
-      - file: ray-design-patterns/index
       - file: ray-contribute/whitepaper
 
 # TODO: Add examples section
