@@ -113,7 +113,7 @@ parts:
       - file: ray-core/key-concepts
         title: "Key Concepts"
       - file: ray-core/user-guide
-        title: "User Guide"
+        title: "User Guides"
       - file: ray-core/examples/overview
         title: "Examples"
         sections:
