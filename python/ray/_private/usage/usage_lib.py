@@ -242,9 +242,9 @@ def get_cluster_status_to_report(gcs_client, num_retries) -> ClusterStatusToRepo
         usage = cluster_status["load_metrics_report"]["usage"]
         # usage is a map from resource to (used, total) pair
         if "CPU" in usage:
-            result.total_num_cpus = usage["CPU"][1]
+            result.total_num_cpus = int(usage["CPU"][1])
         if "GPU" in usage:
-            result.total_num_gpus = usage["GPU"][1]
+            result.total_num_gpus = int(usage["GPU"][1])
         if "memory" in usage:
             result.total_memory_gb = usage["memory"][1] * to_GiB
         if "object_store_memory" in usage:
