@@ -927,7 +927,7 @@
 
     wait_for_nodes:
       num_nodes: 4
-      timeout: 600
+      timeout: 1200
 
   alert: tune_tests
 
@@ -956,7 +956,7 @@
 
     wait_for_nodes:
       num_nodes: 4
-      timeout: 600
+      timeout: 1200
 
   alert: tune_tests
 
@@ -985,7 +985,7 @@
 
     wait_for_nodes:
       num_nodes: 4
-      timeout: 600
+      timeout: 1200
 
   alert: tune_tests
 
