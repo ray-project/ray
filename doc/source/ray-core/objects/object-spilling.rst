@@ -38,7 +38,10 @@ usage across multiple physical devices if needed (e.g., SSD devices):
                     "directory_path": [
                       "/tmp/spill",
                       "/tmp/spill_1",
-                      "/tmp/spill_2"}},
+                      "/tmp/spill_2",
+                    ]
+                  },
+                }
             )
         },
     )
@@ -58,7 +61,7 @@ If you are using an HDD, it is recommended that you specify a large buffer size 
                   "type": "filesystem", 
                   "params": {
                     "directory_path": "/tmp/spill",
-                    "buffer_size": 1_000_000
+                    "buffer_size": 1_000_000,
                   }
                 },
             )
@@ -79,7 +82,7 @@ To enable object spilling to remote storage (any URI supported by `smart_open <h
                   "params": {
                     "uri": "s3://bucket/path"
                   },
-                  "buffer_size": 100 * 1024 * 1024 # Use a 100MB buffer for writes
+                  "buffer_size": 100 * 1024 * 1024,  # Use a 100MB buffer for writes
                 },
             )
         },
@@ -99,9 +102,9 @@ Spilling to multiple remote storages is also supported.
                 {
                   "type": "smart_open", 
                   "params": {
-                    "uri": ["s3://bucket/path1", "s3://bucket/path2, "s3://bucket/path3"]
+                    "uri": ["s3://bucket/path1", "s3://bucket/path2, "s3://bucket/path3"],
                   },
-                  "buffer_size": 100 * 1024 * 1024 # Use a 100MB buffer for writes
+                  "buffer_size": 100 * 1024 * 1024, # Use a 100MB buffer for writes
                 },
             )
         },
