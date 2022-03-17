@@ -101,7 +101,7 @@ def create_conda_env_if_needed(
     conda_path = get_conda_bin_executable("conda")
     try:
         exec_cmd([conda_path, "--help"], throw_on_error=False)
-    except EnvironmentError:
+    except (EnvironmentError, FileNotFoundError):
         raise ValueError(
             f"Could not find Conda executable at '{conda_path}'. "
             "Ensure Conda is installed as per the instructions at "
