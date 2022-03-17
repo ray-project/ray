@@ -315,7 +315,12 @@ class RemoteFunction:
             # first driver. This is an argument for repickling the function,
             # which we do here.
             try:
-                self._pickled_function = pickle.dumps(self._function)
+                context = worker.get_serialization_context()
+                try:
+                    context.set_is_export_pinned(True)
+                    self._pickled_function = pickle.dumps(self._function)
+                finally:
+                    context.set_is_export_pinned(False)
             except TypeError as e:
                 msg = (
                     "Could not serialize the function "

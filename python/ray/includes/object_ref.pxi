@@ -136,9 +136,36 @@ cdef class ObjectRef(BaseID):
 
     def __reduce__(self):
         raise RuntimeError(
-            "Object references cannot be pickled except via `ray.put()` or passing "
-            "as arguments to Ray tasks and actors. Use `object_ref.export()` to "
-            "export a reference for out-of-band use.")
+            "Object references cannot be pickled except via `ray.put()` or "
+            "passing as arguments to Ray tasks and actors. Use "
+            "`object_ref.export()` to export a reference for out-of-band use.")
+
+    def export(self, pin: bool = False):
+        """Export an ObjectRef for serialization out-of-band to Ray.
+
+        Args:
+            pin: Whether to current worker should pin the object. If pinned, the
+                object will not be evicted until the current worker is killed.
+                Otherwise, it will be evicted per normal reference counting
+                rules (ignoring the exported reference).
+        """
+        import ray.cloudpickle as pickle
+        worker = ray.worker.global_worker
+        worker.check_connected()
+        context = worker.get_serialization_context()
+
+        if pin:
+            try:
+                context.set_is_export_pinned(True)
+                return pickle.dumps(self)
+            finally:
+                context.set_is_export_pinned(False)
+        else:
+            try:
+                context.set_is_export_unpinned(True)
+                return pickle.dumps(self)
+            finally:
+                context.set_is_export_unpinned(False)
 
     def as_future(self, _internal=False) -> asyncio.Future:
         """Wrap ObjectRef with an asyncio.Future.

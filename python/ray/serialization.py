@@ -143,6 +143,18 @@ class SerializationContext:
     def set_out_of_band_serialization(self):
         self._thread_local.in_band = False
 
+    def is_export_pinned_serialization(self):
+        return getattr(self._thread_local, "is_export_pinned", False)
+
+    def set_is_export_pinned(self, val):
+        self._thread_local.is_export_pinned = val
+
+    def is_export_unpinned_serialization(self):
+        return getattr(self._thread_local, "is_export_unpinned", False)
+
+    def set_is_export_unpinned(self, val):
+        self._thread_local.is_export_unpinned = val
+
     def get_outer_object_ref(self):
         stack = getattr(self._thread_local, "object_ref_stack", [])
         return stack[-1] if stack else None
@@ -164,12 +176,21 @@ class SerializationContext:
             if not hasattr(self._thread_local, "object_refs"):
                 self._thread_local.object_refs = set()
             self._thread_local.object_refs.add(object_ref)
-        else:
-            # If this serialization is out-of-band (e.g., from a call to
-            # cloudpickle directly or captured in a remote function/actor),
-            # then pin the object for the lifetime of this worker by adding
-            # a local reference that won't ever be removed.
+        elif self.is_export_pinned_serialization():
+            # If this object is captured in a remote function/actor), or exported via
+            # ref.export(pin=True), then pin the object for the
+            # lifetime of this worker by adding a permanent local reference.
             ray.worker.global_worker.core_worker.add_object_ref_reference(object_ref)
+        elif self.is_export_unpinned_serialization():
+            # Object exported via ref.export(pin=False). Nothing to
+            # do here; the object will be unavailable if all references are deleted.
+            pass
+        else:
+            raise RuntimeError(
+                "Object references cannot be pickled except via `ray.put()` or "
+                "passing as arguments to Ray tasks and actors. Use "
+                "`object_ref.export()` to export a reference for out-of-band use."
+            )
 
     def _deserialize_pickle5_data(self, data):
         try:
