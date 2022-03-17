@@ -1,12 +1,21 @@
 import asyncio
 import concurrent.futures
 from dataclasses import dataclass
-from typing import Optional, Union, Coroutine
+from typing import Coroutine, Dict, Optional, Union
 import threading
 
-from ray.serve.common import EndpointTag
 from ray.actor import ActorHandle
-from ray.serve.utils import get_random_letters, DEFAULT
+
+from ray import serve
+from ray.serve.common import EndpointTag
+from ray.serve.constants import (
+    SERVE_HANDLE_JSON_KEY,
+    ServeHandleType,
+)
+from ray.serve.utils import (
+    get_random_letters,
+    DEFAULT,
+)
 from ray.serve.router import Router, RequestMetadata
 from ray.util import metrics
 
@@ -234,3 +243,35 @@ class RayServeSyncHandle(RayServeHandle):
             "_internal_pickled_http_request": self._pickled_http_request,
         }
         return RayServeSyncHandle._deserialize, (serialized_data,)
+
+
+def serve_handle_to_json_dict(self, handle: RayServeHandle) -> Dict[str, str]:
+    """Converts a Serve handle to a JSON-serializable dictionary.
+
+    The dictionary can be converted back to a ServeHandle using
+    serve_handle_from_json_dict.
+    """
+    if isinstance(handle, RayServeSyncHandle):
+        handle_type = ServeHandleType.SYNC
+    else:
+        ServeHandleType.ASYNC
+
+    return {
+        SERVE_HANDLE_JSON_KEY: handle_type,
+        "deployment_name": handle.deployment_name,
+    }
+
+
+def serve_handle_from_json_dict(self, d: Dict[str, str]) -> RayServeHandle:
+    """Converts a JSON-serializable dictionary back to a ServeHandle.
+
+    The dictionary should be constructed using serve_handle_to_json_dict.
+    """
+    if SERVE_HANDLE_JSON_KEY not in d:
+        raise ValueError(f"dict must contain {SERVE_HANDLE_JSON_KEY} key.")
+
+    return serve.api.internal_get_global_client().get_handle(
+        d["deployment_name"],
+        sync=d[SERVE_HANDLE_JSON_KEY] == ServeHandleType.SYNC,
+        missing_ok=True,
+    )
