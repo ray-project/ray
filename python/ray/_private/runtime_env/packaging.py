@@ -533,7 +533,8 @@ def download_and_unpack_package(
                         subprocess.check_call(["which", "hdfs"])
                     except ImportError:
                         raise ImportError(
-                            "You must have HDFS command to fetch files from HDFS.")
+                            "You must have HDFS command to fetch files from HDFS."
+                        )
                 else:
                     try:
                         from smart_open import open
