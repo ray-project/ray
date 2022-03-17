@@ -1809,6 +1809,7 @@ def run(
     # Special case where user is doing single function serve.run(func.bind())
     elif isinstance(target, DeploymentFunctionNode):
         deployments = pipeline_build(target)
+        ingress = deployments[-1]
         if len(deployments) != 1:
             raise ValueError(
                 "We only support single function node in serve.run, ex: "
