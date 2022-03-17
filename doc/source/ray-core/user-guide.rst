@@ -1,5 +1,5 @@
-User Guide
-==========
+User Guides
+===========
 
 This section explains how to use Ray's key concepts to build distributed applications.
 
