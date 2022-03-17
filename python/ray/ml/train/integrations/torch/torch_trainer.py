@@ -169,4 +169,16 @@ class TorchTrainer(DataParallelTrainer):
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
-        raise NotImplementedError
+        if not torch_config:
+            torch_config = TorchConfig()
+
+        super(TorchTrainer, self).__init__(
+            train_loop_per_worker=train_loop_per_worker,
+            train_loop_config=train_loop_config,
+            backend_config=torch_config,
+            scaling_config=scaling_config,
+            run_config=run_config,
+            datasets=datasets,
+            preprocessor=preprocessor,
+            resume_from_checkpoint=resume_from_checkpoint,
+        )
