@@ -8,7 +8,11 @@ enum RayComponentId {
 }
 
 enum RaySyncMessageType {
+  // BROADCAST will make each node eventually has a updated view of the
+  // cluster. It's useful for resource usage.
   BROADCAST = 0;
+  // AGGREGATE will only send the message to the root node. It's useful for
+  // resource loads.
   AGGREGATE = 1;
 }
 
@@ -40,12 +44,16 @@ message Dummy {
 }
 
 service RaySyncer {
-  rpc StartSync(SyncMeta) returns (SyncMeta);
   // Ideally these should be a streaming API like this
   //   rpc StartSync(stream RaySyncMessages) returns (stream RaySyncMessages);
   // But to make sure it's the same as the current protocol, we still use
   // unary rpc.
   // TODO (iycheng): Using grpc streaming for the protocol.
+
+  // This is the first message that should be sent. It will initialize
+  // some structure between nodes.
+  rpc StartSync(SyncMeta) returns (SyncMeta);
+
   // These two RPCs are for messages reporting and broadcasting.
   // Update is used by GCS to send update request to Raylet.
   rpc Update(RaySyncMessages) returns (Dummy);
