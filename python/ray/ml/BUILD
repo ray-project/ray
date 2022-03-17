@@ -8,7 +8,7 @@ py_test(
     main = "examples/torch/tensorflow_linear_dataset_example.py",
     srcs = ["examples/torch/tensorflow_linear_dataset_example.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":train_lib", ":ml_lib"],
+    deps = [":ml_lib"],
     args = ["--smoke-test"]
 )
 
@@ -18,7 +18,7 @@ py_test(
     main = "examples/torch/tensorflow_mnist_example.py",
     srcs = ["examples/torch/tensorflow_mnist_example.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":train_lib", ":ml_lib"],
+    deps = [":ml_lib"],
     args = ["--smoke-test"]
 )
 
@@ -28,7 +28,7 @@ py_test(
     main = "examples/torch/tune_tensorflow_mnist_example.py",
     srcs = ["examples/torch/tune_tensorflow_mnist_example.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":train_lib", ":ml_lib"],
+    deps = [":ml_lib"],
     args = ["--smoke-test"]
 )
 
