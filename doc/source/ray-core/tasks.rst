@@ -3,7 +3,7 @@
 Tasks
 =====
 
-Ray enables arbitrary functions to be executed asynchronously. These asynchronous Ray functions are called "remote functions". Here is an example.
+Ray enables arbitrary functions to be executed asynchronously on separate Python workers. These asynchronous Ray functions are called "remote functions". Here is an example.
 
 .. tabbed:: Python
 
@@ -81,7 +81,7 @@ Ray enables arbitrary functions to be executed asynchronously. These asynchronou
 Passing object refs to remote functions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-**Object refs** can also be passed into remote functions. When the function actually gets executed, **the argument will be a retrieved as a regular object**. For example, take this function:
+**Object refs** can also be passed into remote functions. When the function actually gets executed, **the argument will be passed as the underlying Python value**. For example, take this function:
 
 .. tabbed:: Python
 
@@ -248,11 +248,11 @@ Below are more examples of resource specifications:
   Besides compute resources, you can also specify an environment for a task to run in,
   which can include Python packages, local files, environment variables, and more---see :ref:`Runtime Environments <runtime-environments>` for details.
 
-Waiting for Ready Results
-~~~~~~~~~~~~~~~~~~~~~~~~~
+Waiting for Partial Results
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 After launching a number of tasks, you may want to know which ones have
-finished executing. This can be done with ``wait`` (:ref:`ray-wait-ref`). The function
+finished executing without blocking on all of them, as in ``ray.get``. This can be done with ``wait`` (:ref:`ray-wait-ref`). The function
 works as follows.
 
 .. tabbed:: Python
@@ -303,7 +303,7 @@ Cancelling tasks
 
 .. tabbed:: Python
 
-    Remote functions can be canceled by calling ``ray.cancel`` (:ref:`docstring <ray-cancel-ref>`) on the returned Object ref. Remote actor functions can be stopped by killing the actor using the ``ray.kill`` interface.
+    Remote functions can be canceled by calling ``ray.cancel`` (:ref:`docstring <ray-cancel-ref>`) on the returned Object ref.
 
     .. code-block:: python
 

@@ -87,8 +87,9 @@ Specifying required resources
 
 .. _actor-resource-guide:
 
-You can specify resource requirements in actors too (see the `Actors section
-<actors.html>`__ for more details.)
+You can specify resource requirements in actors too (see :ref:`resource-requirements` for more details.)
+
+.. _resource-requirements:
 
 .. tabbed:: Python
 

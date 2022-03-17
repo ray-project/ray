@@ -3,13 +3,13 @@
 Objects
 =======
 
-In Ray, we can create and compute on objects. We refer to these objects as **remote objects**, and we use **object refs** to refer to them. Remote objects are stored in `shared-memory <https://en.wikipedia.org/wiki/Shared_memory>`__ **object stores**, and there is one object store per node in the cluster. In the cluster setting, we may not actually know which machine each object lives on.
+In Ray, tasks and actors create and compute on objects. We refer to these objects as **remote objects** because they can be stored anywhere in a Ray cluster, and we use **object refs** to refer to them. Remote objects are cached in Ray's distributed `shared-memory <https://en.wikipedia.org/wiki/Shared_memory>`__ **object store**, and there is one object store per node in the cluster. In the cluster setting, a remote object can live on one or many nodes, independent of who holds the object ref(s).
 
-An **object ref** is essentially a unique ID that can be used to refer to a
-remote object. If you're familiar with futures, our object refs are conceptually
+An **object ref** is essentially a pointer or a unique ID that can be used to refer to a
+remote object without seeing its value. If you're familiar with futures, Ray object refs are conceptually
 similar.
 
-Object refs can be created in multiple ways.
+Object refs can be created in two ways.
 
   1. They are returned by remote function calls.
   2. They are returned by ``put`` (:ref:`docstring <ray-put-ref>`).
