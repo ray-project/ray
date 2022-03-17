@@ -552,7 +552,7 @@ class DynamicTFPolicy(TFPolicy):
             return len(batch)
 
         input_dict = self._get_loss_inputs_dict(batch, shuffle=False)
-        data_keys = list(self._loss_input_dict_no_rnn.values())
+        data_keys = tree.flatten(self._loss_input_dict_no_rnn)
         if self._state_inputs:
             state_keys = self._state_inputs + [self._seq_lens]
         else:

@@ -23,7 +23,8 @@ from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
-from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
+from ray.rllib.execution.train_ops import MultiGPUTrainOneStep, TrainOneStep, \
+    UpdateTargetNetwork
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
@@ -183,12 +184,23 @@ class SlateQTrainer(Trainer):
             StoreToReplayBuffer(local_buffer=kwargs["local_replay_buffer"])
         )
 
+        if config["simple_optimizer"]:
+            train_step_op = TrainOneStep(workers)
+        else:
+            train_step_op = MultiGPUTrainOneStep(
+                workers=workers,
+                sgd_minibatch_size=config["train_batch_size"],
+                num_sgd_iter=1,
+                num_gpus=config["num_gpus"],
+                _fake_gpus=config["_fake_gpus"],
+            )
+
         # (2) Read and train on experiences from the replay buffer. Every batch
         # returned from the LocalReplay() iterator is passed to TrainOneStep to
         # take a SGD step.
         replay_op = (
             Replay(local_buffer=kwargs["local_replay_buffer"])
-            .for_each(TrainOneStep(workers))
+            .for_each(train_step_op)
             .for_each(
                 UpdateTargetNetwork(workers, config["target_network_update_freq"])
             )
