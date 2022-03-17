@@ -261,7 +261,7 @@ def test_usage_lib_get_cluster_status_to_report(shutdown_only):
     assert cluster_status_to_report.total_object_store_memory_gb == 1.0
 
 
-def test_usage_lib_get_cluster_config_to_report(tmp_path):
+def test_usage_lib_get_cluster_config_to_report(monkeypatch, tmp_path):
     cluster_config_file_path = tmp_path / "ray_bootstrap_config.yaml"
     """ Test minimal cluster config"""
     cluster_config_file_path.write_text(
@@ -355,6 +355,16 @@ available_node_types:
         tmp_path / "does_not_exist.yaml"
     )
     assert cluster_config_to_report == ClusterConfigToReport()
+
+    monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "localhost")
+    cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
+        tmp_path / "does_not_exist.yaml"
+    )
+    assert cluster_config_to_report.cloud_provider == "kubernetes"
+    assert cluster_config_to_report.min_workers is None
+    assert cluster_config_to_report.max_workers is None
+    assert cluster_config_to_report.head_node_instance_type is None
+    assert cluster_config_to_report.worker_node_instance_types is None
 
 
 @pytest.mark.skipif(

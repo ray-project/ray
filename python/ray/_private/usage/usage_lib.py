@@ -324,7 +324,10 @@ def get_cluster_config_to_report(cluster_config_file_path) -> ClusterConfigToRep
             return result
     except FileNotFoundError:
         # It's a manually started cluster or k8s cluster
-        return ClusterConfigToReport()
+        result = ClusterConfigToReport()
+        if "KUBERNETES_SERVICE_HOST" in os.environ:
+            result.cloud_provider = "kubernetes"
+        return result
     except Exception as e:
         logger.info(f"Failed to get cluster config to report {e}")
         return ClusterConfigToReport()
