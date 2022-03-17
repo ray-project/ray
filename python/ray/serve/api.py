@@ -1768,8 +1768,7 @@ def run(
 
     Either a DeploymentNode or a pre-built application can be passed in.
     If a DeploymentNode is passed in, all of the deployments it depends on
-    will be deployed. If there is an ingress (i.e. only one deployment with a
-    route prefix), its handle will be returned.
+    will be deployed. If there is an ingress, its handle will be returned.
 
     Args:
         target: User built serve Application or DeploymentNode that acts as
