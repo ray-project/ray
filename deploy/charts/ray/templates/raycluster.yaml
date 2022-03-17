@@ -42,7 +42,7 @@ spec:
           containers:
           - name: ray-node
             imagePullPolicy: Always
-            image: {{ $val.image | default .Values.image }}
+            image: {{ $val.image | default $.Values.image }}
             # Do not change this command - it keeps the pod alive until it is
             # explicitly killed.
             command: ["/bin/bash", "-c", "--"]
