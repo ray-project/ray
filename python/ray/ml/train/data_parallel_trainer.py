@@ -1,7 +1,8 @@
 import inspect
 import logging
 import os
-from typing import Dict, Callable, Optional, Union, Type
+from pathlib import Path
+from typing import Dict, Callable, Optional, Union
 
 import ray
 from ray import tune
@@ -14,22 +15,10 @@ from ray.ml.checkpoint import Checkpoint
 from ray.train import BackendConfig, TrainingIterator
 from ray.train.backend import BackendExecutor
 from ray.train.checkpoint import TuneCheckpointManager
-from ray.train.constants import (
-    ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
-    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
-)
 from ray.train.utils import construct_train_func
-from ray.tune import Trainable
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
-
-# The environment variables that need to be propagated from the driver to the
-# `BackendExecutor` actor via runtime env.
-_BACKEND_ENV_VARS = {
-    ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
-    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
-}
 
 
 @DeveloperAPI
@@ -245,12 +234,6 @@ class DataParallelTrainer(Trainer):
         backend_config = backend_config if backend_config else BackendConfig()
         self.backend_config = backend_config
 
-        self.train_env_var_values = {
-            var_name: os.environ[var_name]
-            for var_name in _BACKEND_ENV_VARS
-            if var_name in os.environ
-        }
-
     def training_loop(self) -> None:
         scaling_config_dataclass = ScalingConfigDataClass(**self.scaling_config)
 
@@ -260,8 +243,6 @@ class DataParallelTrainer(Trainer):
             fn_arg_name="train_loop_per_worker",
         )
 
-        runtime_env = {"env_vars": self.train_env_var_values}
-
         # TODO(amog): Run BackendExecutor directly in the Trainable instead of a
         #  separate actor.
         remote_executor = ray.remote(num_cpus=0)(BackendExecutor)
@@ -269,9 +250,7 @@ class DataParallelTrainer(Trainer):
             scaling_config_dataclass.additional_resources_per_worker
         )
 
-        backend_executor_actor = remote_executor.options(
-            runtime_env=runtime_env
-        ).remote(
+        backend_executor_actor = remote_executor.remote(
             backend_config=self.backend_config,
             num_workers=scaling_config_dataclass.num_workers,
             num_cpus_per_worker=scaling_config_dataclass.num_cpus_per_worker,
@@ -326,21 +305,6 @@ class DataParallelTrainer(Trainer):
         # Shutdown workers.
         ray.get(backend_executor_actor.shutdown.remote())
 
-    def as_trainable(self) -> Type[Trainable]:
-        trainable_cls = super().as_trainable()
-
-        env_vars = self.train_env_var_values
-
-        class TrainableWithEnvVars(trainable_cls):
-            def __init__(self, *args, **kwargs):
-                super().__init__(*args, **kwargs)
-
-                # Have to set the environment variables again in the trainable.
-                for var_name, value in env_vars.items():
-                    os.environ[var_name] = value
-
-        return TrainableWithEnvVars
-
 
 # TODO(team-ml): Refactor checkpoint management along with Tune.
 class _DataParallelCheckpointManager(TuneCheckpointManager):
@@ -358,3 +322,7 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
         # If inside a Tune Trainable, then checkpoint with Tune.
         with tune.checkpoint_dir(step=self._latest_checkpoint_id) as checkpoint_dir:
             checkpoint_obj.to_directory(path=checkpoint_dir)
+
+    @property
+    def latest_checkpoint_dir(self) -> Optional[Path]:
+        raise NotImplementedError

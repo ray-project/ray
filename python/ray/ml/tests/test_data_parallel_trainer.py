@@ -1,5 +1,3 @@
-import os
-
 import pytest
 
 import ray
@@ -9,8 +7,6 @@ from ray.ml.constants import PREPROCESSOR_KEY
 
 from ray.ml.train.data_parallel_trainer import DataParallelTrainer
 from ray.ml.preprocessor import Preprocessor
-from ray.train.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV
-
 
 @pytest.fixture
 def ray_start_4_cpus():
@@ -170,25 +166,6 @@ def test_tune(ray_start_4_cpus):
 
     # Make sure original Trainer is not affected.
     assert trainer.train_loop_config["x"] == 100
-
-
-def test_env_vars(ray_start_4_cpus, monkeypatch):
-    assert ENABLE_DETAILED_AUTOFILLED_METRICS_ENV not in os.environ
-    monkeypatch.setenv(ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, "1")
-    assert ENABLE_DETAILED_AUTOFILLED_METRICS_ENV in os.environ
-
-    def train_func():
-        # Make sure environment variables are being set inside the trainable.
-        assert ENABLE_DETAILED_AUTOFILLED_METRICS_ENV in os.environ
-
-    trainer = DataParallelTrainer(
-        train_loop_per_worker=train_func,
-        train_loop_config={"x": 100},
-        scaling_config=scale_config,
-    )
-
-    trainer.fit()
-
 
 if __name__ == "__main__":
     import pytest
