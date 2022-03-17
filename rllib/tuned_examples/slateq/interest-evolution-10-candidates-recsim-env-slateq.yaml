@@ -7,11 +7,6 @@ interest-evolution-recsim-env-slateq:
     config:
         framework: tf
 
-        #TEST:
-        num_gpus: 2
-        _fake_gpus: true
-        #END TEST
-
         # RLlib/RecSim wrapper specific settings:
         env_config:
             # Env class specified above takes one `config` arg in its c'tor:
@@ -39,7 +34,7 @@ interest-evolution-recsim-env-slateq:
 
         lr: 0.001
 
-        learning_starts: 1000 #10000
+        learning_starts: 10000
         target_network_update_freq: 3200
 
         metrics_num_episodes_for_smoothing: 200

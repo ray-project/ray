@@ -25,8 +25,10 @@ class SlateEpsilonGreedy(EpsilonGreedy):
 
         exploit_action = action_distribution.deterministic_sample()
 
-        batch_size, num_slates = \
-            tf.shape(per_slate_q_values)[0], tf.shape(per_slate_q_values)[1]
+        batch_size, num_slates = (
+            tf.shape(per_slate_q_values)[0],
+            tf.shape(per_slate_q_values)[1],
+        )
         action_logp = tf.zeros(batch_size, dtype=tf.float32)
 
         # Get the current epsilon.
@@ -35,7 +37,9 @@ class SlateEpsilonGreedy(EpsilonGreedy):
         )
         # A random action.
         random_indices = tf.random.uniform(
-            (batch_size, ), minval=0, maxval=num_slates,
+            (batch_size,),
+            minval=0,
+            maxval=num_slates,
             dtype=tf.dtypes.int32,
         )
         random_actions = tf.gather(all_slates, random_indices)
@@ -88,7 +92,9 @@ class SlateEpsilonGreedy(EpsilonGreedy):
             # Get the current epsilon.
             epsilon = self.epsilon_schedule(self.last_timestep)
             # A random action.
-            random_indices = torch.randint(0, per_slate_q_values.shape[1], (per_slate_q_values.shape[0], ))
+            random_indices = torch.randint(
+                0, per_slate_q_values.shape[1], (per_slate_q_values.shape[0],)
+            )
             random_actions = all_slates[random_indices]
 
             # Pick either random or greedy.

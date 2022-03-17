@@ -488,7 +488,8 @@ class DynamicTFPolicy(TFPolicy):
         if rnn_inputs:
             rnn_inputs.append((SampleBatch.SEQ_LENS, existing_inputs[-1]))
         existing_inputs_unflattened = tree.unflatten_as(
-            self._loss_input_dict_no_rnn, existing_inputs)
+            self._loss_input_dict_no_rnn, existing_inputs
+        )
         input_dict = OrderedDict(
             [("is_exploring", self._is_exploring), ("timestep", self._timestep)]
             + [
@@ -962,22 +963,12 @@ class TFMultiGPUTowerStack:
 
         device_placeholders = [[] for _ in range(len(self.devices))]
 
-        for t in tree.flatten(self.loss_inputs):#def per_input_tensor(t):
+        for t in tree.flatten(self.loss_inputs):
             # Split on the CPU in case the data doesn't fit in GPU memory.
             with tf.device("/cpu:0"):
                 splits = tf.split(t, len(self.devices))
             for i, d in enumerate(self.devices):
                 device_placeholders[i].append(splits[i])
-
-        #tree.map_structure(per_input_tensor, self.loss_inputs)
-
-        ## Split on the CPU in case the data doesn't fit in GPU memory.
-        #with tf.device("/cpu:0"):
-        #    #data_splits = zip(
-        #    #    *[tf.split(ph, len(self.devices)) for ph in self.loss_inputs]
-        #    #)
-        #    data_splits = tree.map_structure(
-        #        lambda s: tf.split(s, len(self.devices)), self.loss_inputs)
 
         self._towers = []
         for tower_i, (device, placeholders) in enumerate(

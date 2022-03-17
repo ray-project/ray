@@ -23,8 +23,11 @@ from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
-from ray.rllib.execution.train_ops import MultiGPUTrainOneStep, TrainOneStep, \
-    UpdateTargetNetwork
+from ray.rllib.execution.train_ops import (
+    MultiGPUTrainOneStep,
+    TrainOneStep,
+    UpdateTargetNetwork,
+)
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
@@ -150,14 +153,6 @@ class SlateQTrainer(Trainer):
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return DEFAULT_CONFIG
-
-    #@override(Trainer)
-    #def validate_config(self, config: TrainerConfigDict) -> None:
-    #    # Call super's validation method.
-    #    super().validate_config(config)
-
-        #if config["num_gpus"] > 1:
-        #    raise ValueError("`num_gpus` > 1 not yet supported for SlateQ!")
 
     @override(Trainer)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
