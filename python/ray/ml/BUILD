@@ -11,6 +11,14 @@ py_test(
     deps = [":ml_lib"]
 )
 
+py_test (
+    name = "lightgbm_example",
+    size = "medium",
+    srcs = ["examples/lightgbm_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
 py_test(
     name = "tensorflow_linear_dataset_example",
     size = "medium",
@@ -81,6 +89,14 @@ py_test(
     args = ["--smoke-test"]
 )
 
+py_test(
+    name = "xgboost_example",
+    size = "medium",
+    srcs = ["examples/xgboost_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
 # --------------------------------------------------------------------
 # Tests from the python/ray/ml/tests directory.
 # Covers all tests starting with `test_`.
@@ -107,6 +123,14 @@ py_test(
     name = "test_lightgbm_predictor",
     size = "small",
     srcs = ["tests/test_lightgbm_predictor.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_lightgbm_trainer",
+    size = "medium",
+    srcs = ["tests/test_lightgbm_trainer.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
@@ -171,6 +195,14 @@ py_test(
     name = "test_xgboost_predictor",
     size = "small",
     srcs = ["tests/test_xgboost_predictor.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_xgboost_trainer",
+    size = "medium",
+    srcs = ["tests/test_xgboost_trainer.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
