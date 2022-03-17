@@ -25,7 +25,6 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def get_all_deployments(self, req: Request) -> Response:
-        serve.start(detached=True, _override_controller_namespace="serve")
         deployments = list(serve.list_deployments().values())
         serve_application_schema = serve_application_to_schema(deployments=deployments)
         return Response(
@@ -36,7 +35,6 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/api/serve/deployments/status")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def get_all_deployment_statuses(self, req: Request) -> Response:
-        serve.start(detached=True, _override_controller_namespace="serve")
         serve_application_status_schema = serve_application_status_to_schema(
             get_deployment_statuses()
         )
@@ -48,7 +46,6 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @routes.delete("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def delete_serve_application(self, req: Request) -> Response:
-        serve.start(detached=True, _override_controller_namespace="serve")
         serve.shutdown()
         return Response()
 
@@ -56,8 +53,6 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def put_all_deployments(self, req: Request) -> Response:
         app = Application.from_dict(await req.json())
-
-        serve.start(detached=True, _override_controller_namespace="serve")
         app.deploy(blocking=False)
 
         new_names = set()

@@ -18,6 +18,7 @@ from typing import Any, Callable
 import ray
 import ray.dashboard.consts as dashboard_consts
 from ray.ray_constants import env_bool
+from ray import serve
 
 try:
     create_task = asyncio.create_task
@@ -266,6 +267,9 @@ def init_ray_and_catch_exceptions(connect_to_serve: bool = False) -> Callable:
                     except Exception as e:
                         ray.shutdown()
                         raise e from None
+
+                if connect_to_serve:
+                    serve.start(detached=True, _override_controller_namespace="serve")
 
                 return await f(self, *args, **kwargs)
             except Exception as e:

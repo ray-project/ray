@@ -84,6 +84,7 @@ def test_refresh_controller_after_death(shutdown_ray, detached):
     controller_namespace = "controller_namespace"
 
     ray.init(namespace=ray_namespace)
+    serve.shutdown()  # Ensure serve isn't running before beginning the test
     serve.start(detached=detached, _override_controller_namespace=controller_namespace)
 
     old_handle = internal_get_global_client()._controller
