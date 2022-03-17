@@ -1,8 +1,11 @@
 import tempfile
 from dataclasses import dataclass
+import functools
 import io
 import logging
 import os
+import random
+import types
 
 from datetime import timedelta
 from pathlib import Path
@@ -13,12 +16,15 @@ from ray import train
 from ray.train.accelerator import Accelerator
 from ray.train.backend import BackendConfig, Backend, EncodedData
 from ray.train.constants import PYTORCH_PROFILER_KEY
+from torch.optim import Optimizer
 from ray.train.session import get_accelerator, set_accelerator
 from ray.train.worker_group import WorkerGroup
 from ray.train.utils import get_address_and_port
 from ray.util import PublicAPI
 
+import numpy as np
 import torch
+from torch.cuda.amp import autocast, GradScaler
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import (
@@ -38,7 +44,17 @@ logger = logging.getLogger(__name__)
 
 
 class TorchAccelerator(Accelerator):
-    """A utility that implements methods to accelerate PyTorch training."""
+    """A utility that implements methods to accelerate PyTorch training.
+
+    Arguments:
+        amp (bool): If true, perform training with automatic mixed precision.
+            Otherwise, use full precision.
+    """
+
+    def __init__(self, amp: bool = False):
+        self.amp_is_enabled = amp
+        self.scaler = GradScaler() if amp else None
+        self._seed = None
 
     def prepare_model(
         self,
@@ -75,6 +91,37 @@ class TorchAccelerator(Accelerator):
         if move_to_device:
             logger.info(f"Moving model to device: {device}")
             model = model.to(device)
+
+        def wrap_forward(forward):
+            @functools.wraps(forward)
+            def wrapper(*args, **kwargs):
+                with autocast():
+                    outputs = forward(*args, **kwargs)
+                assert isinstance(outputs, torch.Tensor)
+                return outputs.float()
+
+            return wrapper
+
+        def model_get_state(self):
+            # `__getstate__` is an special method that informs pickle which attributes
+            # to serialize. This custom implementation ensures that the wrapped forward
+            # method and custom `__getstate__` method aren't serialized.
+            state = self.__dict__.copy()
+            state["forward"] = state["_unwrapped_forward"]
+            del state["_unwrapped_forward"]
+            del state["__getstate__"]
+            return state
+
+        if self.amp_is_enabled:
+            # Pickle cannot serialize the wrapped forward method. As a workaround,
+            # define a custom `__getstate__` method that unwraps the forward method.
+            model._unwrapped_forward = model.forward
+            model.forward = wrap_forward(model.forward)
+            # `__getstate__` must be a bound method rather than an callable attribute.
+            # See https://stackoverflow.com/questions/972/adding-a-method-to-an-existing-object-instance.  # noqa: E501
+            assert not hasattr(model, "__getstate__")
+            model.__getstate__ = types.MethodType(model_get_state, model)
+
         if wrap_ddp and train.world_size() > 1:
             logger.info("Wrapping provided model in DDP.")
             if torch.cuda.is_available():
@@ -142,6 +189,22 @@ class TorchAccelerator(Accelerator):
                 # shuffling is enabled by checking the default sampler type.
                 shuffle = not isinstance(loader.sampler, SequentialSampler)
 
+                def seeded_worker_init_fn(worker_init_fn):
+                    def wrapper(worker_id):
+                        worker_seed = torch.initial_seed() % 2 ** 32
+                        np.random.seed(worker_seed)
+                        random.seed(worker_seed)
+                        worker_init_fn(worker_id)
+
+                    return wrapper
+
+                worker_init_fn = loader.worker_init_fn
+                generator = loader.generator
+                if self._seed is not None:
+                    worker_init_fn = seeded_worker_init_fn(loader.worker_init_fn)
+                    generator = torch.Generator()
+                    generator.manual_seed(self._seed)
+
                 using_default_sampler = isinstance(
                     loader.sampler, (SequentialSampler, RandomSampler)
                 )
@@ -161,7 +224,8 @@ class TorchAccelerator(Accelerator):
                     "pin_memory": loader.pin_memory,
                     "drop_last": loader.drop_last,
                     "timeout": loader.timeout,
-                    "worker_init_fn": loader.worker_init_fn,
+                    "worker_init_fn": worker_init_fn,
+                    "generator": generator,
                     "sampler": DistributedSampler(loader.dataset, shuffle=shuffle),
                 }
                 return DataLoader(**data_loader_args)
@@ -183,6 +247,44 @@ class TorchAccelerator(Accelerator):
             device = torch.device("cpu")
 
         return device
+
+    def prepare_optimizer(self, optimizer: Optimizer) -> Optimizer:
+        """Wraps optimizer to support automatic mixed precision.
+
+        Args:
+            optimizer (torch.optim.Optimizer): The DataLoader to prepare.
+
+        Returns:
+            A wrapped optimizer.
+        """
+        return _WrappedOptimizer(optimizer, scaler=self.scaler)
+
+    def backward(self, tensor: torch.Tensor) -> None:
+        """Computes the gradient of the specified tensor w.r.t. graph leaves.
+
+        Args:
+            tensor (torch.Tensor): Tensor of which the derivative will be computed.
+        """
+        if self.amp_is_enabled:
+            self.scaler.scale(tensor).backward()
+        else:
+            tensor.backward()
+
+    def enable_reproducibility(self, seed: int = 0) -> None:
+        """Limits sources of nondeterministic behavior."""
+        self._seed = seed
+
+        torch.manual_seed(seed)
+        random.seed(seed)
+        np.random.seed(seed)
+
+        torch.use_deterministic_algorithms(True)
+        torch.backends.cudnn.benchmark = False
+
+        # If you want to use deterministic algorithms with CUDA, then you need to set
+        # the CUBLAS_WORKSPACE_CONFIG environment variable; otherwise, Torch errors.
+        # See https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility.
+        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 
 
 @PublicAPI(stability="beta")
@@ -413,6 +515,55 @@ class _WrappedDataLoader(DataLoader):
         return next_batch
 
 
+class _WrappedOptimizer(Optimizer):
+    def __init__(self, optimizer: Optimizer, scaler: Optional[GradScaler] = None):
+        self.optimizer = optimizer
+        self.scaler = scaler
+
+    @property
+    def state(self):
+        return self.optimizer.state
+
+    @state.setter
+    def state(self, state):
+        self.optimizer.state = state
+
+    @property
+    def param_groups(self):
+        return self.optimizer.param_groups
+
+    @param_groups.setter
+    def param_groups(self, param_groups):
+        self.optimizer.param_groups = param_groups
+
+    @property
+    def defaults(self):
+        return self.optimizer.defaults
+
+    @defaults.setter
+    def defaults(self, defaults):
+        self.optimizer.defaults = defaults
+
+    def add_param_group(self, param_group):
+        self.optimizer.add_param_group(param_group)
+
+    def load_state_dict(self, state_dict):
+        self.optimizer.load_state_dict(state_dict)
+
+    def state_dict(self):
+        return self.optimizer.state_dict()
+
+    def zero_grad(self):
+        self.optimizer.zero_grad()
+
+    def step(self, closure=None):
+        if self.scaler is not None:
+            self.scaler.step(self.optimizer, closure)
+            self.scaler.update()
+        else:
+            self.optimizer.step(closure)
+
+
 @PublicAPI(stability="beta")
 def get_device() -> torch.device:
     """Gets the correct torch device to use for training."""
@@ -485,16 +636,68 @@ def prepare_data_loader(
 
 
 @PublicAPI(stability="beta")
-def accelerate() -> None:
-    """Enables training optimizations."""
+def accelerate(amp: bool = False) -> None:
+    """Enables training optimizations.
+
+    Arguments:
+        amp (bool): If true, perform training with automatic mixed precision.
+            Otherwise, use full precision.
+
+    .. warning:: ``train.torch.accelerate`` cannot be called more than once, and it
+       must be called before any other ``train.torch`` utility function.
+    """
     try:
-        set_accelerator(TorchAccelerator())
+        set_accelerator(TorchAccelerator(amp=amp))
     except RuntimeError:
         raise RuntimeError(
             "An accelerator has already been set. Make sure "
             "`train.torch.accelerate()` is not called multiple times, and is called "
             "before any of the prepare methods."
         )
+
+
+@PublicAPI(stability="beta")
+def prepare_optimizer(optimizer: torch.optim.Optimizer) -> torch.optim.Optimizer:
+    """Wraps optimizer to support automatic mixed precision.
+
+    Args:
+        optimizer (torch.optim.Optimizer): The DataLoader to prepare.
+
+    Returns:
+        A wrapped optimizer.
+    """
+    return get_accelerator(TorchAccelerator).prepare_optimizer(optimizer)
+
+
+@PublicAPI(stability="beta")
+def backward(tensor: torch.Tensor) -> None:
+    """Computes the gradient of the specified tensor w.r.t. graph leaves.
+
+    Args:
+        tensor (torch.Tensor): Tensor of which the derivative will be computed.
+    """
+    get_accelerator(TorchAccelerator).backward(tensor)
+
+
+def enable_reproducibility(seed: int = 0) -> None:
+    """Limits sources of nondeterministic behavior.
+
+    This function:
+
+        * Seeds PyTorch, Python, and NumPy.
+        * Disables CUDA convolution benchmarking.
+        * Configures PyTorch to use determinstic algorithms.
+        * Seeds workers spawned for multi-process data loading.
+
+    Args:
+        seed (int): The number to seed libraries and data workers with.
+
+    .. warning:: ``train.torch.enable_reproducibility()`` can't guarantee
+        completely reproducible results across executions. To learn more, read
+        the `PyTorch notes on randomness
+        <https://pytorch.org/docs/stable/notes/randomness.html>`_.
+    """
+    get_accelerator(TorchAccelerator).enable_reproducibility(seed)
 
 
 WORKER_TRACE_DIR_NAME = "pytorch_profiler_worker_traces"

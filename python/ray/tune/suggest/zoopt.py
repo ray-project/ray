@@ -145,9 +145,9 @@ class ZOOptSearch(Searcher):
         parallel_num: int = 1,
         **kwargs
     ):
-        assert zoopt is not None, (
-            "ZOOpt not found - please install zoopt " "by `pip install -U zoopt`."
-        )
+        assert (
+            zoopt is not None
+        ), "ZOOpt not found - please install zoopt by `pip install -U zoopt`."
         assert budget is not None, "`budget` should not be None!"
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
@@ -207,7 +207,7 @@ class ZOOptSearch(Searcher):
         init_samples = None
         if self._points_to_evaluate:
             logger.warning(
-                "`points_to_evaluate` is ignored by ZOOpt in " "versions <= 0.4.1."
+                "`points_to_evaluate` is ignored by ZOOpt in versions <= 0.4.1."
             )
             init_samples = [
                 Solution(x=tuple(point[dim] for dim in self._dim_keys))

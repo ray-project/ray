@@ -209,6 +209,14 @@ py_test(
 )
 
 py_test(
+    name = "test_resource_updater",
+    size = "large",
+    srcs = ["tests/test_resource_updater.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_R"],
+)
+
+py_test(
     name = "test_ray_trial_executor",
     size = "large",
     srcs = ["tests/test_ray_trial_executor.py"],

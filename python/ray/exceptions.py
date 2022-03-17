@@ -217,7 +217,7 @@ class LocalRayletDiedError(RayError):
     """Indicates that the task's local raylet died."""
 
     def __str__(self):
-        return "The task's local raylet died. " "Check raylet.out for more information."
+        return "The task's local raylet died. Check raylet.out for more information."
 
 
 class WorkerCrashedError(RayError):
@@ -543,14 +543,14 @@ class TaskPlacementGroupRemoved(RayError):
     """Raised when the corresponding placement group was removed."""
 
     def __str__(self):
-        return "The placement group corresponding to this task " "has been removed."
+        return "The placement group corresponding to this task has been removed."
 
 
 class ActorPlacementGroupRemoved(RayError):
     """Raised when the corresponding placement group was removed."""
 
     def __str__(self):
-        return "The placement group corresponding to this Actor " "has been removed."
+        return "The placement group corresponding to this Actor has been removed."
 
 
 class PendingCallsLimitExceeded(RayError):
