@@ -7,6 +7,7 @@ import logging
 import random
 import re
 import time
+import json
 from dataclasses import dataclass
 from functools import wraps
 from typing import (
@@ -19,12 +20,12 @@ from typing import (
     Type,
     Union,
     List,
+    Iterable,
     overload,
 )
 
 from fastapi import APIRouter, FastAPI
 from ray.experimental.dag.class_node import ClassNode
-from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
 from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
@@ -393,9 +394,11 @@ class Client:
                 self.log_deployment_ready(name, version, url, tags[i])
 
     @_ensure_connected
-    def delete_deployment(self, name: str) -> None:
-        ray.get(self._controller.delete_deployment.remote(name))
-        self._wait_for_deployment_deleted(name)
+    def delete_deployments(self, names: Iterable[str], blocking: bool = True) -> None:
+        ray.get(self._controller.delete_deployments.remote(names))
+        if blocking:
+            for name in names:
+                self._wait_for_deployment_deleted(name)
 
     @_ensure_connected
     def get_deployment_info(self, name: str) -> Tuple[DeploymentInfo, str]:
@@ -942,19 +945,38 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
 
 
 @PublicAPI(stability="alpha")
-class DAGHandle:
-    """Resolved from a DeploymentMethodNode at runtime.
+class RayServeDAGHandle:
+    """Resolved from a DeploymentNode at runtime.
 
     This can be used to call the DAG from a driver deployment to efficiently
     orchestrate a multi-deployment pipeline.
     """
 
-    def __init__(self, serialized_dag_json: str):
-        raise NotImplementedError()
+    def __init__(self, dag_node_json: str) -> None:
 
-    def remote(self, *args, **kwargs) -> ray.ObjectRef:
-        """Call the DAG."""
-        raise NotImplementedError()
+        self.dag_node_json = dag_node_json
+
+        # NOTE(simon): Making this lazy to avoid deserialization in controller for now
+        # This would otherwise hang because it's trying to get handles from within
+        # the controller.
+        self.dag_node = None
+
+    @classmethod
+    def _deserialize(cls, *args):
+        """Required for this class's __reduce__ method to be picklable."""
+        return cls(*args)
+
+    def __reduce__(self):
+        return RayServeDAGHandle._deserialize, (self.dag_node_json,)
+
+    def remote(self, *args, **kwargs):
+        from ray.serve.pipeline.json_serde import dagnode_from_json
+
+        if self.dag_node is None:
+            self.dag_node = json.loads(
+                self.dag_node_json, object_hook=dagnode_from_json
+            )
+        return self.dag_node.execute(*args, **kwargs)
 
 
 @PublicAPI(stability="alpha")
@@ -968,8 +990,8 @@ class DeploymentMethodNode(DAGNode):
     deployment node, it will be resolved to a DeployedCallGraph at runtime.
     """
 
-    def __init__(self):
-        raise NotImplementedError()
+    # TODO (jiaodong): Later unify and refactor this with pipeline node class
+    pass
 
 
 @PublicAPI(stability="alpha")
@@ -988,6 +1010,7 @@ class DeploymentNode(ClassNode):
     that can be used to compose an optimized call graph.
     """
 
+    # TODO (jiaodong): Later unify and refactor this with pipeline node class
     pass
 
 
@@ -1154,16 +1177,28 @@ class Deployment:
         The returned bound deployment can be deployed or bound to other
         deployments to create a multi-deployment application.
         """
-        return DeploymentNode(
-            self._func_or_class,
-            args,
-            kwargs,
-            cls_options=self._ray_actor_options or dict(),
-            other_args_to_resolve={
-                "deployment_self": copy(self),
-                "is_from_serve_deployment": True,
-            },
-        )
+        if inspect.isclass(self._func_or_class):
+            return DeploymentNode(
+                self._func_or_class,
+                args,
+                kwargs,
+                cls_options=self._ray_actor_options or dict(),
+                other_args_to_resolve={
+                    "deployment_self": copy(self),
+                    "is_from_serve_deployment": True,
+                },
+            )
+        else:
+            return DeploymentNode(
+                self._func_or_class,
+                cls_args=tuple(),
+                cls_kwargs=dict(),
+                cls_options=self._ray_actor_options or dict(),
+                other_args_to_resolve={
+                    "deployment_self": copy(self),
+                    "is_from_serve_deployment": True,
+                },
+            ).__call__.bind(*args, **kwargs)
 
     @PublicAPI
     def deploy(self, *init_args, _blocking=True, **init_kwargs):
@@ -1197,7 +1232,7 @@ class Deployment:
     @PublicAPI
     def delete(self):
         """Delete this deployment."""
-        return internal_get_global_client().delete_deployment(self._name)
+        return internal_get_global_client().delete_deployments([self._name])
 
     @PublicAPI
     def get_handle(
@@ -1682,40 +1717,37 @@ class Application:
         raise NotImplementedError()
 
 
-def _get_deployments_from_node(node: DeploymentNode) -> List[Deployment]:
-    """Generate a list of deployment objects from a root node.
-
-    Returns:
-        deployment_list(List[Deployment]): the list of Deployment objects. The
-          last element corresponds to the node passed in to this function.
-    """
-    from ray.serve.pipeline.api import build as pipeline_build
-
-    with PipelineInputNode() as input_node:
-        root = node.__call__.bind(input_node)
-    deployments = pipeline_build(root, inject_ingress=False)
-
-    return deployments
-
-
 @PublicAPI(stability="alpha")
 def run(
     target: Union[DeploymentNode, Application],
     *,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
+    driver: Optional[Deployment] = None,
+    **kwargs,
 ) -> RayServeHandle:
     """Run a Serve application and return a ServeHandle to the ingress.
 
     Either a DeploymentNode or a pre-built application can be passed in.
     If a DeploymentNode is passed in, all of the deployments it depends on
     will be deployed.
+
+    Args:
+        target: User built serve Application or DeploymentNode that acts as
+            the root node of DAG. By default DeploymentNode is the Driver
+            deployment unless user provided customized one.
+
+    Returns:
+        handle: A regular ray serve handle that can be called by user to exeucte
+            the serve DAG.
     """
+    # TODO (jiaodong): Resolve circular reference in pipeline codebase and serve
+    from ray.serve.pipeline.api import build as pipeline_build
 
     client = start(detached=True, http_options={"host": host, "port": port})
 
     if isinstance(target, DeploymentNode):
-        deployments = _get_deployments_from_node(target)
+        deployments = pipeline_build(target)
     else:
         raise NotImplementedError()
 
