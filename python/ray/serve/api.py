@@ -1260,7 +1260,7 @@ class Deployment:
             _internal=True,
         )
 
-    @PublicAPI
+    @PublicAPI(stability="alpha")
     def set_options(
         self,
         func_or_class: Optional[Callable] = None,
