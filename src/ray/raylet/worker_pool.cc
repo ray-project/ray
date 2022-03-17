@@ -1346,12 +1346,7 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
 
 bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker,
                                   rpc::WorkerExitType disconnect_type) {
-<<<<<<< HEAD
-=======
   MarkPortAsFree(worker->AssignedPort());
-
-  runtime_env_manager_.RemoveURIReference(worker->WorkerId().Hex());
->>>>>>> master
   auto &state = GetStateForLanguage(worker->GetLanguage());
   auto it = state.worker_processes.find(worker->GetStartupToken());
   if (it != state.worker_processes.end()) {
