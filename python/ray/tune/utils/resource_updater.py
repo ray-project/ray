@@ -18,7 +18,15 @@ def _to_gb(n_bytes):
 
 
 class ResourceUpdater:
-    """Periodic Resource updater for Tune."""
+    """Periodic Resource updater for Tune.
+
+    Initially, all resources are set to 0. The updater will try to update resources
+    when (1) init ResourceUpdater (2) call "update_avail_resources", "num_cpus"
+    or "num_gpus".
+
+    The update takes effect when (1) Ray is initialized (2) the interval between
+    this and last update is larger than "refresh_period"
+    """
 
     def __init__(self, refresh_period: Optional[float] = None):
         self._avail_resources = Resources(cpu=0, gpu=0)
@@ -29,11 +37,11 @@ class ResourceUpdater:
             )
         self._refresh_period = refresh_period
         self._last_resource_refresh = float("-inf")
-
-        if ray.is_initialized():
-            self.update_avail_resources()
+        self.update_avail_resources()
 
     def update_avail_resources(self, num_retries=5):
+        if not ray.is_initialized():
+            return
         if time.time() - self._last_resource_refresh < self._refresh_period:
             return
         logger.debug("Checking Ray cluster resources.")
@@ -111,13 +119,11 @@ class ResourceUpdater:
             return "Resources requested: ?"
 
     def get_num_cpus(self) -> int:
-        if ray.is_initialized():
-            self.update_avail_resources()
+        self.update_avail_resources()
         return self._avail_resources.cpu
 
     def get_num_gpus(self) -> int:
-        if ray.is_initialized():
-            self.update_avail_resources()
+        self.update_avail_resources()
         return self._avail_resources.gpu
 
     def __reduce__(self):
