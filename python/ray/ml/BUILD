@@ -5,7 +5,7 @@
 py_test(
     name = "lightgbm_example",
     size = "small",
-    srcs = ["examples/torch/lightgbm_example.py"],
+    srcs = ["examples/lightgbm_example.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"],
 )
