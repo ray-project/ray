@@ -523,7 +523,7 @@ provider:
         ray_version, python_version = ray._private.utils.compute_version_info()
         assert payload["ray_version"] == ray_version
         assert payload["python_version"] == python_version
-        assert payload["schema_version"] == "0.2"
+        assert payload["schema_version"] == "0.1"
         assert payload["os"] == sys.platform
         assert payload["source"] == "OSS"
         assert payload["cloud_provider"] == "aws"
