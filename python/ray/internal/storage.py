@@ -1,4 +1,5 @@
 from typing import List, TYPE_CHECKING
+from pathlib import Path
 import os
 import urllib
 import importlib
@@ -51,6 +52,10 @@ def get_filesystem() -> ("pyarrow.fs.FileSystem", str):
 def get_client(prefix: str) -> "KVClient":
     """Returns a KV-client (convenience wrapper around underlying filesystem).
 
+    Args:
+        prefix: Path prefix (e.g., "foo", "foo/bar") that defines the sub-directory
+            data will be stored under. All writes will be scoped to this sub-dir.
+
     Examples:
         # Assume ray.init(storage="s3:/bucket/cluster_1/storage")
         >>> client = storage.get_client("foo")
@@ -76,7 +81,7 @@ class KVClient:
     def __init__(self, fs: "pyarrow.fs.FileSystem", prefix: str):
         """Use storage.get_client() to construct KVClient."""
         self.fs = fs
-        self.prefix = prefix
+        self.root = Path(prefix)
 
     def put(self, path: str, value: bytes) -> None:
         """Save a blob in persistent storage at the given path, if possible.
@@ -91,9 +96,15 @@ class KVClient:
             value: String value to save.
         """
         full_path = self._resolve_path(path)
-        self.fs.create_dir(os.path.dirname(full_path))
-        with self.fs.open_output_stream(full_path) as f:
-            f.write(value)
+        parent_dir = os.path.dirname(full_path)
+        try:
+            with self.fs.open_output_stream(full_path) as f:
+                f.write(value)
+        except FileNotFoundError:
+            # Directory likely doesn't exist; retry after creating it.
+            self.fs.create_dir(parent_dir)
+            with self.fs.open_output_stream(full_path) as f:
+                f.write(value)
 
     def get(self, path: str) -> bytes:
         """Load a blob from persistent storage at the given path, if possible.
@@ -208,8 +219,9 @@ class KVClient:
         return files
 
     def _resolve_path(self, path: str) -> str:
-        # TODO protect against traversal attacks
-        return os.path.join(self.prefix, path)
+        joined = self.root.joinpath(path).resolve()
+        joined.resolve().relative_to(self.root)
+        return str(joined)
 
 
 def _init_storage(storage_uri: str, is_head: bool):

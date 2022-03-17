@@ -32,10 +32,10 @@ def test_get_custom_filesystem(shutdown_only, tmp_path):
 
 def test_get_filesystem_s3(shutdown_only):
     # TODO(ekl) we could use moto to test the API directly against S3 APIs. For now,
-    # hook a bit more into the internals to test the S3 path.
+    # hook a little into the internals to test the S3 path.
     ray.init(storage=None)
-    storage.impl._init_storage("s3://bucket/foo/bar", False)
-    fs, prefix = storage.impl._init_filesystem(
+    storage._init_storage("s3://bucket/foo/bar", False)
+    fs, prefix = storage._init_filesystem(
         create_valid_file=False, check_valid_file=False
     )
     assert prefix == "bucket/foo/bar", prefix
@@ -69,43 +69,58 @@ def test_get_filesystem_remote_workers(shutdown_only, tmp_path):
 
 
 def test_put_get(shutdown_only, tmp_path):
-    path = os.path.join(str(tmp_path), "foo/bar")
+    path = str(tmp_path)
     ray.init(storage=path, num_gpus=1)
-    storage.put("ns", "foo/bar", b"hello")
-    storage.put("ns", "baz", b"goodbye")
-    storage.put("ns2", "baz", b"goodbye!")
-    assert storage.get("ns", "foo/bar") == b"hello"
-    assert storage.get("ns", "baz") == b"goodbye"
-    assert storage.get("ns2", "baz") == b"goodbye!"
+    client = storage.get_client("ns")
+    client2 = storage.get_client("ns2")
+    client.put("foo/bar", b"hello")
+    client.put("baz", b"goodbye")
+    client2.put("baz", b"goodbye!")
+    assert client.get("foo/bar") == b"hello"
+    assert client.get("baz") == b"goodbye"
+    assert client2.get("baz") == b"goodbye!"
 
-    storage.delete("ns", "baz")
-    assert storage.get("ns", "baz") is None
+    client.delete("baz")
+    assert client.get("baz") is None
+
+
+def test_directory_traversal_attack(shutdown_only, tmp_path):
+    path = str(tmp_path)
+    ray.init(storage=path, num_gpus=1)
+    client = storage.get_client("foo")
+    client.put("data", b"hello")
+    client2 = storage.get_client("foo/bar")
+    # Should not be able to access '../data'.
+    with pytest.raises(ValueError):
+        client2.get("../data")
 
 
 def test_list_basic(shutdown_only, tmp_path):
-    path = os.path.join(str(tmp_path), "foo/bar")
+    path = str(tmp_path)
     ray.init(storage=path, num_gpus=1)
-    storage.put("ns", "foo/bar1", b"hello")
-    storage.put("ns", "foo/bar2", b"hello")
-    storage.put("ns", "baz/baz1", b"goodbye!")
-    d1 = storage.list("ns", "")
+    client = storage.get_client("ns")
+    client.put("foo/bar1", b"hello")
+    client.put("foo/bar2", b"hello")
+    client.put("baz/baz1", b"goodbye!")
+    d1 = client.list("")
     assert sorted([f.base_name for f in d1]) == ["baz", "foo"], d1
-    d2 = storage.list("ns", "foo")
+    d2 = client.list("foo")
     assert sorted([f.base_name for f in d2]) == ["bar1", "bar2"], d2
     with pytest.raises(FileNotFoundError):
-        storage.list("ns", "invalid")
+        client.list("invalid")
     with pytest.raises(NotADirectoryError):
-        storage.list("ns", "foo/bar1")
+        client.list("foo/bar1")
 
 
 def test_get_info_basic(shutdown_only, tmp_path):
-    path = os.path.join(str(tmp_path), "foo/bar")
+    path = str(tmp_path)
     ray.init(storage=path, num_gpus=1)
-    storage.put("ns", "foo/bar1", b"hello")
-    assert storage.get_info("ns", "foo/bar1").base_name == "bar1"
-    assert storage.get_info("ns", "foo/bar2") is None
-    assert storage.get_info("ns", "foo").base_name == "foo"
-    assert storage.get_info("ns", "").base_name == ""
+    client = storage.get_client("ns")
+    client.put("foo/bar1", b"hello")
+    assert client.get_info("foo/bar1").base_name == "bar1"
+    assert client.get_info("foo/bar2") is None
+    assert client.get_info("foo").base_name == "foo"
+    assert client.get_info("").base_name == ""
 
 
 if __name__ == "__main__":
