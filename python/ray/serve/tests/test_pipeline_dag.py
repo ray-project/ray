@@ -125,32 +125,36 @@ class NoargDriver:
         return await self.dag.remote()
 
 
-def test_single_func_no_input(serve_instance):
+@pytest.mark.parametrize("use_build", [False, True])
+def test_single_func_no_input(serve_instance, use_build):
     dag = fn_hello.bind()
     serve_dag = NoargDriver.bind(dag)
 
-    handle = serve.run(serve_dag)
+    handle = serve.run(maybe_build(serve_dag, use_build))
     assert ray.get(handle.remote()) == "hello"
 
 
-def test_single_func_deployment_dag(serve_instance):
+@pytest.mark.parametrize("use_build", [False, True])
+def test_single_func_deployment_dag(serve_instance, use_build):
     with InputNode() as dag_input:
         dag = combine.bind(dag_input[0], dag_input[1], kwargs_output=1)
         serve_dag = Driver.bind(dag)
-    handle = serve.run(serve_dag)
+    handle = serve.run(maybe_build(serve_dag, use_build))
     assert ray.get(handle.remote([1, 2])) == 4
 
 
-def test_simple_class_with_class_method(serve_instance):
+@pytest.mark.parametrize("use_build", [False, True])
+def test_simple_class_with_class_method(serve_instance, use_build):
     with InputNode() as dag_input:
         model = Model.bind(2, ratio=0.3)
         dag = model.forward.bind(dag_input)
         serve_dag = Driver.bind(dag)
-    handle = serve.run(serve_dag)
+    handle = serve.run(maybe_build(serve_dag, use_build))
     assert ray.get(handle.remote(1)) == 0.6
 
 
-def test_func_class_with_class_method(serve_instance):
+@pytest.mark.parametrize("use_build", [False, True])
+def test_func_class_with_class_method(serve_instance, use_build):
     with InputNode() as dag_input:
         m1 = Model.bind(1)
         m2 = Model.bind(2)
@@ -159,11 +163,12 @@ def test_func_class_with_class_method(serve_instance):
         combine_output = combine.bind(m1_output, m2_output, kwargs_output=dag_input[2])
         serve_dag = Driver.bind(combine_output)
 
-    handle = serve.run(serve_dag)
+    handle = serve.run(maybe_build(serve_dag, use_build))
     assert ray.get(handle.remote([1, 2, 3])) == 8
 
 
-def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
+@pytest.mark.parametrize("use_build", [False, True])
+def test_multi_instantiation_class_deployment_in_init_args(serve_instance, use_build):
     with InputNode() as dag_input:
         m1 = Model.bind(2)
         m2 = Model.bind(3)
@@ -171,22 +176,24 @@ def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
         combine_output = combine.__call__.bind(dag_input)
         serve_dag = Driver.bind(combine_output)
 
-    handle = serve.run(serve_dag)
+    handle = serve.run(maybe_build(serve_dag, use_build))
     assert ray.get(handle.remote(1)) == 5
 
 
-def test_shared_deployment_handle(serve_instance):
+@pytest.mark.parametrize("use_build", [False, True])
+def test_shared_deployment_handle(serve_instance, use_build):
     with InputNode() as dag_input:
         m = Model.bind(2)
         combine = Combine.bind(m, m2=m)
         combine_output = combine.__call__.bind(dag_input)
         serve_dag = Driver.bind(combine_output)
 
-    handle = serve.run(serve_dag)
+    handle = serve.run(maybe_build(serve_dag, use_build))
     assert ray.get(handle.remote(1)) == 4
 
 
-def test_multi_instantiation_class_nested_deployment_arg_dag(serve_instance):
+@pytest.mark.parametrize("use_build", [False, True])
+def test_multi_instantiation_class_nested_deployment_arg_dag(serve_instance, use_build):
     with InputNode() as dag_input:
         m1 = Model.bind(2)
         m2 = Model.bind(3)
@@ -194,11 +201,11 @@ def test_multi_instantiation_class_nested_deployment_arg_dag(serve_instance):
         output = combine.__call__.bind(dag_input)
         serve_dag = Driver.bind(output)
 
-    handle = serve.run(serve_dag)
+    handle = serve.run(maybe_build(serve_dag, use_build))
     assert ray.get(handle.remote(1)) == 5
 
 
-def test_class_factory(serve_instance):
+def test_class_factory(serve_instance, use_build):
     with InputNode() as _:
         instance = ray.remote(class_factory()).bind(3)
         output = instance.get.bind()
@@ -217,9 +224,10 @@ class Echo:
         return self._s
 
 
-def test_single_node_deploy_success(serve_instance):
+@pytest.mark.parametrize("use_build", [False, True])
+def test_single_node_deploy_success(serve_instance, use_build):
     m1 = Adder.bind(1)
-    handle = serve.run(m1)
+    handle = serve.run(maybe_build(m1, use_build))
     assert ray.get(handle.remote(41)) == 42
 
 
