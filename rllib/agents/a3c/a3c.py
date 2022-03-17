@@ -132,17 +132,24 @@ class A3CTrainer(Trainer):
         # update that particular worker's weights.
         global_vars = None
         learner_info_builder = LearnerInfoBuilder(num_devices=1)
-        for worker, result in async_results.items():
-            # Apply gradients to local worker.
-            with self._timers[APPLY_GRADS_TIMER]:
-                local_worker.apply_gradients(result["grads"])
-            self._timers[APPLY_GRADS_TIMER].push_units_processed(result["agent_steps"])
+        for worker, results in async_results.items():
+            for result in results:
+                # Apply gradients to local worker.
+                with self._timers[APPLY_GRADS_TIMER]:
+                    local_worker.apply_gradients(result["grads"])
+                self._timers[APPLY_GRADS_TIMER].push_units_processed(
+                    result["agent_steps"]
+                )
 
-            # Update all step counters.
-            self._counters[NUM_AGENT_STEPS_SAMPLED] += result["agent_steps"]
-            self._counters[NUM_ENV_STEPS_SAMPLED] += result["env_steps"]
-            self._counters[NUM_AGENT_STEPS_TRAINED] += result["agent_steps"]
-            self._counters[NUM_ENV_STEPS_TRAINED] += result["env_steps"]
+                # Update all step counters.
+                self._counters[NUM_AGENT_STEPS_SAMPLED] += result["agent_steps"]
+                self._counters[NUM_ENV_STEPS_SAMPLED] += result["env_steps"]
+                self._counters[NUM_AGENT_STEPS_TRAINED] += result["agent_steps"]
+                self._counters[NUM_ENV_STEPS_TRAINED] += result["env_steps"]
+
+                learner_info_builder.add_learn_on_batch_results_multi_agent(
+                    result["infos"]
+                )
 
             # Create current global vars.
             global_vars = {
@@ -153,8 +160,6 @@ class A3CTrainer(Trainer):
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 weights = local_worker.get_weights(local_worker.get_policies_to_train())
                 worker.set_weights.remote(weights, global_vars)
-
-            learner_info_builder.add_learn_on_batch_results_multi_agent(result["infos"])
 
         # Update global vars of the local worker.
         if global_vars:
