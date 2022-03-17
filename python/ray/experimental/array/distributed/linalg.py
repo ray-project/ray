@@ -25,7 +25,7 @@ def tsqr(a):
     """
     if len(a.shape) != 2:
         raise Exception(
-            "tsqr requires len(a.shape) == 2, but a.shape is " "{}".format(a.shape)
+            "tsqr requires len(a.shape) == 2, but a.shape is {}".format(a.shape)
         )
     if a.num_blocks[1] != 1:
         raise Exception(

@@ -1404,7 +1404,7 @@ def connect(
     startup_token=0,
     ray_debugger_external=False,
 ):
-    """Connect this worker to the raylet, to Plasma, and to Redis.
+    """Connect this worker to the raylet, to Plasma, and to GCS.
 
     Args:
         node (ray.node.Node): The node to connect.
@@ -1434,10 +1434,6 @@ def connect(
     except io.UnsupportedOperation:
         pass  # ignore
 
-    # Create a Redis client to primary.
-    # The Redis client can safely be shared between threads. However,
-    # that is not true of Redis pubsub clients. See the documentation at
-    # https://github.com/andymccurdy/redis-py#thread-safety.
     worker.gcs_client = node.get_gcs_client()
     assert worker.gcs_client is not None
     _initialize_internal_kv(worker.gcs_client)
@@ -1489,8 +1485,6 @@ def connect(
             ray._private.utils.publish_error_to_driver(
                 ray_constants.VERSION_MISMATCH_PUSH_ERROR,
                 traceback_str,
-                job_id=None,
-                redis_client=worker.redis_client,
                 gcs_publisher=worker.gcs_publisher,
             )
 
