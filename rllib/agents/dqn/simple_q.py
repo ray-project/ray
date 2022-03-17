@@ -15,7 +15,7 @@ from typing import Optional, Type
 from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
 from ray.rllib.agents.dqn.simple_q_torch_policy import SimpleQTorchPolicy
 from ray.rllib.agents.trainer import Trainer, with_common_config
-from ray.rllib.execution.common import SYNCH_WORKER_WEIGHTS_TIMER
+from ray.rllib.utils.metrics import SYNCH_WORKER_WEIGHTS_TIMER
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
@@ -274,13 +274,16 @@ class SimpleQTrainer(Trainer):
         num_env_steps = 0
         num_agent_steps = 0
 
-        new_sample_batches = synchronous_parallel_sample(self.workers)
-        sample_batches.extend(new_sample_batches)
-        num_env_steps += sum(len(s) for s in new_sample_batches)
-        num_agent_steps += sum(
-            len(s) if isinstance(s, SampleBatch) else s.agent_steps()
-            for s in new_sample_batches
-        )
+        while (not self._by_agent_steps and num_env_steps < batch_size) or (
+            self._by_agent_steps and num_agent_steps < batch_size
+        ):
+            new_sample_batches = synchronous_parallel_sample(self.workers)
+            sample_batches.extend(new_sample_batches)
+            num_env_steps += sum(len(s) for s in new_sample_batches)
+            num_agent_steps += sum(
+                len(s) if isinstance(s, SampleBatch) else s.agent_steps()
+                for s in new_sample_batches
+            )
         self._counters[NUM_ENV_STEPS_SAMPLED] += num_env_steps
         self._counters[NUM_AGENT_STEPS_SAMPLED] += num_agent_steps
 
