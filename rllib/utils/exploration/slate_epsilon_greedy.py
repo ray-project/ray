@@ -5,7 +5,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.epsilon_greedy import EpsilonGreedy
 from ray.rllib.utils.exploration.exploration import TensorType
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.torch_utils import FLOAT_MIN
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
