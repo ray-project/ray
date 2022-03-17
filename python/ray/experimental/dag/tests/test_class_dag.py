@@ -247,13 +247,15 @@ def test_unsupported_bind():
             return "hello"
 
     with pytest.raises(
-        AttributeError, match=r"Please do not call \.bind\(\) on a DAGNode IR object"
+        AttributeError,
+        match="'Actor' has no attribute 'bind'",
     ):
-        _ = Actor.bind().bind()
+        actor = Actor.bind()
+        _ = actor.bind()
 
     with pytest.raises(
         AttributeError,
-        match=r"Please do not call \.remote\(\) on a UnboundClassMethodNode",
+        match=r"\.remote\(\) cannot be used on ClassMethodNodes",
     ):
         actor = Actor.bind()
         _ = actor.ping.remote()
@@ -265,18 +267,14 @@ def test_unsupported_remote():
         def ping(self):
             return "hello"
 
-    with pytest.raises(
-        AttributeError, match=r"Please do not call \.remote\(\) on a DAGNode IR object"
-    ):
+    with pytest.raises(AttributeError, match="'Actor' has no attribute 'remote'"):
         _ = Actor.bind().remote()
 
     @ray.remote
     def func():
         return 1
 
-    with pytest.raises(
-        AttributeError, match=r"Please do not call \.remote\(\) on a DAGNode IR object"
-    ):
+    with pytest.raises(AttributeError, match=r"\.remote\(\) cannot be used on"):
         _ = func.bind().remote()
 
 

@@ -278,21 +278,19 @@ class DAGNode:
         """
         raise ValueError(f"DAGNode cannot be serialized. DAGNode: {str(self)}")
 
-    def bind(self, *args, **kwargs):
-        raise AttributeError(
-            "All DAGNode types act as intermediate representation (IR) of a "
-            "DAG that can only be produced by .bind() on supported class or "
-            "function, and executed via dag.execute(input). Please do not call "
-            f".bind() on a DAGNode IR object of type: {type(self)}"
-        )
-
-    def remote(self, *args, **kwargs):
-        raise AttributeError(
-            "All DAGNode types act as intermediate representation (IR) of a "
-            "DAG that can only be produced by .bind() on supported class or "
-            "function, and executed via dag.execute(input). Please do not call "
-            f".remote() on a DAGNode IR object of type: {type(self)}"
-        )
+    def __getattr__(self, attr: str):
+        if attr == "bind":
+            raise AttributeError(
+                f".bind() cannot be used again on {type(self)} "
+                f"(args: {self.get_args()}, kwargs: {self.get_kwargs()})."
+            )
+        elif attr == "remote":
+            raise AttributeError(
+                ".remote() cannot be used on {type(self)}. To execute the task "
+                "graph for this node, use .execute()."
+            )
+        else:
+            return self.__getattribute__(attr)
 
     def to_json_base(
         self, encoder_cls: json.JSONEncoder, dag_node_type: str
