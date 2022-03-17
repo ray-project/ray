@@ -192,7 +192,7 @@ class JobSubmissionClient(SubmissionClient):
             job_id: The ID of the job whose information is being requested.
 
         Returns:
-            The information.
+            The JobInfo for the job.
 
         Raises:
             RuntimeError: If the request to the job server fails.
