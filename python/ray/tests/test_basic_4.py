@@ -159,6 +159,41 @@ def test_function_import_without_importer_thread(shutdown_only):
 
 
 @pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Fork is only supported on *nix systems.",
+)
+def test_fork_support(shutdown_only):
+    """Test that fork support works."""
+    ray.init(
+        _system_config={
+            "support_fork": True,
+        },
+    )
+
+    @ray.remote
+    def pool_factorial():
+        import multiprocessing
+        import math
+
+        ctx = multiprocessing.get_context("fork")
+        with ctx.Pool(processes=4) as pool:
+            return sum(pool.map(math.factorial, range(8)))
+
+    @ray.remote
+    def g():
+        import threading
+
+        assert threading.get_ident() == threading.main_thread().ident
+        # Make sure this is the only Python thread, because forking does not
+        # work well under multi-threading.
+        assert threading.active_count() == 1
+
+        return ray.get(pool_factorial.remote())
+
+    assert ray.get(g.remote()) == 5914
+
+
+@pytest.mark.skipif(
     sys.platform not in ["win32", "darwin"],
     reason="Only listen on localhost by default on mac and windows.",
 )

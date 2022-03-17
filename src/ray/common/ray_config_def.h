@@ -323,6 +323,10 @@ RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
 /// they are needed.
 RAY_CONFIG(bool, start_python_importer_thread, true)
 
+/// Determines if forking in Ray actors / tasks are supported.
+/// Note that this only enables forking in workers, but not drivers.
+RAY_CONFIG(bool, support_fork, false)
+
 /// Maximum timeout for GCS reconnection in seconds.
 /// Each reconnection ping will be retried every 1 second.
 RAY_CONFIG(int32_t, gcs_rpc_server_reconnect_timeout_s, 60)

@@ -386,6 +386,14 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
         absl::Base64Escape(RayConfig::instance().object_spilling_config()));
   }
 
+  if (language == Language::PYTHON) {
+    worker_command_args.push_back("--startup-token=" +
+                                  std::to_string(worker_startup_token_counter_));
+  } else if (language == Language::CPP) {
+    worker_command_args.push_back("--startup_token=" +
+                                  std::to_string(worker_startup_token_counter_));
+  }
+
   ProcessEnvironment env;
   if (!IsIOWorkerType(worker_type)) {
     // We pass the job ID to worker processes via an environment variable, so we don't
@@ -459,12 +467,12 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
     env.insert({"SPT_NOENV", "1"});
   }
 
-  if (language == Language::PYTHON) {
-    worker_command_args.push_back("--startup-token=" +
-                                  std::to_string(worker_startup_token_counter_));
-  } else if (language == Language::CPP) {
-    worker_command_args.push_back("--startup_token=" +
-                                  std::to_string(worker_startup_token_counter_));
+  if (RayConfig::instance().support_fork()) {
+    // Support forking in gRPC.
+    env.insert({"GRPC_ENABLE_FORK_SUPPORT", "True"});
+    env.insert({"GRPC_POLL_STRATEGY", "poll"});
+    // Make sure only the main thread is running in Python workers.
+    env.insert({"RAY_start_python_importer_thread", "0"});
   }
 
   // Start a process and measure the startup time.
