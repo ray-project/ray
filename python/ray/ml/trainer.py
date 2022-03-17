@@ -82,7 +82,8 @@ class Trainer(abc.ABC):
                         # preprocessed by self.preprocessor
                         dataset = self.datasets["train"]
 
-                        torch_ds = dataset.to_torch()
+                        torch_ds = dataset.to_torch(label_column="y")
+                        loss_fn = torch.nn.MSELoss()
 
                         for epoch_idx in range(10):
                             loss = 0
@@ -90,7 +91,7 @@ class Trainer(abc.ABC):
                             for X, y in iter(torch_ds):
                                 # Compute prediction error
                                 pred = self.model(X)
-                                batch_loss = torch.nn.MSELoss(pred, y)
+                                batch_loss = loss_fn(pred, y.float())
 
                                 # Backpropagation
                                 self.optimizer.zero_grad()
@@ -114,7 +115,8 @@ class Trainer(abc.ABC):
 
                 import ray
 
-                train_dataset = ray.data.from_items([1, 2, 3])
+                train_dataset = ray.data.from_items(
+                    [{"x": i, "y": i} for i in range(3)])
                 my_trainer = MyPytorchTrainer(datasets={"train": train_dataset})
                 result = my_trainer.fit()
 
