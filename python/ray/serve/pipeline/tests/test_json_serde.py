@@ -250,7 +250,7 @@ def _test_deployment_json_serde_helper(
     deserialized_serve_root_dag_node = json.loads(
         json_serialized, object_hook=dagnode_from_json
     )
-    deserialized_deployments = extract_deployments_from_serve_dag(
+    deserialized_deployments, _ = extract_deployments_from_serve_dag(
         deserialized_serve_root_dag_node
     )
     assert len(deserialized_deployments) == expected_num_deployments

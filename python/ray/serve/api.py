@@ -1768,7 +1768,16 @@ def run(
     ]
 
     client.deploy_group(parameter_group, _blocking=True)
-    return deployments[-1].get_handle()
+
+    serve_handle = []
+    for deployment in deployments:
+        if deployment.route_prefix == "/":
+            serve_handle.append(deployment.get_handle())
+    assert len(serve_handle) == 1, (
+        "Serve Application should have one and only one deployment with "
+        f"default '/' prefix. {len(serve_handle)} found."
+    )
+    return serve_handle[0]
 
 
 @PublicAPI(stability="alpha")

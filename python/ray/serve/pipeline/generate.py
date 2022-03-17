@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 import threading
 
 from ray.experimental.dag import (
@@ -106,7 +106,7 @@ def transform_ray_dag_to_serve_dag(dag_node):
 
 def extract_deployments_from_serve_dag(
     serve_dag_root: DAGNode,
-) -> List[Deployment]:
+) -> Tuple[List[Deployment], Deployment]:
     """Extract deployment python objects from a transformed serve DAG. Should
     only be called after `transform_ray_dag_to_serve_dag`, otherwise nothing
     to return.
@@ -114,21 +114,28 @@ def extract_deployments_from_serve_dag(
     Args:
         serve_dag_root (DAGNode): Transformed serve dag root node.
     Returns:
-        List[Deployment]: List of deployment python objects fetched from serve
-            dag.
+        body_deployments (List[Deployment]): List of deployment python objects
+            fetched from serve dag.
+        root_deployment (List[Deployment]): Root deployment that is exposed to
+            user via http. Might be empty if user has a ray dag that uses a
+            function or class method node as entrypoint.
     """
-    deployments = {}
+    body_deployments = {}
+    root_deployment = []
 
     def extractor(dag_node):
         if isinstance(dag_node, DeploymentNode):
-            deployment = dag_node._deployment
-            # In case same deployment is used in multiple DAGNodes
-            deployments[deployment.name] = deployment
+            if dag_node.get_stable_uuid() == serve_dag_root.get_stable_uuid():
+                root_deployment.append(dag_node._deployment)
+            else:
+                deployment = dag_node._deployment
+                # In case same deployment is used in multiple DAGNodes
+                body_deployments[deployment.name] = deployment
         return dag_node
 
     serve_dag_root.apply_recursive(extractor)
 
-    return list(deployments.values())
+    return list(body_deployments.values()), root_deployment
 
 
 def get_pipeline_input_node(serve_dag_root_node: DAGNode):

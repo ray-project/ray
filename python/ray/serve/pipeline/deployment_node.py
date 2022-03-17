@@ -84,6 +84,7 @@ class DeploymentNode(DAGNode):
                 ),
                 init_args=replaced_deployment_init_args,
                 init_kwargs=replaced_deployment_init_kwargs,
+                route_prefix=None,  # Disable HTTP in all DAGNodes by default
             )
         else:
             self._deployment: Deployment = Deployment(
@@ -94,6 +95,7 @@ class DeploymentNode(DAGNode):
                 init_args=replaced_deployment_init_args,
                 init_kwargs=replaced_deployment_init_kwargs,
                 ray_actor_options=ray_actor_options,
+                route_prefix=None,  # Disable HTTP in all DAGNodes by default
                 _internal=True,
             )
         self._deployment_handle: Union[

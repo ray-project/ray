@@ -1,6 +1,7 @@
 import pytest
 import os
 import sys
+import requests
 from typing import TypeVar, Any
 
 import numpy as np
@@ -125,6 +126,7 @@ def test_single_func_no_input(serve_instance):
 
     handle = serve.run(serve_dag)
     assert ray.get(handle.remote()) == "hello"
+    assert requests.get("http://127.0.0.1:8000/").text == "hello"
 
 
 def test_single_func_deployment_dag(serve_instance):
@@ -133,6 +135,7 @@ def test_single_func_deployment_dag(serve_instance):
         serve_dag = Driver.bind(dag)
     handle = serve.run(serve_dag)
     assert ray.get(handle.remote([1, 2])) == 4
+    # TODO (simon): ModelWrapper and HTTP adapter ?
 
 
 def test_simple_class_with_class_method(serve_instance):
@@ -155,6 +158,7 @@ def test_func_class_with_class_method(serve_instance):
 
     handle = serve.run(serve_dag)
     assert ray.get(handle.remote([1, 2, 3])) == 8
+    # TODO (simon): ModelWrapper and HTTP adapter ?
 
 
 def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
@@ -200,6 +204,7 @@ def test_class_factory(serve_instance):
 
     handle = serve.run(serve_dag)
     assert ray.get(handle.remote()) == 3
+    assert requests.get("http://127.0.0.1:8000/").text == "3"
 
 
 @serve.deployment

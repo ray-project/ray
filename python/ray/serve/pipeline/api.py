@@ -57,5 +57,12 @@ def build(ray_dag_root_node: DAGNode):
         >>> deployments = serve.pipeline.build(m1) # or just a regular node.
     """
     serve_root_dag = ray_dag_root_node.apply_recursive(transform_ray_dag_to_serve_dag)
-    deployments = extract_deployments_from_serve_dag(serve_root_dag)
-    return deployments
+    body_deployments, root_deployment = extract_deployments_from_serve_dag(
+        serve_root_dag
+    )
+    # Found user facing DeploymentNode / DeploymentFunctionNode as ingress
+    if len(root_deployment) == 1:
+        # Only the root deployment exposes HTTP with default prefix of "/"
+        body_deployments.append(root_deployment[0].options(route_prefix="/"))
+
+    return body_deployments
