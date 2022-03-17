@@ -2484,24 +2484,13 @@ class Trainer(Trainable):
                 "timesteps_per_iteration"
             ]
 
-        # Metrics settings.
-        if config["metrics_smoothing_episodes"] != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="metrics_smoothing_episodes",
-                new="metrics_num_episodes_for_smoothing",
-                error=False,
-            )
-            config["metrics_num_episodes_for_smoothing"] = config[
-                "metrics_smoothing_episodes"
-            ]
-
         # Evaluation settings.
 
         # Deprecated setting: `evaluation_num_episodes`.
         if config["evaluation_num_episodes"] != DEPRECATED_VALUE:
             deprecation_warning(
                 old="evaluation_num_episodes",
-                new="`evaluation_duration` and `evaluation_duration_unit=" "episodes`",
+                new="`evaluation_duration` and `evaluation_duration_unit=episodes`",
                 error=False,
             )
             config["evaluation_duration"] = config["evaluation_num_episodes"]
@@ -2687,6 +2676,11 @@ class Trainer(Trainable):
             remote_state = ray.put(state["worker"])
             for r in self.workers.remote_workers():
                 r.restore.remote(remote_state)
+            if self.evaluation_workers:
+                # If evaluation workers are used, also restore the policies
+                # there in case they are used for evaluation purpose.
+                for r in self.evaluation_workers.remote_workers():
+                    r.restore.remote(remote_state)
         # If necessary, restore replay data as well.
         if self.local_replay_buffer is not None:
             # TODO: Experimental functionality: Restore contents of replay

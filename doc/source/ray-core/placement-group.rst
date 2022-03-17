@@ -3,22 +3,19 @@ Placement Groups
 
 .. _ray-placement-group-doc-ref:
 
-Placement groups allow users to atomically reserve groups of resources across multiple nodes (i.e., gang scheduling). They can be then used to schedule Ray tasks and actors to be packed as close as possible for locality (PACK), or spread apart (SPREAD).
+Placement groups allow users to atomically reserve groups of resources across multiple nodes (i.e., gang scheduling). They can be then used to schedule Ray tasks and actors packed as close as possible for locality (PACK), or spread apart (SPREAD). Placement groups are generally used for gang-scheduling actors, but also support tasks.
 
 Java demo code in this documentation can be found here `<https://github.com/ray-project/ray/blob/master/java/test/src/main/java/io/ray/docdemo/PlacementGroupDemo.java>`__.
 
 Here are some use cases:
 
 - **Gang Scheduling**: Your application requires all tasks/actors to be scheduled and start at the same time.
-- **Maximizing data locality**: You'd like to place or schedule your tasks and actors close to your data to avoid object transfer overheads.
-- **Load balancing**: To improve application availability and avoid resource overload, you'd like to place your actors or tasks into different physical machines as much as possible.
-
-To learn more about production use cases, check out the :ref:`examples <ray-placement-group-examples-ref>`.
+- **Maximizing data locality**: You'd like to place or schedule your actors close to your data to avoid object transfer overheads.
 
 Key Concepts
 ------------
 
-A **bundle** is a collection of "resources", i.e. {"GPU": 4}.
+A **bundle** is a collection of "resources", i.e. `{"GPU": 4}`.
 
 - A bundle must be able to fit on a single node on the Ray cluster.
 - Bundles are then placed according to the "placement group strategy" across nodes on the cluster.
@@ -701,7 +698,7 @@ Tips for Using Placement Groups
 -------------------------------
 - Learn the :ref:`lifecycle <ray-placement-group-lifecycle-ref>` of placement groups.
 - Learn the :ref:`fault tolerance <ray-placement-group-ft-ref>` of placement groups.
-- See more :ref:`examples <ray-placement-group-examples-ref>` to learn real world use cases of placement group APIs.
+
 
 Lifecycle
 ---------

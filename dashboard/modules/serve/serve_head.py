@@ -1,17 +1,16 @@
 from aiohttp.web import Request, Response
-import json
 import logging
 
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as optional_utils
 
 from ray import serve
-from ray.serve.api import deploy_group
-from ray.dashboard.modules.serve.schema import (
-    ServeInstanceSchema,
-    serve_instance_to_schema,
-    schema_to_serve_instance,
+from ray.serve.application import Application
+from ray.serve.schema import (
+    serve_application_to_schema,
+    serve_application_status_to_schema,
 )
+from ray.serve.api import get_deployment_statuses
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -27,31 +26,37 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def get_all_deployments(self, req: Request) -> Response:
         deployments = list(serve.list_deployments().values())
-        serve_instance_schema = serve_instance_to_schema(deployments)
+        serve_application_schema = serve_application_to_schema(deployments=deployments)
         return Response(
-            text=json.dumps(serve_instance_schema.json()),
+            text=serve_application_schema.json(),
+            content_type="application/json",
+        )
+
+    @routes.get("/api/serve/deployments/status")
+    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
+    async def get_all_deployment_statuses(self, req: Request) -> Response:
+        serve_application_status_schema = serve_application_status_to_schema(
+            get_deployment_statuses()
+        )
+        return Response(
+            text=serve_application_status_schema.json(),
             content_type="application/json",
         )
 
     @routes.delete("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
-    async def delete_serve_instance(self, req: Request) -> Response:
+    async def delete_serve_application(self, req: Request) -> Response:
         serve.shutdown()
         return Response()
 
     @routes.put("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def put_all_deployments(self, req: Request) -> Response:
-        serve_instance_json = await req.json()
-        serve_instance_schema = ServeInstanceSchema.parse_raw(
-            json.dumps(serve_instance_json)
-        )
-        deployments = schema_to_serve_instance(serve_instance_schema)
-
-        deploy_group(deployments, _blocking=False)
+        app = Application.from_dict(await req.json())
+        app.deploy(blocking=False)
 
         new_names = set()
-        for deployment in serve_instance_schema.deployments:
+        for deployment in app:
             new_names.add(deployment.name)
 
         all_deployments = serve.list_deployments()

@@ -16,13 +16,15 @@ from shlex import quote
 from ray.tune.error import TuneError
 from ray.util.annotations import PublicAPI
 from ray.util.debug import log_once
+from ray.util.ml_utils.cloud import (
+    S3_PREFIX,
+    GS_PREFIX,
+    HDFS_PREFIX,
+    ALLOWED_REMOTE_PREFIXES,
+)
 
 logger = logging.getLogger(__name__)
 
-S3_PREFIX = "s3://"
-GS_PREFIX = "gs://"
-HDFS_PREFIX = "hdfs://"
-ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GS_PREFIX, HDFS_PREFIX)
 
 noop_template = ": {target}"  # noop in bash
 
@@ -74,13 +76,9 @@ def get_cloud_sync_client(remote_path) -> "CommandBasedClient":
                 "Upload uri starting with '{}' requires awscli tool"
                 " to be installed".format(S3_PREFIX)
             )
-        sync_up_template = (
-            "aws s3 sync {source} {target} " "--only-show-errors {options}"
-        )
+        sync_up_template = "aws s3 sync {source} {target} --only-show-errors {options}"
         sync_down_template = sync_up_template
-        delete_template = (
-            "aws s3 rm {target} --recursive " "--only-show-errors {options}"
-        )
+        delete_template = "aws s3 rm {target} --recursive --only-show-errors {options}"
         exclude_template = "--exclude '{pattern}'"
     elif remote_path.startswith(GS_PREFIX):
         if not distutils.spawn.find_executable("gsutil"):

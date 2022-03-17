@@ -168,14 +168,14 @@ class TestDDPG(unittest.TestCase):
             "_model.0.bias",
             "default_policy/actor_out/kernel": "policy_model.action_out."
             "_model.0.weight",
-            "default_policy/actor_out/bias": "policy_model.action_out." "_model.0.bias",
+            "default_policy/actor_out/bias": "policy_model.action_out._model.0.bias",
             "default_policy/sequential/q_hidden_0/kernel": "q_model.q_hidden_0"
             "._model.0.weight",
             "default_policy/sequential/q_hidden_0/bias": "q_model.q_hidden_0."
             "_model.0.bias",
             "default_policy/sequential/q_out/kernel": "q_model.q_out._model."
             "0.weight",
-            "default_policy/sequential/q_out/bias": "q_model.q_out._model." "0.bias",
+            "default_policy/sequential/q_out/bias": "q_model.q_out._model.0.bias",
             # -- twin.
             "default_policy/sequential_1/twin_q_hidden_0/kernel": "twin_"
             "q_model.twin_q_hidden_0._model.0.weight",
@@ -200,7 +200,7 @@ class TestDDPG(unittest.TestCase):
             "q_hidden_0._model.0.bias",
             "default_policy/sequential_2/q_out/kernel": "q_model."
             "q_out._model.0.weight",
-            "default_policy/sequential_2/q_out/bias": "q_model." "q_out._model.0.bias",
+            "default_policy/sequential_2/q_out/bias": "q_model.q_out._model.0.bias",
             # -- twin.
             "default_policy/sequential_3/twin_q_hidden_0/kernel": "twin_"
             "q_model.twin_q_hidden_0._model.0.weight",
@@ -405,7 +405,7 @@ class TestDDPG(unittest.TestCase):
                         tf_var = tf_weights[tf_key]
                         # Model.
                         if re.search(
-                            "actor_out_1|actor_hidden_0_1|sequential_" "[23]", tf_key
+                            "actor_out_1|actor_hidden_0_1|sequential_[23]", tf_key
                         ):
                             torch_var = policy.target_model.state_dict()[map_[tf_key]]
                         # Target model.

@@ -23,6 +23,7 @@ async def test_async_handle_serializable(serve_instance):
             output = await ref
             return output
 
+    # Test pickling via ray.remote()
     handle = f.get_handle(sync=False)
 
     task_actor = TaskActor.remote()
@@ -41,6 +42,7 @@ def test_sync_handle_serializable(serve_instance):
     def task(handle):
         return ray.get(handle.remote())
 
+    # Test pickling via ray.remote()
     handle = f.get_handle(sync=True)
     result_ref = task.remote(handle)
     assert ray.get(result_ref) == "hello"

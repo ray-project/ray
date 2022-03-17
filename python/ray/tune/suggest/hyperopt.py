@@ -244,9 +244,7 @@ class HyperOptSearch(Searcher):
                                     "provided. "
                                 )
 
-                            msg += (
-                                "Please make sure the specified category " "is valid."
-                            )
+                            msg += "Please make sure the specified category is valid."
                             raise ValueError(msg) from exc
                         config_dict[key] = idx
 

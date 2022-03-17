@@ -3,7 +3,11 @@
 py_library(
     name = "serve_lib",
     srcs = glob(["**/*.py"], exclude=["tests/**/*.py"]),
-    visibility = ["//python/ray/serve:__subpackages__", "//release:__pkg__"],
+    visibility = [
+        "//python/ray/serve:__pkg__",
+        "//python/ray/serve:__subpackages__",
+        "//release:__pkg__"
+    ],
 )
 
 serve_tests_srcs = glob(["tests/**/*.py"])
@@ -17,7 +21,23 @@ py_test(
 )
 
 py_test(
+    name = "test_application",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_deploy",
+    size = "large",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_deploy_2",
     size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -207,6 +227,14 @@ py_test(
 )
 
 py_test(
+    name = "test_schema",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_standalone",
     size = "large",
     srcs = serve_tests_srcs,
@@ -265,7 +293,7 @@ py_test(
 
 py_test(
     name = "test_cli",
-    size = "medium",
+    size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -278,6 +306,39 @@ py_test(
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
+
+py_test(
+    name = "test_cross_language",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_model_wrappers",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_http_adapters",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_pipeline_dag",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
 
 # Runs test_api and test_failure with injected failures in the controller.
 py_test(
@@ -344,7 +405,7 @@ py_test(
     name = "tutorial_sklearn_ray_overview",
     size = "small",
     main = "quick_start.py",
-    srcs = ["//doc/source/serve/_examples/doc_code:serve_doc_code"],
+    srcs = ["//doc/source/serve/doc_code:serve_doc_code"],
     tags = ["exclusive", "team:serve"],
 )
 
@@ -377,25 +438,26 @@ py_test(
 pipeline_tests_srcs = glob(["pipeline/tests/**/*.py"])
 
 py_test(
-    name = "test_step",
-    size = "small",
+    name = "test_deployment_node",
+    size = "medium",
     srcs = pipeline_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
 py_test(
-    name = "test_pipeline",
-    size = "small",
+    name = "test_generate",
+    size = "medium",
     srcs = pipeline_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
 py_test(
-    name = "test_actor_executor",
-    size = "small",
+    name = "test_json_serde",
+    size = "medium",
     srcs = pipeline_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
+

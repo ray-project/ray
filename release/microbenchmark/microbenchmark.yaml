@@ -1,9 +1,0 @@
-- name: microbenchmark
-  team: core
-  cluster:
-    app_config: app_config.yaml
-    compute_template: tpl_64.yaml
-
-  run:
-    timeout: 900
-    script: OMP_NUM_THREADS=64 RAY_ADDRESS= python run_microbenchmark.py
