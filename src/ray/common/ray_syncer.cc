@@ -167,7 +167,7 @@ void RaySyncer::ClientSyncContext::DoSend() {
   auto client_context = std::make_shared<grpc::ClientContext>();
   auto arena = std::make_shared<google::protobuf::Arena>();
   auto request = google::protobuf::Arena::CreateMessage<RaySyncMessages>(arena.get());
-  auto response = google::protobuf::Arena::CreateMessage<Dummy>(arena.get());
+  auto response = google::protobuf::Arena::CreateMessage<DummyResponse>(arena.get());
 
   std::vector<std::shared_ptr<RaySyncMessage>> holder;
 
