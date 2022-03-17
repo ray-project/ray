@@ -1773,7 +1773,7 @@ class Application:
 @PublicAPI(stability="alpha")
 def run(
     target: Union[DeploymentNode, Application],
-    blocking: bool = True,
+    _blocking: bool = True,
     *,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
@@ -1849,7 +1849,7 @@ def run(
 
         parameter_group.append(deployment_parameters)
 
-    client.deploy_group(parameter_group, _blocking=blocking)
+    client.deploy_group(parameter_group, _blocking=_blocking)
 
     if ingress is not None:
         return ingress.get_handle()

@@ -71,7 +71,7 @@ class TestRun:
         the client to wait until the deployments finish deploying.
         """
 
-        serve.run(Application(deployments), blocking=blocking)
+        serve.run(Application(deployments), _blocking=blocking)
 
         def check_all_deployed():
             try:
@@ -144,7 +144,7 @@ class TestRun:
                 MutualHandles.options(name=deployment_name, init_args=(handle_name,))
             )
 
-        serve.run(Application(deployments), blocking=True)
+        serve.run(Application(deployments), _blocking=True)
 
         for deployment in deployments:
             assert (ray.get(deployment.get_handle().remote("hello"))) == "hello"

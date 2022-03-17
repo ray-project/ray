@@ -53,7 +53,7 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def put_all_deployments(self, req: Request) -> Response:
         app = Application.from_dict(await req.json())
-        serve.run(app, blocking=False)
+        serve.run(app, _blocking=False)
 
         new_names = set()
         for deployment in app.deployments.values():
