@@ -458,9 +458,10 @@ SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
   case rpc::PlacementStrategy::STRICT_SPREAD:
     return SchedulingOptions::BundleStrictSpread();
   default:
-    break;
+    RAY_LOG(FATAL) << "Unsupported scheduling type: "
+                   << rpc::PlacementStrategy_Name(strategy);
   }
-  return SchedulingOptions::BundleSpread();
+  UNREACHABLE;
 }
 
 absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>

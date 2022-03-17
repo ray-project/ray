@@ -23,8 +23,6 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/task/scheduling_resources.h"
-#include "ray/gcs/gcs_client/accessor.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/raylet/scheduling/fixed_point.h"
@@ -55,28 +53,28 @@ class ClusterResourceScheduler {
   /// with the local node.
   ClusterResourceScheduler(scheduling::NodeID local_node_id,
                            const NodeResources &local_node_resources,
-                           gcs::GcsClient &gcs_client);
+                           std::function<bool(scheduling::NodeID)> is_node_available_fn);
 
   ClusterResourceScheduler(
       scheduling::NodeID local_node_id,
       const absl::flat_hash_map<std::string, double> &local_node_resources,
-      gcs::GcsClient &gcs_client,
+      std::function<bool(scheduling::NodeID)> is_node_available,
       std::function<int64_t(void)> get_used_object_store_memory = nullptr,
       std::function<bool(void)> get_pull_manager_at_capacity = nullptr);
 
   /// Schedule the specified resources to the cluster nodes.
   ///
   /// \param resource_request_list The resource request list we're attempting to schedule.
-  /// \param scheduling_options: scheduling options.
-  /// \param schedule_context: The context of current scheduling. Each policy can
+  /// \param options: scheduling options.
+  /// \param context: The context of current scheduling. Each policy can
   /// correspond to a different type of context.
   /// \return `SchedulingResult`, including the
   /// selected nodes if schedule successful, otherwise, it will return an empty vector and
   /// a flag to indicate whether this request can be retry or not.
   SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,
-      SchedulingOptions schedule_options,
-      SchedulingContext *schedule_context);
+      SchedulingOptions options,
+      SchedulingContext *context);
 
   ///  Find a node in the cluster on which we can schedule a given resource request.
   ///  In hybrid mode, see `scheduling_policy.h` for a description of the policy.
@@ -188,8 +186,8 @@ class ClusterResourceScheduler {
 
   /// Identifier of local node.
   scheduling::NodeID local_node_id_;
-  /// Gcs client. It's not owned by this class.
-  gcs::GcsClient *gcs_client_;
+  /// Callback to check if node is available.
+  std::function<bool(scheduling::NodeID)> is_node_available_fn_;
   /// Resources of local node.
   std::unique_ptr<LocalResourceManager> local_resource_manager_;
   /// Resources of the entire cluster.

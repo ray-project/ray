@@ -54,7 +54,7 @@ class ISchedulingPolicy {
  public:
   virtual ~ISchedulingPolicy() = default;
   /// \param resource_request: The resource request we're attempting to schedule.
-  /// \param scheduling_options: scheduling options.
+  /// \param options: scheduling options.
   ///
   /// \return NodeID::Nil() if the task is unfeasible, otherwise the node id
   /// to schedule on.
@@ -66,16 +66,16 @@ class ISchedulingPolicy {
   /// Schedule the specified resources to the cluster nodes.
   ///
   /// \param resource_request_list The resource request list we're attempting to schedule.
-  /// \param scheduling_options: scheduling options.
-  /// \param schedule_context: The context of current scheduling. Each policy can
+  /// \param options: scheduling options.
+  /// \param context: The context of current scheduling. Each policy can
   /// correspond to a different type of context.
   /// \return `SchedulingResult`, including the
   /// selected nodes if schedule successful, otherwise, it will return an empty vector and
   /// a flag to indicate whether this request can be retry or not.
   virtual SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,
-      SchedulingOptions schedule_options,
-      SchedulingContext *schedule_context) {
+      SchedulingOptions options,
+      SchedulingContext *context) {
     return SchedulingResult();
   }
 };

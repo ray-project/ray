@@ -22,9 +22,9 @@
 namespace ray {
 namespace raylet_scheduling_policy {
 
-class BundleSpreadSchedulingPolicy : public ISchedulingPolicy {
+class BundlePackSchedulingPolicy : public ISchedulingPolicy {
  public:
-  explicit BundleSpreadSchedulingPolicy(
+  explicit BundlePackSchedulingPolicy(
       const absl::flat_hash_map<scheduling::NodeID, Node> &nodes,
       std::function<bool(scheduling::NodeID)> is_node_available,
       std::function<bool(scheduling::NodeID, const ResourceRequest &)>

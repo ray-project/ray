@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/raylet/scheduling/policy/bundle_spread_scheduling_policy.h"
+#include "ray/raylet/scheduling/policy/bundle_scheduling_policy.h"
 
 namespace ray {
 namespace raylet_scheduling_policy {

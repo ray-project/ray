@@ -40,14 +40,25 @@ ClusterResourceScheduler::ClusterResourceScheduler()
       std::make_unique<raylet_scheduling_policy::CompositeSchedulingPolicy>(
           local_node_id_,
           cluster_resource_manager_->GetResourceView(),
-          [this](auto node_id) { return this->NodeAlive(node_id); });
+          /*is_node_available_fn*/
+          [this](auto node_id) { return this->NodeAlive(node_id); },
+          /*add_node_available_resources_fn*/
+          [this](scheduling::NodeID node_id, const ResourceRequest &resource_request) {
+            return cluster_resource_manager_->AddNodeAvailableResources(node_id,
+                                                                        resource_request);
+          },
+          /*subtract_node_available_resources_fn*/
+          [this](scheduling::NodeID node_id, const ResourceRequest &resource_request) {
+            return cluster_resource_manager_->SubtractNodeAvailableResources(
+                node_id, resource_request);
+          });
 }
 
 ClusterResourceScheduler::ClusterResourceScheduler(
     scheduling::NodeID local_node_id,
     const NodeResources &local_node_resources,
-    gcs::GcsClient &gcs_client)
-    : local_node_id_(local_node_id), gcs_client_(&gcs_client) {
+    std::function<bool(scheduling::NodeID)> is_node_available_fn)
+    : local_node_id_(local_node_id), is_node_available_fn_(is_node_available_fn) {
   cluster_resource_manager_ = std::make_unique<ClusterResourceManager>();
   local_resource_manager_ = std::make_unique<LocalResourceManager>(
       local_node_id,
@@ -62,16 +73,27 @@ ClusterResourceScheduler::ClusterResourceScheduler(
       std::make_unique<raylet_scheduling_policy::CompositeSchedulingPolicy>(
           local_node_id_,
           cluster_resource_manager_->GetResourceView(),
-          [this](auto node_id) { return this->NodeAlive(node_id); });
+          /*is_node_available_fn*/
+          [this](auto node_id) { return this->NodeAlive(node_id); },
+          /*add_node_available_resources_fn*/
+          [this](scheduling::NodeID node_id, const ResourceRequest &resource_request) {
+            return cluster_resource_manager_->AddNodeAvailableResources(node_id,
+                                                                        resource_request);
+          },
+          /*subtract_node_available_resources_fn*/
+          [this](scheduling::NodeID node_id, const ResourceRequest &resource_request) {
+            return cluster_resource_manager_->SubtractNodeAvailableResources(
+                node_id, resource_request);
+          });
 }
 
 ClusterResourceScheduler::ClusterResourceScheduler(
     scheduling::NodeID local_node_id,
     const absl::flat_hash_map<std::string, double> &local_node_resources,
-    gcs::GcsClient &gcs_client,
+    std::function<bool(scheduling::NodeID)> is_node_available_fn,
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity)
-    : local_node_id_(local_node_id), gcs_client_(&gcs_client) {
+    : local_node_id_(local_node_id), is_node_available_fn_(is_node_available_fn) {
   NodeResources node_resources =
       ResourceMapToNodeResources(local_node_resources, local_node_resources);
   cluster_resource_manager_ = std::make_unique<ClusterResourceManager>();
@@ -88,7 +110,18 @@ ClusterResourceScheduler::ClusterResourceScheduler(
       std::make_unique<raylet_scheduling_policy::CompositeSchedulingPolicy>(
           local_node_id_,
           cluster_resource_manager_->GetResourceView(),
-          [this](auto node_id) { return this->NodeAlive(node_id); });
+          /*is_node_available_fn*/
+          [this](auto node_id) { return this->NodeAlive(node_id); },
+          /*add_node_available_resources_fn*/
+          [this](scheduling::NodeID node_id, const ResourceRequest &resource_request) {
+            return cluster_resource_manager_->AddNodeAvailableResources(node_id,
+                                                                        resource_request);
+          },
+          /*subtract_node_available_resources_fn*/
+          [this](scheduling::NodeID node_id, const ResourceRequest &resource_request) {
+            return cluster_resource_manager_->SubtractNodeAvailableResources(
+                node_id, resource_request);
+          });
 }
 
 bool ClusterResourceScheduler::NodeAlive(scheduling::NodeID node_id) const {
@@ -98,7 +131,7 @@ bool ClusterResourceScheduler::NodeAlive(scheduling::NodeID node_id) const {
   if (node_id.IsNil()) {
     return false;
   }
-  return gcs_client_->Nodes().Get(NodeID::FromBinary(node_id.Binary())) != nullptr;
+  return is_node_available_fn_ && is_node_available_fn_(node_id);
 }
 
 bool ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_request,
@@ -241,10 +274,9 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
 
 SchedulingResult ClusterResourceScheduler::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
-    SchedulingOptions schedule_options,
-    SchedulingContext *schedule_context) {
-  return scheduling_policy_->Schedule(
-      resource_request_list, schedule_options, schedule_context);
+    SchedulingOptions options,
+    SchedulingContext *context) {
+  return scheduling_policy_->Schedule(resource_request_list, options, context);
 }
 
 }  // namespace ray
