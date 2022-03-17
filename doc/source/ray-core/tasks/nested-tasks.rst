@@ -39,8 +39,8 @@ definitions of ``g`` and ``h`` because as soon as ``g`` is defined, it
 will be pickled and shipped to the workers, and so if ``f`` hasn't been
 defined yet, the definition will be incomplete.
 
-Circular Dependencies
----------------------
+Yielding Resources
+------------------
 
 Consider the following remote function.
 

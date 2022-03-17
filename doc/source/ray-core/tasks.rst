@@ -227,7 +227,7 @@ More about Ray Tasks
     :maxdepth: 1
 
     tasks/resources.rst
-    tasks/nested-tasks.rst
     tasks/using-ray-with-gpus.rst
+    tasks/nested-tasks.rst
     tasks/fault-tolerance.rst
     tasks/patterns/index.rst
