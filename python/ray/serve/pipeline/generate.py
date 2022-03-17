@@ -106,7 +106,7 @@ def transform_ray_dag_to_serve_dag(dag_node):
 
 def extract_deployments_from_serve_dag(
     serve_dag_root: DAGNode,
-) -> Tuple[List[Deployment], Deployment]:
+) -> Tuple[List[Deployment], List[Deployment]]:
     """Extract deployment python objects from a transformed serve DAG. Should
     only be called after `transform_ray_dag_to_serve_dag`, otherwise nothing
     to return.
