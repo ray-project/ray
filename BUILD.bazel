@@ -1070,7 +1070,7 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
-        ":raylet_lib",
+        ":scheduler",
         "@com_google_googletest//:gtest_main",
     ],
 )
