@@ -7,6 +7,7 @@ import requests
 import ray
 from ray import serve
 from ray.serve.api import internal_get_global_client
+from ray._private.test_utils import wait_for_condition
 
 
 @pytest.fixture
@@ -90,8 +91,14 @@ def test_refresh_controller_after_death(shutdown_ray, detached):
     old_handle = internal_get_global_client()._controller
     ray.kill(old_handle, no_restart=True)
 
-    with pytest.raises(RayActorError):
-        ray.get(old_handle.check_alive.remote())
+    def controller_died(handle):
+        try:
+            ray.get(handle.check_alive.remote())
+            return False
+        except RayActorError:
+            return True
+
+    wait_for_condition(controller_died, handle=old_handle, timeout=15)
 
     # Call start again to refresh handle
     serve.start(detached=detached, _override_controller_namespace=controller_namespace)
