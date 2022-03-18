@@ -1,16 +1,14 @@
-from typing import List, Optional
-from ray.experimental.dag import DAGNode
+from typing import List
 from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
     mark_exposed_deployment_in_serve_dag,
 )
 from ray.serve.api import Deployment
+from ray.serve.pipeline.json_serde import DAGNodeEncoder
 
 
-def build(
-    ray_dag_root_node: DAGNode, default_route_prefix: Optional[str] = "/"
-) -> List[Deployment]:
+def build(ray_dag_root_node: DAGNodeEncoder) -> List[Deployment]:
     """Do all the DAG transformation, extraction and generation needed to
     produce a runnable and deployable serve pipeline application from a valid
     DAG authored with Ray DAG API.
@@ -63,16 +61,12 @@ def build(
     """
     serve_root_dag = ray_dag_root_node.apply_recursive(transform_ray_dag_to_serve_dag)
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
-    deployments_with_http = mark_exposed_deployment_in_serve_dag(
-        deployments, default_route_prefix=default_route_prefix
-    )
+    deployments_with_http = mark_exposed_deployment_in_serve_dag(deployments)
 
     return deployments_with_http
 
 
-def get_and_validate_exposed_deployment(
-    deployments: List[Deployment], default_route_prefix="/"
-) -> Deployment:
+def get_and_validate_exposed_deployment(deployments: List[Deployment]) -> Deployment:
     """Validation for http route prefixes for a list of deployments in pipeline.
 
     Ensures:
@@ -83,13 +77,13 @@ def get_and_validate_exposed_deployment(
 
     exposed_deployments = []
     for deployment in deployments:
-        if deployment.route_prefix == default_route_prefix:
+        if deployment.route_prefix == "/":
             exposed_deployments.append(deployment)
         # Condition 2) and 3)
         elif deployment.route_prefix is not None:
             raise ValueError(
                 "Exposed deployment should not have route prefix other than "
-                f"{default_route_prefix}, found: {deployment.route_prefix}"
+                f"'/', found: {deployment.route_prefix}"
             )
 
     # Condition 1)
@@ -97,7 +91,7 @@ def get_and_validate_exposed_deployment(
         raise ValueError(
             "Only one deployment in an Serve Application or DAG can have "
             f"non-None route prefix. {len(exposed_deployments)} exposed "
-            f"deployments with prefix {default_route_prefix} found."
+            f"deployments with prefix '/' found."
         )
 
     return exposed_deployments[0]

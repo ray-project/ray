@@ -1738,7 +1738,6 @@ def run(
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
     driver: Optional[Deployment] = None,
-    default_route_prefix: Optional[str] = "/",
     **kwargs,
 ) -> RayServeHandle:
     """Run a Serve application and return a ServeHandle to the ingress.

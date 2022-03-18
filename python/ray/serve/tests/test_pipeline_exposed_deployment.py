@@ -38,8 +38,8 @@ def test_http_only_one_exposed_deployment(serve_instance):
         combine_output = combine.bind(m1_output, m2_output)
         serve_dag = Driver.bind(combine_output)
 
-    deployments = pipeline_build(serve_dag, default_route_prefix="/hii")
-    non_root_deployment = deployments[0].options(route_prefix="/hii")
+    deployments = pipeline_build(serve_dag)
+    non_root_deployment = deployments[0].options(route_prefix="/")
     deployments[0] = non_root_deployment
 
     with pytest.raises(
@@ -49,9 +49,7 @@ def test_http_only_one_exposed_deployment(serve_instance):
             "non-None route prefix"
         ),
     ):
-        _ = get_and_validate_exposed_deployment(
-            deployments, default_route_prefix="/hii"
-        )
+        _ = get_and_validate_exposed_deployment(deployments)
 
 
 def test_http_non_default_route_prefix_on_non_root_node(serve_instance):
@@ -63,16 +61,15 @@ def test_http_non_default_route_prefix_on_non_root_node(serve_instance):
         combine_output = combine.bind(m1_output, m2_output)
         serve_dag = Driver.bind(combine_output)
 
-    deployments = pipeline_build(serve_dag, default_route_prefix="/hii")
+    deployments = pipeline_build(serve_dag)
     non_root_deployment = deployments[0].options(route_prefix="/yoo")
     deployments[0] = non_root_deployment
 
     with pytest.raises(
-        ValueError, match=("Exposed deployment should not have route prefix other than")
+        ValueError,
+        match=("Exposed deployment should not have route prefix other than"),
     ):
-        _ = get_and_validate_exposed_deployment(
-            deployments, default_route_prefix="/hii"
-        )
+        _ = get_and_validate_exposed_deployment(deployments)
 
 
 def test_http_non_default_rout_prefix_on_root(serve_instance):
@@ -84,13 +81,12 @@ def test_http_non_default_rout_prefix_on_root(serve_instance):
         combine_output = combine.bind(m1_output, m2_output)
         serve_dag = Driver.bind(combine_output)
 
-    deployments = pipeline_build(serve_dag, default_route_prefix="/hii")
+    deployments = pipeline_build(serve_dag)
     non_root_deployment = deployments[-1].options(route_prefix="/yoo")
     deployments[-1] = non_root_deployment
 
     with pytest.raises(
-        ValueError, match=("Exposed deployment should not have route prefix other than")
+        ValueError,
+        match=("Exposed deployment should not have route prefix other than"),
     ):
-        _ = get_and_validate_exposed_deployment(
-            deployments, default_route_prefix="/hii"
-        )
+        _ = get_and_validate_exposed_deployment(deployments)
