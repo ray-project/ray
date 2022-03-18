@@ -13,8 +13,8 @@ parts:
         title: Ray Data
         sections:
           - file: data/getting-started
-          - file: data/user-guide
           - file: data/key-concepts
+          - file: data/user-guide
           - file: data/examples/big_data_ingestion
           - file: data/package-ref
           - file: data/integrations
