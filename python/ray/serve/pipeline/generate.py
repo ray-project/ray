@@ -34,7 +34,8 @@ class DeploymentNameGenerator(object):
         )
         with cls.__lock:
             deployment_name = (
-                dag_node.get_options().get("name", None) or dag_node._body.__name__
+                dag_node.get_options().get("name", None)
+                or dag_node._body.__name__
             )
             if deployment_name not in cls.__shared_state:
                 cls.__shared_state[deployment_name] = 0
@@ -182,23 +183,14 @@ def process_ingress_deployment_in_serve_dag(
 ) -> List[Deployment]:
     """Mark the last fetched deployment in a serve dag as exposed with default
     prefix.
-
-    Last element of the list is the root deployment if it's applicable type
-    that wraps an deployment, given Ray DAG traversal is done bottom-up.
     """
     if len(deployments) == 0:
         return deployments
 
-    # Found user facing DeploymentNode / DeploymentFunctionNode as ingress
-    # Only the root deployment exposes HTTP.
+    # Last element of the list is the root deployment if it's applicable type
+    # that wraps an deployment, given Ray DAG traversal is done bottom-up.
     ingress_deployment = deployments[-1]
-    if (
-        ingress_deployment.route_prefix is None
-        # TODO (jiaodong): Sadly we have multiple source of truth for deployment
-        # related fields in current path, such as generated suffix Model_1.
-        # Ex:        /Model_1                             /Model
-        or f"/{ingress_deployment.name}".startswith(ingress_deployment.route_prefix)
-    ):
+    if ingress_deployment.route_prefix in [None, f"/{ingress_deployment.name}"]:
         # Override default prefix to "/" on the ingress deployment, if user
         # didn't provide anything in particular.
         new_ingress_deployment = ingress_deployment.options(route_prefix="/")
@@ -208,7 +200,7 @@ def process_ingress_deployment_in_serve_dag(
     for i, deployment in enumerate(deployments[:-1]):
         if (
             deployment.route_prefix is not None
-            and not f"/{deployment.name}".startswith(deployment.route_prefix)
+            and deployment.route_prefix != f"/{deployment.name}"
         ):
             raise ValueError(
                 "Route prefix is only configurable on the ingress deployment. "
