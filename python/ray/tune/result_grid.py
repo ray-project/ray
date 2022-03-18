@@ -64,7 +64,9 @@ class ResultGrid:
 
     def _trial_to_result(self, trial: Trial) -> Result:
         result = Result(
-            checkpoint=Checkpoint.from_directory(trial.checkpoint.value),
+            checkpoint=Checkpoint.from_directory(trial.checkpoint.value)
+            if trial.checkpoint.value
+            else None,
             metrics=trial.last_result,
             error=self._populate_exception(trial),
         )
