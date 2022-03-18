@@ -45,7 +45,7 @@ def _validate_consistent_python_output(
 def test_build_simple_func_dag(serve_instance):
     ray_dag, _ = get_simple_func_dag()
     serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
-    deployments, _ = extract_deployments_from_serve_dag(serve_root_dag)
+    deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert len(deployments) == 1
     deployments[0].deploy()
 
@@ -59,7 +59,7 @@ def test_simple_single_class(serve_instance):
     ray_dag, _ = get_simple_class_with_class_method_dag()
 
     serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
-    deployments, _ = extract_deployments_from_serve_dag(serve_root_dag)
+    deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert len(deployments) == 1
     deployments[0].deploy()
     _validate_consistent_python_output(
@@ -73,7 +73,7 @@ def test_single_class_with_valid_ray_options(serve_instance):
         ray_dag = model.forward.bind(dag_input)
 
     serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
-    deployments, _ = extract_deployments_from_serve_dag(serve_root_dag)
+    deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert len(deployments) == 1
     deployments[0].deploy()
     _validate_consistent_python_output(
@@ -92,7 +92,7 @@ def test_single_class_with_invalid_deployment_options(serve_instance):
         ray_dag = model.forward.bind(dag_input)
 
     serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
-    deployments, _ = extract_deployments_from_serve_dag(serve_root_dag)
+    deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert len(deployments) == 1
     with pytest.raises(
         ValueError, match="Specifying name in ray_actor_options is not allowed"
@@ -104,7 +104,7 @@ def test_func_class_with_class_method_dag(serve_instance):
     ray_dag, _ = get_func_class_with_class_method_dag()
 
     serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
-    deployments, _ = extract_deployments_from_serve_dag(serve_root_dag)
+    deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert len(deployments) == 2
     for deployment in deployments:
         deployment.deploy()
@@ -123,7 +123,7 @@ def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
 
     serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
     print(f"Serve DAG: \n{serve_root_dag}")
-    deployments, _ = extract_deployments_from_serve_dag(serve_root_dag)
+    deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert len(deployments) == 3
     for deployment in deployments:
         deployment.deploy()
@@ -142,7 +142,7 @@ def test_shared_deployment_handle(serve_instance):
 
     serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
     print(f"Serve DAG: \n{serve_root_dag}")
-    deployments, _ = extract_deployments_from_serve_dag(serve_root_dag)
+    deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert len(deployments) == 2
     for deployment in deployments:
         deployment.deploy()
@@ -162,7 +162,7 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
 
     serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
     print(f"Serve DAG: \n{serve_root_dag}")
-    deployments, _ = extract_deployments_from_serve_dag(serve_root_dag)
+    deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert len(deployments) == 3
     # Ensure Deployments with other deployment nodes in init arg are replaced
     # with correct handle

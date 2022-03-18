@@ -1,11 +1,16 @@
+from typing import List, Optional
 from ray.experimental.dag import DAGNode
 from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
+    mark_exposed_deployment_in_serve_dag,
 )
+from ray.serve.api import Deployment
 
 
-def build(ray_dag_root_node: DAGNode):
+def build(
+    ray_dag_root_node: DAGNode, default_route_prefix: Optional[str] = "/"
+) -> List[Deployment]:
     """Do all the DAG transformation, extraction and generation needed to
     produce a runnable and deployable serve pipeline application from a valid
     DAG authored with Ray DAG API.
@@ -39,7 +44,7 @@ def build(ray_dag_root_node: DAGNode):
             and should have `InputNode` in it.
 
     Returns:
-        list_of_deployments: All deployments needed for an e2e runnable serve pipeline,
+        deployments: All deployments needed for an e2e runnable serve pipeline,
             accessible via python .remote() call.
 
     Examples:
@@ -57,12 +62,9 @@ def build(ray_dag_root_node: DAGNode):
         >>> deployments = serve.pipeline.build(m1) # or just a regular node.
     """
     serve_root_dag = ray_dag_root_node.apply_recursive(transform_ray_dag_to_serve_dag)
-    body_deployments, root_deployment = extract_deployments_from_serve_dag(
-        serve_root_dag
+    deployments = extract_deployments_from_serve_dag(serve_root_dag)
+    deployments_with_http = mark_exposed_deployment_in_serve_dag(
+        deployments, default_route_prefix=default_route_prefix
     )
-    # Found user facing DeploymentNode / DeploymentFunctionNode as ingress
-    if len(root_deployment) == 1:
-        # Only the root deployment exposes HTTP with default prefix of "/"
-        body_deployments.append(root_deployment[0].options(route_prefix="/"))
 
-    return body_deployments
+    return deployments_with_http

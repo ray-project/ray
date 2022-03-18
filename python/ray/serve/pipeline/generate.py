@@ -1,5 +1,6 @@
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union, Optional
 import threading
+from collections import OrderedDict
 
 from ray.experimental.dag import (
     DAGNode,
@@ -132,28 +133,21 @@ def extract_deployments_from_serve_dag(
     Args:
         serve_dag_root (DAGNode): Transformed serve dag root node.
     Returns:
-        body_deployments (List[Deployment]): List of deployment python objects
+        deployments (List[Deployment]): List of deployment python objects
             fetched from serve dag.
-        root_deployment (List[Deployment]): Root deployment that is exposed to
-            user via http. Might be empty if user has a ray dag that uses a
-            function or class method node as entrypoint.
     """
-    body_deployments = {}
-    root_deployment = []
+    deployments = OrderedDict()
 
     def extractor(dag_node):
         if isinstance(dag_node, (DeploymentNode, DeploymentFunctionNode)):
-            if dag_node.get_stable_uuid() == serve_dag_root.get_stable_uuid():
-                root_deployment.append(dag_node._deployment)
-            else:
-                deployment = dag_node._deployment
-                # In case same deployment is used in multiple DAGNodes
-                body_deployments[deployment.name] = deployment
+            deployment = dag_node._deployment
+            # In case same deployment is used in multiple DAGNodes
+            deployments[deployment.name] = deployment
         return dag_node
 
     serve_dag_root.apply_recursive(extractor)
 
-    return list(body_deployments.values()), root_deployment
+    return list(deployments.values())
 
 
 def get_pipeline_input_node(serve_dag_root_node: DAGNode):
@@ -181,3 +175,24 @@ def get_pipeline_input_node(serve_dag_root_node: DAGNode):
     )
 
     return input_nodes[0]
+
+
+def mark_exposed_deployment_in_serve_dag(
+    deployments: List[Deployment],
+    default_route_prefix: Optional[str] = "/",
+) -> List[Deployment]:
+    """Mark the last fetched deployment in a serve dag as exposed with default
+    prefix.
+
+    Last element of the list is the root deployment if it's applicable type
+    that wraps an deployment, given Ray DAG traversal is done bottom-up.
+    """
+    if len(deployments) == 0:
+        return deployments
+
+    # Found user facing DeploymentNode / DeploymentFunctionNode as ingress
+    # Only the root deployment exposes HTTP with default prefix of "/"
+    exposed_deployment = deployments[-1].options(route_prefix=default_route_prefix)
+    deployments[-1] = exposed_deployment
+
+    return deployments

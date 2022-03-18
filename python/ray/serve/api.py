@@ -1738,6 +1738,7 @@ def run(
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
     driver: Optional[Deployment] = None,
+    default_route_prefix: Optional[str] = "/",
     **kwargs,
 ) -> RayServeHandle:
     """Run a Serve application and return a ServeHandle to the ingress.
@@ -1801,15 +1802,17 @@ def run(
 
     client.deploy_group(parameter_group, _blocking=True)
 
-    serve_handle = []
+    exposed_deployments = []
     for deployment in deployments:
-        if deployment.route_prefix == "/":
-            serve_handle.append(deployment.get_handle())
-    assert len(serve_handle) == 1, (
-        "Serve Application should have one and only one deployment with "
-        f"default '/' prefix. {len(serve_handle)} found."
-    )
-    return serve_handle[0]
+        if deployment.route_prefix == default_route_prefix:
+            exposed_deployments.append(deployment)
+    if len(exposed_deployments) != 1:
+        raise ValueError(
+            "Only one deployment in an Serve Application or DAG can have "
+            f"non-None route prefix. {len(exposed_deployments)} exposed "
+            f"deployments with prefix {default_route_prefix} found."
+        )
+    return exposed_deployments[0].get_handle()
 
 
 @PublicAPI(stability="alpha")
