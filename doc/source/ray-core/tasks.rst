@@ -230,4 +230,5 @@ More about Ray Tasks
     tasks/using-ray-with-gpus.rst
     tasks/nested-tasks.rst
     tasks/fault-tolerance.rst
+    tasks/scheduling.rst
     tasks/patterns/index.rst
