@@ -340,7 +340,7 @@ py_test(
 )
 
 py_test(
-    name = "test_pipeline_exposed_deployment",
+    name = "test_pipeline_ingress_deployment",
     size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],

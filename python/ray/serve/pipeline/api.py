@@ -3,7 +3,7 @@ from ray.experimental.dag.dag_node import DAGNode
 from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
-    process_exposed_deployment_in_serve_dag,
+    process_ingress_deployment_in_serve_dag,
 )
 from ray.serve.api import Deployment
 
@@ -61,29 +61,29 @@ def build(ray_dag_root_node: DAGNode) -> List[Deployment]:
     """
     serve_root_dag = ray_dag_root_node.apply_recursive(transform_ray_dag_to_serve_dag)
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
-    deployments_with_http = process_exposed_deployment_in_serve_dag(deployments)
+    deployments_with_http = process_ingress_deployment_in_serve_dag(deployments)
 
     return deployments_with_http
 
 
-def get_and_validate_exposed_deployment(deployments: List[Deployment]) -> Deployment:
+def get_and_validate_ingress_deployment(deployments: List[Deployment]) -> Deployment:
     """Validation for http route prefixes for a list of deployments in pipeline.
 
     Ensures:
-        1) One and only one exposed deployment with given route prefix.
-        2) All other not exposed deployments should have prefix of None.
+        1) One and only one ingress deployment with given route prefix.
+        2) All other not ingress deployments should have prefix of None.
     """
 
-    exposed_deployments = []
+    ingress_deployments = []
     for deployment in deployments:
         if deployment.route_prefix is not None:
-            exposed_deployments.append(deployment)
+            ingress_deployments.append(deployment)
 
-    if len(exposed_deployments) != 1:
+    if len(ingress_deployments) != 1:
         raise ValueError(
             "Only one deployment in an Serve Application or DAG can have "
-            f"non-None route prefix. {len(exposed_deployments)} exposed "
-            f"deployments found: {exposed_deployments}"
+            f"non-None route prefix. {len(ingress_deployments)} ingress "
+            f"deployments found: {ingress_deployments}"
         )
 
-    return exposed_deployments[0]
+    return ingress_deployments[0]
