@@ -203,7 +203,9 @@ if __name__ == "__main__":
             object_spilling_config = json.loads(object_spilling_config)
         else:
             object_spilling_config = {}
-        external_storage.setup_external_storage(object_spilling_config, node.session_name)
+        external_storage.setup_external_storage(
+            object_spilling_config, node.session_name
+        )
 
     ray.worker._global_node = node
     ray.worker.connect(

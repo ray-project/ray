@@ -371,9 +371,7 @@ class ExternalStorageRayStorageImpl(ExternalStorage):
 
         self._fs, storage_prefix = storage._get_filesystem_internal()
         self._buffer_size = buffer_size
-        self._prefix = os.path.join(
-            storage_prefix, "spilled_objects", session_name
-        )
+        self._prefix = os.path.join(storage_prefix, "spilled_objects", session_name)
         self._fs.create_dir(self._prefix)
 
     def spill_objects(self, object_refs, owner_addresses) -> List[str]:
@@ -398,10 +396,7 @@ class ExternalStorageRayStorageImpl(ExternalStorage):
             base_url = parsed_result.base_url
             offset = parsed_result.offset
             # Read a part of the file and recover the object.
-            # TODO(ekl): set buffer size
-            with self._fs.open_input_file(
-                base_url
-            ) as f:
+            with self._fs.open_input_file(base_url) as f:
                 f.seek(offset)
                 address_len = int.from_bytes(f.read(8), byteorder="little")
                 metadata_len = int.from_bytes(f.read(8), byteorder="little")
@@ -619,7 +614,9 @@ def setup_external_storage(config, session_name):
         if storage_type == "filesystem":
             _external_storage = FileSystemStorage(**config["params"])
         elif storage_type == "ray_storage":
-            _external_storage = ExternalStorageRayStorageImpl(session_name, **config["params"])
+            _external_storage = ExternalStorageRayStorageImpl(
+                session_name, **config["params"]
+            )
         elif storage_type == "smart_open":
             _external_storage = ExternalStorageSmartOpenImpl(**config["params"])
         elif storage_type == "mock_distributed_fs":
