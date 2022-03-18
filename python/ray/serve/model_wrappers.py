@@ -3,7 +3,7 @@ from typing import Dict, Optional, Type, Union
 from ray._private.utils import import_attr
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.predictor import Predictor
-from ray.serve.ingress import InputSchemaFn, SimpleSchemaIngress
+from ray.serve.driver import InputSchemaFn, SimpleSchemaIngress
 import ray
 from ray import serve
 

@@ -5,7 +5,7 @@ import numpy as np
 import requests
 from starlette.testclient import TestClient
 
-from ray.serve.ingress import DAGDriver, SimpleSchemaIngress
+from ray.serve.driver import DAGDriver, SimpleSchemaIngress
 from ray.experimental.dag.input_node import InputNode
 from ray import serve
 import ray
