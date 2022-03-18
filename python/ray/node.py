@@ -328,11 +328,11 @@ class Node:
         _ = int(port)
 
     def check_version_info(self):
-        """Check if various Python and Ray version of this process is correct.
+        """Check if the Python and Ray version of this process matches that in GCS.
 
         This will be used to detect if workers or drivers are started using
-        different versions of Python, or Ray. If the version information
-        is not present in KV store, then no check is done.
+        different versions of Python, or Ray.
+
         Raises:
             Exception: An exception is raised if there is a version mismatch.
         """
@@ -341,25 +341,11 @@ class Node:
         )
         if cluster_metadata is None:
             return
-        true_version_info = (
+        cluster_version_info = (
             cluster_metadata["ray_version"],
             cluster_metadata["python_version"],
         )
-        version_info = ray._private.utils.compute_version_info()
-        if version_info != true_version_info:
-            node_ip_address = ray._private.services.get_node_ip_address()
-            error_message = (
-                "Version mismatch: The cluster was started with:\n"
-                "    Ray: " + true_version_info[0] + "\n"
-                "    Python: " + true_version_info[1] + "\n"
-                "This process on node " + node_ip_address + " was started with:" + "\n"
-                "    Ray: " + version_info[0] + "\n"
-                "    Python: " + version_info[1] + "\n"
-            )
-            if version_info[:2] != true_version_info[:2]:
-                raise RuntimeError(error_message)
-            else:
-                logger.warning(error_message)
+        ray._private.utils.check_version_info(cluster_version_info)
 
     def _register_shutdown_hooks(self):
         # Register the atexit handler. In this case, we shouldn't call sys.exit
