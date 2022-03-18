@@ -2,7 +2,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray.serve.handle import RayServeLazySyncHandle, RayServeSyncHandle
+from ray.serve.handle import RayServeLazySyncHandle
 from ray.experimental.dag import InputNode
 from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,
