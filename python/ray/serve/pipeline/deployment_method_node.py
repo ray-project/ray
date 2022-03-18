@@ -140,9 +140,6 @@ class DeploymentMethodNode(DAGNode):
                 init_args=args_dict["args"],
                 init_kwargs=args_dict["kwargs"],
                 ray_actor_options=args_dict["options"],
-                route_prefix=args_dict["other_args_to_resolve"].get(
-                    "route_prefix", None
-                ),
                 _internal=True,
             ),
             input_json["deployment_method_name"],
