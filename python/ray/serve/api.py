@@ -1,6 +1,7 @@
 import asyncio
 import atexit
 import collections
+from copy import copy
 import inspect
 import logging
 import random
@@ -1199,10 +1200,11 @@ class Deployment:
         The returned bound deployment can be deployed or bound to other
         deployments to create a multi-deployment application.
         """
-        schema_shell = deployment_to_schema(self)
-        schema_shell.init_args = []
-        schema_shell.init_kwargs = {}
-        schema_shell.import_path = "dummy.module"
+        copied_self = copy(self)
+        copied_self._init_args = []
+        copied_self._init_kwargs = {}
+        copied_self._func_or_class = "dummpy.module"
+        schema_shell = deployment_to_schema(copied_self)
 
         if inspect.isfunction(self._func_or_class):
             return DeploymentFunctionNode(

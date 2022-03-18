@@ -59,7 +59,6 @@ class DAGNodeEncoder(json.JSONEncoder):
 
     def default(self, obj):
         if isinstance(obj, DeploymentSchema):
-            # Deployment is cover
             return {
                 DAGNODE_TYPE_KEY: "DeploymentSchema",
                 "schema": obj.dict(),
