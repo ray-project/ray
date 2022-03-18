@@ -18,7 +18,10 @@ NESTED_HANDLE_KEY = "nested_handle"
 def maybe_build(
     node: DeploymentNode, use_build: bool
 ) -> Union[Application, DeploymentNode]:
-    return Application.from_dict(serve.build(node).to_dict())
+    if use_build:
+        return Application.from_dict(serve.build(node).to_dict())
+    else:
+        return node
 
 
 @serve.deployment
