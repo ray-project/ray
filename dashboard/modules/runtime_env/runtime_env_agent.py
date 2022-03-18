@@ -77,8 +77,8 @@ class ReferenceTable:
 
     def __init__(
         self,
-        uris_parser: Callable[[RuntimeEnv], None],
-        unused_uris_callback: Callable[[List[Tuple[UriType, str]]], None],
+        uris_parser: Callable[[RuntimeEnv], Tuple[str, UriType]],
+        unused_uris_callback: Callable[[List[Tuple[str, UriType]]], None],
         unused_runtime_env_callback: Callable[[str], None],
     ):
         # Runtime Environment reference table. The key is serialized runtime env and
@@ -222,7 +222,7 @@ class RuntimeEnvAgent(
             result.append((uri, UriType.CONDA))
         return result
 
-    def unused_uris_processor(self, unused_uris: List[Tuple[UriType, str]]) -> None:
+    def unused_uris_processor(self, unused_uris: List[Tuple[str, UriType]]) -> None:
         for uri, uri_type in unused_uris:
             if uri_type == UriType.WORKING_DIR:
                 self._working_dir_uri_cache.mark_unused(uri)
