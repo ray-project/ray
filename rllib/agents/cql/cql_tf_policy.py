@@ -49,7 +49,7 @@ MEAN_MAX = 9.0
 
 def _repeat_tensor(t, n):
     t_rep = tf.expand_dims(t, 1)
-    t_rep = tf.repeat(t_rep, n, axis=1)
+    t_rep = tf.tile(t_rep, [1, n] + ([1] * (tf.rank(t) - 1)))
     t_rep = tf.reshape(t_rep, tf.concat([tf.constant([-1]), tf.shape(t)[1:]], 0))
     return t_rep
 
