@@ -88,14 +88,17 @@ class DeploymentNode(DAGNode):
             # Prefer user specified name to override the generated one.
             if (
                 inspect.isclass(func_or_class)
-                and deployment_shell._name != func_or_class.__name__
+                and deployment_shell.name != func_or_class.__name__
             ):
-                deployment_name = deployment_shell._name
+                deployment_name = deployment_shell.name
 
             # Set the route prefix, prefer the one user supplied,
             # otherwise set it to /deployment_name
-            if deployment_shell._route_prefix != f"/{deployment_shell._name}":
-                route_prefix = deployment_shell._route_prefix
+            if (
+                deployment_shell.route_prefix is None
+                or deployment_shell.route_prefix != f"/{deployment_shell.name}"
+            ):
+                route_prefix = deployment_shell.route_prefix
             else:
                 route_prefix = f"/{deployment_name}"
 
