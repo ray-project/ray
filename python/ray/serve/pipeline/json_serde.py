@@ -27,6 +27,16 @@ from ray.serve.constants import SERVE_HANDLE_JSON_KEY
 from ray.serve.api import RayServeDAGHandle
 
 
+def convert_to_json_safe_obj(obj: Any, *, err_key: str) -> Any:
+    # XXX: comment, err msg
+    return json.loads(json.dumps(obj, cls=DAGNodeEncoder))
+
+
+def convert_from_json_safe_obj(obj: Any) -> Any:
+    # XXX: comment, err msg
+    return json.loads(json.dumps(obj), object_hook=dagnode_from_json)
+
+
 class DAGNodeEncoder(json.JSONEncoder):
     """
     Custom JSON serializer for DAGNode type that takes care of RayServeHandle
