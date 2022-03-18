@@ -362,10 +362,15 @@ class FileSystemStorage(ExternalStorage):
 class ExternalStorageRayStorageImpl(ExternalStorage):
     """Implements the external storage interface using the ray.storage API."""
 
-    def __init__(self):
+    def __init__(
+        self,
+        buffer_size=1024 * 1024,  # For remote spilling, at least 1MB is recommended.
+    ):
         self._fs, storage_prefix = ray.storage.impl._get_filesystem_internal()
-        # TODO: add job_id here.
-        self._prefix = os.path.join(storage_prefix, "spilled_objects/job_00000")
+        self._buffer_size = buffer_size
+        self._prefix = os.path.join(
+            storage_prefix, "spilled_objects", ray.get_runtime_context().job_id.hex()
+        )
         self._fs.create_dir(self._prefix)
 
     def spill_objects(self, object_refs, owner_addresses) -> List[str]:
@@ -375,7 +380,7 @@ class ExternalStorageRayStorageImpl(ExternalStorage):
         first_ref = object_refs[0]
         filename = f"{first_ref.hex()}-multi-{len(object_refs)}"
         url = f"{os.path.join(self._prefix, filename)}"
-        with self._fs.open_output_stream(url) as f:
+        with self._fs.open_output_stream(url, buffer_size=self.buffer_size) as f:
             return self._write_multiple_objects(f, object_refs, owner_addresses, url)
 
     def restore_spilled_objects(
@@ -390,8 +395,10 @@ class ExternalStorageRayStorageImpl(ExternalStorage):
             base_url = parsed_result.base_url
             offset = parsed_result.offset
             # Read a part of the file and recover the object.
-            # TODO: set buffer size
-            with self._fs.open_input_stream(base_url) as f:
+            # TODO(ekl): set buffer size
+            with self._fs.open_input_stream(
+                base_url, buffer_size=self.buffer_size
+            ) as f:
                 f.seek(offset)
                 address_len = int.from_bytes(f.read(8), byteorder="little")
                 metadata_len = int.from_bytes(f.read(8), byteorder="little")
