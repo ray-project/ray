@@ -22,6 +22,7 @@ class RunScriptTest(unittest.TestCase):
         os.environ["NO_ARTIFACTS"] = "1"
         os.environ["RAY_TEST_SCRIPT"] = "ray_release/tests/_test_run_release_test_sh.py"
         os.environ["OVERRIDE_SLEEP_TIME"] = "0"
+        os.environ["MAX_RETRIES"] = "3"
 
     def tearDown(self) -> None:
         shutil.rmtree(self.tempdir)
