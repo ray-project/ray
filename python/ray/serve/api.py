@@ -1799,7 +1799,9 @@ class Application:
             Optional[String]: The deployments' YAML string. The output is from
                 yaml.safe_dump(). Returned only if no file pointer is passed in.
         """
-        return yaml.safe_dump(self.to_dict(), stream=f, default_flow_style=False)
+        return yaml.safe_dump(
+            self.to_dict(), stream=f, default_flow_style=False, sort_keys=False
+        )
 
     @classmethod
     def from_yaml(cls, str_or_file: Union[str, TextIO]) -> "Application":
