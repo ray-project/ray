@@ -7,7 +7,7 @@ There are several ways to checkpoint:
 
 - Write the state to local disk. This can cause troubles when actors are instantiated in multi-node clusters.
 - Write the state to local disk and use cluster launcher to sync file across cluster
-- Write the state to ray internal kv store. (this is an experimental feature and not suitable for large files)
+- Write the state to Ray internal kv store. (this is an experimental feature and not suitable for large files)
 - Write the state to a Ray actor placed on head node (using custom resource constraints)
 
 
