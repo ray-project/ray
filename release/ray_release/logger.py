@@ -8,7 +8,7 @@ logger.setLevel(logging.INFO)
 def add_handlers(logger: logging.Logger):
     handler = logging.StreamHandler(stream=sys.stderr)
     formatter = logging.Formatter(
-        fmt="[%(levelname)s %(asctime)s] " "%(filename)s: %(lineno)d  " "%(message)s"
+        fmt="[%(levelname)s %(asctime)s] %(filename)s: %(lineno)d  %(message)s"
     )
     handler.setFormatter(formatter)
     logger.addHandler(handler)
