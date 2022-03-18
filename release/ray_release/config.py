@@ -2,6 +2,7 @@ import copy
 import datetime
 import json
 import os
+import re
 from typing import Dict, List, Optional
 
 import jinja2
@@ -194,6 +195,12 @@ def load_test_cluster_env(test: Test, ray_wheels_url: str) -> Optional[Dict]:
     env = get_test_environment()
 
     commit = env.get("RAY_COMMIT", None)
+
+    if not commit:
+        match = re.search(r"/([a-f0-9]{40})/", ray_wheels_url)
+        if match:
+            commit = match.group(1)
+
     env["RAY_WHEELS_SANITY_CHECK"] = get_wheels_sanity_check(commit)
     env["RAY_WHEELS"] = ray_wheels_url
 

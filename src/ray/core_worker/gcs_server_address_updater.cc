@@ -27,7 +27,7 @@ GcsServerAddressUpdater::GcsServerAddressUpdater(
       update_func_(update_func),
       updater_runner_(updater_io_service_),
       updater_thread_([this] {
-        SetThreadName("gcs_address_updater");
+        SetThreadName("gcs_addr_updater");
         std::thread::id this_id = std::this_thread::get_id();
         RAY_LOG(INFO) << "GCS Server updater thread id: " << this_id;
         /// The asio work to keep io_service_ alive.

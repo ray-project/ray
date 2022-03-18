@@ -1,8 +1,8 @@
 .. _datasets_getting_started:
 
-=================================
-Getting Started with Ray Datasets
-=================================
+===============
+Getting Started
+===============
 
 In this tutorial you will learn how to:
 
