@@ -135,8 +135,19 @@ def parse_cluster_info(
 ) -> ClusterInfo:
     module_string, inner_address = _split_address(address)
 
-    # If user passes http(s):// or ray://, go through normal parsing.
-    if module_string in {"http", "https", "ray"}:
+    # If user passes in ray://, raise error. Cluster-level submission should
+    # not use a Ray client address.
+    if module_string == "ray":
+        raise ValueError(
+            f'Got "{address}", which is a Ray client address. '
+            "Cluster-level submission should not use a Ray "
+            "client address. If you are unsure where this address"
+            'comes from, please check the "RAY_ADDRESS" '
+            "environment variable to see if it is set."
+        )
+
+    # If user passes http(s)://, go through normal parsing.
+    if module_string in {"http", "https"}:
         return get_job_submission_client_cluster_info(
             inner_address,
             create_cluster_if_needed=create_cluster_if_needed,
