@@ -177,7 +177,7 @@ def get_pipeline_input_node(serve_dag_root_node: DAGNode):
     return input_nodes[0]
 
 
-def mark_exposed_deployment_in_serve_dag(
+def process_exposed_deployment_in_serve_dag(
     deployments: List[Deployment],
 ) -> List[Deployment]:
     """Mark the last fetched deployment in a serve dag as exposed with default
@@ -190,8 +190,28 @@ def mark_exposed_deployment_in_serve_dag(
         return deployments
 
     # Found user facing DeploymentNode / DeploymentFunctionNode as ingress
-    # Only the root deployment exposes HTTP with default prefix of "/"
-    exposed_deployment = deployments[-1].options(route_prefix="/")
-    deployments[-1] = exposed_deployment
+    # Only the root deployment exposes HTTP.
+    exposed_deployment = deployments[-1]
+    if exposed_deployment.route_prefix in [None, f"/{exposed_deployment.name}"]:
+        # Override default prefix to "/" on the exposed deployment, if user
+        # didn't provide anything in particular.
+        new_exposed_deployment = exposed_deployment.options(route_prefix="/")
+        deployments[-1] = new_exposed_deployment
+
+    # Erase all non exposed deployment route prefix
+    for i, deployment in enumerate(deployments[:-1]):
+        if (
+            deployment.route_prefix is not None
+            and deployment.route_prefix != f"/{deployment.name}"
+        ):
+            raise ValueError(
+                "Route prefix is only configurable on the exposed deployment. "
+                "Please do not set non-default route prefix on non-exposed "
+                "deployment of the serve DAG. "
+            )
+        else:
+            # Earse all default prefix to None for non-exposed deployments to
+            # disable HTTP
+            deployments[i] = deployment.options(route_prefix=None)
 
     return deployments

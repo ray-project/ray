@@ -85,9 +85,15 @@ class DeploymentNode(DAGNode):
                 ),
                 init_args=replaced_deployment_init_args,
                 init_kwargs=replaced_deployment_init_kwargs,
-                route_prefix=None,  # Disable HTTP in all DAGNodes by default
+                route_prefix=original_deployment.route_prefix,
             )
+            # TODO (jiaodong): Unify this with other deployment configs
+            self._bound_other_args_to_resolve[
+                "route_prefix"
+            ] = original_deployment.route_prefix
         else:
+            # TODO (jiaodong): Unify this with other deployment configs
+            route_prefix = self._bound_other_args_to_resolve.get("route_prefix", None)
             self._deployment: Deployment = Deployment(
                 func_or_class,
                 deployment_name,
@@ -96,7 +102,7 @@ class DeploymentNode(DAGNode):
                 init_args=replaced_deployment_init_args,
                 init_kwargs=replaced_deployment_init_kwargs,
                 ray_actor_options=ray_actor_options,
-                route_prefix=None,  # Disable HTTP in all DAGNodes by default
+                route_prefix=route_prefix,
                 _internal=True,
             )
         self._deployment_handle: Union[

@@ -42,9 +42,15 @@ class DeploymentFunctionNode(DAGNode):
                 ),
                 init_args=tuple(),
                 init_kwargs=dict(),
-                route_prefix=None,  # Disable HTTP in all DAGNodes by default
+                route_prefix=original_deployment.route_prefix,
             )
+            # TODO (jiaodong): Unify this with other deployment configs
+            self._bound_other_args_to_resolve[
+                "route_prefix"
+            ] = original_deployment.route_prefix
         else:
+            # TODO (jiaodong): Unify this with other deployment configs
+            route_prefix = self._bound_other_args_to_resolve.get("route_prefix", None)
             self._deployment: Deployment = Deployment(
                 func_body,
                 deployment_name,
@@ -52,9 +58,10 @@ class DeploymentFunctionNode(DAGNode):
                 init_args=tuple(),
                 init_kwargs=dict(),
                 ray_actor_options=func_options,
-                route_prefix=None,  # Disable HTTP in all DAGNodes by default
+                route_prefix=route_prefix,
                 _internal=True,
             )
+
         # TODO (jiaodong): Change this to lazy handle after the PR merged
         # TODO (jiaodong): Polish with async handle support later
         self._deployment_handle = self._deployment.get_handle(sync=True)
