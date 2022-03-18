@@ -119,6 +119,7 @@ def test_single_func_no_input(serve_instance):
 
     handle = serve.run(serve_dag)
     assert ray.get(handle.remote()) == "hello"
+    assert requests.get("http://127.0.0.1:8000/").text == "hello"
 
 
 async def json_resolver(request: starlette.requests.Request):
@@ -225,6 +226,7 @@ def test_class_factory(serve_instance):
 
     handle = serve.run(serve_dag)
     assert ray.get(handle.remote()) == 3
+    assert requests.get("http://127.0.0.1:8000/").text == "3"
 
 
 @serve.deployment
@@ -366,6 +368,7 @@ def test_single_functional_node_base_case(serve_instance):
     # Base case should work
     handle = serve.run(func.bind())
     assert ray.get(handle.remote()) == 1
+    assert requests.get("http://127.0.0.1:8000/").text == "1"
 
 
 def test_unsupported_bind():
