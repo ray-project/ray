@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Tuple, Union, Optional
+from typing import Any, Dict, List, Union
 import threading
 from collections import OrderedDict
 
@@ -125,7 +125,7 @@ def transform_ray_dag_to_serve_dag(dag_node):
 
 def extract_deployments_from_serve_dag(
     serve_dag_root: DAGNode,
-) -> Tuple[List[Deployment], List[Deployment]]:
+) -> List[Deployment]:
     """Extract deployment python objects from a transformed serve DAG. Should
     only be called after `transform_ray_dag_to_serve_dag`, otherwise nothing
     to return.
@@ -179,7 +179,6 @@ def get_pipeline_input_node(serve_dag_root_node: DAGNode):
 
 def mark_exposed_deployment_in_serve_dag(
     deployments: List[Deployment],
-    default_route_prefix: Optional[str] = "/",
 ) -> List[Deployment]:
     """Mark the last fetched deployment in a serve dag as exposed with default
     prefix.
@@ -192,7 +191,7 @@ def mark_exposed_deployment_in_serve_dag(
 
     # Found user facing DeploymentNode / DeploymentFunctionNode as ingress
     # Only the root deployment exposes HTTP with default prefix of "/"
-    exposed_deployment = deployments[-1].options(route_prefix=default_route_prefix)
+    exposed_deployment = deployments[-1].options(route_prefix="/")
     deployments[-1] = exposed_deployment
 
     return deployments

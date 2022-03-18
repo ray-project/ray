@@ -1,14 +1,14 @@
 from typing import List
+from ray.experimental.dag.dag_node import DAGNode
 from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
     mark_exposed_deployment_in_serve_dag,
 )
 from ray.serve.api import Deployment
-from ray.serve.pipeline.json_serde import DAGNodeEncoder
 
 
-def build(ray_dag_root_node: DAGNodeEncoder) -> List[Deployment]:
+def build(ray_dag_root_node: DAGNode) -> List[Deployment]:
     """Do all the DAG transformation, extraction and generation needed to
     produce a runnable and deployable serve pipeline application from a valid
     DAG authored with Ray DAG API.
