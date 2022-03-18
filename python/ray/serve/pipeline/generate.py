@@ -10,6 +10,7 @@ from ray.experimental.dag import (
 from ray.experimental.dag.function_node import FunctionNode
 from ray.experimental.dag.input_node import InputNode
 from ray.serve.api import Deployment
+from ray.serve.config import DeploymentConfig
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_node import DeploymentNode
 from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
@@ -85,7 +86,7 @@ def transform_ray_dag_to_serve_dag(dag_node):
             dag_node.get_args(),
             dag_node.get_kwargs(),
             ray_actor_options,
-            # TODO: (jiaodong) Support .options(metadata=xxx) for deployment
+            DeploymentConfig(),  # Use default config from ray.remote class.
             other_args_to_resolve=dag_node.get_other_args_to_resolve(),
         )
 
@@ -115,6 +116,7 @@ def transform_ray_dag_to_serve_dag(dag_node):
             dag_node.get_args(),
             dag_node.get_kwargs(),
             dag_node.get_options(),
+            DeploymentConfig(),  # Use default config from ray.remote class.
             other_args_to_resolve=dag_node.get_other_args_to_resolve(),
         )
     else:

@@ -1185,7 +1185,7 @@ class Deployment:
         )
 
     @PublicAPI(stability="alpha")
-    def bind(self, *args, **kwargs) -> DeploymentNode:
+    def bind(self, *args, **kwargs) -> Union[DeploymentNode, DeploymentFunctionNode]:
         """Bind the provided arguments and return a DeploymentNode.
 
         The returned bound deployment can be deployed or bound to other
@@ -1795,7 +1795,6 @@ def run(
     *,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
-    driver: Optional[Deployment] = None,
     **kwargs,
 ) -> RayServeHandle:
     """Run a Serve application and return a ServeHandle to the ingress.

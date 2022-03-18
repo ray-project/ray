@@ -18,10 +18,11 @@ class DeploymentFunctionNode(DAGNode):
         func_args,
         func_kwargs,
         func_options,
+        deployment_config: DeploymentConfig,
         other_args_to_resolve=None,
     ):
         self._body = func_body
-        self._deployment_name = deployment_name
+        self._deployment_config = deployment_config
         super().__init__(
             func_args,
             func_kwargs,
@@ -43,11 +44,12 @@ class DeploymentFunctionNode(DAGNode):
                 init_args=tuple(),
                 init_kwargs=dict(),
             )
+            self._deployment_config = self._deployment._config
         else:
             self._deployment: Deployment = Deployment(
                 func_body,
                 deployment_name,
-                DeploymentConfig(),
+                deployment_config,
                 init_args=tuple(),
                 init_kwargs=dict(),
                 ray_actor_options=func_options,
@@ -66,10 +68,11 @@ class DeploymentFunctionNode(DAGNode):
     ):
         return DeploymentFunctionNode(
             self._body,
-            self._deployment_name,
+            self._deployment.name,
             new_args,
             new_kwargs,
             new_options,
+            self._deployment_config,
             other_args_to_resolve=new_other_args_to_resolve,
         )
 
@@ -85,7 +88,7 @@ class DeploymentFunctionNode(DAGNode):
         return get_dag_node_str(self, str(self._body))
 
     def get_deployment_name(self):
-        return self._deployment_name
+        return self._deployment.name
 
     def get_import_path(self):
         if (
