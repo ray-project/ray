@@ -361,6 +361,41 @@ def test_single_functional_node_base_case(serve_instance):
     assert ray.get(handle.remote()) == 1
 
 
+def test_unsupported_bind():
+    @serve.deployment
+    class Actor:
+        def ping(self):
+            return "hello"
+
+    with pytest.raises(AttributeError, match=r"\.bind\(\) cannot be used again on"):
+        # Special for serve: Actor.bind().bind() returns DeploymentMethodNode
+        _ = Actor.bind().bind().bind()
+
+    with pytest.raises(
+        AttributeError,
+        match=r"\.remote\(\) cannot be used on ClassMethodNodes",
+    ):
+        actor = Actor.bind()
+        _ = actor.ping.remote()
+
+
+def test_unsupported_remote():
+    @serve.deployment
+    class Actor:
+        def ping(self):
+            return "hello"
+
+    with pytest.raises(AttributeError, match="'Actor' has no attribute 'remote'"):
+        _ = Actor.bind().remote()
+
+    @serve.deployment
+    def func():
+        return 1
+
+    with pytest.raises(AttributeError, match="\.remote\(\) cannot be used on"):
+        _ = func.bind().remote()
+
+
 # TODO: check that serve.build raises an exception.
 
 
