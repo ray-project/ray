@@ -9,20 +9,25 @@ class NodeStatus {
   /// Set the local components.
   ///
   /// \param cid The component id.
-  /// \param reporter The reporter is defined to be the local module which wants to broadcast its
-  /// internal status to the whole clsuter. When it's null, it means there is no reporter in this node
-  /// for this component. This is the place there messages are generated.
-  /// \param receiver The receiver is defined to be the module which eventually will have the view of
-  /// of the cluster for this component. It's the place where received messages are consumed.
-  void SetComponents(RayComponentId cid, const ReporterInterface* reporter, ReceiverInterface* receiver);
+  /// \param reporter The reporter is defined to be the local module which wants to
+  /// broadcast its internal status to the whole clsuter. When it's null, it means there
+  /// is no reporter in this node for this component. This is the place there messages are
+  /// generated. \param receiver The receiver is defined to be the module which eventually
+  /// will have the view of of the cluster for this component. It's the place where
+  /// received messages are consumed.
+  void SetComponents(RayComponentId cid,
+                     const ReporterInterface *reporter,
+                     ReceiverInterface *receiver);
 
   /// Get the snapshot of a component for a newer version.
   ///
   /// \param cid The component id to take the snapshot.
-  /// \param version_after Snapshot will only be taken if its version is newer than `version_after`
+  /// \param version_after Snapshot will only be taken if its version is newer than
+  /// `version_after`
   ///
   /// \return If a snapshot is taken, return the message, otherwise std::nullopt.
-  std::optional<RaySyncMessage> GetSnapshot(RayComponentId cid, uint64_t version_after) const;
+  std::optional<RaySyncMessage> GetSnapshot(RayComponentId cid,
+                                            uint64_t version_after) const;
 
   /// Consume a message. Receiver will consume this message if it doesn't have
   /// this message.
@@ -42,7 +47,6 @@ class NodeStatus {
   /// sending via rpc.
   absl::flat_hash_map<std::string, Array<std::shared_ptr<RaySyncMessage>>> cluster_view_;
 };
-
 
 class NodeSyncContext {
  public:
@@ -102,7 +106,7 @@ class NodeSyncContext {
   absl::flat_hash_set<std::shared_ptr<RaySyncMessage>, _MessageHash> sending_queue_;
   // Keep track of the versions of components in this node.
   absl::flat_hash_map<std::string, std::array<uint64_t, kComponentArraySize>>
-  node_versions_;
+      node_versions_;
 };
 
 class ServerSyncContext : public NodeSyncContext {
@@ -148,7 +152,6 @@ class ClientSyncContext : public NodeSyncContext {
   DummyRequest dummy_;
 };
 
-
-}
-}
-}
+}  // namespace details
+}  // namespace syncer
+}  // namespace ray

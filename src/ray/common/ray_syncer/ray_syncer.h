@@ -95,18 +95,17 @@ class RaySyncer {
   /// Get the current node id.
   const std::string &GetNodeId() const { return node_id_; }
 
-  instrumented_io_context& GetIOContext() { return io_context_; }
+  instrumented_io_context &GetIOContext() { return io_context_; }
 
-  NodeSyncContext* GetSyncContext(const std::string& node_id) {
+  NodeSyncContext *GetSyncContext(const std::string &node_id) {
     auto iter = sync_context_.find(node_id);
-    if(iter == sync_context_.end()) {
+    if (iter == sync_context_.end()) {
       return nullptr;
     }
     return iter->second.get();
   }
 
  private:
-
   /// The current node id.
   const std::string node_id_;
 
@@ -148,7 +147,8 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
     // Make sure server only have one client
     RAY_CHECK(node_id_.empty());
     node_id_ = request->node_id();
-    syncer_.Connect(std::make_unique<ServerSyncContext>(syncer_, syncer_.GetIOContext(), request->node_id()));
+    syncer_.Connect(std::make_unique<ServerSyncContext>(
+        syncer_, syncer_.GetIOContext(), request->node_id()));
     response->set_node_id(syncer_.GetNodeId());
     reactor->Finish(grpc::Status::OK);
     return reactor;
@@ -158,15 +158,17 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
                                    const RaySyncMessages *request,
                                    DummyResponse *) override {
     auto *reactor = context->DefaultReactor();
-    syncer_.GetIOContext.post([this, request = std::move(*const_cast<RaySyncMessages *>(request))] () mutable {
-      auto* sync_context = dynamic_cast<ServerSyncContext*>(syncer_.GetSyncContext(node_id_));
-      if(sync_context != nullptr) {
-        sync_context->ReceiveUpdate(std::move(request));
-      } else {
-        RAY_LOG(ERROR) << "Fail to get the sync context";
-      }
-    },
-      "SyncerUpdate");
+    syncer_.GetIOContext.post(
+        [this, request = std::move(*const_cast<RaySyncMessages *>(request))]() mutable {
+          auto *sync_context =
+              dynamic_cast<ServerSyncContext *>(syncer_.GetSyncContext(node_id_));
+          if (sync_context != nullptr) {
+            sync_context->ReceiveUpdate(std::move(request));
+          } else {
+            RAY_LOG(ERROR) << "Fail to get the sync context";
+          }
+        },
+        "SyncerUpdate");
     reactor->Finish(grpc::Status::OK);
     return reactor;
   }
@@ -175,16 +177,18 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
                                         const DummyRequest *,
                                         RaySyncMessages *response) override {
     auto *reactor = context->DefaultReactor();
-    syncer_.GetIOContext.post([this, reactor, response] mutable () {
-      auto* sync_context = dynamic_cast<ServerSyncContext*>(syncer_.GetSyncContext(node_id_));
-      if (sync_context != nullptr) {
-        sync_context->HandleLongPollingRequest(reactor, response);
-      } else {
-        RAY_LOG(ERROR) << "Fail to setup long-polling";
-        reactor->Finish(grpc::Status::OK);
-      }
-    },
-      "SyncLongPolling");
+    syncer_.GetIOContext.post(
+        [this, reactor, response] mutable() {
+          auto *sync_context =
+              dynamic_cast<ServerSyncContext *>(syncer_.GetSyncContext(node_id_));
+          if (sync_context != nullptr) {
+            sync_context->HandleLongPollingRequest(reactor, response);
+          } else {
+            RAY_LOG(ERROR) << "Fail to setup long-polling";
+            reactor->Finish(grpc::Status::OK);
+          }
+        },
+        "SyncLongPolling");
     return reactor;
   }
 
