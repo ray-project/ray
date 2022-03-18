@@ -80,8 +80,6 @@ LOCAL_MODE = 2
 SPILL_WORKER_MODE = 3
 RESTORE_WORKER_MODE = 4
 
-ERROR_KEY_PREFIX = b"Error:"
-
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
@@ -91,7 +89,7 @@ logger = logging.getLogger(__name__)
 # Visible for testing.
 def _unhandled_error_handler(e: Exception):
     logger.error(
-        "Unhandled error (suppress with " "RAY_IGNORE_UNHANDLED_ERRORS=1): {}".format(e)
+        f"Unhandled error (suppress with 'RAY_IGNORE_UNHANDLED_ERRORS=1'): {e}"
     )
 
 
@@ -238,7 +236,7 @@ class Worker:
         """
         if not self.connected:
             raise RaySystemError(
-                "Ray has not been started yet. You can " "start Ray with 'ray.init()'."
+                "Ray has not been started yet. You can start Ray with 'ray.init()'."
             )
 
     def set_mode(self, mode):
@@ -299,9 +297,9 @@ class Worker:
             )
 
         if self.mode == LOCAL_MODE:
-            assert object_ref is None, (
-                "Local Mode does not support " "inserting with an ObjectRef"
-            )
+            assert (
+                object_ref is None
+            ), "Local Mode does not support inserting with an ObjectRef"
 
         serialized_value = self.get_serialization_context().serialize(value)
         # This *must* be the first place that we construct this python
@@ -570,7 +568,7 @@ def get_resource_ids():
 
     if _mode() == LOCAL_MODE:
         raise RuntimeError(
-            "ray.worker.get_resource_ids() currently does not work in " "local_mode."
+            "ray.worker.get_resource_ids() currently does not work in local_mode."
         )
 
     return global_worker.core_worker.resource_ids()
@@ -628,9 +626,7 @@ class RayContext(BaseContext, Mapping):
 
     def __init__(self, address_info: Dict[str, Optional[str]]):
         self.dashboard_url = get_dashboard_url()
-        self.python_version = "{}.{}.{}".format(
-            sys.version_info[0], sys.version_info[1], sys.version_info[2]
-        )
+        self.python_version = "{}.{}.{}".format(*sys.version_info[:3])
         self.ray_version = ray.__version__
         self.ray_commit = ray.__commit__
         # No client protocol version since this driver was intiialized
@@ -895,8 +891,7 @@ def init(
             # https://github.com/ray-project/ray/issues/12059
             soft = max(soft, min(hard, 65536))
             logger.debug(
-                "Automatically increasing RLIMIT_NOFILE to max "
-                "value of {}".format(hard)
+                f"Automatically increasing RLIMIT_NOFILE to max value of {hard}"
             )
             try:
                 resource.setrlimit(resource.RLIMIT_NOFILE, (soft, hard))
@@ -943,7 +938,7 @@ def init(
         bootstrap_address = services.canonicalize_bootstrap_address(address)
         assert bootstrap_address is not None
         logger.info(
-            "Connecting to existing Ray cluster at address: " f"{bootstrap_address}"
+            f"Connecting to existing Ray cluster at address: {bootstrap_address}"
         )
         gcs_address = bootstrap_address
 
@@ -1248,10 +1243,10 @@ def time_string() -> str:
         delta -= 60
     output = ""
     if hours:
-        output += "{}h".format(hours)
+        output += f"{hours}h"
     if minutes:
-        output += "{}m".format(minutes)
-    output += "{}s".format(int(delta))
+        output += f"{minutes}m"
+    output += f"{int(delta)}s"
     return output
 
 
@@ -1408,19 +1403,19 @@ def connect(
 
     Args:
         node (ray.node.Node): The node to connect.
-        mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and
-            LOCAL_MODE.
+        mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and LOCAL_MODE.
         log_to_driver (bool): If true, then output from all of the worker
             processes on all nodes will be directed to the driver.
         worker: The ray.Worker instance.
         driver_object_store_memory: Deprecated.
         job_id: The ID of job. If it's None, then we will generate one.
+        namespace (str): Namespace to use.
         job_config (ray.job_config.JobConfig): The job configuration.
         runtime_env_hash (int): The hash of the runtime env for this worker.
         startup_token (int): The startup token of the process assigned to
             it during startup as a command line argument.
-        ray_debugger_host (bool): The host to bind a Ray debugger to on
-            this worker.
+        ray_debugger_external (bool): If True, make the debugger external to the
+            node this worker is running on.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -1712,7 +1707,7 @@ def show_in_dashboard(message: str, key: str = "", dtype: str = "text"):
         key (str): The key name for the message. Multiple message under
             different keys will be displayed at the same time. Messages
             under the same key will be overridden.
-        data_type (str): The type of message for rendering. One of the
+        dtype (str): The type of message for rendering. One of the
             following: text, html.
     """
     worker = global_worker
@@ -1943,7 +1938,7 @@ def wait(
 
     if isinstance(object_refs, ObjectRef):
         raise TypeError(
-            "wait() expected a list of ray.ObjectRef, got a single " "ray.ObjectRef"
+            "wait() expected a list of ray.ObjectRef, got a single ray.ObjectRef"
         )
 
     if not isinstance(object_refs, list):
@@ -2051,7 +2046,7 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
     worker.check_connected()
     if not isinstance(actor, ray.actor.ActorHandle):
         raise ValueError(
-            "ray.kill() only supported for actors. " "Got: {}.".format(type(actor))
+            "ray.kill() only supported for actors. Got: {}.".format(type(actor))
         )
     worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
 
@@ -2129,7 +2124,7 @@ def make_decorator(
             # Set the remote function default resources.
             if max_restarts is not None:
                 raise ValueError(
-                    "The keyword 'max_restarts' is not " "allowed for remote functions."
+                    "The keyword 'max_restarts' is not allowed for remote functions."
                 )
             if max_task_retries is not None:
                 raise ValueError(
@@ -2140,7 +2135,7 @@ def make_decorator(
                 not isinstance(num_returns, int) or num_returns < 0
             ):
                 raise ValueError(
-                    "The keyword 'num_returns' only accepts 0 or a" " positive integer"
+                    "The keyword 'num_returns' only accepts 0 or a positive integer"
                 )
             if max_retries is not None and (
                 not isinstance(max_retries, int) or max_retries < -1
@@ -2153,7 +2148,7 @@ def make_decorator(
                 not isinstance(max_calls, int) or max_calls < 0
             ):
                 raise ValueError(
-                    "The keyword 'max_calls' only accepts 0 or a positive" " integer"
+                    "The keyword 'max_calls' only accepts 0 or a positive integer"
                 )
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON,
@@ -2176,19 +2171,15 @@ def make_decorator(
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
-                raise TypeError(
-                    "The keyword 'num_returns' is not " "allowed for actors."
-                )
+                raise TypeError("The keyword 'num_returns' is not allowed for actors.")
             if max_retries is not None:
-                raise TypeError(
-                    "The keyword 'max_retries' is not " "allowed for actors."
-                )
+                raise TypeError("The keyword 'max_retries' is not allowed for actors.")
             if retry_exceptions is not None:
                 raise TypeError(
-                    "The keyword 'retry_exceptions' is not " "allowed for actors."
+                    "The keyword 'retry_exceptions' is not allowed for actors."
                 )
             if max_calls is not None:
-                raise TypeError("The keyword 'max_calls' is not " "allowed for actors.")
+                raise TypeError("The keyword 'max_calls' is not allowed for actors.")
             if max_restarts is not None and (
                 not isinstance(max_restarts, int) or max_restarts < -1
             ):

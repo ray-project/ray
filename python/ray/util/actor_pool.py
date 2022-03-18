@@ -178,7 +178,7 @@ class ActorPool:
             raise StopIteration("No more results to get")
         if self._next_return_index >= self._next_task_index:
             raise ValueError(
-                "It is not allowed to call get_next() after " "get_next_unordered()."
+                "It is not allowed to call get_next() after get_next_unordered()."
             )
         future = self._index_to_future[self._next_return_index]
         if timeout is not None:
