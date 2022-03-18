@@ -1772,7 +1772,7 @@ class Application:
 
 @PublicAPI(stability="alpha")
 def run(
-    target: Union[DeploymentNode, Application],
+    target: Union[DeploymentNode, DeploymentFunctionNode, Application],
     _blocking: bool = True,
     *,
     host: str = DEFAULT_HTTP_HOST,
@@ -1781,15 +1781,15 @@ def run(
 ) -> RayServeHandle:
     """Run a Serve application and return a ServeHandle to the ingress.
 
-    Either a DeploymentNode or a pre-built application can be passed in.
-    If a DeploymentNode is passed in, all of the deployments it depends on
-    will be deployed. If there is an ingress, its handle will be returned.
+    Either a DeploymentNode, DeploymentFunctionNode, or a pre-built application
+    can be passed in. If a node is passed in, all of the deployments it depends
+    on will be deployed. If there is an ingress, its handle will be returned.
 
     Args:
-        target (Union[DeploymentNode, Application]): A user-built Serve
-            Application or a DeploymentNode that acts as the root node of DAG.
-            By default DeploymentNode is the Driver deployment unless user
-            provides a customized one.
+        target (Union[DeploymentNode, DeploymentFunctionNode, Application]):
+            A user-built Serve Application or a DeploymentNode that acts as the
+            root node of DAG. By default DeploymentNode is the Driver
+            deployment unless user provides a customized one.
         host (str): The host passed into serve.start().
         port (int): The port passed into serve.start().
 
@@ -1829,7 +1829,7 @@ def run(
         )
     else:
         raise TypeError(
-            "Expected a DeploymentNode or "
+            "Expected a DeploymentNode, DeploymentFunctionNode, or "
             "Application as target. Got unexpected type "
             f'"{type(target)}" instead.'
         )
