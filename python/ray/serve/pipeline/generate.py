@@ -34,8 +34,7 @@ class DeploymentNameGenerator(object):
         )
         with cls.__lock:
             deployment_name = (
-                dag_node.get_options().get("name", None)
-                or dag_node._body.__name__
+                dag_node.get_options().get("name", None) or dag_node._body.__name__
             )
             if deployment_name not in cls.__shared_state:
                 cls.__shared_state[deployment_name] = 0
