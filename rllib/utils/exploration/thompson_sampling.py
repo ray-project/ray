@@ -34,9 +34,12 @@ class ThompsonSampling(Exploration):
             return scores.argmax(dim=-1), None
 
     def _get_tf_exploration_action(self, action_dist, explore):
-        action = tf.argmax(tf.cond(
-            pred=explore,
-            true_fn=lambda: action_dist.inputs,
-            false_fn=lambda: self.model.predict(self.model.current_obs()),
-        ), axis=-1)
+        action = tf.argmax(
+            tf.cond(
+                pred=explore,
+                true_fn=lambda: action_dist.inputs,
+                false_fn=lambda: self.model.predict(self.model.current_obs()),
+            ),
+            axis=-1,
+        )
         return action, None
