@@ -318,8 +318,8 @@ void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data)
     auto label = ResourceID(resource_id).Binary();
     auto total = entry.second;
     auto available = resources.available.Get(resource_id);
-    auto last_total = last_report_resources_->total.Get(resource_id);
-    auto last_available = last_report_resources_->available.Get(resource_id);
+    auto last_total = last_report_resources_->total.GetOrZero(resource_id);
+    auto last_available = last_report_resources_->available.GetOrZero(resource_id);
 
     // Note: available may be negative, but only report positive to GCS.
     if (available != last_available && available > 0) {
