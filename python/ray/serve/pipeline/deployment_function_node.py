@@ -9,7 +9,6 @@ from ray.serve.api import (
     Deployment,
     DeploymentConfig,
     schema_to_deployment,
-    deployment_to_schema,
 )
 from ray.serve.schema import DeploymentSchema
 from ray.serve.handle import RayServeLazySyncHandle
@@ -38,9 +37,9 @@ class DeploymentFunctionNode(DAGNode):
         )
 
         if "deployment_schema" in self._bound_other_args_to_resolve:
-            deployment_schema: DeploymentSchema = (
-                self._bound_other_args_to_resolve["deployment_schema"]
-            )
+            deployment_schema: DeploymentSchema = self._bound_other_args_to_resolve[
+                "deployment_schema"
+            ]
             deployment_shell = schema_to_deployment(deployment_schema)
 
             # Prefer user specified name to override the generated one.
@@ -67,11 +66,6 @@ class DeploymentFunctionNode(DAGNode):
                 init_kwargs=dict(),
                 route_prefix=route_prefix,
             )
-            # Update the DAGNode schema with latest state of deployment
-            self._bound_other_args_to_resolve[
-                "deployment_schema"
-            ] = deployment_to_schema(self._deployment)
-
         else:
             self._deployment: Deployment = Deployment(
                 func_body,
@@ -107,9 +101,7 @@ class DeploymentFunctionNode(DAGNode):
 
         Deployment method always default to __call__.
         """
-        return self._deployment_handle.remote(
-            *self._bound_args, **self._bound_kwargs
-        )
+        return self._deployment_handle.remote(*self._bound_args, **self._bound_kwargs)
 
     def __str__(self) -> str:
         return get_dag_node_str(self, str(self._body))
@@ -125,9 +117,7 @@ class DeploymentFunctionNode(DAGNode):
         return get_deployment_import_path(self._deployment)
 
     def to_json(self, encoder_cls) -> Dict[str, Any]:
-        json_dict = super().to_json_base(
-            encoder_cls, DeploymentFunctionNode.__name__
-        )
+        json_dict = super().to_json_base(encoder_cls, DeploymentFunctionNode.__name__)
         json_dict["import_path"] = self.get_import_path()
         json_dict["deployment_name"] = self.get_deployment_name()
         return json_dict

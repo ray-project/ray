@@ -14,7 +14,6 @@ from ray.serve.api import (
     DeploymentConfig,
     RayServeDAGHandle,
     schema_to_deployment,
-    deployment_to_schema,
 )
 from ray.serve.utils import get_deployment_import_path
 from ray.serve.schema import DeploymentSchema
@@ -110,11 +109,6 @@ class DeploymentNode(DAGNode):
                 init_kwargs=replaced_deployment_init_kwargs,
                 route_prefix=route_prefix,
             )
-            # Update the DAGNode schema with latest state of deployment
-            self._bound_other_args_to_resolve[
-                "deployment_schema"
-            ] = deployment_to_schema(self._deployment)
-
         else:
             self._deployment: Deployment = Deployment(
                 func_or_class,
