@@ -1,7 +1,6 @@
 import asyncio
 import atexit
 import collections
-from copy import copy
 import inspect
 import logging
 import random
