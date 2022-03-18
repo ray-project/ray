@@ -6,7 +6,6 @@ import json
 import logging
 import os
 import time
-import async_timeout
 from typing import Dict, Set
 
 from ray._private.utils import import_attr
@@ -20,6 +19,7 @@ from ray.experimental.internal_kv import (
     _initialize_internal_kv,
 )
 from ray._private.ray_logging import setup_component_logger
+from ray._private.async_compat import create_task
 from ray._private.runtime_env.pip import PipManager
 from ray._private.runtime_env.conda import CondaManager
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -259,7 +259,7 @@ class RuntimeEnvAgent(
             runtime_env_context: RuntimeEnvContext = None
             error_message = None
             runtime_env_config = RuntimeEnvConfig.from_proto(runtime_env_config)
-            # accroding to the document of `async-timeout`,
+            # accroding to the document of `asyncio.wait_for`,
             # None means disable timeout logic
             setup_timeout_seconds = (
                 None
@@ -268,12 +268,19 @@ class RuntimeEnvAgent(
             )
             for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
                 try:
-                    with async_timeout.timeout(setup_timeout_seconds):
-                        runtime_env_context = await _setup_runtime_env(
+                    # python 3.6 requires the type of input is `Future`,
+                    # python 3.7+ only requires the type of input is `Awaitable`
+                    # TODO(Catch-Bull): remove create_task when ray drop python 3.6
+                    runtime_env_setup_task = create_task(
+                        _setup_runtime_env(
                             serialized_env,
                             request.serialized_allocated_resource_instances,
                         )
-                        error_message = None
+                    )
+                    runtime_env_context = await asyncio.wait_for(
+                        runtime_env_setup_task, timeout=setup_timeout_seconds
+                    )
+                    error_message = None
                     break
                 except Exception as e:
                     err_msg = f"Failed to create runtime env {serialized_env}."
