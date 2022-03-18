@@ -209,7 +209,7 @@ class Monitor:
                 )
         elif not prometheus_client:
             logger.warning(
-                "`prometheus_client` not found, so metrics will " "not be exported."
+                "`prometheus_client` not found, so metrics will not be exported."
             )
 
         logger.info("Monitor: Started")
@@ -458,7 +458,6 @@ class Monitor:
         publish_error_to_driver(
             ray_constants.MONITOR_DIED_ERROR,
             message,
-            redis_client=None,
             gcs_publisher=gcs_publisher,
         )
 
@@ -499,7 +498,7 @@ def log_resource_batch_data_if_desired(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description=("Parse Redis server for the " "monitor to connect to.")
+        description=("Parse Redis server for the monitor to connect to.")
     )
     parser.add_argument(
         "--gcs-address", required=False, type=str, help="The address (ip:port) of GCS."
@@ -548,7 +547,7 @@ if __name__ == "__main__":
         "--logs-dir",
         required=True,
         type=str,
-        help="Specify the path of the temporary directory used by Ray " "processes.",
+        help="Specify the path of the temporary directory used by Ray processes.",
     )
     parser.add_argument(
         "--logging-rotate-bytes",

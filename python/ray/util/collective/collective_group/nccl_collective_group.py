@@ -698,7 +698,7 @@ def _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists):
         raise RuntimeError("The first argument 'tensors' expects a list of tensors.")
     if not tensor_lists or not isinstance(tensor_lists, list):
         raise RuntimeError(
-            "The second argument 'tensor_lists' " "expects a list of tensor list."
+            "The second argument 'tensor_lists' expects a list of tensor list."
         )
     dtype = nccl_util.get_nccl_tensor_dtype(tensors[0])
     shape = nccl_util.get_tensor_shape(tensors[0])

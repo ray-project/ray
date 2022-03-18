@@ -525,7 +525,12 @@ class RayletServicerProxy(ray_client_pb2_grpc.RayletDriverServicer):
         return self._call_inner_function(req, context, "Terminate")
 
     def GetObject(self, request, context=None):
-        return self._call_inner_function(request, context, "GetObject")
+        try:
+            yield from self._call_inner_function(request, context, "GetObject")
+        except Exception as e:
+            # Error while iterating over response from GetObject stream
+            logger.exception("Proxying call to GetObject failed!")
+            _propagate_error_in_context(e, context)
 
     def PutObject(
         self, request: ray_client_pb2.PutRequest, context=None

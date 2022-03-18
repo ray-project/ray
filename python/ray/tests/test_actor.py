@@ -688,7 +688,7 @@ def test_actor_inheritance(ray_start_regular_shared):
     # Test that you can't inherit from an actor class.
     with pytest.raises(
         ActorClassInheritanceException,
-        match="Inheriting from actor classes is not " "currently supported.",
+        match="Inheriting from actor classes is not currently supported.",
     ):
 
         class Derived(ActorBase):

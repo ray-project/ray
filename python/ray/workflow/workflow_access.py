@@ -173,7 +173,7 @@ class WorkflowManagementActor:
         """
         if workflow_id in self._workflow_outputs and not ignore_existing:
             raise RuntimeError(
-                f"The output of workflow[id={workflow_id}] " "already exists."
+                f"The output of workflow[id={workflow_id}] already exists."
             )
         wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
         workflow_prerun_metadata = {"start_time": time.time()}

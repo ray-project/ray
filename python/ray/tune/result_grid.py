@@ -1,5 +1,6 @@
 from typing import Optional
 
+from ray.ml.checkpoint import Checkpoint
 from ray.ml.result import Result
 from ray.tune import ExperimentAnalysis
 from ray.tune.error import TuneError
@@ -62,9 +63,10 @@ class ResultGrid:
         return None
 
     def _trial_to_result(self, trial: Trial) -> Result:
-        # TODO(xwjiang): Use Kai's new checkpoint!
         result = Result(
-            checkpoint=trial.checkpoint,
+            checkpoint=Checkpoint.from_directory(trial.checkpoint.value)
+            if trial.checkpoint.value
+            else None,
             metrics=trial.last_result,
             error=self._populate_exception(trial),
         )

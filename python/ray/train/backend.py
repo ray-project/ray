@@ -32,7 +32,7 @@ class BackendConfig:
 
     @property
     def backend_cls(self):
-        raise NotImplementedError
+        return Backend
 
 
 @DeveloperAPI
@@ -339,8 +339,15 @@ class BackendExecutor:
         if isinstance(dataset_or_dict, dict):
             # Return a smaller dict for each shard.
             dataset_shards = [{} for _ in range(len(self.worker_group))]
+            # TODO(amog): Update Backend to accept a generic function with logic on
+            #  how to split dataset, instead of having to support _NO-SHARD in key.
             for key, dataset in dataset_or_dict.items():
-                split_datasets = split_dataset(dataset)
+                if "_NO-SHARD" in key:
+                    # Do not shard this dataset.
+                    split_datasets = [dataset] * len(self.worker_group)
+                    key = key.replace("_NO-SHARD", "")
+                else:
+                    split_datasets = split_dataset(dataset)
                 assert len(split_datasets) == len(self.worker_group)
                 for i in range(len(split_datasets)):
                     dataset_shards[i][key] = split_datasets[i]
@@ -476,7 +483,7 @@ class BackendExecutor:
                 raise RuntimeError(
                     "Some workers returned results while "
                     "others didn't. Make sure that "
-                    "`train.report()` and `train.checkpoint()` "
+                    "`train.report()` and `train.save_checkpoint()` "
                     "are called the same number of times on all "
                     "workers."
                 )

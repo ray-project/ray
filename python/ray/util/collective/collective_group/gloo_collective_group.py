@@ -482,7 +482,7 @@ def _check_cpu_tensors(tensors):
         )
     d = gloo_util.get_tensor_device(tensors[0])
     if d != "cpu":
-        raise RuntimeError("Gloo only accept cpu tensor." " Got {}.".format(d))
+        raise RuntimeError("Gloo only accept cpu tensor . Got {}.".format(d))
 
 
 def _flatten_for_scatter_gather(tensor_list, copy=False):
@@ -523,7 +523,7 @@ def _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists):
 
     if not tensor_lists or not isinstance(tensor_lists, list):
         raise RuntimeError(
-            "The second argument 'tensor_lists' " "expects a list of tensor list."
+            "The second argument 'tensor_lists' expects a list of tensor list."
         )
 
     if len(tensor_lists) != 1:

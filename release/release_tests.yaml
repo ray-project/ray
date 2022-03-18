@@ -753,6 +753,8 @@
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
 
+  stable: false
+
   legacy:
     test_name: aws_no_sync_down
     test_suite: tune_cloud_tests
@@ -780,6 +782,8 @@
 - name: tune_cloud_aws_ssh_sync
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
+
+  stable: false
 
   legacy:
     test_name: aws_ssh_sync
@@ -809,6 +813,8 @@
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
 
+  stable: false
+
   legacy:
     test_name: aws_durable_upload
     test_suite: tune_cloud_tests
@@ -836,6 +842,8 @@
 - name: tune_cloud_aws_durable_upload_rllib_str
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
+
+  stable: false
 
   legacy:
     test_name: aws_durable_upload_rllib_str
@@ -867,6 +875,8 @@
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
 
+  stable: false
+
   legacy:
     test_name: aws_durable_upload_rllib_trainer
     test_suite: tune_cloud_tests
@@ -896,6 +906,8 @@
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
 
+  stable: false
+
   legacy:
     test_name: gcp_k8s_no_sync_down
     test_suite: tune_cloud_tests
@@ -919,6 +931,8 @@
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
 
+  stable: false
+
   legacy:
     test_name: gcp_k8s_ssh_sync
     test_suite: tune_cloud_tests
@@ -941,6 +955,8 @@
 - name: tune_cloud_gcp_k8s_durable_upload
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
+
+  stable: false
 
   legacy:
     test_name: gcp_k8s_durable_upload
@@ -2622,6 +2638,7 @@
       wait_for_nodes:
         num_nodes: 5
         timeout: 600
+  stable: false
 
 - name: dask_on_ray_1tb_sort
   group: core-daily-test
@@ -3132,6 +3149,27 @@
     type: sdk_command
     file_manager: sdk
 
+- name: dataset_random_access
+  group: core-dataset-tests
+  working_dir: nightly_tests/dataset
+  stable: false
+
+  frequency: multi
+  team: core
+  cluster:
+    cluster_env: pipelined_training_app.yaml
+    cluster_compute: pipelined_training_compute.yaml
+
+  run:
+    timeout: 1200
+    script: python dataset_random_access.py
+    wait_for_nodes:
+      num_nodes: 15
+      timeout: 1200
+
+    type: sdk_command
+    file_manager: sdk
+
 - name: pipelined_training_50_gb
   group: core-dataset-tests
   working_dir: nightly_tests/dataset
@@ -3615,6 +3653,53 @@
 
     wait_for_nodes:
       num_nodes: 32
+      timeout: 600
+
+    type: job
+    file_manager: job
+  stable: false
+
+
+- name: k8s_pg_autoscaling_regression_test
+  group: core-daily-test
+  working_dir: nightly_tests
+  legacy:
+    test_name: pg_autoscaling_regression_test
+    test_suite: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: placement_group_tests/app_config.yaml
+    cluster_compute: placement_group_tests/compute.yaml
+    cloud_id: cld_HSrCZdMCYDe1NmMCJhYRgQ4p
+
+  run:
+    timeout: 1200
+    script: python placement_group_tests/pg_run.py
+    type: job
+    file_manager: job
+  stable: false
+
+- name: k8s_placement_group_performance_test
+  group: core-daily-test
+  working_dir: nightly_tests
+  legacy:
+    test_name: placement_group_performance_test
+    test_suite: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: placement_group_tests/app_config.yaml
+    cluster_compute: placement_group_tests/pg_perf_test_compute.yaml
+    cloud_id: cld_HSrCZdMCYDe1NmMCJhYRgQ4p
+
+  run:
+    timeout: 1200
+    script: python placement_group_tests/placement_group_performance_test.py
+    wait_for_nodes:
+      num_nodes: 5
       timeout: 600
 
     type: job
