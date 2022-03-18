@@ -141,7 +141,7 @@ def parse_cluster_info(
         raise ValueError(
             f'Got "{address}", which is a Ray client address. '
             "Cluster-level submission should not use a Ray "
-            "client address. If you are unsure where this address"
+            "client address. If you are not sure where this address"
             'comes from, please check the "RAY_ADDRESS" '
             "environment variable to see if it is set."
         )
