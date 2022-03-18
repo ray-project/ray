@@ -152,27 +152,29 @@ class LocalResourceManager {
   /// Increase the available capacities of the instances of a given resource.
   ///
   /// \param available A list of available capacities for resource's instances.
-  /// \param resource_instances List of the resource instances being updated.
+  /// \param local_total Local total resource instances.
+  /// \param local_available Local available resource instances being updated.
   ///
-  /// \return Overflow capacities of "resource_instances" after adding instance
+  /// \return Overflow capacities of "local_available" after adding instance
   /// capacities in "available", i.e.,
-  /// min(available + resource_instances.available, resource_instances.total)
+  /// min(available + local_available, local_total)
   std::vector<FixedPoint> AddAvailableResourceInstances(
-      std::vector<FixedPoint> available,
-      std::vector<FixedPoint> &local_available,
-      std::vector<FixedPoint> &local_total) const;
+      const std::vector<FixedPoint> &available,
+      const std::vector<FixedPoint> &local_total,
+      std::vector<FixedPoint> &local_available) const;
 
   /// Decrease the available capacities of the instances of a given resource.
   ///
   /// \param free A list of capacities for resource's instances to be freed.
-  /// \param resource_instances List of the resource instances being updated.
+  /// \param local_available Local available resource instances being updated.
   /// \param allow_going_negative Allow the values to go negative (disable underflow).
-  /// \return Underflow of "resource_instances" after subtracting instance
+  ///
+  /// \return Underflow of "local_available" after subtracting instance
   /// capacities in "available", i.e.,.
   /// max(available - reasource_instances.available, 0)
   std::vector<FixedPoint> SubtractAvailableResourceInstances(
-      std::vector<FixedPoint> available,
-      std::vector<FixedPoint> &resource_instances,
+      const std::vector<FixedPoint> &available,
+      std::vector<FixedPoint> &local_available,
       bool allow_going_negative = false) const;
 
   /// Allocate enough capacity across the instances of a resource to satisfy "demand".

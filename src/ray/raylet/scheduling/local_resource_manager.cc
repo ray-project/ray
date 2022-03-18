@@ -65,9 +65,9 @@ uint64_t LocalResourceManager::GetNumCpus() const {
 }
 
 std::vector<FixedPoint> LocalResourceManager::AddAvailableResourceInstances(
-    std::vector<FixedPoint> available,
-    std::vector<FixedPoint> &local_available,
-    std::vector<FixedPoint> &local_total) const {
+    const std::vector<FixedPoint> &available,
+    const std::vector<FixedPoint> &local_total,
+    std::vector<FixedPoint> &local_available) const {
   std::vector<FixedPoint> overflow(available.size(), 0.);
   for (size_t i = 0; i < available.size(); i++) {
     local_available[i] = local_available[i] + available[i];
@@ -81,24 +81,24 @@ std::vector<FixedPoint> LocalResourceManager::AddAvailableResourceInstances(
 }
 
 std::vector<FixedPoint> LocalResourceManager::SubtractAvailableResourceInstances(
-    std::vector<FixedPoint> available,
-    std::vector<FixedPoint> &resource_instances,
+    const std::vector<FixedPoint> &available,
+    std::vector<FixedPoint> &local_available,
     bool allow_going_negative) const {
-  RAY_CHECK(available.size() == resource_instances.size());
+  RAY_CHECK(available.size() == local_available.size());
 
   std::vector<FixedPoint> underflow(available.size(), 0.);
   for (size_t i = 0; i < available.size(); i++) {
-    if (resource_instances[i] < 0) {
+    if (local_available[i] < 0) {
       if (allow_going_negative) {
-        resource_instances[i] = resource_instances[i] - available[i];
+        local_available[i] = local_available[i] - available[i];
       } else {
         underflow[i] = available[i];  // No change in the value in this case.
       }
     } else {
-      resource_instances[i] = resource_instances[i] - available[i];
-      if (resource_instances[i] < 0 && !allow_going_negative) {
-        underflow[i] = -resource_instances[i];
-        resource_instances[i] = 0;
+      local_available[i] = local_available[i] - available[i];
+      if (local_available[i] < 0 && !allow_going_negative) {
+        underflow[i] = -local_available[i];
+        local_available[i] = 0;
       }
     }
   }
@@ -204,8 +204,8 @@ void LocalResourceManager::FreeTaskResourceInstances(
   RAY_CHECK(task_allocation != nullptr);
   for (auto resource_id : task_allocation->ResourceIds()) {
     AddAvailableResourceInstances(task_allocation->Get(resource_id),
-                                  local_resources_.available.GetMutable(resource_id),
-                                  local_resources_.total.GetMutable(resource_id));
+                                  local_resources_.total.GetMutable(resource_id),
+                                  local_resources_.available.GetMutable(resource_id));
   }
 }
 
@@ -220,8 +220,8 @@ std::vector<double> LocalResourceManager::AddResourceInstances(
 
   auto overflow =
       AddAvailableResourceInstances(resource_instances_fp,
-                                    local_resources_.available.GetMutable(resource_id),
-                                    local_resources_.total.GetMutable(resource_id));
+                                    local_resources_.total.GetMutable(resource_id),
+                                    local_resources_.available.GetMutable(resource_id));
   OnResourceChanged();
 
   return FixedPointVectorToDouble(overflow);

@@ -218,7 +218,7 @@ bool ClusterResourceManager::UpdateNodeAvailableResourcesIfExist(
                                    /*requires_object_store_memory=*/false);
   auto node_resources = iter->second.GetMutableLocalView();
   for (auto resource_id : node_resources->available.ResourceIds()) {
-    node_resources->available.Set(resource_id, resources.GetOrZero(resource_id));
+    node_resources->available.Set(resource_id, resources.GetOrZero(reosurce_id));
   }
   return true;
 }
