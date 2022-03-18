@@ -16,7 +16,13 @@ from ray.serve.pipeline.deployment_node import DeploymentNode
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
 from ray.serve.utils import parse_import_path
-from ray.serve.handle import HandleOptions, RayServeHandle, RayServeLazySyncHandle
+from ray.serve.handle import (
+    HandleOptions,
+    RayServeHandle,
+    RayServeLazySyncHandle,
+    serve_handle_to_json_dict,
+    serve_handle_from_json_dict,
+)
 from ray.serve.utils import ServeHandleEncoder, serve_handle_object_hook
 from ray.serve.constants import SERVE_HANDLE_JSON_KEY
 from ray.serve.api import RayServeDAGHandle
@@ -40,11 +46,8 @@ class DAGNodeEncoder(json.JSONEncoder):
     """
 
     def default(self, obj):
-        # TODO: (jiaodong) Have better abtraction for users to extend and use
-        # JSON serialization of their own object types
-        # For replaced deployment handles used as init args or kwargs.
         if isinstance(obj, RayServeHandle):
-            return json.dumps(obj, cls=ServeHandleEncoder)
+            return serve_handle_to_json_dict(obj)
         elif isinstance(obj, RayServeDAGHandle):
             # TODO(simon) Do a proper encoder
             return {
@@ -57,7 +60,6 @@ class DAGNodeEncoder(json.JSONEncoder):
                 "deployment_name": obj.deployment_name,
                 "handle_options_method_name": obj.handle_options.method_name,
             }
-
         # For all other DAGNode types.
         elif isinstance(obj, DAGNode):
             return obj.to_json(DAGNodeEncoder)
@@ -95,7 +97,7 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
     """
     # Deserialize RayServeHandle type
     if SERVE_HANDLE_JSON_KEY in input_json:
-        return json.loads(input_json, object_hook=serve_handle_object_hook)
+        return serve_handle_from_json_dict(input_json)
     # Base case for plain objects
     elif DAGNODE_TYPE_KEY not in input_json:
         try:
