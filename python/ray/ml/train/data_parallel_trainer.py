@@ -192,17 +192,6 @@ class DataParallelTrainer(Trainer):
         if not ray.is_initialized():
             ray.init()
 
-        if (
-            "GPU" in ray.available_resources()
-            and scaling_config.num_gpus_per_worker <= 0
-        ):
-            logger.info(
-                "GPUs are detected in your Ray cluster, but GPU "
-                "training is not enabled for Ray Train. To enable "
-                "GPU training, make sure to set `use_gpu` to True "
-                "when instantiating your Trainer."
-            )
-
         self.train_loop_per_worker = train_loop_per_worker
         self.train_loop_config = train_loop_config
 
@@ -213,6 +202,17 @@ class DataParallelTrainer(Trainer):
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
+
+        if (
+            not self.scaling_config.get("use_gpu", False)
+            and "GPU" in ray.available_resources()
+        ):
+            logger.info(
+                "GPUs are detected in your Ray cluster, but GPU "
+                "training is not enabled for this trainer. To enable "
+                "GPU training, make sure to set `use_gpu` to True "
+                "in your scaling config."
+            )
 
         if "num_workers" not in self.scaling_config:
             raise ValueError("You must specify the 'num_workers' in scaling_config.")

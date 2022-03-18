@@ -2173,6 +2173,9 @@ def install_nightly(verbose, dryrun):
 @add_click_logging_options
 def cpp(show_library_path, generate_bazel_project_template_to):
     """Show the cpp library path and generate the bazel project template."""
+    if sys.platform == "win32":
+        cli_logger.error("Ray C++ API is not supported on Windows currently.")
+        sys.exit(1)
     if not show_library_path and not generate_bazel_project_template_to:
         raise ValueError(
             "Please input at least one option of '--show-library-path'"

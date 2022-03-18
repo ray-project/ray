@@ -307,6 +307,10 @@ SETUP_WORKER_FILENAME = "setup_worker.py"
 # Directory name where runtime_env resources will be created & cached.
 DEFAULT_RUNTIME_ENV_DIR_NAME = "runtime_resources"
 
+# The timeout seconds for the creation of runtime env,
+# dafault timeout is 10 minutes
+DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS = 600
+
 # Used to separate lines when formatting the call stack where an ObjectRef was
 # created.
 CALL_STACK_LINE_DELIMITER = " | "
