@@ -1,5 +1,5 @@
 import asyncio
-import os
+
 
 from ray.serve.benchmarks.microbenchmark import main as benchmark_main
 from ray.serve.utils import logger
@@ -9,6 +9,7 @@ from serve_test_cluster_utils import (
 )
 from serve_test_utils import (
     save_test_results,
+    read_smoke_test_setting_from_env_var,
 )
 
 
@@ -16,7 +17,7 @@ async def main():
     # Give default cluster parameter values based on smoke_test config
     # if user provided values explicitly, use them instead.
     # IS_SMOKE_TEST is set by args of releaser's e2e.py
-    smoke_test = os.environ.get("IS_SMOKE_TEST", "0")
+    smoke_test = read_smoke_test_setting_from_env_var()
     if smoke_test == "1":
         setup_local_single_node_cluster(1)
     else:

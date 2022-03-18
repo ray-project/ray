@@ -11,12 +11,15 @@ import click
 import time
 import requests
 import uuid
-import os
+
 from pathlib import Path
 
 from serve_test_cluster_utils import setup_local_single_node_cluster
 
-from serve_test_utils import save_test_results
+from serve_test_utils import (
+    save_test_results,
+    read_smoke_test_setting_from_env_var,
+)
 
 import ray
 from ray import serve
@@ -47,7 +50,7 @@ def main():
     namespace = uuid.uuid4().hex
 
     # IS_SMOKE_TEST is set by args of releaser's e2e.py
-    smoke_test = os.environ.get("IS_SMOKE_TEST", "0")
+    smoke_test = read_smoke_test_setting_from_env_var()
     if smoke_test == "1":
         path = Path("checkpoint.db")
         checkpoint_path = f"file://{path}"
