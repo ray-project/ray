@@ -1758,6 +1758,7 @@ def run(
     """
     # TODO (jiaodong): Resolve circular reference in pipeline codebase and serve
     from ray.serve.pipeline.api import build as pipeline_build
+    from ray.serve.pipeline.api import get_and_validate_exposed_deployment
 
     client = start(detached=True, http_options={"host": host, "port": port})
 
@@ -1802,17 +1803,9 @@ def run(
 
     client.deploy_group(parameter_group, _blocking=True)
 
-    exposed_deployments = []
-    for deployment in deployments:
-        if deployment.route_prefix == default_route_prefix:
-            exposed_deployments.append(deployment)
-    if len(exposed_deployments) != 1:
-        raise ValueError(
-            "Only one deployment in an Serve Application or DAG can have "
-            f"non-None route prefix. {len(exposed_deployments)} exposed "
-            f"deployments with prefix {default_route_prefix} found."
-        )
-    return exposed_deployments[0].get_handle()
+    exposed_deployment = get_and_validate_exposed_deployment(deployments)
+
+    return exposed_deployment.get_handle()
 
 
 @PublicAPI(stability="alpha")

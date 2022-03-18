@@ -58,8 +58,8 @@ def build(
         Assuming we have non-JSON serializable or inline defined class or
         function in local pipeline development.
 
-        >>> deployments = serve.pipeline.build(ray_dag) # it can be method node
-        >>> deployments = serve.pipeline.build(m1) # or just a regular node.
+        >>> deployments = serve.build(ray_dag) # it can be method node
+        >>> deployments = serve.build(m1) # or just a regular node.
     """
     serve_root_dag = ray_dag_root_node.apply_recursive(transform_ray_dag_to_serve_dag)
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
@@ -68,3 +68,36 @@ def build(
     )
 
     return deployments_with_http
+
+
+def get_and_validate_exposed_deployment(
+    deployments: List[Deployment], default_route_prefix="/"
+) -> Deployment:
+    """Validation for http route prefixes for a list of deployments in pipeline.
+
+    Ensures:
+        1) One and only one exposed deployment with given route prefix.
+        2) All other not exposed deployments should have prefix of None.
+        3) Exposed deployment should only have given route prefix, not others.
+    """
+
+    exposed_deployments = []
+    for deployment in deployments:
+        if deployment.route_prefix == default_route_prefix:
+            exposed_deployments.append(deployment)
+        # Condition 2) and 3)
+        elif deployment.route_prefix is not None:
+            raise ValueError(
+                "Exposed deployment should not have route prefix other than "
+                f"{default_route_prefix}, found: {deployment.route_prefix}"
+            )
+
+    # Condition 1)
+    if len(exposed_deployments) != 1:
+        raise ValueError(
+            "Only one deployment in an Serve Application or DAG can have "
+            f"non-None route prefix. {len(exposed_deployments)} exposed "
+            f"deployments with prefix {default_route_prefix} found."
+        )
+
+    return exposed_deployments[0]
