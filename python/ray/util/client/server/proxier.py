@@ -214,8 +214,11 @@ class ProxyManager:
             self.servers[client_id] = server
             return server
 
-    def _increase_runtime_env_reference(
-        self, serialized_runtime_env: str, specific_server: SpecificServer
+    def _create_runtime_env(
+        self,
+        serialized_runtime_env: str,
+        runtime_env_config: str,
+        specific_server: SpecificServer,
     ):
         """Increase the runtime_env reference by sending an RPC to the agent.
 
@@ -230,6 +233,7 @@ class ProxyManager:
 
         create_env_request = runtime_env_agent_pb2.GetOrCreateRuntimeEnvRequest(
             serialized_runtime_env=serialized_runtime_env,
+            runtime_env_config=runtime_env_config,
             job_id=f"ray_client_server_{specific_server.port}".encode("utf-8"),
             source_process="client_server",
         )
@@ -290,13 +294,15 @@ class ProxyManager:
         )
 
         serialized_runtime_env = job_config.get_serialized_runtime_env()
+        runtime_env_config = job_config.get_proto_runtime_env_config()
         if not serialized_runtime_env or serialized_runtime_env == "{}":
             # TODO(edoakes): can we just remove this case and always send it
             # to the agent?
             serialized_runtime_env_context = RuntimeEnvContext().serialize()
         else:
-            serialized_runtime_env_context = self._increase_runtime_env_reference(
+            serialized_runtime_env_context = self._create_runtime_env(
                 serialized_runtime_env=serialized_runtime_env,
+                runtime_env_config=runtime_env_config,
                 specific_server=specific_server,
             )
 
@@ -532,7 +538,12 @@ class RayletServicerProxy(ray_client_pb2_grpc.RayletDriverServicer):
         return self._call_inner_function(req, context, "Terminate")
 
     def GetObject(self, request, context=None):
-        return self._call_inner_function(request, context, "GetObject")
+        try:
+            yield from self._call_inner_function(request, context, "GetObject")
+        except Exception as e:
+            # Error while iterating over response from GetObject stream
+            logger.exception("Proxying call to GetObject failed!")
+            _propagate_error_in_context(e, context)
 
     def PutObject(
         self, request: ray_client_pb2.PutRequest, context=None

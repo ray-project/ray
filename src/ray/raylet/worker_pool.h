@@ -676,6 +676,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Create runtime env asynchronously by runtime env agent.
   void GetOrCreateRuntimeEnv(
       const std::string &serialized_runtime_env,
+      const rpc::RuntimeEnvConfig &runtime_env_config,
       const JobID &job_id,
       const GetOrCreateRuntimeEnvCallback &callback,
       const std::string &serialized_allocated_resource_instances = "{}");

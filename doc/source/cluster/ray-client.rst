@@ -2,8 +2,8 @@
 
 .. _ray-client:
 
-Ray Client
-==========
+Ray Client: Interactive Development
+===================================
 
 **What is the Ray Client?**
 
@@ -167,7 +167,7 @@ Then, you can connect to the Ray cluster **from another terminal** using  ``loca
 
    #....
 
-Connect to multiple ray clusters (Experimental)
+Connect to multiple Ray clusters (Experimental)
 -----------------------------------------------
 
 Ray Client allows connecting to multiple Ray clusters in one Python process. To do this, just pass ``allow_multiple=True`` to ``ray.init``:

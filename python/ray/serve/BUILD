@@ -340,6 +340,13 @@ py_test(
 )
 
 
+py_test(
+    name = "test_pipeline_handle_serde",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
 # Runs test_api and test_failure with injected failures in the controller.
 py_test(
    name = "test_controller_crashes",
@@ -436,30 +443,6 @@ py_test(
 )
 
 pipeline_tests_srcs = glob(["pipeline/tests/**/*.py"])
-
-py_test(
-    name = "test_step",
-    size = "small",
-    srcs = pipeline_tests_srcs,
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"],
-)
-
-py_test(
-    name = "test_pipeline",
-    size = "small",
-    srcs = pipeline_tests_srcs,
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"],
-)
-
-py_test(
-    name = "test_actor_executor",
-    size = "small",
-    srcs = pipeline_tests_srcs,
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"],
-)
 
 py_test(
     name = "test_deployment_node",

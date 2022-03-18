@@ -8,8 +8,8 @@ import time
 from typing import Dict, Set, List, Tuple, Callable
 from enum import Enum
 from collections import defaultdict
-from ray._private.utils import import_attr
 
+from ray._private.utils import import_attr
 from ray.core.generated import runtime_env_agent_pb2
 from ray.core.generated import runtime_env_agent_pb2_grpc
 from ray.core.generated import agent_manager_pb2
@@ -21,6 +21,7 @@ from ray.experimental.internal_kv import (
     _initialize_internal_kv,
 )
 from ray._private.ray_logging import setup_component_logger
+from ray._private.async_compat import create_task
 from ray._private.runtime_env.pip import PipManager
 from ray._private.runtime_env.conda import CondaManager
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -28,7 +29,7 @@ from ray._private.runtime_env.py_modules import PyModulesManager
 from ray._private.runtime_env.working_dir import WorkingDirManager
 from ray._private.runtime_env.container import ContainerManager
 from ray._private.runtime_env.uri_cache import URICache
-from ray.runtime_env import RuntimeEnv
+from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 
 default_logger = logging.getLogger(__name__)
 
@@ -345,7 +346,10 @@ class RuntimeEnvAgent(
             return context
 
         async def _create_runtime_env_with_retry(
-            runtime_env, serialized_runtime_env, serialized_allocated_resource_instances
+            runtime_env,
+            serialized_runtime_env,
+            serialized_allocated_resource_instances,
+            setup_timeout_seconds,
         ) -> Tuple[bool, str, str]:
             """
             Create runtime env with retry times. This function won't raise exceptions.
@@ -355,21 +359,33 @@ class RuntimeEnvAgent(
                 serialized_runtime_env(str): The serialized runtime env.
                 serialized_allocated_resource_instances(str): The serialized allocated
                 resource instances.
+                setup_timeout_seconds(int): The timeout of runtime environment creation.
 
             Returns:
                 a tuple which contains result(bool), runtime env context(str), and error
                 message(str).
 
             """
-            self._logger.info(f"Creating runtime env: {serialized_env}")
+            self._logger.info(
+                f"Creating runtime env: {serialized_env} with timeout "
+                f"{setup_timeout_seconds} seconds."
+            )
             serialized_context = None
             error_message = None
             for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
                 try:
-                    runtime_env_context = await _setup_runtime_env(
-                        runtime_env,
-                        serialized_env,
-                        request.serialized_allocated_resource_instances,
+                    # python 3.6 requires the type of input is `Future`,
+                    # python 3.7+ only requires the type of input is `Awaitable`
+                    # TODO(Catch-Bull): remove create_task when ray drop python 3.6
+                    runtime_env_setup_task = create_task(
+                        _setup_runtime_env(
+                            runtime_env,
+                            serialized_env,
+                            request.serialized_allocated_resource_instances,
+                        )
+                    )
+                    runtime_env_context = await asyncio.wait_for(
+                        runtime_env_setup_task, timeout=setup_timeout_seconds
                     )
                     serialized_context = runtime_env_context.serialize()
                     error_message = None
@@ -440,7 +456,8 @@ class RuntimeEnvAgent(
                     error_message = result.result
                     self._logger.info(
                         "Runtime env already failed. "
-                        f"Env: {serialized_env}, err: {error_message}"
+                        f"Env: {serialized_env}, "
+                        f"err: {error_message}"
                     )
                     # Recover the reference.
                     self._reference_table.decrease_reference(
@@ -455,6 +472,15 @@ class RuntimeEnvAgent(
                 self._logger.info(f"Sleeping for {SLEEP_FOR_TESTING_S}s.")
                 time.sleep(int(SLEEP_FOR_TESTING_S))
 
+            runtime_env_config = RuntimeEnvConfig.from_proto(request.runtime_env_config)
+            # accroding to the document of `asyncio.wait_for`,
+            # None means disable timeout logic
+            setup_timeout_seconds = (
+                None
+                if runtime_env_config["setup_timeout_seconds"] == -1
+                else runtime_env_config["setup_timeout_seconds"]
+            )
+
             (
                 successful,
                 serialized_context,
@@ -463,6 +489,7 @@ class RuntimeEnvAgent(
                 runtime_env,
                 serialized_env,
                 request.serialized_allocated_resource_instances,
+                setup_timeout_seconds,
             )
             if not successful:
                 # Recover the reference.

@@ -138,7 +138,7 @@ Pre-repeat vs post-repeat transforms
 
 Transformations made prior to the Dataset prior to the call to ``.repeat()`` are executed once. Transformations made to the DatasetPipeline after the repeat will be executed once for each repetition of the Dataset.
 
-For example, in the following pipeline, the datasource read only occurs once. However, the random shuffle is applied to each repetition in the pipeline.
+For example, in the following pipeline, the ``map(func)`` transformation only occurs once. However, the random shuffle is applied to each repetition in the pipeline.
 
 **Code**:
 
@@ -147,6 +147,7 @@ For example, in the following pipeline, the datasource read only occurs once. Ho
     # Create a pipeline that loops over its source dataset indefinitely.
     pipe: DatasetPipeline = ray.data \
         .read_datasource(...) \
+        .map(func) \
         .repeat() \
         .random_shuffle_each_window()
 
@@ -163,6 +164,10 @@ For example, in the following pipeline, the datasource read only occurs once. Ho
 **Pipeline**:
 
 .. image:: images/dataset-repeat-1.svg
+
+.. important::
+
+    Result caching only applies if there are *transformation* stages prior to the pipelining operation. If you ``repeat()`` or ``window()`` a Dataset right after the read call (e.g., ``ray.data.read_parquet(...).repeat()``), then the read will still be re-executed on each repetition. This optimization saves memory, at the cost of repeated reads from the datasource.
 
 Splitting pipelines for distributed ingest
 ==========================================
