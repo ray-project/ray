@@ -4,6 +4,7 @@ PyTorch policy class used for CQL.
 import numpy as np
 import gym
 import logging
+import tree
 from typing import Dict, List, Tuple, Type, Union
 
 import ray
@@ -42,34 +43,34 @@ MEAN_MIN = -9.0
 MEAN_MAX = 9.0
 
 
+def _repeat_tensor(t, n):
+    t_rep = t.unsqueeze(1)
+    t_rep = torch.repeat_interleave(t_rep, n, dim=1)
+    t_rep = t_rep.view(-1, *t.shape[1:])
+    return t_rep
+
+
 # Returns policy tiled actions and log probabilities for CQL Loss
 def policy_actions_repeat(model, action_dist, obs, num_repeat=1):
-    obs_temp = (
-        obs.unsqueeze(1)
-        .repeat(1, num_repeat, 1)
-        .view(obs.shape[0] * num_repeat, obs.shape[1])
-    )
+    batch_size = tree.flatten(obs)[0].shape[0]
+    obs_temp = tree.map_structure(lambda t: _repeat_tensor(t, num_repeat), obs)
     logits = model.get_policy_output(obs_temp)
     policy_dist = action_dist(logits, model)
     actions, logp_ = policy_dist.sample_logp()
     logp = logp_.unsqueeze(-1)
-    return actions, logp.view(obs.shape[0], num_repeat, 1)
+    return actions, logp.view(batch_size, num_repeat, 1)
 
 
 def q_values_repeat(model, obs, actions, twin=False):
     action_shape = actions.shape[0]
-    obs_shape = obs.shape[0]
+    obs_shape = tree.flatten(obs)[0].shape[0]
     num_repeat = int(action_shape / obs_shape)
-    obs_temp = (
-        obs.unsqueeze(1)
-        .repeat(1, num_repeat, 1)
-        .view(obs.shape[0] * num_repeat, obs.shape[1])
-    )
+    obs_temp = tree.map_structure(lambda t: _repeat_tensor(t, num_repeat), obs)
     if not twin:
         preds_ = model.get_q_values(obs_temp, actions)
     else:
         preds_ = model.get_twin_q_values(obs_temp, actions)
-    preds = preds_.view(obs.shape[0], num_repeat, 1)
+    preds = preds_.view(obs_shape, num_repeat, 1)
     return preds
 
 
@@ -107,6 +108,8 @@ def cql_loss(
     next_obs = train_batch[SampleBatch.NEXT_OBS]
     terminals = train_batch[SampleBatch.DONES]
 
+    batch_size = tree.flatten(obs)[0].shape[0]
+
     model_out_t, _ = model(SampleBatch(obs=obs, _is_training=True), [], None)
 
     model_out_tp1, _ = model(SampleBatch(obs=next_obs, _is_training=True), [], None)
@@ -126,7 +129,7 @@ def cql_loss(
     # Alpha Loss
     alpha_loss = -(model.log_alpha * (log_pis_t + model.target_entropy).detach()).mean()
 
-    if obs.shape[0] == policy.config["train_batch_size"]:
+    if batch_size == policy.config["train_batch_size"]:
         policy.alpha_optim.zero_grad()
         alpha_loss.backward()
         policy.alpha_optim.step()
@@ -144,7 +147,7 @@ def cql_loss(
         actor_loss = (alpha.detach() * log_pis_t - bc_logp).mean()
         # actor_loss = -bc_logp.mean()
 
-    if obs.shape[0] == policy.config["train_batch_size"]:
+    if batch_size == policy.config["train_batch_size"]:
         policy.actor_optim.zero_grad()
         actor_loss.backward(retain_graph=True)
         policy.actor_optim.step()
@@ -263,7 +266,7 @@ def cql_loss(
     if twin_q:
         critic_loss.append(critic_loss_2 + min_qf2_loss)
 
-    if obs.shape[0] == policy.config["train_batch_size"]:
+    if batch_size == policy.config["train_batch_size"]:
         policy.critic_optims[0].zero_grad()
         critic_loss[0].backward(retain_graph=True)
         policy.critic_optims[0].step()
@@ -297,7 +300,7 @@ def cql_loss(
         model.tower_stats["alpha_prime_value"] = alpha_prime
         model.tower_stats["alpha_prime_loss"] = alpha_prime_loss
 
-        if obs.shape[0] == policy.config["train_batch_size"]:
+        if batch_size == policy.config["train_batch_size"]:
             policy.alpha_prime_optim.zero_grad()
             alpha_prime_loss.backward()
             policy.alpha_prime_optim.step()
