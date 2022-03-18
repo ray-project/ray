@@ -1,8 +1,8 @@
 import sys
 
 import pytest
-import numpy as np
 import requests
+import starlette.requests
 from starlette.testclient import TestClient
 
 from ray.serve.driver import DAGDriver, SimpleSchemaIngress
@@ -42,8 +42,8 @@ def test_unit_schema_injection():
 @serve.deployment
 def echo(inp):
     # FastAPI can't handle this.
-    if isinstance(inp, np.ndarray):
-        return inp.tolist()
+    if isinstance(inp, starlette.requests.Request):
+        return "starlette!"
     return inp
 
 
@@ -58,7 +58,7 @@ def test_dag_driver_default(serve_instance):
     print(resp.text)
 
     resp.raise_for_status()
-    assert resp.json() == [1.0]
+    assert resp.json() == "starlette!"
 
 
 async def resolver(my_custom_param: int):
