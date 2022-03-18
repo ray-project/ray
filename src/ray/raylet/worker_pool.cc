@@ -643,6 +643,7 @@ void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job
   all_jobs_[job_id] = job_config;
   if (NeedToEagerInstallRuntimeEnv(job_config)) {
     auto const &runtime_env = job_config.runtime_env_info().serialized_runtime_env();
+    auto const &runtime_env_config = job_config.runtime_env_info().runtime_env_config();
     // NOTE: Technically `HandleJobStarted` isn't idempotent because we'll
     // increment the ref count multiple times. This is fine because
     // `HandleJobFinished` will also decrement the ref count multiple times.
@@ -650,6 +651,7 @@ void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job
     RAY_LOG(INFO) << "[Eagerly] Start install runtime environment for job " << job_id
                   << ". The runtime environment was " << runtime_env << ".";
     CreateRuntimeEnv(runtime_env,
+                     runtime_env_config,
                      job_id,
                      [job_id](bool successful,
                               const std::string &serialized_runtime_env_context,
@@ -1163,7 +1165,6 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
                                      State &state,
                                      std::vector<std::string> dynamic_options,
                                      bool dedicated,
-                                     const std::string &serialized_runtime_env,
                                      const std::string &serialized_runtime_env_context,
                                      const PopWorkerCallback &callback) -> Process {
     PopWorkerStatus status = PopWorkerStatus::OK;
@@ -1218,6 +1219,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
         // create runtime env.
         CreateRuntimeEnv(
             task_spec.SerializedRuntimeEnv(),
+            task_spec.RuntimeEnvConfig(),
             task_spec.JobId(),
             [this, start_worker_process_fn, callback, &state, task_spec, dynamic_options](
                 bool successful,
@@ -1228,7 +1230,6 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
                                         state,
                                         dynamic_options,
                                         true,
-                                        task_spec.SerializedRuntimeEnv(),
                                         serialized_runtime_env_context,
                                         callback);
               } else {
@@ -1243,8 +1244,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
             },
             allocated_instances_serialized_json);
       } else {
-        start_worker_process_fn(
-            task_spec, state, dynamic_options, true, "", "", callback);
+        start_worker_process_fn(task_spec, state, dynamic_options, true, "", callback);
       }
     }
   } else {
@@ -1286,6 +1286,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
         // create runtime env.
         CreateRuntimeEnv(
             task_spec.SerializedRuntimeEnv(),
+            task_spec.RuntimeEnvConfig(),
             task_spec.JobId(),
             [this, start_worker_process_fn, callback, &state, task_spec](
                 bool successful,
@@ -1296,7 +1297,6 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
                                         state,
                                         {},
                                         false,
-                                        task_spec.SerializedRuntimeEnv(),
                                         serialized_runtime_env_context,
                                         callback);
               } else {
@@ -1311,7 +1311,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
             },
             allocated_instances_serialized_json);
       } else {
-        start_worker_process_fn(task_spec, state, {}, false, "", "", callback);
+        start_worker_process_fn(task_spec, state, {}, false, "", callback);
       }
     }
   }
@@ -1604,6 +1604,7 @@ WorkerPool::IOWorkerState &WorkerPool::GetIOWorkerStateFromWorkerType(
 
 void WorkerPool::CreateRuntimeEnv(
     const std::string &serialized_runtime_env,
+    const rpc::RuntimeEnvConfig &runtime_env_config,
     const JobID &job_id,
     const CreateRuntimeEnvCallback &callback,
     const std::string &serialized_allocated_resource_instances) {
@@ -1611,11 +1612,14 @@ void WorkerPool::CreateRuntimeEnv(
   agent_manager_->CreateRuntimeEnv(
       job_id,
       serialized_runtime_env,
+      runtime_env_config,
       serialized_allocated_resource_instances,
-      [job_id, serialized_runtime_env = std::move(serialized_runtime_env), callback](
-          bool successful,
-          const std::string &serialized_runtime_env_context,
-          const std::string &setup_error_message) {
+      [job_id,
+       serialized_runtime_env = std::move(serialized_runtime_env),
+       runtime_env_config = std::move(runtime_env_config),
+       callback](bool successful,
+                 const std::string &serialized_runtime_env_context,
+                 const std::string &setup_error_message) {
         if (successful) {
           callback(true, serialized_runtime_env_context, "");
         } else {
