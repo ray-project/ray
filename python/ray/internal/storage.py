@@ -1,4 +1,4 @@
-from typing import List, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING
 from pathlib import Path
 import os
 import urllib
@@ -152,7 +152,7 @@ class KVClient:
         except FileNotFoundError:
             return False
 
-    def get_info(self, path: str) -> "pyarrow.fs.FileInfo":
+    def get_info(self, path: str) -> Optional["pyarrow.fs.FileInfo"]:
         """Get info about the persistent blob at the given path, if possible.
 
         Examples:

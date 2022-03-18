@@ -169,8 +169,9 @@ if __name__ == "__main__":
     # external storage is intialized.
     if mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE:
         from ray import external_storage
+        from ray.internal import storage
 
-        ray.storage.impl._init_storage(args.storage, is_head=False)
+        storage._init_storage(args.storage, is_head=False)
         if args.object_spilling_config:
             object_spilling_config = base64.b64decode(args.object_spilling_config)
             object_spilling_config = json.loads(object_spilling_config)
