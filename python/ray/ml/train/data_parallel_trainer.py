@@ -204,7 +204,7 @@ class DataParallelTrainer(Trainer):
         )
 
         if (
-            not scaling_config.get("use_gpu", False)
+            not self.scaling_config.get("use_gpu", False)
             and "GPU" in ray.available_resources()
         ):
             logger.info(
