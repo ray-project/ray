@@ -613,6 +613,31 @@ class ActorClass:
                     **cls_options,
                 )
 
+            def get_or_create(self, *args, **kwargs):
+                """Get or create a named actor.
+
+                Args:
+                    args: These arguments are forwarded directly to the actor
+                        constructor.
+                    kwargs: These arguments are forwarded directly to the actor
+                        constructor.
+
+                Returns:
+                    A handle to the named actor.
+                """
+                assert "name" in cls_options
+                name = cls_options["name"]
+                try:
+                    return ray.get_actor(name, namespace=cls_options.get("namespace"))
+                except ValueError:
+                    # Attempt to create it (may race with other attempts).
+                    try:
+                        return self.remote(*args, **kwargs)
+                    except ValueError:
+                        # We lost the creation race, ignore.
+                        pass
+                    return ray.get_actor(name, namespace=cls_options.get("namespace"))
+
             def bind(self, *args, **kwargs):
                 """
                 **Experimental**
