@@ -332,7 +332,7 @@ py_test(
 )
 
 py_test(
-    name = "test_pipeline_driver.py",
+    name = "test_pipeline_driver",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
