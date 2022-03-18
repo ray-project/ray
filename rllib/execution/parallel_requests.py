@@ -1,6 +1,6 @@
 import logging
 from collections import defaultdict
-from typing import Any, Callable, DefaultDict, Dict, List, Optional, Set
+from typing import Any, Callable, DefaultDict, Dict, List, Optional, Set, Union
 
 import ray
 from ray.actor import ActorHandle

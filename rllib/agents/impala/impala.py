@@ -1,12 +1,16 @@
 import logging
 import numpy as np
 import queue
-from typing import Optional, Type, List
+from typing import Optional, Type, List, Dict, Union
+import tree
 
 import ray
+from ray.actor import ActorHandle
+from ray.rllib import SampleBatch
 from ray.rllib.agents.impala.vtrace_tf_policy import VTraceTFPolicy
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
 from ray.rllib.execution.parallel_requests import asynchronous_parallel_requests
@@ -24,13 +28,23 @@ from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
-from ray.rllib.utils.metrics import NUM_AGENT_STEPS_SAMPLED, NUM_AGENT_STEPS_TRAINED, \
-    NUM_ENV_STEPS_SAMPLED
-from ray.rllib.utils.replay_buffers.multi_agent_mixin_replay_buffer import \
-    MultiAgentMixInReplayBuffer
-from ray.rllib.utils.typing import PartialTrainerConfigDict, ResultDict, \
-    TrainerConfigDict
+from ray.rllib.utils.metrics import (
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_ENV_STEPS_SAMPLED,
+)
+from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
+from ray.rllib.utils.replay_buffers.multi_agent_mixin_replay_buffer import (
+    MultiAgentMixInReplayBuffer,
+)
+from ray.rllib.utils.typing import (
+    PartialTrainerConfigDict,
+    ResultDict,
+    TrainerConfigDict,
+    SampleBatchType,
+)
 from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
 
@@ -285,15 +299,14 @@ class ImpalaTrainer(Trainer):
             config["num_multi_gpu_tower_stacks"] = config["num_data_loader_buffers"]
 
         if config["replay_proportion"] != DEPRECATED_VALUE:
-            deprecation_warning(
-                "replay_proportion", "replay_ratio", error=False
-            )
+            deprecation_warning("replay_proportion", "replay_ratio", error=False)
             # r = P / (P+1)
             # Examples:
             #  P = 2 -> 2:1 -> r=2/3 (66% replay)
             #  P = 1 -> 1:1 -> r=1/2 (50% replay)
-            config["replay_ratio"] = \
-                config["replay_proportion"] / (config["replay_proportion"] + 1)
+            config["replay_ratio"] = config["replay_proportion"] / (
+                config["replay_proportion"] + 1
+            )
 
         if config["entropy_coeff"] < 0.0:
             raise ValueError("`entropy_coeff` must be >= 0.0!")
@@ -368,86 +381,63 @@ class ImpalaTrainer(Trainer):
             #         node=localhost,
             #     )
 
-            # Create our mixin buffer.
-            self.mixin_buffer = MultiAgentMixInReplayBuffer(
-                capacity=self.config["replay_buffer_num_slots"],
-                replay_ratio=self.config["replay_ratio"],
-            )
+            if not (self.config["num_aggregation_workers"] > 0):
+                # Create our local mixin buffer if the num of aggregation workers is 0.
+                self.local_mixin_buffer = MixInMultiAgentReplayBuffer(
+                    capacity=self.config["replay_buffer_num_slots"],
+                    replay_ratio=self.config["replay_ratio"],
+                )
 
             # Create and start the learner thread.
             self._learner_thread = make_learner_thread(
-                self.workers.local_worker(), self.config)
+                self.workers.local_worker(), self.config
+            )
             self._learner_thread.start()
 
     @override(Trainer)
     def training_iteration(self) -> ResultDict:
+        unprocessed_sample_batches = self.get_samples_from_workers()
 
-        # Perform asynchronous sampling on all (remote) rollout workers.
-        sample_batches = asynchronous_parallel_requests(
-            remote_requests_in_flight=self.remote_requests_in_flight,
-            actors=self.workers.remote_workers() or [self.workers.local_worker()],
-            remote_fn=self._sample_and_send_to_buffer,
-            ray_wait_timeout_s=0.0,
-            max_remote_requests_in_flight_per_actor=self.config["max_sample_requests_in_flight_per_worker"],
-        )
+        if self.config["num_aggregation_workers"] > 0:
+            batch = self.process_experiences_tree_aggregation(
+                unprocessed_sample_batches
+            )
+        else:
+            batch = self.process_experiences_directly(unprocessed_sample_batches)
 
-        # Place all batches that are ready on the learner thread's inqueue.
-        # TODO: mixin buffer and batch size control.
-        try:
-            for batch in sample_batches.values():
-                # Decompress batch (if compressed).
-                batch.decompress_if_needed()
-                # Send batch through mixin buffer.
-                # self.
-                self._learner_thread.inqueue.put(
-                    batch, block=False)
-                self._counters[NUM_ENV_STEPS_SAMPLED] += len(batch)
-                self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
-        except queue.Full:
-            self._counters["num_times_learner_queue_full"] += 1
+        self.place_processed_samples_on_learner_queue(batch)
 
-        global_vars = {"timestep": self._counters[NUM_ENV_STEPS_SAMPLED]}
+        learner_results = self.process_trained_results()
+
+        # I'm 90 percent sure that is supposed to be number of timesteps trained,
+        # not number of timesteps sampled.
+        global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_TRAINED]}
 
         # Only need to update workers if there are remote workers.
         self._counters["steps_since_broadcast"] += 1
-        if self.workers.remote_workers() and \
-                self._counters["steps_since_broadcast"] >= self.config["broadcast_interval"] and \
-                self._learner_thread.weights_updated:
-
+        if (
+            self.workers.remote_workers()
+            and self._counters["steps_since_broadcast"]
+            >= self.config["broadcast_interval"]
+            and self._learner_thread.weights_updated
+        ):
             weights = ray.put(self.workers.local_worker().get_weights())
             self._counters["steps_since_broadcast"] = 0
             self._learner_thread.weights_updated = False
             self._counters["num_weight_broadcasts"] += 1
 
-            for worker in sample_batches.keys():
+            for worker in unprocessed_sample_batches.keys():
                 worker.set_weights.remote(weights, global_vars)
-
-        # Get learner outputs/stats from output queue.
-        if self._learner_thread.is_alive():
-            try:
-                # Output queue holds tuples of:
-                # - count of batches added to buffer.
-                # - learner stats
-                _, learner_results = self._learner_thread.outqueue.get(timeout=0.0)
-            except queue.Empty:
-                learner_results = {}
-        else:
-            raise RuntimeError("Learner thread is dead!")
-
-        # Update the steps trained counters.
-        num_agent_steps_trained = learner_results.get(NUM_AGENT_STEPS_TRAINED, 0)
-        self._counters[STEPS_TRAINED_THIS_ITER_COUNTER] = num_agent_steps_trained
-        self._counters[NUM_AGENT_STEPS_TRAINED] += num_agent_steps_trained
-
-        # Callback for APPO to use to update KL, target network periodically.
-        # The input to the callback is the learner fetches dict.
-        if self.config["after_train_step"]:
-            self.config["after_train_step"](trainer=self, results=learner_results)
 
         # Update global vars of the local worker.
         self.workers.local_worker().set_global_vars(global_vars)
 
-        return learner_results  # self._learner_thread.add_learner_metrics
+        # Callback for APPO to use to update KL, target network periodically.
+        # The input to the callback is the learner fetches dict.
+        if self.config["after_train_step"]:
+            self.config["after_train_step"](trainer=self, config=self.config)
+
+        return learner_results
 
     @staticmethod
     @override(Trainer)
@@ -565,12 +555,93 @@ class ImpalaTrainer(Trainer):
             strategy=config.get("placement_strategy", "PACK"),
         )
 
-    @staticmethod
-    def _sample_and_send_to_buffer(worker: RolloutWorker):
-        # Generate a sample.
-        sample = worker.sample()
-        # Send the SampleBatches to an assigned buffer shard.
-        replay_actor, _ = np.random.choice(worker.)
-        replay_actor.add.remote(sample)
-        # Return counts (env-steps, agent-steps).
-        return sample.count, sample.agent_steps()
+    def get_samples_from_workers(self) -> Dict[ActorHandle, List[SampleBatch]]:
+        # Perform asynchronous sampling on all (remote) rollout workers.
+        if self.workers.remote_workers():
+            sample_batches: Dict[
+                ActorHandle, List[ObjectRef]
+            ] = asynchronous_parallel_requests(
+                remote_requests_in_flight=self.remote_requests_in_flight,
+                actors=self.workers.remote_workers(),
+                ray_wait_timeout_s=0.0,
+                max_remote_requests_in_flight_per_actor=self.config[
+                    "max_sample_requests_in_flight_per_worker"
+                ],
+                return_result_obj_ref_ids=True,
+            )
+        else:
+            # only sampling on the local worker
+            sample_batches = {
+                self.workers.local_worker(): [self.workers.local_worker().sample()]
+            }
+        return sample_batches
+
+    def place_processed_samples_on_learner_queue(
+        self, processed_samples: SampleBatchType
+    ) -> None:
+        try:
+            if processed_samples:
+                self._learner_thread.inqueue.put(processed_samples, block=False)
+                self._counters[NUM_ENV_STEPS_SAMPLED] += processed_samples.count
+                self._counters[
+                    NUM_AGENT_STEPS_SAMPLED
+                ] += processed_samples.agent_steps()
+        except queue.Full:
+            self._counters["num_times_learner_queue_full"] += 1
+
+    def process_trained_results(self) -> ResultDict:
+        # Get learner outputs/stats from output queue.
+        learner_infos = []
+        num_agent_steps_trained = 0
+
+        for _ in range(self._learner_thread.outqueue.qsize()):
+            if self.learner_thread.is_alive():
+                (
+                    num_trained_samples,
+                    learner_results,
+                ) = self._learner_thread.outqueue.get(timeout=0.001)
+                num_agent_steps_trained += num_trained_samples
+                if learner_results:
+                    learner_infos.append(learner_results)
+            else:
+                raise RuntimeError("The learner thread died in while training")
+
+        for result1, result2 in zip(learner_infos, learner_infos[1:]):
+            try:
+                tree.assert_same_structure(result1, result2)
+            except (ValueError, TypeError):
+                results_have_same_structure = False
+                break
+        if len(learner_infos) > 1 and results_have_same_structure:
+            learner_info = tree.map_structure(
+                lambda *_args: sum(_args) / len(learner_infos), *learner_infos)
+        else:
+            learner_info = learner_infos[-1]
+
+        # Update the steps trained counters.
+        self._counters[STEPS_TRAINED_THIS_ITER_COUNTER] = num_agent_steps_trained
+        self._counters[NUM_AGENT_STEPS_TRAINED] += num_agent_steps_trained
+
+        return learner_info
+
+    def process_experiences_directly(
+        self, actor_to_sample_batches_refs: Dict[ActorHandle, List[ObjectRef]]
+    ) -> Union[SampleBatchType, None]:
+        processed_batches = []
+        batches = list(actor_to_sample_batches_refs.values())
+        if not batches:
+            return None
+        if batches and isinstance(batches[0], ray.ObjectRef):
+            batches = ray.get(batches)
+        for batch in batches:
+            batch = batch.decompress_if_needed()
+            self.local_mixin_buffer.add_batch(batch)
+            batch = self.local_mixin_buffer.replay()
+            processed_batches.append(batch)
+        return SampleBatch.concat_samples(processed_batches)
+
+    def process_experiences_tree_aggregation(
+        self, sample_batches_refs: List[ObjectRef]
+    ) -> Union[SampleBatchType, None]:
+        del sample_batches_refs
+        return None
