@@ -319,11 +319,11 @@ def run(
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
-def config(address: str, json_format=bool):
+def config(address: str):
 
     app_info = ServeSubmissionClient(address).get_info()
     if app_info is not None:
-        print(yaml.dump(app_info))
+        print(yaml.safe_dump(app_info, sort_keys=False))
 
 
 @cli.command(
