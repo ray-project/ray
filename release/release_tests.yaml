@@ -3143,6 +3143,9 @@
   group: core-dataset-tests
   working_dir: nightly_tests/dataset
   stable: false
+  legacy:
+    test_name: dataset_random_access
+    test_suite: dataset_test
 
   frequency: multi
   team: core
