@@ -4,12 +4,19 @@ from typing import TypeVar
 
 import ray
 from ray.experimental.dag.dag_node import DAGNode
+from ray.experimental.dag.input_node import InputNode
+from ray import serve
+from ray.serve.handle import (
+    RayServeSyncHandle,
+    serve_handle_to_json_dict,
+    serve_handle_from_json_dict,
+)
 from ray.serve.pipeline.json_serde import (
     DAGNodeEncoder,
     dagnode_from_json,
     DAGNODE_TYPE_KEY,
 )
-from ray.serve.pipeline.tests.test_modules import (
+from ray.serve.pipeline.tests.resources.test_modules import (
     Model,
     combine,
     Counter,
@@ -22,7 +29,6 @@ from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
 )
-from ray.experimental.dag import InputNode
 
 RayHandleLike = TypeVar("RayHandleLike")
 
@@ -89,7 +95,7 @@ def test_non_json_serializable_args():
         def __init__(self, val):
             self.val = val
 
-    ray_dag = combine._bind(MyNonJSONClass(1), MyNonJSONClass(2))
+    ray_dag = combine.bind(MyNonJSONClass(1), MyNonJSONClass(2))
     # General context
     with pytest.raises(
         TypeError,
@@ -128,13 +134,13 @@ def test_simple_function_node_json_serde(serve_instance):
         - Simple function with only args, all primitive types
         - Simple function with args + kwargs, all primitive types
     """
-    original_dag_node = combine._bind(1, 2)
+    original_dag_node = combine.bind(1, 2)
     _test_json_serde_helper(
         original_dag_node,
         executor_fn=_test_execution_function_node,
         expected_json_dict={
             DAGNODE_TYPE_KEY: "FunctionNode",
-            "import_path": "ray.serve.pipeline.tests.test_modules.combine",
+            "import_path": "ray.serve.pipeline.tests.resources.test_modules.combine",
             "args": "[1, 2]",
             "kwargs": "{}",
             "options": "{}",
@@ -143,13 +149,13 @@ def test_simple_function_node_json_serde(serve_instance):
         },
     )
 
-    original_dag_node = combine._bind(1, 2, kwargs_output=3)
+    original_dag_node = combine.bind(1, 2, kwargs_output=3)
     _test_json_serde_helper(
         original_dag_node,
         executor_fn=_test_execution_function_node,
         expected_json_dict={
             DAGNODE_TYPE_KEY: "FunctionNode",
-            "import_path": "ray.serve.pipeline.tests.test_modules.combine",
+            "import_path": "ray.serve.pipeline.tests.resources.test_modules.combine",
             "args": "[1, 2]",
             "kwargs": '{"kwargs_output": 3}',
             "options": "{}",
@@ -158,13 +164,13 @@ def test_simple_function_node_json_serde(serve_instance):
         },
     )
 
-    original_dag_node = fn_hello._bind()
+    original_dag_node = fn_hello.bind()
     _test_json_serde_helper(
         original_dag_node,
         executor_fn=_test_execution_function_node,
         expected_json_dict={
             DAGNODE_TYPE_KEY: "FunctionNode",
-            "import_path": "ray.serve.pipeline.tests.test_modules.fn_hello",
+            "import_path": "ray.serve.pipeline.tests.resources.test_modules.fn_hello",
             "args": "[]",
             "kwargs": "{}",
             "options": "{}",
@@ -188,13 +194,13 @@ def test_simple_class_node_json_serde(serve_instance):
         - Simple class with args + kwargs, all primitive types
         - Simple chain of class method calls, all primitive types
     """
-    original_dag_node = ClassHello._bind()
+    original_dag_node = ClassHello.bind()
     _test_json_serde_helper(
         original_dag_node,
         executor_fn=_test_execution_class_node_ClassHello,
         expected_json_dict={
             DAGNODE_TYPE_KEY: "ClassNode",
-            "import_path": "ray.serve.pipeline.tests.test_modules.ClassHello",
+            "import_path": "ray.serve.pipeline.tests.resources.test_modules.ClassHello",
             "args": "[]",
             "kwargs": "{}",
             "options": "{}",
@@ -203,13 +209,13 @@ def test_simple_class_node_json_serde(serve_instance):
         },
     )
 
-    original_dag_node = Model._bind(1)
+    original_dag_node = Model.bind(1)
     _test_json_serde_helper(
         original_dag_node,
         executor_fn=_test_execution_class_node_Model,
         expected_json_dict={
             DAGNODE_TYPE_KEY: "ClassNode",
-            "import_path": "ray.serve.pipeline.tests.test_modules.Model",
+            "import_path": "ray.serve.pipeline.tests.resources.test_modules.Model",
             "args": "[1]",
             "kwargs": "{}",
             "options": "{}",
@@ -218,13 +224,13 @@ def test_simple_class_node_json_serde(serve_instance):
         },
     )
 
-    original_dag_node = Model._bind(1, ratio=0.5)
+    original_dag_node = Model.bind(1, ratio=0.5)
     _test_json_serde_helper(
         original_dag_node,
         executor_fn=_test_execution_class_node_Model,
         expected_json_dict={
             DAGNODE_TYPE_KEY: "ClassNode",
-            "import_path": "ray.serve.pipeline.tests.test_modules.Model",
+            "import_path": "ray.serve.pipeline.tests.resources.test_modules.Model",
             "args": "[1]",
             "kwargs": '{"ratio": 0.5}',
             "options": "{}",
@@ -245,7 +251,7 @@ def _test_deployment_json_serde_helper(
         3) Deserialized serve dag can extract correct number and definition of
             serve deployments.
     """
-    serve_root_dag = ray_dag._apply_recursive(transform_ray_dag_to_serve_dag)
+    serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
     json_serialized = json.dumps(serve_root_dag, cls=DAGNodeEncoder)
     deserialized_serve_root_dag_node = json.loads(
         json_serialized, object_hook=dagnode_from_json
@@ -271,10 +277,10 @@ def test_simple_deployment_method_call_chain(serve_instance):
     ClassMethodNode to DeploymentMethodNode that acts on deployment handle
     that is uniquely identified by its name without dependency of uuid.
     """
-    counter = Counter._bind(0)
-    counter.inc._bind(1)
-    counter.inc._bind(2)
-    ray_dag = counter.get._bind()
+    counter = Counter.bind(0)
+    counter.inc.bind(1)
+    counter.inc.bind(2)
+    ray_dag = counter.get.bind()
     assert ray.get(ray_dag.execute()) == 3
     (
         serve_root_dag,
@@ -290,10 +296,10 @@ def test_simple_deployment_method_call_chain(serve_instance):
 
 def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
     with InputNode() as dag_input:
-        m1 = Model._bind(2)
-        m2 = Model._bind(3)
-        combine = Combine._bind(m1, m2={NESTED_HANDLE_KEY: m2}, m2_nested=True)
-        ray_dag = combine.__call__._bind(dag_input)
+        m1 = Model.bind(2)
+        m2 = Model.bind(3)
+        combine = Combine.bind(m1, m2={NESTED_HANDLE_KEY: m2}, m2_nested=True)
+        ray_dag = combine.__call__.bind(dag_input)
 
     (
         serve_root_dag,
@@ -306,13 +312,13 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
 
 def test_nested_deployment_node_json_serde(serve_instance):
     with InputNode() as dag_input:
-        m1 = Model._bind(2)
-        m2 = Model._bind(3)
+        m1 = Model.bind(2)
+        m2 = Model.bind(3)
 
-        m1_output = m1.forward._bind(dag_input)
-        m2_output = m2.forward._bind(dag_input)
+        m1_output = m1.forward.bind(dag_input)
+        m2_output = m2.forward.bind(dag_input)
 
-        ray_dag = combine._bind(m1_output, m2_output)
+        ray_dag = combine.bind(m1_output, m2_output)
     (
         serve_root_dag,
         deserialized_serve_root_dag_node,
@@ -320,6 +326,44 @@ def test_nested_deployment_node_json_serde(serve_instance):
     assert ray.get(serve_root_dag.execute(1)) == ray.get(
         deserialized_serve_root_dag_node.execute(1)
     )
+
+
+def get_handle(sync: bool = True):
+    @serve.deployment
+    def echo(inp: str):
+        return inp
+
+    echo.deploy()
+    return echo.get_handle(sync=sync)
+
+
+async def call(handle, inp):
+    if isinstance(handle, RayServeSyncHandle):
+        ref = handle.remote(inp)
+    else:
+        ref = await handle.remote(inp)
+
+    return ray.get(ref)
+
+
+@pytest.mark.asyncio
+class TestHandleJSON:
+    def test_invalid(self, serve_instance):
+        with pytest.raises(ValueError):
+            serve_handle_from_json_dict({"blah": 123})
+
+    @pytest.mark.parametrize("sync", [False, True])
+    async def test_basic(self, serve_instance, sync):
+        handle = get_handle(sync)
+        assert await call(handle, "hi") == "hi"
+
+        serialized = json.dumps(serve_handle_to_json_dict(handle))
+        # Check we can go through multiple rounds of serde.
+        serialized = json.dumps(json.loads(serialized))
+
+        # Load the handle back from the dict.
+        handle = serve_handle_from_json_dict(json.loads(serialized))
+        assert await call(handle, "hi") == "hi"
 
 
 if __name__ == "__main__":

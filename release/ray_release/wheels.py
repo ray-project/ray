@@ -1,3 +1,4 @@
+import importlib
 import os
 import re
 import subprocess
@@ -27,6 +28,9 @@ INIT_URL_TPL = (
 )
 
 DEFAULT_REPO = REPO_URL_TPL.format(owner=DEFAULT_GIT_OWNER, package=DEFAULT_GIT_PACKAGE)
+
+# Modules to be reloaded after installing a new local ray version
+RELOAD_MODULES = ["ray", "ray.job_submission"]
 
 
 def get_ray_version(repo_url: str, commit: str) -> str:
@@ -91,21 +95,23 @@ def get_latest_commits(
     return commits
 
 
+def get_wheels_filename(ray_version: str) -> str:
+    return f"ray-{ray_version}-cp37-cp37m-manylinux2014_x86_64.whl"
+
+
 def get_ray_wheels_url(
     repo_url: str, branch: str, commit: str, ray_version: str
 ) -> str:
     if not repo_url.startswith("https://github.com/ray-project/ray"):
-        raise RayWheelsNotFoundError(
-            f"Automatically retrieving Ray wheels URLs is currently not "
-            f"implemented for PRs or foreign repositories. Got repository "
-            f"{repo_url}, branch {branch}, commit {commit}, "
-            f"version {ray_version}"
+        return (
+            f"https://ray-ci-artifact-pr-public.s3.amazonaws.com/"
+            f"{commit}/tmp/artifacts/.whl/{get_wheels_filename(ray_version)}"
         )
 
+    # Else, ray repo
     return (
         f"https://s3-us-west-2.amazonaws.com/ray-wheels/"
-        f"{branch}/{commit}/"
-        f"ray-{ray_version}-cp37-cp37m-manylinux2014_x86_64.whl"
+        f"{branch}/{commit}/{get_wheels_filename(ray_version)}"
     )
 
 
@@ -205,11 +211,19 @@ def find_ray_wheels_url(ray_wheels: Optional[str] = None) -> str:
         ray_version = get_ray_version(repo_url, latest_commits[0])
 
         for commit in latest_commits:
-            wheels_url = get_ray_wheels_url(repo_url, branch, commit, ray_version)
+            try:
+                wheels_url = get_ray_wheels_url(repo_url, branch, commit, ray_version)
+            except Exception as e:
+                logger.info(f"Commit not found for PR: {e}")
+                continue
             if url_exists(wheels_url):
                 set_test_env_var("RAY_COMMIT", commit)
 
                 return wheels_url
+            else:
+                logger.info(
+                    f"Wheels URL for commit {commit} does not exist: " f"{wheels_url}"
+                )
 
         raise RayWheelsNotFoundError(
             f"Couldn't find latest available wheels for repo "
@@ -229,3 +243,29 @@ def find_ray_wheels_url(ray_wheels: Optional[str] = None) -> str:
     set_test_env_var("RAY_VERSION", ray_version)
 
     return wheels_url
+
+
+def install_matching_ray_locally(ray_wheels: Optional[str]):
+    if not ray_wheels:
+        logger.warning(
+            "No Ray wheels found - can't install matching Ray wheels locally!"
+        )
+        return
+    assert "manylinux2014_x86_64" in ray_wheels, ray_wheels
+    if sys.platform == "darwin":
+        platform = "macosx_10_15_intel"
+    elif sys.platform == "win32":
+        platform = "win_amd64"
+    else:
+        platform = "manylinux2014_x86_64"
+    ray_wheels = ray_wheels.replace("manylinux2014_x86_64", platform)
+    logger.info(f"Installing matching Ray wheels locally: {ray_wheels}")
+    subprocess.check_output(
+        "pip uninstall -y ray", shell=True, env=os.environ, text=True
+    )
+    subprocess.check_output(
+        f"pip install -U {ray_wheels}", shell=True, env=os.environ, text=True
+    )
+    for module_name in RELOAD_MODULES:
+        if module_name in sys.modules:
+            importlib.reload(sys.modules[module_name])

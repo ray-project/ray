@@ -117,7 +117,7 @@ class _UnboundClassMethodNode(object):
         self._method_name = method_name
         self._options = {}
 
-    def _bind(self, *args, **kwargs):
+    def bind(self, *args, **kwargs):
         other_args_to_resolve = {
             PARENT_CLASS_NODE_KEY: self._actor,
             PREV_CLASS_METHOD_CALL_KEY: self._actor._last_call,
@@ -132,6 +132,15 @@ class _UnboundClassMethodNode(object):
         )
         self._actor._last_call = node
         return node
+
+    def __getattr__(self, attr: str):
+        if attr == "remote":
+            raise AttributeError(
+                ".remote() cannot be used on ClassMethodNodes. Use .bind() instead "
+                "to express an symbolic actor call."
+            )
+        else:
+            return self.__getattribute__(attr)
 
     def options(self, **options):
         self._options = options

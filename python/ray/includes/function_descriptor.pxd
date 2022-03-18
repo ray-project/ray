@@ -26,6 +26,8 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         "ray::FunctionDescriptorType::kJavaFunctionDescriptor"
     cdef CFunctionDescriptorType PythonFunctionDescriptorType \
         "ray::FunctionDescriptorType::kPythonFunctionDescriptor"
+    cdef CFunctionDescriptorType CppFunctionDescriptorType \
+        "ray::FunctionDescriptorType::kCppFunctionDescriptor"
 
 
 cdef extern from "ray/common/function_descriptor.h" nogil:
@@ -54,6 +56,11 @@ cdef extern from "ray/common/function_descriptor.h" nogil:
                                         const c_string &function_source_hash)
 
         @staticmethod
+        CFunctionDescriptor BuildCpp(const c_string &function_name,
+                                     const c_string &caller,
+                                     const c_string &class_name)
+
+        @staticmethod
         CFunctionDescriptor Deserialize(const c_string &serialized_binary)
 
     cdef cppclass CJavaFunctionDescriptor "ray::JavaFunctionDescriptor":
@@ -66,3 +73,8 @@ cdef extern from "ray/common/function_descriptor.h" nogil:
         c_string ClassName()
         c_string FunctionName()
         c_string FunctionHash()
+
+    cdef cppclass CCppFunctionDescriptor "ray::CppFunctionDescriptor":
+        c_string FunctionName()
+        c_string Caller()
+        c_string ClassName()

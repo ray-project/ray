@@ -603,7 +603,8 @@ class ReporterAgent(
             await asyncio.sleep(reporter_consts.REPORTER_UPDATE_INTERVAL_MS / 1000)
 
     async def run(self, server):
-        reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
+        if server:
+            reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
 
         gcs_addr = self._dashboard_agent.gcs_address
         assert gcs_addr is not None

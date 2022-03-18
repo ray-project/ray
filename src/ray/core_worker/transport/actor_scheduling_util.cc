@@ -22,8 +22,10 @@ InboundRequest::InboundRequest() {}
 InboundRequest::InboundRequest(
     std::function<void(rpc::SendReplyCallback)> accept_callback,
     std::function<void(rpc::SendReplyCallback)> reject_callback,
-    rpc::SendReplyCallback send_reply_callback, class TaskID task_id,
-    bool has_dependencies, const std::string &concurrency_group_name,
+    rpc::SendReplyCallback send_reply_callback,
+    class TaskID task_id,
+    bool has_dependencies,
+    const std::string &concurrency_group_name,
     const ray::FunctionDescriptor &function_descriptor)
     : accept_callback_(std::move(accept_callback)),
       reject_callback_(std::move(reject_callback)),

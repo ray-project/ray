@@ -14,7 +14,7 @@ from ray._private.client_mode_hook import client_mode_convert_function
 from ray._private.client_mode_hook import client_mode_should_convert
 from ray.util.placement_group import configure_placement_group_based_on_context
 import ray._private.signature
-from ray.runtime_env import RuntimeEnv
+from ray.utils import get_runtime_env_info, parse_runtime_env
 from ray.util.tracing.tracing_helper import (
     _tracing_task_invocation,
     _inject_tracing_into_function,
@@ -101,10 +101,9 @@ class RemoteFunction:
     ):
         if inspect.iscoroutinefunction(function):
             raise ValueError(
-                "'async def' should not be used for remote "
-                "tasks. You can wrap the async function with "
-                "`asyncio.get_event_loop.run_until(f())`. "
-                "See more at docs.ray.io/async_api.html"
+                "'async def' should not be used for remote tasks. You can wrap the "
+                "async function with `asyncio.get_event_loop.run_until(f())`. "
+                "See more at https://docs.ray.io/en/latest/ray-core/async_api.html#asyncio-for-remote-tasks"  # noqa
             )
         self._language = language
         self._function = _inject_tracing_into_function(function)
@@ -139,16 +138,9 @@ class RemoteFunction:
             if retry_exceptions is None
             else retry_exceptions
         )
-        # Parse local pip/conda config files here. If we instead did it in
-        # .remote(), it would get run in the Ray Client server, which runs on
-        # a remote node where the files aren't available.
-        if runtime_env:
-            if isinstance(runtime_env, str):
-                self._runtime_env = runtime_env
-            else:
-                self._runtime_env = RuntimeEnv(**(runtime_env or {})).serialize()
-        else:
-            self._runtime_env = None
+
+        self._runtime_env = parse_runtime_env(runtime_env)
+
         self._placement_group = placement_group
         self._decorator = getattr(function, "__ray_invocation_decorator__", None)
         self._function_signature = ray._private.signature.extract_signature(
@@ -195,8 +187,7 @@ class RemoteFunction:
     ):
         """Configures and overrides the task invocation parameters.
 
-        The arguments are the same as those that can be passed to
-        :obj:`ray.remote`.
+        The arguments are the same as those that can be passed to :obj:`ray.remote`.
         Overriding `max_calls` is not supported.
 
         Examples:
@@ -211,20 +202,7 @@ class RemoteFunction:
         """
 
         func_cls = self
-        # Parse local pip/conda config files here. If we instead did it in
-        # .remote(), it would get run in the Ray Client server, which runs on
-        # a remote node where the files aren't available.
-        if runtime_env:
-            if isinstance(runtime_env, str):
-                # Serialzed protobuf runtime env from Ray client.
-                new_runtime_env = runtime_env
-            else:
-                new_runtime_env = RuntimeEnv(**runtime_env).serialize()
-        else:
-            # Keep the runtime_env as None.  In .remote(), we need to know if
-            # runtime_env is None to know whether or not to fall back to the
-            # runtime_env specified in the @ray.remote decorator.
-            new_runtime_env = None
+        new_runtime_env = parse_runtime_env(runtime_env)
 
         options = dict(
             num_returns=num_returns,
@@ -248,12 +226,11 @@ class RemoteFunction:
             def remote(self, *args, **kwargs):
                 return func_cls._remote(args=args, kwargs=kwargs, **options)
 
-            def _bind(self, *args, **kwargs):
+            def bind(self, *args, **kwargs):
                 """
                 **Experimental**
 
-                For ray DAG building. Implementation and interface subject
-                to changes.
+                For ray DAG building. Implementation and interface subject to changes.
                 """
                 from ray.experimental.dag.function_node import FunctionNode
 
@@ -340,7 +317,7 @@ class RemoteFunction:
                 msg = (
                     "Could not serialize the function "
                     f"{self._function_descriptor.repr}. Check "
-                    "https://docs.ray.io/en/master/serialization.html#troubleshooting "  # noqa
+                    "https://docs.ray.io/en/master/serialization.html#troubleshooting "
                     "for more information."
                 )
                 raise TypeError(msg) from e
@@ -419,6 +396,13 @@ class RemoteFunction:
 
         if not runtime_env or runtime_env == "{}":
             runtime_env = self._runtime_env
+        serialized_runtime_env_info = None
+        if runtime_env is not None:
+            serialized_runtime_env_info = get_runtime_env_info(
+                runtime_env,
+                is_job_runtime_env=False,
+                serialize=True,
+            )
 
         def invocation(args, kwargs):
             if self._is_cross_language:
@@ -431,9 +415,9 @@ class RemoteFunction:
                 )
 
             if worker.mode == ray.worker.LOCAL_MODE:
-                assert not self._is_cross_language, (
-                    "Cross language remote function " "cannot be executed locally."
-                )
+                assert (
+                    not self._is_cross_language
+                ), "Cross language remote function cannot be executed locally."
             object_refs = worker.core_worker.submit_task(
                 self._language,
                 self._function_descriptor,
@@ -445,7 +429,7 @@ class RemoteFunction:
                 retry_exceptions,
                 scheduling_strategy,
                 worker.debugger_breakpoint,
-                runtime_env or "{}",
+                serialized_runtime_env_info or "{}",
             )
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).
@@ -460,12 +444,11 @@ class RemoteFunction:
 
         return invocation(args, kwargs)
 
-    def _bind(self, *args, **kwargs):
+    def bind(self, *args, **kwargs):
         """
         **Experimental**
 
-        For ray DAG building. Implementation and interface subject to
-        changes.
+        For ray DAG building. Implementation and interface subject to changes.
         """
 
         from ray.experimental.dag.function_node import FunctionNode

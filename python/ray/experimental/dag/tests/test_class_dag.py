@@ -44,16 +44,16 @@ def test_basic_actor_dag(shared_ray_instance):
     def combine(x, y):
         return x + y
 
-    a1 = Actor._bind(10)
-    res = a1.get._bind()
+    a1 = Actor.bind(10)
+    res = a1.get.bind()
     print(res)
     assert ray.get(res.execute()) == 10
 
-    a2 = Actor._bind(10)
-    a1.inc._bind(2)
-    a1.inc._bind(4)
-    a2.inc._bind(6)
-    dag = combine._bind(a1.get._bind(), a2.get._bind())
+    a2 = Actor.bind(10)
+    a1.inc.bind(2)
+    a1.inc.bind(4)
+    a2.inc.bind(6)
+    dag = combine.bind(a1.get.bind(), a2.get.bind())
 
     print(dag)
     assert ray.get(dag.execute()) == 32
@@ -71,9 +71,9 @@ def test_class_as_class_constructor_arg(shared_ray_instance):
         def get(self):
             return ray.get(self.inner_actor.get.remote())
 
-    outer = OuterActor._bind(Actor._bind(10))
-    outer.inc._bind(2)
-    dag = outer.get._bind()
+    outer = OuterActor.bind(Actor.bind(10))
+    outer.inc.bind(2)
+    dag = outer.get.bind()
     print(dag)
     assert ray.get(dag.execute()) == 12
 
@@ -83,19 +83,19 @@ def test_class_as_function_constructor_arg(shared_ray_instance):
     def f(actor_handle):
         return ray.get(actor_handle.get.remote())
 
-    dag = f._bind(Actor._bind(10))
+    dag = f.bind(Actor.bind(10))
     print(dag)
     assert ray.get(dag.execute()) == 10
 
 
 def test_basic_actor_dag_constructor_options(shared_ray_instance):
-    a1 = Actor._bind(10)
-    dag = a1.get._bind()
+    a1 = Actor.bind(10)
+    dag = a1.get.bind()
     print(dag)
     assert ray.get(dag.execute()) == 10
 
-    a1 = Actor.options(name="Actor", namespace="test", max_pending_calls=10)._bind(10)
-    dag = a1.get._bind()
+    a1 = Actor.options(name="Actor", namespace="test", max_pending_calls=10).bind(10)
+    dag = a1.get.bind()
     print(dag)
     # Ensure execution result is identical with .options() in init()
     assert ray.get(dag.execute()) == 10
@@ -106,16 +106,16 @@ def test_basic_actor_dag_constructor_options(shared_ray_instance):
 
 
 def test_actor_method_options(shared_ray_instance):
-    a1 = Actor._bind(10)
-    dag = a1.get.options(name="actor_method_options")._bind()
+    a1 = Actor.bind(10)
+    dag = a1.get.options(name="actor_method_options").bind()
     print(dag)
     assert ray.get(dag.execute()) == 10
     assert dag.get_options().get("name") == "actor_method_options"
 
 
 def test_basic_actor_dag_constructor_invalid_options(shared_ray_instance):
-    a1 = Actor.options(num_cpus=-1)._bind(10)
-    invalid_dag = a1.get._bind()
+    a1 = Actor.options(num_cpus=-1).bind(10)
+    invalid_dag = a1.get.bind()
     with pytest.raises(ValueError, match=".*Resource quantities may not be negative.*"):
         ray.get(invalid_dag.execute())
 
@@ -130,24 +130,24 @@ def test_actor_options_complicated(shared_ray_instance):
     def combine(x, y):
         return x + y
 
-    a1 = Actor.options(name="a1_v0")._bind(10)
-    res = a1.get.options(name="v1")._bind()
+    a1 = Actor.options(name="a1_v0").bind(10)
+    res = a1.get.options(name="v1").bind()
     print(res)
     assert ray.get(res.execute()) == 10
     assert a1.get_options().get("name") == "a1_v0"
     assert res.get_options().get("name") == "v1"
 
-    a1 = Actor.options(name="a1_v1")._bind(10)  # Cannot
-    a2 = Actor.options(name="a2_v0")._bind(10)
-    a1.inc.options(name="v1")._bind(2)
-    a1.inc.options(name="v2")._bind(4)
-    a2.inc.options(name="v3")._bind(6)
-    dag = combine.options(name="v4")._bind(a1.get._bind(), a2.get._bind())
+    a1 = Actor.options(name="a1_v1").bind(10)  # Cannot
+    a2 = Actor.options(name="a2_v0").bind(10)
+    a1.inc.options(name="v1").bind(2)
+    a1.inc.options(name="v2").bind(4)
+    a2.inc.options(name="v3").bind(6)
+    dag = combine.options(name="v4").bind(a1.get.bind(), a2.get.bind())
 
     print(dag)
     assert ray.get(dag.execute()) == 32
-    test_a1 = dag.get_args()[0]  # call graph for a1.get._bind()
-    test_a2 = dag.get_args()[1]  # call graph for a2.get._bind()
+    test_a1 = dag.get_args()[0]  # call graph for a1.get.bind()
+    test_a2 = dag.get_args()[1]  # call graph for a2.get.bind()
     assert test_a2.get_options() == {}  # No .options() at outer call
     # refer to a2 constructor .options() call
     assert (
@@ -198,8 +198,8 @@ def test_pass_actor_handle(shared_ray_instance):
         assert isinstance(handle, ray.actor.ActorHandle), handle
         return ray.get(handle.ping.remote())
 
-    a1 = Actor._bind()
-    dag = caller._bind(a1)
+    a1 = Actor.bind()
+    dag = caller.bind(a1)
     print(dag)
     assert ray.get(dag.execute()) == "hello"
 
@@ -227,17 +227,55 @@ def test_dynamic_pipeline(shared_ray_instance):
             result = m2.forward.remote(x)
         return ray.get(result)
 
-    m1 = Model._bind("Even: ")
-    m2 = Model._bind("Odd: ")
-    selection = ModelSelection._bind()
+    m1 = Model.bind("Even: ")
+    m2 = Model.bind("Odd: ")
+    selection = ModelSelection.bind()
 
-    even_input = pipeline._bind(20, m1, m2, selection)
+    even_input = pipeline.bind(20, m1, m2, selection)
     print(even_input)
     assert ray.get(even_input.execute()) == "Even: 20"
 
-    odd_input = pipeline._bind(21, m1, m2, selection)
+    odd_input = pipeline.bind(21, m1, m2, selection)
     print(odd_input)
     assert ray.get(odd_input.execute()) == "Odd: 21"
+
+
+def test_unsupported_bind():
+    @ray.remote
+    class Actor:
+        def ping(self):
+            return "hello"
+
+    with pytest.raises(
+        AttributeError,
+        match="'Actor' has no attribute 'bind'",
+    ):
+        actor = Actor.bind()
+        _ = actor.bind()
+
+    with pytest.raises(
+        AttributeError,
+        match=r"\.remote\(\) cannot be used on ClassMethodNodes",
+    ):
+        actor = Actor.bind()
+        _ = actor.ping.remote()
+
+
+def test_unsupported_remote():
+    @ray.remote
+    class Actor:
+        def ping(self):
+            return "hello"
+
+    with pytest.raises(AttributeError, match="'Actor' has no attribute 'remote'"):
+        _ = Actor.bind().remote()
+
+    @ray.remote
+    def func():
+        return 1
+
+    with pytest.raises(AttributeError, match=r"\.remote\(\) cannot be used on"):
+        _ = func.bind().remote()
 
 
 if __name__ == "__main__":

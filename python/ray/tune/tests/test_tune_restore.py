@@ -13,11 +13,14 @@ import unittest
 import ray
 from ray import tune
 from ray._private.test_utils import recursive_fnmatch
+from ray.exceptions import RayTaskError
 from ray.rllib import _register_all
+from ray.tune import TuneError
 from ray.tune.callback import Callback
 from ray.tune.suggest.basic_variant import BasicVariantGenerator
 from ray.tune.suggest import Searcher
 from ray.tune.trial import Trial
+from ray.tune.trial_runner import TrialRunner
 from ray.tune.utils import validate_save_restore
 from ray.tune.utils.mock_trainable import MyTrainableClass
 
@@ -511,6 +514,60 @@ class SearcherTest(unittest.TestCase):
         searcher_2 = self.MockSearcher("no-its-not-me")
         searcher_2.restore_from_dir(tmpdir)
         assert searcher_2.data == original_data
+
+
+class WorkingDirectoryTest(unittest.TestCase):
+    def testWorkingDir(self):
+        """Trainables should know the original working dir on driver through env
+        variable."""
+        working_dir = os.getcwd()
+
+        def f(config):
+            assert os.environ.get("TUNE_ORIG_WORKING_DIR") == working_dir
+
+        tune.run(f)
+
+
+class TrainableCrashWithFailFast(unittest.TestCase):
+    def test(self):
+        """Trainable crashes with fail_fast flag and the original crash message
+        should bubble up."""
+
+        def f(config):
+            tune.report({"a": 1})
+            time.sleep(0.1)
+            raise RuntimeError("Error happens in trainable!!")
+
+        with self.assertRaisesRegex(RayTaskError, "Error happens in trainable!!"):
+            tune.run(f, fail_fast=TrialRunner.RAISE)
+
+
+# For some reason, different tests are coupled through tune.registry.
+# After running `ResourceExhaustedTest`, there is always a super huge `training_func` to
+# be put through GCS, which will fail subsequent tests.
+# tldr, make sure that this test is the last test in the file.
+class ResourceExhaustedTest(unittest.TestCase):
+    def test_resource_exhausted_info(self):
+        """This is to test if helpful information is displayed when
+        the objects captured in trainable/training function are too
+        large and RESOURCES_EXHAUSTED error of gRPC is triggered."""
+
+        # generate some random data to be captured implicitly in training func.
+        from sklearn.datasets import fetch_olivetti_faces
+
+        a_large_array = []
+        for i in range(10):
+            a_large_array.append(fetch_olivetti_faces())
+
+        def training_func(config):
+            for item in a_large_array:
+                assert item
+
+        with self.assertRaisesRegex(
+            TuneError,
+            "The Trainable/training function is too large for grpc resource limit.",
+        ):
+            tune.run(training_func)
 
 
 if __name__ == "__main__":

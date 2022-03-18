@@ -112,7 +112,7 @@ def test_complex_serialization(ray_start_regular):
                 # This is a special case because currently
                 # np.testing.assert_equal fails because we do not properly
                 # handle different numerical types.
-                assert obj1 == obj2, "Objects {} and {} are " "different.".format(
+                assert obj1 == obj2, "Objects {} and {} are different.".format(
                     obj1, obj2
                 )
             else:
@@ -132,23 +132,19 @@ def test_complex_serialization(ray_start_regular):
         elif type(obj1) is list or type(obj2) is list:
             assert len(obj1) == len(
                 obj2
-            ), "Objects {} and {} are lists with " "different lengths.".format(
-                obj1, obj2
-            )
+            ), "Objects {} and {} are lists with different lengths.".format(obj1, obj2)
             for i in range(len(obj1)):
                 assert_equal(obj1[i], obj2[i])
         elif type(obj1) is tuple or type(obj2) is tuple:
             assert len(obj1) == len(
                 obj2
-            ), "Objects {} and {} are tuples " "with different lengths.".format(
-                obj1, obj2
-            )
+            ), "Objects {} and {} are tuples with different lengths.".format(obj1, obj2)
             for i in range(len(obj1)):
                 assert_equal(obj1[i], obj2[i])
         elif is_named_tuple(type(obj1)) or is_named_tuple(type(obj2)):
             assert len(obj1) == len(
                 obj2
-            ), "Objects {} and {} are named " "tuples with different lengths.".format(
+            ), "Objects {} and {} are named tuples with different lengths.".format(
                 obj1, obj2
             )
             for i in range(len(obj1)):
@@ -652,6 +648,36 @@ def test_recursive_resolve(ray_start_shared_local_modes):
     for _ in range(10):
         ref = ray.put(_SelfDereferenceObject(ref))
     assert ray.get(ref) == 42
+
+
+def test_serialization_before_init(shutdown_only):
+    """This test checks if serializers registered before initializing Ray
+    works after initialization."""
+    # make sure ray is shutdown
+    ray.shutdown()
+    assert ray.worker.global_worker.current_job_id.is_nil()
+
+    import threading
+
+    class A:
+        def __init__(self, x):
+            self.x = x
+            self.lock = threading.Lock()  # could not be serialized!
+
+    def custom_serializer(a):
+        return a.x
+
+    def custom_deserializer(b):
+        return A(b)
+
+    # Register serializer and deserializer for class A:
+    ray.util.register_serializer(
+        A, serializer=custom_serializer, deserializer=custom_deserializer
+    )
+
+    # Initialize Ray later.
+    ray.init()
+    ray.get(ray.put(A(1)))  # success!
 
 
 if __name__ == "__main__":

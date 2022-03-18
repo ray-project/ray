@@ -1,9 +1,11 @@
+import os
 import pytest
 import sys
 import ray
 import pathlib
 import json
 import time
+import subprocess
 
 from dataclasses import asdict
 from pathlib import Path
@@ -11,6 +13,7 @@ from jsonschema import validate
 
 import ray._private.usage.usage_lib as ray_usage_lib
 import ray._private.usage.usage_constants as usage_constants
+from ray._private.usage.usage_lib import ClusterConfigToReport
 
 from ray._private.test_utils import wait_for_condition
 
@@ -27,6 +30,18 @@ schema = {
         "python_version": {"type": "string"},
         "collect_timestamp_ms": {"type": "integer"},
         "session_start_timestamp_ms": {"type": "integer"},
+        "cloud_provider": {"type": ["null", "string"]},
+        "min_workers": {"type": ["null", "integer"]},
+        "max_workers": {"type": ["null", "integer"]},
+        "head_node_instance_type": {"type": ["null", "string"]},
+        "worker_node_instance_types": {
+            "type": ["null", "array"],
+            "items": {"type": "string"},
+        },
+        "total_num_cpus": {"type": ["null", "integer"]},
+        "total_num_gpus": {"type": ["null", "integer"]},
+        "total_memory_gb": {"type": ["null", "number"]},
+        "total_object_store_memory_gb": {"type": ["null", "number"]},
         "total_success": {"type": "integer"},
         "total_failed": {"type": "integer"},
         "seq_number": {"type": "integer"},
@@ -63,6 +78,127 @@ def print_dashboard_log():
     from pprint import pprint
 
     pprint(contents)
+
+
+def test_usage_stats_heads_up_message():
+    """
+    Test usage stats heads-up message is shown in the proper cases.
+    """
+    env = os.environ.copy()
+    env["RAY_USAGE_STATS_PROMPT_ENABLED"] = "0"
+    result = subprocess.run(
+        "ray start --head",
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+    )
+    assert result.returncode == 0
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
+        "utf-8"
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stderr.decode(
+        "utf-8"
+    )
+
+    subprocess.run("ray stop --force", shell=True)
+
+    result = subprocess.run(
+        "ray start --head",
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert result.returncode == 0
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
+        "utf-8"
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE in result.stderr.decode("utf-8")
+
+    result = subprocess.run(
+        'ray start --address="127.0.0.1:6379"',
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert result.returncode == 0
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
+        "utf-8"
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stderr.decode(
+        "utf-8"
+    )
+
+    subprocess.run("ray stop --force", shell=True)
+
+    result = subprocess.run(
+        "ray up xxx.yml", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
+        "utf-8"
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE in result.stderr.decode("utf-8")
+
+    result = subprocess.run(
+        "ray exec xxx.yml ls --start",
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
+        "utf-8"
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE in result.stderr.decode("utf-8")
+
+    result = subprocess.run(
+        "ray exec xxx.yml ls",
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
+        "utf-8"
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stderr.decode(
+        "utf-8"
+    )
+
+    result = subprocess.run(
+        "ray submit xxx.yml yyy.py --start",
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
+        "utf-8"
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE in result.stderr.decode("utf-8")
+
+    result = subprocess.run(
+        "ray submit xxx.yml yyy.py",
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
+        "utf-8"
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stderr.decode(
+        "utf-8"
+    )
+
+    result = subprocess.run(
+        'python -c "import ray; ray.init()"',
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
+        "utf-8"
+    )
+    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stderr.decode(
+        "utf-8"
+    )
 
 
 def test_usage_lib_cluster_metadata_generation(monkeypatch, shutdown_only):
@@ -104,6 +240,133 @@ def test_usage_lib_cluster_metadata_generation_usage_disabled(shutdown_only):
     assert len(meta) == 2
 
 
+def test_usage_lib_get_cluster_status_to_report(shutdown_only):
+    ray.init(num_cpus=3, num_gpus=1, object_store_memory=2 ** 30)
+    # Wait for monitor.py to update cluster status
+    wait_for_condition(
+        lambda: ray_usage_lib.get_cluster_status_to_report(
+            ray.experimental.internal_kv.internal_kv_get_gcs_client(),
+            num_retries=20,
+        ).total_num_cpus
+        == 3,
+        timeout=10,
+    )
+    cluster_status_to_report = ray_usage_lib.get_cluster_status_to_report(
+        ray.experimental.internal_kv.internal_kv_get_gcs_client(),
+        num_retries=20,
+    )
+    assert cluster_status_to_report.total_num_cpus == 3
+    assert cluster_status_to_report.total_num_gpus == 1
+    assert cluster_status_to_report.total_memory_gb > 0
+    assert cluster_status_to_report.total_object_store_memory_gb == 1.0
+
+
+def test_usage_lib_get_cluster_config_to_report(monkeypatch, tmp_path):
+    cluster_config_file_path = tmp_path / "ray_bootstrap_config.yaml"
+    """ Test minimal cluster config"""
+    cluster_config_file_path.write_text(
+        """
+cluster_name: minimal
+max_workers: 1
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+"""
+    )
+    cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
+        cluster_config_file_path
+    )
+    assert cluster_config_to_report.cloud_provider == "aws"
+    assert cluster_config_to_report.min_workers is None
+    assert cluster_config_to_report.max_workers == 1
+    assert cluster_config_to_report.head_node_instance_type is None
+    assert cluster_config_to_report.worker_node_instance_types is None
+
+    cluster_config_file_path.write_text(
+        """
+cluster_name: full
+min_workers: 1
+provider:
+    type: gcp
+head_node_type: head_node
+available_node_types:
+    head_node:
+        node_config:
+            InstanceType: m5.large
+        min_workers: 0
+        max_workers: 0
+    aws_worker_node:
+        node_config:
+            InstanceType: m3.large
+        min_workers: 0
+        max_workers: 0
+    azure_worker_node:
+        node_config:
+            azure_arm_parameters:
+                vmSize: Standard_D2s_v3
+    gcp_worker_node:
+        node_config:
+            machineType: n1-standard-2
+"""
+    )
+    cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
+        cluster_config_file_path
+    )
+    assert cluster_config_to_report.cloud_provider == "gcp"
+    assert cluster_config_to_report.min_workers == 1
+    assert cluster_config_to_report.max_workers is None
+    assert cluster_config_to_report.head_node_instance_type == "m5.large"
+    assert cluster_config_to_report.worker_node_instance_types == list(
+        {"m3.large", "Standard_D2s_v3", "n1-standard-2"}
+    )
+
+    cluster_config_file_path.write_text(
+        """
+cluster_name: full
+head_node_type: head_node
+available_node_types:
+    worker_node_1:
+        node_config:
+            ImageId: xyz
+    worker_node_2:
+        resources: {}
+    worker_node_3:
+        node_config:
+            InstanceType: m5.large
+"""
+    )
+    cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
+        cluster_config_file_path
+    )
+    assert cluster_config_to_report.cloud_provider is None
+    assert cluster_config_to_report.min_workers is None
+    assert cluster_config_to_report.max_workers is None
+    assert cluster_config_to_report.head_node_instance_type is None
+    assert cluster_config_to_report.worker_node_instance_types == ["m5.large"]
+
+    cluster_config_file_path.write_text("[invalid")
+    cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
+        cluster_config_file_path
+    )
+    assert cluster_config_to_report == ClusterConfigToReport()
+
+    cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
+        tmp_path / "does_not_exist.yaml"
+    )
+    assert cluster_config_to_report == ClusterConfigToReport()
+
+    monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "localhost")
+    cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
+        tmp_path / "does_not_exist.yaml"
+    )
+    assert cluster_config_to_report.cloud_provider == "kubernetes"
+    assert cluster_config_to_report.min_workers is None
+    assert cluster_config_to_report.max_workers is None
+    assert cluster_config_to_report.head_node_instance_type is None
+    assert cluster_config_to_report.worker_node_instance_types is None
+
+
 @pytest.mark.skipif(
     sys.platform == "win32",
     reason="Test depends on runtime env feature not supported on Windows.",
@@ -119,7 +382,23 @@ def test_usage_lib_report_data(monkeypatch, shutdown_only, tmp_path):
         cluster_metadata = ray_usage_lib.get_cluster_metadata(
             ray.experimental.internal_kv.internal_kv_get_gcs_client(), num_retries=20
         )
-        d = ray_usage_lib.generate_report_data(cluster_metadata, 2, 2, 2)
+        cluster_config_file_path = tmp_path / "ray_bootstrap_config.yaml"
+        cluster_config_file_path.write_text(
+            """
+cluster_name: minimal
+max_workers: 1
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+"""
+        )
+        cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
+            cluster_config_file_path
+        )
+        d = ray_usage_lib.generate_report_data(
+            cluster_metadata, cluster_config_to_report, 2, 2, 2
+        )
         validate(instance=asdict(d), schema=schema)
 
         """
@@ -127,7 +406,7 @@ def test_usage_lib_report_data(monkeypatch, shutdown_only, tmp_path):
         """
         client = ray_usage_lib.UsageReportClient()
         temp_dir = Path(tmp_path)
-        client._write_usage_data(d, temp_dir)
+        client.write_usage_data(d, temp_dir)
 
         wait_for_condition(lambda: file_exists(temp_dir))
 
@@ -163,7 +442,7 @@ def test_usage_lib_report_data(monkeypatch, shutdown_only, tmp_path):
         ray.get(s.ready.remote())
 
         # Query our endpoint over HTTP.
-        r = client._report_usage_data("http://127.0.0.1:8000/usage", d)
+        r = client.report_usage_data("http://127.0.0.1:8000/usage", d)
         r.raise_for_status()
         assert json.loads(r.text) is True
 
@@ -172,15 +451,27 @@ def test_usage_lib_report_data(monkeypatch, shutdown_only, tmp_path):
     sys.platform == "win32",
     reason="Test depends on runtime env feature not supported on Windows.",
 )
-def test_usage_report_e2e(monkeypatch, shutdown_only):
+def test_usage_report_e2e(monkeypatch, shutdown_only, tmp_path):
     """
     Test usage report works e2e with env vars.
     """
+    cluster_config_file_path = tmp_path / "ray_bootstrap_config.yaml"
+    cluster_config_file_path.write_text(
+        """
+cluster_name: minimal
+max_workers: 1
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+"""
+    )
     with monkeypatch.context() as m:
+        m.setenv("HOME", str(tmp_path))
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
         m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
-        ray.init(num_cpus=0)
+        ray.init(num_cpus=3)
 
         @ray.remote(num_cpus=0)
         class StatusReporter:
@@ -238,7 +529,23 @@ def test_usage_report_e2e(monkeypatch, shutdown_only):
         except Exception:
             print_dashboard_log()
             raise
-        validate(instance=ray.get(reporter.get_payload.remote()), schema=schema)
+        payload = ray.get(reporter.get_payload.remote())
+        ray_version, python_version = ray._private.utils.compute_version_info()
+        assert payload["ray_version"] == ray_version
+        assert payload["python_version"] == python_version
+        assert payload["schema_version"] == "0.1"
+        assert payload["os"] == sys.platform
+        assert payload["source"] == "OSS"
+        assert payload["cloud_provider"] == "aws"
+        assert payload["min_workers"] is None
+        assert payload["max_workers"] == 1
+        assert payload["head_node_instance_type"] is None
+        assert payload["worker_node_instance_types"] is None
+        assert payload["total_num_cpus"] == 3
+        assert payload["total_num_gpus"] is None
+        assert payload["total_memory_gb"] > 0
+        assert payload["total_object_store_memory_gb"] > 0
+        validate(instance=payload, schema=schema)
         """
         Verify the usage_stats.json is updated.
         """
