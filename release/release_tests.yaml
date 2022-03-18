@@ -1944,6 +1944,10 @@
   group: Train tests
   working_dir: train_tests/horovod
 
+  legacy:
+    test_name: train_horovod_multi_node_test
+    test_suite: train_tests
+
   frequency: nightly
   team: ml
 
