@@ -712,7 +712,7 @@ uncertainty of action values.
 
 Tuned examples:
 `SimpleContextualBandit <https://github.com/ray-project/ray/blob/master/rllib/agents/bandit/tests/test_bandits.py>`__,
-`UCB Bandit on RecSim <https://github.com/ray-project/ray/blob/master/rllib/agents/bandit/tests/tune_lin_ucb_train_recsim.py>`__.
+`UCB Bandit on RecSim <https://github.com/ray-project/ray/blob/master/rllib/examples/bandit/tune_lin_ucb_train_recsim_env.py>`__.
 `ParametricItemRecoEnv <https://github.com/ray-project/ray/blob/master/rllib/examples/bandit/tune_lin_ucb_train_recommendation.py>`__.
 
 **LinUCB-specific configs** (see also `common configs <rllib-training

@@ -156,6 +156,11 @@ linkcheck_anchors = False
 linkcheck_ignore = [
     r"^((?!http).)*$",  # exclude links not starting with http
     "http://ala2017.it.nuigalway.ie/papers/ALA2017_Gupta.pdf",  # broken
+    "https://mvnrepository.com/artifact/*",  # working but somehow not with linkcheck
+    # This should be fixed -- is temporal the successor of cadence? Do the examples need to be updated?
+    "https://github.com/serverlessworkflow/specification/blob/main/comparisons/comparison-cadence.md",
+    # TODO(richardliaw): The following probably needs to be fixed in the tune_sklearn package
+    "https://scikit-optimize.github.io/stable/modules/",
 ]
 
 # -- Options for HTML output ----------------------------------------------
