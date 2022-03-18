@@ -45,7 +45,7 @@ def main():
     namespace = uuid.uuid4().hex
 
     # IS_SMOKE_TEST is set by args of releaser's e2e.py
-    smoke_test = os.environ.get("IS_SMOKE_TEST", "1")
+    smoke_test = os.environ.get("IS_SMOKE_TEST", "0")
     if smoke_test == "1":
         checkpoint_path = "file://checkpoint.db"
     else:

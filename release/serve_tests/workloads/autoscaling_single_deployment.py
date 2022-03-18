@@ -106,7 +106,7 @@ def main(
     # Give default cluster parameter values based on smoke_test config
     # if user provided values explicitly, use them instead.
     # IS_SMOKE_TEST is set by args of releaser's e2e.py
-    smoke_test = os.environ.get("IS_SMOKE_TEST", "1")
+    smoke_test = os.environ.get("IS_SMOKE_TEST", "0")
     if smoke_test == "1":
         min_replicas = min_replicas or DEFAULT_SMOKE_TEST_MIN_NUM_REPLICA
         max_replicas = max_replicas or DEFAULT_SMOKE_TEST_MAX_NUM_REPLICA
