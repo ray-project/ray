@@ -136,7 +136,7 @@ class TorchTrainer(DataParallelTrainer):
             train_dataset = ray.data.from_items([1, 2, 3])
             scaling_config = {"num_workers": 3}
             # If using GPUs, use the below scaling config instead.
-            # scaling_config = {"num_workers": 3, "use_gpu" True}
+            # scaling_config = {"num_workers": 3, "use_gpu": True}
             trainer = TorchTrainer(
                 train_loop_per_worker=train_loop_per_worker,
                 scaling_config={"num_workers": 3},
