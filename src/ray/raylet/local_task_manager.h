@@ -376,6 +376,8 @@ class LocalTaskManager : public ILocalTaskManager {
   const int64_t sched_cls_cap_max_ms_;
 
   size_t num_task_spilled_ = 0;
+  size_t num_waiting_task_spilled_ = 0;
+  size_t num_unschedulable_task_spilled_ = 0;
 
   friend class SchedulerResourceReporter;
   friend class ClusterTaskManagerTest;
