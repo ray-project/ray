@@ -1,3 +1,4 @@
+from copy import deepcopy
 import os
 import logging
 from typing import Dict, Optional, TYPE_CHECKING
@@ -8,14 +9,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-try:
-    import mlflow
-except ImportError:
-    logger.error(
-        "pip install 'mlflow' to use `MLflowLoggerCallback`/`MLflowTrainableMixin`."
-    )
-    mlflow = None
-
 
 class MLflowLoggerUtil:
     """Util class for setting up and logging to MLflow.
@@ -25,12 +18,21 @@ class MLflowLoggerUtil:
     """
 
     def __init__(self):
-        if mlflow is None:
-            raise ImportError(
-                "pip install 'mlflow' to use `MLflowLoggerCallback`"
-                "/`MLflowTrainableMixin`."
-            )
+        import mlflow
+
+        self._mlflow = mlflow
         self.experiment_id = None
+
+    def __deepcopy__(self, memo=None):
+        # mlflow is a module, and thus cannot be copied
+        _mlflow = self._mlflow
+        self.__dict__.pop("_mlflow")
+        dict_copy = deepcopy(self.__dict__, memo)
+        copied_object = MLflowLoggerUtil()
+        copied_object.__dict__.update(dict_copy)
+        self._mlflow = _mlflow
+        copied_object._mlflow = _mlflow
+        return copied_object
 
     def setup_mlflow(
         self,
@@ -76,8 +78,8 @@ class MLflowLoggerUtil:
         if tracking_token:
             os.environ["MLFLOW_TRACKING_TOKEN"] = tracking_token
 
-        mlflow.set_tracking_uri(tracking_uri)
-        mlflow.set_registry_uri(registry_uri)
+        self._mlflow.set_tracking_uri(tracking_uri)
+        self._mlflow.set_registry_uri(registry_uri)
 
         # First check experiment_id.
         experiment_id = (
@@ -89,7 +91,7 @@ class MLflowLoggerUtil:
             from mlflow.exceptions import MlflowException
 
             try:
-                mlflow.get_experiment(experiment_id=experiment_id)
+                self._mlflow.get_experiment(experiment_id=experiment_id)
                 logger.debug(
                     f"Experiment with provided id {experiment_id} "
                     "exists. Setting that as the experiment."
@@ -105,14 +107,14 @@ class MLflowLoggerUtil:
             if experiment_name is not None
             else os.environ.get("MLFLOW_EXPERIMENT_NAME")
         )
-        if experiment_name is not None and mlflow.get_experiment_by_name(
+        if experiment_name is not None and self._mlflow.get_experiment_by_name(
             name=experiment_name
         ):
             logger.debug(
                 f"Experiment with provided name {experiment_name} "
                 "exists. Setting that as the experiment."
             )
-            self.experiment_id = mlflow.get_experiment_by_name(
+            self.experiment_id = self._mlflow.get_experiment_by_name(
                 experiment_name
             ).experiment_id
             return
@@ -124,7 +126,7 @@ class MLflowLoggerUtil:
                 "Existing experiment not found. Creating new "
                 f"experiment with name: {experiment_name}"
             )
-            self.experiment_id = mlflow.create_experiment(name=experiment_name)
+            self.experiment_id = self._mlflow.create_experiment(name=experiment_name)
             return
 
         if create_experiment_if_not_exists:
@@ -205,26 +207,26 @@ class MLflowLoggerUtil:
 
         If an active run already exists, then returns it.
         """
-        active_run = mlflow.active_run()
+        active_run = self._mlflow.active_run()
         if active_run:
             return active_run
 
-        return mlflow.start_run(run_name=run_name, tags=tags)
+        return self._mlflow.start_run(run_name=run_name, tags=tags)
 
     def _run_exists(self, run_id: str) -> bool:
         """Check if run with the provided id exists."""
         from mlflow.exceptions import MlflowException
 
         try:
-            mlflow.get_run(run_id=run_id)
+            self._mlflow.get_run(run_id=run_id)
             return True
         except MlflowException:
             return False
 
     def _get_client(self) -> "MlflowClient":
         """Returns an ml.tracking.MlflowClient instance to use for logging."""
-        tracking_uri = mlflow.get_tracking_uri()
-        registry_uri = mlflow.get_registry_uri()
+        tracking_uri = self._mlflow.get_tracking_uri()
+        registry_uri = self._mlflow.get_registry_uri()
 
         from mlflow.tracking import MlflowClient
 
@@ -249,7 +251,7 @@ class MLflowLoggerUtil:
 
         else:
             for key, value in params_to_log.items():
-                mlflow.log_param(key=key, value=value)
+                self._mlflow.log_param(key=key, value=value)
 
     def log_metrics(self, step, metrics_to_log: Dict, run_id: Optional[str] = None):
         """Logs the provided metrics to the run specified by run_id.
@@ -272,7 +274,7 @@ class MLflowLoggerUtil:
 
         else:
             for key, value in metrics_to_log.items():
-                mlflow.log_metric(key=key, value=value, step=step)
+                self._mlflow.log_metric(key=key, value=value, step=step)
 
     def save_artifacts(self, dir: str, run_id: Optional[str] = None):
         """Saves directory as artifact to the run specified by run_id.
@@ -289,7 +291,7 @@ class MLflowLoggerUtil:
             client = self._get_client()
             client.log_artifacts(run_id=run_id, local_dir=dir)
         else:
-            mlflow.log_artifacts(local_dir=dir)
+            self._mlflow.log_artifacts(local_dir=dir)
 
     def end_run(self, status: Optional[str] = None, run_id=None):
         """Terminates the run specified by run_id.
@@ -305,9 +307,12 @@ class MLflowLoggerUtil:
         if (
             run_id
             and self._run_exists(run_id)
-            and not (mlflow.active_run() and mlflow.active_run().info.run_id == run_id)
+            and not (
+                self._mlflow.active_run()
+                and self._mlflow.active_run().info.run_id == run_id
+            )
         ):
             client = self._get_client()
             client.set_terminated(run_id=run_id, status=status)
         else:
-            mlflow.end_run(status=status)
+            self._mlflow.end_run(status=status)
