@@ -1,3 +1,5 @@
+.. _whitepaper:
+
 Architecture Whitepaper
 =======================
 

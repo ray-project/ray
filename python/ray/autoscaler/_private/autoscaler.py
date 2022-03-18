@@ -311,6 +311,9 @@ class StandardAutoscaler:
         # Query the provider to update the list of non-terminated nodes
         self.non_terminated_nodes = NonTerminatedNodes(self.provider)
 
+        # This will accumulate the nodes we need to terminate.
+        self.nodes_to_terminate = []
+
         # Update running nodes gauge
         num_workers = len(self.non_terminated_nodes.worker_ids)
         self.prom_metrics.running_workers.set(num_workers)

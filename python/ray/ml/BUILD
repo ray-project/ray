@@ -11,6 +11,33 @@ py_test(
     deps = [":ml_lib"]
 )
 
+py_test (
+    name = "lightgbm_example",
+    size = "medium",
+    srcs = ["examples/lightgbm_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "tensorflow_linear_dataset_example",
+    size = "medium",
+    main = "examples/tensorflow/tensorflow_linear_dataset_example.py",
+    srcs = ["examples/tensorflow/tensorflow_linear_dataset_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "tensorflow_mnist_example",
+    size = "medium",
+    main = "examples/tensorflow/tensorflow_mnist_example.py",
+    srcs = ["examples/tensorflow/tensorflow_mnist_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"],
+    args = ["--smoke-test"]
+)
 
 py_test(
     name = "torch_fashion_mnist_example",
@@ -43,6 +70,16 @@ py_test(
 )
 
 py_test(
+    name = "tune_tensorflow_mnist_example",
+    size = "medium",
+    main = "examples/tensorflow/tune_tensorflow_mnist_example.py",
+    srcs = ["examples/tensorflow/tune_tensorflow_mnist_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"],
+    args = ["--smoke-test"]
+)
+
+py_test(
     name = "tune_torch_linear_dataset_example.py",
     size = "medium",
     main = "examples/pytorch/tune_torch_linear_dataset_example.py",
@@ -50,6 +87,14 @@ py_test(
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"],
     args = ["--smoke-test"]
+)
+
+py_test(
+    name = "xgboost_example",
+    size = "medium",
+    srcs = ["examples/xgboost_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
 )
 
 # --------------------------------------------------------------------
@@ -83,6 +128,22 @@ py_test(
 )
 
 py_test(
+    name = "test_lightgbm_trainer",
+    size = "medium",
+    srcs = ["tests/test_lightgbm_trainer.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_predictor",
+    size = "small",
+    srcs = ["tests/test_predictor.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_preprocessors",
     size = "small",
     srcs = ["tests/test_preprocessors.py"],
@@ -102,6 +163,14 @@ py_test(
     name = "test_tensorflow_predictor",
     size = "small",
     srcs = ["tests/test_tensorflow_predictor.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_tensorflow_trainer",
+    size = "medium",
+    srcs = ["tests/test_tensorflow_trainer.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
@@ -134,6 +203,14 @@ py_test(
     name = "test_xgboost_predictor",
     size = "small",
     srcs = ["tests/test_xgboost_predictor.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_xgboost_trainer",
+    size = "medium",
+    srcs = ["tests/test_xgboost_trainer.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
