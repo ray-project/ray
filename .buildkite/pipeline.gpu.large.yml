@@ -30,3 +30,12 @@
     # wait for the GPU to become available.
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --jobs 2
       --test_tag_filters=multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
+
+
+- label: ":tv: :airplane: ML GPU tests (ray/ml)"
+  conditions: ["RAY_CI_ML_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - DATA_PROCESSING_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/travis/install-dependencies.sh
+    - pip install -Ur ./python/requirements_ml_docker.txt
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=gpu python/ray/ml/...

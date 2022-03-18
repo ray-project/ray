@@ -24,6 +24,10 @@
 #include "ray/gcs/test/gcs_test_util.h"
 
 namespace ray {
+namespace gcs {
+
+using ClusterResourceScheduler = gcs::GcsResourceScheduler;
+
 class GcsBasedActorSchedulerTest : public ::testing::Test {
  public:
   void SetUp() override {
@@ -39,15 +43,15 @@ class GcsBasedActorSchedulerTest : public ::testing::Test {
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
     gcs_actor_table_ =
         std::make_shared<GcsServerMocker::MockedGcsActorTable>(store_client_);
-    gcs_resource_scheduler_ = std::make_shared<gcs::GcsResourceScheduler>();
+    cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>();
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
-        gcs_table_storage_, gcs_resource_scheduler_->GetClusterResourceManager());
+        gcs_table_storage_, cluster_resource_scheduler_->GetClusterResourceManager());
     gcs_actor_scheduler_ =
         std::make_shared<GcsServerMocker::MockedGcsBasedActorScheduler>(
             io_service_,
             *gcs_actor_table_,
             *gcs_node_manager_,
-            gcs_resource_scheduler_,
+            cluster_resource_scheduler_,
             /*schedule_failure_handler=*/
             [this](std::shared_ptr<gcs::GcsActor> actor,
                    const rpc::RequestWorkerLeaseReply::SchedulingFailureType,
@@ -110,7 +114,7 @@ class GcsBasedActorSchedulerTest : public ::testing::Test {
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
   std::shared_ptr<GcsServerMocker::MockWorkerClient> worker_client_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
-  std::shared_ptr<gcs::GcsResourceScheduler> gcs_resource_scheduler_;
+  std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<GcsServerMocker::MockedGcsBasedActorScheduler> gcs_actor_scheduler_;
   std::vector<std::shared_ptr<gcs::GcsActor>> success_actors_;
@@ -171,7 +175,7 @@ TEST_F(GcsBasedActorSchedulerTest, TestScheduleAndDestroyOneActor) {
   scheduling::NodeID scheduling_node_id(node->node_id());
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
   const auto &cluster_resource_manager =
-      gcs_resource_scheduler_->GetClusterResourceManager();
+      cluster_resource_scheduler_->GetClusterResourceManager();
   auto resource_view_before_scheduling = cluster_resource_manager.GetResourceView();
   ASSERT_TRUE(resource_view_before_scheduling.contains(scheduling_node_id));
 
@@ -654,7 +658,7 @@ TEST_F(GcsBasedActorSchedulerTest, TestReleaseUnusedWorkers) {
   gcs_actor_scheduler_->TryLeaseWorkerFromNodeAgain(actor, node);
   ASSERT_EQ(raylet_client_->num_workers_requested, 1);
 }
-
+}  // namespace gcs
 }  // namespace ray
 
 int main(int argc, char **argv) {

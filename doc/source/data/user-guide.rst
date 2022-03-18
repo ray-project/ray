@@ -11,7 +11,6 @@ you will learn
 - how to load data and preprocess it for machine learning applications,
 - how to use Tensors with Ray Datasets,
 - how to run Dataset Pipelines in common scenarios,
-- how to run Dask, Spark, Mars or Modin on Ray,
 - and how to tune your Ray Datasets applications for performance.
 
 .. toctree::
@@ -20,9 +19,6 @@ you will learn
     dataset-ml-preprocessing
     dataset-tensor-support
     advanced-pipelines
-    dask-on-ray
-    raydp
-    mars-on-ray
-    modin/index
+    random-access
     custom-data
     performance-tips
