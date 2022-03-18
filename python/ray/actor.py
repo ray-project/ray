@@ -616,6 +616,13 @@ class ActorClass:
             def get_or_create(self, *args, **kwargs):
                 """Get or create a named actor.
 
+                The name of the actor must be set via `Actor.options(name="name")`
+                prior to calling this method.
+
+                If the actor already exists, a handle to the actor will be returned
+                and the arguments will be ignored. Otherwise, a new actor will be
+                created with the specified arguments.
+
                 Args:
                     args: These arguments are forwarded directly to the actor
                         constructor.
@@ -623,7 +630,7 @@ class ActorClass:
                         constructor.
 
                 Returns:
-                    A handle to the named actor.
+                    A handle to the new or existing named actor.
                 """
                 assert "name" in cls_options
                 name = cls_options["name"]

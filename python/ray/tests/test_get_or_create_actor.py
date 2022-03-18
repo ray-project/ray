@@ -1,12 +1,36 @@
 import sys
+import os
 import pytest
 
+import ray
 from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
 )
 
 
-def test_get_or_create_actor():
+def test_simple(shutdown_only):
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    class Actor:
+        def ping(self):
+            return "ok"
+
+        def pid(self):
+            return os.getpid()
+
+    for ns in [None, "test"]:
+        a = Actor.options(name="x", namespace=ns).get_or_create()
+        b = Actor.options(name="x", namespace=ns).get_or_create()
+        assert ray.get(a.ping.remote()) == "ok"
+        assert ray.get(b.ping.remote()) == "ok"
+        assert ray.get(b.pid.remote()) == ray.get(a.pid.remote())
+
+    with pytest.raises(ValueError):
+        Actor.options(num_cpus=1).get_or_create()
+
+
+def test_no_verbose_output():
     script = """
 import ray
 
@@ -18,8 +42,7 @@ class Actor:
 
 @ray.remote
 def getter(name):
-    actor = Actor.options(
-        name="foo", lifetime="detached", namespace="test").get_or_create()
+    actor = Actor.options(name="foo", lifetime="detached").get_or_create()
     ray.get(actor.ping.remote())
 
 
@@ -28,7 +51,7 @@ def do_run(name):
     tasks = [getter.remote(name) for i in range(4)]
     ray.get(tasks)
     try:
-        ray.kill(ray.get_actor(name, namespace="test"))  # Cleanup
+        ray.kill(ray.get_actor(name))  # Cleanup
     except:
         pass
 
