@@ -42,7 +42,7 @@ class Actor:
 
 @ray.remote
 def getter(name):
-    actor = Actor.options(name="foo", lifetime="detached").get_or_create()
+    actor = Actor.options(name="foo", lifetime="detached", namespace="n").get_or_create()
     ray.get(actor.ping.remote())
 
 
@@ -51,7 +51,7 @@ def do_run(name):
     tasks = [getter.remote(name) for i in range(4)]
     ray.get(tasks)
     try:
-        ray.kill(ray.get_actor(name))  # Cleanup
+        ray.kill(ray.get_actor(name, namespace="n"))  # Cleanup
     except:
         pass
 

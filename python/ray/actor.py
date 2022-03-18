@@ -632,7 +632,10 @@ class ActorClass:
                 Returns:
                     A handle to the new or existing named actor.
                 """
-                assert "name" in cls_options
+                if not cls_options.get("name"):
+                    raise ValueError(
+                        "The actor name must be specified before use `get_or_create`."
+                    )
                 name = cls_options["name"]
                 try:
                     return ray.get_actor(name, namespace=cls_options.get("namespace"))
