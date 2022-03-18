@@ -5,8 +5,8 @@ from ray import ObjectRef
 from ray.experimental.dag.dag_node import DAGNode
 from ray.experimental.dag.format_utils import get_dag_node_str
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
-from ray.serve.api import Deployment, DeploymentConfig
-from ray.serve.schema import DeploymentSchema, schema_to_deployment
+from ray.serve.api import Deployment, DeploymentConfig, schema_to_deployment
+from ray.serve.schema import DeploymentSchema
 from ray.serve.handle import RayServeLazySyncHandle
 from ray.serve.utils import get_deployment_import_path
 
@@ -36,20 +36,28 @@ class DeploymentFunctionNode(DAGNode):
             deployment_schema: DeploymentSchema = self._bound_other_args_to_resolve[
                 "deployment_schema"
             ]
-            original_deployment_without_cls = schema_to_deployment(deployment_schema)
+            deployment_shell = schema_to_deployment(deployment_schema)
 
             # Prefer user specified name to override the generated one.
             if (
                 inspect.isfunction(func_body)
-                and original_deployment_without_cls._name != func_body.__name__
+                and deployment_shell._name != func_body.__name__
             ):
-                self._deployment_name = original_deployment_without_cls._name
+                self._deployment_name = deployment_shell._name
 
-            self._deployment = original_deployment_without_cls.options(
+            # Set the route prefix, prefer the one user supplied,
+            # otherwise set it to /deployment_name
+            if deployment_shell._route_prefix != f"/{deployment_shell._name}":
+                route_prefix = deployment_shell._route_prefix
+            else:
+                route_prefix = f"/{deployment_name}"
+
+            self._deployment = deployment_shell.options(
                 func_or_class=func_body,
                 name=self._deployment_name,
                 init_args=(),
                 init_kwargs=dict(),
+                route_prefix=route_prefix,
             )
         else:
             self._deployment: Deployment = Deployment(

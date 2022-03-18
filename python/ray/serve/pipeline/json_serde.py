@@ -17,7 +17,6 @@ from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
 from ray.serve.schema import (
     DeploymentSchema,
-    deployment_to_schema,
 )
 from ray.serve.utils import parse_import_path
 from ray.serve.handle import (
@@ -28,7 +27,7 @@ from ray.serve.handle import (
     serve_handle_from_json_dict,
 )
 from ray.serve.constants import SERVE_HANDLE_JSON_KEY
-from ray.serve.api import Deployment, RayServeDAGHandle
+from ray.serve.api import RayServeDAGHandle
 
 
 def convert_to_json_safe_obj(obj: Any, *, err_key: str) -> Any:

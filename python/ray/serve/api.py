@@ -1200,8 +1200,6 @@ class Deployment:
         The returned bound deployment can be deployed or bound to other
         deployments to create a multi-deployment application.
         """
-        from ray.serve.schema import deployment_to_schema
-
         schema_shell = deployment_to_schema(self)
         schema_shell.init_args = []
         schema_shell.init_kwargs = {}
