@@ -385,14 +385,14 @@ def test_unsupported_remote():
         def ping(self):
             return "hello"
 
-    with pytest.raises(AttributeError, match="'Actor' has no attribute 'remote'"):
+    with pytest.raises(AttributeError, match=r"\'Actor\' has no attribute \'remote\'"):
         _ = Actor.bind().remote()
 
     @serve.deployment
     def func():
         return 1
 
-    with pytest.raises(AttributeError, match="\.remote\(\) cannot be used on"):
+    with pytest.raises(AttributeError, match=r"\.remote\(\) cannot be used on"):
         _ = func.bind().remote()
 
 
