@@ -50,6 +50,16 @@ py_test(
 )
 
 py_test(
+    name = "torch_fashion_mnist_example_gpu",
+    size = "medium",
+    main = "examples/pytorch/torch_fashion_mnist_example.py",
+    srcs = ["examples/pytorch/torch_fashion_mnist_example.py"],
+    tags = ["team:ml", "exclusive", "gpu"],
+    deps = [":ml_lib"],
+    args = ["--use-gpu"]
+)
+
+py_test(
     name = "torch_linear_dataset_example",
     size = "medium",
     main = "examples/pytorch/torch_linear_dataset_example.py",
@@ -131,6 +141,14 @@ py_test(
     name = "test_lightgbm_trainer",
     size = "medium",
     srcs = ["tests/test_lightgbm_trainer.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_predictor",
+    size = "small",
+    srcs = ["tests/test_predictor.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )

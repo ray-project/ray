@@ -219,7 +219,7 @@ The ``ray up`` command uses the Ray cluster launcher to start a cluster on the c
 
 Your code **only** needs to execute on one machine in the cluster (usually the head node). Read more about :ref:`running programs on a Ray cluster <using-ray-on-a-cluster>`.
 
-To connect to the existing cluster, similar to the method outlined in :ref:`start-ray-cli`, you must call ``ray.init`` and specify the address of the Ray cluster when initializing Ray in your code. This allows Ray to connect to the cluster.
+To connect to the existing cluster, similar to the method outlined in :ref:`start-ray-cli`, you must call ``ray.init`` and specify the address of the Ray cluster when initializing Ray in your code. This allows your script to connect to the existing Ray runtime on the cluster.
 
 .. code-block:: python
 

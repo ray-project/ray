@@ -8,8 +8,8 @@ import ray.dashboard.optional_utils as optional_utils
 from ray import serve
 from ray.serve.api import (
     Application,
-    deploy_group,
     get_deployment_statuses,
+    internal_get_global_client,
     serve_application_status_to_schema,
 )
 
@@ -53,7 +53,7 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def put_all_deployments(self, req: Request) -> Response:
         app = Application.from_dict(await req.json())
-        deploy_group(app.deployments.values(), blocking=False)
+        serve.run(app, _blocking=False)
 
         new_names = set()
         for deployment in app.deployments.values():
@@ -62,8 +62,7 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
         all_deployments = serve.list_deployments()
         all_names = set(all_deployments.keys())
         names_to_delete = all_names.difference(new_names)
-        for name in names_to_delete:
-            all_deployments[name].delete()
+        internal_get_global_client().delete_deployments(names_to_delete)
 
         return Response()
 

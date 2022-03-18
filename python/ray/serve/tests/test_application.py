@@ -8,7 +8,7 @@ import requests
 
 import ray
 from ray import serve
-from ray.serve.api import Application, deploy_group
+from ray.serve.api import Application
 from ray._private.test_utils import wait_for_condition
 
 
@@ -42,7 +42,7 @@ class TestApplicationConstruction:
             Application([self.f, 5, "hello"])
 
 
-class TestDeployGroup:
+class TestRun:
     @serve.deployment
     def f():
         return "f reached"
@@ -71,7 +71,7 @@ class TestDeployGroup:
         the client to wait until the deployments finish deploying.
         """
 
-        deploy_group(Application(deployments).deployments.values(), blocking=blocking)
+        serve.run(Application(deployments), _blocking=blocking)
 
         def check_all_deployed():
             try:
@@ -90,7 +90,7 @@ class TestDeployGroup:
             # If non-blocking, this should pass eventually.
             wait_for_condition(check_all_deployed)
 
-    def test_basic_deploy_group(self, serve_instance):
+    def test_basic_run(self, serve_instance):
         """
         Atomically deploys a group of deployments, including both functions and
         classes. Checks whether they deploy correctly.
@@ -101,7 +101,7 @@ class TestDeployGroup:
 
         self.deploy_and_check_responses(deployments, responses)
 
-    def test_non_blocking_deploy_group(self, serve_instance):
+    def test_non_blocking_run(self, serve_instance):
         """Checks Application's deploy() behavior when blocking=False."""
 
         deployments = [self.f, self.g, self.C, self.D]
@@ -144,7 +144,7 @@ class TestDeployGroup:
                 MutualHandles.options(name=deployment_name, init_args=(handle_name,))
             )
 
-        deploy_group(Application(deployments).deployments.values(), blocking=True)
+        serve.run(Application(deployments), _blocking=True)
 
         for deployment in deployments:
             assert (ray.get(deployment.get_handle().remote("hello"))) == "hello"
@@ -309,7 +309,7 @@ class TestDictTranslation:
 
         compare_specified_options(config_dict, app_dict)
 
-        deploy_group(app.deployments.values())
+        serve.run(app.from_dict(app_dict))
 
         assert (
             requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
@@ -335,7 +335,7 @@ class TestYAMLTranslation:
         compare_specified_options(app1.to_dict(), app2.to_dict())
 
         # Check that deployment works
-        deploy_group(app1.deployments.values())
+        serve.run(app1)
         assert (
             requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
         )
@@ -360,7 +360,7 @@ class TestYAMLTranslation:
 
         reconstructed_app = Application.from_yaml(app.to_yaml())
 
-        deploy_group(reconstructed_app.deployments.values())
+        serve.run(reconstructed_app)
         assert requests.get("http://localhost:8000/f").text == "got decorated func"
         assert requests.get("http://localhost:8000/C").text == "got decorated class"
 

@@ -1319,6 +1319,9 @@ class Deployment:
         if version is None:
             version = self._version
 
+        if prev_version is None:
+            prev_version = self._prev_version
+
         if init_args is None:
             init_args = self._init_args
 
@@ -1359,6 +1362,61 @@ class Deployment:
             ray_actor_options=ray_actor_options,
             _internal=True,
         )
+
+    @PublicAPI(stability="alpha")
+    def set_options(
+        self,
+        func_or_class: Optional[Callable] = None,
+        name: Optional[str] = None,
+        version: Optional[str] = None,
+        prev_version: Optional[str] = None,
+        init_args: Optional[Tuple[Any]] = None,
+        init_kwargs: Optional[Dict[Any, Any]] = None,
+        route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
+        num_replicas: Optional[int] = None,
+        ray_actor_options: Optional[Dict] = None,
+        user_config: Optional[Any] = None,
+        max_concurrent_queries: Optional[int] = None,
+        _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
+        _graceful_shutdown_wait_loop_s: Optional[float] = None,
+        _graceful_shutdown_timeout_s: Optional[float] = None,
+        _health_check_period_s: Optional[float] = None,
+        _health_check_timeout_s: Optional[float] = None,
+    ) -> None:
+        """Overwrite this deployment's options. Mutates the deployment.
+
+        Only those options passed in will be updated, all others will remain
+        unchanged.
+        """
+
+        validated = self.options(
+            func_or_class=func_or_class,
+            name=name,
+            version=version,
+            prev_version=prev_version,
+            init_args=init_args,
+            init_kwargs=init_kwargs,
+            route_prefix=route_prefix,
+            num_replicas=num_replicas,
+            ray_actor_options=ray_actor_options,
+            user_config=user_config,
+            max_concurrent_queries=max_concurrent_queries,
+            _autoscaling_config=_autoscaling_config,
+            _graceful_shutdown_wait_loop_s=_graceful_shutdown_wait_loop_s,
+            _graceful_shutdown_timeout_s=_graceful_shutdown_timeout_s,
+            _health_check_period_s=_health_check_period_s,
+            _health_check_timeout_s=_health_check_timeout_s,
+        )
+
+        self._func_or_class = validated._func_or_class
+        self._name = validated._name
+        self._version = validated._version
+        self._prev_version = validated._prev_version
+        self._init_args = validated._init_args
+        self._init_kwargs = validated._init_kwargs
+        self._route_prefix = validated._route_prefix
+        self._ray_actor_options = validated._ray_actor_options
+        self._config = validated._config
 
     def __eq__(self, other):
         return all(
@@ -1671,6 +1729,26 @@ class Application:
     def deployments(self) -> ImmutableDeploymentDict:
         return self._deployments
 
+    @property
+    def ingress(self) -> Optional[Deployment]:
+        """Gets the app's ingress, if one exists.
+
+        The ingress is the single deployment with a non-None route prefix. If more
+        or less than one deployment has a route prefix, no single ingress exists,
+        so returns None.
+        """
+
+        ingress = None
+
+        for deployment in self._deployments.values():
+            if deployment.route_prefix is not None:
+                if ingress is None:
+                    ingress = deployment
+                else:
+                    return None
+
+        return ingress
+
     def to_dict(self) -> Dict:
         """Returns this Application's deployments as a dictionary.
 
@@ -1719,7 +1797,10 @@ class Application:
             Optional[String]: The deployments' YAML string. The output is from
                 yaml.safe_dump(). Returned only if no file pointer is passed in.
         """
-        return yaml.safe_dump(self.to_dict(), stream=f, default_flow_style=False)
+
+        return yaml.safe_dump(
+            self.to_dict(), stream=f, default_flow_style=False, sort_keys=False
+        )
 
     @classmethod
     def from_yaml(cls, str_or_file: Union[str, TextIO]) -> "Application":
@@ -1750,39 +1831,47 @@ class Application:
 
 @PublicAPI(stability="alpha")
 def run(
-    target: Union[DeploymentNode, Application],
+    target: Union[DeploymentNode, DeploymentFunctionNode, Application],
+    _blocking: bool = True,
     *,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
-    driver: Optional[Deployment] = None,
     **kwargs,
 ) -> RayServeHandle:
     """Run a Serve application and return a ServeHandle to the ingress.
 
-    Either a DeploymentNode or a pre-built application can be passed in.
-    If a DeploymentNode is passed in, all of the deployments it depends on
-    will be deployed.
+    Either a DeploymentNode, DeploymentFunctionNode, or a pre-built application
+    can be passed in. If a node is passed in, all of the deployments it depends
+    on will be deployed. If there is an ingress, its handle will be returned.
 
     Args:
-        target: User built serve Application or DeploymentNode that acts as
-            the root node of DAG. By default DeploymentNode is the Driver
-            deployment unless user provided customized one.
+        target (Union[DeploymentNode, DeploymentFunctionNode, Application]):
+            A user-built Serve Application or a DeploymentNode that acts as the
+            root node of DAG. By default DeploymentNode is the Driver
+            deployment unless user provides a customized one.
+        host (str): The host passed into serve.start().
+        port (int): The port passed into serve.start().
 
     Returns:
-        handle: A regular ray serve handle that can be called by user to exeucte
-            the serve DAG.
+        RayServeHandle: A regular ray serve handle that can be called by user
+            to execute the serve DAG.
     """
     # TODO (jiaodong): Resolve circular reference in pipeline codebase and serve
     from ray.serve.pipeline.api import build as pipeline_build
 
+    client = start(detached=True, http_options={"host": host, "port": port})
+
     if isinstance(target, Application):
         deployments = list(target.deployments.values())
+        ingress = target.ingress
     # Each DAG should always provide a valid Driver DeploymentNode
     elif isinstance(target, DeploymentNode):
         deployments = pipeline_build(target)
+        ingress = deployments[-1]
     # Special case where user is doing single function serve.run(func.bind())
     elif isinstance(target, DeploymentFunctionNode):
         deployments = pipeline_build(target)
+        ingress = deployments[-1]
         if len(deployments) != 1:
             raise ValueError(
                 "We only support single function node in serve.run, ex: "
@@ -1799,19 +1888,15 @@ def run(
         )
     else:
         raise TypeError(
-            "Expected a DeploymentNode or "
+            "Expected a DeploymentNode, DeploymentFunctionNode, or "
             "Application as target. Got unexpected type "
             f'"{type(target)}" instead.'
         )
 
-    if len(deployments) == 0:
-        return
+    parameter_group = []
 
-    # TODO (shrekris-anyscale): validate ingress
-
-    client = start(detached=True, http_options={"host": host, "port": port})
-    parameter_group = [
-        {
+    for deployment in deployments:
+        deployment_parameters = {
             "name": deployment._name,
             "func_or_class": deployment._func_or_class,
             "init_args": deployment.init_args,
@@ -1823,11 +1908,13 @@ def run(
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
         }
-        for deployment in deployments
-    ]
 
-    client.deploy_group(parameter_group, _blocking=True)
-    return deployments[-1].get_handle()
+        parameter_group.append(deployment_parameters)
+
+    client.deploy_group(parameter_group, _blocking=_blocking)
+
+    if ingress is not None:
+        return ingress.get_handle()
 
     # TODO (shrekris-anyscale): return handle to ingress deployment
 

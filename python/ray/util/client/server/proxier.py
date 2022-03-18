@@ -215,7 +215,10 @@ class ProxyManager:
             return server
 
     def _create_runtime_env(
-        self, serialized_runtime_env: str, specific_server: SpecificServer
+        self,
+        serialized_runtime_env: str,
+        runtime_env_config: str,
+        specific_server: SpecificServer,
     ):
         """Creates the runtime_env by sending an RPC to the agent.
 
@@ -224,6 +227,7 @@ class ProxyManager:
         """
         create_env_request = runtime_env_agent_pb2.CreateRuntimeEnvRequest(
             serialized_runtime_env=serialized_runtime_env,
+            runtime_env_config=runtime_env_config,
             job_id=f"ray_client_server_{specific_server.port}".encode("utf-8"),
         )
 
@@ -283,6 +287,7 @@ class ProxyManager:
         )
 
         serialized_runtime_env = job_config.get_serialized_runtime_env()
+        runtime_env_config = job_config.get_proto_runtime_env_config()
         if not serialized_runtime_env or serialized_runtime_env == "{}":
             # TODO(edoakes): can we just remove this case and always send it
             # to the agent?
@@ -290,6 +295,7 @@ class ProxyManager:
         else:
             serialized_runtime_env_context = self._create_runtime_env(
                 serialized_runtime_env=serialized_runtime_env,
+                runtime_env_config=runtime_env_config,
                 specific_server=specific_server,
             )
 
