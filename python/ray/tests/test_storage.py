@@ -1,5 +1,6 @@
 import os
 import urllib
+from pathlib import Path
 import pyarrow.fs
 import pytest
 
@@ -13,11 +14,15 @@ def _custom_fs(uri):
     return pyarrow.fs.FileSystem.from_uri(parsed_uri.path)
 
 
+def path_eq(a, b):
+    return Path(a).resolve() == Path(b).resolve()
+
+
 def test_get_filesystem_local(shutdown_only, tmp_path):
     path = os.path.join(str(tmp_path), "foo/bar")
     ray.init(storage=path)
     fs, prefix = storage.get_filesystem()
-    assert path == prefix, (path, prefix)
+    assert path_eq(path, prefix), (path, prefix)
     assert isinstance(fs, pyarrow.fs.LocalFileSystem), fs
 
 
@@ -26,7 +31,7 @@ def test_get_custom_filesystem(shutdown_only, tmp_path):
         storage=os.path.join("custom://ray.test.test_storage_custom_fs", str(tmp_path))
     )
     fs, prefix = storage.get_filesystem()
-    assert prefix == str(tmp_path), prefix
+    assert path_eq(prefix, tmp_path), prefix
     assert isinstance(fs, pyarrow.fs.LocalFileSystem), fs
 
 
@@ -38,7 +43,7 @@ def test_get_filesystem_s3(shutdown_only):
     fs, prefix = storage._init_filesystem(
         create_valid_file=False, check_valid_file=False
     )
-    assert prefix == "bucket/foo/bar", prefix
+    assert path_eq(prefix, "bucket/foo/bar"), prefix
     assert isinstance(fs, pyarrow.fs.S3FileSystem), fs
 
 
