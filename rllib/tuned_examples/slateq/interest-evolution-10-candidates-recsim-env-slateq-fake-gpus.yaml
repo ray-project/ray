@@ -3,7 +3,7 @@ interest-evolution-recsim-env-slateq:
     run: SlateQ
     stop:
         episode_reward_mean: 160.0
-        timesteps_total: 120000
+        timesteps_total: 100000
     config:
         framework: tf
 

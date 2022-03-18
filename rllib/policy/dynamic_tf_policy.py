@@ -488,7 +488,8 @@ class DynamicTFPolicy(TFPolicy):
         if rnn_inputs:
             rnn_inputs.append((SampleBatch.SEQ_LENS, existing_inputs[-1]))
         existing_inputs_unflattened = tree.unflatten_as(
-            self._loss_input_dict_no_rnn, existing_inputs
+            self._loss_input_dict_no_rnn,
+            existing_inputs[: len(flat_loss_inputs_no_rnn)],
         )
         input_dict = OrderedDict(
             [("is_exploring", self._is_exploring), ("timestep", self._timestep)]
