@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import unittest
 from unittest.mock import patch
@@ -172,3 +173,9 @@ class WheelsFinderTest(unittest.TestCase):
                 url = find_and_wait_for_ray_wheels_url(commit, timeout=300.0)
 
             self.assertEqual(url, get_ray_wheels_url(repo, branch, commit, version))
+
+
+if __name__ == "__main__":
+    import pytest
+
+    sys.exit(pytest.main(["-v", __file__]))

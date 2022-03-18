@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -101,3 +102,9 @@ class RunScriptTest(unittest.TestCase):
         os.unlink(argv_file)
 
         self.assertIn("--smoke-test", data)
+
+
+if __name__ == "__main__":
+    import pytest
+
+    sys.exit(pytest.main(["-v", __file__]))
