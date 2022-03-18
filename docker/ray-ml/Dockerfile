@@ -20,7 +20,7 @@ RUN sudo apt-get update \
         unzip \
         unrar \
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
-    && $HOME/anaconda3/bin/pip --no-cache-dir install 
+    && $HOME/anaconda3/bin/pip --no-cache-dir install \
            -r requirements.txt \
            -r requirements_rllib.txt \
            -r requirements_train.txt \
