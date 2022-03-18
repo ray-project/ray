@@ -1957,7 +1957,7 @@
 
     wait_for_nodes:
       num_nodes: 3
-      timeout: 600
+      timeout: 1200
 
     type: sdk_command
     file_manager: job
