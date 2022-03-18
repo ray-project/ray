@@ -291,7 +291,7 @@ class ClientAPI:
 
     def timeline(self, filename: Optional[str] = None) -> Optional[List[Any]]:
         logger.warning(
-            "Timeline will include events from other clients using " "this server."
+            "Timeline will include events from other clients using this server."
         )
         # This should be imported here, otherwise, it will error doc build.
         import ray.core.generated.ray_client_pb2 as ray_client_pb2

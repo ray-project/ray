@@ -1,25 +1,13 @@
 .. _handling_dependencies:
 
-Handling Dependencies
-=====================
-
-This page might be useful for you if you're trying to:
-
-
-* Run a distributed Ray library or application.
-* Run a distributed Ray script which imports some local files.
-* Quickly iterate on a project with changing dependencies and files while running on a Ray cluster.
-
-
-What problem does this page solve?
-----------------------------------
+Environment Dependencies
+========================
 
 Your Ray application may have dependencies that exist outside of your Ray script. For example:
 
 * Your Ray script may import/depend on some Python packages.
 * Your Ray script may be looking for some specific environment variables to be available.
 * Your Ray script may import some files outside of the script.
-
 
 One frequent problem when running on a cluster is that Ray expects these "dependencies" to exist on each Ray node. If these are not present, you may run into issues such as ``ModuleNotFoundError``, ``FileNotFoundError`` and so on.
 
@@ -272,6 +260,8 @@ To ensure your local changes show up across all Ray workers and can be imported 
 
   ray.get(f.remote())
 
+Note: This feature is currently limited to modules that are packages with a single directory containing an ``__init__.py`` file.  For single-file modules, you may use ``working_dir``.
+
 .. _runtime-environments-api-ref:
 
 API Reference
@@ -316,6 +306,8 @@ The ``runtime_env`` is a Python dictionary or a python class :class:`ray.runtime
   Note: Setting options (1) and (3) per-task or per-actor is currently unsupported, it can only be set per-job (i.e., in ``ray.init()``).
 
   Note: For option (1), if your local directory contains a ``.gitignore`` file, the files and paths specified therein will not be uploaded to the cluster.
+
+  Note: This feature is currently limited to modules that are packages with a single directory containing an ``__init__.py`` file.  For single-file modules, you may use ``working_dir``.
 
 - ``excludes`` (List[str]): When used with ``working_dir`` or ``py_modules``, specifies a list of files or paths to exclude from being uploaded to the cluster.
   This field also supports the pattern-matching syntax used by ``.gitignore`` files: see `<https://git-scm.com/docs/gitignore>`_ for details.

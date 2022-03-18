@@ -1,10 +1,12 @@
 import os
+import sys
 import time
 import unittest
 from unittest.mock import patch
 
 from freezegun import freeze_time
 
+from ray_release.config import Test, load_test_cluster_env
 from ray_release.exception import RayWheelsNotFoundError, RayWheelsTimeoutError
 from ray_release.wheels import (
     get_ray_version,
@@ -172,3 +174,31 @@ class WheelsFinderTest(unittest.TestCase):
                 url = find_and_wait_for_ray_wheels_url(commit, timeout=300.0)
 
             self.assertEqual(url, get_ray_wheels_url(repo, branch, commit, version))
+
+    def testWheelsSanityString(self):
+        this_env = {"env": None}
+
+        def override_env(path, env):
+            this_env["env"] = env
+
+        with patch("ray_release.config.load_and_render_yaml_template", override_env):
+            load_test_cluster_env(
+                Test(cluster=dict(cluster_env="invalid")),
+                ray_wheels_url="https://no-commit-url",
+            )
+            assert (
+                "No commit sanity check" in this_env["env"]["RAY_WHEELS_SANITY_CHECK"]
+            )
+
+            sha = "abcdef1234abcdef1234abcdef1234abcdef1234"
+            load_test_cluster_env(
+                Test(cluster=dict(cluster_env="invalid")),
+                ray_wheels_url=f"https://some/{sha}/binary.whl",
+            )
+            assert sha in this_env["env"]["RAY_WHEELS_SANITY_CHECK"]
+
+
+if __name__ == "__main__":
+    import pytest
+
+    sys.exit(pytest.main(["-v", __file__]))
