@@ -5,13 +5,6 @@ tblib
 
 # If you make changes to anything below this line, please also change `requirements_dl.txt`!
 
-# TODO(amogkam): Remove after https://github.com/tensorflow/tensorflow/issues/52922 is fixed.
-keras==2.6.0
-# In TF >v2, GPU support is included in the base package.
-tensorflow==2.6.0
-tensorflow-probability==0.14.0
-
 -f https://download.pytorch.org/whl/torch_stable.html
 torch==1.9.0+cu111
--f https://download.pytorch.org/whl/torch_stable.html
 torchvision==0.10.0+cu111
