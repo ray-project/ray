@@ -332,8 +332,8 @@ py_test(
 )
 
 py_test(
-    name = "test_pipeline_ingress",
-    size = "medium",
+    name = "test_pipeline_driver.py",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],

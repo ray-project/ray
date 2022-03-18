@@ -160,7 +160,7 @@ def test_simple_class_with_class_method(serve_instance):
         model = Model.bind(2, ratio=0.3)
         dag = model.forward.bind(dag_input)
         serve_dag = DAGDriver.bind(dag, input_schema=json_resolver)
-    handle = serve.run(serve_dag, input_schema=json_resolver)
+    handle = serve.run(serve_dag)
     assert ray.get(handle.predict.remote(1)) == 0.6
     assert requests.post("http://127.0.0.1:8000/", json=1).json() == 0.6
 
