@@ -67,10 +67,8 @@ def test_http_non_default_route_prefix_on_non_root_node(serve_instance):
     non_root_deployment = deployments[0].options(route_prefix="/yoo")
     deployments[0] = non_root_deployment
 
-
     with pytest.raises(
-        ValueError,
-        match=("Exposed deployment should not have route prefix other than")
+        ValueError, match=("Exposed deployment should not have route prefix other than")
     ):
         _ = get_and_validate_exposed_deployment(
             deployments, default_route_prefix="/hii"
@@ -91,8 +89,7 @@ def test_http_non_default_rout_prefix_on_root(serve_instance):
     deployments[-1] = non_root_deployment
 
     with pytest.raises(
-        ValueError,
-        match=("Exposed deployment should not have route prefix other than")
+        ValueError, match=("Exposed deployment should not have route prefix other than")
     ):
         _ = get_and_validate_exposed_deployment(
             deployments, default_route_prefix="/hii"
