@@ -172,6 +172,7 @@ std::string GcsActor::GetRayNamespace() const {
 }
 
 TaskSpecification GcsActor::GetCreationTaskSpecification() const {
+  // The task spec is not available when the actor is dead.
   RAY_CHECK(actor_table_data_.state() != rpc::ActorTableData::DEAD);
   return TaskSpecification(*task_spec_);
 }
