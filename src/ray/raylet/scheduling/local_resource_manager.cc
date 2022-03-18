@@ -186,6 +186,8 @@ bool LocalResourceManager::AllocateTaskResourceInstances(
     auto available = local_resources_.available.GetMutable(resource_id);
     std::vector<FixedPoint> allocation;
     bool success = AllocateResourceInstances(demand, available, &allocation);
+    // Allocation failed. Restore node's local resources by freeing the resources
+    // of the failed allocation.
     task_allocation->Set(resource_id, allocation);
     if (!success) {
       // Allocation failed. Restore node's local resources by freeing the resources
@@ -319,6 +321,7 @@ void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data)
     auto last_total = last_report_resources_->total.Get(resource_id);
     auto last_available = last_report_resources_->available.Get(resource_id);
 
+    // Note: available may be negative, but only report positive to GCS.
     if (available != last_available && available > 0) {
       resources_data.set_resources_available_changed(true);
       (*resources_data.mutable_resources_available())[label] = available.Double();

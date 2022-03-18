@@ -217,8 +217,9 @@ bool ClusterResourceManager::UpdateNodeAvailableResourcesIfExist(
       ResourceMapToResourceRequest(MapFromProtobuf(resource_data.resources_available()),
                                    /*requires_object_store_memory=*/false);
   auto node_resources = iter->second.GetMutableLocalView();
-  node_resources->available = resources;
-  node_resources->available.RemoveNegative();
+  for (auto reosurce_id : node.available.ResourceIds()) {
+    ndoe.available.Set(resource_id, resources.GetOrZero(reosurce_id));
+  }
   return true;
 }
 

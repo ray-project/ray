@@ -33,9 +33,9 @@ bool IsPredefinedResource(scheduling::ResourceID resource_id);
 
 /// Represents a set of resources.
 /// NOTE: negative values are valid in this set, while 0 is not. This means if any
-/// resource value is changed to 0, it will be removed.
+/// resource value is changed to 0, the resource will be removed.
 /// TODO(chenh): This class should be independent with tasks. We should move out the
-/// "requires_object_store_memory_" field, and remove this class to ResourceSet.
+/// "requires_object_store_memory_" field, and rename this class to ResourceSet.
 class ResourceRequest {
  public:
   /// Construct an empty ResourceRequest.
@@ -280,7 +280,7 @@ class ResourceRequest {
   bool requires_object_store_memory_ = false;
 };
 
-/// Represents resource set that contains the per-instance resource values.
+/// Represents a resource set that contains the per-instance resource values.
 /// TODO(chenh): due to the same reason of ResourceRequest, we should rename it to
 /// ResourceInstanceSet.
 class TaskResourceInstances {
@@ -399,7 +399,7 @@ class TaskResourceInstances {
     return res;
   }
 
-  /// Return the number of resources.
+  /// Return the number of resources in this set.
   size_t Size() const { return ResourceIds().size(); }
 
   /// Check whether this set is empty.
