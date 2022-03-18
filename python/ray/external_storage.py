@@ -360,16 +360,19 @@ class FileSystemStorage(ExternalStorage):
 
 
 class ExternalStorageRayStorageImpl(ExternalStorage):
-    """Implements the external storage interface using the ray.storage API."""
+    """Implements the external storage interface using the ray storage API."""
 
     def __init__(
         self,
+        session_name: str,
         buffer_size=1024 * 1024,  # For remote spilling, at least 1MB is recommended.
     ):
-        self._fs, storage_prefix = ray.storage.impl._get_filesystem_internal()
+        from ray.internal import storage
+
+        self._fs, storage_prefix = storage._get_filesystem_internal()
         self._buffer_size = buffer_size
         self._prefix = os.path.join(
-            storage_prefix, "spilled_objects", ray.get_runtime_context().job_id.hex()
+            storage_prefix, "spilled_objects", session_name
         )
         self._fs.create_dir(self._prefix)
 
@@ -380,7 +383,7 @@ class ExternalStorageRayStorageImpl(ExternalStorage):
         first_ref = object_refs[0]
         filename = f"{first_ref.hex()}-multi-{len(object_refs)}"
         url = f"{os.path.join(self._prefix, filename)}"
-        with self._fs.open_output_stream(url, buffer_size=self.buffer_size) as f:
+        with self._fs.open_output_stream(url, buffer_size=self._buffer_size) as f:
             return self._write_multiple_objects(f, object_refs, owner_addresses, url)
 
     def restore_spilled_objects(
@@ -396,8 +399,8 @@ class ExternalStorageRayStorageImpl(ExternalStorage):
             offset = parsed_result.offset
             # Read a part of the file and recover the object.
             # TODO(ekl): set buffer size
-            with self._fs.open_input_stream(
-                base_url, buffer_size=self.buffer_size
+            with self._fs.open_input_file(
+                base_url
             ) as f:
                 f.seek(offset)
                 address_len = int.from_bytes(f.read(8), byteorder="little")
@@ -608,7 +611,7 @@ class SlowFileStorage(FileSystemStorage):
         return super().spill_objects(object_refs, owner_addresses)
 
 
-def setup_external_storage(config):
+def setup_external_storage(config, session_name):
     """Setup the external storage according to the config."""
     global _external_storage
     if config:
@@ -616,7 +619,7 @@ def setup_external_storage(config):
         if storage_type == "filesystem":
             _external_storage = FileSystemStorage(**config["params"])
         elif storage_type == "ray_storage":
-            _external_storage = ExternalStorageRayStorageImpl(**config["params"])
+            _external_storage = ExternalStorageRayStorageImpl(session_name, **config["params"])
         elif storage_type == "smart_open":
             _external_storage = ExternalStorageSmartOpenImpl(**config["params"])
         elif storage_type == "mock_distributed_fs":
