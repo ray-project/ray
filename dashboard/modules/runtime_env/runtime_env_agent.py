@@ -90,8 +90,9 @@ class ReferenceTable:
         self._uris_parser = uris_parser
         self._unused_uris_callback = unused_uris_callback
         self._unused_runtime_env_callback = unused_runtime_env_callback
-        # Don't change URI reference for `client_server` because `client_server` doesn't
-        # send the `DeleteRuntimeEnvIfPossible` RPC when the client exits.
+        # send the `DeleteRuntimeEnvIfPossible` RPC when the client exits. The URI won't
+        # be leaked now because the reference count will be reset to zero when the job
+        # finished.
         self._reference_exclude_sources: Set[str] = {
             "client_server",
         }
@@ -343,12 +344,23 @@ class RuntimeEnvAgent(
 
             return context
 
-        # Create runtime env with retry times. This function won't raise exceptions.
-        # Returns a tuple which contains result(bool), runtime env context(str), and
-        # error message(str).
         async def _create_runtime_env_with_retry(
             runtime_env, serialized_runtime_env, serialized_allocated_resource_instances
-        ):
+        ) -> Tuple[bool, str, str]:
+            """
+            Create runtime env with retry times. This function won't raise exceptions.
+
+            Args:
+                runtime_env(RuntimeEnv): The instance of RuntimeEnv class.
+                serialized_runtime_env(str): The serialized runtime env.
+                serialized_allocated_resource_instances(str): The serialized allocated
+                resource instances.
+
+            Returns:
+                a tuple which contains result(bool), runtime env context(str), and error
+                message(str).
+
+            """
             self._logger.info(f"Creating runtime env: {serialized_env}")
             serialized_context = None
             error_message = None
