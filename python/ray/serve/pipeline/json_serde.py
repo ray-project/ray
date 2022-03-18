@@ -90,10 +90,7 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
         return serve_handle_from_json_dict(input_json)
     # Base case for plain objects
     elif DAGNODE_TYPE_KEY not in input_json:
-        try:
-            return json.loads(input_json)
-        except Exception:
-            return input_json
+        return input_json
     elif input_json[DAGNODE_TYPE_KEY] == RayServeDAGHandle.__name__:
         return RayServeDAGHandle(input_json["dag_node_json"])
     # Deserialize DAGNode type
