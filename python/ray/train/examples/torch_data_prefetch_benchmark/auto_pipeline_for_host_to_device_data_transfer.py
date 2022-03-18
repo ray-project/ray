@@ -1,4 +1,4 @@
-# The torch data transfer benchmark script
+# The PyTorch data transfer benchmark script.
 import argparse
 import warnings
 

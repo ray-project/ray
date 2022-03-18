@@ -173,6 +173,8 @@ train.torch.prepare_model
 
 .. autofunction:: ray.train.torch.prepare_model
 
+.. _train-api-torch-prepare-data-loader:
+
 train.torch.prepare_data_loader
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
