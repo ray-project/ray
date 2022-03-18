@@ -18,7 +18,7 @@ from serve_test_cluster_utils import setup_local_single_node_cluster
 
 from serve_test_utils import (
     save_test_results,
-    read_smoke_test_setting_from_env_var,
+    is_smoke_test,
 )
 
 import ray
@@ -50,8 +50,7 @@ def main():
     namespace = uuid.uuid4().hex
 
     # IS_SMOKE_TEST is set by args of releaser's e2e.py
-    smoke_test = read_smoke_test_setting_from_env_var()
-    if smoke_test == "1":
+    if is_smoke_test():
         path = Path("checkpoint.db")
         checkpoint_path = f"file://{path}"
         if path.exists():

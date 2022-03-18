@@ -13,7 +13,7 @@ from subprocess import PIPE
 from typing import Dict, List, Union
 
 
-def read_smoke_test_setting_from_env_var():
+def is_smoke_test():
     return os.environ.get("IS_SMOKE_TEST", "0")
 
 

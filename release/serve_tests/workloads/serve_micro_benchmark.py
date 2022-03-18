@@ -9,7 +9,7 @@ from serve_test_cluster_utils import (
 )
 from serve_test_utils import (
     save_test_results,
-    read_smoke_test_setting_from_env_var,
+    is_smoke_test,
 )
 
 
@@ -17,8 +17,7 @@ async def main():
     # Give default cluster parameter values based on smoke_test config
     # if user provided values explicitly, use them instead.
     # IS_SMOKE_TEST is set by args of releaser's e2e.py
-    smoke_test = read_smoke_test_setting_from_env_var()
-    if smoke_test == "1":
+    if is_smoke_test():
         setup_local_single_node_cluster(1)
     else:
         setup_anyscale_cluster()

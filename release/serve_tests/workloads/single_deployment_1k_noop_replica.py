@@ -35,7 +35,7 @@ from serve_test_utils import (
     aggregate_all_metrics,
     run_wrk_on_all_nodes,
     save_test_results,
-    read_smoke_test_setting_from_env_var,
+    is_smoke_test,
 )
 from serve_test_cluster_utils import (
     setup_local_single_node_cluster,
@@ -93,8 +93,7 @@ def main(
     # Give default cluster parameter values based on smoke_test config
     # if user provided values explicitly, use them instead.
     # IS_SMOKE_TEST is set by args of releaser's e2e.py
-    smoke_test = read_smoke_test_setting_from_env_var()
-    if smoke_test == "1":
+    if is_smoke_test():
         num_replicas = num_replicas or DEFAULT_SMOKE_TEST_NUM_REPLICA
         trial_length = trial_length or DEFAULT_SMOKE_TEST_TRIAL_LENGTH
         logger.info(f"Running local / smoke test with {num_replicas} replicas ..\n")
