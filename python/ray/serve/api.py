@@ -26,6 +26,7 @@ from typing import (
 
 from fastapi import APIRouter, FastAPI
 from ray.experimental.dag.class_node import ClassNode
+from ray.experimental.dag.function_node import FunctionNode
 from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
@@ -1011,6 +1012,19 @@ class DeploymentNode(ClassNode):
     """
 
     # TODO (jiaodong): Later unify and refactor this with pipeline node class
+    def bind(self, *args, **kwargs):
+        """Bind the default __call__ method and return a DeploymentMethodNode"""
+        return self.__call__.bind(*args, **kwargs)
+
+
+@PublicAPI(stability="alpha")
+class DeploymentFunctionNode(FunctionNode):
+    """Represents a serve.deployment decorated function from user.
+
+    It's the counterpart of DeploymentNode that represents function as body
+    instead of class.
+    """
+
     pass
 
 
@@ -1177,7 +1191,18 @@ class Deployment:
         The returned bound deployment can be deployed or bound to other
         deployments to create a multi-deployment application.
         """
-        if inspect.isclass(self._func_or_class):
+        if inspect.isfunction(self._func_or_class):
+            return DeploymentFunctionNode(
+                self._func_or_class,
+                args,  # Used to bind and resolve DAG only, can take user input
+                kwargs,  # Used to bind and resolve DAG only, can take user input
+                self._ray_actor_options or dict(),
+                other_args_to_resolve={
+                    "deployment_self": copy(self),
+                    "is_from_serve_deployment": True,
+                },
+            )
+        else:
             return DeploymentNode(
                 self._func_or_class,
                 args,
@@ -1188,17 +1213,6 @@ class Deployment:
                     "is_from_serve_deployment": True,
                 },
             )
-        else:
-            return DeploymentNode(
-                self._func_or_class,
-                cls_args=tuple(),
-                cls_kwargs=dict(),
-                cls_options=self._ray_actor_options or dict(),
-                other_args_to_resolve={
-                    "deployment_self": copy(self),
-                    "is_from_serve_deployment": True,
-                },
-            ).__call__.bind(*args, **kwargs)
 
     @PublicAPI
     def deploy(self, *init_args, _blocking=True, **init_kwargs):
@@ -1295,6 +1309,9 @@ class Deployment:
         if version is None:
             version = self._version
 
+        if prev_version is None:
+            prev_version = self._prev_version
+
         if init_args is None:
             init_args = self._init_args
 
@@ -1335,6 +1352,61 @@ class Deployment:
             ray_actor_options=ray_actor_options,
             _internal=True,
         )
+
+    @PublicAPI(stability="alpha")
+    def set_options(
+        self,
+        func_or_class: Optional[Callable] = None,
+        name: Optional[str] = None,
+        version: Optional[str] = None,
+        prev_version: Optional[str] = None,
+        init_args: Optional[Tuple[Any]] = None,
+        init_kwargs: Optional[Dict[Any, Any]] = None,
+        route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
+        num_replicas: Optional[int] = None,
+        ray_actor_options: Optional[Dict] = None,
+        user_config: Optional[Any] = None,
+        max_concurrent_queries: Optional[int] = None,
+        _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
+        _graceful_shutdown_wait_loop_s: Optional[float] = None,
+        _graceful_shutdown_timeout_s: Optional[float] = None,
+        _health_check_period_s: Optional[float] = None,
+        _health_check_timeout_s: Optional[float] = None,
+    ) -> None:
+        """Overwrite this deployment's options. Mutates the deployment.
+
+        Only those options passed in will be updated, all others will remain
+        unchanged.
+        """
+
+        validated = self.options(
+            func_or_class=func_or_class,
+            name=name,
+            version=version,
+            prev_version=prev_version,
+            init_args=init_args,
+            init_kwargs=init_kwargs,
+            route_prefix=route_prefix,
+            num_replicas=num_replicas,
+            ray_actor_options=ray_actor_options,
+            user_config=user_config,
+            max_concurrent_queries=max_concurrent_queries,
+            _autoscaling_config=_autoscaling_config,
+            _graceful_shutdown_wait_loop_s=_graceful_shutdown_wait_loop_s,
+            _graceful_shutdown_timeout_s=_graceful_shutdown_timeout_s,
+            _health_check_period_s=_health_check_period_s,
+            _health_check_timeout_s=_health_check_timeout_s,
+        )
+
+        self._func_or_class = validated._func_or_class
+        self._name = validated._name
+        self._version = validated._version
+        self._prev_version = validated._prev_version
+        self._init_args = validated._init_args
+        self._init_kwargs = validated._init_kwargs
+        self._route_prefix = validated._route_prefix
+        self._ray_actor_options = validated._ray_actor_options
+        self._config = validated._config
 
     def __eq__(self, other):
         return all(
@@ -1746,8 +1818,26 @@ def run(
 
     client = start(detached=True, http_options={"host": host, "port": port})
 
-    if isinstance(target, DeploymentNode):
+    # Each DAG should always provide a valid Driver DeploymentNode
+    if isinstance(target, (DeploymentNode)):
         deployments = pipeline_build(target)
+    # Special case where user is doing single function serve.run(func.bind())
+    elif isinstance(target, (DeploymentFunctionNode)):
+        deployments = pipeline_build(target)
+        if len(deployments) != 1:
+            raise ValueError(
+                "We only support single function node in serve.run, ex: "
+                "serve.run(func.bind()). For more than one nodes in your DAG, "
+                "Please provide a driver class and bind it as entrypoint to "
+                "your Serve DAG."
+            )
+    elif isinstance(target, DAGNode):
+        raise ValueError(
+            "Invalid DAGNode type as entry to serve.run(), "
+            f"type: {type(target)}, accepted: DeploymentNode, "
+            "DeploymentFunctionNode please provide a driver class and bind it "
+            "as entrypoint to your Serve DAG."
+        )
     else:
         raise NotImplementedError()
 

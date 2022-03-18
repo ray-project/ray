@@ -19,6 +19,7 @@ Check our :ref:`compatibility matrix<data-compatibility>` to see if your favorit
 ..
   https://docs.google.com/drawings/d/16AwJeBNR46_TsrkOmMbGaBK7u-OPsf_V8fHjU-d2PPQ/edit
 
+
 Ray Datasets simplifies general purpose parallel GPU and CPU compute in Ray; for instance, for `GPU batch inference <dataset.html#transforming-datasets>`__.
 It provides a higher level API for Ray tasks and actors in such embarrassingly parallel compute situations,
 internally handling operations like batching, pipelining, and memory management.
@@ -230,6 +231,9 @@ Supported Output Formats
    * - TensorFlow Iterable Dataset
      - :meth:`ds.to_tf() <ray.data.Dataset.to_tf>`
      - ✅
+   * - Random Access Dataset
+     - :meth:`ds.to_random_access_dataset() <ray.data.Dataset.to_random_access_dataset>`
+     - ✅
    * - Custom Datasource
      - :meth:`ds.write_datasource() <ray.data.Dataset.write_datasource>`
      - ✅
@@ -243,6 +247,7 @@ Learn More
 - [slides] `Talk given at PyData 2021 <https://docs.google.com/presentation/d/1zANPlmrxQkjPU62I-p92oFO3rJrmjVhs73hL4YbM4C4>`_
 - [blog] `Data Ingest in a Third Generation ML Architecture <https://www.anyscale.com/blog/deep-dive-data-ingest-in-a-third-generation-ml-architecture>`_
 - [blog] `Building an end-to-end ML pipeline using Mars and XGBoost on Ray <https://www.anyscale.com/blog/building-an-end-to-end-ml-pipeline-using-mars-and-xgboost-on-ray>`_
+- [blog] `Ray Datasets for large-scale machine learning ingest and scoring <https://www.anyscale.com/blog/ray-datasets-for-machine-learning-training-and-scoring>`_
 
 ----------
 Contribute
