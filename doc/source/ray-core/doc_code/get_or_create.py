@@ -2,19 +2,18 @@ import ray
 
 
 @ray.remote
-class Counter:
+class Greeter:
     def __init__(self, value):
         self.value = value
 
-    def incr(self):
-        self.value += 1
+    def say_hello(self):
         return self.value
 
 
-# Actor doesn't yet exist, so it is created with the given args.
-a = Counter.options(name="foo").get_or_create(10)
-assert ray.get(a.incr.remote()) == 11
+# Actor `g1` doesn't yet exist, so it is created with the given args.
+a = Greeter.options(name="g1").get_or_create("Hi Alice")
+assert ray.get(a.say_hello.remote()) == "Hi Alice"
 
-# Actor already exists, so the given args (100,) are ignored.
-b = Counter.options(name="foo").get_or_create(100)
-assert ray.get(b.incr.remote()) == 12
+# Actor `g1` already exists, so the given args ("Hi Alice",) are ignored.
+b = Greeter.options(name="g1").get_or_create("Hi Dave")
+assert ray.get(b.say_hello.remote()) == "Hi Alice"
