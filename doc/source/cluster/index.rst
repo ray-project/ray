@@ -35,7 +35,7 @@ Next steps
 ----------
 
 To get started with Ray Clusters, we recommend that you check out the :ref:`Ray
-Cluster quick start <ref-cluster-quick-start>`. For more advanced examples of
+Cluster Quick Start <ref-cluster-quick-start>`. For more advanced examples of
 use, you can also refer to the :ref:`full specification for Ray Cluster
 configuration <cluster-config>`.
 
