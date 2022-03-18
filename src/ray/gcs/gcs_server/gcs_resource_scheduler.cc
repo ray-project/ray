@@ -151,6 +151,22 @@ std::vector<int> GcsResourceScheduler::SortRequiredResources(
     const auto &a = required_resources[a_idx];
     const auto &b = required_resources[b_idx];
 
+    // TODO (jon-chuang): the exact resource priority defined here needs to be revisted.
+
+    // Notes: This is a comparator for sorting in c++. We return true if a < b based on a
+    // resource at the given level of priority. If tied, we attempt to resolve based on
+    // the resource at the next level of priority.
+    //
+    // The order of priority is: `ResourceRequest`s with GPU requirements first, then
+    // extra resources, then object store memory, memory and finally CPU requirements. If
+    // two `ResourceRequest`s require a resource under consideration, the one requiring
+    // more of the resource is prioritized.
+
+    auto gpu = scheduling::ResourceID::GPU();
+    if (a.GetOrZero(gpu) != b.GetOrZero(gpu)) {
+      return a.GetOrZero(gpu) < b.GetOrZero(gpu);
+    }
+
     // Make sure that resources are always sorted in the same order
     std::set<scheduling::ResourceID> extra_resources_set;
     for (const auto &r : a.ResourceIds()) {
@@ -164,21 +180,6 @@ std::vector<int> GcsResourceScheduler::SortRequiredResources(
       }
     }
 
-    // TODO (jon-chuang): the exact resource priority defined here needs to be revisted.
-
-    // Notes: This is a comparator for sorting in c++. We return true if a < b based on a
-    // resource at the given level of priority. If tied, we attempt to resolve based on
-    // the resource at the next level of priority.
-    //
-    // The order of priority is: `ResourceRequest`s with GPU requirements first, then
-    // extra resources, then object store memory, memory and finally CPU requirements. If
-    // two `ResourceRequest`s require a resource under consideration, the one requiring
-    // more of the resource is prioritized.
-
-    auto gpu = scheduling::ResourceID(GPU);
-    if (a.Get(gpu) != b.Get(gpu)) {
-      return a.Get(gpu) < b.Get(gpu);
-    }
     for (const auto &r : extra_resources_set) {
       auto a_resource = a.GetOrZero(r);
       auto b_resource = b.GetOrZero(r);
@@ -186,11 +187,11 @@ std::vector<int> GcsResourceScheduler::SortRequiredResources(
         return a_resource < b_resource;
       }
     }
-    for (auto id : std::vector({scheduling::ResourceID(OBJECT_STORE_MEM),
-                                scheduling::ResourceID(MEM),
-                                scheduling::ResourceID(CPU)})) {
-      if (a.Get(id) != b.Get(id)) {
-        return a.Get(id) < b.Get(id);
+    for (auto id : std::vector({scheduling::ResourceID::ObjectStoreMemory(),
+                                scheduling::ResourceID::Memory(),
+                                scheduling::ResourceID::CPU()})) {
+      if (a.GetOrZero(id) != b.GetOrZero(id)) {
+        return a.GetOrZero(id) < b.GetOrZero(id);
       }
     }
     return false;

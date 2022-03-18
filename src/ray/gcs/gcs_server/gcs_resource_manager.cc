@@ -38,9 +38,6 @@ void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &requ
 
     for (const auto &resource_id : node_resources.total.ResourceIds()) {
       const auto &resource_value = node_resources.total.Get(resource_id);
-      if (resource_value <= 0) {
-        continue;
-      }
       const auto &resource_name = resource_id.Binary();
       resource_table_data.set_resource_capacity(resource_value.Double());
       (*reply->mutable_resources()).insert({resource_name, resource_table_data});
@@ -68,9 +65,6 @@ void GcsResourceManager::UpdateResources(
     rpc::ResourceMap resource_map;
     for (const auto &resource_id : node_resources.total.ResourceIds()) {
       const auto &resource_value = node_resources.total.Get(resource_id);
-      if (resource_value <= 0) {
-        continue;
-      }
       const auto &resource_name = resource_id.Binary();
       (*resource_map.mutable_items())[resource_name].set_resource_capacity(
           resource_value.Double());
@@ -115,9 +109,6 @@ void GcsResourceManager::DeleteResources(const NodeID &node_id,
         continue;
       }
       const auto &resource_value = node_resources.total.Get(resource_id);
-      if (resource_value <= 0) {
-        continue;
-      }
       (*resource_map.mutable_items())[resource_name].set_resource_capacity(
           resource_value.Double());
     }
@@ -142,9 +133,6 @@ void GcsResourceManager::HandleGetAllAvailableResources(
 
     for (const auto &resource_id : node_resources.available.ResourceIds()) {
       const auto &resource_value = node_resources.available.Get(resource_id);
-      if (resource_value <= 0) {
-        continue;
-      }
       const auto &resource_name = resource_id.Binary();
       resource.mutable_resources_available()->insert(
           {resource_name, resource_value.Double()});
