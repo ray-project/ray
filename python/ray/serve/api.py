@@ -1864,7 +1864,6 @@ def run(
     *,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
-    **kwargs,
 ) -> RayServeHandle:
     """Run a Serve application and return a ServeHandle to the ingress.
 
@@ -1886,6 +1885,7 @@ def run(
     """
     # TODO (jiaodong): Resolve circular reference in pipeline codebase and serve
     from ray.serve.pipeline.api import build as pipeline_build
+    from ray.serve.pipeline.api import get_and_validate_ingress_deployment
 
     client = start(detached=True, http_options={"host": host, "port": port})
 
@@ -1895,11 +1895,11 @@ def run(
     # Each DAG should always provide a valid Driver DeploymentNode
     elif isinstance(target, DeploymentNode):
         deployments = pipeline_build(target)
-        ingress = deployments[-1]
+        ingress = get_and_validate_ingress_deployment(deployments)
     # Special case where user is doing single function serve.run(func.bind())
     elif isinstance(target, DeploymentFunctionNode):
         deployments = pipeline_build(target)
-        ingress = deployments[-1]
+        ingress = get_and_validate_ingress_deployment(deployments)
         if len(deployments) != 1:
             raise ValueError(
                 "We only support single function node in serve.run, ex: "
