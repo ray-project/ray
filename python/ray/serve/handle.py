@@ -18,7 +18,6 @@ from ray.serve.utils import (
 )
 from ray.serve.router import Router, RequestMetadata
 from ray.util import metrics
-from ray import serve
 
 _global_async_loop = None
 
