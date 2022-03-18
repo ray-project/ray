@@ -23,7 +23,6 @@ from ray.serve.handle import (
     serve_handle_to_json_dict,
     serve_handle_from_json_dict,
 )
-from ray.serve.utils import ServeHandleEncoder, serve_handle_object_hook
 from ray.serve.constants import SERVE_HANDLE_JSON_KEY
 from ray.serve.api import RayServeDAGHandle
 

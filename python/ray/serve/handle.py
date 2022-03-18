@@ -251,7 +251,7 @@ class RayServeLazySyncHandle:
 
     def __init__(
         self,
-        deployment_name: EndpointTag,
+        deployment_name: str,
         handle_options: Optional[HandleOptions] = None,
     ):
         self.deployment_name = deployment_name
@@ -260,16 +260,10 @@ class RayServeLazySyncHandle:
         # requirement of serve.start; Thus handle is fulfilled at runtime.
         self.handle = None
 
-    def options(self, *, method_name: Union[str, DEFAULT] = DEFAULT.VALUE):
-        new_options_dict = self.handle_options.__dict__.copy()
-        user_modified_options_dict = {
-            key: value
-            for key, value in zip(["method_name"], [method_name])
-            if value != DEFAULT.VALUE
-        }
-        new_options_dict.update(user_modified_options_dict)
-        new_options = HandleOptions(**new_options_dict)
-        return self.__class__(self.deployment_name, new_options)
+    def options(self, *, method_name: str):
+        return self.__class__(
+            self.deployment_name, HandleOptions(method_name=method_name)
+        )
 
     def remote(self, *args, **kwargs):
         if not self.handle:
