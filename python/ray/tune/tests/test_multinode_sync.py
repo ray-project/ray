@@ -166,7 +166,23 @@ class MultiNodeSyncTest(unittest.TestCase):
         )
 
     def testCheckpointSync(self):
-        """Test that checkpoints are correctly synced."""
+        """Test that checkpoints are correctly synced.
+
+        This test starts a three node cluster and runs three trials on them,
+        all saving 10 checkpoints. Two checkpoints are kept per trial.
+        This functionality is asserted by this test.
+
+        The experiment is interrupted and restarted. We then continue to train
+        another 10 rounds. We assert that the trials continue to train from
+        their checkpoints, and that at most 4 checkpoints are kept
+        per trial (2 from the first trial, 2 from the second).
+
+        In the future, we may want to revise this behavior to only keep
+        2 checkpoints at any time, even when continuing from an existing
+        experiment.
+        """
+
+        # This cluster config starts 3 nodes a 4 CPUs
         self.cluster.update_config(
             {
                 "provider": {
@@ -186,12 +202,14 @@ class MultiNodeSyncTest(unittest.TestCase):
                 },
             }
         )
+        # Connect via Ray client and wait until all nodes are there
         self.cluster.start()
         self.cluster.connect(client=True, timeout=120)
         self.cluster.wait_for_resources({"CPU": 12})
 
+        # This train function trains for 10 iterations per run
         def train(config, checkpoint_dir=None):
-            start = 0
+            start = i = 0
             if checkpoint_dir:
                 with open(os.path.join(checkpoint_dir, "checkpoint.json"), "rt") as fp:
                     state = json.load(fp)
@@ -203,17 +221,28 @@ class MultiNodeSyncTest(unittest.TestCase):
                         json.dump({"step": i}, fp)
                 tune.report(step=i)
 
+            # These indicators will tell us if all trials saved their
+            # checkpoints.
             with open(f"/cluster/shared/indicator.{tune.get_trial_id()}", "wt") as fp:
                 fp.write("")
 
+            # We continue training (without saving checkpoints) to make sure
+            # that Tune's result handling is triggered (so that the
+            # FailOnIndicator callback is invoked).
             time.sleep(6)
             tune.report(step=i + 1)
             time.sleep(6)
 
             if start == 0:
+                # If this is the first round, we just sleep for some time
+                # to make sure that the driver exits first (via the
+                # FailOnIndicator)
                 tune.report(step=i + 2)
                 time.sleep(120)
 
+        # This is a callback that checks if all indicators are there
+        # (written by the training functions). If so, the tune run
+        # should end (by raising an error).
         class FailOnIndicator(Callback):
             def __init__(self, indicator_dir: str, num_indicators: int = 3):
                 self._indicator_dir = indicator_dir
@@ -229,6 +258,7 @@ class MultiNodeSyncTest(unittest.TestCase):
                     if len(indicators) >= self._num_indicators:
                         raise RuntimeError("All the indicators are there.")
 
+        # Run our test
         with self.assertRaises(RuntimeError):
             tune.run(
                 train,
@@ -246,7 +276,12 @@ class MultiNodeSyncTest(unittest.TestCase):
 
         nodes_dir = os.path.join(self.cluster.cluster_dir, "nodes")
 
-        def get_trial_path(ip_to_trial_dir, node) -> str:
+        # Helper functions to analyze the experiment directory post-experiment
+        def get_trial_path(ip_to_trial_dir: dict, node: dict) -> str:
+            """Return path on the host dir for a specific trial.
+
+            This is the directory the trial writes it's checkpoints to.
+            """
             node_id = node["NodeID"]
             node_ip = node["NodeManagerAddress"]
             node_trial_id = ip_to_trial_dir[node_ip]
@@ -263,21 +298,27 @@ class MultiNodeSyncTest(unittest.TestCase):
                 if path.startswith("checkpoint_")
             ]
 
+        # Since the tune run failed, load our own experiment analysis here
         analysis = tune.ExperimentAnalysis(
             os.path.join(nodes_dir, FAKE_HEAD_NODE_ID, "checkpoint_test")
         )
+        # Map IP: trial_id
         ip_to_trial_dir = {
             trial.last_result["node_ip"]: trial.trial_id for trial in analysis.trials
         }
 
+        # Each node will contain 1 trial
         for node in ray.nodes():
             node_trial_dir = get_trial_path(ip_to_trial_dir, node)
             checkpoint_dirs = get_checkpoint_dirs(node_trial_dir)
 
+            # Each trial should have saved two checkpoints
             self.assertSequenceEqual(
                 sorted(checkpoint_dirs), ["checkpoint_000008", "checkpoint_000009"]
             )
 
+        # Continue running the experiment in a new run. Note we
+        # don't invoke any failure callback here.
         analysis = tune.run(
             train,
             name="checkpoint_test",
@@ -288,6 +329,8 @@ class MultiNodeSyncTest(unittest.TestCase):
             verbose=2,
         )
 
+        # Trials could have been scheduled on other nodes, so reconstruct
+        # this map
         ip_to_trial_dir = {
             trial.last_result["node_ip"]: trial.trial_id for trial in analysis.trials
         }
@@ -296,10 +339,14 @@ class MultiNodeSyncTest(unittest.TestCase):
             node_trial_dir = get_trial_path(ip_to_trial_dir, node)
             checkpoint_dirs = get_checkpoint_dirs(node_trial_dir)
 
+            # Assert that checkpoint 18 and 19 are there, but not 17
+            # (because we only keep 2)
             self.assertNotIn("checkpoint_000017", checkpoint_dirs)
             self.assertIn("checkpoint_000018", checkpoint_dirs)
             self.assertIn("checkpoint_000019", checkpoint_dirs)
 
+            # Maximum should be 4 because the first trial creates
+            # 2, and we currently don't delete these on continue
             self.assertLessEqual(len(checkpoint_dirs), 4)
 
 
