@@ -359,6 +359,69 @@ class FileSystemStorage(ExternalStorage):
                 break
 
 
+class ExternalStorageRayStorageImpl(ExternalStorage):
+    """Implements the external storage interface using the ray.storage API."""
+
+    def __init__(self):
+        self._fs, storage_prefix = ray.storage.impl._get_filesystem_internal()
+        # TODO: add job_id here.
+        self._prefix = os.path.join(storage_prefix, "spilled_objects/job_00000")
+        self._fs.create_dir(self._prefix)
+
+    def spill_objects(self, object_refs, owner_addresses) -> List[str]:
+        if len(object_refs) == 0:
+            return []
+        # Always use the first object ref as a key when fusing objects.
+        first_ref = object_refs[0]
+        filename = f"{first_ref.hex()}-multi-{len(object_refs)}"
+        url = f"{os.path.join(self._prefix, filename)}"
+        with self._fs.open_output_stream(url) as f:
+            return self._write_multiple_objects(f, object_refs, owner_addresses, url)
+
+    def restore_spilled_objects(
+        self, object_refs: List[ObjectRef], url_with_offset_list: List[str]
+    ):
+        total = 0
+        for i in range(len(object_refs)):
+            object_ref = object_refs[i]
+            url_with_offset = url_with_offset_list[i].decode()
+            # Retrieve the information needed.
+            parsed_result = parse_url_with_offset(url_with_offset)
+            base_url = parsed_result.base_url
+            offset = parsed_result.offset
+            # Read a part of the file and recover the object.
+            # TODO: set buffer size
+            with self._fs.open_input_stream(base_url) as f:
+                f.seek(offset)
+                address_len = int.from_bytes(f.read(8), byteorder="little")
+                metadata_len = int.from_bytes(f.read(8), byteorder="little")
+                buf_len = int.from_bytes(f.read(8), byteorder="little")
+                self._size_check(address_len, metadata_len, buf_len, parsed_result.size)
+                total += buf_len
+                owner_address = f.read(address_len)
+                metadata = f.read(metadata_len)
+                # read remaining data to our buffer
+                self._put_object_to_store(
+                    metadata, buf_len, f, object_ref, owner_address
+                )
+        return total
+
+    def delete_spilled_objects(self, urls: List[str]):
+        for url in urls:
+            path = parse_url_with_offset(url.decode()).base_url
+            self._fs.delete_file(path)
+
+    def destroy_external_storage(self):
+        try:
+            self._fs.delete_dir(self._prefix)
+        except Exception:
+            logger.exception(
+                "Error cleaning up spill files. "
+                "You might still have remaining spilled "
+                "objects inside `{}`.".format(self._prefix)
+            )
+
+
 class ExternalStorageSmartOpenImpl(ExternalStorage):
     """The external storage class implemented by smart_open.
     (https://github.com/RaRe-Technologies/smart_open)
@@ -545,6 +608,8 @@ def setup_external_storage(config):
         storage_type = config["type"]
         if storage_type == "filesystem":
             _external_storage = FileSystemStorage(**config["params"])
+        elif storage_type == "ray_storage":
+            _external_storage = ExternalStorageRayStorageImpl(**config["params"])
         elif storage_type == "smart_open":
             _external_storage = ExternalStorageSmartOpenImpl(**config["params"])
         elif storage_type == "mock_distributed_fs":
