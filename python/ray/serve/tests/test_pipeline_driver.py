@@ -5,10 +5,29 @@ import requests
 import starlette.requests
 from starlette.testclient import TestClient
 
-from ray.serve.driver import DAGDriver, SimpleSchemaIngress
+from ray.serve.drivers import DAGDriver, SimpleSchemaIngress, load_input_schema
 from ray.experimental.dag.input_node import InputNode
 from ray import serve
 import ray
+
+
+def my_resolver(a: int):
+    return a
+
+
+def test_loading_check():
+    with pytest.raises(ValueError, match="callable"):
+        load_input_schema(["not function"])
+    with pytest.raises(ValueError, match="type annotated"):
+
+        def func(a):
+            return a
+
+        load_input_schema(func)
+    assert (
+        load_input_schema("ray.serve.tests.test_pipeline_driver.my_resolver")
+        == my_resolver
+    )
 
 
 def test_unit_schema_injection():

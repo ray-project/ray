@@ -15,7 +15,7 @@ DEFAULT_INPUT_SCHEMA = "ray.serve.http_adapters.starlette_request"
 InputSchemaFn = Callable[[Any], Any]
 
 
-def _load_input_schema(
+def load_input_schema(
     input_schema: Optional[Union[str, InputSchemaFn]]
 ) -> InputSchemaFn:
     if input_schema is None:
@@ -24,11 +24,14 @@ def _load_input_schema(
     if isinstance(input_schema, str):
         input_schema = import_attr(input_schema)
 
-    assert inspect.isfunction(input_schema), "input schema must be a callable function."
-    assert all(
-        param.annotation != inspect.Parameter.empty
+    if not inspect.isfunction(input_schema):
+        raise ValueError("input schema must be a callable function.")
+
+    if any(
+        param.annotation == inspect.Parameter.empty
         for param in inspect.signature(input_schema).parameters.values()
-    ), "input schema function's signature should be type annotated."
+    ):
+        raise ValueError("input schema function's signature should be type annotated.")
     return input_schema
 
 
@@ -43,7 +46,7 @@ class SimpleSchemaIngress:
               resolver. When you pass in a string, Serve will import it.
               Please refer to Serve HTTP adatper documentation to learn more.
         """
-        input_schema = _load_input_schema(input_schema)
+        input_schema = load_input_schema(input_schema)
         self.app = FastAPI()
 
         @self.app.get("/")
