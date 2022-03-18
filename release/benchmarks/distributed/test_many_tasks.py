@@ -78,7 +78,7 @@ def test(num_tasks):
             "_peak_memory": round(used_gb, 2),
             "_peak_process_memory": usage,
         }
-        if os.environ.get("IS_SMOKE_TEST") == "1":
+        if os.environ.get("IS_SMOKE_TEST") != "1":
             results["perf_metrics"] = [
                 {
                     "perf_metric_name": "tasks_per_second",
