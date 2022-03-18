@@ -81,7 +81,7 @@ int64_t StringIdMap::Count() {
 
 namespace scheduling {
 
-absl::flat_hash_set<int64_t> ResourceID::UnitInstanceResources() {
+absl::flat_hash_set<int64_t> &ResourceID::UnitInstanceResources() {
   static absl::flat_hash_set<int64_t> set{[]() {
     absl::flat_hash_set<int64_t> res;
 

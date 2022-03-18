@@ -136,7 +136,15 @@ class ResourceRequest {
   }
 
   /// Return the number of resources in this set.
-  size_t Size() const { return ResourceIds().size(); }
+  size_t Size() const {
+    size_t size = custom_resources_.size();
+    for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
+      if (predefined_resources_[i] != 0) {
+        size++;
+      }
+    }
+    return size;
+  }
 
   /// Return true if this set is empty.
   bool IsEmpty() const { return Size() == 0; }
@@ -150,9 +158,7 @@ class ResourceRequest {
       }
     }
     for (auto &entry : custom_resources_) {
-      if (entry.second != 0) {
-        res.insert(ResourceID(entry.first));
-      }
+      res.insert(ResourceID(entry.first));
     }
     return res;
   }
@@ -354,11 +360,15 @@ class TaskResourceInstances {
   /// Set the per-instance values for a particular resource.
   TaskResourceInstances &Set(const ResourceID resource_id,
                              const std::vector<FixedPoint> &instances) {
-    auto ptr = GetPointer(resource_id);
-    if (ptr != nullptr) {
-      *ptr = instances;
+    if (instances.size() == 0) {
+      Remove(resource_id);
     } else {
-      custom_resources_.emplace(resource_id.ToInt(), instances);
+      auto ptr = GetPointer(resource_id);
+      if (ptr != nullptr) {
+        *ptr = instances;
+      } else {
+        custom_resources_.emplace(resource_id.ToInt(), instances);
+      }
     }
     return *this;
   }
@@ -392,15 +402,21 @@ class TaskResourceInstances {
       }
     }
     for (auto &entry : custom_resources_) {
-      if (entry.second.size() > 0) {
-        res.insert(ResourceID(entry.first));
-      }
+      res.insert(ResourceID(entry.first));
     }
     return res;
   }
 
   /// Return the number of resources in this set.
-  size_t Size() const { return ResourceIds().size(); }
+  size_t Size() const {
+    size_t size = custom_resources_.size();
+    for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
+      if (predefined_resources_[i].size() > 0) {
+        size++;
+      }
+    }
+    return size;
+  }
 
   /// Check whether this set is empty.
   bool IsEmpty() const { return Size() == 0; }

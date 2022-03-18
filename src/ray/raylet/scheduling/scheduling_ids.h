@@ -182,7 +182,7 @@ class ResourceID : public BaseSchedulingID<SchedulingIDTag::Resource> {
 
  private:
   /// Return the IDs of all unit-instance resources.
-  static absl::flat_hash_set<int64_t> UnitInstanceResources();
+  static absl::flat_hash_set<int64_t> &UnitInstanceResources();
 };
 
 }  // namespace scheduling
