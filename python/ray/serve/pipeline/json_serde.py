@@ -15,6 +15,10 @@ from ray.experimental.dag import (
 from ray.serve.pipeline.deployment_node import DeploymentNode
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
+from ray.serve.schema import (
+    DeploymentSchema,
+    deployment_to_schema,
+)
 from ray.serve.utils import parse_import_path
 from ray.serve.handle import (
     RayServeHandle,
@@ -43,8 +47,12 @@ class DAGNodeEncoder(json.JSONEncoder):
     """
 
     def default(self, obj):
-        if isinstance(obj, Deployment):
-            return "DUMMY_DEPLOYMENT_PLACEHOLDER"
+        if isinstance(obj, DeploymentSchema):
+            # Deployment is cover
+            return {
+                DAGNODE_TYPE_KEY: "DeploymentSchema",
+                "schema": obj.dict(),
+            }
         elif isinstance(obj, RayServeHandle):
             return serve_handle_to_json_dict(obj)
         elif isinstance(obj, RayServeDAGHandle):
@@ -95,6 +103,8 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
         return input_json
     elif input_json[DAGNODE_TYPE_KEY] == RayServeDAGHandle.__name__:
         return RayServeDAGHandle(input_json["dag_node_json"])
+    elif input_json[DAGNODE_TYPE_KEY] == "DeploymentSchema":
+        return DeploymentSchema.parse_obj(input_json["schema"])
     # Deserialize DAGNode type
     elif input_json[DAGNODE_TYPE_KEY] == InputNode.__name__:
         return InputNode.from_json(input_json, object_hook=dagnode_from_json)

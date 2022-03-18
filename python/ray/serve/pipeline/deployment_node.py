@@ -1,3 +1,4 @@
+import inspect
 import json
 from typing import Any, Callable, Dict, Optional, List, Tuple, Union
 
@@ -10,6 +11,7 @@ from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 from ray.experimental.dag.format_utils import get_dag_node_str
 from ray.serve.api import Deployment, DeploymentConfig, RayServeDAGHandle
 from ray.serve.utils import get_deployment_import_path
+from ray.serve.schema import DeploymentSchema, schema_to_deployment
 
 
 class DeploymentNode(DAGNode):
@@ -72,17 +74,22 @@ class DeploymentNode(DAGNode):
             apply_fn=replace_with_handle,
         )
 
-        if "deployment_self" in self._bound_other_args_to_resolve:
-            original_deployment: Deployment = self._bound_other_args_to_resolve[
-                "deployment_self"
+        if "deployment_schema" in self._bound_other_args_to_resolve:
+            deployment_schema: DeploymentSchema = self._bound_other_args_to_resolve[
+                "deployment_schema"
             ]
-            self._deployment = original_deployment.options(
-                name=(
-                    deployment_name
-                    if original_deployment._name
-                    == original_deployment.func_or_class.__name__
-                    else original_deployment._name
-                ),
+            original_deployment_without_cls = schema_to_deployment(deployment_schema)
+
+            # Prefer user specified name to override the generated one.
+            if (
+                inspect.isclass(func_or_class)
+                and original_deployment_without_cls._name != func_or_class.__name__
+            ):
+                deployment_name = original_deployment_without_cls._name
+
+            self._deployment = original_deployment_without_cls.options(
+                func_or_class=func_or_class,
+                name=deployment_name,
                 init_args=replaced_deployment_init_args,
                 init_kwargs=replaced_deployment_init_kwargs,
             )

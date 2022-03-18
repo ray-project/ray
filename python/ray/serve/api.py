@@ -1191,6 +1191,13 @@ class Deployment:
         The returned bound deployment can be deployed or bound to other
         deployments to create a multi-deployment application.
         """
+        from ray.serve.schema import deployment_to_schema
+
+        schema_shell = deployment_to_schema(self)
+        schema_shell.init_args = []
+        schema_shell.init_kwargs = {}
+        schema_shell.import_path = "dummy.module"
+
         if inspect.isfunction(self._func_or_class):
             return DeploymentFunctionNode(
                 self._func_or_class,
@@ -1198,7 +1205,7 @@ class Deployment:
                 kwargs,  # Used to bind and resolve DAG only, can take user input
                 self._ray_actor_options or dict(),
                 other_args_to_resolve={
-                    "deployment_self": copy(self),
+                    "deployment_schema": schema_shell,
                     "is_from_serve_deployment": True,
                 },
             )
@@ -1209,7 +1216,7 @@ class Deployment:
                 kwargs,
                 cls_options=self._ray_actor_options or dict(),
                 other_args_to_resolve={
-                    "deployment_self": copy(self),
+                    "deployment_schema": schema_shell,
                     "is_from_serve_deployment": True,
                 },
             )
