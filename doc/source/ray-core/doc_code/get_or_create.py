@@ -1,5 +1,6 @@
 import ray
 
+
 @ray.remote
 class Counter:
     def __init__(self, value):
