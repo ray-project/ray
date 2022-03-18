@@ -11,7 +11,7 @@ from ray.serve.api import RayServeDAGHandle
 from ray.serve.http_util import ASGIHTTPSender
 from ray import serve
 
-DEFAULT_INPUT_SCHEMA = "ray.serve.http_adapters.array_to_databatch"
+DEFAULT_INPUT_SCHEMA = "ray.serve.http_adapters.starlette_request"
 InputSchemaFn = Callable[[Any], DataBatchType]
 
 

@@ -7,6 +7,7 @@ import numpy as np
 
 from ray.serve.utils import require_packages
 from ray.ml.predictor import DataBatchType
+import starlette.requests
 
 
 _1DArray = List[float]
@@ -48,6 +49,14 @@ def array_to_databatch(payload: NdArray) -> DataBatchType:
     if payload.dtype:
         arr = arr.astype(payload.dtype)
     return arr
+
+
+def starlette_request(
+    request: starlette.requests.Request,
+) -> starlette.requests.Request:
+    """Returns the raw request object."""
+    # NOTE(simon): This adapter is used for ease of getting started.
+    return request
 
 
 @require_packages(["PIL"])

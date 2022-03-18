@@ -43,7 +43,9 @@ class ModelWrapper(SimpleSchemaIngress):
         self,
         predictor_cls: Union[str, Type[Predictor]],
         checkpoint: Union[Checkpoint, Dict],
-        input_schema: Optional[Union[str, InputSchemaFn]] = None,
+        input_schema: Union[
+            str, InputSchemaFn
+        ] = "ray.serve.http_adapters.array_to_databatch",
         batching_params: Optional[Union[Dict[str, int], bool]] = None,
     ):
         """Serve any Ray ML predictor from checkpoint.
