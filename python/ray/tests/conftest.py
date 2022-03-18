@@ -463,6 +463,8 @@ smart_open_object_spilling_config = {
 }
 ray_storage_object_spilling_config = {
     "type": "ray_storage",
+    # Force the storage config so we don't need to patch each test to separately
+    # configure the storage param under this.
     "params": {"_force_storage_for_testing": spill_local_path},
 }
 buffer_open_object_spilling_config = {
