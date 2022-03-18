@@ -33,10 +33,13 @@ class UpperConfidenceBound(Exploration):
             scores = self.model.value_function()
             return scores.argmax(dim=-1), None
 
-    @tf.function
     def _get_tf_exploration_action(self, action_dist, explore):
-        if explore:
-            action = tf.argmax(action_dist.inputs, axis=-1)
-        else:
-            action = tf.argmax(self.model.value_function(), axis=-1)
+        action = tf.argmax(
+            tf.cond(
+                explore,
+                lambda: action_dist.inputs,
+                lambda: self.model.value_function()
+            ),
+            axis=-1
+        )
         return action, None
