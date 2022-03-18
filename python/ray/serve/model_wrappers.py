@@ -3,7 +3,7 @@ from typing import Dict, Optional, Type, Union
 from ray._private.utils import import_attr
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.predictor import Predictor
-from ray.serve.driver import InputSchemaFn, SimpleSchemaIngress
+from ray.serve.drivers import InputSchemaFn, SimpleSchemaIngress
 import ray
 from ray import serve
 
@@ -94,5 +94,5 @@ class ModelWrapper(SimpleSchemaIngress):
         super().__init__(input_schema)
 
     async def predict(self, inp):
-        """Performing inference directly without HTTP."""
+        """Perform inference directly without HTTP."""
         return await self.batched_predict(inp)

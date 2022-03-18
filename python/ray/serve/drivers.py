@@ -12,7 +12,7 @@ from ray.serve.http_util import ASGIHTTPSender
 from ray import serve
 
 DEFAULT_INPUT_SCHEMA = "ray.serve.http_adapters.starlette_request"
-InputSchemaFn = Callable[[Any], DataBatchType]
+InputSchemaFn = Callable[[Any], Any]
 
 
 def _load_input_schema(
@@ -25,6 +25,10 @@ def _load_input_schema(
         input_schema = import_attr(input_schema)
 
     assert inspect.isfunction(input_schema), "input schema must be a callable function."
+    assert all(
+        param.annotation != inspect.Parameter.empty
+        for param in inspect.signature(input_schema).parameters.values()
+    ), "input schema function's signature should be type annotated."
     return input_schema
 
 
@@ -34,9 +38,9 @@ class SimpleSchemaIngress:
 
         Args:
             input_schema(str, InputSchemaFn, None): The FastAPI input conversion
-              function. By default, Serve will use the `NdArray` schema and convert to
-              numpy array. You can pass in any FastAPI dependency resolver that returns
-              an array. When you pass in a string, Serve will import it.
+              function. By default, Serve will directly pass in the request object
+              starlette.requests.Request. You can pass in any FastAPI dependency
+              resolver. When you pass in a string, Serve will import it.
               Please refer to Serve HTTP adatper documentation to learn more.
         """
         input_schema = _load_input_schema(input_schema)
@@ -72,5 +76,5 @@ class DAGDriver(SimpleSchemaIngress):
         super().__init__(input_schema)
 
     async def predict(self, inp):
-        """Performing inference directly without HTTP."""
+        """Perform inference directly without HTTP."""
         return await self.dag_handle.remote(inp)

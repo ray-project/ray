@@ -11,7 +11,7 @@ from ray import serve
 from ray.serve.api import RayServeDAGHandle
 from ray.experimental.dag.input_node import InputNode
 from ray.serve.pipeline.api import build as pipeline_build
-from ray.serve.driver import DAGDriver
+from ray.serve.drivers import DAGDriver
 import starlette.requests
 
 
