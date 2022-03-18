@@ -341,6 +341,7 @@ def test_deploy(ray_start_stop):
             == "Hello shallow world!"
         )
 
+    serve.shutdown()
     ray.shutdown()
 
 
