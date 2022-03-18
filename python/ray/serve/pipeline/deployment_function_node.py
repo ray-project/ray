@@ -18,11 +18,10 @@ class DeploymentFunctionNode(DAGNode):
         func_args,
         func_kwargs,
         func_options,
-        deployment_config: DeploymentConfig,
         other_args_to_resolve=None,
     ):
         self._body = func_body
-        self._deployment_config = deployment_config
+        self._deployment_name = deployment_name
         super().__init__(
             func_args,
             func_kwargs,
@@ -44,12 +43,11 @@ class DeploymentFunctionNode(DAGNode):
                 init_args=tuple(),
                 init_kwargs=dict(),
             )
-            self._deployment_config = self._deployment._config
         else:
             self._deployment: Deployment = Deployment(
                 func_body,
                 deployment_name,
-                deployment_config,
+                DeploymentConfig(),
                 init_args=tuple(),
                 init_kwargs=dict(),
                 ray_actor_options=func_options,
@@ -68,11 +66,10 @@ class DeploymentFunctionNode(DAGNode):
     ):
         return DeploymentFunctionNode(
             self._body,
-            self._deployment.name,
+            self._deployment_name,
             new_args,
             new_kwargs,
             new_options,
-            self._deployment_config,
             other_args_to_resolve=new_other_args_to_resolve,
         )
 
@@ -88,7 +85,7 @@ class DeploymentFunctionNode(DAGNode):
         return get_dag_node_str(self, str(self._body))
 
     def get_deployment_name(self):
-        return self._deployment.name
+        return self._deployment_name
 
     def get_import_path(self):
         if (
@@ -98,8 +95,6 @@ class DeploymentFunctionNode(DAGNode):
         return get_deployment_import_path(self._deployment)
 
     def to_json(self, encoder_cls) -> Dict[str, Any]:
-        if "deployment_self" in self._bound_other_args_to_resolve:
-            self._bound_other_args_to_resolve.pop("deployment_self")
         json_dict = super().to_json_base(encoder_cls, DeploymentFunctionNode.__name__)
         json_dict["import_path"] = self.get_import_path()
         json_dict["deployment_name"] = self.get_deployment_name()

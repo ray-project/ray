@@ -9,7 +9,6 @@ from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 from ray.experimental.dag.format_utils import get_dag_node_str
 from ray.serve.api import Deployment, DeploymentConfig, RayServeDAGHandle
-from ray.serve.schema import deployment_to_schema
 from ray.serve.utils import get_deployment_import_path
 
 
@@ -25,10 +24,8 @@ class DeploymentNode(DAGNode):
         deployment_init_args: Tuple[Any],
         deployment_init_kwargs: Dict[str, Any],
         ray_actor_options: Dict[str, Any],
-        deployment_config: DeploymentConfig,
         other_args_to_resolve: Optional[Dict[str, Any]] = None,
     ):
-        self._deployment_config = deployment_config
         # Assign instance variables in base class constructor.
         super().__init__(
             deployment_init_args,
@@ -70,8 +67,7 @@ class DeploymentNode(DAGNode):
         ) = self.apply_functional(
             [deployment_init_args, deployment_init_kwargs],
             predictate_fn=lambda node: isinstance(
-                node,
-                (DeploymentNode, DeploymentMethodNode, DeploymentFunctionNode),
+                node, (DeploymentNode, DeploymentMethodNode, DeploymentFunctionNode)
             ),
             apply_fn=replace_with_handle,
         )
@@ -90,12 +86,12 @@ class DeploymentNode(DAGNode):
                 init_args=replaced_deployment_init_args,
                 init_kwargs=replaced_deployment_init_kwargs,
             )
-            self._deployment_config = self._deployment._config
         else:
             self._deployment: Deployment = Deployment(
                 func_or_class,
                 deployment_name,
-                deployment_config,
+                # TODO: (jiaodong) Support deployment config from user input
+                DeploymentConfig(),
                 init_args=replaced_deployment_init_args,
                 init_kwargs=replaced_deployment_init_kwargs,
                 ray_actor_options=ray_actor_options,
@@ -118,7 +114,6 @@ class DeploymentNode(DAGNode):
             new_args,
             new_kwargs,
             new_options,
-            self._deployment_config,
             other_args_to_resolve=new_other_args_to_resolve,
         )
 
@@ -198,11 +193,8 @@ class DeploymentNode(DAGNode):
         return get_deployment_import_path(self._deployment)
 
     def to_json(self, encoder_cls) -> Dict[str, Any]:
-        if "deployment_self" in self._bound_other_args_to_resolve:
-            self._bound_other_args_to_resolve.pop("deployment_self")
         json_dict = super().to_json_base(encoder_cls, DeploymentNode.__name__)
         json_dict["deployment_name"] = self.get_deployment_name()
-        json_dict["deployment_config"] = deployment_to_schema(self._deployment).dict()
         json_dict["import_path"] = self.get_import_path()
 
         return json_dict
@@ -217,6 +209,5 @@ class DeploymentNode(DAGNode):
             args_dict["args"],
             args_dict["kwargs"],
             args_dict["options"],
-            args_dict["deployment_config"],
             other_args_to_resolve=args_dict["other_args_to_resolve"],
         )

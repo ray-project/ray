@@ -22,7 +22,7 @@ from ray.serve.handle import (
     serve_handle_from_json_dict,
 )
 from ray.serve.constants import SERVE_HANDLE_JSON_KEY
-from ray.serve.api import RayServeDAGHandle
+from ray.serve.api import Deployment, RayServeDAGHandle
 
 
 class DAGNodeEncoder(json.JSONEncoder):
@@ -43,7 +43,9 @@ class DAGNodeEncoder(json.JSONEncoder):
     """
 
     def default(self, obj):
-        if isinstance(obj, RayServeHandle):
+        if isinstance(obj, Deployment):
+            return "DUMMY_DEPLOYMENT_PLACEHOLDER"
+        elif isinstance(obj, RayServeHandle):
             return serve_handle_to_json_dict(obj)
         elif isinstance(obj, RayServeDAGHandle):
             # TODO(simon) Do a proper encoder
