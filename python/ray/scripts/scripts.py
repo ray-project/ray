@@ -458,6 +458,11 @@ def debug(address):
     help="manually specify the root temporary dir of the Ray process",
 )
 @click.option(
+    "--storage",
+    default=None,
+    help="the persistent storage URI for the cluster. Experimental.",
+)
+@click.option(
     "--system-config",
     default=None,
     hidden=True,
@@ -535,6 +540,7 @@ def start(
     plasma_store_socket_name,
     raylet_socket_name,
     temp_dir,
+    storage,
     system_config,
     enable_object_reconstruction,
     metrics_export_port,
@@ -543,6 +549,7 @@ def start(
     ray_debugger_external,
 ):
     """Start Ray processes manually on the local machine."""
+
     if gcs_server_port is not None:
         cli_logger.error(
             "`{}` is deprecated and ignored. Use {} to specify "
@@ -595,6 +602,7 @@ def start(
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir,
+        storage=storage,
         include_dashboard=include_dashboard,
         dashboard_host=dashboard_host,
         dashboard_port=dashboard_port,
@@ -2165,6 +2173,9 @@ def install_nightly(verbose, dryrun):
 @add_click_logging_options
 def cpp(show_library_path, generate_bazel_project_template_to):
     """Show the cpp library path and generate the bazel project template."""
+    if sys.platform == "win32":
+        cli_logger.error("Ray C++ API is not supported on Windows currently.")
+        sys.exit(1)
     if not show_library_path and not generate_bazel_project_template_to:
         raise ValueError(
             "Please input at least one option of '--show-library-path'"

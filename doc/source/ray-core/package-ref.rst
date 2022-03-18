@@ -211,9 +211,14 @@ Runtime Context APIs
 .. _runtime-env-apis:
 
 Runtime Env APIs
+----------------
+
+.. autoclass:: ray.runtime_env.RuntimeEnvConfig
+    :members:
 
 .. autoclass:: ray.runtime_env.RuntimeEnv
     :members:
+
 .. _package-ref-debugging-apis:
 
 Debugging APIs
@@ -293,13 +298,13 @@ The Ray Command Line API
 .. click:: ray.scripts.scripts:timeline
    :prog: ray timeline
    :show-nested:
- 
+
 .. _ray-status-doc:
 
 .. click:: ray.scripts.scripts:status
    :prog: ray status
    :show-nested:
-   
+
 .. _ray-monitor-doc:
 
 .. click:: ray.scripts.scripts:monitor

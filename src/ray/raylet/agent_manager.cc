@@ -117,6 +117,7 @@ void AgentManager::StartAgent() {
 void AgentManager::CreateRuntimeEnv(
     const JobID &job_id,
     const std::string &serialized_runtime_env,
+    const rpc::RuntimeEnvConfig &runtime_env_config,
     const std::string &serialized_allocated_resource_instances,
     CreateRuntimeEnvCallback callback) {
   // If the agent cannot be started, fail the request.
@@ -170,10 +171,12 @@ void AgentManager::CreateRuntimeEnv(
         [this,
          job_id,
          serialized_runtime_env,
+         runtime_env_config,
          serialized_allocated_resource_instances,
          callback = std::move(callback)] {
           CreateRuntimeEnv(job_id,
                            serialized_runtime_env,
+                           runtime_env_config,
                            serialized_allocated_resource_instances,
                            callback);
         },
@@ -183,11 +186,13 @@ void AgentManager::CreateRuntimeEnv(
   rpc::CreateRuntimeEnvRequest request;
   request.set_job_id(job_id.Hex());
   request.set_serialized_runtime_env(serialized_runtime_env);
+  request.mutable_runtime_env_config()->CopyFrom(runtime_env_config);
   request.set_serialized_allocated_resource_instances(
       serialized_allocated_resource_instances);
   runtime_env_agent_client_->CreateRuntimeEnv(
       request,
       [serialized_runtime_env,
+       runtime_env_config,
        serialized_allocated_resource_instances,
        callback = std::move(callback)](const Status &status,
                                        const rpc::CreateRuntimeEnvReply &reply) {
