@@ -6,7 +6,7 @@ import random
 import time
 import urllib
 from collections import namedtuple
-from typing import List, IO, Tuple
+from typing import List, IO, Tuple, Optional
 
 import ray
 from ray.ray_constants import DEFAULT_OBJECT_PREFIX
@@ -365,9 +365,16 @@ class ExternalStorageRayStorageImpl(ExternalStorage):
     def __init__(
         self,
         session_name: str,
-        buffer_size=1024 * 1024,  # For remote spilling, at least 1MB is recommended.
+        # For remote spilling, at least 1MB is recommended.
+        buffer_size=1024 * 1024,
+        # Override the storage config for unit tests.
+        _force_storage_for_testing: Optional[str] = None,
     ):
         from ray.internal import storage
+
+        if _force_storage_for_testing:
+            storage._reset()
+            storage._init_storage(_force_storage_for_testing, True)
 
         self._fs, storage_prefix = storage._get_filesystem_internal()
         self._buffer_size = buffer_size
