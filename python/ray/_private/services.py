@@ -300,7 +300,7 @@ def find_bootstrap_address():
 def _find_redis_address_or_die():
     """Finds one Redis address unambiguously, or raise an error.
 
-    Callers outside of this module should use
+    Callers outside this module should use
     get_ray_address_from_environment() or canonicalize_bootstrap_address()
     """
     redis_addresses = find_redis_address()
@@ -630,7 +630,7 @@ def start_ray_process(
     if os.environ.get(valgrind_profiler_env_var) == "1":
         logger.info("Detected environment variable '%s'.", valgrind_profiler_env_var)
         use_valgrind_profiler = True
-    perftools_profiler_env_var = f"RAY_{process_type.upper()}" "_PERFTOOLS_PROFILER"
+    perftools_profiler_env_var = f"RAY_{process_type.upper()}_PERFTOOLS_PROFILER"
     if os.environ.get(perftools_profiler_env_var) == "1":
         logger.info("Detected environment variable '%s'.", perftools_profiler_env_var)
         use_perftools_profiler = True
@@ -840,9 +840,7 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
         # redis.AuthenticationError isn't trapped here.
         except redis.AuthenticationError as authEx:
             raise RuntimeError(
-                "Unable to connect to Redis at {}:{}.".format(
-                    redis_ip_address, redis_port
-                )
+                f"Unable to connect to Redis at {redis_ip_address}:{redis_port}."
             ) from authEx
         except redis.ConnectionError as connEx:
             if i >= num_retries - 1:
@@ -896,8 +894,7 @@ def start_reaper(fate_share=None):
             pass
         else:
             logger.warning(
-                "setpgrp failed, processes may not be "
-                "cleaned up properly: {}.".format(e)
+                f"setpgrp failed, processes may not be cleaned up properly: {e}."
             )
             # Don't start the reaper in this case as it could result in killing
             # other user processes.
@@ -935,17 +932,13 @@ def start_redis(
             for recording the log filenames in Redis.
         redirect_files: The list of (stdout, stderr) file pairs.
         resource_spec (ResourceSpec): Resources for the node.
-        session_dir_path (str): Path to the session directory of
-            this Ray cluster.
-        port (int): If provided, the primary Redis shard will be started on
-            this port.
-        redis_shard_ports: A list of the ports to use for the non-primary Redis
-            shards.
-        num_redis_shards (int): If provided, the number of Redis shards to
-            start, in addition to the primary one. The default value is one
-            shard.
+        session_dir_path (str): Path to the session directory of this Ray cluster.
+        port (int): If provided, the primary Redis shard will be started on this port.
+        redis_shard_ports: A list of the ports to use for the non-primary Redis shards.
+        num_redis_shards (int): If provided, the number of Redis shards to start,
+            in addition to the primary one. The default value is one shard.
         redis_max_clients: If this is provided, Ray will attempt to configure
-            Redis with this maxclients number.
+            Redis with this max_clients number.
         password (str): Prevents external clients without the password
             from connecting to Redis if provided.
         port_denylist (set): A set of denylist ports that shouldn't
@@ -953,8 +946,7 @@ def start_redis(
 
     Returns:
         A tuple of the address for the primary Redis shard, a list of
-            addresses for the remaining shards, and the processes that were
-            started.
+            addresses for the remaining shards, and the processes that were started.
     """
     import redis
 
@@ -966,7 +958,7 @@ def start_redis(
         port = int(port)
         redis_address = address(primary_redis_ip, port)
         primary_redis_client = create_redis_client(
-            "%s:%s" % (primary_redis_ip, port), password=password
+            f"{primary_redis_ip}:{port}", password=password
         )
         # Deleting the key to avoid duplicated rpush.
         primary_redis_client.delete("RedisShards")
@@ -1232,10 +1224,8 @@ def _start_redis_instance(
 
 
 def start_log_monitor(
-    redis_address,
-    gcs_address,
     logs_dir,
-    redis_password=None,
+    gcs_address,
     fate_share=None,
     max_bytes=0,
     backup_count=0,
@@ -1244,9 +1234,10 @@ def start_log_monitor(
     """Start a log monitor process.
 
     Args:
-        redis_address (str): The address of the Redis instance.
         logs_dir (str): The directory of logging files.
-        redis_password (str): The password of the redis server.
+        gcs_address (str): GCS address for pubsub.
+        fate_share (bool): Whether to share fate between log_monitor
+            and this process.
         max_bytes (int): Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count (int): Log rotation parameter. Corresponding to
@@ -1263,11 +1254,10 @@ def start_log_monitor(
         sys.executable,
         "-u",
         log_monitor_filepath,
-        f"--redis-address={redis_address}",
         f"--logs-dir={logs_dir}",
+        f"--gcs-address={gcs_address}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
-        f"--gcs-address={gcs_address}",
     ]
     if redirect_logging:
         # Avoid hanging due to fd inheritance.
@@ -1285,8 +1275,6 @@ def start_log_monitor(
         # Inherit stdout/stderr streams.
         stdout_file = None
         stderr_file = None
-    if redis_password:
-        command.append(f"--redis-password={redis_password}")
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_LOG_MONITOR,
@@ -1554,6 +1542,7 @@ def start_raylet(
     plasma_store_name,
     worker_path,
     setup_worker_path,
+    storage,
     temp_dir,
     session_dir,
     resource_dir,
@@ -1598,6 +1587,7 @@ def start_raylet(
             processes will execute.
         setup_worker_path (str): The path of the Python file that will set up
             the environment for the worker process.
+        storage (str): The persistent storage URI.
         temp_dir (str): The path of the temporary directory Ray will use.
         session_dir (str): The path of this session.
         resource_dir(str): The path of resource of this session .
@@ -1682,7 +1672,6 @@ def start_raylet(
 
     if os.path.exists(DEFAULT_WORKER_EXECUTABLE):
         cpp_worker_command = build_cpp_worker_command(
-            "",
             gcs_address,
             plasma_store_name,
             raylet_name,
@@ -1707,6 +1696,7 @@ def start_raylet(
         f"--object-store-name={plasma_store_name}",
         f"--raylet-name={raylet_name}",
         f"--redis-address={redis_address}",
+        f"--storage={storage}",
         f"--temp-dir={temp_dir}",
         f"--metrics-agent-port={metrics_agent_port}",
         f"--logging-rotate-bytes={max_bytes}",
@@ -1897,7 +1887,6 @@ def build_java_worker_command(
 
 
 def build_cpp_worker_command(
-    cpp_worker_options,
     bootstrap_address,
     plasma_store_name,
     raylet_name,
@@ -1909,7 +1898,6 @@ def build_cpp_worker_command(
     """This method assembles the command used to start a CPP worker.
 
     Args:
-        cpp_worker_options (list): The command options for CPP worker.
         bootstrap_address (str): The bootstrap address of the cluster.
         plasma_store_name (str): The name of the plasma store socket to connect
            to.
@@ -1962,7 +1950,7 @@ def determine_plasma_store_config(
         object_store_memory = int(object_store_memory)
 
     if huge_pages and not (sys.platform == "linux" or sys.platform == "linux2"):
-        raise ValueError("The huge_pages argument is only supported on " "Linux.")
+        raise ValueError("The huge_pages argument is only supported on Linux.")
 
     system_memory = ray._private.utils.get_system_memory()
 
@@ -2017,13 +2005,11 @@ def determine_plasma_store_config(
             )
     else:
         plasma_directory = os.path.abspath(plasma_directory)
-        logger.info(
-            "object_store_memory is not verified when " "plasma_directory is set."
-        )
+        logger.info("object_store_memory is not verified when plasma_directory is set.")
 
     if not os.path.isdir(plasma_directory):
         raise ValueError(
-            f"The file {plasma_directory} does not " "exist or is not a directory."
+            f"The file {plasma_directory} does not exist or is not a directory."
         )
 
     if huge_pages and plasma_directory is None:

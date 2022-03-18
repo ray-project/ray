@@ -135,6 +135,26 @@ def test_single_func_deployment_dag(serve_instance):
     assert ray.get(handle.remote([1, 2])) == 4
 
 
+def test_chained_function(serve_instance):
+    @serve.deployment
+    def func_1(input):
+        return input
+
+    @serve.deployment
+    def func_2(input):
+        return input * 2
+
+    with InputNode() as dag_input:
+        output_1 = func_1.bind(dag_input)
+        output_2 = func_2.bind(dag_input)
+        serve_dag = combine.bind(output_1, output_2)
+    with pytest.raises(ValueError, match="Please provide a driver class"):
+        _ = serve.run(serve_dag)
+
+    handle = serve.run(Driver.bind(serve_dag))
+    assert ray.get(handle.remote(2)) == 6  # 2 + 2*2
+
+
 def test_simple_class_with_class_method(serve_instance):
     with InputNode() as dag_input:
         model = Model.bind(2, ratio=0.3)
@@ -162,7 +182,7 @@ def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
         m1 = Model.bind(2)
         m2 = Model.bind(3)
         combine = Combine.bind(m1, m2=m2)
-        combine_output = combine.__call__.bind(dag_input)
+        combine_output = combine.bind(dag_input)
         serve_dag = Driver.bind(combine_output)
 
     handle = serve.run(serve_dag)
@@ -173,7 +193,7 @@ def test_shared_deployment_handle(serve_instance):
     with InputNode() as dag_input:
         m = Model.bind(2)
         combine = Combine.bind(m, m2=m)
-        combine_output = combine.__call__.bind(dag_input)
+        combine_output = combine.bind(dag_input)
         serve_dag = Driver.bind(combine_output)
 
     handle = serve.run(serve_dag)
@@ -185,7 +205,7 @@ def test_multi_instantiation_class_nested_deployment_arg_dag(serve_instance):
         m1 = Model.bind(2)
         m2 = Model.bind(3)
         combine = Combine.bind(m1, m2={NESTED_HANDLE_KEY: m2}, m2_nested=True)
-        output = combine.__call__.bind(dag_input)
+        output = combine.bind(dag_input)
         serve_dag = Driver.bind(output)
 
     handle = serve.run(serve_dag)
@@ -194,7 +214,7 @@ def test_multi_instantiation_class_nested_deployment_arg_dag(serve_instance):
 
 def test_class_factory(serve_instance):
     with InputNode() as _:
-        instance = ray.remote(class_factory()).bind(3)
+        instance = serve.deployment(class_factory()).bind(3)
         output = instance.get.bind()
         serve_dag = NoargDriver.bind(output)
 
@@ -328,6 +348,52 @@ def test_non_json_serializable_args(serve_instance):
     handle = serve.run(A.bind(arr1))
     ret1, ret2 = ray.get(handle.remote())
     assert np.array_equal(ret1, arr1) and np.array_equal(ret2, arr2)
+
+
+@serve.deployment
+def func():
+    return 1
+
+
+def test_single_functional_node_base_case(serve_instance):
+    # Base case should work
+    handle = serve.run(func.bind())
+    assert ray.get(handle.remote()) == 1
+
+
+def test_unsupported_bind():
+    @serve.deployment
+    class Actor:
+        def ping(self):
+            return "hello"
+
+    with pytest.raises(AttributeError, match=r"\.bind\(\) cannot be used again on"):
+        # Special for serve: Actor.bind().bind() returns DeploymentMethodNode
+        _ = Actor.bind().bind().bind()
+
+    with pytest.raises(
+        AttributeError,
+        match=r"\.remote\(\) cannot be used on ClassMethodNodes",
+    ):
+        actor = Actor.bind()
+        _ = actor.ping.remote()
+
+
+def test_unsupported_remote():
+    @serve.deployment
+    class Actor:
+        def ping(self):
+            return "hello"
+
+    with pytest.raises(AttributeError, match=r"\'Actor\' has no attribute \'remote\'"):
+        _ = Actor.bind().remote()
+
+    @serve.deployment
+    def func():
+        return 1
+
+    with pytest.raises(AttributeError, match=r"\.remote\(\) cannot be used on"):
+        _ = func.bind().remote()
 
 
 # TODO: check that serve.build raises an exception.

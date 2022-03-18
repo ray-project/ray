@@ -28,6 +28,8 @@ enum class GcsPlacementGroupStatus : int32_t {
 };
 
 class GcsPlacementGroupSchedulerTest : public ::testing::Test {
+  using ClusterResourceScheduler = gcs::GcsResourceScheduler;
+
  public:
   void SetUp() override {
     thread_io_service_.reset(new std::thread([this] {
@@ -41,12 +43,11 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
         std::make_unique<GcsServerMocker::MockGcsPubSub>(redis_client_));
+    cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>();
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
-        io_service_, nullptr, gcs_table_storage_);
+        gcs_table_storage_, cluster_resource_scheduler_->GetClusterResourceManager());
     ray_syncer_ = std::make_shared<ray::syncer::RaySyncer>(
         io_service_, nullptr, *gcs_resource_manager_);
-    gcs_resource_scheduler_ =
-        std::make_shared<gcs::GcsResourceScheduler>(*gcs_resource_manager_);
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
     raylet_client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &addr) { return raylet_clients_[addr.port()]; });
@@ -57,7 +58,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         gcs_table_storage_,
         *gcs_node_manager_,
         *gcs_resource_manager_,
-        *gcs_resource_scheduler_,
+        *cluster_resource_scheduler_,
         raylet_client_pool_,
         *ray_syncer_);
   }
@@ -182,7 +183,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
       if (ray_syncer_->resources_buffer_proto_.batch().size() == n) {
         break;
       }
-      sleep(1);
+      std::this_thread::sleep_for(std::chrono::microseconds(1));
     }
   }
 
@@ -263,7 +264,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
 
   std::vector<std::shared_ptr<GcsServerMocker::MockRayletClient>> raylet_clients_;
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
-  std::shared_ptr<gcs::GcsResourceScheduler> gcs_resource_scheduler_;
+  std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
   std::shared_ptr<GcsServerMocker::MockedGcsPlacementGroupScheduler> scheduler_;
   std::vector<std::shared_ptr<gcs::GcsPlacementGroup>> success_placement_groups_
@@ -1146,7 +1147,6 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestInitialize) {
   ASSERT_EQ(1, bundles[placement_group->GetPlacementGroupID()].size());
   ASSERT_EQ(1, bundles[placement_group->GetPlacementGroupID()][0]);
 }
-
 }  // namespace ray
 
 int main(int argc, char **argv) {

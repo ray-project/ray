@@ -41,8 +41,12 @@ class LegacyRDSReporter(Reporter):
         now = datetime.datetime.utcnow()
         rds_data_client = boto3.client("rds-data", region_name="us-west-2")
 
-        test_name = test["legacy"]["test_name"] or ""
-        test_suite = test["legacy"]["test_suite"] or ""
+        if "legacy" in test:
+            test_name = test["legacy"]["test_name"]
+            test_suite = test["legacy"]["test_suite"]
+        else:
+            test_name = test["name"]
+            test_suite = ""
 
         team = test["team"] or ""
 
