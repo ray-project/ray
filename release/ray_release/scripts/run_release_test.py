@@ -14,6 +14,7 @@ from ray_release.config import (
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestError
 from ray_release.glue import run_release_test
 from ray_release.logger import logger
+from ray_release.reporter.artifacts import ArtifactsReporter
 from ray_release.reporter.legacy_rds import LegacyRDSReporter
 from ray_release.reporter.db import DBReporter
 from ray_release.reporter.log import LogReporter
@@ -115,6 +116,10 @@ def main(
     result = Result()
 
     reporters = [LogReporter()]
+
+    if "BUILDKITE" in os.environ:
+        reporters.append(ArtifactsReporter())
+
     if report:
         reporters.append(LegacyRDSReporter())
         reporters.append(DBReporter())

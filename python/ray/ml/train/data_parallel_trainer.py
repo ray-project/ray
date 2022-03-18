@@ -192,17 +192,6 @@ class DataParallelTrainer(Trainer):
         if not ray.is_initialized():
             ray.init()
 
-        if (
-            "GPU" in ray.available_resources()
-            and scaling_config.num_gpus_per_worker <= 0
-        ):
-            logger.info(
-                "GPUs are detected in your Ray cluster, but GPU "
-                "training is not enabled for Ray Train. To enable "
-                "GPU training, make sure to set `use_gpu` to True "
-                "when instantiating your Trainer."
-            )
-
         self.train_loop_per_worker = train_loop_per_worker
         self.train_loop_config = train_loop_config
 
@@ -213,6 +202,17 @@ class DataParallelTrainer(Trainer):
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
+
+        if (
+            not self.scaling_config.get("use_gpu", False)
+            and "GPU" in ray.available_resources()
+        ):
+            logger.info(
+                "GPUs are detected in your Ray cluster, but GPU "
+                "training is not enabled for this trainer. To enable "
+                "GPU training, make sure to set `use_gpu` to True "
+                "in your scaling config."
+            )
 
         if "num_workers" not in self.scaling_config:
             raise ValueError("You must specify the 'num_workers' in scaling_config.")
@@ -242,14 +242,11 @@ class DataParallelTrainer(Trainer):
             fn_arg_name="train_loop_per_worker",
         )
 
-        # TODO(amog): Run BackendExecutor directly in the Trainable instead of a
-        #  separate actor.
-        remote_executor = ray.remote(num_cpus=0)(BackendExecutor)
         additional_resources_per_worker = (
             scaling_config_dataclass.additional_resources_per_worker
         )
 
-        backend_executor_actor = remote_executor.remote(
+        backend_executor = BackendExecutor(
             backend_config=self.backend_config,
             num_workers=scaling_config_dataclass.num_workers,
             num_cpus_per_worker=scaling_config_dataclass.num_cpus_per_worker,
@@ -262,7 +259,7 @@ class DataParallelTrainer(Trainer):
         checkpoint_manager.on_init(preprocessor=self.preprocessor)
 
         # Start the remote actors.
-        ray.get(backend_executor_actor.start.remote(initialization_hook=None))
+        backend_executor.start(initialization_hook=None)
 
         if self.resume_from_checkpoint:
             resume_checkpoint_dict = self.resume_from_checkpoint.to_dict()
@@ -286,7 +283,7 @@ class DataParallelTrainer(Trainer):
         # TODO(amog): Have TrainingIterator also accept a checkpoint ObjectRef instead
         #  of just a Dict.
         training_iterator = TrainingIterator(
-            backend_executor_actor=backend_executor_actor,
+            backend_executor=backend_executor,
             backend_config=self.backend_config,
             train_func=train_loop_per_worker,
             dataset=updated_dataset_dict if len(updated_dataset_dict) > 0 else None,
@@ -302,7 +299,7 @@ class DataParallelTrainer(Trainer):
             tune.report(**first_worker_results)
 
         # Shutdown workers.
-        ray.get(backend_executor_actor.shutdown.remote())
+        backend_executor.shutdown()
 
 
 # TODO(team-ml): Refactor checkpoint management along with Tune.

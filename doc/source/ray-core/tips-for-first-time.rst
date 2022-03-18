@@ -5,7 +5,6 @@ Ray provides a highly flexible, yet minimalist and easy to use API.
 On this page, we describe several tips that can help first-time Ray users to avoid some
 common mistakes that can significantly hurt the performance of their programs.
 For an in-depth treatment of advanced design patterns, please refer to our
-:ref:`Ray Design Patterns <ray-design-patterns>` page.
 
 .. list-table:: The core Ray API we use in this document.
    :header-rows: 1

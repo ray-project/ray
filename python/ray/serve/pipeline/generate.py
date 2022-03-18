@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
 import threading
 
 from ray.experimental.dag import (
@@ -7,10 +7,12 @@ from ray.experimental.dag import (
     ClassMethodNode,
     PARENT_CLASS_NODE_KEY,
 )
+from ray.experimental.dag.function_node import FunctionNode
 from ray.experimental.dag.input_node import InputNode
 from ray.serve.api import Deployment
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_node import DeploymentNode
+from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
 
 
 class DeploymentNameGenerator(object):
@@ -24,10 +26,11 @@ class DeploymentNameGenerator(object):
     __shared_state = dict()
 
     @classmethod
-    def get_deployment_name(cls, dag_node: ClassNode):
-        assert isinstance(
-            dag_node, ClassNode
-        ), "get_deployment_name() should only be called on ClassNode instances."
+    def get_deployment_name(cls, dag_node: Union[ClassNode, FunctionNode]):
+        assert isinstance(dag_node, (ClassNode, FunctionNode)), (
+            "get_deployment_name() should only be called on ClassNode or "
+            "FunctionNode instances."
+        )
         with cls.__lock:
             deployment_name = (
                 dag_node.get_options().get("name", None) or dag_node._body.__name__
@@ -99,6 +102,21 @@ def transform_ray_dag_to_serve_dag(dag_node):
             dag_node.get_options(),
             other_args_to_resolve=dag_node.get_other_args_to_resolve(),
         )
+    elif isinstance(
+        dag_node,
+        FunctionNode
+        # TODO (jiaodong): We do not convert ray function to deployment function
+        # yet, revisit this later
+    ) and dag_node.get_other_args_to_resolve().get("is_from_serve_deployment"):
+        deployment_name = DeploymentNameGenerator.get_deployment_name(dag_node)
+        return DeploymentFunctionNode(
+            dag_node._body,
+            deployment_name,
+            dag_node.get_args(),
+            dag_node.get_kwargs(),
+            dag_node.get_options(),
+            other_args_to_resolve=dag_node.get_other_args_to_resolve(),
+        )
     else:
         # TODO: (jiaodong) Support FunctionNode or leave it as ray task
         return dag_node
@@ -120,7 +138,7 @@ def extract_deployments_from_serve_dag(
     deployments = {}
 
     def extractor(dag_node):
-        if isinstance(dag_node, DeploymentNode):
+        if isinstance(dag_node, (DeploymentNode, DeploymentFunctionNode)):
             deployment = dag_node._deployment
             # In case same deployment is used in multiple DAGNodes
             deployments[deployment.name] = deployment
