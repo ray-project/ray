@@ -172,7 +172,7 @@ std::string GcsActor::GetRayNamespace() const {
 }
 
 TaskSpecification GcsActor::GetCreationTaskSpecification() const {
-  RAY_CHECK(task_spec_);
+  RAY_CHECK(actor_table_data_.state() != rpc::ActorTableData::DEAD);
   return TaskSpecification(*task_spec_);
 }
 
@@ -726,7 +726,6 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
     gcs_actor_scheduler_->OnActorDestruction(it->second);
   }
 
-  const auto &task_id = it->second->GetCreationTaskSpecification().TaskId();
   it->second->GetMutableActorTableData()->set_timestamp(current_sys_time_ms());
   AddDestroyedActorToCache(it->second);
   const auto actor = std::move(it->second);
@@ -767,7 +766,12 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
         created_actors_.erase(node_it);
       }
     } else {
-      CancelActorInScheduling(actor, task_id);
+      gcs_table_storage_->ActorTaskSpecTable().Get(
+          actor->GetActorID(),
+          [this, actor](Status status, const boost::optional<rpc::TaskSpec> &result) {
+            assert(result.has_value());
+            CancelActorInScheduling(actor, TaskID::FromBinary(result.get().task_id()));
+          });
     }
   }
 

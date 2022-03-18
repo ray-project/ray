@@ -43,7 +43,9 @@ class GcsActor {
   ///
   /// \param actor_table_data Data of the actor (see gcs.proto).
   explicit GcsActor(rpc::ActorTableData actor_table_data)
-      : actor_table_data_(std::move(actor_table_data)) {}
+      : actor_table_data_(std::move(actor_table_data)) {
+    RAY_CHECK(actor_table_data_.state() != rpc::ActorTableData::DEAD);
+  }
 
   /// Create a GcsActor by actor_table_data and task_spec.
   /// This is only for ALIVE actors.
