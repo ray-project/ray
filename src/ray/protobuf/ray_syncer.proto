@@ -7,33 +7,20 @@ enum RayComponentId {
   SCHEDULER = 1;
 }
 
-enum RaySyncMessageType {
-  // BROADCAST will make each node eventually has a updated view of the
-  // cluster. It's useful for resource usage.
-  BROADCAST = 0;
-  // AGGREGATE will only send the message to the root node. It's useful for
-  // resource loads.
-  AGGREGATE = 1;
-}
-
 message RaySyncMessage {
   // The version of the message.
   uint64 version = 1;
-  // Whether we need to broadcast this message or just send it up.
-  RaySyncMessageType message_type = 2;
   // The component this message is for.
-  RayComponentId component_id = 3;
+  RayComponentId component_id = 2;
   // The actual payload.
-  bytes sync_message = 4;
+  bytes sync_message = 3;
   // The node id which initially sent this message.
-  bytes node_id = 5;
+  bytes node_id = 4;
 }
 
 message RaySyncMessages {
-  // The node id where the message was sent.
-  bytes node_id = 1;
   // The bached messages.
-  repeated RaySyncMessage sync_messages = 2;
+  repeated RaySyncMessage sync_messages = 1;
 }
 
 message SyncMeta {

@@ -4,66 +4,70 @@
 namespace ray {
 namespace syncer {
 
+void NodeStatus::SetComponents(RayComponentId cid,
+                               const ReporterInterface *reporter,
+                               ReceiverInterface *receiver) {
+  RAY_CHECK(cid < kComponentArraySize);
+  RAY_CHECK(reporters_[cid] == nullptr);
+  RAY_CHECK(receivers_[cid] == nullptr);
+  reporters_[cid] = reporter;
+  receivers_[cid] = receiver;
+}
+
+std::optional<RaySyncMessage> NodeStatus::GetSnapshot(RayComponentId cid,
+                                                      uint64_t version_after) const {
+  if (reporters_[cid] == nullptr) {
+    return std::nullopt;
+  }
+  return reporters_[cid]->Snapshot(version_after, cid);
+}
+
+bool NodeStatus::ConsumeMessage(std::shared_ptr<RaySyncMessage> message) {
+  auto &current = cluster_view_[message->node_id()][message->component_id()];
+  // Check whether newer version of this message has been received.
+  if (current && current->version() >= message->version()) {
+    return false;
+  }
+
+  auto receiver = receivers_[message->component_id()];
+  if (receiver != nullptr) {
+    receiver->Update(message);
+  }
+  return true;
+}
+
 RaySyncer::RaySyncer(const std::string &node_id)
-    : node_id_(node_id), timer_(io_context_) {
+    : node_id_(node_id),
+      node_status_(std::make_unique<NodeStatus>()),
+      timer_(io_context_) {
   syncer_thread_ = std::make_unique<std::thread>([this]() {
     boost::asio::io_service::work work(io_context_);
     io_context_.run();
   });
 }
 
-RaySyncer::~RaySyncer() { syncer_thread_->join(); }
-
-void RaySyncer::ConnectTo(std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub) {
-  SyncMeta request;
-  request.set_node_id(node_id_);
-  auto handler = stub->async();
-  auto client_context = std::make_shared<grpc::ClientContext>();
-  auto response = std::make_shared<SyncMeta>();
-
-  handler->StartSync(
-      client_context.get(),
-      &request,
-      response.get(),
-      [this,
-       response,
-       stub = std::shared_ptr<ray::rpc::syncer::RaySyncer::Stub>(std::move(stub))](
-          grpc::Status status) {
-        if (status.ok()) {
-          io_context_.post(
-              [this, stub, node_id = response->node_id()]() {
-                auto context = std::make_unique<RaySyncer::ClientSyncContext>(
-                    *this, io_context_, node_id, stub);
-                sync_context_[node_id] = std::move(context);
-              },
-              "StartSyncCallback");
-        } else {
-          RAY_LOG(ERROR) << "Start sync failed: " << status.error_message();
-        }
-      });
+RaySyncer::~RaySyncer() {
+  io_context_.stop();
+  syncer_thread_->join();
 }
 
-std::unique_ptr<RaySyncer::ServerSyncContext> RaySyncer::ConnectFrom(
-    const std::string &node_id) {
-  auto context =
-      std::make_unique<RaySyncer::ServerSyncContext>(*this, io_context_, node_id);
-  leader_ = context.get();
-  return context;
+void RaySyncer::Connect(std::unique_ptr<NodeSyncContext> context) {
+  RAY_CHECK(sync_context_[context->GetNodeId()] == nullptr);
+  RAY_CHECK(context != nullptr);
+  sync_context_[context->GetNodeId()] = std::move(context);
 }
 
-void RaySyncer::NodeRemoved(const std::string &node_id) {
-  sync_context_.erase(node_id);
-  cluster_view_.erase(node_id);
-}
+void RaySyncer::Disconnect(const std::string &node_id) { sync_context_.erase(node_id); }
 
 void RaySyncer::Register(RayComponentId component_id,
                          const ReporterInterface *reporter,
                          ReceiverInterface *receiver,
-                         int64_t report_ms) {
-  reporters_[component_id] = reporter;
-  receivers_[component_id] = receiver;
+                         int64_t pull_from_reporter_interval_ms) {
+  node_status_.SetComponents(cid, reporter, receiver);
+
+  // Set job to pull from reporter periodically
   if (reporter != nullptr) {
-    RAY_CHECK(report_ms > 0);
+    RAY_CHECK(pull_from_reporter_interval_ms > 0);
     timer_.RunFnPeriodically(
         [this, component_id]() {
           const auto &local_view = cluster_view_[GetNodeId()];
@@ -73,72 +77,38 @@ void RaySyncer::Register(RayComponentId component_id,
                 local_view[component_id] ? local_view[component_id]->version() : 0;
             auto update = reporter->Snapshot(version, component_id);
             if (update) {
-              Update(*update);
+              BroadcastMessage(std::make_shared<RaySyncMessage>(std::move(*update)));
             }
           }
         },
         report_ms);
   }
-}
 
-void RaySyncer::Update(RaySyncMessage message) {
-  if (message.message_type() == RaySyncMessageType::AGGREGATE) {
-    BroadcastMessage(std::make_shared<RaySyncMessage>(std::move(message)));
-    return;
+  if (receiver != nullptr) {
+    component_broadcast_[component_id] = receiver->NeedBroadcast();
   }
-
-  auto &current_message = cluster_view_[message.node_id()][message.component_id()];
-  if (current_message && current_message->version() >= message.version()) {
-    // We've already got the newer messages. Skip this.
-    return;
-  }
-
-  current_message = std::make_shared<RaySyncMessage>(std::move(message));
-  BroadcastMessage(current_message);
-}
-
-RaySyncer::NodeSyncContext *RaySyncer::GetSyncContext(const std::string &node_id) const {
-  NodeSyncContext *node_context = nullptr;
-  if (leader_ && node_id == leader_->GetNodeId()) {
-    node_context = leader_;
-  } else {
-    auto iter = sync_context_.find(node_id);
-    if (iter != sync_context_.end()) {
-      node_context = iter->second.get();
-    }
-  }
-  return node_context;
 }
 
 void RaySyncer::BroadcastMessage(std::shared_ptr<RaySyncMessage> message) {
-  // Send to followers
-  if (message->message_type() == RaySyncMessageType::BROADCAST) {
+  // The message is stale. Just skip this one.
+  if (!node_status_.ConsumeMessage(message)) {
+    return;
+  }
+
+  if (component_broadcast_[message->component_id()]) {
     for (auto &context : sync_context_) {
       context.second->PushToSendingQueue(message);
     }
   }
-
-  // Parents: always sends upward
-  if (leader_) {
-    leader_->PushToSendingQueue(message);
-  }
-
-  // Update the current node if
-  //   1) This is an aggregate message and this node is the root;
-  //   2) Or, this is a regular message.
-  if (leader_ == nullptr || message->message_type() != RaySyncMessageType::AGGREGATE) {
-    if (message->node_id() != GetNodeId()) {
-      if (receivers_[message->component_id()]) {
-        receivers_[message->component_id()]->Update(message);
-      }
-    }
-  }
 }
 
-RaySyncer::NodeSyncContext::NodeSyncContext(RaySyncer &instance,
-                                            instrumented_io_context &io_context,
-                                            const std::string &node_id)
-    : timer_(io_context), instance_(instance), io_context_(io_context) {
+NodeSyncContext::NodeSyncContext(RaySyncer &instance,
+                                 instrumented_io_context &io_context,
+                                 std::string node_id)
+    : timer_(io_context),
+      instance_(instance),
+      io_context_(io_context),
+      node_id_(std::move(node_id)) {
   timer_.expires_from_now(boost::posix_time::milliseconds(
       RayConfig::instance().raylet_report_resources_period_milliseconds()));
   timer_.async_wait([this](boost::system::error_code) {
@@ -148,8 +118,7 @@ RaySyncer::NodeSyncContext::NodeSyncContext(RaySyncer &instance,
   });
 }
 
-void RaySyncer::NodeSyncContext::PushToSendingQueue(
-    std::shared_ptr<RaySyncMessage> message) {
+void NodeSyncContext::PushToSendingQueue(std::shared_ptr<RaySyncMessage> message) {
   auto &node_versions = GetNodeComponentVersions(message->node_id());
   if (node_versions[message->component_id()] < message->version()) {
     sending_queue_.insert(message);
@@ -157,23 +126,44 @@ void RaySyncer::NodeSyncContext::PushToSendingQueue(
   }
 }
 
-std::array<uint64_t, kComponentArraySize>
-    &RaySyncer::NodeSyncContext::GetNodeComponentVersions(const std::string &node_id) {
+std::array<uint64_t, kComponentArraySize> &NodeSyncContext::GetNodeComponentVersions(
+    const std::string &node_id) {
   auto iter = node_versions_.find(node_id);
   if (iter == node_versions_.end()) {
-    iter = node_versions_.emplace(node_id, std::array<uint64_t, kComponentArraySize>({}))
+    iter = node_versions_.emplace(node_id, std::array<uint64_t, kComponentArraySize>({0}))
                .first;
   }
   return iter->second;
 }
 
-RaySyncer::ClientSyncContext::ClientSyncContext(
+ClientSyncContext::ClientSyncContext(
     RaySyncer &instance,
     instrumented_io_context &io_context,
-    const std::string &node_id,
+    std::string node_id,
     std::shared_ptr<ray::rpc::syncer::RaySyncer::Stub> stub)
-    : RaySyncer::NodeSyncContext(instance, io_context, node_id), stub_(std::move(stub)) {
-  StartLongPolling();
+    : NodeSyncContext(instance, io_context, std::move(node_id)), stub_(std::move(stub)) {
+  // Initialize the connection
+  start_sync_request_.set_node_id(instance.GetNodeId());
+  auto handler = stub->async();
+  auto client_context = std::make_shared<grpc::ClientContext>();
+  handler->StartSync(client_context.get(),
+                     &start_sync_request_,
+                     &start_sync_response_,
+                     [this](grpc::Status status) mutable {
+                       if (status.ok()) {
+                         io_context_.post(
+                             [this]() {
+                               RAY_CHECK(GetNodeId() == start_sync_response_.node_id());
+                               connection_created_ = true;
+                               StartLongPolling();
+                             },
+                             "StartSyncCallback");
+                       } else {
+                         RAY_LOG(ERROR)
+                             << "Start sync failed: " << status.error_message();
+                         instance_.Disconnect(GetNodeId());
+                       }
+                     });
 }
 
 void RaySyncer::ClientSyncContext::StartLongPolling() {
@@ -201,7 +191,7 @@ void RaySyncer::ClientSyncContext::StartLongPolling() {
 
 void RaySyncer::ClientSyncContext::DoSend() {
   if (sending_queue_.empty()) {
-    return;
+    n return;
   }
 
   auto client_context = std::make_shared<grpc::ClientContext>();
@@ -233,13 +223,13 @@ void RaySyncer::ClientSyncContext::DoSend() {
       });
 }
 
-RaySyncer::ServerSyncContext::ServerSyncContext(RaySyncer &instance,
-                                                instrumented_io_context &io_context,
-                                                const std::string &node_id)
-    : RaySyncer::NodeSyncContext(instance, io_context, node_id) {}
+ServerSyncContext::ServerSyncContext(RaySyncer &instance,
+                                     instrumented_io_context &io_context,
+                                     const std::string &node_id)
+    : NodeSyncContext(instance, io_context, node_id) {}
 
-void RaySyncer::ServerSyncContext::HandleLongPollingRequest(
-    grpc::ServerUnaryReactor *reactor, RaySyncMessages *response) {
+void ServerSyncContext::HandleLongPollingRequest(grpc::ServerUnaryReactor *reactor,
+                                                 RaySyncMessages *response) {
   RAY_CHECK(response_ == nullptr);
   RAY_CHECK(unary_reactor_ == nullptr);
 
@@ -247,7 +237,7 @@ void RaySyncer::ServerSyncContext::HandleLongPollingRequest(
   response_ = response;
 }
 
-void RaySyncer::ServerSyncContext::DoSend() {
+void ServerSyncContext::DoSend() {
   // There is no receive request
   if (unary_reactor_ == nullptr || sending_queue_.empty()) {
     return;
