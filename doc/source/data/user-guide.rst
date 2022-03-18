@@ -16,8 +16,14 @@ you will learn
 .. toctree::
     :maxdepth: 2
 
+    creating-datasets
+    saving-datasets
+    transforming-datasets
+    exchanging-datasets
+    pipelining-compute
     dataset-ml-preprocessing
     dataset-tensor-support
     advanced-pipelines
+    random-access
     custom-data
     performance-tips

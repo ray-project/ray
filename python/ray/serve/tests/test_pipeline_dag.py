@@ -218,7 +218,7 @@ def test_multi_instantiation_class_nested_deployment_arg_dag(serve_instance):
 
 def test_class_factory(serve_instance):
     with InputNode() as _:
-        instance = ray.remote(class_factory()).bind(3)
+        instance = serve.deployment(class_factory()).bind(3)
         output = instance.get.bind()
         serve_dag = NoargDriver.bind(output)
 
@@ -365,6 +365,41 @@ def test_single_functional_node_base_case(serve_instance):
     handle = serve.run(func.bind())
     assert ray.get(handle.remote()) == 1
     assert requests.get("http://127.0.0.1:8000/").text == "1"
+
+
+def test_unsupported_bind():
+    @serve.deployment
+    class Actor:
+        def ping(self):
+            return "hello"
+
+    with pytest.raises(AttributeError, match=r"\.bind\(\) cannot be used again on"):
+        # Special for serve: Actor.bind().bind() returns DeploymentMethodNode
+        _ = Actor.bind().bind().bind()
+
+    with pytest.raises(
+        AttributeError,
+        match=r"\.remote\(\) cannot be used on ClassMethodNodes",
+    ):
+        actor = Actor.bind()
+        _ = actor.ping.remote()
+
+
+def test_unsupported_remote():
+    @serve.deployment
+    class Actor:
+        def ping(self):
+            return "hello"
+
+    with pytest.raises(AttributeError, match=r"\'Actor\' has no attribute \'remote\'"):
+        _ = Actor.bind().remote()
+
+    @serve.deployment
+    def func():
+        return 1
+
+    with pytest.raises(AttributeError, match=r"\.remote\(\) cannot be used on"):
+        _ = func.bind().remote()
 
 
 # TODO: check that serve.build raises an exception.
