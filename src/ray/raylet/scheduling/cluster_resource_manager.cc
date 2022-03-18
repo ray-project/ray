@@ -111,9 +111,11 @@ void ClusterResourceManager::UpdateResourceCapacity(scheduling::NodeID node_id,
 
   auto local_view = it->second.GetMutableLocalView();
   FixedPoint resource_total_fp(resource_total);
-  auto diff_capacity = resource_total_fp - local_view->total.Get(resource_id);
-  auto total = local_view->total.Get(resource_id) + diff_capacity;
-  auto available = local_view->available.Get(resource_id) + diff_capacity;
+  auto local_total = local_view->total.GetOrZero(resource_id);
+  auto local_available = local_view->available.GetOrZero(resource_id);
+  auto diff_capacity = resource_total_fp - local_total;
+  auto total = local_total + diff_capacity;
+  auto available = local_available + diff_capacity;
   if (total < 0) {
     total = 0;
   }
