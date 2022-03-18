@@ -1252,7 +1252,7 @@ if __name__ == "__main__":
 
             remote_tune_script = "/tmp/_tune_script.py"
 
-            print(f"Sending tune script to remote node {ip} " f"({remote_tune_script})")
+            print(f"Sending tune script to remote node {ip} ({remote_tune_script})")
             send_local_file_to_remote_file(TUNE_SCRIPT, remote_tune_script, ip)
             print("Starting remote cloud test using Ray client")
 
