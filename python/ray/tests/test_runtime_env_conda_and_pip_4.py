@@ -17,7 +17,9 @@ if not os.environ.get("CI"):
     reason="Requires PR wheels built in CI, so only run on linux CI machines.",
 )
 def test_in_virtualenv(start_cluster):
-    assert PipProcessor._is_in_virtualenv() is False
+    assert (
+        PipProcessor._is_in_virtualenv() is False and "IN_VIRTUALENV" not in os.environ
+    ) or (PipProcessor._is_in_virtualenv() is True and "IN_VIRTUALENV" in os.environ)
     cluster, address = start_cluster
     runtime_env = {"pip": ["pip-install-test==0.5"]}
 
@@ -87,6 +89,45 @@ class TestGC:
             assert ray.get(f.remote())
 
         ray.shutdown()
+
+
+@pytest.mark.skipif(
+    "IN_VIRTUALENV" in os.environ or sys.platform != "linux",
+    reason="Requires PR wheels built in CI, so only run on linux CI machines.",
+)
+def test_run_in_virtualenv(cloned_virtualenv):
+    python_exe_path = cloned_virtualenv.python
+    print(python_exe_path)
+
+    # make sure cloned_virtualenv.run will run in virtualenv.
+    cloned_virtualenv.run(
+        f"{python_exe_path} -c 'from ray._private.runtime_env.pip import PipProcessor;"
+        "assert PipProcessor._is_in_virtualenv()'",
+        capture=True,
+    )
+
+    # Run current test case in virtualenv again.
+    # If the command exit code is not zero, this will raise an `Exception`
+    # which construct by this pytest-cmd's stderr
+    cloned_virtualenv.run(f"IN_VIRTUALENV=1 python -m pytest {__file__}", capture=True)
+
+
+@pytest.mark.skipif(
+    "IN_VIRTUALENV" in os.environ or sys.platform == "win32",
+    reason="Pip option not supported on Windows.",
+)
+def test_runtime_env_with_pip_config(start_cluster):
+    @ray.remote(
+        runtime_env={
+            "pip": {"packages": ["pip-install-test==0.5"], "pip_version": "==20.2.3"}
+        }
+    )
+    def f():
+        import pip
+
+        return pip.__version__
+
+    assert ray.get(f.remote()) == "20.2.3"
 
 
 if __name__ == "__main__":

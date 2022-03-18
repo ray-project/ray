@@ -3,7 +3,6 @@ import pytest
 import sys
 import platform
 import time
-from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.test_utils import (
     wait_for_condition,
     chdir,
@@ -11,14 +10,12 @@ from ray._private.test_utils import (
     generate_runtime_env_dict,
 )
 from ray._private.runtime_env.conda import _get_conda_dict_with_ray_inserted
-from ray._private.runtime_env.validation import (
-    ParsedRuntimeEnv,
-    _rewrite_pip_list_ray_libraries,
-)
+from ray.runtime_env import RuntimeEnv
 
 import yaml
 import tempfile
 from pathlib import Path
+import subprocess
 
 import ray
 
@@ -26,14 +23,6 @@ if not os.environ.get("CI"):
     # This flags turns on the local development that link against current ray
     # packages and fall back all the dependencies to current python's site.
     os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
-
-
-def test_rewrite_pip_list_ray_libraries():
-    input = ["--extra-index-url my.url", "ray==1.4", "requests", "ray[serve]"]
-    output = _rewrite_pip_list_ray_libraries(input)
-    assert "ray" not in output
-    assert "ray[serve]" not in output
-    assert output[:3] == ["--extra-index-url my.url", "ray==1.4", "requests"]
 
 
 def test_get_conda_dict_with_ray_inserted_m1_wheel(monkeypatch):
@@ -51,7 +40,7 @@ def test_get_conda_dict_with_ray_inserted_m1_wheel(monkeypatch):
     monkeypatch.setattr(platform, "machine", lambda: "arm64")
 
     input_conda = {"dependencies": ["blah", "pip", {"pip": ["pip_pkg"]}]}
-    runtime_env = RuntimeEnv(ParsedRuntimeEnv({"conda": input_conda}).serialize())
+    runtime_env = RuntimeEnv(conda=input_conda)
     output_conda = _get_conda_dict_with_ray_inserted(runtime_env)
     # M1 wheels are not uploaded to AWS S3.  So rather than have an S3 URL
     # inserted as a dependency, we should just have the string "ray==1.9.0".
@@ -205,6 +194,21 @@ class TestGC:
         ray.kill(a)
 
         wait_for_condition(lambda: check_local_files_gced(cluster), timeout=30)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="_PathHelper.get_virtual_activate not supported on Windows.",
+)
+def test_import_in_subprocess(shutdown_only):
+
+    ray.init()
+
+    @ray.remote(runtime_env={"pip": ["pip-install-test==0.5"]})
+    def f():
+        return subprocess.run(["python", "-c", "import pip_install_test"]).returncode
+
+    assert ray.get(f.remote()) == 0
 
 
 if __name__ == "__main__":

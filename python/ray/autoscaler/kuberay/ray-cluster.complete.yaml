@@ -8,7 +8,7 @@ metadata:
     # An unique identifier for the head node and workers of this cluster.
   name: raycluster-complete
 spec:
-  rayVersion: '1.9.2'
+  rayVersion: '1.11.0'
   enableInTreeAutoscaling: false
   ######################headGroupSpecs#################################
   # head group template and specs, (perhaps 'group' is not needed in the name)
@@ -20,17 +20,23 @@ spec:
     # logical group name, for this called head-group, also can be functional
     # pod type head or worker
     # rayNodeType: head # Not needed since it is under the headgroup
-    # the following params are used to complete the ray start: ray start --head --block --redis-port=6379 ...
+    # the following params are used to complete the ray start: ray start --head --block --port=6379 ...
     rayStartParams:
+      # Flag "no-monitor" must be set when running the autoscaler in
+      # a sidecar container.
+      no-monitor: "true"
       port: '6379'
       object-manager-port: '9999'
       node-manager-port: '9998'
       object-store-memory: '100000000'
-      redis-password: '5241590000000000'
       dashboard-host: '0.0.0.0'
-      num-cpus: '1' # can be auto-completed from the limits
       node-ip-address: $MY_POD_IP # auto-completed as the head pod IP
       block: 'true'
+      num-cpus: '1' # can be auto-completed from the limits
+      # Use `resources` to optionally specify custom resource annotations for the Ray node.
+      # The value of `resources` is a string-integer mapping.
+      # Currently, `resources` must be provided in the unfortunate format demonstrated below.
+      resources: '"{\"Custom1\": 1, \"Custom2\": 5}"'
     #pod template
     template:
       metadata:
@@ -45,12 +51,12 @@ spec:
           key: value
       spec:
         # This is needed to give the autoscaler side car permissions to query and update
-        # definitions in the Kubernetes API server (see kuberay-autoscaler.yaml)
+        # definitions in the Kubernetes API server (see kuberay-autoscaler-rbac.yaml)
         serviceAccountName: autoscaler-sa
         containers:
         # The Ray head pod
         - name: ray-head
-          image: rayproject/ray:latest
+          image: rayproject/ray:1.11.0
           imagePullPolicy: Always
           env:
           - name: CPU_REQUEST
@@ -95,10 +101,26 @@ spec:
               name: ray-logs
         # The Ray autoscaler sidecar to the head pod
         - name: autoscaler
-          image: rayproject/kuberay-autoscaler
+          # TODO: Use released Ray version starting with Ray 1.12.0.
+          image: rayproject/ray:413fe0
           imagePullPolicy: Always
-          command: ["/bin/sh"]
-          args: ["-c", "$HOME/anaconda3/bin/python /home/ray/run_autoscaler_with_retries.py --redis-password 5241590000000000"]
+          env:
+          - name: RAY_CLUSTER_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: RAY_CLUSTER_NAME
+            # This value must match the metadata.name of the RayCluster CR.
+            # The autoscaler uses this env variable to determine which Ray CR to interact with.
+            # TODO: Match with CR name automatically via operator, Helm, and/or Kustomize.
+            value: raycluster-complete
+          command: ["ray"]
+          args:
+          - "kuberay-autoscaler"
+          - "--cluster-name"
+          - "$(RAY_CLUSTER_NAME)"
+          - "--cluster-namespace"
+          - "$(RAY_CLUSTER_NAMESPACE)"
           resources:
             limits:
               cpu: 500m
@@ -107,18 +129,10 @@ spec:
               cpu: 250m
               memory: 512Mi
           volumeMounts:
-            - mountPath: /autoscaler/
-              name: autoscaler-config
             - mountPath: /tmp/ray
               name: ray-logs
         volumes:
         # You set volumes at the Pod level, then mount them into containers inside that Pod
-        - name: autoscaler-config
-          configMap:
-            name: autoscaler-config
-            items:
-            - key: ray_bootstrap_config.yaml
-              path: ray_bootstrap_config.yaml
         - name: ray-logs
           emptyDir: {}
   workerGroupSpecs:
@@ -139,7 +153,6 @@ spec:
     #  - raycluster-complete-worker-small-group-k8tj7 
     # the following params are used to complete the ray start: ray start --block --node-ip-address= ...
     rayStartParams:
-      redis-password: '5241590000000000'
       node-ip-address: $MY_POD_IP
       block: 'true'
     #pod template
@@ -158,7 +171,7 @@ spec:
           command: ['sh', '-c', "until nslookup $RAY_IP.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for myservice; sleep 2; done"]   
         containers:
         - name: machine-learning # must consist of lower case alphanumeric characters or '-', and must start and end with an alphanumeric character (e.g. 'my-name',  or '123-abc'
-          image: rayproject/ray
+          image: rayproject/ray:1.11.0
           # environment variables to set in the container.Optional.
           # Refer to https://kubernetes.io/docs/tasks/inject-data-application/define-environment-variable-container/
           env:

@@ -4,6 +4,7 @@ import numpy as np
 import os
 from ray import cloudpickle as pickle
 from ray import ray_constants
+from ray.actor import ActorClassInheritanceException
 
 try:
     import pytest_timeout
@@ -55,7 +56,39 @@ def test_caching_actors(shutdown_only, set_enable_auto_connect):
     assert ray.get(f.get_val.remote()) == 3
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+# https://github.com/ray-project/ray/issues/20554
+def test_not_reusing_task_workers(shutdown_only):
+    @ray.remote
+    def create_ref():
+        ref = ray.put(np.zeros(100_000_000))
+        return ref
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            return
+
+        def foo(self):
+            return
+
+    ray.init(num_cpus=1, object_store_memory=1000_000_000)
+    wrapped_ref = create_ref.remote()
+    print(ray.get(ray.get(wrapped_ref)))
+
+    # create_ref worker gets reused as an actor.
+    a = Actor.remote()
+    ray.get(a.foo.remote())
+    # Actor will get force-killed.
+    del a
+
+    # Flush the object store.
+    for _ in range(10):
+        ray.put(np.zeros(100_000_000))
+
+    # Object has been evicted and owner has died. Throws OwnerDiedError.
+    print(ray.get(ray.get(wrapped_ref)))
+
+
 def test_remote_function_within_actor(ray_start_10_cpus):
     # Make sure we can use remote funtions within actors.
 
@@ -654,7 +687,8 @@ def test_actor_inheritance(ray_start_regular_shared):
 
     # Test that you can't inherit from an actor class.
     with pytest.raises(
-        TypeError, match="Inheriting from actor classes is not " "currently supported."
+        ActorClassInheritanceException,
+        match="Inheriting from actor classes is not currently supported.",
     ):
 
         class Derived(ActorBase):
@@ -1105,7 +1139,7 @@ def test_actor_autocomplete(ray_start_regular_shared):
 
     class_calls = [fn for fn in dir(Foo) if not fn.startswith("_")]
 
-    assert set(class_calls) == {"method_one", "options", "remote"}
+    assert set(class_calls) == {"method_one", "options", "remote", "bind"}
 
     f = Foo.remote()
 
@@ -1118,6 +1152,23 @@ def test_actor_autocomplete(ray_start_regular_shared):
     method_options = [fn for fn in dir(f.method_one) if not fn.startswith("_")]
 
     assert set(method_options) == {"options", "remote"}
+
+
+def test_actor_mro(ray_start_regular_shared):
+    @ray.remote
+    class Foo:
+        def __init__(self, x):
+            self.x = x
+
+        @classmethod
+        def factory_f(cls, x):
+            return cls(x)
+
+        def get_x(self):
+            return self.x
+
+    obj = Foo.factory_f(1)
+    assert obj.get_x() == 1
 
 
 if __name__ == "__main__":

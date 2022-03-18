@@ -1,11 +1,14 @@
-.. include:: we_are_hiring.rst
+.. include:: /_includes/rllib/announcement.rst
+
+.. include:: /_includes/rllib/we_are_hiring.rst
 
 .. _rllib-index:
 
 RLlib: Industry-Grade Reinforcement Learning
 ============================================
 
-.. figure:: images/rllib-index-header.svg
+.. image:: images/rllib-logo.png
+    :align: center
 
 **RLlib** is an open-source library for reinforcement learning (RL), offering support for
 production-level, highly distributed RL workloads while maintaining
@@ -35,7 +38,10 @@ and many others.
 RLlib in 60 seconds
 -------------------
 
-It'll only take a few steps to get your first RLlib workload up and running on your laptop:
+.. figure:: images/rllib-index-header.svg
+
+
+It only takes a few steps to get your first RLlib workload up and running on your laptop:
 
 **TensorFlow or PyTorch**:
 
@@ -49,6 +55,9 @@ PyTorch (or both as shown below):
     $ conda create -n rllib python=3.8
     $ conda activate rllib
     $ pip install "ray[rllib]" tensorflow torch
+
+Note, for installation on computers running Apple Silicon (such as M1), please follow instructions
+`here <https://docs.ray.io/en/latest/installation.html#m1-mac-apple-silicon-support>`_
 
 To be able to run our Atari examples, you should also install:
 
@@ -73,23 +82,103 @@ Feature Overview
 ----------------
 
 The following is a summary of RLlib's most striking features.
-For an in-depth overview, check out our `documentation <http://docs.ray.io/en/latest/rllib/index.html>`_.
-
 Click on the images below to see an example script for each of the listed features:
 
 .. include:: feature_overview.rst
 
+If you want to get a quick preview of which **algorithms** and **environments** RLlib supports,
+click on the dropdowns below:
 
-Customizations
---------------
+.. dropdown:: **RLlib Algorithms**
+    :animate: fade-in-slide-down
+
+    *  High-throughput architectures
+
+       -  |pytorch| |tensorflow| :ref:`Distributed Prioritized Experience Replay (Ape-X) <apex>`
+
+       -  |pytorch| |tensorflow| :ref:`Importance Weighted Actor-Learner Architecture (IMPALA) <impala>`
+
+       -  |pytorch| |tensorflow| :ref:`Asynchronous Proximal Policy Optimization (APPO) <appo>`
+
+       -  |pytorch| :ref:`Decentralized Distributed Proximal Policy Optimization (DD-PPO) <ddppo>`
+
+    *  Gradient-based
+
+       -  |pytorch| |tensorflow| :ref:`Advantage Actor-Critic (A2C, A3C) <a3c>`
+
+       -  |pytorch| |tensorflow| :ref:`Deep Deterministic Policy Gradients (DDPG, TD3) <ddpg>`
+
+       -  |pytorch| |tensorflow| :ref:`Deep Q Networks (DQN, Rainbow, Parametric DQN) <dqn>`
+
+       -  |pytorch| |tensorflow| :ref:`Policy Gradients <pg>`
+
+       -  |pytorch| |tensorflow| :ref:`Proximal Policy Optimization (PPO) <ppo>`
+
+       -  |pytorch| |tensorflow| :ref:`Soft Actor Critic (SAC) <sac>`
+
+       -  |pytorch| :ref:`Slate Q-Learning (SlateQ) <slateq>`
+
+    *  Derivative-free
+
+       -  |pytorch| |tensorflow| :ref:`Augmented Random Search (ARS) <ars>`
+
+       -  |pytorch| |tensorflow| :ref:`Evolution Strategies <es>`
+
+    *  Model-based / Meta-learning / Offline
+
+       -  |pytorch| :ref:`Single-Player AlphaZero (contrib/AlphaZero) <alphazero>`
+
+       -  |pytorch| |tensorflow| :ref:`Model-Agnostic Meta-Learning (MAML) <maml>`
+
+       -  |pytorch| :ref:`Model-Based Meta-Policy-Optimization (MBMPO) <mbmpo>`
+
+       -  |pytorch| :ref:`Dreamer (DREAMER) <dreamer>`
+
+       -  |pytorch| :ref:`Conservative Q-Learning (CQL) <cql>`
+
+    *  Multi-agent
+
+       -  |pytorch| :ref:`QMIX Monotonic Value Factorisation (QMIX, VDN, IQN) <qmix>`
+       -  |tensorflow| :ref:`Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG) <maddpg>`
+
+    *  Offline
+
+       -  |pytorch| |tensorflow| :ref:`Advantage Re-Weighted Imitation Learning (MARWIL) <marwil>`
+
+    *  Contextual bandits
+
+       -  |pytorch| :ref:`Linear Upper Confidence Bound (contrib/LinUCB) <linucb>`
+       -  |pytorch| :ref:`Linear Thompson Sampling (contrib/LinTS) <lints>`
+
+    *  Exploration-based plug-ins (can be combined with any algo)
+
+       -  |pytorch| :ref:`Curiosity (ICM: Intrinsic Curiosity Module) <curiosity>`
+
+
+.. dropdown:: **RLlib Environments**
+    :animate: fade-in-slide-down
+
+    *  `RLlib Environments Overview <rllib-env.html>`__
+    *  `OpenAI Gym <rllib-env.html#openai-gym>`__
+    *  `Vectorized <rllib-env.html#vectorized>`__
+    *  `Multi-Agent and Hierarchical <rllib-env.html#multi-agent-and-hierarchical>`__
+    *  `External Agents and Applications <rllib-env.html#external-agents-and-applications>`__
+
+       -  `External Application Clients <rllib-env.html#external-application-clients>`__
+
+    *  `Advanced Integrations <rllib-env.html#advanced-integrations>`__
+
+
+Customizing RLlib
+-----------------
 
 RLlib provides simple APIs to customize all aspects of your training- and experimental workflows.
-For example, you may code your own `environments <../rllib-env.html#configuring-environments>`__
+For example, you may code your own `environments <rllib-env.html#configuring-environments>`__
 in python using openAI's gym or DeepMind's OpenSpiel, provide custom
-`TensorFlow/Keras- <../rllib-models.html#tensorflow-models>`__ or ,
-`Torch models <../rllib-models.html#torch-models>`_, write your own
-`policy- and loss definitions <../rllib-concepts.html#policies>`__, or define
-custom `exploratory behavior <../rllib-training.htmlexploration-api>`_.
+`TensorFlow/Keras- <rllib-models.html#tensorflow-models>`__ or ,
+`Torch models <rllib-models.html#torch-models>`_, write your own
+`policy- and loss definitions <rllib-concepts.html#policies>`__, or define
+custom `exploratory behavior <rllib-training.html#exploration-api>`_.
 
 Via mapping one or more agents in your environments to (one or more) policies, multi-agent
 RL (MARL) becomes an easy-to-use low-level primitive for our users.
@@ -106,3 +195,14 @@ RL (MARL) becomes an easy-to-use low-level primitive for our users.
     which provides learning functionality and serves action queries. User customizations
     are realized via sub-classing the existing abstractions and - by overriding certain
     methods in those sub-classes - define custom behavior.
+
+
+.. |tensorflow| image:: images/tensorflow.png
+    :class: inline-figure
+    :width: 16
+
+.. |pytorch| image:: images/pytorch.png
+    :class: inline-figure
+    :width: 16
+
+.. include:: /_includes/rllib/announcement_bottom.rst

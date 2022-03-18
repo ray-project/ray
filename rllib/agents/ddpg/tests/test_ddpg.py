@@ -87,6 +87,7 @@ class TestDDPG(unittest.TestCase):
         # Test against all frameworks.
         for _ in framework_iterator(core_config):
             config = core_config.copy()
+            config["seed"] = 42
             # Default OUNoise setup.
             trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
             # Setting explore=False should always return the same action.
@@ -142,6 +143,7 @@ class TestDDPG(unittest.TestCase):
         """Tests DDPG loss function results across all frameworks."""
         config = ddpg.DEFAULT_CONFIG.copy()
         # Run locally.
+        config["seed"] = 42
         config["num_workers"] = 0
         config["learning_starts"] = 0
         config["twin_q"] = True
@@ -166,14 +168,14 @@ class TestDDPG(unittest.TestCase):
             "_model.0.bias",
             "default_policy/actor_out/kernel": "policy_model.action_out."
             "_model.0.weight",
-            "default_policy/actor_out/bias": "policy_model.action_out." "_model.0.bias",
+            "default_policy/actor_out/bias": "policy_model.action_out._model.0.bias",
             "default_policy/sequential/q_hidden_0/kernel": "q_model.q_hidden_0"
             "._model.0.weight",
             "default_policy/sequential/q_hidden_0/bias": "q_model.q_hidden_0."
             "_model.0.bias",
             "default_policy/sequential/q_out/kernel": "q_model.q_out._model."
             "0.weight",
-            "default_policy/sequential/q_out/bias": "q_model.q_out._model." "0.bias",
+            "default_policy/sequential/q_out/bias": "q_model.q_out._model.0.bias",
             # -- twin.
             "default_policy/sequential_1/twin_q_hidden_0/kernel": "twin_"
             "q_model.twin_q_hidden_0._model.0.weight",
@@ -198,7 +200,7 @@ class TestDDPG(unittest.TestCase):
             "q_hidden_0._model.0.bias",
             "default_policy/sequential_2/q_out/kernel": "q_model."
             "q_out._model.0.weight",
-            "default_policy/sequential_2/q_out/bias": "q_model." "q_out._model.0.bias",
+            "default_policy/sequential_2/q_out/bias": "q_model.q_out._model.0.bias",
             # -- twin.
             "default_policy/sequential_3/twin_q_hidden_0/kernel": "twin_"
             "q_model.twin_q_hidden_0._model.0.weight",
@@ -403,7 +405,7 @@ class TestDDPG(unittest.TestCase):
                         tf_var = tf_weights[tf_key]
                         # Model.
                         if re.search(
-                            "actor_out_1|actor_hidden_0_1|sequential_" "[23]", tf_key
+                            "actor_out_1|actor_hidden_0_1|sequential_[23]", tf_key
                         ):
                             torch_var = policy.target_model.state_dict()[map_[tf_key]]
                         # Target model.

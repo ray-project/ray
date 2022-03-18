@@ -8,6 +8,7 @@ import subprocess
 import platform
 import runpy
 import shutil
+import asyncio
 
 from filelock import FileLock
 from typing import Optional, List, Dict, Any
@@ -15,7 +16,6 @@ from pathlib import Path
 
 import ray
 
-from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.runtime_env.conda_utils import (
     get_conda_activate_commands,
     create_conda_env_if_needed,
@@ -57,10 +57,6 @@ def _get_ray_setup_spec():
 def _resolve_install_from_source_ray_dependencies():
     """Find the Ray dependencies when Ray is installed from source."""
     return _get_ray_setup_spec().install_requires
-
-
-def _resolve_install_from_source_ray_extras() -> Dict[str, List[str]]:
-    return _get_ray_setup_spec().extras
 
 
 def _inject_ray_to_conda_site(
@@ -225,7 +221,8 @@ def get_uri(runtime_env: Dict) -> Optional[str]:
 
 
 def _get_conda_dict_with_ray_inserted(
-    runtime_env: RuntimeEnv, logger: Optional[logging.Logger] = default_logger
+    runtime_env: "RuntimeEnv",  # noqa: F821
+    logger: Optional[logging.Logger] = default_logger,
 ) -> Dict[str, Any]:
     """Returns the conda spec with the Ray and `python` dependency inserted."""
     conda_dict = json.loads(runtime_env.conda_config())
@@ -269,7 +266,7 @@ class CondaManager:
         """
         return os.path.join(self._resources_dir, hash)
 
-    def get_uri(self, runtime_env: RuntimeEnv) -> Optional[str]:
+    def get_uri(self, runtime_env: "RuntimeEnv") -> Optional[str]:  # noqa: F821
         """Return the conda URI from the RuntimeEnv if it exists, else None."""
         conda_uri = runtime_env.conda_uri()
         if conda_uri != "":
@@ -299,40 +296,52 @@ class CondaManager:
 
         return local_dir_size
 
-    def create(
+    async def create(
         self,
         uri: Optional[str],
-        runtime_env: RuntimeEnv,
+        runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
-        logger.debug("Setting up conda for runtime_env: " f"{runtime_env.serialize()}")
-        protocol, hash = parse_uri(uri)
-        conda_env_name = self._get_path_from_hash(hash)
+        # Currently create method is still a sync process, to avoid blocking
+        # the loop, need to run this function in another thread.
+        # TODO(Catch-Bull): Refactor method create into an async process, and
+        # make this method running in current loop.
+        def _create():
+            logger.debug(
+                "Setting up conda for runtime_env: " f"{runtime_env.serialize()}"
+            )
+            protocol, hash = parse_uri(uri)
+            conda_env_name = self._get_path_from_hash(hash)
 
-        conda_dict = _get_conda_dict_with_ray_inserted(runtime_env, logger=logger)
+            conda_dict = _get_conda_dict_with_ray_inserted(runtime_env, logger=logger)
 
-        logger.info(f"Setting up conda environment with {runtime_env}")
-        with FileLock(self._installs_and_deletions_file_lock):
-            try:
-                conda_yaml_file = os.path.join(self._resources_dir, "environment.yml")
-                with open(conda_yaml_file, "w") as file:
-                    yaml.dump(conda_dict, file)
-                create_conda_env_if_needed(
-                    conda_yaml_file, prefix=conda_env_name, logger=logger
-                )
-            finally:
-                os.remove(conda_yaml_file)
+            logger.info(f"Setting up conda environment with {runtime_env}")
+            with FileLock(self._installs_and_deletions_file_lock):
+                try:
+                    conda_yaml_file = os.path.join(
+                        self._resources_dir, "environment.yml"
+                    )
+                    with open(conda_yaml_file, "w") as file:
+                        yaml.dump(conda_dict, file)
+                    create_conda_env_if_needed(
+                        conda_yaml_file, prefix=conda_env_name, logger=logger
+                    )
+                finally:
+                    os.remove(conda_yaml_file)
 
-            if runtime_env.get_extension("_inject_current_ray") == "True":
-                _inject_ray_to_conda_site(conda_path=conda_env_name, logger=logger)
-        logger.info(f"Finished creating conda environment at {conda_env_name}")
-        return get_directory_size_bytes(conda_env_name)
+                if runtime_env.get_extension("_inject_current_ray") == "True":
+                    _inject_ray_to_conda_site(conda_path=conda_env_name, logger=logger)
+            logger.info(f"Finished creating conda environment at {conda_env_name}")
+            return get_directory_size_bytes(conda_env_name)
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _create)
 
     def modify_context(
         self,
         uri: str,
-        runtime_env: RuntimeEnv,
+        runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ):

@@ -7,10 +7,11 @@
 # ==== Ray core ====
 
 # API compatibility
-/src/ray/protobuf/common.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen
-/src/ray/protobuf/gcs.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen
-/src/ray/protobuf/gcs_service.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen
-/dashboard/modules/snapshot @wuisawesome @ijrsvt @joeybai @alanwguo @architkulkarni @kombuchafox
+/src/ray/protobuf/common.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @iycheng @scv119 @mwtian
+/src/ray/protobuf/gcs.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @iycheng @scv119 @mwtian
+/src/ray/protobuf/gcs_service.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @iycheng @scv119 @mwtian
+/dashboard/modules/snapshot @wuisawesome @ijrsvt @edoakes @alanwguo @architkulkarni
+/python/ray/autoscaler/_private/monitor.py @wuisawesome @DmitriGekhtman
 
 # Metrics
 /src/ray/stats/metric_defs.h @ericl @scv119 @rkooo567
@@ -47,16 +48,13 @@
 
 # ==== Libraries and frameworks ====
 
-# Ray tune.
-/python/ray/tune/ @ray-project/ray-tune
-
 # Ray data.
-/python/ray/data/ @ericl @scv119
-/doc/source/data/ @ericl @scv119
+/python/ray/data/ @ericl @scv119 @clarkzinzow @jjyao
+/doc/source/data/ @ericl @scv119 @clarkzinzow @jjyao
 
 # Ray workflows.
-/python/ray/workflow/ @ericl @iycheng
-/doc/source/workflows/ @ericl @iycheng
+/python/ray/workflow/ @ericl @iycheng @stephanie-wang @suquark
+/doc/source/workflows/ @ericl @iycheng @stephanie-wang @suquark
 
 # RLlib.
 /rllib/ @sven1977 @gjoliver @avnishn
@@ -66,8 +64,12 @@
 /python/requirements_ml_docker.txt @amogkam @sven1977 @richardliaw @matthewdeng
 
 # Ray symbol export
-src/ray/ray_version_script.lds @mwtian @iycheng @ericl @scv119
-src/ray/ray_exported_symbols.lds @mwtian @iycheng @ericl @scv119
+/src/ray/ray_version_script.lds @mwtian @iycheng @ericl @scv119
+/src/ray/ray_exported_symbols.lds @mwtian @iycheng @ericl @scv119
+
+# Ray usage stats
+/python/ray/_private/usage/ @ericl @richardliaw @rkooo567 @jjyao
+/dashboard/modules/usage_stats/ @ericl @richardliaw @rkooo567 @jjyao
 
 # ==== Build and CI ====
 

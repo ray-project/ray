@@ -1,3 +1,4 @@
+import threading
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, Union
 
 import datetime
@@ -29,7 +30,19 @@ from ray.tune.schedulers import PopulationBasedTraining, PopulationBasedTraining
 from ray.tune.stopper import Stopper
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm, SearchGenerator
 from ray.tune.suggest.suggestion import ConcurrencyLimiter, Searcher
-from ray.tune.suggest.util import set_search_properties_backwards_compatible
+
+# Turn off black here, as it will format the lines to be longer than 88 chars
+# fmt: off
+from ray.tune.suggest.util import (
+    set_search_properties_backwards_compatible
+    as searcher_set_search_properties_backwards_compatible,
+)
+from ray.tune.schedulers.util import (
+    set_search_properties_backwards_compatible
+    as scheduler_set_search_properties_backwards_compatible,
+)
+# fmt: on
+
 from ray.tune.suggest.variant_generator import has_unresolved_values
 from ray.tune.syncer import SyncConfig, set_sync_periods, wait_for_sync
 from ray.tune.trainable import Trainable
@@ -108,6 +121,8 @@ def run(
     raise_on_failed_trial: bool = True,
     callbacks: Optional[Sequence[Callback]] = None,
     max_concurrent_trials: Optional[int] = None,
+    # == internal only ==
+    _experiment_checkpoint_dir: Optional[str] = None,
     # Deprecated args
     queue_trials: Optional[bool] = None,
     loggers: Optional[Sequence[Type[Logger]]] = None,
@@ -461,6 +476,7 @@ def run(
                 resources_per_trial=resources_per_trial,
                 num_samples=num_samples,
                 local_dir=local_dir,
+                _experiment_checkpoint_dir=_experiment_checkpoint_dir,
                 sync_config=sync_config,
                 trial_name_creator=trial_name_creator,
                 trial_dirname_creator=trial_dirname_creator,
@@ -532,7 +548,7 @@ def run(
     if isinstance(search_alg, Searcher):
         search_alg = SearchGenerator(search_alg)
 
-    if config and not set_search_properties_backwards_compatible(
+    if config and not searcher_set_search_properties_backwards_compatible(
         search_alg.set_search_properties,
         metric,
         mode,
@@ -548,7 +564,9 @@ def run(
                 "them in the search algorithm's search space if necessary."
             )
 
-    if not scheduler.set_search_properties(metric, mode):
+    if not scheduler_set_search_properties_backwards_compatible(
+        scheduler.set_search_properties, metric, mode, **experiments[0].public_spec
+    ):
         raise ValueError(
             "You passed a `metric` or `mode` argument to `tune.run()`, but "
             "the scheduler you are using was already instantiated with their "
@@ -638,6 +656,12 @@ def run(
         state[signal.SIGINT] = True
         # Restore original signal handler to react to future SIGINT signals
         signal.signal(signal.SIGINT, original_handler)
+
+    # We should only install the handler when it is safe to do so.
+    # When tune.run() is called from worker thread, singal.signal will
+    # fail.
+    if threading.current_thread() != threading.main_thread():
+        os.environ["TUNE_DISABLE_SIGINT_HANDLER"] = "1"
 
     if not int(os.getenv("TUNE_DISABLE_SIGINT_HANDLER", "0")):
         signal.signal(signal.SIGINT, sigint_handler)

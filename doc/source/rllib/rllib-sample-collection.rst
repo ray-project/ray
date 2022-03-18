@@ -1,7 +1,9 @@
-.. include:: we_are_hiring.rst
+.. include:: /_includes/rllib/announcement.rst
 
-RLlib Sample Collection and Trajectory Views
-============================================
+.. include:: /_includes/rllib/we_are_hiring.rst
+
+Sample Collections and Trajectory Views
+=======================================
 
 The SampleCollector Class is Used to Store and Retrieve Temporary Data
 ----------------------------------------------------------------------
@@ -338,3 +340,5 @@ The above two examples add a "next_action" view to the postprocessed SampleBatch
 used by the Policy for training. It will not feed the "next_action"
 to the Model's ``compute_action`` calls (it can't b/c the next action is of course not known
 at that point).
+
+.. include:: /_includes/rllib/announcement_bottom.rst

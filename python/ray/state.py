@@ -46,7 +46,7 @@ class GlobalState:
         # _really_init_global_state should have set self.global_state_accessor
         if self.global_state_accessor is None:
             raise ray.exceptions.RaySystemError(
-                "Ray has not been started yet. You can start Ray with " "'ray.init()'."
+                "Ray has not been started yet. You can start Ray with 'ray.init()'."
             )
 
     def disconnect(self):
@@ -136,6 +136,7 @@ class GlobalState:
             "StartTime": actor_table_data.start_time,
             "EndTime": actor_table_data.end_time,
             "DeathCause": actor_table_data.death_cause,
+            "Pid": actor_table_data.pid,
         }
         return actor_info
 

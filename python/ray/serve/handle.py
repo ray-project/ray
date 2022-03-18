@@ -1,12 +1,21 @@
 import asyncio
 import concurrent.futures
 from dataclasses import dataclass
-from typing import Optional, Union, Coroutine
+from typing import Coroutine, Dict, Optional, Union
 import threading
 
-from ray.serve.common import EndpointTag
 from ray.actor import ActorHandle
-from ray.serve.utils import get_random_letters, DEFAULT
+
+from ray import serve
+from ray.serve.common import EndpointTag
+from ray.serve.constants import (
+    SERVE_HANDLE_JSON_KEY,
+    ServeHandleType,
+)
+from ray.serve.utils import (
+    get_random_letters,
+    DEFAULT,
+)
 from ray.serve.router import Router, RequestMetadata
 from ray.util import metrics
 
@@ -169,6 +178,11 @@ class RayServeHandle:
     def __repr__(self):
         return f"{self.__class__.__name__}" f"(deployment='{self.deployment_name}')"
 
+    @classmethod
+    def _deserialize(cls, kwargs):
+        """Required for this class's __reduce__ method to be picklable."""
+        return cls(**kwargs)
+
     def __reduce__(self):
         serialized_data = {
             "controller_handle": self.controller_handle,
@@ -176,7 +190,7 @@ class RayServeHandle:
             "handle_options": self.handle_options,
             "_internal_pickled_http_request": self._pickled_http_request,
         }
-        return lambda kwargs: RayServeHandle(**kwargs), (serialized_data,)
+        return RayServeHandle._deserialize, (serialized_data,)
 
     def __getattr__(self, name):
         return self.options(method_name=name)
@@ -228,4 +242,81 @@ class RayServeSyncHandle(RayServeHandle):
             "handle_options": self.handle_options,
             "_internal_pickled_http_request": self._pickled_http_request,
         }
-        return lambda kwargs: RayServeSyncHandle(**kwargs), (serialized_data,)
+        return RayServeSyncHandle._deserialize, (serialized_data,)
+
+
+class RayServeLazySyncHandle:
+    """Lazily initialized handle that only gets fulfilled upon first execution."""
+
+    def __init__(
+        self,
+        deployment_name: str,
+        handle_options: Optional[HandleOptions] = None,
+    ):
+        self.deployment_name = deployment_name
+        self.handle_options = handle_options or HandleOptions()
+        # For Serve DAG we need placeholder in DAG binding and building without
+        # requirement of serve.start; Thus handle is fulfilled at runtime.
+        self.handle = None
+
+    def options(self, *, method_name: str):
+        return self.__class__(
+            self.deployment_name, HandleOptions(method_name=method_name)
+        )
+
+    def remote(self, *args, **kwargs):
+        if not self.handle:
+            handle = serve.get_deployment(self.deployment_name).get_handle()
+            self.handle = handle.options(method_name=self.handle_options.method_name)
+        # TODO (jiaodong): Polish async handles later for serve pipeline
+        return self.handle.remote(*args, **kwargs)
+
+    @classmethod
+    def _deserialize(cls, kwargs):
+        """Required for this class's __reduce__ method to be picklable."""
+        return cls(**kwargs)
+
+    def __reduce__(self):
+        serialized_data = {
+            "deployment_name": self.deployment_name,
+            "handle_options": self.handle_options,
+        }
+        return RayServeLazySyncHandle._deserialize, (serialized_data,)
+
+    def __getattr__(self, name):
+        return self.options(method_name=name)
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}" f"(deployment='{self.deployment_name}')"
+
+
+def serve_handle_to_json_dict(handle: RayServeHandle) -> Dict[str, str]:
+    """Converts a Serve handle to a JSON-serializable dictionary.
+
+    The dictionary can be converted back to a ServeHandle using
+    serve_handle_from_json_dict.
+    """
+    if isinstance(handle, RayServeSyncHandle):
+        handle_type = ServeHandleType.SYNC
+    else:
+        handle_type = ServeHandleType.ASYNC
+
+    return {
+        SERVE_HANDLE_JSON_KEY: handle_type,
+        "deployment_name": handle.deployment_name,
+    }
+
+
+def serve_handle_from_json_dict(d: Dict[str, str]) -> RayServeHandle:
+    """Converts a JSON-serializable dictionary back to a ServeHandle.
+
+    The dictionary should be constructed using serve_handle_to_json_dict.
+    """
+    if SERVE_HANDLE_JSON_KEY not in d:
+        raise ValueError(f"dict must contain {SERVE_HANDLE_JSON_KEY} key.")
+
+    return serve.api.internal_get_global_client().get_handle(
+        d["deployment_name"],
+        sync=d[SERVE_HANDLE_JSON_KEY] == ServeHandleType.SYNC,
+        missing_ok=True,
+    )

@@ -1,9 +1,11 @@
 from concurrent import futures
+import asyncio
 import contextlib
 import os
 import threading
 import sys
 import grpc
+import numpy as np
 
 import time
 import random
@@ -33,7 +35,9 @@ class MiddlemanDataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
     errors between a client and server pair.
     """
 
-    def __init__(self, on_response: Optional[Hook] = None):
+    def __init__(
+        self, on_response: Optional[Hook] = None, on_request: Optional[Hook] = None
+    ):
         """
         Args:
             on_response: Optional hook to inject errors before sending back a
@@ -41,14 +45,21 @@ class MiddlemanDataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         """
         self.stub = None
         self.on_response = on_response
+        self.on_request = on_request
 
     def set_channel(self, channel: grpc.Channel) -> None:
         self.stub = ray_client_pb2_grpc.RayletDataStreamerStub(channel)
 
+    def _requests(self, request_iterator):
+        for req in request_iterator:
+            if self.on_request:
+                self.on_request(req)
+            yield req
+
     def Datapath(self, request_iterator, context):
         try:
             for response in self.stub.Datapath(
-                request_iterator, metadata=context.invocation_metadata()
+                self._requests(request_iterator), metadata=context.invocation_metadata()
             ):
                 if self.on_response:
                     self.on_response(response)
@@ -125,7 +136,8 @@ class MiddlemanRayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             context.set_code(e.code())
             context.set_details(e.details())
             raise
-        if self.on_response:
+        if self.on_response and method != "GetObject":
+            # GetObject streams response, handle on_response separately
             self.on_response(response)
         return response
 
@@ -159,7 +171,10 @@ class MiddlemanRayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         return self._call_inner_function(req, context, "Terminate")
 
     def GetObject(self, request, context=None):
-        return self._call_inner_function(request, context, "GetObject")
+        for response in self._call_inner_function(request, context, "GetObject"):
+            if self.on_response:
+                self.on_response(response)
+            yield response
 
     def PutObject(
         self, request: ray_client_pb2.PutRequest, context=None
@@ -189,6 +204,7 @@ class MiddlemanServer:
         listen_addr: str,
         real_addr,
         on_log_response: Optional[Hook] = None,
+        on_data_request: Optional[Hook] = None,
         on_data_response: Optional[Hook] = None,
         on_task_request: Optional[Hook] = None,
         on_task_response: Optional[Hook] = None,
@@ -215,7 +231,9 @@ class MiddlemanServer:
         self.task_servicer = MiddlemanRayletServicer(
             on_response=on_task_response, on_request=on_task_request
         )
-        self.data_servicer = MiddlemanDataServicer(on_response=on_data_response)
+        self.data_servicer = MiddlemanDataServicer(
+            on_response=on_data_response, on_request=on_data_request
+        )
         self.logs_servicer = MiddlemanLogServicer(on_response=on_log_response)
         ray_client_pb2_grpc.add_RayletDriverServicer_to_server(
             self.task_servicer, self.server
@@ -253,6 +271,7 @@ class MiddlemanServer:
 @contextlib.contextmanager
 def start_middleman_server(
     on_log_response=None,
+    on_data_request=None,
     on_data_response=None,
     on_task_request=None,
     on_task_response=None,
@@ -269,9 +288,10 @@ def start_middleman_server(
             listen_addr="localhost:10011",
             real_addr="localhost:50051",
             on_log_response=on_log_response,
+            on_data_request=on_data_request,
             on_data_response=on_data_response,
-            on_task_request=on_task_response,
-            on_task_response=on_task_request,
+            on_task_request=on_task_request,
+            on_task_response=on_task_response,
         )
         middleman.start()
         ray.init("ray://localhost:10011")
@@ -317,6 +337,97 @@ def test_disconnect_during_get():
         result = ray.get(slow_result.remote())
         assert result == 12345
         disconnect_thread.join()
+
+
+def test_disconnects_during_large_get():
+    """
+    Disconnect repeatedly during a large (multi-chunk) get.
+    """
+    i = 0
+    started = False
+
+    def fail_every_three(_):
+        # Inject an error every third time this method is called
+        nonlocal i, started
+        if not started:
+            return
+        i += 1
+        if i % 3 == 0:
+            raise RuntimeError
+
+    @ray.remote
+    def large_result():
+        # 1024x1024x128 float64 matrix (1024 MiB). With 64MiB chunk size,
+        # it will take at least 16 chunks to transfer this object. Since
+        # the failure is injected every 3 chunks, this transfer can only
+        # work if the chunked get request retries at the last received chunk
+        # (instead of starting from the beginning each retry)
+        return np.random.random((1024, 1024, 128))
+
+    with start_middleman_server(on_task_response=fail_every_three):
+        started = True
+        result = ray.get(large_result.remote())
+        assert result.shape == (1024, 1024, 128)
+
+
+def test_disconnects_during_large_async_get():
+    """
+    Disconnect repeatedly during a large (multi-chunk) async get.
+    """
+    i = 0
+    started = False
+
+    def fail_every_three(_):
+        # Inject an error every third time this method is called
+        nonlocal i, started
+        if not started:
+            return
+        i += 1
+        if i % 3 == 0:
+            raise RuntimeError
+
+    @ray.remote
+    def large_result():
+        # 1024x1024x128 float64 matrix (1024 MiB). With 64MiB chunk size,
+        # it will take at least 16 chunks to transfer this object. Since
+        # the failure is injected every 3 chunks, this transfer can only
+        # work if the chunked get request retries at the last received chunk
+        # (instead of starting from the beginning each retry)
+        return np.random.random((1024, 1024, 128))
+
+    with start_middleman_server(on_data_response=fail_every_three):
+        started = True
+
+        async def get_large_result():
+            return await large_result.remote()
+
+        loop = asyncio.get_event_loop()
+        result = loop.run_until_complete(get_large_result())
+        assert result.shape == (1024, 1024, 128)
+
+
+def test_disconnect_during_large_put():
+    """
+    Disconnect during a large (multi-chunk) put.
+    """
+    i = 0
+    started = False
+
+    def fail_halfway(_):
+        # Inject an error halfway through the object transfer
+        nonlocal i, started
+        if not started:
+            return
+        i += 1
+        if i == 8:
+            raise RuntimeError
+
+    with start_middleman_server(on_data_request=fail_halfway):
+        started = True
+        objref = ray.put(np.random.random((1024, 1024, 128)))
+        assert i > 8  # Check that the failure was injected
+        result = ray.get(objref)
+        assert result.shape == (1024, 1024, 128)
 
 
 def test_valid_actor_state():

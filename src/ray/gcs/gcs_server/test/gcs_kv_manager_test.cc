@@ -97,7 +97,8 @@ TEST_P(GcsKVManagerTest, TestInternalKV) {
   }
 }
 
-INSTANTIATE_TEST_SUITE_P(GcsKVManagerTestFixture, GcsKVManagerTest,
+INSTANTIATE_TEST_SUITE_P(GcsKVManagerTestFixture,
+                         GcsKVManagerTest,
                          ::testing::Values("redis", "memory"));
 
 int main(int argc, char **argv) {

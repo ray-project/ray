@@ -101,6 +101,12 @@ message PutRequest {
   //
   // Empty if no late binding is possible, as in a normal put().
   bytes client_ref_id = 2;
+  // Identifies which chunk the data belongs to
+  int32 chunk_id = 3;
+  // Total number of chunks
+  int32 total_chunks = 4;
+  // Total size in bytes of the data being put
+  int64 total_size = 5;
 }
 
 message PutResponse {
@@ -122,6 +128,9 @@ message GetRequest {
   float timeout = 2;
   // Whether to schedule this as a callback on the server side.
   bool asynchronous = 3;
+  // The chunk_id to start retrieving data from, in case the request is interrupted
+  // after partial retrieval by a disconnect
+  int32 start_chunk_id = 5;
 
   // Deprecated fields.
   bytes id = 1 [deprecated = true];
@@ -135,6 +144,12 @@ message GetResponse {
   bytes data = 2;
   // An error blob (for example, an exception) on failure.
   bytes error = 3;
+  // Identifies which chunk the data belongs to
+  int32 chunk_id = 4;
+  // Total number of chunks
+  int32 total_chunks = 5;
+  // Total size in bytes of the data being retrieved
+  uint64 total_size = 6;
 }
 
 // Waits for data to be ready on the server, with a timeout.
@@ -287,8 +302,7 @@ service RayletDriver {
   }
   rpc PrepRuntimeEnv(PrepRuntimeEnvRequest) returns (PrepRuntimeEnvResponse) {
   }
-  rpc GetObject(GetRequest) returns (GetResponse) {
-  }
+  rpc GetObject(GetRequest) returns (stream GetResponse) {}
   rpc PutObject(PutRequest) returns (PutResponse) {
   }
   rpc WaitObject(WaitRequest) returns (WaitResponse) {

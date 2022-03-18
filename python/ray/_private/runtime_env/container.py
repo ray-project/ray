@@ -1,47 +1,11 @@
-import json
 import os
 import logging
 
 from typing import Optional
 
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.utils import RuntimeEnv
 
 default_logger = logging.getLogger(__name__)
-
-
-# NOTE(chenk008): it is moved from setup_worker. And it will be used
-# to setup resource limit.
-def parse_allocated_resource(allocated_instances_serialized_json):
-    container_resource_args = []
-    allocated_resource = json.loads(allocated_instances_serialized_json)
-    if "CPU" in allocated_resource.keys():
-        cpu_resource = allocated_resource["CPU"]
-        if isinstance(cpu_resource, list):
-            # cpuset: because we may split one cpu core into some pieces,
-            # we need set cpuset.cpu_exclusive=0 and set cpuset-cpus
-            cpu_ids = []
-            cpu_shares = 0
-            for idx, val in enumerate(cpu_resource):
-                if val > 0:
-                    cpu_ids.append(idx)
-                    cpu_shares += val
-            container_resource_args.append(
-                "--cpu-shares=" + str(int(cpu_shares / 10000 * 1024))
-            )
-            container_resource_args.append(
-                "--cpuset-cpus=" + ",".join(str(e) for e in cpu_ids)
-            )
-        else:
-            # cpushare
-            container_resource_args.append(
-                "--cpu-shares=" + str(int(cpu_resource / 10000 * 1024))
-            )
-    if "memory" in allocated_resource.keys():
-        container_resource_args.append(
-            "--memory=" + str(int(allocated_resource["memory"] / 10000))
-        )
-    return container_resource_args
 
 
 class ContainerManager:
@@ -50,9 +14,9 @@ class ContainerManager:
         # can connect to raylet.
         self._ray_tmp_dir = tmp_dir
 
-    def setup(
+    async def setup(
         self,
-        runtime_env: RuntimeEnv,
+        runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ):

@@ -26,7 +26,8 @@ namespace ray {
 namespace core {
 
 void CoreWorkerDirectTaskReceiver::Init(
-    std::shared_ptr<rpc::CoreWorkerClientPool> client_pool, rpc::Address rpc_address,
+    std::shared_ptr<rpc::CoreWorkerClientPool> client_pool,
+    rpc::Address rpc_address,
     std::shared_ptr<DependencyWaiter> dependency_waiter) {
   waiter_ = std::move(dependency_waiter);
   rpc_address_ = rpc_address;
@@ -34,7 +35,8 @@ void CoreWorkerDirectTaskReceiver::Init(
 }
 
 void CoreWorkerDirectTaskReceiver::HandleTask(
-    const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
+    const rpc::PushTaskRequest &request,
+    rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   // Use `mutable_task_spec()` here as `task_spec()` returns a const reference
@@ -56,7 +58,8 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
 
   if (task_spec.IsActorCreationTask()) {
     worker_context_.SetCurrentActorId(task_spec.ActorCreationId());
-    SetupActor(task_spec.IsAsyncioActor(), task_spec.MaxActorConcurrency(),
+    SetupActor(task_spec.IsAsyncioActor(),
+               task_spec.MaxActorConcurrency(),
                task_spec.ExecuteOutOfOrder());
   }
 
@@ -74,8 +77,8 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     }
   }
 
-  auto accept_callback = [this, reply, task_spec,
-                          resource_ids](rpc::SendReplyCallback send_reply_callback) {
+  auto accept_callback = [this, reply, task_spec, resource_ids](
+                             rpc::SendReplyCallback send_reply_callback) {
     if (task_spec.GetMessage().skip_execution()) {
       send_reply_callback(Status::OK(), nullptr, nullptr);
       return;
@@ -90,9 +93,11 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
 
     std::vector<std::shared_ptr<RayObject>> return_objects;
     bool is_application_level_error = false;
-    auto status =
-        task_handler_(task_spec, resource_ids, &return_objects,
-                      reply->mutable_borrowed_refs(), &is_application_level_error);
+    auto status = task_handler_(task_spec,
+                                resource_ids,
+                                &return_objects,
+                                reply->mutable_borrowed_refs(),
+                                &is_application_level_error);
     reply->set_is_application_level_error(is_application_level_error);
 
     bool objects_valid = return_objects.size() == num_returns;
@@ -173,33 +178,49 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
       RAY_CHECK(cg_it != concurrency_groups_cache_.end());
       if (execute_out_of_order_) {
         it = actor_scheduling_queues_
-                 .emplace(
-                     task_spec.CallerWorkerId(),
-                     std::unique_ptr<SchedulingQueue>(new OutOfOrderActorSchedulingQueue(
-                         task_main_io_service_, *waiter_, pool_manager_, is_asyncio_,
-                         fiber_max_concurrency_, cg_it->second)))
+                 .emplace(task_spec.CallerWorkerId(),
+                          std::unique_ptr<SchedulingQueue>(
+                              new OutOfOrderActorSchedulingQueue(task_main_io_service_,
+                                                                 *waiter_,
+                                                                 pool_manager_,
+                                                                 is_asyncio_,
+                                                                 fiber_max_concurrency_,
+                                                                 cg_it->second)))
                  .first;
       } else {
         it = actor_scheduling_queues_
                  .emplace(task_spec.CallerWorkerId(),
-                          std::unique_ptr<SchedulingQueue>(new ActorSchedulingQueue(
-                              task_main_io_service_, *waiter_, pool_manager_, is_asyncio_,
-                              fiber_max_concurrency_, cg_it->second)))
+                          std::unique_ptr<SchedulingQueue>(
+                              new ActorSchedulingQueue(task_main_io_service_,
+                                                       *waiter_,
+                                                       pool_manager_,
+                                                       is_asyncio_,
+                                                       fiber_max_concurrency_,
+                                                       cg_it->second)))
                  .first;
       }
     }
 
-    it->second->Add(request.sequence_number(), request.client_processed_up_to(),
-                    std::move(accept_callback), std::move(reject_callback),
-                    std::move(send_reply_callback), task_spec.ConcurrencyGroupName(),
-                    task_spec.FunctionDescriptor(), task_spec.TaskId(), dependencies);
+    it->second->Add(request.sequence_number(),
+                    request.client_processed_up_to(),
+                    std::move(accept_callback),
+                    std::move(reject_callback),
+                    std::move(send_reply_callback),
+                    task_spec.ConcurrencyGroupName(),
+                    task_spec.FunctionDescriptor(),
+                    task_spec.TaskId(),
+                    dependencies);
   } else {
     // Add the normal task's callbacks to the non-actor scheduling queue.
-    normal_scheduling_queue_->Add(
-        request.sequence_number(), request.client_processed_up_to(),
-        std::move(accept_callback), std::move(reject_callback),
-        std::move(send_reply_callback), "", task_spec.FunctionDescriptor(),
-        task_spec.TaskId(), dependencies);
+    normal_scheduling_queue_->Add(request.sequence_number(),
+                                  request.client_processed_up_to(),
+                                  std::move(accept_callback),
+                                  std::move(reject_callback),
+                                  std::move(send_reply_callback),
+                                  "",
+                                  task_spec.FunctionDescriptor(),
+                                  task_spec.TaskId(),
+                                  dependencies);
   }
 }
 
@@ -220,7 +241,8 @@ bool CoreWorkerDirectTaskReceiver::CancelQueuedNormalTask(TaskID task_id) {
 }
 
 /// Note that this method is only used for asyncio actor.
-void CoreWorkerDirectTaskReceiver::SetupActor(bool is_asyncio, int fiber_max_concurrency,
+void CoreWorkerDirectTaskReceiver::SetupActor(bool is_asyncio,
+                                              int fiber_max_concurrency,
                                               bool execute_out_of_order) {
   RAY_CHECK(fiber_max_concurrency_ == 0)
       << "SetupActor should only be called at most once.";
@@ -230,8 +252,8 @@ void CoreWorkerDirectTaskReceiver::SetupActor(bool is_asyncio, int fiber_max_con
 }
 
 void CoreWorkerDirectTaskReceiver::Stop() {
-  for (const auto &it : actor_scheduling_queues_) {
-    it.second->Stop();
+  for (const auto &[_, scheduling_queue] : actor_scheduling_queues_) {
+    scheduling_queue->Stop();
   }
 }
 

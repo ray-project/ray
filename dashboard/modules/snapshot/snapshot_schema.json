@@ -71,6 +71,44 @@
                 }
               }
             },
+            "jobSubmission": {
+              "type": "object",
+              "patternProperties": {
+                "[0-9a-f]*": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": ["string", "null"]
+                    },
+                    "entrypoint": {
+                      "type": ["string", "null"]
+                    },
+                    "message": {
+                      "type": ["string", "null"]
+                    },
+                    "errorType": {
+                      "type": ["string", "null"]
+                    },
+                    "startTime": {
+                      "type": ["integer", "null"]
+                    },
+                    "endTime": {
+                      "type": ["integer", "null"]
+                    },
+                    "metadata": {
+                      "type": "object"
+                    },
+                    "runtimeEnv": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "entrypoint"
+                  ]
+                }
+              }
+            },
             "actors": {
               "type": "object",
               "patternProperties": {
@@ -221,6 +259,7 @@
             "rayVersion",
             "rayCommit",
             "jobs",
+            "jobSubmission",
             "actors",
             "sessionName"
           ]

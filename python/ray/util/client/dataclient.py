@@ -1,9 +1,11 @@
 """This file implements a threaded stream controller to abstract a data stream
 back to the ray clientserver.
 """
+import math
 import logging
 import queue
 import threading
+import warnings
 import grpc
 
 from collections import OrderedDict
@@ -11,7 +13,12 @@ from typing import Any, Callable, Dict, TYPE_CHECKING, Optional, Union
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
-from ray.util.client.common import INT32_MAX
+from ray.util.client.common import (
+    INT32_MAX,
+    OBJECT_TRANSFER_CHUNK_SIZE,
+    OBJECT_TRANSFER_WARNING_SIZE,
+)
+from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from ray.util.client.worker import Worker
@@ -22,6 +29,120 @@ ResponseCallable = Callable[[Union[ray_client_pb2.DataResponse, Exception]], Non
 
 # Send an acknowledge on every 32nd response received
 ACKNOWLEDGE_BATCH_SIZE = 32
+
+
+def chunk_put(req: ray_client_pb2.DataRequest):
+    """
+    Chunks a put request. Doing this lazily is important for large objects,
+    since taking slices of bytes objects does a copy. This means if we
+    immediately materialized every chunk of a large object and inserted them
+    into the result_queue, we would effectively double the memory needed
+    on the client to handle the put.
+    """
+    total_size = len(req.put.data)
+    assert total_size > 0, "Cannot chunk object with missing data"
+    if total_size >= OBJECT_TRANSFER_WARNING_SIZE and log_once(
+        "client_object_put_size_warning"
+    ):
+        size_gb = total_size / 2 ** 30
+        warnings.warn(
+            "Ray Client is attempting to send a "
+            f"{size_gb:.2f} GiB object over the network, which may "
+            "be slow. Consider serializing the object and using a remote "
+            "URI to transfer via S3 or Google Cloud Storage instead. "
+            "Documentation for doing this can be found here: "
+            "https://docs.ray.io/en/latest/handling-dependencies.html#remote-uris",
+            UserWarning,
+        )
+    total_chunks = math.ceil(total_size / OBJECT_TRANSFER_CHUNK_SIZE)
+    for chunk_id in range(0, total_chunks):
+        start = chunk_id * OBJECT_TRANSFER_CHUNK_SIZE
+        end = min(total_size, (chunk_id + 1) * OBJECT_TRANSFER_CHUNK_SIZE)
+        chunk = ray_client_pb2.PutRequest(
+            client_ref_id=req.put.client_ref_id,
+            data=req.put.data[start:end],
+            chunk_id=chunk_id,
+            total_chunks=total_chunks,
+            total_size=total_size,
+        )
+        yield ray_client_pb2.DataRequest(req_id=req.req_id, put=chunk)
+
+
+class ChunkCollector:
+    """
+    This object collects chunks from async get requests via __call__, and
+    calls the underlying callback when the object is fully received, or if an
+    exception while retrieving the object occurs.
+
+    This is not used in synchronous gets (synchronous gets interact with the
+    raylet servicer directly, not through the datapath).
+
+    __call__ returns true once the underlying call back has been called.
+    """
+
+    def __init__(self, callback: ResponseCallable, request: ray_client_pb2.DataRequest):
+        # Bytearray containing data received so far
+        self.data = bytearray()
+        # The callback that will be called once all data is received
+        self.callback = callback
+        # The id of the last chunk we've received, or -1 if haven't seen any yet
+        self.last_seen_chunk = -1
+        # The GetRequest that initiated the transfer. start_chunk_id will be
+        # updated as chunks are received to avoid re-requesting chunks that
+        # we've already received.
+        self.request = request
+
+    def __call__(self, response: Union[ray_client_pb2.DataResponse, Exception]) -> bool:
+        if isinstance(response, Exception):
+            self.callback(response)
+            return True
+        get_resp = response.get
+        if not get_resp.valid:
+            self.callback(response)
+            return True
+        if get_resp.total_size > OBJECT_TRANSFER_WARNING_SIZE and log_once(
+            "client_object_transfer_size_warning"
+        ):
+            size_gb = get_resp.total_size / 2 ** 30
+            warnings.warn(
+                "Ray Client is attempting to retrieve a "
+                f"{size_gb:.2f} GiB object over the network, which may "
+                "be slow. Consider serializing the object to a file and "
+                "using rsync or S3 instead.",
+                UserWarning,
+            )
+        chunk_data = get_resp.data
+        chunk_id = get_resp.chunk_id
+        if chunk_id == self.last_seen_chunk + 1:
+            self.data.extend(chunk_data)
+            self.last_seen_chunk = chunk_id
+            # If we disconnect partway through, restart the get request
+            # at the first chunk we haven't seen
+            self.request.get.start_chunk_id = self.last_seen_chunk + 1
+        elif chunk_id > self.last_seen_chunk + 1:
+            # A chunk was skipped. This shouldn't happen in practice since
+            # grpc guarantees that chunks will arrive in order.
+            msg = (
+                f"Received chunk {chunk_id} when we expected "
+                f"{self.last_seen_chunk + 1} for request {response.req_id}"
+            )
+            logger.warning(msg)
+            self.callback(RuntimeError(msg))
+            return True
+        else:
+            # We received a chunk that've already seen before. Ignore, since
+            # it should already be appended to self.data.
+            logger.debug(
+                f"Received a repeated chunk {chunk_id} "
+                f"from request {response.req_id}."
+            )
+
+        if get_resp.chunk_id == get_resp.total_chunks - 1:
+            self.callback(self.data)
+            return True
+        else:
+            # Not done yet
+            return False
 
 
 class DataClient:
@@ -81,6 +202,19 @@ class DataClient:
             daemon=True,
         )
 
+    # A helper that takes requests from queue. If the request wraps a PutRequest,
+    # lazily chunks and yields the request. Otherwise, yields the request directly.
+    def _requests(self):
+        while True:
+            req = self.request_queue.get()
+            if req is None:
+                # Stop when client signals shutdown.
+                return
+            if req.WhichOneof("type") == "put":
+                yield from chunk_put(req)
+            else:
+                yield req
+
     def _data_main(self) -> None:
         reconnecting = False
         try:
@@ -90,7 +224,7 @@ class DataClient:
                 )
                 metadata = self._metadata + [("reconnecting", str(reconnecting))]
                 resp_stream = stub.Datapath(
-                    iter(self.request_queue.get, None),
+                    self._requests(),
                     metadata=metadata,
                     wait_for_ready=True,
                 )
@@ -119,20 +253,25 @@ class DataClient:
             logger.debug(f"Got unawaited response {response}")
             return
         if response.req_id in self.asyncio_waiting_data:
+            can_remove = True
             try:
-                # NOTE: calling self.asyncio_waiting_data.pop() results
-                # in the destructor of ClientObjectRef running, which
-                # calls ReleaseObject(). So self.asyncio_waiting_data
-                # is accessed without holding self.lock. Holding the
-                # lock shouldn't be necessary either.
-                callback = self.asyncio_waiting_data.pop(response.req_id)
-                if callback:
+                callback = self.asyncio_waiting_data[response.req_id]
+                if isinstance(callback, ChunkCollector):
+                    can_remove = callback(response)
+                elif callback:
                     callback(response)
+                if can_remove:
+                    # NOTE: calling del self.asyncio_waiting_data results
+                    # in the destructor of ClientObjectRef running, which
+                    # calls ReleaseObject(). So self.asyncio_waiting_data
+                    # is accessed without holding self.lock. Holding the
+                    # lock shouldn't be necessary either.
+                    del self.asyncio_waiting_data[response.req_id]
             except Exception:
                 logger.exception("Callback error:")
             with self.lock:
                 # Update outstanding requests
-                if response.req_id in self.outstanding_requests:
+                if response.req_id in self.outstanding_requests and can_remove:
                     del self.outstanding_requests[response.req_id]
                     # Acknowledge response
                     self._acknowledge(response.req_id)
@@ -370,7 +509,8 @@ class DataClient:
         datareq = ray_client_pb2.DataRequest(
             get=request,
         )
-        self._async_send(datareq, callback)
+        collector = ChunkCollector(callback=callback, request=datareq)
+        self._async_send(datareq, collector)
 
     # TODO: convert PutObject to async
     def PutObject(

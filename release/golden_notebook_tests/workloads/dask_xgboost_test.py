@@ -2,10 +2,10 @@ import ray
 import os
 import time
 import json
-from util import import_and_execute_test_script, wait_for_cluster_client
+from util import import_and_execute_test_script
 
 NOTEBOOK_PATH_RELATIVE_TO_RAY_REPO = (
-    "doc/source/ray-core/_examples/dask_xgboost/dask_xgboost.py"
+    "doc/source/ray-core/examples/dask_xgboost/dask_xgboost.py"
 )
 
 
@@ -23,7 +23,6 @@ if __name__ == "__main__":
     else:
         ray.init(address="auto")
 
-    wait_for_cluster_client(4, 600)
     main()
 
     taken = time.time() - start
