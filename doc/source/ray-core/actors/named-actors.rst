@@ -83,6 +83,8 @@ exist. See :ref:`actor-lifetimes` for more details.
         ray.init(address="auto", namespace="fruit")
         # This fails because "orange" was defined in the "colors" namespace.
         ray.get_actor("orange")
+        # You can also specify the namespace explicitly.
+        ray.get_actor("orange", namespace="colors")
 
         # driver_3.py
         # Job 3 connects to the original "colors" namespace
