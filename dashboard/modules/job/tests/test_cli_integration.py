@@ -31,7 +31,7 @@ def set_env_var(key: str, val: Optional[str] = None):
 def ray_start_stop():
     subprocess.check_output(["ray", "start", "--head"])
     try:
-        with set_env_var("RAY_ADDRESS", "http://127.0.0.1:8265"):
+        with set_env_var("RAY_ADDRESS", "127.0.0.1:8265"):
             yield
     finally:
         subprocess.check_output(["ray", "stop", "--force"])
@@ -95,13 +95,25 @@ class TestRayAddress:
                 "--address flag or RAY_ADDRESS environment"
             ) in stderr
 
-    @pytest.mark.parametrize("client_address", ["127.0.0.1:8265", "ray://127.0.0.1:8265"])
-    def test_ray_client_address(self, ray_start_stop, client_address: str):
-        with set_env_var("RAY_ADDRESS", client_address):
-            _run_cmd("ray job submit -- echo hello", should_fail=True)
+    def test_ray_client_address(self, ray_start_stop):
+        stdout, _ = _run_cmd("ray job submit -- echo hello")
+        assert "hello" in stdout
+        assert "succeeded" in stdout
+
+    def test_valid_http_ray_address(self, ray_start_stop):
+        stdout, _ = _run_cmd("ray job submit -- echo hello")
+        assert "hello" in stdout
+        assert "succeeded" in stdout
 
     def test_set_ray_http_address_first(self):
         with set_env_var("RAY_ADDRESS", "http://127.0.0.1:8265"):
+            with ray_cluster_manager():
+                stdout, _ = _run_cmd("ray job submit -- echo hello")
+                assert "hello" in stdout
+                assert "succeeded" in stdout
+
+    def test_set_ray_client_address_first(self):
+        with set_env_var("RAY_ADDRESS", "127.0.0.1:8265"):
             with ray_cluster_manager():
                 stdout, _ = _run_cmd("ray job submit -- echo hello")
                 assert "hello" in stdout
