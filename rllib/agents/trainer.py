@@ -2760,7 +2760,6 @@ class Trainer(Trainable):
             "prioritized_replay_eps",
             "learning_starts",
         ]
-
         for k in deprecated_replay_buffer_keys:
             if config.get(k) is not None:
                 deprecation_warning(

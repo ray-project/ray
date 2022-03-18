@@ -174,9 +174,8 @@ class MultiAgentReplayBuffer(ReplayBuffer):
     def replay(self, num_items: int = None, **kwargs) -> Optional[SampleBatchType]:
         """Deprecated in favor of new ReplayBuffer API.
 
-        This replay method overrides the ordinary
-        MultiAgentReplayBuffer.replay() method to stay compatible with
-        legacy style usage of this class.
+        This replay method retains compatibility with
+        deprecated kind of usage of this class.
         """
         if log_once("deprecated_replay_method"):
             logger.info(
