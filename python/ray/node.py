@@ -23,6 +23,7 @@ import ray
 import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
+from ray.internal import storage
 from ray._private.gcs_utils import GcsClient
 from ray._private.resource_spec import ResourceSpec
 from ray._private.utils import try_to_create_directory, try_to_symlink, open_log
@@ -199,6 +200,9 @@ class Node:
             self._webui_url = ray._private.services.get_webui_url_from_internal_kv()
 
         self._init_temp()
+
+        # Validate and initialize the persistent storage API.
+        storage._init_storage(ray_params.storage, is_head=head)
 
         # If it is a head node, try validating if
         # external storage is configurable.
@@ -972,6 +976,7 @@ class Node:
             self._plasma_store_socket_name,
             self._ray_params.worker_path,
             self._ray_params.setup_worker_path,
+            self._ray_params.storage,
             self._temp_dir,
             self._session_dir,
             self._runtime_env_dir,

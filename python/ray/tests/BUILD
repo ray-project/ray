@@ -120,6 +120,7 @@ py_test_module_list(
     "test_serialization.py",
     "test_shuffle.py",
     "test_stress.py",
+    "test_storage.py",
     "test_stress_sharded.py",
     "test_tempfile.py",
     "test_tensorflow.py",
