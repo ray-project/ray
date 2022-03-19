@@ -1,5 +1,5 @@
 dask[complete]==2021.03.0; python_version < '3.7'
-dask[complete]==2022.2.0; python_version >= '3.7'
+dask[complete]==2022.3.0; python_version >= '3.7'
 aioboto3==8.3.0
 flask_cors
 moto[s3]==2.3.1
