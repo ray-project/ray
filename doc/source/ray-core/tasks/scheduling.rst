@@ -16,32 +16,35 @@ If all nodes are infeasible, the task cannot be scheduled until feasible nodes a
 
 Placement Group
 ---------------
-If `placement_group` option is set then the task will be scheduled where the placement group is located.
+If ``placement_group`` option is set then the task will be scheduled where the placement group is located.
 See :ref:`Placement Group <ray-placement-group-doc-ref>` for more details.
 
 Scheduling Strategy
 -------------------
-Task supports `scheduling_strategy` option to specify the strategy used to decide the best node among available nodes.
+Task supports ``scheduling_strategy`` option to specify the strategy used to decide the best node among available nodes.
 Currently the supported strategies are "DEFAULT" and "SPREAD".
 "DEFAULT" is the default strategy used by Ray. With the current implementation, Ray will try to pack tasks on nodes
 until the resource utilization is beyond a certain threshold and spread tasks afterwards.
 "SPREAD" strategy will try to spread the tasks among available nodes.
 
-.. code-block:: python
-    @ray.remote
-    def default_function():
-        return 1
+.. tabbed:: Python
 
-    # If unspecified, "DEFAULT" scheduling strategy is used.
-    default_function.remote()
-    # Explicitly set scheduling strategy to "DEFAULT".
-    default_function.options(scheduling_strategy="DEFAULT").remote()
+    .. code-block:: python
 
-    @ray.remote(scheduling_strategy="SPREAD")
-    def spread_function():
-        return 2
-    # Spread tasks across the cluster.
-    [spread_function.remote() for i in range(100)]
+        @ray.remote
+        def default_function():
+            return 1
+
+        # If unspecified, "DEFAULT" scheduling strategy is used.
+        default_function.remote()
+        # Explicitly set scheduling strategy to "DEFAULT".
+        default_function.options(scheduling_strategy="DEFAULT").remote()
+
+        @ray.remote(scheduling_strategy="SPREAD")
+        def spread_function():
+            return 2
+        # Spread tasks across the cluster.
+        [spread_function.remote() for i in range(100)]
 
 Locality-Aware Scheduling
 -------------------------
