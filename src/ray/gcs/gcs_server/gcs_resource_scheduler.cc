@@ -222,7 +222,7 @@ std::vector<int> GcsResourceScheduler::SortRequiredResources(
     for (auto r : extra_resources_set) {
       auto a_iter = a.custom_resources.find(r);
       const auto &a_resource = a_iter != a.custom_resources.end() ? a_iter->second : 0;
-      auto b_iter = a.custom_resources.find(r);
+      auto b_iter = b.custom_resources.find(r);
       const auto &b_resource = b_iter != b.custom_resources.end() ? b_iter->second : 0;
       if (a_resource != b_resource) {
         return a_resource < b_resource;
