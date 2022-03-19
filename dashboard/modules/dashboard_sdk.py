@@ -135,15 +135,16 @@ def parse_cluster_info(
 ) -> ClusterInfo:
     module_string, inner_address = _split_address(address)
 
-    # If user passes in ray://, raise error. Cluster-level submission should
+    # If user passes in ray://, raise error. Dashboard submission should
     # not use a Ray client address.
     if module_string == "ray":
         raise ValueError(
-            f'Got "{address}", which is a Ray client address. '
-            "Cluster-level submission should not use a Ray "
-            "client address. If you are not sure where this address "
-            'comes from, please check the "RAY_ADDRESS" '
-            "environment variable to see if it is set."
+            f'Got an unexpected Ray client address "{address}" while trying '
+            "to connect to the Ray dashboard. The dashboard SDK requires the "
+            "Ray dashboard server's HTTP(S) address (which should start with "
+            '"http://" or "https://", not "ray://"). If this address '
+            "wasn't passed explicitly, it may be set in the RAY_ADDRESS "
+            "environment variable."
         )
 
     # If user passes http(s)://, go through normal parsing.
