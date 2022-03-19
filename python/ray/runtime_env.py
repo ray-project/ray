@@ -282,8 +282,7 @@ class RuntimeEnv(dict):
             This field cannot be specified at the same time as the 'pip' field.
             To use pip with conda, please specify your pip dependencies within
             the conda YAML config:
-            https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-e
-            nvironments.html#create-env-file-manually
+            https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#create-env-file-manually
         container (dict): Require a given (Docker) container image,
             The Ray worker process will run in a container with this image.
             The `worker_path` is the default_worker.py path.
