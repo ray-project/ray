@@ -1,4 +1,4 @@
-.. _ray-scheduling:
+.. _ray-task-scheduling:
 
 Scheduling
 ==========

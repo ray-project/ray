@@ -317,11 +317,6 @@ If we instantiate an actor, we can pass the handle around to various tasks.
           std::cout << *counter.Task(&Counter::GetCounter).Remote().Get() << std::endl;
         }
 
-Scheduling the actor
---------------------
-
-Actors are scheduled similar to tasks, see :ref:`ray-scheduling` for more details.
-
 FAQ: Actors, Workers and Resources
 ----------------------------------
 
@@ -354,4 +349,5 @@ More about Ray Actors
     actors/concurrency_group_api.rst
     actors/actor-utils.rst
     actors/fault-tolerance.rst
+    actors/scheduling.rst
     actors/patterns/index.rst
