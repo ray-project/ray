@@ -44,8 +44,11 @@ MEAN_MAX = 9.0
 
 
 def _repeat_tensor(t, n):
+    # Insert new dimension at posotion 1 into tensor t
     t_rep = t.unsqueeze(1)
+    # Repeat tensor t_rep along new dimension n times
     t_rep = torch.repeat_interleave(t_rep, n, dim=1)
+    # Merge new dimension into batch dimension
     t_rep = t_rep.view(-1, *t.shape[1:])
     return t_rep
 
@@ -108,8 +111,6 @@ def cql_loss(
     next_obs = train_batch[SampleBatch.NEXT_OBS]
     terminals = train_batch[SampleBatch.DONES]
 
-    batch_size = tree.flatten(obs)[0].shape[0]
-
     model_out_t, _ = model(SampleBatch(obs=obs, _is_training=True), [], None)
 
     model_out_tp1, _ = model(SampleBatch(obs=next_obs, _is_training=True), [], None)
@@ -129,6 +130,7 @@ def cql_loss(
     # Alpha Loss
     alpha_loss = -(model.log_alpha * (log_pis_t + model.target_entropy).detach()).mean()
 
+    batch_size = tree.flatten(obs)[0].shape[0]
     if batch_size == policy.config["train_batch_size"]:
         policy.alpha_optim.zero_grad()
         alpha_loss.backward()
