@@ -18,7 +18,7 @@ tf1, tf, tfv = try_import_tf()
 class TestIMPALA(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -30,6 +30,7 @@ class TestIMPALA(unittest.TestCase):
         config["num_gpus"] = 0
         config["model"]["lstm_use_prev_action"] = True
         config["model"]["lstm_use_prev_reward"] = True
+        config["num_aggregation_workers"] = 0
         env = "CartPole-v0"
 
         num_iterations = 2

@@ -383,9 +383,18 @@ class ImpalaTrainer(Trainer):
 
             if not (self.config["num_aggregation_workers"] > 0):
                 # Create our local mixin buffer if the num of aggregation workers is 0.
-                self.local_mixin_buffer = MixInMultiAgentReplayBuffer(
-                    capacity=self.config["replay_buffer_num_slots"],
+                # self.local_mixin_buffer = MixInMultiAgentReplayBuffer(
+                #     capacity=self.config["replay_buffer_num_slots"],
+                #     replay_ratio=self.config["replay_ratio"],
+                # )
+                self.local_mixin_buffer = MultiAgentMixInReplayBuffer(
+                    capacity=(
+                        self.config["replay_buffer_num_slots"]
+                        if self.config["replay_buffer_num_slots"] > 0
+                        else 1
+                    ),
                     replay_ratio=self.config["replay_ratio"],
+                    storage_unit="sequences",
                 )
 
             # Create and start the learner thread.
@@ -405,37 +414,38 @@ class ImpalaTrainer(Trainer):
         else:
             batch = self.process_experiences_directly(unprocessed_sample_batches)
 
-        self.place_processed_samples_on_learner_queue(batch)
-
-        learner_results = self.process_trained_results()
-
-        # I'm 90 percent sure that is supposed to be number of timesteps trained,
-        # not number of timesteps sampled.
-        global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_TRAINED]}
-
-        # Only need to update workers if there are remote workers.
-        self._counters["steps_since_broadcast"] += 1
-        if (
-            self.workers.remote_workers()
-            and self._counters["steps_since_broadcast"]
-            >= self.config["broadcast_interval"]
-            and self._learner_thread.weights_updated
-        ):
-            weights = ray.put(self.workers.local_worker().get_weights())
-            self._counters["steps_since_broadcast"] = 0
-            self._learner_thread.weights_updated = False
-            self._counters["num_weight_broadcasts"] += 1
-
-            for worker in unprocessed_sample_batches.keys():
-                worker.set_weights.remote(weights, global_vars)
-
-        # Update global vars of the local worker.
-        self.workers.local_worker().set_global_vars(global_vars)
-
-        # Callback for APPO to use to update KL, target network periodically.
-        # The input to the callback is the learner fetches dict.
-        if self.config["after_train_step"]:
-            self.config["after_train_step"](trainer=self, config=self.config)
+        if batch:
+            self.place_processed_samples_on_learner_queue(batch)
+        learner_results = {}
+        # learner_results = self.process_trained_results()
+        #
+        # # I'm 90 percent sure that is supposed to be number of timesteps trained,
+        # # not number of timesteps sampled.
+        # global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_TRAINED]}
+        #
+        # # Only need to update workers if there are remote workers.
+        # self._counters["steps_since_broadcast"] += 1
+        # if (
+        #     self.workers.remote_workers()
+        #     and self._counters["steps_since_broadcast"]
+        #     >= self.config["broadcast_interval"]
+        #     and self._learner_thread.weights_updated
+        # ):
+        #     weights = ray.put(self.workers.local_worker().get_weights())
+        #     self._counters["steps_since_broadcast"] = 0
+        #     self._learner_thread.weights_updated = False
+        #     self._counters["num_weight_broadcasts"] += 1
+        #
+        #     for worker in unprocessed_sample_batches.keys():
+        #         worker.set_weights.remote(weights, global_vars)
+        #
+        # # Update global vars of the local worker.
+        # self.workers.local_worker().set_global_vars(global_vars)
+        #
+        # # Callback for APPO to use to update KL, target network periodically.
+        # # The input to the callback is the learner fetches dict.
+        # if self.config["after_train_step"]:
+        #     self.config["after_train_step"](trainer=self, config=self.config)
 
         return learner_results
 
@@ -614,7 +624,8 @@ class ImpalaTrainer(Trainer):
                 break
         if len(learner_infos) > 1 and results_have_same_structure:
             learner_info = tree.map_structure(
-                lambda *_args: sum(_args) / len(learner_infos), *learner_infos)
+                lambda *_args: sum(_args) / len(learner_infos), *learner_infos
+            )
         else:
             learner_info = learner_infos[-1]
 
@@ -628,17 +639,26 @@ class ImpalaTrainer(Trainer):
         self, actor_to_sample_batches_refs: Dict[ActorHandle, List[ObjectRef]]
     ) -> Union[SampleBatchType, None]:
         processed_batches = []
-        batches = list(actor_to_sample_batches_refs.values())
+        batches = [
+            sample_batch_ref
+            for refs_batch in actor_to_sample_batches_refs.values()
+            for sample_batch_ref in refs_batch
+        ]
         if not batches:
             return None
         if batches and isinstance(batches[0], ray.ObjectRef):
             batches = ray.get(batches)
         for batch in batches:
             batch = batch.decompress_if_needed()
+            # self.local_mixin_buffer.add(batch)
+            # batch = self.local_mixin_buffer.sample(self.config["train_batch_size"])
             self.local_mixin_buffer.add_batch(batch)
             batch = self.local_mixin_buffer.replay()
-            processed_batches.append(batch)
-        return SampleBatch.concat_samples(processed_batches)
+            if batch:
+                processed_batches.append(batch)
+        if processed_batches:
+            return SampleBatch.concat_samples(processed_batches)
+        return None
 
     def process_experiences_tree_aggregation(
         self, sample_batches_refs: List[ObjectRef]
