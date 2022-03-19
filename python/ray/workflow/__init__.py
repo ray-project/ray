@@ -11,11 +11,12 @@ from ray.workflow.api import (
     list_all,
     resume_all,
     wait_for_event,
+    wait_for_event_revised,
     sleep,
     delete,
     wait,
     create,
-    continuation,
+    # continuation,
 )
 from ray.workflow.workflow_access import WorkflowExecutionError
 from ray.workflow.common import WorkflowStatus
@@ -35,12 +36,13 @@ __all__ = [
     "list_all",
     "init",
     "wait_for_event",
+    "wait_for_event_revised",
     "sleep",
     "EventListener",
     "delete",
     "wait",
     "create",
-    "continuation",
+    # "continuation",
 ]
 
 globals().update(WorkflowStatus.__members__)

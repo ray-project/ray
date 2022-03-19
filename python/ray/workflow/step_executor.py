@@ -239,6 +239,7 @@ def execute_workflow(workflow: Workflow) -> "WorkflowExecutionResult":
     """
     # Tail recursion optimization.
     context = {}
+    logger.info("***** execute_workflow")
     while True:
         with workflow_context.fork_workflow_step_context(**context):
             result = _execute_workflow(workflow)
@@ -307,6 +308,7 @@ def commit_step(
         for w in ret._iter_workflows_in_dag():
             # If this is a reference to a workflow, do not checkpoint
             # its input (again).
+
             if w.ref is None:
                 tasks.append(_write_step_inputs(store, w.step_id, w.data))
         asyncio_run(asyncio.gather(*tasks))
@@ -428,14 +430,19 @@ def _workflow_step_executor(
     Returns:
         Workflow step output.
     """
+    logger.info(f"_workflow_step_executor entry")
+    logger.info(f"**** {step_id} func type {func}")
+
     # Part 1: update the context for the step
     workflow_context.update_workflow_step_context(context, step_id)
     context = workflow_context.get_workflow_step_context()
     step_type = runtime_options.step_type
     context.checkpoint_context.checkpoint = runtime_options.checkpoint
 
+    logger.info(f"**** {step_id} Before baked_inputs.resolve(), inside _workflow_step_executor() {baked_inputs}")
     # Part 2: resolve inputs
     args, kwargs = baked_inputs.resolve()
+    logger.info(f"**** {step_id} After baked_inputs.resolve(): args: {args}, kwargs: {kwargs}")
 
     # Part 3: execute the step
     store = workflow_storage.get_workflow_storage()
@@ -647,7 +654,8 @@ class _BakedWorkflowInputs:
     def wait(
         self, num_returns: int = 1, timeout: Optional[float] = None
     ) -> Tuple[List[Workflow], List[Workflow]]:
-        """Return a list of workflows that are ready and a list of workflows that
+        '''
+        Return a list of workflows that are ready and a list of workflows that
         are not. See `api.wait()` for details.
 
         Args:
@@ -658,7 +666,8 @@ class _BakedWorkflowInputs:
         Returns:
             A list of workflows that are ready and a list of the remaining
             workflows.
-        """
+        '''
+
         if self.workflow_refs:
             raise ValueError(
                 "Currently, we do not support wait operations "

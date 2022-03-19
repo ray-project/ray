@@ -377,6 +377,12 @@ def wait_for_event(
 def wait_for_event_revised(
     event_listener_type: EventListenerType, *args, **kwargs
 ) -> Workflow[Event]:
+
+    from ray._private import signature
+    from ray.workflow import serialization_context
+    from ray.workflow.common import WorkflowData
+    logger.info("wait_for_event_revised entry")
+
     # revised to support event step suspend
     if not issubclass(event_listener_type, EventListener):
         raise TypeError(
@@ -384,26 +390,19 @@ def wait_for_event_revised(
             ", which is not a subclass of workflow.EventListener"
         )
 
-    workflow_id = workflow_context.get_workflow_step_context().workflow_id
-    current_step_id = workflow_context.get_current_step_id()
-    outer_most_step_id = workflow_context.get_workflow_step_context().outer_most_step_id
-
-    # transfer control to event coordinator actor
-    eca_handle = get_event_coordinator_actor()
-    ack = ray.get(eca_handle.transfer_event_step.remote( \
-        event_listener_type, workflow_id, current_step_id, outer_most_step_id))
+    event_inputs = serialization_context.make_workflow_inputs(None)
 
     step_options = WorkflowStepRuntimeOptions.make(
         step_type=StepType.EVENT
     )
-
     workflow_data = WorkflowData(
         func_body=None,
-        inputs=None,
+        inputs=event_inputs,
         step_options=step_options,
-        name=f"{current_step_id}.event",
+        name=None, #f"{current_step_id}.event",
         user_metadata={},
     )
+    logger.info(f"wait_for_event_revised exit")
     return Workflow(workflow_data)
 
 @PublicAPI(stability="beta")
