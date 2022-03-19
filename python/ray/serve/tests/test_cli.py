@@ -394,8 +394,8 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     else:
         serve.shutdown()
 
-    info_response = subprocess.check_output(["serve", "info", "-j"]).decode("utf-8")
-    info = json.loads(info_response)
+    info_response = subprocess.check_output(["serve", "config"])
+    info = yaml.safe_load(info_response)
 
     assert "deployments" in info
     assert len(info["deployments"]) == 0

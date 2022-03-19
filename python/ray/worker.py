@@ -20,6 +20,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 # Ray modules
 import ray.cloudpickle as pickle
 import ray._private.memory_monitor as memory_monitor
+import ray.internal.storage as storage
 import ray.node
 import ray.job_config
 import ray._private.parameter
@@ -699,6 +700,7 @@ def init(
     log_to_driver: bool = True,
     namespace: Optional[str] = None,
     runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
+    storage: Optional[str] = None,
     # The following are unstable parameters and their use is discouraged.
     _enable_object_reconstruction: bool = False,
     _redis_max_memory: Optional[int] = None,
@@ -796,11 +798,15 @@ def init(
             timestamp, filename, line number, and message. See the source file
             ray_constants.py for details. Ignored unless "configure_logging"
             is true.
-        log_to_driver (bool): If true, the output from all of the worker
+        log_to_driver: If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
-        namespace (str): Namespace to use
-        runtime_env (dict, RuntimeEnv, None): The runtime environment to use
+        namespace: Namespace to use
+        runtime_env: The runtime environment to use
             for this job (see :ref:`runtime-environments` for details).
+        storage: [Experimental] Specify a URI for persistent cluster-wide storage.
+            This storage path must be accessible by all nodes of the cluster, otherwise
+            an error will be raised. This option can also be specified as the
+            RAY_STORAGE env var.
         _enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
@@ -994,6 +1000,7 @@ def init(
             redis_max_memory=_redis_max_memory,
             plasma_store_socket_name=None,
             temp_dir=_temp_dir,
+            storage=storage,
             # We need to disable it if runtime env is not set.
             # Uploading happens after core worker is created. And we should
             # prevent default worker being created before uploading.
@@ -1051,6 +1058,7 @@ def init(
             redis_address=redis_address,
             redis_password=_redis_password,
             object_ref_seed=None,
+            storage=storage,
             temp_dir=_temp_dir,
             _system_config=_system_config,
             enable_object_reconstruction=_enable_object_reconstruction,
@@ -1129,6 +1137,7 @@ def shutdown(_exiting_interpreter: bool = False):
     if hasattr(global_worker, "gcs_client"):
         del global_worker.gcs_client
     _internal_kv_reset()
+    storage._reset()
 
     # We need to destruct the core worker here because after this function,
     # we will tear down any processes spawned by ray.init() and the background
@@ -1576,7 +1585,8 @@ def connect(
         worker.import_thread = import_thread.ImportThread(
             worker, mode, worker.threads_stopped
         )
-        worker.import_thread.start()
+        if ray._raylet.Config.start_python_importer_thread():
+            worker.import_thread.start()
 
     # If this is a driver running in SCRIPT_MODE, start a thread to print error
     # messages asynchronously in the background. Ideally the scheduler would
