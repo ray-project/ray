@@ -7,11 +7,11 @@ For each task, Ray will choose a node to run it and the scheduling decision is b
 
 Resources
 ---------
-Each task has the :ref:`specified resource requirements <resource-requirements>`.
+Each task has the :ref:`specified resource requirements <resource-requirements>` and requires 1 CPU by default.
 Given the specified resource requirements, a node is available (has the available resources to run the task now),
 feasible (has the resources but they are not available now)
 or infeasible (doesn't have the resources). If there are available nodes, Ray will choose one based on other factors discussed below.
-If there are no available nodes but only feasible ones, Ray will wait until resoruces are freed up and nodes become available.
+If there are no available nodes but only feasible ones, Ray will wait until resources are freed up and nodes become available.
 If all nodes are infeasible, the task cannot be scheduled until feasible nodes are added to the cluster.
 
 Placement Group
@@ -48,5 +48,35 @@ until the resource utilization is beyond a certain threshold and spread tasks af
 
 Locality-Aware Scheduling
 -------------------------
-When the scheduling strategy is "DEFAULT", Ray also prefers nodes that have task inputs locally
-to avoid transferring data over the network. Note: Locality-aware scheduling is only for tasks not actors.
+When the scheduling strategy is "DEFAULT", Ray also prefers nodes that have large task arguments locally
+to avoid transferring data over the network.
+If there are multiple large task arguments, the node with most object bytes local is preferred.
+Note: Locality-aware scheduling is only for tasks not actors.
+
+.. tabbed:: Python
+
+    .. code-block:: python
+
+    @ray.remote
+    def large_object_function():
+        # Large object is stored in the local object store
+        # and available in the distributed memory,
+        # instead of returning inline directly to the caller.
+        return [1] * (1024 * 1024)
+
+    @ray.remote
+    def small_object_function():
+        # Small object is returned inline directly to the caller,
+        # instead of storing in the distributed memory.
+        return [1]
+
+    @ray.remote
+    def consume_function(data):
+        return len(data)
+
+    # Ray will try to run consume_function on the same node where large_object_function runs.
+    consume_function.remote(large_object_function.remote())
+
+    # Ray won't consider locality for scheduling consume_function
+    # since the argument is small and will be sent to the worker node inline directly.
+    consume_function.remote(small_object_function.remote())
