@@ -1,5 +1,6 @@
 import os
 import shutil
+import sys
 import tempfile
 import time
 import unittest
@@ -585,3 +586,9 @@ class GlueTest(unittest.TestCase):
 
         # Ensure cluster was terminated
         self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
+
+
+if __name__ == "__main__":
+    import pytest
+
+    sys.exit(pytest.main(["-v", __file__]))
