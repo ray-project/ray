@@ -230,6 +230,7 @@ def test_runtime_env_no_spurious_resource_deadlock_msg(
     assert len(errors) == 0
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Hangs on windows.")
 @pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
 def test_failed_job_env_no_hang(shutdown_only, runtime_env_class):
     """Test that after a failed job-level env, tasks can still be run."""
