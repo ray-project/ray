@@ -51,9 +51,10 @@ def _repeat_tensor(t, n):
     # Insert new axis at position 1 into tensor t
     t_rep = tf.expand_dims(t, 1)
     # Repeat tensor t_rep along new axis n times
-    t_rep = tf.tile(t_rep, [1, n] + ([1] * (tf.rank(t) - 1)))
+    multiples = tf.concat([[1, 2], tf.tile([1], tf.expand_dims(tf.rank(t) - 1, 0))], 0)
+    t_rep = tf.tile(t_rep, multiples)
     # Merge new axis into batch axis
-    t_rep = tf.reshape(t_rep, tf.concat([tf.constant([-1]), tf.shape(t)[1:]], 0))
+    t_rep = tf.reshape(t_rep, tf.concat([[-1], tf.shape(t)[1:]], 0))
     return t_rep
 
 
