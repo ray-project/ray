@@ -48,9 +48,9 @@ class NodeStatus {
   absl::flat_hash_map<std::string, Array<std::shared_ptr<RaySyncMessage>>> cluster_view_;
 };
 
-class NodeSyncContext {
+class NodeSyncConnection {
  public:
-  NodeSyncContext(RaySyncer &instance,
+  NodeSyncConnection(RaySyncer &instance,
                   instrumented_io_context &io_context,
                   std::string node_id);
 
@@ -59,7 +59,7 @@ class NodeSyncContext {
   /// \param message The message to be sent.
   void PushToSendingQueue(std::shared_ptr<RaySyncMessage> message);
 
-  virtual ~NodeSyncContext() { timer_.cancel(); }
+  virtual ~NodeSyncConnection() { timer_.cancel(); }
 
   /// Return the node id of this sync context.
   const std::string &GetNodeId() const { return node_id_; }
@@ -109,9 +109,9 @@ class NodeSyncContext {
       node_versions_;
 };
 
-class ServerSyncContext : public NodeSyncContext {
+class ServerSyncConnection : public NodeSyncConnection {
  public:
-  ServerSyncContext(RaySyncer &instance,
+  ServerSyncConnection(RaySyncer &instance,
                     instrumented_io_context &io_context,
                     const std::string &node_id);
 
@@ -130,9 +130,9 @@ class ServerSyncContext : public NodeSyncContext {
   grpc::ServerUnaryReactor *unary_reactor_ = nullptr;
 };
 
-class ClientSyncContext : public NodeSyncContext {
+class ClientSyncConnection : public NodeSyncConnection {
  public:
-  ClientSyncContext(RaySyncer &instance,
+  ClientSyncConnection(RaySyncer &instance,
                     instrumented_io_context &io_context,
                     const std::string &node_id,
                     std::shared_ptr<ray::rpc::syncer::RaySyncer::Stub> stub);

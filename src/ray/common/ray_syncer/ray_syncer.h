@@ -57,7 +57,7 @@ using Array = std::array<T, kComponentArraySize>;
 
 // Forward declaration of internal structures
 class NodeStatus;
-class NodeSyncContext;
+class NodeSyncConnection;
 
 /// RaySyncer is an embedding service for component synchronization.
 class RaySyncer {
@@ -69,7 +69,7 @@ class RaySyncer {
 
   ~RaySyncer();
 
-  void Connect(std::unique_ptr<NodeSyncContext> context);
+  void Connect(std::unique_ptr<NodeSyncConnection> context);
 
   void Disconnect(const std::string &node_id);
 
@@ -97,7 +97,7 @@ class RaySyncer {
 
   instrumented_io_context &GetIOContext() { return io_context_; }
 
-  NodeSyncContext *GetSyncContext(const std::string &node_id) {
+  NodeSyncConnection *GetSyncConnection(const std::string &node_id) {
     auto iter = sync_context_.find(node_id);
     if (iter == sync_context_.end()) {
       return nullptr;
@@ -110,7 +110,7 @@ class RaySyncer {
   const std::string node_id_;
 
   /// Manage connections
-  absl::flat_hash_map<std::string, std::unique_ptr<NodeSyncContext>> sync_context_;
+  absl::flat_hash_map<std::string, std::unique_ptr<NodeSyncConnection>> sync_context_;
 
   /// The local node status
   std::unique_ptr<NodeStatus> node_status_;
@@ -128,8 +128,8 @@ class RaySyncer {
   ray::PeriodicalRunner timer_;
 };
 
-class ClientSyncContext;
-class ServerSyncContext;
+class ClientSyncConnection;
+class ServerSyncConnection;
 
 /// RaySyncerService is a service to take care of resource synchronization
 /// related operations.
@@ -147,7 +147,7 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
     // Make sure server only have one client
     RAY_CHECK(node_id_.empty());
     node_id_ = request->node_id();
-    syncer_.Connect(std::make_unique<ServerSyncContext>(
+    syncer_.Connect(std::make_unique<ServerSyncConnection>(
         syncer_, syncer_.GetIOContext(), request->node_id()));
     response->set_node_id(syncer_.GetNodeId());
     reactor->Finish(grpc::Status::OK);
@@ -161,7 +161,7 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
     syncer_.GetIOContext.post(
         [this, request = std::move(*const_cast<RaySyncMessages *>(request))]() mutable {
           auto *sync_context =
-              dynamic_cast<ServerSyncContext *>(syncer_.GetSyncContext(node_id_));
+              dynamic_cast<ServerSyncConnection *>(syncer_.GetSyncConnection(node_id_));
           if (sync_context != nullptr) {
             sync_context->ReceiveUpdate(std::move(request));
           } else {
@@ -180,7 +180,7 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
     syncer_.GetIOContext.post(
         [this, reactor, response] mutable() {
           auto *sync_context =
-              dynamic_cast<ServerSyncContext *>(syncer_.GetSyncContext(node_id_));
+              dynamic_cast<ServerSyncConnection *>(syncer_.GetSyncConnection(node_id_));
           if (sync_context != nullptr) {
             sync_context->HandleLongPollingRequest(reactor, response);
           } else {

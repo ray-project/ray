@@ -51,7 +51,7 @@ RaySyncer::~RaySyncer() {
   syncer_thread_->join();
 }
 
-void RaySyncer::Connect(std::unique_ptr<NodeSyncContext> context) {
+void RaySyncer::Connect(std::unique_ptr<NodeSyncConnection> context) {
   RAY_CHECK(sync_context_[context->GetNodeId()] == nullptr);
   RAY_CHECK(context != nullptr);
   sync_context_[context->GetNodeId()] = std::move(context);
@@ -102,7 +102,7 @@ void RaySyncer::BroadcastMessage(std::shared_ptr<RaySyncMessage> message) {
   }
 }
 
-NodeSyncContext::NodeSyncContext(RaySyncer &instance,
+NodeSyncConnection::NodeSyncConnection(RaySyncer &instance,
                                  instrumented_io_context &io_context,
                                  std::string node_id)
     : timer_(io_context),
@@ -118,7 +118,7 @@ NodeSyncContext::NodeSyncContext(RaySyncer &instance,
   });
 }
 
-void NodeSyncContext::PushToSendingQueue(std::shared_ptr<RaySyncMessage> message) {
+void NodeSyncConnection::PushToSendingQueue(std::shared_ptr<RaySyncMessage> message) {
   auto &node_versions = GetNodeComponentVersions(message->node_id());
   if (node_versions[message->component_id()] < message->version()) {
     sending_queue_.insert(message);
@@ -126,7 +126,7 @@ void NodeSyncContext::PushToSendingQueue(std::shared_ptr<RaySyncMessage> message
   }
 }
 
-std::array<uint64_t, kComponentArraySize> &NodeSyncContext::GetNodeComponentVersions(
+std::array<uint64_t, kComponentArraySize> &NodeSyncConnection::GetNodeComponentVersions(
     const std::string &node_id) {
   auto iter = node_versions_.find(node_id);
   if (iter == node_versions_.end()) {
@@ -136,12 +136,12 @@ std::array<uint64_t, kComponentArraySize> &NodeSyncContext::GetNodeComponentVers
   return iter->second;
 }
 
-ClientSyncContext::ClientSyncContext(
+ClientSyncConnection::ClientSyncConnection(
     RaySyncer &instance,
     instrumented_io_context &io_context,
     std::string node_id,
     std::shared_ptr<ray::rpc::syncer::RaySyncer::Stub> stub)
-    : NodeSyncContext(instance, io_context, std::move(node_id)), stub_(std::move(stub)) {
+    : NodeSyncConnection(instance, io_context, std::move(node_id)), stub_(std::move(stub)) {
   // Initialize the connection
   start_sync_request_.set_node_id(instance.GetNodeId());
   auto handler = stub->async();
@@ -166,7 +166,7 @@ ClientSyncContext::ClientSyncContext(
                      });
 }
 
-void RaySyncer::ClientSyncContext::StartLongPolling() {
+void RaySyncer::ClientSyncConnection::StartLongPolling() {
   // This will be a long-polling request. The node will only reply if
   //    1. there is a new version of message
   //    2. and it has passed X ms since last update.
@@ -189,7 +189,7 @@ void RaySyncer::ClientSyncContext::StartLongPolling() {
       });
 }
 
-void RaySyncer::ClientSyncContext::DoSend() {
+void RaySyncer::ClientSyncConnection::DoSend() {
   if (sending_queue_.empty()) {
     n return;
   }
@@ -223,12 +223,12 @@ void RaySyncer::ClientSyncContext::DoSend() {
       });
 }
 
-ServerSyncContext::ServerSyncContext(RaySyncer &instance,
+ServerSyncConnection::ServerSyncConnection(RaySyncer &instance,
                                      instrumented_io_context &io_context,
                                      const std::string &node_id)
-    : NodeSyncContext(instance, io_context, node_id) {}
+    : NodeSyncConnection(instance, io_context, node_id) {}
 
-void ServerSyncContext::HandleLongPollingRequest(grpc::ServerUnaryReactor *reactor,
+void ServerSyncConnection::HandleLongPollingRequest(grpc::ServerUnaryReactor *reactor,
                                                  RaySyncMessages *response) {
   RAY_CHECK(response_ == nullptr);
   RAY_CHECK(unary_reactor_ == nullptr);
@@ -237,7 +237,7 @@ void ServerSyncContext::HandleLongPollingRequest(grpc::ServerUnaryReactor *react
   response_ = response;
 }
 
-void ServerSyncContext::DoSend() {
+void ServerSyncConnection::DoSend() {
   // There is no receive request
   if (unary_reactor_ == nullptr || sending_queue_.empty()) {
     return;
