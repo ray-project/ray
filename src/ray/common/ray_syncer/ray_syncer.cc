@@ -76,7 +76,6 @@ ClientSyncConnection::ClientSyncConnection(RaySyncer &instance,
       RayConfig::instance().raylet_report_resources_period_milliseconds());
 
   StartLongPolling();
-  RAY_LOG(ERROR) << "ClientSyncConnection::DONE";
 }
 
 void ClientSyncConnection::StartLongPolling() {
@@ -103,7 +102,6 @@ void ClientSyncConnection::StartLongPolling() {
 }
 
 void ClientSyncConnection::DoSend() {
-  RAY_LOG(ERROR) << "DoSend";
   if (sending_queue_.empty()) {
     return;
   }
@@ -144,7 +142,6 @@ ServerSyncConnection::ServerSyncConnection(RaySyncer &instance,
   timer_.RunFnPeriodically(
       [this]() { DoSend(); },
       RayConfig::instance().raylet_report_resources_period_milliseconds());
-  RAY_LOG(ERROR) << "ServerSyncConnection::DONE";
 }
 
 void ServerSyncConnection::HandleLongPollingRequest(grpc::ServerUnaryReactor *reactor,
@@ -268,7 +265,6 @@ grpc::ServerUnaryReactor *RaySyncerService::StartSync(
   node_id_ = request->node_id();
   syncer_.GetIOContext().post(
       [this, response, reactor]() {
-        RAY_LOG(ERROR) << "SyncStarted!!!";
         syncer_.Connect(std::make_unique<ServerSyncConnection>(
             syncer_, syncer_.GetIOContext(), node_id_));
         response->set_node_id(syncer_.GetNodeId());
