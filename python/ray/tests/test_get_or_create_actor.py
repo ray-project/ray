@@ -42,7 +42,8 @@ class Actor:
 
 @ray.remote
 def getter(name):
-    actor = Actor.options(name="foo", lifetime="detached", namespace="n").get_or_create()
+    actor = Actor.options(
+        name="foo", lifetime="detached", namespace="n").get_or_create()
     ray.get(actor.ping.remote())
 
 
