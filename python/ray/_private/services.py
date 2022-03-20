@@ -95,12 +95,7 @@ def _get_gcs_client_options(redis_address, redis_password, gcs_server_address):
 
 
 def get_dashboard_url(address, password=ray_constants.REDIS_DEFAULT_PASSWORD):
-    # Retrieve the dashboard url
-    if not use_gcs_for_bootstrap():
-        redis_client = ray._private.services.create_redis_client(address, password)
-        gcs_client = GcsClient.create_from_redis(redis_client)
-    else:
-        gcs_client = GcsClient(address=address)
+    gcs_client = GcsClient(address=address)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     dashboard_url = None
     for _ in range(200):
