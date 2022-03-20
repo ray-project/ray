@@ -29,7 +29,8 @@ Actor supports ``scheduling_strategy`` option to specify the strategy used to de
 Currently the supported strategy is "DEFAULT".
 "DEFAULT" is the default strategy used by Ray. With the current implementation, Ray will try to pack actors on nodes
 until the resource utilization is beyond a certain threshold and spread actors afterwards.
-Currently Ray handles actors that don't require any resources specially by randomly choosing a node in the cluster without considering resource utilization
+Currently Ray handles actors that don't require any resources specially by randomly choosing a node in the cluster without considering resource utilization.
+Since nodes are randomly chosen, actors that don't require any resources are spreaded across the cluster.
 
 .. tabbed:: Python
 
