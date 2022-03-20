@@ -199,18 +199,19 @@ void RaySyncer::Connect(std::shared_ptr<grpc::Channel> channel) {
   auto response = std::make_shared<StartSyncResponse>();
 
   auto client_context = std::make_shared<grpc::ClientContext>();
-  stub->async()->StartSync(client_context.get(),
-                  request.get(),
-                  response.get(),
-                  [this, channel, response, client_context](grpc::Status status) {
-                    io_context_.post(
-                        [this, channel, response]() {
-                          auto connection = std::make_unique<ClientSyncConnection>(
-                              *this, io_context_, response->node_id(), channel);
-                          Connect(std::move(connection));
-                        },
-                        "StartSyncCallback");
-                  });
+  stub->async()->StartSync(
+      client_context.get(),
+      request.get(),
+      response.get(),
+      [this, channel, response, client_context](grpc::Status status) {
+        io_context_.post(
+            [this, channel, response]() {
+              auto connection = std::make_unique<ClientSyncConnection>(
+                  *this, io_context_, response->node_id(), channel);
+              Connect(std::move(connection));
+            },
+            "StartSyncCallback");
+      });
 }
 
 void RaySyncer::Connect(std::unique_ptr<NodeSyncConnection> connection) {
@@ -219,7 +220,8 @@ void RaySyncer::Connect(std::unique_ptr<NodeSyncConnection> connection) {
 }
 
 void RaySyncer::Disconnect(const std::string &node_id) {
-  io_context_.post([this, node_id]() { sync_connections_.erase(node_id); }, "RaySyncerDisconnect");
+  io_context_.post([this, node_id]() { sync_connections_.erase(node_id); },
+                   "RaySyncerDisconnect");
 }
 
 void RaySyncer::Register(RayComponentId component_id,

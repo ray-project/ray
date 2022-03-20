@@ -61,7 +61,7 @@ class NodeSyncConnection;
 
 /// RaySyncer is an embedding service for component synchronization.
 /// All operations in this class needs to be finished GetIOContext()
-/// for thread-safety. 
+/// for thread-safety.
 class RaySyncer {
  public:
   /// Constructor of RaySyncer
