@@ -164,7 +164,7 @@ class Tuner:
                 raise TuneError(
                     f"Tune run failed."
                     f'Please use tuner = Tuner.restore("'
-                    f'{self._local_tuner.experiment_checkpoint_dir}") to resume.'
+                    f'{self._local_tuner.experiment_checkpoint_dir()}") to resume.'
                 ) from e
         else:
             experiment_checkpoint_dir = ray.get(
@@ -176,5 +176,5 @@ class Tuner:
                 raise TuneError(
                     f"Tune run failed."
                     f'Please use tuner = Tuner.restore("'
-                    f'{experiment_checkpoint_dir}") to resume.'
+                    f'{experiment_checkpoint_dir()}") to resume.'
                 ) from e
