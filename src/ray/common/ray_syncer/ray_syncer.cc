@@ -3,7 +3,6 @@
 #include "ray/common/ray_config.h"
 namespace ray {
 namespace syncer {
-namespace details {
 
 void NodeStatus::SetComponents(RayComponentId cid,
                                const ReporterInterface *reporter,
@@ -199,7 +198,6 @@ void ServerSyncConnection::DoSend() {
     response_ = nullptr;
   }
 }
-}  // namespace details
 
 RaySyncer::RaySyncer(const std::string &node_id)
     : node_id_(node_id),
@@ -214,6 +212,11 @@ RaySyncer::RaySyncer(const std::string &node_id)
 RaySyncer::~RaySyncer() {
   io_context_.stop();
   syncer_thread_->join();
+}
+
+std::unique_ptr<NodeSyncConnection> RaySyncer::Connect(const std::string& node_id, std::shared_ptr<grpc::Channel> channel) {
+  auto stub = ray::rpc::syncer::RaySyncer::NewStub(channel);
+  auto connection = std::make_unique<ServerSyncConnection>()  
 }
 
 void RaySyncer::Connect(std::unique_ptr<NodeSyncConnection> context) {

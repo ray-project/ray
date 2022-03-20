@@ -69,7 +69,20 @@ class RaySyncer {
 
   ~RaySyncer();
 
-  void Connect(std::unique_ptr<NodeSyncConnection> context);
+  /// Connect to a node.
+  /// TODO (iycheng): Introduce grpc channel pool and use node_id
+  /// for the connection.
+  ///
+  /// \param connection The connection to the remote node.
+  void Connect(std::unique_ptr<NodeSyncConnection> connection);
+
+  /// Connect to a node.
+  /// TODO (iycheng): Introduce grpc channel pool and use node_id
+  /// for the connection.
+  ///
+  /// \param connection The connection to the remote node.  
+  void Connect(const std::string& node_id, std::shared_ptr<grpc::Channel> channel);
+
 
   void Disconnect(const std::string &node_id);
 
@@ -107,6 +120,7 @@ class RaySyncer {
   }
 
  private:
+
   /// The current node id.
   const std::string node_id_;
 
