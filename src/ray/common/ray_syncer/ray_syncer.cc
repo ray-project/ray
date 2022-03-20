@@ -14,7 +14,7 @@ void NodeStatus::SetComponents(RayComponentId cid,
   receivers_[cid] = receiver;
 }
 
-std::optional<RaySyncMessage> NodeStatus::GetSnapshot(RayComponentId cid) const {
+std::optional<RaySyncMessage> NodeStatus::GetSnapshot(RayComponentId cid) {
   if (reporters_[cid] == nullptr) {
     return std::nullopt;
   }
@@ -76,8 +76,8 @@ std::array<uint64_t, kComponentArraySize> &NodeSyncConnection::GetNodeComponentV
 ClientSyncConnection::ClientSyncConnection(
     RaySyncer &instance,
     instrumented_io_context &io_context,
-    std::string node_id,
-    std::shared_ptr<ray::rpc::syncer::RaySyncer::Stub> stub)
+    const std::string &node_id,
+    std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub)
     : NodeSyncConnection(instance, io_context, std::move(node_id)),
       stub_(std::move(stub)) {
   // Initialize the connection
@@ -104,7 +104,7 @@ ClientSyncConnection::ClientSyncConnection(
                      });
 }
 
-void RaySyncer::ClientSyncConnection::StartLongPolling() {
+void ClientSyncConnection::StartLongPolling() {
   // This will be a long-polling request. The node will only reply if
   //    1. there is a new version of message
   //    2. and it has passed X ms since last update.
@@ -127,9 +127,9 @@ void RaySyncer::ClientSyncConnection::StartLongPolling() {
       });
 }
 
-void RaySyncer::ClientSyncConnection::DoSend() {
+void ClientSyncConnection::DoSend() {
   if (sending_queue_.empty()) {
-    n return;
+    return;
   }
 
   auto client_context = std::make_shared<grpc::ClientContext>();
@@ -214,9 +214,14 @@ RaySyncer::~RaySyncer() {
   syncer_thread_->join();
 }
 
-std::unique_ptr<NodeSyncConnection> RaySyncer::Connect(const std::string& node_id, std::shared_ptr<grpc::Channel> channel) {
+void RaySyncer::Connect(const std::string& node_id, std::shared_ptr<grpc::Channel> channel) {
   auto stub = ray::rpc::syncer::RaySyncer::NewStub(channel);
-  auto connection = std::make_unique<ServerSyncConnection>()  
+  auto connection = std::make_unique<ClientSyncConnection>(
+    *this,
+    io_context_,
+    node_id,
+    std::move(stub)
+  );
 }
 
 void RaySyncer::Connect(std::unique_ptr<NodeSyncConnection> context) {
@@ -233,7 +238,7 @@ void RaySyncer::Register(RayComponentId component_id,
                          const ReporterInterface *reporter,
                          ReceiverInterface *receiver,
                          int64_t pull_from_reporter_interval_ms) {
-  node_status_->SetComponents(cid, reporter, receiver);
+  node_status_->SetComponents(component_id, reporter, receiver);
 
   // Set job to pull from reporter periodically
   if (reporter != nullptr) {
@@ -269,7 +274,7 @@ void RaySyncer::BroadcastMessage(std::shared_ptr<RaySyncMessage> message) {
 grpc::ServerUnaryReactor *RaySyncerService::StartSync(
     grpc::CallbackServerContext *context,
     const StartSyncRequest *request,
-    StartSyncResponse *response) override {
+    StartSyncResponse *response) {
   auto *reactor = context->DefaultReactor();
   // Make sure server only have one client
   RAY_CHECK(node_id_.empty());
@@ -283,7 +288,7 @@ grpc::ServerUnaryReactor *RaySyncerService::StartSync(
 
 grpc::ServerUnaryReactor *RaySyncerService::Update(grpc::CallbackServerContext *context,
                                                    const RaySyncMessages *request,
-                                                   DummyResponse *) override {
+                                                   DummyResponse *) {
   auto *reactor = context->DefaultReactor();
   syncer_.GetIOContext().post(
       [this, request = std::move(*const_cast<RaySyncMessages *>(request))]() mutable {
@@ -303,10 +308,10 @@ grpc::ServerUnaryReactor *RaySyncerService::Update(grpc::CallbackServerContext *
 grpc::ServerUnaryReactor *RaySyncerService::LongPolling(
     grpc::CallbackServerContext *context,
     const DummyRequest *,
-    RaySyncMessages *response) override {
+    RaySyncMessages *response) {
   auto *reactor = context->DefaultReactor();
   syncer_.GetIOContext().post(
-      [this, reactor, response] mutable() {
+      [this, reactor, response] () mutable {
         auto *sync_context =
             dynamic_cast<ServerSyncConnection *>(syncer_.GetSyncConnection(node_id_));
         if (sync_context != nullptr) {

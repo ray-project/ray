@@ -1,6 +1,6 @@
 namespace ray {
 namespace syncer {
-namespace details {
+
 /// NodeStatus keeps track of the modules in the local nodes.
 /// It contains the local components for receiving and reporting.
 /// It also keeps the raw messages receivers got.
@@ -24,7 +24,7 @@ class NodeStatus {
   /// \param cid The component id to take the snapshot.
   ///
   /// \return If a snapshot is taken, return the message, otherwise std::nullopt.
-  std::optional<RaySyncMessage> GetSnapshot(RayComponentId cid) const;
+  std::optional<RaySyncMessage> GetSnapshot(RayComponentId cid);
 
   /// Consume a message. Receiver will consume this message if it doesn't have
   /// this message.
@@ -133,7 +133,7 @@ class ClientSyncConnection : public NodeSyncConnection {
   ClientSyncConnection(RaySyncer &instance,
                        instrumented_io_context &io_context,
                        const std::string &node_id,
-                       std::shared_ptr<ray::rpc::syncer::RaySyncer::Stub> stub);
+                       std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub);
 
  protected:
   void DoSend() override;
@@ -142,7 +142,7 @@ class ClientSyncConnection : public NodeSyncConnection {
   void StartLongPolling();
 
   /// Stub for this connection.
-  std::shared_ptr<ray::rpc::syncer::RaySyncer::Stub> stub_;
+  std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub_;
   ray::rpc::syncer::RaySyncMessages in_message_;
   StartSyncRequest start_sync_request_;
   StartSyncResponse start_sync_response_;
@@ -150,6 +150,5 @@ class ClientSyncConnection : public NodeSyncConnection {
   DummyRequest dummy_;
 };
 
-}  // namespace details
 }  // namespace syncer
 }  // namespace ray
