@@ -214,14 +214,11 @@ RaySyncer::~RaySyncer() {
   syncer_thread_->join();
 }
 
-void RaySyncer::Connect(const std::string& node_id, std::shared_ptr<grpc::Channel> channel) {
+void RaySyncer::Connect(const std::string &node_id,
+                        std::shared_ptr<grpc::Channel> channel) {
   auto stub = ray::rpc::syncer::RaySyncer::NewStub(channel);
   auto connection = std::make_unique<ClientSyncConnection>(
-    *this,
-    io_context_,
-    node_id,
-    std::move(stub)
-  );
+      *this, io_context_, node_id, std::move(stub));
 }
 
 void RaySyncer::Connect(std::unique_ptr<NodeSyncConnection> context) {
@@ -311,7 +308,7 @@ grpc::ServerUnaryReactor *RaySyncerService::LongPolling(
     RaySyncMessages *response) {
   auto *reactor = context->DefaultReactor();
   syncer_.GetIOContext().post(
-      [this, reactor, response] () mutable {
+      [this, reactor, response]() mutable {
         auto *sync_context =
             dynamic_cast<ServerSyncConnection *>(syncer_.GetSyncConnection(node_id_));
         if (sync_context != nullptr) {
