@@ -37,12 +37,14 @@ until the resource utilization is beyond a certain threshold and spread tasks af
 
         # If unspecified, "DEFAULT" scheduling strategy is used.
         default_function.remote()
+
         # Explicitly set scheduling strategy to "DEFAULT".
         default_function.options(scheduling_strategy="DEFAULT").remote()
 
         @ray.remote(scheduling_strategy="SPREAD")
         def spread_function():
             return 2
+
         # Spread tasks across the cluster.
         [spread_function.remote() for i in range(100)]
 
