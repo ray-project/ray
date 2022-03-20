@@ -23,7 +23,11 @@ message RaySyncMessages {
   repeated RaySyncMessage sync_messages = 1;
 }
 
-message SyncMeta {
+message StartSyncRequest {
+  bytes node_id = 1;
+}
+
+message StartSyncResponse {
   bytes node_id = 1;
 }
 
@@ -39,12 +43,12 @@ service RaySyncer {
 
   // This is the first message that should be sent. It will initialize
   // some structure between nodes.
-  rpc StartSync(SyncMeta) returns (SyncMeta);
+  rpc StartSync(StartSyncRequest) returns (StartSyncResponse);
 
   // These two RPCs are for messages reporting and broadcasting.
-  // Update is used by GCS to send update request to Raylet.
+  // Update is used by the client to send update request to the server.
   rpc Update(RaySyncMessages) returns (DummyResponse);
 
-  // LongPolling is used by GCS to get updated message from Raylet.
+  // LongPolling is used by the server to send request to the client.
   rpc LongPolling(DummyRequest) returns (RaySyncMessages);
 }

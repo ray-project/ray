@@ -11,7 +11,7 @@
 
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
-#include "ray/common/ray_syncer.h"
+#include "ray/common/ray_syncer/ray_syncer.h"
 using namespace std;
 using namespace ray::syncer;
 
@@ -40,7 +40,6 @@ class LocalNode : public ReporterInterface {
       return std::nullopt;
     }
     ray::rpc::syncer::RaySyncMessage msg;
-    msg.set_message_type(ray::rpc::syncer::RaySyncMessageType::BROADCAST);
     msg.set_component_id(ray::rpc::syncer::RayComponentId::RESOURCE_MANAGER);
     msg.set_version(version_);
     msg.set_sync_message(
@@ -59,6 +58,7 @@ class LocalNode : public ReporterInterface {
 class RemoteNodes : public ReceiverInterface {
  public:
   RemoteNodes() {}
+  bool NeedBroadcast() const override { return true; }
   void Update(std::shared_ptr<ray::rpc::syncer::RaySyncMessage> msg) override {
     int version = msg->version();
     int state = *reinterpret_cast<const int *>(msg->sync_message().data());

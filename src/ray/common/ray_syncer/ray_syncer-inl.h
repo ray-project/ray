@@ -22,12 +22,9 @@ class NodeStatus {
   /// Get the snapshot of a component for a newer version.
   ///
   /// \param cid The component id to take the snapshot.
-  /// \param version_after Snapshot will only be taken if its version is newer than
-  /// `version_after`
   ///
   /// \return If a snapshot is taken, return the message, otherwise std::nullopt.
-  std::optional<RaySyncMessage> GetSnapshot(RayComponentId cid,
-                                            uint64_t version_after) const;
+  std::optional<RaySyncMessage> GetSnapshot(RayComponentId cid) const;
 
   /// Consume a message. Receiver will consume this message if it doesn't have
   /// this message.
@@ -42,6 +39,8 @@ class NodeStatus {
   Array<const ReporterInterface *> reporters_ = {nullptr};
   Array<ReceiverInterface *> receivers_ = {nullptr};
 
+  /// This fields records the version of the snapshot that has been taken.
+  Array<uint64_t> snapshots_taken_ = {0};
   /// Keep track of the latest messages received.
   /// Use shared pointer for easier liveness management since these messages might be
   /// sending via rpc.
@@ -68,13 +67,12 @@ class NodeSyncConnection {
   ///
   /// \param messages The message received.
   void ReceiveUpdate(RaySyncMessages messages) {
-    RAY_CHECK(messages.node_id() == node_id_);
     for (auto &message : *messages.mutable_sync_messages()) {
       auto &node_versions = GetNodeComponentVersions(message.node_id());
       if (node_versions[message.component_id()] < message.version()) {
         node_versions[message.component_id()] = message.version();
       }
-      instance_.Update(std::move(message));
+      instance_.BroadcastMessage(std::make_shared<RaySyncMessage>(std::move(message)));
     }
   }
 
@@ -146,8 +144,8 @@ class ClientSyncConnection : public NodeSyncConnection {
   /// Stub for this connection.
   std::shared_ptr<ray::rpc::syncer::RaySyncer::Stub> stub_;
   ray::rpc::syncer::RaySyncMessages in_message_;
-  SyncMeta start_sync_request_;
-  SyncMeta start_sync_response_;
+  StartSyncRequest start_sync_request_;
+  StartSyncResponse start_sync_response_;
   bool connection_created_ = false;
   DummyRequest dummy_;
 };
