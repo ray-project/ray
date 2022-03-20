@@ -5,6 +5,8 @@ import ray.dashboard.modules.log.log_utils as log_utils
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.datacenter import DataSource, GlobalSignals
+from ray import ray_constants
+import asyncio
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
@@ -37,7 +39,6 @@ class LogHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/log_index")
     async def get_log_index(self, req) -> aiohttp.web.Response:
-        all_node_details = await DataOrganizer.get_all_node_details()
         url_list = []
         agent_ips = []
         for node_id, ports in DataSource.agents.items():
@@ -111,71 +112,155 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         # We disable auto_decompress when forward / proxy log url.
         self._proxy_session = aiohttp.ClientSession(auto_decompress=False)
         log_utils.register_mimetypes()
+        self._stubs = {}
+        DataSource.agents.signal.append(self._update_stubs)
+
+    async def _update_stubs(self, change):
+        if change.old:
+            node_id, _ = change.old
+            ip = DataSource.node_id_to_ip[node_id]
+            self._stubs.pop(ip)
+        if change.new:
+            node_id, ports = change.new
+            ip = DataSource.node_id_to_ip[node_id]
+
+            # options = (("grpc.enable_http_proxy", 0),)
+            # channel = ray._private.utils.init_grpc_channel(
+            #     f"{ip}:{ports[1]}", options=options, asynchronous=True
+            # )
+            # stub = reporter_pb2_grpc.ReporterServiceStub(channel)
+
+            # Add HTTP address
+            self._stubs[ip] = {"node_id": node_id, "address": f"http://{ip}:{ports[0]}"}
+
+    @staticmethod
+    async def get_logs_json_index(node_info, filters):
+        import requests
+
+        addr = node_info["address"]
+        log_html = requests.get(f"{addr}/logs").text
+
+        def get_link(s):
+            s = s[len('<li><a href="/logs/') :]
+            path = s[: s.find('"')]
+            return path
+
+        filters = [] if filters == [''] else filters
+
+        filtered = list(
+            filter(
+                lambda s: '<li><a href="/logs/' in s and all(f in s for f in filters),
+                log_html.splitlines(),
+            )
+        )
+        links = list(map(get_link, filtered))
+        logs = {}
+        logs["worker_errors"] = list(
+            filter(lambda s: "worker" in s and s.endswith(".err"), links)
+        )
+        logs["worker_outs"] = list(
+            filter(lambda s: "worker" in s and s.endswith(".out"), links)
+        )
+        for lang in ray_constants.LANGUAGE_WORKER_TYPES:
+            logs[f"{lang}_core_worker_logs"] = list(
+                filter(
+                    lambda s: f"{lang}-core-worker" in s and s.endswith(".log"),
+                    links,
+                )
+            )
+            logs[f"{lang}_driver_logs"] = list(
+                filter(
+                    lambda s: f"{lang}-core-driver" in s and s.endswith(".log"),
+                    links,
+                )
+            )
+        logs["dashboard"] = list(filter(lambda s: "dashboard" in s, links))
+        logs["raylet_logs"] = list(filter(lambda s: "raylet" in s, links))
+        logs["gcs_logs"] = list(filter(lambda s: "gcs" in s, links))
+        logs["ray_client"] = list(filter(lambda s: "ray_client" in s, links))
+        logs["autoscaler_monitor"] = list(
+            filter(lambda s: "monitor" in s and "log_monitor" not in s, links)
+        )
+        logs["folders"] = list(filter(lambda s: "." not in s, links))
+        logs["misc"] = list(
+            filter(lambda s: all([s not in logs[k] for k in logs]), links)
+        )
+        return logs
 
     @routes.get("/v1/api/logs/index")
     @dashboard_optional_utils.aiohttp_cache
     async def handle_log_index(self, req):
-        import requests
-        from ray.dashboard.datacenter import DataSource, DataOrganizer
-        nodes = await DataOrganizer.get_all_node_details()
+        node_id = req.query.get("node_id", None)
+        filters = req.query.get("filters", "").split(",")
         response = {}
-        for node in nodes:
-            log_url = node["logUrl"]
-            id = node["raylet"]["nodeId"],
-            log_html = requests.get(f"{log_url}").text
-
-            def get_link(s):
-                s = s[len('<li><a href="/logs/') :]
-                path = s[: s.find('"')]
-                return path
-
-            filtered = list(
-                filter(
-                    lambda s: '<li><a href="/logs/' in s,
-                    log_html.splitlines(),
+        while self._stubs == {}:
+            await asyncio.sleep(0.5)
+        for node_info in self._stubs.values():
+            if node_id is None or (node_id and node_id == node_info["node_id"]):
+                response[node_info["node_id"]] = await self.get_logs_json_index(
+                    node_info, filters
                 )
-            )
-            links = list(map(get_link, filtered))
-            response[id] = links
-
-        # response["node_infos"] = list(all_node_details)
-        # for k, v in nodes:
-        #     response[k] = v
-        # response = {}
-        # for k, v in req.query.items():
-        #     response[k] = v
-        # response["node_id"] = req.match_info.get('node_id', None)
-        return aiohttp.web.json_response(response)
-
-    @routes.get("/v1/api/logs/index/{node_id}")
-    async def handle_log_index_by_node_id(self, req):
-        import requests
-        response = {}
-        for k, v in req.query.items():
-            response[k] = v
-        response["node_id"] = req.match_info.get('node_id', None)
         return aiohttp.web.json_response(response)
 
     @routes.get("/v1/api/logs/file/{node_id}/{log_file_name}")
     async def handle_get_log(self, req):
-        response = {}
-        for k, v in req.query.items():
-            response[k] = v
-        response["node_id"] = req.match_info.get('node_id', None)
-        if response["node_id"] is not None:
-            response["log_file_name"] = req.match_info.get('log_file_name', None)
-        # component = req.query["component"]
-        # lines = req.query["lines"]
-        # grpc.get_log_lines(lines=lines)
-        return aiohttp.web.json_response(response)
+        node_id = req.match_info.get("node_id", None)
+        log_file_name = req.match_info.get("log_file_name", None)
+        while self._stubs == {}:
+            await asyncio.sleep(0.5)
+        matches = list(
+            filter(lambda info: node_id == info["node_id"], self._stubs.values())
+        )
+        if len(matches) != 1:
+            raise aiohttp.web.HTTPNotFound()
+        addr = matches[0]["address"]
+        import requests
 
+        return aiohttp.web.Response(
+            text=requests.get(
+                f"{addr}/v1/api/logs/agent/file/{log_file_name}?{req.query_string}"
+            ).text
+        )
+
+    # This creates a websocket session which first sends ?lines=x lines from
+    # end of log file
+    #
+    # Subsequently, log file is polled periodically by agent and new bytes are streamed.
     @routes.get("/v1/api/logs/stream/{node_id}/{log_file_name}")
     async def handle_stream_log(self, req):
-        return aiohttp.web.json_response({})
+        node_id = req.match_info.get("node_id", None)
+        log_file_name = req.match_info.get("log_file_name", None)
+        while self._stubs == {}:
+            await asyncio.sleep(0.5)
+
+        matches = list(
+            filter(lambda info: node_id == info["node_id"], self._stubs.values())
+        )
+        if len(matches) != 1:
+            raise aiohttp.web.HTTPNotFound()
+        addr = matches[0]["address"]
+
+        ws = aiohttp.web.WebSocketResponse()
+        await ws.prepare(req)
+
+        async with aiohttp.ClientSession(auto_decompress=False) as session:
+            ws_client = await session.ws_connect(
+                f"{addr}/v1/api/logs/agent/stream/{log_file_name}?{req.query_string}"
+            )
+
+            while True:
+                msg = await ws_client.receive()
+                if msg.type != aiohttp.WSMsgType.BINARY:
+                    await ws.send_str("Data could not be read from agent")
+                    break
+                asyncio.sleep(0.5)
+                await ws.send_bytes(msg.data)
+        return ws
 
     async def run(self, server):
         pass
 
     @staticmethod
     def is_minimal_module():
+        return False
         return False

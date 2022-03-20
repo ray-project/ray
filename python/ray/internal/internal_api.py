@@ -258,12 +258,8 @@ def ray_nodes(node_id: str, node_ip: str, debug=False):
         ]
     parsed_node_info = []
     state = GlobalState()
-    if use_gcs_for_bootstrap():
-        options = GcsClientOptions.from_gcs_address(gcs_addr)
-    else:
-        options = GcsClientOptions.from_redis_address(
-            gcs_addr, ray_constants.REDIS_DEFAULT_PASSWORD
-        )
+    options = GcsClientOptions.from_gcs_address(gcs_addr)
+
     state._initialize_global_state(options)
     resources = state._available_resources_per_node()
     for node in nodes:
@@ -325,48 +321,41 @@ def ray_log(
     """Return the `limit` number of lines of logs."""
     import requests
 
-    dashboard_url = _get_dashboard_url()
+    api_server_url = _get_dashboard_url()
     nodes = ray_nodes(node_id, ip_address, debug=True)
     if len(nodes) > 0:
         log_url = nodes[0]["logUrl"]
+        node_id = nodes[0]["id"]
     else:
         node_id_str = f"Input Node ID: {node_id}. " if node_id else ""
         addr_str = f"Input IP Address: {ip_address}. " if ip_address else ""
         raise Exception(f"Could not find node. {node_id_str}{addr_str}")
-    log_html = requests.get(f"{dashboard_url}/log_proxy?url={log_url}").text
+    filters_query = ",".join(filters)
+    logs_dict = json.loads(requests.get(
+        f"{api_server_url}/v1/api/logs/index?node_id={node_id}&filters={filters_query}").text)
+    return api_server_url, logs_dict
 
-    def get_link(s):
-        s = s[len('<li><a href="/logs/') :]
-        path = s[: s.find('"')]
-        s = f"{dashboard_url}/log_proxy?url={log_url}/{path}"
-        return s
 
-    logs = {}
-    filtered = list(
-        filter(
-            lambda s: '<li><a href="/logs/' in s
-            and (len(filters) == 0 or any([f in s for f in filters])),
-            log_html.splitlines(),
-        )
-    )
-    links = list(map(get_link, filtered))
-    logs["worker_errors"] = list(
-        filter(lambda s: "worker" in s and s.endswith(".err"), links)
-    )
-    logs["worker_outs"] = list(
-        filter(lambda s: "worker" in s and s.endswith(".out"), links)
-    )
-    for lang in ray_constants.LANGUAGE_WORKER_TYPES:
-        logs[f"{lang}_core_worker_logs"] = list(
-            filter(lambda s: f"{lang}-core-worker" in s and s.endswith(".log"), links)
-        )
-        logs[f"{lang}_driver_logs"] = list(
-            filter(lambda s: f"{lang}-core-driver" in s and s.endswith(".log"), links)
-        )
-    logs["raylet_logs"] = list(filter(lambda s: "raylet" in s, links))
-    logs["gcs_logs"] = list(filter(lambda s: "gcs" in s, links))
-    logs["misc"] = list(filter(lambda s: all([s not in logs[k] for k in logs]), links))
-    return logs
+# def ray_stream_log(
+#
+# ):
+#     import aiohttp
+#     import asyncio
+#     import sys
+#
+#     async def main():
+#         session = aiohttp.ClientSession()
+#
+#         print("connecting", sys.argv[1])
+#         ws = await session.ws_connect(sys.argv[1])
+#
+#         print("connected")
+#         for i in range(1000):
+#             msg = await ws.receive(1)
+#
+#             print(msg.data.decode("utf-8"))
+#             await asyncio.sleep(0.5)
+#     asyncio.run(main())
 
 
 def ray_actor_log(actor_id):
