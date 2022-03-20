@@ -81,7 +81,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                 'episodes'. Specifies how experiences are stored. If they
                 are stored in episodes, replay_sequence_length is ignored.
             learning_starts: Number of timesteps after which a call to
-                `replay()` will yield samples (before that, `replay()` will
+                `sample()` will yield samples (before that, `sample()` will
                 return None).
             capacity: Max number of total timesteps in all policy buffers.
                 After reaching this number, older samples will be
@@ -169,6 +169,24 @@ class MultiAgentReplayBuffer(ReplayBuffer):
     def __len__(self) -> int:
         """Returns the number of items currently stored in this buffer."""
         return sum(len(buffer._storage) for buffer in self.replay_buffers.values())
+
+    @ExperimentalAPI
+    def replay(self, num_items: int = None, **kwargs) -> Optional[SampleBatchType]:
+        """Deprecated in favor of new ReplayBuffer API.
+
+        This replay method retains compatibility with
+        deprecated kind of usage of this class.
+        """
+        if log_once("deprecated_replay_method"):
+            logger.info(
+                "ReplayBuffer method MultiAgentReplayBuffer.replay() is "
+                "deprecated in favor of the new ReplayBuffer API. Use "
+                "MultiAgentReplayBuffer.sample() instead."
+            )
+
+        if num_items is None:
+            num_items = self.replay_batch_size
+        return self.sample(num_items, **kwargs)
 
     @ExperimentalAPI
     @override(ReplayBuffer)
@@ -262,7 +280,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         kwargs = merge_dicts_with_warning(self.underlying_buffer_call_args, kwargs)
 
         if self._num_added < self.replay_starts:
-            return None
+            return MultiAgentBatch({}, 0)
         with self.replay_timer:
             # Lockstep mode: Sample from all policies at the same time an
             # equal amount of steps.

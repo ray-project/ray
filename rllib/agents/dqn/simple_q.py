@@ -15,19 +15,40 @@ from typing import Optional, Type
 from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
 from ray.rllib.agents.dqn.simple_q_torch_policy import SimpleQTorchPolicy
 from ray.rllib.agents.trainer import Trainer, with_common_config
+from ray.rllib.utils.metrics import SYNCH_WORKER_WEIGHTS_TIMER
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
-from ray.rllib.execution.rollout_ops import ParallelRollouts
+from ray.rllib.execution.rollout_ops import (
+    ParallelRollouts,
+    synchronous_parallel_sample,
+)
 from ray.rllib.execution.train_ops import (
-    MultiGPUTrainOneStep,
     TrainOneStep,
+    MultiGPUTrainOneStep,
+    train_one_step,
+    multi_gpu_train_one_step,
+)
+from ray.rllib.execution.train_ops import (
     UpdateTargetNetwork,
 )
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.metrics import (
+    NUM_ENV_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_SAMPLED,
+)
+from ray.rllib.utils.typing import (
+    ResultDict,
+    TrainerConfigDict,
+)
+from ray.rllib.execution.common import (
+    LAST_TARGET_UPDATE_TS,
+    NUM_TARGET_UPDATES,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,9 +85,18 @@ DEFAULT_CONFIG = with_common_config({
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
     "buffer_size": DEPRECATED_VALUE,
+    # Use the new ReplayBuffer API here
+    "_replay_buffer_api": True,
+    # Deprecated for Simple Q because of new ReplayBuffer API
+    # Use MultiAgentPrioritizedReplayBuffer for prioritization.
+    "prioritized_replay": DEPRECATED_VALUE,
     "replay_buffer_config": {
         "type": "MultiAgentReplayBuffer",
         "capacity": 50000,
+        "replay_batch_size": 32,
+        # The number of contiguous environment steps to replay at once. This
+        # may be set to greater than 1 to support recurrent models.
+        "replay_sequence_length": 1,
     },
     # Set this to True, if you want the contents of your buffer(s) to be
     # stored in any saved checkpoints as well.
@@ -76,9 +106,6 @@ DEFAULT_CONFIG = with_common_config({
     # - This is False AND restoring from a checkpoint that does contain
     #   buffer data.
     "store_buffer_in_checkpoints": False,
-    # The number of contiguous environment steps to replay at once. This may
-    # be set to greater than 1 to support recurrent models.
-    "replay_sequence_length": 1,
 
     # === Optimization ===
     # Learning rate for adam optimizer
@@ -108,6 +135,12 @@ DEFAULT_CONFIG = with_common_config({
     "num_workers": 0,
     # Prevent reporting frequency from going lower than this time span.
     "min_time_s_per_reporting": 1,
+
+    # Experimental flag.
+    # If True, the execution plan API will not be used. Instead,
+    # a Trainer's `training_iteration` method will be called as-is each
+    # training iteration.
+    "_disable_execution_plan_api": True,
 })
 # __sphinx_doc_end__
 # fmt: on
@@ -139,7 +172,9 @@ class SimpleQTrainer(Trainer):
                     " used at the same time!"
                 )
 
-        if config.get("prioritized_replay"):
+        if config.get("prioritized_replay") or config.get(
+            "replay_buffer_config", {}
+        ).get("prioritized_replay"):
             if config["multiagent"]["replay_mode"] == "lockstep":
                 raise ValueError(
                     "Prioritized replay is not supported when replay_mode=lockstep."
@@ -215,3 +250,82 @@ class SimpleQTrainer(Trainer):
         )
 
         return StandardMetricsReporting(train_op, workers, config)
+
+    @ExperimentalAPI
+    def training_iteration(self) -> ResultDict:
+        """Simple Q training iteration function.
+
+        This replicates Simple Q's execution_plan behaviour, e.g.:
+        - For every time we (1) sample (MultiAgentBatch) from workers...
+            - (2) Sample training batch (MultiAgentBatch) from replay buffer.
+            - (3) Learn on training batch.
+            - (4) Update target network every target_network_update_freq steps.
+        - (5) Concatenate freshly collected samples.
+        - (6) Store new samples in replay buffer.
+        - (7) Return all collected metrics for the iteration.
+
+        Returns:
+            The results dict from executing the training iteration.
+        """
+        batch_size = self.config["train_batch_size"]
+        local_worker = self.workers.local_worker()
+
+        # Collects SampleBatches in parallel and synchronously
+        # from the Trainer's RolloutWorkers until we hit the
+        # configured `train_batch_size`.
+        sample_batches = []
+        num_env_steps = 0
+        num_agent_steps = 0
+        train_results = {}
+
+        while (not self._by_agent_steps and num_env_steps < batch_size) or (
+            self._by_agent_steps and num_agent_steps < batch_size
+        ):
+            # (1) Sample (MultiAgentBatch) from workers
+            new_sample_batches = synchronous_parallel_sample(self.workers)
+            sample_batches.extend(new_sample_batches)
+
+            # Update counters
+            new_env_steps = sum(len(s) for s in new_sample_batches)
+            new_agent_steps = sum(
+                len(s) if isinstance(s, SampleBatch) else s.agent_steps()
+                for s in new_sample_batches
+            )
+            num_env_steps += new_env_steps
+            num_agent_steps += new_agent_steps
+            self._counters[NUM_ENV_STEPS_SAMPLED] += new_env_steps
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += new_agent_steps
+
+            # (2) Sample training batch (MultiAgentBatch) from replay buffer.
+            train_batch = self.local_replay_buffer.sample(batch_size)
+
+            # (3) Learn on training batch.
+            # Use simple optimizer (only for multi-agent or tf-eager; all other
+            # cases should use the multi-GPU optimizer, even if only using 1 GPU)
+            if self.config.get("simple_optimizer") is True:
+                train_results = train_one_step(self, train_batch)
+            else:
+                train_results = multi_gpu_train_one_step(self, train_batch)
+
+            # (4) Update target network every target_network_update_freq steps
+            cur_ts = self._counters[NUM_ENV_STEPS_SAMPLED]
+            last_update = self._counters[LAST_TARGET_UPDATE_TS]
+            if cur_ts - last_update >= self.config["target_network_update_freq"]:
+                to_update = local_worker.get_policies_to_train()
+                local_worker.foreach_policy_to_train(
+                    lambda p, pid: pid in to_update and p.update_target()
+                )
+                self._counters[NUM_TARGET_UPDATES] += 1
+                self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
+
+            # Update remote workers's weights after learning on local worker
+            if self.workers.remote_workers():
+                with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+                    self.workers.sync_weights()
+
+        # (5) Concatenate freshly collected samples
+        # (6) Store new samples in replay buffer
+        self.local_replay_buffer.add(SampleBatch.concat_samples(sample_batches))
+
+        # (7) Return all collected metrics for the iteration.
+        return train_results

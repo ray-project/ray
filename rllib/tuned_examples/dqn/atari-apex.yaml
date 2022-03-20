@@ -20,8 +20,6 @@ apex:
         hiddens: [512]
         buffer_size: 1000000
         prioritized_replay_alpha: 0.5
-        final_prioritized_replay_beta: 1.0
-        prioritized_replay_beta_annealing_timesteps: 2000000
 
         num_gpus: 1
 
