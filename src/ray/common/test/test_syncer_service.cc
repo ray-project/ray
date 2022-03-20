@@ -83,7 +83,7 @@ int main(int argc, char *argv[]) {
   auto leader_port = std::string(argv[2]);
   auto local_node = std::make_unique<LocalNode>(io_context, node_id);
   auto remote_node = std::make_unique<RemoteNodes>();
-  RaySyncer syncer(node_id.Binary());
+  RaySyncer syncer(io_context, node_id.Binary());
   // RPC related field
   grpc::ServerBuilder builder;
   std::unique_ptr<RaySyncerService> service;
@@ -97,11 +97,7 @@ int main(int argc, char *argv[]) {
     auto server_address = "0.0.0.0:" + server_port;
     service = std::make_unique<RaySyncerService>(syncer);
     builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
-    builder.AddChannelArgument(GRPC_ARG_MAX_CONCURRENT_STREAMS, 2000);
-    builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 1);
-    builder.AddChannelArgument(GRPC_ARG_HTTP2_WRITE_BUFFER_SIZE, 256 * 1024);
     builder.RegisterService(service.get());
-    builder.AddCompletionQueue();
     server = builder.BuildAndStart();
   }
   if (leader_port != ".") {
@@ -117,6 +113,7 @@ int main(int argc, char *argv[]) {
 
     syncer.Connect(channel);
   }
+
   boost::asio::io_context::work work(io_context);
   io_context.run();
 

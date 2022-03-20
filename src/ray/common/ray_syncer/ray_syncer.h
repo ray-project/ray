@@ -66,9 +66,9 @@ class RaySyncer {
  public:
   /// Constructor of RaySyncer
   ///
+  /// \param io_context The io context for this component.
   /// \param node_id The id of current node.
-  RaySyncer(const std::string &node_id);
-
+  RaySyncer(instrumented_io_context &io_context, const std::string &node_id);
   ~RaySyncer();
 
   /// Connect to a node.
@@ -122,6 +122,9 @@ class RaySyncer {
   }
 
  private:
+  /// io_context for this thread
+  instrumented_io_context &io_context_;
+
   /// The current node id.
   const std::string node_id_;
 
@@ -130,11 +133,6 @@ class RaySyncer {
 
   /// The local node status
   std::unique_ptr<NodeStatus> node_status_;
-
-  /// Threading for syncer. To have a better isolation, we put all operations in this
-  /// module into a dedicated thread.
-  std::unique_ptr<std::thread> syncer_thread_;
-  instrumented_io_context io_context_;
 
   /// If the field is set to be true, it means, message generated or received
   /// is needed to be sent to other nodes.

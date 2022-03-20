@@ -45,15 +45,7 @@ NodeSyncConnection::NodeSyncConnection(RaySyncer &instance,
     : timer_(io_context),
       instance_(instance),
       io_context_(io_context),
-      node_id_(std::move(node_id)) {
-  timer_.expires_from_now(boost::posix_time::milliseconds(
-      RayConfig::instance().raylet_report_resources_period_milliseconds()));
-  timer_.async_wait([this](boost::system::error_code) {
-    this->DoSend();
-    timer_.expires_from_now(boost::posix_time::milliseconds(
-        RayConfig::instance().raylet_report_resources_period_milliseconds()));
-  });
-}
+      node_id_(std::move(node_id)) {}
 
 void NodeSyncConnection::PushToSendingQueue(std::shared_ptr<RaySyncMessage> message) {
   auto &node_versions = GetNodeComponentVersions(message->node_id());
@@ -79,7 +71,12 @@ ClientSyncConnection::ClientSyncConnection(RaySyncer &instance,
                                            std::shared_ptr<grpc::Channel> channel)
     : NodeSyncConnection(instance, io_context, node_id),
       stub_(ray::rpc::syncer::RaySyncer::NewStub(channel)) {
+  timer_.RunFnPeriodically(
+      [this]() { DoSend(); },
+      RayConfig::instance().raylet_report_resources_period_milliseconds());
+
   StartLongPolling();
+  RAY_LOG(ERROR) << "ClientSyncConnection::DONE";
 }
 
 void ClientSyncConnection::StartLongPolling() {
@@ -106,6 +103,7 @@ void ClientSyncConnection::StartLongPolling() {
 }
 
 void ClientSyncConnection::DoSend() {
+  RAY_LOG(ERROR) << "DoSend";
   if (sending_queue_.empty()) {
     return;
   }
@@ -142,7 +140,12 @@ void ClientSyncConnection::DoSend() {
 ServerSyncConnection::ServerSyncConnection(RaySyncer &instance,
                                            instrumented_io_context &io_context,
                                            const std::string &node_id)
-    : NodeSyncConnection(instance, io_context, node_id) {}
+    : NodeSyncConnection(instance, io_context, node_id) {
+  timer_.RunFnPeriodically(
+      [this]() { DoSend(); },
+      RayConfig::instance().raylet_report_resources_period_milliseconds());
+  RAY_LOG(ERROR) << "ServerSyncConnection::DONE";
+}
 
 void ServerSyncConnection::HandleLongPollingRequest(grpc::ServerUnaryReactor *reactor,
                                                     RaySyncMessages *response) {
@@ -177,20 +180,13 @@ void ServerSyncConnection::DoSend() {
   }
 }
 
-RaySyncer::RaySyncer(const std::string &node_id)
-    : node_id_(node_id),
+RaySyncer::RaySyncer(instrumented_io_context &io_context, const std::string &node_id)
+    : io_context_(io_context),
+      node_id_(node_id),
       node_status_(std::make_unique<NodeStatus>()),
-      timer_(io_context_) {
-  syncer_thread_ = std::make_unique<std::thread>([this]() {
-    boost::asio::io_service::work work(io_context_);
-    io_context_.run();
-  });
-}
+      timer_(io_context) {}
 
-RaySyncer::~RaySyncer() {
-  io_context_.stop();
-  syncer_thread_->join();
-}
+RaySyncer::~RaySyncer() {}
 
 void RaySyncer::Connect(std::shared_ptr<grpc::Channel> channel) {
   auto stub = ray::rpc::syncer::RaySyncer::NewStub(channel);
@@ -217,6 +213,7 @@ void RaySyncer::Connect(std::shared_ptr<grpc::Channel> channel) {
 void RaySyncer::Connect(std::unique_ptr<NodeSyncConnection> connection) {
   RAY_CHECK(connection != nullptr);
   RAY_CHECK(sync_connections_[connection->GetNodeId()] == nullptr);
+  sync_connections_[connection->GetNodeId()] = std::move(connection);
 }
 
 void RaySyncer::Disconnect(const std::string &node_id) {
@@ -269,10 +266,15 @@ grpc::ServerUnaryReactor *RaySyncerService::StartSync(
   // Make sure server only have one client
   RAY_CHECK(node_id_.empty());
   node_id_ = request->node_id();
-  syncer_.Connect(std::make_unique<ServerSyncConnection>(
-      syncer_, syncer_.GetIOContext(), request->node_id()));
-  response->set_node_id(syncer_.GetNodeId());
-  reactor->Finish(grpc::Status::OK);
+  syncer_.GetIOContext().post(
+      [this, response, reactor]() {
+        RAY_LOG(ERROR) << "SyncStarted!!!";
+        syncer_.Connect(std::make_unique<ServerSyncConnection>(
+            syncer_, syncer_.GetIOContext(), node_id_));
+        response->set_node_id(syncer_.GetNodeId());
+        reactor->Finish(grpc::Status::OK);
+      },
+      "RaySyncer::StartSync");
   return reactor;
 }
 

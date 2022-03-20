@@ -58,7 +58,7 @@ class NodeSyncConnection {
   /// \param message The message to be sent.
   void PushToSendingQueue(std::shared_ptr<RaySyncMessage> message);
 
-  virtual ~NodeSyncConnection() { timer_.cancel(); }
+  virtual ~NodeSyncConnection() {}
 
   /// Return the node id of this sync context.
   const std::string &GetNodeId() const { return node_id_; }
@@ -77,17 +77,9 @@ class NodeSyncConnection {
   }
 
  protected:
-  // The function to send data.
-  // We need different implementation for server and client.
-  // Server will wait until client send the long-polling request.
-  // Client will just uses Update to send the data immediately.
-  // This function needs to read data from `sending_queue_` and construct the sending
-  // batch and do the actual sending.
-  virtual void DoSend() = 0;
-
   std::array<uint64_t, kComponentArraySize> &GetNodeComponentVersions(
       const std::string &node_id);
-  boost::asio::deadline_timer timer_;
+  ray::PeriodicalRunner timer_;
   RaySyncer &instance_;
   instrumented_io_context &io_context_;
   std::string node_id_;
@@ -116,9 +108,9 @@ class ServerSyncConnection : public NodeSyncConnection {
   void HandleLongPollingRequest(grpc::ServerUnaryReactor *reactor,
                                 RaySyncMessages *response);
 
- protected:
-  void DoSend() override;
+  void DoSend();
 
+ protected:
   // These two fields are RPC related. When the server got long-polling requests,
   // these two fields will be set so that it can be used to send message.
   // After the message being sent, these two fields will be set to be empty again.
@@ -135,9 +127,9 @@ class ClientSyncConnection : public NodeSyncConnection {
                        const std::string &node_id,
                        std::shared_ptr<grpc::Channel> channel);
 
- protected:
-  void DoSend() override;
+  void DoSend();
 
+ protected:
   /// Start to send long-polling request to remote nodes.
   void StartLongPolling();
 
