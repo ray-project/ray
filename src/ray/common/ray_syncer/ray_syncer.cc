@@ -199,7 +199,7 @@ void RaySyncer::Connect(std::shared_ptr<grpc::Channel> channel) {
   auto response = std::make_shared<StartSyncResponse>();
 
   auto client_context = std::make_shared<grpc::ClientContext>();
-  stub->StartSync(client_context.get(),
+  stub->async()->StartSync(client_context.get(),
                   request.get(),
                   response.get(),
                   [this, channel, response, client_context](grpc::Status status) {
@@ -213,16 +213,13 @@ void RaySyncer::Connect(std::shared_ptr<grpc::Channel> channel) {
                   });
 }
 
-void RaySyncer::Connect(std::unique_ptr<NodeSyncConnection> context) {
-  io_context_.post([this, context = std::move(context)]() mutable {
-    RAY_CHECK(sync_connections_[context->GetNodeId()] == nullptr);
-    RAY_CHECK(context != nullptr);
-    sync_connections_[context->GetNodeId()] = std::move(context);
-  });
+void RaySyncer::Connect(std::unique_ptr<NodeSyncConnection> connection) {
+  RAY_CHECK(connection != nullptr);
+  RAY_CHECK(sync_connections_[connection->GetNodeId()] == nullptr);
 }
 
 void RaySyncer::Disconnect(const std::string &node_id) {
-  io_context_.post([this, node_id]() mutable { sync_connections_.erase(node_id); });
+  io_context_.post([this, node_id]() { sync_connections_.erase(node_id); }, "RaySyncerDisconnect");
 }
 
 void RaySyncer::Register(RayComponentId component_id,
@@ -256,8 +253,8 @@ void RaySyncer::BroadcastMessage(std::shared_ptr<RaySyncMessage> message) {
   }
 
   if (component_broadcast_[message->component_id()]) {
-    for (auto &context : sync_connections_) {
-      context.second->PushToSendingQueue(message);
+    for (auto &connection : sync_connections_) {
+      connection.second->PushToSendingQueue(message);
     }
   }
 }
@@ -283,10 +280,10 @@ grpc::ServerUnaryReactor *RaySyncerService::Update(grpc::CallbackServerContext *
   auto *reactor = context->DefaultReactor();
   syncer_.GetIOContext().post(
       [this, request = std::move(*const_cast<RaySyncMessages *>(request))]() mutable {
-        auto *sync_context =
+        auto *sync_connection =
             dynamic_cast<ServerSyncConnection *>(syncer_.GetSyncConnection(node_id_));
-        if (sync_context != nullptr) {
-          sync_context->ReceiveUpdate(std::move(request));
+        if (sync_connection != nullptr) {
+          sync_connection->ReceiveUpdate(std::move(request));
         } else {
           RAY_LOG(ERROR) << "Fail to get the sync context";
         }
@@ -303,10 +300,10 @@ grpc::ServerUnaryReactor *RaySyncerService::LongPolling(
   auto *reactor = context->DefaultReactor();
   syncer_.GetIOContext().post(
       [this, reactor, response]() mutable {
-        auto *sync_context =
+        auto *sync_connection =
             dynamic_cast<ServerSyncConnection *>(syncer_.GetSyncConnection(node_id_));
-        if (sync_context != nullptr) {
-          sync_context->HandleLongPollingRequest(reactor, response);
+        if (sync_connection != nullptr) {
+          sync_connection->HandleLongPollingRequest(reactor, response);
         } else {
           RAY_LOG(ERROR) << "Fail to setup long-polling";
           reactor->Finish(grpc::Status::OK);

@@ -133,7 +133,7 @@ class ClientSyncConnection : public NodeSyncConnection {
   ClientSyncConnection(RaySyncer &instance,
                        instrumented_io_context &io_context,
                        const std::string &node_id,
-                       std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub);
+                       std::shared_ptr<grpc::Channel> channel);
 
  protected:
   void DoSend() override;
