@@ -13,7 +13,7 @@ from ray.tests.kuberay.utils import (
     kubectl_exec,
     wait_for_pods,
     wait_for_pod_to_start,
-    wait_for_ray_health
+    wait_for_ray_health,
 )
 
 
@@ -32,6 +32,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
     """e2e verification of autoscaling following the steps in the Ray documentation.
     kubectl is used throughout, as that reflects the instructions in the docs.
     """
+
     def setUp(self):
         """
         Set up KubeRay operator and Ray autoscaler RBAC.
@@ -43,18 +44,29 @@ class KubeRayAutoscalingTest(unittest.TestCase):
 
         print("Cloning KubeRay and setting up KubeRay configuration.")
         subprocess.check_call(
-            ["bash", "-c",
-             "ls kuberay || ./ray/python/ray/autoscaler/kuberay/init-config.sh"]
+            [
+                "bash",
+                "-c",
+                "ls kuberay || ./ray/python/ray/autoscaler/kuberay/init-config.sh",
+            ]
         )
         print("Creating KubeRay operator.")
         subprocess.check_call(
-            ["kubectl", "apply", "-k",
-             "ray/python/ray/autoscaler/kuberay/config/default"]
+            [
+                "kubectl",
+                "apply",
+                "-k",
+                "ray/python/ray/autoscaler/kuberay/config/default",
+            ]
         )
         print("Creating autoscaler RBAC objects.")
         subprocess.check_call(
-            ["kubectl", "apply", "-f",
-             "ray/python/ray/autoscaler/kuberay/kuberay-autoscaler-rbac.yaml"]
+            [
+                "kubectl",
+                "apply",
+                "-f",
+                "ray/python/ray/autoscaler/kuberay/kuberay-autoscaler-rbac.yaml",
+            ]
         )
         self.ray_cr_config_file = self._get_ray_cr_config_file()
 
@@ -76,12 +88,12 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         raycluster_cr_file.close()
         return raycluster_cr_file.name
 
-    def _get_ray_cr_config(self, min_replicas=0, max_replicas=300, replicas=0) -> Dict[str, Any]:
-        """Get Ray CR config yaml, with configurable replica fields for the single workerGroup.
-        """
-        config = yaml.safe_load(
-            open(self._get_ray_cr_config_file()).read()
-        )
+    def _get_ray_cr_config(
+        self, min_replicas=0, max_replicas=300, replicas=0
+    ) -> Dict[str, Any]:
+        """Get Ray CR config yaml, with configurable replica fields for the single
+        workerGroup."""
+        config = yaml.safe_load(open(self._get_ray_cr_config_file()).read())
         config["spec"]["workerGroupSpecs"][0]["replicas"] = replicas
         config["spec"]["workerGroupSpecs"][0]["minReplicas"] = min_replicas
         config["spec"]["workerGroupSpecs"][0]["maxReplicas"] = max_replicas
@@ -89,17 +101,15 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         return config
 
     def _apply_ray_cr(self, min_replicas=0, max_replicas=300, replicas=0) -> None:
-        """Apply Ray CR config yaml, with configurable replica fields for the single workerGroup.
-        """
+        """Apply Ray CR config yaml, with configurable replica fields for the single
+        workerGroup."""
         with tempfile.NamedTemporaryFile("w") as config_file:
-            cr_config = self._get_ray_cr_config(min_replicas=min_replicas,
-                                                max_replicas=max_replicas,
-                                                replicas=replicas)
+            cr_config = self._get_ray_cr_config(
+                min_replicas=min_replicas, max_replicas=max_replicas, replicas=replicas
+            )
             yaml.dump(cr_config, config_file)
             config_file.flush()
-            subprocess.check_call(
-                ["kubectl", "apply", "-f", config_file.name]
-            )
+            subprocess.check_call(["kubectl", "apply", "-f", config_file.name])
 
     def testAutoscaling(self):
         """Test the following behaviors:
@@ -118,7 +128,9 @@ class KubeRayAutoscalingTest(unittest.TestCase):
 
         print("Confirming presence of head.")
         wait_for_pods(goal_num_pods=1, namespace="default")
-        head_pod = get_pod(pod_name_filter="raycluster-complete-head", namespace="default")
+        head_pod = get_pod(
+            pod_name_filter="raycluster-complete-head", namespace="default"
+        )
 
         print("Waiting for head pod to start Running.")
         wait_for_pod_to_start(head_pod, namespace="default")
@@ -129,13 +141,11 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         print("Scaling up to one worker via Ray resource request.")
         scale_script = (
             "import ray;"
-            "ray.init(\"auto\");"
+            'ray.init("auto");'
             "ray.autoscaler.sdk.request_resources(num_cpus=2)"
         )
         kubectl_exec(
-            command=["python", "-c", scale_script],
-            pod=head_pod,
-            namespace="default"
+            command=["python", "-c", scale_script], pod=head_pod, namespace="default"
         )
         print("Confirming number of workers.")
         wait_for_pods(goal_num_pods=2, namespace="default")
@@ -150,13 +160,13 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         print("Removing resource request.")
         scale_down_script = (
             "import ray;"
-            "ray.init(\"auto\");"
+            'ray.init("auto");'
             "ray.autoscaler.sdk.request_resources(num_cpus=0)"
         )
         kubectl_exec(
             command=["python", "-c", scale_down_script],
             pod=head_pod,
-            namespace="default"
+            namespace="default",
         )
         print("Scaling down all workers by editing maxReplicas.")
         # (replicas=2 reflects the current number of workers)
@@ -173,20 +183,25 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         wait_for_pods(goal_num_pods=0, namespace="default")
 
     def tearDown(self):
-        """Clean resources following the instructions in the docs.
-        """
+        """Clean resources following the instructions in the docs."""
 
         print("Deleting operator.")
         subprocess.check_call(
-            ["kubectl", "delete", "-k",
-             "ray/python/ray/autoscaler/kuberay/config/default"]
+            [
+                "kubectl",
+                "delete",
+                "-k",
+                "ray/python/ray/autoscaler/kuberay/config/default",
+            ]
         )
 
         print("Deleting autoscaler RBAC.")
         subprocess.check_call(
             [
-                "kubectl", "delete", "-f",
-                "ray/python/ray/autoscaler/kuberay/kuberay-autoscaler-rbac.yaml"
+                "kubectl",
+                "delete",
+                "-f",
+                "ray/python/ray/autoscaler/kuberay/kuberay-autoscaler-rbac.yaml",
             ]
         )
 

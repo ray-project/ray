@@ -25,15 +25,19 @@ def wait_for_pods(goal_num_pods: int, namespace: str, tries=60, backoff_s=5) -> 
             time.sleep(backoff_s)
             continue
         else:
-            raise Exception(f"Failed to scale to {goal_num_pods} pod(s) in namespace {namespace}.")
+            raise Exception(
+                f"Failed to scale to {goal_num_pods} pod(s) in namespace {namespace}."
+            )
 
 
 def _get_num_pods(namespace: str) -> int:
-    get_pod_output = subprocess.check_output(
-        [
-            "kubectl", "-n", namespace, "get", "pods", "--no-headers"
-        ]
-    ).decode().strip()
+    get_pod_output = (
+        subprocess.check_output(
+            ["kubectl", "-n", namespace, "get", "pods", "--no-headers"]
+        )
+        .decode()
+        .strip()
+    )
 
     # If there aren't any pods, the output is any empty string.
     if not get_pod_output:
@@ -43,15 +47,25 @@ def _get_num_pods(namespace: str) -> int:
 
 
 def wait_for_pod_to_start(pod: str, namespace: str, tries=60, backoff_s=5) -> None:
-    """Waits for the pod to enter running Running status.phase.
-    """
+    """Waits for the pod to enter running Running status.phase."""
     for i in range(tries):
-        pod_status = subprocess.check_output(
-            [
-                "kubectl", "-n", namespace, "get", "pod", pod, "-o",
-                "custom-columns=POD:status.phase", "--no-headers"
-            ]
-        ).decode().strip()
+        pod_status = (
+            subprocess.check_output(
+                [
+                    "kubectl",
+                    "-n",
+                    namespace,
+                    "get",
+                    "pod",
+                    pod,
+                    "-o",
+                    "custom-columns=POD:status.phase",
+                    "--no-headers",
+                ]
+            )
+            .decode()
+            .strip()
+        )
         # "not found" is part of the kubectl output if the pod's not there.
         if "not found" in pod_status:
             raise Exception(f"Pod {pod} not found.")
@@ -60,7 +74,8 @@ def wait_for_pod_to_start(pod: str, namespace: str, tries=60, backoff_s=5) -> No
             return
         elif i < tries - 1:
             print(
-                f"Pod {pod} has status {pod_status}. Waiting for the pod to enter Running status."
+                f"Pod {pod} has status {pod_status}. Waiting for the pod to enter "
+                "Running status."
             )
             time.sleep(backoff_s)
         else:
@@ -92,20 +107,27 @@ def get_pod(pod_name_filter: str, namespace: str) -> str:
     Returns the first pod that has `pod_name_filter` as a
     substring of its name. Raises an assertion error if there are no matches.
     """
-    get_pods_output = subprocess.check_output(
-        [
-            "kubectl", "-n", namespace, "get", "pods", "-o",
-            "custom-columns=POD:metadata.name", "--no-headers"
-        ]
-    ).decode().split()
+    get_pods_output = (
+        subprocess.check_output(
+            [
+                "kubectl",
+                "-n",
+                namespace,
+                "get",
+                "pods",
+                "-o",
+                "custom-columns=POD:metadata.name",
+                "--no-headers",
+            ]
+        )
+        .decode()
+        .split()
+    )
     matches = [item for item in get_pods_output if pod_name_filter in item]
     assert matches, f"No match for `{pod_name_filter}` in namespace `{namespace}`."
     return matches[0]
 
 
 def kubectl_exec(command: List[str], pod: str, namespace: str) -> None:
-    """kubectl exec the `command` in the given `pod` in the given `namespace`
-    """
-    subprocess.check_call(
-        ["kubectl", "exec", "-it", pod, "--"] + command
-    )
+    """kubectl exec the `command` in the given `pod` in the given `namespace`"""
+    subprocess.check_call(["kubectl", "exec", "-it", pod, "--"] + command)
