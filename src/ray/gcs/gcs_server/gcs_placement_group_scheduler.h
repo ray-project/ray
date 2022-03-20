@@ -22,6 +22,7 @@
 #include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/ray_syncer.h"
+#include "ray/raylet/scheduling/policy/scheduling_context.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
@@ -35,6 +36,7 @@ namespace gcs {
 class GcsPlacementGroup;
 
 using ClusterResourceScheduler = gcs::GcsResourceScheduler;
+using ScheduleContext = raylet_scheduling_policy::BundleSchedulingContext;
 
 using ReserveResourceClientFactoryFn =
     std::function<std::shared_ptr<ResourceReserveInterface>(const rpc::Address &address)>;
@@ -44,18 +46,8 @@ using PGSchedulingFailureCallback =
 using PGSchedulingSuccessfulCallback =
     std::function<void(std::shared_ptr<GcsPlacementGroup>)>;
 
-struct pair_hash {
-  template <class T1, class T2>
-  std::size_t operator()(const std::pair<T1, T2> &pair) const {
-    return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
-  }
-};
 using ScheduleMap = absl::flat_hash_map<BundleID, NodeID, pair_hash>;
 using ScheduleResult = std::pair<SchedulingResultStatus, ScheduleMap>;
-using BundleLocations =
-    absl::flat_hash_map<BundleID,
-                        std::pair<NodeID, std::shared_ptr<const BundleSpecification>>,
-                        pair_hash>;
 
 class GcsPlacementGroupSchedulerInterface {
  public:
@@ -105,20 +97,6 @@ class GcsPlacementGroupSchedulerInterface {
           &group_to_bundles) = 0;
 
   virtual ~GcsPlacementGroupSchedulerInterface() {}
-};
-
-/// ScheduleContext provides information that are needed for bundle scheduling decision.
-class ScheduleContext {
- public:
-  ScheduleContext(std::shared_ptr<absl::flat_hash_map<NodeID, int64_t>> node_to_bundles,
-                  const absl::optional<std::shared_ptr<BundleLocations>> bundle_locations)
-      : node_to_bundles_(std::move(node_to_bundles)),
-        bundle_locations_(bundle_locations) {}
-
-  // Key is node id, value is the number of bundles on the node.
-  const std::shared_ptr<absl::flat_hash_map<NodeID, int64_t>> node_to_bundles_;
-  // The locations of existing bundles for this placement group.
-  const absl::optional<std::shared_ptr<BundleLocations>> bundle_locations_;
 };
 
 class GcsScheduleStrategy {

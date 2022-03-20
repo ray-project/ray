@@ -15,6 +15,8 @@
 namespace ray {
 namespace gcs {
 
+using ScheduleContext = raylet_scheduling_policy::BundleSchedulingContext;
+
 class Mockpair_hash : public pair_hash {
  public:
 };
