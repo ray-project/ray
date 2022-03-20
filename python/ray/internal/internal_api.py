@@ -301,6 +301,7 @@ def ray_actors(actor_id: str):
     for actor_id, data in result.items():
         func_desc = data["taskSpec"]["functionDescriptor"]
         actor_info = {}
+        # TODO: this breaks for non-python?
         actor_info["class_name"] = func_desc[next(iter(func_desc))]["className"]
         actor_info["actor_id"] = data["actorId"]
         actor_info["node_id"] = data["address"]["rayletId"]

@@ -37,6 +37,7 @@ class LogHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/log_index")
     async def get_log_index(self, req) -> aiohttp.web.Response:
+        all_node_details = await DataOrganizer.get_all_node_details()
         url_list = []
         agent_ips = []
         for node_id, ports in DataSource.agents.items():
@@ -93,6 +94,84 @@ class LogHead(dashboard_utils.DashboardHeadModule):
         html = f"<html>\n{head_str}\n{body}\n</html>"
 
         return html
+
+    async def run(self, server):
+        pass
+
+    @staticmethod
+    def is_minimal_module():
+        return False
+
+
+class LogHeadV1(dashboard_utils.DashboardHeadModule):
+    LOG_URL_TEMPLATE = "http://{ip}:{port}/logs"
+
+    def __init__(self, dashboard_head):
+        super().__init__(dashboard_head)
+        # We disable auto_decompress when forward / proxy log url.
+        self._proxy_session = aiohttp.ClientSession(auto_decompress=False)
+        log_utils.register_mimetypes()
+
+    @routes.get("/v1/api/logs/index")
+    @dashboard_optional_utils.aiohttp_cache
+    async def handle_log_index(self, req):
+        import requests
+        from ray.dashboard.datacenter import DataSource, DataOrganizer
+        nodes = await DataOrganizer.get_all_node_details()
+        response = {}
+        for node in nodes:
+            log_url = node["logUrl"]
+            id = node["raylet"]["nodeId"],
+            log_html = requests.get(f"{log_url}").text
+
+            def get_link(s):
+                s = s[len('<li><a href="/logs/') :]
+                path = s[: s.find('"')]
+                return path
+
+            filtered = list(
+                filter(
+                    lambda s: '<li><a href="/logs/' in s,
+                    log_html.splitlines(),
+                )
+            )
+            links = list(map(get_link, filtered))
+            response[id] = links
+
+        # response["node_infos"] = list(all_node_details)
+        # for k, v in nodes:
+        #     response[k] = v
+        # response = {}
+        # for k, v in req.query.items():
+        #     response[k] = v
+        # response["node_id"] = req.match_info.get('node_id', None)
+        return aiohttp.web.json_response(response)
+
+    @routes.get("/v1/api/logs/index/{node_id}")
+    async def handle_log_index_by_node_id(self, req):
+        import requests
+        response = {}
+        for k, v in req.query.items():
+            response[k] = v
+        response["node_id"] = req.match_info.get('node_id', None)
+        return aiohttp.web.json_response(response)
+
+    @routes.get("/v1/api/logs/file/{node_id}/{log_file_name}")
+    async def handle_get_log(self, req):
+        response = {}
+        for k, v in req.query.items():
+            response[k] = v
+        response["node_id"] = req.match_info.get('node_id', None)
+        if response["node_id"] is not None:
+            response["log_file_name"] = req.match_info.get('log_file_name', None)
+        # component = req.query["component"]
+        # lines = req.query["lines"]
+        # grpc.get_log_lines(lines=lines)
+        return aiohttp.web.json_response(response)
+
+    @routes.get("/v1/api/logs/stream/{node_id}/{log_file_name}")
+    async def handle_stream_log(self, req):
+        return aiohttp.web.json_response({})
 
     async def run(self, server):
         pass

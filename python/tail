@@ -1,0 +1,2797 @@
+[2022-03-18 19:59:31,465 I 1916939 1916939] (gcs_server) io_service_pool.cc:35: IOServicePool is running with 1 io_service.
+[2022-03-18 19:59:31,466 I 1916939 1916939] (gcs_server) gcs_server.cc:53: GCS storage type is memory
+[2022-03-18 19:59:31,466 I 1916939 1916939] (gcs_server) gcs_server.cc:54: gRPC based pubsub is enabled
+[2022-03-18 19:59:31,467 I 1916939 1916939] (gcs_server) gcs_init_data.cc:42: Loading job table data.
+[2022-03-18 19:59:31,467 I 1916939 1916939] (gcs_server) gcs_init_data.cc:54: Loading node table data.
+[2022-03-18 19:59:31,467 I 1916939 1916939] (gcs_server) gcs_init_data.cc:66: Loading cluster resources table data.
+[2022-03-18 19:59:31,467 I 1916939 1916939] (gcs_server) gcs_init_data.cc:93: Loading actor table data.
+[2022-03-18 19:59:31,467 I 1916939 1916939] (gcs_server) gcs_init_data.cc:79: Loading placement group table data.
+[2022-03-18 19:59:31,467 I 1916939 1916939] (gcs_server) gcs_init_data.cc:46: Finished loading job table data, size = 0
+[2022-03-18 19:59:31,467 I 1916939 1916939] (gcs_server) gcs_init_data.cc:58: Finished loading node table data, size = 0
+[2022-03-18 19:59:31,467 I 1916939 1916939] (gcs_server) gcs_init_data.cc:70: Finished loading cluster resources table data, size = 0
+[2022-03-18 19:59:31,467 I 1916939 1916939] (gcs_server) gcs_init_data.cc:97: Finished loading actor table data, size = 0
+[2022-03-18 19:59:31,467 I 1916939 1916939] (gcs_server) gcs_init_data.cc:84: Finished loading placement group table data, size = 0
+[2022-03-18 19:59:31,467 I 1916939 1916939] (gcs_server) gcs_heartbeat_manager.cc:30: GcsHeartbeatManager start, num_heartbeats_timeout=30
+[2022-03-18 19:59:31,469 I 1916939 1916939] (gcs_server) grpc_server.cc:103: GcsServer server started, listening on port 6379.
+[2022-03-18 19:59:31,475 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 0
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 0
+- GetInternalConfig request count: 0
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 0
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 0
+- GetAllAvailableResources request count0
+- UpdateResources request count: 0
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 0
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 0
+[2022-03-18 19:59:31,475 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 10 total (3 active)
+Queueing time: mean = 833.565 us, max = 8.175 ms, min = 4.330 us, total = 8.336 ms
+Execution time:  mean = 836.457 us, total = 8.365 ms
+Event stats:
+	GcsInMemoryStore.GetAll - 5 total (0 active), CPU time: mean = 1.654 ms, total = 8.268 ms
+	PeriodicalRunner.RunFnPeriodically - 3 total (2 active, 1 running), CPU time: mean = 31.522 us, total = 94.565 us
+	GcsInMemoryStore.Put - 1 total (0 active), CPU time: mean = 1.816 us, total = 1.816 us
+	RaySyncer.deadline_timer.report_resource_report - 1 total (1 active), CPU time: mean = 0.000 s, total = 0.000 s
+
+
+[2022-03-18 19:59:33,554 I 1916939 1916939] (gcs_server) gcs_node_manager.cc:42: Registering node info, node id = df49773fa2da5fb89e133f37122a02c45d9047ab9c587bf70b5d6c31, address = 192.168.1.23
+[2022-03-18 19:59:33,554 I 1916939 1916939] (gcs_server) gcs_node_manager.cc:47: Finished registering node info, node id = df49773fa2da5fb89e133f37122a02c45d9047ab9c587bf70b5d6c31, address = 192.168.1.23
+[2022-03-18 19:59:33,554 I 1916939 1916939] (gcs_server) gcs_placement_group_manager.cc:707: A new node: df49773fa2da5fb89e133f37122a02c45d9047ab9c587bf70b5d6c31 registered, will try to reschedule all the infeasible placement groups.
+[2022-03-18 19:59:33,557 I 1916939 1916939] (gcs_server) gcs_job_manager.cc:150: Getting all job info.
+[2022-03-18 19:59:33,557 I 1916939 1916939] (gcs_server) gcs_job_manager.cc:156: Finished getting all job info.
+[2022-03-18 20:00:31,475 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 28
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 12
+- GetAllAvailableResources request count0
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 12
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:00:31,475 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 2722 total (3 active)
+Queueing time: mean = 43.009 us, max = 8.175 ms, min = -0.000 s, total = 117.071 ms
+Execution time:  mean = 56.513 us, total = 153.828 ms
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 600 total (1 active), CPU time: mean = 36.903 us, total = 22.142 ms
+	NodeManagerService.grpc_client.UpdateResourceUsage - 573 total (0 active), CPU time: mean = 28.864 us, total = 16.539 ms
+	UpdateResourceReport - 573 total (0 active), CPU time: mean = 27.710 us, total = 15.878 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 573 total (0 active), CPU time: mean = 103.896 us, total = 59.532 ms
+	MemoryInternalKV.Put - 91 total (0 active), CPU time: mean = 107.692 us, total = 9.800 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 91 total (0 active), CPU time: mean = 33.788 us, total = 3.075 ms
+	MemoryInternalKV.Get - 70 total (0 active), CPU time: mean = 96.614 us, total = 6.763 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 70 total (0 active), CPU time: mean = 31.544 us, total = 2.208 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 28 total (0 active), CPU time: mean = 98.038 us, total = 2.745 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 12 total (0 active), CPU time: mean = 157.747 us, total = 1.893 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 12 total (0 active), CPU time: mean = 114.366 us, total = 1.372 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	GCSServer.deadline_timer.debug_state_dump - 6 total (1 active), CPU time: mean = 419.482 us, total = 2.517 ms
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	GCSServer.deadline_timer.debug_state_event_stats_print - 1 total (1 active, 1 running), CPU time: mean = 0.000 s, total = 0.000 s
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
+[2022-03-18 20:01:31,476 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 52
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 24
+- GetAllAvailableResources request count0
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 24
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:01:31,476 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 5440 total (3 active)
+Queueing time: mean = 41.380 us, max = 8.175 ms, min = -0.000 s, total = 225.106 ms
+Execution time:  mean = 56.411 us, total = 306.873 ms
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 1199 total (1 active), CPU time: mean = 38.626 us, total = 46.313 ms
+	UpdateResourceReport - 1166 total (0 active), CPU time: mean = 29.188 us, total = 34.033 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 1166 total (0 active), CPU time: mean = 106.168 us, total = 123.792 ms
+	NodeManagerService.grpc_client.UpdateResourceUsage - 1165 total (0 active), CPU time: mean = 28.298 us, total = 32.967 ms
+	MemoryInternalKV.Put - 175 total (0 active), CPU time: mean = 108.937 us, total = 19.064 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 175 total (0 active), CPU time: mean = 34.375 us, total = 6.016 ms
+	MemoryInternalKV.Get - 129 total (0 active), CPU time: mean = 104.887 us, total = 13.530 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 129 total (0 active), CPU time: mean = 32.653 us, total = 4.212 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 52 total (0 active), CPU time: mean = 110.800 us, total = 5.762 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 24 total (0 active), CPU time: mean = 153.335 us, total = 3.680 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 24 total (0 active), CPU time: mean = 119.649 us, total = 2.872 ms
+	GCSServer.deadline_timer.debug_state_dump - 12 total (1 active), CPU time: mean = 416.601 us, total = 4.999 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	GCSServer.deadline_timer.debug_state_event_stats_print - 2 total (1 active, 1 running), CPU time: mean = 134.879 us, total = 269.757 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
+[2022-03-18 20:02:31,476 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 76
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 36
+- GetAllAvailableResources request count0
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 36
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:02:31,476 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 8161 total (3 active)
+Queueing time: mean = 39.236 us, max = 8.175 ms, min = -0.000 s, total = 320.202 ms
+Execution time:  mean = 56.352 us, total = 459.888 ms
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 1799 total (1 active), CPU time: mean = 39.362 us, total = 70.812 ms
+	NodeManagerService.grpc_client.UpdateResourceUsage - 1759 total (0 active), CPU time: mean = 28.543 us, total = 50.206 ms
+	UpdateResourceReport - 1759 total (0 active), CPU time: mean = 29.312 us, total = 51.560 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 1759 total (0 active), CPU time: mean = 106.801 us, total = 187.863 ms
+	MemoryInternalKV.Put - 259 total (0 active), CPU time: mean = 110.147 us, total = 28.528 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 259 total (0 active), CPU time: mean = 35.594 us, total = 9.219 ms
+	MemoryInternalKV.Get - 188 total (0 active), CPU time: mean = 104.490 us, total = 19.644 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 188 total (0 active), CPU time: mean = 32.720 us, total = 6.151 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 76 total (0 active), CPU time: mean = 113.521 us, total = 8.628 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 36 total (0 active), CPU time: mean = 144.171 us, total = 5.190 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 36 total (0 active), CPU time: mean = 124.286 us, total = 4.474 ms
+	GCSServer.deadline_timer.debug_state_dump - 18 total (1 active), CPU time: mean = 427.084 us, total = 7.688 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	GCSServer.deadline_timer.debug_state_event_stats_print - 3 total (1 active, 1 running), CPU time: mean = 187.025 us, total = 561.074 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
+[2022-03-18 20:03:31,476 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 100
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 48
+- GetAllAvailableResources request count0
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 48
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:03:31,477 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 10879 total (3 active)
+Queueing time: mean = 38.680 us, max = 8.175 ms, min = -0.000 s, total = 420.800 ms
+Execution time:  mean = 56.373 us, total = 613.283 ms
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 2398 total (1 active), CPU time: mean = 39.601 us, total = 94.963 ms
+	NodeManagerService.grpc_client.UpdateResourceUsage - 2351 total (0 active), CPU time: mean = 28.717 us, total = 67.514 ms
+	UpdateResourceReport - 2351 total (0 active), CPU time: mean = 29.451 us, total = 69.240 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 2351 total (0 active), CPU time: mean = 106.595 us, total = 250.604 ms
+	MemoryInternalKV.Put - 343 total (0 active), CPU time: mean = 111.607 us, total = 38.281 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 343 total (0 active), CPU time: mean = 35.647 us, total = 12.227 ms
+	MemoryInternalKV.Get - 248 total (0 active), CPU time: mean = 107.176 us, total = 26.580 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 248 total (0 active), CPU time: mean = 33.135 us, total = 8.217 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 100 total (0 active), CPU time: mean = 116.693 us, total = 11.669 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 48 total (0 active), CPU time: mean = 154.570 us, total = 7.419 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 48 total (0 active), CPU time: mean = 121.220 us, total = 5.819 ms
+	GCSServer.deadline_timer.debug_state_dump - 24 total (1 active), CPU time: mean = 435.988 us, total = 10.464 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	GCSServer.deadline_timer.debug_state_event_stats_print - 4 total (1 active, 1 running), CPU time: mean = 230.400 us, total = 921.601 us
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
+[2022-03-18 20:04:31,477 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 124
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 60
+- GetAllAvailableResources request count0
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 60
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:04:31,477 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 13594 total (3 active)
+Queueing time: mean = 38.269 us, max = 8.175 ms, min = -0.000 s, total = 520.233 ms
+Execution time:  mean = 56.296 us, total = 765.285 ms
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 2997 total (1 active), CPU time: mean = 39.600 us, total = 118.681 ms
+	UpdateResourceReport - 2943 total (0 active), CPU time: mean = 29.516 us, total = 86.865 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 2943 total (0 active), CPU time: mean = 106.701 us, total = 314.022 ms
+	NodeManagerService.grpc_client.UpdateResourceUsage - 2942 total (0 active), CPU time: mean = 28.737 us, total = 84.545 ms
+	MemoryInternalKV.Put - 427 total (0 active), CPU time: mean = 111.226 us, total = 47.494 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 427 total (0 active), CPU time: mean = 36.250 us, total = 15.479 ms
+	MemoryInternalKV.Get - 307 total (0 active), CPU time: mean = 107.501 us, total = 33.003 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 307 total (0 active), CPU time: mean = 34.007 us, total = 10.440 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 124 total (0 active), CPU time: mean = 118.400 us, total = 14.682 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 60 total (0 active), CPU time: mean = 151.940 us, total = 9.116 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 60 total (0 active), CPU time: mean = 122.886 us, total = 7.373 ms
+	GCSServer.deadline_timer.debug_state_dump - 30 total (1 active), CPU time: mean = 431.774 us, total = 12.953 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	GCSServer.deadline_timer.debug_state_event_stats_print - 5 total (1 active, 1 running), CPU time: mean = 253.809 us, total = 1.269 ms
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
+[2022-03-18 20:05:31,477 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 148
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 72
+- GetAllAvailableResources request count0
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 72
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:05:31,477 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 16315 total (3 active)
+Queueing time: mean = 38.007 us, max = 8.175 ms, min = -0.000 s, total = 620.091 ms
+Execution time:  mean = 56.437 us, total = 920.776 ms
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 3597 total (1 active), CPU time: mean = 39.795 us, total = 143.141 ms
+	NodeManagerService.grpc_client.UpdateResourceUsage - 3536 total (0 active), CPU time: mean = 28.797 us, total = 101.825 ms
+	UpdateResourceReport - 3536 total (0 active), CPU time: mean = 29.661 us, total = 104.881 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 3536 total (0 active), CPU time: mean = 107.060 us, total = 378.563 ms
+	MemoryInternalKV.Put - 511 total (0 active), CPU time: mean = 111.347 us, total = 56.898 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 511 total (0 active), CPU time: mean = 36.446 us, total = 18.624 ms
+	MemoryInternalKV.Get - 366 total (0 active), CPU time: mean = 108.186 us, total = 39.596 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 366 total (0 active), CPU time: mean = 33.889 us, total = 12.404 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 148 total (0 active), CPU time: mean = 123.370 us, total = 18.259 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 72 total (0 active), CPU time: mean = 150.978 us, total = 10.870 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 72 total (0 active), CPU time: mean = 125.812 us, total = 9.058 ms
+	GCSServer.deadline_timer.debug_state_dump - 36 total (1 active), CPU time: mean = 436.451 us, total = 15.712 ms
+	GCSServer.deadline_timer.debug_state_event_stats_print - 6 total (1 active, 1 running), CPU time: mean = 263.172 us, total = 1.579 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
+[2022-03-18 20:06:31,477 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 172
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 84
+- GetAllAvailableResources request count0
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 84
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:06:31,478 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 19035 total (3 active)
+Queueing time: mean = 37.955 us, max = 8.175 ms, min = -0.000 s, total = 722.469 ms
+Execution time:  mean = 56.458 us, total = 1.075 s
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 4196 total (1 active), CPU time: mean = 39.879 us, total = 167.332 ms
+	UpdateResourceReport - 4129 total (0 active), CPU time: mean = 29.721 us, total = 122.720 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 4129 total (0 active), CPU time: mean = 107.160 us, total = 442.462 ms
+	NodeManagerService.grpc_client.UpdateResourceUsage - 4128 total (0 active), CPU time: mean = 28.962 us, total = 119.554 ms
+	MemoryInternalKV.Put - 595 total (0 active), CPU time: mean = 111.198 us, total = 66.163 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 595 total (0 active), CPU time: mean = 36.242 us, total = 21.564 ms
+	MemoryInternalKV.Get - 426 total (0 active), CPU time: mean = 108.279 us, total = 46.127 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 426 total (0 active), CPU time: mean = 33.491 us, total = 14.267 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 172 total (0 active), CPU time: mean = 126.410 us, total = 21.742 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 84 total (0 active), CPU time: mean = 154.249 us, total = 12.957 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 84 total (0 active), CPU time: mean = 126.177 us, total = 10.599 ms
+	GCSServer.deadline_timer.debug_state_dump - 42 total (1 active), CPU time: mean = 428.307 us, total = 17.989 ms
+	GCSServer.deadline_timer.debug_state_event_stats_print - 7 total (1 active, 1 running), CPU time: mean = 262.812 us, total = 1.840 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
+[2022-03-18 20:07:31,478 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 196
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 96
+- GetAllAvailableResources request count0
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 96
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:07:31,478 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 21756 total (3 active)
+Queueing time: mean = 37.849 us, max = 8.175 ms, min = -0.000 s, total = 823.445 ms
+Execution time:  mean = 56.882 us, total = 1.238 s
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 4796 total (1 active), CPU time: mean = 39.916 us, total = 191.439 ms
+	NodeManagerService.grpc_client.UpdateResourceUsage - 4722 total (0 active), CPU time: mean = 28.969 us, total = 136.794 ms
+	UpdateResourceReport - 4722 total (0 active), CPU time: mean = 29.745 us, total = 140.456 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 4722 total (0 active), CPU time: mean = 107.302 us, total = 506.681 ms
+	MemoryInternalKV.Put - 679 total (0 active), CPU time: mean = 111.954 us, total = 76.017 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 679 total (0 active), CPU time: mean = 36.524 us, total = 24.800 ms
+	MemoryInternalKV.Get - 485 total (0 active), CPU time: mean = 109.689 us, total = 53.199 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 485 total (0 active), CPU time: mean = 33.732 us, total = 16.360 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 196 total (0 active), CPU time: mean = 127.535 us, total = 24.997 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 96 total (0 active), CPU time: mean = 158.104 us, total = 15.178 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 96 total (0 active), CPU time: mean = 127.782 us, total = 12.267 ms
+	GCSServer.deadline_timer.debug_state_dump - 48 total (1 active), CPU time: mean = 578.641 us, total = 27.775 ms
+	GCSServer.deadline_timer.debug_state_event_stats_print - 8 total (1 active, 1 running), CPU time: mean = 273.808 us, total = 2.190 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
+[2022-03-18 20:08:31,478 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 220
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 108
+- GetAllAvailableResources request count0
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 108
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:08:31,479 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 24472 total (3 active)
+Queueing time: mean = 37.864 us, max = 8.175 ms, min = -0.000 s, total = 926.611 ms
+Execution time:  mean = 57.029 us, total = 1.396 s
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 5395 total (1 active), CPU time: mean = 40.046 us, total = 216.047 ms
+	NodeManagerService.grpc_client.UpdateResourceUsage - 5314 total (0 active), CPU time: mean = 29.086 us, total = 154.562 ms
+	UpdateResourceReport - 5314 total (0 active), CPU time: mean = 29.777 us, total = 158.237 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 5314 total (0 active), CPU time: mean = 107.398 us, total = 570.715 ms
+	MemoryInternalKV.Put - 763 total (0 active), CPU time: mean = 112.106 us, total = 85.537 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 763 total (0 active), CPU time: mean = 37.104 us, total = 28.310 ms
+	MemoryInternalKV.Get - 544 total (0 active), CPU time: mean = 111.496 us, total = 60.654 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 544 total (0 active), CPU time: mean = 34.174 us, total = 18.591 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 220 total (0 active), CPU time: mean = 129.756 us, total = 28.546 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 108 total (0 active), CPU time: mean = 162.126 us, total = 17.510 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 108 total (0 active), CPU time: mean = 130.388 us, total = 14.082 ms
+	GCSServer.deadline_timer.debug_state_dump - 54 total (1 active), CPU time: mean = 574.230 us, total = 31.008 ms
+	GCSServer.deadline_timer.debug_state_event_stats_print - 9 total (1 active, 1 running), CPU time: mean = 272.678 us, total = 2.454 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
+[2022-03-18 20:09:31,479 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 244
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 120
+- GetAllAvailableResources request count0
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 120
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:09:31,479 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 27192 total (3 active)
+Queueing time: mean = 37.574 us, max = 8.175 ms, min = -0.000 s, total = 1.022 s
+Execution time:  mean = 56.951 us, total = 1.549 s
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 5995 total (1 active), CPU time: mean = 39.934 us, total = 239.405 ms
+	NodeManagerService.grpc_client.UpdateResourceUsage - 5907 total (0 active), CPU time: mean = 29.025 us, total = 171.451 ms
+	UpdateResourceReport - 5907 total (0 active), CPU time: mean = 29.826 us, total = 176.183 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 5907 total (0 active), CPU time: mean = 107.402 us, total = 634.425 ms
+	MemoryInternalKV.Put - 846 total (0 active), CPU time: mean = 112.177 us, total = 94.901 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 846 total (0 active), CPU time: mean = 36.767 us, total = 31.105 ms
+	MemoryInternalKV.Get - 604 total (0 active), CPU time: mean = 112.198 us, total = 67.768 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 604 total (0 active), CPU time: mean = 34.284 us, total = 20.707 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 244 total (0 active), CPU time: mean = 130.402 us, total = 31.818 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 120 total (0 active), CPU time: mean = 164.110 us, total = 19.693 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 120 total (0 active), CPU time: mean = 128.729 us, total = 15.448 ms
+	GCSServer.deadline_timer.debug_state_dump - 60 total (1 active), CPU time: mean = 559.108 us, total = 33.546 ms
+	GCSServer.deadline_timer.debug_state_event_stats_print - 10 total (1 active, 1 running), CPU time: mean = 280.001 us, total = 2.800 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
+[2022-03-18 20:10:31,479 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 268
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 132
+- GetAllAvailableResources request count0
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 132
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:10:31,479 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 29910 total (3 active)
+Queueing time: mean = 37.421 us, max = 8.175 ms, min = -0.000 s, total = 1.119 s
+Execution time:  mean = 56.845 us, total = 1.700 s
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 6594 total (1 active), CPU time: mean = 39.922 us, total = 263.245 ms
+	UpdateResourceReport - 6500 total (0 active), CPU time: mean = 29.755 us, total = 193.408 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 6500 total (0 active), CPU time: mean = 107.260 us, total = 697.190 ms
+	NodeManagerService.grpc_client.UpdateResourceUsage - 6499 total (0 active), CPU time: mean = 29.030 us, total = 188.667 ms
+	MemoryInternalKV.Put - 930 total (0 active), CPU time: mean = 111.770 us, total = 103.946 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 930 total (0 active), CPU time: mean = 36.812 us, total = 34.235 ms
+	MemoryInternalKV.Get - 663 total (0 active), CPU time: mean = 112.306 us, total = 74.459 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 663 total (0 active), CPU time: mean = 34.458 us, total = 22.846 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 268 total (0 active), CPU time: mean = 130.459 us, total = 34.963 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 132 total (0 active), CPU time: mean = 165.871 us, total = 21.895 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 132 total (0 active), CPU time: mean = 129.949 us, total = 17.153 ms
+	GCSServer.deadline_timer.debug_state_dump - 66 total (1 active), CPU time: mean = 541.132 us, total = 35.715 ms
+	GCSServer.deadline_timer.debug_state_event_stats_print - 11 total (1 active, 1 running), CPU time: mean = 286.243 us, total = 3.149 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
+[2022-03-18 20:11:31,479 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 292
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 144
+- GetAllAvailableResources request count0
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 144
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:11:31,480 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 32626 total (3 active)
+Queueing time: mean = 37.480 us, max = 8.175 ms, min = -0.000 s, total = 1.223 s
+Execution time:  mean = 56.832 us, total = 1.854 s
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 7193 total (1 active), CPU time: mean = 39.996 us, total = 287.692 ms
+	UpdateResourceReport - 7092 total (0 active), CPU time: mean = 29.724 us, total = 210.803 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 7092 total (0 active), CPU time: mean = 107.249 us, total = 760.608 ms
+	NodeManagerService.grpc_client.UpdateResourceUsage - 7091 total (0 active), CPU time: mean = 29.094 us, total = 206.308 ms
+	MemoryInternalKV.Put - 1014 total (0 active), CPU time: mean = 112.053 us, total = 113.621 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 1014 total (0 active), CPU time: mean = 36.602 us, total = 37.114 ms
+	MemoryInternalKV.Get - 722 total (0 active), CPU time: mean = 112.212 us, total = 81.017 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 722 total (0 active), CPU time: mean = 34.405 us, total = 24.840 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 292 total (0 active), CPU time: mean = 131.737 us, total = 38.467 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 144 total (0 active), CPU time: mean = 167.070 us, total = 24.058 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 144 total (0 active), CPU time: mean = 129.607 us, total = 18.663 ms
+	GCSServer.deadline_timer.debug_state_dump - 72 total (1 active), CPU time: mean = 529.670 us, total = 38.136 ms
+	GCSServer.deadline_timer.debug_state_event_stats_print - 12 total (1 active, 1 running), CPU time: mean = 291.173 us, total = 3.494 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
+[2022-03-18 20:12:31,480 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 316
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 156
+- GetAllAvailableResources request count0
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 156
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:12:31,480 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 35348 total (3 active)
+Queueing time: mean = 37.341 us, max = 8.175 ms, min = -0.000 s, total = 1.320 s
+Execution time:  mean = 56.788 us, total = 2.007 s
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 7793 total (1 active), CPU time: mean = 39.812 us, total = 310.257 ms
+	UpdateResourceReport - 7685 total (0 active), CPU time: mean = 29.710 us, total = 228.320 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 7685 total (0 active), CPU time: mean = 107.284 us, total = 824.477 ms
+	NodeManagerService.grpc_client.UpdateResourceUsage - 7684 total (0 active), CPU time: mean = 29.094 us, total = 223.555 ms
+	MemoryInternalKV.Put - 1098 total (0 active), CPU time: mean = 112.312 us, total = 123.319 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 1098 total (0 active), CPU time: mean = 36.733 us, total = 40.333 ms
+	MemoryInternalKV.Get - 782 total (0 active), CPU time: mean = 112.249 us, total = 87.779 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 782 total (0 active), CPU time: mean = 34.154 us, total = 26.708 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 316 total (0 active), CPU time: mean = 133.280 us, total = 42.116 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 156 total (0 active), CPU time: mean = 168.315 us, total = 26.257 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 156 total (0 active), CPU time: mean = 128.521 us, total = 20.049 ms
+	GCSServer.deadline_timer.debug_state_dump - 78 total (1 active), CPU time: mean = 523.918 us, total = 40.866 ms
+	GCSServer.deadline_timer.debug_state_event_stats_print - 13 total (1 active, 1 running), CPU time: mean = 302.341 us, total = 3.930 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
+[2022-03-18 20:13:31,481 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 340
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 168
+- GetAllAvailableResources request count0
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 168
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:13:31,481 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 38064 total (3 active)
+Queueing time: mean = 37.539 us, max = 8.175 ms, min = -0.000 s, total = 1.429 s
+Execution time:  mean = 56.744 us, total = 2.160 s
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 8392 total (1 active), CPU time: mean = 39.752 us, total = 333.601 ms
+	UpdateResourceReport - 8277 total (0 active), CPU time: mean = 29.689 us, total = 245.733 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 8277 total (0 active), CPU time: mean = 107.295 us, total = 888.085 ms
+	NodeManagerService.grpc_client.UpdateResourceUsage - 8276 total (0 active), CPU time: mean = 29.105 us, total = 240.874 ms
+	MemoryInternalKV.Put - 1182 total (0 active), CPU time: mean = 112.283 us, total = 132.718 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 1182 total (0 active), CPU time: mean = 36.616 us, total = 43.280 ms
+	MemoryInternalKV.Get - 841 total (0 active), CPU time: mean = 112.378 us, total = 94.510 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 841 total (0 active), CPU time: mean = 34.098 us, total = 28.676 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 340 total (0 active), CPU time: mean = 134.210 us, total = 45.632 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 168 total (0 active), CPU time: mean = 168.868 us, total = 28.370 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 168 total (0 active), CPU time: mean = 129.601 us, total = 21.773 ms
+	GCSServer.deadline_timer.debug_state_dump - 84 total (1 active), CPU time: mean = 513.001 us, total = 43.092 ms
+	GCSServer.deadline_timer.debug_state_event_stats_print - 14 total (1 active, 1 running), CPU time: mean = 299.686 us, total = 4.196 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
+[2022-03-18 20:14:31,481 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 364
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 180
+- GetAllAvailableResources request count0
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 180
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:14:31,481 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 40784 total (3 active)
+Queueing time: mean = 37.536 us, max = 8.175 ms, min = -0.000 s, total = 1.531 s
+Execution time:  mean = 56.666 us, total = 2.311 s
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 8992 total (1 active), CPU time: mean = 39.664 us, total = 356.658 ms
+	UpdateResourceReport - 8870 total (0 active), CPU time: mean = 29.641 us, total = 262.915 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 8870 total (0 active), CPU time: mean = 107.235 us, total = 951.174 ms
+	NodeManagerService.grpc_client.UpdateResourceUsage - 8869 total (0 active), CPU time: mean = 29.053 us, total = 257.675 ms
+	MemoryInternalKV.Put - 1266 total (0 active), CPU time: mean = 112.004 us, total = 141.797 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 1266 total (0 active), CPU time: mean = 36.417 us, total = 46.103 ms
+	MemoryInternalKV.Get - 900 total (0 active), CPU time: mean = 112.964 us, total = 101.667 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 900 total (0 active), CPU time: mean = 34.271 us, total = 30.844 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 364 total (0 active), CPU time: mean = 134.969 us, total = 49.129 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 180 total (0 active), CPU time: mean = 169.795 us, total = 30.563 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 180 total (0 active), CPU time: mean = 129.104 us, total = 23.239 ms
+	GCSServer.deadline_timer.debug_state_dump - 90 total (1 active), CPU time: mean = 506.603 us, total = 45.594 ms
+	GCSServer.deadline_timer.debug_state_event_stats_print - 15 total (1 active, 1 running), CPU time: mean = 290.406 us, total = 4.356 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
+[2022-03-18 20:15:31,481 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 388
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 192
+- GetAllAvailableResources request count0
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 192
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:15:31,481 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 43452 total (3 active)
+Queueing time: mean = 37.534 us, max = 8.175 ms, min = -0.000 s, total = 1.631 s
+Execution time:  mean = 56.670 us, total = 2.462 s
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 9591 total (1 active), CPU time: mean = 39.626 us, total = 380.051 ms
+	NodeManagerService.grpc_client.UpdateResourceUsage - 9447 total (0 active), CPU time: mean = 29.068 us, total = 274.607 ms
+	UpdateResourceReport - 9447 total (0 active), CPU time: mean = 29.690 us, total = 280.481 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 9447 total (0 active), CPU time: mean = 107.334 us, total = 1.014 s
+	MemoryInternalKV.Put - 1348 total (0 active), CPU time: mean = 111.853 us, total = 150.777 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 1348 total (0 active), CPU time: mean = 36.490 us, total = 49.188 ms
+	MemoryInternalKV.Get - 959 total (0 active), CPU time: mean = 112.817 us, total = 108.192 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 959 total (0 active), CPU time: mean = 34.225 us, total = 32.822 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 388 total (0 active), CPU time: mean = 134.870 us, total = 52.330 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 192 total (0 active), CPU time: mean = 170.493 us, total = 32.735 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 192 total (0 active), CPU time: mean = 129.476 us, total = 24.859 ms
+	GCSServer.deadline_timer.debug_state_dump - 96 total (1 active), CPU time: mean = 504.512 us, total = 48.433 ms
+	GCSServer.deadline_timer.debug_state_event_stats_print - 16 total (1 active, 1 running), CPU time: mean = 288.419 us, total = 4.615 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
+[2022-03-18 20:16:31,482 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 412
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 204
+- GetAllAvailableResources request count0
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 204
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:16:31,482 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 46172 total (3 active)
+Queueing time: mean = 37.480 us, max = 8.175 ms, min = -0.000 s, total = 1.731 s
+Execution time:  mean = 56.570 us, total = 2.612 s
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 10190 total (1 active), CPU time: mean = 39.465 us, total = 402.153 ms
+	UpdateResourceReport - 10040 total (0 active), CPU time: mean = 29.709 us, total = 298.276 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 10040 total (0 active), CPU time: mean = 107.293 us, total = 1.077 s
+	NodeManagerService.grpc_client.UpdateResourceUsage - 10039 total (0 active), CPU time: mean = 29.014 us, total = 291.272 ms
+	MemoryInternalKV.Put - 1432 total (0 active), CPU time: mean = 111.779 us, total = 160.067 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 1432 total (0 active), CPU time: mean = 36.278 us, total = 51.951 ms
+	MemoryInternalKV.Get - 1019 total (0 active), CPU time: mean = 112.171 us, total = 114.303 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 1019 total (0 active), CPU time: mean = 34.011 us, total = 34.657 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 412 total (0 active), CPU time: mean = 134.540 us, total = 55.430 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 204 total (0 active), CPU time: mean = 171.040 us, total = 34.892 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 204 total (0 active), CPU time: mean = 129.397 us, total = 26.397 ms
+	GCSServer.deadline_timer.debug_state_dump - 102 total (1 active), CPU time: mean = 500.884 us, total = 51.090 ms
+	GCSServer.deadline_timer.debug_state_event_stats_print - 17 total (1 active, 1 running), CPU time: mean = 287.156 us, total = 4.882 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
+[2022-03-18 20:17:31,482 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 436
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 216
+- GetAllAvailableResources request count0
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 216
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:17:31,482 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 48892 total (3 active)
+Queueing time: mean = 37.302 us, max = 8.175 ms, min = -0.000 s, total = 1.824 s
+Execution time:  mean = 56.437 us, total = 2.759 s
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 10790 total (1 active), CPU time: mean = 39.362 us, total = 424.713 ms
+	UpdateResourceReport - 10633 total (0 active), CPU time: mean = 29.669 us, total = 315.475 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 10633 total (0 active), CPU time: mean = 107.142 us, total = 1.139 s
+	NodeManagerService.grpc_client.UpdateResourceUsage - 10632 total (0 active), CPU time: mean = 28.929 us, total = 307.577 ms
+	MemoryInternalKV.Put - 1516 total (0 active), CPU time: mean = 111.548 us, total = 169.107 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 1516 total (0 active), CPU time: mean = 36.380 us, total = 55.153 ms
+	MemoryInternalKV.Get - 1078 total (0 active), CPU time: mean = 111.847 us, total = 120.571 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 1078 total (0 active), CPU time: mean = 33.962 us, total = 36.611 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 436 total (0 active), CPU time: mean = 133.361 us, total = 58.145 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 216 total (0 active), CPU time: mean = 170.767 us, total = 36.886 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 216 total (0 active), CPU time: mean = 128.356 us, total = 27.725 ms
+	GCSServer.deadline_timer.debug_state_dump - 108 total (1 active), CPU time: mean = 496.223 us, total = 53.592 ms
+	GCSServer.deadline_timer.debug_state_event_stats_print - 18 total (1 active, 1 running), CPU time: mean = 287.681 us, total = 5.178 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
+[2022-03-18 20:18:31,482 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 460
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 228
+- GetAllAvailableResources request count0
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 228
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:18:31,482 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 51611 total (3 active)
+Queueing time: mean = 37.409 us, max = 8.175 ms, min = -0.000 s, total = 1.931 s
+Execution time:  mean = 56.376 us, total = 2.910 s
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 11389 total (1 active), CPU time: mean = 39.250 us, total = 447.015 ms
+	UpdateResourceReport - 11226 total (0 active), CPU time: mean = 29.671 us, total = 333.084 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 11226 total (0 active), CPU time: mean = 107.100 us, total = 1.202 s
+	NodeManagerService.grpc_client.UpdateResourceUsage - 11225 total (0 active), CPU time: mean = 28.866 us, total = 324.016 ms
+	MemoryInternalKV.Put - 1600 total (0 active), CPU time: mean = 111.815 us, total = 178.905 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 1600 total (0 active), CPU time: mean = 36.417 us, total = 58.267 ms
+	MemoryInternalKV.Get - 1137 total (0 active), CPU time: mean = 111.687 us, total = 126.988 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 1137 total (0 active), CPU time: mean = 33.868 us, total = 38.507 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 460 total (0 active), CPU time: mean = 134.081 us, total = 61.677 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 228 total (0 active), CPU time: mean = 170.702 us, total = 38.920 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 228 total (0 active), CPU time: mean = 127.472 us, total = 29.064 ms
+	GCSServer.deadline_timer.debug_state_dump - 114 total (1 active), CPU time: mean = 491.289 us, total = 56.007 ms
+	GCSServer.deadline_timer.debug_state_event_stats_print - 19 total (1 active, 1 running), CPU time: mean = 290.705 us, total = 5.523 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
+[2022-03-18 20:19:31,483 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 483
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 239
+- GetAllAvailableResources request count0
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 239
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:19:31,483 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 54322 total (3 active)
+Queueing time: mean = 37.532 us, max = 8.175 ms, min = -0.000 s, total = 2.039 s
+Execution time:  mean = 56.366 us, total = 3.062 s
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 11989 total (1 active), CPU time: mean = 39.141 us, total = 469.263 ms
+	UpdateResourceReport - 11819 total (0 active), CPU time: mean = 29.682 us, total = 350.810 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 11819 total (0 active), CPU time: mean = 107.088 us, total = 1.266 s
+	NodeManagerService.grpc_client.UpdateResourceUsage - 11818 total (0 active), CPU time: mean = 28.899 us, total = 341.533 ms
+	MemoryInternalKV.Put - 1682 total (0 active), CPU time: mean = 112.040 us, total = 188.451 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 1682 total (0 active), CPU time: mean = 36.657 us, total = 61.658 ms
+	MemoryInternalKV.Get - 1195 total (0 active), CPU time: mean = 111.812 us, total = 133.615 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 1195 total (0 active), CPU time: mean = 34.032 us, total = 40.668 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 483 total (0 active), CPU time: mean = 134.350 us, total = 64.891 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 239 total (0 active), CPU time: mean = 172.294 us, total = 41.178 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 239 total (0 active), CPU time: mean = 128.535 us, total = 30.720 ms
+	GCSServer.deadline_timer.debug_state_dump - 120 total (1 active), CPU time: mean = 485.066 us, total = 58.208 ms
+	GCSServer.deadline_timer.debug_state_event_stats_print - 20 total (1 active, 1 running), CPU time: mean = 292.578 us, total = 5.852 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
+[2022-03-18 20:20:31,483 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 507
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 251
+- GetAllAvailableResources request count0
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 251
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:20:31,483 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 57039 total (3 active)
+Queueing time: mean = 37.786 us, max = 8.175 ms, min = -0.000 s, total = 2.155 s
+Execution time:  mean = 56.464 us, total = 3.221 s
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 12588 total (1 active), CPU time: mean = 39.046 us, total = 491.507 ms
+	NodeManagerService.grpc_client.UpdateResourceUsage - 12411 total (0 active), CPU time: mean = 28.914 us, total = 358.852 ms
+	UpdateResourceReport - 12411 total (0 active), CPU time: mean = 29.658 us, total = 368.081 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 12411 total (0 active), CPU time: mean = 107.064 us, total = 1.329 s
+	MemoryInternalKV.Put - 1766 total (0 active), CPU time: mean = 112.304 us, total = 198.329 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 1766 total (0 active), CPU time: mean = 36.836 us, total = 65.052 ms
+	MemoryInternalKV.Get - 1254 total (0 active), CPU time: mean = 111.931 us, total = 140.361 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 1254 total (0 active), CPU time: mean = 33.934 us, total = 42.554 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 507 total (0 active), CPU time: mean = 134.506 us, total = 68.195 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 251 total (0 active), CPU time: mean = 173.551 us, total = 43.561 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 251 total (0 active), CPU time: mean = 128.983 us, total = 32.375 ms
+	GCSServer.deadline_timer.debug_state_dump - 126 total (1 active), CPU time: mean = 536.955 us, total = 67.656 ms
+	GCSServer.deadline_timer.debug_state_event_stats_print - 21 total (1 active, 1 running), CPU time: mean = 286.176 us, total = 6.010 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
+[2022-03-18 20:21:31,483 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 532
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 264
+- GetAllAvailableResources request count1
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 263
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:21:31,483 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 59764 total (3 active)
+Queueing time: mean = 37.517 us, max = 8.175 ms, min = -0.000 s, total = 2.242 s
+Execution time:  mean = 56.350 us, total = 3.368 s
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 13187 total (1 active), CPU time: mean = 38.951 us, total = 513.640 ms
+	UpdateResourceReport - 13004 total (0 active), CPU time: mean = 29.633 us, total = 385.343 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 13004 total (0 active), CPU time: mean = 106.859 us, total = 1.390 s
+	NodeManagerService.grpc_client.UpdateResourceUsage - 13003 total (0 active), CPU time: mean = 28.802 us, total = 374.507 ms
+	MemoryInternalKV.Put - 1850 total (0 active), CPU time: mean = 112.325 us, total = 207.801 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 1850 total (0 active), CPU time: mean = 36.929 us, total = 68.319 ms
+	MemoryInternalKV.Get - 1315 total (0 active), CPU time: mean = 111.857 us, total = 147.092 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 1315 total (0 active), CPU time: mean = 33.847 us, total = 44.509 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 532 total (0 active), CPU time: mean = 134.427 us, total = 71.515 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 264 total (0 active), CPU time: mean = 127.923 us, total = 33.772 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 263 total (0 active), CPU time: mean = 172.869 us, total = 45.465 ms
+	GCSServer.deadline_timer.debug_state_dump - 132 total (1 active), CPU time: mean = 532.553 us, total = 70.297 ms
+	GCSServer.deadline_timer.debug_state_event_stats_print - 22 total (1 active, 1 running), CPU time: mean = 289.216 us, total = 6.363 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeResourceInfoGcsService.grpc_server.GetAllAvailableResources - 1 total (0 active), CPU time: mean = 152.556 us, total = 152.556 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
+[2022-03-18 20:22:31,484 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 560
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 280
+- GetAllAvailableResources request count5
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 275
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:22:31,484 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 62511 total (3 active)
+Queueing time: mean = 37.550 us, max = 8.175 ms, min = -0.000 s, total = 2.347 s
+Execution time:  mean = 56.262 us, total = 3.517 s
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 13787 total (1 active), CPU time: mean = 38.856 us, total = 535.701 ms
+	UpdateResourceReport - 13596 total (0 active), CPU time: mean = 29.588 us, total = 402.278 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 13596 total (0 active), CPU time: mean = 106.734 us, total = 1.451 s
+	NodeManagerService.grpc_client.UpdateResourceUsage - 13595 total (0 active), CPU time: mean = 28.752 us, total = 390.889 ms
+	MemoryInternalKV.Put - 1934 total (0 active), CPU time: mean = 112.216 us, total = 217.025 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 1934 total (0 active), CPU time: mean = 36.791 us, total = 71.153 ms
+	MemoryInternalKV.Get - 1383 total (0 active), CPU time: mean = 111.556 us, total = 154.282 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 1383 total (0 active), CPU time: mean = 33.988 us, total = 47.006 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 560 total (0 active), CPU time: mean = 134.492 us, total = 75.316 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 280 total (0 active), CPU time: mean = 127.349 us, total = 35.658 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 275 total (0 active), CPU time: mean = 173.090 us, total = 47.600 ms
+	GCSServer.deadline_timer.debug_state_dump - 138 total (1 active), CPU time: mean = 524.206 us, total = 72.340 ms
+	GCSServer.deadline_timer.debug_state_event_stats_print - 23 total (1 active, 1 running), CPU time: mean = 293.549 us, total = 6.752 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllAvailableResources - 5 total (0 active), CPU time: mean = 100.749 us, total = 503.745 us
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
+[2022-03-18 20:23:31,484 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 584
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 292
+- GetAllAvailableResources request count5
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 287
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:23:31,484 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 65225 total (3 active)
+Queueing time: mean = 37.614 us, max = 8.175 ms, min = -0.000 s, total = 2.453 s
+Execution time:  mean = 56.243 us, total = 3.668 s
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 14386 total (1 active), CPU time: mean = 38.815 us, total = 558.393 ms
+	UpdateResourceReport - 14188 total (0 active), CPU time: mean = 29.576 us, total = 419.631 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 14188 total (0 active), CPU time: mean = 106.717 us, total = 1.514 s
+	NodeManagerService.grpc_client.UpdateResourceUsage - 14187 total (0 active), CPU time: mean = 28.750 us, total = 407.878 ms
+	MemoryInternalKV.Put - 2017 total (0 active), CPU time: mean = 112.419 us, total = 226.750 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 2017 total (0 active), CPU time: mean = 36.780 us, total = 74.185 ms
+	MemoryInternalKV.Get - 1442 total (0 active), CPU time: mean = 111.624 us, total = 160.961 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 1442 total (0 active), CPU time: mean = 34.016 us, total = 49.051 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 584 total (0 active), CPU time: mean = 134.822 us, total = 78.736 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 292 total (0 active), CPU time: mean = 127.363 us, total = 37.190 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 287 total (0 active), CPU time: mean = 172.551 us, total = 49.522 ms
+	GCSServer.deadline_timer.debug_state_dump - 144 total (1 active), CPU time: mean = 520.879 us, total = 75.007 ms
+	GCSServer.deadline_timer.debug_state_event_stats_print - 24 total (1 active, 1 running), CPU time: mean = 299.034 us, total = 7.177 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllAvailableResources - 5 total (0 active), CPU time: mean = 100.749 us, total = 503.745 us
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
+[2022-03-18 20:24:31,485 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 613
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 309
+- GetAllAvailableResources request count10
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 299
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:24:31,485 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 67978 total (3 active)
+Queueing time: mean = 37.701 us, max = 8.175 ms, min = -0.000 s, total = 2.563 s
+Execution time:  mean = 56.221 us, total = 3.822 s
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 14986 total (1 active), CPU time: mean = 38.764 us, total = 580.915 ms
+	NodeManagerService.grpc_client.UpdateResourceUsage - 14780 total (0 active), CPU time: mean = 28.783 us, total = 425.407 ms
+	UpdateResourceReport - 14780 total (0 active), CPU time: mean = 29.548 us, total = 436.723 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 14780 total (0 active), CPU time: mean = 106.685 us, total = 1.577 s
+	MemoryInternalKV.Put - 2101 total (0 active), CPU time: mean = 112.404 us, total = 236.160 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 2101 total (0 active), CPU time: mean = 36.717 us, total = 77.142 ms
+	MemoryInternalKV.Get - 1511 total (0 active), CPU time: mean = 111.452 us, total = 168.404 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 1511 total (0 active), CPU time: mean = 33.922 us, total = 51.257 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 613 total (0 active), CPU time: mean = 135.059 us, total = 82.791 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 309 total (0 active), CPU time: mean = 127.131 us, total = 39.283 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 299 total (0 active), CPU time: mean = 171.435 us, total = 51.259 ms
+	GCSServer.deadline_timer.debug_state_dump - 150 total (1 active), CPU time: mean = 517.530 us, total = 77.630 ms
+	GCSServer.deadline_timer.debug_state_event_stats_print - 25 total (1 active, 1 running), CPU time: mean = 300.749 us, total = 7.519 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllAvailableResources - 10 total (0 active), CPU time: mean = 114.648 us, total = 1.146 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
+[2022-03-18 20:25:31,485 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 640
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 324
+- GetAllAvailableResources request count13
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 311
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:25:31,485 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 70715 total (3 active)
+Queueing time: mean = 37.703 us, max = 8.175 ms, min = -0.000 s, total = 2.666 s
+Execution time:  mean = 56.199 us, total = 3.974 s
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 15585 total (1 active), CPU time: mean = 38.739 us, total = 603.743 ms
+	NodeManagerService.grpc_client.UpdateResourceUsage - 15372 total (0 active), CPU time: mean = 28.749 us, total = 441.924 ms
+	UpdateResourceReport - 15372 total (0 active), CPU time: mean = 29.561 us, total = 454.413 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 15372 total (0 active), CPU time: mean = 106.716 us, total = 1.640 s
+	MemoryInternalKV.Put - 2185 total (0 active), CPU time: mean = 112.432 us, total = 245.663 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 2185 total (0 active), CPU time: mean = 36.649 us, total = 80.077 ms
+	MemoryInternalKV.Get - 1576 total (0 active), CPU time: mean = 111.348 us, total = 175.484 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 1576 total (0 active), CPU time: mean = 33.838 us, total = 53.329 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 640 total (0 active), CPU time: mean = 134.553 us, total = 86.114 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 324 total (0 active), CPU time: mean = 126.561 us, total = 41.006 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 311 total (0 active), CPU time: mean = 170.396 us, total = 52.993 ms
+	GCSServer.deadline_timer.debug_state_dump - 156 total (1 active), CPU time: mean = 513.538 us, total = 80.112 ms
+	GCSServer.deadline_timer.debug_state_event_stats_print - 26 total (1 active, 1 running), CPU time: mean = 304.200 us, total = 7.909 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllAvailableResources - 13 total (0 active), CPU time: mean = 117.891 us, total = 1.533 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
+[2022-03-18 20:26:31,485 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 664
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 336
+- GetAllAvailableResources request count13
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 323
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:26:31,486 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 73433 total (3 active)
+Queueing time: mean = 37.751 us, max = 8.175 ms, min = -0.000 s, total = 2.772 s
+Execution time:  mean = 56.170 us, total = 4.125 s
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 16184 total (1 active), CPU time: mean = 38.729 us, total = 626.790 ms
+	UpdateResourceReport - 15965 total (0 active), CPU time: mean = 29.559 us, total = 471.905 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 15965 total (0 active), CPU time: mean = 106.711 us, total = 1.704 s
+	NodeManagerService.grpc_client.UpdateResourceUsage - 15964 total (0 active), CPU time: mean = 28.755 us, total = 459.042 ms
+	MemoryInternalKV.Put - 2269 total (0 active), CPU time: mean = 112.586 us, total = 255.458 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 2269 total (0 active), CPU time: mean = 36.811 us, total = 83.525 ms
+	MemoryInternalKV.Get - 1635 total (0 active), CPU time: mean = 111.101 us, total = 181.649 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 1635 total (0 active), CPU time: mean = 33.697 us, total = 55.095 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 664 total (0 active), CPU time: mean = 133.509 us, total = 88.650 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 336 total (0 active), CPU time: mean = 126.243 us, total = 42.418 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 323 total (0 active), CPU time: mean = 169.623 us, total = 54.788 ms
+	GCSServer.deadline_timer.debug_state_dump - 162 total (1 active), CPU time: mean = 510.523 us, total = 82.705 ms
+	GCSServer.deadline_timer.debug_state_event_stats_print - 27 total (1 active, 1 running), CPU time: mean = 302.578 us, total = 8.170 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllAvailableResources - 13 total (0 active), CPU time: mean = 117.891 us, total = 1.533 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
+[2022-03-18 20:27:31,486 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 688
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 348
+- GetAllAvailableResources request count13
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 335
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:27:31,486 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 76151 total (3 active)
+Queueing time: mean = 37.812 us, max = 8.175 ms, min = -0.000 s, total = 2.879 s
+Execution time:  mean = 56.183 us, total = 4.278 s
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 16784 total (1 active), CPU time: mean = 38.696 us, total = 649.467 ms
+	NodeManagerService.grpc_client.UpdateResourceUsage - 16557 total (0 active), CPU time: mean = 28.785 us, total = 476.586 ms
+	UpdateResourceReport - 16557 total (0 active), CPU time: mean = 29.566 us, total = 489.524 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 16557 total (0 active), CPU time: mean = 106.804 us, total = 1.768 s
+	MemoryInternalKV.Put - 2353 total (0 active), CPU time: mean = 112.681 us, total = 265.139 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 2353 total (0 active), CPU time: mean = 36.907 us, total = 86.842 ms
+	MemoryInternalKV.Get - 1694 total (0 active), CPU time: mean = 110.985 us, total = 188.009 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 1694 total (0 active), CPU time: mean = 33.794 us, total = 57.248 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 688 total (0 active), CPU time: mean = 133.035 us, total = 91.528 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 348 total (0 active), CPU time: mean = 125.966 us, total = 43.836 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 335 total (0 active), CPU time: mean = 169.892 us, total = 56.914 ms
+	GCSServer.deadline_timer.debug_state_dump - 168 total (1 active), CPU time: mean = 509.089 us, total = 85.527 ms
+	GCSServer.deadline_timer.debug_state_event_stats_print - 28 total (1 active, 1 running), CPU time: mean = 305.386 us, total = 8.551 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllAvailableResources - 13 total (0 active), CPU time: mean = 117.891 us, total = 1.533 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
+[2022-03-18 20:28:31,486 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 713
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 361
+- GetAllAvailableResources request count14
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 347
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:28:31,486 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 78878 total (3 active)
+Queueing time: mean = 37.832 us, max = 8.175 ms, min = -0.000 s, total = 2.984 s
+Execution time:  mean = 56.148 us, total = 4.429 s
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 17383 total (1 active), CPU time: mean = 38.644 us, total = 671.756 ms
+	UpdateResourceReport - 17150 total (0 active), CPU time: mean = 29.541 us, total = 506.628 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 17150 total (0 active), CPU time: mean = 106.742 us, total = 1.831 s
+	NodeManagerService.grpc_client.UpdateResourceUsage - 17149 total (0 active), CPU time: mean = 28.745 us, total = 492.946 ms
+	MemoryInternalKV.Put - 2437 total (0 active), CPU time: mean = 112.813 us, total = 274.924 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 2437 total (0 active), CPU time: mean = 36.905 us, total = 89.939 ms
+	MemoryInternalKV.Get - 1756 total (0 active), CPU time: mean = 110.998 us, total = 194.913 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 1756 total (0 active), CPU time: mean = 33.807 us, total = 59.365 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 713 total (0 active), CPU time: mean = 133.270 us, total = 95.022 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 361 total (0 active), CPU time: mean = 126.511 us, total = 45.670 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 347 total (0 active), CPU time: mean = 170.114 us, total = 59.030 ms
+	GCSServer.deadline_timer.debug_state_dump - 174 total (1 active), CPU time: mean = 507.087 us, total = 88.233 ms
+	GCSServer.deadline_timer.debug_state_event_stats_print - 29 total (1 active, 1 running), CPU time: mean = 304.127 us, total = 8.820 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllAvailableResources - 14 total (0 active), CPU time: mean = 113.873 us, total = 1.594 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
+[2022-03-18 20:29:31,486 I 1916939 1916939] (gcs_server) gcs_server.cc:187: GcsNodeManager: 
+- RegisterNode request count: 1
+- DrainNode request count: 0
+- GetAllNodeInfo request count: 737
+- GetInternalConfig request count: 1
+
+GcsActorManager: 
+- RegisterActor request count: 0
+- CreateActor request count: 0
+- GetActorInfo request count: 0
+- GetNamedActorInfo request count: 0
+- GetAllActorInfo request count: 1
+- KillActor request count: 0
+- ListNamedActors request count: 0
+- Registered actors count: 0
+- Destroyed actors count: 0
+- Named actors count: 0
+- Unresolved actors count: 0
+- Pending actors count: 0
+- Created actors count: 0
+- owners_: 0
+- actor_to_register_callbacks_: 0
+- actor_to_create_callbacks_: 0
+- sorted_destroyed_actor_list_: 0
+
+GcsResourceManager: 
+- GetResources request count: 373
+- GetAllAvailableResources request count14
+- UpdateResources request count: 1
+- DeleteResources request count: 0
+- ReportResourceUsage request count: 0
+- GetAllResourceUsage request count: 359
+
+GcsPlacementGroupManager: 
+- CreatePlacementGroup request count: 0
+- RemovePlacementGroup request count: 0
+- GetPlacementGroup request count: 0
+- GetAllPlacementGroup request count: 0
+- WaitPlacementGroupUntilReady request count: 0
+- GetNamedPlacementGroup request count: 0
+- Scheduling pending placement group count: 0
+- Registered placement groups count: 0
+- Named placement group count: 0
+- Pending placement groups count: 0
+- Infeasible placement groups count: 0
+
+GcsPubSub:
+- num channels subscribed to: 0
+- total commands queued: 0
+
+[runtime env manager] ID to URIs table:
+[runtime env manager] URIs reference table:
+
+GrpcBasedResourceBroadcaster:
+- Tracked nodes: 1
+[2022-03-18 20:29:31,486 I 1916939 1916939] (gcs_server) gcs_server.cc:622: Event stats:
+
+
+Global stats: 81596 total (4 active)
+Queueing time: mean = 37.763 us, max = 8.175 ms, min = -0.000 s, total = 3.081 s
+Execution time:  mean = 56.102 us, total = 4.578 s
+Event stats:
+	RaySyncer.deadline_timer.report_resource_report - 17983 total (1 active), CPU time: mean = 38.589 us, total = 693.953 ms
+	NodeManagerService.grpc_client.UpdateResourceUsage - 17742 total (1 active), CPU time: mean = 28.708 us, total = 509.331 ms
+	UpdateResourceReport - 17742 total (0 active), CPU time: mean = 29.540 us, total = 524.094 ms
+	NodeManagerService.grpc_client.RequestResourceReport - 17742 total (0 active), CPU time: mean = 106.674 us, total = 1.893 s
+	MemoryInternalKV.Put - 2521 total (0 active), CPU time: mean = 112.868 us, total = 284.540 ms
+	InternalKVGcsService.grpc_server.InternalKVPut - 2521 total (0 active), CPU time: mean = 37.016 us, total = 93.317 ms
+	MemoryInternalKV.Get - 1815 total (0 active), CPU time: mean = 110.788 us, total = 201.080 ms
+	InternalKVGcsService.grpc_server.InternalKVGet - 1815 total (0 active), CPU time: mean = 33.859 us, total = 61.454 ms
+	NodeInfoGcsService.grpc_server.GetAllNodeInfo - 737 total (0 active), CPU time: mean = 132.921 us, total = 97.963 ms
+	NodeResourceInfoGcsService.grpc_server.GetResources - 373 total (0 active), CPU time: mean = 126.596 us, total = 47.220 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllResourceUsage - 359 total (0 active), CPU time: mean = 170.784 us, total = 61.311 ms
+	GCSServer.deadline_timer.debug_state_dump - 180 total (1 active), CPU time: mean = 504.684 us, total = 90.843 ms
+	GCSServer.deadline_timer.debug_state_event_stats_print - 30 total (1 active, 1 running), CPU time: mean = 300.067 us, total = 9.002 ms
+	NodeResourceInfoGcsService.grpc_server.GetAllAvailableResources - 14 total (0 active), CPU time: mean = 113.873 us, total = 1.594 ms
+	GcsInMemoryStore.GetAll - 6 total (0 active), CPU time: mean = 1.394 ms, total = 8.366 ms
+	GcsInMemoryStore.Put - 3 total (0 active), CPU time: mean = 69.624 us, total = 208.873 us
+	PeriodicalRunner.RunFnPeriodically - 3 total (0 active), CPU time: mean = 99.128 us, total = 297.383 us
+	MemoryInternalKV.Del - 1 total (0 active), CPU time: mean = 50.164 us, total = 50.164 us
+	InternalKVGcsService.grpc_server.InternalKVKeys - 1 total (0 active), CPU time: mean = 36.679 us, total = 36.679 us
+	MemoryInternalKV.Keys - 1 total (0 active), CPU time: mean = 123.551 us, total = 123.551 us
+	ActorInfoGcsService.grpc_server.GetAllActorInfo - 1 total (0 active), CPU time: mean = 11.051 us, total = 11.051 us
+	InternalKVGcsService.grpc_server.InternalKVDel - 1 total (0 active), CPU time: mean = 17.543 us, total = 17.543 us
+	NodeInfoGcsService.grpc_server.RegisterNode - 1 total (0 active), CPU time: mean = 70.943 us, total = 70.943 us
+	GcsInMemoryStore.Get - 1 total (0 active), CPU time: mean = 62.406 us, total = 62.406 us
+	JobInfoGcsService.grpc_server.GetAllJobInfo - 1 total (0 active), CPU time: mean = 75.672 us, total = 75.672 us
+	NodeInfoGcsService.grpc_server.GetInternalConfig - 1 total (0 active), CPU time: mean = 15.409 us, total = 15.409 us
+	NodeResourceInfoGcsService.grpc_server.UpdateResources - 1 total (0 active), CPU time: mean = 27.882 us, total = 27.882 us
+
+
