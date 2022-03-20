@@ -103,8 +103,8 @@ void RaySyncer::BroadcastMessage(std::shared_ptr<RaySyncMessage> message) {
 }
 
 NodeSyncConnection::NodeSyncConnection(RaySyncer &instance,
-                                 instrumented_io_context &io_context,
-                                 std::string node_id)
+                                       instrumented_io_context &io_context,
+                                       std::string node_id)
     : timer_(io_context),
       instance_(instance),
       io_context_(io_context),
@@ -141,7 +141,8 @@ ClientSyncConnection::ClientSyncConnection(
     instrumented_io_context &io_context,
     std::string node_id,
     std::shared_ptr<ray::rpc::syncer::RaySyncer::Stub> stub)
-    : NodeSyncConnection(instance, io_context, std::move(node_id)), stub_(std::move(stub)) {
+    : NodeSyncConnection(instance, io_context, std::move(node_id)),
+      stub_(std::move(stub)) {
   // Initialize the connection
   start_sync_request_.set_node_id(instance.GetNodeId());
   auto handler = stub->async();
@@ -224,12 +225,12 @@ void RaySyncer::ClientSyncConnection::DoSend() {
 }
 
 ServerSyncConnection::ServerSyncConnection(RaySyncer &instance,
-                                     instrumented_io_context &io_context,
-                                     const std::string &node_id)
+                                           instrumented_io_context &io_context,
+                                           const std::string &node_id)
     : NodeSyncConnection(instance, io_context, node_id) {}
 
 void ServerSyncConnection::HandleLongPollingRequest(grpc::ServerUnaryReactor *reactor,
-                                                 RaySyncMessages *response) {
+                                                    RaySyncMessages *response) {
   RAY_CHECK(response_ == nullptr);
   RAY_CHECK(unary_reactor_ == nullptr);
 

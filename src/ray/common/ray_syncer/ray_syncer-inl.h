@@ -51,8 +51,8 @@ class NodeStatus {
 class NodeSyncConnection {
  public:
   NodeSyncConnection(RaySyncer &instance,
-                  instrumented_io_context &io_context,
-                  std::string node_id);
+                     instrumented_io_context &io_context,
+                     std::string node_id);
 
   /// Push a message to the sending queue to be sent later.
   ///
@@ -112,8 +112,8 @@ class NodeSyncConnection {
 class ServerSyncConnection : public NodeSyncConnection {
  public:
   ServerSyncConnection(RaySyncer &instance,
-                    instrumented_io_context &io_context,
-                    const std::string &node_id);
+                       instrumented_io_context &io_context,
+                       const std::string &node_id);
 
   void HandleLongPollingRequest(grpc::ServerUnaryReactor *reactor,
                                 RaySyncMessages *response);
@@ -133,9 +133,9 @@ class ServerSyncConnection : public NodeSyncConnection {
 class ClientSyncConnection : public NodeSyncConnection {
  public:
   ClientSyncConnection(RaySyncer &instance,
-                    instrumented_io_context &io_context,
-                    const std::string &node_id,
-                    std::shared_ptr<ray::rpc::syncer::RaySyncer::Stub> stub);
+                       instrumented_io_context &io_context,
+                       const std::string &node_id,
+                       std::shared_ptr<ray::rpc::syncer::RaySyncer::Stub> stub);
 
  protected:
   void DoSend() override;
