@@ -21,7 +21,7 @@ See :ref:`Placement Group <ray-placement-group-doc-ref>` for more details.
 
 Scheduling Strategy
 -------------------
-Task supports ``scheduling_strategy`` option to specify the strategy used to decide the best node among available nodes.
+Tasks support ``scheduling_strategy`` option to specify the strategy used to decide the best node among available nodes.
 Currently the supported strategies are "DEFAULT" and "SPREAD".
 "DEFAULT" is the default strategy used by Ray. With the current implementation, Ray will try to pack tasks on nodes
 until the resource utilization is beyond a certain threshold and spread tasks afterwards.
