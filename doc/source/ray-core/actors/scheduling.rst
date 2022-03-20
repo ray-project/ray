@@ -29,7 +29,7 @@ Actors support ``scheduling_strategy`` option to specify the strategy used to de
 Currently the only supported strategy for actors is "DEFAULT".
 "DEFAULT" is the default strategy used by Ray. With the current implementation, Ray will try to pack actors on nodes
 until the resource utilization is beyond a certain threshold and spread actors afterwards.
-Currently Ray handles actors that don't require any resources specially by randomly choosing a node in the cluster without considering resource utilization.
+Currently Ray handles actors that don't require any resources (i.e., ``num_cpus=0`` with no other resources) specially by randomly choosing a node in the cluster without considering resource utilization.
 Since nodes are randomly chosen, actors that don't require any resources are effectively SPREAD across the cluster.
 
 .. tabbed:: Python
@@ -40,8 +40,8 @@ Since nodes are randomly chosen, actors that don't require any resources are eff
         class Actor:
             pass
 
-        # "DEFAULT" scheduling strategy is used.
+        # "DEFAULT" scheduling strategy is used (packed onto nodes until reaching a threshold and then spread).
         a1 = Actor.remote()
 
-        # Node is chosen randomly because this actor requires no resources.
+        # Zero-CPU (and no other resources) actors are randomly assigned to nodes.
         a2 = Actor.options(num_cpus=0).remote()
