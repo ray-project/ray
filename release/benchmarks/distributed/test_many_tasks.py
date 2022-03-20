@@ -47,7 +47,14 @@ def no_resource_leaks():
 
 @click.command()
 @click.option("--num-tasks", required=True, type=int, help="Number of tasks to launch.")
-def test(num_tasks):
+@click.option(
+    "--smoke-test",
+    is_flag=True,
+    type=bool,
+    default=False,
+    help="If set, it's a smoke test",
+)
+def test(num_tasks, smoke_test):
     ray.init(address="auto")
 
     test_utils.wait_for_condition(no_resource_leaks)
@@ -78,7 +85,7 @@ def test(num_tasks):
             "_peak_memory": round(used_gb, 2),
             "_peak_process_memory": usage,
         }
-        if os.environ.get("IS_SMOKE_TEST") != "1":
+        if not smoke_test:
             results["perf_metrics"] = [
                 {
                     "perf_metric_name": "tasks_per_second",
