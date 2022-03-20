@@ -115,7 +115,7 @@ int main(int argc, char *argv[]) {
     channel = grpc::CreateCustomChannel(
         "localhost:" + leader_port, grpc::InsecureChannelCredentials(), argument);
 
-    syncer.Connect("", channel);
+    syncer.Connect(channel);
   }
   boost::asio::io_context::work work(io_context);
   io_context.run();

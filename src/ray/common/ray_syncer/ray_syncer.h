@@ -81,7 +81,7 @@ class RaySyncer {
   /// for the connection.
   ///
   /// \param connection The connection to the remote node.
-  void Connect(const std::string &node_id, std::shared_ptr<grpc::Channel> channel);
+  void Connect(std::shared_ptr<grpc::Channel> channel);
 
   void Disconnect(const std::string &node_id);
 
@@ -108,6 +108,7 @@ class RaySyncer {
   /// Get the current node id.
   const std::string &GetNodeId() const { return node_id_; }
 
+  /// Get the io_context used by RaySyncer.
   instrumented_io_context &GetIOContext() { return io_context_; }
 
   NodeSyncConnection *GetSyncConnection(const std::string &node_id) {

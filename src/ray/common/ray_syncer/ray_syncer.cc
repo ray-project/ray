@@ -7,7 +7,7 @@ namespace syncer {
 void NodeStatus::SetComponents(RayComponentId cid,
                                const ReporterInterface *reporter,
                                ReceiverInterface *receiver) {
-  RAY_CHECK(cid < kComponentArraySize);
+  RAY_CHECK(cid < static_cast<RayComponentId>(kComponentArraySize));
   RAY_CHECK(reporters_[cid] == nullptr);
   RAY_CHECK(receivers_[cid] == nullptr);
   reporters_[cid] = reporter;
@@ -73,35 +73,13 @@ std::array<uint64_t, kComponentArraySize> &NodeSyncConnection::GetNodeComponentV
   return iter->second;
 }
 
-ClientSyncConnection::ClientSyncConnection(
-    RaySyncer &instance,
-    instrumented_io_context &io_context,
-    const std::string &node_id,
-    std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub)
-    : NodeSyncConnection(instance, io_context, std::move(node_id)),
-      stub_(std::move(stub)) {
-  // Initialize the connection
-  start_sync_request_.set_node_id(instance.GetNodeId());
-  auto handler = stub->async();
-  auto client_context = std::make_shared<grpc::ClientContext>();
-  handler->StartSync(client_context.get(),
-                     &start_sync_request_,
-                     &start_sync_response_,
-                     [this](grpc::Status status) mutable {
-                       if (status.ok()) {
-                         io_context_.post(
-                             [this]() {
-                               RAY_CHECK(GetNodeId() == start_sync_response_.node_id());
-                               connection_created_ = true;
-                               StartLongPolling();
-                             },
-                             "StartSyncCallback");
-                       } else {
-                         RAY_LOG(ERROR)
-                             << "Start sync failed: " << status.error_message();
-                         instance_.Disconnect(GetNodeId());
-                       }
-                     });
+ClientSyncConnection::ClientSyncConnection(RaySyncer &instance,
+                                           instrumented_io_context &io_context,
+                                           const std::string &node_id,
+                                           std::shared_ptr<grpc::Channel> channel)
+    : NodeSyncConnection(instance, io_context, node_id),
+      stub_(ray::rpc::syncer::RaySyncer::NewStub(channel)) {
+  StartLongPolling();
 }
 
 void ClientSyncConnection::StartLongPolling() {
@@ -214,21 +192,37 @@ RaySyncer::~RaySyncer() {
   syncer_thread_->join();
 }
 
-void RaySyncer::Connect(const std::string &node_id,
-                        std::shared_ptr<grpc::Channel> channel) {
+void RaySyncer::Connect(std::shared_ptr<grpc::Channel> channel) {
   auto stub = ray::rpc::syncer::RaySyncer::NewStub(channel);
-  auto connection = std::make_unique<ClientSyncConnection>(
-      *this, io_context_, node_id, std::move(stub));
+  auto request = std::make_shared<StartSyncRequest>();
+  request->set_node_id(node_id_);
+  auto response = std::make_shared<StartSyncResponse>();
+
+  auto client_context = std::make_shared<grpc::ClientContext>();
+  stub->StartSync(client_context.get(),
+                  request.get(),
+                  response.get(),
+                  [this, channel, response, client_context](grpc::Status status) {
+                    io_context_.post(
+                        [this, channel, response]() {
+                          auto connection = std::make_unique<ClientSyncConnection>(
+                              *this, io_context_, response->node_id(), channel);
+                          Connect(std::move(connection));
+                        },
+                        "StartSyncCallback");
+                  });
 }
 
 void RaySyncer::Connect(std::unique_ptr<NodeSyncConnection> context) {
-  RAY_CHECK(sync_connections_[context->GetNodeId()] == nullptr);
-  RAY_CHECK(context != nullptr);
-  sync_connections_[context->GetNodeId()] = std::move(context);
+  io_context_.post([this, context = std::move(context)]() mutable {
+    RAY_CHECK(sync_connections_[context->GetNodeId()] == nullptr);
+    RAY_CHECK(context != nullptr);
+    sync_connections_[context->GetNodeId()] = std::move(context);
+  });
 }
 
 void RaySyncer::Disconnect(const std::string &node_id) {
-  sync_connections_.erase(node_id);
+  io_context_.post([this, node_id]() mutable { sync_connections_.erase(node_id); });
 }
 
 void RaySyncer::Register(RayComponentId component_id,
