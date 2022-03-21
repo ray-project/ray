@@ -483,7 +483,7 @@ class BackendExecutor:
                 raise RuntimeError(
                     "Some workers returned results while "
                     "others didn't. Make sure that "
-                    "`train.report()` and `train.checkpoint()` "
+                    "`train.report()` and `train.save_checkpoint()` "
                     "are called the same number of times on all "
                     "workers."
                 )

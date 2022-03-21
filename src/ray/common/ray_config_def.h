@@ -318,6 +318,15 @@ RAY_CONFIG(uint32_t, task_retry_delay_ms, 0)
 /// Duration to wait between retrying to kill a task.
 RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
 
+/// Whether to start a background thread to import Python dependencies eagerly.
+/// When set to false, Python dependencies will still be imported, only when
+/// they are needed.
+RAY_CONFIG(bool, start_python_importer_thread, true)
+
+/// Determines if forking in Ray actors / tasks are supported.
+/// Note that this only enables forking in workers, but not drivers.
+RAY_CONFIG(bool, support_fork, false)
+
 /// Maximum timeout for GCS reconnection in seconds.
 /// Each reconnection ping will be retried every 1 second.
 RAY_CONFIG(int32_t, gcs_rpc_server_reconnect_timeout_s, 60)

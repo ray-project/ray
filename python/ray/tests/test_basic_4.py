@@ -124,11 +124,73 @@ def test_function_unique_export(ray_start_regular):
         else:
             num_exports += 1
     print(f"num_exports after running g(): {num_exports}")
+    assert num_exports > 0, "Function export notification is not received"
 
     ray.get([g.remote() for _ in range(5)])
 
     key = subscriber.poll(timeout=1)
     assert key is None, f"Unexpected function key export: {key}"
+
+
+def test_function_import_without_importer_thread(shutdown_only):
+    """Test that without background importer thread, dependencies can still be
+    imported in workers."""
+    ray.init(
+        _system_config={
+            "start_python_importer_thread": False,
+        },
+    )
+
+    @ray.remote
+    def f():
+        import threading
+
+        assert threading.get_ident() == threading.main_thread().ident
+        # Make sure the importer thread is not running.
+        for thread in threading.enumerate():
+            assert "import" not in thread.name
+
+    @ray.remote
+    def g():
+        ray.get(f.remote())
+
+    ray.get(g.remote())
+    ray.get([g.remote() for _ in range(5)])
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Fork is only supported on *nix systems.",
+)
+def test_fork_support(shutdown_only):
+    """Test that fork support works."""
+    ray.init(
+        _system_config={
+            "support_fork": True,
+        },
+    )
+
+    @ray.remote
+    def pool_factorial():
+        import multiprocessing
+        import math
+
+        ctx = multiprocessing.get_context("fork")
+        with ctx.Pool(processes=4) as pool:
+            return sum(pool.map(math.factorial, range(8)))
+
+    @ray.remote
+    def g():
+        import threading
+
+        assert threading.get_ident() == threading.main_thread().ident
+        # Make sure this is the only Python thread, because forking does not
+        # work well under multi-threading.
+        assert threading.active_count() == 1
+
+        return ray.get(pool_factorial.remote())
+
+    assert ray.get(g.remote()) == 5914
 
 
 @pytest.mark.skipif(

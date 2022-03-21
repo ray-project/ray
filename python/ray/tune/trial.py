@@ -8,7 +8,7 @@ import platform
 import re
 import shutil
 import time
-from typing import Dict, Optional, Sequence, Union
+from typing import Dict, Optional, Sequence, Union, Callable, List
 import uuid
 
 import ray
@@ -99,11 +99,11 @@ class CheckpointDeleter:
         self.trial_id = trial_id
         self.runner = runner
 
-    def __call__(self, checkpoint):
+    def __call__(self, checkpoint: Checkpoint):
         """Requests checkpoint deletion asynchronously.
 
         Args:
-            checkpoint (Checkpoint): Checkpoint to delete.
+            checkpoint: Checkpoint to delete.
         """
         if not self.runner:
             return
@@ -133,10 +133,9 @@ class TrialInfo:
     """Serializable struct for holding information for a Trial.
 
     Attributes:
-        trial_name (str): String name of the current trial.
-        trial_id (str): trial_id of the trial
-        trial_resources (Resources|PlacementGroupFactory): resources used
-            by trial.
+        trial_name: String name of the current trial.
+        trial_id: trial_id of the trial
+        trial_resources: resources used by trial.
     """
 
     def __init__(self, trial: "Trial"):
@@ -208,15 +207,15 @@ class Trial:
     which is being deprecated.
 
     Attributes:
-        trainable_name (str): Name of the trainable object to be executed.
-        config (dict): Provided configuration dictionary with evaluated params.
-        trial_id (str): Unique identifier for the trial.
-        local_dir (str): Local_dir as passed to tune.run.
-        logdir (str): Directory where the trial logs are saved.
-        evaluated_params (dict): Evaluated parameters by search algorithm,
-        experiment_tag (str): Identifying trial name to show in the console
-        status (str): One of PENDING, RUNNING, PAUSED, TERMINATED, ERROR/
-        error_file (str): Path to the errors that this trial has raised.
+        trainable_name: Name of the trainable object to be executed.
+        config: Provided configuration dictionary with evaluated params.
+        trial_id: Unique identifier for the trial.
+        local_dir: Local_dir as passed to tune.run.
+        logdir: Directory where the trial logs are saved.
+        evaluated_params: Evaluated parameters by search algorithm,
+        experiment_tag: Identifying trial name to show in the console
+        status: One of PENDING, RUNNING, PAUSED, TERMINATED, ERROR/
+        error_file: Path to the errors that this trial has raised.
 
     """
 
@@ -236,29 +235,29 @@ class Trial:
 
     def __init__(
         self,
-        trainable_name,
-        config=None,
-        trial_id=None,
-        local_dir=DEFAULT_RESULTS_DIR,
-        evaluated_params=None,
-        experiment_tag="",
-        resources=None,
-        placement_group_factory=None,
-        stopping_criterion=None,
-        remote_checkpoint_dir=None,
-        sync_function_tpl=None,
-        checkpoint_freq=0,
-        checkpoint_at_end=False,
-        sync_on_checkpoint=True,
-        keep_checkpoints_num=None,
-        checkpoint_score_attr=TRAINING_ITERATION,
-        export_formats=None,
-        restore_path=None,
-        trial_name_creator=None,
-        trial_dirname_creator=None,
-        log_to_file=None,
-        max_failures=0,
-        stub=False,
+        trainable_name: str,
+        config: Optional[Dict] = None,
+        trial_id: Optional[str] = None,
+        local_dir: Optional[str] = DEFAULT_RESULTS_DIR,
+        evaluated_params: Optional[Dict] = None,
+        experiment_tag: str = "",
+        resources: Optional[Resources] = None,
+        placement_group_factory: Optional[PlacementGroupFactory] = None,
+        stopping_criterion: Optional[Dict[str, float]] = None,
+        remote_checkpoint_dir: Optional[str] = None,
+        sync_function_tpl: Optional[str] = None,
+        checkpoint_freq: int = 0,
+        checkpoint_at_end: bool = False,
+        sync_on_checkpoint: bool = True,
+        keep_checkpoints_num: Optional[int] = None,
+        checkpoint_score_attr: str = TRAINING_ITERATION,
+        export_formats: Optional[List[str]] = None,
+        restore_path: Optional[str] = None,
+        trial_name_creator: Optional[Callable[["Trial"], str]] = None,
+        trial_dirname_creator: Optional[Callable[["Trial"], str]] = None,
+        log_to_file: Optional[str] = None,
+        max_failures: int = 0,
+        stub: bool = False,
     ):
         """Initialize a new trial.
 
@@ -344,6 +343,7 @@ class Trial:
         self.error_file = None
         self.error_msg = None
         self.trial_name_creator = trial_name_creator
+        self.trial_dirname_creator = trial_dirname_creator
         self.custom_trial_name = None
         self.custom_dirname = None
 
@@ -513,6 +513,7 @@ class Trial:
             export_formats=self.export_formats,
             restore_path=self.restore_path,
             trial_name_creator=self.trial_name_creator,
+            trial_dirname_creator=self.trial_dirname_creator,
             log_to_file=self.log_to_file,
             max_failures=self.max_failures,
         )
@@ -637,11 +638,11 @@ class Trial:
         self.restoring_from = None
         self.invalidate_json_state()
 
-    def on_checkpoint(self, checkpoint):
+    def on_checkpoint(self, checkpoint: Checkpoint):
         """Hook for handling checkpoints taken by the Trainable.
 
         Args:
-            checkpoint (Checkpoint): Checkpoint taken.
+            checkpoint: Checkpoint taken.
         """
         self.checkpoint_manager.on_checkpoint(checkpoint)
         self.invalidate_json_state()

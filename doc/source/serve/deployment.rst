@@ -33,7 +33,7 @@ If ``serve.start()`` is called again in a process in which there is already a ru
 Deploying on a Single Node
 ==========================
 
-While Ray Serve makes it easy to scale out on a multi-node Ray cluster, in some scenarios a single node may suite your needs.
+While Ray Serve makes it easy to scale out on a multi-node Ray cluster, in some scenarios a single node may suit your needs.
 There are two ways you can run Ray Serve on a single node, shown below.
 In general, **Option 2 is recommended for most users** because it allows you to fully make use of Serve's ability to dynamically update running deployments.
 

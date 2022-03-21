@@ -169,16 +169,18 @@ def to_argv(config):
 _cached_pgf = {}
 
 
-def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
+def create_trial_from_spec(
+    spec: dict, output_path: str, parser: argparse.ArgumentParser, **trial_kwargs
+):
     """Creates a Trial object from parsing the spec.
 
     Args:
-        spec (dict): A resolved experiment specification. Arguments should
+        spec: A resolved experiment specification. Arguments should
             The args here should correspond to the command line flags
             in ray.tune.config_parser.
-        output_path (str); A specific output path within the local_dir.
+        output_path: A specific output path within the local_dir.
             Typically the name of the experiment.
-        parser (ArgumentParser): An argument parser object from
+        parser: An argument parser object from
             make_parser.
         trial_kwargs: Extra keyword arguments used in instantiating the Trial.
 

@@ -35,9 +35,10 @@ Architecture
 RandomAccessDataset spreads its workers evenly across the cluster. Each worker fetches and pins in shared memory all blocks of the sorted source dataset found on its node. In addition, it is ensured that each block is assigned to at least one worker. A central index of block to key-range assignments is computed, which is used to serve lookups.
 
 Lookups occur as follows:
-- First, the id of the block that contains the given key is located via binary search on the central index.
-- Second, an actor that has the block pinned is selected (this is done randomly).
-- A method call is sent to the actor, which then performs binary search to locate the record for the key.
+
+* First, the id of the block that contains the given key is located via binary search on the central index.
+* Second, an actor that has the block pinned is selected (this is done randomly).
+* A method call is sent to the actor, which then performs binary search to locate the record for the key.
 
 This means that each random lookup costs ~1 network RTT as well as a small amount of computation on both the client and server side.
 

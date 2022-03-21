@@ -4,7 +4,7 @@ import ray
 from ray import tune
 
 from ray.ml.preprocessor import Preprocessor
-from ray.ml.trainer import Trainer
+from ray.ml.trainer import Trainer, TrainingFailedError
 
 
 @pytest.fixture
@@ -147,6 +147,15 @@ def test_setup(ray_start_4_cpus):
 
     trainer = DummyTrainerWithSetup(check_setup)
     trainer.fit()
+
+
+def test_fail(ray_start_4_cpus):
+    def fail(self):
+        raise ValueError
+
+    trainer = DummyTrainer(fail)
+    with pytest.raises(TrainingFailedError):
+        trainer.fit()
 
 
 if __name__ == "__main__":

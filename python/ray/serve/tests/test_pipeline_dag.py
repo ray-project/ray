@@ -1,15 +1,19 @@
 import pytest
 import os
 import sys
-from typing import TypeVar, Any
+from typing import TypeVar
 
 import numpy as np
+import requests
 
 import ray
 from ray import serve
 from ray.serve.api import RayServeDAGHandle
 from ray.experimental.dag.input_node import InputNode
 from ray.serve.pipeline.api import build as pipeline_build
+from ray.serve.drivers import DAGDriver
+import starlette.requests
+
 
 RayHandleLike = TypeVar("RayHandleLike")
 NESTED_HANDLE_KEY = "nested_handle"
@@ -101,16 +105,6 @@ class Adder:
 
 
 @serve.deployment
-class Driver:
-    def __init__(self, dag: RayServeDAGHandle):
-        self.dag = dag
-
-    async def __call__(self, inp: Any) -> Any:
-        print(f"Driver got {inp}")
-        return await self.dag.remote(inp)
-
-
-@serve.deployment
 class NoargDriver:
     def __init__(self, dag: RayServeDAGHandle):
         self.dag = dag
@@ -125,14 +119,20 @@ def test_single_func_no_input(serve_instance):
 
     handle = serve.run(serve_dag)
     assert ray.get(handle.remote()) == "hello"
+    assert requests.get("http://127.0.0.1:8000/").text == "hello"
+
+
+async def json_resolver(request: starlette.requests.Request):
+    return await request.json()
 
 
 def test_single_func_deployment_dag(serve_instance):
     with InputNode() as dag_input:
         dag = combine.bind(dag_input[0], dag_input[1], kwargs_output=1)
-        serve_dag = Driver.bind(dag)
+        serve_dag = DAGDriver.bind(dag, input_schema=json_resolver)
     handle = serve.run(serve_dag)
-    assert ray.get(handle.remote([1, 2])) == 4
+    assert ray.get(handle.predict.remote([1, 2])) == 4
+    assert requests.post("http://127.0.0.1:8000/", json=[1, 2]).json() == 4
 
 
 def test_chained_function(serve_instance):
@@ -151,17 +151,19 @@ def test_chained_function(serve_instance):
     with pytest.raises(ValueError, match="Please provide a driver class"):
         _ = serve.run(serve_dag)
 
-    handle = serve.run(Driver.bind(serve_dag))
-    assert ray.get(handle.remote(2)) == 6  # 2 + 2*2
+    handle = serve.run(DAGDriver.bind(serve_dag, input_schema=json_resolver))
+    assert ray.get(handle.predict.remote(2)) == 6  # 2 + 2*2
+    assert requests.post("http://127.0.0.1:8000/", json=2).json() == 6
 
 
 def test_simple_class_with_class_method(serve_instance):
     with InputNode() as dag_input:
         model = Model.bind(2, ratio=0.3)
         dag = model.forward.bind(dag_input)
-        serve_dag = Driver.bind(dag)
+        serve_dag = DAGDriver.bind(dag, input_schema=json_resolver)
     handle = serve.run(serve_dag)
-    assert ray.get(handle.remote(1)) == 0.6
+    assert ray.get(handle.predict.remote(1)) == 0.6
+    assert requests.post("http://127.0.0.1:8000/", json=1).json() == 0.6
 
 
 def test_func_class_with_class_method(serve_instance):
@@ -171,10 +173,11 @@ def test_func_class_with_class_method(serve_instance):
         m1_output = m1.forward.bind(dag_input[0])
         m2_output = m2.forward.bind(dag_input[1])
         combine_output = combine.bind(m1_output, m2_output, kwargs_output=dag_input[2])
-        serve_dag = Driver.bind(combine_output)
+        serve_dag = DAGDriver.bind(combine_output, input_schema=json_resolver)
 
     handle = serve.run(serve_dag)
-    assert ray.get(handle.remote([1, 2, 3])) == 8
+    assert ray.get(handle.predict.remote([1, 2, 3])) == 8
+    assert requests.post("http://127.0.0.1:8000/", json=[1, 2, 3]).json() == 8
 
 
 def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
@@ -183,10 +186,11 @@ def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
         m2 = Model.bind(3)
         combine = Combine.bind(m1, m2=m2)
         combine_output = combine.bind(dag_input)
-        serve_dag = Driver.bind(combine_output)
+        serve_dag = DAGDriver.bind(combine_output, input_schema=json_resolver)
 
     handle = serve.run(serve_dag)
-    assert ray.get(handle.remote(1)) == 5
+    assert ray.get(handle.predict.remote(1)) == 5
+    assert requests.post("http://127.0.0.1:8000/", json=1).json() == 5
 
 
 def test_shared_deployment_handle(serve_instance):
@@ -194,10 +198,11 @@ def test_shared_deployment_handle(serve_instance):
         m = Model.bind(2)
         combine = Combine.bind(m, m2=m)
         combine_output = combine.bind(dag_input)
-        serve_dag = Driver.bind(combine_output)
+        serve_dag = DAGDriver.bind(combine_output, input_schema=json_resolver)
 
     handle = serve.run(serve_dag)
-    assert ray.get(handle.remote(1)) == 4
+    assert ray.get(handle.predict.remote(1)) == 4
+    assert requests.post("http://127.0.0.1:8000/", json=1).json() == 4
 
 
 def test_multi_instantiation_class_nested_deployment_arg_dag(serve_instance):
@@ -206,20 +211,22 @@ def test_multi_instantiation_class_nested_deployment_arg_dag(serve_instance):
         m2 = Model.bind(3)
         combine = Combine.bind(m1, m2={NESTED_HANDLE_KEY: m2}, m2_nested=True)
         output = combine.bind(dag_input)
-        serve_dag = Driver.bind(output)
+        serve_dag = DAGDriver.bind(output, input_schema=json_resolver)
 
     handle = serve.run(serve_dag)
-    assert ray.get(handle.remote(1)) == 5
+    assert ray.get(handle.predict.remote(1)) == 5
+    assert requests.post("http://127.0.0.1:8000/", json=1).json() == 5
 
 
 def test_class_factory(serve_instance):
     with InputNode() as _:
-        instance = ray.remote(class_factory()).bind(3)
+        instance = serve.deployment(class_factory()).bind(3)
         output = instance.get.bind()
         serve_dag = NoargDriver.bind(output)
 
     handle = serve.run(serve_dag)
     assert ray.get(handle.remote()) == 3
+    assert requests.get("http://127.0.0.1:8000/").text == "3"
 
 
 @serve.deployment
@@ -243,9 +250,10 @@ def test_single_node_driver_sucess(serve_instance):
     with InputNode() as input_node:
         out = m1.forward.bind(input_node)
         out = m2.forward.bind(out)
-    driver = Driver.bind(out)
+    driver = DAGDriver.bind(out, input_schema=json_resolver)
     handle = serve.run(driver)
-    assert ray.get(handle.remote(39)) == 42
+    assert ray.get(handle.predict.remote(39)) == 42
+    assert requests.post("http://127.0.0.1:8000/", json=39).json() == 42
 
 
 def test_options_and_names(serve_instance):
@@ -275,9 +283,10 @@ class TakeHandle:
 def test_passing_handle(serve_instance):
     child = Adder.bind(1)
     parent = TakeHandle.bind(child)
-    driver = Driver.bind(parent)
+    driver = DAGDriver.bind(parent, input_schema=json_resolver)
     handle = serve.run(driver)
-    assert ray.get(handle.remote(1)) == 2
+    assert ray.get(handle.predict.remote(1)) == 2
+    assert requests.post("http://127.0.0.1:8000/", json=1).json() == 2
 
 
 def test_passing_handle_in_obj(serve_instance):
@@ -359,6 +368,7 @@ def test_single_functional_node_base_case(serve_instance):
     # Base case should work
     handle = serve.run(func.bind())
     assert ray.get(handle.remote()) == 1
+    assert requests.get("http://127.0.0.1:8000/").text == "1"
 
 
 def test_unsupported_bind():
@@ -385,14 +395,14 @@ def test_unsupported_remote():
         def ping(self):
             return "hello"
 
-    with pytest.raises(AttributeError, match="'Actor' has no attribute 'remote'"):
+    with pytest.raises(AttributeError, match=r"\'Actor\' has no attribute \'remote\'"):
         _ = Actor.bind().remote()
 
     @serve.deployment
     def func():
         return 1
 
-    with pytest.raises(AttributeError, match="\.remote\(\) cannot be used on"):
+    with pytest.raises(AttributeError, match=r"\.remote\(\) cannot be used on"):
         _ = func.bind().remote()
 
 
