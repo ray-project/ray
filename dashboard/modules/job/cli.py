@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+from subprocess import list2cmdline
 import time
 from typing import Optional, Tuple
 import yaml
@@ -8,8 +9,7 @@ import yaml
 import click
 
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
-from ray.dashboard.modules.job.common import JobStatus
-from ray.dashboard.modules.job.sdk import JobSubmissionClient
+from ray.job_submission import JobStatus, JobSubmissionClient
 
 
 def _get_sdk_client(
@@ -162,7 +162,9 @@ def job_submit(
         final_runtime_env["working_dir"] = working_dir
 
     job_id = client.submit_job(
-        entrypoint=" ".join(entrypoint), job_id=job_id, runtime_env=final_runtime_env
+        entrypoint=list2cmdline(entrypoint),
+        job_id=job_id,
+        runtime_env=final_runtime_env,
     )
 
     _log_big_success_msg(f"Job '{job_id}' submitted successfully")

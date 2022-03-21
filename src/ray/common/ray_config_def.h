@@ -90,7 +90,16 @@ RAY_CONFIG(int64_t, free_objects_period_milliseconds, 1000)
 /// to -1.
 RAY_CONFIG(size_t, free_objects_batch_size, 100)
 
+/// Whether to pin object lineage, i.e. the task that created the object and
+/// the task's recursive dependencies. If this is set to true, then the system
+/// will attempt to reconstruct the object from its lineage if the object is
+/// lost.
 RAY_CONFIG(bool, lineage_pinning_enabled, false)
+
+/// Objects that require recovery are added to a local cache. This is the
+/// duration between attempts to flush and recover the objects in the local
+/// cache.
+RAY_CONFIG(int64_t, reconstruct_objects_period_milliseconds, 100)
 
 /// Maximum amount of lineage to keep in bytes. This includes the specs of all
 /// tasks that have previously already finished but that may be retried again.
@@ -127,6 +136,11 @@ RAY_CONFIG(int64_t, worker_cap_max_backoff_delay_ms, 1000 * 10)
 /// to prefer spreading tasks to other nodes. This balances between locality and
 /// even balancing of load. Low values (min 0.0) encourage more load spreading.
 RAY_CONFIG(float, scheduler_spread_threshold, 0.5);
+
+/// Whether to only report the usage of pinned copies of objects in the
+/// object_store_memory resource. This means nodes holding secondary copies only
+/// will become eligible for removal in the autoscaler.
+RAY_CONFIG(bool, scheduler_report_pinned_bytes_only, false)
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.

@@ -121,7 +121,7 @@ Persist
 Dask-on-Ray patches `dask.persist()
 <https://docs.dask.org/en/latest/api.html#dask.persist>`__  in order to match `Dask
 Distributed's persist semantics
-<https://distributed.dask.org/en/latest/manage-computation.html#client-persist>`; namely, calling `dask.persist()` with a Dask-on-Ray
+<https://distributed.dask.org/en/latest/manage-computation.html#client-persist>`__; namely, calling `dask.persist()` with a Dask-on-Ray
 scheduler will submit the tasks to the Ray cluster and return Ray futures inlined in the
 Dask collection. This is nice if you wish to compute some base collection (such as
 a Dask array), followed by multiple different downstream computations (such as
@@ -133,12 +133,33 @@ via shared memory.
     :language: python
 
 
+Annotations, Resources, and Task Options
+----------------------------------------
+
+.. _dask-on-ray-annotations:
+
+
+Dask-on-Ray supports specifying resources or any other Ray task option via `Dask's
+annotation API <https://docs.dask.org/en/stable/api.html#dask.annotate>`__. This
+annotation context manager can be used to attach resource requests (or any other Ray task
+option) to specific Dask operations, with the annotations funneling down to the
+underlying Ray tasks. Resource requests and other Ray task options can also be specified
+globally via the ``.compute(ray_remote_args={...})`` API, which will
+serve as a default for all Ray tasks launched via the Dask workload. Annotations on
+individual Dask operations will override this global default.
+
+.. literalinclude:: ../../../python/ray/util/dask/examples/dask_ray_annotate_example.py
+    :language: python
+
+Note that you may need to disable graph optimizations since it can break annotations,
+see `this Dask issue <https://github.com/dask/dask/issues/7036>`__.
+
 Custom optimization for Dask DataFrame shuffling
 ------------------------------------------------
 
 .. _dask-on-ray-shuffle-optimization:
 
-Dask on Ray provides a Dask DataFrame optimizer that leverages Ray's ability to
+Dask-on-Ray provides a Dask DataFrame optimizer that leverages Ray's ability to
 execute multiple-return tasks in order to speed up shuffling by as much as 4x on Ray.
 Simply set the `dataframe_optimize` configuration option to our optimizer function, similar to how you specify the Dask-on-Ray scheduler:
 

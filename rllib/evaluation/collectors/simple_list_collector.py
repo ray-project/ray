@@ -710,6 +710,10 @@ class SimpleListCollector(SampleCollector):
         keys = self.forward_pass_agent_keys[policy_id]
         batch_size = len(keys)
 
+        # Return empty batch, if no forward pass to do.
+        if batch_size == 0:
+            return SampleBatch()
+
         buffers = {}
         for k in keys:
             collector = self.agent_collectors[k]
@@ -857,6 +861,13 @@ class SimpleListCollector(SampleCollector):
                     "True. Alternatively, set no_done_at_end=True to "
                     "allow this."
                 )
+
+            # Skip a trajectory's postprocessing (and thus using it for training),
+            # if its agent's info exists and contains the training_enabled=False
+            # setting (used by our PolicyClients).
+            last_info = episode.last_info_for(agent_id)
+            if last_info and not last_info.get("training_enabled", True):
+                continue
 
             if len(pre_batches) > 1:
                 other_batches = pre_batches.copy()
@@ -1026,14 +1037,16 @@ class SimpleListCollector(SampleCollector):
         """
         pid = self.agent_key_to_policy_id[agent_key]
 
-        # PID may be a newly added policy. Just confirm we have it in our
-        # policy map before proceeding with forward_pass_size=0.
+        # PID may be a newly added policy (added on the fly during training).
+        # Just confirm we have it in our policy map before proceeding with
+        # forward_pass_size=0.
         if pid not in self.forward_pass_size:
             assert pid in self.policy_map
             self.forward_pass_size[pid] = 0
             self.forward_pass_agent_keys[pid] = []
 
         idx = self.forward_pass_size[pid]
+        assert idx >= 0
         if idx == 0:
             self.forward_pass_agent_keys[pid].clear()
 

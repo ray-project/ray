@@ -22,6 +22,8 @@
 #include "ray/raylet/dependency_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/cluster_task_manager_interface.h"
+#include "ray/raylet/scheduling/internal.h"
+#include "ray/raylet/scheduling/scheduler_resource_reporter.h"
 #include "ray/raylet/worker.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/grpc_client.h"
@@ -30,83 +32,6 @@
 
 namespace ray {
 namespace raylet {
-
-namespace internal {
-
-enum class WorkStatus {
-  /// Waiting to be scheduled.
-  WAITING,
-  /// Waiting for a worker to start.
-  WAITING_FOR_WORKER,
-  /// Queued task has been cancelled.
-  CANCELLED,
-};
-
-/// This enum represents the cause of why work hasn't been scheduled yet.
-enum class UnscheduledWorkCause {
-  /// Waiting for acquiring resources.
-  WAITING_FOR_RESOURCE_ACQUISITION,
-  /// Waiting for more plasma store memory to be available. This is set when we can't pin
-  /// task arguments due to the lack of memory.
-  WAITING_FOR_AVAILABLE_PLASMA_MEMORY,
-  /// Pending because there's no node that satisfies the resources in the cluster.
-  WAITING_FOR_RESOURCES_AVAILABLE,
-  /// Waiting because the worker wasn't available since job config for the worker wasn't
-  /// registered yet.
-  WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST,
-  /// Waiting becasue the worker wasn't available since its registration timed out.
-  WORKER_NOT_FOUND_REGISTRATION_TIMEOUT,
-  /// Waiting because the worker wasn't available since it was rate limited.
-  WORKER_NOT_FOUND_RATE_LIMITED,
-};
-
-/// Work represents all the information needed to make a scheduling decision.
-/// This includes the task, the information we need to communicate to
-/// dispatch/spillback and the callback to trigger it.
-class Work {
- public:
-  RayTask task;
-  const bool grant_or_reject;
-  rpc::RequestWorkerLeaseReply *reply;
-  std::function<void(void)> callback;
-  std::shared_ptr<TaskResourceInstances> allocated_instances;
-  Work(RayTask task, bool grant_or_reject, rpc::RequestWorkerLeaseReply *reply,
-       std::function<void(void)> callback, WorkStatus status = WorkStatus::WAITING)
-      : task(task),
-        grant_or_reject(grant_or_reject),
-        reply(reply),
-        callback(callback),
-        allocated_instances(nullptr),
-        status_(status){};
-  Work(const Work &Work) = delete;
-  Work &operator=(const Work &work) = delete;
-  ~Work() = default;
-
-  /// Set the state as waiting with the cause.
-  void SetStateWaiting(const UnscheduledWorkCause &cause) {
-    status_ = WorkStatus::WAITING;
-    unscheduled_work_cause_ = cause;
-  }
-
-  /// Set the state as waiting for workers, meaning it is waiting for workers to start.
-  void SetStateWaitingForWorker() { status_ = WorkStatus::WAITING_FOR_WORKER; }
-
-  /// Set the state as cancelled, meaning this task has to be unqueued from the node.
-  void SetStateCancelled() { status_ = WorkStatus::CANCELLED; }
-
-  WorkStatus GetState() const { return status_; }
-
-  UnscheduledWorkCause GetUnscheduledCause() const { return unscheduled_work_cause_; }
-
- private:
-  WorkStatus status_ = WorkStatus::WAITING;
-  UnscheduledWorkCause unscheduled_work_cause_ =
-      UnscheduledWorkCause::WAITING_FOR_RESOURCE_ACQUISITION;
-};
-
-typedef std::function<const rpc::GcsNodeInfo *(const NodeID &node_id)> NodeInfoGetter;
-
-}  // namespace internal
 
 /// Manages the queuing and dispatching of tasks. The logic is as follows:
 /// 1. Queue tasks for scheduling.
@@ -175,6 +100,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param reply: The reply of the lease request.
   /// \param send_reply_callback: The function used during dispatching.
   void QueueAndScheduleTask(const RayTask &task, bool grant_or_reject,
+                            bool is_selected_based_on_locality,
                             rpc::RequestWorkerLeaseReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
@@ -199,10 +125,10 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   ///
   /// \return True if task was successfully removed. This function will return
   /// false if the task is already running.
-  bool CancelTask(
-      const TaskID &task_id,
-      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
-          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED) override;
+  bool CancelTask(const TaskID &task_id,
+                  rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
+                      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
+                  const std::string &scheduling_failure_message = "") override;
 
   /// Populate the list of pending or infeasible actor tasks for node stats.
   ///
@@ -290,7 +216,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
                            PopWorkerStatus status, const TaskID &task_id,
                            SchedulingClass scheduling_class,
                            const std::shared_ptr<internal::Work> &work,
-                           bool is_detached_actor, const rpc::Address &owner_address);
+                           bool is_detached_actor, const rpc::Address &owner_address,
+                           const std::string &runtime_env_setup_error_message);
 
   /// (Step 3) Attempts to dispatch all tasks which are ready to run. A task
   /// will be dispatched if it is on `tasks_to_dispatch_` and there are still
@@ -349,8 +276,6 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   internal::NodeInfoGetter get_node_info_;
   /// Function to announce infeasible task to GCS.
   std::function<void(const RayTask &)> announce_infeasible_task_;
-
-  const int max_resource_shapes_per_load_report_;
 
   /// TODO(swang): Add index from TaskID -> Work to avoid having to iterate
   /// through queues to cancel tasks, etc.
@@ -420,6 +345,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// Track the backlog of all workers belonging to this raylet.
   absl::flat_hash_map<SchedulingClass, absl::flat_hash_map<WorkerID, int64_t>>
       backlog_tracker_;
+
+  const SchedulerResourceReporter scheduler_resource_reporter_;
 
   /// TODO(Shanly): Remove `worker_pool_` and `leased_workers_` and make them as
   /// parameters of methods if necessary once we remove the legacy scheduler.
@@ -510,9 +437,6 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       std::function<void(void)> send_reply_callback);
 
   void Spillback(const NodeID &spillback_to, const std::shared_ptr<internal::Work> &work);
-
-  /// Sum up the backlog size across all workers for a given scheduling class.
-  int64_t TotalBacklogSize(SchedulingClass scheduling_class);
 
   // Helper function to pin a task's args immediately before dispatch. This
   // returns false if there are missing args (due to eviction) or if there is

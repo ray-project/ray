@@ -3,7 +3,7 @@
 Loggers (tune.logger)
 =====================
 
-Tune has default loggers for Tensorboard, CSV, and JSON formats. By default, Tune only logs the returned result dictionaries from the training function.
+Tune has default loggers for TensorBoard, CSV, and JSON formats. By default, Tune only logs the returned result dictionaries from the training function.
 
 If you need to log something lower level like model weights or gradients, see :ref:`Trainable Logging <trainable-logging>`.
 
@@ -60,7 +60,7 @@ You can then pass in your own logger as follows:
         callbacks=[CustomLoggerCallback("log_test.txt")]
     )
 
-Per default, Ray Tune creates JSON, CSV and TensorboardX logger callbacks if you don't pass them yourself.
+Per default, Ray Tune creates JSON, CSV and TensorBoardX logger callbacks if you don't pass them yourself.
 You can disable this behavior by setting the ``TUNE_DISABLE_AUTO_CALLBACK_LOGGERS`` environment variable to ``"1"``.
 
 An example of creating a custom logger can be found in :doc:`/tune/examples/logging_example`.
@@ -70,7 +70,7 @@ An example of creating a custom logger can be found in :doc:`/tune/examples/logg
 Trainable Logging
 -----------------
 
-By default, Tune only logs the *training result dictionaries* from your Trainable. However, you may want to visualize the model weights, model graph, or use a custom logging library that requires multi-process logging. For example, you may want to do this if you're trying to log images to Tensorboard.
+By default, Tune only logs the *training result dictionaries* from your Trainable. However, you may want to visualize the model weights, model graph, or use a custom logging library that requires multi-process logging. For example, you may want to do this if you're trying to log images to TensorBoard.
 
 You can do this in the trainable, as shown below:
 

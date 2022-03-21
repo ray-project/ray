@@ -2,22 +2,20 @@
 
 .. note::
 
-    Before you proceed, note that Ray Data is available as **beta** in Ray 1.8+.
+    Before you proceed, note that Ray Datasets is available as **beta** in Ray 1.8+.
     Please file feature requests and bug reports on GitHub Issues or join the discussion
     on the `Ray Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`__.
 
-==============================================
-Ray Data: Distributed Data Loading and Compute
-==============================================
+==================================================
+Ray Datasets: Distributed Data Loading and Compute
+==================================================
 
-Ray Data is a library for loading and processing large datasets.
-Its key abstraction is that of a Dataset.
-Datasets are the standard way to load and exchange data in Ray libraries and applications.
+Ray Datasets are the standard way to load and exchange data in Ray libraries and applications.
 They provide basic distributed data transformations such as ``map``, ``filter``, and ``repartition``,
 and are compatible with a variety of file formats, data sources, and distributed frameworks.
 
 Here's an overview of the integrations with other processing frameworks, file formats, and supported operations,
-as well as glimpse at the Ray Data API.
+as well as glimpse at the Ray Datasets API.
 Check our :ref:`compatibility matrix<data-compatibility>` to see if your favorite format is supported already.
 
 .. image:: images/dataset.svg
@@ -25,8 +23,7 @@ Check our :ref:`compatibility matrix<data-compatibility>` to see if your favorit
 ..
   https://docs.google.com/drawings/d/16AwJeBNR46_TsrkOmMbGaBK7u-OPsf_V8fHjU-d2PPQ/edit
 
-Ray Data simplifies general purpose parallel GPU and CPU compute in Ray,
-for instance for `GPU batch inference <dataset.html#transforming-datasets>`__).
+Ray Datasets simplifies general purpose parallel GPU and CPU compute in Ray; for instance, for `GPU batch inference <dataset.html#transforming-datasets>`__.
 It provides a higher level API for Ray tasks and actors in such embarrassingly parallel compute situations,
 internally handling operations like batching, pipelining, and memory management.
 
@@ -34,16 +31,26 @@ internally handling operations like batching, pipelining, and memory management.
    :width: 500px
    :align: center
 
-As part of the Ray ecosystem, Ray Data can leverage the full functionality of Ray's distributed scheduler,
+As part of the Ray ecosystem, Ray Datasets can leverage the full functionality of Ray's distributed scheduler,
 e.g., using actors for optimizing setup time and GPU scheduling.
+
+----------------------------------------------
+Data Loading and Preprocessing for ML Training
+----------------------------------------------
+
+Ray Datasets are designed to load and preprocess data for distributed :ref:`ML training pipelines <train-docs>`.
+Compared to other loading solutions, Datasets are more flexible (e.g., can express higher-quality `per-epoch global shuffles <examples/big_data_ingestion.html>`__) and provides `higher overall performance <https://www.anyscale.com/blog/why-third-generation-ml-platforms-are-more-performant>`__.
+
+Ray Datasets is not intended as a replacement for more general data processing systems.
+:ref:`Learn more about how Ray Datasets works with other ETL systems <datasets-ml-preprocessing>`.
 
 ----------------------
 Where to Go from Here?
 ----------------------
 
-As new user of Ray Data, you may want to start with our :ref:`Getting Started Guide<data_getting_started>`.
-If you've run your first examples already, you might want to dive into Ray Data's key concepts or our User Guide instead.
-Advanced users can utilize the Ray Data API reference for their projects.
+As new user of Ray Datasets, you may want to start with our :ref:`Getting Started Guide<datasets_getting_started>`.
+If you've run your first examples already, you might want to dive into Ray Datasets' key concepts or our User Guide instead.
+Advanced users can utilize the Ray Datasets API reference for their projects.
 
 .. panels::
     :container: text-center
@@ -53,23 +60,23 @@ Advanced users can utilize the Ray Data API reference for their projects.
     Getting Started
     ^^^
 
-    Start with our quick start tutorials for :ref:`working with Datasets<ray_data_quick_start>`
-    and :ref:`Dataset Pipelines<data_pipelines_quick_start>`.
-    These concrete examples will give you an idea of how to use Ray Data.
+    Start with our quick start tutorials for :ref:`working with Datasets<ray_datasets_quick_start>`
+    and :ref:`Dataset Pipelines<dataset_pipelines_quick_start>`.
+    These concrete examples will give you an idea of how to use Ray Datasets.
 
     +++
-    .. link-button:: data_getting_started
+    .. link-button:: datasets_getting_started
         :type: ref
-        :text: Get Started with Ray Data
+        :text: Get Started with Ray Datasets
         :classes: btn-outline-info btn-block
     ---
 
     Key Concepts
     ^^^
 
-    Understand the key concepts behind Ray Data.
+    Understand the key concepts behind Ray Datasets.
     Learn what :ref:`Datasets<dataset_concept>` and :ref:`Dataset Pipelines<dataset_pipeline_concept>` are
-    and :ref:`how they get executed<dataset_execution_concept>` in Ray Data.
+    and :ref:`how they get executed<dataset_execution_concept>` in Ray Datasets.
 
     +++
     .. link-button:: data_key_concepts
@@ -84,19 +91,19 @@ Advanced users can utilize the Ray Data API reference for their projects.
     Learn how to :ref:`load and process data for ML<datasets-ml-preprocessing>`,
     work with :ref:`tensor data<datasets_tensor_support>`, or :ref:`use pipelines<data_pipeline_usage>`.
     Run your first :ref:`Dask <dask-on-ray>`, :ref:`Spark <spark-on-ray>`, :ref:`Mars <mars-on-ray>`
-    and :ref:`Modin <modin-on-ray>` examples on Ray Data.
+    and :ref:`Modin <modin-on-ray>` examples on Ray Datasets.
 
     +++
     .. link-button:: data_user_guide
         :type: ref
-        :text: Start Using Ray Data
+        :text: Start Using Ray Datasets
         :classes: btn-outline-info btn-block
     ---
 
     API
     ^^^
 
-    Get more in-depth information about the Ray Data API.
+    Get more in-depth information about the Ray Datasets API.
 
     +++
     .. link-button:: data_api
@@ -111,7 +118,7 @@ Advanced users can utilize the Ray Data API reference for their projects.
 Datasource Compatibility
 ------------------------
 
-Ray Data supports reading and writing many formats.
+Ray Datasets supports reading and writing many formats.
 The following two compatibility matrices will help you understand which formats are currently available.
 
 Supported Input Formats
@@ -245,7 +252,7 @@ Learn More
 Contribute
 ----------
 
-Contributions to Ray Data are `welcome <https://docs.ray.io/en/master/development.html#python-develop>`__!
+Contributions to Ray Datasets are `welcome <https://docs.ray.io/en/master/development.html#python-develop>`__!
 There are many potential improvements, including:
 
 - Supporting more data sources and transforms.

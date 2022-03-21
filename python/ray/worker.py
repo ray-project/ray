@@ -12,6 +12,10 @@ import sys
 import threading
 import time
 import traceback
+import warnings
+from abc import ABCMeta, abstractmethod
+from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 # Ray modules
@@ -139,9 +143,6 @@ class Worker:
         # running on.
         self.ray_debugger_external = False
         self._load_code_from_local = False
-        # Used to toggle whether or not logs should be filtered to only those
-        # produced in the same job.
-        self.filter_logs_by_job = True
 
     @property
     def connected(self):
@@ -310,14 +311,11 @@ class Worker:
         # removed before this one, it will corrupt the state in the
         # reference counter.
         return ray.ObjectRef(
-            self.core_worker.put_serialized_object(
+            self.core_worker.put_serialized_object_and_increment_local_ref(
                 serialized_value, object_ref=object_ref, owner_address=owner_address
             ),
-            # If the owner address is set, then the initial reference is
-            # already acquired internally in CoreWorker::CreateOwned.
-            # TODO(ekl) we should unify the code path more with the others
-            # to avoid this special case.
-            skip_adding_local_ref=(owner_address is not None),
+            # The initial local reference is already acquired internally.
+            skip_adding_local_ref=True,
         )
 
     def raise_errors(self, data_metadata_pairs, object_refs):
@@ -493,6 +491,20 @@ class Worker:
                     continue
 
                 if self.gcs_pubsub_enabled:
+                    data = msg
+                else:
+                    data = json.loads(ray._private.utils.decode(msg["data"]))
+
+                # Don't show logs from other drivers.
+                if data["job"] and data["job"] != job_id_hex:
+                    num_consecutive_messages_received = 0
+                    last_polling_batch_size = 0
+                    continue
+
+                data["localhost"] = localhost
+                global_worker_stdstream_dispatcher.emit(data)
+
+                if self.gcs_pubsub_enabled:
                     lagging = (
                         100 <= last_polling_batch_size < subscriber.last_batch_size
                     )
@@ -510,21 +522,6 @@ class Worker:
                         "logs to the driver, use "
                         "'ray.init(log_to_driver=False)'."
                     )
-
-                if self.gcs_pubsub_enabled:
-                    data = msg
-                else:
-                    data = json.loads(ray._private.utils.decode(msg["data"]))
-
-                # Don't show logs from other drivers.
-                if (
-                    self.filter_logs_by_job
-                    and data["job"]
-                    and job_id_hex != data["job"]
-                ):
-                    continue
-                data["localhost"] = localhost
-                global_worker_stdstream_dispatcher.emit(data)
 
         except (OSError, redis.exceptions.ConnectionError) as e:
             logger.error(f"print_logs: {e}")
@@ -620,6 +617,87 @@ def get_dashboard_url():
     return _global_node.webui_url
 
 
+class BaseContext(metaclass=ABCMeta):
+    """
+    Base class for RayContext and ClientContext
+    """
+
+    @abstractmethod
+    def disconnect(self):
+        """
+        If this context is for directly attaching to a cluster, disconnect
+        will call ray.shutdown(). Otherwise, if the context is for a ray
+        client connection, the client will be disconnected.
+        """
+        pass
+
+    @abstractmethod
+    def __enter__(self):
+        pass
+
+    @abstractmethod
+    def __exit__(self):
+        pass
+
+
+@dataclass
+class RayContext(BaseContext, Mapping):
+    """
+    Context manager for attached drivers.
+    """
+
+    dashboard_url: Optional[str]
+    python_version: str
+    ray_version: str
+    ray_commit: str
+    protocol_version = Optional[str]
+    address_info: Dict[str, Optional[str]]
+
+    def __init__(self, address_info: Dict[str, Optional[str]]):
+        self.dashboard_url = get_dashboard_url()
+        self.python_version = "{}.{}.{}".format(
+            sys.version_info[0], sys.version_info[1], sys.version_info[2]
+        )
+        self.ray_version = ray.__version__
+        self.ray_commit = ray.__commit__
+        # No client protocol version since this driver was intiialized
+        # directly
+        self.protocol_version = None
+        self.address_info = address_info
+
+    def __getitem__(self, key):
+        if log_once("ray_context_getitem"):
+            warnings.warn(
+                f'Accessing values through ctx["{key}"] is deprecated. '
+                f'Use ctx.address_info["{key}"] instead.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        return self.address_info[key]
+
+    def __len__(self):
+        if log_once("ray_context_len"):
+            warnings.warn("len(ctx) is deprecated. Use len(ctx.address_info) instead.")
+        return len(self.address_info)
+
+    def __iter__(self):
+        if log_once("ray_context_len"):
+            warnings.warn(
+                "iter(ctx) is deprecated. Use iter(ctx.address_info) instead."
+            )
+        return iter(self.address_info)
+
+    def __enter__(self) -> "RayContext":
+        return self
+
+    def __exit__(self, *exc):
+        ray.shutdown()
+
+    def disconnect(self):
+        # Include disconnect() to stay consistent with ClientContext
+        ray.shutdown()
+
+
 global_worker = Worker()
 """Worker: The global Worker object for this worker process.
 
@@ -665,7 +743,7 @@ def init(
     _system_config: Optional[Dict[str, str]] = None,
     _tracing_startup_hook: Optional[Callable] = None,
     **kwargs,
-):
+) -> BaseContext:
     """
     Connect to an existing Ray cluster or start one and connect to it.
 
@@ -788,7 +866,8 @@ def init(
         "ray://" to the address to get "ray://1.2.3.4:10001", then a
         ClientContext is returned with information such as settings, server
         versions for ray and python, and the dashboard_url. Otherwise,
-        returns address information about the started processes.
+        a RayContext is returned with ray and python versions, and address
+        information about the started processes.
 
     Raises:
         Exception: An exception is raised if an inappropriate combination of
@@ -907,10 +986,13 @@ def init(
     else:
         driver_mode = SCRIPT_MODE
 
+    global _global_node
+
     if global_worker.connected:
         if ignore_reinit_error:
             logger.info("Calling ray.init() again after it has already been called.")
-            return
+            node_id = global_worker.core_worker.get_current_node_id()
+            return RayContext(dict(_global_node.address_info, node_id=node_id.hex()))
         else:
             raise RuntimeError(
                 "Maybe you called ray.init twice by accident? "
@@ -923,7 +1005,6 @@ def init(
     if not isinstance(_system_config, dict):
         raise TypeError("The _system_config must be a dict.")
 
-    global _global_node
     if bootstrap_address is None:
         # In this case, we need to start a new cluster.
         # Use a random port by not specifying Redis port / GCS server port.
@@ -1047,7 +1128,7 @@ def init(
         hook()
 
     node_id = global_worker.core_worker.get_current_node_id()
-    return dict(_global_node.address_info, node_id=node_id.hex())
+    return RayContext(dict(_global_node.address_info, node_id=node_id.hex()))
 
 
 # Functions to run as callback after a successful ray init.
@@ -1078,7 +1159,6 @@ def shutdown(_exiting_interpreter: bool = False):
         # This is a duration to sleep before shutting down everything in order
         # to make sure that log messages finish printing.
         time.sleep(0.5)
-
     disconnect(_exiting_interpreter)
 
     # disconnect internal kv

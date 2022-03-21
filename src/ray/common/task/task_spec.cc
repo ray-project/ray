@@ -18,6 +18,7 @@
 #include <sstream>
 
 #include "ray/common/ray_config.h"
+#include "ray/common/runtime_env_common.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -164,7 +165,7 @@ std::string TaskSpecification::SerializedRuntimeEnv() const {
 }
 
 bool TaskSpecification::HasRuntimeEnv() const {
-  return !(SerializedRuntimeEnv() == "{}" || SerializedRuntimeEnv().empty());
+  return !IsRuntimeEnvEmpty(SerializedRuntimeEnv());
 }
 
 uint64_t TaskSpecification::AttemptNumber() const { return message_->attempt_number(); }
@@ -456,8 +457,7 @@ bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
 }
 
 bool WorkerCacheKey::EnvIsEmpty() const {
-  return (serialized_runtime_env == "" || serialized_runtime_env == "{}") &&
-         required_resources.empty();
+  return IsRuntimeEnvEmpty(serialized_runtime_env) && required_resources.empty();
 }
 
 std::size_t WorkerCacheKey::Hash() const {

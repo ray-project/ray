@@ -245,15 +245,15 @@ class TestTrainer(unittest.TestCase):
         config["num_workers"] = 1
 
         # No env on driver -> expect longer build time due to space
-        # "lookup" from remote worker.
+        # lookup from remote worker.
         t0 = time.time()
         trainer = pg.PGTrainer(config=config)
         w_lookup = time.time() - t0
         print(f"No env on learner: {w_lookup}sec")
         trainer.stop()
 
-        # Env on driver -> expect longer build time due to space
-        # "lookup" from remote worker.
+        # Env on driver -> expect shorted build time due to no space
+        # lookup required from remote worker.
         config["create_env_on_driver"] = True
         t0 = time.time()
         trainer = pg.PGTrainer(config=config)
@@ -263,7 +263,7 @@ class TestTrainer(unittest.TestCase):
         trainer.stop()
 
         # Spaces given -> expect shorter build time due to no space
-        # "lookup" from remote worker.
+        # lookup required from remote worker.
         config["create_env_on_driver"] = False
         config["observation_space"] = env.observation_space
         config["action_space"] = env.action_space

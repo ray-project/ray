@@ -21,6 +21,7 @@ from ray._private.test_utils import (
         "localhost:1234",
         "localhost:1234/url?params",
         "1.2.3.4/cluster-1?test_param=param1?",
+        "",
     ],
 )
 def test_split_address(address):

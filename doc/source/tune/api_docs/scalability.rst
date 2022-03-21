@@ -107,7 +107,7 @@ Below we present more detailed results on the result throughput performance.
 
 Many concurrent trials
 """"""""""""""""""""""
-In this setup, loggers (CSV, JSON, and TensorboardX) and trial synchronization are disabled, except when
+In this setup, loggers (CSV, JSON, and TensorBoardX) and trial synchronization are disabled, except when
 explicitly noted.
 
 In this experiment, we're running many concurrent trials (up to 1,000) on a cluster. We then adjust the
@@ -143,7 +143,7 @@ should be considered.
 
 Many results on a single node
 """""""""""""""""""""""""""""
-In this setup, loggers (CSV, JSON, and TensorboardX) are disabled, except when
+In this setup, loggers (CSV, JSON, and TensorBoardX) are disabled, except when
 explicitly noted.
 
 In this experiment, we're running 96 concurrent trials on a single node. We then adjust the

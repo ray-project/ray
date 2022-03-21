@@ -79,6 +79,9 @@ Raylet::Raylet(instrumented_io_context &main_service, const std::string &socket_
   self_node_info_.set_node_manager_port(node_manager_.GetServerPort());
   self_node_info_.set_node_manager_hostname(boost::asio::ip::host_name());
   self_node_info_.set_metrics_export_port(metrics_export_port);
+  const auto &resource_map = node_manager_config.resource_config.GetResourceMap();
+  self_node_info_.mutable_resources_total()->insert(resource_map.begin(),
+                                                    resource_map.end());
 }
 
 Raylet::~Raylet() {}

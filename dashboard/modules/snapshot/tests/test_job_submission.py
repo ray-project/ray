@@ -15,7 +15,7 @@ from ray._private.test_utils import (
 )
 from ray.dashboard import dashboard
 from ray.dashboard.tests.conftest import *  # noqa
-from ray.dashboard.modules.job.sdk import JobSubmissionClient
+from ray.job_submission import JobSubmissionClient
 
 logger = logging.getLogger(__name__)
 

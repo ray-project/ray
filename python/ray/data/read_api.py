@@ -223,7 +223,7 @@ def read_datasource(
     stats_uuid = uuid.uuid4()
     stats_actor.record_start.remote(stats_uuid)
 
-    def remote_read(i: int, task: ReadTask) -> MaybeBlockPartition:
+    def remote_read(i: int, task: ReadTask, stats_actor) -> MaybeBlockPartition:
         DatasetContext._set_current(context)
         stats = BlockExecStats.builder()
 
@@ -268,7 +268,7 @@ def read_datasource(
         calls.append(
             lambda i=i, task=task, resources=next(resource_iter): remote_read.options(
                 **ray_remote_args, resources=resources
-            ).remote(i, task)
+            ).remote(i, task, stats_actor)
         )
         metadata.append(task.get_metadata())
 
@@ -467,6 +467,8 @@ def read_text(
     paths: Union[str, List[str]],
     *,
     encoding: str = "utf-8",
+    errors: str = "ignore",
+    drop_empty_lines: bool = True,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = 200,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
@@ -483,6 +485,8 @@ def read_text(
     Args:
         paths: A single file path or a list of file paths (or directories).
         encoding: The encoding of the files (e.g., "utf-8" or "ascii").
+        errors: What to do with errors on decoding. Specify either "strict",
+            "ignore", or "replace". Defaults to "ignore".
         filesystem: The filesystem implementation to read from.
         parallelism: The requested parallelism of the read. Parallelism may be
             limited by the number of files of the dataset.
@@ -493,12 +497,18 @@ def read_text(
         Dataset holding lines of text read from the specified paths.
     """
 
+    def to_text(s):
+        lines = s.decode(encoding).split("\n")
+        if drop_empty_lines:
+            lines = [line for line in lines if line.strip() != ""]
+        return lines
+
     return read_binary_files(
         paths,
         filesystem=filesystem,
         parallelism=parallelism,
         arrow_open_stream_args=arrow_open_stream_args,
-    ).flat_map(lambda x: x.decode(encoding).split("\n"))
+    ).flat_map(to_text)
 
 
 @PublicAPI(stability="beta")

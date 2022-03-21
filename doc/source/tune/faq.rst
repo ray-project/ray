@@ -3,8 +3,8 @@
 Ray Tune FAQ
 ------------
 
-Here we try to answer questions that come up often. If you still have questions
-after reading this, let us know!
+Here we try to answer questions that come up often.
+If you still have questions after reading this FAQ, let us know!
 
 .. contents::
     :local:
@@ -516,3 +516,330 @@ should maybe process a larger chunk of data. In function trainables, you can rep
 of the training loop. Try to balance the number of results you really need to make scheduling or searching
 decisions. If you need more fine grained metrics for logging or tracking, consider using a separate logging
 mechanism for this instead of the Ray Tune-provided progress logging of results.
+
+How can I develop and test Tune locally?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+First, follow the instructions in :ref:`python-develop` to develop Tune without compiling Ray.
+After Ray is set up, run ``pip install -r ray/python/ray/tune/requirements-dev.txt`` to install all packages
+required for Tune development. Now, to run all Tune tests simply run:
+
+.. code-block:: shell
+
+    pytest ray/python/ray/tune/tests/
+
+If you plan to submit a pull request, we recommend you to run unit tests locally beforehand to speed up the review process.
+Even though we have hooks to run unit tests automatically for each pull request, it's usually quicker to run them
+on your machine first to avoid any obvious mistakes.
+
+
+How can I get started contributing to Tune?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+We use Github to track issues, feature requests, and bugs. Take a look at the
+ones labeled `"good first issue" <https://github.com/ray-project/ray/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22>`__ and `"help wanted" <https://github.com/ray-project/ray/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22>`__ for a place to start. Look for issues with "[tune]" in the title.
+
+.. note::
+
+  If raising a new issue or PR related to Tune, be sure to include "[tune]" in the title and add a ``tune`` label.
+
+For project organization, Tune maintains a relatively up-to-date organization of
+issues on the `Tune Github Project Board <https://github.com/ray-project/ray/projects/4>`__.
+Here, you can track and identify how issues are organized.
+
+
+
+.. _tune-reproducible:
+
+How can I make my Tune experiments reproducible?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Exact reproducibility of machine learning runs is hard to achieve. This
+is even more true in a distributed setting, as more non-determinism is
+introduced. For instance, if two trials finish at the same time, the
+convergence of the search algorithm might be influenced by which trial
+result is processed first. This depends on the searcher - for random search,
+this shouldn't make a difference, but for most other searchers it will.
+
+If you try to achieve some amount of reproducibility, there are two
+places where you'll have to set random seeds:
+
+1. On the driver program, e.g. for the search algorithm. This will ensure
+   that at least the initial configurations suggested by the search
+   algorithms are the same.
+
+2. In the trainable (if required). Neural networks are usually initialized
+   with random numbers, and many classical ML algorithms, like GBDTs, make use of
+   randomness. Thus you'll want to make sure to set a seed here
+   so that the initialization is always the same.
+
+Here is an example that will always produce the same result (except for trial
+runtimes).
+
+.. code-block:: python
+
+    import numpy as np
+    from ray import tune
+
+
+    def train(config):
+        # Set seed for trainable random result.
+        # If you remove this line, you will get different results
+        # each time you run the trial, even if the configuration
+        # is the same.
+        np.random.seed(config["seed"])
+        random_result = np.random.uniform(0, 100, size=1).item()
+        tune.report(result=random_result)
+
+
+    # Set seed for Ray Tune's random search.
+    # If you remove this line, you will get different configurations
+    # each time you run the script.
+    np.random.seed(1234)
+    tune.run(
+        train,
+        config={
+            "seed": tune.randint(0, 1000)
+        },
+        search_alg=tune.suggest.BasicVariantGenerator(),
+        num_samples=10)
+
+Some searchers use their own random states to sample new configurations.
+These searchers usually accept a ``seed`` parameter that can be passed on
+initialization. Other searchers use Numpy's ``np.random`` interface -
+these seeds can be then set with ``np.random.seed()``. We don't offer an
+interface to do this in the searcher classes as setting a random seed
+globally could have side effects. For instance, it could influence the
+way your dataset is split. Thus, we leave it up to the user to make
+these global configuration changes.
+
+
+How can I use large datasets in Tune?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You often will want to compute a large object (e.g., training data, model weights) on the driver and use that
+object within each trial.
+
+Tune provides a wrapper function ``tune.with_parameters()`` that allows you to broadcast large objects to your trainable.
+Objects passed with this wrapper will be stored on the :ref:`Ray object store <objects-in-ray>` and will
+be automatically fetched and passed to your trainable as a parameter.
+
+
+.. tip:: If the objects are small in size or already exist in the :ref:`Ray Object Store <objects-in-ray>`, there's no need to use ``tune.with_parameters()``. You can use `partials <https://docs.python.org/3/library/functools.html#functools.partial>`__ or pass in directly to ``config`` instead.
+
+.. code-block:: python
+
+    from ray import tune
+
+    import numpy as np
+
+    def f(config, data=None):
+        pass
+        # use data
+
+    data = np.random.random(size=100000000)
+
+    tune.run(tune.with_parameters(f, data=data))
+
+
+How can I upload my Tune results to cloud storage?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If an upload directory is provided, Tune will automatically sync results from the ``local_dir`` to the given directory,
+natively supporting standard URIs for systems like S3, gsutil or HDFS.
+Here is an example of uploading to S3, using a bucket called ``my-log-dir``:
+
+.. code-block:: python
+
+    tune.run(
+        MyTrainableClass,
+        local_dir="~/ray_results",
+        sync_config=tune.SyncConfig(upload_dir="s3://my-log-dir")
+    )
+
+You can customize this to specify arbitrary storages with the ``syncer`` argument in ``tune.SyncConfig``.
+This argument supports either strings with the same replacement fields OR arbitrary functions.
+
+.. code-block:: python
+
+    tune.run(
+        MyTrainableClass,
+        sync_config=tune.SyncConfig(
+            upload_dir="s3://my-log-dir",
+            syncer=custom_sync_str_or_func
+        )
+    )
+
+If a string is provided, then it must include replacement fields ``{source}`` and ``{target}``, like
+``s3 sync {source} {target}``. Alternatively, a function can be provided with the following signature:
+
+.. code-block:: python
+
+    def custom_sync_func(source, target):
+        # do arbitrary things inside
+        sync_cmd = "s3 {source} {target}".format(
+            source=source,
+            target=target)
+        sync_process = subprocess.Popen(sync_cmd, shell=True)
+        sync_process.wait()
+
+By default, syncing occurs every 300 seconds.
+To change the frequency of syncing, set the ``sync_period`` attribute of the sync config to the desired syncing period.
+
+Note that uploading only happens when global experiment state is collected, and the frequency of this is
+determined by the sync period. So the true upload period is given by ``max(sync period, TUNE_GLOBAL_CHECKPOINT_S)``.
+
+Make sure that worker nodes have the write access to the cloud storage.
+Failing to do so would cause error messages like ``Error message (1): fatal error: Unable to locate credentials``.
+For AWS set up, this involves adding an IamInstanceProfile configuration for worker nodes.
+Please :ref:`see here for more tips <aws-cluster-s3>`.
+
+
+.. _tune-docker:
+
+How can I use Tune with Docker?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Tune automatically syncs files and checkpoints between different remote
+containers as needed.
+
+To make this work in your Docker cluster, e.g. when you are using the Ray autoscaler
+with docker containers, you will need to pass a
+``DockerSyncer`` to the ``syncer`` argument of ``tune.SyncConfig``.
+
+.. code-block:: python
+
+    from ray.tune.integration.docker import DockerSyncer
+    sync_config = tune.SyncConfig(
+        syncer=DockerSyncer)
+
+    tune.run(train, sync_config=sync_config)
+
+
+.. _tune-kubernetes:
+
+How can I use Tune with Kubernetes?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Ray Tune automatically synchronizes files and checkpoints between different remote nodes as needed.
+This usually happens via SSH, but this can be a :ref:`performance bottleneck <tune-bottlenecks>`,
+especially when running many trials in parallel.
+
+Instead you should use shared storage for checkpoints so that no additional synchronization across nodes
+is necessary. There are two main options.
+
+First, you can use the :ref:`SyncConfig <tune-sync-config>` to store your
+logs and checkpoints on cloud storage, such as AWS S3 or Google Cloud Storage:
+
+.. code-block:: python
+
+    from ray import tune
+
+    tune.run(
+        tune.durable(train_fn),
+        # ...,
+        sync_config=tune.SyncConfig(
+            upload_dir="s3://your-s3-bucket/durable-trial/"
+        )
+    )
+
+Second, you can set up a shared file system like NFS. If you do this, disable automatic trial syncing:
+
+.. code-block:: python
+
+    from ray import tune
+
+    tune.run(
+        train_fn,
+        # ...,
+        local_dir="/path/to/shared/storage",
+        sync_config=tune.SyncConfig(
+            # Do not sync because we are on shared storage
+            syncer=None
+        )
+    )
+
+
+Lastly, if you still want to use SSH for trial synchronization, but are not running
+on the Ray cluster launcher, you might need to pass a
+``KubernetesSyncer`` to the ``syncer`` argument of ``tune.SyncConfig``.
+You have to specify your Kubernetes namespace explicitly:
+
+.. code-block:: python
+
+    from ray.tune.integration.kubernetes import NamespacedKubernetesSyncer
+    sync_config = tune.SyncConfig(
+        syncer=NamespacedKubernetesSyncer("ray")
+    )
+
+    tune.run(train, sync_config=sync_config)
+
+
+Please note that we strongly encourage you to use one of the other two options instead, as they will
+result in less overhead and don't require pods to SSH into each other.
+
+
+.. _tune-debugging:
+
+How can I debug Tune experiments locally?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, Tune will run hyperparameter evaluations on multiple processes.
+However, if you need to debug your training process, it may be easier to do everything on a single process.
+You can force all Ray functions to occur on a single process with ``local_mode`` by calling the following
+before ``tune.run``.
+
+.. code-block:: python
+
+    ray.init(local_mode=True)
+
+Local mode with multiple configuration evaluations will interleave computation,
+so it is most naturally used when running a single configuration evaluation.
+
+Note that ``local_mode`` has some known issues, so please read :ref:`these tips <local-mode-tips>` for more info.
+
+
+
+.. _tune-default-search-space:
+
+How do I configure search spaces?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can specify a grid search or sampling distribution via the dict passed into ``tune.run(config=...)``.
+
+.. code-block:: python
+
+    parameters = {
+        "qux": tune.sample_from(lambda spec: 2 + 2),
+        "bar": tune.grid_search([True, False]),
+        "foo": tune.grid_search([1, 2, 3]),
+        "baz": "asd",  # a constant value
+    }
+
+    tune.run(trainable, config=parameters)
+
+By default, each random variable and grid search point is sampled once.
+To take multiple random samples, add ``num_samples: N`` to the experiment config.
+If `grid_search` is provided as an argument, the grid will be repeated ``num_samples`` of times.
+
+.. code-block:: python
+   :emphasize-lines: 13
+
+    # num_samples=10 repeats the 3x3 grid search 10 times, for a total of 90 trials
+    tune.run(
+        my_trainable,
+        name="my_trainable",
+        config={
+            "alpha": tune.uniform(100),
+            "beta": tune.sample_from(lambda spec: spec.config.alpha * np.random.normal()),
+            "nn_layers": [
+                tune.grid_search([16, 64, 256]),
+                tune.grid_search([16, 64, 256]),
+            ],
+        },
+        num_samples=10
+    )
+
+Note that search spaces may not be interoperable across different search algorithms.
+For example, for many search algorithms, you will not be able to use a ``grid_search`` or ``sample_from`` parameters.
+Read about this in the :ref:`Search Space API <tune-search-space>` page.

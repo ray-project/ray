@@ -103,10 +103,11 @@ class MockReferenceCounter : public ReferenceCounterInterface {
                     const rpc::Address &owner_address,
                     bool foreign_owner_already_monitoring));
 
-  MOCK_METHOD7(AddOwnedObject,
+  MOCK_METHOD8(AddOwnedObject,
                void(const ObjectID &object_id, const std::vector<ObjectID> &contained_ids,
                     const rpc::Address &owner_address, const std::string &call_site,
                     const int64_t object_size, bool is_reconstructable,
+                    bool add_local_ref,
                     const absl::optional<NodeID> &pinned_at_raylet_id));
 
   MOCK_METHOD2(SetDeleteCallback,

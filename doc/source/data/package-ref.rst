@@ -1,7 +1,7 @@
 .. _data_api:
 
-Ray Data API
-============
+Ray Datasets API
+================
 
 Creating Datasets
 -----------------

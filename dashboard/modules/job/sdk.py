@@ -26,6 +26,7 @@ from ray.dashboard.modules.job.common import (
     JobLogsResponse,
     uri_to_http_components,
 )
+from ray.ray_constants import DEFAULT_DASHBOARD_PORT
 
 from ray.client_builder import _split_address
 
@@ -51,8 +52,12 @@ def get_job_submission_client_cluster_info(
     cookies: Optional[Dict[str, Any]] = None,
     metadata: Optional[Dict[str, Any]] = None,
     headers: Optional[Dict[str, Any]] = None,
+    _use_tls: Optional[bool] = False,
 ) -> ClusterInfo:
     """Get address, cookies, and metadata used for JobSubmissionClient.
+
+    If no port is specified in `address`, the Ray dashboard default will be
+    inserted.
 
     Args:
         address (str): Address without the module prefix that is passed
@@ -66,8 +71,23 @@ def get_job_submission_client_cluster_info(
         ClusterInfo object consisting of address, cookies, and metadata
         for JobSubmissionClient to use.
     """
+
+    scheme = "https" if _use_tls else "http"
+
+    split = address.split(":")
+    host = split[0]
+    if len(split) == 1:
+        port = DEFAULT_DASHBOARD_PORT
+    elif len(split) == 2:
+        port = int(split[1])
+    else:
+        raise ValueError(f"Invalid address: {address}.")
+
     return ClusterInfo(
-        address="http://" + address, cookies=cookies, metadata=metadata, headers=headers
+        address=f"{scheme}://{host}:{port}",
+        cookies=cookies,
+        metadata=metadata,
+        headers=headers,
     )
 
 
@@ -78,21 +98,17 @@ def parse_cluster_info(
     metadata: Optional[Dict[str, Any]] = None,
     headers: Optional[Dict[str, Any]] = None,
 ) -> ClusterInfo:
-    module_string, inner_address = _split_address(address.rstrip("/"))
+    module_string, inner_address = _split_address(address)
 
-    # If user passes in a raw HTTP(S) address, just pass it through.
-    if module_string == "http" or module_string == "https":
-        return ClusterInfo(
-            address=address, cookies=cookies, metadata=metadata, headers=headers
-        )
-    # If user passes in a Ray address, convert it to HTTP.
-    elif module_string == "ray":
+    # If user passes http(s):// or ray://, go through normal parsing.
+    if module_string in {"http", "https", "ray"}:
         return get_job_submission_client_cluster_info(
             inner_address,
             create_cluster_if_needed=create_cluster_if_needed,
             cookies=cookies,
             metadata=metadata,
             headers=headers,
+            _use_tls=module_string == "https",
         )
     # Try to dynamically import the function to get cluster info.
     else:

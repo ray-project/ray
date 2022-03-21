@@ -614,7 +614,7 @@ if __name__ == "__main__":
         "num_features": num_features,
     }
 
-    # Create 2 callbacks: one for Tensorboard Logging and one for MLflow
+    # Create 2 callbacks: one for TensorBoard Logging and one for MLflow
     # logging. Pass these into Trainer, and all results that are
     # reported by ``train.report()`` will be logged to these 2 places.
     # TODO: TBXLoggerCallback should create nonexistent logdir

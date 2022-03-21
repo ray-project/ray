@@ -17,7 +17,7 @@ from ray.rllib.utils.typing import SampleBatchType, TrainerConfigDict
 
 logger = logging.getLogger(__name__)
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # PlaNET Model LR
@@ -78,7 +78,7 @@ DEFAULT_CONFIG = with_common_config({
     }
 })
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 class EpisodicBuffer(object):

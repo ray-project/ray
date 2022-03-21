@@ -16,7 +16,7 @@ from ray.ray_constants import (
 )
 from ray.job_config import JobConfig
 import ray.util.client_connect
-from ray.worker import init as ray_driver_init
+from ray.worker import init as ray_driver_init, BaseContext
 from ray.util.annotations import Deprecated
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ CLIENT_DOCS_URL = "https://docs.ray.io/en/latest/cluster/ray-client.html"
 
 
 @dataclass
-class ClientContext:
+class ClientContext(BaseContext):
     """
     Basic context manager for a ClientBuilder connection.
     """

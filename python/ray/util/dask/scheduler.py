@@ -21,6 +21,12 @@ default_pool = None
 pools = defaultdict(dict)
 pools_lock = threading.Lock()
 
+TOP_LEVEL_RESOURCES_ERR_MSG = (
+    'Use ray_remote_args={"resources": {...}} instead of resources={...} to specify '
+    "required Ray task resources; see "
+    "https://docs.ray.io/en/master/ray-core/package-ref.html#ray-remote."
+)
+
 
 def enable_dask_on_ray(
     shuffle: Optional[str] = "tasks",
@@ -135,6 +141,21 @@ def ray_dask_get(dsk, keys, **kwargs):
     persist = kwargs.pop("ray_persist", False)
     enable_progress_bar = kwargs.pop("_ray_enable_progress_bar", None)
 
+    # Handle Ray remote args and resource annotations.
+    if "resources" in kwargs:
+        raise ValueError(TOP_LEVEL_RESOURCES_ERR_MSG)
+    ray_remote_args = kwargs.pop("ray_remote_args", {})
+    try:
+        annotations = dask.config.get("annotations")
+    except KeyError:
+        annotations = {}
+    if "resources" in annotations:
+        raise ValueError(TOP_LEVEL_RESOURCES_ERR_MSG)
+
+    scoped_ray_remote_args = _build_key_scoped_ray_remote_args(
+        dsk, annotations, ray_remote_args
+    )
+
     with local_ray_callbacks(ray_callbacks) as ray_callbacks:
         # Unpack the Ray-specific callbacks.
         (
@@ -155,6 +176,7 @@ def ray_dask_get(dsk, keys, **kwargs):
                 ray_postsubmit_cbs,
                 ray_pretask_cbs,
                 ray_posttask_cbs,
+                scoped_ray_remote_args,
             ),
             len(pool._pool),
             dsk,
@@ -235,6 +257,7 @@ def _rayify_task_wrapper(
     ray_postsubmit_cbs,
     ray_pretask_cbs,
     ray_posttask_cbs,
+    scoped_ray_remote_args,
 ):
     """
     The core Ray-Dask task execution wrapper, to be given to the thread pool's
@@ -253,6 +276,7 @@ def _rayify_task_wrapper(
         ray_postsubmit_cbs (callable): Post-task submission callbacks.
         ray_pretask_cbs (callable): Pre-task execution callbacks.
         ray_posttask_cbs (callable): Post-task execution callbacks.
+        scoped_ray_remote_args (dict): Ray task options for each key.
 
     Returns:
         A 3-tuple of the task's key, a literal or a Ray object reference for a
@@ -268,6 +292,7 @@ def _rayify_task_wrapper(
             ray_postsubmit_cbs,
             ray_pretask_cbs,
             ray_posttask_cbs,
+            scoped_ray_remote_args.get(key, {}),
         )
         id = get_id()
         result = dumps((result, id))
@@ -286,6 +311,7 @@ def _rayify_task(
     ray_postsubmit_cbs,
     ray_pretask_cbs,
     ray_posttask_cbs,
+    ray_remote_args,
 ):
     """
     Rayifies the given task, submitting it as a Ray task to the Ray cluster.
@@ -299,6 +325,7 @@ def _rayify_task(
         ray_postsubmit_cbs (callable): Post-task submission callbacks.
         ray_pretask_cbs (callable): Pre-task execution callbacks.
         ray_posttask_cbs (callable): Post-task execution callbacks.
+        ray_remote_args (dict): Ray task options.
 
     Returns:
         A literal, a Ray object reference representing a submitted task, or a
@@ -316,6 +343,7 @@ def _rayify_task(
                 ray_postsubmit_cbs,
                 ray_pretask_cbs,
                 ray_posttask_cbs,
+                ray_remote_args,
             )
             for t in task
         ]
@@ -345,6 +373,7 @@ def _rayify_task(
             num_returns=(
                 1 if not isinstance(func, MultipleReturnFunc) else func.num_returns
             ),
+            **ray_remote_args,
         ).remote(
             func,
             repack,
@@ -566,3 +595,36 @@ class MultipleReturnFunc:
 
 def multiple_return_get(multiple_returns, idx):
     return multiple_returns[idx]
+
+
+def _build_key_scoped_ray_remote_args(dsk, annotations, ray_remote_args):
+    # Handle per-layer annotations.
+    if not isinstance(dsk, dask.highlevelgraph.HighLevelGraph):
+        dsk = dask.highlevelgraph.HighLevelGraph.from_collections(
+            id(dsk), dsk, dependencies=()
+        )
+    # Build key-scoped annotations.
+    scoped_annotations = {}
+    layers = [(name, dsk.layers[name]) for name in dsk._toposort_layers()]
+    for id_, layer in layers:
+        layer_annotations = layer.annotations
+        if layer_annotations is None:
+            layer_annotations = annotations
+        elif "resources" in layer_annotations:
+            raise ValueError(TOP_LEVEL_RESOURCES_ERR_MSG)
+        for key in layer.get_output_keys():
+            layer_annotations_for_key = annotations.copy()
+            # Layer annotations override global annotations.
+            layer_annotations_for_key.update(layer_annotations)
+            # Let same-key annotations earlier in the topological sort take precedence.
+            layer_annotations_for_key.update(scoped_annotations.get(key, {}))
+            scoped_annotations[key] = layer_annotations_for_key
+    # Build key-scoped Ray remote args.
+    scoped_ray_remote_args = {}
+    for key, annotations in scoped_annotations.items():
+        layer_ray_remote_args = ray_remote_args.copy()
+        # Layer Ray remote args override global Ray remote args given in the compute
+        # call.
+        layer_ray_remote_args.update(annotations.get("ray_remote_args", {}))
+        scoped_ray_remote_args[key] = layer_ray_remote_args
+    return scoped_ray_remote_args

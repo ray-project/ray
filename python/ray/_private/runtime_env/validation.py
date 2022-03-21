@@ -15,7 +15,6 @@ from ray._private.runtime_env.conda import (
     _resolve_install_from_source_ray_extras,
     get_uri as get_conda_uri,
 )
-from ray._private.runtime_env.pip import RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP
 
 from ray._private.runtime_env.pip import get_uri as get_pip_uri
 
@@ -116,27 +115,39 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
 
 
 def _rewrite_pip_list_ray_libraries(pip_list: List[str]) -> List[str]:
+    """Remove Ray and replace Ray libraries with their dependencies.
+
+    The `pip` field of runtime_env installs packages into the current
+    environment, inheriting the existing environment.  If users want to
+    use Ray libraries like `ray[serve]` in their job, they must include
+    `ray[serve]` in their `runtime_env` `pip` field.  However, without this
+    function, the Ray installed at runtime would take precedence over the
+    Ray that exists in the cluster, which would lead to version mismatch
+    issues.
+
+    To work around this, this function deletes Ray from the input `pip_list`
+    if it's specified without any libraries (e.g. "ray" or "ray>1.4"). If
+    a Ray library is specified (e.g. "ray[serve]"), it is replaced by
+    its dependencies (e.g. "uvicorn", ...).
+
+    """
     result = []
     for specifier in pip_list:
-        requirement = Requirement.parse(specifier)
+        try:
+            requirement = Requirement.parse(specifier)
+        except Exception:
+            # Some lines in a pip_list might not be requirements but
+            # rather options for `pip`; e.g. `--extra-index-url MY_INDEX`.
+            # Requirement.parse would raise an InvalidRequirement in this
+            # case.  Since we are only interested in lines specifying Ray
+            # or its libraries, we should just skip this line.
+            result.append(specifier)
+            continue
         package_name = requirement.name
         if package_name == "ray":
             libraries = requirement.extras  # e.g. ("serve", "tune")
             if libraries == ():
-                # Ray alone was specified (e.g. "ray" or "ray>1.4"). Remove it.
-                if os.environ.get(RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP) != "1":
-                    logger.warning(
-                        "Ray was specified in the `pip` field of the "
-                        f"`runtime_env`: '{specifier}'. This is not needed; "
-                        "Ray is already installed on the cluster, so that Ray"
-                        "installation will be used. To prevent Ray version "
-                        f"incompatibility issues, '{specifier}' has been "
-                        "deleted from the `pip` field. To disable this "
-                        "deletion, set the environment variable "
-                        f"{RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP} to 1."
-                    )
-                else:
-                    result.append(specifier)
+                result.append(specifier)
             else:
                 # Replace the library with its dependencies.
                 extras = _resolve_install_from_source_ray_extras()
@@ -159,10 +170,6 @@ def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
     The returned parsed value will be a list of pip packages. If a Ray library
     (e.g. "ray[serve]") is specified, it will be deleted and replaced by its
     dependencies (e.g. "uvicorn", "requests").
-
-    If the base Ray package (e.g. "ray>1.4" or "ray") is specified in the
-    input, it will be removed, unless the environment variable
-    RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP is set to 1.
     """
     assert pip is not None
 

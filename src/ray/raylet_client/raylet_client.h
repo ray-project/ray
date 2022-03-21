@@ -67,21 +67,19 @@ class WorkerLeaseInterface {
   /// \param callback: The callback to call when the request finishes.
   /// \param backlog_size The queue length for the given shape on the CoreWorker.
   virtual void RequestWorkerLease(
-      const ray::TaskSpecification &resource_spec, bool grant_or_reject,
-      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size = -1) = 0;
-  virtual void RequestWorkerLease(
       const rpc::TaskSpec &task_spec, bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size = -1) = 0;
+      const int64_t backlog_size = -1,
+      const bool is_selected_based_on_locality = false) = 0;
 
   /// Returns a worker to the raylet.
   /// \param worker_port The local port of the worker on the raylet node.
   /// \param worker_id The unique worker id of the worker on the raylet node.
   /// \param disconnect_worker Whether the raylet should disconnect the worker.
+  /// \param worker_exiting Whether the worker is exiting and cannot be reused.
   /// \return ray::Status
   virtual ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
-                                   bool disconnect_worker) = 0;
+                                   bool disconnect_worker, bool worker_exiting) = 0;
 
   /// Notify raylets to release unused workers.
   /// \param workers_in_use Workers currently in use.
@@ -365,21 +363,13 @@ class RayletClient : public RayletClientInterface {
 
   /// Implements WorkerLeaseInterface.
   void RequestWorkerLease(
-      const ray::TaskSpecification &resource_spec, bool grant_or_reject,
-      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size) override {
-    RequestWorkerLease(resource_spec.GetMessage(), grant_or_reject, callback,
-                       backlog_size);
-  }
-
-  void RequestWorkerLease(
       const rpc::TaskSpec &resource_spec, bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size) override;
+      const int64_t backlog_size, const bool is_selected_based_on_locality) override;
 
   /// Implements WorkerLeaseInterface.
   ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
-                           bool disconnect_worker) override;
+                           bool disconnect_worker, bool worker_exiting) override;
 
   /// Implements WorkerLeaseInterface.
   void ReportWorkerBacklog(

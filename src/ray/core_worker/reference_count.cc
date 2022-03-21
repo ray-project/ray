@@ -169,6 +169,7 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
                                       const rpc::Address &owner_address,
                                       const std::string &call_site,
                                       const int64_t object_size, bool is_reconstructable,
+                                      bool add_local_ref,
                                       const absl::optional<NodeID> &pinned_at_raylet_id) {
   RAY_LOG(DEBUG) << "Adding owned object " << object_id;
   absl::MutexLock lock(&mutex_);
@@ -197,20 +198,10 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
   auto back_it = reconstructable_owned_objects_.end();
   back_it--;
   RAY_CHECK(reconstructable_owned_objects_index_.emplace(object_id, back_it).second);
-}
 
-void ReferenceCounter::RemoveOwnedObject(const ObjectID &object_id) {
-  absl::MutexLock lock(&mutex_);
-  auto it = object_id_refs_.find(object_id);
-  RAY_CHECK(it != object_id_refs_.end())
-      << "Tried to remove reference for nonexistent owned object " << object_id
-      << ", object must be added with ReferenceCounter::AddOwnedObject() before it "
-      << "can be removed";
-  RAY_CHECK(it->second.RefCount() == 0)
-      << "Tried to remove reference for owned object " << object_id << " that has "
-      << it->second.RefCount() << " references, must have 0 references to be removed";
-  RAY_LOG(DEBUG) << "Removing owned object " << object_id;
-  DeleteReferenceInternal(it, nullptr);
+  if (add_local_ref) {
+    it->second.local_ref_count++;
+  }
 }
 
 void ReferenceCounter::UpdateObjectSize(const ObjectID &object_id, int64_t object_size) {
@@ -599,6 +590,15 @@ void ReferenceCounter::ReleasePlasmaObject(ReferenceTable::iterator it) {
     it->second.on_delete = nullptr;
   }
   it->second.pinned_at_raylet_id.reset();
+  if (it->second.spilled && !it->second.spilled_node_id.IsNil()) {
+    // The spilled copy of the object should get deleted during the on_delete
+    // callback, so reset the spill location metadata here.
+    // NOTE(swang): Spilled copies in cloud storage are not GCed, so we do not
+    // reset the spilled metadata.
+    it->second.spilled = false;
+    it->second.spilled_url = "";
+    it->second.spilled_node_id = NodeID::Nil();
+  }
 }
 
 bool ReferenceCounter::SetDeleteCallback(
@@ -628,19 +628,26 @@ bool ReferenceCounter::SetDeleteCallback(
   return true;
 }
 
-std::vector<ObjectID> ReferenceCounter::ResetObjectsOnRemovedNode(
-    const NodeID &raylet_id) {
+void ReferenceCounter::ResetObjectsOnRemovedNode(const NodeID &raylet_id) {
   absl::MutexLock lock(&mutex_);
-  std::vector<ObjectID> lost_objects;
   for (auto it = object_id_refs_.begin(); it != object_id_refs_.end(); it++) {
     const auto &object_id = it->first;
-    if (it->second.pinned_at_raylet_id.value_or(NodeID::Nil()) == raylet_id) {
-      lost_objects.push_back(object_id);
+    if (it->second.pinned_at_raylet_id.value_or(NodeID::Nil()) == raylet_id ||
+        it->second.spilled_node_id == raylet_id) {
       ReleasePlasmaObject(it);
+      if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
+        objects_to_recover_.push_back(object_id);
+      }
     }
     RemoveObjectLocationInternal(it, raylet_id);
   }
-  return lost_objects;
+}
+
+std::vector<ObjectID> ReferenceCounter::FlushObjectsToRecover() {
+  absl::MutexLock lock(&mutex_);
+  std::vector<ObjectID> objects_to_recover = std::move(objects_to_recover_);
+  objects_to_recover_.clear();
+  return objects_to_recover;
 }
 
 void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
@@ -664,9 +671,14 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
     // Only the owner tracks the location.
     RAY_CHECK(it->second.owned_by_us);
     if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
-      it->second.pinned_at_raylet_id = raylet_id;
-      // We eagerly add the pinned location to the set of object locations.
-      AddObjectLocationInternal(it, raylet_id);
+      if (check_node_alive_(raylet_id)) {
+        it->second.pinned_at_raylet_id = raylet_id;
+        // We eagerly add the pinned location to the set of object locations.
+        AddObjectLocationInternal(it, raylet_id);
+      } else {
+        ReleasePlasmaObject(it);
+        objects_to_recover_.push_back(object_id);
+      }
     }
   }
 }
@@ -1173,29 +1185,40 @@ size_t ReferenceCounter::GetObjectSize(const ObjectID &object_id) const {
 
 bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
                                            const std::string spilled_url,
-                                           const NodeID &spilled_node_id, int64_t size,
-                                           bool release) {
+                                           const NodeID &spilled_node_id, int64_t size) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     RAY_LOG(WARNING) << "Spilled object " << object_id << " already out of scope";
     return false;
   }
+  if (it->second.OutOfScope(lineage_pinning_enabled_) && !spilled_node_id.IsNil()) {
+    // NOTE(swang): If the object is out of scope and was spilled locally by
+    // its primary raylet, then we should have already sent the "object
+    // evicted" notification to delete the copy at this spilled URL. Therefore,
+    // we should not add this spill URL as a location.
+    return false;
+  }
 
   it->second.spilled = true;
-  if (spilled_url != "") {
-    it->second.spilled_url = spilled_url;
-  }
-  if (!spilled_node_id.IsNil()) {
-    it->second.spilled_node_id = spilled_node_id;
-  }
-  if (size > 0) {
-    it->second.object_size = size;
-  }
-  PushToLocationSubscribers(it);
-  if (release) {
-    // Release the primary plasma copy, if any.
+  bool spilled_location_alive =
+      spilled_node_id.IsNil() || check_node_alive_(spilled_node_id);
+  if (spilled_location_alive) {
+    if (spilled_url != "") {
+      it->second.spilled_url = spilled_url;
+    }
+    if (!spilled_node_id.IsNil()) {
+      it->second.spilled_node_id = spilled_node_id;
+    }
+    if (size > 0) {
+      it->second.object_size = size;
+    }
+    PushToLocationSubscribers(it);
+  } else {
+    RAY_LOG(DEBUG) << "Object " << object_id << " spilled to dead node "
+                   << spilled_node_id;
     ReleasePlasmaObject(it);
+    objects_to_recover_.push_back(object_id);
   }
   return true;
 }

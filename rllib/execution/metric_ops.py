@@ -56,6 +56,9 @@ def StandardMetricsReporting(
                 workers,
                 min_history=config["metrics_num_episodes_for_smoothing"],
                 timeout_seconds=config["metrics_episode_collection_timeout_s"],
+                keep_per_episode_custom_metrics=config[
+                    "keep_per_episode_custom_metrics"
+                ],
                 selected_workers=selected_workers,
                 by_steps_trained=by_steps_trained,
             )
@@ -83,6 +86,7 @@ class CollectMetrics:
         workers: WorkerSet,
         min_history: int = 100,
         timeout_seconds: int = 180,
+        keep_per_episode_custom_metrics: bool = False,
         selected_workers: List[ActorHandle] = None,
         by_steps_trained: bool = False,
     ):
@@ -91,6 +95,7 @@ class CollectMetrics:
         self.to_be_collected = []
         self.min_history = min_history
         self.timeout_seconds = timeout_seconds
+        self.keep_custom_metrics = keep_per_episode_custom_metrics
         self.selected_workers = selected_workers
         self.by_steps_trained = by_steps_trained
 
@@ -109,7 +114,7 @@ class CollectMetrics:
             assert len(episodes) <= self.min_history
         self.episode_history.extend(orig_episodes)
         self.episode_history = self.episode_history[-self.min_history :]
-        res = summarize_episodes(episodes, orig_episodes)
+        res = summarize_episodes(episodes, orig_episodes, self.keep_custom_metrics)
 
         # Add in iterator metrics.
         metrics = _get_shared_metrics()

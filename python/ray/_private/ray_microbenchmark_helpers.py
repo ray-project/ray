@@ -14,6 +14,8 @@ filter_pattern = os.environ.get("TESTS_TO_RUN", "")
 def timeit(name, fn, multiplier=1) -> List[Optional[Tuple[str, float, float]]]:
     if filter_pattern not in name:
         return [None]
+    # sleep for 10 seconds to avoid noisy neighbors.
+    time.sleep(10)
     # warmup
     start = time.perf_counter()
     count = 0

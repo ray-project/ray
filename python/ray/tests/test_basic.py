@@ -58,6 +58,23 @@ def test_release_resources_race(shutdown_only):
     assert len(pids) <= 2, pids
 
 
+# https://github.com/ray-project/ray/issues/10960
+def test_max_calls_releases_resources(shutdown_only):
+    ray.init(num_cpus=2, num_gpus=1)
+
+    @ray.remote(num_cpus=0)
+    def g():
+        return 0
+
+    @ray.remote(num_cpus=1, num_gpus=1, max_calls=1, max_retries=0)
+    def f():
+        return [g.remote()]
+
+    for i in range(10):
+        print(i)
+        ray.get(f.remote())  # This will hang if GPU resources aren't released.
+
+
 # https://github.com/ray-project/ray/issues/7263
 def test_grpc_message_size(shutdown_only):
     ray.init(num_cpus=1)

@@ -644,6 +644,7 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     host, port = address_info["webui_url"].split(":")
     temp_dir = "/tmp/ray"
+    session_dir = "/tmp/ray/session_latest"
     log_dir = "/tmp/ray/session_latest/logs"
     dashboard_cmd = [
         sys.executable,
@@ -655,6 +656,7 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
         f"--redis-address={address_info['redis_address']}",
         f"--redis-password={ray_constants.REDIS_DEFAULT_PASSWORD}",
         f"--gcs-address={address_info['gcs_address']}",
+        f"--session-dir={session_dir}",
     ]
     logger.info("The dashboard should be exit: %s", dashboard_cmd)
     p = subprocess.Popen(dashboard_cmd)

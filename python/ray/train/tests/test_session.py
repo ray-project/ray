@@ -3,6 +3,7 @@ import time
 import pytest
 
 import ray
+from ray.train.constants import SESSION_MISUSE_LOG_ONCE_KEY
 from ray.train.session import (
     init_session,
     shutdown_session,
@@ -33,31 +34,30 @@ def test_init_fail(session):
         init_session(lambda: 1, 0)
 
 
-def test_get_fail(session):
+def test_shutdown(session):
     shutdown_session()
-    with pytest.raises(ValueError):
-        get_session()
+    assert not get_session()
 
 
 def test_world_rank(session):
     assert world_rank() == 0
     shutdown_session()
-    with pytest.raises(ValueError):
-        world_rank()
+    # Make sure default to 0.
+    assert world_rank() == 0
 
 
 def test_local_rank(session):
     assert local_rank() == 0
     shutdown_session()
-    with pytest.raises(ValueError):
-        local_rank()
+    # Make sure default to 0.
+    assert local_rank() == 0
 
 
 def test_world_size(session):
     assert world_size() == 1
     shutdown_session()
-    with pytest.raises(ValueError):
-        world_size()
+    # Make sure default to 1.
+    assert world_size() == 1
 
 
 def test_train(session):
@@ -90,9 +90,6 @@ def test_report():
     assert session.get_next().data["loss"] == 0
     assert session.get_next().data["loss"] == 1
     shutdown_session()
-
-    with pytest.raises(ValueError):
-        report(loss=2)
 
 
 def test_report_fail():
@@ -156,9 +153,6 @@ def test_checkpoint():
     validate_nonzero()
     session.finish()
     shutdown_session()
-
-    with pytest.raises(ValueError):
-        save_checkpoint(epoch=2)
 
 
 def test_encode_data():
@@ -240,6 +234,42 @@ def test_locking():
     with pytest.raises(KeyboardInterrupt):
         session.finish()
     shutdown_session()
+
+
+def reset_log_once_with_str(str_to_append=None):
+    key = SESSION_MISUSE_LOG_ONCE_KEY
+    if str_to_append:
+        key += f"-{str_to_append}"
+    ray.util.debug.reset_log_once(key)
+
+
+@pytest.mark.parametrize(
+    "fn", [load_checkpoint, save_checkpoint, report, get_dataset_shard]
+)
+def test_warn(fn):
+    """Checks if calling train functions outside of session raises warning."""
+
+    with pytest.warns(UserWarning) as record:
+        fn()
+
+    assert fn.__name__ in record[0].message.args[0]
+
+    reset_log_once_with_str(fn.__name__)
+
+
+def test_warn_once():
+    """Checks if session misuse warning is only shown once per function."""
+
+    with pytest.warns(UserWarning) as record:
+        assert not load_checkpoint()
+        assert not load_checkpoint()
+        assert not save_checkpoint(x=2)
+        assert not report(x=2)
+        assert not report(x=3)
+        assert not get_dataset_shard()
+
+    # Should only warn once.
+    assert len(record) == 4
 
 
 if __name__ == "__main__":

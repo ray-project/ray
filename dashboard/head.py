@@ -110,6 +110,7 @@ class DashboardHead:
         redis_password,
         log_dir,
         temp_dir,
+        session_dir,
         minimal,
     ):
         self.minimal = minimal
@@ -133,6 +134,7 @@ class DashboardHead:
 
         self.log_dir = log_dir
         self.temp_dir = temp_dir
+        self.session_dir = session_dir
         self.aioredis_client = None
         self.aiogrpc_gcs_channel = None
         self.gcs_error_subscriber = None

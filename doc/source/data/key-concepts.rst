@@ -4,8 +4,8 @@
 Key Concepts
 ============
 
-To work with Ray Data, you need to understand how Datasets and Dataset Pipelines work.
-You might also be interested to learn about the execution model of Ray Data operations
+To work with Ray Datasets, you need to understand how Datasets and Dataset Pipelines work.
+You might also be interested to learn about the execution model of Ray Datasets operations
 
 
 .. _dataset_concept:
@@ -14,7 +14,7 @@ You might also be interested to learn about the execution model of Ray Data oper
 Datasets
 --------
 
-Ray Data implements `Distributed Arrow <https://arrow.apache.org/>`__.
+Ray Datasets implements `Distributed Arrow <https://arrow.apache.org/>`__.
 A Dataset consists of a list of Ray object references to *blocks*.
 Each block holds a set of items in either an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`__
 or a Python list (for Arrow incompatible objects).
@@ -28,12 +28,12 @@ The following figure visualizes a Dataset that has three Arrow table blocks, eac
 ..
   https://docs.google.com/drawings/d/1PmbDvHRfVthme9XD7EYM-LIHPXtHdOfjCbc1SCsM64k/edit
 
-Since a Ray Dataset is just a list of Ray object references, it can be freely passed between Ray tasks,
+Since a Dataset is just a list of Ray object references, it can be freely passed between Ray tasks,
 actors, and libraries like any other object reference.
-This flexibility is a unique characteristic of Ray Data.
+This flexibility is a unique characteristic of Ray Datasets.
 
 Compared to `Spark RDDs <https://spark.apache.org/docs/latest/rdd-programming-guide.html>`__
-and `Dask Bags <https://docs.dask.org/en/latest/bag.html>`__, Ray Data offers a more basic set of features,
+and `Dask Bags <https://docs.dask.org/en/latest/bag.html>`__, Ray Datasets offers a more basic set of features,
 and executes operations eagerly for simplicity.
 It is intended that users cast Datasets into more feature-rich dataframe types (e.g., ``ds.to_dask()``) for advanced operations.
 
@@ -44,7 +44,7 @@ Dataset Pipelines
 -----------------
 
 
-Datasets execute their transformations synchronously in blocking calls. However, it can be useful to overlap dataset computations with output. This can be done with a `DatasetPipeline <package-ref.html#datasetpipeline-api>`__.
+Datasets execute their transformations synchronously in blocking calls. However, it can be useful to overlap dataset computations with output. This can be done with a `DatasetPipeline <data-pipelines-quick-start>`__.
 
 A DatasetPipeline is an unified iterator over a (potentially infinite) sequence of Ray Datasets, each of which represents a *window* over the original data. Conceptually it is similar to a `Spark DStream <https://spark.apache.org/docs/latest/streaming-programming-guide.html#discretized-streams-dstreams>`__, but manages execution over a bounded amount of source data instead of an unbounded stream. Ray computes each dataset window on-demand and stitches their output together into a single logical data iterator. DatasetPipeline implements most of the same transformation and output methods as Datasets (e.g., map, filter, split, iter_rows, to_torch, etc.).
 

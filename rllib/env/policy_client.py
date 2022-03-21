@@ -172,7 +172,7 @@ class PolicyClient:
     def log_returns(
         self,
         episode_id: str,
-        reward: int,
+        reward: float,
         info: Union[EnvInfoDict, MultiAgentDict] = None,
         multiagent_done_dict: Optional[MultiAgentDict] = None,
     ) -> None:
@@ -183,10 +183,10 @@ class PolicyClient:
         logged before the next action, a reward of 0.0 is assumed.
 
         Args:
-            episode_id (str): Episode id returned from start_episode().
-            reward (float): Reward from the environment.
-            info (dict): Extra info dict.
-            multiagent_done_dict (dict): Multi-agent done information.
+            episode_id: Episode id returned from start_episode().
+            reward: Reward from the environment.
+            info: Extra info dict.
+            multiagent_done_dict: Multi-agent done information.
         """
 
         if self.local:

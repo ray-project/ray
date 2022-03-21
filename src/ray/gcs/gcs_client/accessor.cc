@@ -122,8 +122,7 @@ Status JobInfoAccessor::AsyncGetAll(
   rpc::GetAllJobInfoRequest request;
   client_impl_->GetGcsRpcClient().GetAllJobInfo(
       request, [callback](const Status &status, const rpc::GetAllJobInfoReply &reply) {
-        auto result = VectorFromProtobuf(reply.job_info_list());
-        callback(status, result);
+        callback(status, VectorFromProtobuf(reply.job_info_list()));
         RAY_LOG(DEBUG) << "Finished getting all job info.";
       });
   return Status::OK();
@@ -172,8 +171,7 @@ Status ActorInfoAccessor::AsyncGetAll(
   rpc::GetAllActorInfoRequest request;
   client_impl_->GetGcsRpcClient().GetAllActorInfo(
       request, [callback](const Status &status, const rpc::GetAllActorInfoReply &reply) {
-        auto result = VectorFromProtobuf(reply.actor_table_data());
-        callback(status, result);
+        callback(status, VectorFromProtobuf(reply.actor_table_data()));
         RAY_LOG(DEBUG) << "Finished getting all actor info, status = " << status;
       });
   return Status::OK();
@@ -515,7 +513,7 @@ Status NodeInfoAccessor::AsyncGetAll(const MultiItemCallback<GcsNodeInfo> &callb
         for (int index = 0; index < reply.node_info_list_size(); ++index) {
           result.emplace_back(reply.node_info_list(index));
         }
-        callback(status, result);
+        callback(status, std::move(result));
         RAY_LOG(DEBUG) << "Finished getting information of all nodes, status = "
                        << status;
       });
@@ -713,9 +711,7 @@ Status NodeResourceInfoAccessor::AsyncGetAllAvailableResources(
   client_impl_->GetGcsRpcClient().GetAllAvailableResources(
       request,
       [callback](const Status &status, const rpc::GetAllAvailableResourcesReply &reply) {
-        std::vector<rpc::AvailableResources> result =
-            VectorFromProtobuf(reply.resources_list());
-        callback(status, result);
+        callback(status, VectorFromProtobuf(reply.resources_list()));
         RAY_LOG(DEBUG) << "Finished getting available resources of all nodes, status = "
                        << status;
       });
@@ -916,8 +912,7 @@ Status StatsInfoAccessor::AsyncGetAll(
   client_impl_->GetGcsRpcClient().GetAllProfileInfo(
       request,
       [callback](const Status &status, const rpc::GetAllProfileInfoReply &reply) {
-        auto result = VectorFromProtobuf(reply.profile_info_list());
-        callback(status, result);
+        callback(status, VectorFromProtobuf(reply.profile_info_list()));
         RAY_LOG(DEBUG) << "Finished getting all job info.";
       });
   return Status::OK();
@@ -1008,8 +1003,7 @@ Status WorkerInfoAccessor::AsyncGetAll(
   rpc::GetAllWorkerInfoRequest request;
   client_impl_->GetGcsRpcClient().GetAllWorkerInfo(
       request, [callback](const Status &status, const rpc::GetAllWorkerInfoReply &reply) {
-        auto result = VectorFromProtobuf(reply.worker_table_data());
-        callback(status, result);
+        callback(status, VectorFromProtobuf(reply.worker_table_data()));
         RAY_LOG(DEBUG) << "Finished getting all worker info, status = " << status;
       });
   return Status::OK();

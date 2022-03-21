@@ -320,12 +320,18 @@ def convert_element_to_space_type(element: Any, sampled_element: Any) -> Any:
     def map_(elem, s):
         if isinstance(s, np.ndarray):
             if not isinstance(elem, np.ndarray):
-                raise ValueError(
-                    "Element should be of type np.ndarray but is instead of \
-                        type {}".format(
-                        type(elem)
+                assert isinstance(
+                    elem, (float, int)
+                ), f"ERROR: `elem` ({elem}) must be np.array, float or int!"
+                if s.shape == ():
+                    elem = np.array(elem, dtype=s.dtype)
+                else:
+                    raise ValueError(
+                        "Element should be of type np.ndarray but is instead of \
+                            type {}".format(
+                            type(elem)
+                        )
                     )
-                )
             elif s.dtype != elem.dtype:
                 elem = elem.astype(s.dtype)
 

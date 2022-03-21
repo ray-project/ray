@@ -29,7 +29,32 @@ Installation
 
 .. tabbed:: C++
 
-    To run this walkthrough, install Ray with ``pip install -U ray[cpp]``. For the latest wheels (for a snapshot of ``master``), you can use these instructions at :ref:`install-nightlies`.
+    The C++ Ray API is currently experimental with limited support. You can track its development `here <https://github.com/ray-project/ray/milestone/17>`__ and report issues on GitHub.
+    Run the following commands to get started:
+
+    Install ray with C++ API support and generate a bazel project with the ray command.
+
+    .. code-block:: shell
+
+      pip install "ray[cpp]"
+      mkdir ray-template && ray cpp --generate-bazel-project-template-to ray-template
+
+    The project template comes with a simple example application. You can try this example out in 2 ways:
+
+    1. Run the example application directly, which will start a Ray cluster locally.
+
+    .. code-block:: shell
+
+      cd ray-template && bash run.sh
+
+    2. Connect the example application to an existing Ray cluster by specifying the RAY_ADDRESS env var.
+
+    .. code-block:: shell
+
+      ray start --head
+      RAY_ADDRESS=127.0.0.1:6379 bash run.sh
+
+    Now you can build your own Ray C++ application based on this project template.
 
 Starting Ray
 ------------
@@ -280,6 +305,7 @@ this default behavior by passing in specific resources.
 
 
 .. tabbed:: C++
+
     .. code-block:: c++
 
         RayConfig config;
@@ -437,6 +463,7 @@ Object refs can be created in multiple ways.
   2. They are returned by ``put`` (:ref:`docstring <ray-put-ref>`).
 
 .. tabbed:: Python
+
   .. code-block:: python
 
     # Put an object in Ray's object store.
@@ -444,6 +471,7 @@ Object refs can be created in multiple ways.
     object_ref = ray.put(y)
 
 .. tabbed:: Java
+
   .. code-block:: java
 
     // Put an object in Ray's object store.
@@ -451,6 +479,7 @@ Object refs can be created in multiple ways.
     ObjectRef<Integer> objectRef = Ray.put(y);
 
 .. tabbed:: C++
+
   .. code-block:: c++
 
     // Put an object in Ray's object store.
@@ -550,11 +579,13 @@ finished executing. This can be done with ``wait`` (:ref:`ray-wait-ref`). The fu
 works as follows.
 
 .. tabbed:: Python
+
   .. code-block:: python
 
     ready_refs, remaining_refs = ray.wait(object_refs, num_returns=1, timeout=None)
 
 .. tabbed:: Java
+
   .. code-block:: java
 
     WaitResult<Integer> waitResult = Ray.wait(objectRefs, /*num_returns=*/0, /*timeoutMs=*/1000);
@@ -562,6 +593,7 @@ works as follows.
     System.out.println(waitResult.getUnready());  // list of unready objects.
 
 .. tabbed:: C++
+
   .. code-block:: c++
 
     ray::WaitResult<int> wait_result = ray::Wait(object_refs, /*num_objects=*/0, /*timeout_ms=*/1000);

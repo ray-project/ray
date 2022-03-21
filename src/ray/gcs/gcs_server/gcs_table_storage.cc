@@ -46,7 +46,7 @@ Status GcsTable<Key, Data>::Get(const Key &key,
 
 template <typename Key, typename Data>
 Status GcsTable<Key, Data>::GetAll(const MapCallback<Key, Data> &callback) {
-  auto on_done = [callback](const std::unordered_map<std::string, std::string> &result) {
+  auto on_done = [callback](std::unordered_map<std::string, std::string> &&result) {
     std::unordered_map<Key, Data> values;
     for (auto &item : result) {
       if (!item.second.empty()) {
@@ -55,7 +55,7 @@ Status GcsTable<Key, Data>::GetAll(const MapCallback<Key, Data> &callback) {
         values[Key::FromBinary(item.first)] = data;
       }
     }
-    callback(values);
+    callback(std::move(values));
   };
   return store_client_->AsyncGetAll(table_name_, on_done);
 }
@@ -88,7 +88,7 @@ Status GcsTableWithJobId<Key, Data>::Put(const Key &key, const Data &value,
 template <typename Key, typename Data>
 Status GcsTableWithJobId<Key, Data>::GetByJobId(const JobID &job_id,
                                                 const MapCallback<Key, Data> &callback) {
-  auto on_done = [callback](const std::unordered_map<std::string, std::string> &result) {
+  auto on_done = [callback](std::unordered_map<std::string, std::string> &&result) {
     std::unordered_map<Key, Data> values;
     for (auto &item : result) {
       if (!item.second.empty()) {
@@ -97,7 +97,7 @@ Status GcsTableWithJobId<Key, Data>::GetByJobId(const JobID &job_id,
         values[Key::FromBinary(item.first)] = std::move(data);
       }
     }
-    callback(values);
+    callback(std::move(values));
   };
   return this->store_client_->AsyncGetByIndex(this->table_name_, job_id.Binary(),
                                               on_done);

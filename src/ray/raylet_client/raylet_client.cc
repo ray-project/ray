@@ -287,7 +287,7 @@ Status raylet::RayletClient::FreeObjects(const std::vector<ObjectID> &object_ids
 void raylet::RayletClient::RequestWorkerLease(
     const rpc::TaskSpec &task_spec, bool grant_or_reject,
     const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
-    const int64_t backlog_size) {
+    const int64_t backlog_size, const bool is_selected_based_on_locality) {
   google::protobuf::Arena arena;
   auto request =
       google::protobuf::Arena::CreateMessage<rpc::RequestWorkerLeaseRequest>(&arena);
@@ -299,6 +299,7 @@ void raylet::RayletClient::RequestWorkerLease(
       const_cast<rpc::TaskSpec *>(&task_spec));
   request->set_grant_or_reject(grant_or_reject);
   request->set_backlog_size(backlog_size);
+  request->set_is_selected_based_on_locality(is_selected_based_on_locality);
   grpc_client_->RequestWorkerLease(*request, callback);
 }
 
@@ -326,11 +327,12 @@ void raylet::RayletClient::ReportWorkerBacklog(
 }
 
 Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worker_id,
-                                          bool disconnect_worker) {
+                                          bool disconnect_worker, bool worker_exiting) {
   rpc::ReturnWorkerRequest request;
   request.set_worker_port(worker_port);
   request.set_worker_id(worker_id.Binary());
   request.set_disconnect_worker(disconnect_worker);
+  request.set_worker_exiting(worker_exiting);
   grpc_client_->ReturnWorker(
       request, [](const Status &status, const rpc::ReturnWorkerReply &reply) {
         if (!status.ok()) {

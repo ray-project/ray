@@ -37,6 +37,7 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.filter import Filter
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import clip_action, unsquash_action, unbatch
 from ray.rllib.utils.typing import (
@@ -52,14 +53,12 @@ from ray.rllib.utils.typing import (
 )
 
 if TYPE_CHECKING:
+    from gym.envs.classic_control.rendering import SimpleImageViewer
     from ray.rllib.agents.callbacks import DefaultCallbacks
     from ray.rllib.evaluation.observation_function import ObservationFunction
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
-    from ray.rllib.utils import try_import_tf
 
-    _, tf, _ = try_import_tf()
-    from gym.envs.classic_control.rendering import SimpleImageViewer
-
+tf1, tf, _ = try_import_tf()
 logger = logging.getLogger(__name__)
 
 PolicyEvalData = namedtuple(
@@ -453,6 +452,14 @@ class AsyncSampler(threading.Thread, SamplerInput):
             raise e
 
     def _run(self):
+        # We are in a thread: Switch on eager execution mode, iff framework==tf2|tfe.
+        if (
+            tf1
+            and self.worker.policy_config.get("framework", "tf") in ["tf2", "tfe"]
+            and not tf1.executing_eagerly()
+        ):
+            tf1.enable_eager_execution()
+
         if self.blackhole_outputs:
             queue_putter = lambda x: None
             extra_batches_putter = lambda x: None
@@ -922,7 +929,7 @@ def _process_observations(
                     episode.length - 1,
                     filtered_obs,
                 )
-            elif agent_infos is None or agent_infos.get("training_enabled", True):
+            else:
                 # Add actions, rewards, next-obs to collectors.
                 values_dict = {
                     SampleBatch.T: episode.length - 1,

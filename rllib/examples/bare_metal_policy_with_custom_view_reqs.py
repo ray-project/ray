@@ -19,13 +19,19 @@ def get_cli_args():
     )
     parser.add_argument("--num-cpus", type=int, default=3)
     parser.add_argument(
-        "--stop-iters", type=int, default=1, help="Number of iterations to train."
+        "--stop-iters", type=int, default=200, help="Number of iterations to train."
     )
     parser.add_argument(
         "--stop-timesteps",
         type=int,
         default=100000,
         help="Number of timesteps to train.",
+    )
+    parser.add_argument(
+        "--stop-reward",
+        type=float,
+        default=80.0,
+        help="Reward at which we stop training.",
     )
     parser.add_argument(
         "--local-mode",
@@ -68,6 +74,7 @@ if __name__ == "__main__":
     stop = {
         "training_iteration": args.stop_iters,
         "timesteps_total": args.stop_timesteps,
+        "episode_reward_mean": args.stop_reward,
     }
 
     # Train the Trainer with our policy.

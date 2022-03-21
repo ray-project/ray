@@ -61,10 +61,17 @@ enum PopWorkerStatus {
   RuntimeEnvCreationFailed = 4,
 };
 
-/// \Return true if the worker was used. Otherwise, return false and the worker will be
-/// returned to the worker pool.
+/// \param[in] worker The started worker instance. Nullptr if worker is not started.
+/// \param[in] status The pop worker status. OK if things go well. Otherwise, it will
+/// contain the error status.
+/// \param[in] runtime_env_setup_error_message The error message
+/// when runtime env setup is failed. This should be empty unless status ==
+/// RuntimeEnvCreationFailed.
+/// \return true if the worker was used. Otherwise, return false
+/// and the worker will be returned to the worker pool.
 using PopWorkerCallback = std::function<bool(
-    const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status)>;
+    const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status,
+    const std::string &runtime_env_setup_error_message)>;
 
 /// \class WorkerPoolInterface
 ///
@@ -621,7 +628,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Create runtime env asynchronously by runtime env agent.
   void CreateRuntimeEnv(
       const std::string &serialized_runtime_env, const JobID &job_id,
-      const std::function<void(bool, const std::string &)> &callback,
+      const CreateRuntimeEnvCallback &callback,
       const std::string &serialized_allocated_resource_instances = "{}");
 
   void AddStartingWorkerProcess(

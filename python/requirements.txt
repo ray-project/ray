@@ -26,6 +26,7 @@ pyyaml
 redis >= 3.5.0, < 4.0.0
 requests
 smart_open
+virtualenv
 
 ## setup.py extras
 dm_tree
@@ -46,7 +47,7 @@ starlette
 aiorwlock
 
 # Requirements for running tests
-pyarrow==4.0.1
+pyarrow >= 4.0.1, < 7.0.0
 blist; platform_system != "Windows"
 azure-cli-core==2.29.1
 azure-identity==1.7.0
@@ -95,3 +96,7 @@ tqdm
 async-exit-stack
 async-generator
 cryptography>=3.0.0
+# For doc tests
+myst-parser==0.15.2
+myst-nb==0.13.1
+jupytext==1.13.6

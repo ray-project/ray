@@ -11,7 +11,7 @@ RaySGD integrates with :ref:`Ray Tune <tune-60-seconds>` to easily run distribut
 PyTorch
 -------
 
-.. tip:: If you want to leverage multi-node data parallel training with PyTorch while using RayTune *without* using RaySGD, check out the :ref:`Tune PyTorch user guide <tune-pytorch-cifar>` and Tune's lightweight :ref:`distributed pytorch integrations <tune-ddp-doc>`.
+.. tip:: If you want to leverage multi-node data parallel training with PyTorch while using RayTune *without* using RaySGD, check out the :ref:`Tune PyTorch user guide <tune-pytorch-cifar-ref>` and Tune's lightweight :ref:`distributed pytorch integrations <tune-ddp-doc>`.
 
 ``TorchTrainer`` naturally integrates with Tune via the ``BaseTorchTrainable`` interface. Without changing any arguments, you can call ``TorchTrainer.as_trainable(...)`` to create a Tune-compatible class.
 Then, you can simply pass the returned Trainable class to ``tune.run``. The ``config`` used for each ``Trainable`` in tune will automatically be passed down to the ``TorchTrainer``.

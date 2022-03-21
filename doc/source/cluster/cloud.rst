@@ -46,6 +46,8 @@ Ray with cloud providers
         $ ray down ray/python/ray/autoscaler/aws/example-full.yaml
 
 
+    AWS Node Provider Maintainers (GitHub handles): pdames, Zyiqin-Miranda, DmitriGekhtman, wuisawesome
+
     See :ref:`aws-cluster` for recipes on customizing AWS clusters.
 .. tabbed:: Azure
 
@@ -95,6 +97,9 @@ Ray with cloud providers
     2. Installs Ray and any other user-specified dependencies
     3. Sets up a systemd task (``/lib/systemd/system/ray.service``) to start Ray in head or worker mode
 
+
+    Azure Node Provider Maintainers (GitHub handles): gramhagen, eisber, ijrsvt
+
 .. tabbed:: GCP
 
     First, install the Google API client (``pip install google-api-python-client``), set up your GCP credentials, and create a new GCP project.
@@ -116,36 +121,7 @@ Ray with cloud providers
         # Tear down the cluster.
         $ ray down ray/python/ray/autoscaler/gcp/example-full.yaml
 
-.. tabbed:: Staroid Kubernetes Engine (contributed)
-
-    The Ray Cluster Launcher can be used to start Ray clusters on an existing Staroid Kubernetes Engine (SKE) cluster.
-
-    First, install the staroid client package (``pip install staroid``) then get `access token <https://staroid.com/settings/accesstokens>`_.
-    Once you have an access token, you should be ready to launch your cluster.
-
-    The provided `ray/python/ray/autoscaler/staroid/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/staroid/example-full.yaml>`__ cluster config file will create a cluster with
-
-    - a Jupyter notebook running on head node.
-      (Staroid management console -> Kubernetes -> ``<your_ske_name>`` -> ``<ray_cluster_name>`` -> Click "notebook")
-    - a shared nfs volume across all ray nodes mounted under ``/nfs`` directory.
-
-    Test that it works by running the following commands from your local machine:
-
-    .. code-block:: bash
-
-        # Configure access token through environment variable.
-        $ export STAROID_ACCESS_TOKEN=<your access token>
-
-        # Create or update the cluster. When the command finishes,
-        # you can attach a screen to the head node.
-        $ ray up ray/python/ray/autoscaler/staroid/example-full.yaml
-
-        # Get a remote screen on the head node.
-        $ ray attach ray/python/ray/autoscaler/staroid/example-full.yaml
-        $ # Try running a Ray program with 'ray.init(address="auto")'.
-
-        # Tear down the cluster
-        $ ray down ray/python/ray/autoscaler/staroid/example-full.yaml
+    GCP Node Provider Maintainers (GitHub handles): wuisawesome, DmitriGekhtman, ijrsvt
 
 .. tabbed:: Aliyun
 
@@ -170,7 +146,7 @@ Ray with cloud providers
         # Tear down the cluster.
         $ ray down ray/python/ray/autoscaler/aliyun/example-full.yaml
 
-    Aliyun Node Provider Maintainer: zhuangzhuang131419, chenk008
+    Aliyun Node Provider Maintainers (GitHub handles): zhuangzhuang131419, chenk008
 
 .. tabbed:: Custom
 

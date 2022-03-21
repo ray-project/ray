@@ -4,7 +4,6 @@ import logging
 from typing import Dict, List, Optional
 import warnings
 
-from ray.tune.resources import Resources
 from ray.util.annotations import DeveloperAPI
 from ray.tune.trial import Trial, Checkpoint
 
@@ -80,11 +79,6 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         return self._cached_trial_state
 
     @abstractmethod
-    def has_resources(self, resources: Resources) -> bool:
-        """Returns whether this runner has at least the specified resources."""
-        pass
-
-    @abstractmethod
     def start_trial(self, trial: Trial) -> bool:
         """Starts the trial restoring from checkpoint if checkpoint is provided.
 
@@ -150,11 +144,6 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         """
         pass
 
-    @abstractmethod
-    def get_running_trials(self) -> List[Trial]:
-        """Returns all running trials."""
-        pass
-
     def on_step_begin(self, trials: List[Trial]) -> None:
         """A hook called before running one step of the trial event loop.
 
@@ -174,26 +163,6 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         pass
 
     def force_reconcilation_on_next_step_end(self) -> None:
-        pass
-
-    @abstractmethod
-    def get_next_available_trial(self) -> Optional[Trial]:
-        """Blocking call that waits until one result is ready.
-
-        Returns:
-            Trial object that is ready for intermediate processing.
-        """
-        pass
-
-    @abstractmethod
-    def fetch_result(self, trial: Trial) -> List[Trial]:
-        """Fetches one result for the trial.
-
-        Assumes the trial is running.
-
-        Returns:
-            Result object for the trial.
-        """
         pass
 
     @abstractmethod
@@ -259,10 +228,6 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
                 providing TrialRunner directly here.
         """
         pass
-
-    def in_staging_grace_period(self) -> bool:
-        """Returns True if trials have recently been staged."""
-        return False
 
     def set_max_pending_trials(self, max_pending: int) -> None:
         """Set the maximum number of allowed pending trials."""

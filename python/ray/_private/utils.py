@@ -13,7 +13,7 @@ import sys
 import tempfile
 import threading
 import time
-from typing import Optional, Sequence, Tuple, Any
+from typing import Optional, Sequence, Tuple, Any, Union
 import uuid
 import grpc
 import warnings
@@ -181,7 +181,7 @@ def random_string():
     return random_id
 
 
-def decode(byte_str, allow_none=False):
+def decode(byte_str: str, allow_none: bool = False, encode_type: str = "ascii"):
     """Make this unicode in Python 3, otherwise leave it as bytes.
 
     Args:
@@ -199,7 +199,7 @@ def decode(byte_str, allow_none=False):
     if not isinstance(byte_str, bytes):
         raise ValueError(f"The argument {byte_str} must be a bytes object.")
     if sys.version_info >= (3, 0):
-        return byte_str.decode("ascii")
+        return byte_str.decode(encode_type)
     else:
         return byte_str
 
@@ -1195,3 +1195,68 @@ def check_dashboard_dependencies_installed() -> bool:
         return True
     except ImportError:
         return False
+
+
+def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
+    result = None
+    if isinstance(key, str):
+        key = key.encode()
+    for _ in range(num_retries):
+        try:
+            result = gcs_client.internal_kv_get(key, namespace)
+        except Exception:
+            logger.exception("Internal KV Get failed")
+            result = None
+
+        if result is not None:
+            break
+        else:
+            logger.debug(f"Fetched {key}=None from redis. Retrying.")
+            time.sleep(2)
+    if not result:
+        raise RuntimeError(
+            f"Could not read '{key}' from GCS (redis). "
+            "If using Redis, did Redis start successfully?"
+        )
+    return result
+
+
+def internal_kv_put_with_retry(gcs_client, key, value, namespace, num_retries=20):
+    if isinstance(key, str):
+        key = key.encode()
+    error = None
+    for _ in range(num_retries):
+        try:
+            return gcs_client.internal_kv_put(
+                key, value, overwrite=True, namespace=namespace
+            )
+        except grpc.RpcError as e:
+            logger.exception("Internal KV Put failed")
+            time.sleep(2)
+            error = e
+    # Reraise the last grpc.RpcError.
+    raise error
+
+
+def compute_version_info():
+    """Compute the versions of Python, and Ray.
+
+    Returns:
+        A tuple containing the version information.
+    """
+    ray_version = ray.__version__
+    python_version = ".".join(map(str, sys.version_info[:3]))
+    return ray_version, python_version
+
+
+def get_directory_size_bytes(path: Union[str, Path] = ".") -> int:
+    """Get the total size of a directory in bytes, including subdirectories."""
+    total_size_bytes = 0
+    for dirpath, dirnames, filenames in os.walk(path):
+        for f in filenames:
+            fp = os.path.join(dirpath, f)
+            # skip if it is a symbolic link
+            if not os.path.islink(fp):
+                total_size_bytes += os.path.getsize(fp)
+
+    return total_size_bytes

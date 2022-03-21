@@ -33,6 +33,7 @@ int POOL_SIZE_SOFT_LIMIT = 5;
 int WORKER_REGISTER_TIMEOUT_SECONDS = 3;
 JobID JOB_ID = JobID::FromInt(1);
 std::string BAD_RUNTIME_ENV = "bad runtime env";
+const std::string BAD_RUNTIME_ENV_ERROR_MSG = "bad runtime env";
 
 std::vector<Language> LANGUAGES = {Language::PYTHON, Language::JAVA};
 
@@ -86,6 +87,7 @@ class MockRuntimeEnvAgentClient : public rpc::RuntimeEnvAgentClientInterface {
     rpc::CreateRuntimeEnvReply reply;
     if (request.serialized_runtime_env() == BAD_RUNTIME_ENV) {
       reply.set_status(rpc::AGENT_RPC_STATUS_FAILED);
+      reply.set_error_message(BAD_RUNTIME_ENV_ERROR_MSG);
     } else {
       rpc::RuntimeEnv runtime_env;
       if (google::protobuf::util::JsonStringToMessage(request.serialized_runtime_env(),
@@ -314,23 +316,27 @@ class WorkerPoolMock : public WorkerPool {
   // worker synchronously.
   // \param[in] push_workers If true, tries to push the workers from the started
   // processes.
-  std::shared_ptr<WorkerInterface> PopWorkerSync(const TaskSpecification &task_spec,
-                                                 bool push_workers = true,
-                                                 PopWorkerStatus *worker_status = nullptr,
-                                                 int timeout_worker_number = 0) {
+  std::shared_ptr<WorkerInterface> PopWorkerSync(
+      const TaskSpecification &task_spec, bool push_workers = true,
+      PopWorkerStatus *worker_status = nullptr, int timeout_worker_number = 0,
+      std::string *runtime_env_error_msg = nullptr) {
     std::shared_ptr<WorkerInterface> popped_worker = nullptr;
     std::promise<bool> promise;
-    this->PopWorker(task_spec,
-                    [&popped_worker, worker_status, &promise](
-                        const std::shared_ptr<WorkerInterface> worker,
-                        PopWorkerStatus status) -> bool {
-                      popped_worker = worker;
-                      if (worker_status != nullptr) {
-                        *worker_status = status;
-                      }
-                      promise.set_value(true);
-                      return true;
-                    });
+    this->PopWorker(
+        task_spec,
+        [&popped_worker, worker_status, &promise, runtime_env_error_msg](
+            const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status,
+            const std::string &runtime_env_setup_error_message) -> bool {
+          popped_worker = worker;
+          if (worker_status != nullptr) {
+            *worker_status = status;
+          }
+          if (runtime_env_error_msg) {
+            *runtime_env_error_msg = runtime_env_setup_error_message;
+          }
+          promise.set_value(true);
+          return true;
+        });
     if (push_workers) {
       PushWorkers(timeout_worker_number);
     }
@@ -773,9 +779,10 @@ TEST_F(WorkerPoolTest, MaximumStartupConcurrency) {
 
   // Try to pop some workers. Some worker processes will be started.
   for (int i = 0; i < MAXIMUM_STARTUP_CONCURRENCY; i++) {
-    worker_pool_->PopWorker(task_spec,
-                            [](const std::shared_ptr<WorkerInterface> worker,
-                               PopWorkerStatus status) -> bool { return true; });
+    worker_pool_->PopWorker(
+        task_spec,
+        [](const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status,
+           const std::string &runtime_env_setup_error_message) -> bool { return true; });
     auto last_process = worker_pool_->LastStartedWorkerProcess();
     RAY_CHECK(last_process.IsValid());
     started_processes.push_back(last_process);
@@ -783,9 +790,10 @@ TEST_F(WorkerPoolTest, MaximumStartupConcurrency) {
 
   // Can't start a new worker process at this point.
   ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
-  worker_pool_->PopWorker(task_spec,
-                          [](const std::shared_ptr<WorkerInterface> worker,
-                             PopWorkerStatus status) -> bool { return true; });
+  worker_pool_->PopWorker(
+      task_spec,
+      [](const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status,
+         const std::string &runtime_env_setup_error_message) -> bool { return true; });
   ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
@@ -803,9 +811,10 @@ TEST_F(WorkerPoolTest, MaximumStartupConcurrency) {
 
   // Can't start a new worker process at this point.
   ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
-  worker_pool_->PopWorker(task_spec,
-                          [](const std::shared_ptr<WorkerInterface> worker,
-                             PopWorkerStatus status) -> bool { return true; });
+  worker_pool_->PopWorker(
+      task_spec,
+      [](const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status,
+         const std::string &runtime_env_setup_error_message) -> bool { return true; });
   ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
 
   // Call `OnWorkerStarted` to emulate worker port announcement.
@@ -1622,7 +1631,8 @@ TEST_F(WorkerPoolTest, WorkerNoLeaks) {
   // Pop a worker and don't dispatch.
   worker_pool_->PopWorker(
       task_spec,
-      [](const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status) -> bool {
+      [](const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status,
+         const std::string &runtime_env_setup_error_message) -> bool {
         // Don't dispatch this worker.
         return false;
       });
@@ -1637,7 +1647,8 @@ TEST_F(WorkerPoolTest, WorkerNoLeaks) {
   // Pop a worker and don't dispatch.
   worker_pool_->PopWorker(
       task_spec,
-      [](const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status) -> bool {
+      [](const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status,
+         const std::string &runtime_env_setup_error_message) -> bool {
         // Don't dispatch this worker.
         return false;
       });
@@ -1647,7 +1658,8 @@ TEST_F(WorkerPoolTest, WorkerNoLeaks) {
   // Pop a worker and dispatch.
   worker_pool_->PopWorker(
       task_spec,
-      [](const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status) -> bool {
+      [](const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status,
+         const std::string &runtime_env_setup_error_message) -> bool {
         // Dispatch this worker.
         return true;
       });
@@ -1665,9 +1677,10 @@ TEST_F(WorkerPoolTest, PopWorkerStatus) {
   // Startup worker processes to maximum.
   for (int i = 0; i < MAXIMUM_STARTUP_CONCURRENCY; i++) {
     auto task_spec = ExampleTaskSpec();
-    worker_pool_->PopWorker(task_spec,
-                            [](const std::shared_ptr<WorkerInterface> worker,
-                               PopWorkerStatus status) -> bool { return true; });
+    worker_pool_->PopWorker(
+        task_spec,
+        [](const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status,
+           const std::string &runtime_env_setup_error_message) -> bool { return true; });
   }
   ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
 
@@ -1705,11 +1718,13 @@ TEST_F(WorkerPoolTest, PopWorkerStatus) {
   const auto task_spec_with_bad_runtime_env = ExampleTaskSpec(
       ActorID::Nil(), Language::PYTHON, job_id, ActorID::Nil(), {"XXX=YYY"},
       TaskID::FromRandom(JobID::Nil()), ExampleRuntimeEnvInfoFromString(BAD_RUNTIME_ENV));
-  popped_worker =
-      worker_pool_->PopWorkerSync(task_spec_with_bad_runtime_env, true, &status);
+  std::string error_msg;
+  popped_worker = worker_pool_->PopWorkerSync(task_spec_with_bad_runtime_env, true,
+                                              &status, 0, &error_msg);
   // PopWorker failed and the status is `RuntimeEnvCreationFailed`.
   ASSERT_EQ(popped_worker, nullptr);
   ASSERT_EQ(status, PopWorkerStatus::RuntimeEnvCreationFailed);
+  ASSERT_EQ(error_msg, BAD_RUNTIME_ENV_ERROR_MSG);
 
   // Create a task with available runtime env.
   const auto task_spec_with_runtime_env = ExampleTaskSpec(

@@ -221,8 +221,9 @@ class Dataset(Generic[T]):
                 blocks as batches. Defaults to a system-chosen batch size.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or "actors" to use an autoscaling Ray actor pool.
-            batch_format: Specify "native" to use the native block format,
-                "pandas" to select ``pandas.DataFrame`` as the batch format,
+            batch_format: Specify "native" to use the native block format
+                (promotes Arrow to pandas), "pandas" to select
+                ``pandas.DataFrame`` as the batch format,
                 or "pyarrow" to select ``pyarrow.Table``.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
@@ -252,7 +253,9 @@ class Dataset(Generic[T]):
                 # bug where we include the entire base view on serialization.
                 view = block.slice(start, end, copy=batch_size is not None)
                 if batch_format == "native":
-                    pass
+                    # Always promote Arrow blocks to pandas for consistency.
+                    if isinstance(view, pa.Table) or isinstance(view, bytes):
+                        view = BlockAccessor.for_block(view).to_pandas()
                 elif batch_format == "pandas":
                     view = BlockAccessor.for_block(view).to_pandas()
                 elif batch_format == "pyarrow":
@@ -286,6 +289,53 @@ class Dataset(Generic[T]):
         compute = get_compute(compute)
         blocks = compute.apply(transform, ray_remote_args, self._blocks)
         return Dataset(blocks, self._epoch, stats_builder.build(blocks))
+
+    def add_column(
+        self,
+        col: str,
+        fn: Callable[["pandas.DataFrame"], "pandas.Series"],
+        *,
+        compute: Optional[str] = None,
+        **ray_remote_args,
+    ) -> "Dataset[T]":
+        """Add the given column to the dataset.
+
+        This is only supported for datasets convertible to pandas format.
+        A function generating the new column values given the batch in pandas
+        format must be specified.
+
+        This is a convenience wrapper over ``.map_batches()``.
+
+        Examples:
+            >>> ds = ray.data.range_arrow(100)
+            >>> # Add a new column equal to value * 2.
+            >>> ds = ds.add_column("new_col", lambda df: df["value"] * 2)
+            >>> # Overwrite the existing "value" with zeros.
+            >>> ds = ds.add_column("value", lambda df: 0)
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            col: Name of the column to add. If the name already exists, the
+                column will be overwritten.
+            fn: Map function generating the column values given a batch of
+                records in pandas format.
+            compute: The compute strategy, either "tasks" (default) to use Ray
+                tasks, or "actors" to use an autoscaling Ray actor pool.
+            ray_remote_args: Additional resource requirements to request from
+                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+        """
+
+        def process_batch(batch):
+            batch[col] = fn(batch)
+            return batch
+
+        if not callable(fn):
+            raise ValueError("`fn` must be callable, got {}".format(fn))
+
+        return self.map_batches(
+            process_batch, batch_format="pandas", compute=compute, **ray_remote_args
+        )
 
     def flat_map(
         self,
@@ -512,7 +562,7 @@ class Dataset(Generic[T]):
         return Dataset(new_blocks, self._epoch, stats.build_multistage(stage_info))
 
     def split(
-        self, n: int, *, equal: bool = False, locality_hints: List[Any] = None
+        self, n: int, *, equal: bool = False, locality_hints: Optional[List[Any]] = None
     ) -> List["Dataset[T]"]:
         """Split the dataset into ``n`` disjoint pieces.
 
@@ -925,7 +975,7 @@ class Dataset(Generic[T]):
             LazyBlockList(calls, metadata, block_partitions), max_epoch, dataset_stats
         )
 
-    def groupby(self, key: KeyFn) -> "GroupedDataset[T]":
+    def groupby(self, key: Optional[KeyFn]) -> "GroupedDataset[T]":
         """Group the dataset by the key function or column name.
 
         This is a lazy operation.
@@ -984,7 +1034,9 @@ class Dataset(Generic[T]):
         ret = self.groupby(None).aggregate(*aggs).take(1)
         return ret[0] if len(ret) > 0 else None
 
-    def sum(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
+    def sum(
+        self, on: Optional[Union[KeyFn, List[KeyFn]]] = None, ignore_nulls: bool = True
+    ) -> U:
         """Compute sum over entire dataset.
 
         This is a blocking operation.
@@ -1007,6 +1059,11 @@ class Dataset(Generic[T]):
                 - For an Arrow dataset: it can be a column name or a list
                   thereof, and the default is to return an ``ArrowRow``
                   containing the column-wise sum of all columns.
+            ignore_nulls: Whether to ignore null values. If ``True``, null
+                values will be ignored when computing the sum; if ``False``,
+                if a null value is encountered, the output will be None.
+                We consider np.nan, None, and pd.NaT to be null values.
+                Default is ``True``.
 
         Returns:
             The sum result.
@@ -1029,15 +1086,15 @@ class Dataset(Generic[T]):
             - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
               containing the column-wise sum of the provided columns.
 
-            If the dataset is empty, then the output is 0.
+            If the dataset is empty, all values are null, or any value is null
+            AND ``ignore_nulls`` is ``False``, then the output will be None.
         """
-        ret = self._aggregate_on(Sum, on)
-        if ret is None:
-            return 0
-        else:
-            return self._aggregate_result(ret)
+        ret = self._aggregate_on(Sum, on, ignore_nulls)
+        return self._aggregate_result(ret)
 
-    def min(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
+    def min(
+        self, on: Optional[Union[KeyFn, List[KeyFn]]] = None, ignore_nulls: bool = True
+    ) -> U:
         """Compute minimum over entire dataset.
 
         This is a blocking operation.
@@ -1060,6 +1117,11 @@ class Dataset(Generic[T]):
                 - For an Arrow dataset: it can be a column name or a list
                   thereof, and the default is to return an ``ArrowRow``
                   containing the column-wise min of all columns.
+            ignore_nulls: Whether to ignore null values. If ``True``, null
+                values will be ignored when computing the min; if ``False``,
+                if a null value is encountered, the output will be None.
+                We consider np.nan, None, and pd.NaT to be null values.
+                Default is ``True``.
 
         Returns:
             The min result.
@@ -1082,15 +1144,15 @@ class Dataset(Generic[T]):
             - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
               containing the column-wise min of the provided columns.
 
-            If the dataset is empty, then a ``ValueError`` is raised.
+            If the dataset is empty, all values are null, or any value is null
+            AND ``ignore_nulls`` is ``False``, then the output will be None.
         """
-        ret = self._aggregate_on(Min, on)
-        if ret is None:
-            raise ValueError("Cannot compute min on an empty dataset")
-        else:
-            return self._aggregate_result(ret)
+        ret = self._aggregate_on(Min, on, ignore_nulls)
+        return self._aggregate_result(ret)
 
-    def max(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
+    def max(
+        self, on: Optional[Union[KeyFn, List[KeyFn]]] = None, ignore_nulls: bool = True
+    ) -> U:
         """Compute maximum over entire dataset.
 
         This is a blocking operation.
@@ -1113,6 +1175,11 @@ class Dataset(Generic[T]):
                 - For an Arrow dataset: it can be a column name or a list
                   thereof, and the default is to return an ``ArrowRow``
                   containing the column-wise max of all columns.
+            ignore_nulls: Whether to ignore null values. If ``True``, null
+                values will be ignored when computing the max; if ``False``,
+                if a null value is encountered, the output will be None.
+                We consider np.nan, None, and pd.NaT to be null values.
+                Default is ``True``.
 
         Returns:
             The max result.
@@ -1135,15 +1202,15 @@ class Dataset(Generic[T]):
             - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
               containing the column-wise max of the provided columns.
 
-            If the dataset is empty, then a ``ValueError`` is raised.
+            If the dataset is empty, all values are null, or any value is null
+            AND ``ignore_nulls`` is ``False``, then the output will be None.
         """
-        ret = self._aggregate_on(Max, on)
-        if ret is None:
-            raise ValueError("Cannot compute max on an empty dataset")
-        else:
-            return self._aggregate_result(ret)
+        ret = self._aggregate_on(Max, on, ignore_nulls)
+        return self._aggregate_result(ret)
 
-    def mean(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
+    def mean(
+        self, on: Optional[Union[KeyFn, List[KeyFn]]] = None, ignore_nulls: bool = True
+    ) -> U:
         """Compute mean over entire dataset.
 
         This is a blocking operation.
@@ -1166,6 +1233,11 @@ class Dataset(Generic[T]):
                 - For an Arrow dataset: it can be a column name or a list
                   thereof, and the default is to return an ``ArrowRow``
                   containing the column-wise mean of all columns.
+            ignore_nulls: Whether to ignore null values. If ``True``, null
+                values will be ignored when computing the mean; if ``False``,
+                if a null value is encountered, the output will be None.
+                We consider np.nan, None, and pd.NaT to be null values.
+                Default is ``True``.
 
         Returns:
             The mean result.
@@ -1188,15 +1260,18 @@ class Dataset(Generic[T]):
             - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
               containing the column-wise mean of the provided columns.
 
-            If the dataset is empty, then a ``ValueError`` is raised.
+            If the dataset is empty, all values are null, or any value is null
+            AND ``ignore_nulls`` is ``False``, then the output will be None.
         """
-        ret = self._aggregate_on(Mean, on)
-        if ret is None:
-            raise ValueError("Cannot compute mean on an empty dataset")
-        else:
-            return self._aggregate_result(ret)
+        ret = self._aggregate_on(Mean, on, ignore_nulls)
+        return self._aggregate_result(ret)
 
-    def std(self, on: Union[KeyFn, List[KeyFn]] = None, ddof: int = 1) -> U:
+    def std(
+        self,
+        on: Optional[Union[KeyFn, List[KeyFn]]] = None,
+        ddof: int = 1,
+        ignore_nulls: bool = True,
+    ) -> U:
         """Compute standard deviation over entire dataset.
 
         This is a blocking operation.
@@ -1229,6 +1304,11 @@ class Dataset(Generic[T]):
                   containing the column-wise std of all columns.
             ddof: Delta Degrees of Freedom. The divisor used in calculations
                 is ``N - ddof``, where ``N`` represents the number of elements.
+            ignore_nulls: Whether to ignore null values. If ``True``, null
+                values will be ignored when computing the std; if ``False``,
+                if a null value is encountered, the output will be None.
+                We consider np.nan, None, and pd.NaT to be null values.
+                Default is ``True``.
 
         Returns:
             The standard deviation result.
@@ -1251,15 +1331,15 @@ class Dataset(Generic[T]):
             - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
               containing the column-wise std of the provided columns.
 
-            If the dataset is empty, then a ``ValueError`` is raised.
+            If the dataset is empty, all values are null, or any value is null
+            AND ``ignore_nulls`` is ``False``, then the output will be None.
         """
-        ret = self._aggregate_on(Std, on, ddof=ddof)
-        if ret is None:
-            raise ValueError("Cannot compute std on an empty dataset")
-        else:
-            return self._aggregate_result(ret)
+        ret = self._aggregate_on(Std, on, ignore_nulls, ddof=ddof)
+        return self._aggregate_result(ret)
 
-    def sort(self, key: KeyFn = None, descending: bool = False) -> "Dataset[T]":
+    def sort(
+        self, key: Optional[KeyFn] = None, descending: bool = False
+    ) -> "Dataset[T]":
         """Sort the dataset by the specified key column or key function.
 
         This is a blocking operation.
@@ -1814,7 +1894,7 @@ class Dataset(Generic[T]):
         self,
         *,
         prefetch_blocks: int = 0,
-        batch_size: int = None,
+        batch_size: Optional[int] = None,
         batch_format: str = "native",
         drop_last: bool = False,
     ) -> Iterator[BatchType]:
@@ -1831,7 +1911,8 @@ class Dataset(Generic[T]):
                 current block during the scan.
             batch_size: Record batch size, or None to let the system pick.
             batch_format: The format in which to return each batch.
-                Specify "native" to use the current block format, "pandas" to
+                Specify "native" to use the current block format (promoting
+                Arrow to pandas automatically), "pandas" to
                 select ``pandas.DataFrame`` or "pyarrow" to select
                 ``pyarrow.Table``. Default is "native".
             drop_last: Whether to drop the last batch if it's incomplete.
@@ -1840,10 +1921,17 @@ class Dataset(Generic[T]):
             A list of iterators over record batches.
         """
 
+        import pyarrow as pa
+
         time_start = time.perf_counter()
 
         def format_batch(batch: Block, format: str) -> BatchType:
             if batch_format == "native":
+                # Always promote Arrow blocks to pandas for consistency, since
+                # we lazily convert pandas->Arrow internally for efficiency.
+                if isinstance(batch, pa.Table) or isinstance(batch, bytes):
+                    batch = BlockAccessor.for_block(batch)
+                    batch = batch.to_pandas()
                 return batch
             elif batch_format == "pandas":
                 batch = BlockAccessor.for_block(batch)
@@ -1895,12 +1983,12 @@ class Dataset(Generic[T]):
         self,
         *,
         label_column: Optional[str] = None,
-        feature_columns: Union[
-            None, List[str], List[List[str]], Dict[str, List[str]]
+        feature_columns: Optional[
+            Union[List[str], List[List[str]], Dict[str, List[str]]]
         ] = None,
         label_column_dtype: Optional["torch.dtype"] = None,
-        feature_column_dtypes: Union[
-            None, "torch.dtype", List["torch.dtype"], Dict[str, "torch.dtype"]
+        feature_column_dtypes: Optional[
+            Union["torch.dtype", List["torch.dtype"], Dict[str, "torch.dtype"]]
         ] = None,
         batch_size: int = 1,
         prefetch_blocks: int = 0,
@@ -2345,7 +2433,7 @@ Dict[str, List[str]]]): The names of the columns
         block_to_arrow = cached_remote_fn(_block_to_arrow)
         return [block_to_arrow.remote(block) for block in blocks]
 
-    def repeat(self, times: int = None) -> "DatasetPipeline[T]":
+    def repeat(self, times: Optional[int] = None) -> "DatasetPipeline[T]":
         """Convert this into a DatasetPipeline by looping over this dataset.
 
         Transformations prior to the call to ``repeat()`` are evaluated once.
@@ -2607,7 +2695,7 @@ Dict[str, List[str]]]): The names of the columns
         return "simple"
 
     def _aggregate_on(
-        self, agg_cls: type, on: Union[KeyFn, List[KeyFn]], *args, **kwargs
+        self, agg_cls: type, on: Optional[Union[KeyFn, List[KeyFn]]], *args, **kwargs
     ):
         """Helper for aggregating on a particular subset of the dataset.
 
@@ -2622,9 +2710,10 @@ Dict[str, List[str]]]): The names of the columns
     def _build_multicolumn_aggs(
         self,
         agg_cls: type,
-        on: Union[KeyFn, List[KeyFn]],
-        skip_cols: Optional[List[str]] = None,
+        on: Optional[Union[KeyFn, List[KeyFn]]],
+        ignore_nulls: bool,
         *args,
+        skip_cols: Optional[List[str]] = None,
         **kwargs,
     ):
         """Build set of aggregations for applying a single aggregation to
@@ -2648,10 +2737,10 @@ Dict[str, List[str]]]): The names of the columns
 
         if not isinstance(on, list):
             on = [on]
-        return [agg_cls(on_, *args, **kwargs) for on_ in on]
+        return [agg_cls(on_, *args, ignore_nulls=ignore_nulls, **kwargs) for on_ in on]
 
     def _aggregate_result(self, result: Union[Tuple, TableRow]) -> U:
-        if len(result) == 1:
+        if result is not None and len(result) == 1:
             if isinstance(result, tuple):
                 return result[0]
             else:

@@ -43,6 +43,8 @@ class CloudwatchHelper:
             self._update_cloudwatch_config(is_head_node, "agent")
         if CloudwatchHelper.cloudwatch_config_exists(self.provider_config, "dashboard"):
             self._update_cloudwatch_config(is_head_node, "dashboard")
+        if CloudwatchHelper.cloudwatch_config_exists(self.provider_config, "alarm"):
+            self._update_cloudwatch_config(is_head_node, "alarm")
 
     def _ec2_health_check_waiter(self, node_id: str) -> None:
         # wait for all EC2 instance checks to complete
@@ -91,6 +93,8 @@ class CloudwatchHelper:
                         self._restart_cloudwatch_agent()
                     elif config_type == "dashboard":
                         self._put_cloudwatch_dashboard()
+                    elif config_type == "alarm":
+                        self._put_cloudwatch_alarm()
             else:
                 head_node_hash = self._get_head_node_config_hash(config_type)
                 cur_node_hash = self._get_cur_node_config_hash(config_type)
@@ -100,6 +104,8 @@ class CloudwatchHelper:
                     )
                     if config_type == "agent":
                         self._restart_cloudwatch_agent()
+                    if config_type == "alarm":
+                        self._put_cloudwatch_alarm()
                     self._update_cloudwatch_hash_tag_value(
                         self.node_id, head_node_hash, config_type
                     )
@@ -134,6 +140,21 @@ class CloudwatchHelper:
             logger.info("Successfully put dashboard to CloudWatch console")
         return response
 
+    def _put_cloudwatch_alarm(self) -> None:
+        """put CloudWatch metric alarms read from config"""
+        param_name = self._get_ssm_param_name("alarm")
+        data = json.loads(self._get_ssm_param(param_name))
+        for item in data:
+            item_out = copy.deepcopy(item)
+            self._replace_all_config_variables(
+                item_out,
+                self.node_id,
+                self.cluster_name,
+                self.provider_config["region"],
+            )
+            self.cloudwatch_client.put_metric_alarm(**item_out)
+        logger.info("Successfully put alarms to CloudWatch console")
+
     def _send_command_to_node(
         self, document_name: str, parameters: List[str], node_id: str
     ) -> Dict[str, Any]:
@@ -146,7 +167,7 @@ class CloudwatchHelper:
             InstanceIds=[node_id],
             DocumentName=document_name,
             Parameters=parameters,
-            MaxConcurrency=str(min(len(node_id), 1)),
+            MaxConcurrency="1",
             MaxErrors="0",
         )
         return response
@@ -357,6 +378,8 @@ class CloudwatchHelper:
             config = self._replace_cwa_config_variables()
         if config_type == "dashboard":
             config = self._replace_dashboard_config_variables()
+        if config_type == "alarm":
+            config = self._load_config_file("alarm")
         value = json.dumps(config)
         sha1_res = self._sha1_hash_json(value)
         return sha1_res
@@ -366,6 +389,8 @@ class CloudwatchHelper:
             data = self._replace_cwa_config_variables()
         if config_type == "dashboard":
             data = self._replace_dashboard_config_variables()
+        if config_type == "alarm":
+            data = self._load_config_file("alarm")
         sha1_hash_value = self._sha1_hash_file(config_type)
         self._upload_config_to_ssm(data, config_type)
         self._update_cloudwatch_hash_tag_value(
@@ -419,8 +444,8 @@ class CloudwatchHelper:
 
     def _replace_cwa_config_variables(self) -> Dict[str, Any]:
         """
-        replace known variable occurrences in
-        Unified Cloudwatch Agent config file
+        replace {instance_id}, {region}, {cluster_name}
+        variable occurrences in Unified Cloudwatch Agent config file
         """
         cwa_config = self._load_config_file("agent")
         self._replace_all_config_variables(
@@ -431,7 +456,7 @@ class CloudwatchHelper:
         )
         return cwa_config
 
-    def _replace_dashboard_config_variables(self) -> Dict[str, Any]:
+    def _replace_dashboard_config_variables(self) -> List[Dict[str, Any]]:
         """
         replace known variable occurrences in CloudWatch Dashboard config file
         """
@@ -447,6 +472,24 @@ class CloudwatchHelper:
             item_out = copy.deepcopy(item)
             widgets.append(item_out)
         return widgets
+
+    def _replace_alarm_config_variables(self) -> List[Dict[str, Any]]:
+        """
+        replace {instance_id}, {region}, {cluster_name}
+        variable occurrences in cloudwatch alarm config file
+        """
+        data = self._load_config_file("alarm")
+        param_data = []
+        for item in data:
+            item_out = copy.deepcopy(item)
+            self._replace_all_config_variables(
+                item_out,
+                self.node_id,
+                self.cluster_name,
+                self.provider_config["region"],
+            )
+            param_data.append(item_out)
+        return param_data
 
     def _restart_cloudwatch_agent(self) -> None:
         """restart Unified Cloudwatch Agent"""

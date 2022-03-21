@@ -14,7 +14,7 @@ provider:
         # We depend on AWS Systems Manager (SSM) to deploy CloudWatch configuration updates to your cluster,
         # with relevant configuration created or updated in the SSM Parameter Store during `ray up`.
 
-        # We support two CloudWatch related config type under this cloudwatch section: agent and dashboard.
+        # We support three CloudWatch related config type under this cloudwatch section: agent, dashboard and alarm.
         # The `AmazonCloudWatch-ray_{config_type}_config_{cluster_name}` SSM Parameter Store Config Key is used to
         # store a remote cache of the last Unified CloudWatch config applied.
 
@@ -51,6 +51,18 @@ provider:
             # at https://docs.aws.amazon.com/AmazonCloudWatch/latest/APIReference/CloudWatch-Dashboard-Body-Structure.html.
             # Path to the CloudWatch Dashboard config file
             config: "cloudwatch/example-cloudwatch-dashboard-config.json"
+        # For CloudWatch Alarm config files, we will also replace references to
+        # `{instance_id}` with every cluster node's EC2 instance ID, `{region}` with your cluster's region name, and `{cluster_name}` with your cluster name.
+        alarm:
+          # The CloudWatch Alarm config file is defined via the config file described
+          # at https://docs.aws.amazon.com/AmazonCloudWatch/latest/APIReference/API_PutMetricAlarm.html.
+          # To allow per-node alarm being created and updated, `{instance_id}` is included as part of `AlarmName` in the following json config.
+          # Replace `AlarmActions` in the `example-cloudwatch-alarm-config.json` with actions you want to take described at
+          # https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/AlarmThatSendsEmail.html
+
+          # Path to CloudWatch Alarm config file
+          config: "cloudwatch/example-cloudwatch-alarm-config.json"
+
 
 # How Ray will authenticate with newly launched nodes.
 auth:
