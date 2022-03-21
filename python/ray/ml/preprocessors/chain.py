@@ -10,7 +10,7 @@ class Chain(Preprocessor):
     the ``transform`` of a preceding preprocessor.
 
     Args:
-        preprocessors: The preprocessors that should be executed sequentially
+        preprocessors: The preprocessors that should be executed sequentially.
     """
 
     _is_fittable = False
