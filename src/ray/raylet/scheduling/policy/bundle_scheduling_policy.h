@@ -18,6 +18,7 @@
 
 #include "ray/raylet/scheduling/policy/scheduling_context.h"
 #include "ray/raylet/scheduling/policy/scheduling_policy.h"
+#include "ray/raylet/scheduling/policy/scorer.h"
 
 namespace ray {
 namespace raylet_scheduling_policy {
@@ -31,12 +32,39 @@ class BundleSchedulingPolicy : public ISchedulingPolicy {
           add_node_available_resources_fn,
       std::function<bool(scheduling::NodeID, const ResourceRequest &)>
           subtract_node_available_resources_fn)
-      : nodes_(nodes),
+      : node_scorer_(new LeastResourceScorer()),
+        nodes_(nodes),
         is_node_available_(is_node_available),
         add_node_available_resources_fn_(add_node_available_resources_fn),
         subtract_node_available_resources_fn_(subtract_node_available_resources_fn) {}
 
  protected:
+  /// Filter out candidate nodes which can be used for scheduling.
+  ///
+  /// \return The candidate nodes which can be used for scheduling.
+  absl::flat_hash_map<scheduling::NodeID, const Node *> FilterCandidateNodes() const;
+
+  /// Sort required resources according to the scarcity and capacity of resources.
+  /// We will first schedule scarce resources (such as GPU) and large capacity resources
+  /// to improve the scheduling success rate.
+  ///
+  /// \param required_resources The resources to be scheduled.
+  /// \return The Sorted resources.
+  std::vector<int> SortRequiredResources(
+      const std::vector<const ResourceRequest *> &resource_request_list);
+
+  /// Score all nodes according to the specified resources.
+  ///
+  /// \param required_resources The resources to be scheduled.
+  /// \param candidate_nodes The nodes can be used for scheduling.
+  /// \return Score of all nodes.
+  std::pair<scheduling::NodeID, const Node *> GetBestNode(
+      const ResourceRequest &required_resources,
+      const absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes) const;
+
+ protected:
+  /// Scorer to make a grade to the node.
+  std::unique_ptr<NodeScorer> node_scorer_;
   /// List of nodes in the clusters and their resources organized as a map.
   /// The key of the map is the node ID.
   const absl::flat_hash_map<scheduling::NodeID, Node> &nodes_;

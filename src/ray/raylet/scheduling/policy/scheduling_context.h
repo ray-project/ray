@@ -31,17 +31,11 @@ struct SchedulingContext {
 struct BundleSchedulingContext : public SchedulingContext {
  public:
   explicit BundleSchedulingContext(
-      std::shared_ptr<absl::flat_hash_map<NodeID, int64_t>> node_to_bundles,
-      const absl::optional<std::shared_ptr<BundleLocations>> bundle_locations)
-      : node_to_bundles_(std::move(node_to_bundles)),
-        bundle_locations_(bundle_locations) {}
+      std::shared_ptr<absl::flat_hash_map<NodeID, int64_t>> node_to_bundles)
+      : node_to_bundles_(std::move(node_to_bundles)) {}
 
   /// Key is node id, value is the number of bundles on the node.
-  const std::shared_ptr<absl::flat_hash_map<NodeID, int64_t>> node_to_bundles_;
-  /// The locations of existing bundles for this placement group.
-  const absl::optional<std::shared_ptr<BundleLocations>> bundle_locations_;
-  // The nodes successfully scheduled during current scheduling.
-  absl::flat_hash_set<scheduling::NodeID> selected_nodes_;
+  std::shared_ptr<absl::flat_hash_map<NodeID, int64_t>> node_to_bundles_;
 };
 
 }  // namespace raylet_scheduling_policy

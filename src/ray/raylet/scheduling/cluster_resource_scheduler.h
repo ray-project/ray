@@ -74,7 +74,7 @@ class ClusterResourceScheduler {
   SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,
       SchedulingOptions options,
-      SchedulingContext *context);
+      SchedulingContext *context = nullptr);
 
   ///  Find a node in the cluster on which we can schedule a given resource request.
   ///  In hybrid mode, see `scheduling_policy.h` for a description of the policy.

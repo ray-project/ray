@@ -110,8 +110,8 @@ scheduling::NodeID GcsBasedActorScheduler::AllocateResources(
   auto scheduling_options = SchedulingOptions::Spread(
       /*avoid_local_node*/ false,
       /*require_node_available*/ true);
-  auto scheduling_result = cluster_resource_scheduler_->Schedule(
-      {&required_resources}, scheduling_options, /*scheduling_context*/ nullptr);
+  auto scheduling_result =
+      cluster_resource_scheduler_->Schedule({&required_resources}, scheduling_options);
 
   if (!scheduling_result.status.IsSuccess()) {
     RAY_LOG(INFO)

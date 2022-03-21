@@ -131,7 +131,7 @@ bool ClusterResourceScheduler::NodeAlive(scheduling::NodeID node_id) const {
   if (node_id.IsNil()) {
     return false;
   }
-  return is_node_available_fn_(node_id);
+  return is_node_available_fn_ == nullptr || is_node_available_fn_(node_id);
 }
 
 bool ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_request,
@@ -275,7 +275,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
 SchedulingResult ClusterResourceScheduler::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
     SchedulingOptions options,
-    SchedulingContext *context) {
+    SchedulingContext *context /* = nullptr*/) {
   return scheduling_policy_->Schedule(resource_request_list, options, context);
 }
 

@@ -440,10 +440,7 @@ GcsPlacementGroupScheduler::CreateSchedulingContext(
     node_to_bundles->emplace(node_id, bundles_size);
   }
 
-  auto &bundle_locations =
-      committed_bundle_location_index_.GetBundleLocations(placement_group_id);
-  return std::make_unique<BundleSchedulingContext>(std::move(node_to_bundles),
-                                                   bundle_locations);
+  return std::make_unique<BundleSchedulingContext>(std::move(node_to_bundles));
 }
 
 SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
