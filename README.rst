@@ -392,14 +392,40 @@ More Information
 Getting Involved
 ----------------
 
-- `Forum`_: For discussions about development, questions about usage, and feature requests.
-- `GitHub Issues`_: For reporting bugs.
-- `Twitter`_: Follow updates on Twitter.
-- `Slack`_: Join our Slack channel.
-- `Meetup Group`_: Join our meetup group.
-- `StackOverflow`_: For questions about how to use Ray.
+.. list-table::
+   :widths: 25 50 25 25
+   :header-rows: 1
 
-.. _`Forum`: https://discuss.ray.io/
+   * - Platform
+     - Purpose
+     - Estimated Response Time
+     - Support Level
+   * - `Discourse Forum`_
+     - For discussions about development and questions about usage.
+     - < 2 day
+     - Community
+   * - `GitHub Issues`_
+     - For reporting bugs and filing feature requests.
+     - < 2 days
+     - Ray OSS Team
+   * - `Slack`_
+     - For collaborating with other Ray users.
+     - < 2 days
+     - Community
+   * - `StackOverflow`_
+     - For asking questions about how to use Ray.
+     - 3-5 days
+     - Community
+   * - `Meetup Group`_
+     - For learning about Ray projects and best practices.
+     - Monthly
+     - Ray DevRel
+   * - `Twitter`_
+     - For staying up-to-date on new features.
+     - Daily
+     - Ray DevRel
+
+.. _`Discourse Forum`: https://discuss.ray.io/
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
 .. _`Meetup Group`: https://www.meetup.com/Bay-Area-Ray-Meetup/
