@@ -109,7 +109,7 @@ class RaySyncer {
   /// \param receiver The snapshot of the component in the cluster.
   /// \param pull_from_reporter_interval_ms The frequence to pull a message from reporter
   /// and push it to sending queue.
-  void Register(RayComponentId component_id,
+  bool Register(RayComponentId component_id,
                 const ReporterInterface *reporter,
                 ReceiverInterface *receiver,
                 int64_t pull_from_reporter_interval_ms = 100);

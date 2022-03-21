@@ -26,10 +26,13 @@ class NodeStatus {
   /// \param reporter The reporter is defined to be the local module which wants to
   /// broadcast its internal status to the whole clsuter. When it's null, it means there
   /// is no reporter in this node for this component. This is the place there messages are
-  /// generated. \param receiver The receiver is defined to be the module which eventually
+  /// generated.
+  /// \param receiver The receiver is defined to be the module which eventually
   /// will have the view of of the cluster for this component. It's the place where
   /// received messages are consumed.
-  void SetComponents(RayComponentId cid,
+  ///
+  /// \return true if set successfully.
+  bool SetComponents(RayComponentId cid,
                      const ReporterInterface *reporter,
                      ReceiverInterface *receiver);
 

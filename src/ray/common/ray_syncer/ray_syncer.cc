@@ -18,14 +18,17 @@
 namespace ray {
 namespace syncer {
 
-void NodeStatus::SetComponents(RayComponentId cid,
+bool NodeStatus::SetComponents(RayComponentId cid,
                                const ReporterInterface *reporter,
                                ReceiverInterface *receiver) {
-  RAY_CHECK(cid < static_cast<RayComponentId>(kComponentArraySize));
-  RAY_CHECK(reporters_[cid] == nullptr);
-  RAY_CHECK(receivers_[cid] == nullptr);
-  reporters_[cid] = reporter;
-  receivers_[cid] = receiver;
+  if(cid < static_cast<RayComponentId>(kComponentArraySize) &&
+     reporters_[cid] == nullptr && receivers_[cid] == nullptr) {
+    reporters_[cid] = reporter;
+    receivers_[cid] = receiver;
+    return true;
+  } else {
+    return false;
+  }
 }
 
 std::optional<RaySyncMessage> NodeStatus::GetSnapshot(RayComponentId cid) {
@@ -232,11 +235,13 @@ void RaySyncer::Disconnect(const std::string &node_id) {
                    "RaySyncerDisconnect");
 }
 
-void RaySyncer::Register(RayComponentId component_id,
+bool RaySyncer::Register(RayComponentId component_id,
                          const ReporterInterface *reporter,
                          ReceiverInterface *receiver,
                          int64_t pull_from_reporter_interval_ms) {
-  node_status_->SetComponents(component_id, reporter, receiver);
+  if(!node_status_->SetComponents(component_id, reporter, receiver)) {
+    return false;
+  }
 
   // Set job to pull from reporter periodically
   if (reporter != nullptr) {
@@ -254,6 +259,7 @@ void RaySyncer::Register(RayComponentId component_id,
   if (receiver != nullptr) {
     component_broadcast_[component_id] = receiver->NeedBroadcast();
   }
+  return true;
 }
 
 void RaySyncer::BroadcastMessage(std::shared_ptr<RaySyncMessage> message) {

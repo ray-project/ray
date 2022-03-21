@@ -2383,6 +2383,18 @@ cc_binary(
 )
 
 cc_test(
+    name = "test_ray_syncer",
+    srcs = ["src/ray/common/test/test_ray_syncer.cc"],
+    copts = COPTS,
+    deps = [
+        ":ray_common",
+        ":ray_mock",
+        "@com_google_googletest//:gtest",
+    ]
+)
+
+
+cc_test(
     name = "callback_reply_test",
     size = "small",
     srcs = ["src/ray/gcs/test/callback_reply_test.cc"],
