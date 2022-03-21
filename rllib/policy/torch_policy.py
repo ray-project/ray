@@ -935,14 +935,18 @@ class TorchPolicy(Policy):
 
         if self.action_sampler_fn:
             action_dist = dist_inputs = None
-            actions, logp, state_out = self.action_sampler_fn(
-                self,
-                self.model,
-                input_dict,
-                state_batches,
-                explore=explore,
-                timestep=timestep,
-            )
+            with torch.autocast(
+                dtype=torch.bfloat16,
+                device_type="cuda" if input_dict["obs"].is_cuda else "cpu",
+            ):
+                actions, logp, state_out = self.action_sampler_fn(
+                    self,
+                    self.model,
+                    input_dict,
+                    state_batches,
+                    explore=explore,
+                    timestep=timestep,
+                )
         else:
             # Call the exploration before_compute_actions hook.
             self.exploration.before_compute_actions(explore=explore, timestep=timestep)
@@ -997,10 +1001,14 @@ class TorchPolicy(Policy):
                 )
             action_dist = dist_class(dist_inputs, self.model)
 
-            # Get the exploration action from the forward results.
-            actions, logp = self.exploration.get_exploration_action(
-                action_distribution=action_dist, timestep=timestep, explore=explore
-            )
+            with torch.autocast(
+                dtype=torch.bfloat16,
+                device_type="cuda" if input_dict["obs"].is_cuda else "cpu",
+            ):
+                # Get the exploration action from the forward results.
+                actions, logp = self.exploration.get_exploration_action(
+                    action_distribution=action_dist, timestep=timestep, explore=explore
+                )
 
         input_dict[SampleBatch.ACTIONS] = actions
 
