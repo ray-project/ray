@@ -39,11 +39,11 @@ static constexpr size_t kComponentArraySize =
     static_cast<size_t>(ray::rpc::syncer::RayComponentId_ARRAYSIZE);
 
 /// The interface for a reporter. Reporter is defined to be a local module which would
-/// like to let the other nodes know its status. For example, local cluster resource
+/// like to let the other nodes know its state. For example, local cluster resource
 /// manager.
 struct ReporterInterface {
   /// Interface to get the snapshot of the component. It asks the module to take a
-  /// snapshot of the current status. Each snapshot is versioned, and it should return
+  /// snapshot of the current state. Each snapshot is versioned, and it should return
   /// std::nullopt if the version hasn't changed.
   ///
   /// \param current_version The version syncer module current has.
@@ -54,10 +54,10 @@ struct ReporterInterface {
 };
 
 /// The interface for a receiver. Receiver is defined to be a module which would like
-/// to get the status of other nodes. For example, cluster resource manager.
+/// to get the state of other nodes. For example, cluster resource manager.
 struct ReceiverInterface {
   /// Interface to update a module. The module should read the `sync_message` fields and
-  /// deserialize it to update its internal status.
+  /// deserialize it to update its internal state.
   ///
   /// \param message The message received from remote node.
   virtual void Update(std::shared_ptr<const RaySyncMessage> message) = 0;
@@ -146,8 +146,8 @@ class RaySyncer {
   /// Manage connections
   absl::flat_hash_map<std::string, std::unique_ptr<NodeSyncConnection>> sync_connections_;
 
-  /// The local node status
-  std::unique_ptr<NodeState> node_status_;
+  /// The local node state
+  std::unique_ptr<NodeState> node_state_;
 
   /// If the field is set to be true, it means, message generated or received
   /// is needed to be sent to other nodes.

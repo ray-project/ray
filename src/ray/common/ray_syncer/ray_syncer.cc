@@ -202,7 +202,7 @@ void ServerSyncConnection::DoSend() {
 RaySyncer::RaySyncer(instrumented_io_context &io_context, const std::string &node_id)
     : io_context_(io_context),
       node_id_(node_id),
-      node_status_(std::make_unique<NodeState>()),
+      node_state_(std::make_unique<NodeState>()),
       timer_(io_context) {}
 
 RaySyncer::~RaySyncer() {}
@@ -244,7 +244,7 @@ bool RaySyncer::Register(RayComponentId component_id,
                          const ReporterInterface *reporter,
                          ReceiverInterface *receiver,
                          int64_t pull_from_reporter_interval_ms) {
-  if (!node_status_->SetComponents(component_id, reporter, receiver)) {
+  if (!node_state_->SetComponents(component_id, reporter, receiver)) {
     return false;
   }
 
@@ -253,7 +253,7 @@ bool RaySyncer::Register(RayComponentId component_id,
     RAY_CHECK(pull_from_reporter_interval_ms > 0);
     timer_.RunFnPeriodically(
         [this, component_id]() {
-          auto snapshot = node_status_->GetSnapshot(component_id);
+          auto snapshot = node_state_->GetSnapshot(component_id);
           if (snapshot) {
             BroadcastMessage(std::make_shared<RaySyncMessage>(std::move(*snapshot)));
           }
@@ -269,7 +269,7 @@ bool RaySyncer::Register(RayComponentId component_id,
 
 void RaySyncer::BroadcastMessage(std::shared_ptr<const RaySyncMessage> message) {
   // The message is stale. Just skip this one.
-  if (!node_status_->ConsumeMessage(message)) {
+  if (!node_state_->ConsumeMessage(message)) {
     return;
   }
 
