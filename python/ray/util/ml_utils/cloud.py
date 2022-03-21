@@ -1,6 +1,9 @@
+import abc
 import subprocess
+from typing import Dict
 
 from ray import logger
+from ray.util.annotations import DeveloperAPI
 
 S3_PREFIX = "s3://"
 GS_PREFIX = "gs://"
@@ -8,58 +11,161 @@ HDFS_PREFIX = "hdfs://"
 ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GS_PREFIX, HDFS_PREFIX)
 
 
+class ExternalStorage(abc.ABC):
+    """Base class for external storage providers.
+
+    Classes inheriting from this provide implementations for
+    methods to upload, download, and delete files and
+    directories on external storage.
+
+    """
+
+    def upload(self, local_source: str, remote_target: str) -> None:
+        """Upload local path to remote target.
+
+        Args:
+            local_source: Path to local source file or directory.
+            remote_target: URI to remote target file or directory.
+        """
+        raise NotImplementedError
+
+    def download(self, remote_source: str, local_target: str) -> None:
+        """Download remote source to local target.
+
+        Args:
+            remote_source: URI to remote source file or directory.
+            local_target: Path to local target file or directory.
+        """
+        raise NotImplementedError
+
+    def delete(self, remote_target: str) -> None:
+        """Delete remote target file or directory..
+
+        Args:
+            remote_target: URI to remote target file or directory.
+        """
+        raise NotImplementedError
+
+
+class S3Storage(ExternalStorage):
+    def upload(self, local_source: str, remote_target: str) -> None:
+        subprocess.check_call(
+            ["aws", "s3", "cp", "--recursive", "--quiet", local_source, remote_target]
+        )
+
+    def download(self, remote_source: str, local_target: str) -> None:
+        subprocess.check_call(
+            ["aws", "s3", "cp", "--recursive", "--quiet", remote_source, local_target]
+        )
+
+    def delete(self, remote_target: str) -> None:
+        subprocess.check_call(
+            ["aws", "s3", "rm", "--recursive", "--quiet", remote_target]
+        )
+
+
+class GSStorage(ExternalStorage):
+    def upload(self, local_source: str, remote_target: str) -> None:
+        subprocess.check_call(["gsutil", "-m", "cp", "-r", local_source, remote_target])
+
+    def download(self, remote_source: str, local_target: str) -> None:
+        subprocess.check_call(["gsutil", "-m", "cp", "-r", remote_source, local_target])
+
+    def delete(self, remote_target: str) -> None:
+        subprocess.check_call(["gsutil", "-m", "rm", "-f", "-r", remote_target])
+
+
+class HDFSStorage(ExternalStorage):
+    def upload(self, local_source: str, remote_target: str) -> None:
+        subprocess.check_call(["hdfs", "dfs", "-put", local_source, remote_target])
+
+    def download(self, remote_source: str, local_target: str) -> None:
+        subprocess.check_call(["hdfs", "dfs", "-get", remote_source, local_target])
+
+    def delete(self, remote_target: str) -> None:
+        subprocess.check_call(["hdfs", "dfs", "-rm", "-r", remote_target])
+
+
+_registered_storages: Dict[str, ExternalStorage] = {
+    S3_PREFIX: S3Storage(),
+    GS_PREFIX: GSStorage(),
+    HDFS_PREFIX: HDFSStorage(),
+}
+
+
+@DeveloperAPI
+def get_external_storage(bucket: str) -> ExternalStorage:
+    """Get external storage provider for a bucket URI.
+
+    Example:
+
+        storage = get_external_storage("s3://test/bucket")
+        assert isinstance(storage, S3Storage)
+
+
+    Args:
+        bucket: Bucket URI, e.g. ``s3://bucket/path``
+
+    Returns: ``ExternalStorage`` class.
+
+    Raises: ValueError if no extenral storage class is found.
+    """
+    global _registered_storages
+    for prefix, storage in _registered_storages.items():
+        if bucket.startswith("prefix"):
+            return storage
+    raise ValueError(f"No external storage provider found for URI: {bucket}")
+
+
+@DeveloperAPI
+def register_external_storage(prefix: str, storage: ExternalStorage):
+    """Register external storage provider.
+
+    If a prefix is already registered, it will be overwritten without warning.
+    """
+    global _registered_storages
+    _registered_storages[prefix] = storage
+
+
 def is_cloud_target(target: str):
-    return any(target.startswith(prefix) for prefix in ALLOWED_REMOTE_PREFIXES)
+    global _registered_storages
+    return any(target.startswith(prefix) for prefix in _registered_storages.keys())
 
 
 def clear_bucket(bucket: str):
-    if not is_cloud_target(bucket):
+    try:
+        storage = get_external_storage(bucket)
+    except Exception as e:
         raise ValueError(
             f"Could not clear bucket contents: "
             f"Bucket `{bucket}` is not a valid or supported cloud target."
-        )
+        ) from e
 
     try:
-        if bucket.startswith(S3_PREFIX):
-            subprocess.check_call(["aws", "s3", "rm", "--recursive", "--quiet", bucket])
-        elif bucket.startswith(GS_PREFIX):
-            subprocess.check_call(["gsutil", "-m", "rm", "-f", "-r", bucket])
-        elif bucket.startswith(HDFS_PREFIX):
-            subprocess.check_call(["hdfs", "dfs", "-rm", "-r", bucket])
-
+        storage.delete(bucket)
     except Exception as e:
         logger.warning(f"Caught exception when clearing bucket `{bucket}`: {e}")
 
 
 def download_from_bucket(bucket: str, local_path: str):
-    if not is_cloud_target(bucket):
+    try:
+        storage = get_external_storage(bucket)
+    except Exception as e:
         raise ValueError(
             f"Could not download from bucket: "
             f"Bucket `{bucket}` is not a valid or supported cloud target."
-        )
+        ) from e
 
-    if bucket.startswith(S3_PREFIX):
-        subprocess.check_call(
-            ["aws", "s3", "cp", "--recursive", "--quiet", bucket, local_path]
-        )
-    elif bucket.startswith(GS_PREFIX):
-        subprocess.check_call(["gsutil", "-m", "cp", "-r", bucket, local_path])
-    elif bucket.startswith(HDFS_PREFIX):
-        subprocess.check_call(["hdfs", "dfs", "-get", bucket, local_path])
+    storage.download(bucket, local_path)
 
 
 def upload_to_bucket(bucket: str, local_path: str):
-    if not is_cloud_target(bucket):
+    try:
+        storage = get_external_storage(bucket)
+    except Exception as e:
         raise ValueError(
             f"Could not download from bucket: "
             f"Bucket `{bucket}` is not a valid or supported cloud target."
-        )
+        ) from e
 
-    if bucket.startswith(S3_PREFIX):
-        subprocess.check_call(
-            ["aws", "s3", "cp", "--recursive", "--quiet", local_path, bucket]
-        )
-    elif bucket.startswith(GS_PREFIX):
-        subprocess.check_call(["gsutil", "-m", "cp", "-r", local_path, bucket])
-    elif bucket.startswith(HDFS_PREFIX):
-        subprocess.check_call(["hdfs", "dfs", "-put", local_path, bucket])
+    storage.upload(local_path, bucket)
