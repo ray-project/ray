@@ -10,7 +10,6 @@ from ray.rllib import SampleBatch
 from ray.rllib.agents.impala.vtrace_tf_policy import VTraceTFPolicy
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
 from ray.rllib.execution.parallel_requests import asynchronous_parallel_requests
