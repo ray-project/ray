@@ -81,35 +81,38 @@ class DataParallelTrainer(Trainer):
             # Returns the rank of the worker on the current node.
             train.get_local_rank()
 
-    How do I use ``DataParallelTrainer`` or any of its subclasses?
+    **How do I use ``DataParallelTrainer`` or any of its subclasses?**
 
-        Example:
-            .. code-block:: python
+    Example:
 
-                import ray
-                from ray import train
+    .. code-block:: python
 
-                def train_loop_for_worker():
-                    dataset_shard_for_this_worker = train.get_dataset_shard("train")
+        import ray
+        from ray import train
 
-                    assert len(dataset_shard_for_this_worker) == 1
+        def train_loop_for_worker():
+            dataset_shard_for_this_worker = train.get_dataset_shard("train")
 
-                train_dataset = ray.data.from_items([1, 2, 3])
-                assert len(train_dataset) == 3
-                trainer = DataParallelTrainer(scaling_config={"num_workers": 3},
-                    datasets={"train": train_dataset})
-                result = trainer.fit()
+            assert len(dataset_shard_for_this_worker) == 1
 
-    How do I develop on top of ``DataParallelTrainer``?
+        train_dataset = ray.data.from_items([1, 2, 3])
+        assert len(train_dataset) == 3
+        trainer = DataParallelTrainer(scaling_config={"num_workers": 3},
+            datasets={"train": train_dataset})
+        result = trainer.fit()
+
+    **How do I develop on top of ``DataParallelTrainer``?**
 
     In many cases, using DataParallelTrainer directly is sufficient to execute
     functions on multiple actors.
 
     However, you may want to subclass ``DataParallelTrainer`` and create a custom
     Trainer for the following 2 use cases:
-        1. You want to do data parallel training, but want to have a predefined
-        ``training_loop_per_worker``.
-        2. You want to implement a custom :ref:`Training backend
+
+      - **Use Case 1:** You want to do data parallel training, but want to have
+        a predefined ``training_loop_per_worker``.
+
+      - **Use Case 2:** You want to implement a custom :ref:`Training backend
         <train-api-backend-interfaces>` that automatically handles
         additional setup or teardown logic on each actor, so that the users of this
         new trainer do not have to implement this logic. For example, a

@@ -29,33 +29,52 @@ Components
 Preprocessors
 ~~~~~~~~~~~~~
 
+.. autoclass:: ray.ml.preprocessor.Preprocessor
+    :members:
+
 .. automodule:: ray.ml.preprocessors
     :members:
+    :show-inheritance:
+
 
 Trainer
 ~~~~~~~
 
-.. automodule:: ray.ml.train
-    :members:
 
+.. autoclass:: ray.ml.trainer.Trainer
+    :members:
 
 .. automodule:: ray.ml.train.integrations.xgboost
     :members:
-
+    :show-inheritance:
 
 .. automodule:: ray.ml.train.integrations.lightgbm
     :members:
+    :show-inheritance:
 
 .. automodule:: ray.ml.train.integrations.tensorflow
     :members:
+    :show-inheritance:
 
 .. automodule:: ray.ml.train.integrations.torch
     :members:
+    :show-inheritance:
+
+.. autoclass:: ray.ml.train.data_parallel_trainer.DataParallelTrainer
+    :members:
+    :show-inheritance:
+
+.. autoclass:: ray.ml.train.gbdt_trainer.GBDTTrainer
+    :members:
+    :show-inheritance:
+
+
 
 Tuner
 ~~~~~
 
 .. autoclass:: ray.tune.tuner.Tuner
+    :members:
 
 .. automodule:: ray.tune.result_grid
     :members:
@@ -63,18 +82,24 @@ Tuner
 Predictors
 ~~~~~~~~~~
 
-.. automodule:: ray.ml.predictors.integrations.xgboost
+.. autoclass:: ray.ml.predictor.Predictor
     :members:
 
+.. automodule:: ray.ml.predictors.integrations.xgboost
+    :members:
+    :show-inheritance:
 
 .. automodule:: ray.ml.predictors.integrations.lightgbm
     :members:
+    :show-inheritance:
 
 .. automodule:: ray.ml.predictors.integrations.tensorflow
     :members:
+    :show-inheritance:
 
 .. automodule:: ray.ml.predictors.integrations.torch
     :members:
+    :show-inheritance:
 
 
 

@@ -38,7 +38,7 @@ class Preprocessor(abc.ABC):
         Fitted state attributes will be directly set in the Preprocessor.
 
         Args:
-            ray.data.dataset: Input dataset.
+            dataset: Input dataset.
 
         Returns:
             Preprocessor: The fitted Preprocessor with state attributes.
@@ -67,7 +67,7 @@ class Preprocessor(abc.ABC):
         """Transform the given dataset.
 
         Args:
-            dataset (Dataset): Input Dataset.
+            dataset: Input Dataset.
 
         Returns:
             ray.data.Dataset: The transformed Dataset.
