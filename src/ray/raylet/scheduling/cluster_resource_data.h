@@ -110,7 +110,7 @@ class ResourceRequest {
 
   /// Cap the resource values in this set by those in another set.
   void Cap(const ResourceRequest &other) {
-    for (auto resource_id : ResourceIds()) {
+    for (auto &resource_id : ResourceIds()) {
       auto this_value = Get(resource_id);
       auto other_value = other.GetOrZero(resource_id);
       if (this_value > other_value) {
@@ -166,7 +166,7 @@ class ResourceRequest {
   /// Return a map from the resource ids to the values.
   absl::flat_hash_map<ResourceID, FixedPoint> ToMap() const {
     absl::flat_hash_map<ResourceID, FixedPoint> res;
-    for (auto resource_id : ResourceIds()) {
+    for (auto &resource_id : ResourceIds()) {
       res.emplace(resource_id, Get(resource_id));
     }
     return res;
@@ -193,7 +193,7 @@ class ResourceRequest {
 
   ResourceRequest &operator+=(const ResourceRequest &other) {
     auto resource_ids = ResourceIds();
-    for (auto resource_id : resource_ids) {
+    for (auto &resource_id : resource_ids) {
       Set(resource_id, Get(resource_id) + other.GetOrZero(resource_id));
     }
     for (auto &resource_id : other.ResourceIds()) {
@@ -206,7 +206,7 @@ class ResourceRequest {
 
   ResourceRequest &operator-=(const ResourceRequest &other) {
     auto resource_ids = ResourceIds();
-    for (auto resource_id : resource_ids) {
+    for (auto &resource_id : resource_ids) {
       Set(resource_id, Get(resource_id) - other.GetOrZero(resource_id));
     }
     for (auto &resource_id : other.ResourceIds()) {
@@ -229,7 +229,7 @@ class ResourceRequest {
     if (Size() > other.Size()) {
       return false;
     }
-    for (auto resource_id : ResourceIds()) {
+    for (auto &resource_id : ResourceIds()) {
       if (Get(resource_id) > other.GetOrZero(resource_id)) {
         return false;
       }
@@ -244,7 +244,7 @@ class ResourceRequest {
     std::stringstream buffer;
     buffer << "{";
     bool first = true;
-    for (auto resource_id : ResourceIds()) {
+    for (auto &resource_id : ResourceIds()) {
       if (!first) {
         buffer << ", ";
       }
@@ -303,7 +303,7 @@ class TaskResourceInstances {
     for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
       this->predefined_resources_.push_back({});
     }
-    for (auto resource_id : request.ResourceIds()) {
+    for (auto &resource_id : request.ResourceIds()) {
       std::vector<FixedPoint> instances;
       auto value = request.Get(resource_id);
       if (resource_id.IsUnitInstanceResource()) {
@@ -434,7 +434,7 @@ class TaskResourceInstances {
   /// Return a ResourceRequest with the aggregated per-instance values.
   ResourceRequest ToResourceRequest() const {
     ResourceRequest resource_request;
-    for (auto resource_id : ResourceIds()) {
+    for (auto &resource_id : ResourceIds()) {
       resource_request.Set(resource_id, Sum(resource_id));
     }
     return resource_request;
@@ -445,7 +445,7 @@ class TaskResourceInstances {
     std::stringstream buffer;
     buffer << "{";
     bool first = true;
-    for (auto resource_id : ResourceIds()) {
+    for (auto &resource_id : ResourceIds()) {
       if (!first) {
         buffer << ", ";
       }

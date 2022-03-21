@@ -850,7 +850,7 @@ void LocalTaskManager::Dispatch(
     allocated_resources = worker->GetAllocatedInstances();
   }
   ::ray::rpc::ResourceMapEntry *resource;
-  for (auto resource_id : allocated_resources->ResourceIds()) {
+  for (auto &resource_id : allocated_resources->ResourceIds()) {
     bool first = true;  // Set resource name only if at least one of its
                         // instances has available capacity.
     auto instances = allocated_resources->Get(resource_id);

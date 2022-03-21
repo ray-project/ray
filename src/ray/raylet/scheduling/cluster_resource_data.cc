@@ -95,7 +95,7 @@ std::string NodeResources::DebugString() const {
   std::stringstream buffer;
   buffer << "{";
   bool first = true;
-  for (auto resource_id : total.ResourceIds()) {
+  for (auto &resource_id : total.ResourceIds()) {
     if (!first) {
       buffer << ", ";
     }
@@ -117,7 +117,7 @@ std::string NodeResourceInstances::DebugString() const {
   std::stringstream buffer;
   buffer << "{";
   bool first = true;
-  for (auto resource_id : total.ResourceIds()) {
+  for (auto &resource_id : total.ResourceIds()) {
     if (!first) {
       buffer << ", ";
     }

@@ -181,7 +181,7 @@ bool LocalResourceManager::AllocateTaskResourceInstances(
     const ResourceRequest &resource_request,
     std::shared_ptr<TaskResourceInstances> task_allocation) {
   RAY_CHECK(task_allocation != nullptr);
-  for (auto resource_id : resource_request.ResourceIds()) {
+  for (auto &resource_id : resource_request.ResourceIds()) {
     auto demand = resource_request.Get(resource_id);
     auto available = local_resources_.available.GetMutable(resource_id);
     std::vector<FixedPoint> allocation;
@@ -202,7 +202,7 @@ bool LocalResourceManager::AllocateTaskResourceInstances(
 void LocalResourceManager::FreeTaskResourceInstances(
     std::shared_ptr<TaskResourceInstances> task_allocation) {
   RAY_CHECK(task_allocation != nullptr);
-  for (auto resource_id : task_allocation->ResourceIds()) {
+  for (auto &resource_id : task_allocation->ResourceIds()) {
     AddAvailableResourceInstances(task_allocation->Get(resource_id),
                                   local_resources_.total.GetMutable(resource_id),
                                   local_resources_.available.GetMutable(resource_id));
@@ -355,7 +355,7 @@ double LocalResourceManager::GetLocalAvailableCpus() const {
 ray::gcs::NodeResourceInfoAccessor::ResourceMap LocalResourceManager::GetResourceTotals(
     const absl::flat_hash_map<std::string, double> &resource_map_filter) const {
   ray::gcs::NodeResourceInfoAccessor::ResourceMap map;
-  for (auto resource_id : local_resources_.total.ResourceIds()) {
+  for (auto &resource_id : local_resources_.total.ResourceIds()) {
     auto resource_name = resource_id.Binary();
     if (!resource_map_filter.contains(resource_name)) {
       continue;

@@ -37,7 +37,7 @@ double LeastResourceScorer::Score(const ResourceRequest &required_resources,
   }
 
   double node_score = 0.;
-  for (auto resource_id : required_resources.ResourceIds()) {
+  for (auto &resource_id : required_resources.ResourceIds()) {
     const auto &request_resource = required_resources.Get(resource_id);
     const auto &node_available_resource = node_resources_ptr->available.Get(resource_id);
     auto score = Calculate(request_resource, node_available_resource);
@@ -280,7 +280,7 @@ SchedulingResult GcsResourceScheduler::StrictPackSchedule(
   // Aggregate required resources.
   ResourceRequest aggregated_resource_request;
   for (const auto &resource_request : required_resources_list) {
-    for (auto resource_id : resource_request.ResourceIds()) {
+    for (auto &resource_id : resource_request.ResourceIds()) {
       auto value = aggregated_resource_request.GetOrZero(resource_id) +
                    resource_request.Get(resource_id);
       aggregated_resource_request.Set(resource_id, value);
