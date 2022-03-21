@@ -3528,6 +3528,9 @@
       wait_for_nodes:
         num_nodes: 2
         timeout: 600
+
+      type: job
+      file_manager: job
   stable: false
 
 - name: k8s_many_pgs
