@@ -65,6 +65,7 @@ from ray.includes.common cimport (
     CPlacementStrategy,
     CSchedulingStrategy,
     CPlacementGroupSchedulingStrategy,
+    CNodeSchedulingStrategy,
     CRayFunction,
     CWorkerType,
     CJobConfig,
@@ -126,6 +127,7 @@ from ray.exceptions import (
 from ray import external_storage
 from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
+    NodeSchedulingStrategy,
 )
 import ray.ray_constants as ray_constants
 from ray._private.async_compat import sync_to_async, get_new_event_loop
@@ -1456,6 +1458,7 @@ cdef class CoreWorker:
         cdef:
             CPlacementGroupSchedulingStrategy \
                 *c_placement_group_scheduling_strategy
+            CNodeSchedulingStrategy *c_node_scheduling_strategy
         assert python_scheduling_strategy is not None
         if python_scheduling_strategy == "DEFAULT":
             c_scheduling_strategy[0].mutable_default_scheduling_strategy()
@@ -1476,13 +1479,23 @@ cdef class CoreWorker:
                 .set_placement_group_capture_child_tasks(
                     python_scheduling_strategy
                     .placement_group_capture_child_tasks)
+        elif isinstance(python_scheduling_strategy,
+                        NodeSchedulingStrategy):
+            c_node_scheduling_strategy = \
+                c_scheduling_strategy[0] \
+                .mutable_node_scheduling_strategy()
+            c_node_scheduling_strategy[0].set_node_id(
+                python_scheduling_strategy.node_id.binary())
+            c_node_scheduling_strategy[0].set_soft(
+                python_scheduling_strategy.soft)
         else:
             raise ValueError(
                 f"Invalid scheduling_strategy value "
                 f"{python_scheduling_strategy}. "
                 f"Valid values are [\"DEFAULT\""
                 f" | \"SPREAD\""
-                f" | PlacementGroupSchedulingStrategy]")
+                f" | PlacementGroupSchedulingStrategy"
+                f" | NodeSchedulingStrategy]")
 
     def submit_task(self,
                     Language language,

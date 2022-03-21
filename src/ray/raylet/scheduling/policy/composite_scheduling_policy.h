@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "ray/raylet/scheduling/policy/hybrid_scheduling_policy.h"
+#include "ray/raylet/scheduling/policy/node_scheduling_policy.h"
 #include "ray/raylet/scheduling/policy/random_scheduling_policy.h"
 #include "ray/raylet/scheduling/policy/spread_scheduling_policy.h"
 
@@ -32,7 +33,8 @@ class CompositeSchedulingPolicy : public ISchedulingPolicy {
                             std::function<bool(scheduling::NodeID)> is_node_available)
       : hybrid_policy_(local_node_id, nodes, is_node_available),
         random_policy_(local_node_id, nodes, is_node_available),
-        spread_policy_(local_node_id, nodes, is_node_available) {}
+        spread_policy_(local_node_id, nodes, is_node_available),
+        node_policy_(local_node_id, nodes, is_node_available) {}
 
   scheduling::NodeID Schedule(const ResourceRequest &resource_request,
                               SchedulingOptions options) override;
@@ -46,6 +48,7 @@ class CompositeSchedulingPolicy : public ISchedulingPolicy {
   HybridSchedulingPolicy hybrid_policy_;
   RandomSchedulingPolicy random_policy_;
   SpreadSchedulingPolicy spread_policy_;
+  NodeSchedulingPolicy node_policy_;
 };
 
 }  // namespace raylet_scheduling_policy

@@ -28,6 +28,7 @@ enum class SchedulingType {
   HYBRID = 0,
   SPREAD = 1,
   RANDOM = 2,
+  NODE = 3,
 };
 
 // Options that controls the scheduling behavior.
@@ -58,11 +59,25 @@ struct SchedulingOptions {
                              RayConfig::instance().scheduler_avoid_gpu_nodes());
   }
 
+  static SchedulingOptions Node(bool avoid_local_node,
+                                bool require_node_available,
+                                std::string node_id,
+                                bool soft) {
+    SchedulingOptions scheduling_options =
+        Hybrid(avoid_local_node, require_node_available);
+    scheduling_options.scheduling_type = SchedulingType::NODE;
+    scheduling_options.node_id = node_id;
+    scheduling_options.soft = soft;
+    return scheduling_options;
+  }
+
   SchedulingType scheduling_type;
   float spread_threshold;
   bool avoid_local_node;
   bool require_node_available;
   bool avoid_gpu_nodes;
+  std::string node_id;
+  bool soft;
 
  private:
   SchedulingOptions(SchedulingType type,

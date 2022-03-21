@@ -49,6 +49,11 @@ enum TaskType {
   DRIVER_TASK = 3;
 }
 
+message NodeSchedulingStrategy {
+  bytes node_id = 1;
+  bool soft = 2;
+}
+
 message PlacementGroupSchedulingStrategy {
   // Placement group that is associated with this task.
   bytes placement_group_id = 1;
@@ -70,6 +75,7 @@ message SchedulingStrategy {
     PlacementGroupSchedulingStrategy placement_group_scheduling_strategy = 2;
     // Best effort spread scheduling strategy.
     SpreadSchedulingStrategy spread_scheduling_strategy = 3;
+    NodeSchedulingStrategy node_scheduling_strategy = 4;
   }
 }
 

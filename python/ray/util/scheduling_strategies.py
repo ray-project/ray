@@ -1,3 +1,4 @@
+import ray
 from typing import Union, Optional
 from ray.util.annotations import PublicAPI
 from ray.util.placement_group import PlacementGroup
@@ -40,6 +41,16 @@ class PlacementGroupSchedulingStrategy:
         self.placement_group_capture_child_tasks = placement_group_capture_child_tasks
 
 
+@PublicAPI(stability="beta")
+class NodeSchedulingStrategy:
+    def __init__(self, node_id: "ray.NodeID", soft: bool):
+        self.node_id = node_id
+        self.soft = soft
+
+
 SchedulingStrategyT = Union[
-    None, str, PlacementGroupSchedulingStrategy  # Literal["DEFAULT", "SPREAD"]
+    None,
+    str,  # Literal["DEFAULT", "SPREAD"]
+    PlacementGroupSchedulingStrategy,
+    NodeSchedulingStrategy,
 ]

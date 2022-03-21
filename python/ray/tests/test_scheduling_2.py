@@ -11,6 +11,7 @@ from ray.util.client.ray_client_helpers import connect_to_client_or_not
 import ray.experimental.internal_kv as internal_kv
 from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
+    NodeSchedulingStrategy,
 )
 from ray._private.test_utils import wait_for_condition, make_global_state_accessor
 
@@ -251,6 +252,51 @@ def test_placement_group_scheduling_strategy(ray_start_cluster, connect_to_clien
         func.options(
             scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=None)
         ).remote()
+
+
+@pytest.mark.parametrize("connect_to_client", [True, False])
+def test_node_scheduling_strategy(ray_start_cluster, connect_to_client):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=8, resources={"head": 1})
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=8, resources={"worker": 1})
+    cluster.wait_for_nodes()
+
+    with connect_to_client_or_not(connect_to_client):
+
+        @ray.remote
+        def get_node_id():
+            return ray.get_runtime_context().node_id.binary()
+
+        head_node_id = ray.get(
+            get_node_id.options(num_cpus=0, resources={"head": 1}).remote()
+        )
+        worker_node_id = ray.get(
+            get_node_id.options(num_cpus=0, resources={"worker": 1}).remote()
+        )
+
+        assert worker_node_id == ray.get(
+            get_node_id.options(
+                scheduling_strategy=NodeSchedulingStrategy(
+                    ray.NodeID(worker_node_id), soft=False
+                )
+            ).remote()
+        )
+        assert head_node_id == ray.get(
+            get_node_id.options(
+                scheduling_strategy=NodeSchedulingStrategy(
+                    ray.NodeID(head_node_id), soft=False
+                )
+            ).remote()
+        )
+        # Doesn't hang since soft is true.
+        ray.get(
+            get_node_id.options(
+                scheduling_strategy=NodeSchedulingStrategy(
+                    ray.NodeID.from_random(), soft=True
+                )
+            ).remote()
+        )
 
 
 @pytest.mark.parametrize("connect_to_client", [True, False])
