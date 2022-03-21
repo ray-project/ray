@@ -8,7 +8,6 @@ from ray import tune
 from ray.data import Dataset, Datasource, ReadTask, read_datasource
 from ray.data.block import BlockMetadata
 from ray.ml.config import RunConfig
-from ray.ml.preprocessors import StandardScaler
 from ray.ml.train.integrations.xgboost import XGBoostTrainer
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
