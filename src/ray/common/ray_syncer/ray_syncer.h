@@ -43,12 +43,17 @@ static constexpr size_t kComponentArraySize =
 /// manager.
 struct ReporterInterface {
   /// Interface to get the snapshot of the component. It asks the module to take a
-  /// snapshot of the current state. Each snapshot is versioned, and it should return
-  /// std::nullopt if the version hasn't changed.
+  /// snapshot of the current state. Each snapshot is versioned and it should return
+  /// std::nullopt if it doesn't have qualified version.
   ///
-  /// \param current_version The version syncer module current has.
+  /// \param version_after Request snapshot with version after `version_after`. If the
+  /// reporter doesn't have the qualified version, just return std::nullopt
   /// \param component_id The component id asked for.
-  virtual std::optional<RaySyncMessage> Snapshot(int64_t current_version,
+  ///
+  /// \return std::nullopt if the reporter doesn't have such component or the current
+  /// snapshot of the component is not newer the asked one. Otherwise, return the
+  /// actual message.
+  virtual std::optional<RaySyncMessage> Snapshot(int64_t version_after,
                                                  RayComponentId component_id) const = 0;
   virtual ~ReporterInterface() {}
 };
