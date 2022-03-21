@@ -1,6 +1,7 @@
 import ray
 from ray import workflow
 from ray.workflow.event_listener import EventListener
+from sqs_listener import SQSEventListener
 
 ray.init(address='auto')
 workflow.init()
@@ -18,12 +19,10 @@ class ExampleEventProvider(EventListener):
 
 @workflow.step
 def handle_event(msg):
-    print(msg)
+    return msg
 
 @workflow.step
-def event_func_dummy():
-    return "hello"
+def event_func():
+    return workflow.wait_for_event_revised(ExampleEventProvider, "hello")
 
-event_func = workflow.wait_for_event_revised(ExampleEventProvider, "hello")
-# handle_event.step(event_func).run()
-handle_event.step(event_func_dummy).run()
+res = handle_event.step(event_func.step()).run()
