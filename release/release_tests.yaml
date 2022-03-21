@@ -2308,7 +2308,7 @@
 
   run:
     timeout: 18000
-    script: python sort.py --num-partitions=2000 --partition-size=5e8 --shuffle
+    script: python sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
 
     wait_for_nodes:
       num_nodes: 20

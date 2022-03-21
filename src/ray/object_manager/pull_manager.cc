@@ -47,6 +47,7 @@ PullManager::PullManager(
 uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
                            BundlePriority prio,
                            std::vector<rpc::ObjectReference> *objects_to_locate) {
+  num_requests_total_++;
   // To avoid edge cases dealing with duplicated object ids in the bundle,
   // canonicalize the set up-front by dropping all duplicates.
   absl::flat_hash_set<ObjectID> seen;
@@ -377,6 +378,7 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
 
   // If the pull request was being actively pulled, deactivate it now.
   if (bundle_it->first <= *highest_req_id_being_pulled) {
+    num_requests_cancelled_while_active_++;
     std::unordered_set<ObjectID> object_ids_to_cancel;
     DeactivatePullBundleRequest(
         *request_queue, bundle_it, highest_req_id_being_pulled, &object_ids_to_cancel);
@@ -820,6 +822,8 @@ std::string PullManager::DebugString() const {
   } else {
     result << "\n- max timeout request is already processed. No entry.";
   }
+  result << "\n- num requests total: " << num_requests_total_;
+  result << "\n- num requests cancelled while active: " << num_requests_cancelled_while_active_;
   // Guard this more expensive debug message under event stats.
   if (RayConfig::instance().event_stats()) {
     for (const auto &entry : active_object_pull_requests_) {

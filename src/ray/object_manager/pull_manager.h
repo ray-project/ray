@@ -384,6 +384,9 @@ class PullManager {
   // A callback to fail a hung pull request.
   std::function<void(const ObjectID &)> fail_pull_request_;
 
+  int64_t num_requests_total_ = 0;
+  int64_t num_requests_cancelled_while_active_ = 0;
+
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;
   int64_t max_timeout_ = 0;
