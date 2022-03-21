@@ -1585,7 +1585,8 @@ def connect(
         worker.import_thread = import_thread.ImportThread(
             worker, mode, worker.threads_stopped
         )
-        worker.import_thread.start()
+        if ray._raylet.Config.start_python_importer_thread():
+            worker.import_thread.start()
 
     # If this is a driver running in SCRIPT_MODE, start a thread to print error
     # messages asynchronously in the background. Ideally the scheduler would

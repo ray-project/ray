@@ -110,6 +110,10 @@ class ServeController:
 
         asyncio.get_event_loop().create_task(self.run_control_loop())
 
+    def check_alive(self) -> None:
+        """No-op to check if this controller is alive."""
+        return
+
     def record_autoscaling_metrics(self, data: Dict[str, float], send_timestamp: float):
         self.autoscaling_metrics_store.add_metrics_point(data, send_timestamp)
 

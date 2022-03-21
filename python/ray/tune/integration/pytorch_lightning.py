@@ -173,12 +173,12 @@ class TuneReportCallback(TuneCallback):
     Reports metrics to Ray Tune.
 
     Args:
-        metrics (str|list|dict): Metrics to report to Tune. If this is a list,
+        metrics: Metrics to report to Tune. If this is a list,
             each item describes the metric key reported to PyTorch Lightning,
             and it will reported under the same name to Tune. If this is a
             dict, each key will be the name reported to Tune and the respective
             value will be the metric key reported to PyTorch Lightning.
-        on (str|list): When to trigger checkpoint creations. Must be one of
+        on: When to trigger checkpoint creations. Must be one of
             the PyTorch Lightning event hooks (less the ``on_``), e.g.
             "batch_start", or "train_end". Defaults to "validation_end".
 
@@ -249,9 +249,9 @@ class _TuneCheckpointCallback(TuneCallback):
     instead.
 
     Args:
-        filename (str): Filename of the checkpoint within the checkpoint
+        filename: Filename of the checkpoint within the checkpoint
             directory. Defaults to "checkpoint".
-        on (str|list): When to trigger checkpoint creations. Must be one of
+        on: When to trigger checkpoint creations. Must be one of
             the PyTorch Lightning event hooks (less the ``on_``), e.g.
             "batch_start", or "train_end". Defaults to "validation_end".
 
@@ -279,14 +279,14 @@ class TuneReportCheckpointCallback(TuneCallback):
     which is needed for checkpoint registration.
 
     Args:
-        metrics (str|list|dict): Metrics to report to Tune. If this is a list,
+        metrics: Metrics to report to Tune. If this is a list,
             each item describes the metric key reported to PyTorch Lightning,
             and it will reported under the same name to Tune. If this is a
             dict, each key will be the name reported to Tune and the respective
             value will be the metric key reported to PyTorch Lightning.
-        filename (str): Filename of the checkpoint within the checkpoint
+        filename: Filename of the checkpoint within the checkpoint
             directory. Defaults to "checkpoint".
-        on (str|list): When to trigger checkpoint creations. Must be one of
+        on: When to trigger checkpoint creations. Must be one of
             the PyTorch Lightning event hooks (less the ``on_``), e.g.
             "batch_start", or "train_end". Defaults to "validation_end".
 
