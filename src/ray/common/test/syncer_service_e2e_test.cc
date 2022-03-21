@@ -48,7 +48,7 @@ class LocalNode : public ReporterInterface {
         1000);
   }
 
-  std::optional<RaySyncMessage> Snapshot(uint64_t current_version,
+  std::optional<RaySyncMessage> Snapshot(int64_t current_version,
                                          RayComponentId) const override {
     if (current_version > version_) {
       return std::nullopt;
@@ -63,7 +63,7 @@ class LocalNode : public ReporterInterface {
   }
 
  private:
-  uint64_t version_ = 1;
+  int64_t version_ = 0;
   int state_ = 0;
   ray::NodeID node_id_;
   ray::PeriodicalRunner timer_;
@@ -73,8 +73,8 @@ class RemoteNodes : public ReceiverInterface {
  public:
   RemoteNodes() {}
   bool NeedBroadcast() const override { return true; }
-  void Update(std::shared_ptr<ray::rpc::syncer::RaySyncMessage> msg) override {
-    int version = msg->version();
+  void Update(std::shared_ptr<const ray::rpc::syncer::RaySyncMessage> msg) override {
+    auto version = msg->version();
     int state = *reinterpret_cast<const int *>(msg->sync_message().data());
     auto iter = infos_.find(msg->node_id());
     if (iter == infos_.end() || iter->second.second < version) {
