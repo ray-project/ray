@@ -181,8 +181,7 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
   auto it = pinned_objects_.begin();
   std::vector<ObjectID> objects_to_spill;
   int64_t counts = 0;
-  while (bytes_to_spill <= num_bytes_to_spill && it != pinned_objects_.end() &&
-         counts < max_fused_object_count_) {
+  while (it != pinned_objects_.end() && counts < max_fused_object_count_) {
     if (is_plasma_object_spillable_(it->first)) {
       bytes_to_spill += it->second->GetSize();
       objects_to_spill.push_back(it->first);
@@ -244,6 +243,8 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
               }
             }
             last_spill_finish_ns_ = now;
+
+            SpillObjectUptoMaxThroughput();
           }
         });
     return true;
