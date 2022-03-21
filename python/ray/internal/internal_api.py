@@ -8,7 +8,6 @@ import ray._private.utils as utils
 from ray import ray_constants
 from ray.state import GlobalState
 from ray._raylet import GcsClientOptions
-from typing import List
 
 __all__ = ["free", "global_gc"]
 MAX_MESSAGE_LENGTH = ray._config.max_grpc_message_size()
@@ -243,7 +242,7 @@ def ray_nodes(node_id: str, node_ip: str, debug=False):
 
     if node_id and node_ip:
         raise ValueError(
-            f"Node id {node_id} and node ip {node_ip} are given at the same time. Please provide only one of them."
+            f"Node id {node_id} and node ip {node_ip} cannot be given at the same time."
         )
     gcs_addr = services.get_ray_address_from_environment()
     url = _get_dashboard_url()
@@ -315,20 +314,20 @@ def ray_actors(actor_id: str):
 def ray_log(
     ip_address: str,
     node_id: str,
-    filters: List[str],
+    filters: str,
     limit: int = 100,
 ):
     """Return the `limit` number of lines of logs."""
     import requests
 
     api_server_url = _get_dashboard_url()
-    filters_query = ",".join(filters)
     node_id_query = f"node_id={node_id}&" if node_id else ""
-    logs_dict = json.loads(
-        requests.get(
-            f"{api_server_url}/v1/api/logs/index?{node_id_query}filters={filters_query}"
-        ).text
+    response = requests.get(
+        f"{api_server_url}/v1/api/logs/index?{node_id_query}filters={filters}"
     )
+    if response.status_code != 200:
+        raise Exception(response.text)
+    logs_dict = json.loads(response.text)
     return api_server_url, logs_dict
 
 

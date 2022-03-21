@@ -6,8 +6,6 @@ import ray.dashboard.optional_utils as dashboard_optional_utils
 import aiohttp.web as web
 import asyncio
 
-from typing import Iterator
-
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
 

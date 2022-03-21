@@ -199,11 +199,17 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         response = {}
         while self._stubs == {}:
             await asyncio.sleep(0.5)
+        tasks = []
         for node_info in self._stubs.values():
             if node_id is None or (node_id and node_id == node_info["node_id"]):
-                response[node_info["node_id"]] = await self.get_logs_json_index(
-                    node_info, filters
-                )
+
+                async def coro():
+                    response[node_info["node_id"]] = await self.get_logs_json_index(
+                        node_info, filters
+                    )
+
+                tasks.append(coro())
+        await asyncio.gather(*tasks)
         return aiohttp.web.json_response(response)
 
     @routes.get("/v1/api/logs/file/{node_id}/{log_file_name}")

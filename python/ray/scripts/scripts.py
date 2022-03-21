@@ -1915,6 +1915,14 @@ def format_print_logs(api_endpoint, node_id, links):
     default=None,
 )
 @click.option(
+    "--filename",
+    "-f",
+    type=str,
+    required=False,
+    default=None,
+    help="Specify the exact filename of the log file.",
+)
+@click.option(
     "--ip-address",
     required=False,
     type=str,
@@ -1923,6 +1931,7 @@ def format_print_logs(api_endpoint, node_id, links):
 )
 @click.option(
     "--node-id",
+    "-n",
     required=False,
     type=str,
     default=None,
@@ -1937,13 +1946,15 @@ def format_print_logs(api_endpoint, node_id, links):
 )
 @click.option(
     "--watch",
+    "-w",
     required=False,
     type=bool,
     is_flag=True,
-    help="Stream the log file if a single file is found.",
+    help="Stream the log file.",
 )
 @click.option(
     "--lines",
+    "-l",
     required=False,
     type=int,
     default=None,
@@ -1957,76 +1968,93 @@ def format_print_logs(api_endpoint, node_id, links):
 #     help="Interval at which to refresh logs",
 # )
 def logs(
-    filters, ip_address: str, node_id: str, actor_id: str, watch: bool, lines: int
+    filters,
+    filename: str,
+    ip_address: str,
+    node_id: str,
+    actor_id: str,
+    watch: bool,
+    lines: int,
 ):
     """
-    View logs output by ray cluster.
+    View logs output by the ray cluster.
 
-    FILTERS: keywords (filname, component, file extension, id) to filter the log filenames by.
+    FILTERS: Keywords (filename, component, file extension, id) to filter the logs by.
 
     Example usage:
 
-    ray logs raylet.out --node-id <node-id>
+    ray logs -n <node-id> -f raylet.out
 
     ray logs worker .out <worker-id>
     """
     # if interval is not None and not watch:
     #     raise Exception("--interval should only be used with --watch")
 
-    api_endpoint, logs_dict = ray_log(ip_address, node_id, list(filters))
-    if len(logs_dict) != 1:
-        raise Exception(
-            f"{len(logs_dict)} nodes match your query. Please specify a node id"
-        )
-
-    node_id, logs = next(iter(logs_dict.items()))
-    log = None
     found_many = False
-    for log_list in logs.values():
-        if len(log_list) > 0:
-            if log is not None or len(log_list) != 1:
+    if filename is not None and node_id is not None:
+        api_endpoint = ray.internal.internal_api._get_dashboard_url()
+    else:
+        # Try to match a single log file. If we can't, we output the index.
+        filters = ",".join(filters) + (f",{filename}" if filename is not None else "")
+        api_endpoint, logs_dict = ray_log(ip_address, node_id, filters)
+        if len(logs_dict) != 1:
+            if len(logs_dict) == 0:
+                raise Exception("Could not find node")
+            else:
                 found_many = True
-            log = log_list[0]
-    if log is None:
-        raise Exception("Could not find any log file. Please ammend your query.")
+        else:
+            node_id, logs = next(iter(logs_dict.items()))
+            log = None
+            for log_list in logs.values():
+                if len(log_list) > 0:
+                    if log is not None or len(log_list) != 1:
+                        found_many = True
+                    log = log_list[0]
+            if log is None:
+                raise Exception(
+                    "Could not find any log file. Please ammend your query."
+                    " Check --help for more."
+                )
+            filename = log
+
+    def default_lines(lines):
+        print(
+            f"--- Log has been truncated to last {lines} lines."
+            " Use `--lines` flag to toggle. ---\n"
+        )
+        return lines
 
     if actor_id:
         format_print_logs(ray_actor_log(actor_id))
     elif found_many:
         print("Warning: More than one log file matches your query. Please add")
-        print("additional filters, flags, file extensions or filenames to narrow ")
-        print("down the search results to a single file. Check --help for more.")
+        print("additional filters, flags, file extensions or specify the full")
+        print("filename with -f to narrow down the search results to a single file.")
+        print("Check --help for more.")
 
         MAX_NODES = 10
-        num_nodes = 0
-        for node_id, logs in logs_dict.items():
-            if num_nodes > MAX_NODES:
+        for i, (node_id, logs) in enumerate(logs_dict.items()):
+            if i >= MAX_NODES:
                 print(
-                    f"\nDisplaying log index for only {MAX_NODES} nodes. Use --node-id to narrow down."
+                    f"\nDisplaying only {MAX_NODES} nodes. Narrow down with --node-id."
                 )
                 break
             print(f"\nNode ID: {node_id}")
             format_print_logs(api_endpoint, node_id, logs)
-            num_nodes += 1
+
     elif watch:
         if lines is None:
-            lines = 1000
-            print(
-                f"--- Log has been truncated to last {lines} lines. Use `--lines` flag to toggle. ---\n"
-            )
-        stream_log(api_endpoint, node_id, log, lines)
+            lines = default_lines(1000)
+        stream_log(api_endpoint, node_id, filename, lines)
 
     elif not watch:
         if lines is None:
-            lines = 100
-            print(
-                f"--- Log has been truncated to last {lines} lines. Use `--lines` flag to toggle. ---\n"
-            )
+            lines = default_lines(100)
         import requests
 
         print(
             requests.get(
-                f"{api_endpoint}/v1/api/logs/file/{node_id}/{log}?lines={lines}"
+                f"{api_endpoint}/v1/api/logs/file/{node_id}/{filename}?lines={lines}"
             ).text
         )
 
