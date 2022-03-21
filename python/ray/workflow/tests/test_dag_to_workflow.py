@@ -137,6 +137,26 @@ def test_dereference_object_refs(workflow_start_regular_shared):
     ray.get(dag.execute())
 
 
+def test_dereference_dags(workflow_start_regular_shared):
+    """Ensure that DAGs are dereferenced like ObjectRefs in ray tasks."""
+
+    @ray.remote
+    def g(x, y):
+        assert x == 314
+        assert isinstance(y[0], ray.ObjectRef)
+        assert ray.get(y) == [2022]
+
+    @ray.remote
+    def h(x):
+        return x
+
+    dag = g.bind(x=h.bind(314), y=[h.bind(2022)])
+
+    # Run with workflow and normal Ray engine.
+    workflow.create(dag).run()
+    ray.get(dag.execute())
+
+
 def test_workflow_continuation(workflow_start_regular_shared):
     """Test unified behavior of returning continuation inside
     workflow and default Ray execution engine."""

@@ -599,6 +599,9 @@ TEST_P(GcsClientTest, TestNodeResourceUsageWithLightResourceUsageReport) {
 TEST_P(GcsClientTest, TestGetAllAvailableResources) {
   // Register node.
   auto node_info = Mocker::GenNodeInfo();
+  node_info->mutable_resources_total()->insert({"CPU", 1.0});
+  node_info->mutable_resources_total()->insert({"GPU", 10.0});
+
   RAY_CHECK(RegisterNode(*node_info));
 
   // Report resource usage of a node to GCS.
@@ -609,6 +612,8 @@ TEST_P(GcsClientTest, TestGetAllAvailableResources) {
   resource->set_resources_available_changed(true);
   (*resource->mutable_resources_available())["CPU"] = 1.0;
   (*resource->mutable_resources_available())["GPU"] = 10.0;
+  (*resource->mutable_resources_total())["CPU"] = 1.0;
+  (*resource->mutable_resources_total())["GPU"] = 10.0;
   ASSERT_TRUE(ReportResourceUsage(resource));
 
   // Assert get all available resources right.
@@ -622,6 +627,9 @@ TEST_P(GcsClientTest, TestGetAllAvailableResources) {
 TEST_P(GcsClientTest, TestGetAllAvailableResourcesWithLightResourceUsageReport) {
   // Register node.
   auto node_info = Mocker::GenNodeInfo();
+  node_info->mutable_resources_total()->insert({"CPU", 1.0});
+  node_info->mutable_resources_total()->insert({"GPU", 10.0});
+
   RAY_CHECK(RegisterNode(*node_info));
 
   // Report resource usage of a node to GCS.
@@ -631,6 +639,8 @@ TEST_P(GcsClientTest, TestGetAllAvailableResourcesWithLightResourceUsageReport) 
   resource->set_resources_available_changed(true);
   (*resource->mutable_resources_available())["CPU"] = 1.0;
   (*resource->mutable_resources_available())["GPU"] = 10.0;
+  (*resource->mutable_resources_total())["CPU"] = 1.0;
+  (*resource->mutable_resources_total())["GPU"] = 10.0;
   ASSERT_TRUE(ReportResourceUsage(resource));
 
   // Assert get all available resources right.

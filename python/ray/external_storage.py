@@ -62,7 +62,7 @@ def parse_url_with_offset(url_with_offset: str) -> Tuple[str, int, int]:
     # Split by ? to remove the query from the url.
     base_url = parsed_result.geturl().split("?")[0]
     if "offset" not in query_dict or "size" not in query_dict:
-        raise ValueError("Failed to parse URL: {}".format(url_with_offset))
+        raise ValueError(f"Failed to parse URL: {url_with_offset}")
     offset = int(query_dict["offset"][0])
     size = int(query_dict["size"][0])
     return ParsedURL(base_url=base_url, offset=offset, size=size)
@@ -263,9 +263,9 @@ class FileSystemStorage(ExternalStorage):
         ), "directory_path should be provided to use object spilling."
         if isinstance(directory_path, str):
             directory_path = [directory_path]
-        assert isinstance(directory_path, list), (
-            "Directory_path must be either a single " "string or a list of strings"
-        )
+        assert isinstance(
+            directory_path, list
+        ), "Directory_path must be either a single string or a list of strings"
         if buffer_size is not None:
             assert isinstance(buffer_size, int), "buffer_size must be an integer."
             self._buffer_size = buffer_size

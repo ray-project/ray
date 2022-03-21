@@ -1183,9 +1183,9 @@ class DeploymentState:
     def _scale_deployment_replicas(self) -> bool:
         """Scale the given deployment to the number of replicas."""
 
-        assert self._target_replicas >= 0, (
-            "Number of replicas must be" " greater than or equal to 0."
-        )
+        assert (
+            self._target_replicas >= 0
+        ), "Number of replicas must be greater than or equal to 0."
 
         replicas_stopped = self._stop_wrong_version_replicas()
 

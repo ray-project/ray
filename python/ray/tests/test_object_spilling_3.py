@@ -16,7 +16,7 @@ from ray.tests.test_object_spilling import is_dir_empty, assert_no_thrashing
 from ray.cluster_utils import Cluster, cluster_not_supported
 
 
-@pytest.mark.skipif(platform.system() in ["Windows"], reason="Failing on " "Windows.")
+@pytest.mark.skipif(platform.system() in ["Windows"], reason="Failing on Windows.")
 def test_multiple_directories(tmp_path, shutdown_only):
     num_dirs = 3
     temp_dirs = []

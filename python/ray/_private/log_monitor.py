@@ -83,11 +83,10 @@ class LogMonitor:
        lines (judged by an increase in file size since the last time the file
        was opened).
     4. Then we will loop through the open files and see if there are any new
-       lines in the file. If so, we will publish them to Redis.
+       lines in the file. If so, we will publish them to Ray pubsub.
 
     Attributes:
-        host (str): The hostname of this machine. Used to improve the log
-            messages published to Redis.
+        host (str): The hostname of this machine, for grouping log messages.
         logs_dir (str): The directory that the log files are in.
         log_filenames (set): This is the set of filenames of all files in
             open_file_infos and closed_file_infos.
@@ -98,7 +97,7 @@ class LogMonitor:
             false otherwise.
     """
 
-    def __init__(self, logs_dir, redis_address, gcs_address, redis_password=None):
+    def __init__(self, logs_dir, gcs_address):
         """Initialize the log monitor object."""
         self.ip = services.get_node_ip_address()
         self.logs_dir = logs_dir
@@ -141,7 +140,7 @@ class LogMonitor:
                 except (IOError, OSError) as e:
                     if e.errno == errno.ENOENT:
                         logger.warning(
-                            f"Warning: The file {file_info.filename} " "was not found."
+                            f"Warning: The file {file_info.filename} was not found."
                         )
                     else:
                         raise e
@@ -234,7 +233,7 @@ class LogMonitor:
                 # Catch "file not found" errors.
                 if e.errno == errno.ENOENT:
                     logger.warning(
-                        f"Warning: The file {file_info.filename} " "was not found."
+                        f"Warning: The file {file_info.filename} was not found."
                     )
                     self.log_filenames.remove(file_info.filename)
                     continue
@@ -248,7 +247,7 @@ class LogMonitor:
                 except (IOError, OSError) as e:
                     if e.errno == errno.ENOENT:
                         logger.warning(
-                            f"Warning: The file {file_info.filename} " "was not found."
+                            f"Warning: The file {file_info.filename} was not found."
                         )
                         self.log_filenames.remove(file_info.filename)
                         continue
@@ -266,7 +265,7 @@ class LogMonitor:
         self.closed_file_infos += files_with_no_updates
 
     def check_log_files_and_publish_updates(self):
-        """Get any changes to the log files and push updates to Redis.
+        """Gets updates to the log files and publishes them.
 
         Returns:
             True if anything was published and false otherwise.
@@ -360,8 +359,9 @@ class LogMonitor:
     def run(self):
         """Run the log monitor.
 
-        This will query Redis once every second to check if there are new log
-        files to monitor. It will also store those log files in Redis.
+        This will scan the file system once every LOG_NAME_UPDATE_INTERVAL_S to
+        check if there are new log files to monitor. It will also publish new
+        log lines.
         """
         total_log_files = 0
         last_updated = time.time()
@@ -383,20 +383,10 @@ class LogMonitor:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description=("Parse Redis server for the " "log monitor to connect " "to.")
+        description=("Parse GCS server address for the log monitor to connect to.")
     )
     parser.add_argument(
         "--gcs-address", required=False, type=str, help="The address (ip:port) of GCS."
-    )
-    parser.add_argument(
-        "--redis-address", required=True, type=str, help="The address to use for Redis."
-    )
-    parser.add_argument(
-        "--redis-password",
-        required=False,
-        type=str,
-        default=None,
-        help="the password to use for Redis",
     )
     parser.add_argument(
         "--logging-level",
@@ -426,7 +416,7 @@ if __name__ == "__main__":
         "--logs-dir",
         required=True,
         type=str,
-        help="Specify the path of the temporary directory used by Ray " "processes.",
+        help="Specify the path of the temporary directory used by Ray processes.",
     )
     parser.add_argument(
         "--logging-rotate-bytes",
@@ -455,12 +445,7 @@ if __name__ == "__main__":
         backup_count=args.logging_rotate_backup_count,
     )
 
-    log_monitor = LogMonitor(
-        args.logs_dir,
-        args.redis_address,
-        args.gcs_address,
-        redis_password=args.redis_password,
-    )
+    log_monitor = LogMonitor(args.logs_dir, args.gcs_address)
 
     try:
         log_monitor.run()

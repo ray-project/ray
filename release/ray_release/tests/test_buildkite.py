@@ -1,4 +1,5 @@
 import os
+import sys
 import unittest
 from typing import Dict
 from unittest.mock import patch
@@ -348,3 +349,9 @@ class BuildkiteSettingsTest(unittest.TestCase):
         test_concurrency(1, 0, "tiny")
         test_concurrency(32, 0, "tiny")
         test_concurrency(33, 0, "small")
+
+
+if __name__ == "__main__":
+    import pytest
+
+    sys.exit(pytest.main(["-v", __file__]))

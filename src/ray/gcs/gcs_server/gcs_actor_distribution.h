@@ -22,13 +22,16 @@
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
-#include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/raylet/scheduling/cluster_resource_manager.h"
+#include "ray/raylet/scheduling/scheduling_ids.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace gcs {
+
+using ClusterResourceScheduler = gcs::GcsResourceScheduler;
 
 /// `GcsActorWorkerAssignment` represents the assignment from one or multiple actors to a
 /// worker process.
@@ -70,8 +73,7 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
   /// \param io_context The main event loop.
   /// \param gcs_actor_table Used to flush actor info to storage.
   /// \param gcs_node_manager The node manager which is used when scheduling.
-  /// \param gcs_resource_manager The resource manager that maintains cluster resources.
-  /// \param gcs_resource_scheduler The scheduler to select nodes based on cluster
+  /// \param cluster_resource_scheduler The scheduler to select nodes based on cluster
   /// resources.
   /// \param schedule_failure_handler Invoked when there are no available nodes to
   /// schedule actors.
@@ -84,12 +86,13 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
       instrumented_io_context &io_context,
       GcsActorTable &gcs_actor_table,
       const GcsNodeManager &gcs_node_manager,
-      std::shared_ptr<GcsResourceManager> gcs_resource_manager,
-      std::shared_ptr<GcsResourceScheduler> gcs_resource_scheduler,
+      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
       GcsActorSchedulerFailureCallback schedule_failure_handler,
       GcsActorSchedulerSuccessCallback schedule_success_handler,
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
-      rpc::ClientFactoryFn client_factory = nullptr);
+      rpc::ClientFactoryFn client_factory = nullptr,
+      std::function<void(const NodeID &, const rpc::ResourcesData &)>
+          normal_task_resources_changed_callback = nullptr);
 
   virtual ~GcsBasedActorScheduler() = default;
 
@@ -140,9 +143,10 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
   ///
   /// \param required_resources The resources to be allocated.
   /// \return ID of the node from which the resources are allocated.
-  NodeID AllocateResources(const ResourceRequest &required_resources);
+  scheduling::NodeID AllocateResources(const ResourceRequest &required_resources);
 
-  NodeID GetHighestScoreNodeResource(const ResourceRequest &required_resources) const;
+  scheduling::NodeID GetHighestScoreNodeResource(
+      const ResourceRequest &required_resources) const;
 
   void WarnResourceAllocationFailure(const TaskSpecification &task_spec,
                                      const ResourceRequest &required_resources) const;
@@ -158,13 +162,15 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
   /// Notify that the cluster resources are changed.
   void NotifyClusterResourcesChanged();
 
-  std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
-
   /// The resource changed listeners.
   std::vector<std::function<void()>> resource_changed_listeners_;
 
   /// Gcs resource scheduler
-  std::shared_ptr<GcsResourceScheduler> gcs_resource_scheduler_;
+  std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
+
+  /// Normal task resources changed callback.
+  std::function<void(const NodeID &, const rpc::ResourcesData &)>
+      normal_task_resources_changed_callback_;
 };
 }  // namespace gcs
 }  // namespace ray

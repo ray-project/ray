@@ -6,7 +6,7 @@ try:
     import pygloo
 except ImportError:
     raise ImportError(
-        "Can not import pygloo." "Please run 'pip install pygloo' to install pygloo."
+        "Can not import pygloo. Please run 'pip install pygloo' to install pygloo."
     )
 
 import ray
@@ -112,9 +112,9 @@ def get_gloo_tensor_dtype(tensor):
                 return TORCH_GLOO_DTYPE_MAP[tensor.dtype]
             else:
                 raise ValueError(
-                    "Expect torch CPU tensor. " "Got {}.".format(tensor.device)
+                    "Expect torch CPU tensor. Got {}.".format(tensor.device)
                 )
-    raise ValueError("Unsupported tensor type. " "Got: {}.".format(type(tensor)))
+    raise ValueError("Unsupported tensor type. Got: {}.".format(type(tensor)))
 
 
 def get_numpy_tensor_dtype(tensor):
@@ -139,7 +139,7 @@ def get_tensor_ptr(tensor):
         if isinstance(tensor, torch.Tensor):
             if tensor.is_cuda:
                 raise RuntimeError(
-                    "Torch tensor must be on CPU " "when using GLOO collectives."
+                    "Torch tensor must be on CPU when using GLOO collectives."
                 )
             return tensor.data_ptr()
     raise ValueError(
@@ -156,7 +156,7 @@ def get_tensor_n_elements(tensor):
     if torch_available():
         if isinstance(tensor, torch.Tensor):
             return torch.numel(tensor)
-    raise ValueError("Unsupported tensor type. " "Got: {}.".format(type(tensor)))
+    raise ValueError("Unsupported tensor type. Got: {}.".format(type(tensor)))
 
 
 def get_gloo_store_path(store_name):
@@ -175,7 +175,7 @@ def get_tensor_device(tensor):
         else:
             return "cuda"
     else:
-        raise RuntimeError("Unrecognized tensor type: " "'{}'.".format(type(tensor)))
+        raise RuntimeError("Unrecognized tensor type: '{}'.".format(type(tensor)))
 
 
 def get_tensor_shape(tensor):

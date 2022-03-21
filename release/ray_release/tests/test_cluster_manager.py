@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import unittest
 from typing import Callable
@@ -629,3 +630,9 @@ class LiveSessionManagerTest(unittest.TestCase):
 
         # Start cluster
         self.cluster_manager.start_cluster(timeout=1200)
+
+
+if __name__ == "__main__":
+    import pytest
+
+    sys.exit(pytest.main(["-v", __file__]))

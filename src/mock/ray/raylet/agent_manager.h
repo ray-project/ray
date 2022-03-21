@@ -27,6 +27,7 @@ class MockAgentManager : public AgentManager {
               CreateRuntimeEnv,
               (const JobID &job_id,
                const std::string &serialized_runtime_env,
+               const rpc::RuntimeEnvConfig &runtime_env_config,
                CreateRuntimeEnvCallback callback),
               (override));
   MOCK_METHOD(void,

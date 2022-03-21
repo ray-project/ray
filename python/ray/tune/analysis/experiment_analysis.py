@@ -535,6 +535,9 @@ class ExperimentAnalysis:
                 values are disregarded and these trials are never selected as
                 the best trial.
         """
+        if len(self.trials) == 1:
+            return self.trials[0]
+
         metric = self._validate_metric(metric)
         mode = self._validate_mode(mode)
 
@@ -550,6 +553,7 @@ class ExperimentAnalysis:
             )
         best_trial = None
         best_metric_score = None
+
         for trial in self.trials:
             if metric not in trial.metric_analysis:
                 continue

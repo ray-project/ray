@@ -24,7 +24,7 @@ model = xgb.XGBClassifier(n_estimators=10).fit(dummy_data, dummy_target).get_boo
 
 def get_num_trees(booster: xgb.Booster) -> int:
     data = [json.loads(d) for d in booster.get_dump(dump_format="json")]
-    return len(data) // 4
+    return len(data)
 
 
 def test_init():

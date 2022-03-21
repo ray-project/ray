@@ -138,8 +138,8 @@ Our user guides provide you with in-depth information about how to use Ray's lib
 You will learn about the key concepts and features of Ray and how to use them in practice.
 +++
 
-{link-badge}`ray-core/using-ray.html,"Core",cls=badge-light`
-{link-badge}`data/user-guide.html,"Core",cls=badge-light`
+{link-badge}`ray-core/user-guide.html,"Core",cls=badge-light`
+{link-badge}`data/user-guide.html,"Data",cls=badge-light`
 {link-badge}`train/user_guide.html,"Train",cls=badge-light`
 {link-badge}`tune/user-guide.html,"Tune",cls=badge-light`
 {link-badge}`serve/tutorial.html,"Serve",cls=badge-light`

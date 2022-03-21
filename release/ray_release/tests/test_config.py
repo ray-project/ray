@@ -1,4 +1,5 @@
 import os
+import sys
 import unittest
 
 from ray_release.config import (
@@ -82,3 +83,9 @@ class ConfigTest(unittest.TestCase):
 
     def testLoadAndValidateTestCollectionFile(self):
         read_and_validate_release_test_collection(self.test_collection_file)
+
+
+if __name__ == "__main__":
+    import pytest
+
+    sys.exit(pytest.main(["-v", __file__]))

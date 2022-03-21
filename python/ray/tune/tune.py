@@ -121,6 +121,8 @@ def run(
     raise_on_failed_trial: bool = True,
     callbacks: Optional[Sequence[Callback]] = None,
     max_concurrent_trials: Optional[int] = None,
+    # == internal only ==
+    _experiment_checkpoint_dir: Optional[str] = None,
     # Deprecated args
     queue_trials: Optional[bool] = None,
     loggers: Optional[Sequence[Type[Logger]]] = None,
@@ -474,6 +476,7 @@ def run(
                 resources_per_trial=resources_per_trial,
                 num_samples=num_samples,
                 local_dir=local_dir,
+                _experiment_checkpoint_dir=_experiment_checkpoint_dir,
                 sync_config=sync_config,
                 trial_name_creator=trial_name_creator,
                 trial_dirname_creator=trial_dirname_creator,

@@ -163,4 +163,16 @@ class TensorflowTrainer(DataParallelTrainer):
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
-        raise NotImplementedError
+        if not tensorflow_config:
+            tensorflow_config = TensorflowConfig()
+
+        super(TensorflowTrainer, self).__init__(
+            train_loop_per_worker=train_loop_per_worker,
+            train_loop_config=train_loop_config,
+            backend_config=tensorflow_config,
+            scaling_config=scaling_config,
+            run_config=run_config,
+            datasets=datasets,
+            preprocessor=preprocessor,
+            resume_from_checkpoint=resume_from_checkpoint,
+        )

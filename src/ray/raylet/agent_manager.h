@@ -74,6 +74,7 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   virtual void CreateRuntimeEnv(
       const JobID &job_id,
       const std::string &serialized_runtime_env,
+      const rpc::RuntimeEnvConfig &runtime_env_config,
       const std::string &serialized_allocated_resource_instances,
       CreateRuntimeEnvCallback callback);
 

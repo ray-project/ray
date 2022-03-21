@@ -101,10 +101,9 @@ class RemoteFunction:
     ):
         if inspect.iscoroutinefunction(function):
             raise ValueError(
-                "'async def' should not be used for remote "
-                "tasks. You can wrap the async function with "
-                "`asyncio.get_event_loop.run_until(f())`. "
-                "See more at docs.ray.io/async_api.html"
+                "'async def' should not be used for remote tasks. You can wrap the "
+                "async function with `asyncio.get_event_loop.run_until(f())`. "
+                "See more at https://docs.ray.io/en/latest/ray-core/async_api.html#asyncio-for-remote-tasks"  # noqa
             )
         self._language = language
         self._function = _inject_tracing_into_function(function)
@@ -188,8 +187,7 @@ class RemoteFunction:
     ):
         """Configures and overrides the task invocation parameters.
 
-        The arguments are the same as those that can be passed to
-        :obj:`ray.remote`.
+        The arguments are the same as those that can be passed to :obj:`ray.remote`.
         Overriding `max_calls` is not supported.
 
         Examples:
@@ -232,8 +230,7 @@ class RemoteFunction:
                 """
                 **Experimental**
 
-                For ray DAG building. Implementation and interface subject
-                to changes.
+                For ray DAG building. Implementation and interface subject to changes.
                 """
                 from ray.experimental.dag.function_node import FunctionNode
 
@@ -320,7 +317,7 @@ class RemoteFunction:
                 msg = (
                     "Could not serialize the function "
                     f"{self._function_descriptor.repr}. Check "
-                    "https://docs.ray.io/en/master/serialization.html#troubleshooting "  # noqa
+                    "https://docs.ray.io/en/master/serialization.html#troubleshooting "
                     "for more information."
                 )
                 raise TypeError(msg) from e
@@ -418,9 +415,9 @@ class RemoteFunction:
                 )
 
             if worker.mode == ray.worker.LOCAL_MODE:
-                assert not self._is_cross_language, (
-                    "Cross language remote function " "cannot be executed locally."
-                )
+                assert (
+                    not self._is_cross_language
+                ), "Cross language remote function cannot be executed locally."
             object_refs = worker.core_worker.submit_task(
                 self._language,
                 self._function_descriptor,
@@ -451,8 +448,7 @@ class RemoteFunction:
         """
         **Experimental**
 
-        For ray DAG building. Implementation and interface subject to
-        changes.
+        For ray DAG building. Implementation and interface subject to changes.
         """
 
         from ray.experimental.dag.function_node import FunctionNode

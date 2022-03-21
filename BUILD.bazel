@@ -551,6 +551,7 @@ cc_library(
         ":node_manager_rpc",
         ":pubsub_lib",
         ":raylet_client_lib",
+        ":scheduler",
         ":worker_rpc",
         "@com_google_absl//absl/container:btree",
     ],

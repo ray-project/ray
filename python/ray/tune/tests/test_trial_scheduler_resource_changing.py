@@ -1,5 +1,4 @@
 import unittest
-from collections import namedtuple
 
 from ray.tune import PlacementGroupFactory
 from ray.tune.schedulers.trial_scheduler import TrialScheduler
@@ -10,12 +9,22 @@ from ray.tune.schedulers.resource_changing_scheduler import (
     DistributeResourcesToTopJob,
 )
 
-avail_resources = namedtuple("avail_resources", ["cpu", "gpu"])
+
+class MockResourceUpdater:
+    def __init__(self, num_cpus, num_gpus):
+        self._num_cpus = num_cpus
+        self._num_gpus = num_gpus
+
+    def get_num_cpus(self) -> int:
+        return self._num_cpus
+
+    def get_num_gpus(self) -> int:
+        return self._num_gpus
 
 
 class MockTrialExecutor:
     def __init__(self, cpu: float, gpu: float) -> None:
-        self._avail_resources = avail_resources(cpu, gpu)
+        self._resource_updater = MockResourceUpdater(cpu, gpu)
 
     def force_reconcilation_on_next_step_end(self):
         return
