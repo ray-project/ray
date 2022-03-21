@@ -439,9 +439,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":node_manager_fbs",
+        ":ray_syncer_cc_grpc",
         ":ray_util",
         ":stats_metric",
-        ":ray_syncer_cc_grpc",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:gcs_cc_proto",
         "@boost//:asio",
@@ -2379,7 +2379,7 @@ cc_binary(
     copts = COPTS,
     deps = [
         ":ray_common",
-    ]
+    ],
 )
 
 cc_test(
@@ -2390,9 +2390,8 @@ cc_test(
         ":ray_common",
         ":ray_mock",
         "@com_google_googletest//:gtest",
-    ]
+    ],
 )
-
 
 cc_test(
     name = "callback_reply_test",
