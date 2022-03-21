@@ -1,3 +1,4 @@
+import logging
 import os
 import pathlib
 import tempfile
@@ -16,6 +17,8 @@ from ray.tests.kuberay.utils import (
     wait_for_ray_health,
 )
 
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="[%(levelname)s %(asctime)s] " "%(filename)s: %(lineno)d  " "%(message)s")
 
 # This image will be used for both the autoscaler and Ray nodes.
 RAY_IMAGE = os.environ.get("RAY_IMAGE", "rayproject/ray:413fe0")
@@ -39,10 +42,10 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         """
 
         # Switch to parent of Ray repo, because that's what the doc examples do.
-        print("Switching to parent of Ray directory.")
+        logger.info("Switching to parent of Ray directory.")
         os.chdir(RAY_PARENT)
 
-        print("Cloning KubeRay and setting up KubeRay configuration.")
+        logger.info("Cloning KubeRay and setting up KubeRay configuration.")
         subprocess.check_call(
             [
                 "bash",
@@ -50,7 +53,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
                 "ls kuberay || ./ray/python/ray/autoscaler/kuberay/init-config.sh",
             ]
         )
-        print("Creating KubeRay operator.")
+        logger.info("Creating KubeRay operator.")
         subprocess.check_call(
             [
                 "kubectl",
@@ -59,7 +62,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
                 "ray/python/ray/autoscaler/kuberay/config/default",
             ]
         )
-        print("Creating autoscaler RBAC objects.")
+        logger.info("Creating autoscaler RBAC objects.")
         subprocess.check_call(
             [
                 "kubectl",
@@ -123,22 +126,22 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         Items 3. and 4. protect the autoscaler's ability to respond to Ray CR update.
         """
         # Cluster-creation
-        print("Creating a RayCluster with no worker pods.")
+        logger.info("Creating a RayCluster with no worker pods.")
         self._apply_ray_cr(min_replicas=0, replicas=0)
 
-        print("Confirming presence of head.")
+        logger.info("Confirming presence of head.")
         wait_for_pods(goal_num_pods=1, namespace="default")
         head_pod = get_pod(
             pod_name_filter="raycluster-complete-head", namespace="default"
         )
 
-        print("Waiting for head pod to start Running.")
+        logger.info("Waiting for head pod to start Running.")
         wait_for_pod_to_start(head_pod, namespace="default")
-        print("Confirming Ray is up on the head pod.")
+        logger.info("Confirming Ray is up on the head pod.")
         wait_for_ray_health(head_pod, namespace="default")
 
         # Scale-up
-        print("Scaling up to one worker via Ray resource request.")
+        logger.info("Scaling up to one worker via Ray resource request.")
         scale_script = (
             "import ray;"
             'ray.init("auto");'
@@ -147,17 +150,17 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         kubectl_exec(
             command=["python", "-c", scale_script], pod=head_pod, namespace="default"
         )
-        print("Confirming number of workers.")
+        logger.info("Confirming number of workers.")
         wait_for_pods(goal_num_pods=2, namespace="default")
 
-        print("Scaling up to two workers by editing minReplicas.")
+        logger.info("Scaling up to two workers by editing minReplicas.")
         # (replicas=1 reflects the current number of workers)
         self._apply_ray_cr(min_replicas=2, replicas=1)
-        print("Confirming number of workers.")
+        logger.info("Confirming number of workers.")
         wait_for_pods(goal_num_pods=3, namespace="default")
 
         # Scale-down
-        print("Removing resource request.")
+        logger.info("Removing resource request.")
         scale_down_script = (
             "import ray;"
             'ray.init("auto");'
@@ -168,24 +171,24 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             pod=head_pod,
             namespace="default",
         )
-        print("Scaling down all workers by editing maxReplicas.")
+        logger.info("Scaling down all workers by editing maxReplicas.")
         # (replicas=2 reflects the current number of workers)
         self._apply_ray_cr(min_replicas=0, max_replicas=0, replicas=2)
-        print("Confirming workers are gone.")
+        logger.info("Confirming workers are gone.")
         wait_for_pods(goal_num_pods=1, namespace="default")
 
         # Cluster deletion
-        print("Deleting Ray cluster.")
+        logger.info("Deleting Ray cluster.")
         subprocess.check_call(
             ["kubectl", "delete", "raycluster", "raycluster-complete"]
         )
-        print("Confirming Ray pods are gone.")
+        logger.info("Confirming Ray pods are gone.")
         wait_for_pods(goal_num_pods=0, namespace="default")
 
     def tearDown(self):
         """Clean resources following the instructions in the docs."""
 
-        print("Deleting operator.")
+        logger.info("Deleting operator.")
         subprocess.check_call(
             [
                 "kubectl",
@@ -195,7 +198,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             ]
         )
 
-        print("Deleting autoscaler RBAC.")
+        logger.info("Deleting autoscaler RBAC.")
         subprocess.check_call(
             [
                 "kubectl",
@@ -205,7 +208,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             ]
         )
 
-        print("Double-checking no pods left over.")
+        logger.info("Double-checking no pods left over.")
         wait_for_pods(goal_num_pods=0, namespace="default")
         wait_for_pods(goal_num_pods=0, namespace="ray-system")
 

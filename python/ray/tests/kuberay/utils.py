@@ -1,9 +1,12 @@
 """Utilities for e2e tests of KubeRay/Ray integration.
 For consistency, all K8s interactions use kubectl through subprocess calls.
 """
+import logging
 import subprocess
 import time
 from typing import List
+
+logger = logging.getLogger(__name__)
 
 
 def wait_for_pods(goal_num_pods: int, namespace: str, tries=60, backoff_s=5) -> None:
@@ -15,10 +18,10 @@ def wait_for_pods(goal_num_pods: int, namespace: str, tries=60, backoff_s=5) -> 
 
         cur_num_pods = _get_num_pods(namespace)
         if cur_num_pods == goal_num_pods:
-            print(f"Confirmed {goal_num_pods} pods.")
+            logger.info(f"Confirmed {goal_num_pods} pods.")
             return
         elif i < tries - 1:
-            print(
+            logger.info(
                 f"Have {cur_num_pods} pods in namespace {namespace}."
                 f" Waiting to have {goal_num_pods} pods."
             )
@@ -70,10 +73,10 @@ def wait_for_pod_to_start(pod: str, namespace: str, tries=60, backoff_s=5) -> No
         if "not found" in pod_status:
             raise Exception(f"Pod {pod} not found.")
         elif pod_status == "Running":
-            print(f"Confirmed pod {pod} is Running.")
+            logger.info(f"Confirmed pod {pod} is Running.")
             return
         elif i < tries - 1:
-            print(
+            logger.info(
                 f"Pod {pod} has status {pod_status}. Waiting for the pod to enter "
                 "Running status."
             )
@@ -89,15 +92,15 @@ def wait_for_ray_health(ray_pod: str, namespace: str, tries=60, backoff_s=5) -> 
     for i in range(tries):
         try:
             kubectl_exec(["ray", "health-check"], ray_pod, namespace)
-            print(f"ray health check passes for pod {ray_pod}")
+            logger.info(f"ray health check passes for pod {ray_pod}")
             return
         except subprocess.CalledProcessError as e:
-            print(f"Failed ray health check for pod {ray_pod}.")
+            logger.info(f"Failed ray health check for pod {ray_pod}.")
             if i < tries - 1:
-                print("Trying again.")
+                logger.info("Trying again.")
                 time.sleep(backoff_s)
             else:
-                print("Giving up.")
+                logger.info("Giving up.")
                 raise e from None
 
 
