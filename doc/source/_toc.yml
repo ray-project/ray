@@ -106,8 +106,6 @@ parts:
           - file: workflows/package-ref
       - file: ray-more-libs/index
         title: More Ray ML Libraries
-      - file: ray-air/getting-started
-        title: Ray AIR (Alpha)
 
   - caption: Ray Core
     chapters:
