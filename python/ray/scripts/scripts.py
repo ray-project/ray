@@ -2067,7 +2067,7 @@ def healthcheck(address, redis_password, component):
             pass
         sys.exit(1)
 
-    gcs_client = ray._private.gcs_utils.GcsClient(address)
+    gcs_client = ray._private.gcs_utils.GcsClient(address=address)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     report_str = ray.experimental.internal_kv._internal_kv_get(
         component, namespace=ray_constants.KV_NAMESPACE_HEALTHCHECK

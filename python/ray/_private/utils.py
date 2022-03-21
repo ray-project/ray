@@ -28,6 +28,7 @@ from pathlib import Path
 import numpy as np
 
 import ray
+from ray.core.generated.gcs_pb2 import ErrorTableData
 import ray.ray_constants as ray_constants
 from ray._private.tls_utils import load_certs_from_env
 
