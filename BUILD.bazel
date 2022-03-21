@@ -2374,8 +2374,8 @@ cc_library(
 )
 
 cc_binary(
-    name = "test_syncer_service",
-    srcs = ["src/ray/common/test/test_syncer_service.cc"],
+    name = "syncer_service_e2e_test",
+    srcs = ["src/ray/common/test/syncer_service_e2e_test.cc"],
     copts = COPTS,
     deps = [
         ":ray_common",
@@ -2383,8 +2383,8 @@ cc_binary(
 )
 
 cc_test(
-    name = "test_ray_syncer",
-    srcs = ["src/ray/common/test/test_ray_syncer.cc"],
+    name = "ray_syncer_test",
+    srcs = ["src/ray/common/test/ray_syncer_test.cc"],
     copts = COPTS,
     deps = [
         ":ray_common",

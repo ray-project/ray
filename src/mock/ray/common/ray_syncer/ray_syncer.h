@@ -31,7 +31,7 @@ namespace syncer {
 
 class MockReceiverInterface : public ReceiverInterface {
  public:
-  MOCK_METHOD(void, Update, (std::shared_ptr<RaySyncMessage> message), (override));
+  MOCK_METHOD(void, Update, (std::shared_ptr<const RaySyncMessage> message), (override));
   MOCK_METHOD(bool, NeedBroadcast, (), (const, override));
 };
 
@@ -43,34 +43,6 @@ namespace syncer {
 
 class MockRaySyncer : public RaySyncer {
  public:
-};
-
-}  // namespace syncer
-}  // namespace ray
-
-namespace ray {
-namespace syncer {
-
-class MockRaySyncerService : public RaySyncerService {
- public:
-  MOCK_METHOD(grpc::ServerUnaryReactor *,
-              StartSync,
-              (grpc::CallbackServerContext * context,
-               const SyncMeta *request,
-               SyncMeta *response),
-              (override));
-  MOCK_METHOD(grpc::ServerUnaryReactor *,
-              Update,
-              (grpc::CallbackServerContext * context,
-               const RaySyncMessages *request,
-               DummyResponse *),
-              (override));
-  MOCK_METHOD(grpc::ServerUnaryReactor *,
-              LongPolling,
-              (grpc::CallbackServerContext * context,
-               const DummyRequest *,
-               RaySyncMessages *response),
-              (override));
 };
 
 }  // namespace syncer

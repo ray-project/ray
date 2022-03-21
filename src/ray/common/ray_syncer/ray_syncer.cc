@@ -21,8 +21,8 @@ namespace syncer {
 bool NodeStatus::SetComponents(RayComponentId cid,
                                const ReporterInterface *reporter,
                                ReceiverInterface *receiver) {
-  if(cid < static_cast<RayComponentId>(kComponentArraySize) &&
-     reporters_[cid] == nullptr && receivers_[cid] == nullptr) {
+  if (cid < static_cast<RayComponentId>(kComponentArraySize) &&
+      reporters_[cid] == nullptr && receivers_[cid] == nullptr) {
     reporters_[cid] = reporter;
     receivers_[cid] = receiver;
     return true;
@@ -42,13 +42,13 @@ std::optional<RaySyncMessage> NodeStatus::GetSnapshot(RayComponentId cid) {
   return message;
 }
 
-bool NodeStatus::ConsumeMessage(std::shared_ptr<RaySyncMessage> message) {
+bool NodeStatus::ConsumeMessage(std::shared_ptr<const RaySyncMessage> message) {
   auto &current = cluster_view_[message->node_id()][message->component_id()];
   // Check whether newer version of this message has been received.
   if (current && current->version() >= message->version()) {
     return false;
   }
-
+  current = message;
   auto receiver = receivers_[message->component_id()];
   if (receiver != nullptr) {
     receiver->Update(message);
@@ -64,7 +64,8 @@ NodeSyncConnection::NodeSyncConnection(RaySyncer &instance,
       io_context_(io_context),
       node_id_(std::move(node_id)) {}
 
-void NodeSyncConnection::PushToSendingQueue(std::shared_ptr<RaySyncMessage> message) {
+void NodeSyncConnection::PushToSendingQueue(
+    std::shared_ptr<const RaySyncMessage> message) {
   auto &node_versions = GetNodeComponentVersions(message->node_id());
   if (node_versions[message->component_id()] < message->version()) {
     sending_queue_.insert(message);
@@ -128,7 +129,7 @@ void ClientSyncConnection::DoSend() {
   auto request = google::protobuf::Arena::CreateMessage<RaySyncMessages>(arena.get());
   auto response = google::protobuf::Arena::CreateMessage<DummyResponse>(arena.get());
 
-  std::vector<std::shared_ptr<RaySyncMessage>> holder;
+  std::vector<std::shared_ptr<const RaySyncMessage>> holder;
 
   size_t message_bytes = 0;
   auto iter = sending_queue_.begin();
@@ -136,7 +137,8 @@ void ClientSyncConnection::DoSend() {
          iter != sending_queue_.end()) {
     message_bytes += (*iter)->sync_message().size();
     // TODO (iycheng): Use arena allocator for optimization
-    request->mutable_sync_messages()->UnsafeArenaAddAllocated(iter->get());
+    request->mutable_sync_messages()->UnsafeArenaAddAllocated(
+        const_cast<RaySyncMessage *>(iter->get()));
     holder.push_back(*iter);
     sending_queue_.erase(iter++);
   }
@@ -239,7 +241,7 @@ bool RaySyncer::Register(RayComponentId component_id,
                          const ReporterInterface *reporter,
                          ReceiverInterface *receiver,
                          int64_t pull_from_reporter_interval_ms) {
-  if(!node_status_->SetComponents(component_id, reporter, receiver)) {
+  if (!node_status_->SetComponents(component_id, reporter, receiver)) {
     return false;
   }
 
@@ -262,7 +264,7 @@ bool RaySyncer::Register(RayComponentId component_id,
   return true;
 }
 
-void RaySyncer::BroadcastMessage(std::shared_ptr<RaySyncMessage> message) {
+void RaySyncer::BroadcastMessage(std::shared_ptr<const RaySyncMessage> message) {
   // The message is stale. Just skip this one.
   if (!node_status_->ConsumeMessage(message)) {
     return;

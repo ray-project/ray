@@ -49,7 +49,7 @@ class NodeStatus {
   /// \param message The message received.
   ///
   /// \return true if this node doesn't have message with newer version.
-  bool ConsumeMessage(std::shared_ptr<RaySyncMessage> message);
+  bool ConsumeMessage(std::shared_ptr<const RaySyncMessage> message);
 
  private:
   /// For local nodes
@@ -61,7 +61,8 @@ class NodeStatus {
   /// Keep track of the latest messages received.
   /// Use shared pointer for easier liveness management since these messages might be
   /// sending via rpc.
-  absl::flat_hash_map<std::string, Array<std::shared_ptr<RaySyncMessage>>> cluster_view_;
+  absl::flat_hash_map<std::string, Array<std::shared_ptr<const RaySyncMessage>>>
+      cluster_view_;
 };
 
 class NodeSyncConnection {
@@ -73,7 +74,7 @@ class NodeSyncConnection {
   /// Push a message to the sending queue to be sent later.
   ///
   /// \param message The message to be sent.
-  void PushToSendingQueue(std::shared_ptr<RaySyncMessage> message);
+  void PushToSendingQueue(std::shared_ptr<const RaySyncMessage> message);
 
   virtual ~NodeSyncConnection() {}
 
@@ -102,7 +103,8 @@ class NodeSyncConnection {
   std::string node_id_;
 
   struct _MessageHash {
-    std::size_t operator()(const std::shared_ptr<RaySyncMessage> &m) const noexcept {
+    std::size_t operator()(
+        const std::shared_ptr<const RaySyncMessage> &m) const noexcept {
       std::size_t seed = 0;
       boost::hash_combine(seed, m->node_id());
       boost::hash_combine(seed, m->component_id());
@@ -110,7 +112,7 @@ class NodeSyncConnection {
     }
   };
 
-  absl::flat_hash_set<std::shared_ptr<RaySyncMessage>, _MessageHash> sending_queue_;
+  absl::flat_hash_set<std::shared_ptr<const RaySyncMessage>, _MessageHash> sending_queue_;
   // Keep track of the versions of components in this node.
   absl::flat_hash_map<std::string, std::array<uint64_t, kComponentArraySize>>
       node_versions_;
