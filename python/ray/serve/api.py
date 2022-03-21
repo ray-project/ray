@@ -1215,12 +1215,18 @@ class Deployment:
         )
 
     @PublicAPI(stability="alpha")
-    def bind(self, *args, **kwargs) -> DeploymentNode:
+    def bind(self, *args, **kwargs) -> Union[DeploymentNode, DeploymentFunctionNode]:
         """Bind the provided arguments and return a DeploymentNode.
 
         The returned bound deployment can be deployed or bound to other
         deployments to create a multi-deployment application.
         """
+        copied_self = copy(self)
+        copied_self._init_args = []
+        copied_self._init_kwargs = {}
+        copied_self._func_or_class = "dummpy.module"
+        schema_shell = deployment_to_schema(copied_self)
+
         if inspect.isfunction(self._func_or_class):
             return DeploymentFunctionNode(
                 self._func_or_class,
@@ -1228,7 +1234,7 @@ class Deployment:
                 kwargs,  # Used to bind and resolve DAG only, can take user input
                 self._ray_actor_options or dict(),
                 other_args_to_resolve={
-                    "deployment_self": copy(self),
+                    "deployment_schema": schema_shell,
                     "is_from_serve_deployment": True,
                 },
             )
@@ -1239,7 +1245,7 @@ class Deployment:
                 kwargs,
                 cls_options=self._ray_actor_options or dict(),
                 other_args_to_resolve={
-                    "deployment_self": copy(self),
+                    "deployment_schema": schema_shell,
                     "is_from_serve_deployment": True,
                 },
             )
@@ -1858,7 +1864,6 @@ def run(
     *,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
-    **kwargs,
 ) -> RayServeHandle:
     """Run a Serve application and return a ServeHandle to the ingress.
 
@@ -1880,6 +1885,7 @@ def run(
     """
     # TODO (jiaodong): Resolve circular reference in pipeline codebase and serve
     from ray.serve.pipeline.api import build as pipeline_build
+    from ray.serve.pipeline.api import get_and_validate_ingress_deployment
 
     client = start(detached=True, http_options={"host": host, "port": port})
 
@@ -1889,11 +1895,11 @@ def run(
     # Each DAG should always provide a valid Driver DeploymentNode
     elif isinstance(target, DeploymentNode):
         deployments = pipeline_build(target)
-        ingress = deployments[-1]
+        ingress = get_and_validate_ingress_deployment(deployments)
     # Special case where user is doing single function serve.run(func.bind())
     elif isinstance(target, DeploymentFunctionNode):
         deployments = pipeline_build(target)
-        ingress = deployments[-1]
+        ingress = get_and_validate_ingress_deployment(deployments)
         if len(deployments) != 1:
             raise ValueError(
                 "We only support single function node in serve.run, ex: "

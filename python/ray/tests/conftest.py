@@ -654,3 +654,11 @@ def listen_port(request):
         yield port
     finally:
         sock.close()
+
+
+@pytest.fixture
+def set_bad_runtime_env_cache_ttl_seconds(request):
+    ttl = getattr(request, "param", "0")
+    os.environ["BAD_RUNTIME_ENV_CACHE_TTL_SECONDS"] = ttl
+    yield ttl
+    del os.environ["BAD_RUNTIME_ENV_CACHE_TTL_SECONDS"]
