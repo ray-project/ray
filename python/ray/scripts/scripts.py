@@ -1720,6 +1720,9 @@ def memory(
 ):
     """Print object references held in a Ray cluster."""
     address = services.canonicalize_bootstrap_address(address)
+    if not ray._private.gcs_utils.ping_cluster(address):
+        print(f"Ray cluster is not found at {address}")
+        sys.exit(1)
     time = datetime.now()
     header = "=" * 8 + f" Object references status: {time} " + "=" * 8
     mem_stats = memory_summary(
@@ -1750,6 +1753,9 @@ def memory(
 def status(address, redis_password):
     """Print cluster status, including autoscaling info."""
     address = services.canonicalize_bootstrap_address(address)
+    if not ray._private.gcs_utils.ping_cluster(address):
+        print(f"Ray cluster is not found at {address}")
+        sys.exit(1)
     gcs_client = ray._private.gcs_utils.GcsClient(address=address)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     status = ray.experimental.internal_kv._internal_kv_get(
@@ -2046,12 +2052,10 @@ def healthcheck(address, redis_password, component):
 
     address = services.canonicalize_bootstrap_address(address)
 
-    gcs_address = address
-
     if not component:
         try:
             options = (("grpc.enable_http_proxy", 0),)
-            channel = ray._private.utils.init_grpc_channel(gcs_address, options)
+            channel = ray._private.utils.init_grpc_channel(address, options)
             stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(channel)
             request = gcs_service_pb2.CheckAliveRequest()
             reply = stub.CheckAlive(
@@ -2063,7 +2067,7 @@ def healthcheck(address, redis_password, component):
             pass
         sys.exit(1)
 
-    gcs_client = ray._private.gcs_utils.GcsClient(address=gcs_address)
+    gcs_client = ray._private.gcs_utils.GcsClient(address)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     report_str = ray.experimental.internal_kv._internal_kv_get(
         component, namespace=ray_constants.KV_NAMESPACE_HEALTHCHECK

@@ -341,11 +341,7 @@ class Node:
         )
         if cluster_metadata is None:
             return
-        cluster_version_info = (
-            cluster_metadata["ray_version"],
-            cluster_metadata["python_version"],
-        )
-        ray._private.utils.check_version_info(cluster_version_info)
+        ray._private.utils.check_version_info(cluster_metadata)
 
     def _register_shutdown_hooks(self):
         # Register the atexit handler. In this case, we shouldn't call sys.exit

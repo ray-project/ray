@@ -1283,23 +1283,27 @@ def get_directory_size_bytes(path: Union[str, Path] = ".") -> int:
     return total_size_bytes
 
 
-def check_version_info(cluster_version_info):
+def check_version_info(cluster_metadata):
     """Check if the Python and Ray versions stored in GCS matches this process.
     Args:
-        cluster_version_info: version info from the Ray cluster / GCS.
+        cluster_metadata: Ray cluster metadata from GCS.
 
     Raises:
         Exception: An exception is raised if there is a version mismatch.
     """
+    cluster_version_info = (
+        cluster_metadata["ray_version"],
+        cluster_metadata["python_version"],
+    )
     version_info = compute_version_info()
     if version_info != cluster_version_info:
         node_ip_address = ray._private.services.get_node_ip_address()
         error_message = (
-                "Version mismatch: The cluster was started with:\n"
-                "    Ray: " + cluster_version_info[0] + "\n"
-                "    Python: " + cluster_version_info[1] + "\n"
-                "This process on node " + node_ip_address + " was started with:" + "\n"
-                "    Ray: " + version_info[0] + "\n"
-                "    Python: " + version_info[1] + "\n"
+            "Version mismatch: The cluster was started with:\n"
+            "    Ray: " + cluster_version_info[0] + "\n"
+            "    Python: " + cluster_version_info[1] + "\n"
+            "This process on node " + node_ip_address + " was started with:" + "\n"
+            "    Ray: " + version_info[0] + "\n"
+            "    Python: " + version_info[1] + "\n"
         )
         raise RuntimeError(error_message)

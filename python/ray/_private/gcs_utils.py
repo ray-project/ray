@@ -113,12 +113,13 @@ def ping_cluster(address: str, timeout=2):
     """
     req = gcs_service_pb2.InternalKVGetRequest(
         namespace=ray_constants.KV_NAMESPACE_CLUSTER,
-        key=usage_constant.CLUSTER_METADATA_KEY)
+        key=usage_constant.CLUSTER_METADATA_KEY,
+    )
     try:
         channel = create_gcs_channel(address)
         stub = gcs_service_pb2_grpc.InternalKVGcsServiceStub(channel)
         resp = stub.InternalKVGet(req, timeout=timeout)
-        if resp is None or resp.status is not None or resp.value is None:
+        if resp is None or resp.value is None:
             return False
         check_version_info(json.loads(resp.value))
     except grpc.RpcError:
