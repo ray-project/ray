@@ -374,3 +374,4 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/travis/prep-k8s-environment.sh
+    - pytest -svv --timeout 300 python/ray/tests/kuberay/test_autoscaling_e2e.py
