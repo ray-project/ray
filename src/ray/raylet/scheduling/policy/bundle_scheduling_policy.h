@@ -42,7 +42,8 @@ class BundleSchedulingPolicy : public ISchedulingPolicy {
   /// Filter out candidate nodes which can be used for scheduling.
   ///
   /// \return The candidate nodes which can be used for scheduling.
-  absl::flat_hash_map<scheduling::NodeID, const Node *> FilterCandidateNodes() const;
+  virtual absl::flat_hash_map<scheduling::NodeID, const Node *> FilterCandidateNodes(
+      const SchedulingContext *context) const;
 
   /// Sort required resources according to the scarcity and capacity of resources.
   /// We will first schedule scarce resources (such as GPU) and large capacity resources
@@ -114,6 +115,13 @@ class BundleStrictSpreadSchedulingPolicy : public BundleSchedulingPolicy {
       const std::vector<const ResourceRequest *> &resource_request_list,
       SchedulingOptions options,
       SchedulingContext *context) override;
+
+ protected:
+  /// Filter out candidate nodes which can be used for scheduling.
+  ///
+  /// \return The candidate nodes which can be used for scheduling.
+  absl::flat_hash_map<scheduling::NodeID, const Node *> FilterCandidateNodes(
+      const SchedulingContext *context) const override;
 };
 }  // namespace raylet_scheduling_policy
 }  // namespace ray

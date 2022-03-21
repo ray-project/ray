@@ -31,7 +31,7 @@ SchedulingResult SortSchedulingResult(const SchedulingResult &result,
 }
 
 absl::flat_hash_map<scheduling::NodeID, const Node *>
-BundleSchedulingPolicy::FilterCandidateNodes() const {
+BundleSchedulingPolicy::FilterCandidateNodes(const SchedulingContext *context) const {
   absl::flat_hash_map<scheduling::NodeID, const Node *> result;
   for (const auto &entry : nodes_) {
     if (is_node_available_ == nullptr || is_node_available_(entry.first)) {
@@ -130,7 +130,7 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
     SchedulingContext *context) {
   RAY_CHECK(!resource_request_list.empty());
 
-  auto candidate_nodes = FilterCandidateNodes();
+  auto candidate_nodes = FilterCandidateNodes(context);
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();
@@ -205,7 +205,7 @@ SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
     SchedulingContext *context) {
   RAY_CHECK(!resource_request_list.empty());
 
-  auto candidate_nodes = FilterCandidateNodes();
+  auto candidate_nodes = FilterCandidateNodes(context);
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();
@@ -270,7 +270,7 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
     SchedulingContext *context) {
   RAY_CHECK(!resource_request_list.empty());
 
-  auto candidate_nodes = FilterCandidateNodes();
+  auto candidate_nodes = FilterCandidateNodes(context);
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();
@@ -329,24 +329,9 @@ SchedulingResult BundleStrictSpreadSchedulingPolicy::Schedule(
     SchedulingOptions options,
     SchedulingContext *context) {
   RAY_CHECK(!resource_request_list.empty());
-  auto bundle_scheduling_context = dynamic_cast<BundleSchedulingContext *>(context);
 
   // Filter candidate nodes.
-  absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes;
-  for (const auto &entry : nodes_) {
-    if (is_node_available_ && !is_node_available_(entry.first)) {
-      continue;
-    }
-
-    if (bundle_scheduling_context && bundle_scheduling_context->node_to_bundles_ &&
-        bundle_scheduling_context->node_to_bundles_->contains(
-            NodeID::FromBinary(entry.first.Binary()))) {
-      continue;
-    }
-
-    candidate_nodes.emplace(entry.first, &entry.second);
-  }
-
+  auto candidate_nodes = FilterCandidateNodes(context);
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();
@@ -389,6 +374,27 @@ SchedulingResult BundleStrictSpreadSchedulingPolicy::Schedule(
   }
   return SortSchedulingResult(SchedulingResult::Success(std::move(result_nodes)),
                               sorted_index);
+}
+
+absl::flat_hash_map<scheduling::NodeID, const Node *>
+BundleStrictSpreadSchedulingPolicy::FilterCandidateNodes(
+    const SchedulingContext *context) const {
+  auto bundle_scheduling_context = dynamic_cast<const BundleSchedulingContext *>(context);
+  absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes;
+  for (const auto &entry : nodes_) {
+    if (is_node_available_ && !is_node_available_(entry.first)) {
+      continue;
+    }
+
+    if (bundle_scheduling_context && bundle_scheduling_context->node_to_bundles_ &&
+        bundle_scheduling_context->node_to_bundles_->contains(
+            NodeID::FromBinary(entry.first.Binary()))) {
+      continue;
+    }
+
+    candidate_nodes.emplace(entry.first, &entry.second);
+  }
+  return candidate_nodes;
 }
 
 }  // namespace raylet_scheduling_policy
