@@ -85,11 +85,7 @@ class HDFSStorage(Storage):
         subprocess.check_call(["hdfs", "dfs", "-rm", "-r", remote_target])
 
 
-_registered_storages: Dict[str, Storage] = {
-    S3_PREFIX: S3Storage(),
-    GS_PREFIX: GSStorage(),
-    HDFS_PREFIX: HDFSStorage(),
-}
+_registered_storages: Dict[str, Storage] = {}
 
 
 @DeveloperAPI
@@ -117,13 +113,30 @@ def get_storage(uri: str) -> Storage:
 
 
 @DeveloperAPI
-def register_storage(prefix: str, storage: Storage):
+def register_storage(prefix: str, storage: Storage, override: bool = True) -> None:
     """Register storage provider.
 
-    If a prefix is already registered, it will be overwritten without warning.
+    If a prefix is already registered, it will be overwritten without warning,
+    except when ``override=False``, in which case it is ignored without
+    warning.
+
+    Args:
+        prefix: String prefix to identify storage URI, e.g. ``prefix://``.
+        storage: Storage instance.
+        override: If ``True`` (default), will silently override existing
+            storage providers.
     """
     global _registered_storages
+    if not override and prefix in _registered_storages:
+        return
     _registered_storages[prefix] = storage
+
+
+# Register default storages. Do not override if there are e.g.
+# user-provided overrides for these storages.
+register_storage(S3_PREFIX, S3Storage(), override=False)
+register_storage(GS_PREFIX, GSStorage(), override=False)
+register_storage(HDFS_PREFIX, HDFSStorage(), override=False)
 
 
 def is_cloud_target(target: str):
