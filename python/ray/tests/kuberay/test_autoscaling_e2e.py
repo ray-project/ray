@@ -26,6 +26,7 @@ logging.basicConfig(
 
 # This image will be used for both the autoscaler and Ray nodes.
 RAY_IMAGE = os.environ.get("RAY_IMAGE", "rayproject/ray:413fe0")
+logger.info(f"Using image {RAY_IMAGE} for autoscaler and Ray nodes.")
 # The default "rayproject/ray:413fe0" is the currently pinned autoscaler image
 # (to be replaced with rayproject/ray:1.12.0 upon 1.12.0 release).
 
