@@ -844,7 +844,7 @@ TEST_F(ClusterTaskManagerTest, TestGrantOrReject) {
   ASSERT_EQ(pool_.workers.size(), 1);
 
   auto task3 = CreateTask({{ray::kCPU_ResourceLabel, 1}});
-  local_task_manager_->QueueAndScheduleTask(
+  task_manager_.QueueAndScheduleTask(
       task3, /*grant_or_reject=*/true, false, &local_reply, callback);
 
   pool_.TriggerCallbacks();
@@ -890,7 +890,7 @@ TEST_F(ClusterTaskManagerTest, TestSpillAfterAssigned) {
   // Resources are no longer available for the second.
   auto task2 = CreateTask({{ray::kCPU_ResourceLabel, 5}});
   rpc::RequestWorkerLeaseReply reject_reply;
-  local_task_manager_->QueueAndScheduleTask(
+  task_manager_.QueueAndScheduleTask(
       task2, /*grant_or_reject=*/true, false, &reject_reply, callback);
 
   pool_.TriggerCallbacks();

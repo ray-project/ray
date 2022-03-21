@@ -212,13 +212,6 @@ bool ClusterResourceScheduler::IsSchedulableOnNode(
   return IsSchedulable(resource_request, node_id);
 }
 
-bool ClusterResourceScheduler::IsSchedulableOnLocalNode(
-    const absl::flat_hash_map<std::string, double> &shape) {
-  auto resource_request =
-      ResourceMapToResourceRequest(shape, /*requires_object_store_memory=*/false);
-  return IsSchedulable(resource_request, local_node_id_);
-}
-
 scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     const TaskSpecification &task_spec,
     bool prioritize_local_node,

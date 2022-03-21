@@ -1689,19 +1689,11 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
         send_reply_callback(status, success, failure);
       };
 
-  if (request.grant_or_reject() && local_task_manager_) {
-    local_task_manager_->QueueAndScheduleTask(task,
+  cluster_task_manager_->QueueAndScheduleTask(task,
                                               request.grant_or_reject(),
                                               request.is_selected_based_on_locality(),
                                               reply,
                                               send_reply_callback_wrapper);
-  } else {
-    cluster_task_manager_->QueueAndScheduleTask(task,
-                                                request.grant_or_reject(),
-                                                request.is_selected_based_on_locality(),
-                                                reply,
-                                                send_reply_callback_wrapper);
-  }
 }
 
 void NodeManager::HandlePrepareBundleResources(

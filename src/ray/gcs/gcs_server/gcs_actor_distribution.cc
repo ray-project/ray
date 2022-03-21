@@ -91,8 +91,8 @@ GcsBasedActorScheduler::AllocateActorWorkerAssignment(
 scheduling::NodeID GcsBasedActorScheduler::AllocateResources(
     const ResourceRequest &required_placement_resources,
     const ResourceRequest &required_resources) {
-  auto scheduling_result =
-      cluster_resource_scheduler_->Schedule({required_placement_resources}, SchedulingType::SPREAD);
+  auto scheduling_result = cluster_resource_scheduler_->Schedule(
+      {required_placement_resources}, SchedulingType::SPREAD);
 
   if (!scheduling_result.status.IsSuccess()) {
     RAY_LOG(INFO)
