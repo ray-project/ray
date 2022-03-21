@@ -30,8 +30,8 @@ using namespace ray::syncer;
 using ray::NodeID;
 using ::testing::_;
 using ::testing::Invoke;
-using ::testing::WithArg;
 using ::testing::Return;
+using ::testing::WithArg;
 
 namespace ray {
 namespace syncer {
@@ -62,8 +62,7 @@ class RaySyncerTest : public ::testing::Test {
           return std::make_optional(std::move(msg));
         }
       };
-      ON_CALL(*reporter, Snapshot(_, _))
-          .WillByDefault(WithArg<0>(Invoke(take_snapshot)));
+      ON_CALL(*reporter, Snapshot(_, _)).WillByDefault(WithArg<0>(Invoke(take_snapshot)));
       ++cid;
     }
     thread_ = std::make_unique<std::thread>([this]() {
@@ -183,23 +182,22 @@ struct SyncerServer {
     server = builder.BuildAndStart();
 
     for (size_t cid = 0; cid < reporters.size(); ++cid) {
-      auto snapshot_received =
-          [this](std::shared_ptr<const RaySyncMessage> message) {
-            received_versions[message->node_id()][message->component_id()] = message->version();
-          };
+      auto snapshot_received = [this](std::shared_ptr<const RaySyncMessage> message) {
+        received_versions[message->node_id()][message->component_id()] =
+            message->version();
+      };
 
-      if(!no_scheduler_receiver || static_cast<RayComponentId>(cid) != RayComponentId::SCHEDULER) {
+      if (!no_scheduler_receiver ||
+          static_cast<RayComponentId>(cid) != RayComponentId::SCHEDULER) {
         receivers[cid] = std::make_unique<MockReceiverInterface>();
         ON_CALL(*receivers[cid], Update(_))
             .WillByDefault(WithArg<0>(Invoke(snapshot_received)));
       }
 
-      if(static_cast<RayComponentId>(cid) == RayComponentId::SCHEDULER) {
-        ON_CALL(*receivers[cid], NeedBroadcast())
-            .WillByDefault(Return(false));
+      if (static_cast<RayComponentId>(cid) == RayComponentId::SCHEDULER) {
+        ON_CALL(*receivers[cid], NeedBroadcast()).WillByDefault(Return(false));
       } else {
-        ON_CALL(*receivers[cid], NeedBroadcast())
-            .WillByDefault(Return(true));
+        ON_CALL(*receivers[cid], NeedBroadcast()).WillByDefault(Return(true));
       }
 
       auto &reporter = reporters[cid];
@@ -216,11 +214,10 @@ struct SyncerServer {
       };
       EXPECT_CALL(*reporter, Snapshot(_, _))
           .WillRepeatedly(WithArg<0>(Invoke(take_snapshot)));
-      syncer->Register(static_cast<RayComponentId>(cid), reporter.get(), receivers[cid].get());
+      syncer->Register(
+          static_cast<RayComponentId>(cid), reporter.get(), receivers[cid].get());
       ++cid;
     }
-
-
   }
 
   ~SyncerServer() {
@@ -255,17 +252,11 @@ std::shared_ptr<grpc::Channel> MakeChannel(std::string port) {
 TEST(SyncerTest, Test1To1) {
   auto s1 = SyncerServer("19990");
   auto s2 = SyncerServer("19991");
-
 }
 
-TEST(SyncerTest, Test1ToN) {
-  auto server = SyncerServer("9990");
-}
+TEST(SyncerTest, Test1ToN) { auto server = SyncerServer("9990"); }
 
-TEST(SyncerTest, TestMToN) {
-  auto server = SyncerServer("9990");
-}
-
+TEST(SyncerTest, TestMToN) { auto server = SyncerServer("9990"); }
 
 }  // namespace syncer
 }  // namespace ray
