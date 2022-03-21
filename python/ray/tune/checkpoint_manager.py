@@ -25,7 +25,13 @@ class _TuneCheckpoint:
     MEMORY = "memory"
     PERSISTENT = "persistent"
 
-    def __init__(self, storage: str, value: Any, result: Optional[dict] = None, node_ip: Optional[str] = None):
+    def __init__(
+        self,
+        storage: str,
+        value: Any,
+        result: Optional[dict] = None,
+        node_ip: Optional[str] = None,
+    ):
         self.storage = storage
         self.value = value
         self.result = result or {}
