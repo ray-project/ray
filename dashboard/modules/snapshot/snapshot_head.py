@@ -144,6 +144,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                     "end_time": job_info.end_time,
                     "metadata": job_info.metadata,
                     "runtime_env": job_info.runtime_env,
+                    "entrypoint": job_info.entrypoint,
                 }
                 jobs[job_submission_id] = entry
         return jobs

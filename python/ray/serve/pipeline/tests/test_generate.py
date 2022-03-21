@@ -1,22 +1,18 @@
 import pytest
-import requests
-import json
 
 import ray
 from ray import serve
-from ray.serve.handle import RayServeSyncHandle
+from ray.serve.handle import RayServeLazySyncHandle
 from ray.experimental.dag import InputNode
 from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
     get_pipeline_input_node,
-    get_ingress_deployment,
 )
 from ray.serve.pipeline.tests.resources.test_modules import (
     Model,
     NESTED_HANDLE_KEY,
     combine,
-    request_to_data_int,
 )
 from ray.serve.pipeline.tests.resources.test_dags import (
     get_simple_class_with_class_method_dag,
@@ -24,8 +20,8 @@ from ray.serve.pipeline.tests.resources.test_dags import (
     get_multi_instantiation_class_deployment_in_init_args_dag,
     get_shared_deployment_handle_dag,
     get_multi_instantiation_class_nested_deployment_arg_dag,
+    get_simple_func_dag,
 )
-from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
 
 
 def _validate_consistent_python_output(
@@ -43,26 +39,36 @@ def _validate_consistent_python_output(
     assert ray.get(handle_by_name.remote(input)) == output
 
 
+@pytest.mark.skip(
+    "No supporting converting ray.remote task directly to Serve deployments right now."
+)
+def test_build_simple_func_dag(serve_instance):
+    ray_dag, _ = get_simple_func_dag()
+    serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
+    deployments = extract_deployments_from_serve_dag(serve_root_dag)
+    assert len(deployments) == 1
+    deployments[0].deploy()
+
+    deployment_handle = deployments[0].get_handle()
+    # Because the bound kwarg is stored in dag, so it has to be explicitly passed in.
+    assert ray.get(deployment_handle.remote(1, 2, kwargs_output=1)) == 4
+    assert ray.get(ray_dag.execute([1, 2])) == 4
+
+
 def test_simple_single_class(serve_instance):
-    ray_dag, dag_input = get_simple_class_with_class_method_dag()
+    ray_dag, _ = get_simple_class_with_class_method_dag()
 
     serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
-    ingress_deployment = get_ingress_deployment(serve_root_dag, dag_input)
     assert len(deployments) == 1
     deployments[0].deploy()
-    ingress_deployment.deploy()
     _validate_consistent_python_output(
         deployments[0], ray_dag, "Model", input=1, output=0.6
     )
 
-    for _ in range(5):
-        resp = requests.get("http://127.0.0.1:8000/ingress", data="1")
-        assert resp.text == "0.6"
-
 
 def test_single_class_with_valid_ray_options(serve_instance):
-    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
+    with InputNode() as dag_input:
         model = Model.options(num_cpus=1, memory=1000).bind(2, ratio=0.3)
         ray_dag = model.forward.bind(dag_input)
 
@@ -81,7 +87,7 @@ def test_single_class_with_valid_ray_options(serve_instance):
 
 
 def test_single_class_with_invalid_deployment_options(serve_instance):
-    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
+    with InputNode() as dag_input:
         model = Model.options(name="my_deployment").bind(2, ratio=0.3)
         ray_dag = model.forward.bind(dag_input)
 
@@ -95,21 +101,16 @@ def test_single_class_with_invalid_deployment_options(serve_instance):
 
 
 def test_func_class_with_class_method_dag(serve_instance):
-    ray_dag, dag_input = get_func_class_with_class_method_dag()
+    ray_dag, _ = get_func_class_with_class_method_dag()
 
     serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
-    ingress_deployment = get_ingress_deployment(serve_root_dag, dag_input)
     assert len(deployments) == 2
     for deployment in deployments:
         deployment.deploy()
-    ingress_deployment.deploy()
 
     assert ray.get(ray_dag.execute(1, 2, 3)) == 8
     assert ray.get(serve_root_dag.execute(1, 2, 3)) == 8
-    for _ in range(5):
-        resp = requests.get("http://127.0.0.1:8000/ingress", data=json.dumps([1, 2, 3]))
-        assert resp.text == "8"
 
 
 def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
@@ -118,7 +119,7 @@ def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
     multiple times for the same class, and we can still correctly replace
     args with deployment handle and parse correct deployment instances.
     """
-    ray_dag, dag_input = get_multi_instantiation_class_deployment_in_init_args_dag()
+    ray_dag, _ = get_multi_instantiation_class_deployment_in_init_args_dag()
 
     serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
     print(f"Serve DAG: \n{serve_root_dag}")
@@ -127,16 +128,9 @@ def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
     for deployment in deployments:
         deployment.deploy()
 
-    ingress_deployment = get_ingress_deployment(serve_root_dag, dag_input)
-    ingress_deployment.deploy()
-
     _validate_consistent_python_output(
         deployments[2], ray_dag, "Combine", input=1, output=5
     )
-
-    for _ in range(5):
-        resp = requests.get("http://127.0.0.1:8000/ingress", data="1")
-        assert resp.text == "5"
 
 
 def test_shared_deployment_handle(serve_instance):
@@ -144,7 +138,7 @@ def test_shared_deployment_handle(serve_instance):
     Test we can re-use the same deployment handle multiple times or in
     multiple places, without incorrectly parsing duplicated deployments.
     """
-    ray_dag, dag_input = get_shared_deployment_handle_dag()
+    ray_dag, _ = get_shared_deployment_handle_dag()
 
     serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
     print(f"Serve DAG: \n{serve_root_dag}")
@@ -153,15 +147,9 @@ def test_shared_deployment_handle(serve_instance):
     for deployment in deployments:
         deployment.deploy()
 
-    ingress_deployment = get_ingress_deployment(serve_root_dag, dag_input)
-    ingress_deployment.deploy()
-
     _validate_consistent_python_output(
         deployments[1], ray_dag, "Combine", input=1, output=4
     )
-    for _ in range(5):
-        resp = requests.get("http://127.0.0.1:8000/ingress", data="1")
-        assert resp.text == "4"
 
 
 def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
@@ -170,7 +158,7 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
     instantiated multiple times for the same class, and we can still correctly
     replace args with deployment handle and parse correct deployment instances.
     """
-    ray_dag, dag_input = get_multi_instantiation_class_nested_deployment_arg_dag()
+    ray_dag, _ = get_multi_instantiation_class_nested_deployment_arg_dag()
 
     serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
     print(f"Serve DAG: \n{serve_root_dag}")
@@ -180,55 +168,39 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
     # with correct handle
     combine_deployment = deployments[2]
     init_arg_handle = combine_deployment.init_args[0]
-    assert isinstance(init_arg_handle, RayServeSyncHandle)
+    assert isinstance(init_arg_handle, RayServeLazySyncHandle)
     assert init_arg_handle.deployment_name == "Model"
     init_kwarg_handle = combine_deployment.init_kwargs["m2"][NESTED_HANDLE_KEY]
-    assert isinstance(init_kwarg_handle, RayServeSyncHandle)
+    assert isinstance(init_kwarg_handle, RayServeLazySyncHandle)
     assert init_kwarg_handle.deployment_name == "Model_1"
 
     for deployment in deployments:
         deployment.deploy()
 
-    ingress_deployment = get_ingress_deployment(serve_root_dag, dag_input)
-    ingress_deployment.deploy()
-
     _validate_consistent_python_output(
         deployments[2], ray_dag, "Combine", input=1, output=5
     )
 
-    for _ in range(5):
-        resp = requests.get("http://127.0.0.1:8000/ingress", data="1")
-        assert resp.text == "5"
-
 
 def test_get_pipeline_input_node():
-    # 1) No PipelineInputNode found
+    # 1) No InputNode found
     ray_dag = combine.bind(1, 2)
     serve_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
     with pytest.raises(
-        AssertionError, match="There should be one and only one PipelineInputNode"
+        AssertionError, match="There should be one and only one InputNode"
     ):
         get_pipeline_input_node(serve_dag)
 
-    # 2) More than one PipelineInputNode found
-    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input:
+    # 2) More than one InputNode found
+    with InputNode() as dag_input:
         a = combine.bind(dag_input[0], dag_input[1])
-    with PipelineInputNode(preprocessor=request_to_data_int) as dag_input_2:
+    with InputNode() as dag_input_2:
         b = combine.bind(dag_input_2[0], dag_input_2[1])
         ray_dag = combine.bind(a, b)
-    serve_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
     with pytest.raises(
-        AssertionError, match="There should be one and only one PipelineInputNode"
+        AssertionError, match="Each DAG should only have one unique InputNode"
     ):
-        get_pipeline_input_node(serve_dag)
-
-    # 3) User forgot to change InputNode to PipelineInputNode
-    with InputNode() as dag_input:
-        ray_dag = combine.bind(dag_input[0], dag_input[1])
-    serve_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
-    with pytest.raises(
-        ValueError, match="Please change Ray DAG InputNode to PipelineInputNode"
-    ):
+        serve_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
         get_pipeline_input_node(serve_dag)
 
 

@@ -40,5 +40,13 @@ scheduling::NodeID CompositeSchedulingPolicy::Schedule(
   UNREACHABLE;
 }
 
+SchedulingResult CompositeSchedulingPolicy::Schedule(
+    const std::vector<const ResourceRequest *> &resource_request_list,
+    SchedulingOptions options,
+    SchedulingContext *context) {
+  // TODO(Shanly): To be implemented.
+  return SchedulingResult();
+}
+
 }  // namespace raylet_scheduling_policy
 }  // namespace ray

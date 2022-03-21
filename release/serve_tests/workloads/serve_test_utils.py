@@ -13,6 +13,10 @@ from subprocess import PIPE
 from typing import Dict, List, Union
 
 
+def is_smoke_test():
+    return os.environ.get("IS_SMOKE_TEST", "0") == "1"
+
+
 def parse_time_to_ms(time_string: str) -> float:
     """Given a time string with various unit, convert
     to ms in float:

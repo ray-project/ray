@@ -13,7 +13,6 @@ py_test_module_list(
     "test_dashboard.py",
     "test_ray_cluster_with_external_redis.py",
     "test_k8s_cluster_launcher.py",
-    "test_runtime_env_working_dir_3.py",
   ],
   size = "large",
   extra_srcs = SRCS,
@@ -121,6 +120,7 @@ py_test_module_list(
     "test_serialization.py",
     "test_shuffle.py",
     "test_stress.py",
+    "test_storage.py",
     "test_stress_sharded.py",
     "test_tempfile.py",
     "test_tensorflow.py",
@@ -246,8 +246,10 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_runtime_env.py",
+    "test_runtime_env_2.py",
     "test_runtime_env_working_dir.py",
     "test_runtime_env_working_dir_2.py",
+    "test_runtime_env_working_dir_3.py",
     "test_runtime_env_working_dir_remote_uri.py"
   ],
   size = "large",

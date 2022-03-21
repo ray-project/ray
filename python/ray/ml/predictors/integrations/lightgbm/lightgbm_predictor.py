@@ -1,10 +1,16 @@
 from typing import Optional, List, Union
+import os
+import shutil
+import numpy as np
+import pandas as pd
 
 import lightgbm
 
+import ray.cloudpickle as cpickle
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.predictor import Predictor, DataBatchType
 from ray.ml.preprocessor import Preprocessor
+from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY
 
 
 class LightGBMPredictor(Predictor):
@@ -16,8 +22,11 @@ class LightGBMPredictor(Predictor):
             to prediction.
     """
 
-    def __init__(self, model: lightgbm.Booster, preprocessor: Preprocessor):
-        raise NotImplementedError
+    def __init__(
+        self, model: lightgbm.Booster, preprocessor: Optional[Preprocessor] = None
+    ):
+        self.model = model
+        self.preprocessor = preprocessor
 
     @classmethod
     def from_checkpoint(cls, checkpoint: Checkpoint) -> "LightGBMPredictor":
@@ -31,18 +40,24 @@ class LightGBMPredictor(Predictor):
                 ``LightGBMTrainer`` run.
 
         """
-        raise NotImplementedError
+        path = checkpoint.to_directory()
+        bst = lightgbm.Booster(model_file=os.path.join(path, MODEL_KEY))
+        preprocessor_path = os.path.join(path, PREPROCESSOR_KEY)
+        if os.path.exists(preprocessor_path):
+            with open(preprocessor_path, "rb") as f:
+                preprocessor = cpickle.load(f)
+        else:
+            preprocessor = None
+        shutil.rmtree(path)
+        return LightGBMPredictor(model=bst, preprocessor=preprocessor)
 
     def predict(
         self,
         data: DataBatchType,
         feature_columns: Optional[Union[List[str], List[int]]] = None,
-        **lgbm_dataset_kwargs,
-    ) -> DataBatchType:
+        **predict_kwargs,
+    ) -> pd.DataFrame:
         """Run inference on data batch.
-
-        The data is converted into a LightGBM Dataset before being inputted to
-        the model.
 
         Args:
             data: A batch of input data. Either a pandas DataFrame or numpy
@@ -50,8 +65,8 @@ class LightGBMPredictor(Predictor):
             feature_columns: The names or indices of the columns in the
                 data to use as features to predict on. If None, then use
                 all columns in ``data``.
-            **lgbm_dataset_kwargs: Keyword arguments passed to
-                ``lightgbm.Dataset``.
+            **predict_kwargs: Keyword arguments passed to
+                ``lightgbm.Booster.predict``.
 
         Examples:
 
@@ -96,7 +111,22 @@ class LightGBMPredictor(Predictor):
 
 
         Returns:
-            DataBatchType: Prediction result.
+            pd.DataFrame: Prediction result.
 
         """
-        raise NotImplementedError
+
+        if self.preprocessor:
+            data = self.preprocessor.transform_batch(data)
+
+        if feature_columns:
+            if isinstance(data, np.ndarray):
+                data = data[:, feature_columns]
+            else:
+                data = data[feature_columns]
+        df = pd.DataFrame(self.model.predict(data, **predict_kwargs))
+        df.columns = (
+            ["predictions"]
+            if len(df.columns) == 1
+            else [f"predictions_{i}" for i in range(len(df.columns))]
+        )
+        return df

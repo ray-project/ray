@@ -304,17 +304,9 @@ def set_agent_failure_env_var():
     del os.environ["_RAY_AGENT_FAILING"]
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster_head",
-    [
-        {
-            "_system_config": {
-                "agent_restart_interval_ms": 10,
-                "agent_max_restart_count": 5,
-            }
-        }
-    ],
-    indirect=True,
+# TODO(SongGuyang): Fail the agent which is in different node from driver.
+@pytest.mark.skip(
+    reason="Agent failure will lead to raylet failure and driver failure."
 )
 @pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
 def test_runtime_env_broken(
@@ -333,13 +325,13 @@ def test_runtime_env_broken(
     """
     Test task raises an exception.
     """
-    with pytest.raises(RuntimeEnvSetupError):
+    with pytest.raises(ray.exceptions.LocalRayletDiedError):
         ray.get(f.options(runtime_env=runtime_env).remote())
     """
     Test actor task raises an exception.
     """
     a = A.options(runtime_env=runtime_env).remote()
-    with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
+    with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.ready.remote())
 
 
@@ -706,7 +698,7 @@ def test_serialize_deserialize(option):
         pip_config_in_runtime_env = runtime_env.pop("pip")
         assert {
             "packages": pip_config_in_runtime_env,
-            "pip_check": True,
+            "pip_check": False,
         } == pip_config_in_cls_runtime_env
 
     assert cls_runtime_env_dict == runtime_env
@@ -821,8 +813,8 @@ def test_runtime_env_interface():
         assert runtime_env.virtualenv_name() is None
         runtime_env["pip"]["packages"].extend(addition_pip_packages)
         runtime_env_dict["pip"]["packages"].extend(addition_pip_packages)
-        # The default value of pip_check is True
-        runtime_env_dict["pip"]["pip_check"] = True
+        # The default value of pip_check is False
+        runtime_env_dict["pip"]["pip_check"] = False
         assert runtime_env_dict == runtime_env.to_dict()
         assert runtime_env.has_pip()
         assert set(runtime_env.pip_config()["packages"]) == set(
@@ -834,8 +826,10 @@ def test_runtime_env_interface():
         assert runtime_env.has_pip()
         assert set(runtime_env.pip_config()["packages"]) == set(requirement_packages)
         assert runtime_env.virtualenv_name() is None
-        # The default value of pip_check is True
-        runtime_env_dict["pip"] = dict(packages=runtime_env_dict["pip"], pip_check=True)
+        # The default value of pip_check is False
+        runtime_env_dict["pip"] = dict(
+            packages=runtime_env_dict["pip"], pip_check=False
+        )
         assert runtime_env_dict == runtime_env.to_dict()
         # Test that the modification of pip also works on
         # proto serialization

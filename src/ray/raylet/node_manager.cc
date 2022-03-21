@@ -333,7 +333,12 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
           scheduling::NodeID(self_node_id_.Binary()),
           local_resources.GetTotalResources().GetResourceMap(),
-          *gcs_client_,
+          /*is_node_available_fn*/
+          [this](scheduling::NodeID node_id) {
+            return gcs_client_->Nodes().Get(NodeID::FromBinary(node_id.Binary())) !=
+                   nullptr;
+          },
+          /*get_used_object_store_memory*/
           [this]() {
             if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
               return local_object_manager_.GetPinnedBytes();
@@ -341,6 +346,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
               return object_manager_.GetUsedMemory();
             }
           },
+          /*get_pull_manager_at_capacity*/
           [this]() { return object_manager_.PullManagerHasPullsQueued(); }));
 
   auto get_node_info_func = [this](const NodeID &node_id) {
@@ -420,7 +426,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       },
       /*runtime_env_agent_factory=*/
       [this](const std::string &ip_address, int port) {
-        RAY_CHECK(!ip_address.empty() && port != 0)
+        RAY_CHECK(!ip_address.empty())
             << "ip_address: " << ip_address << " port: " << port;
         return std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
             new rpc::RuntimeEnvAgentClient(ip_address, port, client_call_manager_));
@@ -630,8 +636,10 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   }
 
   // Set the global gc bit on the outgoing heartbeat message.
+  bool triggered_by_global_gc = false;
   if (should_global_gc_) {
     resources_data.set_should_global_gc(true);
+    triggered_by_global_gc = true;
     should_global_gc_ = false;
     global_gc_throttler_.RunNow();
   }
@@ -641,12 +649,12 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   if ((should_local_gc_ ||
        (absl::GetCurrentTimeNanos() - local_gc_run_time_ns_ > local_gc_interval_ns_)) &&
       local_gc_throttler_.AbleToRun()) {
-    DoLocalGC();
+    DoLocalGC(triggered_by_global_gc);
     should_local_gc_ = false;
   }
 }
 
-void NodeManager::DoLocalGC() {
+void NodeManager::DoLocalGC(bool triggered_by_global_gc) {
   auto all_workers = worker_pool_.GetAllRegisteredWorkers();
   for (const auto &driver : worker_pool_.GetAllRegisteredDrivers()) {
     all_workers.push_back(driver);
@@ -655,6 +663,7 @@ void NodeManager::DoLocalGC() {
                 << " local workers to clean up Python cyclic references.";
   for (const auto &worker : all_workers) {
     rpc::LocalGCRequest request;
+    request.set_triggered_by_global_gc(triggered_by_global_gc);
     worker->rpc_client()->LocalGC(
         request, [](const ray::Status &status, const rpc::LocalGCReply &r) {
           if (!status.ok()) {

@@ -2,6 +2,7 @@ from collections import namedtuple, OrderedDict
 import gym
 import logging
 import re
+import tree  # pip install dm_tree
 from typing import Callable, Dict, List, Optional, Tuple, Type
 
 from ray.util.debug import log_once
@@ -458,18 +459,21 @@ class DynamicTFPolicy(TFPolicy):
     def copy(self, existing_inputs: List[Tuple[str, "tf1.placeholder"]]) -> TFPolicy:
         """Creates a copy of self using existing input placeholders."""
 
+        flat_loss_inputs = tree.flatten(self._loss_input_dict)
+        flat_loss_inputs_no_rnn = tree.flatten(self._loss_input_dict_no_rnn)
+
         # Note that there might be RNN state inputs at the end of the list
-        if len(self._loss_input_dict) != len(existing_inputs):
+        if len(flat_loss_inputs) != len(existing_inputs):
             raise ValueError(
                 "Tensor list mismatch",
                 self._loss_input_dict,
                 self._state_inputs,
                 existing_inputs,
             )
-        for i, (k, v) in enumerate(self._loss_input_dict_no_rnn.items()):
+        for i, v in enumerate(flat_loss_inputs_no_rnn):
             if v.shape.as_list() != existing_inputs[i].shape.as_list():
                 raise ValueError(
-                    "Tensor shape mismatch", i, k, v.shape, existing_inputs[i].shape
+                    "Tensor shape mismatch", i, v.shape, existing_inputs[i].shape
                 )
         # By convention, the loss inputs are followed by state inputs and then
         # the seq len tensor.
@@ -478,15 +482,19 @@ class DynamicTFPolicy(TFPolicy):
             rnn_inputs.append(
                 (
                     "state_in_{}".format(i),
-                    existing_inputs[len(self._loss_input_dict_no_rnn) + i],
+                    existing_inputs[len(flat_loss_inputs_no_rnn) + i],
                 )
             )
         if rnn_inputs:
             rnn_inputs.append((SampleBatch.SEQ_LENS, existing_inputs[-1]))
+        existing_inputs_unflattened = tree.unflatten_as(
+            self._loss_input_dict_no_rnn,
+            existing_inputs[: len(flat_loss_inputs_no_rnn)],
+        )
         input_dict = OrderedDict(
             [("is_exploring", self._is_exploring), ("timestep", self._timestep)]
             + [
-                (k, existing_inputs[i])
+                (k, existing_inputs_unflattened[k])
                 for i, k in enumerate(self._loss_input_dict_no_rnn.keys())
             ]
             + rnn_inputs
@@ -509,7 +517,7 @@ class DynamicTFPolicy(TFPolicy):
         instance._loss_input_dict = input_dict
         losses = instance._do_loss_init(SampleBatch(input_dict))
         loss_inputs = [
-            (k, existing_inputs[i])
+            (k, existing_inputs_unflattened[k])
             for i, k in enumerate(self._loss_input_dict_no_rnn.keys())
         ]
 
@@ -546,7 +554,7 @@ class DynamicTFPolicy(TFPolicy):
             return len(batch)
 
         input_dict = self._get_loss_inputs_dict(batch, shuffle=False)
-        data_keys = list(self._loss_input_dict_no_rnn.values())
+        data_keys = tree.flatten(self._loss_input_dict_no_rnn)
         if self._state_inputs:
             state_keys = self._state_inputs + [self._seq_lens]
         else:
@@ -698,9 +706,7 @@ class DynamicTFPolicy(TFPolicy):
             )
             self._input_dict[key] = get_placeholder(value=value, name=key)
             if key not in self.view_requirements:
-                logger.info(
-                    "Adding extra-action-fetch `{}` to " "view-reqs.".format(key)
-                )
+                logger.info("Adding extra-action-fetch `{}` to view-reqs.".format(key))
                 self.view_requirements[key] = ViewRequirement(
                     space=gym.spaces.Box(
                         -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype.name
@@ -929,7 +935,7 @@ class TFMultiGPUTowerStack:
                     "sgd_minibatch_size", policy.config.get("train_batch_size", 999999)
                 )
             ) // len(self.devices)
-            input_placeholders = list(self.policy._loss_input_dict_no_rnn.values())
+            input_placeholders = tree.flatten(self.policy._loss_input_dict_no_rnn)
             rnn_inputs = []
             if self.policy._state_inputs:
                 rnn_inputs = self.policy._state_inputs + [self.policy._seq_lens]
@@ -956,19 +962,22 @@ class TFMultiGPUTowerStack:
         self._max_seq_len = tf1.placeholder(tf.int32, name="max_seq_len")
         self._loaded_max_seq_len = 1
 
-        # Split on the CPU in case the data doesn't fit in GPU memory.
-        with tf.device("/cpu:0"):
-            data_splits = zip(
-                *[tf.split(ph, len(self.devices)) for ph in self.loss_inputs]
-            )
+        device_placeholders = [[] for _ in range(len(self.devices))]
+
+        for t in tree.flatten(self.loss_inputs):
+            # Split on the CPU in case the data doesn't fit in GPU memory.
+            with tf.device("/cpu:0"):
+                splits = tf.split(t, len(self.devices))
+            for i, d in enumerate(self.devices):
+                device_placeholders[i].append(splits[i])
 
         self._towers = []
-        for tower_i, (device, device_placeholders) in enumerate(
-            zip(self.devices, data_splits)
+        for tower_i, (device, placeholders) in enumerate(
+            zip(self.devices, device_placeholders)
         ):
             self._towers.append(
                 self._setup_device(
-                    tower_i, device, device_placeholders, len(input_placeholders)
+                    tower_i, device, placeholders, len(tree.flatten(input_placeholders))
                 )
             )
 

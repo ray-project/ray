@@ -3,6 +3,7 @@ from enum import Enum
 import time
 from typing import Any, Dict, Optional, Tuple
 import pickle
+from pathlib import Path
 
 from ray import ray_constants
 from ray.experimental.internal_kv import (
@@ -23,32 +24,54 @@ CURRENT_VERSION = "1"
 
 
 class JobStatus(str, Enum):
+    """An enumeration for describing the status of a job."""
+
+    #: The job has not started yet, likely waiting for the runtime_env to be set up.
     PENDING = "PENDING"
+    #: The job is currently running.
     RUNNING = "RUNNING"
+    #: The job was intentionally stopped by the user.
     STOPPED = "STOPPED"
+    #: The job finished successfully.
     SUCCEEDED = "SUCCEEDED"
+    #: The job failed.
     FAILED = "FAILED"
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.value}"
 
-    def is_terminal(self):
+    def is_terminal(self) -> bool:
+        """Return whether or not this status is terminal.
+
+        A terminal status is one that cannot transition to any other status.
+        The terminal statuses are "STOPPED", "SUCCEEDED", and "FAILED".
+
+        Returns:
+            True if this status is terminal, otherwise False.
+        """
         return self.value in {"STOPPED", "SUCCEEDED", "FAILED"}
 
 
 @dataclass
 class JobInfo:
-    status: JobStatus
+    """A class for recording information associated with a job and its execution."""
 
+    #: The status of the job.
+    status: JobStatus
+    #: The entrypoint command for this job.
+    entrypoint: str
+    #: A message describing the status in more detail.
     message: Optional[str] = None
     # TODO(architkulkarni): Populate this field with e.g. Runtime env setup failure,
     # Internal error, user script error
     error_type: Optional[str] = None
+    #: The time when the job was started.  A Unix timestamp in seconds.
     start_time: Optional[int] = None
-    # The time when a job moves into a terminal state.  A Unix timestamp in seconds.
+    #: The time when the job moved into a terminal state.  A Unix timestamp in seconds.
     end_time: Optional[int] = None
-    # Arbitrary user-provided metadata.
+    #: Arbitrary user-provided metadata for the job.
     metadata: Optional[Dict[str, str]] = None
+    #: The runtime environment for the job.
     runtime_env: Optional[Dict[str, Any]] = None
 
     def __post_init__(self):
@@ -87,7 +110,6 @@ class JobInfoStorageClient:
         )
 
     def get_info(self, job_id: str) -> Optional[JobInfo]:
-        # raise ValueError
         pickled_info = _internal_kv_get(
             self.JOB_DATA_KEY.format(job_id=job_id),
             namespace=ray_constants.KV_NAMESPACE_JOB,
@@ -107,7 +129,9 @@ class JobInfoStorageClient:
                 assert False, "Attempted to change job status from a terminal state."
             new_info = replace(old_info, status=status, message=message)
         else:
-            new_info = JobInfo(status=status, message=message)
+            new_info = JobInfo(
+                entrypoint="Entrypoint not found.", status=status, message=message
+            )
 
         if status.is_terminal():
             new_info.end_time = int(time.time())
@@ -138,18 +162,17 @@ class JobInfoStorageClient:
 
 
 def uri_to_http_components(package_uri: str) -> Tuple[str, str]:
-    if not package_uri.endswith(".zip"):
-        raise ValueError(f"package_uri ({package_uri}) does not end in .zip")
-    # We need to strip the gcs:// prefix and .zip suffix to make it
-    # possible to pass the package_uri over HTTP.
+    suffix = Path(package_uri).suffix
+    if suffix not in {".zip", ".whl"}:
+        raise ValueError(f"package_uri ({package_uri}) does not end in .zip or .whl")
+    # We need to strip the <protocol>:// prefix to make it possible to pass
+    # the package_uri over HTTP.
     protocol, package_name = parse_uri(package_uri)
-    return protocol.value, package_name[: -len(".zip")]
+    return protocol.value, package_name
 
 
 def http_uri_components_to_uri(protocol: str, package_name: str) -> str:
-    if package_name.endswith(".zip"):
-        raise ValueError(f"package_name ({package_name}) should not end in .zip")
-    return f"{protocol}://{package_name}.zip"
+    return f"{protocol}://{package_name}"
 
 
 def validate_request_type(json_data: Dict[str, Any], request_type: dataclass) -> Any:

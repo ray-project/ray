@@ -164,6 +164,10 @@ std::string TaskSpecification::SerializedRuntimeEnv() const {
   return message_->runtime_env_info().serialized_runtime_env();
 }
 
+rpc::RuntimeEnvConfig TaskSpecification::RuntimeEnvConfig() const {
+  return message_->runtime_env_info().runtime_env_config();
+}
+
 bool TaskSpecification::HasRuntimeEnv() const {
   return !IsRuntimeEnvEmpty(SerializedRuntimeEnv());
 }

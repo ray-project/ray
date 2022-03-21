@@ -549,7 +549,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     "output_config": {},
     # What sample batch columns to LZ4 compress in the output data.
     "output_compress_columns": ["obs", "new_obs"],
-    # Max output file size before rolling over to a new file.
+    # Max output file size (in bytes) before rolling over to a new file.
     "output_max_file_size": 64 * 1024 * 1024,
 
     # === Settings for Multi-Agent Environments ===
@@ -2490,7 +2490,7 @@ class Trainer(Trainable):
         if config["evaluation_num_episodes"] != DEPRECATED_VALUE:
             deprecation_warning(
                 old="evaluation_num_episodes",
-                new="`evaluation_duration` and `evaluation_duration_unit=" "episodes`",
+                new="`evaluation_duration` and `evaluation_duration_unit=episodes`",
                 error=False,
             )
             config["evaluation_duration"] = config["evaluation_num_episodes"]

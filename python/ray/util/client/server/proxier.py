@@ -33,7 +33,7 @@ from ray._private.parameter import RayParams
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.services import ProcessInfo, start_ray_client_server
 from ray._private.tls_utils import add_port_to_grpc_server
-from ray._private.gcs_utils import GcsClient, use_gcs_for_bootstrap
+from ray._private.gcs_utils import GcsClient
 from ray._private.utils import detect_fate_sharing_support
 
 # Import psutil after ray so the packaged version is used.
@@ -182,12 +182,7 @@ class ProxyManager:
         """
         if self._node:
             return self._node
-        if use_gcs_for_bootstrap():
-            ray_params = RayParams(gcs_address=self.address)
-        else:
-            ray_params = RayParams(redis_address=self.address)
-            if self._redis_password:
-                ray_params.redis_password = self._redis_password
+        ray_params = RayParams(gcs_address=self.address)
 
         self._node = ray.node.Node(
             ray_params,
@@ -220,7 +215,10 @@ class ProxyManager:
             return server
 
     def _create_runtime_env(
-        self, serialized_runtime_env: str, specific_server: SpecificServer
+        self,
+        serialized_runtime_env: str,
+        runtime_env_config: str,
+        specific_server: SpecificServer,
     ):
         """Creates the runtime_env by sending an RPC to the agent.
 
@@ -229,6 +227,7 @@ class ProxyManager:
         """
         create_env_request = runtime_env_agent_pb2.CreateRuntimeEnvRequest(
             serialized_runtime_env=serialized_runtime_env,
+            runtime_env_config=runtime_env_config,
             job_id=f"ray_client_server_{specific_server.port}".encode("utf-8"),
         )
 
@@ -288,6 +287,7 @@ class ProxyManager:
         )
 
         serialized_runtime_env = job_config.get_serialized_runtime_env()
+        runtime_env_config = job_config.get_proto_runtime_env_config()
         if not serialized_runtime_env or serialized_runtime_env == "{}":
             # TODO(edoakes): can we just remove this case and always send it
             # to the agent?
@@ -295,6 +295,7 @@ class ProxyManager:
         else:
             serialized_runtime_env_context = self._create_runtime_env(
                 serialized_runtime_env=serialized_runtime_env,
+                runtime_env_config=runtime_env_config,
                 specific_server=specific_server,
             )
 
@@ -530,7 +531,12 @@ class RayletServicerProxy(ray_client_pb2_grpc.RayletDriverServicer):
         return self._call_inner_function(req, context, "Terminate")
 
     def GetObject(self, request, context=None):
-        return self._call_inner_function(request, context, "GetObject")
+        try:
+            yield from self._call_inner_function(request, context, "GetObject")
+        except Exception as e:
+            # Error while iterating over response from GetObject stream
+            logger.exception("Proxying call to GetObject failed!")
+            _propagate_error_in_context(e, context)
 
     def PutObject(
         self, request: ray_client_pb2.PutRequest, context=None
@@ -775,14 +781,9 @@ def serve_proxier(
     # before calling ray.init within the RayletServicers.
     # NOTE(edoakes): redis_address and redis_password should only be None in
     # tests.
-    if use_gcs_for_bootstrap():
-        if address is not None:
-            gcs_cli = GcsClient(address=address)
-            ray.experimental.internal_kv._initialize_internal_kv(gcs_cli)
-    else:
-        if address is not None and redis_password is not None:
-            gcs_cli = GcsClient.connect_to_gcs_by_redis_address(address, redis_password)
-            ray.experimental.internal_kv._initialize_internal_kv(gcs_cli)
+    if address is not None:
+        gcs_cli = GcsClient(address=address)
+        ray.experimental.internal_kv._initialize_internal_kv(gcs_cli)
 
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),

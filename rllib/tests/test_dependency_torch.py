@@ -26,9 +26,9 @@ if __name__ == "__main__":
     )
     trainer.train()
 
-    assert "torch" not in sys.modules, (
-        "`torch` should not be imported after creating and " "training A3CTrainer!"
-    )
+    assert (
+        "torch" not in sys.modules
+    ), "`torch` should not be imported after creating and training A3CTrainer!"
 
     # Clean up.
     del os.environ["RLLIB_TEST_NO_TORCH_IMPORT"]

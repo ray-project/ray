@@ -7,8 +7,8 @@ import logging
 import os
 import time
 from typing import Dict, Set
-from ray._private.utils import import_attr
 
+from ray._private.utils import import_attr
 from ray.core.generated import runtime_env_agent_pb2
 from ray.core.generated import runtime_env_agent_pb2_grpc
 from ray.core.generated import agent_manager_pb2
@@ -19,6 +19,7 @@ from ray.experimental.internal_kv import (
     _initialize_internal_kv,
 )
 from ray._private.ray_logging import setup_component_logger
+from ray._private.async_compat import create_task
 from ray._private.runtime_env.pip import PipManager
 from ray._private.runtime_env.conda import CondaManager
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -27,7 +28,7 @@ from ray._private.runtime_env.working_dir import WorkingDirManager
 from ray._private.runtime_env.container import ContainerManager
 from ray._private.runtime_env.plugin import decode_plugin_uri
 from ray._private.runtime_env.uri_cache import URICache
-from ray.runtime_env import RuntimeEnv
+from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 
 default_logger = logging.getLogger(__name__)
 
@@ -217,6 +218,7 @@ class RuntimeEnvAgent(
             return context
 
         serialized_env = request.serialized_runtime_env
+        runtime_env_config = request.runtime_env_config
 
         if serialized_env not in self._env_locks:
             # async lock to prevent the same env being concurrently installed
@@ -241,7 +243,8 @@ class RuntimeEnvAgent(
                     error_message = result.result
                     self._logger.info(
                         "Runtime env already failed. "
-                        f"Env: {serialized_env}, err: {error_message}"
+                        f"Env: {serialized_env}, "
+                        f"err: {error_message}"
                     )
                     return runtime_env_agent_pb2.CreateRuntimeEnvReply(
                         status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
@@ -252,13 +255,30 @@ class RuntimeEnvAgent(
                 self._logger.info(f"Sleeping for {SLEEP_FOR_TESTING_S}s.")
                 time.sleep(int(SLEEP_FOR_TESTING_S))
 
-            self._logger.info(f"Creating runtime env: {serialized_env}")
+            self._logger.info(f"Creating runtime env: {serialized_env}.")
             runtime_env_context: RuntimeEnvContext = None
             error_message = None
+            runtime_env_config = RuntimeEnvConfig.from_proto(runtime_env_config)
+            # accroding to the document of `asyncio.wait_for`,
+            # None means disable timeout logic
+            setup_timeout_seconds = (
+                None
+                if runtime_env_config["setup_timeout_seconds"] == -1
+                else runtime_env_config["setup_timeout_seconds"]
+            )
             for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
                 try:
-                    runtime_env_context = await _setup_runtime_env(
-                        serialized_env, request.serialized_allocated_resource_instances
+                    # python 3.6 requires the type of input is `Future`,
+                    # python 3.7+ only requires the type of input is `Awaitable`
+                    # TODO(Catch-Bull): remove create_task when ray drop python 3.6
+                    runtime_env_setup_task = create_task(
+                        _setup_runtime_env(
+                            serialized_env,
+                            request.serialized_allocated_resource_instances,
+                        )
+                    )
+                    runtime_env_context = await asyncio.wait_for(
+                        runtime_env_setup_task, timeout=setup_timeout_seconds
                     )
                     error_message = None
                     break
@@ -324,7 +344,10 @@ class RuntimeEnvAgent(
         )
 
     async def run(self, server):
-        runtime_env_agent_pb2_grpc.add_RuntimeEnvServiceServicer_to_server(self, server)
+        if server:
+            runtime_env_agent_pb2_grpc.add_RuntimeEnvServiceServicer_to_server(
+                self, server
+            )
 
     @staticmethod
     def is_minimal_module():

@@ -13,6 +13,12 @@ from ray.serve.schema import (
     DeploymentStatusSchema,
     ServeApplicationSchema,
     ServeApplicationStatusSchema,
+)
+from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P4
+from ray.serve.config import AutoscalingConfig
+from ray.serve.common import DeploymentStatus, DeploymentStatusInfo
+from ray.serve.api import (
+    get_deployment_statuses,
     deployment_to_schema,
     schema_to_deployment,
     serve_application_to_schema,
@@ -20,10 +26,6 @@ from ray.serve.schema import (
     status_info_to_schema,
     serve_application_status_to_schema,
 )
-from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P4
-from ray.serve.config import AutoscalingConfig
-from ray.serve.common import DeploymentStatus, DeploymentStatusInfo
-from ray.serve.api import get_deployment_statuses
 from ray import serve
 
 
@@ -616,6 +618,28 @@ def test_serve_application_to_schema_to_serve_application():
     assert len(deployment_names) == 0
 
     serve.shutdown()
+
+
+@serve.deployment
+def decorated_f(*args):
+    return "reached decorated_f"
+
+
+def test_use_deployment_import_path():
+    """Ensure deployment func_or_class becomes import path when schematized."""
+
+    d = schema_to_deployment(deployment_to_schema(decorated_f))
+
+    assert isinstance(d.func_or_class, str)
+
+    # CI may change the parent path, so check only that the suffix matches.
+    assert d.func_or_class.endswith("ray.serve.tests.test_schema.decorated_f")
+
+    serve.start()
+    d.deploy()
+    assert (
+        requests.get("http://localhost:8000/decorated_f").text == "reached decorated_f"
+    )
 
 
 if __name__ == "__main__":

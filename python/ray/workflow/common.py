@@ -103,12 +103,19 @@ class WorkflowStaticRef:
     step_id: StepID
     # The ObjectRef of the output.
     ref: ObjectRef
+    # This tag indicates we should resolve the workflow like an ObjectRef, when
+    # included in the arguments of another workflow.
+    _resolve_like_object_ref_in_args: bool = False
 
     def __hash__(self):
         return hash(self.step_id + self.ref.hex())
 
     def __reduce__(self):
-        return WorkflowStaticRef, (self.step_id, _RefBypass(self.ref))
+        return WorkflowStaticRef, (
+            self.step_id,
+            _RefBypass(self.ref),
+            self._resolve_like_object_ref_in_args,
+        )
 
 
 @PublicAPI(stability="beta")
@@ -537,9 +544,7 @@ class Workflow(Generic[T]):
 @PublicAPI(stability="beta")
 class WorkflowNotFoundError(Exception):
     def __init__(self, workflow_id: str):
-        self.message = (
-            f"Workflow[id={workflow_id}] was referenced but " "doesn't exist."
-        )
+        self.message = f"Workflow[id={workflow_id}] was referenced but doesn't exist."
         super().__init__(self.message)
 
 
