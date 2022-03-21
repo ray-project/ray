@@ -16,7 +16,7 @@ class Storage(abc.ABC):
 
     Classes inheriting from this provide implementations for
     methods to upload, download, and delete files and
-    directories on external storage.
+    directories to and from external storage.
     """
 
     def upload(self, local_source: str, remote_target: str) -> None:
