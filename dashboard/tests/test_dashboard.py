@@ -713,7 +713,7 @@ def test_dashboard_does_not_depend_on_serve():
     """Check that the dashboard can start without Serve."""
 
     with pytest.raises(ImportError):
-        from ray import serve  # noqa F401
+        from ray import serve  # noqa: F401
 
     ray.init(include_dashboard=True)
 
