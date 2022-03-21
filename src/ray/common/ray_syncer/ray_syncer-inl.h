@@ -147,9 +147,9 @@ class ServerSyncConnection : public NodeSyncConnection {
   void HandleLongPollingRequest(grpc::ServerUnaryReactor *reactor,
                                 RaySyncMessages *response);
 
+ protected:
   void DoSend();
 
- protected:
   // These two fields are RPC related. When the server got long-polling requests,
   // these two fields will be set so that it can be used to send message.
   // After the message being sent, these two fields will be set to be empty again.
@@ -166,9 +166,9 @@ class ClientSyncConnection : public NodeSyncConnection {
                        const std::string &node_id,
                        std::shared_ptr<grpc::Channel> channel);
 
+ protected:
   void DoSend();
 
- protected:
   /// Start to send long-polling request to remote nodes.
   void StartLongPolling();
 

@@ -15,6 +15,13 @@
 // clang-format off
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include <grpc/grpc.h>
+#include <grpcpp/create_channel.h>
+#include <grpcpp/security/credentials.h>
+#include <grpcpp/security/server_credentials.h>
+#include <grpcpp/server.h>
+#include <grpcpp/server_builder.h>
+
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "mock/ray/common/ray_syncer/ray_syncer.h"
 // clang-format on
@@ -27,6 +34,14 @@ using ::testing::WithArg;
 
 namespace ray {
 namespace syncer {
+
+RaySyncMessage MakeMessage(RayComponentId cid, int64_t version, const NodeID &id) {
+  auto msg = RaySyncMessage();
+  msg.set_version(version);
+  msg.set_component_id(cid);
+  msg.set_node_id(id.Binary());
+  return msg;
+}
 
 class RaySyncerTest : public ::testing::Test {
  protected:
@@ -56,14 +71,6 @@ class RaySyncerTest : public ::testing::Test {
     });
     local_id_ = NodeID::FromRandom();
     syncer_ = std::make_unique<RaySyncer>(io_context_, local_id_.Binary());
-  }
-
-  RaySyncMessage MakeMessage(RayComponentId cid, int64_t version, const NodeID &id) {
-    auto msg = RaySyncMessage();
-    msg.set_version(version);
-    msg.set_component_id(cid);
-    msg.set_node_id(id.Binary());
-    return msg;
   }
 
   MockReporterInterface *GetReporter(RayComponentId cid) {
@@ -156,6 +163,36 @@ TEST_F(RaySyncerTest, NodeSyncConnection) {
             sync_connection
                 .node_versions_[from_node_id.Binary()][RayComponentId::RESOURCE_MANAGER]);
 }
+
+struct SyncerServer {
+  SyncerServer(std::string port) {
+    // Setup io context
+    thread = std::make_unique<std::thread>([this] {
+      boost::asio::io_context::work work(io_context);
+      io_context.run();
+    });
+    auto node_id = NodeID::FromRandom();
+    // Setup syncer and grpc server
+    syncer = std::make_unique<RaySyncer>(io_context, node_id.Binary());
+    auto server_address = std::string("0.0.0.0:") + port;
+    grpc::ServerBuilder builder;
+    service = std::make_unique<RaySyncerService>(*syncer);
+    builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
+    builder.RegisterService(service.get());
+    server = builder.BuildAndStart();
+  }
+  ~SyncerServer() {
+    io_context.stop();
+    thread->join();
+  }
+  std::unique_ptr<RaySyncerService> service;
+  std::unique_ptr<RaySyncer> syncer;
+  std::unique_ptr<grpc::Server> server;
+  std::unique_ptr<std::thread> thread;
+  instrumented_io_context io_context;
+};
+
+TEST(SyncerServerE2E, Basic) { auto server = SyncerServer("9990"); }
 
 }  // namespace syncer
 }  // namespace ray
