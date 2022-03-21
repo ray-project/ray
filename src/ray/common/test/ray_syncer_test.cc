@@ -252,17 +252,17 @@ std::shared_ptr<grpc::Channel> MakeChannel(std::string port) {
       "localhost:" + port, grpc::InsecureChannelCredentials(), argument);
 }
 
-TEST(SyncerServerE2E, Test1To1) {
+TEST(SyncerTest, Test1To1) {
   auto s1 = SyncerServer("19990");
   auto s2 = SyncerServer("19991");
 
 }
 
-TEST(SyncerServerE2E, Test1ToN) {
+TEST(SyncerTest, Test1ToN) {
   auto server = SyncerServer("9990");
 }
 
-TEST(SyncerServerE2E, TestMToN) {
+TEST(SyncerTest, TestMToN) {
   auto server = SyncerServer("9990");
 }
 
