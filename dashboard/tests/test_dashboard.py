@@ -86,6 +86,10 @@ def check_agent_register(raylet_proc, agent_pid):
         time.sleep(1)
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_DEFAULT") == 1,
+    reason="This test may not work for default installation.",
+)
 @pytest.mark.parametrize(
     "ray_start_with_dashboard",
     [{"_system_config": {"agent_register_timeout_ms": 5000}}],
@@ -138,6 +142,10 @@ def test_basic(ray_start_with_dashboard):
     assert agent_ports is not None
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_DEFAULT") == 1,
+    reason="This test may not work for default installation.",
+)
 def test_raylet_and_agent_share_fate(shutdown_only):
     """Test raylet and agent share fate."""
 
@@ -199,8 +207,8 @@ def test_dashboard_address(ray_start_with_dashboard):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test is not supposed to work for minimal installation.",
+    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == 1,
+    reason="This test is not supposed to work for minimal or default installation.",
 )
 def test_http_get(enable_test_module, ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
@@ -247,8 +255,8 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test is not supposed to work for minimal installation.",
+    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == 1,
+    reason="This test is not supposed to work for minimal or default installation.",
 )
 def test_class_method_route_table(enable_test_module):
     head_cls_list = dashboard_utils.get_all_modules(dashboard_utils.DashboardHeadModule)
@@ -334,8 +342,8 @@ def test_class_method_route_table(enable_test_module):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test is not supposed to work for minimal installation.",
+    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == 1,
+    reason="This test is not supposed to work for minimal or default installation.",
 )
 def test_async_loop_forever():
     counter = [0]
@@ -369,8 +377,8 @@ def test_async_loop_forever():
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test is not supposed to work for minimal installation.",
+    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == 1,
+    reason="This test is not supposed to work for minimal or default installation.",
 )
 def test_dashboard_module_decorator(enable_test_module):
     head_cls_list = dashboard_utils.get_all_modules(dashboard_utils.DashboardHeadModule)
@@ -400,8 +408,8 @@ print("success")
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test is not supposed to work for minimal installation.",
+    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == 1,
+    reason="This test is not supposed to work for minimal or default installation.",
 )
 def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
@@ -471,8 +479,8 @@ def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test is not supposed to work for minimal installation.",
+    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == 1,
+    reason="This test is not supposed to work for minimal or default installation.",
 )
 def test_get_cluster_status(ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
@@ -516,8 +524,8 @@ def test_get_cluster_status(ray_start_with_dashboard):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test is not supposed to work for minimal installation.",
+    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == 1,
+    reason="This test is not supposed to work for minimal or default installation.",
 )
 def test_immutable_types():
     d = {str(i): i for i in range(1000)}
@@ -596,8 +604,8 @@ def test_immutable_types():
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test is not supposed to work for minimal installation.",
+    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == 1,
+    reason="This test is not supposed to work for minimal or default installation.",
 )
 def test_http_proxy(enable_test_module, set_http_proxy, shutdown_only):
     address_info = ray.init(num_cpus=1, include_dashboard=True)
@@ -630,8 +638,8 @@ def test_http_proxy(enable_test_module, set_http_proxy, shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test is not supposed to work for minimal installation.",
+    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == 1,
+    reason="This test is not supposed to work for minimal or default installation.",
 )
 def test_dashboard_port_conflict(ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
@@ -680,8 +688,8 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test is not supposed to work for minimal installation.",
+    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == 1,
+    reason="This test is not supposed to work for minimal or default installation.",
 )
 def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
@@ -706,8 +714,8 @@ def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") != "1",
-    reason="This test only works for minimal installation.",
+    os.environ.get("RAY_DEFAULT") != "1",
+    reason="This test only works for default installation.",
 )
 def test_dashboard_does_not_depend_on_serve():
     """Check that the dashboard can start without Serve."""

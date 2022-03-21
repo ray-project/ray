@@ -279,6 +279,8 @@
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/travis/install-default.sh
+    - ./ci/travis/env_info.sh
     - bazel test --test_output=streamed --config=ci --test_env=RAY_DEFAULT=1 $(./scripts/bazel_export_options)
       python/ray/dashboard/test_dashboard
 
