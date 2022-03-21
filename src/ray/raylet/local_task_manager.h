@@ -94,20 +94,6 @@ class LocalTaskManager : public ILocalTaskManager {
   /// Queue task and schedule.
   void QueueAndScheduleTask(std::shared_ptr<internal::Work> work) override;
 
-  /// Queue task and schedule.
-  ///
-  /// \param task: The incoming task to be queued and scheduled.
-  /// \param grant_or_reject: True if we we should either grant or reject the request
-  ///                         but no spillback.
-  /// \param is_selected_based_on_locality : should schedule on local node if possible.
-  /// \param reply: The reply of the lease request.
-  /// \param send_reply_callback: The function used during dispatching.
-  void QueueAndScheduleTask(const RayTask &task,
-                            bool grant_or_reject,
-                            bool is_selected_based_on_locality,
-                            rpc::RequestWorkerLeaseReply *reply,
-                            rpc::SendReplyCallback send_reply_callback);
-
   // Schedule and dispatch tasks.
   void ScheduleAndDispatchTasks() override;
 

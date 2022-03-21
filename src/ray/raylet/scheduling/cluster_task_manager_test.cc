@@ -846,7 +846,6 @@ TEST_F(ClusterTaskManagerTest, TestGrantOrReject) {
   auto task3 = CreateTask({{ray::kCPU_ResourceLabel, 1}});
   task_manager_.QueueAndScheduleTask(
       task3, /*grant_or_reject=*/true, false, &local_reply, callback);
-
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 3);
   // The third task was dispatched.
@@ -892,7 +891,6 @@ TEST_F(ClusterTaskManagerTest, TestSpillAfterAssigned) {
   rpc::RequestWorkerLeaseReply reject_reply;
   task_manager_.QueueAndScheduleTask(
       task2, /*grant_or_reject=*/true, false, &reject_reply, callback);
-
   pool_.TriggerCallbacks();
 
   // The second task was rejected.
