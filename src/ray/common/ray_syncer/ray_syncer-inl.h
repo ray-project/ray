@@ -15,10 +15,10 @@
 namespace ray {
 namespace syncer {
 
-/// NodeStatus keeps track of the modules in the local nodes.
+/// NodeState keeps track of the modules in the local nodes.
 /// It contains the local components for receiving and reporting.
 /// It also keeps the raw messages receivers got.
-class NodeStatus {
+class NodeState {
  public:
   /// Set the local components.
   ///

@@ -94,8 +94,8 @@ class RaySyncerTest : public ::testing::Test {
   NodeID local_id_;
 };
 
-TEST_F(RaySyncerTest, NodeStatusGetSnapshot) {
-  auto node_status = std::make_unique<NodeStatus>();
+TEST_F(RaySyncerTest, NodeStateGetSnapshot) {
+  auto node_status = std::make_unique<NodeState>();
   node_status->SetComponents(RayComponentId::RESOURCE_MANAGER, nullptr, nullptr);
   ASSERT_EQ(std::nullopt, node_status->GetSnapshot(RayComponentId::RESOURCE_MANAGER));
   ASSERT_EQ(std::nullopt, node_status->GetSnapshot(RayComponentId::SCHEDULER));
@@ -115,8 +115,8 @@ TEST_F(RaySyncerTest, NodeStatusGetSnapshot) {
   ASSERT_EQ(std::nullopt, msg);
 }
 
-TEST_F(RaySyncerTest, NodeStatusConsume) {
-  auto node_status = std::make_unique<NodeStatus>();
+TEST_F(RaySyncerTest, NodeStateConsume) {
+  auto node_status = std::make_unique<NodeState>();
   node_status->SetComponents(RayComponentId::RESOURCE_MANAGER,
                              nullptr,
                              GetReceiver(RayComponentId::RESOURCE_MANAGER));

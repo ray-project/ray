@@ -18,9 +18,9 @@
 namespace ray {
 namespace syncer {
 
-bool NodeStatus::SetComponents(RayComponentId cid,
-                               const ReporterInterface *reporter,
-                               ReceiverInterface *receiver) {
+bool NodeState::SetComponents(RayComponentId cid,
+                              const ReporterInterface *reporter,
+                              ReceiverInterface *receiver) {
   if (cid < static_cast<RayComponentId>(kComponentArraySize) &&
       reporters_[cid] == nullptr && receivers_[cid] == nullptr) {
     reporters_[cid] = reporter;
@@ -31,7 +31,7 @@ bool NodeStatus::SetComponents(RayComponentId cid,
   }
 }
 
-std::optional<RaySyncMessage> NodeStatus::GetSnapshot(RayComponentId cid) {
+std::optional<RaySyncMessage> NodeState::GetSnapshot(RayComponentId cid) {
   if (reporters_[cid] == nullptr) {
     return std::nullopt;
   }
@@ -42,7 +42,7 @@ std::optional<RaySyncMessage> NodeStatus::GetSnapshot(RayComponentId cid) {
   return message;
 }
 
-bool NodeStatus::ConsumeMessage(std::shared_ptr<const RaySyncMessage> message) {
+bool NodeState::ConsumeMessage(std::shared_ptr<const RaySyncMessage> message) {
   auto &current = cluster_view_[message->node_id()][message->component_id()];
   // Check whether newer version of this message has been received.
   if (current && current->version() >= message->version()) {
@@ -202,7 +202,7 @@ void ServerSyncConnection::DoSend() {
 RaySyncer::RaySyncer(instrumented_io_context &io_context, const std::string &node_id)
     : io_context_(io_context),
       node_id_(node_id),
-      node_status_(std::make_unique<NodeStatus>()),
+      node_status_(std::make_unique<NodeState>()),
       timer_(io_context) {}
 
 RaySyncer::~RaySyncer() {}

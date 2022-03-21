@@ -71,7 +71,7 @@ template <typename T>
 using Array = std::array<T, kComponentArraySize>;
 
 // Forward declaration of internal structures
-class NodeStatus;
+class NodeState;
 class NodeSyncConnection;
 
 /// RaySyncer is an embedding service for component synchronization.
@@ -147,7 +147,7 @@ class RaySyncer {
   absl::flat_hash_map<std::string, std::unique_ptr<NodeSyncConnection>> sync_connections_;
 
   /// The local node status
-  std::unique_ptr<NodeStatus> node_status_;
+  std::unique_ptr<NodeState> node_status_;
 
   /// If the field is set to be true, it means, message generated or received
   /// is needed to be sent to other nodes.
