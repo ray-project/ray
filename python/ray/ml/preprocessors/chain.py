@@ -1,5 +1,4 @@
-import ray
-import ray.data
+from ray.data import Dataset
 from ray.ml.preprocessor import Preprocessor, DataBatchType
 
 
@@ -11,7 +10,7 @@ class Chain(Preprocessor):
     the ``transform`` of a preceding preprocessor.
 
     Args:
-        preprocessors: The preprocessors that should be executed sequentially.
+        preprocessors: The preprocessors that should be executed sequentially
     """
 
     _is_fittable = False
@@ -20,18 +19,18 @@ class Chain(Preprocessor):
         super().__init__()
         self.preprocessors = preprocessors
 
-    def _fit(self, ds: ray.data.Dataset) -> Preprocessor:
+    def _fit(self, ds: Dataset) -> Preprocessor:
         for preprocessor in self.preprocessors[:-1]:
             ds = preprocessor.fit_transform(ds)
         self.preprocessors[-1].fit(ds)
         return self
 
-    def fit_transform(self, ds: ray.data.Dataset) -> ray.data.Dataset:
+    def fit_transform(self, ds: Dataset) -> Dataset:
         for preprocessor in self.preprocessors:
             ds = preprocessor.fit_transform(ds)
         return ds
 
-    def _transform(self, ds: ray.data.Dataset) -> ray.data.Dataset:
+    def _transform(self, ds: Dataset) -> Dataset:
         for preprocessor in self.preprocessors:
             ds = preprocessor.transform(ds)
         return ds

@@ -46,7 +46,7 @@ Trainer
 Tuner
 ~~~~~
 
-autoclass:: ray.tune.tuner.Tuner
+.. autoclass:: ray.tune.tuner.Tuner
 
 .. automodule:: ray.tune.result_grid
     :members:
@@ -76,8 +76,8 @@ Serving
     :members:
 
 
-General utilities
-~~~~~~~~~~~~~~~~~
+Outputs
+~~~~~~~
 
 .. automodule:: ray.ml.checkpoint
     :members:
@@ -86,6 +86,9 @@ General utilities
 .. automodule:: ray.ml.result
     :members:
 
+
+Configs
+~~~~~~~
 
 .. automodule:: ray.ml.config
     :members:

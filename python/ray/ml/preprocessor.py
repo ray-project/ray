@@ -38,7 +38,7 @@ class Preprocessor(abc.ABC):
         Fitted state attributes will be directly set in the Preprocessor.
 
         Args:
-            dataset: Input dataset.
+            ray.data.dataset: Input dataset.
 
         Returns:
             Preprocessor: The fitted Preprocessor with state attributes.
@@ -56,8 +56,9 @@ class Preprocessor(abc.ABC):
 
         Args:
             dataset: Input Dataset.
+
         Returns:
-            Dataset: The transformed Dataset.
+            ray.data.Dataset: The transformed Dataset.
         """
         self.fit(dataset)
         return self.transform(dataset)
@@ -67,8 +68,9 @@ class Preprocessor(abc.ABC):
 
         Args:
             dataset (Dataset): Input Dataset.
+
         Returns:
-            Dataset: The transformed Dataset.
+            ray.data.Dataset: The transformed Dataset.
         """
         if self._is_fittable and not self.check_is_fitted():
             raise PreprocessorNotFittedException(
@@ -81,6 +83,7 @@ class Preprocessor(abc.ABC):
 
         Args:
             df (DataBatchType): Input data batch.
+
         Returns:
             DataBatchType: The transformed data batch.
         """
