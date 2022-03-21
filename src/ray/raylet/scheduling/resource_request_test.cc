@@ -143,7 +143,7 @@ TEST_F(TaskResourceInstancesTest, TestBasic) {
   ASSERT_EQ(task_resource_instances.Get(custom_id1), FixedPointVectorFromDouble({1}));
 
   // Test Clear
-  task_resource_instances.Clear(custom_id1);
+  task_resource_instances.Remove(custom_id1);
   ASSERT_FALSE(task_resource_instances.Has(custom_id1));
 
   // Test ResourceIds
