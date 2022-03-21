@@ -133,7 +133,11 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
   local_node_resources[ray::kMemory_ResourceLabel] = 128;
 
   auto scheduler = std::make_shared<ClusterResourceScheduler>(
-      scheduling::NodeID(id), local_node_resources, gcs_client);
+      scheduling::NodeID(id),
+      local_node_resources,
+      /*is_node_available_fn*/ [&gcs_client](scheduling::NodeID node_id) {
+        return gcs_client.Nodes().Get(NodeID::FromBinary(node_id.Binary())) != nullptr;
+      });
 
   return scheduler;
 }

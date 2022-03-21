@@ -80,10 +80,10 @@ if [ $BUILD_DEV ]; then
     git rev-parse HEAD > ./docker/development/git-rev
     git archive -o ./docker/development/ray.tar "$(git rev-parse HEAD)"
     if [ $OUTPUT_SHA ]; then
-        IMAGE_SHA=$(docker build --no-cache -q -t rayproject/development docker/development)
+        IMAGE_SHA=$(docker build $NO_CACHE -q -t rayproject/development docker/development)
         echo "rayproject/development:latest SHA:$IMAGE_SHA"
     else
-        docker build --no-cache -t rayproject/development docker/development
+        docker build $NO_CACHE -t rayproject/development docker/development
     fi
     rm ./docker/development/ray.tar ./docker/development/git-rev
 fi

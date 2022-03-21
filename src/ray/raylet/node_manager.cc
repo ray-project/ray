@@ -333,7 +333,12 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
           scheduling::NodeID(self_node_id_.Binary()),
           local_resources.GetTotalResources().GetResourceMap(),
-          *gcs_client_,
+          /*is_node_available_fn*/
+          [this](scheduling::NodeID node_id) {
+            return gcs_client_->Nodes().Get(NodeID::FromBinary(node_id.Binary())) !=
+                   nullptr;
+          },
+          /*get_used_object_store_memory*/
           [this]() {
             if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
               return local_object_manager_.GetPinnedBytes();
@@ -341,6 +346,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
               return object_manager_.GetUsedMemory();
             }
           },
+          /*get_pull_manager_at_capacity*/
           [this]() { return object_manager_.PullManagerHasPullsQueued(); }));
 
   auto get_node_info_func = [this](const NodeID &node_id) {

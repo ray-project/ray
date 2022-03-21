@@ -34,7 +34,7 @@ GcsBasedActorScheduler::GcsBasedActorScheduler(
     instrumented_io_context &io_context,
     GcsActorTable &gcs_actor_table,
     const GcsNodeManager &gcs_node_manager,
-    std::shared_ptr<GcsResourceScheduler> gcs_resource_scheduler,
+    std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
     GcsActorSchedulerFailureCallback schedule_failure_handler,
     GcsActorSchedulerSuccessCallback schedule_success_handler,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
@@ -48,7 +48,7 @@ GcsBasedActorScheduler::GcsBasedActorScheduler(
                         schedule_success_handler,
                         raylet_client_pool,
                         client_factory),
-      gcs_resource_scheduler_(std::move(gcs_resource_scheduler)),
+      cluster_resource_scheduler_(std::move(cluster_resource_scheduler)),
       normal_task_resources_changed_callback_(normal_task_resources_changed_callback) {}
 
 NodeID GcsBasedActorScheduler::SelectNode(std::shared_ptr<GcsActor> actor) {
@@ -91,22 +91,22 @@ GcsBasedActorScheduler::AllocateActorWorkerAssignment(
 scheduling::NodeID GcsBasedActorScheduler::AllocateResources(
     const ResourceRequest &required_placement_resources,
     const ResourceRequest &required_resources) {
-  auto selected_nodes =
-      gcs_resource_scheduler_
-          ->Schedule({required_placement_resources}, SchedulingType::SPREAD)
-          .second;
+  auto scheduling_result =
+      cluster_resource_scheduler_->Schedule({required_placement_resources}, SchedulingType::SPREAD);
 
-  if (selected_nodes.size() == 0) {
+  if (!scheduling_result.status.IsSuccess()) {
     RAY_LOG(INFO)
         << "Scheduling resources failed, schedule type = SchedulingType::SPREAD";
     return scheduling::NodeID::Nil();
   }
 
+  const auto &selected_nodes = scheduling_result.selected_nodes;
   RAY_CHECK(selected_nodes.size() == 1);
 
   auto selected_node_id = selected_nodes[0];
   if (!selected_node_id.IsNil()) {
-    auto &cluster_resource_manager = gcs_resource_scheduler_->GetClusterResourceManager();
+    auto &cluster_resource_manager =
+        cluster_resource_scheduler_->GetClusterResourceManager();
     // Acquire the resources from the selected node.
     RAY_CHECK(cluster_resource_manager.SubtractNodeAvailableResources(
         selected_node_id, required_resources));
@@ -117,7 +117,8 @@ scheduling::NodeID GcsBasedActorScheduler::AllocateResources(
 
 scheduling::NodeID GcsBasedActorScheduler::GetHighestScoreNodeResource(
     const ResourceRequest &required_resources) const {
-  auto &cluster_resource_manager = gcs_resource_scheduler_->GetClusterResourceManager();
+  auto &cluster_resource_manager =
+      cluster_resource_scheduler_->GetClusterResourceManager();
   const auto &resource_view = cluster_resource_manager.GetResourceView();
 
   /// Get the highest score node
@@ -139,7 +140,8 @@ scheduling::NodeID GcsBasedActorScheduler::GetHighestScoreNodeResource(
 
 void GcsBasedActorScheduler::WarnResourceAllocationFailure(
     const TaskSpecification &task_spec, const ResourceRequest &required_resources) const {
-  auto &cluster_resource_manager = gcs_resource_scheduler_->GetClusterResourceManager();
+  auto &cluster_resource_manager =
+      cluster_resource_scheduler_->GetClusterResourceManager();
   auto scheduling_node_id = GetHighestScoreNodeResource(required_resources);
   const NodeResources *node_resources = nullptr;
   if (!scheduling_node_id.IsNil()) {
@@ -235,7 +237,8 @@ void GcsBasedActorScheduler::HandleWorkerLeaseRejectedReply(
     std::shared_ptr<GcsActor> actor, const rpc::RequestWorkerLeaseReply &reply) {
   // The request was rejected because of insufficient resources.
   auto node_id = actor->GetNodeID();
-  auto &cluster_resource_manager = gcs_resource_scheduler_->GetClusterResourceManager();
+  auto &cluster_resource_manager =
+      cluster_resource_scheduler_->GetClusterResourceManager();
   if (normal_task_resources_changed_callback_) {
     normal_task_resources_changed_callback_(node_id, reply.resources_data());
   }
@@ -262,7 +265,9 @@ void GcsBasedActorScheduler::ResetActorWorkerAssignment(GcsActor *actor) {
   if (!actor->GetActorWorkerAssignment()) {
     return;
   }
-  auto &cluster_resource_manager = gcs_resource_scheduler_->GetClusterResourceManager();
+
+  auto &cluster_resource_manager =
+      cluster_resource_scheduler_->GetClusterResourceManager();
   if (cluster_resource_manager.AddNodeAvailableResources(
           scheduling::NodeID(actor->GetActorWorkerAssignment()->GetNodeID().Binary()),
           actor->GetActorWorkerAssignment()->GetResources())) {

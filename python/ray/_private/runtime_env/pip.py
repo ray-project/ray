@@ -333,7 +333,7 @@ class PipProcessor:
                 # Check python environment for conflicts.
                 await self._pip_check(
                     path,
-                    self._pip_config.get("pip_check", True),
+                    self._pip_config.get("pip_check", False),
                     exec_cwd,
                     self._pip_env,
                     logger,

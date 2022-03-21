@@ -9,6 +9,7 @@ from ray.ml.result import Result
 from ray.ml.config import RunConfig, ScalingConfig, ScalingConfigDataClass
 from ray.ml.constants import TRAIN_DATASET_KEY
 from ray.tune import Trainable
+from ray.tune.error import TuneError
 from ray.tune.function_runner import wrap_function
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
@@ -82,7 +83,8 @@ class Trainer(abc.ABC):
                         # preprocessed by self.preprocessor
                         dataset = self.datasets["train"]
 
-                        torch_ds = dataset.to_torch()
+                        torch_ds = dataset.to_torch(label_column="y")
+                        loss_fn = torch.nn.MSELoss()
 
                         for epoch_idx in range(10):
                             loss = 0
@@ -90,7 +92,7 @@ class Trainer(abc.ABC):
                             for X, y in iter(torch_ds):
                                 # Compute prediction error
                                 pred = self.model(X)
-                                batch_loss = torch.nn.MSELoss(pred, y)
+                                batch_loss = loss_fn(pred, y.float())
 
                                 # Backpropagation
                                 self.optimizer.zero_grad()
@@ -114,7 +116,8 @@ class Trainer(abc.ABC):
 
                 import ray
 
-                train_dataset = ray.data.from_items([1, 2, 3])
+                train_dataset = ray.data.from_items(
+                    [{"x": i, "y": i} for i in range(3)])
                 my_trainer = MyPytorchTrainer(datasets={"train": train_dataset})
                 result = my_trainer.fit()
 
@@ -140,7 +143,7 @@ class Trainer(abc.ABC):
     ):
 
         self.scaling_config = scaling_config if scaling_config else {}
-        self.run_config = run_config if run_config else {}
+        self.run_config = run_config if run_config else RunConfig()
         self.datasets = datasets if datasets else {}
         self.preprocessor = preprocessor
         self.resume_from_checkpoint = resume_from_checkpoint
@@ -241,30 +244,20 @@ class Trainer(abc.ABC):
             TrainingFailedError: If any failures during the execution of
             ``self.as_trainable()``.
         """
+        from ray.tune.tuner import Tuner
+
         trainable = self.as_trainable()
 
-        from ray import tune
-        from ray.tune import TuneError
-
-        # TODO(amog/xwjiang): Replace with Tuner and pass through run_config. Also add
-        #  test for run_config.
+        tuner = Tuner(trainable=trainable, run_config=self.run_config)
+        result_grid = tuner.fit()
+        assert len(result_grid) == 1
         try:
-            analysis = tune.run(run_or_experiment=trainable)
+            result = result_grid[0]
+            if result.error:
+                raise result.error
         except TuneError:
             raise TrainingFailedError
-        else:
-            assert len(analysis.trials) == 1
-
-            trial = analysis.trials[0]
-
-            result = Result(
-                metrics=trial.last_result,
-                checkpoint=Checkpoint.from_directory(trial.checkpoint.value)
-                if trial.checkpoint.value
-                else None,
-            )
-
-            return result
+        return result
 
     def as_trainable(self) -> Type[Trainable]:
         """Convert self to a ``tune.Trainable`` class."""
