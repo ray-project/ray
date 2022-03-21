@@ -1882,7 +1882,7 @@ def stream_log(api_endpoint, node_id, log, lines):
     asyncio.run(main())
 
 
-def format_print_logs(api_endpoint, node_id, links):
+def format_print_logs_index(api_endpoint, node_id, links):
     def print_section(name, key):
         if len(links[key]) > 0:
             print(f"\n{name}")
@@ -2017,7 +2017,7 @@ def logs(
         return lines
 
     if actor_id:
-        format_print_logs(ray_actor_log(actor_id))
+        format_print_logs_index(ray_actor_log(actor_id))
     elif found_many:
         print("Warning: More than one log file matches your query. Please add")
         print("additional file name substrings, flags or specify the full filename")
@@ -2032,7 +2032,7 @@ def logs(
                 )
                 break
             print(f"\nNode ID: {node_id}")
-            format_print_logs(api_endpoint, node_id, logs)
+            format_print_logs_index(api_endpoint, node_id, logs)
 
     elif watch:
         if lines is None:
