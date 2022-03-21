@@ -24,7 +24,7 @@ except ImportError:
 
 WANDB_ENV_VAR = "WANDB_API_KEY"
 _WANDB_QUEUE_END = (None,)
-_VALID_TYPES = (Number, wandb.data_types.Video, wandb.data_types.Image)
+_VALID_TYPES = (Number, wandb.data_types.Video, wandb.data_types.Image, wandb.data_types.Histogram)
 _VALID_ITERABLE_TYPES = (wandb.data_types.Video, wandb.data_types.Image)
 
 
