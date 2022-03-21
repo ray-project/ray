@@ -444,9 +444,6 @@ class ServeController:
 
         Returns:
             DeploymentRoute's protobuf
-
-        Raises:
-            KeyError if the deployment doesn't exist.
         """
         from ray.serve.generated.serve_pb2 import DeploymentRouteList, DeploymentRoute
 
