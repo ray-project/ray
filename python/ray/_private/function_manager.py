@@ -417,7 +417,6 @@ class FunctionActorManager:
             # Try importing in case the worker did not get notified, or the
             # importer thread did not run.
             self._worker.import_thread._do_importing()
-            time.sleep(0.001)
 
     def _publish_actor_class_to_key(self, key, actor_class_info):
         """Push an actor class definition to Redis.
@@ -517,16 +516,9 @@ class FunctionActorManager:
                 actor_class = self._load_actor_class_from_local(
                     actor_creation_function_descriptor
                 )
-                # If the actor is unable to be loaded
-                # from local, try to load it
-                # from GCS even if load_code_from_local is set True
-                if actor_class is None:
-                    actor_class = self._load_actor_class_from_gcs(
-                        job_id, actor_creation_function_descriptor
-                    )
-
-            else:
-                # Load actor class from GCS.
+            # If the actor is unable to be loaded from local, try to load it
+            # from GCS even if load_code_from_local is set True
+            if actor_class is None:
                 actor_class = self._load_actor_class_from_gcs(
                     job_id, actor_creation_function_descriptor
                 )
@@ -622,15 +614,9 @@ class FunctionActorManager:
             # up in an infinite loop here, but we should push an error to
             # the driver if too much time is spent here.
             while key not in self.imported_actor_classes:
-                try:
-                    # If we're in the process of deserializing an ActorHandle
-                    # and we hold the function_manager lock, we may be blocking
-                    # the import_thread from loading the actor class. Use wait
-                    # to temporarily yield control to the import thread.
-                    self.cv.wait()
-                except RuntimeError:
-                    # We don't hold the function_manager lock, just sleep
-                    time.sleep(0.001)
+                # Try importing in case the worker did not get notified, or the
+                # importer thread did not run.
+                self._worker.import_thread._do_importing()
 
         # Fetch raw data from GCS.
         vals = self._worker.gcs_client.internal_kv_get(key, KV_NAMESPACE_FUNCTION_TABLE)

@@ -321,7 +321,7 @@ RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
 /// Whether to start a background thread to import Python dependencies eagerly.
 /// When set to false, Python dependencies will still be imported, only when
 /// they are needed.
-RAY_CONFIG(bool, start_python_importer_thread, true)
+RAY_CONFIG(bool, start_python_importer_thread, false)
 
 /// Determines if forking in Ray actors / tasks are supported.
 /// Note that this only enables forking in workers, but not drivers.
