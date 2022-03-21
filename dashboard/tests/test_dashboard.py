@@ -87,7 +87,7 @@ def check_agent_register(raylet_proc, agent_pid):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_DEFAULT") == 1,
+    os.environ.get("RAY_DEFAULT") == "1",
     reason="This test may not work for default installation.",
 )
 @pytest.mark.parametrize(
@@ -143,7 +143,7 @@ def test_basic(ray_start_with_dashboard):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_DEFAULT") == 1,
+    os.environ.get("RAY_DEFAULT") == "1",
     reason="This test may not work for default installation.",
 )
 def test_raylet_and_agent_share_fate(shutdown_only):
@@ -184,6 +184,10 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     raylet_proc.wait(5)
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_DEFAULT") == "1",
+    reason="This test may not work with default installation.",
+)
 @pytest.mark.parametrize(
     "ray_start_with_dashboard",
     [
@@ -207,7 +211,7 @@ def test_dashboard_address(ray_start_with_dashboard):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == 1,
+    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
     reason="This test is not supposed to work for minimal or default installation.",
 )
 def test_http_get(enable_test_module, ray_start_with_dashboard):
@@ -255,7 +259,7 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == 1,
+    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
     reason="This test is not supposed to work for minimal or default installation.",
 )
 def test_class_method_route_table(enable_test_module):
@@ -342,7 +346,7 @@ def test_class_method_route_table(enable_test_module):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == 1,
+    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
     reason="This test is not supposed to work for minimal or default installation.",
 )
 def test_async_loop_forever():
@@ -377,7 +381,7 @@ def test_async_loop_forever():
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == 1,
+    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
     reason="This test is not supposed to work for minimal or default installation.",
 )
 def test_dashboard_module_decorator(enable_test_module):
@@ -408,7 +412,7 @@ print("success")
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == 1,
+    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
     reason="This test is not supposed to work for minimal or default installation.",
 )
 def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
@@ -479,7 +483,7 @@ def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == 1,
+    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
     reason="This test is not supposed to work for minimal or default installation.",
 )
 def test_get_cluster_status(ray_start_with_dashboard):
@@ -524,7 +528,7 @@ def test_get_cluster_status(ray_start_with_dashboard):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == 1,
+    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
     reason="This test is not supposed to work for minimal or default installation.",
 )
 def test_immutable_types():
@@ -604,7 +608,7 @@ def test_immutable_types():
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == 1,
+    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
     reason="This test is not supposed to work for minimal or default installation.",
 )
 def test_http_proxy(enable_test_module, set_http_proxy, shutdown_only):
@@ -638,7 +642,7 @@ def test_http_proxy(enable_test_module, set_http_proxy, shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == 1,
+    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
     reason="This test is not supposed to work for minimal or default installation.",
 )
 def test_dashboard_port_conflict(ray_start_with_dashboard):
@@ -688,7 +692,7 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == 1,
+    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
     reason="This test is not supposed to work for minimal or default installation.",
 )
 def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
