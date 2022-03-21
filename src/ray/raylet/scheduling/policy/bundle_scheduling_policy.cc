@@ -17,7 +17,34 @@
 namespace ray {
 namespace raylet_scheduling_policy {
 
+SchedulingResult BundlePackSchedulingPolicy::Schedule(
+    const std::vector<const ResourceRequest *> &resource_request_list,
+    SchedulingOptions options,
+    SchedulingContext *context) {
+  SchedulingResult result;
+  // TODO(Shanly): To be implemented.
+  return result;
+}
+
 SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
+    const std::vector<const ResourceRequest *> &resource_request_list,
+    SchedulingOptions options,
+    SchedulingContext *context) {
+  SchedulingResult result;
+  // TODO(Shanly): To be implemented.
+  return result;
+}
+
+SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
+    const std::vector<const ResourceRequest *> &resource_request_list,
+    SchedulingOptions options,
+    SchedulingContext *context) {
+  SchedulingResult result;
+  // TODO(Shanly): To be implemented.
+  return result;
+}
+
+SchedulingResult BundleStrictSpreadSchedulingPolicy::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
     SchedulingOptions options,
     SchedulingContext *context) {

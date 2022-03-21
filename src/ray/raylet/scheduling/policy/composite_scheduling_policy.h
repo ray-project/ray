@@ -16,10 +16,7 @@
 
 #include <vector>
 
-#include "ray/raylet/scheduling/policy/bundle_pack_scheduling_policy.h"
-#include "ray/raylet/scheduling/policy/bundle_spread_scheduling_policy.h"
-#include "ray/raylet/scheduling/policy/bundle_strict_pack_scheduling_policy.h"
-#include "ray/raylet/scheduling/policy/bundle_strict_spread_scheduling_policy.h"
+#include "ray/raylet/scheduling/policy/bundle_scheduling_policy.h"
 #include "ray/raylet/scheduling/policy/hybrid_scheduling_policy.h"
 #include "ray/raylet/scheduling/policy/random_scheduling_policy.h"
 #include "ray/raylet/scheduling/policy/spread_scheduling_policy.h"
@@ -54,7 +51,10 @@ class CompositeSchedulingPolicy : public ISchedulingPolicy {
                                      is_node_available,
                                      add_node_available_resources_fn,
                                      subtract_node_available_resources_fn),
-        bundle_strict_pack_policy_(nodes, is_node_available) {}
+        bundle_strict_pack_policy_(nodes,
+                                   is_node_available,
+                                   add_node_available_resources_fn,
+                                   subtract_node_available_resources_fn) {}
 
   scheduling::NodeID Schedule(const ResourceRequest &resource_request,
                               SchedulingOptions options) override;

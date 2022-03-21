@@ -22,24 +22,70 @@
 namespace ray {
 namespace raylet_scheduling_policy {
 
-class BundleSpreadSchedulingPolicy : public ISchedulingPolicy {
+class BundleSchedulingPolicy : public ISchedulingPolicy {
  public:
-  explicit BundleSpreadSchedulingPolicy(
+  explicit BundleSchedulingPolicy(
       const absl::flat_hash_map<scheduling::NodeID, Node> &nodes,
-      std::function<bool(scheduling::NodeID)> is_node_available)
-      : nodes_(nodes), is_node_available_(is_node_available) {}
+      std::function<bool(scheduling::NodeID)> is_node_available,
+      std::function<bool(scheduling::NodeID, const ResourceRequest &)>
+          add_node_available_resources_fn,
+      std::function<bool(scheduling::NodeID, const ResourceRequest &)>
+          subtract_node_available_resources_fn)
+      : nodes_(nodes),
+        is_node_available_(is_node_available),
+        add_node_available_resources_fn_(add_node_available_resources_fn),
+        subtract_node_available_resources_fn_(subtract_node_available_resources_fn) {}
 
-  SchedulingResult Schedule(
-      const std::vector<const ResourceRequest *> &resource_request_list,
-      SchedulingOptions options,
-      SchedulingContext *context) override;
-
+ protected:
   /// List of nodes in the clusters and their resources organized as a map.
   /// The key of the map is the node ID.
   const absl::flat_hash_map<scheduling::NodeID, Node> &nodes_;
   /// Function Checks if node is alive.
   std::function<bool(scheduling::NodeID)> is_node_available_;
+  std::function<bool(scheduling::NodeID, const ResourceRequest &)>
+      add_node_available_resources_fn_;
+  std::function<bool(scheduling::NodeID, const ResourceRequest &)>
+      subtract_node_available_resources_fn_;
 };
 
+class BundlePackSchedulingPolicy : public BundleSchedulingPolicy {
+ public:
+  using BundleSchedulingPolicy::BundleSchedulingPolicy;
+
+  SchedulingResult Schedule(
+      const std::vector<const ResourceRequest *> &resource_request_list,
+      SchedulingOptions options,
+      SchedulingContext *context) override;
+};
+
+class BundleSpreadSchedulingPolicy : public BundleSchedulingPolicy {
+ public:
+  using BundleSchedulingPolicy::BundleSchedulingPolicy;
+
+  SchedulingResult Schedule(
+      const std::vector<const ResourceRequest *> &resource_request_list,
+      SchedulingOptions options,
+      SchedulingContext *context) override;
+};
+
+class BundleStrictPackSchedulingPolicy : public BundleSchedulingPolicy {
+ public:
+  using BundleSchedulingPolicy::BundleSchedulingPolicy;
+
+  SchedulingResult Schedule(
+      const std::vector<const ResourceRequest *> &resource_request_list,
+      SchedulingOptions options,
+      SchedulingContext *context) override;
+};
+
+class BundleStrictSpreadSchedulingPolicy : public BundleSchedulingPolicy {
+ public:
+  using BundleSchedulingPolicy::BundleSchedulingPolicy;
+
+  SchedulingResult Schedule(
+      const std::vector<const ResourceRequest *> &resource_request_list,
+      SchedulingOptions options,
+      SchedulingContext *context) override;
+};
 }  // namespace raylet_scheduling_policy
 }  // namespace ray
