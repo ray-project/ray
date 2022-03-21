@@ -9,6 +9,22 @@ from typing import List
 logger = logging.getLogger(__name__)
 
 
+def wait_for_crd(crd_name: str, tries=60, backoff_s=5):
+    """CRD creation can take a bit of time after the client request.
+    This function waits until the crd with the provided name is registered.
+    """
+    for i in range(tries):
+        get_crd_output = subprocess.check_output(["kubectl", "get", "crd"]).decode()
+        if crd_name in get_crd_output:
+            logger.info(f"Confirmed existence of CRD {crd_name}.")
+            return
+        elif i < tries - 1:
+            logger.info(f"Still waiting to register CRD {crd_name}")
+            time.sleep(backoff_s)
+        else:
+            raise Exception(f"Failed to register CRD {crd_name}")
+
+
 def wait_for_pods(goal_num_pods: int, namespace: str, tries=60, backoff_s=5) -> None:
     """Wait for the number of pods in the `namespace` to be exactly `num_pods`.
 
@@ -26,7 +42,6 @@ def wait_for_pods(goal_num_pods: int, namespace: str, tries=60, backoff_s=5) -> 
                 f" Waiting to have {goal_num_pods} pods."
             )
             time.sleep(backoff_s)
-            continue
         else:
             raise Exception(
                 f"Failed to scale to {goal_num_pods} pod(s) in namespace {namespace}."

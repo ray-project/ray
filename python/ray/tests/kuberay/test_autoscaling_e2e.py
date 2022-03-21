@@ -15,10 +15,14 @@ from ray.tests.kuberay.utils import (
     wait_for_pods,
     wait_for_pod_to_start,
     wait_for_ray_health,
+    wait_for_crd,
 )
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="[%(levelname)s %(asctime)s] " "%(filename)s: %(lineno)d  " "%(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(levelname)s %(asctime)s] " "%(filename)s: %(lineno)d  " "%(message)s",
+)
 
 # This image will be used for both the autoscaler and Ray nodes.
 RAY_IMAGE = os.environ.get("RAY_IMAGE", "rayproject/ray:413fe0")
@@ -71,7 +75,8 @@ class KubeRayAutoscalingTest(unittest.TestCase):
                 "ray/python/ray/autoscaler/kuberay/kuberay-autoscaler-rbac.yaml",
             ]
         )
-        self.ray_cr_config_file = self._get_ray_cr_config_file()
+        logger.info("Making sure RayCluster CRD has been registered.")
+        wait_for_crd("rayclusters.ray.io")
 
     def _get_ray_cr_config_file(self) -> str:
         """Replace Ray node and autoscaler images in example CR with the test image.
