@@ -15,6 +15,7 @@ def my_resolver(a: int):
     return a
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Import behavior different.")
 def test_loading_check():
     with pytest.raises(ValueError, match="callable"):
         load_input_schema(["not function"])

@@ -344,6 +344,7 @@ class Trial:
         self.error_file = None
         self.error_msg = None
         self.trial_name_creator = trial_name_creator
+        self.trial_dirname_creator = trial_dirname_creator
         self.custom_trial_name = None
         self.custom_dirname = None
 
@@ -513,6 +514,7 @@ class Trial:
             export_formats=self.export_formats,
             restore_path=self.restore_path,
             trial_name_creator=self.trial_name_creator,
+            trial_dirname_creator=self.trial_dirname_creator,
             log_to_file=self.log_to_file,
             max_failures=self.max_failures,
         )

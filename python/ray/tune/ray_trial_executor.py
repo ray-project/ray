@@ -701,6 +701,9 @@ class RayTrialExecutor(TrialExecutor):
         else:
             logger.debug("Trial %s: Attempting restore from %s", trial, value)
             if trial.uses_cloud_checkpointing or not trial.sync_on_checkpoint:
+                # If using cloud checkpointing, trial will get cp from cloud.
+                # If not syncing to driver, assume it has access to the cp
+                # on the local fs.
                 with self._change_working_directory(trial):
                     remote = trial.runner.restore.remote(value)
             elif trial.sync_on_checkpoint:

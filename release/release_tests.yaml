@@ -1401,7 +1401,7 @@
     script: python workloads/many_drivers.py --iteration-num=4000
     long_running: true
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
