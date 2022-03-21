@@ -1960,13 +1960,6 @@ def format_print_logs(api_endpoint, node_id, links):
     default=None,
     help="Number of lines to tail from log. -1 indicates fetching the whole file.",
 )
-# @click.option(
-#     "--interval",
-#     required=False,
-#     type=int,
-#     default=None,
-#     help="Interval at which to refresh logs",
-# )
 def logs(
     filters,
     filename: str,
@@ -1987,35 +1980,34 @@ def logs(
 
     ray logs worker .out <worker-id>
     """
-    # if interval is not None and not watch:
-    #     raise Exception("--interval should only be used with --watch")
 
     found_many = False
     if filename is not None and node_id is not None:
         api_endpoint = ray.internal.internal_api._get_dashboard_url()
     else:
-        # Try to match a single log file. If we can't, we output the index.
+        # Try to match a single log file.
+        # If we find more than one match, we output the index.
         filters = ",".join(filters) + (f",{filename}" if filename is not None else "")
         api_endpoint, logs_dict = ray_log(ip_address, node_id, filters)
-        if len(logs_dict) != 1:
-            if len(logs_dict) == 0:
-                raise Exception("Could not find node")
-            else:
-                found_many = True
-        else:
-            node_id, logs = next(iter(logs_dict.items()))
-            log = None
-            for log_list in logs.values():
-                if len(log_list) > 0:
-                    if log is not None or len(log_list) != 1:
-                        found_many = True
-                    log = log_list[0]
-            if log is None:
-                raise Exception(
-                    "Could not find any log file. Please ammend your query."
-                    " Check --help for more."
-                )
-            filename = log
+        if len(logs_dict) == 0:
+            raise Exception("Could not find node.")
+        if filename is None:
+            for node_id, logs in logs_dict.items():
+                log = None
+                for log_list in logs.values():
+                    if len(log_list) > 0:
+                        if log is not None or len(log_list) != 1:
+                            found_many = True
+                            break
+                        log = log_list[0]
+                if found_many:
+                    break
+                elif log is None:
+                    raise Exception(
+                        "Could not find any log file. Please ammend your query. "
+                        "Check --help for more."
+                    )
+                filename = log
 
     def default_lines(lines):
         print(
@@ -2028,8 +2020,8 @@ def logs(
         format_print_logs(ray_actor_log(actor_id))
     elif found_many:
         print("Warning: More than one log file matches your query. Please add")
-        print("additional filters, flags, file extensions or specify the full")
-        print("filename with -f to narrow down the search results to a single file.")
+        print("additional file name substrings, flags or specify the full filename")
+        print("with -f to narrow down the search results to a single file.")
         print("Check --help for more.")
 
         MAX_NODES = 10
