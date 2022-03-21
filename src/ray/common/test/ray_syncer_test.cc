@@ -215,7 +215,6 @@ struct SyncerServer {
           .WillRepeatedly(WithArg<0>(Invoke(take_snapshot)));
       syncer->Register(
           static_cast<RayComponentId>(cid), reporter.get(), receivers[cid].get());
-      ++cid;
     }
   }
 
