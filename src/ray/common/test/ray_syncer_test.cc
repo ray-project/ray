@@ -20,9 +20,13 @@
 // clang-format on
 
 using namespace ray::syncer;
+using ray::NodeID;
 using ::testing::_;
 using ::testing::Invoke;
 using ::testing::WithArg;
+
+namespace ray {
+namespace syncer {
 
 class RaySyncerTest : public ::testing::Test {
  protected:
@@ -32,7 +36,7 @@ class RaySyncerTest : public ::testing::Test {
       auto &reporter = reporters_[cid];
       reporter = std::make_unique<MockReporterInterface>();
       auto take_snapshot =
-          [this, cid](uint64_t curr_version) mutable -> std::optional<RaySyncMessage> {
+          [this, cid](int64_t curr_version) mutable -> std::optional<RaySyncMessage> {
         if (curr_version >= local_versions_[cid]) {
           return std::nullopt;
         } else {
@@ -46,6 +50,20 @@ class RaySyncerTest : public ::testing::Test {
           .WillRepeatedly(WithArg<0>(Invoke(take_snapshot)));
       ++cid;
     }
+    thread_ = std::make_unique<std::thread>([this]() {
+      boost::asio::io_context::work work(io_context_);
+      io_context_.run();
+    });
+    local_id_ = NodeID::FromRandom();
+    syncer_ = std::make_unique<RaySyncer>(io_context_, local_id_.Binary());
+  }
+
+  RaySyncMessage MakeMessage(RayComponentId cid, int64_t version, const NodeID &id) {
+    auto msg = RaySyncMessage();
+    msg.set_version(version);
+    msg.set_component_id(cid);
+    msg.set_node_id(id.Binary());
+    return msg;
   }
 
   MockReporterInterface *GetReporter(RayComponentId cid) {
@@ -56,15 +74,24 @@ class RaySyncerTest : public ::testing::Test {
     return receivers_[static_cast<size_t>(cid)].get();
   }
 
-  uint64_t &LocalVersion(RayComponentId cid) {
+  int64_t &LocalVersion(RayComponentId cid) {
     return local_versions_[static_cast<size_t>(cid)];
   }
 
-  void TearDown() override {}
+  void TearDown() override {
+    io_context_.stop();
+    thread_->join();
+  }
 
-  Array<uint64_t> local_versions_ = {1};
+  Array<int64_t> local_versions_ = {0};
   Array<std::unique_ptr<MockReporterInterface>> reporters_ = {nullptr};
   Array<std::unique_ptr<MockReceiverInterface>> receivers_ = {nullptr};
+
+  instrumented_io_context io_context_;
+  std::unique_ptr<std::thread> thread_;
+
+  std::unique_ptr<RaySyncer> syncer_;
+  NodeID local_id_;
 };
 
 TEST_F(RaySyncerTest, NodeStatusGetSnapshot) {
@@ -93,11 +120,9 @@ TEST_F(RaySyncerTest, NodeStatusConsume) {
   node_status->SetComponents(RayComponentId::RESOURCE_MANAGER,
                              nullptr,
                              GetReceiver(RayComponentId::RESOURCE_MANAGER));
-  auto msg = RaySyncMessage();
-  msg.set_version(0);
-  msg.set_component_id(RayComponentId::RESOURCE_MANAGER);
-  msg.set_node_id("a");
+  auto from_node_id = NodeID::FromRandom();
   // The first time receiver the message
+  auto msg = MakeMessage(RayComponentId::RESOURCE_MANAGER, 0, from_node_id);
   ASSERT_TRUE(node_status->ConsumeMessage(std::make_shared<RaySyncMessage>(msg)));
   ASSERT_FALSE(node_status->ConsumeMessage(std::make_shared<RaySyncMessage>(msg)));
 
@@ -105,3 +130,32 @@ TEST_F(RaySyncerTest, NodeStatusConsume) {
   ASSERT_TRUE(node_status->ConsumeMessage(std::make_shared<RaySyncMessage>(msg)));
   ASSERT_FALSE(node_status->ConsumeMessage(std::make_shared<RaySyncMessage>(msg)));
 }
+
+TEST_F(RaySyncerTest, NodeSyncConnection) {
+  auto node_id = NodeID::FromRandom();
+  NodeSyncConnection sync_connection(*syncer_, io_context_, node_id.Binary());
+  auto from_node_id = NodeID::FromRandom();
+  auto msg = MakeMessage(RayComponentId::RESOURCE_MANAGER, 0, from_node_id);
+
+  // First push will succeed and the second one will be deduplicated.
+  ASSERT_TRUE(sync_connection.PushToSendingQueue(std::make_shared<RaySyncMessage>(msg)));
+  ASSERT_FALSE(sync_connection.PushToSendingQueue(std::make_shared<RaySyncMessage>(msg)));
+  ASSERT_EQ(1, sync_connection.sending_queue_.size());
+  ASSERT_EQ(1, sync_connection.node_versions_.size());
+  ASSERT_EQ(0,
+            sync_connection
+                .node_versions_[from_node_id.Binary()][RayComponentId::RESOURCE_MANAGER]);
+
+  msg.set_version(2);
+  ASSERT_TRUE(sync_connection.PushToSendingQueue(std::make_shared<RaySyncMessage>(msg)));
+  ASSERT_FALSE(sync_connection.PushToSendingQueue(std::make_shared<RaySyncMessage>(msg)));
+  // The previous message is deleted.
+  ASSERT_EQ(1, sync_connection.sending_queue_.size());
+  ASSERT_EQ(1, sync_connection.node_versions_.size());
+  ASSERT_EQ(2,
+            sync_connection
+                .node_versions_[from_node_id.Binary()][RayComponentId::RESOURCE_MANAGER]);
+}
+
+}  // namespace syncer
+}  // namespace ray

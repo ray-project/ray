@@ -57,7 +57,7 @@ class NodeStatus {
   Array<ReceiverInterface *> receivers_ = {nullptr};
 
   /// This fields records the version of the snapshot that has been taken.
-  Array<uint64_t> snapshots_taken_ = {0};
+  Array<int64_t> snapshots_taken_ = {-1};
   /// Keep track of the latest messages received.
   /// Use shared pointer for easier liveness management since these messages might be
   /// sending via rpc.
@@ -74,7 +74,9 @@ class NodeSyncConnection {
   /// Push a message to the sending queue to be sent later.
   ///
   /// \param message The message to be sent.
-  void PushToSendingQueue(std::shared_ptr<const RaySyncMessage> message);
+  ///
+  /// \return true if push to queue successfully.
+  bool PushToSendingQueue(std::shared_ptr<const RaySyncMessage> message);
 
   virtual ~NodeSyncConnection() {}
 
@@ -95,7 +97,9 @@ class NodeSyncConnection {
   }
 
  protected:
-  std::array<uint64_t, kComponentArraySize> &GetNodeComponentVersions(
+  FRIEND_TEST(RaySyncerTest, NodeSyncConnection);
+
+  std::array<int64_t, kComponentArraySize> &GetNodeComponentVersions(
       const std::string &node_id);
   ray::PeriodicalRunner timer_;
   RaySyncer &instance_;
@@ -112,9 +116,25 @@ class NodeSyncConnection {
     }
   };
 
-  absl::flat_hash_set<std::shared_ptr<const RaySyncMessage>, _MessageHash> sending_queue_;
+  struct _MessageEq {
+    bool operator()(const std::shared_ptr<const RaySyncMessage> &lhs,
+                    const std::shared_ptr<const RaySyncMessage> &rhs) const noexcept {
+      if (lhs == rhs) {
+        return true;
+      }
+      if (lhs == nullptr || rhs == nullptr) {
+        return false;
+      }
+      // We don't check the version here since we want the old version to be deleted.
+      return lhs->node_id() == rhs->node_id() &&
+             lhs->component_id() == rhs->component_id();
+    }
+  };
+
+  absl::flat_hash_set<std::shared_ptr<const RaySyncMessage>, _MessageHash, _MessageEq>
+      sending_queue_;
   // Keep track of the versions of components in this node.
-  absl::flat_hash_map<std::string, std::array<uint64_t, kComponentArraySize>>
+  absl::flat_hash_map<std::string, std::array<int64_t, kComponentArraySize>>
       node_versions_;
 };
 

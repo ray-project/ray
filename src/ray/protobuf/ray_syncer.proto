@@ -22,8 +22,8 @@ enum RayComponentId {
 }
 
 message RaySyncMessage {
-  // The version of the message.
-  uint64 version = 1;
+  // The version of the message. -1 means the version is not set.
+  int64 version = 1;
   // The component this message is for.
   RayComponentId component_id = 2;
   // The actual payload.

@@ -64,21 +64,24 @@ NodeSyncConnection::NodeSyncConnection(RaySyncer &instance,
       io_context_(io_context),
       node_id_(std::move(node_id)) {}
 
-void NodeSyncConnection::PushToSendingQueue(
+bool NodeSyncConnection::PushToSendingQueue(
     std::shared_ptr<const RaySyncMessage> message) {
   auto &node_versions = GetNodeComponentVersions(message->node_id());
   if (node_versions[message->component_id()] < message->version()) {
     sending_queue_.insert(message);
     node_versions[message->component_id()] = message->version();
+    return true;
   }
+  return false;
 }
 
-std::array<uint64_t, kComponentArraySize> &NodeSyncConnection::GetNodeComponentVersions(
+std::array<int64_t, kComponentArraySize> &NodeSyncConnection::GetNodeComponentVersions(
     const std::string &node_id) {
   auto iter = node_versions_.find(node_id);
   if (iter == node_versions_.end()) {
-    iter = node_versions_.emplace(node_id, std::array<uint64_t, kComponentArraySize>({0}))
-               .first;
+    iter =
+        node_versions_.emplace(node_id, std::array<int64_t, kComponentArraySize>({-1L}))
+            .first;
   }
   return iter->second;
 }

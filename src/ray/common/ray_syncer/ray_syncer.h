@@ -14,6 +14,7 @@
 
 #pragma once
 #include <grpcpp/server.h>
+#include <gtest/gtest_prod.h>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -47,7 +48,7 @@ struct ReporterInterface {
   ///
   /// \param current_version The version syncer module current has.
   /// \param component_id The component id asked for.
-  virtual std::optional<RaySyncMessage> Snapshot(uint64_t current_version,
+  virtual std::optional<RaySyncMessage> Snapshot(int64_t current_version,
                                                  RayComponentId component_id) const = 0;
   virtual ~ReporterInterface() {}
 };

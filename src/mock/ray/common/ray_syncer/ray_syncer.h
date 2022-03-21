@@ -19,7 +19,7 @@ class MockReporterInterface : public ReporterInterface {
  public:
   MOCK_METHOD(std::optional<RaySyncMessage>,
               Snapshot,
-              (uint64_t current_version, RayComponentId component_id),
+              (int64_t current_version, RayComponentId component_id),
               (const, override));
 };
 
