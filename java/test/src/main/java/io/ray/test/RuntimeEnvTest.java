@@ -5,7 +5,6 @@ import io.ray.api.Ray;
 import io.ray.api.runtimeenv.RuntimeEnv;
 import io.ray.runtime.util.SystemUtil;
 import org.testng.Assert;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 @Test(groups = "cluster")
@@ -29,11 +28,11 @@ public class RuntimeEnvTest {
 
     try {
       Ray.init();
-        ActorHandle<A> actor = Ray.actor(A::new).remote();
-        String val = actor.task(A::getEnv, "KEY1").remote().get();
-        Assert.assertEquals(val, "A");
-        val = actor.task(A::getEnv, "KEY2").remote().get();
-        Assert.assertEquals(val, "B");
+      ActorHandle<A> actor = Ray.actor(A::new).remote();
+      String val = actor.task(A::getEnv, "KEY1").remote().get();
+      Assert.assertEquals(val, "A");
+      val = actor.task(A::getEnv, "KEY2").remote().get();
+      Assert.assertEquals(val, "B");
     } finally {
       Ray.shutdown();
     }
@@ -48,11 +47,11 @@ public class RuntimeEnvTest {
       int pid2 = 0;
       {
         RuntimeEnv runtimeEnv =
-          new RuntimeEnv.Builder()
-            .addEnvVar("KEY1", "A")
-            .addEnvVar("KEY2", "B")
-            .addEnvVar("KEY1", "C")
-            .build();
+            new RuntimeEnv.Builder()
+                .addEnvVar("KEY1", "A")
+                .addEnvVar("KEY2", "B")
+                .addEnvVar("KEY1", "C")
+                .build();
 
         ActorHandle<A> actor1 = Ray.actor(A::new).setRuntimeEnv(runtimeEnv).remote();
         String val = actor1.task(A::getEnv, "KEY1").remote().get();
@@ -91,10 +90,7 @@ public class RuntimeEnvTest {
     try {
       Ray.init();
       {
-        RuntimeEnv runtimeEnv =
-          new RuntimeEnv.Builder()
-            .addEnvVar("KEY1", "C")
-            .build();
+        RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().addEnvVar("KEY1", "C").build();
 
         ActorHandle<A> actor1 = Ray.actor(A::new).setRuntimeEnv(runtimeEnv).remote();
         String val = actor1.task(A::getEnv, "KEY1").remote().get();
@@ -122,5 +118,4 @@ public class RuntimeEnvTest {
       Ray.shutdown();
     }
   }
-
 }

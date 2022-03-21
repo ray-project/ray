@@ -2,15 +2,12 @@ package io.ray.runtime.config;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
-import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigException;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigRenderOptions;
-import com.typesafe.config.ConfigValue;
 import io.ray.api.id.JobId;
 import io.ray.api.options.ActorLifetime;
-import io.ray.api.runtimeenv.RuntimeEnv;
 import io.ray.runtime.generated.Common.WorkerType;
 import io.ray.runtime.runtimeenv.RuntimeEnvImpl;
 import io.ray.runtime.util.NetworkUtil;
@@ -208,7 +205,12 @@ public class RayConfig {
       if (config.hasPath(envVarsPath)) {
         Map<String, String> envVars = new HashMap<>();
         Config envVarsConfig = config.getConfig(envVarsPath);
-        envVarsConfig.entrySet().forEach((entry) -> { envVars.put(entry.getKey(), ((String) entry.getValue().unwrapped())); });
+        envVarsConfig
+            .entrySet()
+            .forEach(
+                (entry) -> {
+                  envVars.put(entry.getKey(), ((String) entry.getValue().unwrapped()));
+                });
         runtimeEnvImpl = new RuntimeEnvImpl(envVars);
       }
     }
