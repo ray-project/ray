@@ -31,6 +31,7 @@ using ray::NodeID;
 using ::testing::_;
 using ::testing::Invoke;
 using ::testing::WithArg;
+using ::testing::Return;
 
 namespace ray {
 namespace syncer {
@@ -61,8 +62,8 @@ class RaySyncerTest : public ::testing::Test {
           return std::make_optional(std::move(msg));
         }
       };
-      EXPECT_CALL(*reporter, Snapshot(_, _))
-          .WillRepeatedly(WithArg<0>(Invoke(take_snapshot)));
+      ON_CALL(*reporter, Snapshot(_, _))
+          .WillByDefault(WithArg<0>(Invoke(take_snapshot)));
       ++cid;
     }
     thread_ = std::make_unique<std::thread>([this]() {
@@ -165,7 +166,7 @@ TEST_F(RaySyncerTest, NodeSyncConnection) {
 }
 
 struct SyncerServer {
-  SyncerServer(std::string port) {
+  SyncerServer(std::string port, bool no_scheduler_receiver = true) {
     // Setup io context
     thread = std::make_unique<std::thread>([this] {
       boost::asio::io_context::work work(io_context);
@@ -180,7 +181,48 @@ struct SyncerServer {
     builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
     builder.RegisterService(service.get());
     server = builder.BuildAndStart();
+
+    for (size_t cid = 0; cid < reporters.size(); ++cid) {
+      auto snapshot_received =
+          [this](std::shared_ptr<const RaySyncMessage> message) {
+            received_versions[message->node_id()][message->component_id()] = message->version();
+          };
+
+      if(!no_scheduler_receiver || static_cast<RayComponentId>(cid) != RayComponentId::SCHEDULER) {
+        receivers[cid] = std::make_unique<MockReceiverInterface>();
+        ON_CALL(*receivers[cid], Update(_))
+            .WillByDefault(WithArg<0>(Invoke(snapshot_received)));
+      }
+
+      if(static_cast<RayComponentId>(cid) == RayComponentId::SCHEDULER) {
+        ON_CALL(*receivers[cid], NeedBroadcast())
+            .WillByDefault(Return(false));
+      } else {
+        ON_CALL(*receivers[cid], NeedBroadcast())
+            .WillByDefault(Return(true));
+      }
+
+      auto &reporter = reporters[cid];
+      reporter = std::make_unique<MockReporterInterface>();
+      auto take_snapshot =
+          [this, cid](int64_t curr_version) mutable -> std::optional<RaySyncMessage> {
+        if (curr_version >= local_versions[cid]) {
+          return std::nullopt;
+        } else {
+          auto msg = RaySyncMessage();
+          msg.set_component_id(static_cast<RayComponentId>(cid));
+          return std::make_optional(std::move(msg));
+        }
+      };
+      EXPECT_CALL(*reporter, Snapshot(_, _))
+          .WillRepeatedly(WithArg<0>(Invoke(take_snapshot)));
+      syncer->Register(static_cast<RayComponentId>(cid), reporter.get(), receivers[cid].get());
+      ++cid;
+    }
+
+
   }
+
   ~SyncerServer() {
     io_context.stop();
     thread->join();
@@ -190,9 +232,40 @@ struct SyncerServer {
   std::unique_ptr<grpc::Server> server;
   std::unique_ptr<std::thread> thread;
   instrumented_io_context io_context;
+
+  Array<int64_t> local_versions = {0};
+  Array<std::unique_ptr<MockReporterInterface>> reporters = {nullptr};
+
+  std::unordered_map<std::string, Array<int64_t>> received_versions;
+  Array<std::unique_ptr<MockReceiverInterface>> receivers = {nullptr};
 };
 
-TEST(SyncerServerE2E, Basic) { auto server = SyncerServer("9990"); }
+std::shared_ptr<grpc::Channel> MakeChannel(std::string port) {
+  grpc::ChannelArguments argument;
+  // Disable http proxy since it disrupts local connections. TODO(ekl) we should make
+  // this configurable, or selectively set it for known local connections only.
+  argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
+  argument.SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
+  argument.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
+
+  return grpc::CreateCustomChannel(
+      "localhost:" + port, grpc::InsecureChannelCredentials(), argument);
+}
+
+TEST(SyncerServerE2E, Test1To1) {
+  auto s1 = SyncerServer("19990");
+  auto s2 = SyncerServer("19991");
+
+}
+
+TEST(SyncerServerE2E, Test1ToN) {
+  auto server = SyncerServer("9990");
+}
+
+TEST(SyncerServerE2E, TestMToN) {
+  auto server = SyncerServer("9990");
+}
+
 
 }  // namespace syncer
 }  // namespace ray
