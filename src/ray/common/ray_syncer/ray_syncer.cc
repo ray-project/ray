@@ -303,6 +303,8 @@ grpc::ServerUnaryReactor *RaySyncerService::Update(grpc::CallbackServerContext *
                                                    const RaySyncMessages *request,
                                                    DummyResponse *) {
   auto *reactor = context->DefaultReactor();
+  // Make sure request is allocated from heap so that it can be moved safely.
+  RAY_CHECK(request->GetArena() == nullptr);
   syncer_.GetIOContext().post(
       [this, request = std::move(*const_cast<RaySyncMessages *>(request))]() mutable {
         auto *sync_connection =
