@@ -430,16 +430,23 @@ def _workflow_step_executor(
     Returns:
         Workflow step output.
     """
-    logger.info(f"_workflow_step_executor entry")
-    logger.info(f"**** {step_id} func type {func}")
+    logger.info(f"**** _workflow_step_executor entry")
 
     # Part 1: update the context for the step
     workflow_context.update_workflow_step_context(context, step_id)
     context = workflow_context.get_workflow_step_context()
     step_type = runtime_options.step_type
+    logger.info(f"**** {step_id} func type {step_type}")
+    if step_type == StepType.EVENT:
+        event_listener = ray.get(baked_inputs.args)
+        workflow_id = context.workflow_id
+        outer_most_step_id = context.outer_most_step_id
+        logger.info(f"**** {workflow_id} --- {step_id} --- {outer_most_step_id} --- {event_listener}")
+
     context.checkpoint_context.checkpoint = runtime_options.checkpoint
 
     logger.info(f"**** {step_id} Before baked_inputs.resolve(), inside _workflow_step_executor() {baked_inputs}")
+
     # Part 2: resolve inputs
     args, kwargs = baked_inputs.resolve()
     logger.info(f"**** {step_id} After baked_inputs.resolve(): args: {args}, kwargs: {kwargs}")

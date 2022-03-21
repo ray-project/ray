@@ -7,7 +7,7 @@ workflow.init()
 
 class ExampleEventProvider(EventListener):
     def __init__(self):
-        pass 
+        pass
 
     async def poll_for_event(self, *args):
         pass
@@ -20,7 +20,10 @@ class ExampleEventProvider(EventListener):
 def handle_event(msg):
     print(msg)
 
+@workflow.step
+def event_func_dummy():
+    return "hello"
+
 event_func = workflow.wait_for_event_revised(ExampleEventProvider, "hello")
-handle_event.step(event_func).run()
-
-
+# handle_event.step(event_func).run()
+handle_event.step(event_func_dummy).run()
