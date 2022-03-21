@@ -322,17 +322,13 @@ def ray_log(
     import requests
 
     api_server_url = _get_dashboard_url()
-    nodes = ray_nodes(node_id, ip_address, debug=True)
-    if len(nodes) > 0:
-        log_url = nodes[0]["logUrl"]
-        node_id = nodes[0]["id"]
-    else:
-        node_id_str = f"Input Node ID: {node_id}. " if node_id else ""
-        addr_str = f"Input IP Address: {ip_address}. " if ip_address else ""
-        raise Exception(f"Could not find node. {node_id_str}{addr_str}")
     filters_query = ",".join(filters)
-    logs_dict = json.loads(requests.get(
-        f"{api_server_url}/v1/api/logs/index?node_id={node_id}&filters={filters_query}").text)
+    node_id_query = f"node_id={node_id}&" if node_id else ""
+    logs_dict = json.loads(
+        requests.get(
+            f"{api_server_url}/v1/api/logs/index?{node_id_query}filters={filters_query}"
+        ).text
+    )
     return api_server_url, logs_dict
 
 

@@ -66,7 +66,9 @@ class LogAgentV1(dashboard_utils.DashboardAgentModule):
 
         async def yield_bytes():
             try:
-                with open(f"{self._dashboard_agent.log_dir}/{log_file_name}", "rb") as f:
+                with open(
+                    f"{self._dashboard_agent.log_dir}/{log_file_name}", "rb"
+                ) as f:
                     if lines == -1:
                         bytes = f.read()
                         end = f.tell()
@@ -81,7 +83,7 @@ class LogAgentV1(dashboard_utils.DashboardAgentModule):
                         if bytes != b"":
                             yield bytes
 
-                print('websocket connection closed')
+                print("websocket connection closed")
 
             except FileNotFoundError:
                 yield b"could not find file"

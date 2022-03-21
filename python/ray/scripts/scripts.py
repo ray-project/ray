@@ -1854,6 +1854,55 @@ def local_dump(
     )
 
 
+def stream_log(api_endpoint, node_id, log, lines):
+    import aiohttp
+    import asyncio
+
+    async def main():
+        session = aiohttp.ClientSession()
+        stream_url = f"{api_endpoint}/v1/api/logs/stream/{node_id}/{log}?lines={lines}"
+        print("connecting to websocket endpoint", stream_url)
+        ws = await session.ws_connect(stream_url)
+        print("connected")
+        while True:
+            msg = await ws.receive()
+            if msg.type == aiohttp.WSMsgType.CLOSED:
+                print("Websocket log streaming connection closed")
+                break
+            elif msg.type == aiohttp.WSMsgType.BINARY:
+                print(msg.data.decode("utf-8"), end="", flush=True)
+            elif msg.type == aiohttp.WSMsgType.TEXT or msg.type == aiohttp.WSMsgType.ERROR:
+                print(msg.data)
+            await asyncio.sleep(0.5)
+        # await ws.close()
+
+    asyncio.run(main())
+
+
+def format_print_logs(api_endpoint, node_id, links):
+    def print_section(name, key):
+        if len(links[key]) > 0:
+            print(f"\n{name}")
+            print("----------------------------")
+            [print(f"{api_endpoint}/v1/api/logs/file/{node_id}/{log}")
+             for log in links[key]]
+    for lang in ray_constants.LANGUAGE_WORKER_TYPES:
+        print_section(
+            f"{lang.capitalize()} Core Driver Logs", f"{lang}_driver_logs"
+        )
+        print_section(
+            f"{lang.capitalize()} Core Worker Logs", f"{lang}_core_worker_logs"
+        )
+    print_section("Worker Errors", "worker_errors")
+    print_section("Worker Stdout", "worker_outs")
+    print_section("Raylet Logs", "raylet_logs")
+    print_section("GCS Logs", "gcs_logs")
+    print_section("Miscellaneous Logs", "misc")
+    print_section("Autoscaler Monitor Logs", "autoscaler_monitor")
+    print_section("Dashboard Logs", "dashboard")
+    print_section("Ray Client Logs", "ray_client")
+
+
 @cli.command(hidden=True)
 @click.argument(
     "filters",
@@ -1896,58 +1945,28 @@ def local_dump(
     default=None,
     help="Number of lines to tail from log. -1 indicates fetching the whole file.",
 )
+# @click.option(
+#     "--interval",
+#     required=False,
+#     type=int,
+#     default=None,
+#     help="Interval at which to refresh logs",
+# )
 def logs(filters, ip_address: str, node_id: str, actor_id: str, watch: bool, lines: int):
     """
-    FILTERS: keywords to filter the log filenames by.
+    FILTERS: keywords (filname, component, file extension, id) to filter the log filenames by.
+
+    Example usage:
+
+    ray logs raylet.out --node-id <node-id>
+
+    ray logs worker .out <worker-id>
     """
-
-    def format_print(api_endpoint, node_id, links):
-        def print_section(name, key):
-            if len(links[key]) > 0:
-                print("-----------")
-                print(name)
-                print("-----------")
-                [print(f"{api_endpoint}/v1/api/logs/file/{node_id}/{log}")
-                 for log in links[key]]
-        for lang in ray_constants.LANGUAGE_WORKER_TYPES:
-            print_section(
-                f"{lang.capitalize()} Core Driver Logs", f"{lang}_driver_logs"
-            )
-            print_section(
-                f"{lang.capitalize()} Core Worker Logs", f"{lang}_core_worker_logs"
-            )
-        print_section("Worker Errors", "worker_errors")
-        print_section("Worker Stdout", "worker_outs")
-        print_section("Raylet Logs", "raylet_logs")
-        print_section("GCS Logs", "gcs_logs")
-        print_section("Miscellaneous Logs", "misc")
-
-    def stream_log(api_endpoint, node_id, log):
-        async def main():
-            session = aiohttp.ClientSession()
-            stream_url = f"{api_endpoint}/v1/api/logs/stream/{node_id}/{log}?lines={lines}"
-            print("connecting to websocket endpoint", stream_url)
-            ws = await session.ws_connect(stream_url)
-
-            print("connected")
-            if lines != -1:
-                print(f"Log has been truncated to {lines} lines")
-            while True:
-                msg = await ws.receive()
-                if msg.type == aiohttp.WSMsgType.CLOSED:
-                    print("Websocket log streaming connection closed")
-                    break
-                elif msg.type == aiohttp.WSMsgType.BINARY:
-                    print(msg.data.decode("utf-8"), end="", flush=True)
-                elif msg.type == aiohttp.WSMsgType.TEXT or msg.type == aiohttp.WSMsgType.ERROR:
-                    print(msg.data)
-                await asyncio.sleep(0.5)
-            # await ws.close()
-
-        asyncio.run(main())
+    # if interval is not None and not watch:
+    #     raise Exception("--interval should only be used with --watch")
 
     api_endpoint, logs_dict = ray_log(ip_address, node_id, list(filters))
-    if watch and len(logs_dict) != 1:
+    if len(logs_dict) != 1:
         raise Exception(
             f"{len(logs_dict)} nodes match your query. Please specify a node id")
 
@@ -1958,40 +1977,42 @@ def logs(filters, ip_address: str, node_id: str, actor_id: str, watch: bool, lin
         if len(log_list) > 0:
             if log is not None or len(log_list) != 1:
                 found_many = True
-                if watch or lines is not None:
-                    raise Exception(
-                        "More than one log file matches your query. Please add additional filters.")
             log = log_list[0]
     if log is None:
-        raise Exception("Could not find any log file. Please narrow down your query.")
-    if found_many:
-        print("Warning: More than one log file matches your query.")
-        print("Please add additional filters to narrow down the matches to a single file.")
-    if watch:
-        import aiohttp
-        import asyncio
+        raise Exception(
+            "Could not find any log file. Please ammend your query.")
 
+    if actor_id:
+        format_print_logs(ray_actor_log(actor_id))
+    elif found_many:
+        print("Warning: More than one log file matches your query. Please add")
+        print("additional filters, flags, file extensions or filenames to narrow ")
+        print("down the results to a single file. Check --help for more.")
+
+        MAX_NODES = 10
+        num_nodes = 0
+        for node_id, logs in logs_dict.items():
+            if num_nodes > MAX_NODES:
+                print("Displaying long index for only 10 nodes. Use --node-id to narrow down.")
+                break
+            print(f"\nNode ID: {node_id}")
+            format_print_logs(api_endpoint, node_id, logs)
+            num_nodes += 1
+    elif watch:
         if lines is None:
             lines = 1000
             print(
-                f"--- Log has been truncated to {lines} lines. Use `--lines` flag to toggle. ---\n")
-        stream_log(api_endpoint, node_id, log)
+                f"--- Log has been truncated to last {lines} lines. Use `--lines` flag to toggle. ---\n")
+        stream_log(api_endpoint, node_id, log, lines)
 
-    elif not found_many and not watch:
+    elif not watch:
         if lines is None:
             lines = 100
             print(
-                f"--- Log has been truncated to {lines} lines. Use `--lines` flag to toggle. ---\n")
+                f"--- Log has been truncated to last {lines} lines. Use `--lines` flag to toggle. ---\n")
         import requests
         print(requests.get(
             f"{api_endpoint}/v1/api/logs/file/{node_id}/{log}?lines={lines}").text)
-    elif actor_id:
-        format_print(ray_actor_log(actor_id))
-    else:
-        api_endpoint, logs_dict = ray_log(ip_address, node_id, list(filters))
-        for node_id, logs in logs_dict.items():
-            print(f"\nNode ID: {node_id}")
-            format_print(api_endpoint, node_id, logs)
 
 
 @ cli.command(hidden=True)

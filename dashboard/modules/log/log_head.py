@@ -145,15 +145,19 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             path = s[: s.find('"')]
             return path
 
-        filters = [] if filters == [''] else filters
+        filters = [] if filters == [""] else filters
 
-        filtered = list(
+        is_link = filter(
+            lambda s: '<li><a href="/logs/' in s,
+            log_html.splitlines(),
+        )
+        unfiltered_links = map(get_link, is_link)
+        links = list(
             filter(
-                lambda s: '<li><a href="/logs/' in s and all(f in s for f in filters),
-                log_html.splitlines(),
+                lambda s: all(f in s for f in filters),
+                unfiltered_links,
             )
         )
-        links = list(map(get_link, filtered))
         logs = {}
         logs["worker_errors"] = list(
             filter(lambda s: "worker" in s and s.endswith(".err"), links)
