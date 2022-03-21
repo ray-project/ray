@@ -82,6 +82,13 @@ class NodeSyncConnection;
 /// RaySyncer is an embedding service for component synchronization.
 /// All operations in this class needs to be finished GetIOContext()
 /// for thread-safety.
+/// RaySyncer is the control plane to make sure all connections eventually
+/// have the latest view of the cluster components registered.
+/// RaySyncer has two components:
+///    1. NodeSyncConnection: keeps track of the sending and receiving information
+///       and make sure not sending the information the remote node knows.
+///    2. NodeState: keeps track of the local status, similar to NodeSyncConnection,
+//        but it's for local node.
 class RaySyncer {
  public:
   /// Constructor of RaySyncer
