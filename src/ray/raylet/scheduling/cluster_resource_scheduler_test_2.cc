@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-#include "ray/raylet/scheduling/policy/scheduling_context.h"
-#include "ray/raylet/scheduling/policy/scheduling_options.h"
-
 #include <memory>
 
 #include "gtest/gtest.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+#include "ray/raylet/scheduling/policy/scheduling_context.h"
+#include "ray/raylet/scheduling/policy/scheduling_options.h"
 
 namespace ray {
 

@@ -13,8 +13,8 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_actor_distribution.h"
-#include "ray/raylet/scheduling/policy/scorer.h"
 
+#include "ray/raylet/scheduling/policy/scorer.h"
 #include "ray/util/event.h"
 
 namespace ray {
