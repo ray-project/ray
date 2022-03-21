@@ -115,7 +115,7 @@ def run(
     fail_fast: bool = False,
     restore: Optional[str] = None,
     server_port: Optional[int] = None,
-    resume: bool = False,
+    resume: Union[bool, str] = False,
     reuse_actors: bool = False,
     trial_executor: Optional[RayTrialExecutor] = None,
     raise_on_failed_trial: bool = True,
@@ -658,7 +658,7 @@ def run(
         signal.signal(signal.SIGINT, original_handler)
 
     # We should only install the handler when it is safe to do so.
-    # When tune.run() is called from worker thread, singal.signal will
+    # When tune.run() is called from worker thread, signal.signal will
     # fail.
     if threading.current_thread() != threading.main_thread():
         os.environ["TUNE_DISABLE_SIGINT_HANDLER"] = "1"
@@ -727,7 +727,7 @@ def run_experiments(
     server_port: Optional[int] = None,
     verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS,
     progress_reporter: Optional[ProgressReporter] = None,
-    resume: bool = False,
+    resume: Union[bool, str] = False,
     reuse_actors: bool = False,
     trial_executor: Optional[RayTrialExecutor] = None,
     raise_on_failed_trial: bool = True,
