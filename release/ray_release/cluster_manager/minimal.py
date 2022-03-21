@@ -108,7 +108,7 @@ class MinimalClusterManager(ClusterManager):
             else:
                 # If the build is neither failed nor succeeded, it is still
                 # going on
-                return
+                break
 
         if last_status == "failed":
             logger.info(f"Previous cluster env build failed: {error_message}")
