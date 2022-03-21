@@ -166,10 +166,6 @@ TEST_F(RaySyncerTest, NodeSyncConnection) {
 struct SyncerServer {
   SyncerServer(std::string port, bool no_scheduler_receiver = true) {
     // Setup io context
-    thread = std::make_unique<std::thread>([this] {
-      boost::asio::io_context::work work(io_context);
-      io_context.run();
-    });
     auto node_id = NodeID::FromRandom();
     // Setup syncer and grpc server
     syncer = std::make_unique<RaySyncer>(io_context, node_id.Binary());
@@ -193,10 +189,12 @@ struct SyncerServer {
             .WillByDefault(WithArg<0>(Invoke(snapshot_received)));
       }
 
-      if (static_cast<RayComponentId>(cid) == RayComponentId::SCHEDULER) {
-        ON_CALL(*receivers[cid], NeedBroadcast()).WillByDefault(Return(false));
-      } else {
-        ON_CALL(*receivers[cid], NeedBroadcast()).WillByDefault(Return(true));
+      if(receivers[cid] != nullptr) {
+        if (static_cast<RayComponentId>(cid) == RayComponentId::SCHEDULER) {
+          ON_CALL(*receivers[cid], NeedBroadcast()).WillByDefault(Return(false));
+        } else {
+          ON_CALL(*receivers[cid], NeedBroadcast()).WillByDefault(Return(true));
+        }
       }
 
       auto &reporter = reporters[cid];
@@ -216,6 +214,10 @@ struct SyncerServer {
       syncer->Register(
           static_cast<RayComponentId>(cid), reporter.get(), receivers[cid].get());
     }
+    thread = std::make_unique<std::thread>([this] {
+      boost::asio::io_context::work work(io_context);
+      io_context.run();
+    });
   }
 
   ~SyncerServer() {
