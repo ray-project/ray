@@ -17,7 +17,10 @@ namespace syncer {
 
 class MockReporterInterface : public ReporterInterface {
  public:
-  MOCK_METHOD(std::optional<RaySyncMessage>, Snapshot, (uint64_t current_version, RayComponentId component_id), (const, override));
+  MOCK_METHOD(std::optional<RaySyncMessage>,
+              Snapshot,
+              (uint64_t current_version, RayComponentId component_id),
+              (const, override));
 };
 
 }  // namespace syncer
@@ -50,9 +53,24 @@ namespace syncer {
 
 class MockRaySyncerService : public RaySyncerService {
  public:
-  MOCK_METHOD(grpc::ServerUnaryReactor*, StartSync, (grpc::CallbackServerContext *context, const SyncMeta *request, SyncMeta *response), (override));
-  MOCK_METHOD(grpc::ServerUnaryReactor*, Update, (grpc::CallbackServerContext *context, const RaySyncMessages *request, DummyResponse *), (override));
-  MOCK_METHOD(grpc::ServerUnaryReactor*, LongPolling, (grpc::CallbackServerContext *context, const DummyRequest *, RaySyncMessages *response), (override));
+  MOCK_METHOD(grpc::ServerUnaryReactor *,
+              StartSync,
+              (grpc::CallbackServerContext * context,
+               const SyncMeta *request,
+               SyncMeta *response),
+              (override));
+  MOCK_METHOD(grpc::ServerUnaryReactor *,
+              Update,
+              (grpc::CallbackServerContext * context,
+               const RaySyncMessages *request,
+               DummyResponse *),
+              (override));
+  MOCK_METHOD(grpc::ServerUnaryReactor *,
+              LongPolling,
+              (grpc::CallbackServerContext * context,
+               const DummyRequest *,
+               RaySyncMessages *response),
+              (override));
 };
 
 }  // namespace syncer
