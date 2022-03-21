@@ -325,7 +325,14 @@ class Node:
     def validate_ip_port(ip_port):
         """Validates the address is in the ip:port format"""
         _, _, port = ip_port.rpartition(":")
-        _ = int(port)
+        if port == ip_port:
+            raise ValueError(f"Port is not specified for address {ip_port}")
+        try:
+            _ = int(port)
+        except ValueError:
+            raise ValueError(
+                f"Unable to parse port number from {port} (full address = {ip_port})"
+            )
 
     def check_version_info(self):
         """Check if the Python and Ray version of this process matches that in GCS.

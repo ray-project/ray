@@ -100,7 +100,9 @@ def create_gcs_channel(address: str, aio=False):
 
 
 def ping_cluster(address: str, timeout=2):
-    """Pings Ray cluster at address.
+    """Pings Ray cluster at address. This is useful to check is a Ray cluster
+    is running, before / without actually connecting to the cluster via
+    ray.init().
 
     Args:
         address: GCS address string, e.g. ip:port.
