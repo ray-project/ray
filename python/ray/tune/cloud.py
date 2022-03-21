@@ -13,7 +13,7 @@ from ray.ml.checkpoint import (
 from ray.util import log_once
 
 from ray.util.annotations import Deprecated
-from ray.util.ml_utils.cloud import (
+from ray.ml.storage import (
     download_from_bucket,
     clear_bucket,
     upload_to_bucket,

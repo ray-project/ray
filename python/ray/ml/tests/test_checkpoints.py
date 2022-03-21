@@ -4,31 +4,11 @@ import shutil
 import tempfile
 import unittest
 from typing import Any
-from unittest.mock import patch
 
 import ray
 from ray.ml.checkpoint import Checkpoint
-
-
-def mock_s3_sync(local_path):
-    def mocked(cmd, *args, **kwargs):
-        # The called command is e.g.
-        # ["aws", "s3", "cp", "--recursive", "--quiet", local_path, bucket]
-        source = cmd[5]
-        target = cmd[6]
-
-        checkpoint_path = os.path.join(local_path, "checkpoint")
-
-        if source.startswith("s3://"):
-            if os.path.exists(target):
-                shutil.rmtree(target)
-            shutil.copytree(checkpoint_path, target)
-        else:
-            if os.path.exists(checkpoint_path):
-                shutil.rmtree(checkpoint_path)
-            shutil.copytree(source, checkpoint_path)
-
-    return mocked
+from ray.ml.storage import register_storage
+from ray.ml.utils.test_utils import LocalTestStorage
 
 
 class CheckpointsConversionTest(unittest.TestCase):
@@ -38,9 +18,10 @@ class CheckpointsConversionTest(unittest.TestCase):
         self.checkpoint_dict_data = {"metric": 5, "step": 4}
         self.checkpoint_dir_data = {"metric": 2, "step": 6}
 
-        self.cloud_uri = "s3://invalid"
-        self.local_mock_cloud_path = os.path.realpath(tempfile.mkdtemp())
-        self.mock_s3 = mock_s3_sync(self.local_mock_cloud_path)
+        self.local_test_storage = LocalTestStorage()
+        register_storage("test://", self.local_test_storage)
+
+        self.cloud_uri = "test://cloud/bucket"
 
         self.checkpoint_dir = os.path.join(self.tmpdir, "existing_checkpoint")
         os.mkdir(self.checkpoint_dir, 0o755)
@@ -51,7 +32,7 @@ class CheckpointsConversionTest(unittest.TestCase):
 
     def tearDown(self):
         shutil.rmtree(self.tmpdir)
-        shutil.rmtree(self.local_mock_cloud_path)
+        shutil.rmtree(self.local_test_storage.tempdir)
 
     def _prepare_dict_checkpoint(self) -> Checkpoint:
         # Create checkpoint from dict
@@ -131,17 +112,16 @@ class CheckpointsConversionTest(unittest.TestCase):
         """Test conversion from dict to cloud checkpoint and back."""
         checkpoint = self._prepare_dict_checkpoint()
 
-        with patch("subprocess.check_call", self.mock_s3):
-            # Convert into dict checkpoint
-            location = checkpoint.to_uri(self.cloud_uri)
-            self.assertIsInstance(location, str)
-            self.assertIn("s3://", location)
+        # Convert into dict checkpoint
+        location = checkpoint.to_uri(self.cloud_uri)
+        self.assertIsInstance(location, str)
+        self.assertIn("test://", location)
 
-            # Create from dict
-            checkpoint = Checkpoint.from_uri(location)
-            self.assertTrue(checkpoint._uri)
+        # Create from dict
+        checkpoint = Checkpoint.from_uri(location)
+        self.assertTrue(checkpoint._uri)
 
-            self._assert_dict_checkpoint(checkpoint)
+        self._assert_dict_checkpoint(checkpoint)
 
     def _prepare_fs_checkpoint(self) -> Checkpoint:
         # Create checkpoint from fs
@@ -224,17 +204,16 @@ class CheckpointsConversionTest(unittest.TestCase):
         """Test conversion from fs to cloud checkpoint and back."""
         checkpoint = self._prepare_fs_checkpoint()
 
-        with patch("subprocess.check_call", self.mock_s3):
-            # Convert into dict checkpoint
-            location = checkpoint.to_uri(self.cloud_uri)
-            self.assertIsInstance(location, str)
-            self.assertIn("s3://", location)
+        # Convert into dict checkpoint
+        location = checkpoint.to_uri(self.cloud_uri)
+        self.assertIsInstance(location, str)
+        self.assertIn("test://", location)
 
-            # Create from dict
-            checkpoint = Checkpoint.from_uri(location)
-            self.assertTrue(checkpoint._uri)
+        # Create from dict
+        checkpoint = Checkpoint.from_uri(location)
+        self.assertTrue(checkpoint._uri)
 
-            self._assert_fs_checkpoint(checkpoint)
+        self._assert_fs_checkpoint(checkpoint)
 
 
 class CheckpointsSerdeTest(unittest.TestCase):

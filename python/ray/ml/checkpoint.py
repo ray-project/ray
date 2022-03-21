@@ -8,7 +8,7 @@ from typing import Optional, Union, Tuple
 import ray
 from ray import cloudpickle as pickle
 from ray.util.annotations import DeveloperAPI
-from ray.util.ml_utils.cloud import (
+from ray.ml.storage import (
     upload_to_bucket,
     is_cloud_target,
     download_from_bucket,
@@ -366,7 +366,11 @@ class Checkpoint:
             local_path = uri[7:]
             return self.to_directory(local_path)
 
-        assert is_cloud_target(uri)
+        if not is_cloud_target(uri):
+            raise RuntimeError(
+                f"Cannot upload checkpoint to URI: Provided URI "
+                f"does not belong to a registered storage provider: {uri}"
+            )
 
         cleanup = False
 

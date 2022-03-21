@@ -11,13 +11,12 @@ HDFS_PREFIX = "hdfs://"
 ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GS_PREFIX, HDFS_PREFIX)
 
 
-class ExternalStorage(abc.ABC):
-    """Base class for external storage providers.
+class Storage(abc.ABC):
+    """Base class for (external) storage providers.
 
     Classes inheriting from this provide implementations for
     methods to upload, download, and delete files and
     directories on external storage.
-
     """
 
     def upload(self, local_source: str, remote_target: str) -> None:
@@ -47,7 +46,7 @@ class ExternalStorage(abc.ABC):
         raise NotImplementedError
 
 
-class S3Storage(ExternalStorage):
+class S3Storage(Storage):
     def upload(self, local_source: str, remote_target: str) -> None:
         subprocess.check_call(
             ["aws", "s3", "cp", "--recursive", "--quiet", local_source, remote_target]
@@ -64,7 +63,7 @@ class S3Storage(ExternalStorage):
         )
 
 
-class GSStorage(ExternalStorage):
+class GSStorage(Storage):
     def upload(self, local_source: str, remote_target: str) -> None:
         subprocess.check_call(["gsutil", "-m", "cp", "-r", local_source, remote_target])
 
@@ -75,7 +74,7 @@ class GSStorage(ExternalStorage):
         subprocess.check_call(["gsutil", "-m", "rm", "-f", "-r", remote_target])
 
 
-class HDFSStorage(ExternalStorage):
+class HDFSStorage(Storage):
     def upload(self, local_source: str, remote_target: str) -> None:
         subprocess.check_call(["hdfs", "dfs", "-put", local_source, remote_target])
 
@@ -86,7 +85,7 @@ class HDFSStorage(ExternalStorage):
         subprocess.check_call(["hdfs", "dfs", "-rm", "-r", remote_target])
 
 
-_registered_storages: Dict[str, ExternalStorage] = {
+_registered_storages: Dict[str, Storage] = {
     S3_PREFIX: S3Storage(),
     GS_PREFIX: GSStorage(),
     HDFS_PREFIX: HDFSStorage(),
@@ -94,7 +93,7 @@ _registered_storages: Dict[str, ExternalStorage] = {
 
 
 @DeveloperAPI
-def get_external_storage(bucket: str) -> ExternalStorage:
+def get_storage(uri: str) -> Storage:
     """Get external storage provider for a bucket URI.
 
     Example:
@@ -104,22 +103,22 @@ def get_external_storage(bucket: str) -> ExternalStorage:
 
 
     Args:
-        bucket: Bucket URI, e.g. ``s3://bucket/path``
+        uri: Bucket URI, e.g. ``s3://bucket/path``
 
     Returns: ``ExternalStorage`` class.
 
-    Raises: ValueError if no extenral storage class is found.
+    Raises: ValueError if no external storage class is found.
     """
     global _registered_storages
     for prefix, storage in _registered_storages.items():
-        if bucket.startswith("prefix"):
+        if uri.startswith(prefix):
             return storage
-    raise ValueError(f"No external storage provider found for URI: {bucket}")
+    raise ValueError(f"No external storage provider found for URI: {uri}")
 
 
 @DeveloperAPI
-def register_external_storage(prefix: str, storage: ExternalStorage):
-    """Register external storage provider.
+def register_storage(prefix: str, storage: Storage):
+    """Register storage provider.
 
     If a prefix is already registered, it will be overwritten without warning.
     """
@@ -134,7 +133,7 @@ def is_cloud_target(target: str):
 
 def clear_bucket(bucket: str):
     try:
-        storage = get_external_storage(bucket)
+        storage = get_storage(bucket)
     except Exception as e:
         raise ValueError(
             f"Could not clear bucket contents: "
@@ -149,7 +148,7 @@ def clear_bucket(bucket: str):
 
 def download_from_bucket(bucket: str, local_path: str):
     try:
-        storage = get_external_storage(bucket)
+        storage = get_storage(bucket)
     except Exception as e:
         raise ValueError(
             f"Could not download from bucket: "
@@ -161,7 +160,7 @@ def download_from_bucket(bucket: str, local_path: str):
 
 def upload_to_bucket(bucket: str, local_path: str):
     try:
-        storage = get_external_storage(bucket)
+        storage = get_storage(bucket)
     except Exception as e:
         raise ValueError(
             f"Could not download from bucket: "
