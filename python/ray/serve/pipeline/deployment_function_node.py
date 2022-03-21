@@ -1,10 +1,16 @@
+import inspect
 from typing import Any, Callable, Dict, List, Union
 from ray import ObjectRef
 
 from ray.experimental.dag.dag_node import DAGNode
 from ray.experimental.dag.format_utils import get_dag_node_str
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
-from ray.serve.api import Deployment, DeploymentConfig
+from ray.serve.api import (
+    Deployment,
+    DeploymentConfig,
+    schema_to_deployment,
+)
+from ray.serve.schema import DeploymentSchema
 from ray.serve.handle import RayServeLazySyncHandle
 from ray.serve.utils import get_deployment_import_path
 
@@ -30,19 +36,35 @@ class DeploymentFunctionNode(DAGNode):
             other_args_to_resolve=other_args_to_resolve,
         )
 
-        if "deployment_self" in self._bound_other_args_to_resolve:
-            original_deployment: Deployment = self._bound_other_args_to_resolve[
-                "deployment_self"
+        if "deployment_schema" in self._bound_other_args_to_resolve:
+            deployment_schema: DeploymentSchema = self._bound_other_args_to_resolve[
+                "deployment_schema"
             ]
-            self._deployment = original_deployment.options(
-                name=(
-                    deployment_name
-                    if original_deployment._name
-                    == original_deployment.func_or_class.__name__
-                    else original_deployment._name
-                ),
-                init_args=tuple(),
+            deployment_shell = schema_to_deployment(deployment_schema)
+
+            # Prefer user specified name to override the generated one.
+            if (
+                inspect.isfunction(func_body)
+                and deployment_shell.name != func_body.__name__
+            ):
+                self._deployment_name = deployment_shell.name
+
+            # Set the route prefix, prefer the one user supplied,
+            # otherwise set it to /deployment_name
+            if (
+                deployment_shell.route_prefix is None
+                or deployment_shell.route_prefix != f"/{deployment_shell.name}"
+            ):
+                route_prefix = deployment_shell.route_prefix
+            else:
+                route_prefix = f"/{deployment_name}"
+
+            self._deployment = deployment_shell.options(
+                func_or_class=func_body,
+                name=self._deployment_name,
+                init_args=(),
                 init_kwargs=dict(),
+                route_prefix=route_prefix,
             )
         else:
             self._deployment: Deployment = Deployment(
@@ -95,8 +117,6 @@ class DeploymentFunctionNode(DAGNode):
         return get_deployment_import_path(self._deployment)
 
     def to_json(self, encoder_cls) -> Dict[str, Any]:
-        if "deployment_self" in self._bound_other_args_to_resolve:
-            self._bound_other_args_to_resolve.pop("deployment_self")
         json_dict = super().to_json_base(encoder_cls, DeploymentFunctionNode.__name__)
         json_dict["import_path"] = self.get_import_path()
         json_dict["deployment_name"] = self.get_deployment_name()

@@ -767,8 +767,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestBundleLocationIndex) {
   const std::shared_ptr<BundleSpecification> bundle_node2_pg1 =
       std::make_shared<BundleSpecification>(
           BundleSpecification(request_pg1.placement_group_spec().bundles(1)));
-  std::shared_ptr<gcs::BundleLocations> bundle_locations_pg1 =
-      std::make_shared<gcs::BundleLocations>();
+  std::shared_ptr<BundleLocations> bundle_locations_pg1 =
+      std::make_shared<BundleLocations>();
   (*bundle_locations_pg1)
       .emplace(bundle_node1_pg1->BundleId(), std::make_pair(node1, bundle_node1_pg1));
   (*bundle_locations_pg1)
@@ -784,8 +784,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestBundleLocationIndex) {
   const std::shared_ptr<BundleSpecification> bundle_node2_pg2 =
       std::make_shared<BundleSpecification>(
           BundleSpecification(request_pg2.placement_group_spec().bundles(1)));
-  std::shared_ptr<gcs::BundleLocations> bundle_locations_pg2 =
-      std::make_shared<gcs::BundleLocations>();
+  std::shared_ptr<BundleLocations> bundle_locations_pg2 =
+      std::make_shared<BundleLocations>();
   (*bundle_locations_pg2)[bundle_node1_pg2->BundleId()] =
       std::make_pair(node1, bundle_node1_pg2);
   (*bundle_locations_pg2)[bundle_node2_pg2->BundleId()] =

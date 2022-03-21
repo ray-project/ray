@@ -270,6 +270,7 @@ def init_ray_and_catch_exceptions(connect_to_serve: bool = False) -> Callable:
 
                 if connect_to_serve:
                     serve.start(detached=True, _override_controller_namespace="serve")
+
                 return await f(self, *args, **kwargs)
             except Exception as e:
                 logger.exception(f"Unexpected error in handler: {e}")
