@@ -1871,7 +1871,10 @@ def stream_log(api_endpoint, node_id, log, lines):
                 break
             elif msg.type == aiohttp.WSMsgType.BINARY:
                 print(msg.data.decode("utf-8"), end="", flush=True)
-            elif msg.type == aiohttp.WSMsgType.TEXT or msg.type == aiohttp.WSMsgType.ERROR:
+            elif (
+                msg.type == aiohttp.WSMsgType.TEXT
+                or msg.type == aiohttp.WSMsgType.ERROR
+            ):
                 print(msg.data)
             await asyncio.sleep(0.5)
         # await ws.close()
@@ -1884,12 +1887,13 @@ def format_print_logs(api_endpoint, node_id, links):
         if len(links[key]) > 0:
             print(f"\n{name}")
             print("----------------------------")
-            [print(f"{api_endpoint}/v1/api/logs/file/{node_id}/{log}")
-             for log in links[key]]
+            [
+                print(f"{api_endpoint}/v1/api/logs/file/{node_id}/{log}")
+                for log in links[key]
+            ]
+
     for lang in ray_constants.LANGUAGE_WORKER_TYPES:
-        print_section(
-            f"{lang.capitalize()} Core Driver Logs", f"{lang}_driver_logs"
-        )
+        print_section(f"{lang.capitalize()} Core Driver Logs", f"{lang}_driver_logs")
         print_section(
             f"{lang.capitalize()} Core Worker Logs", f"{lang}_core_worker_logs"
         )
@@ -1903,7 +1907,7 @@ def format_print_logs(api_endpoint, node_id, links):
     print_section("Ray Client Logs", "ray_client")
 
 
-@cli.command(hidden=True)
+@cli.command()
 @click.argument(
     "filters",
     nargs=-1,
@@ -1952,8 +1956,12 @@ def format_print_logs(api_endpoint, node_id, links):
 #     default=None,
 #     help="Interval at which to refresh logs",
 # )
-def logs(filters, ip_address: str, node_id: str, actor_id: str, watch: bool, lines: int):
+def logs(
+    filters, ip_address: str, node_id: str, actor_id: str, watch: bool, lines: int
+):
     """
+    View logs output by ray cluster.
+
     FILTERS: keywords (filname, component, file extension, id) to filter the log filenames by.
 
     Example usage:
@@ -1968,7 +1976,8 @@ def logs(filters, ip_address: str, node_id: str, actor_id: str, watch: bool, lin
     api_endpoint, logs_dict = ray_log(ip_address, node_id, list(filters))
     if len(logs_dict) != 1:
         raise Exception(
-            f"{len(logs_dict)} nodes match your query. Please specify a node id")
+            f"{len(logs_dict)} nodes match your query. Please specify a node id"
+        )
 
     node_id, logs = next(iter(logs_dict.items()))
     log = None
@@ -1979,21 +1988,22 @@ def logs(filters, ip_address: str, node_id: str, actor_id: str, watch: bool, lin
                 found_many = True
             log = log_list[0]
     if log is None:
-        raise Exception(
-            "Could not find any log file. Please ammend your query.")
+        raise Exception("Could not find any log file. Please ammend your query.")
 
     if actor_id:
         format_print_logs(ray_actor_log(actor_id))
     elif found_many:
         print("Warning: More than one log file matches your query. Please add")
         print("additional filters, flags, file extensions or filenames to narrow ")
-        print("down the results to a single file. Check --help for more.")
+        print("down the search results to a single file. Check --help for more.")
 
         MAX_NODES = 10
         num_nodes = 0
         for node_id, logs in logs_dict.items():
             if num_nodes > MAX_NODES:
-                print("Displaying long index for only 10 nodes. Use --node-id to narrow down.")
+                print(
+                    f"\nDisplaying log index for only {MAX_NODES} nodes. Use --node-id to narrow down."
+                )
                 break
             print(f"\nNode ID: {node_id}")
             format_print_logs(api_endpoint, node_id, logs)
@@ -2002,30 +2012,34 @@ def logs(filters, ip_address: str, node_id: str, actor_id: str, watch: bool, lin
         if lines is None:
             lines = 1000
             print(
-                f"--- Log has been truncated to last {lines} lines. Use `--lines` flag to toggle. ---\n")
+                f"--- Log has been truncated to last {lines} lines. Use `--lines` flag to toggle. ---\n"
+            )
         stream_log(api_endpoint, node_id, log, lines)
 
     elif not watch:
         if lines is None:
             lines = 100
             print(
-                f"--- Log has been truncated to last {lines} lines. Use `--lines` flag to toggle. ---\n")
+                f"--- Log has been truncated to last {lines} lines. Use `--lines` flag to toggle. ---\n"
+            )
         import requests
-        print(requests.get(
-            f"{api_endpoint}/v1/api/logs/file/{node_id}/{log}?lines={lines}").text)
+
+        print(
+            requests.get(
+                f"{api_endpoint}/v1/api/logs/file/{node_id}/{log}?lines={lines}"
+            ).text
+        )
 
 
-@ cli.command(hidden=True)
-@ click.option(
+@cli.command(hidden=True)
+@click.option(
     "--ip-address",
     required=False,
     type=str,
     default=None,
     help="The ip address of the log",
-
-
 )
-@ click.option(
+@click.option(
     "--node-id",
     required=False,
     type=str,
@@ -2042,8 +2056,8 @@ def nodes(ip_address, node_id):
         print()
 
 
-@ cli.command(hidden=True)
-@ click.option(
+@cli.command(hidden=True)
+@click.option(
     "--actor-id",
     required=False,
     type=str,
@@ -2056,16 +2070,16 @@ def actors(actor_id):
     pprint(ray_actors(actor_id))
 
 
-@ cli.command()
-@ click.argument("cluster_config_file", required=False, type=str)
-@ click.option(
+@cli.command()
+@click.argument("cluster_config_file", required=False, type=str)
+@click.option(
     "--host",
     "-h",
     required=False,
     type=str,
     help="Single or list of hosts, separated by comma.",
 )
-@ click.option(
+@click.option(
     "--ssh-user",
     "-U",
     required=False,
@@ -2073,7 +2087,7 @@ def actors(actor_id):
     default=None,
     help="Username of the SSH user.",
 )
-@ click.option(
+@click.option(
     "--ssh-key",
     "-K",
     required=False,
@@ -2081,7 +2095,7 @@ def actors(actor_id):
     default=None,
     help="Path to the SSH key file.",
 )
-@ click.option(
+@click.option(
     "--docker",
     "-d",
     required=False,
@@ -2089,7 +2103,7 @@ def actors(actor_id):
     default=None,
     help="Name of the docker container, if applicable.",
 )
-@ click.option(
+@click.option(
     "--local",
     "-L",
     required=False,
@@ -2098,37 +2112,37 @@ def actors(actor_id):
     default=None,
     help="Also include information about the local node.",
 )
-@ click.option(
+@click.option(
     "--output", "-o", required=False, type=str, default=None, help="Output file."
 )
-@ click.option(
+@click.option(
     "--logs/--no-logs",
     is_flag=True,
     default=True,
     help="Collect logs from ray session dir",
 )
-@ click.option(
+@click.option(
     "--debug-state/--no-debug-state",
     is_flag=True,
     default=True,
     help="Collect debug_state.txt from ray log dir",
 )
-@ click.option(
+@click.option(
     "--pip/--no-pip", is_flag=True, default=True, help="Collect installed pip packages"
 )
-@ click.option(
+@click.option(
     "--processes/--no-processes",
     is_flag=True,
     default=True,
     help="Collect info on running processes",
 )
-@ click.option(
+@click.option(
     "--processes-verbose/--no-processes-verbose",
     is_flag=True,
     default=True,
     help="Increase process information verbosity",
 )
-@ click.option(
+@click.option(
     "--tempfile",
     "-T",
     required=False,
@@ -2481,5 +2495,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
     main()

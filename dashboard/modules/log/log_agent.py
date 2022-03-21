@@ -51,9 +51,13 @@ class LogAgentV1(dashboard_utils.DashboardAgentModule):
                     text = f.read()
                 else:
                     text, _ = tail(f, lines)
+            response = web.StreamResponse()
+            await response.prepare(request)
+            await response.write(text)
+
             # TODO: improve by not buffering all bytes in memory and converting to
             # a StreamResponse instead?
-            return web.Response(body=text)
+            return response
 
     @routes.get("/v1/api/logs/agent/stream/{log_file_name}")
     async def stream_log_lines(self, request):
