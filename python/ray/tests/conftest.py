@@ -505,6 +505,16 @@ def create_object_spilling_config(request, tmp_path):
     scope="function",
     params=[
         file_system_object_spilling_config,
+    ],
+)
+def fs_only_object_spilling_config(request, tmp_path):
+    yield create_object_spilling_config(request, tmp_path)
+
+
+@pytest.fixture(
+    scope="function",
+    params=[
+        file_system_object_spilling_config,
         ray_storage_object_spilling_config,
         # TODO(sang): Add a mock dependency to test S3.
         # smart_open_object_spilling_config,
