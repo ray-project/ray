@@ -1,75 +1,65 @@
 import gym
+import tensorflow_probability as tfp
 
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
+from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.framework import try_import_tf
 
-torch, nn = try_import_torch()
+tf1, tf, tfv = try_import_tf()
 
 
-class OnlineLinearRegression(nn.Module):
+class OnlineLinearRegression(tf.Module):
     def __init__(self, feature_dim, alpha=1, lambda_=1):
         super(OnlineLinearRegression, self).__init__()
+
         self.d = feature_dim
+        self.delta_f = tf.zeros(self.d)
+        self.delta_b = tf.zeros((self.d, self.d))
+        self.update_schedule = 1
+        self.time = 0
         self.alpha = alpha
-        # Diagonal matrix of size d (feature_dim).
-        # If lambda=1.0, this will be an identity matrix.
-        self.precision = nn.Parameter(
-            data=lambda_ * torch.eye(self.d), requires_grad=False
+        self.precision = tf.Variable(
+            initial_value=lambda_ * tf.eye(self.d), name="precision"
         )
-        # Inverse of the above diagnoal. If lambda=1.0, this is also an
-        # identity matrix.
-        self.covariance = nn.Parameter(
-            data=torch.inverse(self.precision), requires_grad=False
+        self.f = tf.Variable(initial_value=tf.zeros(self.d), name="f")
+        self.covariance = tf.Variable(
+            initial_value=tf.linalg.inv(self.precision), name="covariance"
         )
-        # All-0s vector of size d (feature_dim).
-        self.f = nn.Parameter(
-            data=torch.zeros(
-                self.d,
-            ),
-            requires_grad=False,
+        self.theta = tf.Variable(
+            initial_value=tf.linalg.matvec(self.covariance, self.f), name="theta"
         )
-        # Dot product between f and covariance matrix
-        # (batch dim stays intact; reduce dim 1).
-        self.theta = nn.Parameter(
-            data=self.covariance.matmul(self.f), requires_grad=False
-        )
+
         self._init_params()
 
     def _init_params(self):
-        self.update_schedule = 1
-        self.delta_f = 0
-        self.delta_b = 0
-        self.time = 0
-        self.covariance.mul_(self.alpha)
-        self.dist = torch.distributions.multivariate_normal.MultivariateNormal(
-            self.theta, self.covariance
+        self.covariance.assign(self.covariance * self.alpha)
+        self.dist = tfp.distributions.MultivariateNormalTriL(
+            self.theta, scale_tril=tf.linalg.cholesky(self.covariance)
         )
 
     def partial_fit(self, x, y):
         x, y = self._check_inputs(x, y)
-        x = x.squeeze(0)
-        y = y.item()
+        x = tf.squeeze(x, axis=0)
+        y = y[0]
         self.time += 1
         self.delta_f += y * x
-        self.delta_b += torch.ger(x, x)
+        self.delta_b += tf.tensordot(x, x, axes=0)
         # Can follow an update schedule if not doing sherman morison updates
         if self.time % self.update_schedule == 0:
-            self.precision += self.delta_b
-            self.f += self.delta_f
-            self.delta_b = 0
-            self.delta_f = 0
-            torch.inverse(self.precision, out=self.covariance)
-            torch.matmul(self.covariance, self.f, out=self.theta)
-            self.covariance.mul_(self.alpha)
+            self.precision.assign_add(self.delta_b)
+            self.f.assign_add(self.delta_f)
+            self.delta_f = tf.zeros(self.d)
+            self.delta_b = tf.zeros((self.d, self.d))
+            self.covariance.assign(tf.linalg.inv(self.precision))
+            self.theta.assign(tf.linalg.matvec(self.covariance, self.f))
+            self.covariance.assign(self.covariance * self.alpha)
 
     def sample_theta(self):
         theta = self.dist.sample()
         return theta
 
-    def get_ucbs(self, x: TensorType):
+    def get_ucbs(self, x: tf.Tensor):
         """Calculate upper confidence bounds using covariance matrix according
         to algorithm 1: LinUCB
         (http://proceedings.mlr.press/v15/chu11a/chu11a.pdf).
@@ -78,39 +68,46 @@ class OnlineLinearRegression(nn.Module):
             x: Input feature tensor of shape
                 (batch_size, [num_items]?, feature_dim)
         """
+        x = tf.cast(x, dtype=tf.float32)
         # Fold batch and num-items dimensions into one dim.
         if len(x.shape) == 3:
             B, C, F = x.shape
-            x_folded_batch = x.reshape([-1, F])
+            x_folded_batch = tf.reshape(x, [-1, F])
         # Only batch and feature dims.
         else:
             x_folded_batch = x
 
-        projections = self.covariance @ x_folded_batch.T
-        batch_dots = (x_folded_batch * projections.T).sum(dim=-1)
-        batch_dots = batch_dots.sqrt()
+        projections = tf.linalg.matmul(
+            a=self.covariance, b=x_folded_batch, transpose_b=True
+        )
+        batch_dots = tf.math.reduce_sum(
+            x_folded_batch * tf.transpose(projections), axis=-1
+        )
+        batch_dots = tf.math.sqrt(batch_dots)
 
         # Restore original B and C dimensions.
         if len(x.shape) == 3:
-            batch_dots = batch_dots.reshape([B, C])
+            batch_dots = tf.reshape(batch_dots, [B, C])
         return batch_dots
 
-    def forward(self, x: TensorType, sample_theta: bool = False):
+    def __call__(self, x: tf.Tensor, sample_theta=False):
         """Predict scores on input batch using the underlying linear model.
 
         Args:
-            x: Input feature tensor of shape (batch_size, feature_dim)
+            x: Input feature tensor of shape
+                (batch_size, feature_dim)
             sample_theta: Whether to sample the weights from its
                 posterior distribution to perform Thompson Sampling as per
                 http://proceedings.mlr.press/v28/agrawal13.pdf .
         """
+        x = tf.cast(x, dtype=tf.float32)
         x = self._check_inputs(x)
         theta = self.sample_theta() if sample_theta else self.theta
-        scores = x @ theta
+        scores = tf.linalg.matvec(x, theta)
         return scores
 
     def _check_inputs(self, x, y=None):
-        assert x.ndim in [2, 3], (
+        assert len(x.shape) in [2, 3], (
             "Input context tensor must be 2 (no batch) or 3 dimensional (where the"
             " first dimension is the batch size)."
         )
@@ -119,28 +116,25 @@ class OnlineLinearRegression(nn.Module):
             "match!".format(self.d, x.shape[-1])
         )
         if y is not None:
-            assert torch.is_tensor(y), f"ERROR: Target should be a tensor, but is {y}!"
+            assert tf.is_tensor(y), f"ERROR: Target should be a tensor, but is {y}!"
         return x if y is None else (x, y)
 
 
-class DiscreteLinearModel(TorchModelV2, nn.Module):
+class DiscreteLinearModel(TFModelV2):
     def __init__(self, obs_space, action_space, num_outputs, model_config, name):
-        TorchModelV2.__init__(
+        TFModelV2.__init__(
             self, obs_space, action_space, num_outputs, model_config, name
         )
-        nn.Module.__init__(self)
 
         alpha = model_config.get("alpha", 1)
         lambda_ = model_config.get("lambda_", 1)
         self.feature_dim = obs_space.sample().size
-        self.arms = nn.ModuleList(
-            [
-                OnlineLinearRegression(
-                    feature_dim=self.feature_dim, alpha=alpha, lambda_=lambda_
-                )
-                for i in range(self.num_outputs)
-            ]
-        )
+        self.arms = [
+            OnlineLinearRegression(
+                feature_dim=self.feature_dim, alpha=alpha, lambda_=lambda_
+            )
+            for i in range(self.num_outputs)
+        ]
         self._cur_value = None
         self._cur_ctx = None
 
@@ -152,25 +146,25 @@ class DiscreteLinearModel(TorchModelV2, nn.Module):
 
     def predict(self, x, sample_theta=False, use_ucb=False):
         self._cur_ctx = x
-        scores = torch.stack(
-            [self.arms[i](x, sample_theta) for i in range(self.num_outputs)], dim=-1
+        scores = tf.stack(
+            [self.arms[i](x, sample_theta) for i in range(self.num_outputs)], axis=-1
         )
         if use_ucb:
-            ucbs = torch.stack(
-                [self.arms[i].get_ucbs(x) for i in range(self.num_outputs)], dim=-1
+            ucbs = tf.stack(
+                [self.arms[i].get_ucbs(x) for i in range(self.num_outputs)], axis=-1
             )
-            scores += ucbs
+            scores += scores + ucbs
         self._cur_value = scores
         return scores
 
     def partial_fit(self, x, y, arms):
         for i, arm in enumerate(arms):
             assert (
-                0 <= arm.item() < len(self.arms)
-            ), "Invalid arm: {}. It should be 0 <= arm < {}".format(
-                arm.item(), len(self.arms)
-            )
-            self.arms[arm].partial_fit(x[[i]], y[[i]])
+                0 <= arm < len(self.arms)
+            ), "Invalid arm: {}. It should be 0 <= arm < {}".format(arm, len(self.arms))
+            xi = tf.expand_dims(x[i], axis=0)
+            yi = tf.expand_dims(y[i], axis=0)
+            self.arms[arm].partial_fit(xi, yi)
 
     @override(ModelV2)
     def value_function(self):
@@ -200,12 +194,11 @@ class DiscreteLinearModelThompsonSampling(DiscreteLinearModel):
         return scores, state
 
 
-class ParametricLinearModel(TorchModelV2, nn.Module):
+class ParametricLinearModel(TFModelV2):
     def __init__(self, obs_space, action_space, num_outputs, model_config, name):
-        TorchModelV2.__init__(
+        TFModelV2.__init__(
             self, obs_space, action_space, num_outputs, model_config, name
         )
-        nn.Module.__init__(self)
 
         alpha = model_config.get("alpha", 1)
         lambda_ = model_config.get("lambda_", 0.1)
@@ -226,7 +219,7 @@ class ParametricLinearModel(TorchModelV2, nn.Module):
 
     def _check_inputs(self, x):
         assert (
-            x.ndim == 3
+            len(x.shape) == 3
         ), f"ERROR: Inputs ({x}) must have 3 dimensions (B x num-items x features)."
         return x
 
@@ -241,16 +234,16 @@ class ParametricLinearModel(TorchModelV2, nn.Module):
         self._cur_ctx = x
         scores = self.arm(x, sample_theta)
         if use_ucb:
-            ucbs = self.arm.get_ucbs(x)
-            scores += 0.3 * ucbs
+            scores += 0.3 * self.arm.get_ucbs(x)
         self._cur_value = scores
         return scores
 
     def partial_fit(self, x, y, arms):
         x = x["item"]
         for i, arm in enumerate(arms):
-            action_id = arm.item()
-            self.arm.partial_fit(x[[i], action_id], y[[i]])
+            xi = tf.expand_dims(x[i, arm], axis=0)
+            yi = tf.expand_dims(y[i], axis=0)
+            self.arm.partial_fit(xi, yi)
 
     @override(ModelV2)
     def value_function(self):

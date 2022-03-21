@@ -473,7 +473,7 @@ def test_request_headers(job_sdk_client):
         )
 
 
-@pytest.mark.parametrize("scheme", ["http", "https", "ray", "fake_module"])
+@pytest.mark.parametrize("scheme", ["http", "https", "fake_module"])
 @pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "fake.dns.name"])
 @pytest.mark.parametrize("port", [None, 8265, 10000])
 def test_parse_cluster_info(scheme: str, host: str, port: Optional[int]):
@@ -482,16 +482,9 @@ def test_parse_cluster_info(scheme: str, host: str, port: Optional[int]):
         address += f":{port}"
 
     final_port = port if port is not None else DEFAULT_DASHBOARD_PORT
-    if scheme in {"http", "ray"}:
+    if scheme in {"http", "https"}:
         assert parse_cluster_info(address, False) == ClusterInfo(
-            address=f"http://{host}:{final_port}",
-            cookies=None,
-            metadata=None,
-            headers=None,
-        )
-    elif scheme == "https":
-        assert parse_cluster_info(address, False) == ClusterInfo(
-            address=f"https://{host}:{final_port}",
+            address=f"{scheme}://{host}:{final_port}",
             cookies=None,
             metadata=None,
             headers=None,
