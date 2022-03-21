@@ -2,13 +2,13 @@ from typing import Dict, Union, Optional
 from google.protobuf import json_format
 
 import ray._private.utils as private_utils
-from ray.runtime_env import RuntimeEnv
+from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
 
 deprecated = private_utils.deprecated(
-    "If you need to use this function, open a feature request issue on " "GitHub.",
+    "If you need to use this function, open a feature request issue on GitHub.",
     removal_release="1.4",
     warn_once=True,
 )
@@ -48,6 +48,18 @@ def get_runtime_env_info(
                 f"eager_install must be a boolean. got {type(eager_install)}"
             )
         proto_runtime_env_info.runtime_env_eager_install = eager_install
+
+    runtime_env_config = runtime_env.get("config")
+    if runtime_env_config is None:
+        runtime_env_config = RuntimeEnvConfig.default_config()
+    else:
+        runtime_env_config = RuntimeEnvConfig.parse_and_validate_runtime_env_config(
+            runtime_env_config
+        )
+
+    proto_runtime_env_info.runtime_env_config.CopyFrom(
+        runtime_env_config.build_proto_runtime_env_config()
+    )
 
     proto_runtime_env_info.serialized_runtime_env = runtime_env.serialize()
 

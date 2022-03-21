@@ -8,7 +8,7 @@ import starlette.responses
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.serve.api import internal_get_global_client
+from ray.serve.api import Application
 
 
 def test_e2e(serve_instance):
@@ -269,9 +269,7 @@ def test_delete_deployment_group(serve_instance, blocking):
         # Check idempotence
         for _ in range(2):
 
-            internal_get_global_client().delete_deployments(
-                ["f", "g"], blocking=blocking
-            )
+            serve_instance.delete_deployments(["f", "g"], blocking=blocking)
 
             wait_for_condition(
                 lambda: requests.get("http://127.0.0.1:8000/f").status_code == 404,
@@ -334,6 +332,88 @@ def test_shutdown_destructor(serve_instance):
 
     B.deploy()
     B.delete()
+
+
+def test_run_get_ingress_app(serve_instance):
+    """Check that serve.run() with an app returns the ingress."""
+
+    @serve.deployment(route_prefix=None)
+    def f():
+        return "got f"
+
+    @serve.deployment(route_prefix="/g")
+    def g():
+        return "got g"
+
+    app = Application([f, g])
+    ingress_handle = serve.run(app)
+
+    assert ray.get(ingress_handle.remote()) == "got g"
+    serve_instance.delete_deployments(["f", "g"])
+
+    no_ingress_app = Application([f.options(route_prefix="/f"), g])
+    ingress_handle = serve.run(no_ingress_app)
+    assert ingress_handle is None
+
+
+def test_run_get_ingress_node(serve_instance):
+    """Check that serve.run() with a node returns the ingress."""
+
+    @serve.deployment
+    class Driver:
+        def __init__(self, dag):
+            self.dag = dag
+
+        async def __call__(self, *args):
+            return await self.dag.remote()
+
+    @serve.deployment
+    class f:
+        def __call__(self, *args):
+            return "got f"
+
+    dag = Driver.bind(f.bind())
+    ingress_handle = serve.run(dag)
+
+    assert ray.get(ingress_handle.remote()) == "got f"
+
+
+class TestSetOptions:
+    def test_set_options_basic(self):
+        @serve.deployment(
+            num_replicas=4,
+            max_concurrent_queries=3,
+            prev_version="abcd",
+            ray_actor_options={"num_cpus": 2},
+            _health_check_timeout_s=17,
+        )
+        def f():
+            pass
+
+        f.set_options(
+            num_replicas=9,
+            prev_version="abcd",
+            version="efgh",
+            ray_actor_options={"num_gpus": 3},
+        )
+
+        assert f.num_replicas == 9
+        assert f.max_concurrent_queries == 3
+        assert f.prev_version == "abcd"
+        assert f.version == "efgh"
+        assert f.ray_actor_options == {"num_gpus": 3}
+        assert f._config.health_check_timeout_s == 17
+
+    def test_set_options_validation(self):
+        @serve.deployment
+        def f():
+            pass
+
+        with pytest.raises(TypeError):
+            f.set_options(init_args=-4)
+
+        with pytest.raises(ValueError):
+            f.set_options(max_concurrent_queries=-4)
 
 
 if __name__ == "__main__":

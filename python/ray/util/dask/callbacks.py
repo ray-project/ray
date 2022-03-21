@@ -177,7 +177,7 @@ def normalize_ray_callback(cb):
         return cb
     else:
         raise TypeError(
-            "Callbacks must be either 'RayDaskCallback' or 'RayCallback' " "namedtuple"
+            "Callbacks must be either 'RayDaskCallback' or 'RayCallback' namedtuple"
         )
 
 

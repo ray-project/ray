@@ -429,7 +429,7 @@ def test_list_named_actors_timeout(monkeypatch, shutdown_only):
         # defer for 3s
         m.setenv(
             "RAY_testing_asio_delay_us",
-            "ActorInfoGcsService.grpc_server.ListNamedActors" "=3000000:3000000",
+            "ActorInfoGcsService.grpc_server.ListNamedActors=3000000:3000000",
         )
         ray.init(_system_config={"gcs_server_request_timeout_seconds": 1})
 

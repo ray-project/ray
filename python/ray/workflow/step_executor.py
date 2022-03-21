@@ -149,10 +149,17 @@ def _execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
         for w in inputs.workflows:
             static_ref = w.ref
             if static_ref is None:
+                extra_options = w.data.step_options.ray_options
                 # The input workflow is not a reference to an executed
-                # workflow .
+                # workflow.
                 output = execute_workflow(w).persisted_output
-                static_ref = WorkflowStaticRef(step_id=w.step_id, ref=output)
+                static_ref = WorkflowStaticRef(
+                    step_id=w.step_id,
+                    ref=output,
+                    _resolve_like_object_ref_in_args=extra_options.get(
+                        "_resolve_like_object_ref_in_args", False
+                    ),
+                )
             workflow_outputs.append(static_ref)
 
     baked_inputs = _BakedWorkflowInputs(
@@ -187,9 +194,10 @@ def _execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
             # tasks.
             executor = _workflow_wait_executor_remote.options(num_cpus=0).remote
         else:
-            executor = _workflow_step_executor_remote.options(
-                **step_options.ray_options
-            ).remote
+            ray_options = step_options.ray_options.copy()
+            # cleanup the "_resolve_like_object_ref_in_args" option, it is not for Ray.
+            ray_options.pop("_resolve_like_object_ref_in_args", None)
+            executor = _workflow_step_executor_remote.options(**ray_options).remote
 
     # Stage 3: execution
     persisted_output, volatile_output = executor(
@@ -627,7 +635,10 @@ class _BakedWorkflowInputs:
         """
         objects_mapping = []
         for obj_ref in self.workflow_outputs:
-            obj, ref = _resolve_object_ref(obj_ref.ref)
+            if obj_ref._resolve_like_object_ref_in_args:
+                obj = obj_ref.ref
+            else:
+                obj, ref = _resolve_object_ref(obj_ref.ref)
             objects_mapping.append(obj)
 
         workflow_ref_mapping = _resolve_dynamic_workflow_refs(self.workflow_refs)

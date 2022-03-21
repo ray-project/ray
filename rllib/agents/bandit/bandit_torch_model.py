@@ -14,18 +14,25 @@ class OnlineLinearRegression(nn.Module):
         super(OnlineLinearRegression, self).__init__()
         self.d = feature_dim
         self.alpha = alpha
+        # Diagonal matrix of size d (feature_dim).
+        # If lambda=1.0, this will be an identity matrix.
         self.precision = nn.Parameter(
             data=lambda_ * torch.eye(self.d), requires_grad=False
         )
+        # Inverse of the above diagnoal. If lambda=1.0, this is also an
+        # identity matrix.
+        self.covariance = nn.Parameter(
+            data=torch.inverse(self.precision), requires_grad=False
+        )
+        # All-0s vector of size d (feature_dim).
         self.f = nn.Parameter(
             data=torch.zeros(
                 self.d,
             ),
             requires_grad=False,
         )
-        self.covariance = nn.Parameter(
-            data=torch.inverse(self.precision), requires_grad=False
-        )
+        # Dot product between f and covariance matrix
+        # (batch dim stays intact; reduce dim 1).
         self.theta = nn.Parameter(
             data=self.covariance.matmul(self.f), requires_grad=False
         )

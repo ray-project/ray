@@ -53,7 +53,7 @@ class RaySyncer {
   void Start() {
     poller_->Start();
     broadcast_thread_ = std::make_unique<std::thread>([this]() {
-      SetThreadName("resource_report_broadcaster");
+      SetThreadName("resource_bcast");
       boost::asio::io_service::work work(broadcast_service_);
       broadcast_service_.run();
     });
