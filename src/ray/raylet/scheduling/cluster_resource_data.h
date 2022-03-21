@@ -374,12 +374,16 @@ class TaskResourceInstances {
   }
 
   void Add(const ResourceID resource_id, const std::vector<FixedPoint> &delta) {
-    auto &instances = GetMutable(resource_id);
-    if (instances.size() <= delta.size()) {
-      instances.resize(delta.size());
-    }
-    for (size_t i = 0; i < instances.size(); ++i) {
-      instances[i] += delta[i];
+    if (!Has(resource_id)) {
+      Set(resource_id, delta);
+    } else {
+      auto &instances = GetMutable(resource_id);
+      if (instances.size() <= delta.size()) {
+        instances.resize(delta.size());
+      }
+      for (size_t i = 0; i < instances.size(); ++i) {
+        instances[i] += delta[i];
+      }
     }
   }
 

@@ -183,7 +183,7 @@ bool LocalResourceManager::AllocateTaskResourceInstances(
   RAY_CHECK(task_allocation != nullptr);
   for (auto &resource_id : resource_request.ResourceIds()) {
     auto demand = resource_request.Get(resource_id);
-    auto available = local_resources_.available.GetMutable(resource_id);
+    auto &available = local_resources_.available.GetMutable(resource_id);
     std::vector<FixedPoint> allocation;
     bool success = AllocateResourceInstances(demand, available, &allocation);
     // Allocation failed. Restore node's local resources by freeing the resources
