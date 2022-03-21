@@ -284,7 +284,15 @@ py_test(
 )
 
 py_test(
-    name = "test_runtime_env", "test_runtime_env_2"
+    name = "test_runtime_env"
+    size = "large",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_runtime_env_2"
     size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
