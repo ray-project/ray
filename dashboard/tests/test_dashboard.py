@@ -705,10 +705,10 @@ def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
     assert dashboard_proc.wait(10) == 255
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") != "1",
-    reason="This test only works for minimal installation.",
-)
+# @pytest.mark.skipif(
+#     os.environ.get("RAY_MINIMAL") != "1",
+#     reason="This test only works for minimal installation.",
+# )
 def test_dashboard_does_not_depend_on_serve():
     """Check that the dashboard can start without Serve."""
 
