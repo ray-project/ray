@@ -63,7 +63,6 @@ class RaySyncerTest : public ::testing::Test {
         }
       };
       ON_CALL(*reporter, Snapshot(_, _)).WillByDefault(WithArg<0>(Invoke(take_snapshot)));
-      ++cid;
     }
     thread_ = std::make_unique<std::thread>([this]() {
       boost::asio::io_context::work work(io_context_);
