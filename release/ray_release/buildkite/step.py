@@ -6,6 +6,8 @@ from ray_release.buildkite.concurrency import CONCURRENY_GROUPS, get_concurrency
 from ray_release.config import Test, get_test_env_var
 from ray_release.exception import ReleaseTestConfigError
 
+DEFAULT_ARTIFACTS_DIR_HOST = "/tmp/ray_release_test_artifacts"
+
 DEFAULT_STEP_TEMPLATE = {
     "env": {
         "ANYSCALE_CLOUD_ID": "cld_4F7k8814aZzGG8TNUGPKnc",
@@ -25,14 +27,13 @@ DEFAULT_STEP_TEMPLATE = {
                 "volumes": [
                     "/var/lib/buildkite/builds:/var/lib/buildkite/builds",
                     "/usr/local/bin/buildkite-agent:/usr/local/bin/buildkite-agent",
-                    "/tmp/ray_release_test_artifacts:"
-                    "/tmp/ray_release_test_artifacts",
+                    f"{DEFAULT_ARTIFACTS_DIR_HOST}:{DEFAULT_ARTIFACTS_DIR_HOST}",
                 ],
                 "environment": ["BUILDKITE_BUILD_PATH=/var/lib/buildkite/builds"],
             }
         }
     ],
-    "artifact_paths": ["/tmp/ray_release_test_artifacts/**/*"],
+    "artifact_paths": [f"{DEFAULT_ARTIFACTS_DIR_HOST}/**/*"],
     "priority": 0,
 }
 

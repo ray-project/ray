@@ -7,6 +7,8 @@ from ray.ml.constants import PREPROCESSOR_KEY
 
 from ray.ml.train.data_parallel_trainer import DataParallelTrainer
 from ray.ml.preprocessor import Preprocessor
+from ray.tune.tune_config import TuneConfig
+from ray.tune.tuner import Tuner
 
 
 @pytest.fixture
@@ -158,12 +160,13 @@ def test_tune(ray_start_4_cpus):
         scaling_config=scale_config,
     )
 
-    analysis = tune.run(
-        trainer.as_trainable(),
-        config={"train_loop_config": {"x": tune.choice([200, 300])}},
-        num_samples=2,
+    tuner = Tuner(
+        trainer,
+        param_space={"train_loop_config": {"x": tune.choice([200, 300])}},
+        tune_config=TuneConfig(num_samples=2),
     )
-    assert analysis.trials[0].last_result["loss"] in [200, 300]
+    result_grid = tuner.fit()
+    assert result_grid[0].metrics["loss"] in [200, 300]
 
     # Make sure original Trainer is not affected.
     assert trainer.train_loop_config["x"] == 100

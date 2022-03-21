@@ -215,16 +215,27 @@ class ProxyManager:
             return server
 
     def _create_runtime_env(
-        self, serialized_runtime_env: str, specific_server: SpecificServer
+        self,
+        serialized_runtime_env: str,
+        runtime_env_config: str,
+        specific_server: SpecificServer,
     ):
-        """Creates the runtime_env by sending an RPC to the agent.
+        """Increase the runtime_env reference by sending an RPC to the agent.
 
         Includes retry logic to handle the case when the agent is
         temporarily unreachable (e.g., hasn't been started up yet).
         """
-        create_env_request = runtime_env_agent_pb2.CreateRuntimeEnvRequest(
+        logger.info(
+            f"Increasing runtime env reference for "
+            f"ray_client_server_{specific_server.port}."
+            f"Serialized runtime env is {serialized_runtime_env}."
+        )
+
+        create_env_request = runtime_env_agent_pb2.GetOrCreateRuntimeEnvRequest(
             serialized_runtime_env=serialized_runtime_env,
+            runtime_env_config=runtime_env_config,
             job_id=f"ray_client_server_{specific_server.port}".encode("utf-8"),
+            source_process="client_server",
         )
 
         retries = 0
@@ -232,7 +243,7 @@ class ProxyManager:
         wait_time_s = 0.5
         while retries <= max_retries:
             try:
-                r = self._runtime_env_stub.CreateRuntimeEnv(create_env_request)
+                r = self._runtime_env_stub.GetOrCreateRuntimeEnv(create_env_request)
                 if r.status == agent_manager_pb2.AgentRpcStatus.AGENT_RPC_STATUS_OK:
                     return r.serialized_runtime_env_context
                 elif (
@@ -256,7 +267,7 @@ class ProxyManager:
                     raise e
 
                 logger.warning(
-                    f"CreateRuntimeEnv request failed: {e}. "
+                    f"GetOrCreateRuntimeEnv request failed: {e}. "
                     f"Retrying after {wait_time_s}s. "
                     f"{max_retries-retries} retries remaining."
                 )
@@ -267,7 +278,7 @@ class ProxyManager:
             wait_time_s *= 2
 
         raise TimeoutError(
-            f"CreateRuntimeEnv request failed after {max_retries} attempts."
+            f"GetOrCreateRuntimeEnv request failed after {max_retries} attempts."
         )
 
     def start_specific_server(self, client_id: str, job_config: JobConfig) -> bool:
@@ -283,6 +294,7 @@ class ProxyManager:
         )
 
         serialized_runtime_env = job_config.get_serialized_runtime_env()
+        runtime_env_config = job_config.get_proto_runtime_env_config()
         if not serialized_runtime_env or serialized_runtime_env == "{}":
             # TODO(edoakes): can we just remove this case and always send it
             # to the agent?
@@ -290,6 +302,7 @@ class ProxyManager:
         else:
             serialized_runtime_env_context = self._create_runtime_env(
                 serialized_runtime_env=serialized_runtime_env,
+                runtime_env_config=runtime_env_config,
                 specific_server=specific_server,
             )
 
@@ -525,7 +538,12 @@ class RayletServicerProxy(ray_client_pb2_grpc.RayletDriverServicer):
         return self._call_inner_function(req, context, "Terminate")
 
     def GetObject(self, request, context=None):
-        return self._call_inner_function(request, context, "GetObject")
+        try:
+            yield from self._call_inner_function(request, context, "GetObject")
+        except Exception as e:
+            # Error while iterating over response from GetObject stream
+            logger.exception("Proxying call to GetObject failed!")
+            _propagate_error_in_context(e, context)
 
     def PutObject(
         self, request: ray_client_pb2.PutRequest, context=None

@@ -154,7 +154,7 @@ struct Mocker {
       const ActorID &actor_id) {
     PlacementGroupSpecBuilder builder;
 
-    auto placement_group_id = PlacementGroupID::FromRandom();
+    auto placement_group_id = PlacementGroupID::Of(job_id);
     builder.SetPlacementGroupSpec(placement_group_id,
                                   name,
                                   bundles,

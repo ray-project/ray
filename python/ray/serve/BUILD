@@ -332,6 +332,14 @@ py_test(
 )
 
 py_test(
+    name = "test_pipeline_driver",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_pipeline_dag",
     size = "medium",
     srcs = serve_tests_srcs,
@@ -339,7 +347,29 @@ py_test(
     deps = [":serve_lib"],
 )
 
+py_test(
+    name = "test_pipeline_ingress_deployment",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
 
+py_test(
+    name = "test_pipeline_deployment_config",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_pipeline_handle_serde",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
 # Runs test_api and test_failure with injected failures in the controller.
 py_test(
    name = "test_controller_crashes",
@@ -460,4 +490,3 @@ py_test(
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
-

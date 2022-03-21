@@ -2,7 +2,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray.serve.handle import RayServeSyncHandle
+from ray.serve.handle import RayServeLazySyncHandle
 from ray.experimental.dag import InputNode
 from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,
@@ -101,7 +101,7 @@ def test_single_class_with_invalid_deployment_options(serve_instance):
 
 
 def test_func_class_with_class_method_dag(serve_instance):
-    ray_dag, dag_input = get_func_class_with_class_method_dag()
+    ray_dag, _ = get_func_class_with_class_method_dag()
 
     serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
@@ -119,7 +119,7 @@ def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
     multiple times for the same class, and we can still correctly replace
     args with deployment handle and parse correct deployment instances.
     """
-    ray_dag, dag_input = get_multi_instantiation_class_deployment_in_init_args_dag()
+    ray_dag, _ = get_multi_instantiation_class_deployment_in_init_args_dag()
 
     serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
     print(f"Serve DAG: \n{serve_root_dag}")
@@ -138,7 +138,7 @@ def test_shared_deployment_handle(serve_instance):
     Test we can re-use the same deployment handle multiple times or in
     multiple places, without incorrectly parsing duplicated deployments.
     """
-    ray_dag, dag_input = get_shared_deployment_handle_dag()
+    ray_dag, _ = get_shared_deployment_handle_dag()
 
     serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
     print(f"Serve DAG: \n{serve_root_dag}")
@@ -158,7 +158,7 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
     instantiated multiple times for the same class, and we can still correctly
     replace args with deployment handle and parse correct deployment instances.
     """
-    ray_dag, dag_input = get_multi_instantiation_class_nested_deployment_arg_dag()
+    ray_dag, _ = get_multi_instantiation_class_nested_deployment_arg_dag()
 
     serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
     print(f"Serve DAG: \n{serve_root_dag}")
@@ -168,10 +168,10 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
     # with correct handle
     combine_deployment = deployments[2]
     init_arg_handle = combine_deployment.init_args[0]
-    assert isinstance(init_arg_handle, RayServeSyncHandle)
+    assert isinstance(init_arg_handle, RayServeLazySyncHandle)
     assert init_arg_handle.deployment_name == "Model"
     init_kwarg_handle = combine_deployment.init_kwargs["m2"][NESTED_HANDLE_KEY]
-    assert isinstance(init_kwarg_handle, RayServeSyncHandle)
+    assert isinstance(init_kwarg_handle, RayServeLazySyncHandle)
     assert init_kwarg_handle.deployment_name == "Model_1"
 
     for deployment in deployments:

@@ -263,6 +263,8 @@
     - bazel test --test_output=streamed --config=ci $(./scripts/bazel_export_options)
       python/ray/tests/test_runtime_env
     - bazel test --test_output=streamed --config=ci $(./scripts/bazel_export_options)
+      python/ray/tests/test_runtime_env_2
+    - bazel test --test_output=streamed --config=ci $(./scripts/bazel_export_options)
       python/ray/tests/test_runtime_env_complicated
     - bazel test --test_output=streamed --config=ci $(./scripts/bazel_export_options)
       python/ray/tests/test_runtime_env_validation
@@ -274,7 +276,7 @@
       python/ray/tests/test_usage_stats
 
 - label: ":python: Release test package unit tests"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  conditions: ["ALWAYS"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - pip install -e release/

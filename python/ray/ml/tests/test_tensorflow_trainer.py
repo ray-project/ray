@@ -68,12 +68,18 @@ def test_tensorflow_e2e(ray_start_4_cpus):
     )
     result = trainer.fit()
 
-    predictor = TensorflowPredictor.from_checkpoint(result.checkpoint, build_model)
+    class TensorflowScorer:
+        def __init__(self):
+            self.pred = TensorflowPredictor.from_checkpoint(
+                result.checkpoint, build_model
+            )
+
+        def __call__(self, x):
+            return self.pred.predict(x, dtype=np.float)
 
     predict_dataset = ray.data.range(3)
     predictions = predict_dataset.map_batches(
-        lambda batch: predictor.predict(batch, dtype=np.float),
-        batch_format="pandas",
+        TensorflowScorer, batch_format="pandas", compute="actors"
     )
     assert predictions.count() == 3
 

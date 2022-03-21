@@ -136,7 +136,7 @@ def submit(
     entrypoint: Tuple[str],
     no_wait: bool,
 ):
-    """Submits a job to be run on the cluster docstring
+    """Submits a job to be run on the cluster.
 
     Example:
         >>> ray job submit -- python my_script.py --arg=val
