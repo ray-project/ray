@@ -189,7 +189,7 @@ struct SyncerServer {
             .WillByDefault(WithArg<0>(Invoke(snapshot_received)));
       }
 
-      if(receivers[cid] != nullptr) {
+      if (receivers[cid] != nullptr) {
         if (static_cast<RayComponentId>(cid) == RayComponentId::SCHEDULER) {
           ON_CALL(*receivers[cid], NeedBroadcast()).WillByDefault(Return(false));
         } else {
