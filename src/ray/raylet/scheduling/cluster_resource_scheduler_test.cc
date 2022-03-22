@@ -574,10 +574,10 @@ TEST_F(ClusterResourceSchedulerTest, GetCPUInstancesDoubleTest) {
   addTaskResourceInstances(true, {4.}, MEM, &task_resources);
   addTaskResourceInstances(true, {1., 1., 1., 1., 1.}, GPU, &task_resources);
 
-  std::vector<FixedPoint> cpu_instances = task_resources.GetCPUInstances();
+  std::vector<FixedPoint> cpu_instances = task_resources.Get(ResourceID::CPU());
   std::vector<FixedPoint> expected_cpu_instances{1., 1., 1.};
 
-  ASSERT_EQ(EqualVectors(cpu_instances, expected_cpu_instances), true);
+  ASSERT_EQ(FixedPointVectorEqual(cpu_instances, expected_cpu_instances), true);
 }
 
 TEST_F(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest) {
@@ -586,28 +586,27 @@ TEST_F(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest) {
   NodeResources node_resources(resource_request);
   ClusterResourceScheduler cluster(scheduling::NodeID(0), node_resources, *gcs_client_);
 
-  ResourceInstanceCapacities instances;
-
-  instances.total = {6., 6., 6.};
-  instances.available = {3., 2., 5.};
-  ResourceInstanceCapacities old_instances = instances;
+  std::vector<FixedPoint> total = {6., 6., 6.};
+  std::vector<FixedPoint> available = {3., 2., 5.};
+  auto old_total = total;
+  auto old_available = available;
 
   std::vector<FixedPoint> a{1., 1., 1.};
-  cluster.GetLocalResourceManager().AddAvailableResourceInstances(a, &instances);
-  cluster.GetLocalResourceManager().SubtractAvailableResourceInstances(a, &instances);
+  cluster.GetLocalResourceManager().AddAvailableResourceInstances(a, total, available);
+  cluster.GetLocalResourceManager().SubtractAvailableResourceInstances(a, available);
 
-  ASSERT_EQ(EqualVectors(instances.available, old_instances.available), true);
+  ASSERT_EQ(FixedPointVectorEqual(available, old_available), true);
 
   a = {10., 1., 1.};
-  cluster.GetLocalResourceManager().AddAvailableResourceInstances(a, &instances);
+  cluster.GetLocalResourceManager().AddAvailableResourceInstances(a, total, available);
   std::vector<FixedPoint> expected_available{6., 3., 6.};
 
-  ASSERT_EQ(EqualVectors(instances.available, expected_available), true);
+  ASSERT_EQ(FixedPointVectorEqual(available, expected_available), true);
 
   a = {10., 1., 1.};
-  cluster.GetLocalResourceManager().SubtractAvailableResourceInstances(a, &instances);
+  cluster.GetLocalResourceManager().SubtractAvailableResourceInstances(a, available);
   expected_available = {0., 2., 5.};
-  ASSERT_EQ(EqualVectors(instances.available, expected_available), true);
+  ASSERT_EQ(FixedPointVectorEqual(available, expected_available), true);
 }
 
 TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest) {
@@ -804,11 +803,11 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest2) {
     NodeResourceInstances old_local_resources =
         resource_scheduler.GetLocalResourceManager().GetLocalResources();
     ASSERT_EQ(success, true);
-    std::vector<double> cpu_instances = task_allocation->GetCPUInstancesDouble();
-    resource_scheduler.GetLocalResourceManager().AddResourceInstances(
-        scheduling::kCPUResource, cpu_instances);
+    std::vector<double> cpu_instances = task_allocation->GetDouble(ResourceID::CPU());
+    resource_scheduler.GetLocalResourceManager().AddResourceInstances(ResourceID::CPU(),
+                                                                      cpu_instances);
     resource_scheduler.GetLocalResourceManager().SubtractResourceInstances(
-        scheduling::kCPUResource, cpu_instances);
+        ResourceID::CPU(), cpu_instances);
 
     ASSERT_EQ((resource_scheduler.GetLocalResourceManager().GetLocalResources() ==
                old_local_resources),
@@ -864,23 +863,23 @@ TEST_F(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest) {
 
     std::vector<double> allocate_gpu_instances{0.5, 0.5, 0.5, 0.5};
     resource_scheduler.GetLocalResourceManager().SubtractResourceInstances(
-        scheduling::kGPUResource, allocate_gpu_instances);
+        ResourceID::CPU(), allocate_gpu_instances);
     std::vector<double> available_gpu_instances =
         resource_scheduler.GetLocalResourceManager()
             .GetLocalResources()
             .GetAvailableResourceInstances()
-            .GetGPUInstancesDouble();
+            .GetDouble(ResourceID::GPU());
     std::vector<double> expected_available_gpu_instances{0.5, 0.5, 0.5, 0.5};
     ASSERT_TRUE(std::equal(available_gpu_instances.begin(),
                            available_gpu_instances.end(),
                            expected_available_gpu_instances.begin()));
 
     resource_scheduler.GetLocalResourceManager().AddResourceInstances(
-        scheduling::kGPUResource, allocate_gpu_instances);
+        ResourceID::CPU(), allocate_gpu_instances);
     available_gpu_instances = resource_scheduler.GetLocalResourceManager()
                                   .GetLocalResources()
                                   .GetAvailableResourceInstances()
-                                  .GetGPUInstancesDouble();
+                                  .GetDouble(ResourceID::GPU());
     expected_available_gpu_instances = {1., 1., 1., 1.};
     ASSERT_TRUE(std::equal(available_gpu_instances.begin(),
                            available_gpu_instances.end(),
@@ -889,14 +888,14 @@ TEST_F(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest) {
     allocate_gpu_instances = {1.5, 1.5, .5, 1.5};
     std::vector<double> underflow =
         resource_scheduler.GetLocalResourceManager().SubtractResourceInstances(
-            scheduling::kGPUResource, allocate_gpu_instances);
+            ResourceID::CPU(), allocate_gpu_instances);
     std::vector<double> expected_underflow{.5, .5, 0., .5};
     ASSERT_TRUE(
         std::equal(underflow.begin(), underflow.end(), expected_underflow.begin()));
     available_gpu_instances = resource_scheduler.GetLocalResourceManager()
                                   .GetLocalResources()
                                   .GetAvailableResourceInstances()
-                                  .GetGPUInstancesDouble();
+                                  .GetDouble(ResourceID::GPU());
     expected_available_gpu_instances = {0., 0., 0.5, 0.};
     ASSERT_TRUE(std::equal(available_gpu_instances.begin(),
                            available_gpu_instances.end(),
@@ -905,13 +904,13 @@ TEST_F(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest) {
     allocate_gpu_instances = {1.0, .5, 1., .5};
     std::vector<double> overflow =
         resource_scheduler.GetLocalResourceManager().AddResourceInstances(
-            scheduling::kGPUResource, allocate_gpu_instances);
+            ResourceID::CPU(), allocate_gpu_instances);
     std::vector<double> expected_overflow{.0, .0, .5, 0.};
     ASSERT_TRUE(std::equal(overflow.begin(), overflow.end(), expected_overflow.begin()));
     available_gpu_instances = resource_scheduler.GetLocalResourceManager()
                                   .GetLocalResources()
                                   .GetAvailableResourceInstances()
-                                  .GetGPUInstancesDouble();
+                                  .GetDouble(ResourceID::GPU());
     expected_available_gpu_instances = {1., .5, 1., .5};
     ASSERT_TRUE(std::equal(available_gpu_instances.begin(),
                            available_gpu_instances.end(),
@@ -936,12 +935,12 @@ TEST_F(ClusterResourceSchedulerTest,
       // SubtractGPUResourceInstances() calls
       // UpdateLocalAvailableResourcesFromResourceInstances() under the hood.
       resource_scheduler.GetLocalResourceManager().SubtractResourceInstances(
-          scheduling::kGPUResource, allocate_gpu_instances);
+          ResourceID::CPU(), allocate_gpu_instances);
       std::vector<double> available_gpu_instances =
           resource_scheduler.GetLocalResourceManager()
               .GetLocalResources()
               .GetAvailableResourceInstances()
-              .GetGPUInstancesDouble();
+              .GetDouble(ResourceID::GPU());
       std::vector<double> expected_available_gpu_instances{0.5, 0.5, 0., 0.5};
       ASSERT_TRUE(std::equal(available_gpu_instances.begin(),
                              available_gpu_instances.end(),
@@ -950,7 +949,7 @@ TEST_F(ClusterResourceSchedulerTest,
       NodeResources nr;
       resource_scheduler.GetClusterResourceManager().GetNodeResources(
           scheduling::NodeID(0), &nr);
-      ASSERT_TRUE(nr.vailable.Get(ResourceID::GPU()) == 1.5);
+      ASSERT_TRUE(nr.available.Get(ResourceID::GPU()) == 1.5);
     }
 
     {
@@ -958,12 +957,12 @@ TEST_F(ClusterResourceSchedulerTest,
       // SubtractGPUResourceInstances() calls
       // UpdateLocalAvailableResourcesFromResourceInstances() under the hood.
       resource_scheduler.GetLocalResourceManager().AddResourceInstances(
-          scheduling::kGPUResource, allocate_gpu_instances);
+          ResourceID::CPU(), allocate_gpu_instances);
       std::vector<double> available_gpu_instances =
           resource_scheduler.GetLocalResourceManager()
               .GetLocalResources()
               .GetAvailableResourceInstances()
-              .GetGPUInstancesDouble();
+              .GetDouble(ResourceID::GPU());
       std::vector<double> expected_available_gpu_instances{1., 1., 1., 0.8};
       ASSERT_TRUE(std::equal(available_gpu_instances.begin(),
                              available_gpu_instances.end(),
@@ -999,10 +998,10 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithHardRequestTest) {
 
   ASSERT_EQ(success, true);
 
-  vector<FixedPoint> gpu_instances = task_allocation->GetGPUInstances();
+  vector<FixedPoint> gpu_instances = task_allocation->Get(ResourceID::GPU());
   vector<FixedPoint> expect_gpu_instance{1., 0.5, 0., 0.};
 
-  ASSERT_TRUE(EqualVectors(gpu_instances, expect_gpu_instance));
+  ASSERT_TRUE(FixedPointVectorEqual(gpu_instances, expect_gpu_instance));
 }
 
 TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest) {
@@ -1027,10 +1026,10 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest) {
 
   ASSERT_EQ(success, true);
 
-  vector<FixedPoint> cpu_instances = task_allocation->GetCPUInstances();
+  vector<FixedPoint> cpu_instances = task_allocation->Get(ResourceID::CPU());
   vector<FixedPoint> expect_cpu_instance{2};
 
-  ASSERT_TRUE(EqualVectors(cpu_instances, expect_cpu_instance));
+  ASSERT_TRUE(FixedPointVectorEqual(cpu_instances, expect_cpu_instance));
 }
 
 TEST_F(ClusterResourceSchedulerTest, TestAlwaysSpillInfeasibleTask) {
@@ -1199,12 +1198,12 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
     ASSERT_EQ(total["object_store_memory"], 1000 * 1024 * 1024);
     ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
                   .GetLocalResources()
-                  .available.Get(ResourceID::ObjectStoreMemory())
+                  .available.Sum(ResourceID::ObjectStoreMemory())
                   .Double(),
               750 * 1024 * 1024);
     ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
                   .GetLocalResources()
-                  .total.Get(ResourceID::ObjectStoreMemory())
+                  .total.Sum(ResourceID::ObjectStoreMemory())
                   .Double(),
               1000 * 1024 * 1024);
   }
@@ -1218,12 +1217,12 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
     ASSERT_EQ(available["object_store_memory"], 550 * 1024 * 1024);
     ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
                   .GetLocalResources()
-                  .available.Get(ResourceID::ObjectStoreMemory())
+                  .available.Sum(ResourceID::ObjectStoreMemory())
                   .Double(),
               550 * 1024 * 1024);
     ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
                   .GetLocalResources()
-                  .total.Get(ResourceID::ObjectStoreMemory())
+                  .total.Sum(ResourceID::ObjectStoreMemory())
                   .Double(),
               1000 * 1024 * 1024);
   }
@@ -1237,12 +1236,12 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
     ASSERT_EQ(available["object_store_memory"], 1000 * 1024 * 1024);
     ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
                   .GetLocalResources()
-                  .available.Get(ResourceID::ObjectStoreMemory())
+                  .available.Sum(ResourceID::ObjectStoreMemory())
                   .Double(),
               1000 * 1024 * 1024);
     ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
                   .GetLocalResources()
-                  .total.Get(ResourceID::ObjectStoreMemory())
+                  .total.Sum(ResourceID::ObjectStoreMemory())
                   .Double(),
               1000 * 1024 * 1024);
   }
@@ -1256,12 +1255,12 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
     ASSERT_EQ(available["object_store_memory"], 0);
     ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
                   .GetLocalResources()
-                  .available.Get(ResourceID::ObjectStoreMemory())
+                  .available.Sum(ResourceID::ObjectStoreMemory())
                   .Double(),
               0);
     ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
                   .GetLocalResources()
-                  .total.Get(ResourceID::ObjectStoreMemory())
+                  .total.Sum(ResourceID::ObjectStoreMemory())
                   .Double(),
               1000 * 1024 * 1024);
   }
@@ -1445,8 +1444,7 @@ TEST_F(ClusterResourceSchedulerTest, CustomResourceInstanceTest) {
   ClusterResourceScheduler resource_scheduler(
       scheduling::NodeID("local"), {{"CPU", 4}, {"FPGA", 2}}, *gcs_client_);
 
-  StringIdMap mock_string_to_int_map;
-  int64_t fpga_resource_id = mock_string_to_int_map.Insert("FPGA");
+  auto fpga_resource_id = ResourceID("FPGA");
 
   ResourceRequest resource_request;
   resource_request.Set(ResourceID::CPU(), 1).Set(fpga_resource_id, 0.7);
@@ -1477,9 +1475,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesSerializedStringTest) 
   addTaskResourceInstances(true, {2.}, 0, cluster_resources.get());
   addTaskResourceInstances(true, {4.}, 1, cluster_resources.get());
   addTaskResourceInstances(true, {1., 1.}, 2, cluster_resources.get());
-  std::string serialized_string =
-      resource_scheduler.GetLocalResourceManager().SerializedTaskResourceInstances(
-          cluster_resources);
+  std::string serialized_string = cluster_resources->SerializeAsJson();
   std::string expected_serialized_string =
       R"({"CPU":20000,"memory":40000,"GPU":[10000, 10000]})";
   ASSERT_EQ(serialized_string == expected_serialized_string, true);
@@ -1497,9 +1493,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesSerializedStringTest) 
   addTaskResourceInstances(true, {1., 1.}, 2, cluster_instance_resources.get());
   ClusterResourceScheduler resource_scheduler_cpu_instance(
       scheduling::NodeID("local"), {{"CPU", 4}, {"memory", 4}, {"GPU", 2}}, *gcs_client_);
-  std::string instance_serialized_string =
-      resource_scheduler_cpu_instance.GetLocalResourceManager()
-          .SerializedTaskResourceInstances(cluster_instance_resources);
+  std::string instance_serialized_string = cluster_instance_resources->SerializeAsJson();
   std::string expected_instance_serialized_string =
       R"({"CPU":[10000, 10000],"memory":40000,"GPU":[10000, 10000]})";
   ASSERT_EQ(instance_serialized_string == expected_instance_serialized_string, true);
