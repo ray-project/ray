@@ -8,7 +8,7 @@ from sklearn.datasets import load_breast_cancer
 from sklearn.utils import shuffle
 
 from ray import tune
-from ray.data import Dataset, Datasource, ReadTask, read_datasource
+from ray.data import from_pandas, read_datasource, Dataset, Datasource, ReadTask
 from ray.data.block import BlockMetadata
 from ray.ml.config import RunConfig
 from ray.ml.train.integrations.xgboost import XGBoostTrainer
@@ -48,23 +48,31 @@ def gen_dataset_func(do_shuffle: Optional[bool] = False) -> Dataset:
     return read_datasource(test_datasource)
 
 
-# TODO(xwjiang): Add when dataset out-of-band ser/des is landed.
+def gen_dataset_func_eager():
+    data_raw = load_breast_cancer(as_frame=True)
+    dataset_df = data_raw["data"]
+    dataset_df["target"] = data_raw["target"]
+    dataset = from_pandas(dataset_df)
+    return dataset
+
+
 class TunerTest(unittest.TestCase):
     """The e2e test for hparam tuning using Tuner API."""
 
     def test_tuner_with_xgboost_trainer(self):
         """Test a successful run."""
-        shutil.rmtree(expanduser("~/ray_results/test_tuner"))
+        shutil.rmtree(expanduser("~/ray_results/test_tuner"), ignore_errors=True)
         trainer = XGBoostTrainer(
             label_column="target",
             params={},
-            datasets={"train": gen_dataset_func()},
+            # TODO(xwjiang): change when dataset out-of-band ser/des is landed.
+            datasets={"train": gen_dataset_func_eager()},
         )
         # prep_v1 = StandardScaler(["worst radius", "worst area"])
         # prep_v2 = StandardScaler(["worst concavity", "worst smoothness"])
         param_space = {
             "scaling_config": {
-                "num_workers": tune.grid_search([1, 2, 4]),
+                "num_workers": tune.grid_search([1, 2]),
             },
             # TODO(xwjiang): Add when https://github.com/ray-project/ray/issues/23363
             #  is resolved.
@@ -91,22 +99,23 @@ class TunerTest(unittest.TestCase):
         )
         results = tuner.fit()
         assert results.get_best_result().checkpoint
-        assert len(results) == 3
+        assert len(results) == 2
 
     def test_tuner_with_xgboost_trainer_driver_fail_and_resume(self):
         # So that we have some global checkpointing happening.
         os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "1"
-        shutil.rmtree(expanduser("~/ray_results/test_tuner"))
+        shutil.rmtree(expanduser("~/ray_results/test_tuner"), ignore_errors=True)
         trainer = XGBoostTrainer(
             label_column="target",
             params={},
-            datasets={"train": gen_dataset_func()},
+            # TODO(xwjiang): change when dataset out-of-band ser/des is landed.
+            datasets={"train": gen_dataset_func_eager()},
         )
         # prep_v1 = StandardScaler(["worst radius", "worst area"])
         # prep_v2 = StandardScaler(["worst concavity", "worst smoothness"])
         param_space = {
             "scaling_config": {
-                "num_workers": tune.grid_search([1, 2, 4]),
+                "num_workers": tune.grid_search([1, 2]),
             },
             # TODO(xwjiang): Add when https://github.com/ray-project/ray/issues/23363
             #  is resolved.
@@ -129,7 +138,7 @@ class TunerTest(unittest.TestCase):
         class FailureInjectionCallback(Callback):
             """Inject failure at the configured iteration number."""
 
-            def __init__(self, num_iters=50):
+            def __init__(self, num_iters=10):
                 self.num_iters = num_iters
 
             def on_step_end(self, iteration, trials, **kwargs):
@@ -154,7 +163,7 @@ class TunerTest(unittest.TestCase):
         # A hack before we figure out RunConfig semantics across resumes.
         tuner._local_tuner._run_config.callbacks = None
         results = tuner.fit()
-        assert len(results) == 3
+        assert len(results) == 2
 
     def test_tuner_trainer_fail(self):
         class DummyTrainer(Trainer):
@@ -164,7 +173,7 @@ class TunerTest(unittest.TestCase):
         trainer = DummyTrainer()
         param_space = {
             "scaling_config": {
-                "num_workers": tune.grid_search([1, 2, 4]),
+                "num_workers": tune.grid_search([1, 2]),
             }
         }
         tuner = Tuner(
@@ -174,8 +183,8 @@ class TunerTest(unittest.TestCase):
             tune_config=TuneConfig(mode="max", metric="iteration"),
         )
         results = tuner.fit()
-        assert len(results) == 3
-        for i in range(3):
+        assert len(results) == 2
+        for i in range(2):
             assert results[i].error
 
 
