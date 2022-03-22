@@ -175,9 +175,7 @@ test:segfault --run_under="bash -c 'unset GREP_OPTIONS && if ! grep -q -o Micros
 
 # Debug build:
 build:debug -c dbg
-build:debug --cxxopt="-O0"
-build:debug --cxxopt="-g"
-build:debug --cxxopt="-ggdb"
+build:debug --copt="-g"
 build:debug --strip="never"
 
 # Undefined Behavior Sanitizer

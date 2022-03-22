@@ -18,6 +18,10 @@
 namespace ray {
 namespace syncer {
 
+NodeState::NodeState() {
+  snapshots_taken_.fill(-1);
+}
+
 bool NodeState::SetComponents(RayComponentId cid,
                               const ReporterInterface *reporter,
                               ReceiverInterface *receiver) {
@@ -27,6 +31,9 @@ bool NodeState::SetComponents(RayComponentId cid,
     receivers_[cid] = receiver;
     return true;
   } else {
+    RAY_LOG(ERROR) << "Fail to set components, component_id:" << cid
+                   << ", reporter:" << reporter
+                   << ", receiver:" << receiver;
     return false;
   }
 }
@@ -38,16 +45,23 @@ std::optional<RaySyncMessage> NodeState::GetSnapshot(RayComponentId cid) {
   auto message = reporters_[cid]->Snapshot(snapshots_taken_[cid], cid);
   if (message != std::nullopt) {
     snapshots_taken_[cid] = message->version();
+    RAY_LOG(DEBUG) << "Snapshot taken: cid:" << cid << ", version:" << message->version()
+                   << ", node:" << NodeID::FromBinary(message->node_id());
   }
   return message;
 }
 
 bool NodeState::ConsumeMessage(std::shared_ptr<const RaySyncMessage> message) {
   auto &current = cluster_view_[message->node_id()][message->component_id()];
+
+  RAY_LOG(DEBUG) << "ConsumeMessage: " << (current ? current->version() : -1)
+                 << " message_version: " << message->version()
+                 << ", message_from: " << NodeID::FromBinary(message->node_id());
   // Check whether newer version of this message has been received.
   if (current && current->version() >= message->version()) {
     return false;
   }
+
   current = message;
   auto receiver = receivers_[message->component_id()];
   if (receiver != nullptr) {
@@ -66,8 +80,18 @@ NodeSyncConnection::NodeSyncConnection(RaySyncer &instance,
 
 bool NodeSyncConnection::PushToSendingQueue(
     std::shared_ptr<const RaySyncMessage> message) {
+  if(message->node_id() == GetNodeId()) {
+    // Skip the message when it's about the node of this connection.
+    return false;
+  }
   auto &node_versions = GetNodeComponentVersions(message->node_id());
   if (node_versions[message->component_id()] < message->version()) {
+    RAY_LOG(DEBUG) << "PushToSendingQueue: "
+                   << NodeID::FromBinary(instance_.GetNodeId())
+                   << "<--" << NodeID::FromBinary(node_id_)
+                   << "\t" << message->component_id()
+                   << "\t" << node_versions[message->component_id()]
+                   << "\t" << message->version();
     sending_queue_.insert(message);
     node_versions[message->component_id()] = message->version();
     return true;
@@ -80,8 +104,9 @@ std::array<int64_t, kComponentArraySize> &NodeSyncConnection::GetNodeComponentVe
   auto iter = node_versions_.find(node_id);
   if (iter == node_versions_.end()) {
     iter =
-        node_versions_.emplace(node_id, std::array<int64_t, kComponentArraySize>({-1L}))
+        node_versions_.emplace(node_id, std::array<int64_t, kComponentArraySize>())
             .first;
+    iter->second.fill(-1);
   }
   return iter->second;
 }
@@ -104,6 +129,7 @@ void ClientSyncConnection::StartLongPolling() {
   //    1. there is a new version of message
   //    2. and it has passed X ms since last update.
   auto client_context = std::make_shared<grpc::ClientContext>();
+  RAY_LOG(DEBUG) << "Start long pulling from "  << NodeID::FromBinary(GetNodeId());
   stub_->async()->LongPolling(
       client_context.get(),
       &dummy_,
@@ -166,6 +192,14 @@ ServerSyncConnection::ServerSyncConnection(RaySyncer &instance,
       RayConfig::instance().raylet_report_resources_period_milliseconds());
 }
 
+ServerSyncConnection::~ServerSyncConnection() {
+  // If there is a pending request, we need to cancel it. Otherwise, rpc will
+  // hang there forever.
+  if(unary_reactor_ != nullptr) {
+    unary_reactor_->Finish(grpc::Status::CANCELLED);
+  }
+}
+
 void ServerSyncConnection::HandleLongPollingRequest(grpc::ServerUnaryReactor *reactor,
                                                     RaySyncMessages *response) {
   RAY_CHECK(response_ == nullptr);
@@ -192,7 +226,7 @@ void ServerSyncConnection::DoSend() {
     sending_queue_.erase(iter++);
   }
 
-  if (message_bytes != 0) {
+  if (response_->sync_messages_size() != 0) {
     unary_reactor_->Finish(grpc::Status::OK);
     unary_reactor_ = nullptr;
     response_ = nullptr;
@@ -203,7 +237,9 @@ RaySyncer::RaySyncer(instrumented_io_context &io_context, const std::string &nod
     : io_context_(io_context),
       node_id_(node_id),
       node_state_(std::make_unique<NodeState>()),
-      timer_(io_context) {}
+      timer_(io_context) {
+  component_broadcast_.fill(true);
+}
 
 RaySyncer::~RaySyncer() {}
 
@@ -218,9 +254,10 @@ void RaySyncer::Connect(std::shared_ptr<grpc::Channel> channel) {
       client_context.get(),
       request.get(),
       response.get(),
-      [this, channel, response, client_context](grpc::Status status) {
+      [this, channel, request, response, client_context](grpc::Status status) {
         io_context_.post(
             [this, channel, response]() {
+              RAY_LOG(DEBUG) << "Connect to  " <<  NodeID::FromBinary(response->node_id());
               auto connection = std::make_unique<ClientSyncConnection>(
                   *this, io_context_, response->node_id(), channel);
               Connect(std::move(connection));
@@ -232,7 +269,15 @@ void RaySyncer::Connect(std::shared_ptr<grpc::Channel> channel) {
 void RaySyncer::Connect(std::unique_ptr<NodeSyncConnection> connection) {
   RAY_CHECK(connection != nullptr);
   RAY_CHECK(sync_connections_[connection->GetNodeId()] == nullptr);
+  auto& conn = *connection;
   sync_connections_[connection->GetNodeId()] = std::move(connection);
+  for(const auto& [_, messages] : node_state_->GetClusterView()) {
+    for(auto& message : messages) {
+      if(message != nullptr) {
+        RAY_CHECK(conn.PushToSendingQueue(message));
+      }
+    }
+  }
 }
 
 void RaySyncer::Disconnect(const std::string &node_id) {
@@ -255,6 +300,7 @@ bool RaySyncer::Register(RayComponentId component_id,
         [this, component_id]() {
           auto snapshot = node_state_->GetSnapshot(component_id);
           if (snapshot) {
+            RAY_CHECK(snapshot->node_id() == GetNodeId());
             BroadcastMessage(std::make_shared<RaySyncMessage>(std::move(*snapshot)));
           }
         },
@@ -264,6 +310,12 @@ bool RaySyncer::Register(RayComponentId component_id,
   if (receiver != nullptr) {
     component_broadcast_[component_id] = receiver->NeedBroadcast();
   }
+  RAY_LOG(DEBUG) << "Registered components: "
+                 << "component_id:" << component_id
+                 << ", reporter:" << reporter
+                 << ", receiver:" << receiver
+                 << ", pull_from_reporter_interval_ms:" << pull_from_reporter_interval_ms
+                 << ", need_broadcast:" << component_broadcast_[component_id];
   return true;
 }
 
@@ -288,6 +340,7 @@ grpc::ServerUnaryReactor *RaySyncerService::StartSync(
   // Make sure server only have one client
   RAY_CHECK(node_id_.empty());
   node_id_ = request->node_id();
+  RAY_LOG(DEBUG) << "Get connect from: " << NodeID::FromBinary(node_id_);
   syncer_.GetIOContext().post(
       [this, response, reactor]() {
         syncer_.Connect(std::make_unique<ServerSyncConnection>(

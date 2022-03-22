@@ -163,10 +163,12 @@ class RaySyncer {
 
   /// If the field is set to be true, it means, message generated or received
   /// is needed to be sent to other nodes.
-  Array<bool> component_broadcast_ = {true};
+  Array<bool> component_broadcast_;
 
   /// Timer is used to do broadcasting.
   ray::PeriodicalRunner timer_;
+
+  FRIEND_TEST(SyncerTest, Test1To1);
 };
 
 class ClientSyncConnection;

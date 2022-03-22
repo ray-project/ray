@@ -20,6 +20,9 @@ namespace syncer {
 /// It also keeps the raw messages receivers got.
 class NodeState {
  public:
+  /// Constructor of NodeState.
+  NodeState();
+
   /// Set the local components.
   ///
   /// \param cid The component id.
@@ -51,13 +54,18 @@ class NodeState {
   /// \return true if this node doesn't have message with newer version.
   bool ConsumeMessage(std::shared_ptr<const RaySyncMessage> message);
 
+  /// Return the cluster view of this local node.
+  const absl::flat_hash_map<std::string, Array<std::shared_ptr<const RaySyncMessage>>>&
+  GetClusterView() const {
+    return cluster_view_;
+  }
  private:
   /// For local nodes
   Array<const ReporterInterface *> reporters_ = {nullptr};
   Array<ReceiverInterface *> receivers_ = {nullptr};
 
-  /// This fields records the version of the snapshot that has been taken.
-  Array<int64_t> snapshots_taken_ = {-1};
+  /// This field records the version of the snapshot that has been taken.
+  Array<int64_t> snapshots_taken_;
   /// Keep track of the latest messages received.
   /// Use shared pointer for easier liveness management since these messages might be
   /// sending via rpc.
@@ -89,6 +97,10 @@ class NodeSyncConnection {
   void ReceiveUpdate(RaySyncMessages messages) {
     for (auto &message : *messages.mutable_sync_messages()) {
       auto &node_versions = GetNodeComponentVersions(message.node_id());
+      RAY_LOG(DEBUG)  << "Receive update: "
+                      << " component_id=" << message.component_id()
+                      << ", message_version=" << message.version()
+                      << ", local_message_version=" << node_versions[message.component_id()];
       if (node_versions[message.component_id()] < message.version()) {
         node_versions[message.component_id()] = message.version();
       }
@@ -143,6 +155,8 @@ class ServerSyncConnection : public NodeSyncConnection {
   ServerSyncConnection(RaySyncer &instance,
                        instrumented_io_context &io_context,
                        const std::string &node_id);
+
+  ~ServerSyncConnection() override;
 
   void HandleLongPollingRequest(grpc::ServerUnaryReactor *reactor,
                                 RaySyncMessages *response);
