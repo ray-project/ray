@@ -55,30 +55,30 @@ class BayesOptSearch(Searcher):
     `BayesianOptimization search space specification`_.
 
     Args:
-        space (dict): Continuous search space. Parameters will be sampled from
+        space: Continuous search space. Parameters will be sampled from
             this space which will be used to run trials.
-        metric (str): The training result objective value attribute. If None
+        metric: The training result objective value attribute. If None
             but a mode was passed, the anonymous metric `_metric` will be used
             per default.
-        mode (str): One of {min, max}. Determines whether objective is
+        mode: One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        points_to_evaluate (list): Initial parameter suggestions to be run
+        points_to_evaluate: Initial parameter suggestions to be run
             first. This is for when you already have some good parameters
             you want to run first to help the algorithm make better suggestions
             for future parameters. Needs to be a list of dicts containing the
             configurations.
-        utility_kwargs (dict): Parameters to define the utility function.
+        utility_kwargs: Parameters to define the utility function.
             The default value is a dictionary with three keys:
             - kind: ucb (Upper Confidence Bound)
             - kappa: 2.576
             - xi: 0.0
-        random_state (int): Used to initialize BayesOpt.
-        random_search_steps (int): Number of initial random searches.
+        random_state: Used to initialize BayesOpt.
+        random_search_steps: Number of initial random searches.
             This is necessary to avoid initial local overfitting
             of the Bayesian process.
-        analysis (ExperimentAnalysis): Optionally, the previous analysis
+        analysis: Optionally, the previous analysis
             to integrate.
-        verbose (int): Sets verbosity level for BayesOpt packages.
+        verbose: Sets verbosity level for BayesOpt packages.
         max_concurrent: Deprecated.
         use_early_stopped_trials: Deprecated.
 
@@ -235,7 +235,7 @@ class BayesOptSearch(Searcher):
         """Return new point to be explored by black box function.
 
         Args:
-            trial_id (str): Id of the trial.
+            trial_id: Id of the trial.
                 This is a short alphanumerical string.
 
         Returns:
@@ -299,7 +299,7 @@ class BayesOptSearch(Searcher):
         """Integrate the given analysis into the gaussian process.
 
         Args:
-            analysis (ExperimentAnalysis): Optionally, the previous analysis
+            analysis: Optionally, the previous analysis
                 to integrate.
         """
         for (_, report), params in zip(
@@ -316,11 +316,11 @@ class BayesOptSearch(Searcher):
         """Notification for the completion of trial.
 
         Args:
-            trial_id (str): Id of the trial.
+            trial_id: Id of the trial.
                 This is a short alphanumerical string.
-            result (dict): Dictionary of result.
+            result: Dictionary of result.
                 May be none when some error occurs.
-            error (bool): Boolean representing a previous error state.
+            error: Boolean representing a previous error state.
                 The result should be None when error is True.
         """
         # We try to get the parameters used for this trial

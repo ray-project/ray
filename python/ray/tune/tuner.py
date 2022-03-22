@@ -10,9 +10,14 @@ from ray.tune.trainable import Trainable
 from ray.tune.impl.tuner_internal import TunerInternal
 from ray.tune.tune_config import TuneConfig
 from ray.util import PublicAPI
-from ray.util.client.common import ClientActorHandle
 from ray.util.ml_utils.node import force_on_current_node
 
+ClientActorHandle = Any
+
+try:
+    from ray.util.client.common import ClientActorHandle
+except Exception:
+    pass
 
 # The magic key that is used when instantiating Tuner during resume.
 _TUNER_INTERNAL = "_tuner_internal"
@@ -33,6 +38,7 @@ class Tuner:
             Refer to ray.ml.config.RunConfig for more info.
 
     Usage pattern:
+
     .. code-block:: python
 
         # TODO(xwjiang): Make this runnable. Add imports.
@@ -57,10 +63,11 @@ class Tuner:
             },
         }
         tuner = Tuner(trainable=trainer, param_space=param_space,
-            run_config(name="my_tune_run"))
+            run_config=RunConfig(name="my_tune_run"))
         analysis = tuner.fit()
 
     To retry a failed tune run, you can then do
+
     .. code-block:: python
 
         tuner = Tuner.restore(experiment_checkpoint_dir)
@@ -146,7 +153,7 @@ class Tuner:
         In such cases, there will be instruction like the following printed out
         at the end of console output to inform users on how to resume.
 
-        Please use tuner = Tuner.restore("/Users/xwjiang/ray_results/tuner_resume")
+        Please use tuner = Tuner.restore("~/ray_results/tuner_resume")
         to resume.
 
         Exception that happens in non-essential integration blocks like during invoking

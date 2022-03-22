@@ -27,7 +27,6 @@ Report:
 
 import click
 import math
-import os
 import random
 
 from ray import serve
@@ -36,6 +35,7 @@ from serve_test_utils import (
     aggregate_all_metrics,
     run_wrk_on_all_nodes,
     save_test_results,
+    is_smoke_test,
 )
 from serve_test_cluster_utils import (
     setup_local_single_node_cluster,
@@ -115,8 +115,7 @@ def main(
     # Give default cluster parameter values based on smoke_test config
     # if user provided values explicitly, use them instead.
     # IS_SMOKE_TEST is set by args of releaser's e2e.py
-    smoke_test = os.environ.get("IS_SMOKE_TEST", "1")
-    if smoke_test == "1":
+    if is_smoke_test():
         num_replicas = num_replicas or DEFAULT_SMOKE_TEST_NUM_REPLICA
         num_deployments = num_deployments or DEFAULT_SMOKE_TEST_NUM_DEPLOYMENTS
         trial_length = trial_length or DEFAULT_SMOKE_TEST_TRIAL_LENGTH

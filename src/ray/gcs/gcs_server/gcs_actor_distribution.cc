@@ -104,16 +104,16 @@ GcsBasedActorScheduler::AllocateNewActorWorkerAssignment(
 
 scheduling::NodeID GcsBasedActorScheduler::AllocateResources(
     const ResourceRequest &required_resources) {
-  auto selected_nodes =
-      cluster_resource_scheduler_->Schedule({required_resources}, SchedulingType::SPREAD)
-          .second;
+  auto scheduling_result =
+      cluster_resource_scheduler_->Schedule({required_resources}, SchedulingType::SPREAD);
 
-  if (selected_nodes.size() == 0) {
+  if (!scheduling_result.status.IsSuccess()) {
     RAY_LOG(INFO)
         << "Scheduling resources failed, schedule type = SchedulingType::SPREAD";
     return scheduling::NodeID::Nil();
   }
 
+  const auto &selected_nodes = scheduling_result.selected_nodes;
   RAY_CHECK(selected_nodes.size() == 1);
 
   auto selected_node_id = selected_nodes[0];

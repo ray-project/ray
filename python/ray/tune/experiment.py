@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from pickle import PicklingError
 import traceback
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, Optional, Sequence, Union, Callable, Type, List
 
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable
@@ -258,12 +258,12 @@ class Experiment:
         self.spec = spec
 
     @classmethod
-    def from_json(cls, name, spec):
+    def from_json(cls, name: str, spec: dict):
         """Generates an Experiment object from JSON.
 
         Args:
-            name (str): Name of Experiment.
-            spec (dict): JSON configuration of experiment.
+            name: Name of Experiment.
+            spec: JSON configuration of experiment.
         """
         if "run" not in spec:
             raise TuneError("No trainable specified!")
@@ -288,11 +288,11 @@ class Experiment:
         return exp
 
     @classmethod
-    def get_trainable_name(cls, run_object):
+    def get_trainable_name(cls, run_object: Union[str, Callable, Type]):
         """Get Trainable name.
 
         Args:
-            run_object (str|function|class): Trainable to run. If string,
+            run_object: Trainable to run. If string,
                 assumes it is an ID and does not modify it. Otherwise,
                 returns a string corresponding to the run_object name.
 
@@ -329,14 +329,14 @@ class Experiment:
             raise TuneError("Improper 'run' - not string nor trainable.")
 
     @classmethod
-    def register_if_needed(cls, run_object):
+    def register_if_needed(cls, run_object: Union[str, Callable, Type]):
         """Registers Trainable or Function at runtime.
 
         Assumes already registered if run_object is a string.
         Also, does not inspect interface of given run_object.
 
         Args:
-            run_object (str|function|class): Trainable to run. If string,
+            run_object: Trainable to run. If string,
                 assumes it is an ID and does not modify it. Otherwise,
                 returns a string corresponding to the run_object name.
 
@@ -363,15 +363,20 @@ class Experiment:
         return name
 
     @classmethod
-    def get_experiment_checkpoint_dir(cls, run_obj, local_dir=None, name=None):
+    def get_experiment_checkpoint_dir(
+        cls,
+        run_obj: Union[str, Callable, Type],
+        local_dir: Optional[str] = None,
+        name: Optional[str] = None,
+    ):
         """Get experiment checkpoint dir without setting up an experiment.
 
         This is only used internally for better support of Tuner API.
 
         Args:
-            run_obj (str|function|class): Trainable to run.
-            name (str): The name of the experiment specified by user.
-            local_dir (str): The local_dir path.
+            run_obj: Trainable to run.
+            local_dir: The local_dir path.
+            name: The name of the experiment specified by user.
 
         Returns:
             Checkpoint directory for experiment.
@@ -416,7 +421,7 @@ class Experiment:
         return {k: v for k, v in self.spec.items() if k in self.PUBLIC_KEYS}
 
 
-def convert_to_experiment_list(experiments):
+def convert_to_experiment_list(experiments: Union[Experiment, List[Experiment], Dict]):
     """Produces a list of Experiment objects.
 
     Converts input from dict, single experiment, or list of
@@ -424,7 +429,7 @@ def convert_to_experiment_list(experiments):
     will return an empty list.
 
     Arguments:
-        experiments (Experiment | list | dict): Experiments to run.
+        experiments: Experiments to run.
 
     Returns:
         List of experiments.
