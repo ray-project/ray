@@ -346,10 +346,10 @@ SchedulingResult BundleStrictSpreadSchedulingPolicy::Schedule(
 
   // First schedule scarce resources (such as GPU) and large capacity resources to improve
   // the scheduling success rate.
-  const auto &sorted_index = SortRequiredResources(resource_request_list);
+  auto sorted_index = SortRequiredResources(resource_request_list);
   std::vector<const ResourceRequest *> sorted_resource_request_list(
       resource_request_list);
-  for (int i = 0; i < (int)sorted_index.size(); i++) {
+  for (size_t i = 0; i < sorted_index.size(); i++) {
     sorted_resource_request_list[i] = resource_request_list[sorted_index[i]];
   }
 
@@ -380,15 +380,25 @@ absl::flat_hash_map<scheduling::NodeID, const Node *>
 BundleStrictSpreadSchedulingPolicy::FilterCandidateNodes(
     const SchedulingContext *context) const {
   auto bundle_scheduling_context = dynamic_cast<const BundleSchedulingContext *>(context);
+
+  absl::flat_hash_set<scheduling::NodeID> nodes_in_use;
+  if (bundle_scheduling_context &&
+      bundle_scheduling_context->bundle_locations_.has_value()) {
+    const auto &bundle_locations = bundle_scheduling_context->bundle_locations_.value();
+    if (bundle_locations != nullptr) {
+      for (auto &bundle : *bundle_locations) {
+        nodes_in_use.insert(scheduling::NodeID(bundle.second.first.Binary()));
+      }
+    }
+  }
+
   absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes;
   for (const auto &entry : nodes_) {
     if (is_node_available_ && !is_node_available_(entry.first)) {
       continue;
     }
 
-    if (bundle_scheduling_context && bundle_scheduling_context->node_to_bundles_ &&
-        bundle_scheduling_context->node_to_bundles_->contains(
-            NodeID::FromBinary(entry.first.Binary()))) {
+    if (nodes_in_use.contains(entry.first)) {
       continue;
     }
 

@@ -219,10 +219,11 @@ TEST_F(GcsResourceSchedulerTest, TestNodeFilter) {
     resource_request_list.emplace_back(&request);
   }
 
-  auto node_to_bundles = std::make_shared<absl::flat_hash_map<NodeID, int64_t>>();
-  node_to_bundles->emplace(node_id, 1);
-  BundleSchedulingContext scheduling_context_1(node_to_bundles);
-  const auto &result1 =
+  auto bundle_locations = std::make_shared<BundleLocations>();
+  BundleID bundle_id{PlacementGroupID::FromRandom(), 0};
+  bundle_locations->emplace(bundle_id, std::make_pair(node_id, nullptr));
+  BundleSchedulingContext scheduling_context_1(bundle_locations);
+  auto result1 =
       cluster_resource_scheduler_->Schedule(resource_request_list,
                                             SchedulingOptions::BundleStrictSpread(),
                                             &scheduling_context_1);

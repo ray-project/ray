@@ -430,19 +430,9 @@ GcsPlacementGroupScheduler::CreateSchedulingContext(
     const PlacementGroupID &placement_group_id) {
   auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
   committed_bundle_location_index_.AddNodes(alive_nodes);
-
-  auto node_to_bundles = std::make_shared<absl::flat_hash_map<NodeID, int64_t>>();
-  for (const auto &node_it : alive_nodes) {
-    const auto &node_id = node_it.first;
-    const auto &bundle_locations_on_node =
-        committed_bundle_location_index_.GetBundleLocationsOnNode(node_id);
-    RAY_CHECK(bundle_locations_on_node)
-        << "Bundle locations haven't been registered for node id " << node_id;
-    const int bundles_size = bundle_locations_on_node.value()->size();
-    node_to_bundles->emplace(node_id, bundles_size);
-  }
-
-  return std::make_unique<BundleSchedulingContext>(std::move(node_to_bundles));
+  auto bundle_locations =
+      committed_bundle_location_index_.GetBundleLocations(placement_group_id);
+  return std::make_unique<BundleSchedulingContext>(std::move(bundle_locations));
 }
 
 SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(

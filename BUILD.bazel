@@ -1077,10 +1077,10 @@ cc_test(
 )
 
 cc_test(
-    name = "cluster_resource_scheduler_test_2",
+    name = "cluster_resource_scheduler_2_test",
     size = "small",
     srcs = [
-        "src/ray/raylet/scheduling/cluster_resource_scheduler_test_2.cc",
+        "src/ray/raylet/scheduling/cluster_resource_scheduler_2_test.cc",
     ],
     copts = COPTS,
     tags = ["team:core"],
