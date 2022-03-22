@@ -3,17 +3,17 @@ import re
 import shutil
 import tempfile
 
-from ray.ml.storage import Storage
+from ray.ml.remote_storage import RemoteStorage
 
 
-class LocalTestStorage(Storage):
+class LocalTestStorage(RemoteStorage):
     """Local test storage to be used in tests.
 
     Uploads and downloads data to/from a local temporary directory.
 
     Example:
 
-        from ray.ml.storage import register_storage, upload_to_bucket
+        from ray.ml.remote_storage import register_storage, upload_to_bucket
         from ray.ml.utils.test_utils import LocalTestStorage
 
         register_storage("test://", LocalTestStorage())

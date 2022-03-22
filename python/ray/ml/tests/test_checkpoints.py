@@ -7,7 +7,7 @@ from typing import Any
 
 import ray
 from ray.ml.checkpoint import Checkpoint
-from ray.ml.storage import register_storage
+from ray.ml.remote_storage import register_remote_storage
 from ray.ml.utils.test_utils import LocalTestStorage
 
 
@@ -19,7 +19,7 @@ class CheckpointsConversionTest(unittest.TestCase):
         self.checkpoint_dir_data = {"metric": 2, "step": 6}
 
         self.local_test_storage = LocalTestStorage()
-        register_storage("test://", self.local_test_storage)
+        register_remote_storage("test://", self.local_test_storage)
 
         self.cloud_uri = "test://cloud/bucket"
 

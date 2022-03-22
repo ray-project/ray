@@ -8,7 +8,7 @@ from typing import Optional, Union, Tuple
 import ray
 from ray import cloudpickle as pickle
 from ray.util.annotations import DeveloperAPI
-from ray.ml.storage import (
+from ray.ml.remote_storage import (
     upload_to_bucket,
     is_cloud_target,
     download_from_bucket,

@@ -16,7 +16,7 @@ from shlex import quote
 from ray.tune.error import TuneError
 from ray.util.annotations import PublicAPI
 from ray.util.debug import log_once
-from ray.ml.storage import (
+from ray.ml.remote_storage import (
     S3_PREFIX,
     GS_PREFIX,
     HDFS_PREFIX,

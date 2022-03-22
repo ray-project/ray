@@ -13,12 +13,12 @@ HDFS_PREFIX = "hdfs://"
 ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GS_PREFIX, HDFS_PREFIX)
 
 
-class Storage(abc.ABC):
-    """Base class for (external) storage providers.
+class RemoteStorage(abc.ABC):
+    """Base class for remote storage providers.
 
     Classes inheriting from this provide implementations for
     methods to upload, download, and delete files and
-    directories to and from external storage.
+    directories to and from remote storage.
     """
 
     def upload(self, local_source: str, remote_target: str) -> None:
@@ -48,7 +48,7 @@ class Storage(abc.ABC):
         raise NotImplementedError
 
 
-class S3Storage(Storage):
+class S3Storage(RemoteStorage):
     def upload(self, local_source: str, remote_target: str) -> None:
         subprocess.check_call(
             ["aws", "s3", "cp", "--recursive", "--quiet", local_source, remote_target]
@@ -65,7 +65,7 @@ class S3Storage(Storage):
         )
 
 
-class GSStorage(Storage):
+class GSStorage(RemoteStorage):
     def upload(self, local_source: str, remote_target: str) -> None:
         subprocess.check_call(["gsutil", "-m", "cp", "-r", local_source, remote_target])
 
@@ -76,7 +76,7 @@ class GSStorage(Storage):
         subprocess.check_call(["gsutil", "-m", "rm", "-f", "-r", remote_target])
 
 
-class HDFSStorage(Storage):
+class HDFSStorage(RemoteStorage):
     def upload(self, local_source: str, remote_target: str) -> None:
         subprocess.check_call(["hdfs", "dfs", "-put", local_source, remote_target])
 
@@ -87,16 +87,16 @@ class HDFSStorage(Storage):
         subprocess.check_call(["hdfs", "dfs", "-rm", "-r", remote_target])
 
 
-_registered_storages: Dict[str, Storage] = {}
+_registered_storages: Dict[str, RemoteStorage] = {}
 
 
 @DeveloperAPI
-def get_storage(uri: str) -> Storage:
-    """Get external storage provider for a bucket URI.
+def get_remote_storage(uri: str) -> RemoteStorage:
+    """Get remote storage provider for a bucket URI.
 
     Example:
 
-        storage = get_external_storage("s3://test/bucket")
+        storage = get_remote_storage("s3://test/bucket")
         assert isinstance(storage, S3Storage)
 
 
@@ -105,17 +105,19 @@ def get_storage(uri: str) -> Storage:
 
     Returns: ``Storage`` class.
 
-    Raises: ValueError if no external storage class is found.
+    Raises: ValueError if no remote storage class is found.
     """
     global _registered_storages
     for prefix, storage in _registered_storages.items():
         if uri.startswith(prefix):
             return storage
-    raise ValueError(f"No external storage provider found for URI: {uri}")
+    raise ValueError(f"No remote storage provider found for URI: {uri}")
 
 
 @DeveloperAPI
-def register_storage(prefix: str, storage: Storage, override: bool = True) -> None:
+def register_remote_storage(
+    prefix: str, storage: RemoteStorage, override: bool = True
+) -> None:
     """Register storage provider.
 
     If a prefix is already registered, it will be overwritten without warning,
@@ -141,9 +143,9 @@ def register_storage(prefix: str, storage: Storage, override: bool = True) -> No
 
 # Register default storages. Do not override if there are e.g.
 # user-provided overrides for these storages.
-register_storage(S3_PREFIX, S3Storage(), override=False)
-register_storage(GS_PREFIX, GSStorage(), override=False)
-register_storage(HDFS_PREFIX, HDFSStorage(), override=False)
+register_remote_storage(S3_PREFIX, S3Storage(), override=False)
+register_remote_storage(GS_PREFIX, GSStorage(), override=False)
+register_remote_storage(HDFS_PREFIX, HDFSStorage(), override=False)
 
 
 def is_cloud_target(target: str):
@@ -153,7 +155,7 @@ def is_cloud_target(target: str):
 
 def clear_bucket(bucket: str):
     try:
-        storage = get_storage(bucket)
+        storage = get_remote_storage(bucket)
     except Exception as e:
         raise ValueError(
             f"Could not clear bucket contents: "
@@ -168,7 +170,7 @@ def clear_bucket(bucket: str):
 
 def download_from_bucket(bucket: str, local_path: str):
     try:
-        storage = get_storage(bucket)
+        storage = get_remote_storage(bucket)
     except Exception as e:
         raise ValueError(
             f"Could not download from bucket: "
@@ -180,7 +182,7 @@ def download_from_bucket(bucket: str, local_path: str):
 
 def upload_to_bucket(bucket: str, local_path: str):
     try:
-        storage = get_storage(bucket)
+        storage = get_remote_storage(bucket)
     except Exception as e:
         raise ValueError(
             f"Could not download from bucket: "
