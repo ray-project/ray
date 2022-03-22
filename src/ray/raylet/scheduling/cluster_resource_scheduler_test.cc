@@ -78,11 +78,7 @@ ResourceRequest RandomResourceRequest() {
 }
 
 void SetUnitInstanceResourceIds(absl::flat_hash_set<ResourceID> ids) {
-  auto &set = ResourceID::UnitInstanceResources();
-  set.clear();
-  for (auto id : ids) {
-    set.add(id.ToInt());
-  }
+  ResourceID::SetUnitInstanceResourceIds(ids);
 }
 
 NodeResources RandomNodeResources() { return NodeResources(RandomResourceRequest()); }
@@ -599,7 +595,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest) {
         scheduling::NodeID(0), node_resources, *gcs_client_);
 
     ResourceRequest resource_request = CreateResourceRequest(
-        {{ResourceID::CPU(), 5}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 1.5}});
+        {{ResourceID::CPU(), 3}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 1.5}});
 
     NodeResourceInstances old_local_resources =
         resource_scheduler.GetLocalResourceManager().GetLocalResources();
@@ -721,8 +717,8 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesAllocationFailureTest)
       scheduling::NodeID(0), node_resources, *gcs_client_);
 
   ResourceRequest resource_request = CreateResourceRequest({{ResourceID("custom1"), 3},
-                                                            {ResourceID("custom2"), 3},
-                                                            {ResourceID("custom3"), 4}});
+                                                            {ResourceID("custom3"), 3},
+                                                            {ResourceID("custom5"), 4}});
 
   NodeResourceInstances old_local_resources =
       resource_scheduler.GetLocalResourceManager().GetLocalResources();
@@ -1417,7 +1413,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesSerializedStringTest) 
   std::string serialized_string = cluster_resources->SerializeAsJson();
   std::string expected_serialized_string =
       R"({"CPU":20000,"memory":40000,"GPU":[10000, 10000]})";
-  ASSERT_EQ(serialized_string == expected_serialized_string, true);
+  ASSERT_EQ(serialized_string, expected_serialized_string);
 
   SetUnitInstanceResourceIds({ResourceID::CPU(), ResourceID::GPU()});
   std::shared_ptr<TaskResourceInstances> cluster_instance_resources =
@@ -1430,7 +1426,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesSerializedStringTest) 
   std::string instance_serialized_string = cluster_instance_resources->SerializeAsJson();
   std::string expected_instance_serialized_string =
       R"({"CPU":[10000, 10000],"memory":40000,"GPU":[10000, 10000]})";
-  ASSERT_EQ(instance_serialized_string == expected_instance_serialized_string, true);
+  ASSERT_EQ(instance_serialized_string, expected_instance_serialized_string);
 }
 
 }  // namespace ray

@@ -180,14 +180,14 @@ class ResourceID : public BaseSchedulingID<SchedulingIDTag::Resource> {
     return ResourceID(PredefinedResourcesEnum::OBJECT_STORE_MEM);
   }
 
+  /// DO NOT use it outside testing.
+  /// NOTE, "FRIEND_TEST" doesn't work here, because "ResourceID"
+  /// and "ClusterResourceSchedulerTest" have different namespaces.
+  static void SetUnitInstanceResourceIds(absl::flat_hash_set<ResourceID> ids);
+
  private:
   /// Return the IDs of all unit-instance resources.
   static absl::flat_hash_set<int64_t> &UnitInstanceResources();
-
-  FRIEND_TEST(ClusterResourceSchedulerTest, GetLocalAvailableResourcesWithCpuUnitTest);
-  FRIEND_TEST(ClusterResourceSchedulerTest, GetLocalAvailableResourcesTest);
-  FRIEND_TEST(ClusterResourceSchedulerTest, CustomResourceInstanceTest);
-  FRIEND_TEST(ClusterResourceSchedulerTest, TaskResourceInstancesSerializedStringTest);
 };
 
 }  // namespace scheduling

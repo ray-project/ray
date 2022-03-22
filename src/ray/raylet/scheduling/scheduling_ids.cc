@@ -81,6 +81,14 @@ int64_t StringIdMap::Count() {
 
 namespace scheduling {
 
+void ResourceID::SetUnitInstanceResourceIds(absl::flat_hash_set<ResourceID> ids) {
+  auto &set = ResourceID::UnitInstanceResources();
+  set.clear();
+  for (auto id : ids) {
+    set.insert(id.ToInt());
+  }
+}
+
 absl::flat_hash_set<int64_t> &ResourceID::UnitInstanceResources() {
   static absl::flat_hash_set<int64_t> set{[]() {
     absl::flat_hash_set<int64_t> res;
