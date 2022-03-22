@@ -229,7 +229,7 @@ Here's an overview of all available search algorithms in Tune:
    * - :ref:`OptunaSearch <tune-optuna>`
      - Optuna search algorithms
      - [`Optuna <https://optuna.org/>`__]
-     - :doc:`/tune/examples/includes/optuna_example`
+     - :doc:`/tune/examples/optuna_example`
    * - :ref:`ZOOptSearch <zoopt>`
      - Zeroth-order Optimization
      - [`ZOOpt <https://github.com/polixir/ZOOpt>`__]
