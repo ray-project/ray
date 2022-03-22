@@ -34,12 +34,12 @@ def wait_for_pods(goal_num_pods: int, namespace: str, tries=60, backoff_s=5) -> 
 
         cur_num_pods = _get_num_pods(namespace)
         if cur_num_pods == goal_num_pods:
-            logger.info(f"Confirmed {goal_num_pods} pods.")
+            logger.info(f"Confirmed {goal_num_pods} pod(s) in namespace {namespace}.")
             return
         elif i < tries - 1:
             logger.info(
-                f"Have {cur_num_pods} pods in namespace {namespace}."
-                f" Waiting to have {goal_num_pods} pods."
+                f"The number of pods in namespace {namespace} is {cur_num_pods}."
+                f" Waiting until the number of pods is {goal_num_pods}."
             )
             time.sleep(backoff_s)
         else:
