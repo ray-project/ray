@@ -1937,6 +1937,34 @@
   alert: default
 
 ########################
+# Train tests
+########################
+
+- name: train_horovod_multi_node_test
+  group: Train tests
+  working_dir: train_tests/horovod
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl.yaml
+
+  run:
+    timeout: 3000
+    script: python train_horovod_multi_node_test.py
+
+    wait_for_nodes:
+      num_nodes: 2
+      timeout: 600
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+########################
 # RLLib tests
 ########################
 
