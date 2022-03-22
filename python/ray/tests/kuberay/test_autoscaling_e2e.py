@@ -24,7 +24,8 @@ logging.basicConfig(
     format="[%(levelname)s %(asctime)s] " "%(filename)s: %(lineno)d  " "%(message)s",
 )
 
-# This image will be used for both the autoscaler and Ray nodes.
+# This image will be used for both the Ray nodes and the autoscaler.
+# The CI should pass an image built from the test branch.
 RAY_IMAGE = os.environ.get("RAY_IMAGE", "rayproject/ray:413fe0")
 logger.info(f"Using image {RAY_IMAGE} for autoscaler and Ray nodes.")
 # The default "rayproject/ray:413fe0" is the currently pinned autoscaler image
@@ -42,9 +43,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
     """
 
     def setUp(self):
-        """
-        Set up KubeRay operator and Ray autoscaler RBAC.
-        """
+        """Set up KubeRay operator and Ray autoscaler RBAC."""
 
         # Switch to parent of Ray repo, because that's what the doc examples do.
         logger.info("Switching to parent of Ray directory.")
@@ -80,10 +79,12 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         wait_for_crd("rayclusters.ray.io")
 
     def _get_ray_cr_config_file(self) -> str:
-        """Replace Ray node and autoscaler images in example CR with the test image.
-        Set image pull policies to IfNotPresent.
-        Write modified CR to temp file.
-        Return temp file's name.
+        """Formats a RayCluster CR based on the example in the Ray documentation.
+
+        - Replaces Ray node and autoscaler images in example CR with the test image.
+        - Set image pull policies to IfNotPresent.
+        - Writes modified CR to temp file.
+        - Returns temp file's name.
         """
         # Set Ray and autoscaler images.
         ray_cr_config_str = open(EXAMPLE_CLUSTER_PATH).read()
