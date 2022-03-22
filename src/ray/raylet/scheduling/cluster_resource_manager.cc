@@ -219,7 +219,10 @@ bool ClusterResourceManager::UpdateNodeAvailableResourcesIfExist(
       ResourceMapToResourceRequest(MapFromProtobuf(resource_data.resources_available()),
                                    /*requires_object_store_memory=*/false);
   auto node_resources = iter->second.GetMutableLocalView();
-  for (auto &resource_id : node_resources->available.ResourceIds()) {
+  // Note, by iterating over "total", we only update existing resources.
+  // Do not iterating over "available", because some resources may have been removed
+  // from available.
+  for (auto &resource_id : node_resources->total.ResourceIds()) {
     node_resources->available.Set(resource_id, resources.Get(resource_id));
   }
   return true;
