@@ -38,10 +38,12 @@ def simple_shuffle(
 
     map_bar = ProgressBar("Shuffle Map", position=0, total=input_num_blocks)
 
+    print("jjyao start shuffle map")
     shuffle_map_out = [
         shuffle_map.options(
             **map_ray_remote_args,
             num_returns=1 + output_num_blocks,
+            name=f"shuffle-map-{i}",
         ).remote(block, block_udf, i, output_num_blocks, random_shuffle, random_seed)
         for i, block in enumerate(input_blocks)
     ]
@@ -57,17 +59,20 @@ def simple_shuffle(
     del input_blocks
     shuffle_map_metadata = map_bar.fetch_until_complete(shuffle_map_metadata)
     map_bar.close()
+    print("jjyao end shuffle map")
 
     # Randomize the reduce order of the blocks.
     if random_shuffle:
         random = np.random.RandomState(random_seed)
         random.shuffle(shuffle_map_out)
 
+    print("jjyao start shuffle reduce")
     reduce_bar = ProgressBar("Shuffle Reduce", position=0, total=output_num_blocks)
     shuffle_reduce_out = [
         shuffle_reduce.options(
             **reduce_ray_remote_args,
             num_returns=2,
+            name=f"shuffle-reduce-{j}",
         ).remote(*[shuffle_map_out[i][j] for i in range(input_num_blocks)])
         for j in range(output_num_blocks)
     ]
@@ -78,6 +83,7 @@ def simple_shuffle(
     reduce_bar.block_until_complete(list(new_blocks))
     new_metadata = ray.get(list(new_metadata))
     reduce_bar.close()
+    print("jjyao end shuffle reduce")
 
     stats = {
         "map": shuffle_map_metadata,
