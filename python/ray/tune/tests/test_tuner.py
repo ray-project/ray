@@ -104,7 +104,9 @@ class TunerTest(unittest.TestCase):
     def test_tuner_with_xgboost_trainer_driver_fail_and_resume(self):
         # So that we have some global checkpointing happening.
         os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "1"
-        shutil.rmtree(expanduser("~/ray_results/test_tuner"), ignore_errors=True)
+        shutil.rmtree(
+            expanduser("~/ray_results/test_tuner_driver_fail"), ignore_errors=True
+        )
         trainer = XGBoostTrainer(
             label_column="target",
             params={},
@@ -149,7 +151,7 @@ class TunerTest(unittest.TestCase):
         tuner = Tuner(
             trainable=trainer,
             run_config=RunConfig(
-                name="test_tuner", callbacks=[FailureInjectionCallback()]
+                name="test_tuner_driver_fail", callbacks=[FailureInjectionCallback()]
             ),
             param_space=param_space,
             tune_config=TuneConfig(mode="min", metric="train-error"),
@@ -158,7 +160,7 @@ class TunerTest(unittest.TestCase):
             tuner.fit()
 
         # Test resume
-        restore_path = expanduser("~/ray_results/test_tuner")
+        restore_path = expanduser("~/ray_results/test_tuner_driver_fail")
         tuner = Tuner.restore(restore_path)
         # A hack before we figure out RunConfig semantics across resumes.
         tuner._local_tuner._run_config.callbacks = None
