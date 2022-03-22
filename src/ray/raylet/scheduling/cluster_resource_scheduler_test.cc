@@ -77,6 +77,14 @@ ResourceRequest RandomResourceRequest() {
   return resource_request;
 }
 
+void SetUnitInstanceResourceIds(absl::flat_hash_set<ResourceID> ids) {
+  auto &set = ResourceID::UnitInstanceResources();
+  set.clear();
+  for (auto id : ids) {
+    set.add(id.ToInt());
+  }
+}
+
 NodeResources RandomNodeResources() { return NodeResources(RandomResourceRequest()); }
 
 class ClusterResourceSchedulerTest : public ::testing::Test {
@@ -490,12 +498,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
 }
 
 TEST_F(ClusterResourceSchedulerTest, GetLocalAvailableResourcesWithCpuUnitTest) {
-  RayConfig::instance().initialize(
-      R"(
-{
-  "predefined_unit_instance_resources": "CPU,GPU"
-}
-  )");
+  SetUnitInstanceResourceIds({ResourceID::CPU(), ResourceID::GPU()});
   // Create cluster resources containing local node.
   NodeResources node_resources = CreateNodeResources({{ResourceID::CPU(), 3},
                                                       {ResourceID::Memory(), 4},
@@ -522,12 +525,7 @@ TEST_F(ClusterResourceSchedulerTest, GetLocalAvailableResourcesWithCpuUnitTest) 
 }
 
 TEST_F(ClusterResourceSchedulerTest, GetLocalAvailableResourcesTest) {
-  RayConfig::instance().initialize(
-      R"(
-{
-  "predefined_unit_instance_resources": "GPU"
-}
-  )");
+  SetUnitInstanceResourceIds({ResourceID::GPU()});
   // Create cluster resources containing local node.
   NodeResources node_resources = CreateNodeResources({{ResourceID::CPU(), 3},
                                                       {ResourceID::Memory(), 4},
@@ -1381,12 +1379,7 @@ TEST_F(ClusterResourceSchedulerTest, TestForceSpillback) {
 }
 
 TEST_F(ClusterResourceSchedulerTest, CustomResourceInstanceTest) {
-  RayConfig::instance().initialize(
-      R"(
-{
-  "custom_unit_instance_resources": "FPGA"
-}
-  )");
+  SetUnitInstanceResourceIds({ResourceID("FPGA")});
   ClusterResourceScheduler resource_scheduler(
       scheduling::NodeID("local"), {{"CPU", 4}, {"FPGA", 2}}, *gcs_client_);
 
@@ -1426,12 +1419,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesSerializedStringTest) 
       R"({"CPU":20000,"memory":40000,"GPU":[10000, 10000]})";
   ASSERT_EQ(serialized_string == expected_serialized_string, true);
 
-  RayConfig::instance().initialize(
-      R"(
-{
-  "predefined_unit_instance_resources": "CPU,GPU"
-}
-  )");
+  SetUnitInstanceResourceIds({ResourceID::CPU(), ResourceID::GPU()});
   std::shared_ptr<TaskResourceInstances> cluster_instance_resources =
       std::make_shared<TaskResourceInstances>();
   cluster_resources->Set(ResourceID::CPU(), {1., 1.});
@@ -1443,14 +1431,6 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesSerializedStringTest) 
   std::string expected_instance_serialized_string =
       R"({"CPU":[10000, 10000],"memory":40000,"GPU":[10000, 10000]})";
   ASSERT_EQ(instance_serialized_string == expected_instance_serialized_string, true);
-
-  // reset global config
-  RayConfig::instance().initialize(
-      R"(
-{
-  "predefined_unit_instance_resources": "GPU"
-}
-  )");
 }
 
 }  // namespace ray

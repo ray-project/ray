@@ -164,7 +164,7 @@ class ResourceID : public BaseSchedulingID<SchedulingIDTag::Resource> {
   explicit ResourceID(int64_t id) : BaseSchedulingID(id) {}
 
   /// Whether this resource is a unit-instance resource.
-  bool IsUnitInstanceResource() const { return UnitInstanceResources().count(id_) > 0; }
+  bool IsUnitInstanceResource() const { return UnitInstanceResources().contains(id_); }
 
   /// Resource ID of CPU.
   static ResourceID CPU() { return ResourceID(PredefinedResourcesEnum::CPU); }
@@ -183,6 +183,11 @@ class ResourceID : public BaseSchedulingID<SchedulingIDTag::Resource> {
  private:
   /// Return the IDs of all unit-instance resources.
   static absl::flat_hash_set<int64_t> &UnitInstanceResources();
+
+  FRIEND_TEST(ClusterResourceSchedulerTest, GetLocalAvailableResourcesWithCpuUnitTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, GetLocalAvailableResourcesTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, CustomResourceInstanceTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, TaskResourceInstancesSerializedStringTest);
 };
 
 }  // namespace scheduling
