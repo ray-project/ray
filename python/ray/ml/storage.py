@@ -1,10 +1,12 @@
 import abc
+import re
 import subprocess
 from typing import Dict
 
 from ray import logger
 from ray.util.annotations import DeveloperAPI
 
+VALID_URI_REGEX = r"^\w+://$"
 S3_PREFIX = "s3://"
 GS_PREFIX = "gs://"
 HDFS_PREFIX = "hdfs://"
@@ -101,7 +103,7 @@ def get_storage(uri: str) -> Storage:
     Args:
         uri: Bucket URI, e.g. ``s3://bucket/path``
 
-    Returns: ``ExternalStorage`` class.
+    Returns: ``Storage`` class.
 
     Raises: ValueError if no external storage class is found.
     """
@@ -127,6 +129,11 @@ def register_storage(prefix: str, storage: Storage, override: bool = True) -> No
             storage providers.
     """
     global _registered_storages
+    if not re.match(VALID_URI_REGEX, prefix):
+        raise ValueError(
+            f"Invalid prefix: `{prefix}`. Your prefix should be of the form "
+            f"`prefix://`"
+        )
     if not override and prefix in _registered_storages:
         return
     _registered_storages[prefix] = storage
