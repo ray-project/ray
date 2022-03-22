@@ -176,6 +176,49 @@ Note that the count has been reset to zero because the new version of ``Counter`
   > curl -X GET localhost:8000/Counter/decr
   {"count": 0}
 
+Serve also lets you set configurations in the ``@serve.deployment`` decorator
+or using a YAML config file. For example, you can set the ``max_concurrent_queries`` for
+your application:
+
+.. code-block:: python
+  # File name: counter_app.py
+
+  @serve.deployment(
+    max_concurrent_queries=10
+  )
+  @serve.ingress(app)
+  class Counter:
+  ...
+
+  Counter.deploy()
+
+Alternatively, instead of modifying the decorator, you could write a YAML
+config file and use the Serve CLI to udpate and deploy ``Counter``:
+
+.. code-block:: yaml
+  
+  # File name: counter_config.yaml
+
+  deployments:
+    
+    - name: Counter
+      import_path: counter_app.Counter
+      max_concurrent_queries: 10
+
+.. code-block:: bash
+  
+  $ serve run counter_config.yaml
+
+This updates ``Counter`` just like using ``Counter.deploy()``, but you don't
+need to write new update scripts in Python. You can modify the deployment's
+settings in the config file, deploy it via CLI, and continue making requests
+to it:
+
+.. code-block:: bash
+
+  > curl -X GET localhost:8000/Counter/
+  {"count": 0}
+
 Congratulations, you just built and ran your first Ray Serve application! You should now have enough context to dive into the :doc:`core-apis` to get a deeper understanding of Ray Serve.
 For more interesting example applications, including integrations with popular machine learning frameworks and Python web servers, be sure to check out :doc:`tutorials/index`. 
 For a high-level view of the architecture underlying Ray Serve, see :doc:`architecture`.
