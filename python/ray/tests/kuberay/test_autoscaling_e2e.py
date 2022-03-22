@@ -81,17 +81,22 @@ class KubeRayAutoscalingTest(unittest.TestCase):
 
     def _get_ray_cr_config_file(self) -> str:
         """Replace Ray node and autoscaler images in example CR with the test image.
+        Set image pull policies to IfNotPresent.
         Write modified CR to temp file.
         Return temp file's name.
         """
+        # Set Ray and autoscaler images.
         ray_cr_config_str = open(EXAMPLE_CLUSTER_PATH).read()
         ray_images = [
             word for word in ray_cr_config_str.split() if "rayproject/ray:" in word
         ]
         for ray_image in ray_images:
             ray_cr_config_str = ray_cr_config_str.replace(ray_image, RAY_IMAGE)
-        for image in ray_images:
-            ray_cr_config_str.replace(image, RAY_IMAGE)
+
+        # Set pull policies to IfNotPresent to ensure no issues using a local test
+        # image on kind.
+        ray_cr_config_str = ray_cr_config_str.replace("Always", "IfNotPresent")
+
         raycluster_cr_file = tempfile.NamedTemporaryFile(delete=False)
         raycluster_cr_file.write(ray_cr_config_str.encode())
         raycluster_cr_file.close()
