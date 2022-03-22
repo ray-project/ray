@@ -718,7 +718,7 @@ def test_dashboard_does_not_depend_on_serve():
     ctx = ray.init(include_dashboard=True)
 
     # Ensure standard dashboard features, like snapshot, still work
-    response = requests.get(f"http://{ctx.dashboard_url}/api/snapshot/")
+    response = requests.get(f"http://{ctx.dashboard_url}/api/snapshot")
     assert response.status_code == 200
     assert response.json()["result"] is True
     assert "snapshot" in response.json()["data"]
