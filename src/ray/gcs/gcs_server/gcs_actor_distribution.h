@@ -31,6 +31,8 @@
 namespace ray {
 namespace gcs {
 
+using ClusterResourceScheduler = gcs::GcsResourceScheduler;
+
 /// `GcsActorWorkerAssignment` represents the assignment from one or multiple actors to a
 /// worker process.
 /// TODO(Chong-Li): It contains multiple slots, and each of them can bind to an actor.
@@ -71,7 +73,7 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
   /// \param io_context The main event loop.
   /// \param gcs_actor_table Used to flush actor info to storage.
   /// \param gcs_node_manager The node manager which is used when scheduling.
-  /// \param gcs_resource_scheduler The scheduler to select nodes based on cluster
+  /// \param cluster_resource_scheduler The scheduler to select nodes based on cluster
   /// resources.
   /// \param schedule_failure_handler Invoked when there are no available nodes to
   /// schedule actors.
@@ -84,7 +86,7 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
       instrumented_io_context &io_context,
       GcsActorTable &gcs_actor_table,
       const GcsNodeManager &gcs_node_manager,
-      std::shared_ptr<GcsResourceScheduler> gcs_resource_scheduler,
+      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
       GcsActorSchedulerFailureCallback schedule_failure_handler,
       GcsActorSchedulerSuccessCallback schedule_success_handler,
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
@@ -164,7 +166,7 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
   std::vector<std::function<void()>> resource_changed_listeners_;
 
   /// Gcs resource scheduler
-  std::shared_ptr<GcsResourceScheduler> gcs_resource_scheduler_;
+  std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
 
   /// Normal task resources changed callback.
   std::function<void(const NodeID &, const rpc::ResourcesData &)>

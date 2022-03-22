@@ -159,3 +159,5 @@ You should see something like:
 
 You can run ``ray up benchmarks/horovod-benchmark.yaml`` to launch an AWS cluster that sets up Horovod on each machine.
 See ``https://github.com/horovod/horovod`` for launching Horovod training. ``horovod_benchmark_apex.py`` can be used with ``horovodrun`` to obtain benchmarking results.
+
+Note: Training can also be launched using :ref:`Ray Job Submission <jobs-overview>`, which is in beta starting with Ray 1.12.  Try it out!

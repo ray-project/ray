@@ -18,6 +18,7 @@ from typing import (
 )
 
 import ray
+from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
 from ray.types import ObjectRef
 from ray.util.ml_utils.util import find_free_port
@@ -157,3 +158,16 @@ class Singleton(abc.ABCMeta):
         if cls not in cls._instances:
             cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
         return cls._instances[cls]
+
+
+class ActorWrapper:
+    """Wraps an actor to provide same API as using the base class directly."""
+
+    def __init__(self, actor: ActorHandle):
+        self.actor = actor
+
+    def __getattr__(self, item):
+        # The below will fail if trying to access an attribute (not a method) from the
+        # actor.
+        actor_method = getattr(self.actor, item)
+        return lambda *args, **kwargs: ray.get(actor_method.remote(*args, **kwargs))

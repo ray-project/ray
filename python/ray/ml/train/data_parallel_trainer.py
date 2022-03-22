@@ -81,35 +81,38 @@ class DataParallelTrainer(Trainer):
             # Returns the rank of the worker on the current node.
             train.get_local_rank()
 
-    How do I use ``DataParallelTrainer`` or any of its subclasses?
+    **How do I use ``DataParallelTrainer`` or any of its subclasses?**
 
-        Example:
-            .. code-block:: python
+    Example:
 
-                import ray
-                from ray import train
+    .. code-block:: python
 
-                def train_loop_for_worker():
-                    dataset_shard_for_this_worker = train.get_dataset_shard("train")
+        import ray
+        from ray import train
 
-                    assert len(dataset_shard_for_this_worker) == 1
+        def train_loop_for_worker():
+            dataset_shard_for_this_worker = train.get_dataset_shard("train")
 
-                train_dataset = ray.data.from_items([1, 2, 3])
-                assert len(train_dataset) == 3
-                trainer = DataParallelTrainer(scaling_config={"num_workers": 3},
-                    datasets={"train": train_dataset})
-                result = trainer.fit()
+            assert len(dataset_shard_for_this_worker) == 1
 
-    How do I develop on top of ``DataParallelTrainer``?
+        train_dataset = ray.data.from_items([1, 2, 3])
+        assert len(train_dataset) == 3
+        trainer = DataParallelTrainer(scaling_config={"num_workers": 3},
+            datasets={"train": train_dataset})
+        result = trainer.fit()
+
+    **How do I develop on top of ``DataParallelTrainer``?**
 
     In many cases, using DataParallelTrainer directly is sufficient to execute
     functions on multiple actors.
 
     However, you may want to subclass ``DataParallelTrainer`` and create a custom
     Trainer for the following 2 use cases:
-        1. You want to do data parallel training, but want to have a predefined
-        ``training_loop_per_worker``.
-        2. You want to implement a custom :ref:`Training backend
+
+      - **Use Case 1:** You want to do data parallel training, but want to have
+        a predefined ``training_loop_per_worker``.
+
+      - **Use Case 2:** You want to implement a custom :ref:`Training backend
         <train-api-backend-interfaces>` that automatically handles
         additional setup or teardown logic on each actor, so that the users of this
         new trainer do not have to implement this logic. For example, a
@@ -192,17 +195,6 @@ class DataParallelTrainer(Trainer):
         if not ray.is_initialized():
             ray.init()
 
-        if (
-            "GPU" in ray.available_resources()
-            and scaling_config.num_gpus_per_worker <= 0
-        ):
-            logger.info(
-                "GPUs are detected in your Ray cluster, but GPU "
-                "training is not enabled for Ray Train. To enable "
-                "GPU training, make sure to set `use_gpu` to True "
-                "when instantiating your Trainer."
-            )
-
         self.train_loop_per_worker = train_loop_per_worker
         self.train_loop_config = train_loop_config
 
@@ -213,6 +205,17 @@ class DataParallelTrainer(Trainer):
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
+
+        if (
+            not self.scaling_config.get("use_gpu", False)
+            and "GPU" in ray.available_resources()
+        ):
+            logger.info(
+                "GPUs are detected in your Ray cluster, but GPU "
+                "training is not enabled for this trainer. To enable "
+                "GPU training, make sure to set `use_gpu` to True "
+                "in your scaling config."
+            )
 
         if "num_workers" not in self.scaling_config:
             raise ValueError("You must specify the 'num_workers' in scaling_config.")
@@ -242,14 +245,11 @@ class DataParallelTrainer(Trainer):
             fn_arg_name="train_loop_per_worker",
         )
 
-        # TODO(amog): Run BackendExecutor directly in the Trainable instead of a
-        #  separate actor.
-        remote_executor = ray.remote(num_cpus=0)(BackendExecutor)
         additional_resources_per_worker = (
             scaling_config_dataclass.additional_resources_per_worker
         )
 
-        backend_executor_actor = remote_executor.remote(
+        backend_executor = BackendExecutor(
             backend_config=self.backend_config,
             num_workers=scaling_config_dataclass.num_workers,
             num_cpus_per_worker=scaling_config_dataclass.num_cpus_per_worker,
@@ -262,7 +262,7 @@ class DataParallelTrainer(Trainer):
         checkpoint_manager.on_init(preprocessor=self.preprocessor)
 
         # Start the remote actors.
-        ray.get(backend_executor_actor.start.remote(initialization_hook=None))
+        backend_executor.start(initialization_hook=None)
 
         if self.resume_from_checkpoint:
             resume_checkpoint_dict = self.resume_from_checkpoint.to_dict()
@@ -286,7 +286,7 @@ class DataParallelTrainer(Trainer):
         # TODO(amog): Have TrainingIterator also accept a checkpoint ObjectRef instead
         #  of just a Dict.
         training_iterator = TrainingIterator(
-            backend_executor_actor=backend_executor_actor,
+            backend_executor=backend_executor,
             backend_config=self.backend_config,
             train_func=train_loop_per_worker,
             dataset=updated_dataset_dict if len(updated_dataset_dict) > 0 else None,
@@ -302,7 +302,7 @@ class DataParallelTrainer(Trainer):
             tune.report(**first_worker_results)
 
         # Shutdown workers.
-        ray.get(backend_executor_actor.shutdown.remote())
+        backend_executor.shutdown()
 
 
 # TODO(team-ml): Refactor checkpoint management along with Tune.

@@ -90,8 +90,8 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     }
     const auto &result1 =
         gcs_resource_scheduler_->Schedule(required_resources_list, scheduling_type);
-    ASSERT_TRUE(result1.first == gcs::SchedulingResultStatus::SUCCESS);
-    ASSERT_EQ(result1.second.size(), 3);
+    ASSERT_TRUE(result1.status.IsSuccess());
+    ASSERT_EQ(result1.selected_nodes.size(), 3);
 
     // Check for resource leaks.
     CheckClusterAvailableResources(node_id, cpu_resource, node_cpu_num);
@@ -103,8 +103,8 @@ class GcsResourceSchedulerTest : public ::testing::Test {
                                      /*requires_object_store_memory=*/false));
     const auto &result2 =
         gcs_resource_scheduler_->Schedule(required_resources_list, scheduling_type);
-    ASSERT_TRUE(result2.first == gcs::SchedulingResultStatus::FAILED);
-    ASSERT_EQ(result2.second.size(), 0);
+    ASSERT_TRUE(result2.status.IsFailed());
+    ASSERT_EQ(result2.selected_nodes.size(), 0);
 
     // Check for resource leaks.
     CheckClusterAvailableResources(node_id, cpu_resource, node_cpu_num);
@@ -149,8 +149,8 @@ class GcsResourceSchedulerTest : public ::testing::Test {
 
     const auto &result1 =
         gcs_resource_scheduler_->Schedule(required_resources_list, scheduling_type);
-    ASSERT_TRUE(result1.first == gcs::SchedulingResultStatus::SUCCESS);
-    ASSERT_EQ(result1.second.size(), resources_list.size());
+    ASSERT_TRUE(result1.status.IsSuccess());
+    ASSERT_EQ(result1.selected_nodes.size(), resources_list.size());
   }
 
   std::shared_ptr<gcs::GcsResourceScheduler> gcs_resource_scheduler_;
@@ -196,16 +196,16 @@ TEST_F(GcsResourceSchedulerTest, TestNodeFilter) {
       gcs_resource_scheduler_->Schedule(required_resources_list,
                                         gcs::SchedulingType::STRICT_SPREAD,
                                         [](const scheduling::NodeID &) { return false; });
-  ASSERT_TRUE(result1.first == gcs::SchedulingResultStatus::INFEASIBLE);
-  ASSERT_EQ(result1.second.size(), 0);
+  ASSERT_TRUE(result1.status.IsInfeasible());
+  ASSERT_EQ(result1.selected_nodes.size(), 0);
 
   // Scheduling succeeded.
   const auto &result2 =
       gcs_resource_scheduler_->Schedule(required_resources_list,
                                         gcs::SchedulingType::STRICT_SPREAD,
                                         [](const scheduling::NodeID &) { return true; });
-  ASSERT_TRUE(result2.first == gcs::SchedulingResultStatus::SUCCESS);
-  ASSERT_EQ(result2.second.size(), 1);
+  ASSERT_TRUE(result2.status.IsSuccess());
+  ASSERT_EQ(result2.selected_nodes.size(), 1);
 }
 
 TEST_F(GcsResourceSchedulerTest, TestSchedulingResultStatusForStrictStrategy) {
@@ -228,8 +228,8 @@ TEST_F(GcsResourceSchedulerTest, TestSchedulingResultStatusForStrictStrategy) {
 
   const auto &result1 = gcs_resource_scheduler_->Schedule(
       required_resources_list, gcs::SchedulingType::STRICT_SPREAD);
-  ASSERT_TRUE(result1.first == gcs::SchedulingResultStatus::INFEASIBLE);
-  ASSERT_EQ(result1.second.size(), 0);
+  ASSERT_TRUE(result1.status.IsInfeasible());
+  ASSERT_EQ(result1.selected_nodes.size(), 0);
 
   // Check for resource leaks.
   CheckClusterAvailableResources(node_one_id, cpu_resource, node_cpu_num);
@@ -245,8 +245,8 @@ TEST_F(GcsResourceSchedulerTest, TestSchedulingResultStatusForStrictStrategy) {
 
   const auto &result2 = gcs_resource_scheduler_->Schedule(
       required_resources_list, gcs::SchedulingType::STRICT_PACK);
-  ASSERT_TRUE(result2.first == gcs::SchedulingResultStatus::INFEASIBLE);
-  ASSERT_EQ(result2.second.size(), 0);
+  ASSERT_TRUE(result2.status.IsInfeasible());
+  ASSERT_EQ(result2.selected_nodes.size(), 0);
 
   // Check for resource leaks.
   CheckClusterAvailableResources(node_one_id, cpu_resource, node_cpu_num);

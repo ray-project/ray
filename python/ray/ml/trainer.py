@@ -9,6 +9,7 @@ from ray.ml.result import Result
 from ray.ml.config import RunConfig, ScalingConfig, ScalingConfigDataClass
 from ray.ml.constants import TRAIN_DATASET_KEY
 from ray.tune import Trainable
+from ray.tune.error import TuneError
 from ray.tune.function_runner import wrap_function
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
@@ -40,85 +41,83 @@ class Trainer(abc.ABC):
     one of its subclasses can be used.
 
     How does a trainer work?
-        - First, initialize the Trainer. The initialization runs locally,
-        so heavyweight setup should not be done in __init__.
-        - Then, when you call ``trainer.fit()``, the Trainer is serialized
-        and copied to a remote Ray actor. The following methods are then
-        called in sequence on the remote actor.
-            - ``trainer.setup()``: Any heavyweight Trainer setup should be
-            specified here.
-            - ``trainer.preprocess_datasets()``: The provided
-            ray.data.Dataset are preprocessed with the provided
-            ray.ml.preprocessor.
-            - ``trainer.train_loop()``: Executes the main training logic.
-        - Calling ``trainer.fit()`` will return a ``ray.result.Result``
-        object where you can access metrics from your training run, as well
-        as any checkpoints that may have been saved.
 
-    How do I create a new ``Trainer``?
+        - First, initialize the Trainer. The initialization runs locally,
+          so heavyweight setup should not be done in __init__.
+        - Then, when you call ``trainer.fit()``, the Trainer is serialized
+          and copied to a remote Ray actor. The following methods are then
+          called in sequence on the remote actor.
+        - ``trainer.setup()``: Any heavyweight Trainer setup should be
+          specified here.
+        - ``trainer.preprocess_datasets()``: The provided
+          ray.data.Dataset are preprocessed with the provided
+          ray.ml.preprocessor.
+        - ``trainer.train_loop()``: Executes the main training logic.
+        - Calling ``trainer.fit()`` will return a ``ray.result.Result``
+          object where you can access metrics from your training run, as well
+          as any checkpoints that may have been saved.
+
+    **How do I create a new Trainer?**
 
     Subclass ``ray.train.Trainer``, and override the ``training_loop``
     method, and optionally ``setup``.
 
-        Example:
+    .. code-block:: python
 
-            .. code-block:: python
+        import torch
 
-                import torch
-
-                from ray.ml.train import Trainer
-                from ray import tune
+        from ray.ml.train import Trainer
+        from ray import tune
 
 
-                class MyPytorchTrainer(Trainer):
-                    def setup(self):
-                        self.model = torch.nn.Linear(1, 1)
-                        self.optimizer = torch.optim.SGD(
-                            self.model.parameters(), lr=0.1)
+        class MyPytorchTrainer(Trainer):
+            def setup(self):
+                self.model = torch.nn.Linear(1, 1)
+                self.optimizer = torch.optim.SGD(
+                    self.model.parameters(), lr=0.1)
 
-                    def training_loop(self):
-                        # You can access any Trainer attributes directly in this method.
-                        # self.datasets["train"] has already been
-                        # preprocessed by self.preprocessor
-                        dataset = self.datasets["train"]
+            def training_loop(self):
+                # You can access any Trainer attributes directly in this method.
+                # self.datasets["train"] has already been
+                # preprocessed by self.preprocessor
+                dataset = self.datasets["train"]
 
-                        torch_ds = dataset.to_torch(label_column="y")
-                        loss_fn = torch.nn.MSELoss()
+                torch_ds = dataset.to_torch(label_column="y")
+                loss_fn = torch.nn.MSELoss()
 
-                        for epoch_idx in range(10):
-                            loss = 0
-                            num_batches = 0
-                            for X, y in iter(torch_ds):
-                                # Compute prediction error
-                                pred = self.model(X)
-                                batch_loss = loss_fn(pred, y.float())
+                for epoch_idx in range(10):
+                    loss = 0
+                    num_batches = 0
+                    for X, y in iter(torch_ds):
+                        # Compute prediction error
+                        pred = self.model(X)
+                        batch_loss = loss_fn(pred, y.float())
 
-                                # Backpropagation
-                                self.optimizer.zero_grad()
-                                batch_loss.backward()
-                                self.optimizer.step()
+                        # Backpropagation
+                        self.optimizer.zero_grad()
+                        batch_loss.backward()
+                        self.optimizer.step()
 
-                                loss += batch_loss.item()
-                                num_batches += 1
-                            loss /= num_batches
+                        loss += batch_loss.item()
+                        num_batches += 1
+                    loss /= num_batches
 
-                            # Use Tune functions to report intermediate
-                            # results.
-                            tune.report(loss=loss, epoch=epoch_idx)
+                    # Use Tune functions to report intermediate
+                    # results.
+                    tune.report(loss=loss, epoch=epoch_idx)
 
-    How do I use an existing ``Trainer`` or one of my custom Trainers?
+    **How do I use an existing Trainer or one of my custom Trainers?**
 
     Initialize the Trainer, and call Trainer.fit()
 
-        Example:
-              .. code-block:: python
+    .. code-block:: python
 
-                import ray
+        import ray
+        train_dataset = ray.data.from_items(
+            [{"x": i, "y": i} for i in range(3)])
+        my_trainer = MyPytorchTrainer(datasets={"train": train_dataset})
+        result = my_trainer.fit()
 
-                train_dataset = ray.data.from_items(
-                    [{"x": i, "y": i} for i in range(3)])
-                my_trainer = MyPytorchTrainer(datasets={"train": train_dataset})
-                result = my_trainer.fit()
 
     Args:
         scaling_config: Configuration for how to scale training.
@@ -142,7 +141,7 @@ class Trainer(abc.ABC):
     ):
 
         self.scaling_config = scaling_config if scaling_config else {}
-        self.run_config = run_config if run_config else {}
+        self.run_config = run_config if run_config else RunConfig()
         self.datasets = datasets if datasets else {}
         self.preprocessor = preprocessor
         self.resume_from_checkpoint = resume_from_checkpoint
@@ -243,30 +242,20 @@ class Trainer(abc.ABC):
             TrainingFailedError: If any failures during the execution of
             ``self.as_trainable()``.
         """
+        from ray.tune.tuner import Tuner
+
         trainable = self.as_trainable()
 
-        from ray import tune
-        from ray.tune import TuneError
-
-        # TODO(amog/xwjiang): Replace with Tuner and pass through run_config. Also add
-        #  test for run_config.
+        tuner = Tuner(trainable=trainable, run_config=self.run_config)
+        result_grid = tuner.fit()
+        assert len(result_grid) == 1
         try:
-            analysis = tune.run(run_or_experiment=trainable)
+            result = result_grid[0]
+            if result.error:
+                raise result.error
         except TuneError:
             raise TrainingFailedError
-        else:
-            assert len(analysis.trials) == 1
-
-            trial = analysis.trials[0]
-
-            result = Result(
-                metrics=trial.last_result,
-                checkpoint=Checkpoint.from_directory(trial.checkpoint.value)
-                if trial.checkpoint.value
-                else None,
-            )
-
-            return result
+        return result
 
     def as_trainable(self) -> Type[Trainable]:
         """Convert self to a ``tune.Trainable`` class."""

@@ -283,6 +283,7 @@ proto_library(
     deps = [
         ":common_proto",
         ":agent_manager_proto",
+        ":runtime_env_common_proto",
     ],
 )
 

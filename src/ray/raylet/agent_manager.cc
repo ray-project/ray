@@ -114,11 +114,12 @@ void AgentManager::StartAgent() {
   monitor_thread.detach();
 }
 
-void AgentManager::CreateRuntimeEnv(
+void AgentManager::GetOrCreateRuntimeEnv(
     const JobID &job_id,
     const std::string &serialized_runtime_env,
+    const rpc::RuntimeEnvConfig &runtime_env_config,
     const std::string &serialized_allocated_resource_instances,
-    CreateRuntimeEnvCallback callback) {
+    GetOrCreateRuntimeEnvCallback callback) {
   // If the agent cannot be started, fail the request.
   if (!should_start_agent_) {
     std::stringstream str_stream;
@@ -141,6 +142,8 @@ void AgentManager::CreateRuntimeEnv(
     return;
   }
 
+  // `runtime_env_agent_client_` should be `nullptr` when the agent is starting or the
+  // agent has failed.
   if (runtime_env_agent_client_ == nullptr) {
     // If the grpc service of agent is invalid, fail the request.
     if (disable_agent_client_) {
@@ -164,33 +167,38 @@ void AgentManager::CreateRuntimeEnv(
     }
 
     RAY_LOG_EVERY_MS(INFO, 3 * 10 * 1000)
-        << "Runtime env agent is not registered yet. Will retry CreateRuntimeEnv later: "
+        << "Runtime env agent is not registered yet. Will retry "
+           "GetOrCreateRuntimeEnv later: "
         << serialized_runtime_env;
     delay_executor_(
         [this,
          job_id,
          serialized_runtime_env,
+         runtime_env_config,
          serialized_allocated_resource_instances,
          callback = std::move(callback)] {
-          CreateRuntimeEnv(job_id,
-                           serialized_runtime_env,
-                           serialized_allocated_resource_instances,
-                           callback);
+          GetOrCreateRuntimeEnv(job_id,
+                                serialized_runtime_env,
+                                runtime_env_config,
+                                serialized_allocated_resource_instances,
+                                callback);
         },
         RayConfig::instance().agent_manager_retry_interval_ms());
     return;
   }
-  rpc::CreateRuntimeEnvRequest request;
+  rpc::GetOrCreateRuntimeEnvRequest request;
   request.set_job_id(job_id.Hex());
   request.set_serialized_runtime_env(serialized_runtime_env);
+  request.mutable_runtime_env_config()->CopyFrom(runtime_env_config);
   request.set_serialized_allocated_resource_instances(
       serialized_allocated_resource_instances);
-  runtime_env_agent_client_->CreateRuntimeEnv(
+  runtime_env_agent_client_->GetOrCreateRuntimeEnv(
       request,
       [serialized_runtime_env,
+       runtime_env_config,
        serialized_allocated_resource_instances,
        callback = std::move(callback)](const Status &status,
-                                       const rpc::CreateRuntimeEnvReply &reply) {
+                                       const rpc::GetOrCreateRuntimeEnvReply &reply) {
         if (status.ok()) {
           if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
             callback(true,
@@ -206,7 +214,7 @@ void AgentManager::CreateRuntimeEnv(
 
         } else {
           RAY_LOG(INFO)
-              << "Failed to create the runtime env: " << serialized_runtime_env
+              << "Failed to create runtime env: " << serialized_runtime_env
               << ", status = " << status
               << ", maybe there are some network problems, will fail the request.";
           callback(false, "", "Failed to request agent.");
@@ -214,8 +222,9 @@ void AgentManager::CreateRuntimeEnv(
       });
 }
 
-void AgentManager::DeleteURIs(const std::vector<std::string> &uris,
-                              DeleteURIsCallback callback) {
+void AgentManager::DeleteRuntimeEnvIfPossible(
+    const std::string &serialized_runtime_env,
+    DeleteRuntimeEnvIfPossibleCallback callback) {
   if (disable_agent_client_) {
     RAY_LOG(ERROR)
         << "Failed to delete runtime environment URI because the Ray agent couldn't be "
@@ -226,34 +235,40 @@ void AgentManager::DeleteURIs(const std::vector<std::string> &uris,
     delay_executor_([callback = std::move(callback)] { callback(false); }, 0);
     return;
   }
+  // `runtime_env_agent_client_` should be `nullptr` when the agent is starting or the
+  // agent has failed.
   if (runtime_env_agent_client_ == nullptr) {
-    RAY_LOG(INFO)
-        << "Runtime env agent is not registered yet. Will retry DeleteURIs later.";
+    RAY_LOG(INFO) << "Runtime env agent is not registered yet. Will retry "
+                     "DeleteRuntimeEnvIfPossible later.";
     delay_executor_(
-        [this, uris, callback = std::move(callback)] { DeleteURIs(uris, callback); },
+
+        [this, serialized_runtime_env, callback = std::move(callback)] {
+          DeleteRuntimeEnvIfPossible(serialized_runtime_env, callback);
+        },
         RayConfig::instance().agent_manager_retry_interval_ms());
     return;
   }
-  rpc::DeleteURIsRequest request;
-  for (const auto &uri : uris) {
-    request.add_uris(uri);
-  }
-  runtime_env_agent_client_->DeleteURIs(
+  rpc::DeleteRuntimeEnvIfPossibleRequest request;
+  request.set_serialized_runtime_env(serialized_runtime_env);
+  request.set_source_process("raylet");
+  runtime_env_agent_client_->DeleteRuntimeEnvIfPossible(
       request,
-      [callback = std::move(callback)](Status status, const rpc::DeleteURIsReply &reply) {
+      [serialized_runtime_env, callback = std::move(callback)](
+          Status status, const rpc::DeleteRuntimeEnvIfPossibleReply &reply) {
         if (status.ok()) {
           if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
             callback(true);
           } else {
             // TODO(sang): Find a better way to delivering error messages in this case.
-            RAY_LOG(ERROR) << "Failed to delete URIs"
+            RAY_LOG(ERROR) << "Failed to delete runtime env for "
+                           << serialized_runtime_env
                            << ", error message: " << reply.error_message();
             callback(false);
           }
 
         } else {
           RAY_LOG(ERROR)
-              << "Failed to delete URIs"
+              << "Failed to delete runtime env reference for " << serialized_runtime_env
               << ", status = " << status
               << ", maybe there are some network problems, will fail the request.";
           callback(false);
