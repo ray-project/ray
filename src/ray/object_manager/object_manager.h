@@ -457,6 +457,9 @@ class ObjectManager : public ObjectManagerInterface,
   /// Running sum of the amount of memory used in the object store.
   int64_t used_memory_ = 0;
 
+  size_t num_bytes_received_total_ = 0;
+  size_t num_bytes_pushed_total_ = 0;
+
   /// Running total of received chunks.
   size_t num_chunks_received_total_ = 0;
 

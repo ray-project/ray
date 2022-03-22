@@ -524,6 +524,7 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id,
     return;
   }
   push_request.set_data(std::move(optional_chunk.value()));
+  num_bytes_pushed_total_ += push_request.data().length();
 
   // record the time cost between send chunk and receive reply
   rpc::ClientCallback<rpc::PushReply> callback =
@@ -578,6 +579,7 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
                                        uint64_t metadata_size,
                                        uint64_t chunk_index,
                                        const std::string &data) {
+  num_bytes_received_total_ += data.size();
   RAY_LOG(DEBUG) << "ReceiveObjectChunk on " << self_node_id_ << " from " << node_id
                  << " of object " << object_id << " chunk index: " << chunk_index
                  << ", chunk data size: " << data.size()
@@ -710,6 +712,10 @@ std::string ObjectManager::DebugString() const {
          << num_chunks_received_cancelled_;
   result << "\n- num chunks received failed / plasma error: "
          << num_chunks_received_failed_due_to_plasma_;
+  result << "\n- num bytes received total: "
+         << num_bytes_received_total_;
+  result << "\n- num bytes pushed total: "
+         << num_bytes_pushed_total_;
   result << "\nEvent stats:" << rpc_service_.stats().StatsString();
   result << "\n" << push_manager_->DebugString();
   result << "\n" << object_directory_->DebugString();
