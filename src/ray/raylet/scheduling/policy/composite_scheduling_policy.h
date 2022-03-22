@@ -27,7 +27,7 @@ namespace raylet_scheduling_policy {
 
 /// A composite scheduling policy that routes the request to the underlining
 /// scheduling_policy according to the scheduling_type.
-class CompositeSchedulingPolicy : public ISchedulingPolicy {
+class CompositeSchedulingPolicy : public ISingleSchedulingPolicy {
  public:
   CompositeSchedulingPolicy(scheduling::NodeID local_node_id,
                             ClusterResourceManager &cluster_resource_manager,
@@ -44,12 +44,13 @@ class CompositeSchedulingPolicy : public ISchedulingPolicy {
         bundle_strict_pack_policy_(cluster_resource_manager, is_node_available) {}
 
   scheduling::NodeID Schedule(const ResourceRequest &resource_request,
-                              SchedulingOptions options) override;
+                              SchedulingOptions options,
+                              SchedulingContext *context = nullptr) override;
 
   SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,
       SchedulingOptions options,
-      SchedulingContext *context) override;
+      SchedulingContext *context = nullptr) override;
 
  private:
   HybridSchedulingPolicy hybrid_policy_;

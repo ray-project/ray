@@ -108,28 +108,39 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     bool force_spillback,
     int64_t *total_violations,
     bool *is_infeasible) {
+  auto best_node_id = scheduling::NodeID::Nil();
   // The zero cpu actor is a special case that must be handled the same way by all
   // scheduling policies.
   if (actor_creation && resource_request.IsEmpty()) {
-    return scheduling_policy_->Schedule(resource_request, SchedulingOptions::Random());
+    auto result =
+        scheduling_policy_->Schedule({&resource_request}, SchedulingOptions::Random());
+    if (result.status.IsSuccess()) {
+      RAY_CHECK(result.selected_nodes.size() == 1);
+      best_node_id = result.selected_nodes.front();
+    }
+    return best_node_id;
   }
 
-  auto best_node_id = scheduling::NodeID::Nil();
+  SchedulingResult result;
   if (scheduling_strategy.scheduling_strategy_case() ==
       rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy) {
-    best_node_id =
-        scheduling_policy_->Schedule(resource_request,
+    result =
+        scheduling_policy_->Schedule({&resource_request},
                                      SchedulingOptions::Spread(
                                          /*avoid_local_node*/ force_spillback,
                                          /*require_node_available*/ force_spillback));
   } else {
     // TODO (Alex): Setting require_available == force_spillback is a hack in order to
     // remain bug compatible with the legacy scheduling algorithms.
-    best_node_id =
-        scheduling_policy_->Schedule(resource_request,
+    result =
+        scheduling_policy_->Schedule({&resource_request},
                                      SchedulingOptions::Hybrid(
                                          /*avoid_local_node*/ force_spillback,
                                          /*require_node_available*/ force_spillback));
+  }
+  if (result.status.IsSuccess()) {
+    RAY_CHECK(result.selected_nodes.size() == 1);
+    best_node_id = result.selected_nodes.front();
   }
 
   *is_infeasible = best_node_id.IsNil();

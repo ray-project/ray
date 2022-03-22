@@ -24,8 +24,10 @@ namespace raylet_scheduling_policy {
 
 /// Round robin among available nodes.
 /// If there are no available nodes, fallback to hybrid policy.
-class SpreadSchedulingPolicy : public ISchedulingPolicy {
+class SpreadSchedulingPolicy : public ISingleSchedulingPolicy {
  public:
+  using ISingleSchedulingPolicy::Schedule;
+
   SpreadSchedulingPolicy(scheduling::NodeID local_node_id,
                          const absl::flat_hash_map<scheduling::NodeID, Node> &nodes,
                          std::function<bool(scheduling::NodeID)> is_node_available)
@@ -35,7 +37,8 @@ class SpreadSchedulingPolicy : public ISchedulingPolicy {
         hybrid_policy_(local_node_id_, nodes_, is_node_available_) {}
 
   scheduling::NodeID Schedule(const ResourceRequest &resource_request,
-                              SchedulingOptions options) override;
+                              SchedulingOptions options,
+                              SchedulingContext *context = nullptr) override;
 
   /// Identifier of local node.
   const scheduling::NodeID local_node_id_;

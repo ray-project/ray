@@ -24,7 +24,9 @@ namespace ray {
 namespace raylet_scheduling_policy {
 
 scheduling::NodeID SpreadSchedulingPolicy::Schedule(
-    const ResourceRequest &resource_request, SchedulingOptions options) {
+    const ResourceRequest &resource_request,
+    SchedulingOptions options,
+    SchedulingContext *context /* = nullptr*/) {
   RAY_CHECK(options.spread_threshold == 0 &&
             options.scheduling_type == SchedulingType::SPREAD)
       << "SpreadPolicy policy requires spread_threshold = 0 and type = SPREAD";
@@ -52,7 +54,7 @@ scheduling::NodeID SpreadSchedulingPolicy::Schedule(
     return node_id;
   }
   options.scheduling_type = SchedulingType::HYBRID;
-  return hybrid_policy_.Schedule(resource_request, options);
+  return hybrid_policy_.Schedule(resource_request, options, context);
 }
 
 }  // namespace raylet_scheduling_policy

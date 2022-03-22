@@ -24,8 +24,10 @@ namespace raylet_scheduling_policy {
 /// Policy that "randomly" picks a node that could fulfil the request.
 /// TODO(scv119): if there are a lot of nodes died or can't fulfill the resource
 /// requirement, the distribution might not be even.
-class RandomSchedulingPolicy : public ISchedulingPolicy {
+class RandomSchedulingPolicy : public ISingleSchedulingPolicy {
  public:
+  using ISingleSchedulingPolicy::Schedule;
+
   RandomSchedulingPolicy(scheduling::NodeID local_node_id,
                          const absl::flat_hash_map<scheduling::NodeID, Node> &nodes,
                          std::function<bool(scheduling::NodeID)> is_node_available)
@@ -35,7 +37,8 @@ class RandomSchedulingPolicy : public ISchedulingPolicy {
         is_node_available_(is_node_available) {}
 
   scheduling::NodeID Schedule(const ResourceRequest &resource_request,
-                              SchedulingOptions options) override;
+                              SchedulingOptions options,
+                              SchedulingContext *context = nullptr) override;
 
   /// Identifier of local node.
   const scheduling::NodeID local_node_id_;

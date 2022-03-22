@@ -24,7 +24,9 @@ namespace ray {
 namespace raylet_scheduling_policy {
 
 scheduling::NodeID RandomSchedulingPolicy::Schedule(
-    const ResourceRequest &resource_request, SchedulingOptions options) {
+    const ResourceRequest &resource_request,
+    SchedulingOptions options,
+    SchedulingContext *context /* = nullptr*/) {
   RAY_CHECK(options.scheduling_type == SchedulingType::RANDOM)
       << "HybridPolicy policy requires type = RANDOM";
   scheduling::NodeID best_node = scheduling::NodeID::Nil();

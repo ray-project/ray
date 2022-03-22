@@ -24,27 +24,28 @@ namespace ray {
 namespace raylet_scheduling_policy {
 
 scheduling::NodeID CompositeSchedulingPolicy::Schedule(
-    const ResourceRequest &resource_request, SchedulingOptions options) {
-  switch (options.scheduling_type) {
-  case SchedulingType::SPREAD:
-    return spread_policy_.Schedule(resource_request, options);
-  case SchedulingType::RANDOM:
-    return random_policy_.Schedule(resource_request, options);
-  case SchedulingType::HYBRID:
-    return hybrid_policy_.Schedule(resource_request, options);
-  default:
-    RAY_LOG(FATAL) << "Unsupported scheduling type: "
-                   << static_cast<typename std::underlying_type<SchedulingType>::type>(
-                          options.scheduling_type);
+    const ResourceRequest &resource_request,
+    SchedulingOptions options,
+    SchedulingContext *context /*= nullptr*/) {
+  auto result = Schedule({&resource_request}, options, context);
+  if (result.status.IsSuccess()) {
+    RAY_CHECK(result.selected_nodes.size() == 1);
+    return result.selected_nodes[0];
   }
-  UNREACHABLE;
+  return scheduling::NodeID::Nil();
 }
 
 SchedulingResult CompositeSchedulingPolicy::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
     SchedulingOptions options,
-    SchedulingContext *context) {
+    SchedulingContext *context /* = nullptr*/) {
   switch (options.scheduling_type) {
+  case SchedulingType::SPREAD:
+    return spread_policy_.Schedule(resource_request_list, options, context);
+  case SchedulingType::RANDOM:
+    return random_policy_.Schedule(resource_request_list, options, context);
+  case SchedulingType::HYBRID:
+    return hybrid_policy_.Schedule(resource_request_list, options, context);
   case SchedulingType::BUNDLE_PACK:
     return bundle_pack_policy_.Schedule(resource_request_list, options, context);
   case SchedulingType::BUNDLE_SPREAD:
