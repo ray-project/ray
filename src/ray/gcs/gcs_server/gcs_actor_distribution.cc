@@ -107,9 +107,10 @@ GcsBasedActorScheduler::AllocateNewActorWorkerAssignment(
 
 scheduling::NodeID GcsBasedActorScheduler::AllocateResources(
     const ResourceRequest &required_resources) {
-  auto scheduling_options = SchedulingOptions::Spread(
-      /*avoid_local_node*/ false,
-      /*require_node_available*/ true);
+  // TODO(Shanly): Use BundleSpread scheduling policy for the timebeing, it should be
+  // replaced with Spread policy once the shceduling interfaces are unified inside
+  // `ISchedulingPolicy`.
+  auto scheduling_options = SchedulingOptions::BundleSpread();
   auto scheduling_result =
       cluster_resource_scheduler_->Schedule({&required_resources}, scheduling_options);
 

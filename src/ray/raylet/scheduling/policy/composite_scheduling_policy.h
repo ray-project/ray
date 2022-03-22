@@ -33,9 +33,9 @@ class CompositeSchedulingPolicy : public ISchedulingPolicy {
       const absl::flat_hash_map<scheduling::NodeID, Node> &nodes,
       std::function<bool(scheduling::NodeID)> is_node_available,
       std::function<bool(scheduling::NodeID, const ResourceRequest &)>
-          add_node_available_resources_fn,
+          add_node_available_resources_fn = [](auto, auto) { return true; },
       std::function<bool(scheduling::NodeID, const ResourceRequest &)>
-          subtract_node_available_resources_fn)
+          subtract_node_available_resources_fn = [](auto, auto) { return true; })
       : hybrid_policy_(local_node_id, nodes, is_node_available),
         random_policy_(local_node_id, nodes, is_node_available),
         spread_policy_(local_node_id, nodes, is_node_available),
