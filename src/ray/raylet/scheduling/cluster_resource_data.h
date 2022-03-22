@@ -59,22 +59,10 @@ class ResourceRequest {
   bool RequiresObjectStoreMemory() const { return requires_object_store_memory_; }
 
   /// Get the value of a particular resource.
-  /// NOTE: the resource MUST already exist in this set, otherwise a check
-  /// fail will occur.
+  /// If the resource doesn't exist, return 0.
   FixedPoint Get(ResourceID resource_id) const {
     auto ptr = GetPointer(resource_id);
-    RAY_CHECK(ptr) << "Resource not found: " << resource_id;
     return *ptr;
-  }
-
-  /// Get the value of a particular resource. If the resource doesn't exist, return 0.
-  FixedPoint GetOrZero(ResourceID resource_id) const {
-    auto ptr = GetPointer(resource_id);
-    if (ptr == nullptr) {
-      return FixedPoint(0);
-    } else {
-      return *ptr;
-    }
   }
 
   /// Set a resource to the given value.
@@ -98,7 +86,10 @@ class ResourceRequest {
   }
 
   /// Check whether a particular resource exist.
-  bool Has(ResourceID resource_id) const { return GetOrZero(resource_id) > 0; }
+  bool Has(ResourceID resource_id) const {
+    auto ptr = GetPointer(resource_id);
+    return ptr != nullptr && *ptr != 0;
+  }
 
   /// Clear the whole set.
   void Clear() {
@@ -112,7 +103,7 @@ class ResourceRequest {
   void Cap(const ResourceRequest &other) {
     for (auto &resource_id : ResourceIds()) {
       auto this_value = Get(resource_id);
-      auto other_value = other.GetOrZero(resource_id);
+      auto other_value = other.Get(resource_id);
       if (this_value > other_value) {
         Set(resource_id, other_value);
       }
@@ -194,7 +185,7 @@ class ResourceRequest {
   ResourceRequest &operator+=(const ResourceRequest &other) {
     auto resource_ids = ResourceIds();
     for (auto &resource_id : resource_ids) {
-      Set(resource_id, Get(resource_id) + other.GetOrZero(resource_id));
+      Set(resource_id, Get(resource_id) + other.Get(resource_id));
     }
     for (auto &resource_id : other.ResourceIds()) {
       if (resource_ids.find(resource_id) == resource_ids.end()) {
@@ -207,7 +198,7 @@ class ResourceRequest {
   ResourceRequest &operator-=(const ResourceRequest &other) {
     auto resource_ids = ResourceIds();
     for (auto &resource_id : resource_ids) {
-      Set(resource_id, Get(resource_id) - other.GetOrZero(resource_id));
+      Set(resource_id, Get(resource_id) - other.Get(resource_id));
     }
     for (auto &resource_id : other.ResourceIds()) {
       if (resource_ids.find(resource_id) == resource_ids.end()) {
@@ -230,7 +221,7 @@ class ResourceRequest {
       return false;
     }
     for (auto &resource_id : ResourceIds()) {
-      if (Get(resource_id) > other.GetOrZero(resource_id)) {
+      if (Get(resource_id) > other.Get(resource_id)) {
         return false;
       }
     }

@@ -39,7 +39,7 @@ double LeastResourceScorer::Score(const ResourceRequest &required_resources,
   double node_score = 0.;
   for (auto &resource_id : required_resources.ResourceIds()) {
     const auto &request_resource = required_resources.Get(resource_id);
-    const auto &node_available_resource = node_resources_ptr->available.GetOrZero(resource_id);
+    const auto &node_available_resource = node_resources_ptr->available.Get(resource_id);
     auto score = Calculate(request_resource, node_available_resource);
     if (score < 0.) {
       return -1.;
@@ -163,8 +163,8 @@ std::vector<int> GcsResourceScheduler::SortRequiredResources(
     // more of the resource is prioritized.
 
     auto gpu = scheduling::ResourceID::GPU();
-    if (a.GetOrZero(gpu) != b.GetOrZero(gpu)) {
-      return a.GetOrZero(gpu) < b.GetOrZero(gpu);
+    if (a.Get(gpu) != b.Get(gpu)) {
+      return a.Get(gpu) < b.Get(gpu);
     }
 
     // Make sure that resources are always sorted in the same order
@@ -181,8 +181,8 @@ std::vector<int> GcsResourceScheduler::SortRequiredResources(
     }
 
     for (const auto &r : extra_resources_set) {
-      auto a_resource = a.GetOrZero(r);
-      auto b_resource = b.GetOrZero(r);
+      auto a_resource = a.Get(r);
+      auto b_resource = b.Get(r);
       if (a_resource != b_resource) {
         return a_resource < b_resource;
       }
@@ -190,8 +190,8 @@ std::vector<int> GcsResourceScheduler::SortRequiredResources(
     for (auto id : std::vector({scheduling::ResourceID::ObjectStoreMemory(),
                                 scheduling::ResourceID::Memory(),
                                 scheduling::ResourceID::CPU()})) {
-      if (a.GetOrZero(id) != b.GetOrZero(id)) {
-        return a.GetOrZero(id) < b.GetOrZero(id);
+      if (a.Get(id) != b.Get(id)) {
+        return a.Get(id) < b.Get(id);
       }
     }
     return false;
@@ -281,7 +281,7 @@ SchedulingResult GcsResourceScheduler::StrictPackSchedule(
   ResourceRequest aggregated_resource_request;
   for (const auto &resource_request : required_resources_list) {
     for (auto &resource_id : resource_request.ResourceIds()) {
-      auto value = aggregated_resource_request.GetOrZero(resource_id) +
+      auto value = aggregated_resource_request.Get(resource_id) +
                    resource_request.Get(resource_id);
       aggregated_resource_request.Set(resource_id, value);
     }

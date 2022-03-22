@@ -100,7 +100,7 @@ std::string NodeResources::DebugString() const {
       buffer << ", ";
     }
     first = false;
-    buffer << resource_id.Binary() << ": " << available.GetOrZero(resource_id) << "/"
+    buffer << resource_id.Binary() << ": " << available.Get(resource_id) << "/"
            << total.Get(resource_id);
   }
   buffer << "}";

@@ -38,11 +38,11 @@ TEST_F(ResourceRequestTest, TestBasic) {
   ASSERT_FALSE(resource_request.Has(gpu_id));
   ASSERT_FALSE(resource_request.Has(custom_id2));
 
-  // Test Get and GetOrZero
+  // Test Get
   ASSERT_EQ(resource_request.Get(cpu_id), 1);
   ASSERT_EQ(resource_request.Get(custom_id1), 2);
-  ASSERT_EQ(resource_request.GetOrZero(gpu_id), 0);
-  ASSERT_EQ(resource_request.GetOrZero(custom_id2), 0);
+  ASSERT_EQ(resource_request.Get(gpu_id), 0);
+  ASSERT_EQ(resource_request.Get(custom_id2), 0);
 
   // Test Size and IsEmpty
   ASSERT_EQ(resource_request.Size(), 2);
