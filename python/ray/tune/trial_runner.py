@@ -699,15 +699,13 @@ class TrialRunner:
                 if trial.status == Trial.PENDING:
                     num_pending_trials += 1
 
-        # Create pending trials until it fails.
-        while num_pending_trials < self._max_pending_trials:
-            if not self._update_trial_queue(blocking=False):
-                break
-            wait_for_trial = False
-            num_pending_trials += 1
-
-        if wait_for_trial and not self._search_alg.is_finished():
-            self._update_trial_queue(blocking=True)
+        if not self._search_alg.is_finished():
+            # Create pending trials until it fails.
+            while num_pending_trials < self._max_pending_trials:
+                if not self._update_trial_queue(blocking=wait_for_trial):
+                    break
+                wait_for_trial = False  # wait at most one trial
+                num_pending_trials += 1
 
         with warn_if_slow("choose_trial_to_run"):
             return self._scheduler_alg.choose_trial_to_run(self)
