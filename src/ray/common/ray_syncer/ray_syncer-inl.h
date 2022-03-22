@@ -55,10 +55,11 @@ class NodeState {
   bool ConsumeMessage(std::shared_ptr<const RaySyncMessage> message);
 
   /// Return the cluster view of this local node.
-  const absl::flat_hash_map<std::string, Array<std::shared_ptr<const RaySyncMessage>>>&
-  GetClusterView() const {
+  const absl::flat_hash_map<std::string, Array<std::shared_ptr<const RaySyncMessage>>>
+      &GetClusterView() const {
     return cluster_view_;
   }
+
  private:
   /// For local nodes
   Array<const ReporterInterface *> reporters_ = {nullptr};
@@ -97,10 +98,11 @@ class NodeSyncConnection {
   void ReceiveUpdate(RaySyncMessages messages) {
     for (auto &message : *messages.mutable_sync_messages()) {
       auto &node_versions = GetNodeComponentVersions(message.node_id());
-      RAY_LOG(DEBUG)  << "Receive update: "
-                      << " component_id=" << message.component_id()
-                      << ", message_version=" << message.version()
-                      << ", local_message_version=" << node_versions[message.component_id()];
+      RAY_LOG(DEBUG) << "Receive update: "
+                     << " component_id=" << message.component_id()
+                     << ", message_version=" << message.version()
+                     << ", local_message_version="
+                     << node_versions[message.component_id()];
       if (node_versions[message.component_id()] < message.version()) {
         node_versions[message.component_id()] = message.version();
       }
