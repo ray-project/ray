@@ -83,6 +83,10 @@ def get_step(
 
     step["priority"] = priority_val
 
+    # If a test is not stable, allow to soft fail
+    if not test.get("stable", True):
+        step["soft_fail"] = True
+
     step["label"] = test["name"]
     if smoke_test:
         step["label"] += " [smoke test] "
