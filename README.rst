@@ -402,7 +402,7 @@ Getting Involved
      - Support Level
    * - `Discourse Forum`_
      - For discussions about development and questions about usage.
-     - < 2 day
+     - < 1 day
      - Community
    * - `GitHub Issues`_
      - For reporting bugs and filing feature requests.
