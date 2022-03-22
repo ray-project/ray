@@ -131,6 +131,7 @@ void ClientSyncConnection::StartLongPolling() {
       &in_message_,
       [this, client_context](grpc::Status status) {
         if (status.ok()) {
+          RAY_CHECK(in_message_.GetArena() == nullptr);
           io_context_.post(
               [this, messages = std::move(in_message_)]() mutable {
                 ReceiveUpdate(std::move(messages));
