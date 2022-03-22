@@ -87,7 +87,7 @@ def get_step(
     stable = test.get("stable", True)
     if not stable:
         step["soft_fail"] = True
-        full_label = "(unstable) "
+        full_label = "[unstable] "
     else:
         full_label = ""
 
