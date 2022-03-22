@@ -62,7 +62,11 @@ class ResourceRequest {
   /// If the resource doesn't exist, return 0.
   FixedPoint Get(ResourceID resource_id) const {
     auto ptr = GetPointer(resource_id);
-    return *ptr;
+    if (ptr == 0) {
+      return FixedPoint(0);
+    } else {
+      return *ptr;
+    }
   }
 
   /// Set a resource to the given value.
