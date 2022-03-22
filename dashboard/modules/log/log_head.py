@@ -106,6 +106,7 @@ class LogHead(dashboard_utils.DashboardHeadModule):
 
 class LogHeadV1(dashboard_utils.DashboardHeadModule):
     LOG_URL_TEMPLATE = "http://{ip}:{port}/logs"
+    USE_GRPC = True
 
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
@@ -252,7 +253,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
 
         ws = aiohttp.web.WebSocketResponse()
         await ws.prepare(req)
-
+        if
         async with aiohttp.ClientSession(auto_decompress=False) as session:
             ws_client = await session.ws_connect(
                 f"{addr}/v1/api/logs/agent/stream/{log_file_name}?{req.query_string}"
@@ -261,7 +262,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             while True:
                 msg = await ws_client.receive()
                 if msg.type != aiohttp.WSMsgType.BINARY:
-                    await ws.send_str("Data could not be read from agent")
+                    await ws.send_bytes(b"Data could not be read from agent")
                     break
                 asyncio.sleep(0.5)
                 await ws.send_bytes(msg.data)

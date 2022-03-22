@@ -1923,11 +1923,12 @@ def format_print_logs_index(api_endpoint, node_id, links):
     help="Specify the exact filename of the log file.",
 )
 @click.option(
-    "--ip-address",
+    "-ip",
+    "--node-ip",
     required=False,
     type=str,
     default=None,
-    help="Retrieves the logs from the node with this ip address.",
+    help="Filters the logs by this ip address.",
 )
 @click.option(
     "--node-id",
@@ -1935,7 +1936,14 @@ def format_print_logs_index(api_endpoint, node_id, links):
     required=False,
     type=str,
     default=None,
-    help="Retrieves the logs from the node with this NodeID.",
+    help="Filters the logs by this NodeID.",
+)
+@click.option(
+    "--pid",
+    required=False,
+    type=str,
+    default=None,
+    help="Retrieves the logs from the process with this pid.",
 )
 @click.option(
     "--actor-id",
@@ -1950,7 +1958,7 @@ def format_print_logs_index(api_endpoint, node_id, links):
     required=False,
     type=bool,
     is_flag=True,
-    help="Stream the log file.",
+    help="Streams the log file, if a single file can be matched.",
 )
 @click.option(
     "--lines",
@@ -1963,8 +1971,9 @@ def format_print_logs_index(api_endpoint, node_id, links):
 def logs(
     filters,
     filename: str,
-    ip_address: str,
+    node_ip: str,
     node_id: str,
+    pid: str,
     actor_id: str,
     watch: bool,
     lines: int,
@@ -1972,7 +1981,8 @@ def logs(
     """
     View logs output by the ray cluster.
 
-    FILTERS: Keywords (filename, component, file extension, id) to filter the logs by.
+    FILTERS: Keywords (filename, component, file extension, id) to filter
+    the logs by name.
 
     Example usage:
 
@@ -1988,7 +1998,7 @@ def logs(
         # Try to match a single log file.
         # If we find more than one match, we output the index.
         filters = ",".join(filters) + (f",{filename}" if filename is not None else "")
-        api_endpoint, logs_dict = ray_log(ip_address, node_id, filters)
+        api_endpoint, logs_dict = ray_log(node_ip, node_id, filters)
         if len(logs_dict) == 0:
             raise Exception("Could not find node.")
         if filename is None:
@@ -2033,22 +2043,22 @@ def logs(
                 break
             print(f"\nNode ID: {node_id}")
             format_print_logs_index(api_endpoint, node_id, logs)
+    else:
+        if watch:
+            if lines is None:
+                lines = default_lines(1000)
+            stream_log(api_endpoint, node_id, filename, lines)
 
-    elif watch:
-        if lines is None:
-            lines = default_lines(1000)
-        stream_log(api_endpoint, node_id, filename, lines)
+        elif not watch:
+            if lines is None:
+                lines = default_lines(100)
+            import requests
 
-    elif not watch:
-        if lines is None:
-            lines = default_lines(100)
-        import requests
-
-        print(
-            requests.get(
-                f"{api_endpoint}/v1/api/logs/file/{node_id}/{filename}?lines={lines}"
-            ).text
-        )
+            print(
+                requests.get(
+                    f"{api_endpoint}/v1/api/logs/file/{node_id}/{filename}?lines={lines}"
+                ).text
+            )
 
 
 @cli.command(hidden=True)
