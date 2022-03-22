@@ -127,7 +127,7 @@ def save_checkpoint(checkpoint):
 
 @PublicAPI
 @contextmanager
-def checkpoint_dir(step):
+def checkpoint_dir(step: int):
     """Returns a checkpoint dir inside a context.
 
     Store any files related to restoring state within the
@@ -142,7 +142,7 @@ def checkpoint_dir(step):
     inconsistencies.
 
     Args:
-        step (int): Index for the checkpoint. Expected to be a
+        step: Index for the checkpoint. Expected to be a
             monotonically increasing quantity.
 
     .. code-block:: python
@@ -171,7 +171,7 @@ def checkpoint_dir(step):
                 tune.report(hello="world", ray="tune")
 
     Yields:
-        checkpoint_dir (str): Directory for checkpointing.
+        checkpoint_dir: Directory for checkpointing.
 
     .. versionadded:: 0.8.7
     """
