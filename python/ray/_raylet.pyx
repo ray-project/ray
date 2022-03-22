@@ -524,6 +524,9 @@ cdef execute_task(
     function_descriptor = CFunctionDescriptorToPython(
         ray_function.GetFunctionDescriptor())
 
+    # Import dependencies and run functions broadcasted from the driver.
+    worker.import_thread._do_importing()
+
     if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
         actor_class = manager.load_actor_class(job_id, function_descriptor)
         actor_id = core_worker.get_actor_id()

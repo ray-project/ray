@@ -126,15 +126,23 @@ def test_get_throws_quickly_when_found_exception(ray_start_regular):
 
 
 def test_failed_function_to_run(ray_start_2_cpus, error_pubsub):
-    p = error_pubsub
-
     def f(worker):
         if ray.worker.global_worker.mode == ray.WORKER_MODE:
             raise Exception("Function to run failed.")
 
     ray.worker.global_worker.run_function_on_all_workers(f)
+
+    @ray.remote
+    def g():
+        return
+
+    # Start 2 tasks to trigger f() to run.
+    ray.get([g.remote() for _ in range(2)])
+
     # Check that the error message is in the task info.
-    errors = get_error_message(p, 2, ray_constants.FUNCTION_TO_RUN_PUSH_ERROR)
+    errors = get_error_message(
+        error_pubsub, 2, ray_constants.FUNCTION_TO_RUN_PUSH_ERROR
+    )
     assert len(errors) == 2
     assert errors[0].type == ray_constants.FUNCTION_TO_RUN_PUSH_ERROR
     assert "Function to run failed." in errors[0].error_message
