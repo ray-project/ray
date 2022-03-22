@@ -50,13 +50,14 @@ class JobFileManager(FileManager):
         bucket_address = f"s3://{self.bucket}/{remote_upload_to}"
         retcode, _ = self._run_with_retry(
             self.job_manager.run_and_wait(
-            (
-                f"pip install -q awscli && "
-                f"aws s3 cp {source} {bucket_address} "
-                "--acl bucket-owner-full-control"
-            ),
-            {},
-        ))
+                (
+                    f"pip install -q awscli && "
+                    f"aws s3 cp {source} {bucket_address} "
+                    "--acl bucket-owner-full-control"
+                ),
+                {},
+            )
+        )
 
         if retcode != 0:
             raise FileDownloadError(f"Error downloading file {source} to {target}")
