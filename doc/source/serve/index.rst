@@ -177,8 +177,8 @@ Note that the count has been reset to zero because the new version of ``Counter`
   {"count": 0}
 
 Serve also lets you set configurations in the ``@serve.deployment`` decorator
-or using a YAML config file. For example, you can set the ``max_concurrent_queries`` for
-your application:
+or using a YAML config file. For example, you can set the
+``max_concurrent_queries`` for your application:
 
 .. code-block:: python
   # File name: counter_app.py
@@ -192,8 +192,8 @@ your application:
 
   Counter.deploy()
 
-Alternatively, instead of modifying the decorator, you could write a YAML
-config file and use the Serve CLI to udpate and deploy ``Counter``:
+Alternatively, instead of modifying the decorator, you can write a YAML
+config file:
 
 .. code-block:: yaml
   
@@ -204,6 +204,9 @@ config file and use the Serve CLI to udpate and deploy ``Counter``:
     - name: Counter
       import_path: counter_app.Counter
       max_concurrent_queries: 10
+
+Then you can use the Serve CLI, which is included with Ray Serve, to update and
+deploy ``Counter``:
 
 .. code-block:: bash
   
