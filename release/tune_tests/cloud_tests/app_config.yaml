@@ -8,6 +8,7 @@ python:
     - pytest
     - awscli
     - gsutil
+    - gym==0.21.0
   conda_packages: []
 
 post_build_cmds:

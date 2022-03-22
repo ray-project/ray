@@ -95,11 +95,11 @@ class _TrialCheckpoint(os.PathLike):
         is unset, it will be set to ``local_path``.
 
         Args:
-            cloud_path (Optional[str]): Cloud path to load checkpoint from.
+            cloud_path: Cloud path to load checkpoint from.
                 Defaults to ``self.cloud_path``.
-            local_path (Optional[str]): Local path to save checkpoint at.
+            local_path: Local path to save checkpoint at.
                 Defaults to ``self.local_path``.
-            overwrite (bool): If True, overwrites potential existing local
+            overwrite: If True, overwrites potential existing local
                 checkpoint. If False, exits if ``self.local_dir`` already
                 exists and has files in it.
 
@@ -166,11 +166,11 @@ class _TrialCheckpoint(os.PathLike):
         is unset, it will be set to ``cloud_path``.
 
         Args:
-            cloud_path (Optional[str]): Cloud path to load checkpoint from.
+            cloud_path: Cloud path to load checkpoint from.
                 Defaults to ``self.cloud_path``.
-            local_path (Optional[str]): Local path to save checkpoint at.
+            local_path: Local path to save checkpoint at.
                 Defaults to ``self.local_path``.
-            clean_before (bool): If True, deletes potentially existing
+            clean_before: If True, deletes potentially existing
                 cloud bucket before storing new data.
 
         """
@@ -218,10 +218,10 @@ class _TrialCheckpoint(os.PathLike):
         That way checkpoints can be transferred across cloud storage providers.
 
         Args:
-            path (Optional[str]): Path to save checkpoint at. If empty,
+            path: Path to save checkpoint at. If empty,
                 the default cloud storage path is saved to the default
                 local directory.
-            force_download (bool): If ``True``, forces (re-)download of
+            force_download: If ``True``, forces (re-)download of
                 the checkpoint. Defaults to ``False``.
         """
         temp_dirs = set()
