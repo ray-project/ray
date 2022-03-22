@@ -220,7 +220,7 @@ TEST_F(GcsResourceSchedulerTest, TestNodeFilter) {
   }
 
   auto bundle_locations = std::make_shared<BundleLocations>();
-  BundleID bundle_id{PlacementGroupID::FromRandom(), 0};
+  BundleID bundle_id{PlacementGroupID::Of(JobID::FromInt(1)), 0};
   bundle_locations->emplace(bundle_id, std::make_pair(node_id, nullptr));
   BundleSchedulingContext scheduling_context_1(bundle_locations);
   auto result1 =
