@@ -250,8 +250,11 @@ std::shared_ptr<grpc::Channel> MakeChannel(std::string port) {
 }
 
 TEST(SyncerTest, Test1To1) {
-  auto s1 = SyncerServer("19990");
-  auto s2 = SyncerServer("19991");
+  auto s1 = SyncerServer("19990", false);
+  auto s2 = SyncerServer("19991", true);
+  // Make sure the receiver is setup well
+  ASSERT_NE(nullptr, s1.receivers[static_cast<size_t>(RayComponentId::SCHEDULER)]);
+  ASSERT_EQ(nullptr, s2.receivers[static_cast<size_t>(RayComponentId::SCHEDULER)]);
 }
 
 TEST(SyncerTest, Test1ToN) { auto server = SyncerServer("9990"); }

@@ -2386,6 +2386,7 @@ cc_test(
     name = "ray_syncer_test",
     srcs = ["src/ray/common/test/ray_syncer_test.cc"],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":ray_common",
         ":ray_mock",
