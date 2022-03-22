@@ -715,7 +715,18 @@ def test_dashboard_does_not_depend_on_serve():
     with pytest.raises(ImportError):
         from ray import serve  # noqa: F401
 
-    ray.init(include_dashboard=True)
+    ctx = ray.init(include_dashboard=True)
+
+    # Ensure standard dashboard features, like snapshot, still work
+    response = requests.get(f"http://{ctx.dashboard_url}/api/snapshot/")
+    assert response.status_code == 200
+    assert response.json()["result"] is True
+    assert "snapshot" in response.json()["data"]
+
+    # Check that Serve-dependent features fail
+    response = requests.get(f"http://{ctx.dashboard_url}/api/serve/deployments/")
+    assert response.status_code == 500
+    assert "ModuleNotFoundError" in response.text
 
 
 if __name__ == "__main__":
