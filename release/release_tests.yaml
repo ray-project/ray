@@ -1956,8 +1956,8 @@
     script: python train_horovod_multi_node_test.py
 
     wait_for_nodes:
-      num_nodes: 3
-      timeout: 1200
+      num_nodes: 2
+      timeout: 600
 
     type: sdk_command
     file_manager: job
