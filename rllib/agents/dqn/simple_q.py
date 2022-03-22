@@ -45,7 +45,7 @@ from ray.rllib.utils.typing import (
     ResultDict,
     TrainerConfigDict,
 )
-from ray.rllib.execution.common import (
+from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_TARGET_UPDATES,
 )
@@ -257,11 +257,11 @@ class SimpleQTrainer(Trainer):
 
         This replicates Simple Q's execution_plan behaviour, e.g.:
         - For every time we (1) sample (MultiAgentBatch) from workers...
-            - (2) Sample training batch (MultiAgentBatch) from replay buffer.
-            - (3) Learn on training batch.
-            - (4) Update target network every target_network_update_freq steps.
-        - (5) Concatenate freshly collected samples.
-        - (6) Store new samples in replay buffer.
+            - (2) Concatenate freshly collected samples.
+            - (3) Store new samples in replay buffer.
+            - (4) Sample training batch (MultiAgentBatch) from replay buffer.
+            - (5) Learn on training batch.
+            - (6) Update target network every target_network_update_freq steps.
         - (7) Return all collected metrics for the iteration.
 
         Returns:
@@ -270,36 +270,31 @@ class SimpleQTrainer(Trainer):
         batch_size = self.config["train_batch_size"]
         local_worker = self.workers.local_worker()
 
-        # Collects SampleBatches in parallel and synchronously
-        # from the Trainer's RolloutWorkers until we hit the
-        # configured `train_batch_size`.
         sample_batches = []
-        num_env_steps = 0
-        num_agent_steps = 0
         train_results = {}
 
-        while (not self._by_agent_steps and num_env_steps < batch_size) or (
-            self._by_agent_steps and num_agent_steps < batch_size
-        ):
-            # (1) Sample (MultiAgentBatch) from workers
-            new_sample_batches = synchronous_parallel_sample(self.workers)
-            sample_batches.extend(new_sample_batches)
+        # (1) Sample (MultiAgentBatch) from workers
+        new_sample_batches = synchronous_parallel_sample(self.workers)
+        sample_batches.extend(new_sample_batches)
 
-            # Update counters
-            new_env_steps = sum(len(s) for s in new_sample_batches)
-            new_agent_steps = sum(
-                len(s) if isinstance(s, SampleBatch) else s.agent_steps()
-                for s in new_sample_batches
-            )
-            num_env_steps += new_env_steps
-            num_agent_steps += new_agent_steps
-            self._counters[NUM_ENV_STEPS_SAMPLED] += new_env_steps
-            self._counters[NUM_AGENT_STEPS_SAMPLED] += new_agent_steps
+        # Update counters
+        self._counters[NUM_ENV_STEPS_SAMPLED] += sum(len(s) for s in new_sample_batches)
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(
+            len(s) if isinstance(s, SampleBatch) else s.agent_steps()
+            for s in new_sample_batches
+        )
 
-            # (2) Sample training batch (MultiAgentBatch) from replay buffer.
+        # (2) Concatenate freshly collected samples
+        concatenated_samples = SampleBatch.concat_samples(sample_batches)
+        # (3) Store new samples in replay buffer
+        self.local_replay_buffer.add(concatenated_samples)
+
+        # This is done to fit the old execution plan behaviour
+        for _ in new_sample_batches:
+            # (4) Sample training batch (MultiAgentBatch) from replay buffer.
             train_batch = self.local_replay_buffer.sample(batch_size)
 
-            # (3) Learn on training batch.
+            # (5) Learn on training batch.
             # Use simple optimizer (only for multi-agent or tf-eager; all other
             # cases should use the multi-GPU optimizer, even if only using 1 GPU)
             if self.config.get("simple_optimizer") is True:
@@ -307,7 +302,7 @@ class SimpleQTrainer(Trainer):
             else:
                 train_results = multi_gpu_train_one_step(self, train_batch)
 
-            # (4) Update target network every target_network_update_freq steps
+            # (6) Update target network every target_network_update_freq steps
             cur_ts = self._counters[NUM_ENV_STEPS_SAMPLED]
             last_update = self._counters[LAST_TARGET_UPDATE_TS]
             if cur_ts - last_update >= self.config["target_network_update_freq"]:
@@ -322,10 +317,6 @@ class SimpleQTrainer(Trainer):
             if self.workers.remote_workers():
                 with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                     self.workers.sync_weights()
-
-        # (5) Concatenate freshly collected samples
-        # (6) Store new samples in replay buffer
-        self.local_replay_buffer.add(SampleBatch.concat_samples(sample_batches))
 
         # (7) Return all collected metrics for the iteration.
         return train_results
